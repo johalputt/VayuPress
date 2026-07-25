@@ -1,15 +1,43 @@
 package main
 
-// handlers_pwa.go — PWA manifest, service worker, and chroma CSS handler.
+// handlers_pwa.go — PWA manifest, service worker, app icons, and chroma CSS.
+//
+// Installing the public site has to produce a REAL installed app, not a launcher
+// shortcut. On Android, Chrome mints a WebAPK — an actual generated package that
+// survives reboots like any other app — only when the site passes the full
+// installability check: HTTPS, a manifest with a stable identity and icons of at
+// least 192px, and a REGISTERED service worker. Miss any of it and the browser
+// silently degrades "Install" to a legacy home-screen shortcut, which lives in the
+// launcher's own database and is routinely wiped when the device restarts or the
+// launcher rebuilds. That degradation is invisible at install time and only shows
+// up later as "my app disappeared".
 
 import (
+	_ "embed"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/render"
 )
+
+// Public web-app icons, generated from the brand mark by scripts/gen-pwa-icons.py.
+// A real 192 and a real 512 are both required: the manifest used to declare one
+// 256x256 file as being both sizes, and Android had to guess.
+
+//go:embed assets/webapp-192.png
+var webAppIcon192PNG []byte
+
+//go:embed assets/webapp-512.png
+var webAppIcon512PNG []byte
+
+//go:embed assets/webapp-maskable-512.png
+var webAppIconMaskablePNG []byte
+
+//go:embed assets/webapp-apple-180.png
+var webAppIconApplePNG []byte
 
 // handleChromaCSS serves the chroma syntax-highlighting CSS, generated once
 // at first request and cached in memory thereafter.
@@ -27,120 +55,205 @@ func (a *App) handleChromaCSS(w http.ResponseWriter, r *http.Request) {
 	w.Write(chromaCSSBytes) //nolint:errcheck
 }
 
-// handlePWAManifest returns a Web App Manifest so the site can be installed
-// as a PWA. Theme colours, name, and icons are derived from site settings.
+// handlePWAManifest returns the Web App Manifest for the public site. Name,
+// description and theme colour follow site settings; identity and icons do not,
+// because they decide whether the install is a real app.
 func (a *App) handlePWAManifest(w http.ResponseWriter, r *http.Request) {
 	s := render.GetActiveSettings()
 	name := s.Name
 	if name == "" {
 		name = config.Cfg.Domain
 	}
+	if name == "" {
+		// A manifest with no name is not installable at all, so never emit one.
+		// Reaching here means neither a site name nor a domain is configured; a
+		// generic name still gives a working, installable app.
+		name = "VayuPress"
+	}
+	short := shortAppName(name, 12)
 	manifest := map[string]interface{}{
+		// id pins the app's identity independently of start_url. Without it, identity
+		// IS start_url, so ever changing the landing page would make the browser treat
+		// this as a DIFFERENT app and orphan the one already on the home screen. It
+		// must never change once published.
+		"id":               "/",
 		"name":             name,
-		"short_name":       name,
+		"short_name":       short,
 		"description":      s.Description,
 		"start_url":        "/",
+		"scope":            "/",
 		"display":          "standalone",
+		"display_override": []string{"standalone", "minimal-ui"},
+		"orientation":      "any",
 		"background_color": "#0a0f1a",
 		"theme_color":      "#6366f1",
 		"icons": []map[string]string{
-			{"src": "/static/favicon-light.png", "sizes": "192x192", "type": "image/png"},
-			{"src": "/static/favicon-light.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+			// Sizes here are the icons' true pixel dimensions. Declaring a size the
+			// file does not have leaves the launcher to rescale whatever it gets.
+			{"src": "/static/icons/webapp-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+			{"src": "/static/icons/webapp-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+			// Maskable is a separate, padded, fully opaque asset. Android crops a
+			// maskable icon to its own shape, so the previous entry — the unpadded
+			// mark, declared maskable — was asking for its own edges to be clipped.
+			{"src": "/static/icons/webapp-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
 		},
 		"categories": []string{"news", "blog"},
 		"lang":       "en",
 	}
-	w.Header().Set("Content-Type", "application/manifest+json")
+	w.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
+	// Re-fetched on every WebAPK update check, so keep it cacheable but short-lived:
+	// a long-lived copy would delay a renamed site reaching already-installed apps.
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	json.NewEncoder(w).Encode(manifest) //nolint:errcheck
 }
 
-// handleServiceWorker serves a minimal service worker that caches static assets
-// and serves them offline. It uses a stale-while-revalidate strategy for pages
-// and a cache-first strategy for CSS/JS/images.
+// shortAppName trims a site name down to what fits under a launcher icon, which
+// Android clips at roughly max characters. It counts runes rather than bytes — a
+// byte slice would cut a multi-byte character in half and put a replacement glyph
+// on the home screen — and prefers to break at a word boundary.
+func shortAppName(name string, max int) string {
+	r := []rune(name)
+	if len(r) <= max {
+		return name
+	}
+	for i := max; i > 0; i-- {
+		if r[i-1] == ' ' {
+			return strings.TrimRight(string(r[:i-1]), " ")
+		}
+	}
+	return string(r[:max])
+}
+
+// handlePWARegisterJS serves the service-worker registration script. Same pattern
+// as the other public scripts: a content-versioned, same-origin asset that
+// satisfies script-src 'self' without a nonce.
+func (a *App) handlePWARegisterJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Write([]byte(render.PWARegisterJS)) //nolint:errcheck
+}
+
+// handleServiceWorker serves the public service worker. Its presence is what makes
+// the site installable as a real app; its caching is deliberately conservative.
 func (a *App) handleServiceWorker(w http.ResponseWriter, r *http.Request) {
-	// Service workers must be served from the root scope with correct MIME type.
-	// Using a fixed cache name lets us version-bust on deploy by changing CACHE_NAME.
+	// Service workers must be served from the root scope with the correct MIME type.
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Header().Set("Service-Worker-Allowed", "/")
 	w.Write([]byte(serviceWorkerJS)) //nolint:errcheck
 }
 
-const serviceWorkerJS = `// VayuPress service worker — offline-first for static assets.
-// CACHE_NAME is bumped to v2 to purge any v1 entries that wrongly cached the
-// admin console (/os) — see the activate handler, which deletes stale caches.
-const CACHE_NAME = 'vayupress-v2';
+const serviceWorkerJS = `// VayuPress service worker — offline fallback for a real installed app.
+//
+// CACHE_NAME is bumped to v3. v2 stored page navigations stale-first and kept
+// whatever a navigation returned, including pages the server marked private or
+// no-store: on a shared device that could replay one member's account page to the
+// next person, and it could re-show a cached sign-in form to somebody who was
+// already signed in — defeating the server-side redirect before the origin was
+// ever consulted. The activate handler deletes older caches, so upgrading a device
+// self-heals.
+const CACHE_NAME = 'vayupress-v3';
+
+// Precached so a cold, offline launch still renders something. Fetched one by one:
+// cache.addAll rejects atomically, so a single 404 in this list used to fail the
+// whole install — and an install that fails leaves the app uninstallable.
 const STATIC_ASSETS = [
   '/',
   '/static/chroma.css',
+  '/static/icons/webapp-192.png',
   '/static/favicon-light.png',
   '/static/favicon-dark.png',
-  '/feed.xml',
 ];
+
+// Paths that must never be served from a cache: the console and the legacy admin
+// path, plus every member surface (account, plans, sign-in, verification), because
+// what they contain depends on who is asking.
+function isPrivatePath(p) {
+  return p === '/os' || p.indexOf('/os/') === 0 ||
+         p === '/admin' || p.indexOf('/admin/') === 0 ||
+         p.indexOf('/members') === 0 || p.indexOf('/signup') === 0 ||
+         p.indexOf('/login') === 0 || p.indexOf('/pricing') === 0 ||
+         p.indexOf('/api/') === 0;
+}
+
+// A response is only safe to store if the server did not mark it private, per-user
+// or uncacheable. Honouring these headers is what keeps the worker from undoing the
+// cache-correctness work done on the server.
+function mayStore(response) {
+  if (!response || !response.ok || response.type === 'opaque' || response.redirected) { return false; }
+  const cc = response.headers.get('Cache-Control') || '';
+  if (/no-store|private/i.test(cc)) { return false; }
+  const vary = response.headers.get('Vary') || '';
+  if (/cookie/i.test(vary) || vary === '*') { return false; }
+  if (response.headers.get('Set-Cookie')) { return false; }
+  return true;
+}
 
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_NAME).then(cache => Promise.all(
+      STATIC_ASSETS.map(url => cache.add(new Request(url, { cache: 'reload' })).catch(() => null))
+    )).then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-  // Never intercept the admin console or ANY of its surfaces — always go to the
-  // network, never serve from cache. These are authenticated, per-user,
-  // session-aware pages. Serving a stale copy would (a) re-show /os/login to an
-  // operator who is already signed in, silently defeating the server-side
-  // "already authenticated -> redirect to /os" logic, and (b) risk showing one
-  // person's dashboard to another on a shared device. This MUST run before the
-  // navigate/stale-while-revalidate branch below. Covers the console (/os), its
-  // sub-paths and assets (/os/...), and the legacy admin path (/admin).
-  if (url.pathname === '/os' || url.pathname.startsWith('/os/') ||
-      url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
-    event.respondWith(fetch(event.request));
-    return;
+  const req = event.request;
+  if (req.method !== 'GET') { return; }
+  const url = new URL(req.url);
+  // Cross-origin requests are none of this worker's business.
+  if (url.origin !== self.location.origin) { return; }
+  if (isPrivatePath(url.pathname)) {
+    return; // straight to the network, and never stored
   }
-  // Cache-first for static assets (CSS, JS, images, fonts).
-  if (url.pathname.startsWith('/static/') || url.pathname.startsWith('/media/')) {
+
+  // Cache-first for static assets. Their URLs carry content hashes, so a cached
+  // hit is by definition the right bytes.
+  if (url.pathname.indexOf('/static/') === 0 || url.pathname.indexOf('/media/') === 0) {
     event.respondWith(
-      caches.match(event.request).then(cached => {
-        if (cached) return cached;
-        return fetch(event.request).then(response => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-          }
-          return response;
-        });
-      })
+      caches.match(req).then(hit => hit || fetch(req).then(res => {
+        if (mayStore(res)) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
+        }
+        return res;
+      }))
     );
     return;
   }
-  // Stale-while-revalidate for HTML pages.
-  if (event.request.mode === 'navigate') {
+
+  // Network-FIRST for pages, with the cache only as an offline fallback. v2 was
+  // stale-first, which showed yesterday's page to somebody who was online.
+  if (req.mode === 'navigate') {
     event.respondWith(
-      caches.open(CACHE_NAME).then(cache =>
-        cache.match(event.request).then(cached => {
-          const network = fetch(event.request).then(response => {
-            if (response.ok) cache.put(event.request, response.clone());
-            return response;
-          });
-          return cached || network;
-        })
-      )
+      fetch(req).then(res => {
+        if (mayStore(res)) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
+        }
+        return res;
+      }).catch(() => caches.match(req).then(hit => hit || caches.match('/').then(root => root || offlinePage())))
     );
     return;
   }
-  event.respondWith(fetch(event.request));
 });
+
+function offlinePage() {
+  return new Response(
+    '<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">' +
+    '<title>Offline</title>' +
+    '<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0f1a;color:#eef2f8;font:16px/1.5 system-ui,sans-serif">' +
+    '<div style="text-align:center;padding:24px"><div style="font-size:44px">&#128244;</div>' +
+    '<h1 style="font-size:20px;margin:.5em 0">You are offline</h1>' +
+    '<p style="color:#b8c6dd;max-width:22rem">Reconnect to load this page.</p></div>',
+    { headers: { 'Content-Type': 'text/html; charset=utf-8' }, status: 503 });
+}
 `

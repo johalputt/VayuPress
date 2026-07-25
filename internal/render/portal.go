@@ -683,7 +683,6 @@ const portalCSSToken = "__PORTAL_CSS_HREF__"
 // it through the script — hence the placeholder above, resolved here.
 var (
 	portalAssetMu  sync.RWMutex
-	portalCSSVer   string
 	portalJSBody   = strings.Replace(PortalJS, portalCSSToken, "/static/css/portal.css", 1)
 	portalJSVerStr = shortSum(portalJSBody)
 )
@@ -699,7 +698,7 @@ func SetPortalCSSVersion(ver string) {
 	}
 	body := strings.Replace(PortalJS, portalCSSToken, href, 1)
 	portalAssetMu.Lock()
-	portalCSSVer, portalJSBody, portalJSVerStr = ver, body, shortSum(body)
+	portalJSBody, portalJSVerStr = body, shortSum(body)
 	portalAssetMu.Unlock()
 }
 

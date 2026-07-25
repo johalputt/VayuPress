@@ -58,9 +58,20 @@ import (
 // OAuth backend) can never solve a browser challenge, so a challenge there is an
 // outage, not defence. They carry their own auth/rate limits instead. Kept as a
 // package var so a regression test can assert these prefixes are present.
+//
+// /manifest.json and /sw.js belong here for the same reason. Installing the site
+// as a real app depends on them being fetchable by clients that are not a
+// mainstream browser: the WebAPK minting server downloads the manifest (and its
+// icons) to build the installable package, and re-downloads it on every update
+// check. A challenge there cannot be solved, so the install silently degrades to a
+// launcher shortcut — which a device restart can discard. A challenge served for
+// /sw.js would likewise hand the browser an HTML page where it expected
+// JavaScript, failing the worker update on an already-installed app. The icons
+// themselves are already covered by /static.
 var shieldBypassPrefixes = []string{
 	"/os", "/api", "/admin", "/debug", "/health", "/metrics", "/static",
 	"/__vayushield", "/__vayuanalytics", "/.well-known", "/mcp", "/oauth",
+	"/manifest.json", "/sw.js",
 }
 
 // analytics store, wires governance/geoip side channels, and starts the

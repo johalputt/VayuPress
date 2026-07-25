@@ -1556,6 +1556,8 @@ func ChromaCSS() string {
 var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 	"blogBase": BlogBase,
 	"portalJS": PortalJSLink,
+	"pwaHead":  PWAHeadTags,
+	"pwaJS":    PWARegisterJSLink,
 	"trunc": func(s string, n int) string {
 		s = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(s, "")
 		s = strings.TrimSpace(s)
@@ -1620,7 +1622,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 {{if .TwitterImageURL}}<meta name="twitter:image" content="{{.TwitterImageURL}}">{{end}}
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"{{.Title | jsonAttr}}","description":"{{.SEODescription | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","url":"{{.Canonical}}","mainEntityOfPage":{"@type":"WebPage","@id":"{{.Canonical}}"},"inLanguage":"en",{{if .OGImage}}"image":"{{.OGImage}}",{{end}}"author":{"@type":"Person","name":"{{if .Author}}{{.Author | jsonAttr}}{{else if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}"},"publisher":{"@type":"Organization","name":"{{if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}","url":"{{.Origin}}"}}</script>
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}<link rel="stylesheet" href="/static/chroma.css">{{.HeadMeta}}{{.ThemeToggleJSLink}}{{.VideoFacadeJSLink}}
-<link rel="manifest" href="/manifest.json">
+{{pwaHead}}{{pwaJS}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
@@ -1761,6 +1763,8 @@ func blogPageURL(n int) string {
 
 var homeFuncs = template.FuncMap{
 	"portalJS":  PortalJSLink,
+	"pwaHead":   PWAHeadTags,
+	"pwaJS":     PWARegisterJSLink,
 	"humanDate": func(t time.Time) string { return config.FormatSite(t, "2 January 2006") },
 	"shortDate": func(t time.Time) string { return config.FormatSite(t, "2006-01-02") },
 	"blogBase":  BlogBase,
@@ -1779,7 +1783,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <meta property="og:url" content="{{.Origin}}{{.Canonical}}">
 {{if .OGImage}}<meta property="og:image" content="{{.Origin}}{{.OGImage}}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="{{.Origin}}{{.OGImage}}">{{end}}
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}
-<link rel="manifest" href="/manifest.json">
+{{pwaHead}}{{pwaJS}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">

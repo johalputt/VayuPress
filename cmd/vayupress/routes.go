@@ -135,6 +135,15 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/js/search.js", a.handleSearchWidgetJS)
 	// VayuPortal — the reader membership overlay widget (same-origin → script-src 'self').
 	r.Get("/static/js/portal.js", a.handleMemberPortalJS)
+	// Service-worker registration. Without this the worker below is never
+	// registered, the site fails Chrome's installability check, and "Install"
+	// degrades to a launcher shortcut that a device restart can discard.
+	r.Get("/static/js/pwa.js", a.handlePWARegisterJS)
+	// Public web-app icons (a real 192, a real 512, and a padded maskable 512).
+	r.Get("/static/icons/webapp-192.png", servePNG(webAppIcon192PNG))
+	r.Get("/static/icons/webapp-512.png", servePNG(webAppIcon512PNG))
+	r.Get("/static/icons/webapp-maskable-512.png", servePNG(webAppIconMaskablePNG))
+	r.Get("/static/icons/webapp-apple-180.png", servePNG(webAppIconApplePNG))
 	// Favicon routes serve the operator's uploaded brand mark when one is stored
 	// (see /admin/theme branding), falling back to the embedded default per scheme.
 	r.Get("/static/favicon-dark.png", a.serveFavicon(faviconDarkPNG))

@@ -22,6 +22,31 @@ func TestMachineProtocolPrefixesBypassShield(t *testing.T) {
 	}
 }
 
+// TestInstallSurfacesBypassShield locks in the other half of "I installed the app
+// and a restart deleted it".
+//
+// The manifest is not fetched only by the reader's browser: the WebAPK minting
+// server downloads it, and the icons it names, to build the installable package,
+// and re-downloads it on every update check. Those fetches do not come from a
+// mainstream browser and cannot solve a proof-of-work or JS challenge, so a
+// challenge on /manifest.json means no WebAPK gets minted — and Chrome quietly
+// substitutes a launcher shortcut, which many Android builds drop on reboot. A
+// challenge on /sw.js is the same shape of failure: the browser asks for
+// JavaScript and is handed an HTML challenge page, so the worker update fails on an
+// app that is already installed.
+func TestInstallSurfacesBypassShield(t *testing.T) {
+	for _, want := range []string{"/manifest.json", "/sw.js"} {
+		if !containsPrefix(shieldBypassPrefixes, want) {
+			t.Errorf("shieldBypassPrefixes must contain %q (else the site cannot be installed as a real app)", want)
+		}
+	}
+	// The icons the manifest names must be reachable on the same terms; they live
+	// under /static, which is already bypassed.
+	if !containsPrefix(shieldBypassPrefixes, "/static") {
+		t.Error("shieldBypassPrefixes must contain /static so the app icons are fetchable")
+	}
+}
+
 func containsPrefix(list []string, want string) bool {
 	for _, p := range list {
 		if p == want {
