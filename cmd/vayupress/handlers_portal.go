@@ -224,6 +224,14 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	// Credentials good: ensure a member record exists for this address and start
 	// a session. The member's tier is whatever it already is (free by default);
 	// holding a mailbox does not itself grant a paid plan.
+	//
+	// Any session this browser was already carrying is destroyed first, so signing
+	// in REPLACES the previous identity instead of stacking on it — the same rule
+	// the magic-link path follows (no session fixation, no ambiguity about which
+	// account you are acting as).
+	if c, err := r.Cookie(memberCookie); err == nil && c.Value != "" {
+		_ = a.members.DestroySession(r.Context(), c.Value)
+	}
 	m, err := a.members.UpsertScoped(r.Context(), a.memberScope(r), emailAddr)
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", "Could not sign you in", "")

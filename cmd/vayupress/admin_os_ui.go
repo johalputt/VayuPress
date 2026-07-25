@@ -1666,7 +1666,17 @@ func writeOSHTML(w http.ResponseWriter, body string) {
 // asymmetry is the reported bug. no-store forbids all caching/reuse, so the
 // session-aware redirect runs on every /os/login navigation.
 func setAuthPageNoCache(w http.ResponseWriter) {
-	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	// "private" and Vary: Cookie are what stop a SHARED cache (a CDN or reverse
+	// proxy in front of the origin) from storing this response and later handing it
+	// to somebody else. Without them a proxy can serve a stored sign-in form to a
+	// visitor who already holds a valid session — which looks exactly like being
+	// logged out, right up until you edit the URL and land inside, still signed in.
+	// no-store alone is not reliably honoured by every edge, so state it three ways:
+	// the standard directives, the explicit private/Vary contract, and the
+	// CDN-specific override that takes precedence at the edge.
+	w.Header().Set("Cache-Control", "private, no-store, no-cache, must-revalidate, max-age=0")
+	w.Header().Set("CDN-Cache-Control", "no-store")
+	w.Header().Set("Vary", "Cookie")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
 }

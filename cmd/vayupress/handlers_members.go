@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/email"
 	"github.com/johalputt/vayupress/internal/emailtmpl"
@@ -188,6 +189,21 @@ func (a *App) handleMemberVerify(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid or expired sign-in link", http.StatusBadRequest)
 		return
 	}
+	// Signing in must REPLACE whatever identity this browser was carrying, never
+	// stack on top of it. Two reasons:
+	//
+	//   - Session fixation: a session that existed before authentication must not
+	//     survive it. Whoever set that cookie must not inherit the new identity.
+	//   - Identity confusion: opening a sign-in link for one account in a browser
+	//     already signed in as another used to leave both sessions alive, so which
+	//     account you were acting as depended on resolution order rather than on
+	//     what you just clicked.
+	//
+	// The old session is destroyed server-side, so the previous token is dead even
+	// if a copy of the cookie is replayed later.
+	if c, err := r.Cookie(memberCookie); err == nil && c.Value != "" {
+		_ = a.members.DestroySession(r.Context(), c.Value)
+	}
 	m, err := a.members.UpsertScoped(r.Context(), a.memberScope(r), email)
 	if err != nil {
 		http.Error(w, "could not sign in", http.StatusInternalServerError)
@@ -217,6 +233,18 @@ func (a *App) handleMemberLogout(w http.ResponseWriter, r *http.Request) {
 			_ = a.members.DestroySession(r.Context(), c.Value)
 		}
 	}
+	// Also end the console session. resolveCommenter treats a signed-in operator as
+	// a member-equivalent on the public site, so clearing only the member cookie
+	// left the operator identity standing — and the visitor was immediately shown
+	// as signed in again as the PREVIOUS account, which reads as "logout does not
+	// work". Signing out has to mean signed out: this mirrors the console logout,
+	// which already ends the membership session for exactly the same reason.
+	if a.sessions != nil {
+		if token := auth.SessionTokenFromRequest(r); token != "" {
+			_ = a.sessions.Destroy(r.Context(), token)
+		}
+	}
+	auth.ClearSessionCookie(w)
 	// Clear with the same security attributes the session cookie was set with so
 	// the deletion reliably targets the original Secure/SameSite cookie.
 	writeSecureCookie(w, &http.Cookie{
