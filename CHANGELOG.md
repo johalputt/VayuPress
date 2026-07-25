@@ -6,6 +6,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.23] — 2026-07-25
+
+### Fixed
+- **"Access denied" for real Chrome and Brave visitors — the signature learner was
+  poisoning itself.** When VayuShield blocks a request it records that client's
+  fingerprint as an auto-learned bad bot (confidence 0.7), and every repeat adds
+  +0.10. Past 0.8 the scorer stops scoring and treats the record as an *identified*
+  bot, which lands straight in the block band. So an earlier run of false positives
+  taught the database that real browser fingerprints were bots; each refusal raised
+  the confidence further, and because the verdict then read as "identified" the
+  navigation carve-out deliberately refused to soften it. A fingerprint is shared by
+  everyone on the same browser build, so this hard-blocked whole populations of real
+  readers — including the operator's own browser — with no way to prove otherwise.
+  - A **mainstream browser fingerprint is never auto-learned as a bad bot**. Real
+    bad actors wearing a browser User-Agent are still handled by scoring, the
+    challenge ladder and the reputation engine.
+  - Verdicts now distinguish an **operator-verified or compiled-in** signature from
+    an **auto-learned guess**, and only the former forfeits the benefit of the
+    doubt. An auto-learned guess now yields the solvable challenge on a page load
+    instead of a dead 403; an identified bot is still blocked.
+  - **Release all sentences now** also forgets auto-learned signatures (keeping
+    operator-verified ones). Clearing jails without clearing what was learned from
+    them left the operator still blocked, because the learner cannot unlearn on its
+    own — every refusal looks like confirmation.
+- **Visitor &amp; crawler check no longer raises a false indexing alarm.** Crawler
+  identity is confirmed by published IP range and reverse DNS, which a probe from
+  your own server cannot imitate — so a synthetic Googlebot is *correctly* treated
+  as an impostor. Those rows now read "Not testable here" and explain why, instead
+  of reporting your indexing as broken.
+
+### Performance
+- **VayuOS console responsiveness.** Four avoidable costs on admin render paths:
+  the settings accessor copied all ~85 entries to read a single value (it is called
+  several times per page from ~60 sites); the shield self-test drove eight requests
+  through the full middleware on *every* render of the Bot Shield page (now memoised
+  for 60s and refreshed on save); the timezone picker re-parsed ~50 zoneinfo entries
+  per render (now memoised per zone per day); and the dashboard and Media header
+  stat-ed and sorted every media file just to count them.
+
 ## [3.15.22] — 2026-07-25
 
 ### Added
