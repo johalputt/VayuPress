@@ -236,7 +236,7 @@ func storageFilesTable(files []managedFile) string {
   <td class="row-title">` + html.EscapeString(f.Name) + `</td>
   <td><span class="chip">` + html.EscapeString(f.Category) + `</span></td>
   <td class="muted text-sm">` + humanBytes(f.Size) + `</td>
-  <td class="muted text-sm">` + f.ModTime.UTC().Format("2 Jan 2006 15:04") + `</td>
+  <td class="muted text-sm">` + config.FormatSite(f.ModTime, "2 Jan 2006 15:04") + `</td>
   <td class="row-actions">
     <a class="btn btn--ghost btn--sm" href="/os/api/storage/download?path=` + qparam(f.Path) + `" download>Download</a>
     <button type="button" class="btn btn--danger btn--sm" data-file-delete data-path="` + enc + `" data-name="` + html.EscapeString(f.Name) + `">Delete</button>

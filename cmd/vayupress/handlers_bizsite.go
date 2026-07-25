@@ -137,8 +137,6 @@ func (a *App) handleBizSiteCSS(w http.ResponseWriter, r *http.Request) {
 
 // ── VayuOS Website studio ────────────────────────────────────────────────────
 
-// handleOSWebsite renders the Website studio: hosting-mode chooser, template
-// gallery, and the content editor.
 // bizModeLabel renders the hosting mode as a short human label for the page's
 // stat header and the accordion's status chip, so what the domain currently
 // serves is readable without expanding anything.
@@ -155,6 +153,8 @@ func bizModeLabel(mode string) string {
 	}
 }
 
+// handleOSWebsite renders the Website studio: hosting-mode chooser, template
+// gallery, and the content editor.
 func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -278,7 +278,7 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	zipBody.WriteString(`<p class="text-sm muted">Upload a complete static website as a <span class="mono">.zip</span> — it must contain <span class="mono">index.html</span> at its root and reference assets with relative paths. It goes live at <span class="mono">` + he(domain) + `</span> once you choose <strong>Custom uploaded website</strong> above and Save &amp; publish. Building with an AI assistant? <a href="/os/api/website/custom-guide">Download the build guide ↓</a></p>`)
 	if customDeployed {
 		zipBody.WriteString(`<p class="text-sm">Current build: <strong>` + fmt.Sprintf("%d", cm.Files) + `</strong> files, ` + fmt.Sprintf("%.1f", float64(cm.Bytes)/(1024*1024)) + ` MiB` +
-			`, deployed <span class="mono">` + he(cm.DeployedAt.Format("2006-01-02 15:04")) + ` UTC</span>.</p>`)
+			`, deployed <span class="mono">` + he(config.FormatSiteStamp(cm.DeployedAt)) + `</span>.</p>`)
 	}
 	zipBody.WriteString(`<div class="biz-deploy"><input type="file" accept=".zip,application/zip" data-biz-zip class="input">` +
 		`<button type="button" class="btn btn--primary btn--sm" data-biz-deploy>Deploy .zip</button>`)

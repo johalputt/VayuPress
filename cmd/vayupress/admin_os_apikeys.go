@@ -252,11 +252,11 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
 		}
 		last := "Never"
 		if k.LastUsedAt != nil {
-			last = k.LastUsedAt.UTC().Format("2006-01-02 15:04 MST")
+			last = config.FormatSite(*k.LastUsedAt, "2006-01-02 15:04 MST")
 		}
 		expiry := "—"
 		if k.ExpiresAt != nil {
-			expiry = k.ExpiresAt.UTC().Format("2006-01-02")
+			expiry = config.FormatSite(*k.ExpiresAt, "2006-01-02")
 		}
 		rows += `<tr data-filter-text="` + html.EscapeString(k.Label+" "+k.Prefix) + `">
       <td><div class="ak-key-label">` + html.EscapeString(k.Label) + `</div><code class="font-mono text-xs muted">` + html.EscapeString(apikeys.Mask(k.Prefix)) + `</code></td>

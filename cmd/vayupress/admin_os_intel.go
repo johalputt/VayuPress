@@ -108,7 +108,7 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return false, "not generated"
 		}
-		return true, fi.ModTime().UTC().Format("2006-01-02 15:04") + " UTC"
+		return true, config.FormatSiteStamp(fi.ModTime())
 	}
 	smOK, smWhen := artefact("sitemap.xml")
 	feedOK, feedWhen := artefact("feed.xml")
@@ -651,7 +651,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		`</div>`
 
 	body := `<div class="page-header"><h1>Analytics</h1>
-  <span class="muted text-sm">` + strconv.FormatInt(sum.TotalViews, 10) + ` views · ` + periodLabel + ` · updated ` + now.Format("2006-01-02 15:04") + ` UTC</span>
+  <span class="muted text-sm">` + strconv.FormatInt(sum.TotalViews, 10) + ` views · ` + periodLabel + ` · updated ` + config.FormatSiteStamp(now) + `</span>
 </div>
 <p class="page-sub">Privacy-first, cookieless analytics — audience, engagement, geography and campaigns, all computed on your own server. Tap a card to expand it.</p>` +
 		osPeriodSelector(days) + kpiHeader + sections + osPrivacyNote()

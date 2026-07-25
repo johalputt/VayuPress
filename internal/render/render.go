@@ -1581,9 +1581,14 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 		}
 		return (words + 199) / 200
 	},
-	"isoDate":   func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
-	"shortDate": func(t time.Time) string { return t.UTC().Format("2006-01-02") },
-	"humanDate": func(t time.Time) string { return t.Format("2 January 2006") },
+	// Dates render in the SITE display timezone (config.InSite), not UTC. A post
+	// published at 01:00 local time is stored as the previous UTC day, so a UTC
+	// render showed readers — and search engines — the wrong date. RFC3339 keeps
+	// its offset, so the machine date stays unambiguous while agreeing with the
+	// human one.
+	"isoDate":   func(t time.Time) string { return config.InSite(t).Format(time.RFC3339) },
+	"shortDate": func(t time.Time) string { return config.FormatSite(t, "2006-01-02") },
+	"humanDate": func(t time.Time) string { return config.FormatSite(t, "2 January 2006") },
 	"initial": func(s string) string {
 		s = strings.TrimSpace(s)
 		if s == "" {
@@ -1753,8 +1758,8 @@ func blogPageURL(n int) string {
 }
 
 var homeFuncs = template.FuncMap{
-	"humanDate": func(t time.Time) string { return t.Format("2 January 2006") },
-	"shortDate": func(t time.Time) string { return t.UTC().Format("2006-01-02") },
+	"humanDate": func(t time.Time) string { return config.FormatSite(t, "2 January 2006") },
+	"shortDate": func(t time.Time) string { return config.FormatSite(t, "2006-01-02") },
 	"blogBase":  BlogBase,
 }
 

@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/totp"
@@ -224,7 +225,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
   <td>` + labelChips + `</td>
   <td class="text-sm">` + geoDisplayHTML(m.Country, m.City) + `</td>
   <td class="row-meta">` + lastSeen + `</td>
-  <td class="row-meta">` + m.CreatedAt.UTC().Format("2 Jan 2006") + `</td>
+  <td class="row-meta">` + config.FormatSite(m.CreatedAt, "2 Jan 2006") + `</td>
   <td class="row-actions">` + actions + `</td>
 </tr>`
 	}
@@ -565,7 +566,7 @@ func activityFeedHTML(events []members.Event, currency string) string {
 		if e.AmountCents > 0 {
 			amt = ` <span class="row-meta">(` + priceLabel(currency, e.AmountCents) + `/mo)</span>`
 		}
-		when := e.CreatedAt.UTC().Format("2 Jan 15:04")
+		when := config.FormatSite(e.CreatedAt, "2 Jan 15:04")
 		out += `<li style="display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px solid rgba(127,127,127,.12)">
   <span style="flex:none;width:8px;height:8px;border-radius:50%;background:` + dot + `"></span>
   <span style="flex:1;font-size:.9rem"><strong>` + esc(who) + `</strong> ` + esc(label) + amt + `</span>

@@ -299,7 +299,7 @@ func (a *App) updateHistoryRowsHTML(r *http.Request) string {
 	}
 	var b strings.Builder
 	for _, rec := range recs {
-		when := rec.StartedAt.UTC().Format("2 Jan 2006 15:04")
+		when := config.FormatSite(rec.StartedAt, "2 Jan 2006 15:04")
 		b.WriteString(`<tr>
   <td class="muted">` + strconv.FormatInt(rec.ID, 10) + `</td>
   <td>` + html.EscapeString(dashOr(rec.FromVersion)) + `</td>

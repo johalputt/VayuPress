@@ -38,7 +38,10 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 	// handler (POST /admin/theme/favicon), not the JSON Save form, so they are
 	// deliberately absent from the form-field / import-key drift guard below.
 	outOfBand := map[string]bool{
-		settings.KeyBrandFavicon:     true,
+		settings.KeyBrandFavicon: true,
+		// The display timezone is managed on VayuOS → Settings → General (its own
+		// data-setting-key select), not the theme editor.
+		settings.KeySiteTimezone:     true,
 		settings.KeyBrandFaviconType: true,
 		// VayuTor onion services — managed on the VayuTor page (/os/tor), not the
 		// theme editor. The visit counter is engine-maintained, never a form field.

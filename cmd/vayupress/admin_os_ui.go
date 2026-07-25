@@ -2474,7 +2474,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
     <summary class="mon-acc__sum post-acc__sum">
       <span class="mon-acc__head">
         <span class="mon-acc__title">` + html.EscapeString(p.Title) + osPostPinBadge(esc, p.Featured, false) + `</span>
-        <span class="mon-acc__sub">/` + esc + ` · Updated ` + p.Updated.UTC().Format("2 Jan 2006") + `</span>
+        <span class="mon-acc__sub">/` + esc + ` · Updated ` + config.FormatSite(p.Updated, "2 Jan 2006") + `</span>
       </span>
       <span id="post-status-` + esc + `" class="post-acc__status">` + osPostStatusPill(p.Status) + `</span>
       <svg class="mon-acc__chev" viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -2737,7 +2737,7 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
   <td>` + postCell + `</td>
   <td class="text-sm">` + geoDisplayHTML(c.Country, c.City) + `</td>
   <td>` + osCommentPill(idEsc, c.Status, false) + `</td>
-  <td class="muted text-sm">` + c.CreatedAt.UTC().Format("2 Jan 2006 15:04") + `</td>
+  <td class="muted text-sm">` + config.FormatSite(c.CreatedAt, "2 Jan 2006 15:04") + `</td>
   <td class="row-actions" id="cact-` + idEsc + `">` + osCommentActions(idEsc, c.Status) + `</td>
 </tr>`
 	}
@@ -3400,15 +3400,32 @@ if(footerInput){
 }
 
 func osSettingsGeneral(ctx context.Context, ss *settings.Store) string {
-	var siteName, tagline, desc, author string
+	var siteName, tagline, desc, author, tz string
 	if ss != nil {
 		siteName = ss.Get(ctx, settings.KeySiteName)
 		tagline = ss.Get(ctx, settings.KeySiteTagline)
 		desc = ss.Get(ctx, settings.KeySiteDescription)
 		author = ss.Get(ctx, settings.KeySiteAuthor)
+		tz = ss.Get(ctx, settings.KeySiteTimezone)
 	}
 
-	return `<div class="settings-section">
+	// Date & time. Timestamps are always STORED in UTC (unambiguous, survives a
+	// server move, never shifts under daylight saving); this setting only decides
+	// what is displayed — post dates on the public site and every timestamp in the
+	// admin. Without it both read as UTC, so an operator in IST saw every time 5½
+	// hours behind their clock and a post published after 05:30 local showed the
+	// previous day's date to readers.
+	nowLine := "Currently showing: " + currentSiteTimeLine()
+	tzBlock := `<div class="settings-section">
+  <div class="settings-block-title">Date &amp; time</div>
+  <div class="field"><label class="field-label" for="s-timezone">Display timezone</label>
+    <select id="s-timezone" class="input" data-setting-key="` + settings.KeySiteTimezone + `">` +
+		timezoneOptionsHTML(tz) + `</select>
+    <span class="field-hint">Post dates and every admin timestamp are shown in this zone. Times are always stored in UTC, so changing this never alters your data — only how it reads. ` +
+		html.EscapeString(nowLine) + `</span></div>
+</div>`
+
+	return tzBlock + `<div class="settings-section">
   <div class="settings-block-title">Site identity</div>
   <div class="field"><label class="field-label" for="s-name">Site name</label>
     <input id="s-name" class="input" type="text"
@@ -3766,6 +3783,13 @@ func (a *App) reloadRenderSettings(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	// Display timezone. Stored timestamps stay UTC; this only decides what is
+	// rendered, so applying it here means a change takes effect on the next page
+	// without a restart. An invalid name is ignored (the previous zone is kept)
+	// rather than leaving every timestamp unrenderable.
+	// An invalid name is ignored (the previous zone is kept) rather than leaving
+	// every timestamp unrenderable; the settings form validates before saving.
+	_ = config.SetSiteTimeZone(sv[settings.KeySiteTimezone])
 	render.SetActiveSettings(render.SiteSettings{
 		Name:            sv[settings.KeySiteName],
 		Tagline:         sv[settings.KeySiteTagline],

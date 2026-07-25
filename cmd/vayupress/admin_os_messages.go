@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 )
@@ -169,7 +170,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
   <td style="white-space:pre-wrap;max-width:40ch">` + html.EscapeString(m.Message) + `</td>
   <td>` + pageCell + `</td>
   <td class="text-sm">` + geoDisplayHTML(m.Country, m.City) + `</td>
-  <td class="muted text-sm">` + m.Created.UTC().Format("2 Jan 2006 15:04") + `</td>
+  <td class="muted text-sm">` + config.FormatSite(m.Created, "2 Jan 2006 15:04") + `</td>
   <td class="row-actions">
     <a class="btn btn--ghost btn--sm" href="mailto:` + html.EscapeString(m.Email) + `?subject=Re:%20your%20message">Reply</a>
     ` + readBtn + `
@@ -276,11 +277,11 @@ func (a *App) handleOSMessageDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	ipRow := `<div class="kv-row"><span class="kv-key">Location</span><span class="kv-val">` + locVal + `</span></div>`
 	replyURL := "mailto:" + html.EscapeString(eml) + "?subject=" + url.QueryEscape("Re: your message") +
-		"&body=" + url.QueryEscape("\n\n— On "+created.UTC().Format("2 Jan 2006")+", "+name+" wrote:\n> "+msg)
+		"&body=" + url.QueryEscape("\n\n— On "+config.FormatSite(created, "2 Jan 2006")+", "+name+" wrote:\n> "+msg)
 
 	body := `<div class="page-header">
   <div><h1>Message from ` + html.EscapeString(name) + `</h1>
-    <p class="text-sm muted">` + created.UTC().Format("2 Jan 2006 15:04 MST") + `</p></div>
+    <p class="text-sm muted">` + config.FormatSite(created, "2 Jan 2006 15:04 MST") + `</p></div>
   <div class="page-actions">
     <a class="btn btn--ghost btn--sm" href="/os/messages">← Inbox</a>
     <a class="btn btn--primary btn--sm" href="` + replyURL + `">Reply</a>

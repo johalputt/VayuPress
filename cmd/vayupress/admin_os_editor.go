@@ -26,6 +26,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/blockrender"
+	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
@@ -730,7 +731,7 @@ func osEditorMetaScript(slug, status string, createdAt time.Time, tags []string,
 	}
 	pub := ""
 	if !createdAt.IsZero() {
-		pub = createdAt.UTC().Format("2006-01-02T15:04")
+		pub = config.FormatSite(createdAt, "2006-01-02T15:04")
 	}
 	payload := struct {
 		Slug        string   `json:"slug"`

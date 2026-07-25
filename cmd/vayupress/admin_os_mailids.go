@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/render"
 )
@@ -121,7 +122,7 @@ func mailIDGrantsAdminTable(grants []members.PremiumGrant) string {
 			`<td class="row-title"><code>` + html.EscapeString(g.Address()) + `</code></td>` +
 			`<td class="muted text-sm">` + html.EscapeString(g.Email) + `</td>` +
 			`<td>` + premiumGrantPill(g.Status) + `</td>` +
-			`<td class="muted text-sm">` + g.CreatedAt.UTC().Format("2 Jan 2006") + `</td>` +
+			`<td class="muted text-sm">` + config.FormatSite(g.CreatedAt, "2 Jan 2006") + `</td>` +
 			`<td class="row-actions">` + actions + `</td>` +
 			`</tr>`
 	}

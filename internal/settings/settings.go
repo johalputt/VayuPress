@@ -16,6 +16,9 @@ const (
 	KeySiteTagline     = "site.tagline"
 	KeySiteDescription = "site.description"
 	KeySiteAuthor      = "site.author"
+	// KeySiteTimezone is the IANA display timezone (e.g. "Asia/Kolkata"). Stored
+	// timestamps stay UTC; this only controls what is rendered. Empty means UTC.
+	KeySiteTimezone = "site.timezone"
 	// KeyMembershipButtons shows the public Sign in / Sign up buttons in the
 	// homepage nav. Unlike feature flags it defaults OFF — only the string
 	// "true" (as written by the settings toggle) enables it.
@@ -335,6 +338,7 @@ var AllKeys = map[string]bool{
 	KeySiteTagline:             true,
 	KeySiteDescription:         true,
 	KeySiteAuthor:              true,
+	KeySiteTimezone:            true,
 	KeyMembershipButtons:       true,
 	KeyMaintenanceMode:         true,
 	KeyMaintenanceMessage:      true,

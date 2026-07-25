@@ -311,7 +311,7 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	since := m.CreatedAt.UTC().Format("2 January 2006")
+	since := config.FormatSite(m.CreatedAt, "2 January 2006")
 
 	page := `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8">

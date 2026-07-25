@@ -50,6 +50,18 @@ type trendingPayload struct {
 	Enabled bool                      `json:"enabled"`
 	Pinned  []trendingItem            `json:"pinned"`
 	Windows map[string][]trendingItem `json:"windows"` // "7" and "30" → ranked posts
+
+	// degraded marks a payload built on a cold/partial path (the cheap warming
+	// response, or a compute whose queries came back empty). Not serialised — it
+	// only decides the cache header, because a degraded payload must never be
+	// stored by a browser or proxy. See writeTrending.
+	degraded bool
+}
+
+// nothingToShow reports whether the payload would leave the widget hidden: the
+// script bails out when there are no pinned posts and both windows are empty.
+func (p trendingPayload) nothingToShow() bool {
+	return len(p.Pinned) == 0 && len(p.Windows["7"]) == 0 && len(p.Windows["30"]) == 0
 }
 
 var (
@@ -137,10 +149,24 @@ func (a *App) handleTrendingJSON(w http.ResponseWriter, r *http.Request) {
 	a.writeTrending(w, r, a.recomputeTrending())
 }
 
-// writeTrending sends a trending payload with the standard short public cache
-// header (browsers/proxies can reuse it for a few minutes).
+// writeTrending sends a trending payload. A GOOD payload carries the short
+// public cache header so browsers/proxies can reuse it for a few minutes.
+//
+// A degraded or empty payload is explicitly NOT cacheable. This is the fix for
+// the widget appearing on some page loads and not others: the widget hides itself
+// when a payload has nothing to show, and the old unconditional
+// `public, max-age=300` let that empty answer be stored — so a reader who
+// happened to fetch during a cold start (or whose warming response came back
+// empty) kept getting the hidden widget from their own browser cache for the next
+// five minutes, across every post they opened. Serving no-store for the
+// degraded case means the very next page load re-asks and gets real data.
 func (a *App) writeTrending(w http.ResponseWriter, r *http.Request, p trendingPayload) {
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	switch {
+	case p.Enabled && (p.degraded || p.nothingToShow()):
+		w.Header().Set("Cache-Control", "no-store")
+	default:
+		w.Header().Set("Cache-Control", "public, max-age=300")
+	}
 	writeJSON(w, r, http.StatusOK, p)
 }
 
@@ -190,6 +216,15 @@ func (a *App) recomputeTrending() trendingPayload {
 	if fallback {
 		ttl = trendingFallbackTTL
 	}
+	// A payload with nothing in it is never worth memoising: on a site that HAS
+	// posts, an empty result means the queries failed or timed out transiently, and
+	// caching it would hide the widget for everyone until the TTL expired (up to an
+	// hour). Mark it degraded — so it is not stored client-side either — and leave
+	// the memo empty so the next request retries.
+	if payload.nothingToShow() {
+		payload.degraded = true
+		return payload
+	}
 	trendingMu.Lock()
 	// Only publish if no invalidation (pin/unpin) landed while we were computing;
 	// otherwise our result predates the change and would mask it for a full TTL.
@@ -205,14 +240,20 @@ func (a *App) recomputeTrending() trendingPayload {
 // most-recent posts, no analytics aggregation) to serve during the brief cold
 // window while the first real recompute is in flight. It never runs the heavy
 // trending queries, so a cold-start herd cannot saturate the DB.
-func (a *App) trendingWarming(r *http.Request) trendingPayload {
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+// It uses a DETACHED context, not the request's: a reader who navigates away
+// mid-fetch would otherwise cancel these queries, and the resulting empty payload
+// used to be sent with a five-minute public cache header — hiding the widget for
+// that visitor across subsequent posts. The payload is always marked degraded so
+// it is never stored by a browser or proxy either way.
+func (a *App) trendingWarming(_ *http.Request) trendingPayload {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	recent := a.recentItems(ctx, trendingWindowLimit)
 	return trendingPayload{
-		Enabled: true,
-		Pinned:  a.pinnedItems(ctx, trendingPinnedLimit),
-		Windows: map[string][]trendingItem{"7": recent, "30": recent},
+		Enabled:  true,
+		Pinned:   a.pinnedItems(ctx, trendingPinnedLimit),
+		Windows:  map[string][]trendingItem{"7": recent, "30": recent},
+		degraded: true,
 	}
 }
 

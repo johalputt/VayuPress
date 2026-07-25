@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/payments"
@@ -289,7 +290,7 @@ func monetizationOrdersTable(orders []payments.Order) string {
   <td>` + html.EscapeString(priceLabel(o.Currency, o.AmountCents)) + `</td>
   <td>` + html.EscapeString(o.Gateway) + `</td>
   <td>` + orderStatusPill(o.Status) + `</td>
-  <td class="muted text-sm">` + o.CreatedAt.UTC().Format("2 Jan 2006") + `</td>
+  <td class="muted text-sm">` + config.FormatSite(o.CreatedAt, "2 Jan 2006") + `</td>
   <td class="row-actions">` + actions + `</td>
 </tr>`
 	}
@@ -340,7 +341,7 @@ func premiumGrantsTable(grants []members.PremiumGrant) string {
 			`<td class="row-title"><code>` + html.EscapeString(g.Address()) + `</code></td>` +
 			`<td class="muted text-sm">` + html.EscapeString(g.Email) + `</td>` +
 			`<td>` + premiumGrantPill(g.Status) + `</td>` +
-			`<td class="muted text-sm">` + g.CreatedAt.UTC().Format("2 Jan 2006") + `</td>` +
+			`<td class="muted text-sm">` + config.FormatSite(g.CreatedAt, "2 Jan 2006") + `</td>` +
 			`</tr>`
 	}
 	return `<div class="table-wrap"><table class="table">` +

@@ -143,7 +143,7 @@ func (a *App) handleOSNewsletter(w http.ResponseWriter, r *http.Request) {
   <td class="row-title">` + esc(s.Email) + `</td>
   <td>` + statusBadge + `</td>
   <td>` + confirmed + `</td>
-  <td class="row-meta">` + s.SubscribedAt.UTC().Format("2 Jan 2006") + `</td>
+  <td class="row-meta">` + config.FormatSite(s.SubscribedAt, "2 Jan 2006") + `</td>
   <td class="row-actions"><button type="button" class="btn btn--xs btn--danger" data-sub-delete data-id="` + esc(s.ID) + `" data-email="` + esc(s.Email) + `">Delete</button></td>
 </tr>`
 	}
@@ -218,7 +218,7 @@ func nlBroadcastsTable(list []newsletter.Broadcast) string {
   <td class="row-meta">` + strconv.Itoa(b.Recipients) + `</td>
   <td class="row-meta">` + strconv.Itoa(b.Sent) + `</td>
   <td>` + failed + `</td>
-  <td class="row-meta">` + b.CreatedAt.UTC().Format("2 Jan 2006 15:04") + `</td>
+  <td class="row-meta">` + config.FormatSite(b.CreatedAt, "2 Jan 2006 15:04") + `</td>
 </tr>`
 	}
 	return `<div class="table-wrap"><table class="table">
