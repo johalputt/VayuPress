@@ -6,6 +6,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.25] — 2026-07-25
+
+### Fixed
+- **A learned signature can no longer convict a real browser** — the actual root
+  cause of the "Access denied" 403 shown to Chrome and Brave visitors. The
+  diagnostic added in 3.15.24 named it exactly: *score 0.85 · BadBot · learned
+  bad-bot signature (confidence 0.19) · identified*. Confidence 0.19 is far below
+  the 0.8 threshold, so the row could only have short-circuited scoring because it
+  was marked operator-verified. It got there honestly — confirmed once in the review
+  queue (which sets 0.99), then decayed 0.2 per solved challenge by the
+  false-positive guard, 0.99 → 0.79 → 0.59 → 0.39 → 0.19, as real people proved they
+  were human four times over. The database had recorded four times that it was
+  wrong, and kept blocking anyway: operator-verified overrode confidence entirely,
+  and the bad-bot branch then manufactured a 0.85 score from a 0.19 belief.
+
+  The learned short-circuit is now gated by three independent guards, any one of
+  which stops this case:
+  1. **A bad-bot verdict is never taken for a mainstream-browser fingerprint.**
+     That fingerprint is shared by everyone on the same browser build, so no stored
+     row — auto-learned, imported, or confirmed — may turn "this is Chrome" into a
+     hard block.
+  2. **A row with recorded false positives is disputed** and no longer convicts on
+     its own.
+  3. **A bad-bot verdict needs confidence still above a floor**, so a one-time
+     Confirm can no longer outrank the evidence accumulated since.
+
+  Good-bot, AI-agent and human verdicts are untouched (they only widen access), and
+  a confident, undisputed, non-browser signature still convicts — so the adaptive
+  database keeps its teeth against real scrapers.
+
+### Note
+- **Network hardening was not implicated.** The "Access denied" page exists only in
+  the application's own block path: Tier 2 drops packets in the kernel (which
+  surfaces as a connection timeout, not a styled page) and Tier 3 shaping would
+  return the reverse proxy's own error. Tiers 2 and 3 remain safe to leave on.
+
 ## [3.15.24] — 2026-07-25
 
 ### Added
