@@ -5,6 +5,23 @@ development-friendly and proxies every request. Production has an opt-in IP
 allowlist that adds a network boundary around the browser administration
 routes; it does not replace VayuPress authentication or CSRF protection.
 
+Both configurations use stock Caddy security controls: 10-second request-header
+and 5-minute request-body read deadlines, a 2-minute idle timeout, 32 KB request
+and upstream-response header limits, a 50 MB request-body ceiling, bounded
+upstream connection/response/write waits, and a 24-hour ceiling for streaming
+connections. HTTP/3 0-RTT is disabled to avoid early-data replay of
+state-changing requests. WebSocket upgrades and immediate Server-Sent Event
+flushing are handled automatically by Caddy.
+
+Caddy writes structured JSON access logs to container stdout; view or export
+them with `docker compose logs caddy`. Sensitive `Cookie`, `Set-Cookie`,
+`Authorization`, and `Proxy-Authorization` header values are redacted by Caddy.
+
+Defense-in-depth security headers are added only when VayuPress did not already
+set them. VayuPress remains authoritative, especially for its per-request
+nonce-based Content Security Policy; the Caddyfiles deliberately do not define
+a static CSP.
+
 ## Development
 
 ```bash
@@ -94,6 +111,13 @@ connect directly to Caddy. Behind a CDN or load balancer it sees the proxy
 address instead. Such deployments must configure explicit `trusted_proxies`
 and change the matcher to `client_ip`; never trust forwarded client-IP headers
 from arbitrary peers.
+
+### Stock Caddy boundary
+
+Stock Caddy does not include Nginx-style per-IP request or concurrent-connection
+rate limiting. VayuPress's authentication, endpoint limits, CSRF protection,
+and in-process VayuShield controls therefore remain essential. Host firewall
+rules can provide an additional boundary without replacing the stock image.
 
 ## Operations
 
