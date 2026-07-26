@@ -24,6 +24,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   the one record to add, exactly like the `api.` and `mcp.` helpers. It runs from both
   `deploy-vayupress.sh` and `update-vayupress.sh`, is idempotent, and never fails a deploy.
 
+  **Every mail domain, not just the primary.** WKD discovery is per-domain — a key for
+  `someone@shop.example` is findable only at `openpgpkey.shop.example` — so the script provisions
+  the primary domain plus every mail-enabled VayuDomains secondary (`vayupress domains hosts
+  --mail`), each with its own certificate lineage and vhost. Covering only the primary would have
+  left every secondary domain's users silently undiscoverable, which is the same outcome as never
+  running it. Pass hostnames as arguments to provision just those.
+
   The proxy is forced off deliberately: a WKD fetch is machine-to-machine and GnuPG cannot answer
   a CDN bot-challenge. Behind one, key discovery fails *silently* and correspondents fall back to
   cleartext — the worst failure mode available, because it looks like nothing happened.
