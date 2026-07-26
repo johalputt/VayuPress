@@ -6,6 +6,58 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.37] — 2026-07-26
+
+### Added
+- **An install-health check on the Website page, because guessing has run out.**
+  Installing a site on Android produces one of two things and the flow tells you
+  nothing about which: a **WebAPK**, a real generated package that survives
+  reboots, or a **launcher shortcut**, a row in the launcher's database that many
+  Android builds discard on restart. You find out weeks later, when the icon is
+  gone. v3.15.31 fixed the origin-side causes; this reports, item by item, which
+  requirement is actually failing rather than leaving it to inference.
+
+  Twelve server-side checks cover the manifest's required fields, `display`, the
+  worker's content type and declared scope, the registration script and manifest
+  link being present on public pages, the iOS tags, and the bot-protection
+  exemptions. The icon check **decodes each PNG's real dimensions and compares them
+  to the size the manifest claims** — the exact bug that shipped before v3.15.31,
+  and one that is invisible from the outside because the icons load fine, they are
+  just not the size advertised.
+
+  A browser-side probe covers what no server check can see: whether a worker is
+  actually registered and active, whether the manifest and every icon **survive the
+  trip through whatever sits in front of the origin**, and — on Chrome for Android
+  — whether a real app package exists for this site via `getInstalledRelatedApps`.
+  That last one is how you tell a WebAPK from a shortcut: a shortcut is not a
+  package and never appears.
+
+  **The manifest probe checks the response body, not just the status.** A CDN or
+  proxy challenge is an HTTP 200 carrying an HTML page, which passes any
+  status-code check and then fails the WebAPK minting server, which cannot solve a
+  challenge. This is the remaining failure mode once the origin is correct.
+
+### Fixed
+- The card is **always expanded** and its chip says **"Origin OK"**, never
+  "Installable". Server-side checks prove what the origin serves; the failure this
+  exists to catch happens in front of it. A diagnostic that collapses itself when
+  the server looks fine is precisely how the browser-side failure goes unnoticed,
+  and a chip claiming more than it verified would be the diagnostic lying.
+- Running the probe found a flaw in the probe: it asked for the worker at scope `/`
+  while running from the console, which registers `/os/` — so it reported a false
+  failure every time. It now lists every registration and explains that scope `/`
+  is registered by the **public** site, so its absence there means the public site
+  has not been opened in this browser yet.
+
+### Upgrade Notes
+- **An icon already on your home screen cannot become a real app.** A shortcut has
+  no upgrade path: remove it and install again, then confirm it appears in
+  Android's full app list, not only on the home screen. Open **Website → Install
+  health** first, and if every row is green, the install itself is the thing to
+  redo.
+
+---
+
 ## [3.15.36] — 2026-07-25
 
 ### Added
