@@ -3234,8 +3234,8 @@ now ships gently enabled by default.
   request-aware cookies) follow in later increments.
 
 ### Notes
-- Refreshed the repo's `CLAUDE.md` project memory with the VayuOS Spaces plan,
-  the v3.14.x shipped features, and CI gotchas, so future sessions start warm.
+- Refreshed the repo's standing contributor notes with the VayuOS Spaces plan,
+  the v3.14.x shipped features, and CI gotchas.
 
 ### Added
 - **Content Bundle export/import (VayuOS Spaces sync/migrate — ADR-0141).** A new

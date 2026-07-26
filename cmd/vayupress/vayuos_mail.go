@@ -1623,17 +1623,29 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	if in.Pass != "" {
-		if len(in.Pass) < 8 {
-			writeAPIError(w, r, 400, "validation_error", "password must be at least 8 characters", "")
+		// An administrator reset runs the SAME pipeline as a self-service one
+		// (ADR-0144). Setting the hash alone used to leave every app password,
+		// webmail session and queued message intact — so an operator resetting a
+		// compromised mailbox believed they had cut the attacker off, and had not.
+		deps, ok := a.mailResetDepsFor()
+		if !ok {
+			writeAPIError(w, r, 503, "unavailable", "VayuMail is not running", "")
 			return
 		}
-		hash, err := auth.HashSecretArgon2id(in.Pass)
+		out, err := applyMailPasswordReset(r.Context(), deps, in.Email, in.Pass,
+			mailResetByAdmin, dbpkg.AuditActor(r))
 		if err != nil {
-			writeAPIError(w, r, 500, "hash-failed", "could not hash password", "")
+			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
 			return
 		}
-		if err := a.vayuMail.Accounts().SetPasswordHash(r.Context(), in.Email, hash); err != nil {
-			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
+		if len(out.Problems) > 0 {
+			// The password DID change, so this is not an error — but the operator
+			// must not be told the account is clean when a revocation step failed.
+			writeJSON(w, r, 200, map[string]interface{}{
+				"updated": true, "warnings": out.Problems,
+				"app_passwords_revoked": out.AppPasswordsRevoked,
+				"sessions_revoked":      out.SessionsRevoked,
+			})
 			return
 		}
 	}

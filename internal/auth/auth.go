@@ -614,7 +614,7 @@ func InitCSRFSecret() {
 // is served on to a real client is one where a Secure cookie is stored and sent —
 //   - clearnet is HTTPS (TLS direct, or the browser↔proxy leg is HTTPS behind a
 //     TLS-terminating reverse proxy), and
-//   - a Tor Space is served only to Tor Browser (CLAUDE.md §8), which treats a
+//   - a Tor Space is served only to Tor Browser (ADR-0141), which treats a
 //     v3 `.onion` as a potentially-trustworthy origin
 //     (`dom.securecontext.whitelist_onions`) and therefore stores/sends Secure
 //     cookies over the plain-http `.onion`.

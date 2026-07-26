@@ -222,6 +222,31 @@ func (s *Store) CountUnverified(ctx context.Context) int {
 	return n
 }
 
+// RevokeSessions drops every live session and pending magic-link token for an
+// address, returning how many sessions died. The member row itself is untouched.
+//
+// This exists for VayuMail account recovery (ADR-0144). A mailbox holder reaches
+// webmail through a member session, so a password reset that left those sessions
+// alive would leave an attacker signed in through the victim's own recovery. The
+// pending login tokens go too: a magic link the attacker requested minutes ago is
+// a working key that would otherwise outlive the reset.
+func (s *Store) RevokeSessions(ctx context.Context, email string) (int, error) {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if email == "" {
+		return 0, fmt.Errorf("email required")
+	}
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM member_sessions WHERE member_id IN (SELECT id FROM members WHERE email=?)`, email)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM member_login_tokens WHERE email=?`, email); err != nil {
+		return int(n), err
+	}
+	return int(n), nil
+}
+
 // Delete removes a member and everything keyed to them: sessions (so any live
 // cookie dies immediately), pending magic-link tokens, subscription and event
 // history. It refuses to touch a verified member — removing a real person's

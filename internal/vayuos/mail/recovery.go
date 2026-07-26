@@ -401,6 +401,61 @@ func (s *AccountStore) InvalidateRecoveryTokens(ctx context.Context, email strin
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM vayumail_recovery_tokens WHERE email=?`, normEmail(email))
 }
 
+// ── Credential revocation ────────────────────────────────────────────────────
+
+// RevokeAllAppPasswords removes every app password for a mailbox and reports how
+// many were destroyed.
+//
+// This is the step a password reset cannot skip. App passwords are INDEPENDENT
+// credentials, not derivatives of the mailbox password: an attacker who enrolled
+// a device keeps full IMAP and SMTP access after the victim "recovers", and the
+// victim has no reason to suspect it — they changed their password, so they
+// believe they locked the door. Recovery that leaves them alive is theatre.
+func (s *AccountStore) RevokeAllAppPasswords(ctx context.Context, email string) (int, error) {
+	if err := s.ensureAppPasswords(); err != nil {
+		return 0, err
+	}
+	res, err := s.db.ExecContext(ctx, `DELETE FROM vayumail_app_passwords WHERE email=?`, normEmail(email))
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+// HoldQueuedOutbound parks an account's undelivered mail in the 'held' state and
+// reports how many messages were stopped.
+//
+// Sending is an attacker's first act — outbound reply-to-all fraud, or a sweep of
+// password resets at other services using this address. A reset therefore stops
+// the queue for that sender rather than letting whatever was staged go out under
+// the recovered account. 'held' is a terminal state for the delivery loop, which
+// only ever selects 'pending', so this cannot race a send already in flight into
+// a half-delivered state; the operator releases them with Requeue.
+func (q *Queue) HoldQueuedOutbound(ctx context.Context, from string) (int, error) {
+	if q == nil || q.db == nil {
+		return 0, errors.New("vayumail: no queue")
+	}
+	res, err := q.db.ExecContext(ctx,
+		`UPDATE vayumail_queue SET state='held', last_error='held: account password was reset'
+		 WHERE from_addr=? AND state IN ('pending','failed')`, strings.ToLower(strings.TrimSpace(from)))
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+// HoldOutboundFor parks an account's undelivered mail. Exposed on the Engine so
+// the queue itself stays unexported — callers outside this package have no
+// business reaching into delivery state for anything else.
+func (e *Engine) HoldOutboundFor(ctx context.Context, from string) (int, error) {
+	if e == nil || e.queue == nil {
+		return 0, errors.New("vayumail: queue not started")
+	}
+	return e.queue.HoldQueuedOutbound(ctx, from)
+}
+
 // ── Status ───────────────────────────────────────────────────────────────────
 
 // RecoveryStatusFor summarises an account's enrolled factors.

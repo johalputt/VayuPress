@@ -276,6 +276,21 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// upload — the verification file simply exists once a key is configured.
 	r.Get("/.well-known/{file}", a.handleIndexNowKeyFile)
 
+	// VayuMail account recovery (ADR-0144) — public and unauthenticated, because
+	// the people who need it are by definition locked out.
+	//
+	// These are deliberately NOT in shieldBypassPrefixes. That list exists for
+	// callers that CANNOT solve a challenge (the WebAPK minting server, MCP
+	// clients); recovery is always driven by a human in a real browser, so a
+	// challenge is an inconvenience rather than an outage — and bot protection in
+	// front of a credential-reset endpoint is exactly where it belongs.
+	r.Get("/mail/recover", a.handleMailRecoverRequest)
+	r.Post("/mail/recover", a.handleMailRecoverRequest)
+	r.Get("/mail/recover/reset", a.handleMailRecoverReset)
+	r.Post("/mail/recover/reset", a.handleMailRecoverReset)
+	r.Get("/mail/recover/code", a.handleMailRecoverCode)
+	r.Post("/mail/recover/code", a.handleMailRecoverCode)
+
 	// Reader memberships (Tier 2) — public passwordless login + paywall.
 	r.Get("/signup", a.handleMemberSignup)
 	r.Post("/api/v1/members/login", a.handleMemberLogin)
