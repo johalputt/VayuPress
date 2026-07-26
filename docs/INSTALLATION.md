@@ -184,6 +184,55 @@ minimal surface. Your main domain keeps full CDN protection for human/browser
 traffic. If you are *not* behind a challenge-mode CDN you don't need this at all —
 call the API on `https://example.com/api/v1/…` directly.
 
+### Automatic PGP key discovery (`openpgpkey.example.com`)
+
+**Fully automatic — nothing to do if your DNS is on Cloudflare.**
+
+VayuPress generates a PGP keypair for every mailbox and already serves the Web
+Key Directory. But PGP clients don't look on your main domain: the WKD spec
+defines a dedicated hostname, `openpgpkey.example.com`, and without it your keys
+are published where nobody looks.
+
+With it, **GnuPG, Thunderbird and the VayuMail app fetch a correspondent's public
+key by themselves** — no key exchange, no attachment, no fingerprint comparison.
+That is what makes encryption automatic rather than a thing people mean to get
+round to.
+
+The installer provisions it on every deploy *and* every update:
+
+- **If `CF_ZONE_ID` and `CF_API_TOKEN` are set** in `/etc/vayupress/env` (the same
+  credentials used for cache purging), the record is **created for you** — proxy
+  off, TTL 300 — and the certificate and vhost follow. Zero manual steps.
+- **Otherwise**, add one record and re-run: `openpgpkey.example.com` A/AAAA → your
+  server, **CDN proxy OFF** (Cloudflare: *DNS only / grey cloud*).
+
+Or run it alone at any time:
+
+```bash
+sudo bash /path/to/VayuPress/scripts/setup-openpgpkey-subdomain.sh
+```
+
+**The proxy must be off.** A WKD fetch is machine-to-machine — GnuPG has no
+JavaScript engine and cannot answer a CDN bot-challenge. Behind one, key
+discovery fails silently and correspondents quietly fall back to unencrypted
+mail, which is the worst possible failure mode: it looks like nothing happened.
+
+**Why exposing it directly is safe:** this is the tightest vhost in the project.
+It proxies **only** `/.well-known/openpgpkey/` and returns 404 for everything
+else — no `/os`, no login, no API, no static assets. What it serves is *public
+key material*, whose entire purpose is to be handed to strangers. There is
+nothing to authenticate and nothing to leak.
+
+Verify with:
+
+```bash
+gpg --locate-keys you@example.com
+```
+
+The script self-checks the WKD policy file after reloading nginx and tells you if
+VayuPGP is switched off, which is the one condition that makes it 404 while
+looking otherwise healthy.
+
 ### What the certificate covers
 
 The installer requests one certificate covering `example.com`, `www.example.com`,

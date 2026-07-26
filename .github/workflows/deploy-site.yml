@@ -85,6 +85,28 @@ jobs:
               echo "::error::failed to stamp Expires in security.txt"
               exit 1
             }
+            # Advertise the PGP key only if it actually resolves. The key lives in
+            # VayuPGP and is published over WKD by openpgpkey.vayupress.com
+            # (scripts/setup-openpgpkey-subdomain.sh) -- infrastructure this repo
+            # does not control and cannot assume is up. An Encryption: line
+            # pointing at a 404 is worse than no Encryption: line, because a
+            # reporter who cannot fetch the key sends the vulnerability in
+            # cleartext instead. So the URL is probed at deploy time and the line
+            # is included only on a 200. This workflow also runs daily, so the
+            # field appears by itself once the host is live and disappears by
+            # itself if it ever goes away -- no coordination, no manual step.
+            #
+            # The hash is the z-base-32 SHA-1 of the local-part "security", per
+            # the WKD spec; it is a constant for that mailbox. See
+            # internal/vayuos/pgp/wkd.go (wkdLocalHash).
+            WKD_URL="https://openpgpkey.vayupress.com/.well-known/openpgpkey/vayupress.com/hu/t5s8ztdbon8yzntexy6oz5y48etqsnbb?l=security"
+            WKD_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$WKD_URL" 2>/dev/null || echo 000)"
+            if [ "$WKD_CODE" = "200" ]; then
+              printf 'Encryption: %s\n' "$WKD_URL" >> _site/.well-known/security.txt
+              echo "security.txt: Encryption field added (WKD reachable)"
+            else
+              echo "::notice::WKD returned HTTP ${WKD_CODE}; publishing security.txt without an Encryption field rather than advertising an unreachable key."
+            fi
           else
             echo "::error::_site/.well-known/security.txt missing — RFC 9116 contact would 404"
             exit 1

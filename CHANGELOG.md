@@ -6,6 +6,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Added
+- **`scripts/setup-openpgpkey-subdomain.sh` — automatic PGP key discovery.** VayuPress has
+  always generated a keypair per mailbox and served the Web Key Directory, but PGP clients never
+  looked: the WKD spec puts discovery on a dedicated `openpgpkey.<domain>` host, and without that
+  hostname the keys were published where nobody checks. With it, GnuPG, Thunderbird and the
+  VayuMail app fetch a correspondent's public key by themselves — no key exchange, no attachment,
+  no fingerprint comparison. That is the difference between encryption being automatic and being
+  a thing people mean to get round to.
+
+  **It provisions itself.** When `CF_ZONE_ID` and `CF_API_TOKEN` are present — the credentials
+  the install already holds for cache purging — the script creates the DNS record over the
+  Cloudflare API with the proxy off, waits for it to resolve, issues a dedicated certificate and
+  writes the vhost. No operator step at all. Without those credentials it degrades to printing
+  the one record to add, exactly like the `api.` and `mcp.` helpers. It runs from both
+  `deploy-vayupress.sh` and `update-vayupress.sh`, is idempotent, and never fails a deploy.
+
+  The proxy is forced off deliberately: a WKD fetch is machine-to-machine and GnuPG cannot answer
+  a CDN bot-challenge. Behind one, key discovery fails *silently* and correspondents fall back to
+  cleartext — the worst failure mode available, because it looks like nothing happened.
+
+  The vhost is the tightest in the project: it proxies only `/.well-known/openpgpkey/` and
+  returns 404 for everything else — no `/os`, no login, no API, no static assets. What it serves
+  is public key material whose purpose is to be handed to strangers, so there is nothing to
+  authenticate and nothing to leak. After reloading nginx the script fetches its own WKD policy
+  file and reports if VayuPGP is switched off, which is the one condition that 404s while
+  everything else looks healthy.
+
+### Changed
+- **`security.txt` advertises the PGP key only when the key is actually reachable.**
+  `deploy-site.yml` probes the WKD URL at deploy time and appends the `Encryption:` field on a
+  200, omitting it otherwise. An `Encryption:` line pointing at a 404 is worse than none at all:
+  a reporter who cannot fetch the key sends the vulnerability in cleartext instead. Because that
+  workflow already runs daily, the field appears by itself once the host is live and disappears
+  by itself if it ever goes away — nothing to coordinate and nothing to remember.
+- `docs/INSTALLATION.md` documents the new host, why the CDN proxy must be off, and why exposing
+  it directly is safe.
+
+---
+
 ## [3.15.50] — 2026-07-26
 
 ### Added

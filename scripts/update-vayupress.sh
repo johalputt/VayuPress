@@ -408,6 +408,15 @@ if [[ -f "$API_SETUP" ]]; then
   CACHE_DIR="$CACHE_DIR" bash "$API_SETUP" || true
 fi
 
+# Keep the VayuPGP Web Key Directory host (openpgpkey.<domain>) provisioned across
+# updates so PGP clients keep auto-discovering keys for this domain. Creates the
+# DNS record itself when CF_ZONE_ID / CF_API_TOKEN are available. Idempotent and
+# non-fatal: with no DNS and no API credentials it does nothing.
+WKD_SETUP="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/setup-openpgpkey-subdomain.sh"
+if [[ -f "$WKD_SETUP" ]]; then
+  CACHE_DIR="$CACHE_DIR" bash "$WKD_SETUP" || true
+fi
+
 # Keep every SYNC-APPROVED VayuDomains secondary domain's TLS cert + nginx vhost
 # in place across updates (VayuDomains P4+P5). Domains the operator has not
 # approved ("manual hold" in VayuOS → Domains) are never provisioned by an

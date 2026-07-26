@@ -845,6 +845,22 @@ else
   warn "setup-api-subdomain.sh not found next to this script — skipping VayuAPI subdomain auto-provision."
 fi
 
+# Provision the VayuPGP Web Key Directory host (openpgpkey.<domain>) with the CDN
+# proxy OFF. VayuPress already serves WKD, but PGP clients only look at the spec's
+# advanced-method hostname — without it the keys are published and nobody finds
+# them. With it, GnuPG / Thunderbird / the VayuMail app discover a correspondent's
+# public key with no key-exchange step, which is the whole point of automatic PGP.
+# Proxy must be off: GnuPG cannot solve a CDN bot-challenge. If CF_ZONE_ID and
+# CF_API_TOKEN are set the helper creates the DNS record itself. Idempotent and
+# non-fatal (see setup-openpgpkey-subdomain.sh).
+WKD_SETUP="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/setup-openpgpkey-subdomain.sh"
+if [[ -f "$WKD_SETUP" ]]; then
+  DOMAIN="$DOMAIN" EMAIL="$EMAIL" CACHE_DIR="$CACHE_DIR" run bash "$WKD_SETUP" || \
+    warn "WKD subdomain setup reported an issue — PGP key auto-discovery stays off until it is resolved."
+else
+  warn "setup-openpgpkey-subdomain.sh not found next to this script — skipping WKD subdomain auto-provision."
+fi
+
 # Provision TLS + nginx for every SYNC-APPROVED VayuDomains secondary domain
 # (VayuDomains P4+P5). Delegated to setup-vayudomain.sh so deploy AND update share
 # one implementation. Newly registered domains start on manual hold and are NOT
