@@ -38,6 +38,33 @@ Submit RFCs to `vayupress/rfcs`. Minimum 7-day discussion. Simple majority to ac
 
 Sign your commits with `git commit -s` (Developer Certificate of Origin).
 
+## Licensing of contributions
+
+VayuPress is licensed under **Apache-2.0** ([LICENSE](LICENSE)). By opening a pull request you
+license your contribution under those terms, as Apache-2.0 §5 provides, and you sign off the
+[Developer Certificate of Origin](https://developercertificate.org/) with `git commit -s` —
+certifying that you wrote the contribution or have the right to submit it.
+
+**You keep the copyright in your own work.** It is not assigned to anyone, and **there is no
+Contributor Licence Agreement — there will not be one.** Only a party that holds the copyright
+can sell proprietary licences to a codebase, so refusing to collect it forecloses that business
+permanently, for the author as much as for anyone else.
+
+Two things follow that are worth stating plainly rather than leaving to be discovered:
+
+- **Every release already published stays under Apache-2.0 for good.** That grant is
+  irrevocable. Anyone may fork from any published tag and continue, whatever this repository
+  does afterwards.
+- **The outbound licence on *future* versions could change**, because Apache-2.0 §4 permits
+  distributing a derivative work as a whole under different terms. There is no present intention
+  to do so — the current assessment is to stay on Apache-2.0. If it ever changes, the commitment
+  is that it will be **forward-only, at a major version, announced in advance, and put to
+  contributors first** even though their agreement would not be legally required.
+
+New Go files must carry `// SPDX-License-Identifier: Apache-2.0` as their first line. CI enforces
+it; `python3 scripts/spdx-headers.py` adds it. The reasoning for all of the above is in
+[docs/LICENSING.md](docs/LICENSING.md).
+
 ## Code Standards
 
 - Go 1.22+. Run `golangci-lint run` before submitting.

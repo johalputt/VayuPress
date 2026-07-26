@@ -279,7 +279,9 @@ VayuPress is open-source and must remain sustainable without compromising its va
 
 ## **⚖️ LEGAL & COMPLIANCE (HIGH-LEVEL)**
 - **Privacy by Default**: VayuPress core collects zero telemetry. Self-hosters are responsible for their instance's compliance. Features to support GDPR (export, deletion) must exist.
-- **Copyright & DMCA**: Takedown process published; project operates under DCO (Developer Certificate of Origin), no copyright assignment.
+- **Copyright & DMCA**: Takedown process published; project operates under DCO (Developer Certificate of Origin), no copyright assignment, and **no Contributor Licence Agreement — permanently**, so no party (including the maintainer) can accumulate the rights needed to sell proprietary licences to this codebase. Copyright stays with each contributor. Full posture, and the routes by which the licence could change in future, in [docs/LICENSING.md](docs/LICENSING.md).
+- **Licence changes**: any change to the outbound licence is **forward-only, at a major version, announced in advance, and put to contributors first**. Every published release remains available under the licence it shipped with; that grant is irrevocable and is never reinterpreted.
+- **EU Cyber Resilience Act**: scope position and gap analysis recorded in [docs/CRA-READINESS.md](docs/CRA-READINESS.md); reassessed whenever the funding model changes.
 - **AI Compliance**: AI features are off by default; opt-in only. No user data is used for model training. Providers are transparent.
 - **Export Control**: Uses standard Go crypto (TLS); no custom encryption.
 - **Jurisdiction**: Governed by the laws of the maintainer's jurisdiction; disputes resolved through open governance.

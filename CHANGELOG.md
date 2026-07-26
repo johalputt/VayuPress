@@ -6,6 +6,52 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+Licensing and regulatory posture. No behaviour changes; no runtime code was modified.
+
+### Added
+- **`docs/LICENSING.md`** — the licensing posture, written down instead of assumed. Why
+  Apache-2.0 rather than MIT (the §3 patent grant with its retaliation clause, the §6 trademark
+  reservation, disclaimers drafted for more than one jurisdiction, and the §5 inbound-equals-
+  outbound rule that pairs with the DCO). What the absence of a Contributor Licence Agreement
+  actually protects, and — stated just as plainly — what it does not. And the four routes by
+  which the licence could change in future, with the current recommendation to stay on
+  Apache-2.0 and the specific conditions that would justify revisiting it.
+- **`docs/CRA-READINESS.md`** — EU Cyber Resilience Act assessment. Timeline (reporting
+  obligations from 11 September 2026, full application from 11 December 2027), a scope position
+  concluding VayuPress most likely sits outside the manufacturer regime while it stays
+  donation-funded, and the one condition that would change that. Plus a gap analysis, which is
+  the part that matters either way: downstream commercial users are in scope even when this
+  project is not, and they will ask upstream for an SBOM, a support period and a disclosure
+  process.
+- **SPDX identifiers on all 930 Go source files** (`// SPDX-License-Identifier: Apache-2.0`),
+  added and enforced by `scripts/spdx-headers.py`. Composition scanners read per-file
+  identifiers; a file without one is reported as *unknown licence*, which to anyone deciding
+  whether they may depend on VayuPress is indistinguishable from *proprietary*. The `--check`
+  mode is wired into the `check-licenses` CI job, which previously announced it was checking
+  SPDX headers without checking any.
+
+### Changed
+- **The no-CLA position is stated where people look for it** — `README.md`, `CONTRIBUTING.md`
+  and the Governance Constitution — rather than in one line inside a governance document. Only a
+  party holding the copyright can sell proprietary licences to a codebase; refusing to collect it
+  forecloses that permanently, for the maintainer as much as for anyone else.
+- **A licence-change commitment is now on the record** in the Governance Constitution and
+  `CONTRIBUTING.md`: any outbound licence change is forward-only, at a major version, announced
+  in advance, and put to contributors first — even though Apache-2.0 §4 would not require their
+  agreement. Every published release stays under the licence it shipped with, irrevocably.
+- `docs/LICENSING.md` and `docs/CRA-READINESS.md` added to the required-docs CI gate.
+
+### Known gaps
+Recorded in `docs/CRA-READINESS.md` rather than fixed here, because each is a small separate
+change: the supported-versions table in `SECURITY.md` still names the 1.0.x series and needs to
+describe the real support window; the CycloneDX SBOM is generated as a CI artefact that expires
+with the run rather than attached to each GitHub Release, so it cannot answer "what was in the
+version I deployed"; and there is no RFC 9116 `security.txt`.
+
+---
+
 ## [3.15.48] — 2026-07-26
 
 Closes the reasoning-model hole properly. v3.15.47 refused *some* monologues by

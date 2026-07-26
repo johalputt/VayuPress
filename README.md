@@ -274,10 +274,32 @@ The adaptive-governance runtime is fully inspectable from inside VayuOS — syst
 - **[docs/compatibility/vcb.md](docs/compatibility/vcb.md)** — the Vayu Compatibility Bible: how to build a compatible plugin, theme, or tool.
 - **[docs/compatibility/vayuapi.md](docs/compatibility/vayuapi.md)** — the API-key, permission, and rate-limit reference.
 - **[docs/MAIL-RECOVERY.md](docs/MAIL-RECOVERY.md)** — VayuMail account recovery: what to enrol before anyone is locked out, and every way back in.
+- **[docs/LICENSING.md](docs/LICENSING.md)** — why Apache-2.0, why no CLA, and how the licence could change in future.
+- **[docs/CRA-READINESS.md](docs/CRA-READINESS.md)** — EU Cyber Resilience Act: scope assessment and gap analysis.
 - **[GOVERNANCE-CONSTITUTION.md](GOVERNANCE-CONSTITUTION.md)** — the binding rules, mechanically enforced by CI.
 - **[ETHICS.md](ETHICS.md)** — the Ethical AI Charter.
 - **[VayuMail-Mobile](https://github.com/johalputt/VayuMail-Mobile)** — the official mobile mail app.
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+**Apache License 2.0** — see [LICENSE](LICENSE). Every source file carries an
+`SPDX-License-Identifier`, third-party components are listed in [NOTICE](NOTICE), and the
+reasoning behind the choice is in [docs/LICENSING.md](docs/LICENSING.md).
+
+Apache-2.0 rather than MIT for the patent grant (§3): every contributor licenses their patents,
+and that licence terminates for anyone who sues over them. MIT is silent on patents, which is a
+real exposure for a codebase implementing DKIM, OpenPGP, MCP and OAuth.
+
+**Copyright is held by each contributor over their own work.** It is not assigned to anyone.
+Contributions are accepted under the [Developer Certificate of Origin](https://developercertificate.org/)
+with `git commit -s`, and **there is no Contributor Licence Agreement — there will not be one.**
+
+That is a deliberate structural commitment, not an oversight. A CLA concentrates copyright in one
+party, and only a party holding the copyright can sell proprietary licences to it. Every
+well-known relicensing of a community project into a paid product was built on one. Without a
+CLA that business cannot be constructed here — by anyone, including the author — and **every
+release already published stays under Apache-2.0 permanently**, forkable from its tag no matter
+what this repository does later.
+
+[docs/LICENSING.md](docs/LICENSING.md) sets out precisely what that protects, what it does not,
+and the routes by which the licence could change in future.
