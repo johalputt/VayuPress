@@ -4,6 +4,8 @@
 
 - **VayuPress is Apache-2.0. Free for anyone, for anything, forever.** Use it, sell services
   around it, fork it, ship it inside a commercial product. No fee, no permission, no registration.
+- **That includes large companies**, explicitly and on purpose. A licence that carves out the
+  powerful still has a gatekeeper, and this project was not built to become one.
 - **Every release already published is permanently free.** That grant is irrevocable and cannot
   be taken back by anyone, including the author.
 - **The licence will not change. Permanently, and with no condition attached** — not funding,

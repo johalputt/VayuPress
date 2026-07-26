@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **A "Why this exists" section in `README.md`**, in the maintainer's own words, because the
+  repository explained thoroughly what VayuPress is and never once said why it was built.
+  Self-hosting hurt — not in any single dramatic way, but in accumulation — and that pain is not
+  a law of nature; it is a consequence of nobody having made the sovereign option as easy as the
+  rented one, because there is no money in making people independent. The goal was never a
+  product. It was that nobody else should have to feel it.
+
+  Stated alongside it, and worth being explicit about: **VayuPress is free for large companies
+  too**, deliberately. A licence that carves out the powerful still has a gatekeeper, and this
+  project was not built to become one.
+
 ### Changed
 - **The Apache-2.0 permanence pledge is now unconditional.** v3.15.49 tied it to donations
   reaching USD 5,000/month. That merged two separate things — a wish about funding and a promise
@@ -26,6 +38,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   outvoted; and if a future maintainer breaks the pledge anyway, the remedy needs nobody's
   permission — fork the last Apache-2.0 release. The pledge does not ask anyone to trust the
   person making it.
+- **The funding goal now says what it is actually for.** One thing only: VayuPress is maintained
+  part-time, and USD 5,000/month is what would let the maintainer work on it full-time. It is not
+  a valuation, a revenue target, or a price. **If it is never reached, nothing changes** — the
+  project stays free, stays Apache-2.0, stays maintained part-time, and does not get sold. That
+  ordering is the point: a project that would change its terms under financial pressure has not
+  decided anything, it has only decided what it will do while things are going well.
 - **Funding goals moved back to where funding goals belong.** `docs/SUSTAINABILITY.md` keeps
   $5,000/month as a sustainability milestone — what it costs to support one person working on
   this full time — with an explicit list of what funding does *not* buy: nothing about the

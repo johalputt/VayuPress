@@ -45,10 +45,22 @@ Expenditures are published quarterly in GitHub Discussions under "Transparency R
 | Annual security audit | $5,000 | Seeking sponsors |
 | Part-time Community Lead | $500/mo | Future goal |
 | Full-time BDFL | $3,000/mo | Long-term goal |
-| Sustained full-time maintenance | $5,000/mo | Long-term goal |
+| **Maintainer works on VayuPress full time** | **$5,000/mo** | **Long-term goal** |
 
-At $5,000 per month the project supports one person working on it full time, with room for the
-security audit and infrastructure above. That is what "sustainable" means here in concrete terms.
+### What the $5,000 figure is for
+
+One thing only: **VayuPress is currently maintained part-time, and $5,000 per month is what would
+let the maintainer work on it full-time.** That is the whole reason the number exists. It is not
+a valuation, not a revenue target, and not a price for anything.
+
+**If it is never reached, nothing changes.** VayuPress stays free, stays Apache-2.0, and stays
+maintained part-time. It does not get sold, relicensed, or made source-available. The project's
+values were settled before the funding question was asked, and the funding question does not get
+to revise them.
+
+That ordering matters more than the number. A project that would change its terms under financial
+pressure has not actually decided anything — it has only decided what it will do while things are
+going well.
 
 ### What funding does not buy
 
