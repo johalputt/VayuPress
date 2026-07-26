@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_customsite.go — VayuOS "custom website" deploy: upload a static site

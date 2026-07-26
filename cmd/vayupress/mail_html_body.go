@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // mail_html_body.go — deriving the optional HTML alternative from the message the

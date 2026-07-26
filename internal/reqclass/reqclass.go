@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package reqclass carries a small, mutable per-request classification down the
 // middleware chain so an INNER middleware can tell an OUTER one something about
 // how the request was handled.

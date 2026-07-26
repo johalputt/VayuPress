@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package vcb
 
 // manifest.go — the on-disk plugin manifest ("plugin.json"). Until VCB,

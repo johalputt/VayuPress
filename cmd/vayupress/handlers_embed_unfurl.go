@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_embed_unfurl.go — POST /api/v1/admin/embed/unfurl (ADR-0070, Phase 1 Slice 2).

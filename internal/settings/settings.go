@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package settings provides a key/value store for site and theme configuration,
 // backed by the site_settings SQLite table (migration 006). Values are cached
 // in-process for 30 s to avoid hitting the DB on every render.

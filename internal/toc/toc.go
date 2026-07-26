@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package toc extracts a table of contents from article HTML.
 // It parses heading elements (h2–h4) from article HTML and produces both a
 // structured list and an augmented HTML string with anchor IDs injected.

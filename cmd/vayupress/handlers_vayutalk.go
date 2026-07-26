@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // handlers_vayutalk.go — the VayuTalk HTTP surface: an ephemeral, end-to-end-
 // encrypted messaging relay under /api/v1/talk/* (ADR-0131). The server never
 // sees plaintext and never persists: envelopes live in a bounded in-memory

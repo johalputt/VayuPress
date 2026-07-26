@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_diagram.go — server-side diagram live preview (ADR-0070, Phase 3).

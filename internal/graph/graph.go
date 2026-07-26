@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package graph implements a sovereign knowledge graph for VayuPress.
 // Posts and entities are nodes; references, translations, and updates are edges.
 // Supports graph traversal and predecessor/successor queries.

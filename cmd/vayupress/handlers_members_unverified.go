@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_members_unverified.go — clearing members who never confirmed.

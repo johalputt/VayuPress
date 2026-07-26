@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // migrate.go — "vayupress migrate" subcommand.

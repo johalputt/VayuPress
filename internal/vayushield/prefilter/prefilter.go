@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package prefilter is VayuShield's Aegis L2: a probabilistic, fixed-memory
 // pre-filter that identifies and fair-sheds heavy hitters during an attack —
 // BEFORE the per-IP rate-limiter map, classification, rendering or SQLite are

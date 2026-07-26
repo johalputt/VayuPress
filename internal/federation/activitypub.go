@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package federation implements a minimal ActivityPub server for VayuPress.
 // Supports Create, Update, Delete, Follow activities for federated publishing.
 package federation

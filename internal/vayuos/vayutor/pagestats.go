@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package vayutor
 
 // pagestats.go — OPT-IN per-page onion visit counts. Privacy-preserving by

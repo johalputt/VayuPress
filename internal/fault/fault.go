@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package fault provides a fault injection framework for adversarial and
 // crash-consistency testing. Faults are named, probabilistic, and scoped to
 // test builds via build tags or explicit activation — they are no-ops in

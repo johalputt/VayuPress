@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package budget implements governance error budgets: bounded windows of
 // severity-classified events that accumulate "debt" and, once exhausted, imply a
 // defined escalation. It turns the severity taxonomy from description into

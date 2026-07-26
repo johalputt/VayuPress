@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // vayuos_talk.go — the VayuTalk web client for VayuOS, mounted under
 // /os/talk. It is the browser counterpart to VayuMail Mobile's chat
 // screen: both speak to the SAME in-process relay (internal/vayuos/vayutalk),

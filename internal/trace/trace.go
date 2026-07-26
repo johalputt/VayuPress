@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package trace propagates request-scoped observability identifiers through
 // context.Context so that every log line, event, and queue job can be correlated
 // back to the originating HTTP request (ADR-0053).

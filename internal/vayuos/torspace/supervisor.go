@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package torspace
 
 // supervisor.go — supervises the Tor-Space child vayupress instance (the second,

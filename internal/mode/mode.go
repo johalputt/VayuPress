@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package mode implements the VayuPress System Mode state machine.
 // The policy engine controls mode transitions; subsystems query the current
 // mode to adjust their behaviour (e.g., reject writes in ReadOnly, throttle

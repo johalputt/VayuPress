@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package payments implements VayuPress's sovereign monetization ledger: a
 // gateway-agnostic order store plus a small registry describing the payment
 // gateways the platform can collect through.

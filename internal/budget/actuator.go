@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package budget
 
 // Actuator is the explicitly-gated control loop the package doc describes: when

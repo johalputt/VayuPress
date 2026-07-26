@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // api_capabilities.go — the single source of truth mapping API routes to the

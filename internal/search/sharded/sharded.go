@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package sharded implements a sharded SQLite FTS5 search index for VayuPress.
 // Posts are distributed across N shards by ID hash for parallel queries.
 package sharded

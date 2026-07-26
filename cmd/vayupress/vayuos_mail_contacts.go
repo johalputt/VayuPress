@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // vayuos_mail_contacts.go — the per-mailbox address book UI: a collapsible

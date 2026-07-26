@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // mailcli.go — the VayuMail break-glass CLI (ADR-0144).

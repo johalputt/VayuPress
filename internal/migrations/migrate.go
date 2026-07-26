@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package migrations provides a full-file SQL migration engine for SQLite.
 // Each migration is a .sql file executed atomically in a single transaction.
 package migrations

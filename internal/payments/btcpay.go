@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package payments
 
 // btcpay.go — a minimal BTCPay Server (Greenfield API) client for the crypto

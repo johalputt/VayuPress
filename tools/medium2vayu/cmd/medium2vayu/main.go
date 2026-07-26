@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // medium2vayu — migrate a Medium HTML export into VayuPress SQLite.
 //
 // Usage:

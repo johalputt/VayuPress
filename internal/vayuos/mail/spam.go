@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package mail
 
 // spam.go — VayuMail's built-in heuristic junk filter.

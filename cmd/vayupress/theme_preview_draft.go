@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // theme_preview_draft.go — transient compiled-CSS drafts for the Theme Studio

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package vayushield is the sovereign, enterprise-grade bot protection engine
 // for VayuPress. It ties together the transport/TLS fingerprint (fingerprint),
 // the static + adaptive bot database (botdb), the composite scorer (scorer) and

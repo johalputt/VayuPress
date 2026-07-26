@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package fingerprint derives transport- and protocol-level client fingerprints
 // used by VayuShield to tell real browsers from bots without cookies, JavaScript
 // or any third-party service.

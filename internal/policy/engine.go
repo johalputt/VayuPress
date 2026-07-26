@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package policy is the Platform Policy Engine — a single authoritative system
 // that evaluates architecture, release, compatibility, reliability, and security
 // policies. It replaces ad hoc enforcement scattered across CI scripts and tests.

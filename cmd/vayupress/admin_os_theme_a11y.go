@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_os_theme_a11y.go — the Theme Studio's accessibility readout.

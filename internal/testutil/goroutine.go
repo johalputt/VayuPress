@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package testutil provides test helpers for VayuPress unit tests.
 package testutil
 

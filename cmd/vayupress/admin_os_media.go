@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_os_media.go — VayuOS media library (ADR-0068, Phase 4).

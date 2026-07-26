@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package events provides a synchronous, in-process typed event bus.
 // Domain events replace string-keyed hook payloads (ADR-0050).
 package events

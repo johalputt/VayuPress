@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_os_operations.go — the "Operations" hub. The advanced ops/governance

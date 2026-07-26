@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package avatar generates deterministic, premium cartoon-face avatars as inline
 // SVG — no external assets, no fonts, no runtime deps — so a member or mailbox
 // always has a polished picture even before uploading one. The same seed always

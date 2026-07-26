@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package theme
 
 // motion_tokens.go — the sanctioned motion/elevation/spacing design-primitive

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_os_spaces.go — VayuOS "Spaces" page (/os/spaces), ADR-0141.

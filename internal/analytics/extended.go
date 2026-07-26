@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package analytics — extended VayuAnalytics features.
 //
 // This file layers session-grouped pageview analytics, custom events, funnels,

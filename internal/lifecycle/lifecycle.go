@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package lifecycle provides structured startup and shutdown orchestration (ADR-0051).
 // Services register start/stop callbacks; the Manager runs them in registration
 // order on startup and in reverse order on shutdown.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_analytics_export.go — VayuAnalytics report export.

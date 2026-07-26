@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package vcb defines the Vayu Compatibility Bible (VCB, ADR-0135): the
 // versioned, machine-checkable contracts a third-party extension — plugin,
 // theme, or tool — must satisfy to be compatible with VayuPress. The package

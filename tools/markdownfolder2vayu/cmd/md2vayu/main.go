@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command md2vayu imports a folder of Markdown files into a VayuPress SQLite database.
 package main
 

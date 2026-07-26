@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package mail
 
 // retention_test.go — the auto-delete sweep (ADR-0130) must delete exactly

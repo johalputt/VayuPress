@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package redirects provides HTTP redirect management for VayuPress.
 // Rules are stored in SQLite and evaluated as middleware before each request.
 package redirects

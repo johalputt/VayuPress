@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_os_connector.go — the VayuOS VayuMCP page (ADR-0139, Stage 2).

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // vayuos_mail_notify.go — the JSON feed behind the console's background new-mail

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package offload is VayuShield's Aegis L1: it exports the shield's live
 // verdicts (jailed IPs) down to the kernel, so a confirmed attacker's packets
 // are dropped by nftables/XDP at line rate — before a TCP connection, TLS

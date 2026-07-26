@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package auth
 
 // apikey_identity.go — the enforcement-time identity of an API-key caller.

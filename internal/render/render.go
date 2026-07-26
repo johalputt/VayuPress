@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package render handles article template rendering, cache management, CSS assets, and CSP nonces.
 package render
 

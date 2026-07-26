@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package sovereign is VayuShield's Admin Sovereignty Lane (Aegis L0): a
 // lock-free admission controller that guarantees the admin control plane and
 // verified readers always have CPU/goroutine headroom during a public-traffic

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package provenance defines VayuPress's epistemic confidence vocabulary and the
 // rules for how confidence propagates when one operational fact is derived from
 // others. It is the single source of truth for the canonical | derived | inferred

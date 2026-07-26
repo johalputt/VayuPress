@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package graphqlapi exposes a read-only GraphQL endpoint over the public
 // content model. It is deliberately query-only — there are no mutations — so
 // the GraphQL surface can never bypass the governed, API-key-protected write

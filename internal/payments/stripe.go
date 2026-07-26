@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package payments
 
 // stripe.go — a minimal, dependency-free Stripe REST client.

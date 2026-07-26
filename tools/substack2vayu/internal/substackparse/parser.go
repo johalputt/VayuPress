@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package substackparse parses Substack CSV exports into articles.
 package substackparse
 

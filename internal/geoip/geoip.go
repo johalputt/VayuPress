@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package geoip provides an offline, embedded, IP → ISO-3166 country lookup.
 //
 // It exists so that self-hosted, sovereign deployments — a VayuPress binary on

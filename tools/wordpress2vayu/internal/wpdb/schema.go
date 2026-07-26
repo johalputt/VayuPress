@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package wpdb reads posts from a WordPress MySQL database.
 package wpdb
 

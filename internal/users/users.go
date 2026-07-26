@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package users provides multi-author account management for VayuPress.
 //
 // Accounts authenticate with email + password. Passwords are never stored in

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package vayutor
 
 // managed.go — a VayuPress-owned tor daemon. When no external tor control port

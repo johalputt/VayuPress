@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // tor_space.go — App-level orchestration for the Anonymous Tor Space (ADR-0141).

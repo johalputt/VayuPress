@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package vayutor
 
 // vanity.go — generate a custom-prefix ("vanity") v3 onion address for a hosted

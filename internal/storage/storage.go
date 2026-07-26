@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package storage defines the sovereign storage backend interface for VayuPress.
 // Implementations include local filesystem, IPFS, and Arweave.
 // All backends are content-addressed — store by hash, retrieve by CID/txid.

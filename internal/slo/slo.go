@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package slo tracks Service Level Objectives and error budgets for VayuPress.
 // Each SLO has a target ratio, a window, and a live error budget that depletes
 // as events are recorded. When the budget reaches zero, alerts fire.

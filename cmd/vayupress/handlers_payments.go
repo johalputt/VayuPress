@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_payments.go — sovereign monetization: checkout, the generic payment

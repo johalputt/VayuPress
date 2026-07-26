@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package db
 
 // indexnow_status.go — per-post IndexNow submission status (migration 067).

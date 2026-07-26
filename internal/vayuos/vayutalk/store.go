@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package vayutalk implements the VayuTalk ephemeral, end-to-end-encrypted
 // messaging relay: a bounded in-memory store of opaque ciphertext envelopes, a
 // live SSE fan-out hub, and short-lived bearer tokens. The server never sees

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package plugins manages the hook registry and worker pool for plugin execution (ADR-0032/ADR-0046).
 package plugins
 

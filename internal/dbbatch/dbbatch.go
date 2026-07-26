@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package dbbatch provides a bounded, batched, best-effort background writer for
 // high-frequency, low-value telemetry writes (analytics beacons, bot-signature
 // sightings, challenge/block records).

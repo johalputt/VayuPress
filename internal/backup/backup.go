@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package backup
 
 // Package backup produces and restores fully-encrypted VayuPress backups.

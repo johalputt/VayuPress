@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // vayutor_store.go — the persistence adapter for the VayuTor subsystem. Onion

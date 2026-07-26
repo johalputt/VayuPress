@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // vayu-validate — check a VayuPress SQLite database for content integrity issues.
 //
 // Usage:

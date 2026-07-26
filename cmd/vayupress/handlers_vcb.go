@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_vcb.go — the VCB HTTP surface (ADR-0135). Two read-only endpoints

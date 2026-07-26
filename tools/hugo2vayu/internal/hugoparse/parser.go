@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package hugoparse parses Hugo Markdown files with YAML or TOML frontmatter into Documents.
 package hugoparse
 

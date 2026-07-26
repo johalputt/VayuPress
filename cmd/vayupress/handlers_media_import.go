@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_media_import.go — sovereign import of a remote image (ADR-0070).

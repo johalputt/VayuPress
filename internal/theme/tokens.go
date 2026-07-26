@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package theme
 
 // Tokens holds the full set of design tokens for a VayuPress theme.

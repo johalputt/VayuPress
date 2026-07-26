@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package archcheck enforces the layering rule:
 //
 //	api → services → domain → infrastructure

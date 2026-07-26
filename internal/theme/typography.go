@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package theme
 
 // typography.go — reusable TYPOGRAPHY pairings.

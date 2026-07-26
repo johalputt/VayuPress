@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // member_comments_section.go — "Your comments", inline on /members/account.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command screenshot-proxy is a tiny reverse proxy used only by the screenshot
 // pipeline. Headless Chrome cannot set custom request headers from the CLI, but
 // the VayuPress operator console requires an X-API-Key header. This proxy sits

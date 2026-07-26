@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package bizsite
 
 // Package bizsite renders the small-business website that VayuPress can serve

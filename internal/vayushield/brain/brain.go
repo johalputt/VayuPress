@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package brain is VayuShield's Aegis L5 v1: continuous, online, per-source
 // reputation. Where the fingerprint learning database (botdb) learns WHAT a
 // bot looks like over days, the brain learns WHO is currently misbehaving

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // oauth_handlers.go — the HTTP surface of VayuPress's OAuth 2.1 authorization

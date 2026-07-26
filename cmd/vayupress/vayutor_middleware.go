@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // vayutor_middleware.go — request-path integration for VayuTor. A single

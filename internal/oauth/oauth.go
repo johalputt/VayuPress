@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package oauth implements the storage and protocol primitives for VayuPress's
 // OAuth 2.1 authorization server (ADR-0140) — the mechanism behind the one-click
 // "Connect" flow on claude.ai and any MCP OAuth client.

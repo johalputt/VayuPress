@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // member_billing_card.go — the "Membership & billing" card on the member account

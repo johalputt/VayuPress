@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package severity defines VayuPress's formal operational severity taxonomy.
 //
 // It is a fixed, ordered set of levels, each carrying explicit operational

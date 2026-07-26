@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package vacuum writes converted Ghost posts into a VayuPress SQLite database.
 package vacuum
 

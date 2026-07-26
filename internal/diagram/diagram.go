@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package diagram is a dependency-free Mermaid→SVG compiler (ADR-0070, Phase 3).
 //
 // It renders a useful subset of Mermaid — flowcharts and sequence diagrams — to

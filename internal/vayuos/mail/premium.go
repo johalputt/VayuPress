@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package mail
 
 // premium.go — the premium (vanity) localpart classifier for the mail-ID

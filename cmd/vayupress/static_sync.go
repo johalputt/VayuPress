@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // static_sync.go — keep STATIC_DIR in lock-step with the assets compiled into

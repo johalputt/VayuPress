@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // tor_talk_identity.go — the ANONYMOUS, rotatable VayuTalk identity for the Tor

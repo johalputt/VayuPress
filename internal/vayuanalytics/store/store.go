@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package store is the SQLite persistence layer for VayuAnalytics engagement
 // sessions. It owns both the write path (page-enter + engagement beacon) and the
 // dashboard read path (overview, source breakdown, AI-traffic comparison, top

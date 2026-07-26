@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package mail
 
 // apppasswords.go — per-mailbox app passwords and device identities.

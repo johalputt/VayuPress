@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // flags_embed.go — country flag SVGs (flag-icons, MIT) compiled into the binary.

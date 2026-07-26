@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package mcp implements a minimal, host-agnostic Model Context Protocol (MCP)
 // server over Streamable HTTP + JSON-RPC 2.0. It knows nothing about VayuPress:
 // the host registers Tools (name, description, input schema, and a handler

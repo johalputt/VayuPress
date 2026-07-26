@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // pwa_health.go — "why is my installed app not a real app?"

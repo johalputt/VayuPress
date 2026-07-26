@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package emailtmpl provides operator-customisable templates for the
 // transactional emails VayuPress sends (magic-link sign-in, comment-approval
 // notice, newsletter confirmation, newsletter broadcast wrapper).

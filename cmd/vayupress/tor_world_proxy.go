@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // tor_world_proxy.go — "enter the Tor world" (ADR-0141).

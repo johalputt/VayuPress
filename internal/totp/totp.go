@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package totp implements TOTP (RFC 6238) and the underlying HOTP (RFC 4226)
 // using only the Go standard library — no third-party dependencies, in keeping
 // with VayuPress's sovereign single-binary posture.

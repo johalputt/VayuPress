@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package vayutor
 
 // vayutor_space.go — the ONE dedicated onion for the VayuOS Anonymous Tor Space

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_tier4.go — enterprise feature handlers (Tier 4):

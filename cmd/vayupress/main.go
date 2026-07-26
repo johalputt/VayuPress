@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // VayuPress — main.go  v1.2.0
 // Bootstrap, route wiring, and graceful shutdown only.
 // Domain logic lives in internal/* packages (ADR-0045 – ADR-0050).

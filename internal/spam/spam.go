@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package spam provides content-based spam detection for comments and submissions.
 // It uses heuristic scoring — no ML, no external APIs, no vendor dependencies.
 package spam

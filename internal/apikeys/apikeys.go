@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package apikeys provides a database-backed, rotatable store for VayuPress's
 // own API keys — the bearer tokens that authenticate callers of the VayuPress
 // HTTP API. Unlike the single static API_KEY env var (which remains valid as a

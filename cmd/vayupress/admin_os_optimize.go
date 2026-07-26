@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_os_optimize.go — the "Optimize" hub. SEO, Analytics, Bot Shield, Theme

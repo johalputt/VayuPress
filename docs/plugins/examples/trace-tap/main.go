@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command trace-tap is an example VayuPress sandbox plugin demonstrating
 // PARTICIPATION IN THE DISTRIBUTED TRACING SUBSTRATE.
 //

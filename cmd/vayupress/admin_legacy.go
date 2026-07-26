@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_legacy.go — legacy admin redirection into VayuOS (`/os`).

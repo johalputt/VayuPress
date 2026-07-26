@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // vayuos.go — VayuOS control layer wiring.
 //
 // This file boots the VayuOS subsystems (VayuPGP privacy layer, VayuMail

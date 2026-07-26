@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package verifiedbot authenticates legitimate search-engine and AI crawlers by
 // IDENTITY, not by a spoofable User-Agent string, so VayuShield can fast-path
 // them past every availability gate without opening a UA-spoof bypass.

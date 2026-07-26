@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package registry provides a sovereign plugin registry for VayuPress.
 // Plugins are registered with name, version, and SHA-256 hash; the registry
 // enforces integrity before installation.

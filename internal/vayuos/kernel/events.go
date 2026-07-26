@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package kernel is the VayuOS nervous system: a typed in-process event bus,
 // an ordered boot orchestrator, and a health monitor. It has no external
 // dependencies and never spawns a separate process — VayuOS is the control

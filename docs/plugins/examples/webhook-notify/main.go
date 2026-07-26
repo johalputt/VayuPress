@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command webhook-notify is an example VayuPress sandbox plugin that POSTs a
 // compact JSON notification to an external URL whenever an article hook fires.
 //

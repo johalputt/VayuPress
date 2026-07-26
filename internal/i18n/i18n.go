@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package i18n provides lightweight internationalisation for the public site:
 // a message catalog keyed by BCP-47 language tag, with HTTP Accept-Language
 // negotiation. It has no external dependencies and no runtime network calls.

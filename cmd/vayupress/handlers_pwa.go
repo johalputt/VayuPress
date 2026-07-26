@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_pwa.go — PWA manifest, service worker, app icons, and chroma CSS.

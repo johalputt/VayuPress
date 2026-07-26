@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_os_pages.go — VayuOS "Pages" surface (Tumblr-style "Add a page").

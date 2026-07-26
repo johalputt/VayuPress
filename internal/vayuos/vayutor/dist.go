@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package vayutor
 
 // dist.go — VayuPress-managed current Tor. On a host whose *system* tor is too

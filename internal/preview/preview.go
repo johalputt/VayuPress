@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package preview provides signed draft preview tokens for VayuPress.
 // A time-limited HMAC-signed token allows sharing a draft article URL with
 // reviewers without requiring admin access or exposing the full API key.

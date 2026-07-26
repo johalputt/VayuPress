@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_member_ads.go — member self-serve advertising ("advertise here",

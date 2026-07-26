@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package api provides the ArticleService and shared validation/response helpers
 // used by the cmd/vayupress HTTP handlers (ADR-0047).
 package api

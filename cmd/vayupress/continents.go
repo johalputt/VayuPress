@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // continents.go — offline ISO 3166-1 alpha-2 → continent mapping for the

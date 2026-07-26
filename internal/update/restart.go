@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package update
 
 // restart.go — in-process self-restart, so a verified binary update or a

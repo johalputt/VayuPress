@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package analytics
 
 // journey.go — VayuAnalytics visitor journey / path-flow analysis.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package queue manages the async write queue, dead-letter handling, replay safety,
 // and poison job quarantine (ADR-0035).
 package queue

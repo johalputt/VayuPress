@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_member_avatar.go — reader (member) profile pictures. A signed-in

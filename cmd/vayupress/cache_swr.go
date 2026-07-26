@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // cache_swr.go — stale-while-revalidate refresh for the public page cache.
 //
 // The public render cache is invalidated lazily: a global change (a deploy that

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // ghost2vayu — migrate a Ghost CMS database directly into VayuPress SQLite.
 //
 // Usage:

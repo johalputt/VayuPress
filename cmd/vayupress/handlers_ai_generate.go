@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_ai_generate.go — the editor's "write a post from a prompt" feature.

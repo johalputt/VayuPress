@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_image_resolve.go — turn third-party image *page* links into the direct

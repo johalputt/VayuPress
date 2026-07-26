@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package newsletter manages email subscribers for VayuPress.
 // It provides subscriber management only — actual email delivery is the operator's responsibility
 // (use any SMTP library or service with the exported subscriber list).

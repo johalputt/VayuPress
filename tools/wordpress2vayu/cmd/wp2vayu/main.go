@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command wp2vayu migrates WordPress posts into a VayuPress SQLite database.
 package main
 

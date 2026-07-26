@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package newsletter
 
 // console.go — the data layer behind the VayuOS Newsletter console.

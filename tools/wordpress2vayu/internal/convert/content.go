@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package convert provides helpers for transforming WordPress content.
 package convert
 

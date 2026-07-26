@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // tor_egress.go — the opt-in "route outbound over Tor" mode for a Tor Space

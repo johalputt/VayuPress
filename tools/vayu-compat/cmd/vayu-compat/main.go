@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // vayu-compat — validate a VCB extension package (plugin.json / theme.json)
 // against the VayuPress compatibility contract (the Vayu Compatibility Bible,
 // ADR-0135). It runs the exact same checks the host applies, so an extension

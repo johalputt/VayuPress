@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // mail_recovery_reset.go — the one path every VayuMail password reset takes

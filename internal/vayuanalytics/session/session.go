@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package session derives cookieless, GDPR-compliant visitor session identifiers
 // for VayuAnalytics.
 //

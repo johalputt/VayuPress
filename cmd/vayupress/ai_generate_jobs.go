@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // ai_generate_jobs.go — draft generation as a background job.

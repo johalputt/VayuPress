@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package aiassist provides an opt-in, sovereign AI writing assistant for the
 // VayuPress editor.
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_os_tor.go — the VayuTor admin surface: a one-click switch that publishes

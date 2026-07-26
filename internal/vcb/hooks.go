@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package vcb
 
 // hooks.go — the enumerated hook catalogue. Before VCB, hook names were

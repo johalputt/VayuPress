@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package safefetch is the single, SSRF-hardened HTTP fetcher used for every
 // server-side outbound request that carries an operator- or author-influenced
 // URL (embed resolution, remote-image import, oEmbed/OpenGraph metadata).

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package merkle provides a SHA-256 Merkle tree for VayuPress content integrity.
 package merkle
 

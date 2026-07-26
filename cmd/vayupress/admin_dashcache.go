@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // admin_dashcache.go — background-computed cache for heavy VayuOS dashboard
 // sections (Analytics, Bot Shield engagement).
 //

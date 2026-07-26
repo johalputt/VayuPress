@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package seo provides SEO helpers for VayuPress: description extraction,
 // image extraction, canonical URL generation, and structured article metadata.
 package seo

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package schema provides JSON Schema governance for VayuPress events.
 // Each event type+version has a registered schema; emitters validate before
 // publishing and the registry enforces backward compatibility.

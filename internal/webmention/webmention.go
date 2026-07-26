@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package webmention implements a Webmention receiver for VayuPress.
 // Webmentions are a W3C standard for cross-site notification when one page links to another.
 // This package receives incoming mentions and stores them for moderation.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_graphql.go — read-only public GraphQL endpoint (Tier 4).

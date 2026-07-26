@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package domain is the VayuDomains registry: the single source of truth for
 // every hostname this one binary serves. Stage 1 is deliberately read-mostly —
 // it resolves an incoming Host header to a registered domain and lets the

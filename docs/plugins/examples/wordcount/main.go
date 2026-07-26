@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command wordcount is an example VayuPress sandbox plugin.
 //
 // It implements the host IPC protocol: read one JSON Request per line from

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package secwatch implements the VayuOS security-update watcher.
 //
 // It tracks the upstream releases of the security-critical Go dependencies that

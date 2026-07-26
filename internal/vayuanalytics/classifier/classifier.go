@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package classifier assigns every VayuAnalytics session to exactly one traffic
 // source category, including the category that is unique to VayuAnalytics:
 // AI-assisted discovery (visitors arriving from ChatGPT, Claude, Perplexity,

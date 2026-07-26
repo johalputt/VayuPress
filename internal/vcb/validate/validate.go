@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package validate implements the static VCB compatibility checks (ADR-0135).
 // It takes a parsed extension manifest and returns structured findings —
 // ERROR means the extension WILL misbehave against the real contracts

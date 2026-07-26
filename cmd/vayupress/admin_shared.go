@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_shared.go — small admin helpers that outlived Admin v2 (removed in

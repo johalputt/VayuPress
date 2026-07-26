@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package vayutor
 
 // bridges.go — VayuTor's answer to networks that block Tor at the IP level

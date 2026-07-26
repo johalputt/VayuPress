@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package pgp implements VayuPGP — VayuPress's native, end-to-end PGP privacy
 // layer built on ProtonMail go-crypto (Apache-2.0).
 //

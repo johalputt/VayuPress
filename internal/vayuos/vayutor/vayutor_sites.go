@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package vayutor
 
 // vayutor_sites.go — EXTRA Tor-world site onions (ADR-0141, "one-click add Tor

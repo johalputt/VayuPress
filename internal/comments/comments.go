@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package comments provides a local comment system for VayuPress articles.
 // Comments are stored in SQLite with a moderation workflow (pending → approved/rejected).
 package comments

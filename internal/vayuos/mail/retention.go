@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package mail
 
 // retention.go — auto-delete of read mail (ADR-0130). A mailbox may opt in

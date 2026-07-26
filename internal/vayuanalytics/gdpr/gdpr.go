@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package gdpr produces VayuAnalytics's machine-readable privacy disclosure and
 // documents the compliance posture in one place. VayuAnalytics is compliant by
 // architecture: no cookies for tracking, no PII stored, IPs used only for an

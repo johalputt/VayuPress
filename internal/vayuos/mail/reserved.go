@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package mail
 
 // reserved.go — reserved vs. self-claimable mail localparts.

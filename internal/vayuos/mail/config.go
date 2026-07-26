@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package mail implements VayuMail — VayuPress's native mail sovereignty layer.
 //
 // VayuMail is a first-class subsystem of VayuPress (single binary, single

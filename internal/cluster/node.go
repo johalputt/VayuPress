@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package cluster provides multi-node sovereign clustering for VayuPress.
 // Uses a simple leader-election protocol: nodes exchange heartbeats;
 // the node with the lowest ID among live peers becomes leader.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_bizsite.go — the small-business website that VayuPress can serve at

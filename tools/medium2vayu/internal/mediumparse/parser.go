@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package mediumparse parses Medium HTML export archives into articles.
 // Medium exports a ZIP file containing individual HTML files, one per post.
 // Each file has the post's title in <h1>, publication date in a <time> element,

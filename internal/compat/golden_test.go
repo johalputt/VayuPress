@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package compat contains golden-file compatibility tests.
 // Any change to a Stable schema or contract must produce a deliberate golden update.
 // See docs/compatibility/stability-matrix.md for stability levels.

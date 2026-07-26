@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package governance implements the VayuPress RFC and constitutional voting system.
 // Any maintainer can open an RFC; acceptance requires 2/3 majority of active voters.
 package governance

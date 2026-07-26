@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package auth provides API key middleware, CSRF, rate limiting, Argon2id helpers,
 // and the TTL bucket sweeper that prevents unbounded memory growth (ADR-0021/P9).
 package auth

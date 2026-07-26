@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // member_receipts.go — a member's own payment history on /members/account.

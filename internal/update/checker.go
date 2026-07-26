@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package update implements VayuPress's secure, check-only + signature-verified
 // self-update system. The HTTP layer is read-only (check for updates); the
 // binary-apply path is CLI-only, mode-gated, opt-in, and requires Ed25519

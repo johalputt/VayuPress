@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_os_editor.go — VayuOS block editor server endpoints (ADR-0068, Phase 3).

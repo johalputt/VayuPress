@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // backup_cli.go — `vayupress backup` / `vayupress restore`: operator-only

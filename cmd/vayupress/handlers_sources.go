@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_sources.go — editable source side-car for the Admin v2 editor.

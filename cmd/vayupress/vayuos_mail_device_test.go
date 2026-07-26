@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // vayuos_mail_device_test.go — device approval for VayuMail (ADR-0129).

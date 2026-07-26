@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package sandbox provides process-isolated plugin execution (ADR-0056).
 // Plugins declare a Manifest describing their capabilities; the sandbox
 // launches them as child processes and communicates via JSON-over-stdio IPC.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_os_security.go — VayuOS Members page + TOTP two-factor (ADR-0068, Phase 5).

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package vcb
 
 // version.go — the host-compatibility contract. A VCB manifest may declare

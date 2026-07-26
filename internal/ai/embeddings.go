@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package ai provides local AI inference for VayuPress.
 // All inference runs in-process using local models — no external API calls.
 package ai

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package blockrender
 
 // importer.go — converts legacy article HTML into a block document (ADR-0069

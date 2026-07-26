@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command frontmatter-guard is an example VayuPress sandbox plugin demonstrating
 // a pure GOVERNANCE CHECK with zero capabilities.
 //

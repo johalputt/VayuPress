@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_member_mailbox.go — a paid member self-provisions the VayuMail mailbox

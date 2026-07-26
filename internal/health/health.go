@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package health provides all /health/* HTTP handlers with schema versioning (ADR-0041/P12).
 package health
 

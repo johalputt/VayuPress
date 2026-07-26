@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // tor_sites.go — the PARENT (clearnet supervisor) side of "one-click add Tor

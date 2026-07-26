@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // qrcode.go — small helper to render a QR code as a CSP-safe inline data: image.

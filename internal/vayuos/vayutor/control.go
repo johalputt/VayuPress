@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package vayutor is the VayuTor subsystem: it makes every domain VayuPress
 // hosts reachable as a Tor v3 onion service, alongside its normal clearnet URL,
 // with a single click and no third party able to see who visits. VayuPress never

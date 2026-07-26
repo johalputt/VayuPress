@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package torspace supports the VayuOS "Anonymous Tor Space" (ADR-0141): a
 // second, isolated VayuPress instance the running clearnet process supervises so
 // an operator can stand up a separate .onion world with ONE click — no terminal,

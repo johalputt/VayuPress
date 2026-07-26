@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package versions stores and retrieves article revision history.
 // A snapshot is taken automatically before each update so content can be rolled back.
 package versions

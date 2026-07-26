@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package analytics
 
 // goals.go — VayuAnalytics conversion goals.

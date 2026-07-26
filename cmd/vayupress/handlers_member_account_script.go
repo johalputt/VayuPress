@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_member_account_script.go — the small, CSP-safe inline script that powers

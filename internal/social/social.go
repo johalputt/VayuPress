@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package social auto-shares newly published articles to social networks.
 //
 // The initial provider is Mastodon (and any Mastodon-API-compatible server, such

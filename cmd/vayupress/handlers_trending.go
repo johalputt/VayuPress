@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_trending.go — public "Trending & pinned posts" JSON endpoint.

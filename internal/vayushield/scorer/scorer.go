@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package scorer combines every VayuShield signal — static bot database match,
 // learned adaptive-database match, TLS/JA fingerprint, post-quantum key share,
 // HTTP/2 SETTINGS and header order, and User-Agent shape — into a single,

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package vayutor
 
 // health.go — VayuTor onion health tracking + alerting. The reconcile loop

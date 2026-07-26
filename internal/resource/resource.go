@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package resource provides concurrency limiters, execution watchdogs, and
 // goroutine accounting for resource governance (ADR-0055).
 package resource

@@ -43,6 +43,7 @@ jobs:
             docs/CI-GOVERNANCE.md docs/THREAT-MODEL.md
             docs/MAINTAINERS.md docs/SUSTAINABILITY.md
             docs/ETHICAL-REVIEW-PROCESS.md
+            docs/LICENSING.md docs/CRA-READINESS.md
             GOVERNANCE-CONSTITUTION.md
           )
           for f in "${REQUIRED[@]}"; do
@@ -128,15 +129,20 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - name: Check for GPL/AGPL licenses in scripts
+      - name: Verify the project license is Apache-2.0
         run: |
-          echo "Checking SPDX headers and license files..."
-          # Verify project license is Apache-2.0
           if ! grep -q "Apache License" LICENSE; then
             echo "FAIL: LICENSE file does not contain the Apache License"
             exit 1
           fi
           echo "✅ License check passed (Apache-2.0)."
+      - name: Verify every Go file carries an SPDX identifier
+        # A file with no identifier is reported as "unknown license" by every
+        # SBOM and composition scanner, which to a downstream user evaluating
+        # whether they may depend on VayuPress is indistinguishable from
+        # "proprietary". Enforced here because consistency across ~930 files
+        # survives exactly as long as something checks it.
+        run: python3 scripts/spdx-headers.py --check
 
   # ── P10: Governance self-consistency check ────────────────────────────────
   check-governance:

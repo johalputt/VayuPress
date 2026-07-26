@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package notionparse parses Notion HTML export files into articles.
 package notionparse
 

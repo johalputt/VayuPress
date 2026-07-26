@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // cachewarm.go — polite background cache warmer.
 //
 // The public render cache (CacheDir/home/index.html, posts/<slug>.html, …) is

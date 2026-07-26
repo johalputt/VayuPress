@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package httputil provides shared HTTP response/decode helpers used across
 // all handler packages. It has no dependencies on application state.
 package httputil

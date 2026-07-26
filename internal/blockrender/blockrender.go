@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package blockrender converts the Admin v3 block-editor document (a JSON array
 // of typed blocks) into sanitised HTML for storage in articles.content.
 //

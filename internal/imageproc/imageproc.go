@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package imageproc provides sovereign, dependency-free image optimization for
 // VayuPress editor uploads. It uses only the Go standard library image codecs —
 // no libvips, no CGO, no third-party scaling libraries — keeping the binary

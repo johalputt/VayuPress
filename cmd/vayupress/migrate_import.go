@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // migrate_import.go — built-in importers for Ghost (JSON export) and WordPress

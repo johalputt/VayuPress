@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package did provides Decentralized Identity (DID) authentication for VayuPress.
 // Supports did:key method using Ed25519 key pairs.
 // Challenge-response: server issues a nonce; client signs it with their DID key;

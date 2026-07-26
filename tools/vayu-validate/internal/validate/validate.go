@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package validate checks VayuPress SQLite databases for content integrity issues.
 // It reports: empty titles/slugs, invalid slug characters, duplicate slugs,
 // empty content, malformed dates, and oversized articles.

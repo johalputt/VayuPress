@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package aiassist
 
 // quality.go — reject model output that is not a draft.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package vcb
 
 // theme_manifest.go — the on-disk theme manifest ("theme.json"). A VayuPress

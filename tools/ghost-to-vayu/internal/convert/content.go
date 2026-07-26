@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package convert prepares Ghost post bodies for VayuPress.
 //
 // VayuPress stores article content as HTML and sanitizes it with bluemonday

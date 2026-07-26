@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // tor_world_sites.go — the CHILD (Tor world) side of "one-click add Tor site"

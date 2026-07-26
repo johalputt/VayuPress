@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package semantic provides vector-embedding-based semantic search for VayuPress.
 // Posts are indexed by their embedding vectors; queries find nearest neighbours
 // by cosine similarity. Uses in-memory flat scan (replace with HNSW for scale).

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package governance_test
 
 // This is the executable half of docs/governance/operational-ontology.md. It is a

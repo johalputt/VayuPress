@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package members
 
 // mailid_grants.go — the premium (vanity) mail-ID marketplace grant ledger.

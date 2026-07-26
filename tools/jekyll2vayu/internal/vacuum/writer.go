@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package vacuum writes parsed Jekyll documents into a VayuPress SQLite database.
 package vacuum
 

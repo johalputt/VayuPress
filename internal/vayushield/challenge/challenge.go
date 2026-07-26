@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package challenge implements VayuShield's escalating challenge engine.
 //
 // It is fully sovereign and stateless: challenges and session tokens are HMAC

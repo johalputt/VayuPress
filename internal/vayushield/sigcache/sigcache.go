@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package sigcache is VayuShield's Aegis L6: a fixed-memory, sharded, negative-
 // caching layer in front of the adaptive signature database's per-request
 // Lookup SELECT. Under a distributed swarm each unproven request that reaches

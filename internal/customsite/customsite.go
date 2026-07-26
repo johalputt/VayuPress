@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package customsite deploys and serves an operator-uploaded static website
 // bundle (a .zip of HTML/CSS/JS/images) at the domain root — the "custom" site
 // mode in VayuOS → Website. It exists so a site built elsewhere (by hand or with

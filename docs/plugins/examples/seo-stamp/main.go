@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command seo-stamp is an example VayuPress sandbox plugin demonstrating
 // SETTINGS ACCESS under the capability model.
 //

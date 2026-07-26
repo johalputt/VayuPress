@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // vayushield_hardening.go — safe, in-panel activation of the Tier 2 (kernel

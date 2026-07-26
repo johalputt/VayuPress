@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package mail
 
 // gravatar.go — Libravatar/Gravatar-compatible avatar lookup by hash, so other

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package signing provides Ed25519 tamper-proof signing for VayuPress articles.
 // A signature covers the canonical JSON of (id, title, body, author_id, published_at).
 package signing

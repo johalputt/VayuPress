@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package webhooks delivers outbound HTTP notifications when content changes,
 // enabling integrations with automation platforms (Zapier, n8n, Make) and
 // custom services without coupling VayuPress to any of them.

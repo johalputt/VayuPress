@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // sysstat.go — lightweight host + process resource readings for the VayuOS

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_media.go — sovereign, same-origin image hosting for the post editor.

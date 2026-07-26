@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // tor_talk_deliver.go — the INBOUND half of onion-to-onion VayuTalk delivery

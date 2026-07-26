@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package fault — escalation wires fault injection counters to the mode state machine.
 // When a named fault fires too many times within a window, the system escalates
 // to a safer operating mode automatically.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // vayuos_pgp_decrypt_test.go — the transparent-decryption hook must handle

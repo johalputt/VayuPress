@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package api
 
 // CreateArticleRequest is the JSON body for POST /api/v1/articles.

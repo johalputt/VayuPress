@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // vayuos_mail.go — VayuMail panel: compose/send, admin mail-account management,
 // and message folder actions (Junk/Trash/restore/delete). POST endpoints are
 // CSRF-protected and admin-only (mounted under the session-guarded /os group).

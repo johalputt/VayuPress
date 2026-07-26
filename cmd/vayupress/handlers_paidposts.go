@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_paidposts.go — one-time paid-post unlock (Phase 6). A reader who is a

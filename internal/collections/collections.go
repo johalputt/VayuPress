@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package collections manages Series / Collections of VayuPress articles.
 // A collection is an ordered list of articles with a title and description.
 package collections

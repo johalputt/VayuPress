@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // obfs4proxy.go — VayuPress runs the obfs4 pluggable transport ITSELF, so

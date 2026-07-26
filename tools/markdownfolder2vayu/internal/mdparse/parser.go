@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package mdparse parses Markdown files with optional YAML frontmatter into Documents.
 //
 // TODO: TOML frontmatter is not supported, only YAML (between ---).

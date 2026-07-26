@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package vayupress is the module root. Its sole purpose is to compile the
 // first-party static assets (the VayuOS admin CSS and JavaScript) into the
 // binary.

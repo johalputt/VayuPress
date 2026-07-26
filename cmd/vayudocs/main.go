@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Command vayudocs renders the VayuPress documentation tree (guides, the security
 // model, operations runbooks and every ADR) to static HTML for the GitHub Pages
 // marketing site, so vayupress.com/docs serves the same docs the running binary

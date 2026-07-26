@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package ghostdb reads posts directly from a Ghost CMS database (MySQL or SQLite).
 // It requires NO Ghost admin access — direct DB connection only.
 package ghostdb

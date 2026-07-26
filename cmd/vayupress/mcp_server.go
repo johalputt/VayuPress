@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // mcp_server.go — VayuMCP host wiring (ADR-0139). Builds the Model Context

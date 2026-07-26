@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package ws provides a WebSocket event streaming hub for VayuPress.
 // Clients subscribe via /ws; events emitted to the hub are broadcast to all
 // connected clients in real-time.

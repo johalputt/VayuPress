@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // vayuos_mail_avatar.go — per-mailbox profile pictures (≤500 KB), stored as

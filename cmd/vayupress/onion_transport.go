@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // onion_transport.go — the OUTBOUND half of onion-to-onion VayuTalk delivery

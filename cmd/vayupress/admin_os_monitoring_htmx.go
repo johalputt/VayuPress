@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_os_monitoring_htmx.go — HTMX live-refresh for the VayuOS "Monitoring"

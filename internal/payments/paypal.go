@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package payments
 
 // paypal.go — a minimal, dependency-free PayPal REST client for auto-renewing

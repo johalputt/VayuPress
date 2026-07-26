@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // content_bundle.go — VayuPress-native content bundle export/import (ADR-0141).

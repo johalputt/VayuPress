@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package bizsite
 
 // templates.go — the business-site template catalogue. Each template is a

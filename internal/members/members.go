@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package members implements reader memberships and content paywalls for
 // VayuPress.
 //

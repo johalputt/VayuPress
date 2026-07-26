@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package mail
 
 // recovery.go — account recovery for VayuMail mailboxes (ADR-0144).

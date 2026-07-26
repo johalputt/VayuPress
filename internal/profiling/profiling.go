@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package profiling exposes a rate-limited pprof handler and snapshot helpers.
 // All endpoints require auth.AllowPprof to pass (IP-based rate limit, ADR-0037).
 package profiling

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package archive provides immutable snapshot management for VayuPress.
 // Snapshots capture the database and static assets at a point in time,
 // enabling restore, audit, and historical replay.

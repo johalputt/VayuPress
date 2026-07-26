@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package mail
 
 // contacts.go — the per-mailbox address book. Every contact is owned by exactly

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package calibrate is VayuShield's Aegis L4 feedback controller: it
 // continuously tunes the challenge thresholds from observed outcomes, with no
 // operator input, so the challenge ladder stays silent-first and self-heals

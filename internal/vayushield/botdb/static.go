@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package botdb is VayuShield's bot classification database. It has two layers:
 //
 //   - A static knowledge base compiled into the binary (this file): known good

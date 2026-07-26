@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package pgp
 
 // keyenvelope.go — envelope encryption for the VayuPGP keystore's at-rest key

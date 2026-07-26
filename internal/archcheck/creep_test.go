@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // creep_test.go detects shared-abstraction creep patterns that bypass import
 // layer enforcement: global state, reflection abuse, forbidden utility symbols.
 package archcheck_test

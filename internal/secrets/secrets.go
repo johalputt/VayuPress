@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package secrets provides an encrypted-at-rest store for third-party service
 // credentials managed from the VayuOS admin panel — for example the IndexNow
 // submission key, an n8n automation webhook token, a local Ollama endpoint, or

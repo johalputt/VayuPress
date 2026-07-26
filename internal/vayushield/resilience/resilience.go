@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package resilience is VayuShield's Tier-1 (in-binary, application-layer)
 // availability defense: the cheap, O(1)-per-request primitives that let a single
 // VayuPress process shed abusive load before it reaches expensive work (TLS

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_mail_device_reset.go — trusted-device recovery (ADR-0144 Phase 2).

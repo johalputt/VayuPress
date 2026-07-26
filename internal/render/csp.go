@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package render
 
 // csp.go — single source of truth for the Content-Security-Policy and the

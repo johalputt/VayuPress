@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // email_transport.go — make the built-in VayuMail engine the delivery transport

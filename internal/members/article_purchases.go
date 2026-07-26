@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package members
 
 // article_purchases.go — per-post paid content (Phase 6).

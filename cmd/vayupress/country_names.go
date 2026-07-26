@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // country_names.go — display helpers for the VayuAnalytics dashboard.

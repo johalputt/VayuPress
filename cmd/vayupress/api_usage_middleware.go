@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // api_usage_middleware.go — VayuAPI Stage 3 (ADR-0134): per-key rate limiting

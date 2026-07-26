@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package email provides sovereign SMTP delivery for VayuPress.
 //
 // It uses only the Go standard library (net/smtp + crypto/tls) — no third-party

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // usercli.go — `vayupress user <add|list|passwd|delete>` CLI for bootstrapping

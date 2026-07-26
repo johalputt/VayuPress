@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // memlimit.go — give the Go garbage collector a memory ceiling to aim at.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package scheduler provides scheduled (future-dated) article publishing for
 // VayuPress. Posts are staged in the scheduled_posts table with a publish_at
 // timestamp; a background ticker promotes them to live articles when due by

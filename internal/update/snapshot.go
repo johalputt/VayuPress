@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package update
 
 // snapshot.go — full-site backup, export and restore.

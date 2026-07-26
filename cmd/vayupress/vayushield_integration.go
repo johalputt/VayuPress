@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // vayushield_integration.go — wires VayuShield (bot protection) and

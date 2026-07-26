@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package analytics provides privacy-first, cookieless page-view counting for
 // VayuPress.
 //

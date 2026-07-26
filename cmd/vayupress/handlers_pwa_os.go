@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // handlers_pwa_os.go — installable-app (PWA) support for the VayuOS console.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package ads implements VayuPress's activation-gated advertising surface: an
 // operator-managed catalogue of ad "slots" and a strict-CSP-safe renderer that
 // injects them into public pages.

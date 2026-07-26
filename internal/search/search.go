@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package search provides VayuFind — VayuPress's built-in, dependency-free
 // article search (ADR-0050, ADR-0101).
 //

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package outbox implements the transactional outbox relay pattern (ADR-0051).
 // The relay polls the event_outbox table, dispatches events via a caller-provided
 // function, marks them delivered, and retries failures with exponential backoff.

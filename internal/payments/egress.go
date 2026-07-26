@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package payments
 
 // egress.go — the safe fallback outbound client for the payment-gateway clients.

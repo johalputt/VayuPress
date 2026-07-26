@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package anonaudit produces an honest, verifiable report of a VayuPress
 // install's Tor-Space anonymity posture (ADR-0141): which anti-leak controls are
 // live, which residual risks remain, and — deliberately — the things software

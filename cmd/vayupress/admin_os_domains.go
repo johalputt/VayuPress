@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // admin_os_domains.go — VayuOS "Domains" surface: the VayuDomains registry

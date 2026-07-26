@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package mode — journal persists mode transitions to SQLite for cross-restart audit.
 package mode
 

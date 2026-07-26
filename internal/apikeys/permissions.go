@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package apikeys
 
 // permissions.go — the fine-grained capability model for VayuAPI keys.

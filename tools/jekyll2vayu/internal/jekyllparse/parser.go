@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Package jekyllparse parses Jekyll Markdown files into Documents.
 package jekyllparse
 

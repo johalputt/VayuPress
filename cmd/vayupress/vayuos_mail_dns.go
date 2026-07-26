@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 // vayuos_mail_dns.go — the VayuMail "DNS" tab, rebuilt for multi-domain.
