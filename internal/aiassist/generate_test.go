@@ -243,7 +243,7 @@ func TestOptionsAreSent(t *testing.T) {
 			sawTitle = true
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"<h1>T</h1><p>ok</p>"}}]}`))
 	}))
 	defer srv.Close()
 	_, _, err := GenerateOpDetail(context.Background(), srv.Client(), Backend{
@@ -341,15 +341,99 @@ func TestUnusableDoesNotRejectRealPosts(t *testing.T) {
 	}
 }
 
-func TestLooksStructured(t *testing.T) {
-	if !LooksStructured("<h1>T</h1><p>b</p>") || !LooksStructured("# T\n\nbody") {
+func TestHasHeading(t *testing.T) {
+	if !hasHeading("<h1>T</h1><p>b</p>") || !hasHeading("# T\n\nbody") {
 		t.Error("headings are structure")
 	}
-	if !LooksStructured("para one\n\npara two\n\npara three") {
-		t.Error("several paragraphs are structure")
+	// This assertion used to require the OPPOSITE, and that is exactly how a
+	// monologue reached the editor as a 1,464-word draft: a model reasoning to
+	// itself writes in paragraphs too, so paragraph count says nothing.
+	if hasHeading("para one\n\npara two\n\npara three") {
+		t.Error("paragraphs without a heading are not an article — monologue looks like this")
 	}
-	if LooksStructured("just one run-on stream of thought with no breaks at all") {
+	if hasHeading("just one run-on stream of thought with no breaks at all") {
 		t.Error("a single unbroken blob is not structure")
+	}
+	// A hashtag is not a heading.
+	if hasHeading("Follow #selfhosting for more") {
+		t.Error("a hashtag must not count as a heading")
+	}
+}
+
+// TestStartsLikeArticle is the check that actually closes the monologue hole. It
+// is a positive requirement rather than a phrase blacklist, because "Let me
+// analyze this instruction" defeated a list that already contained "let me think".
+func TestStartsLikeArticle(t *testing.T) {
+	good := []string{
+		"<h1>Title</h1><p>Body.</p>",
+		"  \n<article><h2>Part</h2></article>",
+		"```html\n<h1>Fenced</h1>",
+		"# Markdown title\n\nBody.",
+		"<p>Opens with a paragraph element.</p>",
+	}
+	for _, g := range good {
+		if !StartsLikeArticle(g) {
+			t.Errorf("should read as an article opening: %q", g)
+		}
+	}
+	bad := []string{
+		"Let me analyze this instruction. The blog engine/platform is \"Kramdown\".",
+		"This means we need to produce semantic HTML covering the topic.",
+		"Wait, let me re-check the exact wording of the request.",
+		"Okay, so the user wants an article about email.",
+		"Sure! Here is your article:",
+		"#hashtag opening",
+	}
+	for _, b := range bad {
+		if StartsLikeArticle(b) {
+			t.Errorf("should NOT read as an article opening: %q", b)
+		}
+	}
+}
+
+// TestRealMonologueFromProductionIsRefused replays the text a model actually put
+// into the editor after the first fix shipped — proof the earlier gate was too
+// weak, and a regression guard for the phrasing that beat it.
+func TestRealMonologueFromProductionIsRefused(t *testing.T) {
+	monologue := "Let me analyze this instruction. The blog engine/platform is \"Kramdown\".\n\n" +
+		"This means we need to produce semantic HTML (only the article body content, no ```" +
+		" wraps, so no markdown fence or leading code block), covering the \"why does the world " +
+		"need Kram\"? Wait, let me re-check the exact instruction.\n\n" +
+		"So the structure should be an h1, then key takeaways, then sections."
+	// It has paragraphs, so the old LooksStructured accepted it.
+	if hasHeading(monologue) {
+		t.Error("this must not read as an article — it has no heading")
+	}
+	if StartsLikeArticle(monologue) {
+		t.Error("this must not read as an article opening")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		payload, _ := json.Marshal(map[string]any{
+			"choices": []map[string]any{{"message": map[string]string{"content": "", "reasoning": monologue}}},
+		})
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+	_, _, err := GenerateOpDetail(context.Background(), srv.Client(),
+		Backend{Kind: KindOpenAI, Endpoint: srv.URL, APIKey: "k", Model: "m"}, OpDraft, "why the world needs Kram")
+	if err == nil {
+		t.Fatal("the monologue was accepted as a draft again")
+	}
+	t.Logf("refused with: %v", err)
+}
+
+// TestHeadinglessContentIsRefused: the same requirement on the normal content
+// path, where a model can equally reply with prose about the request.
+func TestHeadinglessContentIsRefused(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"Sure! Here is a long article about email with no headings whatsoever."}}]}`))
+	}))
+	defer srv.Close()
+	if _, _, err := GenerateOpDetail(context.Background(), srv.Client(),
+		Backend{Kind: KindOpenAI, Endpoint: srv.URL, APIKey: "k", Model: "m"}, OpDraft, "x"); err == nil {
+		t.Error("a headingless reply is not the requested article")
 	}
 }
 
@@ -420,5 +504,91 @@ func TestDraftPromptDemandsStructure(t *testing.T) {
 	// It must forbid the generic headings that make a post unscannable.
 	if !strings.Contains(p, `"Introduction"`) {
 		t.Error("the prompt should rule out filler headings")
+	}
+}
+
+// TestTrimToArticleSalvagesRealShapes: the salvage path matters more than the
+// refusals. The commonest reasoning-model reply is thinking FOLLOWED BY the real
+// article, and the second commonest is a chat opener before it. Both contain a good
+// draft that only needs its lead-in cut.
+func TestTrimToArticleSalvagesRealShapes(t *testing.T) {
+	cases := []struct{ name, in, wantPrefix string }{
+		{"thinking then article",
+			"Let me analyze this instruction. We need semantic HTML.\n\nOkay, here goes.\n\n<h1>Self-hosting email</h1><p>Body.</p>",
+			"<h1>Self-hosting email</h1>"},
+		{"chat opener",
+			"Sure! Here is your article:\n\n<h1>Title</h1><p>Body.</p>",
+			"<h1>Title</h1>"},
+		{"markdown after preamble",
+			"Okay, so the user wants a guide.\n\n# Real Title\n\nBody text.",
+			"# Real Title"},
+		{"already clean is untouched",
+			"<h1>Clean</h1><p>Body.</p>",
+			"<h1>Clean</h1>"},
+	}
+	for _, c := range cases {
+		got := TrimToArticle(c.in)
+		if !strings.HasPrefix(got, c.wantPrefix) {
+			t.Errorf("%s: got %q, want prefix %q", c.name, got, c.wantPrefix)
+		}
+		if !StartsLikeArticle(got) {
+			t.Errorf("%s: salvaged text should read as an article opening: %q", c.name, got)
+		}
+	}
+	// Nothing to cut to: left alone so the caller refuses it rather than mangling it.
+	blob := "Just thinking out loud with no article anywhere."
+	if TrimToArticle(blob) != blob {
+		t.Error("text with no heading must be returned unchanged")
+	}
+}
+
+// TestSalvagedDraftIsAccepted proves the end-to-end effect: a reply that is
+// thinking plus an article now yields the article instead of an error.
+func TestSalvagedDraftIsAccepted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		payload, _ := json.Marshal(map[string]any{"choices": []map[string]any{{"message": map[string]string{
+			"content": "",
+			"reasoning": "Let me analyze this instruction. The platform is Kramdown.\n\n" +
+				"<h1>Why the world needs Kram</h1><p>Direct answer first.</p><h2>Key takeaways</h2><ul><li>One.</li></ul>",
+		}}}})
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+	out, _, err := GenerateOpDetail(context.Background(), srv.Client(),
+		Backend{Kind: KindOpenAI, Endpoint: srv.URL, APIKey: "k", Model: "m"}, OpDraft, "x")
+	if err != nil {
+		t.Fatalf("an article behind a preamble should be salvaged, got: %v", err)
+	}
+	if !strings.HasPrefix(out, "<h1>Why the world needs Kram</h1>") {
+		t.Errorf("the preamble should be gone, got %q", out)
+	}
+	if strings.Contains(out, "Let me analyze") {
+		t.Error("the model's thinking must not survive into the draft")
+	}
+}
+
+// TestExcludeReasoningIsSentWhenAsked: suppressing the reasoning stream is what
+// makes a reasoning model answer in "content" at all, so it must reach the wire.
+func TestExcludeReasoningIsSentWhenAsked(t *testing.T) {
+	var got map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"<h1>T</h1><p>b</p>"}}]}`))
+	}))
+	defer srv.Close()
+	_, _, _ = GenerateOpDetail(context.Background(), srv.Client(),
+		Backend{Kind: KindOpenAI, Endpoint: srv.URL, APIKey: "k", Model: "m", ExcludeReasoning: true}, OpDraft, "x")
+	rs, ok := got["reasoning"].(map[string]interface{})
+	if !ok || rs["exclude"] != true {
+		t.Errorf("reasoning exclusion not sent: %v", got["reasoning"])
+	}
+	// And it must be absent otherwise, since a strict gateway rejects unknown fields.
+	got = nil
+	_, _, _ = GenerateOpDetail(context.Background(), srv.Client(),
+		Backend{Kind: KindOpenAI, Endpoint: srv.URL, APIKey: "k", Model: "m"}, OpDraft, "x")
+	if _, present := got["reasoning"]; present {
+		t.Error("the reasoning field must not be sent to providers that were not opted in")
 	}
 }

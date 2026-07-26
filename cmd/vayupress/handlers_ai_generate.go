@@ -218,7 +218,15 @@ func (a *App) resolveAIBackend(ctx context.Context, provider, model string) (aia
 		if m == "" {
 			return aiassist.Backend{}, false, "Enter a model name for this provider."
 		}
-		return aiassist.Backend{Kind: aiassist.KindOpenAI, Endpoint: endpoint, APIKey: key, Model: m}, true, ""
+		// OpenRouter accepts a request field that suppresses the separate reasoning
+		// stream, which makes a reasoning model answer in "content" like any other.
+		// That is the difference between getting an article and getting the model's
+		// thinking. It is set only for OpenRouter because a strict OpenAI-compatible
+		// gateway rejects request fields it does not recognise.
+		return aiassist.Backend{
+			Kind: aiassist.KindOpenAI, Endpoint: endpoint, APIKey: key, Model: m,
+			ExcludeReasoning: provider == secrets.ProviderOpenRouter,
+		}, true, ""
 	default:
 		return aiassist.Backend{}, false, "Unknown provider."
 	}

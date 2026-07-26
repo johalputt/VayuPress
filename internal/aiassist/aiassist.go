@@ -60,6 +60,11 @@ type Backend struct {
 	Temperature float64
 	// MaxTokens caps the completion length. Zero sends no cap.
 	MaxTokens int
+	// ExcludeReasoning asks the provider not to return a separate reasoning stream,
+	// so a reasoning model answers in "content" like any other. OpenRouter honours
+	// this; it is only set for providers known to accept it, because a strict
+	// OpenAI-compatible gateway rejects unknown request fields outright.
+	ExcludeReasoning bool
 	// Referer and Title are optional attribution headers. OpenRouter shows them
 	// on the operator's own activity dashboard, which is how a self-hoster tells
 	// their site's spend apart from everything else on the same key.
@@ -275,6 +280,9 @@ func generateOpenAI(ctx context.Context, hc *http.Client, b Backend, prompt stri
 	if b.MaxTokens > 0 {
 		payload["max_tokens"] = b.MaxTokens
 	}
+	if b.ExcludeReasoning {
+		payload["reasoning"] = map[string]interface{}{"exclude": true}
+	}
 	body, _ := json.Marshal(payload)
 	endpoint := strings.TrimRight(strings.TrimSpace(b.Endpoint), "/")
 	if endpoint == "" {
@@ -358,6 +366,13 @@ func generateOpenAI(ctx context.Context, hc *http.Client, b Backend, prompt stri
 		Model:     strings.TrimSpace(out.Model),
 	}
 	text := strings.TrimSpace(out.Choices[0].Message.Content)
+	if text != "" {
+		clean, err := sanitizeDraft(text)
+		if err != nil {
+			return "", meta, err
+		}
+		return clean, meta, nil
+	}
 	if text == "" {
 		// Reasoning models put their answer in "reasoning". Sometimes that IS the
 		// finished post; often it is the model talking to itself. Only a
@@ -365,13 +380,11 @@ func generateOpenAI(ctx context.Context, hc *http.Client, b Backend, prompt stri
 		// thought as a 2,000-word draft is worse than reporting the failure — the
 		// author has to read it all to discover it is not a post.
 		if r := strings.TrimSpace(out.Choices[0].Message.Reasoning); r != "" {
-			if bad, why := Unusable(r); bad {
-				return "", meta, providerErr(0, "%s", why)
+			clean, err := sanitizeDraft(r)
+			if err != nil {
+				return "", meta, err
 			}
-			if !LooksStructured(r) {
-				return "", meta, providerErr(0, "%s", "this model returned its thinking rather than a finished post — pick a model that returns a completion, or run it again")
-			}
-			return r, Meta{Truncated: meta.Truncated, Model: meta.Model, FromReasoning: true}, nil
+			return clean, Meta{Truncated: meta.Truncated, Model: meta.Model, FromReasoning: true}, nil
 		}
 		// Genuinely empty. This MUST be an error: returning "" with a nil error is
 		// indistinguishable from success, so the caller inserts nothing while the
@@ -384,12 +397,42 @@ func generateOpenAI(ctx context.Context, hc *http.Client, b Backend, prompt stri
 		}
 		return "", meta, providerErr(0, "%s", reason)
 	}
-	// The main path gets the same scrutiny. A model that leaks special tokens or
-	// emits script salad does so in "content" just as readily as in "reasoning".
-	if bad, why := Unusable(text); bad {
-		return "", meta, providerErr(0, "%s", why)
-	}
 	return text, meta, nil
+}
+
+// sanitizeDraft turns raw model output into a draft, or explains why it is not one.
+//
+// Salvage comes before judgement on purpose: a reply is usually either an article,
+// or an article with a lead-in that can simply be cut. Only what survives both is
+// refused, so the author loses a draft solely when there was never one there.
+func sanitizeDraft(raw string) (string, error) {
+	// Garbage first: leaked tokens and script salad disqualify a reply wherever they
+	// appear, so there is nothing to salvage.
+	if bad, why := unusableGarbage(raw); bad {
+		return "", providerErr(0, "%s", why)
+	}
+	// Then salvage, and only judge what is left. Judging first rejected a perfectly
+	// good article merely because the model cleared its throat before writing it.
+	text := TrimToArticle(raw)
+	if bad, why := Unusable(text); bad {
+		return "", providerErr(0, "%s", why)
+	}
+	if !hasHeading(text) {
+		// No heading anywhere. The prompt demands an <h1>, so this is prose about the
+		// request or a wall of text, not the article. Refusing costs the occasional
+		// heading-less draft; accepting costs the author the time to read a monologue
+		// before discovering it is not a post.
+		return "", providerErr(0, "%s",
+			"the model replied without a single heading, so it never wrote the structured article that was asked for — "+
+				"reasoning models often do this; try a model that returns a normal completion")
+	}
+	// The trim guarantees this for anything with a heading, so a failure here means
+	// the heading sits somewhere a cut could not reach.
+	if !StartsLikeArticle(text) {
+		return "", providerErr(0, "%s",
+			"the model wrapped its article in commentary that could not be separated cleanly — try again, or use a different model")
+	}
+	return text, nil
 }
 
 // snippet reduces an unexpected provider body to something safe and short enough

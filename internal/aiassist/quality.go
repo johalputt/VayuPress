@@ -37,9 +37,12 @@ var brokenTokenPatterns = []*regexp.Regexp{
 // only treated as a failure when they open the text, because a post could
 // legitimately contain such a phrase further in.
 var monologueOpeners = []string{
-	"we need to write", "we need to create", "the user wants", "the user is asking",
-	"okay, so the user", "okay, the user", "first, i need to", "let me think",
-	"i should write", "the task is to write", "let's see, the user",
+	"we need to write", "we need to create", "we need to produce", "the user wants",
+	"the user is asking", "the user asked", "okay, so", "okay, the user", "alright, so",
+	"first, i need to", "first, let me", "let me think", "let me analyze", "let me analyse",
+	"let me start", "let me re-check", "let me first", "i should write", "i need to write",
+	"the task is to write", "the instruction says", "let's see", "hmm,", "wait,",
+	"looking at the instruction", "based on the instruction", "the blog engine",
 }
 
 // scriptRanges are the script families counted for the salad check. Latin is
@@ -75,16 +78,10 @@ const (
 // It is deliberately conservative. Every rule here describes output that is
 // unambiguously not prose, because a false positive throws away a real draft.
 func Unusable(text string) (bool, string) {
+	if bad, why := unusableGarbage(text); bad {
+		return bad, why
+	}
 	t := strings.TrimSpace(text)
-	if t == "" {
-		return true, "the model returned an empty draft"
-	}
-	for _, re := range brokenTokenPatterns {
-		if m := re.FindString(t); m != "" {
-			return true, "the model leaked internal tokens such as " + m +
-				" instead of writing prose — this usually means that model is serving broken output, so try a different one"
-		}
-	}
 	// Monologue check against the opening of the text only.
 	head := strings.ToLower(t)
 	if len(head) > 300 {
@@ -95,6 +92,25 @@ func Unusable(text string) (bool, string) {
 		if strings.HasPrefix(head, opener) {
 			return true, "the model returned its own thinking (\"" + firstWords(t, 8) +
 				"…\") instead of the post — try a different model, or run it again"
+		}
+	}
+	return false, ""
+}
+
+// unusableGarbage covers the failures that are garbage NO MATTER where in the reply
+// they appear: leaked control tokens and script salad. It is separated from the
+// monologue check because the two must run at different times — garbage disqualifies
+// the whole reply, while a monologue is only fatal once salvage has failed to find an
+// article behind it.
+func unusableGarbage(text string) (bool, string) {
+	t := strings.TrimSpace(text)
+	if t == "" {
+		return true, "the model returned an empty draft"
+	}
+	for _, re := range brokenTokenPatterns {
+		if m := re.FindString(t); m != "" {
+			return true, "the model leaked internal tokens such as " + m +
+				" instead of writing prose — this usually means that model is serving broken output, so try a different one"
 		}
 	}
 	if n, names := distinctScripts(t); n >= scriptSaladMin {
@@ -135,25 +151,67 @@ func distinctScripts(s string) (int, []string) {
 	return len(names), names
 }
 
-// LooksStructured reports whether text carries the shape of an article — a
-// heading, or several paragraphs. Used to decide whether a reasoning model's
-// output is a post or a stream of thought.
-func LooksStructured(text string) bool {
+// hasHeading reports whether text contains an HTML or Markdown heading — the test
+// for "is this an article".
+//
+// An earlier version of this check also accepted "several blank-line-separated
+// paragraphs", which was worthless: a model reasoning to itself writes in
+// paragraphs too, so a monologue passed and was inserted as a 1,464-word draft. A
+// heading is the one thing the prompt demands and a stream of thought never has.
+func hasHeading(text string) bool {
+	lower := strings.ToLower(text)
+	for _, tag := range []string{"<h1", "<h2", "<h3"} {
+		if strings.Contains(lower, tag) {
+			return true
+		}
+	}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		// "#hashtag" is not a heading; ATX headings need a space after the hashes.
+		if strings.HasPrefix(line, "#") {
+			rest := strings.TrimLeft(line, "#")
+			if rest != line && strings.HasPrefix(rest, " ") && strings.TrimSpace(rest) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// StartsLikeArticle reports whether the text opens the way an article does — with
+// its title or a block element — rather than with a sentence about the task.
+//
+// This is the load-bearing check for reasoning-field output, and it is framed as a
+// requirement rather than a blacklist on purpose. Listing the ways a model can
+// start talking to itself ("we need to write", "let me analyse", "okay, so",
+// "wait, let me re-check") is endless; requiring the shape we asked for is one
+// rule that covers all of them.
+func StartsLikeArticle(text string) bool {
 	t := strings.TrimSpace(text)
+	// Skip a leading Markdown code fence, which some models wrap output in.
+	t = strings.TrimPrefix(t, "```html")
+	t = strings.TrimPrefix(t, "```")
+	t = strings.TrimSpace(t)
 	if t == "" {
 		return false
 	}
 	lower := strings.ToLower(t)
-	if strings.Contains(lower, "<h1") || strings.Contains(lower, "<h2") || strings.Contains(lower, "<h3") {
-		return true
-	}
-	for _, line := range strings.Split(t, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+	for _, opener := range []string{"<h1", "<h2", "<article", "<section", "<p>", "<p ", "<div", "<ul", "<ol", "<table", "<!doctype", "<html"} {
+		if strings.HasPrefix(lower, opener) {
 			return true
 		}
 	}
-	// Several blank-line-separated paragraphs also count as structure.
-	return strings.Count(t, "\n\n") >= 2
+	// A Markdown heading on the first line.
+	first := t
+	if i := strings.IndexByte(t, '\n'); i >= 0 {
+		first = t[:i]
+	}
+	first = strings.TrimSpace(first)
+	if strings.HasPrefix(first, "#") {
+		rest := strings.TrimLeft(first, "#")
+		return rest != first && strings.HasPrefix(rest, " ") && strings.TrimSpace(rest) != ""
+	}
+	return false
 }
 
 // LooksLikeHTML reports whether text is HTML rather than Markdown, so the caller
@@ -191,4 +249,50 @@ func sortStrings(s []string) {
 			s[j], s[j-1] = s[j-1], s[j]
 		}
 	}
+}
+
+// TrimToArticle drops any preamble before the article actually starts.
+//
+// This is the salvage path, and it matters more than the refusals: the most common
+// reasoning-model shape is thinking FOLLOWED BY the real post, and the second most
+// common is a chat opener ("Sure! Here is your article:") before it. Both contain a
+// perfectly good draft that only needs its lead-in removed, so cutting to the first
+// heading turns two failures into successes.
+//
+// It only ever cuts — it never rewrites — and it does nothing when the text already
+// starts correctly or has no heading to cut to.
+func TrimToArticle(text string) string {
+	t := strings.TrimSpace(text)
+	if t == "" || StartsLikeArticle(t) {
+		return t
+	}
+	if !hasHeading(t) {
+		return t // nothing to cut to; the caller refuses it
+	}
+	// Prefer an HTML h1/h2, then a Markdown ATX heading.
+	best := -1
+	lower := strings.ToLower(t)
+	for _, tag := range []string{"<h1", "<h2"} {
+		if i := strings.Index(lower, tag); i >= 0 && (best < 0 || i < best) {
+			best = i
+		}
+	}
+	if best < 0 {
+		offset := 0
+		for _, line := range strings.Split(t, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "#") {
+				rest := strings.TrimLeft(trimmed, "#")
+				if rest != trimmed && strings.HasPrefix(rest, " ") && strings.TrimSpace(rest) != "" {
+					best = offset + strings.Index(line, trimmed)
+					break
+				}
+			}
+			offset += len(line) + 1
+		}
+	}
+	if best <= 0 {
+		return t
+	}
+	return strings.TrimSpace(t[best:])
 }

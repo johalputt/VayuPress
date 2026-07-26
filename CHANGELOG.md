@@ -6,6 +6,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.48] — 2026-07-26
+
+Closes the reasoning-model hole properly. v3.15.47 refused *some* monologues by
+matching known opening phrases; "Let me analyze this instruction…" walked straight
+through a list that already contained "let me think", and a 1,464-word monologue
+landed in the editor again.
+
+### Fixed
+- **The monologue check no longer relies on recognising phrases.** Enumerating the
+  ways a model can start talking to itself does not converge. The rule is now the
+  shape that was actually asked for: a draft must contain a heading, and must open
+  with its title or a block element rather than a sentence about the task. That one
+  requirement covers every phrasing, including ones nobody has seen yet.
+
+  The old structure test accepted "several blank-line-separated paragraphs" as
+  evidence of an article, which was worthless — reasoning prose is paragraphed too.
+  The test that asserted that behaviour is now inverted, with the real monologue
+  from the editor replayed as a regression case.
+
+### Added
+- **Thinking followed by a real article is now salvaged, not refused.** This is the
+  commonest reasoning-model reply, and the second commonest is a chat opener ("Sure!
+  Here is your article:") before the post. Both contain a perfectly good draft that
+  only needs its lead-in removed, so everything before the first heading is cut and
+  the article is kept. Salvage runs *before* judgement — an earlier ordering
+  rejected a good article merely because the model cleared its throat first.
+
+- **OpenRouter is now asked to suppress the reasoning stream**, which makes a
+  reasoning model answer in the normal completion field instead of thinking out
+  loud. This addresses the cause rather than the symptom. Sent only to OpenRouter,
+  because a strict OpenAI-compatible gateway rejects request fields it does not
+  recognise.
+
+---
+
 ## [3.15.47] — 2026-07-26
 
 Third fix in the draft-generation chain, shipped on its own for the same reason:
