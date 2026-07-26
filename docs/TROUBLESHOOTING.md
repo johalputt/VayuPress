@@ -274,6 +274,46 @@ main `<domain>` vhost to your CDN's published IP ranges (allow those, deny the
 rest); `talk.<domain>` stays open. The relay itself is safe exposed: it is
 auth-gated, server-side rate-limited, and size-capped.
 
+## VayuMail Sign-In Issues
+
+### Someone forgot their mailbox password
+
+Send them to `https://<your-domain>/mail/recover`. It is linked from every
+sign-in page as *"Forgot your mailbox password?"*.
+
+Which path works depends on what they enrolled **before** they were locked out:
+
+| They have | Send them to |
+|-----------|--------------|
+| A recovery address | `/mail/recover` |
+| Recovery codes | `/mail/recover/code` |
+| A phone still syncing the mailbox | the mobile app's own reset |
+| Nothing | `/mail/recover/ask` — then approve it in VayuOS |
+
+Two things that look like faults and are not:
+
+- **"Check your inbox" for an address that does not exist.** The response is
+  identical for a real mailbox and a typo, by design — the endpoint must not
+  reveal which addresses exist. If nothing arrives, check the spelling first.
+- **Every phone needs re-enrolling after a reset.** A reset revokes all app
+  passwords deliberately, so a stale credential cannot survive the recovery.
+
+To see the state of an install from the host:
+
+```bash
+vayupress mail unrecoverable                     # mailboxes with no factor at all
+vayupress mail recovery someone@yourdomain.com   # what one mailbox has enrolled
+```
+
+Full guide, including the last-administrator break-glass:
+[docs/MAIL-RECOVERY.md](MAIL-RECOVERY.md).
+
+### The recovery address option is missing or disabled
+
+Expected in a **Tor Space**. It needs clearnet egress, which a Tor Space refuses
+by design, so it is disabled and labelled rather than failing at the moment it is
+needed. Recovery codes and the mobile-app path both work there.
+
 ## Logs
 
 ```bash

@@ -2125,6 +2125,9 @@
 .vp-os .login-remember { display: flex; align-items: center; gap: 0.55rem; font-size: 0.85rem; color: var(--text-2); cursor: pointer; user-select: none; }
 .vp-os .login-remember input { width: 15px; height: 15px; accent-color: var(--brand); cursor: pointer; margin: 0; }
 .vp-os .login-submit { margin-top: 0.4rem; justify-content: center; width: 100%; padding: 0.72rem 1rem; font-size: 0.95rem; border-radius: 10px; }
+.vp-os .login-recover { margin: 1.15rem 0 0; font-size: 0.82rem; text-align: center; }
+.vp-os .login-recover a { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--border); padding-bottom: 1px; transition: color 0.15s ease, border-color 0.15s ease; }
+.vp-os .login-recover a:hover { color: var(--brand); border-bottom-color: var(--brand); }
 .vp-os .login-footer { margin-top: 1.4rem; font-size: 0.75rem; color: var(--text-3); text-align: center; }
 .vp-os .login-error {
   padding: 0.7rem 0.9rem;

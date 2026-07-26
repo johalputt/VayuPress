@@ -1999,6 +1999,7 @@ func osLoginPage(prefillEmail, errMsg, next string) string {
       </label>
       <button type="submit" class="btn btn--primary login-submit">Sign in</button>
     </form>
+    <p class="login-recover"><a href="/mail/recover">Forgot your mailbox password?</a></p>
   </div>
   <div class="login-footer">Sovereign · zero-telemetry · yours completely</div>`)
 }

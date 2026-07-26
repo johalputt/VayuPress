@@ -72,6 +72,7 @@ func (a *App) handleMemberSigninPage(w http.ResponseWriter, r *http.Request) {
         </div>
         <p class="su-notice su-notice--err" id="vm-msg" role="alert" hidden></p>
         <button class="su-btn su-btn--ghost" id="vm-btn" type="button">Sign in →</button>
+        <p class="su-foot"><a class="su-link" href="/mail/recover">Forgot your mailbox password?</a></p>
       </div>
     </details>`
 	}

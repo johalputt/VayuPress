@@ -140,7 +140,8 @@ const PortalJS = `(function () {
       code +
       '<button class="vp-portal-btn" type="submit">Sign in</button>' +
       '</form>' +
-      '<p class="vp-portal-foot"><button type="button" class="vp-portal-link" data-vp-go="signin">Use a sign-in link instead</button></p>' +
+      '<p class="vp-portal-foot"><button type="button" class="vp-portal-link" data-vp-go="signin">Use a sign-in link instead</button>' +
+      ' · <a class="vp-portal-link" href="/mail/recover">Forgot your password?</a></p>' +
       '<div class="vp-portal-msg" aria-live="polite"></div>';
   }
 
@@ -153,7 +154,7 @@ const PortalJS = `(function () {
     if (m.mail) {
       mailBtn = m.mail.console
         ? '<a class="vp-portal-btn" href="/os">Open VayuOS console</a>'
-        : '<a class="vp-portal-btn" href="/os/vayuos/mail/inbox">Open VayuMail</a>';
+        : '<a class="vp-portal-btn" href="/os/vayumail/inbox">Open VayuMail</a>';
     }
     var avatarInner = m.avatar
       ? '<img class="vp-portal-avatar-img" src="' + esc(m.avatar) + '" alt="">'
@@ -387,7 +388,7 @@ const PortalJS = `(function () {
             '<div class="vp-portal-plan"><div class="vp-portal-plan-label">Address</div>' +
             '<div class="vp-portal-plan-name">' + esc(d.address) + '</div></div>' +
             '<p class="vp-portal-foot">' + (d.quota_mb ? esc(String(d.quota_mb)) + ' MB storage' : 'Unlimited storage') + ' · PGP encryption + WKD · VayuTalk secure chat included.</p>' +
-            '<a class="vp-portal-btn" href="/os/vayuos/mail/inbox">Open VayuMail</a>' +
+            '<a class="vp-portal-btn" href="/os/vayumail/inbox">Open VayuMail</a>' +
             '<p class="vp-portal-foot">On your phone, open the VayuMail app and sign in with this address to finish device setup — that also unlocks end-to-end encrypted VayuTalk chat.</p>';
           wireActivateForms();
           return;

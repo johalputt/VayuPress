@@ -6,6 +6,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Recovery is now reachable from the pages where people get stuck.** The whole
+  flow shipped in v3.15.39–43 complete and undiscoverable: `/mail/recover` and its
+  three sibling pages cross-linked to each other, and not one sign-in page pointed
+  at any of them. The person the feature was built for — locked out, at a password
+  prompt — had no way to learn it existed. *"Forgot your mailbox password?"* now
+  appears on the member sign-in page, the `/os` console sign-in page, and the
+  VayuPortal widget's VayuMail view, which are the three places a mailbox password
+  is typed. A test asserts the link direction, since the absence of a link is
+  exactly the kind of gap that nothing else fails on.
+
+- **The portal widget's "Open VayuMail" button was a dead link** in both places it
+  rendered — the signed-in account view and the mailbox-ready view after a
+  purchase — pointing at `/os/vayuos/mail/inbox`, which has never been a route.
+  Someone who had just paid for a mailbox got a 404 as their first click. Both now
+  point at `/os/vayumail/inbox`, and a test pins the path to the registered route.
+
+### Changed
+- **Recovery is documented** — `docs/MAIL-RECOVERY.md`: what to enrol before
+  anyone is locked out, all five ways back in, what a reset revokes and why every
+  device has to be re-enrolled afterwards, and the two behaviours that look like
+  faults but are deliberate (an identical "check your inbox" for addresses that do
+  not exist, and the recovery-address option being disabled in a Tor Space).
+  Linked from the README's VayuMail section and docs index, with a
+  sign-in-troubleshooting section in `docs/TROUBLESHOOTING.md` and the feature
+  named on vayupress.com.
+
+---
+
 ## [3.15.43] — 2026-07-26
 
 Completes the VayuMail account-recovery track (ADR-0144 Phase 2). One release for
