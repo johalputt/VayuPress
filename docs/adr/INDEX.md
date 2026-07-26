@@ -9,6 +9,7 @@
 
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
+| [ADR-0144](ADR-0144-vayumail-account-recovery.md) | VayuMail Account Recovery | Accepted | Core | 2026-07-26 |
 | [ADR-0143](ADR-0143-tor-space-anonymity-model.md) | Tor Space Anonymity Model & Threat Boundary | Accepted | Core | 2026-07-24 |
 | [ADR-0142](ADR-0142-vayutalk-onion-to-onion-delivery.md) | VayuTalk Onion-to-Onion Delivery (Tor-World Federation) | Accepted | Core | 2026-07-20 |
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
