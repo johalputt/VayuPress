@@ -425,6 +425,11 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/sent", a.handleVayuOSSent)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/compose", a.handleVayuOSCompose)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts", a.handleVayuOSAccounts)
+		// PUBLIC key download only. There is no private-key counterpart to this
+		// route and there must never be one — an administrator has no business
+		// holding another mailbox's private key. The owner's own device fetches it
+		// via /api/v1/members/vayumail-privkey under the MAIL-SYNC device scope.
+		pr.Get("/os/vayumail/accounts/pubkey", a.handleVayuOSAccountPubKey)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/connect", a.handleVayuOSConnect)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/send", a.handleVayuOSSend)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/draft", a.handleVayuOSDraft)

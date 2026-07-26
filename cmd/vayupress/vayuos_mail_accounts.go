@@ -15,6 +15,7 @@ import (
 	avatarpkg "github.com/johalputt/vayupress/internal/avatar"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
+	"github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
 
 // vayuos_mail_accounts.go — the enterprise, HTMX-driven Accounts surface.
@@ -281,6 +282,102 @@ func vmStatTile(value, label, tone string) string {
 // summary (address, role, status, 2FA, storage) with every control revealed on
 // expand. Inline controls are HTMX; the prompt-driven ones keep their data-*
 // hooks for admin-os-mail.js.
+// vayuCardPGP renders a mailbox's PGP identity inside its own account card:
+// fingerprint, the armored PUBLIC key ready to copy or download, and the Web Key
+// Directory URL at which correspondents' clients look for it.
+//
+// PUBLIC HALF ONLY. The private key is never rendered here, never returned by
+// the endpoints this card calls, and never leaves the server for an admin — an
+// administrator managing somebody else's mailbox has no business holding that
+// mailbox's private key, and a panel that displayed it would turn one
+// compromised admin session into every mailbox's mail, retroactively. The only
+// path that releases a private key is the owner's own device
+// (/api/v1/members/vayumail-privkey), which authenticates as the mailbox itself
+// under the MAIL-SYNC device scope. Article: a key you can read on a web page is
+// a key that is in a browser cache, a screenshot, and a support ticket.
+func (a *App) vayuCardPGP(ac vmail.Account) string {
+	if a.vayuPGP == nil {
+		return ""
+	}
+	esc := html.EscapeString
+	email := esc(ac.Email)
+
+	pk, err := a.vayuPGP.GetPublicKey(ac.Email)
+	if err != nil || pk == nil || strings.TrimSpace(pk.Armor) == "" {
+		// A mailbox created before VayuPGP was enabled has no key yet. Say so
+		// plainly rather than showing an empty box that looks broken.
+		return `<div class="vm-acct__sub"><span class="field-label">PGP public key</span>` +
+			`<span class="muted text-sm">No key yet for this mailbox. Keys are generated automatically on account creation; ` +
+			`enable VayuPGP and re-create or re-save this account to mint one.</span></div>`
+	}
+
+	wkd := pgp.WKDURL(ac.Email)
+	wkdRow := ""
+	if wkd != "" {
+		wkdRow = `<div class="vm-row"><span class="field-label">Web Key Directory</span>` +
+			`<code class="mono text-xs vm-pgp__wkd">` + esc(wkd) + `</code></div>` +
+			`<span class="text-xs muted">Correspondents' clients (GnuPG, Thunderbird, the VayuMail app) fetch this ` +
+			`automatically — no key exchange needed. It answers once <code>openpgpkey.` +
+			esc(emailDomain(ac.Email, a.vayuMail.Config().Domain)) + `</code> is pointed at this server ` +
+			`(<code>scripts/setup-openpgpkey-subdomain.sh</code>).</span>`
+	}
+
+	return `<div class="vm-acct__sub vm-pgp">` +
+		`<span class="field-label">PGP public key</span>` +
+		`<div class="vm-row"><span class="field-label">Fingerprint</span>` +
+		`<code class="mono text-xs">` + esc(pk.Fingerprint) + `</code></div>` +
+		`<textarea class="input vm-pgp__armor mono text-xs" readonly rows="6" ` +
+		`aria-label="PGP public key for ` + email + `" data-pgp-armor>` + esc(pk.Armor) + `</textarea>` +
+		`<div class="vm-row">` +
+		`<button type="button" class="btn btn--sm" data-pgp-copy>Copy public key</button>` +
+		`<a class="btn btn--sm btn--ghost" href="/os/vayumail/accounts/pubkey?email=` + qparam(ac.Email) +
+		`" download>Download .asc</a>` +
+		`</div>` +
+		wkdRow +
+		`<span class="text-xs muted">This is the <strong>public</strong> half — safe to publish anywhere. ` +
+		`The private key is never shown here and is not downloadable by an administrator; only the ` +
+		`mailbox's own signed-in device can retrieve it.</span>` +
+		`</div>`
+}
+
+// handleVayuOSAccountPubKey serves a mailbox's armored PUBLIC key as a
+// downloadable .asc. Admin-only, and public material by definition — there is no
+// private-key equivalent of this route and there must never be one.
+func (a *App) handleVayuOSAccountPubKey(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		a.denyAccess(w, r, "/os/vayumail/inbox")
+		return
+	}
+	if a.vayuPGP == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "vayupgp-disabled", "PGP is not available", "")
+		return
+	}
+	email := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("email")))
+	if email == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "email is required", "")
+		return
+	}
+	pk, err := a.vayuPGP.GetPublicKey(email)
+	if err != nil || pk == nil {
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "No PGP key for that mailbox", "")
+		return
+	}
+	// Filename from the address, stripped to characters that cannot break out of
+	// a Content-Disposition value.
+	safe := strings.Map(func(rn rune) rune {
+		switch {
+		case rn >= 'a' && rn <= 'z', rn >= '0' && rn <= '9', rn == '.', rn == '-', rn == '_', rn == '@':
+			return rn
+		default:
+			return '_'
+		}
+	}, email)
+	w.Header().Set("Content-Type", "application/pgp-keys; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+safe+`.asc"`)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write([]byte(pk.Armor))
+}
+
 func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	esc := html.EscapeString
 	email := esc(ac.Email)
@@ -411,6 +508,7 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	c.WriteString(a.vayuCardVacation(ctx, ac))
 	c.WriteString(a.vayuCardAliases(ctx, ac))
 	c.WriteString(a.vayuCardRecovery(ctx, ac.Email))
+	c.WriteString(a.vayuCardPGP(ac))
 	c.WriteString(a.vayuCardFilters(ctx, ac))
 	// Profile picture: direct upload (≤500 KB) + optional remove. HTMX multipart,
 	// swapping the whole list so the new avatar shows immediately.

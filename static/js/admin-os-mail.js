@@ -986,4 +986,41 @@
       if (e.target && e.target.id === 'vm-inbox-body') focusIdx = -1;
     });
   })();
+
+  // ── PGP public key: copy to clipboard ──────────────────────────────────────
+  // Delegated from document so it keeps working after an HTMX swap replaces the
+  // whole accounts list (every account action re-renders #vm-accounts-list, so a
+  // handler bound to the button itself would be discarded on the first save).
+  //
+  // Only ever touches the PUBLIC key: the textarea it reads is rendered from
+  // GetPublicKey, and no private-key material exists anywhere on this page.
+  (function () {
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('[data-pgp-copy]') : null;
+      if (!btn) return;
+      var wrap = btn.closest('.vm-pgp');
+      var ta = wrap ? wrap.querySelector('[data-pgp-armor]') : null;
+      if (!ta) return;
+      var text = ta.value || '';
+      var done = function (msg) {
+        var was = btn.textContent;
+        btn.textContent = msg;
+        setTimeout(function () { btn.textContent = was; }, 2000);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          done('Copied');
+        }).catch(function () {
+          // The clipboard API needs a secure context and a permission some
+          // browsers refuse. Select the text so Ctrl-C still works rather than
+          // leaving a button that silently did nothing.
+          ta.focus(); ta.select();
+          done('Press Ctrl-C');
+        });
+      } else {
+        ta.focus(); ta.select();
+        done('Press Ctrl-C');
+      }
+    });
+  })();
 })();

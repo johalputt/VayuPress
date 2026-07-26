@@ -5906,6 +5906,37 @@
 .vp-os .vm-card-fwd { margin: 0; align-items: center; }
 .vp-os details.vm-acct__sub > summary .field-label { margin: 0; }
 
+/* PGP public key block inside a mailbox card. The armour is shown in a readonly
+   textarea rather than a <pre>: it scrolls in a fixed height, and select-all
+   still works when the clipboard API is unavailable (insecure context, or a
+   browser that refuses the permission) — which is the copy fallback. */
+.vp-os .vm-pgp__armor {
+  width: 100%;
+  resize: vertical;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  margin-bottom: var(--sp-2);
+}
+.vp-os .vm-pgp > .vm-row { align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.vp-os .vm-pgp__wkd { word-break: break-all; }
+
+/* In the VayuPGP key table the armour is only a clipboard source, not something
+   to read, so it is taken out of flow. clip-path rather than display:none —
+   a hidden element's value is still readable by script, but a display:none
+   textarea cannot be select()ed, which is the fallback when the clipboard API
+   is refused. */
+.vp-os .vm-pgp__armor.hidden-armor {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    VayuAPI — API Keys console (fine-grained key manager)
    Every rule is CSP-safe (no inline styles): the handlers emit only class

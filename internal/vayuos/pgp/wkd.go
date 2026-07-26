@@ -83,6 +83,27 @@ func wkdLocalHash(localpart string) string {
 	return zbase32(sum[:])
 }
 
+// WKDURL returns the advanced-method Web Key Directory URL at which an external
+// PGP client will look for this address's public key:
+//
+//	https://openpgpkey.<domain>/.well-known/openpgpkey/<domain>/hu/<hash>?l=<local>
+//
+// Exported so the admin panel shows the SAME URL the spec sends clients to,
+// derived from the same hash function that serves it. A panel that displayed a
+// hand-written URL could drift from the one ServeWKD answers on, and the operator
+// would have no way to tell which was wrong.
+//
+// It returns "" for an address without exactly one "@", rather than emitting a
+// URL that cannot resolve.
+func WKDURL(email string) string {
+	local, domain := splitEmail(email)
+	if local == "" || domain == "" {
+		return ""
+	}
+	return "https://openpgpkey." + domain + "/.well-known/openpgpkey/" + domain +
+		"/hu/" + wkdLocalHash(local) + "?l=" + url.QueryEscape(local)
+}
+
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }

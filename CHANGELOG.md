@@ -9,6 +9,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **Every mailbox's PGP public key is now in its account card** (VayuOS → Mail accounts). Each
+  card carries the fingerprint, the armoured **public** key in a copy-ready box, a one-click
+  **Copy public key**, a `.asc` download, and the Web Key Directory URL at which correspondents'
+  clients will look for that address. The VayuPGP tab gained the same Copy/`.asc` controls per
+  row, so a key can be handed out from either place.
+- **The VayuPGP tab now lists the real per-domain discovery URLs**, derived by the new exported
+  `pgp.WKDURL` — the same hash function the server answers on, so the panel cannot drift from
+  what `ServeWKD` serves. Discovery is per-domain (a key for `someone@shop.example` is findable
+  only at `openpgpkey.shop.example`), and the table now shows that plainly for every mailbox
+  instead of a single generic path.
+
+### Security
+- **Confirmed and locked: no administrator-facing surface can obtain a private key.** The
+  VayuPGP tab was checked and never exposed one — it listed email, fingerprint, state and expiry
+  only — and the new public-key controls keep it that way by construction. Two tests now enforce
+  it rather than leaving it to review: one fails if any VayuOS handler so much as *calls*
+  `ArmoredPrivateKey` or emits a `PGP PRIVATE KEY BLOCK` header, and one pins the download route
+  to `GetPublicKey` and to its admin gate.
+
+  This matters more than it may look. Every mailbox's private key is held server-side
+  (AES-256-GCM at rest) so inbound mail can be decrypted — so a single admin-facing template
+  rendering the private half would turn one stolen admin session into every mailbox's mail,
+  retroactively, because that mail is already stored. The only legitimate release path remains
+  the owner's own device via `/api/v1/members/vayumail-privkey`, which authenticates as the
+  mailbox under the MAIL-SYNC device scope, not as an administrator. The panel says so where an
+  operator will read it: a key you can read on a web page is a key that ends up in a browser
+  cache, a screenshot and a support ticket.
+
 - **`scripts/setup-openpgpkey-subdomain.sh` — automatic PGP key discovery.** VayuPress has
   always generated a keypair per mailbox and served the Web Key Directory, but PGP clients never
   looked: the WKD spec puts discovery on a dedicated `openpgpkey.<domain>` host, and without that

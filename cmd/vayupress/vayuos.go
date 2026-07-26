@@ -1107,7 +1107,7 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	keys, _ := a.vayuPGP.ListKeys()
-	var rows strings.Builder
+	var rows, wkdRows strings.Builder
 	for _, k := range keys {
 		// Anonymous VayuTalk chat handles (Tor world) mint a keypair on use/rotate
 		// but are throwaway identities, not mailboxes — never list them here, so a
@@ -1121,18 +1121,39 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 		} else if time.Now().After(k.ExpiresAt) {
 			state = `<span class="badge badge--warn">expired</span>`
 		}
-		rows.WriteString(`<tr><td>` + html.EscapeString(k.Email) + `</td><td class="mono text-sm">` + html.EscapeString(k.Fingerprint) + `</td><td>` + state + `</td><td class="muted">` + k.ExpiresAt.Format("2006-01-02") + `</td></tr>`)
+		// Public key only — a copy button and a download, never the private half.
+		// Listing every mailbox's key here is how an operator hands one out; the
+		// private key has no admin-facing path at all.
+		pub := `<span class="vm-pgp"><textarea class="vm-pgp__armor hidden-armor" readonly rows="1" aria-hidden="true" tabindex="-1" data-pgp-armor>` +
+			html.EscapeString(k.PublicArmor) + `</textarea>` +
+			`<button type="button" class="btn btn--sm" data-pgp-copy>Copy</button> ` +
+			`<a class="btn btn--sm btn--ghost" href="/os/vayumail/accounts/pubkey?email=` + qparam(k.Email) + `" download>.asc</a></span>`
+		rows.WriteString(`<tr><td>` + html.EscapeString(k.Email) + `</td><td class="mono text-sm">` + html.EscapeString(k.Fingerprint) + `</td><td>` + state + `</td><td class="muted">` + k.ExpiresAt.Format("2006-01-02") + `</td><td>` + pub + `</td></tr>`)
+		if u := vpgp.WKDURL(k.Email); u != "" {
+			wkdRows.WriteString(`<tr><td class="mono text-sm">` + html.EscapeString(k.Email) + `</td><td><code class="mono text-xs vm-pgp__wkd">` + html.EscapeString(u) + `</code></td></tr>`)
+		}
 	}
 	if rows.Len() == 0 {
-		rows.WriteString(`<tr><td colspan="4" class="muted">No keys yet — keys are generated automatically when accounts are created.</td></tr>`)
+		rows.WriteString(`<tr><td colspan="5" class="muted">No keys yet — keys are generated automatically when accounts are created.</td></tr>`)
+	}
+	if wkdRows.Len() == 0 {
+		wkdRows.WriteString(`<tr><td colspan="2" class="muted">No mailboxes yet.</td></tr>`)
 	}
 	body := `<div class="page-header"><h1>VayuPGP keys</h1></div>
 <p class="page-sub">Ed25519 + Curve25519 · private keys AES-256-GCM encrypted at rest · published via WKD.</p>` + vayuosNav("pgp", true) + `
 <div class="section-head"><span class="section-head__title">Keypairs</span><span class="section-head__hint">One per mailbox — generated automatically on account creation</span></div>
 <div class="card">
-<div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Fingerprint</th><th>State</th><th>Expires</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>
-<div class="section-head"><span class="section-head__title">Web Key Directory</span><span class="section-head__hint">How external clients discover your keys</span></div>
-<div class="card"><p class="muted">External clients discover these keys at <code>/.well-known/openpgpkey/</code> (advanced method).</p></div>`
+<div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Fingerprint</th><th>State</th><th>Expires</th><th>Public key</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div>
+<p class="text-xs muted">Only the <strong>public</strong> half is shown or downloadable here. Private keys are AES-256-GCM encrypted at rest and have no administrator-facing path at all &mdash; a mailbox's own signed-in device is the only thing that can retrieve one. An administrator managing somebody else's mailbox has no business holding that mailbox's private key, and a key you can read on a web page is a key that ends up in a browser cache, a screenshot and a support ticket.</p></div>
+<div class="section-head"><span class="section-head__title">Web Key Directory</span><span class="section-head__hint">Where external clients look for each key</span></div>
+<div class="card">
+<p class="muted">Every mail domain publishes its own directory, and discovery is per-domain &mdash; a key for <code>someone@shop.example</code> is only findable at <code>openpgpkey.shop.example</code>. These are the exact URLs GnuPG, Thunderbird and the VayuMail app request, derived from the same hash this server answers on.</p>
+<div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Discovery URL</th></tr></thead><tbody>` + wkdRows.String() + `</tbody></table></div>
+<p class="text-xs muted">These answer once <code>openpgpkey.&lt;domain&gt;</code> points at this server with the CDN proxy <strong>off</strong> &mdash; run <code>sudo bash scripts/setup-openpgpkey-subdomain.sh</code>, which also creates the DNS record itself when Cloudflare credentials are configured. The proxy must be off because a key fetch is machine-to-machine: GnuPG cannot solve a bot challenge, and behind one, discovery fails silently and correspondents quietly fall back to unencrypted mail.</p></div>`
+	// The Copy buttons above are handled by the delegated listener in
+	// admin-os-mail.js, so this page has to load it too — without it the buttons
+	// render and do nothing, which is worse than not offering them.
+	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`
 	writeOSHTML(w, r, adminOSLayout(nonce, "VayuPGP", "vayuos", cfg, htmpl.HTML(body)))
 }
 
