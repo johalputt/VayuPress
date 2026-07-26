@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebX — Decentralised. Parallel. Web.</title>
+  <meta name="description" content="WebX is a peer-to-peer naming and hosting protocol — a parallel web with no registrar, no certificate authority and no landlord. Specification and constitution first; the code comes next." />
+  <meta name="theme-color" content="#04060d" />
+  <link rel="canonical" href="https://vayupress.com/webx.html" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://vayupress.com/webx.html" />
+  <meta property="og:title" content="WebX — Decentralised. Parallel. Web." />
+  <meta property="og:description" content="A peer-to-peer naming and hosting protocol. No registrar, no certificate authority, no landlord. Charter and specifications first — coming soon." />
+  <meta property="og:image" content="https://vayupress.com/assets/webx-logo-dark-512.png" />
+  <meta property="og:image:alt" content="WebX" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="WebX — Decentralised. Parallel. Web." />
+  <meta name="twitter:description" content="A peer-to-peer naming and hosting protocol. No registrar, no certificate authority, no landlord. Coming soon." />
+  <meta name="twitter:image" content="https://vayupress.com/assets/webx-logo-dark-512.png" />
+
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/webx-favicon-32-dark.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/webx-favicon-512-dark.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/webx-favicon-180-dark.png" />
+
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"SoftwareApplication",
+   "name":"WebX",
+   "applicationCategory":"DeveloperApplication",
+   "operatingSystem":"Windows, macOS, Linux",
+   "description":"A peer-to-peer naming and hosting protocol: a signed append-only domain registry replicated between peers, content hosted on IPFS, and resolution performed locally — with no registrar, certificate authority or hosting company in the path.",
+   "url":"https://vayupress.com/webx.html",
+   "license":"https://opensource.org/licenses/MIT",
+   "author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://vayupress.com/about.html"},
+   "applicationSuite":"WebX",
+   "releaseNotes":"Pre-implementation. The constitution and protocol specifications are published; the reference implementation has not been written."}
+  </script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    document.documentElement.classList.add('wx-js');
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            teal:    { 300:'#5eead4',400:'#2dd4bf',500:'#14b8a6',600:'#0d9488',700:'#0f766e',800:'#115e59',900:'#042f2e' },
+            saffron: { 300:'#fcd34d',400:'#fbbf24',600:'#d97706' },
+            ink:     { 700:'#10172a',800:'#0a1020',900:'#070b16',950:'#04060d' },
+            steel:   { 100:'#f2f5f9',200:'#dbe2ec',300:'#b8c4d4',400:'#8b9aae',500:'#64748b',600:'#475569',700:'#334155',800:'#1e293b' },
+          },
+          fontFamily: {
+            display: ['"Space Grotesk"','Inter','system-ui','sans-serif'],
+            sans:    ['Inter','system-ui','sans-serif'],
+            mono:    ['"JetBrains Mono"','monospace'],
+          },
+          letterSpacing: { tightest:'-0.045em' },
+        },
+      },
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/style.css" />
+
+  <style>
+    /* ══════════════════════════════════════════════════════════════
+       WebX — a colder, sharper skin over the VayuPress design system.
+       Monochrome steel to match the mark; angles instead of curves.
+       Scoped to this page only; nothing here leaks to the other pages.
+       ══════════════════════════════════════════════════════════════ */
+
+    .wx-web {
+      position: absolute; inset: 0; pointer-events: none;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    .wx-web svg { width: min(150vw, 1500px); height: auto; opacity: 0.30; }
+    .wx-web .strand { stroke: #8b9aae; fill: none; vector-effect: non-scaling-stroke; }
+    .wx-web .spoke  { stroke-width: 0.6; }
+    .wx-web .ring   { stroke-width: 0.5; }
+
+    /* the mark drifts a hair, like something waiting on a thread */
+    @keyframes wx-drift {
+      0%, 100% { transform: translateY(0)      rotate(0deg); }
+      50%      { transform: translateY(-9px)   rotate(-0.6deg); }
+    }
+    .wx-drift { animation: wx-drift 7.5s ease-in-out infinite; }
+
+    /* hairline glow behind the hero mark */
+    .wx-halo {
+      position: absolute; left: 50%; top: 46%;
+      width: 34rem; height: 34rem; border-radius: 9999px;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(circle, rgba(191,205,222,0.10) 0%, rgba(191,205,222,0) 68%);
+      pointer-events: none;
+    }
+
+    /* angular card — the corner is cut, echoing the mark's sharp joints */
+    .wx-cut {
+      background: rgba(255,255,255,0.022);
+      border: 1px solid rgba(255,255,255,0.07);
+      clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
+      transition: background 0.35s ease, border-color 0.35s ease, transform 0.35s cubic-bezier(0.16,1,0.3,1);
+    }
+    .wx-cut:hover {
+      background: rgba(255,255,255,0.045);
+      border-color: rgba(219,226,236,0.20);
+      transform: translateY(-3px);
+    }
+
+    /* TLD chip */
+    .wx-tld {
+      font-family: '"JetBrains Mono"', monospace;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.03);
+      clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 9px 100%, 0 calc(100% - 9px));
+    }
+
+    /* the "coming soon" pulse */
+    @keyframes wx-pulse {
+      0%, 100% { opacity: 1;    box-shadow: 0 0 0 0 rgba(219,226,236,0.35); }
+      70%      { opacity: 0.65; box-shadow: 0 0 0 7px rgba(219,226,236,0); }
+    }
+    .wx-dot { animation: wx-pulse 2.6s ease-in-out infinite; }
+
+    /* section rule that fades out at both ends */
+    .wx-rule {
+      height: 1px; border: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.11) 22%, rgba(255,255,255,0.11) 78%, transparent);
+    }
+
+    /* scroll reveal — only hides content when scripting is on, so the page
+       stays fully readable with JavaScript disabled */
+    .wx-js [data-wx-reveal] {
+      opacity: 0; transform: translateY(28px);
+      transition: opacity 0.9s cubic-bezier(0.16,1,0.3,1), transform 0.9s cubic-bezier(0.16,1,0.3,1);
+      transition-delay: var(--d, 0ms);
+    }
+    .wx-js [data-wx-reveal].wx-shown { opacity: 1; transform: none; }
+
+    /* numbered phase rail */
+    .wx-phase { position: relative; padding-left: 2.6rem; }
+    .wx-phase::before {
+      content: ""; position: absolute; left: 0.72rem; top: 1.9rem; bottom: -1.35rem;
+      width: 1px; background: rgba(255,255,255,0.09);
+    }
+    .wx-phase:last-child::before { display: none; }
+    .wx-phase .wx-num {
+      position: absolute; left: 0; top: 0.1rem;
+      width: 1.5rem; height: 1.5rem;
+      display: grid; place-items: center;
+      font-family: '"JetBrains Mono"', monospace; font-size: 0.62rem;
+      color: #b8c4d4; background: #0a1020;
+      border: 1px solid rgba(255,255,255,0.14);
+      clip-path: polygon(0 0, calc(100% - 5px) 0, 100% 5px, 100% 100%, 5px 100%, 0 calc(100% - 5px));
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .wx-drift, .wx-dot { animation: none; }
+      .wx-js [data-wx-reveal] { opacity: 1; transform: none; transition: none; }
+    }
+  </style>
+</head>
+<body class="bg-ink-950 text-gray-200 font-sans antialiased overflow-x-hidden">
+
+  <!-- cosmic backdrop, shared with the rest of the site -->
+  <div class="fixed inset-0 -z-20 pointer-events-none cosmic"></div>
+
+  <!-- ══════════════ NAV ══════════════ -->
+  <header class="fixed top-2 inset-x-0 z-50 px-4 sm:px-6">
+    <nav class="max-w-7xl mx-auto h-14 flex items-center justify-between rounded-2xl px-5 bg-ink-950/80 backdrop-blur-xl border border-white/[0.07] shadow-2xl shadow-black/50">
+      <a href="index.html#hero" class="flex items-center gap-2.5 group" aria-label="VayuPress home">
+        <img src="assets/mark-dark.png" alt="VayuPress mark"
+             class="brand-mark h-7 w-auto transition-transform duration-300 group-hover:scale-110" />
+        <span class="font-display font-semibold text-white tracking-tight hidden sm:block">VayuPress</span>
+      </a>
+
+      <div class="hidden md:flex items-center gap-8 text-sm text-gray-400">
+        <a href="index.html#features"   class="nav-link hover:text-white transition-colors">Features</a>
+        <a href="index.html#gallery"    class="nav-link hover:text-white transition-colors">Gallery</a>
+        <a href="index.html#philosophy" class="nav-link hover:text-white transition-colors">Philosophy</a>
+        <a href="webx.html"             class="nav-link text-steel-200 transition-colors" aria-current="page">WebX</a>
+        <a href="about.html"            class="nav-link hover:text-white transition-colors">About</a>
+      </div>
+
+      <a href="https://github.com/johalputt/WebX" target="_blank" rel="noopener"
+         class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.09] text-sm font-medium text-gray-200 transition-all duration-200 hover:-translate-y-px"
+         aria-label="WebX on GitHub">
+        <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        <span class="font-mono text-xs">Repo</span>
+      </a>
+    </nav>
+  </header>
+
+  <main>
+
+  <!-- ══════════════ HERO ══════════════ -->
+  <section class="relative min-h-[100svh] flex items-center overflow-hidden px-6">
+
+    <!-- radial web: the mark's habitat, drawn once as geometry -->
+    <div class="wx-web" aria-hidden="true">
+      <svg viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <radialGradient id="wxFade" cx="50%" cy="46%" r="52%">
+            <stop offset="0%"   stop-color="#fff" stop-opacity="0.85" />
+            <stop offset="55%"  stop-color="#fff" stop-opacity="0.35" />
+            <stop offset="100%" stop-color="#fff" stop-opacity="0" />
+          </radialGradient>
+          <mask id="wxMask">
+            <rect width="1000" height="1000" fill="url(#wxFade)" />
+          </mask>
+        </defs>
+        <g mask="url(#wxMask)">
+          <!-- radial spokes -->
+          <g class="strand spoke">
+            <line x1="500" y1="460" x2="500"  y2="-120" />
+            <line x1="500" y1="460" x2="500"  y2="1040" />
+            <line x1="500" y1="460" x2="-120" y2="460" />
+            <line x1="500" y1="460" x2="1120" y2="460" />
+            <line x1="500" y1="460" x2="60"   y2="20"  />
+            <line x1="500" y1="460" x2="940"  y2="20"  />
+            <line x1="500" y1="460" x2="60"   y2="900" />
+            <line x1="500" y1="460" x2="940"  y2="900" />
+            <line x1="500" y1="460" x2="180"  y2="-90" />
+            <line x1="500" y1="460" x2="820"  y2="-90" />
+            <line x1="500" y1="460" x2="180"  y2="1010" />
+            <line x1="500" y1="460" x2="820"  y2="1010" />
+            <line x1="500" y1="460" x2="-90"  y2="180" />
+            <line x1="500" y1="460" x2="1090" y2="180" />
+            <line x1="500" y1="460" x2="-90"  y2="740" />
+            <line x1="500" y1="460" x2="1090" y2="740" />
+          </g>
+          <!-- capture spiral, as concentric 16-gons -->
+          <g class="strand ring">
+            <polygon points="500,370 534,377 561,398 575,428 575,460 561,491 534,513 500,520 466,513 439,491 425,460 425,428 439,398 466,377" />
+            <polygon points="500,290 561,303 610,341 634,395 634,460 610,524 561,562 500,575 439,562 390,524 366,460 366,395 390,341 439,303" />
+            <polygon points="500,190 587,209 656,263 691,340 691,460 656,580 587,634 500,653 413,634 344,580 309,460 309,340 344,263 413,209" />
+            <polygon points="500,70 626,97 725,175 775,287 775,460 725,633 626,711 500,738 374,711 275,633 225,460 225,287 275,175 374,97" />
+            <polygon points="500,-70 675,-33 812,75 881,230 881,460 812,690 675,798 500,835 325,798 188,690 119,460 119,230 188,75 325,-33" />
+            <polygon points="500,-230 730,-181 910,-38 1001,166 1001,460 910,754 730,897 500,946 270,897 90,754 -1,460 -1,166 90,-38 270,-181" />
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <div class="wx-halo" aria-hidden="true"></div>
+
+    <div class="relative max-w-4xl mx-auto text-center pt-28 pb-20">
+
+      <img src="assets/webx-mark-dark-512.png" alt=""
+           width="512" height="512" aria-hidden="true"
+           class="wx-drift mx-auto h-28 sm:h-36 w-auto mb-8 select-none"
+           style="filter: drop-shadow(0 6px 26px rgba(0,0,0,0.65));" />
+
+      <h1 class="sr-only">WebX — Decentralised. Parallel. Web.</h1>
+
+      <img src="assets/webx-wordmark-dark-512.png" alt="WebX"
+           width="512" height="184"
+           class="mx-auto h-14 sm:h-20 w-auto mb-7 select-none" />
+
+      <p class="font-display text-steel-300 text-base sm:text-lg tracking-[0.32em] uppercase mb-9">
+        Decentralised &middot; Parallel &middot; Web
+      </p>
+
+      <div class="inline-flex items-center gap-2.5 px-3.5 py-1.5 mb-9 rounded-full bg-white/[0.05] border border-white/[0.11]">
+        <span class="wx-dot w-1.5 h-1.5 rounded-full bg-steel-200"></span>
+        <span class="font-mono text-[11px] uppercase tracking-[0.18em] text-steel-200">Coming soon &mdash; charter first, code next</span>
+      </div>
+
+      <p class="max-w-2xl mx-auto text-lg sm:text-xl text-gray-400 leading-relaxed">
+        A peer-to-peer naming and hosting protocol. Register a name, publish a site, and reach it
+        from an ordinary browser &mdash; with no registrar, no certificate authority, no hosting
+        company and no single government in the path.
+      </p>
+
+      <div class="mt-10 flex flex-wrap items-center justify-center gap-3">
+        <a href="https://github.com/johalputt/WebX/blob/main/constitution/CONSTITUTION.md"
+           target="_blank" rel="noopener"
+           class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-steel-100 hover:bg-white text-ink-950 text-sm font-semibold transition-all duration-200 hover:-translate-y-px">
+          Read the Constitution
+        </a>
+        <a href="https://github.com/johalputt/WebX" target="_blank" rel="noopener"
+           class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.10] text-sm font-medium text-gray-200 transition-all duration-200 hover:-translate-y-px">
+          Explore the repository
+        </a>
+      </div>
+
+      <p class="mt-7 text-xs font-mono text-gray-600">
+        No token &middot; No treasury &middot; No root zone &middot; MIT
+      </p>
+    </div>
+  </section>
+
+  <!-- ══════════════ THE TWO CHOKEPOINTS ══════════════ -->
+  <section class="py-24 sm:py-28 px-6">
+    <div class="max-w-5xl mx-auto">
+      <header class="max-w-3xl mb-14" data-wx-reveal>
+        <p class="text-xs font-mono uppercase tracking-widest text-steel-400 mb-4">The problem</p>
+        <h2 class="font-display font-bold text-white text-3xl sm:text-[2.6rem] tracking-tightest leading-[1.1]">
+          Two chokepoints decide whether anything on the web stays reachable.
+        </h2>
+        <p class="mt-5 text-gray-400 leading-relaxed text-[1.05rem]">
+          Who resolves your name, and who serves your bytes. Both have consolidated into a handful
+          of companies operating under a handful of jurisdictions &mdash; and in practice, the same
+          few organisations hold every lever at once.
+        </p>
+      </header>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-3" data-wx-reveal style="--d:80ms">
+        <div class="wx-cut p-5">
+          <p class="font-mono text-[10px] uppercase tracking-widest text-steel-500 mb-2">Registrar</p>
+          <p class="text-sm text-gray-300 leading-relaxed">can suspend the domain</p>
+        </div>
+        <div class="wx-cut p-5">
+          <p class="font-mono text-[10px] uppercase tracking-widest text-steel-500 mb-2">Resolver</p>
+          <p class="text-sm text-gray-300 leading-relaxed">can refuse to answer</p>
+        </div>
+        <div class="wx-cut p-5">
+          <p class="font-mono text-[10px] uppercase tracking-widest text-steel-500 mb-2">Authority</p>
+          <p class="text-sm text-gray-300 leading-relaxed">can revoke the certificate</p>
+        </div>
+        <div class="wx-cut p-5">
+          <p class="font-mono text-[10px] uppercase tracking-widest text-steel-500 mb-2">Host</p>
+          <p class="text-sm text-gray-300 leading-relaxed">can deplatform the account</p>
+        </div>
+        <div class="wx-cut p-5">
+          <p class="font-mono text-[10px] uppercase tracking-widest text-steel-500 mb-2">Network</p>
+          <p class="text-sm text-gray-300 leading-relaxed">can decide you are not worth the trouble</p>
+        </div>
+      </div>
+
+      <p class="mt-10 max-w-3xl text-[1.05rem] text-gray-400 leading-relaxed" data-wx-reveal style="--d:140ms">
+        WebX answers by removing the levers rather than negotiating with whoever holds them. Names
+        live in a signed, append-only log that every participant replicates and verifies
+        independently. Content lives on IPFS, pinned by the people who care whether it survives.
+        Resolution happens on your own machine.
+        <span class="text-steel-200">There is no root zone, no privileged writer, no treasury and no token.</span>
+      </p>
+    </div>
+  </section>
+
+  <hr class="wx-rule max-w-6xl mx-auto" />
+
+  <!-- ══════════════ TLD MARQUEE ══════════════ -->
+  <section class="py-16 overflow-hidden">
+    <p class="text-center text-xs font-mono uppercase tracking-widest text-steel-500 mb-8" data-wx-reveal>
+      Twelve launch extensions &mdash; plural by design
+    </p>
+    <div class="marquee">
+      <div class="marquee-track flex items-center gap-3 w-max">
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200">.webx</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200">.vayu</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200">.p2p</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200">.free</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200">.decent</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200">.libre</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200">.sov</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200">.dao</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200">.indie</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200">.open</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200">.news</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200">.blog</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200" aria-hidden="true">.webx</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200" aria-hidden="true">.vayu</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200" aria-hidden="true">.p2p</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200" aria-hidden="true">.free</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200" aria-hidden="true">.decent</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200" aria-hidden="true">.libre</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200" aria-hidden="true">.sov</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200" aria-hidden="true">.dao</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200" aria-hidden="true">.indie</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200" aria-hidden="true">.open</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200" aria-hidden="true">.news</span>
+        <span class="wx-tld px-4 py-2 text-sm text-steel-200" aria-hidden="true">.blog</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ CORE DESIGN ══════════════ -->
+  <section class="py-20 sm:py-24 px-6">
+    <div class="max-w-6xl mx-auto">
+      <header class="max-w-3xl mb-14" data-wx-reveal>
+        <p class="text-xs font-mono uppercase tracking-widest text-steel-400 mb-4">Core design</p>
+        <h2 class="font-display font-bold text-white text-3xl sm:text-[2.6rem] tracking-tightest leading-[1.1]">
+          Seven decisions, and what each one refuses.
+        </h2>
+      </header>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <article class="wx-cut p-6" data-wx-reveal>
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">Peer-to-peer registry</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">
+            A Hypercore append-only log with a Hyperbee index over it. Every record is signed;
+            every peer holds the whole history and verifies it without trusting anyone.
+          </p>
+          <p class="mt-4 pt-3 border-t border-white/[0.06] text-xs font-mono text-steel-500">No privileged writer</p>
+        </article>
+
+        <article class="wx-cut p-6" data-wx-reveal style="--d:60ms">
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">Cryptographic ownership</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">
+            Ed25519 keypairs. Registration, update, transfer and release are signed operations.
+            The registry answers exactly two questions: is this signature valid, and is this
+            name free.
+          </p>
+          <p class="mt-4 pt-3 border-t border-white/[0.06] text-xs font-mono text-steel-500">Not a trademark court</p>
+        </article>
+
+        <article class="wx-cut p-6" data-wx-reveal style="--d:120ms">
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">IPFS hosting</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">
+            Sites are content-addressed and published through IPNS, pinned by their owner and by
+            anyone who volunteers. Third-party pinning stays optional and swappable.
+          </p>
+          <p class="mt-4 pt-3 border-t border-white/[0.06] text-xs font-mono text-steel-500">No mandatory pinning service</p>
+        </article>
+
+        <article class="wx-cut p-6" data-wx-reveal>
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">Local resolution</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">
+            A small proxy on loopback makes WebX names work in any browser. The extension is a
+            convenience, never a requirement, and a lookup never falls through to clearnet DNS.
+          </p>
+          <p class="mt-4 pt-3 border-t border-white/[0.06] text-xs font-mono text-steel-500">No query logs, no phone-home</p>
+        </article>
+
+        <article class="wx-cut p-6" data-wx-reveal style="--d:60ms">
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">Memory-hard proof-of-work</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">
+            Registration and renewal cost seconds of CPU for one name, and grow superlinearly for
+            ten thousand. It prices squatting without a payment rail.
+          </p>
+          <p class="mt-4 pt-3 border-t border-white/[0.06] text-xs font-mono text-steel-500">No token, no fees, no treasury</p>
+        </article>
+
+        <article class="wx-cut p-6" data-wx-reveal style="--d:120ms">
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">Governance by charter</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">
+            New extensions and protocol changes move through the WXIP process and are ratified by
+            peers under a written constitution with entrenched clauses.
+          </p>
+          <p class="mt-4 pt-3 border-t border-white/[0.06] text-xs font-mono text-steel-500">The right to fork is a right</p>
+        </article>
+
+        <article class="wx-cut p-6 sm:col-span-2 lg:col-span-3" data-wx-reveal>
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">Ordinary people, ordinary browsers</h3>
+          <p class="text-sm text-gray-400 leading-relaxed max-w-3xl">
+            A Tauri desktop client will carry the whole flow &mdash; generate a key into the
+            operating system keychain, register a name, publish a site, manage what you are keeping
+            alive &mdash; without a terminal. A system that only experts can hold is a system that
+            has already centralised, it just has not admitted it yet.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <hr class="wx-rule max-w-6xl mx-auto" />
+
+  <!-- ══════════════ ARCHITECTURE ══════════════ -->
+  <section class="py-20 sm:py-24 px-6">
+    <div class="max-w-5xl mx-auto">
+      <header class="max-w-3xl mb-12" data-wx-reveal>
+        <p class="text-xs font-mono uppercase tracking-widest text-steel-400 mb-4">Architecture</p>
+        <h2 class="font-display font-bold text-white text-3xl sm:text-[2.6rem] tracking-tightest leading-[1.1]">
+          Four layers, two surfaces, nothing in the middle.
+        </h2>
+      </header>
+
+      <div class="overflow-x-auto" data-wx-reveal style="--d:80ms">
+        <table class="w-full min-w-[640px] text-left text-sm">
+          <thead>
+            <tr class="border-b border-white/[0.09]">
+              <th class="py-3 pr-6 font-mono text-[10px] uppercase tracking-widest text-steel-500 font-medium">Layer</th>
+              <th class="py-3 pr-6 font-mono text-[10px] uppercase tracking-widest text-steel-500 font-medium">Technology</th>
+              <th class="py-3 font-mono text-[10px] uppercase tracking-widest text-steel-500 font-medium">Purpose</th>
+            </tr>
+          </thead>
+          <tbody class="text-gray-400">
+            <tr class="border-b border-white/[0.045]">
+              <td class="py-3.5 pr-6 text-white font-medium">Identity</td>
+              <td class="py-3.5 pr-6 font-mono text-xs text-steel-300">Ed25519</td>
+              <td class="py-3.5">Ownership and signatures</td>
+            </tr>
+            <tr class="border-b border-white/[0.045]">
+              <td class="py-3.5 pr-6 text-white font-medium">Registry</td>
+              <td class="py-3.5 pr-6 font-mono text-xs text-steel-300">Hypercore + Hyperbee</td>
+              <td class="py-3.5">Signed, append-only, replicated name records</td>
+            </tr>
+            <tr class="border-b border-white/[0.045]">
+              <td class="py-3.5 pr-6 text-white font-medium">Discovery</td>
+              <td class="py-3.5 pr-6 font-mono text-xs text-steel-300">Hyperswarm / HyperDHT</td>
+              <td class="py-3.5">Finding other peers</td>
+            </tr>
+            <tr class="border-b border-white/[0.045]">
+              <td class="py-3.5 pr-6 text-white font-medium">Content</td>
+              <td class="py-3.5 pr-6 font-mono text-xs text-steel-300">IPFS (Helia) + IPNS</td>
+              <td class="py-3.5">Immutable storage and mutable pointers</td>
+            </tr>
+            <tr class="border-b border-white/[0.045]">
+              <td class="py-3.5 pr-6 text-white font-medium">Resolution</td>
+              <td class="py-3.5 pr-6 font-mono text-xs text-steel-300">Local proxy (loopback)</td>
+              <td class="py-3.5">Makes WebX names work in an ordinary browser</td>
+            </tr>
+            <tr class="border-b border-white/[0.045]">
+              <td class="py-3.5 pr-6 text-white font-medium">Client</td>
+              <td class="py-3.5 pr-6 font-mono text-xs text-steel-300">Tauri 2.x</td>
+              <td class="py-3.5">Desktop application for people who do not use terminals</td>
+            </tr>
+            <tr>
+              <td class="py-3.5 pr-6 text-white font-medium">Governance</td>
+              <td class="py-3.5 pr-6 font-mono text-xs text-steel-300">Constitution + WXIP</td>
+              <td class="py-3.5">How the rules change, and what can never change</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ CONSTITUTION ══════════════ -->
+  <section class="py-20 sm:py-24 px-6">
+    <div class="max-w-5xl mx-auto">
+      <div class="wx-cut p-8 sm:p-12" data-wx-reveal>
+        <div class="grid lg:grid-cols-[1fr_auto] gap-10 items-center">
+          <div>
+            <p class="text-xs font-mono uppercase tracking-widest text-steel-400 mb-4">The charter</p>
+            <h2 class="font-display font-bold text-white text-2xl sm:text-3xl tracking-tight leading-[1.15] mb-5">
+              A constitution written before the code.
+            </h2>
+            <p class="text-gray-400 leading-relaxed mb-4">
+              A naming system inherits whatever politics it was built with, and retrofitting
+              governance onto shipped infrastructure has never once worked. So the rules come first,
+              in public, where they can be attacked while changing them is still cheap.
+            </p>
+            <p class="text-gray-400 leading-relaxed">
+              The WebX Constitution sets out an operative bill of rights, the registry and naming
+              law, the amendment machinery and its entrenched limits, succession when the founder is
+              gone, and the celebrated right to fork &mdash; the last check that survives when every
+              other one has failed. Its text is dedicated to the public domain, deliberately: a
+              licence on a founding charter is a leash on a fork.
+            </p>
+            <div class="mt-8 flex flex-wrap gap-3">
+              <a href="https://github.com/johalputt/WebX/blob/main/constitution/CONSTITUTION.md"
+                 target="_blank" rel="noopener"
+                 class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-steel-100 hover:bg-white text-ink-950 text-sm font-semibold transition-all duration-200 hover:-translate-y-px">
+                Read it
+              </a>
+              <a href="https://github.com/johalputt/WebX/blob/main/docs/THREAT-MODEL.md"
+                 target="_blank" rel="noopener"
+                 class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.10] text-sm font-medium text-gray-200 transition-all duration-200 hover:-translate-y-px">
+                Threat model
+              </a>
+            </div>
+          </div>
+          <img src="assets/webx-mark-dark-256.png" alt="" aria-hidden="true"
+               width="256" height="256"
+               class="hidden lg:block h-40 w-auto opacity-70 select-none" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="wx-rule max-w-6xl mx-auto" />
+
+  <!-- ══════════════ ROADMAP ══════════════ -->
+  <section class="py-20 sm:py-24 px-6">
+    <div class="max-w-4xl mx-auto">
+      <header class="mb-14" data-wx-reveal>
+        <p class="text-xs font-mono uppercase tracking-widest text-steel-400 mb-4">Roadmap</p>
+        <h2 class="font-display font-bold text-white text-3xl sm:text-[2.6rem] tracking-tightest leading-[1.1]">
+          Phases, not dates.
+        </h2>
+        <p class="mt-5 text-gray-400 leading-relaxed text-[1.05rem]">
+          Nothing here is promised by a calendar. Each phase has an acceptance test instead, so it
+          is obvious from the outside whether it is actually done.
+        </p>
+      </header>
+
+      <div class="space-y-9">
+        <div class="wx-phase" data-wx-reveal>
+          <span class="wx-num">0</span>
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-1.5">
+            Charter and specification
+            <span class="ml-2 align-middle font-mono text-[10px] uppercase tracking-widest text-steel-200 border border-white/[0.14] rounded px-1.5 py-0.5">In progress</span>
+          </h3>
+          <p class="text-sm text-gray-400 leading-relaxed">The Constitution, the protocol specifications, the threat model and the WXIP process &mdash; published and open to attack.</p>
+        </div>
+        <div class="wx-phase" data-wx-reveal style="--d:50ms">
+          <span class="wx-num">1</span>
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-1.5">Registry core</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Hypercore and Hyperbee, the record schema, sign and verify, proof-of-work. Done when a command line can register and resolve a name against a local log.</p>
+        </div>
+        <div class="wx-phase" data-wx-reveal style="--d:100ms">
+          <span class="wx-num">2</span>
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-1.5">Peer replication</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Hyperswarm discovery and the convergence rule. Done when independent peers agree on the same registry state under conformance tests.</p>
+        </div>
+        <div class="wx-phase" data-wx-reveal style="--d:150ms">
+          <span class="wx-num">3</span>
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-1.5">Resolution proxy</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">The local proxy, its cache and its error catalogue. Done when an unmodified browser renders a WebX page end to end.</p>
+        </div>
+        <div class="wx-phase" data-wx-reveal style="--d:200ms">
+          <span class="wx-num">4</span>
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-1.5">Hosting</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Helia integration, the publish flow and pin management. Done when a site can be published and fetched by a second machine that was never told where it came from.</p>
+        </div>
+        <div class="wx-phase" data-wx-reveal style="--d:250ms">
+          <span class="wx-num">5</span>
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-1.5">Desktop client</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Tauri 2, keys in the operating system keychain, register and publish and browse. Done when someone who has never used a terminal completes the whole flow.</p>
+        </div>
+        <div class="wx-phase" data-wx-reveal style="--d:300ms">
+          <span class="wx-num">6</span>
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-1.5">Radicle and independent implementations</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Development moves to its permanent home. Done when a second, independently written implementation interoperates &mdash; the only real proof a specification is finished.</p>
+        </div>
+        <div class="wx-phase" data-wx-reveal style="--d:350ms">
+          <span class="wx-num">7</span>
+          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-1.5">Browser extension and mobile companion</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Convenience layers, built last on purpose, so that neither ever becomes a requirement.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="wx-rule max-w-6xl mx-auto" />
+
+  <!-- ══════════════ HONEST LIMITS ══════════════ -->
+  <section class="py-20 sm:py-24 px-6">
+    <div class="max-w-5xl mx-auto">
+      <header class="max-w-3xl mb-12" data-wx-reveal>
+        <p class="text-xs font-mono uppercase tracking-widest text-steel-400 mb-4">Limits</p>
+        <h2 class="font-display font-bold text-white text-3xl sm:text-[2.6rem] tracking-tightest leading-[1.1]">
+          What WebX does not promise.
+        </h2>
+        <p class="mt-5 text-gray-400 leading-relaxed text-[1.05rem]">
+          A project that overclaims dies the first time reality tests it. These are stated here as
+          plainly as they are stated in the specifications.
+        </p>
+      </header>
+
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div class="wx-cut p-6" data-wx-reveal>
+          <h3 class="font-display font-semibold text-white text-[0.98rem] mb-2">It does not make you anonymous</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">It removes intermediaries from naming and hosting. It does not hide your traffic from your network provider. Use Tor for the part WebX does not solve.</p>
+        </div>
+        <div class="wx-cut p-6" data-wx-reveal style="--d:60ms">
+          <h3 class="font-display font-semibold text-white text-[0.98rem] mb-2">It does not guarantee availability</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Content lives while at least one peer pins it. If everybody stops pinning, it is gone. There is no uptime promise, because nobody is in a position to make one.</p>
+        </div>
+        <div class="wx-cut p-6" data-wx-reveal style="--d:120ms">
+          <h3 class="font-display font-semibold text-white text-[0.98rem] mb-2">It cannot forget</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">The registry is an append-only log. You can withdraw a pointer and unpin your copy; you cannot compel other peers to discard bytes they already hold.</p>
+        </div>
+        <div class="wx-cut p-6" data-wx-reveal style="--d:180ms">
+          <h3 class="font-display font-semibold text-white text-[0.98rem] mb-2">A lost key is a lost name</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">There is no support desk, because a support desk that can restore your name is a support desk that can take it.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ CTA ══════════════ -->
+  <section class="py-24 sm:py-28 px-6">
+    <div class="max-w-3xl mx-auto text-center" data-wx-reveal>
+      <img src="assets/webx-mark-dark-256.png" alt="" aria-hidden="true"
+           width="256" height="256" class="mx-auto h-16 w-auto mb-8 opacity-80 select-none" />
+      <blockquote class="font-display text-2xl sm:text-3xl text-white font-medium tracking-tight leading-snug">
+        &ldquo;WebX is the peer-owned root of the free internet.&rdquo;
+      </blockquote>
+      <p class="mt-6 text-gray-500 leading-relaxed max-w-xl mx-auto">
+        The code is not written yet. Specification review and adversarial critique are worth more
+        than pull requests at this stage &mdash; find the clause a bad actor could drive a truck
+        through, and say so.
+      </p>
+      <div class="mt-9 flex flex-wrap items-center justify-center gap-3">
+        <a href="https://github.com/johalputt/WebX" target="_blank" rel="noopener"
+           class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-steel-100 hover:bg-white text-ink-950 text-sm font-semibold transition-all duration-200 hover:-translate-y-px">
+          Watch the repository
+        </a>
+        <a href="index.html#hero"
+           class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.10] text-sm font-medium text-gray-200 transition-all duration-200 hover:-translate-y-px">
+          Back to VayuPress
+        </a>
+      </div>
+    </div>
+  </section>
+
+  </main>
+
+  <!-- ══════════════ FOOTER ══════════════ -->
+  <footer class="pt-12 pb-10 sm:pb-12 border-t border-white/[0.06] px-6">
+    <div class="max-w-7xl mx-auto">
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-5 pb-8 border-b border-white/[0.06]">
+        <a href="index.html#hero" class="flex items-center gap-2.5" aria-label="VayuPress home">
+          <img src="assets/logo-dark.png" alt="VayuPress" width="200" height="149" class="brand-mark h-9 w-auto" loading="lazy" />
+        </a>
+        <p class="text-xs text-gray-700 font-mono italic">a parallel web &middot; owned by nobody &middot; reachable by anyone</p>
+      </div>
+      <div class="pt-7 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-600">
+        <p>© 2026 VayuPress · Apache License 2.0 · <a href="https://vayupress.com" class="hover:text-teal-300 transition-colors">vayupress.com</a> · <a href="mailto:hello@vayupress.com" class="hover:text-teal-300 transition-colors">hello@vayupress.com</a></p>
+        <p class="font-mono">WebX is MIT · charter in the public domain</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    /* Scroll reveal. Kept tiny and local: this page does not load the site's
+       Alpine bundle, and a missing observer must never leave content hidden. */
+    (function () {
+      var items = document.querySelectorAll('[data-wx-reveal]');
+      if (!('IntersectionObserver' in window)) {
+        items.forEach(function (el) { el.classList.add('wx-shown'); });
+        return;
+      }
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('wx-shown');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+      items.forEach(function (el) { io.observe(el); });
+    })();
+  </script>
+
+</body>
+</html>
