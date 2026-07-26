@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.50] — 2026-07-26
 
 ### Added
 - **A "Why this exists" section in `README.md`**, in the maintainer's own words, because the
