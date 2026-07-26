@@ -56,10 +56,16 @@ Two things follow that are worth stating plainly rather than leaving to be disco
   irrevocable. Anyone may fork from any published tag and continue, whatever this repository
   does afterwards.
 - **The outbound licence on *future* versions could change**, because Apache-2.0 §4 permits
-  distributing a derivative work as a whole under different terms. There is no present intention
-  to do so — the current assessment is to stay on Apache-2.0. If it ever changes, the commitment
-  is that it will be **forward-only, at a major version, announced in advance, and put to
-  contributors first** even though their agreement would not be legally required.
+  distributing a derivative work as a whole under different terms. **Contributing does not give
+  you a veto over that, and it is not intended to** — the maintainer can change the licence on
+  future versions without any contributor's permission, and the absence of a CLA does not alter
+  it. Be clear about that before you contribute.
+
+  There is no present intention to change it; the current assessment is to stay on Apache-2.0,
+  and [docs/LICENSING.md](docs/LICENSING.md) records a pledge to make that permanent. If it ever
+  does change, the commitment is that it will be **forward-only, at a major version, and
+  announced in advance** — contributors will be told, not asked, because pretending otherwise
+  would misrepresent where the decision actually sits.
 
 New Go files must carry `// SPDX-License-Identifier: Apache-2.0` as their first line. CI enforces
 it; `python3 scripts/spdx-headers.py` adds it. The reasoning for all of the above is in

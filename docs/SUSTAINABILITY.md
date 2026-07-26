@@ -45,6 +45,24 @@ Expenditures are published quarterly in GitHub Discussions under "Transparency R
 | Annual security audit | $5,000 | Seeking sponsors |
 | Part-time Community Lead | $500/mo | Future goal |
 | Full-time BDFL | $3,000/mo | Long-term goal |
+| **Permanent Apache-2.0 pledge** | **$5,000/mo sustained** | **Standing offer** |
+
+### The permanence pledge
+
+At **USD 5,000 per month sustained**, the licence question is settled for good: VayuPress stays
+Apache-2.0 permanently, and the ability to change it is given up rather than merely unused. Full
+terms in [docs/LICENSING.md](LICENSING.md).
+
+This is an offer, not a condition, and the distinction is the whole point. **VayuPress is already
+free and every release already published is already permanently free** — none of that depends on
+any funding figure being reached. There is no plan to change the licence at any level of funding.
+
+The pledge exists because a promise not to do something is worth more once the person making it
+has surrendered the ability to do it, and funding is what makes surrendering it affordable. A
+maintainer who can pay rent has no reason to reach for that lever. Saying so in advance is more
+honest than discovering the pressure later, which is how most relicensing stories actually begin.
+
+**Nobody has to pay anything to use VayuPress, now or ever.**
 
 ---
 

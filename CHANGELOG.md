@@ -33,6 +33,23 @@ Licensing and regulatory posture. No behaviour changes; no runtime code was modi
   SPDX headers without checking any.
 
 ### Changed
+- **The permanence pledge**: at USD 5,000/month sustained in donations, VayuPress stays
+  Apache-2.0 permanently and the ability to change it is given up rather than merely unused.
+  Recorded in `docs/LICENSING.md`, `docs/SUSTAINABILITY.md` and `README.md`, and framed
+  deliberately as an offer rather than a condition — VayuPress is already free, every published
+  release is already irrevocably free, and there is no plan to change the licence at any level of
+  funding. A promise not to do something is worth more once the person making it has surrendered
+  the ability, and funding is what makes surrendering it affordable. Nobody has to pay anything
+  to use VayuPress, now or ever.
+- **The licence-change wording no longer reads as a contributor veto.** The earlier phrasing said
+  a change would be "put to contributors first", which could be taken as requiring their consent.
+  It does not and never did: Apache-2.0 §4 lets the maintainer license future versions on
+  different terms without anyone's permission, and the absence of a CLA does not change that.
+  `CONTRIBUTING.md` and the Governance Constitution now say plainly that contributors are **told,
+  not asked**, so nobody contributes under a misapprehension about where the decision sits.
+- **`README.md` and `docs/LICENSING.md` lead with what a reader actually needs**: free for anyone,
+  for anything, forever; no fee, no permission, no registration; and no obligations at all on
+  self-hosters — which is precisely why Apache-2.0 was chosen over a copyleft licence.
 - **The no-CLA position is stated where people look for it** — `README.md`, `CONTRIBUTING.md`
   and the Governance Constitution — rather than in one line inside a governance document. Only a
   party holding the copyright can sell proprietary licences to a codebase; refusing to collect it

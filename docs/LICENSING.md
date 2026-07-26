@@ -1,5 +1,22 @@
 # Licensing
 
+## The short version
+
+- **VayuPress is Apache-2.0. Free for anyone, for anything, forever.** Use it, sell services
+  around it, fork it, ship it inside a commercial product. No fee, no permission, no registration.
+- **Every release already published is permanently free.** That grant is irrevocable and cannot
+  be taken back by anyone, including the author.
+- **There is no plan to change the licence**, and a standing pledge below would give up the
+  ability to change it at all.
+- **Nothing here requires anyone's permission**, and no contributor holds a veto over the
+  project's direction.
+- **Self-hosters have no obligations.** Run it, modify it, keep your changes private. Apache-2.0
+  asks nothing of you. It never will — that is the point of choosing it over a copyleft licence.
+
+The rest of this document explains why, and what the alternatives would have cost.
+
+---
+
 VayuPress is licensed under the **Apache License, Version 2.0**. The full text is in
 [`LICENSE`](../LICENSE); third-party components and their own terms are listed in
 [`NOTICE`](../NOTICE).
@@ -100,7 +117,17 @@ actually protects a user who has deployed VayuPress, and it does not depend on a
 
 ## How the licence could change in future
 
-There are exactly four routes. Three are open; the fourth is closed on purpose.
+**First, the part that matters most: no one else's permission is needed.** Apache-2.0 §4 permits
+the maintainer to release future versions under different terms, and the absence of a contributor
+licence agreement does not change that — it never did, despite the folklore saying otherwise.
+There is no contributor veto, no committee, and no process that has to be satisfied. The
+maintainer decides.
+
+What that freedom cannot reach, and what nobody's decision can reach, is a release already
+published. Those stay free permanently. That is the guarantee an adopter actually needs, and it
+holds regardless of who is running this project in ten years.
+
+Below are the four routes, kept for completeness rather than because any of them is planned.
 
 ### Route A — forward-only move to a reciprocal licence (AGPL-3.0 or similar)
 
@@ -153,15 +180,42 @@ Recorded here only so the option is visibly considered and visibly rejected.
 
 ### Route D — source-available (SSPL, BUSL, Elastic License)
 
-**Closed.** Not by law — Apache-2.0 §4 would permit it — but by decision, recorded here so that
-the decision has a date and a place. These licences are not open source under the OSI definition,
-and adopting one would break the guarantee that VayuPress exists to offer: that the person
-running it owns what they are running. Every project that has taken this route did so to protect
-revenue from a hosted service. VayuPress has no such revenue to protect, and the absence of a CLA
-means there is no dual-licence business waiting on the other side of it.
+**Rejected.** Apache-2.0 §4 would permit it; this is a statement of intent, not a constraint
+anyone could enforce. These licences are not open source under the OSI definition, and adopting
+one would break the guarantee VayuPress exists to offer — that the person running it owns what
+they are running. Every project that took this route did so to protect revenue from a hosted
+service. There is no such revenue here to protect, and with no CLA there is no dual-licence
+business waiting on the other side of it either.
 
 If a future maintainer wants this, the honest thing is to fork under a new name rather than
 convert a project that people adopted on a different promise.
+
+---
+
+## The permanence pledge
+
+The routes above describe what *could* happen. This is what the maintainer intends to happen, and
+the offer to make it binding.
+
+**If donations reach and sustain USD 5,000 per month, VayuPress stays Apache-2.0 permanently.**
+At that point the licence question is settled for good: no reciprocal move, no source-available
+move, no dual licence, no exceptions — the option is given up rather than merely declined.
+
+Read that as an offer, not a condition. It is deliberately *not* a threat, and the difference
+matters enough to spell out:
+
+- VayuPress is **already** free, and every release already published is **already** permanently
+  free. Nothing about that depends on reaching any funding figure. If donations are zero forever,
+  every version shipped to date remains Apache-2.0 and forkable.
+- There is **no plan** to change the licence at any funding level. The current assessment,
+  below, is to stay on Apache-2.0 regardless.
+- The pledge exists because a promise not to do something is worth more when the person making
+  it has given up the ability to do it. Funding is what makes that surrender affordable: a
+  maintainer who can pay rent has no reason to reach for the lever, and saying so in advance is
+  more honest than discovering the pressure later.
+
+Nobody has to pay anything to use VayuPress, now or ever. The pledge is about closing a door that
+is currently open, not about opening one that is currently shut.
 
 ---
 
