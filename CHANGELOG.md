@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.49] — 2026-07-26
 
 Licensing and regulatory posture. No behaviour changes; no runtime code was modified.
 
