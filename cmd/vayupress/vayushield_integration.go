@@ -74,6 +74,18 @@ var shieldBypassPrefixes = []string{
 	"/manifest.json", "/sw.js",
 }
 
+// containsPrefix reports whether list holds want exactly. Used by the install-health
+// check to confirm the WebAPK minting server's fetches are never challenged, and by
+// the bypass regression tests.
+func containsPrefix(list []string, want string) bool {
+	for _, p := range list {
+		if p == want {
+			return true
+		}
+	}
+	return false
+}
+
 // analytics store, wires governance/geoip side channels, and starts the
 // background learning + retention goroutines. Bot protection defaults ON
 // (gentle: classification only — real browsers pass silently and verified

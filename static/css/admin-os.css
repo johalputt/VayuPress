@@ -6241,3 +6241,52 @@
   .vp-os .vm-ed-btn { transition: none; }
   .vp-os .vm-ed-btn:active { transform: none; }
 }
+
+/* ── Install health ──────────────────────────────────────────────────────────
+   A pass/fail list with the consequence spelled out, because "installable" is a
+   conjunction of a dozen requirements and knowing WHICH one failed is the whole
+   value. Failures carry their explanation; passes stay quiet. */
+
+.vp-os .pwa-row {
+  display: flex;
+  align-items: flex-start;
+  gap: .6rem;
+  padding: .55rem .2rem;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm);
+}
+.vp-os .pwa-row:last-child { border-bottom: 0; }
+.vp-os .pwa-mark {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 1px;
+}
+.vp-os .pwa-row--ok .pwa-mark { background: var(--ok-dim); color: var(--ok); }
+.vp-os .pwa-row--bad .pwa-mark { background: var(--danger-dim, rgba(239, 68, 68, .14)); color: var(--danger); }
+.vp-os .pwa-row--warn .pwa-mark { background: var(--warn-dim); color: var(--warn); }
+.vp-os .pwa-name { font-weight: 600; color: var(--text); }
+.vp-os .pwa-row--bad .pwa-name { color: var(--danger); }
+.vp-os .pwa-detail {
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+/* The consequence, shown only where something is wrong. */
+.vp-os .pwa-why {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+  margin-top: .3rem;
+  padding-left: .6rem;
+  border-left: 2px solid var(--border-strong);
+  line-height: 1.5;
+}
+.vp-os .pwa-browser { margin-top: 1.2rem; }
+.vp-os .pwa-probe-rows { min-height: 2rem; }

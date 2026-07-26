@@ -46,12 +46,3 @@ func TestInstallSurfacesBypassShield(t *testing.T) {
 		t.Error("shieldBypassPrefixes must contain /static so the app icons are fetchable")
 	}
 }
-
-func containsPrefix(list []string, want string) bool {
-	for _, p := range list {
-		if p == want {
-			return true
-		}
-	}
-	return false
-}

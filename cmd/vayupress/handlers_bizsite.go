@@ -267,6 +267,9 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	formBody.WriteString(`</div></div>`)
 	formBody.WriteString(`<span class="text-sm muted" data-biz-status></span>`)
 	b.WriteString(monAcc("✍️", "Your content", "Name, tagline, contact details, hours, offerings &amp; gallery", "", false, formBody.String()))
+	// Whether this site installs as a REAL app. It lives here because it is a
+	// property of the public site, and it opens itself when something is failing.
+	b.WriteString(a.pwaHealthCardHTML(r, nonce))
 	b.WriteString(`</div>`)
 
 	// ── Custom build ──────────────────────────────────────────────────────────
