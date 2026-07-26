@@ -8,7 +8,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **A monthly / yearly billing toggle on the plans page**, with the real discount
+  computed per tier and shown as a badge. The yearly price was previously an
+  8-pixel grey afterthought under the monthly one — the cadence most operators
+  would rather sell, rendered as small print.
+
+  The saving is floored, never rounded up: advertising "save 20%" while charging a
+  19% discount is a false price claim. A yearly price that is not actually cheaper
+  advertises nothing.
+
+  Both checkout destinations travel with each button and the toggle swaps between
+  them, because a toggle that changes the displayed price without moving the link
+  would show a yearly figure and bill monthly. Cards priced in only one cadence
+  keep the link they were rendered with. The toggle ships hidden and its own
+  script reveals it, so with JS off the page is exactly what it was before rather
+  than a pair of dead buttons.
+
+- **Two things the plans page had in its data and threw away.** A tier's free
+  trial (`trial_days`) is now stated on the card — the strongest thing a plan can
+  offer, previously invisible. So is an included **VayuMail mailbox**
+  (`mail_enabled` / `mail_quota_mb`), rendered with its real storage figure and
+  leading the benefit list, because a mailbox on your own domain is the reason to
+  pick this over a newsletter.
+
 ### Fixed
+- **Every paid tier was "featured".** The highlight ring was applied to each
+  non-free tier, so an install with three paid plans drew it around all three,
+  which is the same as drawing it around none. Exactly one card is featured now —
+  the cheapest paid tier, the easiest yes. Deliberately not a "most popular"
+  badge: popularity is a claim about data this page does not have.
+
 - **Recovery is now reachable from the pages where people get stuck.** The whole
   flow shipped in v3.15.39–43 complete and undiscoverable: `/mail/recover` and its
   three sibling pages cross-linked to each other, and not one sign-in page pointed

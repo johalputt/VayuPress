@@ -839,3 +839,83 @@ html[data-theme="light"] {
   color: var(--su-text, inherit);
 }
 .su-list li::marker { color: var(--su-accent, currentColor); }
+
+/* ---------------------------------------------------------------------------
+   Plans page: billing-cadence toggle, trial line, saving chip, mail benefit.
+
+   Which price shows is driven entirely by [data-cadence] on .pr-shell, so the
+   switch costs no layout work and both figures stay in the HTML for readers
+   with JS off and for screen readers. .pr-shell--js is added by the script;
+   until it is, the page renders exactly as it did before the toggle existed.
+   --------------------------------------------------------------------------- */
+.pr-toggle {
+  display: flex;
+  justify-content: center;
+  gap: .25rem;
+  margin: 0 auto 1.9rem;
+  padding: .28rem;
+  width: fit-content;
+  border-radius: 999px;
+  background: var(--su-card-2, rgba(255, 255, 255, .04));
+  border: 1px solid var(--su-border, rgba(255, 255, 255, .1));
+}
+.pr-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .46rem 1.05rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--su-muted);
+  font: inherit;
+  font-size: .88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease;
+}
+.pr-toggle-btn:hover { color: var(--su-text, inherit); }
+.pr-toggle-btn.is-on {
+  background: linear-gradient(180deg, var(--su-accent-2), var(--su-accent));
+  color: #fff;
+}
+.pr-toggle-btn.is-on .pr-save { background: rgba(255, 255, 255, .2); color: #fff; }
+
+/* The saving is the reason to choose yearly, so it reads as a badge rather
+   than as more grey small print. */
+.pr-save {
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: .14rem .42rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  color: var(--su-accent-2);
+  background: color-mix(in srgb, var(--su-accent-2) 16%, transparent);
+}
+
+/* Cadence visibility. Without the script both prices would stack, so the
+   yearly figure is hidden until the toggle can control it. */
+.pr-price--yearly { display: none; }
+.pr-shell--js[data-cadence="yearly"] .pr-price--monthly { display: none; }
+.pr-shell--js[data-cadence="yearly"] .pr-price--yearly { display: flex; }
+/* The no-JS "or £X billed yearly" line is redundant once the toggle is live. */
+.pr-shell--js .pr-yearly { display: none; }
+
+.pr-trial {
+  margin: .45rem 0 0;
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--su-accent-2);
+}
+
+/* A mailbox on your own domain is the benefit that distinguishes this product,
+   so it is the one benefit allowed to look different from the rest. */
+.pr-benefits li.pr-benefit--mail::before { content: "✉"; }
+.pr-benefits li.pr-benefit--mail { color: var(--su-text, inherit); }
+
+@media (max-width: 480px) {
+  .pr-toggle { width: 100%; justify-content: stretch; }
+  .pr-toggle-btn { flex: 1; justify-content: center; padding: .5rem .6rem; font-size: .82rem; }
+}

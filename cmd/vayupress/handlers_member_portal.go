@@ -505,6 +505,7 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 
 	brand := html.EscapeString(config.Cfg.Domain)
 	esc := html.EscapeString
+	nonce := render.CSPNonce(r)
 
 	var tiers []members.Tier
 	if a.members != nil {
@@ -533,36 +534,118 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 		onPaid = me.IsPaid()
 	}
 
+	// Emphasis on every paid tier is emphasis on none: the old code set
+	// pr-card--featured for every !IsFree() tier, so an install with three paid
+	// plans drew a highlight ring around all three. Exactly one card gets it —
+	// the cheapest paid tier, the easiest yes. Note what this deliberately is
+	// NOT: a "most popular" badge. Popularity is a claim about data this page
+	// does not have, and inventing it is the kind of small lie that makes the
+	// honest parts of the page harder to believe.
+	featuredIdx := -1
+	for i := range tiers {
+		if tiers[i].IsFree() {
+			continue
+		}
+		if featuredIdx < 0 || effectiveMonthlyCents(tiers[i]) < effectiveMonthlyCents(tiers[featuredIdx]) {
+			featuredIdx = i
+		}
+	}
+
+	// bestSaving is the largest yearly discount on offer, for the toggle's label.
+	// Only tiers priced in both cadences can have one.
+	bestSaving := 0
+	for i := range tiers {
+		if s := yearlySavingPct(tiers[i]); s > bestSaving {
+			bestSaving = s
+		}
+	}
+
 	cards := ""
+	anyYearly := false
 	for i := range tiers {
 		t := tiers[i]
-		price := "Free"
-		sub := ""
-		if !t.IsFree() {
-			price = priceLabel(t.Currency, t.MonthlyCents)
-			sub = "per month"
-			if t.MonthlyCents == 0 && t.YearlyCents > 0 {
-				price = priceLabel(t.Currency, t.YearlyCents)
-				sub = "per year"
+		bothCadences := t.MonthlyCents > 0 && t.YearlyCents > 0
+		if bothCadences {
+			anyYearly = true
+		}
+
+		// Two prices, both rendered; which one shows is a class on the shell. Doing
+		// it in CSS rather than by rewriting text means the yearly figure is in the
+		// HTML for anyone reading with JS off or a screen reader.
+		priceBlock := ""
+		if t.IsFree() {
+			priceBlock = `<div class="pr-price"><span class="pr-amount">Free</span></div>`
+		} else {
+			monthly := priceLabel(t.Currency, t.MonthlyCents)
+			perMonth := `<div class="pr-price pr-price--monthly"><span class="pr-amount">` + esc(monthly) +
+				`</span> <span class="pr-per">per month</span></div>`
+			switch {
+			case bothCadences:
+				save := ""
+				if s := yearlySavingPct(t); s > 0 {
+					save = ` <span class="pr-save">save ` + strconv.Itoa(s) + `%</span>`
+				}
+				priceBlock = perMonth +
+					`<div class="pr-price pr-price--yearly"><span class="pr-amount">` + esc(priceLabel(t.Currency, t.YearlyCents)) +
+					`</span> <span class="pr-per">per year</span>` + save + `</div>`
+			case t.MonthlyCents == 0:
+				// Yearly-only tier: the toggle must not imply a monthly option that
+				// checkout would silently convert.
+				priceBlock = `<div class="pr-price"><span class="pr-amount">` + esc(priceLabel(t.Currency, t.YearlyCents)) +
+					`</span> <span class="pr-per">per year</span></div>`
+			default:
+				priceBlock = perMonth
 			}
 		}
+
+		// The no-JS fallback for the yearly figure. Hidden once the toggle is live,
+		// so the same number is never on screen twice.
+		yearly := ""
+		if bothCadences {
+			yearly = `<p class="pr-yearly">or ` + esc(priceLabel(t.Currency, t.YearlyCents)) + ` billed yearly</p>`
+		}
+
+		// A trial is the strongest thing a plan can offer and it was sitting unused
+		// in the tier record, never rendered.
+		trial := ""
+		if t.TrialDays > 0 && !t.IsFree() {
+			trial = `<p class="pr-trial">` + strconv.Itoa(t.TrialDays) + ` days free, then billed as above. Cancel any time.</p>`
+		}
+
 		benefits := ""
+		// A real mailbox on the reader's own domain is the most distinctive thing a
+		// VayuPress tier can include, and the page discarded it entirely. It leads
+		// the list because it is the reason to pick this product over a newsletter.
+		if t.MailEnabled {
+			quota := "with unlimited storage"
+			if t.MailQuotaMB > 0 {
+				quota = "with " + esc(formatQuotaMB(t.MailQuotaMB)) + " of storage"
+			}
+			benefits += `<li class="pr-benefit--mail">Your own <strong>@` + brand + ` mailbox</strong> ` + quota +
+				` — PGP encryption, WKD, and VayuTalk chat included</li>`
+		}
 		for _, b := range t.Benefits {
 			benefits += `<li>` + esc(b) + `</li>`
 		}
+
 		featured := ""
-		if !t.IsFree() {
+		if i == featuredIdx {
 			featured = " pr-card--featured"
 		}
-		yearly := ""
-		if t.YearlyCents > 0 && t.MonthlyCents > 0 {
-			yearly = `<p class="pr-yearly">or ` + esc(priceLabel(t.Currency, t.YearlyCents)) + ` billed yearly</p>`
-		}
+
 		// The call to action depends on where the reader already stands.
 		isCurrent := signedIn && (t.Slug == currentTier || (t.IsFree() && !onPaid))
 		cadence := "monthly"
 		if t.MonthlyCents == 0 && t.YearlyCents > 0 {
 			cadence = "yearly"
+		}
+		// A cadence toggle that changes the displayed price without changing where
+		// the button goes would show a yearly figure and charge monthly. Both
+		// destinations travel with the button; the toggle swaps between them.
+		cadenceAttrs := ""
+		if bothCadences {
+			base := `/checkout?tier=` + esc(t.Slug) + `&amp;cadence=`
+			cadenceAttrs = ` data-href-monthly="` + base + `monthly" data-href-yearly="` + base + `yearly"`
 		}
 		var cta string
 		switch {
@@ -575,7 +658,7 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 		case !signedIn:
 			cta = `<a class="pr-cta pr-cta--primary" href="/signup">Become a member</a>`
 			if payEnabled {
-				cta = `<a class="pr-cta pr-cta--primary" href="/checkout?tier=` + esc(t.Slug) + `&amp;cadence=` + cadence + `">Subscribe</a>`
+				cta = `<a class="pr-cta pr-cta--primary"` + cadenceAttrs + ` href="/checkout?tier=` + esc(t.Slug) + `&amp;cadence=` + cadence + `">Subscribe</a>`
 			}
 		case t.IsFree():
 			// A paying member looking at the free tier: downgrading is a billing
@@ -585,7 +668,7 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 			// Signed in, not on this paid tier — this is the upgrade they came for.
 			cta = `<a class="pr-cta pr-cta--primary" href="/signup">Upgrade to ` + esc(t.Name) + `</a>`
 			if payEnabled {
-				cta = `<a class="pr-cta pr-cta--primary" href="/checkout?tier=` + esc(t.Slug) + `&amp;cadence=` + cadence + `">Upgrade to ` + esc(t.Name) + `</a>`
+				cta = `<a class="pr-cta pr-cta--primary"` + cadenceAttrs + ` href="/checkout?tier=` + esc(t.Slug) + `&amp;cadence=` + cadence + `">Upgrade to ` + esc(t.Name) + `</a>`
 			}
 		}
 		if isCurrent {
@@ -598,14 +681,30 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 		cards += `<article class="pr-card` + featured + `">
       <h2 class="pr-name">` + esc(t.Name) + here + `</h2>
       <p class="pr-desc">` + esc(t.Description) + `</p>
-      <div class="pr-price"><span class="pr-amount">` + esc(price) + `</span> <span class="pr-per">` + esc(sub) + `</span></div>
+      ` + priceBlock + `
       ` + yearly + `
+      ` + trial + `
       <ul class="pr-benefits">` + benefits + `</ul>
       ` + cta + `
     </article>`
 	}
 	if cards == "" {
 		cards = `<p class="pr-empty">Membership plans are not available yet.</p>`
+	}
+
+	// The toggle ships hidden and is revealed by the script below, so a reader
+	// without JS sees exactly the page that worked before rather than a pair of
+	// dead buttons. It only appears at all when some tier is priced both ways.
+	toggle := ""
+	if anyYearly {
+		saveChip := ""
+		if bestSaving > 0 {
+			saveChip = ` <span class="pr-save">save up to ` + strconv.Itoa(bestSaving) + `%</span>`
+		}
+		toggle = `<div class="pr-toggle" id="pr-toggle" role="group" aria-label="Billing period" hidden>
+    <button type="button" class="pr-toggle-btn is-on" data-pr-cadence="monthly" aria-pressed="true">Monthly</button>
+    <button type="button" class="pr-toggle-btn" data-pr-cadence="yearly" aria-pressed="false">Yearly` + saveChip + `</button>
+  </div>`
 	}
 
 	// Copy follows the reader. A signed-in member is not "becoming" a member, and
@@ -627,16 +726,85 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="su-body">
-<main class="pr-shell" id="main-content">
+<main class="pr-shell" id="main-content" data-cadence="monthly">
   <div class="pr-head">
     <h1>` + prTitle + `</h1>
     <p>` + prLead + `</p>
   </div>
+  ` + toggle + `
   <div class="pr-grid">` + cards + `</div>
   ` + prFooter + `
 </main>
+<script nonce="` + nonce + `">
+(function(){'use strict';
+var shell=document.querySelector('.pr-shell');
+var tog=document.getElementById('pr-toggle');
+if(!shell||!tog){return;}
+// Only now is the toggle real, so only now does it appear. Revealing it from
+// markup would leave a dead control on any page whose script did not run.
+tog.hidden=false;
+shell.classList.add('pr-shell--js');
+var btns=tog.querySelectorAll('[data-pr-cadence]');
+function apply(cad){
+  shell.setAttribute('data-cadence',cad);
+  for(var i=0;i<btns.length;i++){
+    var on=btns[i].getAttribute('data-pr-cadence')===cad;
+    btns[i].classList.toggle('is-on',on);
+    btns[i].setAttribute('aria-pressed',on?'true':'false');
+  }
+  // The button has to follow the price. A card priced in only one cadence keeps
+  // the href it was rendered with, because switching it would send the reader to
+  // a checkout that silently bills the other way.
+  var ctas=shell.querySelectorAll('.pr-cta[data-href-'+cad+']');
+  for(var j=0;j<ctas.length;j++){
+    var h=ctas[j].getAttribute('data-href-'+cad);
+    if(h){ctas[j].setAttribute('href',h);}
+  }
+}
+for(var k=0;k<btns.length;k++){
+  btns[k].addEventListener('click',function(e){apply(e.currentTarget.getAttribute('data-pr-cadence'));});
+}
+})();
+</script>
 </body></html>`
 	_, _ = w.Write([]byte(page))
+}
+
+// effectiveMonthlyCents is what a tier costs per month however it is billed, so
+// tiers priced only yearly can be compared with tiers priced only monthly.
+func effectiveMonthlyCents(t members.Tier) int {
+	if t.MonthlyCents > 0 {
+		return t.MonthlyCents
+	}
+	if t.YearlyCents > 0 {
+		return t.YearlyCents / 12
+	}
+	return 0
+}
+
+// yearlySavingPct is the discount for paying yearly, rounded down so the page
+// never advertises a saving larger than the one the reader actually gets. Zero
+// when the tier is not priced both ways, or when yearly is not in fact cheaper.
+func yearlySavingPct(t members.Tier) int {
+	if t.MonthlyCents <= 0 || t.YearlyCents <= 0 {
+		return 0
+	}
+	full := t.MonthlyCents * 12
+	if t.YearlyCents >= full {
+		return 0
+	}
+	return (full - t.YearlyCents) * 100 / full
+}
+
+// formatQuotaMB renders a mailbox quota the way a reader would say it.
+func formatQuotaMB(mb int) string {
+	if mb >= 1024 && mb%1024 == 0 {
+		return strconv.Itoa(mb/1024) + " GB"
+	}
+	if mb >= 1024 {
+		return strconv.FormatFloat(float64(mb)/1024, 'f', 1, 64) + " GB"
+	}
+	return strconv.Itoa(mb) + " MB"
 }
 
 // GET /api/v1/tiers — public tier catalogue.
