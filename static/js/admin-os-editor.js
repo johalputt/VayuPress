@@ -2474,7 +2474,8 @@
           o.value = ''; o.textContent = 'No provider configured';
           sel.appendChild(o); sel.disabled = true;
           if (runBtn) runBtn.disabled = true;
-          if (msg) msg.textContent = 'Add a local Ollama endpoint, or an OpenAI / OpenRouter API key, in VayuOS → API Keys to enable AI writing.';
+          aiEngineChip(false, 'not configured');
+          aiSay(msg, 'Add a local Ollama endpoint, or an OpenAI / OpenRouter API key, in VayuOS \u2192 API Keys to enable AI writing.', 'err');
           return;
         }
         sel.disabled = false;
@@ -2485,11 +2486,34 @@
           o.setAttribute('data-default-model', p.defaultModel || '');
           sel.appendChild(o);
         });
-        sel.addEventListener('change', function () { loadAIModels(sel.value); });
+        sel.addEventListener('change', function () { loadAIModels(sel.value); aiEngineSummary(); });
         loadAIModels(sel.value);
+        aiEngineSummary();
       })
-      .catch(function () { if (msg) msg.textContent = 'Could not load AI providers.'; });
+      .catch(function () {
+        aiEngineChip(false, 'unavailable');
+        aiSay(msg, 'Could not load AI providers.', 'err');
+      });
   }
+  // aiEngineChip / aiEngineSummary keep the collapsed "Model & provider" row
+  // truthful: which provider is selected, or that none is usable. Without this the
+  // summary claims nothing and the author has to open it to find out.
+  function aiEngineChip(ok, label) {
+    var chip = aiQ('[data-ai-engine-chip]');
+    if (!chip) return;
+    chip.className = 'mon-chip ' + (ok ? 'mon-chip--on' : 'mon-chip--off');
+    chip.textContent = (ok ? '\u25CF ' : '\u25CB ') + label;
+  }
+  function aiEngineSummary() {
+    var sel = aiQ('[data-ai-provider]'), sub = aiQ('[data-ai-engine-sub]');
+    if (!sel) return;
+    var label = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+    aiEngineChip(!!sel.value, label || 'none');
+    var modelEl = aiQ('[data-ai-model]');
+    var m = modelEl && modelEl.value.trim();
+    if (sub) sub.textContent = m ? (label + ' \u00B7 ' + m) : (label || 'Which model writes it');
+  }
+
   // loadAIModels fills the model dropdown with the chosen provider's catalogue
   // (fetched live, curated fallback) and keeps the custom text box in sync.
   function loadAIModels(provider) {
@@ -2543,35 +2567,117 @@
     blocks.splice.apply(blocks, [at, 0].concat(valid));
     structural();
   }
+  // aiShapeOptions reads the shaping controls. Anything left at its default
+  // contributes nothing, so an author who ignores this panel gets exactly the
+  // provider's own behaviour rather than our opinion of it.
+  function aiShapeOptions() {
+    var o = {};
+    var shape = aiQ('[data-ai-shape]'), tone = aiQ('[data-ai-tone]');
+    var len = aiQ('[data-ai-length]'), words = aiQ('[data-ai-words]');
+    var aud = aiQ('[data-ai-audience]'), lang = aiQ('[data-ai-language]');
+    var temp = aiQ('[data-ai-temp]');
+    if (shape && shape.value) o.shape = shape.value;
+    if (tone && tone.value) o.tone = tone.value;
+    if (len && len.value === 'exact') {
+      var n = parseInt(words && words.value, 10);
+      if (n > 0) o.max_words = n;
+    } else if (len && len.value) {
+      o.length = len.value;
+    }
+    if (aud && aud.value.trim()) o.audience = aud.value.trim();
+    if (lang && lang.value.trim()) o.language = lang.value.trim();
+    // The slider is 0..20; 0 means "send nothing".
+    if (temp) {
+      var t = parseInt(temp.value, 10);
+      if (t > 0) o.temperature = t / 10;
+    }
+    return o;
+  }
+  // aiCountShapeChanges drives the summary chip so the author can see at a glance
+  // that this draft is being shaped, without opening the section.
+  function aiRefreshShapeChip() {
+    var chip = aiQ('[data-ai-shape-chip]');
+    if (!chip) return;
+    var o = aiShapeOptions();
+    var n = 0, k;
+    for (k in o) { if (Object.prototype.hasOwnProperty.call(o, k)) { if (k !== 'shape' || o[k] !== 'post') n++; } }
+    if (n > 0) {
+      chip.className = 'mon-chip mon-chip--on';
+      chip.textContent = '\u25CF ' + n + (n === 1 ? ' setting' : ' settings');
+    } else {
+      chip.className = 'mon-chip mon-chip--off';
+      chip.textContent = '\u25CB defaults';
+    }
+  }
   function runAIGenerate() {
     var promptEl = aiQ('[data-ai-prompt]'), sel = aiQ('[data-ai-provider]');
     var modelEl = aiQ('[data-ai-model]'), msg = aiQ('[data-ai-msg]'), runBtn = aiQ('[data-ai-run]');
     var prompt = promptEl ? promptEl.value.trim() : '';
-    if (!prompt) { if (msg) msg.textContent = 'Enter a prompt first.'; return; }
+    if (!prompt) {
+      aiSay(msg, 'Enter a prompt first.', 'err');
+      if (promptEl) promptEl.focus();
+      return;
+    }
     var provider = sel ? sel.value : '';
     var model = modelEl ? modelEl.value.trim() : '';
-    if (runBtn) runBtn.disabled = true;
-    if (msg) msg.textContent = 'Writing your draft… this can take a moment.';
+    var payload = aiShapeOptions();
+    payload.prompt = prompt;
+    payload.provider = provider;
+    payload.model = model;
+    if (runBtn) { runBtn.disabled = true; runBtn.textContent = 'Writing…'; }
+    aiSay(msg, 'Writing your draft — a large model can take a minute.', 'busy');
     fetch('/os/api/editor/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
-      body: JSON.stringify({ prompt: prompt, provider: provider, model: model })
-    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-      .then(function (res) {
-        if (runBtn) runBtn.disabled = false;
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      return r.text().then(function (t) {
+        var d = null;
+        try { d = t ? JSON.parse(t) : null; } catch (e) { d = null; }
+        return { ok: r.ok, status: r.status, d: d, raw: t };
+      });
+    }).then(function (res) {
+        if (runBtn) { runBtn.disabled = false; runBtn.textContent = 'Generate draft'; }
         if (!res.ok) {
-          if (msg) msg.textContent = (res.d && (res.d.message || res.d.error)) || 'Generation failed.';
+          // Show what the server actually said. It has already decided what is
+          // safe to disclose, so repeating it verbatim is what makes a broken
+          // provider setup diagnosable instead of a shrug.
+          aiSay(msg, apiErrText(res.d, res.status), 'err');
           return;
         }
         var newBlocks = (res.d && res.d.blocks) || [];
-        if (!newBlocks.length) { if (msg) msg.textContent = 'The model returned nothing — try again.'; return; }
+        if (!newBlocks.length) { aiSay(msg, 'The model returned nothing usable — try again, or pick another model.', 'err'); return; }
         insertGeneratedBlocks(newBlocks);
+        var notes = (res.d && res.d.notes) || [];
         closeAIModal();
         if (promptEl) promptEl.value = '';
-        if (msg) msg.textContent = 'The draft is inserted as editable blocks — always review before you publish.';
-        setStatus('AI draft inserted — review before publishing', 'ok');
+        aiSay(msg, 'The draft is inserted as editable blocks — always review before you publish.', '');
+        setStatus(notes.length ? ('AI draft inserted — ' + notes.join('; ')) : 'AI draft inserted — review before publishing', notes.length ? '' : 'ok');
       })
-      .catch(function () { if (runBtn) runBtn.disabled = false; if (msg) msg.textContent = 'Generation failed.'; });
+      .catch(function () {
+        if (runBtn) { runBtn.disabled = false; runBtn.textContent = 'Generate draft'; }
+        aiSay(msg, 'Could not reach the server. Check your connection and try again.', 'err');
+      });
+  }
+  // apiErrText pulls the human message out of an API error payload. The envelope
+  // is {"error":{"code":..,"message":..}}, so reading d.error directly yields an
+  // OBJECT and renders as "[object Object]" — which is what this surface did,
+  // hiding every reason a generation failed behind a nonsense string.
+  function apiErrText(d, status) {
+    if (d) {
+      if (typeof d.error === 'object' && d.error && d.error.message) return d.error.message;
+      if (typeof d.message === 'string' && d.message) return d.message;
+      if (typeof d.error === 'string' && d.error) return d.error;
+    }
+    return 'Generation failed (HTTP ' + status + ').';
+  }
+
+  // aiSay writes a status line with a visible state, so a failure does not read
+  // like the neutral hint it replaces.
+  function aiSay(el, text, kind) {
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'ai-status' + (kind ? ' ai-status--' + kind : '');
   }
   if (aiBtn) aiBtn.addEventListener('click', openAIModal);
   if (aiModal) {
@@ -2582,7 +2688,31 @@
     if (aiModelSel) aiModelSel.addEventListener('change', function () {
       var modelEl = aiQ('[data-ai-model]');
       if (modelEl && aiModelSel.value) modelEl.value = aiModelSel.value;
+      aiEngineSummary();
     });
+    var aiModelInput = aiQ('[data-ai-model]');
+    if (aiModelInput) aiModelInput.addEventListener('input', aiEngineSummary);
+    // "Exact word count" reveals the number field; every shaping control keeps
+    // the summary chip honest.
+    var aiLen = aiQ('[data-ai-length]');
+    if (aiLen) aiLen.addEventListener('change', function () {
+      var f = aiQ('[data-ai-words-field]');
+      if (f) f.hidden = aiLen.value !== 'exact';
+      aiRefreshShapeChip();
+    });
+    var aiTemp = aiQ('[data-ai-temp]');
+    if (aiTemp) aiTemp.addEventListener('input', function () {
+      var out = aiQ('[data-ai-temp-out]');
+      var t = parseInt(aiTemp.value, 10);
+      if (out) out.textContent = t > 0 ? (t / 10).toFixed(1) : 'model default';
+      aiRefreshShapeChip();
+    });
+    ['[data-ai-shape]', '[data-ai-tone]', '[data-ai-words]', '[data-ai-audience]', '[data-ai-language]'].forEach(function (q) {
+      var el = aiQ(q);
+      if (el) el.addEventListener('change', aiRefreshShapeChip);
+      if (el) el.addEventListener('input', aiRefreshShapeChip);
+    });
+    aiRefreshShapeChip();
     aiModal.addEventListener('click', function (e) { if (e.target === aiModal) closeAIModal(); });
   }
   if (previewClose) previewClose.addEventListener('click', function () { previewModal.hidden = true; });

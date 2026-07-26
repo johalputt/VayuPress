@@ -6378,3 +6378,69 @@
   user-select: all;
 }
 .vp-os .rec-codes__actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+/* ---------------------------------------------------------------------------
+   Editor → Write with AI panel.
+
+   The panel borrows the Monetization grammar (.mon-acc summaries with icon,
+   subtitle and status chip) so the busiest surface in the product does not have
+   its own dialect. The controls sit in a two-column grid that collapses to one
+   on a narrow panel.
+   --------------------------------------------------------------------------- */
+.ai-panel .mon-acc { margin: 0 0 .7rem; }
+.ai-panel .mon-acc__body { padding: .85rem .95rem 1rem; }
+
+.ai-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: .3rem .8rem;
+}
+.ai-grid .pm-field { margin-bottom: .55rem; }
+/* Free-text and range inputs read better across the full width. */
+.ai-grid .pm-field:has(> input[type="range"]) { grid-column: 1 / -1; }
+
+.pm-help {
+  margin: .35rem 0 0;
+  font-size: .76rem;
+  line-height: 1.45;
+  color: var(--os-muted, #94a3b8);
+}
+
+/* The status line is the only place a provider failure is explained, so it has
+   to look like a message rather than the neutral hint it replaces. */
+.ai-status {
+  margin: .2rem 0 .8rem;
+  padding: .55rem .7rem;
+  border-radius: 9px;
+  font-size: .82rem;
+  line-height: 1.5;
+  border: 1px solid transparent;
+  color: var(--os-muted, #94a3b8);
+  background: rgba(127, 127, 127, .08);
+}
+.ai-status--err {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, .1);
+  border-color: rgba(239, 68, 68, .32);
+}
+.ai-status--busy {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, .1);
+  border-color: rgba(59, 130, 246, .3);
+}
+@media (prefers-color-scheme: light) {
+  .ai-status--err { color: #b91c1c; }
+  .ai-status--busy { color: #1d4ed8; }
+}
+:root[data-theme="light"] .ai-status--err { color: #b91c1c; }
+:root[data-theme="light"] .ai-status--busy { color: #1d4ed8; }
+
+/* A range input inherits almost nothing from .pm-input, so give it a sane size. */
+.ai-panel input[type="range"] {
+  width: 100%;
+  padding: 0;
+  height: 1.6rem;
+  background: transparent;
+  border: 0;
+  accent-color: var(--os-accent, #6366f1);
+}

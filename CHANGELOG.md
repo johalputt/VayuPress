@@ -6,6 +6,61 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **"Generate draft" could fail silently, and never explained itself.** Three
+  separate defects stacked up in the editor's AI panel:
+
+  A model that returned an **empty completion** was treated as success — the
+  generator returned an empty string with a `nil` error, so the server logged no
+  failure and the editor simply said the model "returned nothing". That is the
+  exact shape of a dead feature: nothing works and nothing is wrong. An empty
+  draft is now an error, and it says whether the model hit its token limit before
+  writing anything.
+
+  When a provider **refused the request**, its explanation was discarded and only
+  the status code was kept, then even that was replaced by a generic message. So
+  "this request requires more credits than your account has" reached the operator
+  as "The AI provider request failed" — unactionable on the one surface where the
+  operator is the only person who can fix it. The provider's own reason is now
+  shown. Transport failures still stay generic on purpose, because their text
+  contains the configured endpoint; the two are separated by type rather than by
+  guesswork, and provider messages are scrubbed of anything URL-shaped so a custom
+  gateway cannot leak its address this way.
+
+  And every failure that *did* reach the panel rendered as **`[object Object]`**,
+  because the error text lives at `error.message` in the API envelope while the
+  panel read `error` directly.
+
+- **Reasoning models produced nothing.** Models that answer in a `reasoning`
+  field and leave `content` empty — common among the free models on OpenRouter —
+  now have their output used, with a note that the draft may need more tidying.
+
+- **A draft cut off at the token limit looked complete.** `finish_reason` was
+  ignored, so a truncated post was inserted with no indication it stops
+  mid-thought. The author is now told, and told which model actually served the
+  request when the provider rerouted it.
+
+### Added
+- **The AI panel now shapes the draft**, in the console's Monetization accordion
+  grammar rather than a flat stack of fields: format (post, outline, how-to, list
+  article, Q&A), tone, length as a band or an exact word count, intended audience,
+  language, and a creativity slider. Summary chips report how many settings are
+  active and which provider will serve the request, so the collapsed rows tell the
+  truth without being opened.
+
+  Every control defaults to "model default" and contributes nothing when left
+  alone — an author who ignores the panel gets exactly the provider's own
+  behaviour. Tone and format are allow-lists, and word counts and temperature are
+  clamped, because this route spends the operator's provider credit.
+
+  Requests now also carry attribution headers, so a shared OpenRouter key's
+  activity log distinguishes this site from everything else using it. Never in Tor
+  mode, where the point is that no outbound request identifies the site.
+
+---
+
 ## [3.15.44] — 2026-07-26
 
 Finishes the member-facing follow-ups: the account page now answers "what have I

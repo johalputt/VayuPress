@@ -812,23 +812,103 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
         <span>✨ Write with AI</span>
         <button type="button" class="btn--icon" data-ai-close aria-label="Close">✕</button>
       </div>
-      <div class="editor-settings-body">
+      <div class="editor-settings-body ai-panel">
         <div class="pm-field">
-          <label class="pm-label">What should this post be about?</label>
-          <textarea class="pm-input" data-ai-prompt rows="4" placeholder="e.g. A beginner's guide to self-hosting email — friendly tone, ~800 words, with a short FAQ."></textarea>
+          <label class="pm-label" for="ai-prompt">What should this post be about?</label>
+          <textarea class="pm-input" id="ai-prompt" data-ai-prompt rows="4" placeholder="e.g. A beginner's guide to self-hosting email — friendly tone, ~800 words, with a short FAQ."></textarea>
         </div>
-        <div class="pm-field">
-          <label class="pm-label">Provider</label>
-          <select class="pm-input" data-ai-provider></select>
-        </div>
-        <div class="pm-field">
-          <label class="pm-label">Model <span class="muted">(pick one, or type a custom name)</span></label>
-          <select class="pm-input" data-ai-model-select></select>
-          <input class="pm-input" type="text" data-ai-model placeholder="Provider default">
-        </div>
-        <div class="pm-field">
-          <div class="text-sm muted" data-ai-msg>The draft is inserted as editable blocks — always review before you publish.</div>
-        </div>
+
+        <!-- Shape: the controls most authors change per draft, open by default. -->
+        <details class="mon-acc" open>
+          <summary class="mon-acc__sum">
+            <span class="mon-acc__ic" aria-hidden="true">&#9998;</span>
+            <span class="mon-acc__head"><span class="mon-acc__title">Shape the draft</span><span class="mon-acc__sub">Format, tone, length and who it is for</span></span>
+            <span class="mon-chip mon-chip--off" data-ai-shape-chip>○ defaults</span>
+            <svg class="mon-acc__chev" viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </summary>
+          <div class="mon-acc__body">
+            <div class="ai-grid">
+              <div class="pm-field">
+                <label class="pm-label" for="ai-shape">Format</label>
+                <select class="pm-input" id="ai-shape" data-ai-shape>
+                  <option value="post">Full blog post</option>
+                  <option value="outline">Outline only</option>
+                  <option value="howto">Step-by-step how-to</option>
+                  <option value="listicle">Numbered list article</option>
+                  <option value="faq">Question &amp; answer</option>
+                </select>
+              </div>
+              <div class="pm-field">
+                <label class="pm-label" for="ai-tone">Tone</label>
+                <select class="pm-input" id="ai-tone" data-ai-tone>
+                  <option value="">Model default</option>
+                  <option value="neutral">Neutral</option>
+                  <option value="friendly">Friendly</option>
+                  <option value="conversational">Conversational</option>
+                  <option value="professional">Professional</option>
+                  <option value="technical">Technical</option>
+                  <option value="persuasive">Persuasive</option>
+                </select>
+              </div>
+              <div class="pm-field">
+                <label class="pm-label" for="ai-length">Length</label>
+                <select class="pm-input" id="ai-length" data-ai-length>
+                  <option value="">Model default</option>
+                  <option value="short">Short — 300–500 words</option>
+                  <option value="medium">Medium — 700–900 words</option>
+                  <option value="long">Long — 1200–1600 words</option>
+                  <option value="exact">Exact word count…</option>
+                </select>
+              </div>
+              <div class="pm-field" data-ai-words-field hidden>
+                <label class="pm-label" for="ai-words">Target words</label>
+                <input class="pm-input" id="ai-words" type="number" min="100" max="4000" step="50" value="800" data-ai-words>
+              </div>
+              <div class="pm-field">
+                <label class="pm-label" for="ai-audience">Written for <span class="muted">(optional)</span></label>
+                <input class="pm-input" id="ai-audience" type="text" maxlength="80" placeholder="e.g. small-business owners, new self-hosters" data-ai-audience>
+              </div>
+              <div class="pm-field">
+                <label class="pm-label" for="ai-language">Language <span class="muted">(optional)</span></label>
+                <input class="pm-input" id="ai-language" type="text" maxlength="80" placeholder="Model default" data-ai-language>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Engine: set once and rarely touched, so it starts collapsed. -->
+        <details class="mon-acc">
+          <summary class="mon-acc__sum">
+            <span class="mon-acc__ic" aria-hidden="true">&#9881;</span>
+            <span class="mon-acc__head"><span class="mon-acc__title">Model &amp; provider</span><span class="mon-acc__sub" data-ai-engine-sub>Which model writes it</span></span>
+            <span class="mon-chip mon-chip--off" data-ai-engine-chip>○ checking</span>
+            <svg class="mon-acc__chev" viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </summary>
+          <div class="mon-acc__body">
+            <div class="ai-grid">
+              <div class="pm-field">
+                <label class="pm-label" for="ai-provider">Provider</label>
+                <select class="pm-input" id="ai-provider" data-ai-provider></select>
+              </div>
+              <div class="pm-field">
+                <label class="pm-label" for="ai-model-select">Model</label>
+                <select class="pm-input" id="ai-model-select" data-ai-model-select></select>
+              </div>
+              <div class="pm-field">
+                <label class="pm-label" for="ai-model">Or type a model name</label>
+                <input class="pm-input" id="ai-model" type="text" data-ai-model placeholder="Provider default">
+              </div>
+              <div class="pm-field">
+                <label class="pm-label" for="ai-temp">Creativity <span class="muted" data-ai-temp-out>model default</span></label>
+                <input class="pm-input" id="ai-temp" type="range" min="0" max="20" step="1" value="0" data-ai-temp>
+                <p class="pm-help">Left is predictable and factual, right is more inventive. Leave at the far left to use the model's own setting.</p>
+              </div>
+            </div>
+            <p class="pm-help">Providers and keys are configured in VayuOS &rarr; API Keys. Only providers you have set up appear here.</p>
+          </div>
+        </details>
+
+        <div class="ai-status" data-ai-msg role="status" aria-live="polite">The draft is inserted as editable blocks — always review before you publish.</div>
         <div class="pm-row">
           <button type="button" class="btn btn--primary btn--sm" data-ai-run>Generate draft</button>
           <button type="button" class="btn btn--ghost btn--sm" data-ai-cancel>Cancel</button>

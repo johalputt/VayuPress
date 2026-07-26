@@ -18,7 +18,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -50,6 +52,71 @@ type Backend struct {
 	Endpoint string // base URL (Ollama root, or the OpenAI-compatible base ending in /v1)
 	APIKey   string // bearer token for OpenAI-compatible providers (empty for Ollama)
 	Model    string // model name
+
+	// Temperature is the sampling temperature. Zero means "send nothing and let
+	// the provider default apply" — a real 0 is expressed as a pointer-free
+	// convention we deliberately avoid, because silently sending 0 would make
+	// every draft deterministic for operators who never touched the setting.
+	Temperature float64
+	// MaxTokens caps the completion length. Zero sends no cap.
+	MaxTokens int
+	// Referer and Title are optional attribution headers. OpenRouter shows them
+	// on the operator's own activity dashboard, which is how a self-hoster tells
+	// their site's spend apart from everything else on the same key.
+	Referer string
+	Title   string
+}
+
+// ProviderError is a failure the PROVIDER itself reported about the request —
+// no credits, unknown model, rate limited, an empty completion. It is separated
+// from transport and decode errors on purpose: a transport error's text contains
+// the configured endpoint URL (which may be an internal host), while a provider
+// message is about the request and is safe to show the author who triggered it.
+// Only this type should ever be surfaced in a UI.
+//
+// Message is scrubbed of anything URL-shaped before it is stored, so a custom
+// gateway that echoes its own address back cannot leak it through this path.
+type ProviderError struct {
+	Status  int    // HTTP status, 0 when the failure was in a 2xx body
+	Message string // the provider's own explanation, scrubbed
+}
+
+func (e *ProviderError) Error() string {
+	if e.Status > 0 {
+		return fmt.Sprintf("provider rejected the request (HTTP %d): %s", e.Status, e.Message)
+	}
+	return e.Message
+}
+
+// providerErr builds a ProviderError with the message scrubbed.
+func providerErr(status int, format string, args ...interface{}) error {
+	return &ProviderError{Status: status, Message: scrubURLs(fmt.Sprintf(format, args...))}
+}
+
+// scrubURLs removes URL-shaped and host-shaped text so a provider message can be
+// shown without disclosing where the operator's gateway lives.
+func scrubURLs(s string) string {
+	out := urlPattern.ReplaceAllString(s, "[endpoint]")
+	return strings.TrimSpace(hostPortPattern.ReplaceAllString(out, "[host]"))
+}
+
+var (
+	urlPattern      = regexp.MustCompile(`(?i)\b(?:https?|ws|wss)://[^\s"'` + "`" + `]+`)
+	hostPortPattern = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b|\b[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+:\d+\b`)
+)
+
+// Meta describes how a generation ended, for reporting back to the author.
+type Meta struct {
+	// Truncated is true when the model stopped because it hit the token cap
+	// rather than because it finished. The draft is still usable, but it ends
+	// mid-thought and the author needs to know that before publishing.
+	Truncated bool
+	// FromReasoning is true when the text came from a reasoning model's
+	// "reasoning" field because "content" was empty.
+	FromReasoning bool
+	// Model is what the provider reports it actually served, which can differ
+	// from what was asked for (OpenRouter reroutes ":free" variants).
+	Model string
 }
 
 // Config configures the local inference endpoint.
@@ -87,22 +154,26 @@ func SupportedOps() []string {
 	return []string{OpSummarize, OpImprove, OpTitles, OpSEO, OpContinue, OpDraft}
 }
 
-// GenerateOp runs op over text against an explicit, runtime-selected backend
+// GenerateOpDetail runs op over text against an explicit, runtime-selected backend
 // (Ollama, OpenAI, OpenRouter, or any OpenAI-compatible gateway). It is the
 // stateless path the editor's provider picker uses; the env-configured Client
 // above remains for the default local-Ollama assist. text is capped to bound the
 // prompt. A nil httpClient gets a 90s default.
-func GenerateOp(ctx context.Context, hc *http.Client, b Backend, op, text string) (string, error) {
+//
+// It returns how the generation ended alongside the text, so a caller can tell the
+// author that a draft was truncated or came from a reasoning field instead of
+// silently handing over a partial post.
+func GenerateOpDetail(ctx context.Context, hc *http.Client, b Backend, op, text string) (string, Meta, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return "", fmt.Errorf("text is required")
+		return "", Meta{}, fmt.Errorf("text is required")
 	}
 	if len(text) > 12000 {
 		text = text[:12000]
 	}
 	prompt, ok := buildPrompt(op, text)
 	if !ok {
-		return "", fmt.Errorf("unsupported operation %q", op)
+		return "", Meta{}, fmt.Errorf("unsupported operation %q", op)
 	}
 	if hc == nil {
 		hc = &http.Client{Timeout: 90 * time.Second}
@@ -111,7 +182,8 @@ func GenerateOp(ctx context.Context, hc *http.Client, b Backend, op, text string
 	case KindOpenAI:
 		return generateOpenAI(ctx, hc, b, prompt)
 	default:
-		return generateOllamaAt(ctx, hc, b.Endpoint, b.Model, prompt)
+		out, err := generateOllamaAt(ctx, hc, b.Endpoint, b.Model, prompt)
+		return out, Meta{Model: b.Model}, err
 	}
 }
 
@@ -161,76 +233,164 @@ func generateOllamaAt(ctx context.Context, hc *http.Client, base, model, prompt 
 		return "", fmt.Errorf("ai request: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("ai endpoint status %d", resp.StatusCode)
-	}
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	var out struct {
 		Response string `json:"response"`
 		Error    string `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", fmt.Errorf("ai decode: %w", err)
+	_ = json.Unmarshal(raw, &out)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if out.Error != "" {
+			return "", fmt.Errorf("provider rejected the request (HTTP %d): %s", resp.StatusCode, out.Error)
+		}
+		if snip := snippet(raw); snip != "" {
+			return "", fmt.Errorf("provider rejected the request (HTTP %d): %s", resp.StatusCode, snip)
+		}
+		return "", fmt.Errorf("provider rejected the request (HTTP %d)", resp.StatusCode)
 	}
 	if out.Error != "" {
-		return "", fmt.Errorf("ai model error: %s", out.Error)
+		return "", fmt.Errorf("the model reported an error: %s", out.Error)
+	}
+	// Empty must be an error here too, for the same reason as the OpenAI path.
+	if strings.TrimSpace(out.Response) == "" {
+		return "", fmt.Errorf("the model returned an empty draft")
 	}
 	return strings.TrimSpace(out.Response), nil
 }
 
 // generateOpenAI calls an OpenAI-compatible /chat/completions endpoint (OpenAI,
 // OpenRouter, or any compatible gateway) with streaming disabled.
-func generateOpenAI(ctx context.Context, hc *http.Client, b Backend, prompt string) (string, error) {
+func generateOpenAI(ctx context.Context, hc *http.Client, b Backend, prompt string) (string, Meta, error) {
 	if strings.TrimSpace(b.Model) == "" {
-		return "", fmt.Errorf("a model name is required for this provider")
+		return "", Meta{}, providerErr(0, "a model name is required for this provider")
 	}
-	body, _ := json.Marshal(map[string]interface{}{
+	payload := map[string]interface{}{
 		"model":    b.Model,
 		"messages": []map[string]string{{"role": "user", "content": prompt}},
 		"stream":   false,
-	})
+	}
+	if b.Temperature > 0 {
+		payload["temperature"] = b.Temperature
+	}
+	if b.MaxTokens > 0 {
+		payload["max_tokens"] = b.MaxTokens
+	}
+	body, _ := json.Marshal(payload)
 	endpoint := strings.TrimRight(strings.TrimSpace(b.Endpoint), "/")
 	if endpoint == "" {
-		return "", fmt.Errorf("this provider has no endpoint configured")
+		return "", Meta{}, fmt.Errorf("this provider has no endpoint configured")
 	}
 	if !strings.HasSuffix(endpoint, "/chat/completions") {
 		endpoint += "/chat/completions"
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return "", Meta{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if k := strings.TrimSpace(b.APIKey); k != "" {
 		req.Header.Set("Authorization", "Bearer "+k)
 	}
+	// Attribution headers, when the caller supplies them. Harmless to providers
+	// that ignore them, and they are what make a shared OpenRouter key's activity
+	// log legible per site.
+	if v := strings.TrimSpace(b.Referer); v != "" {
+		req.Header.Set("HTTP-Referer", v)
+	}
+	if v := strings.TrimSpace(b.Title); v != "" {
+		req.Header.Set("X-Title", v)
+	}
 	resp, err := hc.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("ai request: %w", err)
+		return "", Meta{}, fmt.Errorf("ai request: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("ai endpoint status %d", resp.StatusCode)
-	}
+
+	// Read the body up front, whatever the status. A provider explains a refusal
+	// in the body — "insufficient credits", "model not available to this key",
+	// "rate limited" — and throwing that away leaves an operator with nothing to
+	// act on but "it failed".
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	var out struct {
+		Model   string `json:"model"`
 		Choices []struct {
-			Message struct {
+			FinishReason string `json:"finish_reason"`
+			Message      struct {
 				Content string `json:"content"`
+				// Reasoning models answer here and leave Content empty.
+				Reasoning string `json:"reasoning"`
 			} `json:"message"`
 		} `json:"choices"`
 		Error struct {
 			Message string `json:"message"`
+			Code    any    `json:"code"`
 		} `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", fmt.Errorf("ai decode: %w", err)
+	_ = json.Unmarshal(raw, &out) // best-effort: a non-JSON error body is handled below
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if msg := strings.TrimSpace(out.Error.Message); msg != "" {
+			return "", Meta{}, providerErr(resp.StatusCode, "%s", msg)
+		}
+		// No parseable message: include a bounded snippet so the cause is still
+		// diagnosable, rather than reporting only a bare status code.
+		if snip := snippet(raw); snip != "" {
+			return "", Meta{}, providerErr(resp.StatusCode, "%s", snip)
+		}
+		return "", Meta{}, providerErr(resp.StatusCode, "the provider gave no reason")
 	}
-	if out.Error.Message != "" {
-		return "", fmt.Errorf("ai model error: %s", out.Error.Message)
+	if readErr != nil {
+		return "", Meta{}, fmt.Errorf("ai read: %w", readErr)
+	}
+	// A 2xx can still carry an error object instead of choices.
+	if msg := strings.TrimSpace(out.Error.Message); msg != "" {
+		return "", Meta{}, providerErr(0, "the model reported an error: %s", msg)
 	}
 	if len(out.Choices) == 0 {
-		return "", fmt.Errorf("ai returned no choices")
+		if snip := snippet(raw); snip != "" {
+			return "", Meta{}, providerErr(0, "the provider returned no completion: %s", snip)
+		}
+		return "", Meta{}, providerErr(0, "the provider returned no completion")
 	}
-	return strings.TrimSpace(out.Choices[0].Message.Content), nil
+
+	meta := Meta{
+		Truncated: strings.EqualFold(out.Choices[0].FinishReason, "length"),
+		Model:     strings.TrimSpace(out.Model),
+	}
+	text := strings.TrimSpace(out.Choices[0].Message.Content)
+	if text == "" {
+		// Reasoning models put the prose in "reasoning". The draft is there, just
+		// under a different key — use it rather than reporting nothing.
+		if r := strings.TrimSpace(out.Choices[0].Message.Reasoning); r != "" {
+			return r, Meta{Truncated: meta.Truncated, Model: meta.Model, FromReasoning: true}, nil
+		}
+		// Genuinely empty. This MUST be an error: returning "" with a nil error is
+		// indistinguishable from success, so the caller inserts nothing while the
+		// server logs no failure — the exact shape of a silent dead feature.
+		reason := "the model returned an empty draft"
+		if meta.Truncated {
+			reason += " (it hit the token limit before writing anything — raise the length cap)"
+		} else if out.Choices[0].FinishReason != "" {
+			reason += " (finish reason: " + out.Choices[0].FinishReason + ")"
+		}
+		return "", meta, providerErr(0, "%s", reason)
+	}
+	return text, meta, nil
+}
+
+// snippet reduces an unexpected provider body to something safe and short enough
+// to show an operator: one line, bounded, with no surrounding markup.
+func snippet(raw []byte) string {
+	s := strings.TrimSpace(string(raw))
+	if s == "" {
+		return ""
+	}
+	s = strings.Join(strings.Fields(s), " ")
+	const max = 200
+	if len(s) > max {
+		s = s[:max] + "…"
+	}
+	return s
 }
 
 // buildPrompt returns the instruction prompt for op, or ok=false if unknown.

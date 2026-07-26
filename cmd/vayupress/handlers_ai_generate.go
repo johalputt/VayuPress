@@ -17,9 +17,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,7 +29,9 @@ import (
 	"github.com/johalputt/vayupress/internal/blockrender"
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/secrets"
+	"github.com/johalputt/vayupress/internal/seo"
 )
 
 // aiGenHTTP is the client used for author-triggered generation. Generation is
@@ -380,6 +384,15 @@ func (a *App) handleOSEditorGenerate(w http.ResponseWriter, r *http.Request) {
 		Prompt   string `json:"prompt"`
 		Provider string `json:"provider"`
 		Model    string `json:"model"`
+		// Draft shaping. All optional — an omitted field leaves the provider's own
+		// default in place rather than imposing one.
+		Tone     string  `json:"tone"`
+		Audience string  `json:"audience"`
+		Length   string  `json:"length"`
+		Language string  `json:"language"`
+		Shape    string  `json:"shape"`
+		Temp     float64 `json:"temperature"`
+		MaxWords int     `json:"max_words"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
@@ -407,6 +420,31 @@ func (a *App) handleOSEditorGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sampling and length. Both are clamped rather than trusted: this route spends
+	// the operator's provider credit, so an absurd token cap is a cost bug.
+	if body.Temp > 0 {
+		backend.Temperature = clampFloat(body.Temp, 0.1, 2.0)
+	}
+	if body.MaxWords > 0 {
+		// ~1.4 tokens per word for English prose, plus headroom for Markdown
+		// scaffolding, so a "1000 words" request is not cut off at 900.
+		backend.MaxTokens = clampInt(int(float64(clampInt(body.MaxWords, 100, 4000))*1.8), 256, 8000)
+	}
+	// Attribution, so an operator can tell this site's spend apart from everything
+	// else on the same key. Never sent in Tor mode: the whole point there is that
+	// no outbound request identifies the site.
+	if !safefetch.ClearnetBlocked() && config.Cfg.Domain != "" {
+		backend.Referer = seo.Origin(config.Cfg.Domain)
+		backend.Title = config.Cfg.Domain
+	}
+	// Shaping instructions ride in the prompt, because they must work on every
+	// OpenAI-compatible provider and none of them share a structured field for
+	// "write in this tone".
+	prompt := decorateDraftPrompt(body.Prompt, draftShape{
+		Tone: body.Tone, Audience: body.Audience, Length: body.Length,
+		Language: body.Language, Shape: body.Shape, MaxWords: body.MaxWords,
+	})
+
 	// Process-wide concurrency cap: wait for a slot, but never longer than the
 	// request itself (the global request timeout cancels r.Context()).
 	select {
@@ -417,18 +455,169 @@ func (a *App) handleOSEditorGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	md, err := aiassist.GenerateOp(r.Context(), aiGenHTTP, backend, aiassist.OpDraft, body.Prompt)
+	md, meta, err := aiassist.GenerateOpDetail(r.Context(), aiGenHTTP, backend, aiassist.OpDraft, prompt)
 	if err != nil {
-		// Never reflect the upstream/transport error to the caller: it can carry
-		// the operator's configured provider endpoint (including internal hosts).
-		// Log the detail server-side for operators; return a generic message.
+		// Always log the full detail server-side.
 		logging.LogError("ai-generate", "provider generation failed", err.Error())
-		writeAPIError(w, r, http.StatusBadGateway, "ai-error", "The AI provider request failed. Check the provider settings in VayuOS → API Keys.", "")
+		// What the provider itself said about the request is safe to show, and is
+		// the only thing that lets an operator fix their own install — "no credits
+		// on this model" is actionable, "the request failed" is not. aiassist types
+		// those separately from transport errors and scrubs URLs out of them;
+		// anything else stays generic, because its text can name the endpoint.
+		var pe *aiassist.ProviderError
+		if errors.As(err, &pe) {
+			writeAPIError(w, r, http.StatusBadGateway, "ai-error",
+				"The model could not write this draft: "+pe.Message, "")
+			return
+		}
+		writeAPIError(w, r, http.StatusBadGateway, "ai-error",
+			"Could not reach the AI provider. Check the endpoint and key in VayuOS → API Keys.", "")
 		return
 	}
 	blocks := blockrender.MarkdownToBlocks(md)
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+	if len(blocks) == 0 {
+		// The model answered but nothing survived parsing. Report it as a failure
+		// rather than returning an empty success the editor has to interpret.
+		logging.LogError("ai-generate", "model output parsed to zero blocks", "len="+strconv.Itoa(len(md)))
+		writeAPIError(w, r, http.StatusBadGateway, "ai-empty",
+			"The model replied, but the reply contained no usable text. Try again, or pick a different model.", "")
+		return
+	}
+	out := map[string]interface{}{
 		"blocks":   blocks,
 		"markdown": md,
-	})
+	}
+	// Tell the author when the draft is not the whole story.
+	var notes []string
+	if meta.Truncated {
+		notes = append(notes, "the model hit its length limit, so the draft stops early — raise the length or continue it yourself")
+	}
+	if meta.FromReasoning {
+		notes = append(notes, "this model returned its answer as reasoning text, so the draft may need more tidying than usual")
+	}
+	if meta.Model != "" && !strings.EqualFold(meta.Model, backend.Model) {
+		notes = append(notes, "served by "+meta.Model)
+	}
+	if len(notes) > 0 {
+		out["notes"] = notes
+	}
+	writeJSON(w, r, http.StatusOK, out)
+}
+
+// draftShape carries the author's shaping choices for a generated draft.
+//
+// Every field is optional and an empty one contributes nothing to the prompt.
+// That matters: an unset "tone" must not silently become "professional", because
+// the author would have no way to get the model's own default voice back.
+type draftShape struct {
+	Tone     string
+	Audience string
+	Length   string
+	Language string
+	Shape    string
+	MaxWords int
+}
+
+// draftTones, draftLengths and draftShapes are the accepted vocabularies. They
+// are allow-lists, not suggestions: these strings are interpolated into a prompt,
+// so accepting arbitrary text here would let an author rewrite the instruction
+// the operator's key is paying for.
+var (
+	draftTones = map[string]string{
+		"neutral":        "a clear, neutral voice",
+		"friendly":       "a warm, friendly voice that speaks directly to the reader",
+		"professional":   "a precise, professional voice",
+		"technical":      "a technical voice that assumes the reader is comfortable with detail",
+		"conversational": "a relaxed, conversational voice, contractions allowed",
+		"persuasive":     "a persuasive voice that argues a clear position",
+	}
+	draftLengths = map[string]string{
+		"short":  "Keep it short — roughly 300–500 words.",
+		"medium": "Aim for roughly 700–900 words.",
+		"long":   "Write a thorough piece of roughly 1200–1600 words.",
+	}
+	draftShapes = map[string]string{
+		"post":     "Write it as a complete blog post.",
+		"outline":  "Return only a structured outline: headings and one-line bullets under each, no full paragraphs.",
+		"howto":    "Write it as a step-by-step how-to with numbered steps the reader can follow.",
+		"listicle": "Write it as a numbered list article, each item with its own heading and a short explanation.",
+		"faq":      "Write it as a series of question-and-answer pairs, each question an H2.",
+	}
+)
+
+// decorateDraftPrompt appends the author's shaping choices to their instruction.
+//
+// The choices are appended rather than prepended so the author's own words stay
+// the primary instruction — a model given "audience: beginners" before the actual
+// topic tends to write about the audience.
+func decorateDraftPrompt(prompt string, s draftShape) string {
+	var b strings.Builder
+	b.WriteString(strings.TrimSpace(prompt))
+	var reqs []string
+	if v, ok := draftTones[strings.ToLower(strings.TrimSpace(s.Tone))]; ok {
+		reqs = append(reqs, "Write in "+v+".")
+	}
+	if a := sanitizeShapeText(s.Audience); a != "" {
+		reqs = append(reqs, "Write for this audience: "+a+".")
+	}
+	if v, ok := draftShapes[strings.ToLower(strings.TrimSpace(s.Shape))]; ok {
+		reqs = append(reqs, v)
+	}
+	// An explicit word count wins over the coarse length band, since the author
+	// typed a number and the band is only a preset.
+	switch {
+	case s.MaxWords > 0:
+		reqs = append(reqs, "Target about "+strconv.Itoa(clampInt(s.MaxWords, 100, 4000))+" words.")
+	default:
+		if v, ok := draftLengths[strings.ToLower(strings.TrimSpace(s.Length))]; ok {
+			reqs = append(reqs, v)
+		}
+	}
+	if l := sanitizeShapeText(s.Language); l != "" {
+		reqs = append(reqs, "Write the entire post in "+l+".")
+	}
+	if len(reqs) > 0 {
+		b.WriteString("\n\nAdditional requirements:\n")
+		for _, r := range reqs {
+			b.WriteString("- " + r + "\n")
+		}
+	}
+	return b.String()
+}
+
+// sanitizeShapeText bounds and flattens a free-text shaping field (audience,
+// language).
+//
+// This is prompt hygiene, not a security boundary: the author already controls the
+// main prompt, so there is no privilege to escalate by writing instructions here.
+// Collapsing newlines keeps each value inside its own bullet so the requirements
+// list stays well-formed, and the length cap keeps a pasted essay from crowding
+// out the instruction it is meant to qualify.
+func sanitizeShapeText(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	const max = 80
+	if len(s) > max {
+		s = s[:max]
+	}
+	return strings.TrimSpace(s)
+}
+
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+func clampFloat(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
