@@ -6,6 +6,53 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.47] — 2026-07-26
+
+Third fix in the draft-generation chain, shipped on its own for the same reason:
+the feature is released and was still producing unusable output.
+
+### Fixed
+- **A model's internal monologue was inserted as a 2,000-word draft.** When a model
+  returned an empty completion with its thinking in the `reasoning` field, v3.15.45
+  used that text as the post. For a model that genuinely writes the article there
+  that is right; for a model talking to itself it produced a draft opening "We need
+  to write a blog post about…" — and the author had to read it to find out. The
+  reasoning field is now only accepted when it is actually shaped like an article,
+  and a monologue is reported instead of inserted.
+
+- **Broken model output is refused rather than handed over.** Small, heavily
+  quantised free models fail in three recognisable ways: they leak their own
+  special tokens (`<SPECIAL_205>`, `<|im_start|>`), they emit several unrelated
+  writing systems per sentence, or they return their own reasoning. All three were
+  inserted as drafts. Each is now caught and named, with the advice that the model
+  itself is the problem. The checks are deliberately blunt so ordinary prose in any
+  language passes — including bilingual and non-Latin posts, which are covered by
+  tests, because a false positive throws away real work.
+
+### Changed
+- **Drafts are written as structured HTML, built for search and answer engines.**
+  The prompt now requires: one `<h1>`; an opening paragraph that answers the
+  question in its first two sentences; a "Key takeaways" list of self-contained
+  points; descriptive `<h2>`/`<h3>` sections — never "Introduction" or
+  "Conclusion"; a real FAQ section with each question as its own heading; and
+  tables for comparisons. Sections must stand alone, with no "as mentioned above",
+  because a search or answer engine may surface one section by itself.
+
+  HTML rather than Markdown because it is what the editor stores, the importer
+  parses it losslessly into real heading, list and table blocks, and malformed HTML
+  degrades into something the quality gate catches — where malformed Markdown
+  silently imports as one long paragraph that looks like a genuine draft. The
+  format is detected rather than assumed, so a model that ignores the instruction
+  and answers in Markdown still imports correctly.
+
+### Added
+- **A "search phrase to rank for" field.** Used once in the title, once in the
+  opening answer and once in a section heading, with the model explicitly told not
+  to repeat it — a keyword given without restraint gets packed into every paragraph
+  and makes the post worse.
+
+---
+
 ## [3.15.46] — 2026-07-26
 
 Ships on its own for the same reason as v3.15.45: draft generation is released and

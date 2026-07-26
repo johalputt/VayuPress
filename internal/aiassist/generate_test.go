@@ -273,3 +273,152 @@ func TestOptionsAreSent(t *testing.T) {
 		t.Error("an unset max_tokens must not be sent")
 	}
 }
+
+// TestUnusableCatchesRealGarbage uses output shaped like what a broken free model
+// actually produced in the editor: leaked special tokens and a dozen writing
+// systems per sentence, inserted as a 2,161-word "draft".
+func TestUnusableCatchesRealGarbage(t *testing.T) {
+	garbage := `We need to write a blog post about "vreal?" The title says "vensory? ` +
+		`System? The workforce says WriterExt type". mismatchOR*ardanRe survive epsilon ` +
+		`behaviors on preferential<SPECIAL_205> طلب होताlinar_sent mult FrauخفضModern ` +
+		`MY Syn mode花 Surviv 앞서àct retorno삭 invoke aneur experiments`
+	bad, why := Unusable(garbage)
+	if !bad {
+		t.Fatal("this must be refused; it was inserted as a draft")
+	}
+	if why == "" {
+		t.Error("a refusal must explain itself")
+	}
+	t.Logf("refused with: %s", why)
+}
+
+func TestUnusableCatchesLeakedTokens(t *testing.T) {
+	for _, s := range []string{
+		"<h1>Fine</h1><p>text <SPECIAL_942> more</p>",
+		"<|im_start|>assistant Hello",
+		"Some text [UNUSED_17] here",
+		"Bytes <0xE2> leaked",
+	} {
+		if bad, _ := Unusable(s); !bad {
+			t.Errorf("leaked control vocabulary not caught: %q", s)
+		}
+	}
+}
+
+func TestUnusableCatchesMonologue(t *testing.T) {
+	for _, s := range []string{
+		"We need to write a blog post about self-hosting. First we should outline.",
+		"The user wants an article on email. Let me start with the intro.",
+		"Okay, so the user is asking for a guide.",
+		"# \nFirst, I need to understand what is being asked here.",
+	} {
+		if bad, _ := Unusable(s); !bad {
+			t.Errorf("model monologue not caught: %q", s)
+		}
+	}
+}
+
+// TestUnusableDoesNotRejectRealPosts is the important half: a false positive
+// throws away a good draft, so ordinary prose — including non-English and
+// legitimately bilingual prose — must pass.
+func TestUnusableDoesNotRejectRealPosts(t *testing.T) {
+	ok := []string{
+		"<h1>Self-hosting your email</h1><p>Running your own mail server is practical in 2026.</p>",
+		"# Self-hosting email\n\nRunning your own mail server is practical.\n\n## Why bother\n\nControl.",
+		// Hindi + English, a normal combination for this project's audience.
+		"<h1>वायुप्रेस क्या है</h1><p>VayuPress एक self-hosted blog platform है। यह आपके server पर चलता है।</p>",
+		// Japanese prose mixes kanji and both kana; that is one language, not salad.
+		"<h1>ブログの始め方</h1><p>これは日本語の記事です。サーバーを自分で運用します。</p>",
+		// Russian.
+		"<h1>Свой почтовый сервер</h1><p>Это статья на русском языке о самостоятельном хостинге.</p>",
+		// A post that happens to discuss the phrase, rather than opening with it.
+		"<h1>Prompting</h1><p>A weak model often replies \"we need to write a blog post\" instead of writing one.</p>",
+	}
+	for _, s := range ok {
+		if bad, why := Unusable(s); bad {
+			t.Errorf("real post refused (%s): %q", why, s)
+		}
+	}
+}
+
+func TestLooksStructured(t *testing.T) {
+	if !LooksStructured("<h1>T</h1><p>b</p>") || !LooksStructured("# T\n\nbody") {
+		t.Error("headings are structure")
+	}
+	if !LooksStructured("para one\n\npara two\n\npara three") {
+		t.Error("several paragraphs are structure")
+	}
+	if LooksStructured("just one run-on stream of thought with no breaks at all") {
+		t.Error("a single unbroken blob is not structure")
+	}
+}
+
+func TestLooksLikeHTML(t *testing.T) {
+	if !LooksLikeHTML("<h1>x</h1>") || !LooksLikeHTML("<p>hello</p>") || !LooksLikeHTML("<ul><li>a</li></ul>") {
+		t.Error("block-level HTML should be detected")
+	}
+	if LooksLikeHTML("# Heading\n\nSome *emphasis* and a <em>tag</em>.") {
+		t.Error("Markdown with an inline tag is not HTML")
+	}
+	if LooksLikeHTML("") {
+		t.Error("empty is not HTML")
+	}
+}
+
+// TestReasoningMonologueIsRefused: the reasoning field is only a draft when it is
+// actually shaped like one. Returning a stream of thought as a 2,000-word post is
+// worse than failing, because the author must read it all to find that out.
+func TestReasoningMonologueIsRefused(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"","reasoning":"We need to write a blog post about email. Let me think about the structure first."}}]}`))
+	}))
+	defer srv.Close()
+	_, _, err := GenerateOpDetail(context.Background(), srv.Client(),
+		Backend{Kind: KindOpenAI, Endpoint: srv.URL, APIKey: "k", Model: "m"}, OpDraft, "x")
+	if err == nil {
+		t.Fatal("a monologue in the reasoning field must not become a draft")
+	}
+}
+
+// TestReasoningPostIsAccepted: the flip side — a model that genuinely writes the
+// article into the reasoning field still gives the author their draft.
+func TestReasoningPostIsAccepted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"","reasoning":"<h1>Email</h1><p>Answer first.</p><h2>Why</h2><p>Because.</p>"}}]}`))
+	}))
+	defer srv.Close()
+	out, meta, err := GenerateOpDetail(context.Background(), srv.Client(),
+		Backend{Kind: KindOpenAI, Endpoint: srv.URL, APIKey: "k", Model: "m"}, OpDraft, "x")
+	if err != nil {
+		t.Fatalf("a structured post in the reasoning field is still a draft: %v", err)
+	}
+	if !meta.FromReasoning || !strings.Contains(out, "<h1>") {
+		t.Errorf("expected the reasoning post, got %q", out)
+	}
+}
+
+// TestDraftPromptDemandsStructure pins the SEO/GEO contract: an answer engine only
+// quotes a passage that stands alone, and a reader only scans a post that has
+// headings. Both have to be hard requirements or the model writes an essay.
+func TestDraftPromptDemandsStructure(t *testing.T) {
+	// The prompt is hard-wrapped, so compare against whitespace-normalised text —
+	// otherwise a requirement split across two lines reads as missing.
+	p := strings.Join(strings.Fields(draftPrompt("self-hosting email")), " ")
+	for _, want := range []string{
+		"semantic HTML", "<h1>", "<h2>", "Key takeaways", "Frequently asked questions",
+		"first two sentences", "stand alone", "as mentioned above", "no Markdown",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("the draft prompt no longer requires %q", want)
+		}
+	}
+	if !strings.Contains(p, "self-hosting email") {
+		t.Error("the author's instruction must reach the model")
+	}
+	// It must forbid the generic headings that make a post unscannable.
+	if !strings.Contains(p, `"Introduction"`) {
+		t.Error("the prompt should rule out filler headings")
+	}
+}

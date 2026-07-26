@@ -411,6 +411,7 @@ func (a *App) handleOSEditorGenerate(w http.ResponseWriter, r *http.Request) {
 		Length   string  `json:"length"`
 		Language string  `json:"language"`
 		Shape    string  `json:"shape"`
+		Keyword  string  `json:"keyword"`
 		Temp     float64 `json:"temperature"`
 		MaxWords int     `json:"max_words"`
 	}
@@ -463,6 +464,7 @@ func (a *App) handleOSEditorGenerate(w http.ResponseWriter, r *http.Request) {
 	prompt := decorateDraftPrompt(body.Prompt, draftShape{
 		Tone: body.Tone, Audience: body.Audience, Length: body.Length,
 		Language: body.Language, Shape: body.Shape, MaxWords: body.MaxWords,
+		Keyword: body.Keyword,
 	})
 
 	// Start the generation and return immediately. Nothing downstream — reverse
@@ -501,6 +503,7 @@ type draftShape struct {
 	Length   string
 	Language string
 	Shape    string
+	Keyword  string
 	MaxWords int
 }
 
@@ -561,6 +564,14 @@ func decorateDraftPrompt(prompt string, s draftShape) string {
 	}
 	if l := sanitizeShapeText(s.Language); l != "" {
 		reqs = append(reqs, "Write the entire post in "+l+".")
+	}
+	if k := sanitizeShapeText(s.Keyword); k != "" {
+		// Named three times at most, in the places that actually carry weight. Told
+		// explicitly not to repeat it, because a model given a keyword and no
+		// restraint will pack it into every paragraph and make the post worse.
+		reqs = append(reqs, "The reader is searching for \""+k+"\". Use that phrasing "+
+			"naturally in the <h1>, in the opening answer, and in one <h2> — and nowhere else. "+
+			"Do not repeat it for emphasis.")
 	}
 	if len(reqs) > 0 {
 		b.WriteString("\n\nAdditional requirements:\n")

@@ -2582,6 +2582,7 @@
     var shape = aiQ('[data-ai-shape]'), tone = aiQ('[data-ai-tone]');
     var len = aiQ('[data-ai-length]'), words = aiQ('[data-ai-words]');
     var aud = aiQ('[data-ai-audience]'), lang = aiQ('[data-ai-language]');
+    var kw = aiQ('[data-ai-keyword]');
     var temp = aiQ('[data-ai-temp]');
     if (shape && shape.value) o.shape = shape.value;
     if (tone && tone.value) o.tone = tone.value;
@@ -2593,6 +2594,7 @@
     }
     if (aud && aud.value.trim()) o.audience = aud.value.trim();
     if (lang && lang.value.trim()) o.language = lang.value.trim();
+    if (kw && kw.value.trim()) o.keyword = kw.value.trim();
     // The slider is 0..20; 0 means "send nothing".
     if (temp) {
       var t = parseInt(temp.value, 10);
@@ -2766,7 +2768,7 @@
       if (out) out.textContent = t > 0 ? (t / 10).toFixed(1) : 'model default';
       aiRefreshShapeChip();
     });
-    ['[data-ai-shape]', '[data-ai-tone]', '[data-ai-words]', '[data-ai-audience]', '[data-ai-language]'].forEach(function (q) {
+    ['[data-ai-shape]', '[data-ai-tone]', '[data-ai-words]', '[data-ai-audience]', '[data-ai-language]', '[data-ai-keyword]'].forEach(function (q) {
       var el = aiQ(q);
       if (el) el.addEventListener('change', aiRefreshShapeChip);
       if (el) el.addEventListener('input', aiRefreshShapeChip);

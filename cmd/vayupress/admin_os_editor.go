@@ -872,6 +872,11 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
                 <label class="pm-label" for="ai-language">Language <span class="muted">(optional)</span></label>
                 <input class="pm-input" id="ai-language" type="text" maxlength="80" placeholder="Model default" data-ai-language>
               </div>
+              <div class="pm-field">
+                <label class="pm-label" for="ai-keyword">Search phrase to rank for <span class="muted">(optional)</span></label>
+                <input class="pm-input" id="ai-keyword" type="text" maxlength="80" placeholder="e.g. self-hosted email server" data-ai-keyword>
+                <p class="pm-help">Used naturally in the title, the opening answer and one section heading — not stuffed.</p>
+              </div>
             </div>
           </div>
         </details>
@@ -908,6 +913,8 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
           </div>
         </details>
 
+        <p class="pm-help">Every draft is written as structured HTML — one H1, scannable sections, key
+          takeaways and an FAQ — so it reads well and can be quoted by search and answer engines.</p>
         <div class="ai-status" data-ai-msg role="status" aria-live="polite">The draft is inserted as editable blocks — always review before you publish.</div>
         <div class="pm-row">
           <button type="button" class="btn btn--primary btn--sm" data-ai-run>Generate draft</button>

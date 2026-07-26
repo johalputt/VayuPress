@@ -359,9 +359,18 @@ func generateOpenAI(ctx context.Context, hc *http.Client, b Backend, prompt stri
 	}
 	text := strings.TrimSpace(out.Choices[0].Message.Content)
 	if text == "" {
-		// Reasoning models put the prose in "reasoning". The draft is there, just
-		// under a different key — use it rather than reporting nothing.
+		// Reasoning models put their answer in "reasoning". Sometimes that IS the
+		// finished post; often it is the model talking to itself. Only a
+		// recognisably shaped article is accepted, because inserting a stream of
+		// thought as a 2,000-word draft is worse than reporting the failure — the
+		// author has to read it all to discover it is not a post.
 		if r := strings.TrimSpace(out.Choices[0].Message.Reasoning); r != "" {
+			if bad, why := Unusable(r); bad {
+				return "", meta, providerErr(0, "%s", why)
+			}
+			if !LooksStructured(r) {
+				return "", meta, providerErr(0, "%s", "this model returned its thinking rather than a finished post — pick a model that returns a completion, or run it again")
+			}
 			return r, Meta{Truncated: meta.Truncated, Model: meta.Model, FromReasoning: true}, nil
 		}
 		// Genuinely empty. This MUST be an error: returning "" with a nil error is
@@ -374,6 +383,11 @@ func generateOpenAI(ctx context.Context, hc *http.Client, b Backend, prompt stri
 			reason += " (finish reason: " + out.Choices[0].FinishReason + ")"
 		}
 		return "", meta, providerErr(0, "%s", reason)
+	}
+	// The main path gets the same scrutiny. A model that leaks special tokens or
+	// emits script salad does so in "content" just as readily as in "reasoning".
+	if bad, why := Unusable(text); bad {
+		return "", meta, providerErr(0, "%s", why)
 	}
 	return text, meta, nil
 }
@@ -414,13 +428,68 @@ func buildPrompt(op, text string) (string, bool) {
 		return "Continue writing the following article in the same voice and " +
 			"style. Add one or two coherent paragraphs. Return only the new text.\n\n" + text, true
 	case OpDraft:
-		return "Write a complete, well-structured blog post in GitHub-Flavored " +
-			"Markdown based on the instruction below. Begin with a single H1 title " +
-			"(# Title). Use ## / ### subheadings, short paragraphs, and bullet or " +
-			"numbered lists where they help. Do not include front-matter, code " +
-			"fences around the whole post, or any commentary — return only the " +
-			"Markdown post.\n\nInstruction: " + text, true
+		return draftPrompt(text), true
 	default:
 		return "", false
 	}
+}
+
+// draftPrompt builds the instruction for a full post.
+//
+// It asks for semantic HTML rather than Markdown. HTML is what the editor
+// ultimately stores, the importer parses it losslessly into blocks, and — the
+// practical reason — a weak model producing malformed HTML degrades into
+// recognisable soup that the quality gate catches, whereas malformed Markdown
+// silently imports as one long paragraph that looks like a real draft.
+//
+// The structure requirements are not decoration. They are the two things that
+// decide whether a post earns traffic:
+//
+//   - Classic SEO: one H1, a descriptive H2/H3 outline, short scannable
+//     paragraphs, lists and tables where they carry meaning.
+//   - Generative-engine optimisation: an answer engine quotes a passage only if
+//     that passage stands alone. So the opening must answer the question in its
+//     first two sentences, each section must be self-contained (no "as mentioned
+//     above"), claims must be concrete, and an explicit FAQ gives the engine
+//     question-shaped text to lift.
+//
+// Both are stated as hard requirements because a model asked merely to "write a
+// good post" produces an essay: one long introduction, no headings a reader can
+// scan, and nothing an engine can quote.
+func draftPrompt(text string) string {
+	return `You are writing a publication-ready article for a self-hosted blog.
+
+Return ONLY semantic HTML — no Markdown, no code fences, no front-matter, no
+commentary before or after, and no explanation of what you are doing. Do not
+include <html>, <head> or <body>; return only the article's own elements.
+
+Use exactly these elements: <h1> once, then <h2>/<h3>, <p>, <ul>/<ol> with <li>,
+<blockquote>, <table> with <thead>/<tbody>/<tr>/<th>/<td>, <strong>, <em>, <a href>,
+and <code>/<pre> for code.
+
+Structure, in order:
+1. One <h1> containing the main topic in natural language.
+2. An opening <p> that answers the reader's question directly in its first two
+   sentences. State the answer before any context or history.
+3. A "Key takeaways" <h2> followed by a <ul> of 3-5 self-contained points, each a
+   complete statement that makes sense quoted on its own.
+4. The body, as several <h2> sections with <h3> subsections where a section has
+   distinct parts. Every <h2> must be a specific, descriptive phrase — never
+   "Introduction", "Overview" or "Conclusion".
+5. A <h2>Frequently asked questions</h2> section with each question as its own
+   <h3> and a direct answer in one or two <p> beneath it.
+
+Requirements for every paragraph:
+- Each section must stand alone. Never write "as mentioned above", "as we saw" or
+  "in the previous section" — a search or answer engine may show that section by
+  itself.
+- Prefer concrete specifics — numbers, names, versions, steps, trade-offs — over
+  adjectives. Do not claim facts you are unsure of; write what is verifiable.
+- Short paragraphs, two to four sentences. No filler openings such as "In today's
+  fast-paced world" or "It is important to note that".
+- Use a <table> when comparing options and an <ol> when order matters.
+
+Write the article now for this instruction:
+
+` + text
 }

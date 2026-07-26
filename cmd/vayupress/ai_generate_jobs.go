@@ -183,7 +183,16 @@ func (a *App) runAIJob(id string, backend aiassist.Backend, prompt string) {
 		})
 		return
 	}
-	blocks := blockrender.MarkdownToBlocks(md)
+	// The prompt asks for HTML, but models ignore format instructions often enough
+	// that the format is detected rather than assumed. Importing HTML through the
+	// Markdown parser collapses a whole article into one paragraph of tag soup,
+	// which looks like a real draft until the author reads it.
+	var blocks []blockrender.Block
+	if aiassist.LooksLikeHTML(md) {
+		blocks = blockrender.ImportHTML(md)
+	} else {
+		blocks = blockrender.MarkdownToBlocks(md)
+	}
 	if len(blocks) == 0 {
 		logging.LogError("ai-generate", "model output parsed to zero blocks", "chars="+strconv.Itoa(len(md)))
 		aiJobFinish(id, func(j *aiJob) {
