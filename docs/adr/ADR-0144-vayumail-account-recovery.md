@@ -33,16 +33,22 @@ recovery today is a human asking an administrator.
 A password reset is a **pure authentication event**. It destroys nothing:
 
 - PGP private keys are sealed with a random server-side **DEK**, wrapped by a KEK
-  drawn from `VAYU_SECRET` or a host-bound key file (ADR: envelope encryption in
+  drawn from `VAYU_SECRET` or a host-bound key file (envelope encryption in
   `internal/vayuos/pgp/keyenvelope.go`). The holder's password is nowhere in that
   derivation.
-- The Maildir is plaintext on disk. There is no cipher anywhere in
-  `internal/vayuos/mail/`.
+- In clearnet mode the Maildir is plaintext on disk — there is no cipher anywhere
+  in `internal/vayuos/mail/`.
+- In a **Tor Space** mail *is* encrypted at rest, via VayuPGP and decrypted
+  transparently on read (ADR-0141). That does not change the conclusion, because
+  the key is the same server-side keystore DEK: still not the holder's password.
 
-Therefore no escrow scheme, no key rewrap and no data loss are involved. **If
-mailbox-at-rest encryption is ever introduced, this ADR must be revisited** —
-under that design a password reset would silently destroy mail, and every
-decision below would change.
+So in both worlds the mailbox password protects *access*, never *confidentiality
+at rest*, and no escrow scheme, key rewrap or data loss is involved.
+
+**The invariant to protect: no recovery-relevant secret may ever be derived from
+the mailbox password.** The moment one is, a reset silently destroys mail and
+every decision below has to be revisited. Any future at-rest scheme must key off
+the keystore, as the Tor Space one already does.
 
 ## Threat model
 

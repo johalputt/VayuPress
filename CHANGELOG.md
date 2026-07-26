@@ -6,6 +6,87 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.40] — 2026-07-26
+
+### Added
+- **VayuMail account recovery (ADR-0144).** A mailbox holder who forgot their
+  password was **permanently locked out**, and the lockout was total. IMAP and SMTP
+  need the password. The mobile app needs an app password minted while they still
+  had access. And webmail signs in through the membership portal, which mails a
+  one-time link **to the mailbox they cannot open** — so the loop never opened. The
+  only way back was an administrator, and a `mailbox`-role account could not even
+  ask one.
+
+  Two factors, both enrolled in advance. Trust cannot be bootstrapped at recovery
+  time: a factor you could establish *after* losing access is one an attacker could
+  establish too.
+
+  **Recovery codes** — ten single-use codes, shown once, Argon2id-hashed because
+  they are short enough for a human to type off paper. They need no network, no
+  third party and no outbound queue, so they work in a Tor Space and they work when
+  the mail system itself is what broke. Generating a new set invalidates the old
+  one: you regenerate because you believe the old sheet is compromised.
+
+  **A recovery address** — verified by round-trip, and required to be on a
+  different mail provider. Not merely a different domain: one install serves many
+  mail domains, so a second domain hosted here would rebuild the same loop while
+  looking to the holder like an independent provider.
+
+- **A readiness view, in the console and on the command line.** A mailbox with no
+  factor enrolled behaves exactly like one with ten — until the day its holder is
+  locked out. **Mail accounts → Account recovery** shows how many mailboxes could
+  actually be recovered and names the ones that could not, and
+  `vayupress mail unrecoverable` answers the same question from a shell.
+
+- **A documented break-glass** for the case no flow can reach: the last
+  administrator, no codes, nothing left to authenticate against.
+  `vayupress mail passwd <address>` runs on the host without starting the server.
+  It grants nothing new — a shell already reaches the keystore and the Maildir —
+  and it is audited, warns loudly, and states plainly which cleanup steps it could
+  not perform because no server was running.
+
+### Fixed
+- **A password reset now revokes everything that could still be signed in.** This
+  applied to the existing administrator reset too, which changed the password hash
+  and nothing else: an operator resetting a compromised mailbox believed they had
+  cut the attacker off, and had not. App passwords are independent credentials, not
+  derivatives of the password, so an enrolled device kept full IMAP and SMTP access
+  *through* the victim's own recovery.
+
+  Every reset — self-service, administrator and break-glass — now runs one path:
+  replace the password, revoke every app password, end every web session and
+  pending sign-in link, void outstanding reset links, hold queued outbound mail for
+  review, notify the recovery address **and** the mailbox itself, and audit what
+  was destroyed rather than merely that something happened. The holder is told the
+  counts, because a device they do not recognise in that list is the signal that
+  someone else was in the account.
+
+### Security
+- The public recovery pages **never reveal whether a mailbox exists**. Addresses
+  are public, so knowing one must prove nothing; known and unknown addresses get
+  byte-identical responses, delivery happens off the request path so timing does
+  not vary, and a rate-limit refusal looks the same as a success.
+- **Recovery never signs you in.** A reset link that creates a session is a
+  session-stealing link. The reset link is consumed on submit, not on open, so a
+  mail client's link-checker cannot burn the holder's one chance.
+- Recovery is deliberately **not** exempt from bot protection. The exemption list
+  exists for callers that cannot solve a challenge; a locked-out person has a
+  browser, and a credential-reset endpoint is exactly where bot protection belongs.
+- In **Tor mode** there is no clearnet egress, so the address factor is disabled
+  and labelled as such in the console rather than failing silently at the moment it
+  is needed. Recovery codes remain fully functional there.
+- A **Tor Space no longer reports its own onion as degraded.** Subsystem health
+  showed `vayutor — DEGRADED — disabled`, which is the architecture rather than a
+  fault: the space is spawned with the engine off because the parent publishes the
+  onion it is reached over. The one console guaranteed to be served over Tor was
+  the one calling Tor broken.
+- Removed the last references to the assistant configuration file from pushed
+  artifacts, and added a build guard that fails CI if attribution reappears in any
+  tracked file. It matches attribution shapes rather than product names, so genuine
+  copy about VayuMCP, the crawler database and the AI model picker still passes.
+
+---
+
 ## [3.15.39] — 2026-07-26
 
 ### Added

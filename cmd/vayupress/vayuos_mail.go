@@ -894,6 +894,21 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
   <span class="muted text-sm" data-a-status></span>
 </form></div>`)
 
+	// Account recovery (ADR-0144). Placed above the mailbox list because its
+	// readiness view is a standing question about every mailbox below it, and
+	// because a factor nobody enrolled is invisible until the day it is needed.
+	{
+		var boxes []string
+		if accs, err := a.vayuMail.Accounts().List(r.Context()); err == nil {
+			for _, ac := range accs {
+				if ac.Active {
+					boxes = append(boxes, ac.Email)
+				}
+			}
+		}
+		body.WriteString(a.recoveryCardHTML(r, nonce, boxes))
+	}
+
 	// Existing accounts — a live, HTMX-swappable list of collapsible mailbox cards
 	// (VayuMail Accounts redesign). Every inline action swaps this fragment in
 	// place, and the create / 2FA / set-password flows refresh it via htmx.ajax, so

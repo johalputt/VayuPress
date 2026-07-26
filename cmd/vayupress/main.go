@@ -73,6 +73,7 @@ import (
 	"github.com/johalputt/vayupress/internal/trace"
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
+	mailpkg "github.com/johalputt/vayupress/internal/vayuos/mail"
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
@@ -83,7 +84,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.15.39"
+var Version = "3.15.40"
 var bootTime = time.Now()
 
 // onionSafeBindAddr picks the HTTP listen address (ADR-0141). A Tor Space
@@ -420,6 +421,27 @@ func main() {
 		}
 		if err := runUserCLI(os.Args[2:], os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "user:", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	// mail subcommand: VayuMail break-glass and recovery inspection (ADR-0144).
+	// Runs WITHOUT starting the server, so it works on a host whose service is
+	// down — which is often the situation that made it necessary.
+	if len(os.Args) > 1 && os.Args[1] == "mail" {
+		config.Load()
+		if err := dbpkg.Init(); err != nil {
+			fmt.Fprintln(os.Stderr, "DB init failed:", err)
+			os.Exit(1)
+		}
+		accts, err := mailpkg.NewAccountStore(dbpkg.DB)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "mail:", err)
+			os.Exit(1)
+		}
+		if err := runMailCLI(context.Background(), os.Args[2:], os.Stdout, accts); err != nil {
+			fmt.Fprintln(os.Stderr, "mail:", err)
 			os.Exit(1)
 		}
 		os.Exit(0)

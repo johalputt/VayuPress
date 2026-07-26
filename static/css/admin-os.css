@@ -6339,3 +6339,38 @@
 }
 .vp-os .pwa-browser { margin-top: 1.2rem; }
 .vp-os .pwa-probe-rows { min-height: 2rem; }
+
+/* ── VayuMail account recovery (ADR-0144) ─────────────────────────────────── */
+.vp-os .rec-list { margin: .5rem 0 0; padding-left: 1.2rem; display: grid; gap: .25rem; }
+.vp-os .rec-list code { font-size: .82rem; }
+.vp-os .rec-status { margin-top: .6rem; }
+/* The codes are shown exactly once, so the block is deliberately loud — this is
+   the moment the operator has to act, and a quiet panel is one people scroll
+   past and then cannot get back. */
+.vp-os .rec-codes {
+  margin-top: .9rem;
+  padding: 1rem;
+  border: 1px solid var(--warn, #f59e0b);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--warn, #f59e0b) 8%, transparent);
+}
+.vp-os .rec-codes__warn { font-size: .85rem; font-weight: 600; margin-bottom: .75rem; }
+.vp-os .rec-codes__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: .5rem;
+  margin-bottom: .85rem;
+}
+.vp-os .rec-codes__code {
+  display: block;
+  padding: .45rem .6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, #2a2a2a);
+  background: var(--surface, rgba(127, 127, 127, .08));
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: .9rem;
+  letter-spacing: .04em;
+  text-align: center;
+  /* Selectable as a block so "copy all" is not the only route. */
+  user-select: all;
+}

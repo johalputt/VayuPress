@@ -824,3 +824,18 @@ html[data-theme="light"] {
    the flex header let the button shrink below its text. It is a two-word label; it
    should never break. */
 .ma-signout { white-space: nowrap; flex: none; }
+
+/* Recovery completion list (ADR-0144). The reset reports exactly what it
+   disconnected, and those counts are the holder's only way to notice a device
+   they do not recognise — so the list is body-coloured, not muted like the
+   surrounding prose. */
+.su-list {
+  margin: 0 0 1.2rem;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: .4rem;
+  font-size: .92rem;
+  line-height: 1.5;
+  color: var(--su-text, inherit);
+}
+.su-list li::marker { color: var(--su-accent, currentColor); }

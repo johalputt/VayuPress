@@ -20,10 +20,14 @@ package mail
 //     domains from domain-partitioned Maildir trees, so a same-install second
 //     domain would rebuild the very loop this feature exists to open.
 //
-// A password reset is a pure authentication event: PGP private keys are sealed
-// with a server-side DEK (keyenvelope.go) and the Maildir is plaintext, so no key
-// rewrap and no data loss are involved. If mailbox-at-rest encryption is ever
-// added, ADR-0144 must be revisited before this code is trusted again.
+// A password reset is a pure authentication event. PGP private keys are sealed
+// with a server-side DEK (keyenvelope.go); the clearnet Maildir is plaintext, and
+// a Tor Space encrypts mail at rest under that same keystore DEK — never under
+// the holder's password. So no key rewrap and no data loss are involved.
+//
+// THE INVARIANT: no recovery-relevant secret may be derived from the mailbox
+// password. The moment one is, a reset silently destroys mail, and ADR-0144 has
+// to be revisited before any of this can be trusted again.
 
 import (
 	"context"
