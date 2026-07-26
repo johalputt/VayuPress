@@ -38,6 +38,7 @@ const (
 	mailResetByLink       mailResetReason = "recovery-link"
 	mailResetByAdmin      mailResetReason = "administrator"
 	mailResetByBreakGlass mailResetReason = "break-glass"
+	mailResetByDevice     mailResetReason = "trusted-device"
 )
 
 // mailResetOutcome reports what the pipeline actually destroyed. It is returned
@@ -193,6 +194,8 @@ func mailResetNotice(email string, reason mailResetReason, actor string,
 		how = "by an administrator (" + actor + ")"
 	case mailResetByBreakGlass:
 		how = "from the server console by an operator with shell access"
+	case mailResetByDevice:
+		how = "from one of your signed-in devices"
 	}
 
 	var b strings.Builder

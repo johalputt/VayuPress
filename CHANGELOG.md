@@ -6,6 +6,54 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.41] — 2026-07-26
+
+### Fixed
+- **The account-recovery panel did nothing when you clicked it.** Console scripts
+  are served from an explicit per-file route allowlist, and v3.15.40 shipped
+  `admin-os-mail-recovery.js` without registering one. The card rendered in full —
+  readiness list, mailbox picker, every button — and the script behind it 404'd, so
+  nothing responded. Registered.
+
+- **Generating recovery codes showed nothing, even once the script loaded.** The
+  panel refreshes the status line right after generating, to update the remaining
+  count — and that refresh also cleared the code display, wiping the one and only
+  time those codes exist in readable form. Clearing is meant for switching mailbox,
+  where a previous account's codes must not linger; it now happens there and only
+  there.
+
+- **The sign-in page's light/dark buttons never worked.** `os-theme.js` was
+  referenced with no route either, so the three theme controls on `/os/login` have
+  been inert since they shipped. Found by the new guard below, not by anyone using
+  them.
+
+### Added
+- **A build guard for the missing-route class of bug.** Adding a console script and
+  a `<script src>` for it is not enough; without a route the request 404s and the
+  feature is silently inert — the page renders, the buttons are there, and nothing
+  happens. This has now happened three times (the trending widget, the recovery
+  panel, the theme switcher), and reviewing for it does not work because the
+  missing line lives in a different file from the change that needs it. The build
+  now fails when a referenced script has no route, and when a route points at a
+  file that no longer exists.
+
+- **Trusted-device recovery.** A holder whose phone still syncs can set a new
+  mailbox password from the app without knowing the old one: the app password
+  already proves they controlled the account at enrolment and that the operator
+  approved the device. It is the only factor needing no advance planning beyond
+  having used the app, so it is the one most people will actually have.
+
+  It gates on approval status, not on last-used telemetry — that field is
+  documented as best-effort and never a security decision, so a missed write would
+  lock out a legitimate holder. A pending or blocked device is refused, every
+  rejection returns one uniform message so the endpoint cannot be used to discover
+  which mailboxes exist, and the reset revokes **every** app password including the
+  one that authorised it: the server cannot tell a holder's device from a thief's,
+  so a carve-out for "the device that asked" is exactly the carve-out an attacker
+  would use to keep sole access.
+
+---
+
 ## [3.15.40] — 2026-07-26
 
 ### Added

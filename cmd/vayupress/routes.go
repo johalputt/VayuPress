@@ -340,6 +340,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// Same throttle + uniform-401 anti-enumeration as vayumail-login above.
 	r.Post("/api/v1/members/vayumail-device-register", a.handleMemberVayuMailDeviceRegister)
 	r.Post("/api/v1/members/vayumail-device-status", a.handleMemberVayuMailDeviceStatus)
+	// Trusted-device recovery (ADR-0144): a device whose app password still works
+	// sets a new mailbox password without the old one. Uniform 401 on every
+	// rejection, and the reset revokes every app password including this one.
+	r.Post("/api/v1/members/vayumail-device-reset", a.handleMailDeviceReset)
 	// VayuTalk — ephemeral, end-to-end-encrypted messaging relay (ADR-0131). The
 	// server never sees plaintext and persists nothing; envelopes live in a
 	// bounded in-memory store that a restart purges. /connect authenticates in

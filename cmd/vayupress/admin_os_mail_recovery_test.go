@@ -148,11 +148,22 @@ func TestRecoveryConsoleJSNeverUsesInnerHTML(t *testing.T) {
 	if strings.Contains(js, "innerHTML") {
 		t.Error("the recovery panel must build nodes with textContent, never innerHTML")
 	}
-	// Codes exist in readable form exactly once. Leaving a previous mailbox's set
-	// on screen after switching selection would get them written down against the
-	// wrong account.
-	if !strings.Contains(js, "codesEl.textContent = ''") {
+	// Codes exist in readable form exactly once, so two opposing requirements meet
+	// here and the first version of this test only checked one of them.
+	//
+	// Switching mailbox MUST clear them (a previous account's set would be written
+	// down against the wrong mailbox) — but the status refresh that runs right
+	// after a successful generate must NOT, or the codes are wiped a moment after
+	// being shown and the button looks broken. That shipped, and only clicking it
+	// found it. So: clearing is bound to the change handler, and renderStatus is
+	// asserted not to touch them.
+	if !strings.Contains(js, "clearCodes()") {
 		t.Error("switching mailbox must clear any codes still on screen")
+	}
+	render := js[strings.Index(js, "function renderStatus"):]
+	render = render[:strings.Index(render, "\n  }")]
+	if strings.Contains(render, "codesEl.hidden = true") {
+		t.Error("renderStatus clears the codes; it runs after generate, so it would wipe them instantly")
 	}
 	// Regeneration silently invalidates the sheet the holder is carrying.
 	if !strings.Contains(js, "window.confirm") {

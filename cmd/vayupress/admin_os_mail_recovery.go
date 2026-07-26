@@ -208,7 +208,7 @@ that works here</strong> — generate them for every mailbox.</p>`)
     <span class="section-head__hint">Ten single-use codes, shown once</span></div>
   <p class="text-sm muted">These need no network and no second mailbox, so they keep working when the mail
   system itself is the problem. Generating a new set <strong>invalidates the previous one</strong>.</p>
-  <button type="button" class="btn btn--sm" data-rec-gen>Generate new codes</button>
+  <button type="button" class="btn btn--primary btn--sm" data-rec-gen>Generate new codes</button>
   <div class="rec-codes" data-rec-codes hidden></div>
 
   <div class="section-head mt-4"><span class="section-head__title">Recovery address</span>
@@ -219,7 +219,7 @@ that works here</strong> — generate them for every mailbox.</p>`)
     <label class="field vm-grow"><span class="field-label">Address</span>
       <input class="input" type="email" data-rec-contact placeholder="someone@another-provider.com"
              aria-label="Recovery address"></label>
-    <button type="button" class="btn btn--sm" data-rec-set>Save</button>
+    <button type="button" class="btn btn--primary btn--sm" data-rec-set>Save</button>
     <button type="button" class="btn btn--sm" data-rec-verify>Mark verified</button>
     <button type="button" class="btn btn--sm btn--ghost" data-rec-clear>Remove</button>
   </div>

@@ -92,6 +92,11 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-security.js", serveAdminOSAsset("js/admin-os-security.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-members.js", serveAdminOSAsset("js/admin-os-members.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-pwa.js", serveAdminOSAsset("js/admin-os-pwa.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-mail-recovery.js", serveAdminOSAsset("js/admin-os-mail-recovery.js", "application/javascript; charset=utf-8"))
+	// The sign-in shell's light/dark switcher. It had no route at all, so the
+	// three theme buttons on the login page have been inert since they shipped —
+	// found by the guard in console_assets_test.go, not by anyone using it.
+	r.Get("/os/static/js/os-theme.js", serveAdminOSAsset("js/os-theme.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-newsletter.js", serveAdminOSAsset("js/admin-os-newsletter.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-profile.js", serveAdminOSAsset("js/admin-os-profile.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-intel.js", serveAdminOSAsset("js/admin-os-intel.js", "application/javascript; charset=utf-8"))

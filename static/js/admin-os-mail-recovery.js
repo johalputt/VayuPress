@@ -84,9 +84,17 @@
     statusEl.appendChild(line);
 
     if (contactEl) { contactEl.value = st.contact || st.contact_pending || ''; }
-    // A new mailbox selection must not leave the previous mailbox's codes on
-    // screen — they belong to a different account and would be written down
-    // against the wrong one.
+    // NOTE: this must NOT clear the codes. renderStatus also runs immediately
+    // after a successful generate (to refresh the remaining count), so clearing
+    // here wiped the one and only display of the codes a moment after showing
+    // them — the panel looked like the button did nothing. Clearing belongs to
+    // the mailbox-change handler, which is the case it was written for.
+  }
+
+  // clearCodes drops any codes on screen. Bound to mailbox selection: a set left
+  // over from the previous mailbox belongs to a different account and would be
+  // written down against the wrong one.
+  function clearCodes() {
     if (codesEl) { codesEl.textContent = ''; codesEl.hidden = true; }
   }
 
@@ -140,7 +148,9 @@
     codesEl.hidden = false;
   }
 
-  if (mailbox) { mailbox.addEventListener('change', function () { setMsg(''); loadStatus(); }); }
+  if (mailbox) {
+    mailbox.addEventListener('change', function () { setMsg(''); clearCodes(); loadStatus(); });
+  }
 
   var genBtn = panel.querySelector('[data-rec-gen]');
   if (genBtn) {

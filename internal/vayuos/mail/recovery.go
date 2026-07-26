@@ -450,6 +450,33 @@ func (q *Queue) HoldQueuedOutbound(ctx context.Context, from string) (int, error
 	return int(n), nil
 }
 
+// VerifyApprovedDevice reports whether secret matches an APPROVED app password
+// for this mailbox, returning the matching credential's id.
+//
+// This is the trusted-device recovery factor: a holder whose phone still works
+// has already proved, at enrolment time, that they controlled the account. It is
+// the one factor that needs no advance planning beyond having used the app.
+//
+// It gates on status only. last_used_at looks tempting as a freshness check, but
+// TouchAppPassword documents it as best-effort operator telemetry and explicitly
+// "never a security decision" — a missed write would lock out a legitimate holder,
+// which is the opposite of what a recovery path is for. Approval status is the
+// real lifecycle gate, and a device the operator blocked is refused here.
+func (s *AccountStore) VerifyApprovedDevice(ctx context.Context, email, secret string) (int64, bool) {
+	if secret == "" {
+		return 0, false
+	}
+	for _, c := range s.AppPasswordCredentials(ctx, email) {
+		if c.Status != DeviceStatusApproved {
+			continue
+		}
+		if auth.VerifySecretArgon2id(secret, c.Hash) {
+			return c.ID, true
+		}
+	}
+	return 0, false
+}
+
 // HoldOutboundFor parks an account's undelivered mail. Exposed on the Engine so
 // the queue itself stays unexported — callers outside this package have no
 // business reaching into delivery state for anything else.
