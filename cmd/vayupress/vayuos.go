@@ -797,24 +797,7 @@ func (a *App) bootVayuOS() {
 		}
 		return true, "Ed25519/Curve25519 keystore active"
 	})
-	a.vayuHealth.Register("vayutor", func() (bool, string) {
-		if a.vayuTor == nil || !a.vayuTor.Available() {
-			return false, "disabled (VAYUOS_TOR=off)"
-		}
-		st := a.vayuTor.Snapshot()
-		switch {
-		case !st.Active:
-			return true, "available — activate from the VayuTor page"
-		case st.Connected:
-			return true, fmt.Sprintf("active — %d onion service(s) published", len(st.Onions))
-		default:
-			msg := "activated, but the tor control port is unreachable"
-			if st.LastError != "" {
-				msg += ": " + st.LastError
-			}
-			return false, msg
-		}
-	})
+	a.vayuHealth.Register("vayutor", a.vayuTorHealth)
 	a.vayuHealth.Register("vayumail", func() (bool, string) {
 		if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 			return false, "disabled — set a domain in the wizard"
@@ -895,6 +878,35 @@ func (a *App) bootVayuOS() {
 	// got a mailbox but no key). Runs in the background so boot is never blocked;
 	// EnsureKeypair is idempotent so this is a no-op once every account has a key.
 	go a.backfillPGPKeys(context.Background())
+}
+
+// vayuTorHealth reports the state of the onion engine for the Subsystem health
+// table.
+func (a *App) vayuTorHealth() (bool, string) {
+	// A Tor Space child is REACHED over an onion — the PARENT mints it, and
+	// BuildChildEnv deliberately sets VAYUOS_TOR=off so the child never runs a second
+	// onion engine (that is what stops a grandchild world). Reading that absence as a
+	// fault made the child's own console report itself DEGRADED while it was, in
+	// fact, being served over Tor exactly as designed.
+	if torspace.IsSpaceChild() {
+		return true, "reached over the parent's onion — this world runs no engine of its own"
+	}
+	if a.vayuTor == nil || !a.vayuTor.Available() {
+		return false, "disabled (VAYUOS_TOR=off)"
+	}
+	st := a.vayuTor.Snapshot()
+	switch {
+	case !st.Active:
+		return true, "available — activate from the VayuTor page"
+	case st.Connected:
+		return true, fmt.Sprintf("active — %d onion service(s) published", len(st.Onions))
+	default:
+		msg := "activated, but the tor control port is unreachable"
+		if st.LastError != "" {
+			msg += ": " + st.LastError
+		}
+		return false, msg
+	}
 }
 
 // parseTorBridges splits the VAYUOS_TOR_BRIDGES value into individual Bridge

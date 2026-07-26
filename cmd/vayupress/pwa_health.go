@@ -256,7 +256,7 @@ actually serves.</p>` + rows +
 		`<div class="pwa-browser" data-pwa-probe>
   <div class="section-head"><span class="section-head__title">From this browser</span>
     <span class="section-head__hint">Only the browser can answer these</span></div>
-  <div class="pwa-probe-rows" data-pwa-probe-rows><span class="muted text-sm">Checking…</span></div>
+  <div class="pwa-probe-rows" data-pwa-probe-rows data-pwa-build="` + html.EscapeString(Version) + `"><span class="muted text-sm">Checking…</span></div>
 </div>
 <p class="text-sm muted mt-4"><strong>Already have the icon on your home screen?</strong> A shortcut
 cannot turn itself into an app. Remove it and add it again — then confirm it appears in Android's

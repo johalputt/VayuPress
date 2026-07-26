@@ -38,8 +38,55 @@ const PWARegisterJS = `(function () {
     }
   } catch (e) { /* matchMedia unavailable — not worth failing over */ }
 
+  // An installed app is RESUMED far more often than it is loaded: you tap the icon,
+  // the previous session is still there, and no navigation happens. The browser's
+  // own worker update check is tied to navigation and throttled to once a day, so
+  // without the two pieces below a phone can keep running a build the server
+  // replaced weeks ago — and "pull to refresh" does not help, because the reload is
+  // answered by that same old worker.
+  var hadController = !!navigator.serviceWorker.controller;
+  var reloading = false, pending = false, lastCheck = 0;
+
+  // Reloading out from under somebody who is typing would lose their comment, so
+  // an update that lands mid-edit waits for the next time the app is opened.
+  function editing() {
+    var el = document.activeElement;
+    return !!(el && (el.isContentEditable || el.tagName === 'INPUT' ||
+      el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'));
+  }
+
+  function applyUpdate() {
+    // hadController distinguishes an UPDATE from a first install. On a first visit
+    // the controller goes from none to one, which is not a new build — reloading
+    // there would reload every first-ever page view.
+    if (!hadController || reloading) { return; }
+    if (editing()) { pending = true; return; }
+    reloading = true;
+    window.location.reload();
+  }
+
+  function checkForUpdate(reg) {
+    var now = Date.now();
+    if (now - lastCheck < 300000) { return; }
+    lastCheck = now;
+    try { reg.update(); } catch (e) { /* update() is best-effort */ }
+  }
+
   function register() {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      // A new worker took over, which only happens when its bytes differed — i.e.
+      // a new build is live. Swap the page onto it.
+      applyUpdate();
+    });
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function (reg) {
+      // register() has just performed an update check of its own; don't repeat it.
+      lastCheck = Date.now();
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'visible') { return; }
+        if (pending) { pending = false; applyUpdate(); return; }
+        checkForUpdate(reg);
+      });
+    }).catch(function () {
       // A failed registration only costs offline support and installability; it
       // must never surface to the reader.
     });

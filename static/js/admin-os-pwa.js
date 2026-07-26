@@ -117,7 +117,34 @@
     });
   }).catch(function () { /* reported above */ });
 
-  // 4. Is this page already running as an installed app?
+  // 4. Which build is THIS DEVICE actually caching? The page you are reading came
+  //    from the origin, so it is always current — but an installed app is served
+  //    through the service worker's cache, and that can be an older build. The cache
+  //    is named for the build that created it, so comparing the names against the
+  //    version the server is running answers "my phone still shows the old version"
+  //    directly, instead of leaving it to be inferred.
+  var serverBuild = host.getAttribute('data-pwa-build') || '';
+  if (window.caches && serverBuild) {
+    caches.keys().then(function (keys) {
+      var mine = (keys || []).filter(function (k) { return k.indexOf('vayupress-') === 0; });
+      if (!mine.length) {
+        row(null, 'Cached build on this device',
+          'Nothing cached yet — the public site has not been opened in this browser, or its cache was just cleared.');
+        return;
+      }
+      var builds = mine.map(function (k) { return k.slice('vayupress-'.length); });
+      if (builds.length === 1 && builds[0] === serverBuild) {
+        row(true, 'Cached build on this device', 'Build ' + serverBuild + ' — same as the server');
+      } else {
+        row(false, 'Cached build on this device',
+          'Cached: ' + builds.join(', ') + ' · server: ' + serverBuild +
+          ' — this device is serving an older build from its cache. Open the public site once ' +
+          'while online and it replaces itself.');
+      }
+    }).catch(function () { /* Cache Storage unavailable in this context */ });
+  }
+
+  // 5. Is this page already running as an installed app?
   try {
     var standalone = window.matchMedia('(display-mode: standalone)').matches ||
       window.navigator.standalone === true;
@@ -125,7 +152,7 @@
       standalone ? 'Yes — opened from the home screen' : 'No — this is a browser tab (expected here)');
   } catch (e) { /* matchMedia unavailable */ }
 
-  // 5. The decisive one on Android: is a real package installed? getInstalledRelatedApps
+  // 6. The decisive one on Android: is a real package installed? getInstalledRelatedApps
   //    reports a WebAPK for this origin. A launcher SHORTCUT is not a package and
   //    does not appear — which is exactly how you tell the two apart.
   if (navigator.getInstalledRelatedApps) {

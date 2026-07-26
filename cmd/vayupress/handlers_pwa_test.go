@@ -47,12 +47,6 @@ func TestServiceWorkerNeverCachesPrivatePages(t *testing.T) {
 		t.Error("the private-path guard must precede the navigate branch")
 	}
 
-	// The cache name must be past v2 so the activate handler purges the v2 cache,
-	// which stored navigations stale-first and ignored the server's cache headers.
-	if !strings.Contains(sw, "CACHE_NAME = 'vayupress-v3'") {
-		t.Error("CACHE_NAME must be bumped to v3 so the stale-first v2 cache is purged")
-	}
-
 	staticList := sw[strings.Index(sw, "STATIC_ASSETS"):strings.Index(sw, "function isPrivatePath")]
 	if strings.Contains(staticList, "/os") {
 		t.Error("STATIC_ASSETS must not precache any /os console page")
@@ -91,7 +85,7 @@ func TestServiceWorkerHonoursServerCacheHeaders(t *testing.T) {
 func TestServiceWorkerIsNetworkFirstForPages(t *testing.T) {
 	sw := serviceWorkerJS
 	nav := sw[strings.Index(sw, "req.mode === 'navigate'"):]
-	fetchIdx := strings.Index(nav, "fetch(req)")
+	fetchIdx := strings.Index(nav, "networkThenStore(req)")
 	cacheIdx := strings.Index(nav, "caches.match(req)")
 	if fetchIdx < 0 || cacheIdx < 0 {
 		t.Fatal("the navigate branch must try the network and fall back to the cache")
@@ -101,6 +95,83 @@ func TestServiceWorkerIsNetworkFirstForPages(t *testing.T) {
 	}
 	if strings.Contains(nav, "cached || network") {
 		t.Error("stale-first page serving must not come back")
+	}
+}
+
+// TestServiceWorkerCacheRollsWithTheBuild is the root-cause guard for "I updated the
+// server and my phone still shows the old version, even after a refresh".
+//
+// A browser replaces a worker only when the SCRIPT BYTES change. A hand-written
+// cache name is identical across releases, so the update check finds no difference,
+// activate never runs, the previous cache is never purged — and because a reload is
+// answered by that same worker, refreshing cannot break the loop either. Deriving
+// the name from the build version is what makes an upgrade reach an installed
+// device at all.
+func TestServiceWorkerCacheRollsWithTheBuild(t *testing.T) {
+	if !strings.Contains(serviceWorkerJS, "CACHE_NAME = 'vayupress-"+Version+"'") {
+		t.Errorf("CACHE_NAME must carry the build version %q, or an upgrade never invalidates a device", Version)
+	}
+	if strings.Contains(serviceWorkerJS, "__BUILD__") {
+		t.Error("the build placeholder was not substituted — every release would ship the same worker")
+	}
+	// Two different builds must produce different worker bytes; that difference IS
+	// the update signal.
+	a := strings.ReplaceAll(serviceWorkerJSTemplate, "__BUILD__", "1.0.0")
+	b := strings.ReplaceAll(serviceWorkerJSTemplate, "__BUILD__", "1.0.1")
+	if a == b {
+		t.Fatal("the worker must differ between builds, or the browser never sees an update")
+	}
+	// And activating must drop everything that is not this build's cache.
+	if !strings.Contains(serviceWorkerJS, "keys.filter(k => k !== CACHE_NAME)") {
+		t.Error("activate must delete every cache that is not this build's")
+	}
+}
+
+// TestServiceWorkerNeverPinsAnUnversionedAsset covers the second half of the same
+// bug. Cache-first is only safe when the URL changes with the bytes. chroma.css,
+// the favicons and the app icons keep one URL forever, so serving those cache-first
+// pinned a device to whatever it stored on its very first visit.
+func TestServiceWorkerNeverPinsAnUnversionedAsset(t *testing.T) {
+	sw := serviceWorkerJS
+	if !strings.Contains(sw, "function isContentVersioned(url)") ||
+		!strings.Contains(sw, "url.searchParams.has('v')") {
+		t.Fatal("the worker must distinguish content-versioned URLs from stable ones")
+	}
+	staticBranch := sw[strings.Index(sw, "url.pathname.indexOf('/static/') === 0"):strings.Index(sw, "req.mode === 'navigate'")]
+	if !strings.Contains(staticBranch, "if (isContentVersioned(url))") {
+		t.Error("cache-first must be gated on the URL being content-versioned")
+	}
+	// The unversioned path must still revalidate, and the revalidation must outlive
+	// the response or the stale entry is never replaced.
+	if !strings.Contains(staticBranch, "event.waitUntil(fresh") {
+		t.Error("the stale-while-revalidate branch must keep its revalidation alive with waitUntil")
+	}
+}
+
+// TestInstalledAppChecksForANewBuild pins the client half. An installed app is
+// resumed, not navigated, and the browser's own worker update check is tied to
+// navigation and throttled to once a day — so without an explicit update() on
+// resume a phone can run a replaced build for a very long time.
+func TestInstalledAppChecksForANewBuild(t *testing.T) {
+	js := withoutComments(render.PWARegisterJS)
+	for _, want := range []string{
+		"visibilitychange", // resume is the only reliable moment on a phone
+		"reg.update()",     // ask the server whether the worker changed
+		"controllerchange", // a new worker took over → a new build is live
+		"window.location.reload()",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("the registration script must %q so an installed app picks up a new build", want)
+		}
+	}
+	// Reloading on a FIRST install would reload every first-ever page view: the
+	// controller goes from none to one, which is not an update.
+	if !strings.Contains(js, "hadController") {
+		t.Error("the reload must be gated on an existing controller being replaced, not a first install")
+	}
+	// And it must not yank the page out from under somebody typing a comment.
+	if !strings.Contains(js, "function editing()") {
+		t.Error("an update landing mid-edit must be deferred, not applied under the reader")
 	}
 }
 

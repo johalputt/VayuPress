@@ -143,16 +143,31 @@ func (a *App) handleServiceWorker(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(serviceWorkerJS)) //nolint:errcheck
 }
 
-const serviceWorkerJS = `// VayuPress service worker — offline fallback for a real installed app.
+// serviceWorkerJS is built once from the running build's version. That is not
+// cosmetic: it is what makes an updated server reach an already-installed phone.
 //
-// CACHE_NAME is bumped to v3. v2 stored page navigations stale-first and kept
+// A browser only replaces a service worker when the SCRIPT BYTES change. With a
+// hand-written cache name the worker was byte-identical across every release, so
+// the update check found no difference, `activate` never ran, the old cache was
+// never purged, and a device kept serving whatever it had stored at install time —
+// through reloads, because a reload goes through the worker too. Deriving the cache
+// name from the version means every release ships a different worker, which
+// activates, drops the previous cache and re-primes it from the network.
+var serviceWorkerJS = strings.ReplaceAll(serviceWorkerJSTemplate, "__BUILD__", Version)
+
+const serviceWorkerJSTemplate = `// VayuPress service worker — offline fallback for a real installed app.
+//
+// The cache name carries the build version, so an upgraded server invalidates
+// every device's cache exactly once, at the first load after the upgrade. The
+// activate handler below deletes every cache that is not this build's.
+//
+// (Cache generations before this one stored page navigations stale-first and kept
 // whatever a navigation returned, including pages the server marked private or
 // no-store: on a shared device that could replay one member's account page to the
 // next person, and it could re-show a cached sign-in form to somebody who was
-// already signed in — defeating the server-side redirect before the origin was
-// ever consulted. The activate handler deletes older caches, so upgrading a device
-// self-heals.
-const CACHE_NAME = 'vayupress-v3';
+// already signed in — defeating the server-side redirect before the origin was ever
+// consulted. Those caches are purged on upgrade like any other.)
+const CACHE_NAME = 'vayupress-__BUILD__';
 
 // Precached so a cold, offline launch still renders something. Fetched one by one:
 // cache.addAll rejects atomically, so a single 404 in this list used to fail the
@@ -205,6 +220,27 @@ self.addEventListener('activate', event => {
   );
 });
 
+// networkThenStore fetches from the network and stores the result when the server
+// allows it. Every write to the cache goes through here, so mayStore cannot be
+// forgotten at a call site.
+function networkThenStore(req) {
+  return fetch(req).then(res => {
+    if (mayStore(res)) {
+      const copy = res.clone();
+      caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
+    }
+    return res;
+  });
+}
+
+// Only a URL carrying a content hash may be served cache-first: ?v=<hash> changes
+// whenever the bytes do, so a hit is by definition the right bytes. Everything else
+// under /static keeps ONE url forever (chroma.css, the favicons, the app icons) —
+// serving those cache-first is how a device pins itself to the build it first saw.
+function isContentVersioned(url) {
+  return url.searchParams.has('v');
+}
+
 self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET') { return; }
@@ -215,32 +251,32 @@ self.addEventListener('fetch', event => {
     return; // straight to the network, and never stored
   }
 
-  // Cache-first for static assets. Their URLs carry content hashes, so a cached
-  // hit is by definition the right bytes.
   if (url.pathname.indexOf('/static/') === 0 || url.pathname.indexOf('/media/') === 0) {
+    if (isContentVersioned(url)) {
+      event.respondWith(caches.match(req).then(hit => hit || networkThenStore(req)));
+      return;
+    }
+    // Stale-while-revalidate for the unversioned ones: answer instantly from the
+    // cache, but always ask the network and replace the entry. waitUntil keeps that
+    // revalidation alive after the response has been handed back — without it the
+    // worker may be shut down first and the stale entry survives forever.
     event.respondWith(
-      caches.match(req).then(hit => hit || fetch(req).then(res => {
-        if (mayStore(res)) {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
-        }
-        return res;
-      }))
+      caches.match(req).then(hit => {
+        const fresh = networkThenStore(req);
+        if (!hit) { return fresh; }
+        event.waitUntil(fresh.catch(() => null));
+        return hit;
+      })
     );
     return;
   }
 
-  // Network-FIRST for pages, with the cache only as an offline fallback. v2 was
-  // stale-first, which showed yesterday's page to somebody who was online.
+  // Network-FIRST for pages, with the cache only as an offline fallback. An earlier
+  // worker was stale-first, which showed yesterday's page to somebody online.
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req).then(res => {
-        if (mayStore(res)) {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
-        }
-        return res;
-      }).catch(() => caches.match(req).then(hit => hit || caches.match('/').then(root => root || offlinePage())))
+      networkThenStore(req)
+        .catch(() => caches.match(req).then(hit => hit || caches.match('/').then(root => root || offlinePage())))
     );
     return;
   }

@@ -6,6 +6,59 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.38] — 2026-07-26
+
+### Fixed
+- **An updated server now actually reaches an installed phone.** After upgrading,
+  the app on a phone kept showing the previous build, and refreshing did not help —
+  because the refresh was answered by the same stale service worker that was the
+  problem.
+
+  Two causes, both now closed:
+
+  1. **The worker never changed between releases.** A browser replaces a service
+     worker only when its script bytes differ, and the cache name was a
+     hand-written constant. Every release therefore shipped a byte-identical
+     worker: the update check found nothing, `activate` never ran, and the cache it
+     was supposed to purge was never purged. The cache name now carries the build
+     version, so each release ships a different worker that activates, drops the
+     previous cache and re-primes it from the network — a device that was stuck
+     heals itself on the first online load after the upgrade.
+  2. **Assets with a permanent URL were pinned forever.** Cache-first is only safe
+     when the URL changes with the bytes. `chroma.css`, the favicons, the app icons
+     and the analytics script keep one URL for good, so serving them cache-first
+     pinned a device to whatever it stored on its very first visit — with no
+     expiry, because a cache hit never consults the server's `max-age`. Only URLs
+     carrying a `?v=` content hash are served cache-first now; the rest are
+     stale-while-revalidate, answered instantly from the cache and replaced in the
+     background.
+
+- **An installed app checks for a new build when you open it.** An app is *resumed*
+  far more often than it is navigated, and the browser's own worker update check is
+  tied to navigation and throttled to once a day, so a phone could run a replaced
+  build for a long time. The app now asks the server whether the worker changed each
+  time it becomes visible, and switches onto a new build when one takes over —
+  except while you are typing, where it waits until the next time you open the app
+  rather than reloading the page under you.
+
+- **A Tor Space no longer reports its own onion as degraded.** Inside a Tor Space,
+  Subsystem health showed `vayutor — DEGRADED — disabled (VAYUOS_TOR=off)`. That is
+  the architecture, not a fault: the space is spawned with the engine switched off
+  on purpose, because the parent publishes the onion the space is being reached
+  over, and an engine in the child would be a second onion world nested inside the
+  first. The one console guaranteed to be served over Tor was the one calling Tor
+  broken. It now says so plainly. Outside a Tor Space, a switched-off engine is
+  still reported.
+
+### Changed
+- Install health gained a **"Cached build on this device"** row. The page you are
+  reading always comes from the origin, so it cannot tell you what an installed app
+  is being served; the worker's cache is named for the build that created it, so
+  this compares those names against the running version and answers "my phone still
+  shows the old version" outright instead of leaving it to be inferred.
+
+---
+
 ## [3.15.37] — 2026-07-26
 
 ### Added
