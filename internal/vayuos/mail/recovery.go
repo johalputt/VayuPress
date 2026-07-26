@@ -405,6 +405,132 @@ func (s *AccountStore) InvalidateRecoveryTokens(ctx context.Context, email strin
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM vayumail_recovery_tokens WHERE email=?`, normEmail(email))
 }
 
+// ── Assisted-recovery requests ───────────────────────────────────────────────
+
+// RecoveryRequest is a holder asking an administrator for help, for the case no
+// factor can cover: they enrolled nothing, and there is no channel left to reach
+// them on. Approval does not reveal a password — it mints a one-time reset link
+// the administrator hands over in person, so the holder still chooses their own.
+type RecoveryRequest struct {
+	ID        int64     `json:"id"`
+	Email     string    `json:"email"`
+	Note      string    `json:"note,omitempty"`
+	IP        string    `json:"ip,omitempty"`
+	Status    string    `json:"status"` // pending | approved | declined
+	CreatedAt time.Time `json:"created_at"`
+	DecidedBy string    `json:"decided_by,omitempty"`
+}
+
+const maxRecoveryNote = 500
+
+func (s *AccountStore) ensureRecoveryRequests() error {
+	if err := s.ensureRecovery(); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS vayumail_recovery_requests(
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		email TEXT NOT NULL,
+		note TEXT NOT NULL DEFAULT '',
+		ip TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		decided_by TEXT NOT NULL DEFAULT '',
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		decided_at DATETIME);`)
+	return err
+}
+
+// FileRecoveryRequest records a request for administrator help.
+//
+// It writes a row for an UNKNOWN address too. Refusing one would make the
+// public endpoint answer differently for a real mailbox, which is the
+// enumeration oracle the whole flow is built to avoid; the administrator sees
+// the address and can simply decline. A pending request for the same address is
+// reused rather than duplicated, so repeated asking cannot flood the queue.
+func (s *AccountStore) FileRecoveryRequest(ctx context.Context, email, note, ip string) error {
+	if err := s.ensureRecoveryRequests(); err != nil {
+		return err
+	}
+	email = normEmail(email)
+	if email == "" {
+		return fmt.Errorf("mailbox required")
+	}
+	if len([]rune(note)) > maxRecoveryNote {
+		note = string([]rune(note)[:maxRecoveryNote])
+	}
+	var existing int64
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT id FROM vayumail_recovery_requests WHERE email=? AND status='pending'`,
+		email).Scan(&existing); err == nil && existing > 0 {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE vayumail_recovery_requests SET note=?, ip=?, created_at=CURRENT_TIMESTAMP WHERE id=?`,
+			note, ip, existing)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO vayumail_recovery_requests(email,note,ip) VALUES(?,?,?)`, email, note, ip)
+	return err
+}
+
+// PendingRecoveryRequests lists requests awaiting a decision, newest first.
+func (s *AccountStore) PendingRecoveryRequests(ctx context.Context) []RecoveryRequest {
+	if err := s.ensureRecoveryRequests(); err != nil {
+		return nil
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id,email,note,ip,status,created_at FROM vayumail_recovery_requests
+		 WHERE status='pending' ORDER BY created_at DESC LIMIT 100`)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	var out []RecoveryRequest
+	for rows.Next() {
+		var q RecoveryRequest
+		if err := rows.Scan(&q.ID, &q.Email, &q.Note, &q.IP, &q.Status, &q.CreatedAt); err == nil {
+			out = append(out, q)
+		}
+	}
+	_ = rows.Err()
+	return out
+}
+
+// DecideRecoveryRequest closes a request. Atomic on the pending state, so two
+// administrators clicking at once cannot both act on it.
+func (s *AccountStore) DecideRecoveryRequest(ctx context.Context, id int64, status, by string) (string, error) {
+	if err := s.ensureRecoveryRequests(); err != nil {
+		return "", err
+	}
+	if status != "approved" && status != "declined" {
+		return "", fmt.Errorf("invalid decision")
+	}
+	var email string
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT email FROM vayumail_recovery_requests WHERE id=? AND status='pending'`, id).Scan(&email); err != nil {
+		return "", fmt.Errorf("no pending request with that id")
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE vayumail_recovery_requests SET status=?, decided_by=?, decided_at=CURRENT_TIMESTAMP
+		 WHERE id=? AND status='pending'`, status, by, id)
+	if err != nil {
+		return "", err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return "", fmt.Errorf("that request was already decided")
+	}
+	return email, nil
+}
+
+// CountPendingRecoveryRequests backs the console badge.
+func (s *AccountStore) CountPendingRecoveryRequests(ctx context.Context) int {
+	if err := s.ensureRecoveryRequests(); err != nil {
+		return 0
+	}
+	var n int
+	_ = s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM vayumail_recovery_requests WHERE status='pending'`).Scan(&n)
+	return n
+}
+
 // ── Credential revocation ────────────────────────────────────────────────────
 
 // RevokeAllAppPasswords removes every app password for a mailbox and reports how

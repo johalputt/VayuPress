@@ -1,6 +1,6 @@
 # ADR-0144 — VayuMail Account Recovery
 
-Status: Accepted (Phase 1)
+Status: Accepted (Phases 1 and 2 shipped)
 Date: 2026-07-26
 Deciders: VayuPress core
 
@@ -182,6 +182,35 @@ it matters.
 - **Phase 1** — schema and store; recovery codes; verified off-install recovery
   address; the full reset pipeline; the enumeration-safe public flow; console
   enrolment UI and the readiness view; CLI break-glass.
-- **Phase 2** — trusted-device reset from an enrolled mobile app; an
-  administrator request/approve queue replacing today's silent reset; delivery of
-  reset alerts over VayuTalk, which is self-hosted and survives Tor mode.
+- **Phase 2 (shipped)** — trusted-device reset from an enrolled mobile app; an
+  administrator request/approve queue for the holder who enrolled nothing;
+  per-mailbox enrolment in each account's own card; holder self-enrolment; and an
+  append-only reset trail in the console.
+
+### VayuTalk reset alerts: evaluated and rejected
+
+Phase 2 was planned to deliver reset alerts over VayuTalk, on the reasoning that
+it is self-hosted and survives Tor mode. That reasoning does not survive contact
+with the implementation.
+
+`vayutalk.Engine.Connect(ctx, email, password)` authenticates with the **mailbox
+password** — the same credential a reset just changed. So an alert delivered
+there is:
+
+- **unreadable by the person it warns**, who no longer has that password, and
+- **readable by whoever caused the reset**, who now does.
+
+A channel that fails exactly when it is needed and leaks to the attacker when it
+works is worse than no channel, so it was not built. Envelopes are also purged on
+a short timer, which is wrong for a notice someone may need to refer back to.
+
+What shipped instead is an **append-only reset trail** read from `audit_log` and
+shown in the console. It is durable where the other two notices are not: the
+recovery-address mail depends on an address that may not exist, and the
+in-mailbox copy can be deleted by whoever holds the new password. The audit row
+cannot. It is also operator-facing rather than holder-facing, which is the right
+audience for "was this reset legitimate".
+
+Should a holder-facing out-of-band channel be wanted later, the requirement it
+must satisfy is now explicit: **it may not authenticate with the mailbox
+password.**

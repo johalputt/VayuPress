@@ -29,6 +29,18 @@ that too — it holds the release-versioning rule).
   three version files in one release commit, and push. (Each individual fix still
   lands on `main` as its own commit — only the *version bump / tag* waits for the
   whole plan.)
+- **This is the rule most often broken, so it is spelled out.** A plan means the
+  whole thing the user asked for — every phase, every follow-up item, every task
+  on the list — not the increment that happens to be finished. While a plan is in
+  flight: commit and push each piece to `main`, accumulate the notes under
+  `## [Unreleased]`, and cut **exactly one** release at the end.
+  - Multiple releases inside one plan is the failure mode. Three micro releases
+    in an afternoon means the rule was ignored three times.
+  - The only exception is a **fix to something already released and broken for
+    users right now** — that ships immediately on its own, because leaving a live
+    install broken to respect a batching rule is the wrong trade. Say so
+    explicitly in the release notes when this exception is used.
+  - When in doubt, do not bump. Ask.
 
 ## 2. Branch & push model
 

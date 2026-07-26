@@ -15,9 +15,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/safefetch"
+	"github.com/johalputt/vayupress/internal/seo"
 	"github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -232,6 +235,28 @@ that works here</strong> — generate them for every mailbox.</p>`)
 
 	b.WriteString(`<p class="text-sm muted mt-4">Enrol a mailbox from <strong>its own card</strong> below —
 recovery sits with that mailbox's other settings, next to forwarding and aliases.</p>`)
+	// Assisted-recovery queue. Shown only when someone is actually waiting: an
+	// empty section every day trains the eye to skip the one day it is not empty.
+	if pending := accts.PendingRecoveryRequests(r.Context()); len(pending) > 0 {
+		b.WriteString(`<div class="section-head mt-4"><span class="section-head__title">Waiting for you</span>
+<span class="section-head__hint">Holders who are locked out with nothing enrolled</span></div>`)
+		b.WriteString(`<p class="text-sm muted">Approving does not set or reveal a password — it creates a
+one-time link you hand over through a channel you trust, and the holder chooses their own. Confirm who you
+are talking to first: this is the step an attacker would try to talk you through.</p>`)
+		b.WriteString(`<div class="table-wrap"><table class="table"><tbody data-rec-queue>`)
+		for _, q := range pending {
+			b.WriteString(`<tr data-rec-req="` + strconv.FormatInt(q.ID, 10) + `">` +
+				`<td class="mono">` + html.EscapeString(q.Email) + `</td>` +
+				`<td class="text-xs muted">` + html.EscapeString(q.Note) + `</td>` +
+				`<td class="text-xs muted">` + html.EscapeString(q.IP) + `</td>` +
+				`<td><button type="button" class="btn btn--xs btn--primary" data-rec-approve>Approve</button> ` +
+				`<button type="button" class="btn btn--xs btn--ghost" data-rec-decline>Decline</button></td></tr>`)
+		}
+		b.WriteString(`</tbody></table></div>`)
+		b.WriteString(`<div class="rec-codes" data-rec-approved hidden></div>`)
+	}
+
+	b.WriteString(resetTrailHTML(r.Context()))
 
 	// The script is loaded once here and drives every per-mailbox panel below.
 	b.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail-recovery.js?v=` +
@@ -358,5 +383,159 @@ func (a *App) vayuCardRecovery(ctx context.Context, email string) string {
 <div class="text-xs" data-rec-msg role="status" aria-live="polite"></div>`)
 
 	b.WriteString(`</details>`)
+	return b.String()
+}
+
+// ── Assisted recovery: request and decision ──────────────────────────────────
+
+// handleVayuOSRecoveryRequests lists the requests awaiting a decision.
+func (a *App) handleVayuOSRecoveryRequests(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, 403, "forbidden", "administrators only", "")
+		return
+	}
+	accts, ok := a.recoveryAccounts()
+	if !ok {
+		writeAPIError(w, r, 503, "unavailable", "VayuMail is not running", "")
+		return
+	}
+	writeJSON(w, r, 200, map[string]interface{}{"requests": accts.PendingRecoveryRequests(r.Context())})
+}
+
+// handleVayuOSRecoveryDecide approves or declines an assisted-recovery request.
+//
+// Approval does NOT reveal or set a password. It mints a one-time reset link,
+// returned once to the administrator, who hands it over through a channel they
+// trust — in person, or a phone call they placed themselves. The holder then
+// chooses their own password on the ordinary reset page.
+//
+// This matters: an administrator who types the new password knows it, and a
+// mailbox whose password is known by someone other than its holder is not
+// recovered, it is shared. The link keeps the secret with the person it belongs
+// to and leaves the administrator holding only the authorisation.
+func (a *App) handleVayuOSRecoveryDecide(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, 403, "forbidden", "administrators only", "")
+		return
+	}
+	accts, ok := a.recoveryAccounts()
+	if !ok {
+		writeAPIError(w, r, 503, "unavailable", "VayuMail is not running", "")
+		return
+	}
+	var in struct {
+		ID     int64  `json:"id"`
+		Action string `json:"action"` // approve | decline
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in)
+
+	decision := "declined"
+	if strings.EqualFold(strings.TrimSpace(in.Action), "approve") {
+		decision = "approved"
+	}
+	actor := dbpkg.AuditActor(r)
+	email, err := accts.DecideRecoveryRequest(r.Context(), in.ID, decision, actor)
+	if err != nil {
+		writeAPIError(w, r, 400, "decide-failed", err.Error(), "")
+		return
+	}
+	dbpkg.AuditLog("vayumail.recovery.request_"+decision, actor, email, "")
+
+	if decision != "approved" {
+		writeJSON(w, r, 200, map[string]interface{}{"decision": decision, "email": email})
+		return
+	}
+	// A request can be filed for an address that does not exist — the public
+	// endpoint accepts anything so it cannot be used to discover mailboxes. Minting
+	// a link for one would be pointless, so say so plainly here, where the audience
+	// is an administrator who already knows the account list.
+	if !accts.Exists(r.Context(), email) {
+		writeJSON(w, r, 200, map[string]interface{}{
+			"decision": decision, "email": email,
+			"warning": "There is no mailbox at that address, so no reset link was created.",
+		})
+		return
+	}
+	token, terr := accts.CreateRecoveryToken(r.Context(), email)
+	if terr != nil {
+		writeAPIError(w, r, 500, "token-failed", "could not create a reset link", "")
+		return
+	}
+	writeJSON(w, r, 200, map[string]interface{}{
+		"decision": decision,
+		"email":    email,
+		"link":     seo.Origin(config.Cfg.Domain) + "/mail/recover/reset?token=" + token,
+		"detail": "Give this link to the holder through a channel you trust — in person, or a call you " +
+			"placed yourself. It works once, expires in 30 minutes, and lets them choose their own password.",
+	})
+}
+
+// ── Reset trail ──────────────────────────────────────────────────────────────
+
+// resetEvent is one entry from the WORM audit log.
+type resetEvent struct {
+	When   string
+	Target string
+	Actor  string
+	Detail string
+}
+
+// recentResets reads the last password resets straight from audit_log.
+//
+// This is the durable notification channel, and it is the operator's rather than
+// the holder's. The two notices a reset already sends — to the recovery address
+// and into the mailbox — both depend on something the attacker may now control:
+// the in-mailbox copy can simply be deleted by whoever holds the new password.
+// audit_log is append-only, so this record survives them.
+//
+// It also replaces the VayuTalk alert originally planned for this phase. VayuTalk
+// authenticates with the MAILBOX PASSWORD (Engine.Connect → verify(email,
+// password)), so an alert delivered there is unreadable by someone who just lost
+// that password, and readable by whoever caused the reset. A channel that fails
+// exactly when it is needed, and leaks to the attacker when it works, is worse
+// than no channel.
+func recentResets(ctx context.Context, limit int) []resetEvent {
+	if dbpkg.DB == nil {
+		return nil
+	}
+	rows, err := dbpkg.DB.QueryContext(ctx,
+		`SELECT ts,target,actor,detail FROM audit_log
+		 WHERE action='vayumail.password.reset' ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	var out []resetEvent
+	for rows.Next() {
+		var e resetEvent
+		var ts time.Time
+		if err := rows.Scan(&ts, &e.Target, &e.Actor, &e.Detail); err == nil {
+			e.When = ts.UTC().Format("2 Jan 15:04")
+			out = append(out, e)
+		}
+	}
+	_ = rows.Err()
+	return out
+}
+
+// resetTrailHTML renders the recent resets for the recovery card.
+func resetTrailHTML(ctx context.Context) string {
+	events := recentResets(ctx, 10)
+	if len(events) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(`<div class="section-head mt-4"><span class="section-head__title">Recent password resets</span>
+<span class="section-head__hint">From the append-only audit log</span></div>`)
+	b.WriteString(`<p class="text-sm muted">A reset also notifies the holder, but the copy filed into their
+mailbox can be deleted by whoever holds the new password. This record cannot.</p>`)
+	b.WriteString(`<div class="table-wrap"><table class="table"><tbody>`)
+	for _, e := range events {
+		b.WriteString(`<tr><td class="text-xs muted">` + html.EscapeString(e.When) + `</td>` +
+			`<td class="mono">` + html.EscapeString(e.Target) + `</td>` +
+			`<td class="text-xs">` + html.EscapeString(e.Actor) + `</td>` +
+			`<td class="text-xs muted">` + html.EscapeString(e.Detail) + `</td></tr>`)
+	}
+	b.WriteString(`</tbody></table></div>`)
 	return b.String()
 }

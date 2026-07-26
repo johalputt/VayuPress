@@ -84,6 +84,7 @@ func recoveryFormPage(errMsg string) string {
   <button class="su-btn" type="submit">Send a reset link →</button>
 </form>
 <p class="su-foot">Have a recovery code instead? <a class="su-link" href="/mail/recover/code">Use a recovery code</a></p>
+<p class="su-foot">Neither? <a class="su-link" href="/mail/recover/ask">Ask your administrator</a></p>
 <p class="su-foot"><a class="su-link" href="/os/login">Back to sign in</a></p>`
 }
 
@@ -138,7 +139,8 @@ func recoveryCodeFormPage(addr, errMsg string) string {
          autocomplete="new-password" aria-label="Confirm password">
   <button class="su-btn" type="submit">Set my new password →</button>
 </form>
-<p class="su-foot"><a class="su-link" href="/mail/recover">Send a reset link instead</a></p>`
+<p class="su-foot"><a class="su-link" href="/mail/recover">Send a reset link instead</a> · ` +
+		`<a class="su-link" href="/mail/recover/ask">Ask your administrator</a></p>`
 }
 
 // recoveryDonePage reports exactly what the reset destroyed.
@@ -180,4 +182,32 @@ func recoveryNoticePage(title, msg string) string {
 <p class="su-sub">` + html.EscapeString(msg) + `</p>
 <p class="su-foot"><a class="su-link" href="/mail/recover">Start again</a> · ` +
 		`<a class="su-link" href="/os/login">Back to sign in</a></p>`
+}
+
+// recoveryAskFormPage asks an administrator for help.
+func recoveryAskFormPage(addr, errMsg string) string {
+	return `<h1 class="su-title">Ask your administrator</h1>
+<p class="su-sub">If you have no recovery codes and no recovery address, an administrator has to help you
+back in. This tells them you are locked out.</p>
+` + recoveryNotice(errMsg) + `
+<form class="su-form" method="POST" action="/mail/recover/ask" novalidate>
+  <label class="su-label" for="rc-email">Your mail address</label>
+  <input class="su-input" id="rc-email" type="email" name="email" required autocomplete="username"
+         value="` + html.EscapeString(addr) + `" aria-label="Your mail address">
+  <label class="su-label" for="rc-note">Anything that helps them recognise you (optional)</label>
+  <input class="su-input" id="rc-note" type="text" name="note" maxlength="500"
+         placeholder="e.g. which team you are on" aria-label="Note for the administrator">
+  <button class="su-btn" type="submit">Send the request →</button>
+</form>
+<p class="su-foot"><a class="su-link" href="/mail/recover">Send a reset link instead</a> · ` +
+		`<a class="su-link" href="/mail/recover/code">Use a recovery code</a></p>`
+}
+
+// recoveryAskedPage is shown for every accepted ask — real address or not.
+func recoveryAskedPage() string {
+	return `<h1 class="su-title">Your administrator has been told</h1>
+<p class="su-sub">If that mailbox exists, whoever runs this server can now see that you are locked out.
+They will contact you directly — nothing is sent to the mailbox you cannot open.</p>
+<p class="su-foot">Once you are back in, set up recovery codes so you never need this again.</p>
+<p class="su-foot"><a class="su-link" href="/os/login">Back to sign in</a></p>`
 }

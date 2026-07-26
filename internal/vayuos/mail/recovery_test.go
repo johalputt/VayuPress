@@ -524,3 +524,99 @@ func TestRecoveryCodeEntropyAndShape(t *testing.T) {
 		}
 	}
 }
+
+// ── Assisted recovery ────────────────────────────────────────────────────────
+
+// TestRecoveryRequestAcceptsUnknownAddresses. The public endpoint must behave
+// identically for a real mailbox and a made-up one, so the store cannot refuse
+// one — refusing would be the enumeration oracle the whole flow avoids. The
+// administrator sees the address and declines.
+func TestRecoveryRequestAcceptsUnknownAddresses(t *testing.T) {
+	t.Parallel()
+	s, ctx := recoveryStore(t)
+	if err := s.FileRecoveryRequest(ctx, "user@example.com", "locked out", "203.0.113.1"); err != nil {
+		t.Fatalf("known address: %v", err)
+	}
+	if err := s.FileRecoveryRequest(ctx, "ghost@example.com", "", "203.0.113.2"); err != nil {
+		t.Fatalf("unknown address must be accepted too: %v", err)
+	}
+	if n := len(s.PendingRecoveryRequests(ctx)); n != 2 {
+		t.Errorf("%d pending requests, want 2", n)
+	}
+}
+
+// TestRepeatedRequestsDoNotFloodTheQueue — an anxious holder clicking five times
+// must not bury the administrator, and an attacker must not be able to.
+func TestRepeatedRequestsDoNotFloodTheQueue(t *testing.T) {
+	t.Parallel()
+	s, ctx := recoveryStore(t)
+	for i := 0; i < 5; i++ {
+		if err := s.FileRecoveryRequest(ctx, "user@example.com", "try", "203.0.113.1"); err != nil {
+			t.Fatalf("file: %v", err)
+		}
+	}
+	if n := len(s.PendingRecoveryRequests(ctx)); n != 1 {
+		t.Errorf("%d rows for one address, want the pending request reused", n)
+	}
+}
+
+// TestRecoveryDecisionIsAtomic. Two administrators clicking Approve at the same
+// moment must not both succeed — that would mint two live reset links for one
+// authorisation.
+func TestRecoveryDecisionIsAtomic(t *testing.T) {
+	t.Parallel()
+	s, ctx := recoveryStore(t)
+	if err := s.FileRecoveryRequest(ctx, "user@example.com", "", ""); err != nil {
+		t.Fatalf("file: %v", err)
+	}
+	id := s.PendingRecoveryRequests(ctx)[0].ID
+
+	const racers = 6
+	var wg sync.WaitGroup
+	wins := make([]bool, racers)
+	start := make(chan struct{})
+	for i := 0; i < racers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			_, err := s.DecideRecoveryRequest(ctx, id, "approved", "admin")
+			wins[i] = err == nil
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	n := 0
+	for _, ok := range wins {
+		if ok {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d concurrent approvals succeeded, want exactly 1", n)
+	}
+	if len(s.PendingRecoveryRequests(ctx)) != 0 {
+		t.Error("the decided request is still pending")
+	}
+	// A decided request cannot be decided again.
+	if _, err := s.DecideRecoveryRequest(ctx, id, "approved", "admin"); err == nil {
+		t.Error("an already-decided request was approved a second time")
+	}
+}
+
+// TestRecoveryNoteIsBounded — the note is free text from an unauthenticated
+// caller and lands in an administrator's console.
+func TestRecoveryNoteIsBounded(t *testing.T) {
+	t.Parallel()
+	s, ctx := recoveryStore(t)
+	if err := s.FileRecoveryRequest(ctx, "user@example.com", strings.Repeat("A", 5000), ""); err != nil {
+		t.Fatalf("file: %v", err)
+	}
+	got := s.PendingRecoveryRequests(ctx)
+	if len(got) != 1 {
+		t.Fatalf("want 1 request, got %d", len(got))
+	}
+	if len([]rune(got[0].Note)) > maxRecoveryNote {
+		t.Errorf("note stored at %d runes, want it capped at %d", len([]rune(got[0].Note)), maxRecoveryNote)
+	}
+}

@@ -450,6 +450,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/api/vayuos/mail/recovery/status", a.handleVayuOSRecoveryStatus)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuos/mail/recovery/codes", a.handleVayuOSRecoveryCodes)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuos/mail/recovery/contact", a.handleVayuOSRecoveryContact)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/api/vayuos/mail/recovery/requests", a.handleVayuOSRecoveryRequests)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuos/mail/recovery/decide", a.handleVayuOSRecoveryDecide)
 		// Accounts redesign: HTMX list fragment + inline action swap (enable/disable,
 		// role, quota, retention, delete) so the page never full-reloads.
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts/fragment", a.handleVayuOSAccountsFragment)

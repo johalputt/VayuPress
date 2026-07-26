@@ -326,8 +326,65 @@
     for (var i = 0; i < panels.length; i++) { bindPanel(panels[i]); }
   }
 
+  // The assisted-recovery queue lives on the summary card, once for the page.
+  function bindQueue() {
+    var body = document.querySelector('[data-rec-queue]');
+    if (!body || body.getAttribute('data-rec-bound') === '1') { return; }
+    body.setAttribute('data-rec-bound', '1');
+    var out = document.querySelector('[data-rec-approved]');
+
+    function csrfTok() {
+      var m = document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
+      return m ? decodeURIComponent(m[1]) : '';
+    }
+
+    body.addEventListener('click', function (ev) {
+      var approve = ev.target.closest('[data-rec-approve]');
+      var decline = ev.target.closest('[data-rec-decline]');
+      if (!approve && !decline) { return; }
+      var row = ev.target.closest('[data-rec-req]');
+      if (!row) { return; }
+      var id = parseInt(row.getAttribute('data-rec-req'), 10);
+      var mb = (row.firstElementChild && row.firstElementChild.textContent) || 'this mailbox';
+
+      // Approval is the step an attacker would try to talk an administrator
+      // through, so it asks out loud who they have actually spoken to.
+      if (approve && !window.confirm('Approve recovery for ' + mb +
+        '?\n\nOnly do this if you have confirmed, on a channel you trust, that you are ' +
+        'talking to the real holder.')) { return; }
+
+      fetch('/os/api/vayuos/mail/recovery/decide', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfTok() },
+        body: JSON.stringify({ id: id, action: approve ? 'approve' : 'decline' })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        row.parentNode.removeChild(row);
+        if (!approve || !out) { return; }
+        // The link is returned once and never stored in readable form, so it gets
+        // the same loud treatment as the codes.
+        out.textContent = '';
+        var p = document.createElement('p');
+        p.className = 'rec-codes__warn';
+        p.textContent = d.warning ? d.warning
+          : 'One-time reset link for ' + (d.email || mb) + ' — shown once. ' +
+            'Hand it over in person or on a call you placed yourself.';
+        out.appendChild(p);
+        if (d.link) {
+          var code = document.createElement('code');
+          code.className = 'rec-codes__code';
+          code.style.display = 'block';
+          code.style.textAlign = 'left';
+          code.textContent = d.link;
+          out.appendChild(code);
+        }
+        out.hidden = false;
+      }).catch(function () { /* the row stays; the operator can retry */ });
+    });
+  }
+
   function start() {
     bindAll();
+    bindQueue();
     // The accounts list is an HTMX fragment: every inline action swaps the whole
     // list, replacing all the panels with fresh, unbound copies. Without this the
     // recovery controls work until the first alias or forwarding change and then

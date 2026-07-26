@@ -6,6 +6,58 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.43] — 2026-07-26
+
+Completes the VayuMail account-recovery track (ADR-0144 Phase 2). One release for
+the whole phase, per the release rule.
+
+### Added
+- **Trusted-device recovery.** A holder whose phone still syncs can set a new
+  mailbox password from the app without knowing the old one — the app password
+  already proves they controlled the account at enrolment and that you approved
+  the device. It is the only factor needing no advance planning beyond having used
+  the app, so it is the one most people will actually have.
+
+  It gates on approval status, not last-used telemetry: that field is documented
+  as best-effort and never a security decision, so a missed write would lock out a
+  real holder. Pending and blocked devices are refused, every rejection returns one
+  uniform message so the endpoint cannot discover which mailboxes exist, and the
+  reset revokes **every** app password including the one that authorised it — the
+  server cannot tell a holder's device from a thief's, so a carve-out for "the
+  device that asked" is the carve-out an attacker would use.
+
+- **An assisted-recovery queue** for the case no factor covers: a holder who
+  enrolled nothing, with no channel left to reach them on. They ask from
+  `/mail/recover/ask`; you see the request in the recovery card and approve or
+  decline.
+
+  Approving **does not set or reveal a password**. It mints a one-time link you
+  hand over through a channel you trust, and the holder chooses their own — an
+  administrator who types the password knows it, and a mailbox whose password is
+  known by someone other than its holder is not recovered, it is shared. The
+  console asks you to confirm out loud that you have verified who you are talking
+  to, because this is the step an attacker would try to talk you through.
+
+  A request is accepted for an address that does not exist, so the public endpoint
+  stays enumeration-safe; you simply decline it. Repeat requests reuse the pending
+  row rather than flooding the queue, and two administrators clicking Approve at
+  once cannot both mint a link.
+
+- **An append-only reset trail** in the recovery card, read from `audit_log`. A
+  reset already notifies the holder twice, but both notices are destructible: the
+  recovery-address mail needs an address that may not exist, and the in-mailbox
+  copy can be deleted by whoever holds the new password. The audit row cannot.
+
+### Changed
+- **VayuTalk reset alerts were evaluated and not built.** `Engine.Connect`
+  authenticates with the **mailbox password**, so an alert delivered over VayuTalk
+  is unreadable by the person who just lost that password, and readable by whoever
+  caused the reset. A channel that fails exactly when it is needed and leaks to the
+  attacker when it works is worse than no channel. The reasoning and the
+  requirement any future holder-facing channel must meet are recorded in ADR-0144.
+
+---
+
 ## [3.15.42] — 2026-07-26
 
 ### Changed

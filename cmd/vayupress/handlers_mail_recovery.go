@@ -249,3 +249,41 @@ func (a *App) handleMailRecoverCode(w http.ResponseWriter, r *http.Request) {
 // mailbox, wrong code, spent code, or over budget.
 const recoveryCodeFailure = "That mailbox and code combination was not accepted. " +
 	"Check the code and try again, or use a recovery link instead."
+
+// handleMailRecoverAsk files a request for administrator help — the last path,
+// for a holder who enrolled nothing and has no channel left.
+//
+// Same enumeration contract as everything else here: an unknown address is
+// recorded and answered identically, so the response cannot be used to discover
+// which mailboxes exist. The administrator sees the address in the queue and
+// declines if it is nonsense.
+func (a *App) handleMailRecoverAsk(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
+		a.renderRecoveryPage(w, r, recoveryNoticePage("Recovery unavailable",
+			"VayuMail is not running on this server."))
+		return
+	}
+	if r.Method == http.MethodGet {
+		a.renderRecoveryPage(w, r, recoveryAskFormPage("", ""))
+		return
+	}
+	addr := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
+	note := strings.TrimSpace(r.FormValue("note"))
+	ip := clientIPForContact(r)
+
+	if !recoveryByIP.allow(ip) || !recoveryByAddress.allow(addr) {
+		// Same page as success. A visible "too many requests" would confirm that
+		// earlier attempts landed on something real.
+		a.renderRecoveryPage(w, r, recoveryAskedPage())
+		return
+	}
+	if addr == "" {
+		a.renderRecoveryPage(w, r, recoveryAskFormPage(addr, "Enter your mail address."))
+		return
+	}
+	if err := a.vayuMail.Accounts().FileRecoveryRequest(r.Context(), addr, note, ip); err != nil {
+		logging.LogError("vayumail", "could not file a recovery request", err.Error())
+	}
+	dbpkg.AuditLog("vayumail.recovery.help_requested", "public:"+ip, addr, note)
+	a.renderRecoveryPage(w, r, recoveryAskedPage())
+}

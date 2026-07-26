@@ -290,6 +290,8 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Post("/mail/recover/reset", a.handleMailRecoverReset)
 	r.Get("/mail/recover/code", a.handleMailRecoverCode)
 	r.Post("/mail/recover/code", a.handleMailRecoverCode)
+	r.Get("/mail/recover/ask", a.handleMailRecoverAsk)
+	r.Post("/mail/recover/ask", a.handleMailRecoverAsk)
 
 	// Reader memberships (Tier 2) — public passwordless login + paywall.
 	r.Get("/signup", a.handleMemberSignup)
