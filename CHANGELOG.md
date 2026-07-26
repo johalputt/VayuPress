@@ -6,6 +6,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.42] — 2026-07-26
+
+### Changed
+- **Recovery now lives inside each mailbox's own card**, next to forwarding,
+  vacation and aliases — not behind one dropdown listing every address. Recovery
+  is a property *of* a mailbox, so enrolling one no longer means leaving its card,
+  finding it again in a picker, and trusting you had the right one. Each card's
+  summary shows its state at a glance (`12 codes + address`, or `no recovery`), so
+  scanning the list shows which accounts have no way back in. The card at the top
+  keeps only the install-wide readiness summary.
+
+- **A mailbox holder can now enrol their own recovery**, from Connect → *Recover
+  my mailbox*. Recovery that only an administrator can set up is recovery most
+  people never get. A holder sees and acts on their own mailbox only — not even
+  the recovery *state* of another, since "does this account have codes" is useful
+  reconnaissance on its own — and cannot mark their own address verified, because
+  self-certifying would defeat the very check the confirmation exists to perform.
+
+### Added
+- **Recovery codes can be downloaded or printed, not just copied.** The clipboard
+  needs a secure context and a permission some browsers refuse, and the codes are
+  shown exactly once — a failed copy with no alternative loses them for good. The
+  saved sheet names the mailbox, the server and the URL the codes are used at,
+  because a bare list of twelve-character strings found in a drawer two years from
+  now tells its owner nothing. The download URL is revoked afterwards so the codes
+  do not stay fetchable from the tab.
+
+### Fixed
+- **Every recovery control on every mailbox card was dead.** The script is emitted
+  by the summary card at the top of the page, above the mailbox list, so when it
+  ran none of the per-card panels existed yet — it bound nothing. It now waits for
+  the document, binds every panel rather than the first, and rebinds after an HTMX
+  swap, which the accounts list performs on every inline action.
+- Opening the Accounts page no longer fires one status request per mailbox: a
+  card loads its recovery state when you open it.
+
+---
+
 ## [3.15.41] — 2026-07-26
 
 ### Fixed

@@ -6374,3 +6374,4 @@
   /* Selectable as a block so "copy all" is not the only route. */
   user-select: all;
 }
+.vp-os .rec-codes__actions { display: flex; flex-wrap: wrap; gap: .5rem; }

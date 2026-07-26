@@ -408,6 +408,7 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	c.WriteString(`<div class="vm-acct__sub"><span class="field-label">Auto-forward a copy to</span>` + vayuCardForwarding(ac) + `</div>`)
 	c.WriteString(a.vayuCardVacation(ctx, ac))
 	c.WriteString(a.vayuCardAliases(ctx, ac))
+	c.WriteString(a.vayuCardRecovery(ctx, ac.Email))
 	c.WriteString(a.vayuCardFilters(ctx, ac))
 	// Profile picture: direct upload (≤500 KB) + optional remove. HTMX multipart,
 	// swapping the whole list so the new avatar shows immediately.

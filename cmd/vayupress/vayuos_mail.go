@@ -1302,6 +1302,13 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The holder's OWN recovery enrolment (ADR-0144 Phase 2). Placed here because
+	// this is the page someone already visits when setting their mail up, which is
+	// the one moment they are thinking about access to this mailbox at all. It
+	// renders only for a signed-in holder with an assigned mailbox, and shows just
+	// theirs — the install-wide readiness view stays on the admin Accounts page.
+	body.WriteString(a.selfRecoveryCardHTML(r, nonce))
+
 	mc := a.vayuMail.Config()
 	host := mc.Hostname
 	if host == "" {

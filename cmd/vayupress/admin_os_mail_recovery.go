@@ -9,6 +9,7 @@ package main
 // The failure is silent by construction, so it has to be visible before then.
 
 import (
+	"context"
 	"encoding/json"
 	"html"
 	"net/http"
@@ -20,25 +21,59 @@ import (
 	"github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
-// handleVayuOSRecoveryStatus returns the enrolment state of one mailbox, or of
-// every mailbox when no address is given.
-func (a *App) handleVayuOSRecoveryStatus(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, 403, "forbidden", "administrators only", "")
-		return
+// recoveryScope resolves WHICH mailbox this request may act on, and is the only
+// authorisation check the three endpoints below need.
+//
+// Recovery must not be an administrator-only errand. The people who get locked
+// out are mailbox holders, and requiring an admin to enrol every one of them
+// guarantees most are never enrolled — which is exactly the state the readiness
+// view keeps reporting. So a holder may enrol their OWN mailbox.
+//
+// The rule is deliberately narrow: an administrator may name any mailbox; anyone
+// else is forced to their own assigned address regardless of what they asked for.
+// A holder cannot even read another mailbox's recovery state, because "does this
+// account have codes" is useful reconnaissance on its own.
+func (a *App) recoveryScope(r *http.Request, requested string) (string, bool) {
+	requested = strings.ToLower(strings.TrimSpace(requested))
+	if a.isAdminRequest(r) {
+		return requested, true
 	}
+	_, own := a.ownMailbox(r)
+	own = strings.ToLower(strings.TrimSpace(own))
+	if own == "" {
+		return "", false
+	}
+	// An empty request means "mine"; a mismatched one is silently narrowed rather
+	// than refused, so the response cannot confirm another address exists.
+	if requested != "" && requested != own {
+		return own, true
+	}
+	return own, true
+}
+
+// handleVayuOSRecoveryStatus returns the enrolment state of one mailbox, or —
+// for an administrator with no address given — the whole readiness list.
+func (a *App) handleVayuOSRecoveryStatus(w http.ResponseWriter, r *http.Request) {
 	accts, ok := a.recoveryAccounts()
 	if !ok {
 		writeAPIError(w, r, 503, "unavailable", "VayuMail is not running", "")
 		return
 	}
-	if addr := strings.TrimSpace(r.URL.Query().Get("email")); addr != "" {
-		writeJSON(w, r, 200, accts.RecoveryStatusFor(r.Context(), addr))
+	requested := strings.TrimSpace(r.URL.Query().Get("email"))
+	// The install-wide readiness list is an administrator view: it names every
+	// mailbox that cannot be recovered, which is a target list for anyone else.
+	if requested == "" && a.isAdminRequest(r) {
+		writeJSON(w, r, 200, map[string]interface{}{
+			"unrecoverable": accts.UnrecoverableAccounts(r.Context()),
+		})
 		return
 	}
-	writeJSON(w, r, 200, map[string]interface{}{
-		"unrecoverable": accts.UnrecoverableAccounts(r.Context()),
-	})
+	addr, allowed := a.recoveryScope(r, requested)
+	if !allowed || addr == "" {
+		writeAPIError(w, r, 403, "forbidden", "no mailbox is assigned to this account", "")
+		return
+	}
+	writeJSON(w, r, 200, accts.RecoveryStatusFor(r.Context(), addr))
 }
 
 // handleVayuOSRecoveryCodes generates a fresh set of recovery codes.
@@ -47,10 +82,6 @@ func (a *App) handleVayuOSRecoveryStatus(w http.ResponseWriter, r *http.Request)
 // so a caller that loses it must generate again. That is the point: a code set
 // the server could re-read would be a code set an attacker could re-read.
 func (a *App) handleVayuOSRecoveryCodes(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, 403, "forbidden", "administrators only", "")
-		return
-	}
 	accts, ok := a.recoveryAccounts()
 	if !ok {
 		writeAPIError(w, r, 503, "unavailable", "VayuMail is not running", "")
@@ -60,9 +91,9 @@ func (a *App) handleVayuOSRecoveryCodes(w http.ResponseWriter, r *http.Request) 
 		Email string `json:"email"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&in)
-	addr := strings.TrimSpace(in.Email)
-	if addr == "" {
-		writeAPIError(w, r, 400, "validation_error", "mailbox required", "")
+	addr, allowed := a.recoveryScope(r, in.Email)
+	if !allowed || addr == "" {
+		writeAPIError(w, r, 403, "forbidden", "no mailbox is assigned to this account", "")
 		return
 	}
 	codes, err := accts.GenerateRecoveryCodes(r.Context(), addr)
@@ -86,10 +117,6 @@ func (a *App) handleVayuOSRecoveryCodes(w http.ResponseWriter, r *http.Request) 
 // implicitly: an address that becomes usable the moment it is typed is a typo
 // that silently redirects the master key to a stranger.
 func (a *App) handleVayuOSRecoveryContact(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, 403, "forbidden", "administrators only", "")
-		return
-	}
 	accts, ok := a.recoveryAccounts()
 	if !ok {
 		writeAPIError(w, r, 503, "unavailable", "VayuMail is not running", "")
@@ -101,13 +128,24 @@ func (a *App) handleVayuOSRecoveryContact(w http.ResponseWriter, r *http.Request
 		Action  string `json:"action"` // set | verify | clear
 	}
 	_ = json.NewDecoder(r.Body).Decode(&in)
-	addr := strings.TrimSpace(in.Email)
-	if addr == "" {
-		writeAPIError(w, r, 400, "validation_error", "mailbox required", "")
+	addr, allowed := a.recoveryScope(r, in.Email)
+	if !allowed || addr == "" {
+		writeAPIError(w, r, 403, "forbidden", "no mailbox is assigned to this account", "")
 		return
 	}
 
-	switch strings.ToLower(strings.TrimSpace(in.Action)) {
+	action := strings.ToLower(strings.TrimSpace(in.Action))
+	// "Mark verified" is an ADMINISTRATOR confirming out of band that the holder
+	// controls the address. A holder verifying their own would be self-certifying:
+	// they could point recovery at any address and immediately make it usable,
+	// which is the whole check the round-trip exists to perform.
+	if action == "verify" && !a.isAdminRequest(r) {
+		writeAPIError(w, r, 403, "forbidden",
+			"An administrator confirms a recovery address. Yours is saved and waiting.", "")
+		return
+	}
+
+	switch action {
 	case "clear":
 		if err := accts.ClearRecoveryContact(r.Context(), addr); err != nil {
 			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
@@ -192,45 +230,133 @@ so a reset link cannot be delivered to an outside address. <strong>Recovery code
 that works here</strong> — generate them for every mailbox.</p>`)
 	}
 
-	// Enrolment.
-	b.WriteString(`<div class="section-head mt-4"><span class="section-head__title">Enrol a mailbox</span>
-<span class="section-head__hint">Codes work everywhere; an address is easier to keep</span></div>`)
-	var opts strings.Builder
-	for _, m := range mailboxes {
-		opts.WriteString(`<option value="` + html.EscapeString(m) + `">` + html.EscapeString(m) + `</option>`)
+	b.WriteString(`<p class="text-sm muted mt-4">Enrol a mailbox from <strong>its own card</strong> below —
+recovery sits with that mailbox's other settings, next to forwarding and aliases.</p>`)
+
+	// The script is loaded once here and drives every per-mailbox panel below.
+	b.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail-recovery.js?v=` +
+		assetVer("js/admin-os-mail-recovery.js") + `"></script>`)
+
+	return monAcc("🔑", "Account recovery", "Who could get back in if they forgot their password", chip,
+		len(stuck) > 0, b.String())
+}
+
+// selfRecoveryCardHTML is the holder's own view: one mailbox, theirs, no
+// readiness list and no mailbox picker. Rendered on the Connect page, which is
+// where a holder already goes to set their mail up.
+//
+// It exists because recovery that only an administrator can enrol is recovery
+// most people never get. The endpoints scope by themselves (recoveryScope), so
+// this card is a narrower presentation of the same surface, not a second one.
+func (a *App) selfRecoveryCardHTML(r *http.Request, nonce string) string {
+	accts, ok := a.recoveryAccounts()
+	if !ok {
+		return ""
 	}
+	_, own := a.ownMailbox(r)
+	own = strings.ToLower(strings.TrimSpace(own))
+	if own == "" || !accts.Exists(r.Context(), own) {
+		return ""
+	}
+	st := accts.RecoveryStatusFor(r.Context(), own)
+	chip := monChip(st.Ready, "Recovery ready", "No way back in")
+
+	var b strings.Builder
+	b.WriteString(`<p class="text-sm muted mb-4">If you forget this mailbox's password, a reset link is no
+use — it would be delivered here, to the mailbox you cannot open. Set one of these up <strong>now</strong>,
+while you still can.</p>`)
+
 	b.WriteString(`<div class="card" data-recovery-panel>
-  <label class="field"><span class="field-label">Mailbox</span>
-    <select class="input" data-rec-mailbox aria-label="Mailbox">` + opts.String() + `</select></label>
-  <div class="rec-status text-sm muted" data-rec-status>Select a mailbox to see its recovery state.</div>
+  <input type="hidden" data-rec-mailbox value="` + html.EscapeString(own) + `">
+  <p class="text-sm"><strong>Mailbox:</strong> <code>` + html.EscapeString(own) + `</code></p>
+  <div class="rec-status text-sm muted" data-rec-status></div>
 
   <div class="section-head mt-4"><span class="section-head__title">Recovery codes</span>
     <span class="section-head__hint">Ten single-use codes, shown once</span></div>
-  <p class="text-sm muted">These need no network and no second mailbox, so they keep working when the mail
-  system itself is the problem. Generating a new set <strong>invalidates the previous one</strong>.</p>
-  <button type="button" class="btn btn--primary btn--sm" data-rec-gen>Generate new codes</button>
+  <p class="text-sm muted">The most reliable option: they need no network and no second mailbox, so they
+  work even when mail itself is broken. Save, download or print them somewhere you can reach without this
+  mailbox. Generating a new set <strong>invalidates the previous one</strong>.</p>
+  <button type="button" class="btn btn--primary btn--sm" data-rec-gen>Generate my codes</button>
   <div class="rec-codes" data-rec-codes hidden></div>
 
   <div class="section-head mt-4"><span class="section-head__title">Recovery address</span>
-    <span class="section-head__hint">Must be on a different mail provider</span></div>
-  <p class="text-sm muted">An address this server hosts is refused: losing the mailbox would lose the
-  recovery address with it.</p>
+    <span class="section-head__hint">On a different mail provider</span></div>
+  <p class="text-sm muted">An address this server hosts is refused — losing this mailbox would lose it too.
+  Your administrator confirms the address before it counts.</p>
   <div class="vm-row vm-row--end">
     <label class="field vm-grow"><span class="field-label">Address</span>
-      <input class="input" type="email" data-rec-contact placeholder="someone@another-provider.com"
+      <input class="input" type="email" data-rec-contact placeholder="you@another-provider.com"
              aria-label="Recovery address"></label>
     <button type="button" class="btn btn--primary btn--sm" data-rec-set>Save</button>
-    <button type="button" class="btn btn--sm" data-rec-verify>Mark verified</button>
     <button type="button" class="btn btn--sm btn--ghost" data-rec-clear>Remove</button>
   </div>
-  <p class="text-sm muted mt-2">An address only becomes a usable factor once it is verified — confirm the
-  holder really controls it first.</p>
   <div class="text-sm" data-rec-msg role="status" aria-live="polite"></div>
 </div>`)
 
 	b.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail-recovery.js?v=` +
 		assetVer("js/admin-os-mail-recovery.js") + `"></script>`)
 
-	return monAcc("🔑", "Account recovery", "How a locked-out holder gets back in", chip,
-		len(stuck) > 0, b.String())
+	return monAcc("🔑", "Recover my mailbox", "Set this up before you need it", chip, !st.Ready, b.String())
+}
+
+// vayuCardRecovery renders one mailbox's recovery controls INSIDE its own card,
+// beside forwarding, vacation and aliases.
+//
+// The first version put every mailbox behind a single picker at the top of the
+// page. That reads as a separate system bolted on: to enrol a mailbox you had to
+// leave its card, find it again in a dropdown, and trust you had the right one.
+// Recovery is a property OF a mailbox, so it belongs where its other properties
+// are — and with 30-odd addresses on an install, one control per card is the only
+// arrangement that stays legible.
+//
+// Each card is an independent panel; the browser script binds them all.
+func (a *App) vayuCardRecovery(ctx context.Context, email string) string {
+	accts, ok := a.recoveryAccounts()
+	if !ok {
+		return ""
+	}
+	st := accts.RecoveryStatusFor(ctx, email)
+	he := html.EscapeString(email)
+
+	// The summary badge is the whole point at a glance: scanning the mailbox list
+	// should show which accounts have no way back in.
+	state := `<span class="badge badge--warn">no recovery</span>`
+	if st.Ready {
+		bits := []string{}
+		if st.CodesRemaining > 0 {
+			bits = append(bits, strconv.Itoa(st.CodesRemaining)+" codes")
+		}
+		if st.Contact != "" {
+			bits = append(bits, "address")
+		}
+		state = `<span class="badge badge--ok">` + html.EscapeString(strings.Join(bits, " + ")) + `</span>`
+	} else if st.ContactPending != "" {
+		state = `<span class="badge badge--warn">unverified address</span>`
+	}
+
+	var b strings.Builder
+	b.WriteString(`<details class="vm-ooo vm-acct__sub" data-recovery-panel><summary>` +
+		`<span class="field-label">Account recovery</span> ` + state + `</summary>`)
+	b.WriteString(`<input type="hidden" data-rec-mailbox value="` + he + `">`)
+	b.WriteString(`<p class="muted text-xs">If this holder forgets their password, a reset link is no use — ` +
+		`it would be delivered to the mailbox they cannot open. Enrol one of these before that happens.</p>`)
+	b.WriteString(`<div class="rec-status text-xs muted" data-rec-status></div>`)
+
+	b.WriteString(`<div class="vm-row vm-row--end mt-2">
+  <button type="button" class="btn btn--primary btn--xs" data-rec-gen>Generate recovery codes</button>
+</div>
+<div class="rec-codes" data-rec-codes hidden></div>`)
+
+	b.WriteString(`<div class="vm-row vm-row--end mt-2">
+  <label class="field vm-grow"><span class="field-label">Recovery address (different provider)</span>
+    <input class="input input--sm" type="email" data-rec-contact placeholder="someone@another-provider.com"
+           aria-label="Recovery address for ` + he + `"></label>
+  <button type="button" class="btn btn--xs" data-rec-set>Save</button>
+  <button type="button" class="btn btn--xs" data-rec-verify>Mark verified</button>
+  <button type="button" class="btn btn--xs btn--ghost" data-rec-clear>Remove</button>
+</div>
+<div class="text-xs" data-rec-msg role="status" aria-live="polite"></div>`)
+
+	b.WriteString(`</details>`)
+	return b.String()
 }

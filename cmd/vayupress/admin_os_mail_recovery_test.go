@@ -160,8 +160,14 @@ func TestRecoveryConsoleJSNeverUsesInnerHTML(t *testing.T) {
 	if !strings.Contains(js, "clearCodes()") {
 		t.Error("switching mailbox must clear any codes still on screen")
 	}
+	// Slice renderStatus by its next SIBLING function rather than by a brace at a
+	// guessed indent — the panels moved inside a bindPanel() closure and an
+	// indent-sensitive slice silently over-captured into clearCodes, which is
+	// meant to contain exactly the line this asserts is absent.
 	render := js[strings.Index(js, "function renderStatus"):]
-	render = render[:strings.Index(render, "\n  }")]
+	if i := strings.Index(render, "function clearCodes"); i > 0 {
+		render = render[:i]
+	}
 	if strings.Contains(render, "codesEl.hidden = true") {
 		t.Error("renderStatus clears the codes; it runs after generate, so it would wipe them instantly")
 	}
@@ -171,6 +177,82 @@ func TestRecoveryConsoleJSNeverUsesInnerHTML(t *testing.T) {
 	}
 	if !strings.Contains(js, "X-CSRF-Token") {
 		t.Error("credential-issuing writes must carry the CSRF token")
+	}
+}
+
+// TestRecoveryPanelsBindAfterTheDOMExists. The script tag is emitted by the
+// summary card at the TOP of the page, above the mailbox list, so at execution
+// time none of the per-card panels exist. Binding immediately found nothing and
+// every control on every card stayed dead — which is exactly how this shipped
+// once already, and is invisible without running a browser.
+func TestRecoveryPanelsBindAfterTheDOMExists(t *testing.T) {
+	t.Parallel()
+	js := withoutComments(repoFile(t, "static/js/admin-os-mail-recovery.js"))
+	if !strings.Contains(js, "DOMContentLoaded") {
+		t.Error("binding does not wait for the document; the panels do not exist when this script runs")
+	}
+	// One panel per mailbox, so it must bind ALL of them.
+	if !strings.Contains(js, "querySelectorAll('[data-recovery-panel]')") {
+		t.Error("only one panel is bound; an install with many mailboxes would have one working card")
+	}
+	// The accounts list is swapped wholesale by HTMX on every inline action.
+	if !strings.Contains(js, "htmx:afterSwap") {
+		t.Error("panels are not rebound after an HTMX swap, so they die on the first alias or forwarding change")
+	}
+	// Thirty mailboxes must not mean thirty status requests at page load.
+	if !strings.Contains(js, "'toggle'") {
+		t.Error("status must load when a card is opened, not for every mailbox at page load")
+	}
+}
+
+// TestRecoveryCodesCanBeSavedWithoutTheClipboard. The clipboard API needs a
+// secure context and a permission some browsers refuse; codes are shown exactly
+// once, so a failed copy with no alternative loses them for good.
+func TestRecoveryCodesCanBeSavedWithoutTheClipboard(t *testing.T) {
+	t.Parallel()
+	js := withoutComments(repoFile(t, "static/js/admin-os-mail-recovery.js"))
+	for _, want := range []string{"Download .txt", "Print", "Blob(", "a.download"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("no clipboard-free way to keep the codes: missing %q", want)
+		}
+	}
+	// A blob: URL stays resolvable for the life of the document, so leaving it
+	// alive keeps the codes fetchable from the tab long after the panel is closed.
+	if !strings.Contains(js, "revokeObjectURL") {
+		t.Error("the download blob URL is never revoked; the codes stay retrievable from the tab")
+	}
+	// The saved sheet must identify what it unlocks — a bare list of twelve
+	// character strings found later tells its owner nothing.
+	if !strings.Contains(js, "function codeSheet") ||
+		!strings.Contains(js, "'Mailbox : '") ||
+		!strings.Contains(js, "/mail/recover/code") {
+		t.Error("the saved sheet must name the mailbox, the server and where the codes are used")
+	}
+}
+
+// TestHolderCanEnrolTheirOwnRecovery. Recovery that only an administrator can
+// enrol is recovery most people never get — the readiness list would stay red
+// forever. But a holder must be confined to their own mailbox, and must not be
+// able to self-certify a recovery address.
+func TestHolderCanEnrolTheirOwnRecovery(t *testing.T) {
+	t.Parallel()
+	code := withoutComments(repoFile(t, "cmd/vayupress/admin_os_mail_recovery.go"))
+
+	if !strings.Contains(code, "func (a *App) recoveryScope") {
+		t.Fatal("there is no scoping helper; the endpoints are either admin-only or unscoped")
+	}
+	// Every endpoint must scope rather than gate on admin.
+	if n := strings.Count(code, "a.recoveryScope(r,"); n < 3 {
+		t.Errorf("expected all three endpoints to scope by caller, found %d", n)
+	}
+	// A holder verifying their own address would defeat the check entirely: they
+	// could point recovery anywhere and immediately make it usable.
+	if !strings.Contains(code, `action == "verify" && !a.isAdminRequest(r)`) {
+		t.Error("a holder can self-verify a recovery address, which is the whole check")
+	}
+	// The install-wide list names every unrecoverable mailbox — a target list.
+	if !strings.Contains(code, `requested == "" && a.isAdminRequest(r)`) {
+		t.Error("the install-wide readiness list is not restricted to administrators")
 	}
 }
 
