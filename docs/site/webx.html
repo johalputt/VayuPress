@@ -109,6 +109,89 @@
       transform: translateY(-3px);
     }
 
+    /* ── Premium card: gradient hairline, inner sheen, lift + glow on hover ── */
+    .wx-card {
+      position: relative;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.040) 0%, rgba(255,255,255,0.010) 60%),
+        rgba(6,9,16,0.55);
+      border: 1px solid rgba(255,255,255,0.075);
+      clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px));
+      transition:
+        border-color 0.4s ease,
+        transform    0.45s cubic-bezier(0.16,1,0.3,1),
+        box-shadow   0.45s ease,
+        background   0.4s ease;
+    }
+    /* the light catching the top edge */
+    .wx-card::before {
+      content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(219,226,236,0.34) 26%, rgba(219,226,236,0.34) 74%, transparent);
+      opacity: 0.5; transition: opacity 0.4s ease;
+    }
+    .wx-card:hover {
+      border-color: rgba(219,226,236,0.24);
+      transform: translateY(-5px);
+      box-shadow: 0 26px 60px -28px rgba(0,0,0,0.95);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.062) 0%, rgba(255,255,255,0.015) 60%),
+        rgba(6,9,16,0.55);
+    }
+    .wx-card:hover::before { opacity: 1; }
+
+    /* index numeral in the card corner */
+    .wx-idx {
+      position: absolute; top: 1.15rem; right: 1.35rem;
+      font-family: '"JetBrains Mono"', monospace; font-size: 0.62rem;
+      letter-spacing: 0.14em; color: rgba(184,196,212,0.34);
+    }
+
+    /* icon plate */
+    .wx-ico {
+      width: 2.6rem; height: 2.6rem; display: grid; place-items: center;
+      background: rgba(219,226,236,0.055);
+      border: 1px solid rgba(255,255,255,0.09);
+      clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
+      color: #dbe2ec;
+      transition: background 0.4s ease, color 0.4s ease;
+    }
+    .wx-card:hover .wx-ico { background: rgba(219,226,236,0.11); color: #fff; }
+
+    /* footnote strip inside a card */
+    .wx-foot {
+      font-family: '"JetBrains Mono"', monospace; font-size: 0.68rem;
+      color: rgba(139,154,174,0.9);
+      border-top: 1px solid rgba(255,255,255,0.055);
+    }
+
+    /* terminal-style policy block */
+    .wx-term {
+      background: rgba(2,4,9,0.75);
+      border: 1px solid rgba(255,255,255,0.08);
+      clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+    }
+    .wx-term-bar {
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      background: rgba(255,255,255,0.022);
+    }
+    .wx-term pre {
+      margin: 0; padding: 1.15rem 1.35rem;
+      overflow-x: auto; white-space: pre; tab-size: 2;
+      font-family: '"JetBrains Mono"', monospace; font-size: 0.76rem; line-height: 1.85;
+      color: #b8c4d4;
+    }
+    .wx-term .k  { color: #f2f5f9; font-weight: 500; }
+    .wx-term .v  { color: #8b9aae; }
+    .wx-term .no { color: #f0a5a5; }
+    .wx-term .ok { color: #9fe0c2; }
+
+    /* stat tile */
+    .wx-stat {
+      background: rgba(255,255,255,0.022);
+      border: 1px solid rgba(255,255,255,0.065);
+      clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+    }
+
     /* TLD chip */
     .wx-tld {
       font-family: '"JetBrains Mono"', monospace;
@@ -176,12 +259,15 @@
         <span class="font-display font-semibold text-white tracking-tight hidden sm:block">VayuPress</span>
       </a>
 
-      <div class="hidden md:flex items-center gap-8 text-sm text-gray-400">
-        <a href="index.html#features"   class="nav-link hover:text-white transition-colors">Features</a>
-        <a href="index.html#gallery"    class="nav-link hover:text-white transition-colors">Gallery</a>
-        <a href="index.html#philosophy" class="nav-link hover:text-white transition-colors">Philosophy</a>
-        <a href="webx.html"             class="nav-link text-steel-200 transition-colors" aria-current="page">WebX</a>
-        <a href="about.html"            class="nav-link hover:text-white transition-colors">About</a>
+      <!-- WebX's own navigation. Only the VayuPress mark above links away from
+           this page; everything here stays within WebX. -->
+      <div class="hidden md:flex items-center gap-7 text-sm text-gray-400">
+        <a href="#problem"      class="nav-link hover:text-white transition-colors">Problem</a>
+        <a href="#powers"       class="nav-link hover:text-white transition-colors">Powers</a>
+        <a href="#security"     class="nav-link hover:text-white transition-colors">Security</a>
+        <a href="#architecture" class="nav-link hover:text-white transition-colors">Architecture</a>
+        <a href="#charter"      class="nav-link hover:text-white transition-colors">Charter</a>
+        <a href="#roadmap"      class="nav-link hover:text-white transition-colors">Roadmap</a>
       </div>
 
       <a href="https://github.com/johalputt/WebX" target="_blank" rel="noopener"
@@ -293,7 +379,7 @@
   </section>
 
   <!-- ══════════════ THE TWO CHOKEPOINTS ══════════════ -->
-  <section class="py-24 sm:py-28 px-6">
+  <section id="problem" class="py-24 sm:py-28 px-6 scroll-mt-24">
     <div class="max-w-5xl mx-auto">
       <header class="max-w-3xl mb-14" data-wx-reveal>
         <p class="text-xs font-mono uppercase tracking-widest text-steel-400 mb-4">The problem</p>
@@ -377,89 +463,262 @@
     </div>
   </section>
 
-  <!-- ══════════════ CORE DESIGN ══════════════ -->
-  <section class="py-20 sm:py-24 px-6">
+  <!-- ══════════════ POWERS ══════════════ -->
+  <section id="powers" class="py-20 sm:py-24 px-6 scroll-mt-24">
     <div class="max-w-6xl mx-auto">
-      <header class="max-w-3xl mb-14" data-wx-reveal>
-        <p class="text-xs font-mono uppercase tracking-widest text-steel-400 mb-4">Core design</p>
-        <h2 class="font-display font-bold text-white text-3xl sm:text-[2.6rem] tracking-tightest leading-[1.1]">
-          Seven decisions, and what each one refuses.
+      <header class="max-w-3xl mb-6" data-wx-reveal>
+        <p class="text-xs font-mono uppercase tracking-widest text-steel-400 mb-4">Capabilities</p>
+        <h2 class="font-display font-bold text-white text-3xl sm:text-[2.7rem] tracking-tightest leading-[1.08]">
+          What WebX can do that the web cannot.
         </h2>
+        <p class="mt-5 text-gray-400 leading-relaxed text-[1.05rem]">
+          Nine capabilities, each of which exists because a specific power was removed from the
+          system rather than entrusted to someone. What follows every card is not a feature — it
+          is the thing that becomes structurally impossible.
+        </p>
       </header>
 
-      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <article class="wx-cut p-6" data-wx-reveal>
-          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">Peer-to-peer registry</h3>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-12">
+
+        <article class="wx-card p-7" data-wx-reveal>
+          <span class="wx-idx">01</span>
+          <div class="wx-ico mb-5" aria-hidden="true">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+          </div>
+          <h3 class="font-display font-semibold text-white text-[1.12rem] mb-2.5">Names nobody can take</h3>
           <p class="text-sm text-gray-400 leading-relaxed">
-            A Hypercore append-only log with a Hyperbee index over it. Every record is signed;
-            every peer holds the whole history and verifies it without trusting anyone.
+            Ownership is an Ed25519 keypair. There is no registrar account, no billing
+            relationship, no support desk and no override. A name moves when its holder signs, and
+            in no other circumstance.
           </p>
-          <p class="mt-4 pt-3 border-t border-white/[0.06] text-xs font-mono text-steel-500">No privileged writer</p>
+          <p class="wx-foot mt-5 pt-3.5">impossible: suspension by anyone</p>
         </article>
 
-        <article class="wx-cut p-6" data-wx-reveal style="--d:60ms">
-          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">Cryptographic ownership</h3>
+        <article class="wx-card p-7" data-wx-reveal style="--d:60ms">
+          <span class="wx-idx">02</span>
+          <div class="wx-ico mb-5" aria-hidden="true">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          </div>
+          <h3 class="font-display font-semibold text-white text-[1.12rem] mb-2.5">Content verified byte for byte</h3>
           <p class="text-sm text-gray-400 leading-relaxed">
-            Ed25519 keypairs. Registration, update, transfer and release are signed operations.
-            The registry answers exactly two questions: is this signature valid, and is this
-            name free.
+            Every page is addressed by the hash of its own contents and checked before it reaches
+            the browser. Not "the server said it was fine" — the bytes either match the hash or
+            they are refused.
           </p>
-          <p class="mt-4 pt-3 border-t border-white/[0.06] text-xs font-mono text-steel-500">Not a trademark court</p>
+          <p class="wx-foot mt-5 pt-3.5">impossible: silent tampering in transit</p>
         </article>
 
-        <article class="wx-cut p-6" data-wx-reveal style="--d:120ms">
-          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">IPFS hosting</h3>
+        <article class="wx-card p-7" data-wx-reveal style="--d:120ms">
+          <span class="wx-idx">03</span>
+          <div class="wx-ico mb-5" aria-hidden="true">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+          </div>
+          <h3 class="font-display font-semibold text-white text-[1.12rem] mb-2.5">Zero-trail Private Mode</h3>
           <p class="text-sm text-gray-400 leading-relaxed">
-            Sites are content-addressed and published through IPNS, pinned by their owner and by
-            anyone who volunteers. Third-party pinning stays optional and swappable.
+            All egress through an anonymising transport, every byte of state in memory, nothing
+            written to disk, and a hard refusal to start rather than fall back if the transport is
+            unavailable.
           </p>
-          <p class="mt-4 pt-3 border-t border-white/[0.06] text-xs font-mono text-steel-500">No mandatory pinning service</p>
+          <p class="wx-foot mt-5 pt-3.5">impossible: a silent fallback to clearnet</p>
         </article>
 
-        <article class="wx-cut p-6" data-wx-reveal>
-          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">Local resolution</h3>
+        <article class="wx-card p-7" data-wx-reveal>
+          <span class="wx-idx">04</span>
+          <div class="wx-ico mb-5" aria-hidden="true">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+          </div>
+          <h3 class="font-display font-semibold text-white text-[1.12rem] mb-2.5">Its own scheme</h3>
           <p class="text-sm text-gray-400 leading-relaxed">
-            A small proxy on loopback makes WebX names work in any browser. The extension is a
-            convenience, never a requirement, and a lookup never falls through to clearnet DNS.
+            Addresses read <code class="font-mono text-steel-200">webx://example.webx/</code>. Not
+            <code class="font-mono text-steel-400">https</code>, because that promises a certificate
+            authority WebX does not use, and a security indicator that lies is worse than none.
           </p>
-          <p class="mt-4 pt-3 border-t border-white/[0.06] text-xs font-mono text-steel-500">No query logs, no phone-home</p>
+          <p class="wx-foot mt-5 pt-3.5">impossible: mistaking WebX for the clearnet</p>
         </article>
 
-        <article class="wx-cut p-6" data-wx-reveal style="--d:60ms">
-          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">Memory-hard proof-of-work</h3>
+        <article class="wx-card p-7" data-wx-reveal style="--d:60ms">
+          <span class="wx-idx">05</span>
+          <div class="wx-ico mb-5" aria-hidden="true">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <h3 class="font-display font-semibold text-white text-[1.12rem] mb-2.5">No token, no treasury</h3>
           <p class="text-sm text-gray-400 leading-relaxed">
-            Registration and renewal cost seconds of CPU for one name, and grow superlinearly for
-            ten thousand. It prices squatting without a payment rail.
+            Registration costs seconds of CPU, not money. There is no pot to fight over, embezzle,
+            freeze, tax or subpoena — and no speculator whose interest is the price rather than the
+            protocol.
           </p>
-          <p class="mt-4 pt-3 border-t border-white/[0.06] text-xs font-mono text-steel-500">No token, no fees, no treasury</p>
+          <p class="wx-foot mt-5 pt-3.5">impossible: buying a governance outcome</p>
         </article>
 
-        <article class="wx-cut p-6" data-wx-reveal style="--d:120ms">
-          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">Governance by charter</h3>
+        <article class="wx-card p-7" data-wx-reveal style="--d:120ms">
+          <span class="wx-idx">06</span>
+          <div class="wx-ico mb-5" aria-hidden="true">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+          </div>
+          <h3 class="font-display font-semibold text-white text-[1.12rem] mb-2.5">Post-quantum ready</h3>
           <p class="text-sm text-gray-400 leading-relaxed">
-            New extensions and protocol changes move through the WXIP process and are ratified by
-            peers under a written constitution with entrenched clauses.
+            No primitive is named in the protocol — only versioned suites. Suites move forward
+            only, verifiers keep every historical suite forever, and migration runs through a
+            hybrid so it stays safe even if the target is later broken.
           </p>
-          <p class="mt-4 pt-3 border-t border-white/[0.06] text-xs font-mono text-steel-500">The right to fork is a right</p>
+          <p class="wx-foot mt-5 pt-3.5">impossible: being stranded on a broken cipher</p>
         </article>
 
-        <article class="wx-cut p-6 sm:col-span-2 lg:col-span-3" data-wx-reveal>
-          <h3 class="font-display font-semibold text-white text-[1.05rem] mb-2.5">Ordinary people, ordinary browsers</h3>
-          <p class="text-sm text-gray-400 leading-relaxed max-w-3xl">
-            A Tauri desktop client will carry the whole flow &mdash; generate a key into the
-            operating system keychain, register a name, publish a site, manage what you are keeping
-            alive &mdash; without a terminal. A system that only experts can hold is a system that
-            has already centralised, it just has not admitted it yet.
+        <article class="wx-card p-7" data-wx-reveal>
+          <span class="wx-idx">07</span>
+          <div class="wx-ico mb-5" aria-hidden="true">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          </div>
+          <h3 class="font-display font-semibold text-white text-[1.12rem] mb-2.5">Governed by a written charter</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">
+            Sixty Articles across six Titles, with an entrenched core no amendment can reach, an
+            Objection Register that records the dissent alongside the decision, and duties that
+            bind the text rather than any body.
           </p>
+          <p class="wx-foot mt-5 pt-3.5">impossible: an unrecorded decision</p>
         </article>
+
+        <article class="wx-card p-7" data-wx-reveal style="--d:60ms">
+          <span class="wx-idx">08</span>
+          <div class="wx-ico mb-5" aria-hidden="true">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </div>
+          <h3 class="font-display font-semibold text-white text-[1.12rem] mb-2.5">Twelve namespaces, all equal</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">
+            No extension is the real one. Plurality is the design: a single namespace is a single
+            thing worth capturing, and retiring one requires a two-year sunset with mandatory
+            aliases so nobody is stranded.
+          </p>
+          <p class="wx-foot mt-5 pt-3.5">impossible: cornering the namespace</p>
+        </article>
+
+        <article class="wx-card p-7" data-wx-reveal style="--d:120ms">
+          <span class="wx-idx">09</span>
+          <div class="wx-ico mb-5" aria-hidden="true">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
+          </div>
+          <h3 class="font-display font-semibold text-white text-[1.12rem] mb-2.5">The right to leave</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">
+            Fork the protocol, the registry state, or the name itself — and be recognised in the
+            fork without the incumbent network's cooperation. The charter is public domain
+            precisely so a fork can carry it away intact.
+          </p>
+          <p class="wx-foot mt-5 pt-3.5">impossible: a captured system you cannot exit</p>
+        </article>
+
+      </div>
+
+      <!-- stat strip -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-12" data-wx-reveal>
+        <div class="wx-stat p-5 text-center">
+          <p class="font-display font-bold text-white text-2xl sm:text-3xl tracking-tight">0</p>
+          <p class="mt-1.5 text-[11px] font-mono uppercase tracking-widest text-steel-500">third-party requests</p>
+        </div>
+        <div class="wx-stat p-5 text-center">
+          <p class="font-display font-bold text-white text-2xl sm:text-3xl tracking-tight">0</p>
+          <p class="mt-1.5 text-[11px] font-mono uppercase tracking-widest text-steel-500">query logs, ever</p>
+        </div>
+        <div class="wx-stat p-5 text-center">
+          <p class="font-display font-bold text-white text-2xl sm:text-3xl tracking-tight">60</p>
+          <p class="mt-1.5 text-[11px] font-mono uppercase tracking-widest text-steel-500">constitutional articles</p>
+        </div>
+        <div class="wx-stat p-5 text-center">
+          <p class="font-display font-bold text-white text-2xl sm:text-3xl tracking-tight">12</p>
+          <p class="mt-1.5 text-[11px] font-mono uppercase tracking-widest text-steel-500">equal namespaces</p>
+        </div>
       </div>
     </div>
   </section>
 
   <hr class="wx-rule max-w-6xl mx-auto" />
 
+  <!-- ══════════════ SECURITY ══════════════ -->
+  <section id="security" class="py-20 sm:py-24 px-6 scroll-mt-24">
+    <div class="max-w-6xl mx-auto">
+      <header class="max-w-3xl mb-12" data-wx-reveal>
+        <p class="text-xs font-mono uppercase tracking-widest text-steel-400 mb-4">Security</p>
+        <h2 class="font-display font-bold text-white text-3xl sm:text-[2.7rem] tracking-tightest leading-[1.08]">
+          Deny everything, then allow by name.
+        </h2>
+        <p class="mt-5 text-gray-400 leading-relaxed text-[1.05rem]">
+          Every WebX page is served under a policy that starts from
+          <code class="font-mono text-steel-200">'none'</code> and enumerates each exception. A
+          directive nobody remembered to add inherits a denial, not a permission.
+        </p>
+      </header>
+
+      <div class="grid lg:grid-cols-[1.15fr_1fr] gap-5 items-start">
+
+        <div class="wx-term" data-wx-reveal>
+          <div class="wx-term-bar px-4 py-2.5 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-white/20"></span>
+            <span class="w-2 h-2 rounded-full bg-white/20"></span>
+            <span class="w-2 h-2 rounded-full bg-white/20"></span>
+            <span class="ml-2 font-mono text-[10px] uppercase tracking-widest text-steel-500">response headers</span>
+          </div>
+<pre><span class="k">Content-Security-Policy:</span>
+  default-src   <span class="no">'none'</span>
+  script-src    <span class="v">'self'</span>
+  style-src     <span class="v">'self'</span>
+  img-src       <span class="v">'self'</span>
+  connect-src   <span class="v">'self'</span>
+  worker-src    <span class="no">'none'</span>
+  frame-src     <span class="no">'none'</span>
+  object-src    <span class="no">'none'</span>
+  base-uri      <span class="no">'none'</span>
+  webrtc        <span class="no">'block'</span>
+  require-trusted-types-for <span class="v">'script'</span>
+
+<span class="k">Permissions-Policy:</span>
+  <span class="v">every named feature</span> = <span class="no">()</span>
+
+<span class="k">Referrer-Policy:</span>   <span class="v">no-referrer</span>
+<span class="k">Cache-Control:</span>     <span class="v">no-store</span>
+<span class="k">X-DNS-Prefetch-Control:</span> <span class="v">off</span>
+
+<span class="ok"># no report-uri. a reporting endpoint is an
+# outbound channel that fires exactly when
+# something unexpected happens.</span></pre>
+        </div>
+
+        <div class="space-y-4">
+          <div class="wx-card p-6" data-wx-reveal>
+            <h3 class="font-display font-semibold text-white text-[1.02rem] mb-2">No inline anything</h3>
+            <p class="text-sm text-gray-400 leading-relaxed">
+              No inline script, no inline style, no <code class="font-mono text-steel-300">data:</code>
+              images. Inline CSS is a working exfiltration channel — an attribute selector plus a
+              <code class="font-mono text-steel-300">url()</code> leaks a document one character at a time.
+            </p>
+          </div>
+          <div class="wx-card p-6" data-wx-reveal style="--d:60ms">
+            <h3 class="font-display font-semibold text-white text-[1.02rem] mb-2">The privileged surface is unreachable</h3>
+            <p class="text-sm text-gray-400 leading-relaxed">
+              The control API listens on a Unix socket, not a port. A browser cannot address one by
+              any means — which deletes DNS rebinding, CSRF and port-scanning of the privileged
+              surface in a single decision rather than three defences.
+            </p>
+          </div>
+          <div class="wx-card p-6" data-wx-reveal style="--d:120ms">
+            <h3 class="font-display font-semibold text-white text-[1.02rem] mb-2">Entropy only matters if it can leave</h3>
+            <p class="text-sm text-gray-400 leading-relaxed">
+              A browser fingerprint cannot be erased, so WebX starves the channel instead. Perfect
+              identification is worth nothing if it has nowhere to be delivered — which is why none
+              of these refusals is configurable.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p class="mt-8 max-w-3xl text-sm text-gray-500 leading-relaxed" data-wx-reveal>
+        The specification also names the four channels no header closes — WebRTC, top-level
+        navigation, timing side channels and a compromised device — and says exactly what closes
+        each instead. A security document that lists only its wins is a marketing document.
+      </p>
+    </div>
+  </section>
+
   <!-- ══════════════ ARCHITECTURE ══════════════ -->
-  <section class="py-20 sm:py-24 px-6">
+  <section id="architecture" class="py-20 sm:py-24 px-6 scroll-mt-24">
     <div class="max-w-5xl mx-auto">
       <header class="max-w-3xl mb-12" data-wx-reveal>
         <p class="text-xs font-mono uppercase tracking-widest text-steel-400 mb-4">Architecture</p>
@@ -520,7 +779,7 @@
   </section>
 
   <!-- ══════════════ CONSTITUTION ══════════════ -->
-  <section class="py-20 sm:py-24 px-6">
+  <section id="charter" class="py-20 sm:py-24 px-6 scroll-mt-24">
     <div class="max-w-5xl mx-auto">
       <div class="wx-cut p-8 sm:p-12" data-wx-reveal>
         <div class="grid lg:grid-cols-[1fr_auto] gap-10 items-center">
@@ -565,7 +824,7 @@
   <hr class="wx-rule max-w-6xl mx-auto" />
 
   <!-- ══════════════ ROADMAP ══════════════ -->
-  <section class="py-20 sm:py-24 px-6">
+  <section id="roadmap" class="py-20 sm:py-24 px-6 scroll-mt-24">
     <div class="max-w-4xl mx-auto">
       <header class="mb-14" data-wx-reveal>
         <p class="text-xs font-mono uppercase tracking-widest text-steel-400 mb-4">Roadmap</p>
@@ -681,9 +940,9 @@
            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-steel-100 hover:bg-white text-ink-950 text-sm font-semibold transition-all duration-200 hover:-translate-y-px">
           Watch the repository
         </a>
-        <a href="index.html#hero"
+        <a href="https://github.com/johalputt/WebX/tree/main/docs/spec" target="_blank" rel="noopener"
            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.10] text-sm font-medium text-gray-200 transition-all duration-200 hover:-translate-y-px">
-          Back to VayuPress
+          Read the specifications
         </a>
       </div>
     </div>
