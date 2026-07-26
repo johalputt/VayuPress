@@ -20,6 +20,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   too**, deliberately. A licence that carves out the powerful still has a gatekeeper, and this
   project was not built to become one.
 
+- **The permanence pledge is now on vayupress.com**, not only in the repository. The site is
+  where most people meet this project, and it carried none of it — the licence appeared as a
+  footer line and a single adjective. The "Built in the open" section now states the pledge
+  outright, including that it covers large companies deliberately, that there is no CLA and never
+  will be, and that none of it asks the reader to trust the maintainer: every published release
+  is irrevocably Apache-2.0, and forking the last one needs nobody's permission.
+- **The sponsors page says what sponsorship does not buy.** It already ruled out priority
+  features, private support and roadmap influence; it now also rules out the licence. The $5,000
+  goal is stated as what it is — the line where this stops competing with paid work — and the
+  page says plainly that if it is never reached, nothing changes.
+
 ### Changed
 - **The Apache-2.0 permanence pledge is now unconditional.** v3.15.49 tied it to donations
   reaching USD 5,000/month. That merged two separate things — a wish about funding and a promise
