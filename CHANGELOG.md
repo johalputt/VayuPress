@@ -6,9 +6,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.45] — 2026-07-26
+
+Shipped on its own rather than batched, because AI draft generation was released
+and broken for users right now: it could fail with no usable explanation on any
+surface, and an operator had no way to find out why from the console.
 
 ### Fixed
+- **A rejected API key looked like a working setup.** Several providers —
+  OpenRouter among them — serve their model catalogue **without**
+  authentication. So a full, live-looking model dropdown proved only that the
+  provider was reachable and proved nothing about the stored key, and an auth
+  failure while listing models fell back to the curated list with no complaint.
+  The result was a picker that looked completely normal until every single draft
+  failed. A 401/403 while listing models is now reported the moment the panel
+  opens — before a prompt is written and lost — and the provider row shows "key
+  rejected" rather than the provider's name. No credit (402) and an unreachable
+  endpoint are reported the same way.
+
 - **"Generate draft" could fail silently, and never explained itself.** Three
   separate defects stacked up in the editor's AI panel:
 

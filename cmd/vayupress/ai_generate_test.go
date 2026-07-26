@@ -127,3 +127,29 @@ func TestAIPanelUsesTheMonetizationGrammar(t *testing.T) {
 		}
 	}
 }
+
+// TestModelListReportsRejectedKey guards the diagnostic that catches the most
+// confusing possible state of this feature.
+//
+// Several providers — OpenRouter among them — serve their model catalogue WITHOUT
+// authentication. So a populated model dropdown proves the provider is reachable
+// and proves nothing about the stored key. Falling back to the curated list on a
+// 401 made a rejected key look like a completely normal picker, right up until
+// every draft failed with no explanation.
+func TestModelListReportsRejectedKey(t *testing.T) {
+	src := repoFile(t, "cmd/vayupress/handlers_ai_generate.go")
+	if !strings.Contains(src, "http.StatusUnauthorized") || !strings.Contains(src, "http.StatusForbidden") {
+		t.Error("the model-catalogue call must detect an auth rejection rather than silently using the curated list")
+	}
+	if !strings.Contains(src, `"warning": warning`) {
+		t.Error("the models endpoint must return the warning to the panel")
+	}
+	// And the panel must actually consume it, or the server-side detection is dead.
+	js := repoFile(t, "static/js/admin-os-editor.js")
+	if !strings.Contains(js, "d.warning") {
+		t.Error("the AI panel must surface the models-call warning")
+	}
+	if !strings.Contains(js, "aiEngineChip(false, 'key rejected')") {
+		t.Error("a rejected key should be visible on the collapsed provider row too")
+	}
+}

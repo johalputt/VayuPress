@@ -2538,6 +2538,13 @@
           modelSel.appendChild(o);
         });
         if (modelEl) modelEl.placeholder = def || 'Model name required';
+        // A warning here means the catalogue loaded but the provider already told
+        // us generation will fail — a rejected key, or no credit. Surfacing it now
+        // beats waiting for the author to write a prompt and lose it.
+        if (d && d.warning) {
+          aiSay(aiQ('[data-ai-msg]'), d.warning, 'err');
+          aiEngineChip(false, 'key rejected');
+        }
       })
       .catch(function () {
         while (modelSel.firstChild) modelSel.removeChild(modelSel.firstChild);

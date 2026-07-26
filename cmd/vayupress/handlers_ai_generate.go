@@ -300,11 +300,11 @@ func (a *App) aiResolveEndpoint(ctx context.Context, provider string) (kind, end
 // aiProviderModels returns the model ids the provider offers: fetched live from
 // the provider's own catalogue (Ollama /api/tags, OpenAI-compatible /models),
 // falling back to a curated list when the live call is unavailable.
-func (a *App) aiProviderModels(ctx context.Context, provider string) []string {
+func (a *App) aiProviderModels(ctx context.Context, provider string) ([]string, string) {
 	curated := aiCuratedModels(provider)
 	kind, endpoint, apiKey, ok := a.aiResolveEndpoint(ctx, provider)
 	if !ok {
-		return curated
+		return curated, ""
 	}
 	base := strings.TrimRight(strings.TrimSpace(endpoint), "/")
 	var reqURL string
@@ -315,18 +315,33 @@ func (a *App) aiProviderModels(ctx context.Context, provider string) []string {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return curated
+		return curated, ""
 	}
 	if k := strings.TrimSpace(apiKey); k != "" {
 		req.Header.Set("Authorization", "Bearer "+k)
 	}
 	resp, err := aiModelsHTTP.Do(req)
 	if err != nil {
-		return curated
+		// Could not reach the provider at all. Say so, because the curated fallback
+		// otherwise looks like a healthy catalogue and hides a dead endpoint.
+		return curated, "Could not reach this provider to list its models. Generation will fail until the endpoint is reachable."
 	}
 	defer resp.Body.Close()
+	// An auth failure here is the single most useful thing this call can learn.
+	//
+	// It matters because several providers — OpenRouter among them — serve their
+	// model catalogue WITHOUT authentication. A populated dropdown therefore proves
+	// only that the provider is reachable, never that the stored key is accepted,
+	// and silently falling back to the curated list turns a rejected key into a
+	// picker that looks completely normal right up until every draft fails.
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return curated, "This provider rejected the stored API key (HTTP " + strconv.Itoa(resp.StatusCode) + "). Re-enter it in VayuOS → API Keys."
+	}
+	if resp.StatusCode == http.StatusPaymentRequired {
+		return curated, "This provider reports the account has no credit (HTTP 402). Drafts will fail until it is topped up."
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return curated
+		return curated, ""
 	}
 	var payload struct {
 		Data []struct {
@@ -337,7 +352,7 @@ func (a *App) aiProviderModels(ctx context.Context, provider string) []string {
 		} `json:"models"` // Ollama
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
-		return curated
+		return curated, ""
 	}
 	seen := map[string]bool{}
 	var out []string
@@ -356,23 +371,27 @@ func (a *App) aiProviderModels(ctx context.Context, provider string) []string {
 		add(m.Name)
 	}
 	if len(out) == 0 {
-		return curated
+		return curated, ""
 	}
 	sort.Strings(out)
 	if len(out) > 300 {
 		out = out[:300]
 	}
-	return out
+	return out, ""
 }
 
 // handleOSEditorAIModels lists the selected provider's models for the editor's
 // model picker. GET ?provider=<id>, session-authenticated.
 func (a *App) handleOSEditorAIModels(w http.ResponseWriter, r *http.Request) {
 	provider := r.URL.Query().Get("provider")
-	models := a.aiProviderModels(r.Context(), provider)
+	models, warning := a.aiProviderModels(r.Context(), provider)
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"models":  models,
 		"default": aiDefaultModel(strings.ToLower(strings.TrimSpace(provider))),
+		// warning is empty when the catalogue call was healthy. When it is set the
+		// picker still works, but generation is already known to be broken — saying
+		// so here is much earlier feedback than a failed draft.
+		"warning": warning,
 	})
 }
 
