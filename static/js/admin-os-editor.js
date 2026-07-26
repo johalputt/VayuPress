@@ -2632,39 +2632,91 @@
     payload.provider = provider;
     payload.model = model;
     if (runBtn) { runBtn.disabled = true; runBtn.textContent = 'Writing…'; }
-    aiSay(msg, 'Writing your draft — a large model can take a minute.', 'busy');
+    aiSay(msg, 'Starting… large models can take several minutes.', 'busy');
+    // Start the job. The reply is immediate; the draft arrives by polling, so no
+    // proxy in front of VayuPress ever has a long request to time out.
     fetch('/os/api/editor/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
       body: JSON.stringify(payload)
-    }).then(function (r) {
-      return r.text().then(function (t) {
-        var d = null;
-        try { d = t ? JSON.parse(t) : null; } catch (e) { d = null; }
-        return { ok: r.ok, status: r.status, d: d, raw: t };
-      });
-    }).then(function (res) {
-        if (runBtn) { runBtn.disabled = false; runBtn.textContent = 'Generate draft'; }
+    }).then(readJSON).then(function (res) {
+      if (!res.ok || !res.d || !res.d.job) {
+        aiDone(runBtn);
+        aiSay(msg, apiErrText(res.d, res.status), 'err');
+        return;
+      }
+      aiPollJob(res.d.job, msg, runBtn, promptEl, Date.now());
+    }).catch(function () {
+      aiDone(runBtn);
+      aiSay(msg, 'Could not reach the server. Check your connection and try again.', 'err');
+    });
+  }
+  // readJSON parses a response without assuming it is JSON. A proxy error page is
+  // HTML, and treating that as JSON is what produced "[object Object]" and bare
+  // status codes on the old synchronous path.
+  function readJSON(r) {
+    return r.text().then(function (t) {
+      var d = null;
+      try { d = t ? JSON.parse(t) : null; } catch (e) { d = null; }
+      return { ok: r.ok, status: r.status, d: d, raw: t };
+    });
+  }
+  function aiDone(runBtn) {
+    if (runBtn) { runBtn.disabled = false; runBtn.textContent = 'Generate draft'; }
+  }
+  // aiPollJob waits for a generation to finish, reporting elapsed time so a long
+  // wait looks like progress rather than a hang.
+  function aiPollJob(job, msg, runBtn, promptEl, startedAt) {
+    // A minute beyond the server's own 10-minute job budget, so the server's
+    // specific message wins the race rather than this generic give-up.
+    var deadline = startedAt + 11 * 60 * 1000;
+    function tick() {
+      if (Date.now() > deadline) {
+        aiDone(runBtn);
+        aiSay(msg, 'Gave up waiting for this draft. The model may still be queued — try a smaller model, or a shorter length.', 'err');
+        return;
+      }
+      fetch('/os/api/editor/generate/status?job=' + encodeURIComponent(job), {
+        headers: { 'X-CSRF-Token': csrfToken() }
+      }).then(readJSON).then(function (res) {
         if (!res.ok) {
-          // Show what the server actually said. It has already decided what is
-          // safe to disclose, so repeating it verbatim is what makes a broken
-          // provider setup diagnosable instead of a shrug.
+          aiDone(runBtn);
           aiSay(msg, apiErrText(res.d, res.status), 'err');
           return;
         }
-        var newBlocks = (res.d && res.d.blocks) || [];
-        if (!newBlocks.length) { aiSay(msg, 'The model returned nothing usable — try again, or pick another model.', 'err'); return; }
+        var d = res.d || {};
+        if (d.status === 'pending') {
+          var secs = d.elapsed_seconds || Math.round((Date.now() - startedAt) / 1000);
+          // "Queued" is this install being busy; "writing" is the provider working.
+          // Saying which is which stops a queue looking like a hang.
+          var what = d.queued ? 'Queued behind other drafts' : 'Writing your draft';
+          aiSay(msg, what + '… ' + secs + 's elapsed. Large models can take several minutes — you can leave this open.', 'busy');
+          setTimeout(tick, 2000);
+          return;
+        }
+        aiDone(runBtn);
+        if (d.status === 'error') {
+          aiSay(msg, d.message || 'Generation failed.', 'err');
+          return;
+        }
+        var newBlocks = d.blocks || [];
+        if (!newBlocks.length) {
+          aiSay(msg, 'The model returned nothing usable — try again, or pick another model.', 'err');
+          return;
+        }
         insertGeneratedBlocks(newBlocks);
-        var notes = (res.d && res.d.notes) || [];
+        var notes = d.notes || [];
         closeAIModal();
         if (promptEl) promptEl.value = '';
         aiSay(msg, 'The draft is inserted as editable blocks — always review before you publish.', '');
         setStatus(notes.length ? ('AI draft inserted — ' + notes.join('; ')) : 'AI draft inserted — review before publishing', notes.length ? '' : 'ok');
-      })
-      .catch(function () {
-        if (runBtn) { runBtn.disabled = false; runBtn.textContent = 'Generate draft'; }
-        aiSay(msg, 'Could not reach the server. Check your connection and try again.', 'err');
+      }).catch(function () {
+        // A transient network blip should not abandon a draft that is still being
+        // written, so keep polling until the deadline.
+        setTimeout(tick, 3000);
       });
+    }
+    setTimeout(tick, 1500);
   }
   // apiErrText pulls the human message out of an API error payload. The envelope
   // is {"error":{"code":..,"message":..}}, so reading d.error directly yields an

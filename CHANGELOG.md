@@ -6,6 +6,48 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.46] — 2026-07-26
+
+Ships on its own for the same reason as v3.15.45: draft generation is released and
+still failing for users right now.
+
+### Fixed
+- **A slow model returned an opaque `502` instead of a draft.** Generation held one
+  HTTP request open for the model's entire thinking time. Any reverse proxy or CDN
+  in front of VayuPress closes that connection long before our own client timeout,
+  so the browser received the *proxy's* HTML error page — with no VayuPress JSON in
+  it — and the panel could only report "Generation failed (HTTP 502)" about a
+  request that had genuinely been sent and may even have succeeded upstream. This
+  is why the request appeared in one client's provider log and not from a browser.
+
+  The wait is no longer held open. A draft is now a queued job: the request returns
+  at once and the panel polls for the result, so no intermediary has a long-lived
+  connection to time out. The status line reports elapsed time, and distinguishes
+  "queued behind other drafts" (this install is busy) from "writing" (the provider
+  is working). Verified against a provider that answers after 150 seconds — well
+  past any proxy's patience — which now completes and inserts the draft.
+
+- **The two-minute ceiling nobody could see.** The outbound client had a 120s
+  timeout, so every generation was silently capped at two minutes no matter what
+  budget the rest of the code allowed — and the large free models people try first
+  are routinely queued for longer than that at the provider. The budget is now ten
+  minutes of real model time, and the client timeout is derived from that single
+  value so the two cannot drift apart again.
+
+- **The new AI panel sections clipped their own controls.** The panel body is a
+  flex column, so each collapsible section was a flex item that shrank below its
+  natural height whenever the panel was shorter than its content — and the
+  accordion frame hides overflow, so the shrunk box silently cut off the fields
+  inside it. Measured at 261px of content inside a 121px box, with the Language and
+  Creativity controls entirely invisible. Sections now keep their content height and
+  the panel scrolls, verified at three window sizes with zero overflow.
+
+- **A queue state that could never appear.** The panel asked whether a job was
+  queued and the API reported it, but nothing ever set the flag — so a busy install
+  still looked like a hung one.
+
+---
+
 ## [3.15.45] — 2026-07-26
 
 Shipped on its own rather than batched, because AI draft generation was released

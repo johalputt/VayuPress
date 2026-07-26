@@ -6387,7 +6387,17 @@
    its own dialect. The controls sit in a two-column grid that collapses to one
    on a narrow panel.
    --------------------------------------------------------------------------- */
-.ai-panel .mon-acc { margin: 0 0 .7rem; }
+/* The panel body is a flex COLUMN, so a <details> is a flex item and shrinks
+   below its natural height whenever the panel is shorter than its content — and
+   .mon-acc sets overflow:hidden, so the shrunk box silently clipped its own
+   fields (measured: a 261px body inside a 121px box on a 700px-tall window, with
+   "Language" and "Creativity" cut off entirely). flex:none makes each section
+   keep its content height; the panel already scrolls. */
+.ai-panel .mon-acc { margin: 0 0 .7rem; flex: none; }
+/* Same reasoning for the prompt field, the status line and the button row. */
+.ai-panel > .pm-field,
+.ai-panel > .ai-status,
+.ai-panel > .pm-row { flex: none; }
 .ai-panel .mon-acc__body { padding: .85rem .95rem 1rem; }
 
 .ai-grid {

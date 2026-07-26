@@ -576,6 +576,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/api/editor/ai-providers", a.handleOSEditorAIProviders)
 		pr.Get("/os/api/editor/ai-models", a.handleOSEditorAIModels)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/generate", a.handleOSEditorGenerate)
+		// Generation is a background job; the panel polls this for the result. It is
+		// a plain GET like the other editor reads — the job id is unguessable and
+		// owner-checked, so there is no state change to protect with a CSRF token.
+		pr.Get("/os/api/editor/generate/status", a.handleOSEditorGenerateStatus)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/convert", a.handleOSEditorConvert)
 		pr.Get("/os/api/editor/versions/{slug}", a.handleOSEditorVersionList)
 		pr.Get("/os/api/editor/versions/{slug}/{id}", a.handleOSEditorVersionGet)

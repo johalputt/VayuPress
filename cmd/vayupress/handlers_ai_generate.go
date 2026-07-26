@@ -17,7 +17,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"sort"
@@ -26,9 +25,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/aiassist"
-	"github.com/johalputt/vayupress/internal/blockrender"
 	"github.com/johalputt/vayupress/internal/config"
-	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/secrets"
 	"github.com/johalputt/vayupress/internal/seo"
@@ -40,7 +37,11 @@ import (
 // SSRF-hardened, egress-guarded transport so a Tor Space never dials an AI
 // provider from the onion server's real IP (ADR-0141) and a hostile provider
 // URL cannot be steered at an internal host.
-var aiGenHTTP = &http.Client{Timeout: 120 * time.Second, Transport: safeOutboundTransport()}
+// The timeout must cover the job's whole budget (aiJobMaxRun). It used to be
+// 120s, which silently capped every generation at two minutes no matter what the
+// job allowed — a large free model is routinely queued for longer than that at the
+// provider, and the request died before the model ever answered.
+var aiGenHTTP = &http.Client{Timeout: aiJobMaxRun, Transport: safeOutboundTransport()}
 
 // Abuse controls for author-triggered generation. Any author-role console user
 // can reach the generate route, and every call spends the operator's stored
@@ -464,63 +465,29 @@ func (a *App) handleOSEditorGenerate(w http.ResponseWriter, r *http.Request) {
 		Language: body.Language, Shape: body.Shape, MaxWords: body.MaxWords,
 	})
 
-	// Process-wide concurrency cap: wait for a slot, but never longer than the
-	// request itself (the global request timeout cancels r.Context()).
-	select {
-	case aiGenSlots <- struct{}{}:
-		defer func() { <-aiGenSlots }()
-	case <-r.Context().Done():
-		writeAPIError(w, r, http.StatusServiceUnavailable, "ai-busy", "The AI service is busy right now — please try again in a moment.", "")
+	// Start the generation and return immediately. Nothing downstream — reverse
+	// proxy, CDN, browser — holds a connection open for the model's whole thinking
+	// time, which is what turned a slow model into an opaque 502.
+	id := aiJobID()
+	if id == "" {
+		writeAPIError(w, r, http.StatusInternalServerError, "no-id", "Could not start the generation. Try again.", "")
 		return
 	}
-
-	md, meta, err := aiassist.GenerateOpDetail(r.Context(), aiGenHTTP, backend, aiassist.OpDraft, prompt)
-	if err != nil {
-		// Always log the full detail server-side.
-		logging.LogError("ai-generate", "provider generation failed", err.Error())
-		// What the provider itself said about the request is safe to show, and is
-		// the only thing that lets an operator fix their own install — "no credits
-		// on this model" is actionable, "the request failed" is not. aiassist types
-		// those separately from transport errors and scrubs URLs out of them;
-		// anything else stays generic, because its text can name the endpoint.
-		var pe *aiassist.ProviderError
-		if errors.As(err, &pe) {
-			writeAPIError(w, r, http.StatusBadGateway, "ai-error",
-				"The model could not write this draft: "+pe.Message, "")
-			return
-		}
-		writeAPIError(w, r, http.StatusBadGateway, "ai-error",
-			"Could not reach the AI provider. Check the endpoint and key in VayuOS → API Keys.", "")
-		return
+	job := &aiJob{
+		ID:     id,
+		Owner:  aiJobOwner(r),
+		Status: aiJobPending,
+		// Starts queued and is cleared by the runner once it holds a slot, so the
+		// panel can distinguish "your install is busy" from "the model is working".
+		Queued:  true,
+		Started: time.Now(),
 	}
-	blocks := blockrender.MarkdownToBlocks(md)
-	if len(blocks) == 0 {
-		// The model answered but nothing survived parsing. Report it as a failure
-		// rather than returning an empty success the editor has to interpret.
-		logging.LogError("ai-generate", "model output parsed to zero blocks", "len="+strconv.Itoa(len(md)))
-		writeAPIError(w, r, http.StatusBadGateway, "ai-empty",
-			"The model replied, but the reply contained no usable text. Try again, or pick a different model.", "")
-		return
-	}
-	out := map[string]interface{}{
-		"blocks":   blocks,
-		"markdown": md,
-	}
-	// Tell the author when the draft is not the whole story.
-	var notes []string
-	if meta.Truncated {
-		notes = append(notes, "the model hit its length limit, so the draft stops early — raise the length or continue it yourself")
-	}
-	if meta.FromReasoning {
-		notes = append(notes, "this model returned its answer as reasoning text, so the draft may need more tidying than usual")
-	}
-	if meta.Model != "" && !strings.EqualFold(meta.Model, backend.Model) {
-		notes = append(notes, "served by "+meta.Model)
-	}
-	if len(notes) > 0 {
-		out["notes"] = notes
-	}
-	writeJSON(w, r, http.StatusOK, out)
+	aiJobPut(job)
+	go a.runAIJob(job.ID, backend, prompt)
+	writeJSON(w, r, http.StatusAccepted, map[string]interface{}{
+		"job":    job.ID,
+		"status": aiJobPending,
+	})
 }
 
 // draftShape carries the author's shaping choices for a generated draft.

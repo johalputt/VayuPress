@@ -153,3 +153,96 @@ func TestModelListReportsRejectedKey(t *testing.T) {
 		t.Error("a rejected key should be visible on the collapsed provider row too")
 	}
 }
+
+// TestGenerationIsQueuedNotHeldOpen pins the shape of the fix for the opaque 502.
+//
+// The old path held one HTTP request open for the model's entire thinking time.
+// Any reverse proxy or CDN in front of VayuPress closes that connection first, so
+// the browser received the PROXY's HTML error page — no VayuPress JSON in it — and
+// the panel could only say "Generation failed (HTTP 502)" about a request that had
+// in fact been sent and may even have succeeded upstream.
+func TestGenerationIsQueuedNotHeldOpen(t *testing.T) {
+	src := repoFile(t, "cmd/vayupress/handlers_ai_generate.go")
+	if !strings.Contains(src, "http.StatusAccepted") {
+		t.Error("starting a generation must return immediately (202), not block on the model")
+	}
+	if !strings.Contains(src, "go a.runAIJob(") {
+		t.Error("the generation must run detached from the request")
+	}
+	// The runner must not inherit the request context, which is cancelled the
+	// instant the POST returns — that would abort every job immediately.
+	jobs := repoFile(t, "cmd/vayupress/ai_generate_jobs.go")
+	if strings.Contains(jobs, "r.Context()") {
+		t.Error("the detached runner must not use the request context")
+	}
+	if !strings.Contains(jobs, "context.WithTimeout(context.Background()") {
+		t.Error("the runner needs its own bounded context")
+	}
+}
+
+// TestGenerationTimeoutsCannotDrift: the HTTP client timeout silently capped every
+// generation at 120s regardless of the job's budget, so a queued free model died
+// before it ever answered. Tying the client to the job budget makes that
+// impossible to reintroduce by editing one of the two numbers.
+func TestGenerationTimeoutsCannotDrift(t *testing.T) {
+	src := repoFile(t, "cmd/vayupress/handlers_ai_generate.go")
+	if !strings.Contains(src, "Timeout: aiJobMaxRun") {
+		t.Error("the generation client timeout must be tied to aiJobMaxRun, not a separate literal")
+	}
+	if strings.Contains(src, "Timeout: 120 * time.Second, Transport: safeOutboundTransport()") {
+		t.Error("the 120s cap is back; it truncates long generations")
+	}
+}
+
+// TestQueuedStateIsWritten guards a field that was read and never written: the
+// panel asked whether a job was queued, the API reported it, and nothing ever set
+// it — so "queued behind other drafts" could not appear no matter how busy the
+// install was.
+func TestQueuedStateIsWritten(t *testing.T) {
+	src := repoFile(t, "cmd/vayupress/handlers_ai_generate.go")
+	if !strings.Contains(src, "Queued:  true") {
+		t.Error("a new job must start queued, or the queued state is unreachable")
+	}
+	jobs := repoFile(t, "cmd/vayupress/ai_generate_jobs.go")
+	if !strings.Contains(jobs, "j.Queued = false") {
+		t.Error("the runner must clear the queued flag once it holds a slot")
+	}
+	if !strings.Contains(jobs, `out["queued"] = j.Queued`) {
+		t.Error("the status endpoint must report the queued flag")
+	}
+	js := repoFile(t, "static/js/admin-os-editor.js")
+	if !strings.Contains(js, "d.queued") {
+		t.Error("the panel must distinguish a queue from a slow model")
+	}
+}
+
+// TestJobResultsAreOwnerScoped: a draft is written from one author's prompt, so
+// another console user must not be able to read it by guessing an id.
+func TestJobResultsAreOwnerScoped(t *testing.T) {
+	jobs := repoFile(t, "cmd/vayupress/ai_generate_jobs.go")
+	if !strings.Contains(jobs, "j.Owner != owner") {
+		t.Error("job reads must be owner-scoped")
+	}
+	// Unknown and not-yours must be indistinguishable, or the id space is probeable.
+	if !strings.Contains(jobs, "Unknown and not-yours are deliberately the same answer") {
+		t.Error("an unknown job and someone else's job should answer identically")
+	}
+}
+
+// TestAIPanelSectionsCannotBeShrunkBelowTheirContent guards a layout bug that hid
+// controls outright: the panel body is a flex COLUMN, so each <details> was a flex
+// item that shrank below its natural height whenever the panel was shorter than
+// its content — and .mon-acc sets overflow:hidden, so the shrunk box clipped its
+// own fields (measured: a 261px body inside a 121px box, with the Language and
+// Creativity controls cut off entirely).
+func TestAIPanelSectionsCannotBeShrunkBelowTheirContent(t *testing.T) {
+	css := repoFile(t, "static/css/admin-os.css")
+	i := strings.Index(css, ".ai-panel .mon-acc {")
+	if i < 0 {
+		t.Fatal("the AI panel accordion rule is missing")
+	}
+	rule := css[i : i+strings.Index(css[i:], "}")]
+	if !strings.Contains(rule, "flex: none") {
+		t.Error("the accordion sections must not be shrinkable, or they clip their own fields")
+	}
+}
