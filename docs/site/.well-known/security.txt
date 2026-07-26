@@ -1,0 +1,13 @@
+# VayuPress — security contact (RFC 9116)
+#
+# The Expires value below is rewritten at deploy time by
+# .github/workflows/deploy-site.yml, which also runs daily on a schedule, so the
+# published file never goes stale. The date committed here is a placeholder and
+# is not what gets served.
+
+Contact: mailto:security@vayupress.com
+Contact: https://github.com/johalputt/VayuPress/security/advisories/new
+Expires: 2027-01-01T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://vayupress.com/.well-known/security.txt
+Policy: https://github.com/johalputt/VayuPress/blob/main/SECURITY.md

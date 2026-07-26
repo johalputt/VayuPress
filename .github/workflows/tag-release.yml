@@ -107,6 +107,31 @@ jobs:
           cosign sign-blob --yes dist/vayupress --bundle dist/vayupress.cosign.bundle || echo "cosign signing skipped/failed — publishing release without signature"
           echo "sign step complete"
 
+      - name: Generate SBOM (CycloneDX)
+        if: steps.exists.outputs.skip != 'true'
+        # sbom.yml already generates an SBOM, but only as a CI artefact that
+        # expires with its run. An SBOM exists to answer "what was in the version
+        # I deployed", and one that has been garbage-collected cannot answer it.
+        # Attaching it to the release ties the inventory to the exact binary --
+        # which is also what a downstream user subject to the EU Cyber Resilience
+        # Act will ask for. See docs/CRA-READINESS.md.
+        run: |
+          set -euo pipefail
+          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest
+          "$(go env GOPATH)/bin/cyclonedx-gomod" mod \
+            -output "dist/vayupress-${{ steps.ver.outputs.version }}.sbom.json" -json
+          echo "SBOM components: $(grep -o '"bom-ref"' "dist/vayupress-${{ steps.ver.outputs.version }}.sbom.json" | wc -l)"
+
+      - name: Sign the SBOM (keyless OIDC)
+        if: steps.exists.outputs.skip != 'true'
+        continue-on-error: true
+        # An unsigned SBOM alongside a signed binary is a gap an attacker can
+        # use: swap the inventory, and the artefact still verifies.
+        run: |
+          cosign sign-blob --yes "dist/vayupress-${{ steps.ver.outputs.version }}.sbom.json" \
+            --bundle "dist/vayupress-${{ steps.ver.outputs.version }}.sbom.cosign.bundle" \
+            || echo "cosign SBOM signing skipped/failed — publishing SBOM without signature"
+
       - name: Extract release notes from CHANGELOG
         if: steps.exists.outputs.skip != 'true'
         run: |
@@ -137,3 +162,5 @@ jobs:
             dist/vayupress
             dist/vayupress.sha256
             dist/vayupress.cosign.bundle
+            dist/vayupress-${{ steps.ver.outputs.version }}.sbom.json
+            dist/vayupress-${{ steps.ver.outputs.version }}.sbom.cosign.bundle

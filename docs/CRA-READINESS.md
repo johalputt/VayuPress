@@ -89,39 +89,47 @@ downstream commercial user will ask for, since that is the binding constraint ei
 | Per-file licence identification | **Have** | SPDX headers on every Go file, gated in CI |
 | Security-by-default configuration | **Have** | Deny-by-default posture recorded in [`GOVERNANCE-CONSTITUTION.md`](../GOVERNANCE-CONSTITUTION.md); no telemetry in core |
 | Documented change history | **Have** | [`CHANGELOG.md`](../CHANGELOG.md), maintained per release |
-| **Defined support period** | **Gap** | `SECURITY.md` names versions `1.0.x` / `LTS 1.x` / `< 0.9.0`. The project is at 3.14.x. The table is stale and states no end date for any version |
-| **SBOM published with releases** | **Gap** | The SBOM is generated as a CI artefact and expires with the run. It is not attached to GitHub Releases, so a downstream user cannot fetch the SBOM for the version they deployed |
-| **Vulnerability reporting route to ENISA/CSIRT** | **Gap, conditional** | Only applies if in scope. No process exists for the 24-hour early-warning / 72-hour notification path that would apply from September 2026 |
-| **Machine-readable security contact** | **Gap** | No `security.txt` (RFC 9116). Trivial to add; automated scanners look for it |
+| Defined support period | **Have** | [`SECURITY.md`](../SECURITY.md) — current minor in full support, previous minor critical-only with an end date, and an explicit statement that the CRA's five-year default is *not* met, with the reasons it is not claimed |
+| SBOM published with releases | **Have** | `release.yml` and `tag-release.yml` generate a CycloneDX SBOM per release, cosign-sign it, and attach both to the GitHub Release |
+| Machine-readable security contact | **Have** | [`docs/site/.well-known/security.txt`](site/.well-known/security.txt), RFC 9116, with the `Expires` field stamped at deploy time so it cannot go stale |
+| **Vulnerability reporting route to ENISA/CSIRT** | **Gap, conditional** | Only applies if in scope, which on the assessment above it is not. No process exists for the 24-hour early-warning / 72-hour notification path that would apply from September 2026 |
 
 ---
 
 ## Recommended actions
 
-Ordered by value per unit of effort. None of these require a legal opinion; all of them are
-things a downstream user will ask for.
+### Done
 
-1. **Fix the supported-versions table in `SECURITY.md`.** It currently describes a version series
-   the project left years ago, which reads as neglect to anyone evaluating the project and is
-   worse than saying nothing. Replace it with the actual policy: which minor series receives
-   security fixes, and for how long after a successor ships. The CRA's default expectation is a
-   five-year support period or the product's lifetime if shorter — a self-hosted product with an
-   operator who cannot be forced to upgrade should be thinking in those terms regardless of the
-   regulation.
+1. **Supported-versions policy rewritten** (`SECURITY.md`). The table described the 1.0.x series
+   while the project was at 3.15.x, which reads as neglect and is worse than saying nothing. It
+   now names the real window — current minor in full support, previous minor critical-only with
+   an end date — and states plainly that the CRA's five-year default **is not met**, because a
+   single-maintainer donation-funded project should not claim a support term it cannot honour.
+   What it offers instead is the thing that does not depend on goodwill: signed tags, an
+   irrevocable Apache-2.0 grant, and an SBOM per release, so anyone needing a longer horizon can
+   maintain a fork without asking permission.
 
-2. **Attach the SBOM to each GitHub Release.** The generator already exists and runs; only the
-   upload target is missing. An SBOM that expires with a CI run cannot answer "what was in the
-   version I deployed", which is the only question an SBOM is for.
+2. **SBOM attached to every release**, in both `release.yml` and `tag-release.yml`, and
+   cosign-signed — an unsigned inventory beside a signed binary is a gap, because swapping it
+   leaves the artefact still verifying.
 
-3. **Add `/.well-known/security.txt`** (RFC 9116) pointing at `security@vayupress.com` with an
-   expiry field. Small, standard, and machine-discoverable.
+3. **`security.txt` published** at `/.well-known/security.txt`. RFC 9116 requires an `Expires`
+   field, and an expired file is reported as stale by the scanners that read it, so a committed
+   date would eventually become a finding rather than prevent one. `deploy-site.yml` stamps it
+   180 days out at deploy time and also runs daily on a schedule, so it refreshes itself.
 
-4. **Record the scope position.** This document is that record. Revisit it if the funding model
+### Remaining
+
+1. **Record the scope position.** This document is that record. Revisit it if the funding model
    ever changes — that is the single trigger that moves VayuPress from "out of scope" to "in
    scope as a manufacturer".
 
-5. **Do not pursue CE marking or conformity assessment.** Not applicable to a non-commercial
+2. **Do not pursue CE marking or conformity assessment.** Not applicable to a non-commercial
    open-source project, and starting it would imply a manufacturer status that does not apply.
+
+3. **No ENISA/CSIRT reporting path exists**, and none is being built while the scope assessment
+   holds. If VayuPress is ever monetised, this becomes required from the September 2026 date and
+   is the largest single piece of work in this document.
 
 ---
 

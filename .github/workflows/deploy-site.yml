@@ -72,6 +72,23 @@ jobs:
           if [ -d docs/screenshots ]; then
             cp docs/screenshots/*.png _site/screenshots/ 2>/dev/null || true
           fi
+          # RFC 9116 requires an Expires field, and a security.txt past its
+          # expiry is reported as stale by the scanners that read it — so a
+          # committed date would become a finding rather than prevent one.
+          # Stamp it 180 days out at deploy time; this workflow also runs daily
+          # on a schedule, so the published file refreshes itself indefinitely.
+          if [ -f _site/.well-known/security.txt ]; then
+            EXPIRES="$(date -u -d '+180 days' +%Y-%m-%dT%H:%M:%S.000Z)"
+            sed -i "s|^Expires: .*|Expires: ${EXPIRES}|" _site/.well-known/security.txt
+            echo "security.txt Expires stamped: ${EXPIRES}"
+            grep -q "^Expires: ${EXPIRES}$" _site/.well-known/security.txt || {
+              echo "::error::failed to stamp Expires in security.txt"
+              exit 1
+            }
+          else
+            echo "::error::_site/.well-known/security.txt missing — RFC 9116 contact would 404"
+            exit 1
+          fi
           echo "Assembled _site:"
           ls -la _site
 
