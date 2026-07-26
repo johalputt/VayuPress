@@ -792,9 +792,13 @@ html[data-theme="light"] {
   font-weight: 600;
   padding: 3px 9px;
   border-radius: 999px;
-  border: 1px solid var(--su-border, rgba(255, 255, 255, .09));
+  /* Theme-neutral grey rather than a white tint: the off state used a 4% WHITE
+     fill and a white border, which is invisible on the light theme — so states
+     like "Refunded" and "Not approved" read as stray text next to the green
+     "Paid" pill instead of as chips. A mid grey resolves on both themes. */
+  border: 1px solid rgba(127, 127, 127, .34);
   color: var(--su-muted, #9aa3b2);
-  background: color-mix(in srgb, #fff 4%, transparent);
+  background: rgba(127, 127, 127, .1);
   white-space: nowrap;
   max-width: 11rem;
   overflow: hidden;
@@ -918,4 +922,89 @@ html[data-theme="light"] {
 @media (max-width: 480px) {
   .pr-toggle { width: 100%; justify-content: stretch; }
   .pr-toggle-btn { flex: 1; justify-content: center; padding: .5rem .6rem; font-size: .82rem; }
+}
+
+/* ---------------------------------------------------------------------------
+   Receipts and "Your comments" on the account page.
+
+   Both are lists of small records rather than tables: the account page is read
+   on a phone as often as a desktop, and a four-column table there either
+   scrolls sideways or shrinks past legibility. Each row is a two-line block —
+   what and how much, then when / reference / status.
+   --------------------------------------------------------------------------- */
+.ma-rcpts, .ma-cmts {
+  list-style: none;
+  margin: .9rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: .1rem;
+}
+.ma-rcpt, .ma-cmt {
+  padding: .65rem 0;
+  border-bottom: 1px solid var(--su-border, rgba(255, 255, 255, .07));
+}
+.ma-rcpt:last-child, .ma-cmt:last-child { border-bottom: 0; }
+
+.ma-rcpt__main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .8rem;
+}
+.ma-rcpt__what { font-size: .92rem; font-weight: 600; }
+/* The amount is the thing being looked for, so it is tabular and never wraps. */
+.ma-rcpt__amt {
+  font-size: .95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: none;
+}
+.ma-rcpt__cad {
+  font-size: .72rem;
+  font-weight: 500;
+  color: var(--su-muted);
+  text-transform: lowercase;
+}
+.ma-rcpt__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .3rem;
+  font-size: .78rem;
+  color: var(--su-muted);
+}
+/* A reference is quoted to a human, so it must be selectable in one gesture. */
+.ma-rcpt__ref code {
+  font-size: .74rem;
+  padding: .1rem .34rem;
+  border-radius: 5px;
+  background: var(--su-card-2, rgba(255, 255, 255, .05));
+  user-select: all;
+}
+
+.ma-cmt__top { display: flex; align-items: center; gap: .5rem; }
+/* A status chip in these rows must never be clipped: "Not approved" truncated to
+   "Not approv…" is exactly the word a member needs to read. The parent rows wrap,
+   so a long chip takes its own line rather than losing characters. .ma-chip caps
+   its width for the accordion summary, where space really is fixed. */
+.ma-rcpt__meta .ma-chip, .ma-cmt__top .ma-chip {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+.ma-cmt__when { font-size: .78rem; color: var(--su-muted); font-variant-numeric: tabular-nums; }
+.ma-cmt__body {
+  margin: .35rem 0 .25rem;
+  font-size: .88rem;
+  line-height: 1.5;
+  color: var(--su-text, inherit);
+}
+.ma-cmt__where { font-size: .8rem; }
+/* A removed post is stated plainly, not styled as a broken link. */
+.ma-cmt__where--gone { color: var(--su-muted); font-style: italic; }
+
+@media (max-width: 480px) {
+  .ma-rcpt__main { flex-direction: column; gap: .15rem; }
 }

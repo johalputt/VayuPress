@@ -11,6 +11,7 @@ package members
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 )
@@ -105,4 +106,52 @@ func (s *Store) HasPurchasedArticle(ctx context.Context, email, slug string) boo
 	var n int
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM article_purchases WHERE email=? AND slug=? AND status='paid'`, email, slug).Scan(&n)
 	return n > 0
+}
+
+// PurchasedPostByOrder maps a member's post-purchase order references to the
+// post they bought, resolved to its live title where the article still exists.
+//
+// This exists because a paid-post ORDER does not record which post it was for —
+// the order carries only the "__post__" sentinel in tier_slug, and the slug
+// lives here, keyed by order reference. Without this lookup a receipt can only
+// say "Paid post", which is the kind of half-answer that generates a support
+// email asking which one.
+//
+// The read pool is passed in explicitly so this SELECT never runs on the single
+// writer connection. The title is a LEFT JOIN, so a purchase whose post was
+// since deleted still resolves to its slug with an empty title rather than
+// dropping out of the receipt entirely — the member still paid for it.
+func (s *Store) PurchasedPostByOrder(ctx context.Context, reader *sql.DB, email string, limit int) (map[string]PurchasedPost, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return nil, nil
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := reader.QueryContext(ctx,
+		`SELECT p.order_ref, p.slug, COALESCE(a.title,'')
+		   FROM article_purchases p LEFT JOIN articles a ON a.slug=p.slug
+		  WHERE p.email=? AND TRIM(COALESCE(p.order_ref,''))<>''
+		  LIMIT ?`, email, limit)
+	if err != nil {
+		return nil, fmt.Errorf("purchased posts by order: %w", err)
+	}
+	defer rows.Close()
+	out := make(map[string]PurchasedPost)
+	for rows.Next() {
+		var ref string
+		var p PurchasedPost
+		if rows.Scan(&ref, &p.Slug, &p.Title) == nil && strings.TrimSpace(ref) != "" {
+			out[strings.TrimSpace(ref)] = p
+		}
+	}
+	return out, rows.Err()
+}
+
+// PurchasedPost is a post a member bought one-time access to. Title is empty
+// when the article no longer exists.
+type PurchasedPost struct {
+	Slug  string `json:"slug"`
+	Title string `json:"title"`
 }

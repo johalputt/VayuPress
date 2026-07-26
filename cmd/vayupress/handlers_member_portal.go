@@ -350,6 +350,17 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
 	// it here would render as "&amp;".
 	rows = append(rows, accRow{"&#9881;", "Name & notifications", "How you appear and what we email you", "",
 		memberDetailsCard(m, replyChecked, newsletterChecked)})
+	// Receipts and comments are APPENDED, never prepended. The open row is chosen
+	// positionally (i == 0), so putting either of these first would silently steal
+	// the open state from the VayuMail row — which is the thing members come here
+	// to do. Both render nothing at all for a member with no orders / no comments,
+	// so neither adds an empty row that invites a pointless click.
+	if body, sub, chip := a.memberReceiptsSection(r.Context(), m); body != "" {
+		rows = append(rows, accRow{"&#129534;", "Receipts", sub, chip, body})
+	}
+	if body, sub, chip := a.memberCommentsSection(r.Context(), m); body != "" {
+		rows = append(rows, accRow{"&#128172;", "Your comments", sub, chip, body})
+	}
 
 	accordions := maSectionHead("Your account", "Tap a row to open it")
 	for i, row := range rows {

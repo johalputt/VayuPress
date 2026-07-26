@@ -9,6 +9,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **Receipts on the member account page.** A member could see their subscription
+  *state* — plan, renewal date, a few recent events — but nothing about the
+  individual payments behind it. The only record of a payment was the confirmation
+  email sent once at the time, so a member who lost that email had no way to see
+  what they paid, when, or under what reference, and the only person who could
+  answer was the operator reading the admin order ledger.
+
+  Every payment on the address is listed with its amount, date, reference and
+  status. Pending and refunded orders are included rather than filtered to the
+  flattering ones: a member waiting on an offline payment needs to see the order
+  exists, and hiding a refund from the person it was paid to is the one thing a
+  receipt list must never do. The date shown is when money actually moved
+  (`paid_at`) rather than when the order was opened, because an offline order can
+  sit pending for days.
+
+  A per-post purchase names the post it bought. The order row records only a
+  `__post__` sentinel, so the slug is resolved from the purchase table — without
+  it a receipt could only say "Paid post", which is the kind of half-answer that
+  generates a support email asking which one. Membership rows name the tier the
+  member actually bought instead of its internal slug ("Membership: Premium", not
+  "Membership: paid"), including tiers since archived.
+
+  The query this needed was the only missing piece: the
+  `payment_orders(email, created_at)` index has existed since the monetization
+  migration.
+
+- **"Your comments" inline on the member account page.** This existed only inside
+  the floating portal drawer, behind a button that switches to an in-drawer view —
+  so a member who navigated to their account page could not reach it from there at
+  all. Each comment shows its real moderation state, and links to the post it is
+  on.
+
+  Rejected and spam deliberately collapse to one wording, "Not approved" — naming
+  spam as such hands a spammer a tuning signal and tells a misclassified human
+  something insulting and unactionable. Nothing is hidden, though: an author sees
+  every comment they wrote, because a comment that silently never appears is
+  exactly what people write in to ask about. A comment on a since-deleted post
+  says so in words instead of linking nowhere.
+
 - **A monthly / yearly billing toggle on the plans page**, with the real discount
   computed per tier and shown as a badge. The yearly price was previously an
   8-pixel grey afterthought under the monthly one — the cadence most operators
@@ -33,6 +72,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   pick this over a newsletter.
 
 ### Fixed
+- **Status chips were invisible on the light theme.** The neutral state of
+  `.ma-chip` used a 4%-opacity *white* fill and a white border, which resolve to
+  nothing on a light background — so "Refunded", "In review" and "Not approved"
+  read as stray grey text beside a green "Paid" pill. Now a theme-neutral grey
+  that resolves on both. They were also clipped by a fixed max width on narrow
+  screens, which turned "Not approved" into "Not approv…" — precisely the word a
+  member needs to read; chips in these rows now wrap onto their own line instead
+  of losing characters.
+
 - **Every paid tier was "featured".** The highlight ring was applied to each
   non-free tier, so an install with three paid plans drew it around all three,
   which is the same as drawing it around none. Exactly one card is featured now —

@@ -220,6 +220,44 @@ func (s *Store) List(ctx context.Context, status string, limit int) ([]Order, er
 	return out, rows.Err()
 }
 
+// ListByEmail returns one customer's orders newest-first — the data behind a
+// member's own receipts. Every status is returned, including pending and
+// refunded: a member who is waiting on an offline payment needs to see that the
+// order exists, and hiding a refund from the person it was paid to is the one
+// thing a receipt list must never do.
+//
+// The read pool is passed in explicitly so this SELECT never runs on the single
+// writer connection (the same convention as comments.ListByEmail). The
+// (email, created_at) index this relies on has existed since the monetization
+// migration; only the query was missing.
+//
+// The email is lowercased to match, because Create stores it lowercased.
+func (s *Store) ListByEmail(ctx context.Context, reader *sql.DB, email string, limit int) ([]Order, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return nil, nil
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := reader.QueryContext(ctx,
+		`SELECT `+orderCols+` FROM payment_orders WHERE email=? ORDER BY created_at DESC LIMIT ?`,
+		email, limit)
+	if err != nil {
+		return nil, fmt.Errorf("orders by email: %w", err)
+	}
+	defer rows.Close()
+	var out []Order
+	for rows.Next() {
+		o, err := scanOrder(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *o)
+	}
+	return out, rows.Err()
+}
+
 // MarkPaid transitions a pending order to paid, stamping paid_at and recording
 // the gateway's own reference (e.g. a transaction id) when supplied. It is
 // idempotent: an already-paid order returns (order, ErrAlreadyPaid) so the
