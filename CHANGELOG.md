@@ -6,7 +6,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.44] — 2026-07-26
+
+Finishes the member-facing follow-ups: the account page now answers "what have I
+paid?" and "where did my comment go?" without an operator in the loop, the plans
+page sells the cadence and the benefits it already had in its data, and account
+recovery is reachable and documented from the pages where people actually get
+stuck.
 
 ### Added
 - **Receipts on the member account page.** A member could see their subscription
