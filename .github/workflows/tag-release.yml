@@ -107,6 +107,19 @@ jobs:
           cosign sign-blob --yes dist/vayupress --bundle dist/vayupress.cosign.bundle || echo "cosign signing skipped/failed — publishing release without signature"
           echo "sign step complete"
 
+      - name: Extract release notes from CHANGELOG
+        if: steps.exists.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          # The in-app updater shows the release body verbatim on the Update &
+          # Backup card, and generate_release_notes alone produces only a compare
+          # link (we push straight to main, so there are no merged PRs to list) —
+          # so the operator was asked to install a build with no description of
+          # what it changes. Lift this version's own CHANGELOG section instead.
+          scripts/changelog-section.sh "${VERSION#v}" > dist/RELEASE_NOTES.md
+          echo "--- release body ---"; cat dist/RELEASE_NOTES.md
+
       - name: Create tag + publish release
         if: steps.exists.outputs.skip != 'true'
         uses: softprops/action-gh-release@v3
@@ -116,6 +129,8 @@ jobs:
           # Publish as a pre-release when the version carries a pre-release suffix
           # (e.g. 2.9.10-rc1), so it only shows in the updater's dev channel.
           prerelease: ${{ contains(steps.ver.outputs.version, '-') }}
+          body_path: dist/RELEASE_NOTES.md
+          # Appended AFTER body_path, so the compare link is kept as well.
           generate_release_notes: true
           fail_on_unmatched_files: false
           files: |

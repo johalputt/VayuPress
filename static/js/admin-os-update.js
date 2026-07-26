@@ -55,6 +55,158 @@
     return fallback;
   }
 
+  // ── Release notes ──────────────────────────────────────────────────────────
+  //
+  // The notes are the GitHub release body, which now carries this version's
+  // CHANGELOG section. Previously it was dumped as raw text, so the operator was
+  // shown either a bare compare link or a wall of markdown — in both cases they had
+  // to leave the page to find out what they were about to install.
+  //
+  // This turns it into a short, readable summary. It is a deliberately tiny
+  // renderer, not a markdown parser: the notes are EXTERNAL content, so every
+  // string goes in via textContent and nothing is ever assigned to innerHTML.
+
+  // parseNotes returns [{ heading, items: [{ lead, rest }] }]. A changelog entry is
+  // "- **Lead sentence.** the rest, wrapped over several indented lines", so
+  // continuation lines are folded back into the item they belong to.
+  function parseNotes(text) {
+    var lines = String(text || '').split('\n');
+    var sections = [], cur = null, item = null;
+
+    function pushItem() {
+      if (cur && item && item.raw) { cur.items.push(splitLead(item.raw)); }
+      item = null;
+    }
+    function section(name) { pushItem(); cur = { heading: name, items: [] }; sections.push(cur); }
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var trimmed = line.trim();
+
+      // Everything from GitHub's own generated tail is noise here: it repeats the
+      // release name and links back out to the page we are trying to replace.
+      if (/^#{1,3}\s*What'?s Changed/i.test(trimmed)) { break; }
+      if (/^\*\*Full Changelog\*\*/i.test(trimmed)) { break; }
+
+      var head = trimmed.match(/^#{2,4}\s+(.+?)\s*$/);
+      if (head) {
+        var name = head[1].replace(/^\[|\]$/g, '');
+        // Skip a "## [3.15.38] — date" heading: the version is already on the card.
+        if (!/^\[?\d+\.\d+\.\d+/.test(name)) { section(name); }
+        continue;
+      }
+      if (trimmed === '' || trimmed === '---') { pushItem(); continue; }
+
+      var bullet = trimmed.match(/^(?:[-*]|\d+\.)\s+(.*)$/);
+      if (bullet) {
+        pushItem();
+        if (!cur) { section(''); }
+        item = { raw: bullet[1] };
+        continue;
+      }
+      // An indented continuation line belongs to the item above it. The lead is
+      // worked out AFTER the whole item is joined: a changelog line wraps at ~80
+      // columns, so splitting on the first physical line would cut a sentence in
+      // half — which is exactly what it did.
+      if (item && /^\s/.test(line)) {
+        item.raw += ' ' + trimmed;
+      }
+    }
+    pushItem();
+    return sections.filter(function (s) { return s.items.length; });
+  }
+
+  // splitLead separates an item's headline from its detail. Changelog entries lead
+  // with "**A bold sentence.**"; when one does not, fall back to the first real
+  // sentence so the headline is still a whole thought.
+  function splitLead(raw) {
+    var m = raw.match(/^\*\*(.+?)\*\*\s*([\s\S]*)$/);
+    if (m) { return { lead: clean(m[1]), rest: clean(m[2]) }; }
+    var text = clean(raw);
+    // ". " followed by a capital is a sentence end; ignore one that would leave an
+    // implausibly short headline (an abbreviation, a version number).
+    var at = -1, from = 0;
+    while (true) {
+      var i = text.indexOf('. ', from);
+      if (i === -1) { break; }
+      if (i >= 24 && /[A-Z"“(]/.test(text.charAt(i + 2))) { at = i; break; }
+      from = i + 2;
+    }
+    if (at === -1) { return { lead: text, rest: '' }; }
+    return { lead: text.slice(0, at + 1), rest: text.slice(at + 2).trim() };
+  }
+
+  // clean strips the markdown that would otherwise show up as literal punctuation.
+  function clean(s) {
+    return String(s || '')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // [text](url) → text
+      .replace(/\*\*/g, '')                     // bold
+      .replace(/(^|[\s(])\*(\S[^*]*?)\*(?=[\s.,;:)]|$)/g, '$1$2') // italics
+      .replace(/`/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // renderNotes builds the summary. MAX_ITEMS keeps the card scannable; anything
+  // beyond it is counted, never silently dropped.
+  var MAX_ITEMS = 5;
+  function renderNotes(el, text, version) {
+    el.textContent = '';
+    var sections = parseNotes(text);
+    if (!sections.length) {
+      // Not in changelog shape (an older release, or a hand-written body). Show it
+      // as-is rather than showing nothing.
+      var raw = clean(text);
+      if (!raw) { el.hidden = true; return; }
+      el.appendChild(withClass('div', 'upd-notes__raw', raw));
+      el.hidden = false;
+      return;
+    }
+
+    el.appendChild(withClass('div', 'upd-notes__title',
+      version ? "What's in " + version : "What's in this update"));
+
+    var shown = 0, hidden = 0;
+    for (var s = 0; s < sections.length; s++) {
+      var sec = sections[s];
+      var remaining = MAX_ITEMS - shown;
+      if (remaining <= 0) { hidden += sec.items.length; continue; }
+
+      if (sec.heading) { el.appendChild(withClass('div', 'upd-notes__head', sec.heading)); }
+      var list = withClass('ul', 'upd-notes__list', '');
+      for (var i = 0; i < sec.items.length; i++) {
+        if (i >= remaining) { hidden += sec.items.length - i; break; }
+        var it = sec.items[i];
+        var li = document.createElement('li');
+        li.className = 'upd-notes__item';
+        li.appendChild(withClass('span', 'upd-notes__lead', it.lead));
+        if (it.rest) { li.appendChild(withClass('span', 'upd-notes__rest', truncate(it.rest, 180))); }
+        list.appendChild(li);
+        shown++;
+      }
+      el.appendChild(list);
+    }
+    if (hidden > 0) {
+      el.appendChild(withClass('div', 'upd-notes__more',
+        '+ ' + hidden + ' more ' + (hidden === 1 ? 'change' : 'changes') + ' in the full changelog'));
+    }
+    el.hidden = false;
+  }
+
+  function withClass(tag, cls, text) {
+    var n = document.createElement(tag);
+    n.className = cls;
+    if (text) { n.textContent = text; }
+    return n;
+  }
+
+  function truncate(s, max) {
+    if (s.length <= max) { return s; }
+    var cut = s.slice(0, max);
+    var sp = cut.lastIndexOf(' ');
+    return (sp > max * 0.6 ? cut.slice(0, sp) : cut) + '…';
+  }
+
   var card = document.querySelector('[data-update-card]');
   if (!card) return;
 
@@ -135,8 +287,7 @@
         }
         if (notesEl) {
           if (d.notes) {
-            notesEl.textContent = d.notes;
-            notesEl.hidden = false;
+            renderNotes(notesEl, d.notes, d.latest);
           } else {
             notesEl.hidden = true;
           }

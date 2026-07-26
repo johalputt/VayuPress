@@ -6,6 +6,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.39] — 2026-07-26
+
+### Added
+- **The update card now tells you what an update contains.** Deciding whether to
+  install meant leaving the page: the release body carried nothing but a compare
+  link, because it was generated from merged pull requests and this project pushes
+  straight to `main`, so there were none to summarise. The release now carries its
+  own `CHANGELOG` section as its body, and the Update & Backup card renders it as a
+  short summary — a headline per change, grouped under Fixed / Added / Changed, with
+  the rest kept as a one-line detail. Anything past the first few entries is counted
+  ("+ 3 more changes in the full changelog") rather than quietly dropped.
+
+  Release notes are external content, so the summary is built entirely from DOM text
+  nodes — nothing from the release body is ever assigned as markup. A release whose
+  body is not in changelog shape (anything published before this) still shows
+  verbatim rather than showing nothing.
+
+  A release that bumps the version without adding its `CHANGELOG` section would
+  publish an empty description; that is now a test failure rather than something
+  noticed after the fact.
+
+---
+
 ## [3.15.38] — 2026-07-26
 
 ### Fixed
