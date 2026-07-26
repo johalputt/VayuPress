@@ -6,8 +6,8 @@
   around it, fork it, ship it inside a commercial product. No fee, no permission, no registration.
 - **Every release already published is permanently free.** That grant is irrevocable and cannot
   be taken back by anyone, including the author.
-- **There is no plan to change the licence**, and a standing pledge below would give up the
-  ability to change it at all.
+- **The licence will not change. Permanently, and with no condition attached** — not funding,
+  not adoption, not acquisition. See [the pledge](#the-permanence-pledge) and what backs it.
 - **Nothing here requires anyone's permission**, and no contributor holds a veto over the
   project's direction.
 - **Self-hosters have no obligations.** Run it, modify it, keep your changes private. Apache-2.0
@@ -194,28 +194,50 @@ convert a project that people adopted on a different promise.
 
 ## The permanence pledge
 
-The routes above describe what *could* happen. This is what the maintainer intends to happen, and
-the offer to make it binding.
+The routes above describe what *could* happen under the licence. This is what will happen.
 
-**If donations reach and sustain USD 5,000 per month, VayuPress stays Apache-2.0 permanently.**
-At that point the licence question is settled for good: no reciprocal move, no source-available
-move, no dual licence, no exceptions — the option is given up rather than merely declined.
+**VayuPress is Apache-2.0 and will stay Apache-2.0. Permanently. There is no condition on
+that — not funding, not adoption, not competition, not acquisition.** No reciprocal move, no
+source-available move, no dual licence, no open-core split, no exceptions.
 
-Read that as an offer, not a condition. It is deliberately *not* a threat, and the difference
-matters enough to spell out:
+This pledge carries no price and no trigger. It does not depend on donations reaching any figure,
+on any number of users, or on anything a reader could fail to do. If this project earns nothing
+for the rest of its life, the answer is the same.
 
-- VayuPress is **already** free, and every release already published is **already** permanently
-  free. Nothing about that depends on reaching any funding figure. If donations are zero forever,
-  every version shipped to date remains Apache-2.0 and forkable.
-- There is **no plan** to change the licence at any funding level. The current assessment,
-  below, is to stay on Apache-2.0 regardless.
-- The pledge exists because a promise not to do something is worth more when the person making
-  it has given up the ability to do it. Funding is what makes that surrender affordable: a
-  maintainer who can pay rent has no reason to reach for the lever, and saying so in advance is
-  more honest than discovering the pressure later.
+**Nobody has to pay anything to use VayuPress, now or ever.** Funding goals exist — they are in
+[`docs/SUSTAINABILITY.md`](SUSTAINABILITY.md), where funding goals belong — and they are
+deliberately kept separate from this page. A licence promise that came with a target attached
+would invite the obvious inference: *below the target, it might change.* That inference would be
+wrong, and the way to make it wrong is to state the commitment with nothing attached to it.
 
-Nobody has to pay anything to use VayuPress, now or ever. The pledge is about closing a door that
-is currently open, not about opening one that is currently shut.
+An earlier version of this document tied permanence to a monthly donation figure. That was a
+drafting error rather than a policy: it merged a wish about funding with a promise about
+licensing, and in doing so made the promise conditional on money. The promise is not conditional
+on money.
+
+### What backs it
+
+A promise is worth what its structure makes it, not what its wording claims, so here is the
+structure underneath this one:
+
+- **Every release already published is irrevocably Apache-2.0.** That grant cannot be withdrawn
+  by anyone, including the author, under any circumstances. It is not a promise; it is a
+  completed legal fact, and it already covers every version in existence.
+- **There is no dual-licence business to be tempted by.** Selling proprietary terms requires
+  holding the copyright, no CLA was ever taken, and none ever will be. The commercial motive
+  behind essentially every relicensing in this field structurally does not exist here.
+- **There is no company, no investor and no board** — so there is no party who could be acquired,
+  pressured, or outvoted into changing the answer.
+- **The right to fork is not merely permitted but expected.** If a future maintainer breaks this
+  pledge, the correct response is to fork the last Apache-2.0 release and continue. That is
+  always available, needs no permission, and is the reason this pledge does not require anyone to
+  trust the person making it.
+
+The legal position is stated honestly in the routes above and does not change: Apache-2.0 §4
+permits a licence change on future versions without any contributor's permission. **The pledge is
+a commitment not to use that freedom, made by someone who has it.** A promise that could not be
+broken would not be a promise, and pretending otherwise would be the kind of overclaim this
+document exists to avoid.
 
 ---
 
@@ -242,11 +264,32 @@ The protections that matter here are already in force and are not licence choice
 patent grant, the absence of a CLA, per-file SPDX identifiers, a published CVD process, a
 CycloneDX SBOM, signed releases, and the irrevocability of every grant already made.
 
-**Reassess if** VayuPress ever offers paid hosting itself (the calculus changes the moment a
-competitor's closed fork takes revenue), if a hosted derivative appears at a scale that visibly
-diverts contribution away from the project, or if the plugin ecosystem grows large enough that
-keeping plugins free becomes a goal in its own right — the argument that built WordPress's
-sixty-thousand-plugin commons.
+### The strongest arguments for changing it, and why the answer is still no
+
+A recommendation that has not met its best counter-arguments is not worth much, so here they are.
+Each is a real case, each has persuaded serious projects, and each would once have been listed
+here as a trigger to reassess. Under the pledge above they are not triggers, because the pledge
+has no triggers — they are recorded so that a future reader can see the decision was made with
+its eyes open rather than by never asking.
+
+- **VayuPress starts offering paid hosting.** Then a competitor's closed fork would take real
+  revenue, and the AGPL calculus changes completely. This is the single most persuasive case, and
+  it is precisely the one every relicensed project made. The answer is still no: the correct
+  response to competing on hosting is to compete on hosting, not to change the terms under which
+  everyone else received the software.
+- **A hosted derivative grows large enough to divert contribution away from the project.**
+  Painful, and survivable. Users of that derivative are still users; the project still exists;
+  and nothing about it justifies retroactively changing the bargain with everyone who adopted
+  VayuPress on the current terms.
+- **The plugin ecosystem grows large enough that keeping plugins free becomes a goal in itself.**
+  This is the argument that built WordPress's sixty-thousand-plugin commons and it is a genuinely
+  good one. It is also an argument for a licence choice made at the start, not one imposed on an
+  ecosystem that formed under different rules.
+
+If a future maintainer finds one of these persuasive enough to break the pledge, the remedy is
+the one that has always been available and needs nobody's permission: **fork the last Apache-2.0
+release and continue.** That is why this pledge does not ask anyone to trust the person making
+it.
 
 ---
 

@@ -288,10 +288,14 @@ no registration. Self-hosters carry no obligations whatsoever: run it, modify it
 changes private — Apache-2.0 asks nothing of you, which is exactly why it was chosen over a
 copyleft licence.
 
+**Apache-2.0 permanently, unconditionally.** No reciprocal move, no source-available move, no
+dual licence, no open-core split — and no condition attached: not funding, not adoption, not
+acquisition. Every release already published is irrevocably free as a completed legal fact, not
+a promise. Nobody has to pay anything to use VayuPress, now or ever.
+
 Every source file carries an `SPDX-License-Identifier`, third-party components are listed in
-[NOTICE](NOTICE), and the reasoning is in [docs/LICENSING.md](docs/LICENSING.md) — including a
-standing pledge to make Apache-2.0 **permanent** once donations sustain the project at USD 5,000
-per month. Every release already published is irrevocably free regardless.
+[NOTICE](NOTICE), and the reasoning — including what structurally backs that pledge — is in
+[docs/LICENSING.md](docs/LICENSING.md).
 
 Apache-2.0 rather than MIT for the patent grant (§3): every contributor licenses their patents,
 and that licence terminates for anyone who sues over them. MIT is silent on patents, which is a

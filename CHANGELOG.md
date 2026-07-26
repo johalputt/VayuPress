@@ -6,6 +6,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **The Apache-2.0 permanence pledge is now unconditional.** v3.15.49 tied it to donations
+  reaching USD 5,000/month. That merged two separate things — a wish about funding and a promise
+  about licensing — and the merge put a price on the promise. However carefully it was worded as
+  an offer, a reader doing due diligence would draw the obvious inference: *below the target, it
+  might change.* A licence commitment that invites that inference is worth very little.
+
+  The pledge now carries no condition at all: **VayuPress is Apache-2.0 and stays Apache-2.0,
+  permanently** — not contingent on funding, adoption, competition or acquisition. If the project
+  never receives another donation, the answer is identical.
+
+  What backs it is stated alongside it, because a promise is worth what its structure makes it
+  rather than what its wording claims: every published release is *already* irrevocably
+  Apache-2.0 as a completed legal fact; there is no dual-licence business to be tempted by,
+  because no CLA was ever taken; there is no company, investor or board to be acquired or
+  outvoted; and if a future maintainer breaks the pledge anyway, the remedy needs nobody's
+  permission — fork the last Apache-2.0 release. The pledge does not ask anyone to trust the
+  person making it.
+- **Funding goals moved back to where funding goals belong.** `docs/SUSTAINABILITY.md` keeps
+  $5,000/month as a sustainability milestone — what it costs to support one person working on
+  this full time — with an explicit list of what funding does *not* buy: nothing about the
+  licence, no paid edition, no features held back for sponsors, no influence over direction.
+  Sponsorship is not a vote.
+- **`docs/LICENSING.md` now argues against itself before concluding.** The three strongest cases
+  for relicensing — paid hosting making the AGPL calculus real, a hosted derivative diverting
+  contribution, and a plugin ecosystem worth keeping free — are stated at full strength and
+  answered, rather than listed as conditions that would reopen the question. They persuaded
+  serious projects; they are not triggers here, because the pledge has no triggers.
+
+---
+
 ## [3.15.49] — 2026-07-26
 
 Licensing and regulatory posture. No behaviour changes; no runtime code was modified.

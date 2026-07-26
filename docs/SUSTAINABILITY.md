@@ -45,24 +45,25 @@ Expenditures are published quarterly in GitHub Discussions under "Transparency R
 | Annual security audit | $5,000 | Seeking sponsors |
 | Part-time Community Lead | $500/mo | Future goal |
 | Full-time BDFL | $3,000/mo | Long-term goal |
-| **Permanent Apache-2.0 pledge** | **$5,000/mo sustained** | **Standing offer** |
+| Sustained full-time maintenance | $5,000/mo | Long-term goal |
 
-### The permanence pledge
+At $5,000 per month the project supports one person working on it full time, with room for the
+security audit and infrastructure above. That is what "sustainable" means here in concrete terms.
 
-At **USD 5,000 per month sustained**, the licence question is settled for good: VayuPress stays
-Apache-2.0 permanently, and the ability to change it is given up rather than merely unused. Full
-terms in [docs/LICENSING.md](LICENSING.md).
+### What funding does not buy
 
-This is an offer, not a condition, and the distinction is the whole point. **VayuPress is already
-free and every release already published is already permanently free** — none of that depends on
-any funding figure being reached. There is no plan to change the licence at any level of funding.
+**Nothing about the licence.** VayuPress is Apache-2.0 permanently and unconditionally — that is
+settled in [docs/LICENSING.md](LICENSING.md) and is not tied to any figure on this page. If this
+project never receives another donation, the licence answer is identical.
 
-The pledge exists because a promise not to do something is worth more once the person making it
-has surrendered the ability to do it, and funding is what makes surrendering it affordable. A
-maintainer who can pay rent has no reason to reach for that lever. Saying so in advance is more
-honest than discovering the pressure later, which is how most relicensing stories actually begin.
+**Nothing about access, features or support tiers.** There is no paid edition, no feature held
+back for sponsors, and no plan for either. Every install gets the same binary.
 
-**Nobody has to pay anything to use VayuPress, now or ever.**
+**No influence over direction.** Sponsorship is not a vote. Technical decisions go through the
+processes in [GOVERNANCE.md](../GOVERNANCE.md) regardless of who has funded what.
+
+**Nobody has to pay anything to use VayuPress, now or ever.** These goals describe what would let
+the maintainer keep working on it — not a price anyone owes.
 
 ---
 
