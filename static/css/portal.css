@@ -11,8 +11,14 @@
   --vpp-border: rgba(255, 255, 255, .08);
   --vpp-text: var(--vp-text, #e8eaf0);
   --vpp-muted: #9aa3b2;
-  --vpp-accent: var(--vp-accent, #6366f1);
-  --vpp-accent-2: #818cf8;
+  /* Button gradient stops. Both must keep WHITE label text readable: the button
+     hardcodes color:#fff, and white on the previous defaults measured 4.47:1 on
+     #6366f1 and 2.98:1 on #818cf8 — the shipped default failed WCAG AA on every
+     install, before any operator touched a colour. These clear it (6.29:1 and
+     5.37:1). An operator-set --vp-accent can still be too light for white text;
+     the Theme Studio readability panel measures exactly that pairing and says so. */
+  --vpp-accent: var(--vp-accent, #4f46e5);
+  --vpp-accent-2: var(--vp-accent-2, #5b5bd6);
   --vpp-ok: #10b981;
   --vpp-err: #ef4444;
   --vpp-font: var(--vp-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);

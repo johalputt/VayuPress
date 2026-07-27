@@ -6,6 +6,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.74] — 2026-07-27
+
+### Fixed
+- **The portal button's white label failed WCAG AA on the shipped default.** `.vp-portal-btn` sets
+  `color:#fff` on a gradient built from the accent, and white measured **4.47:1** on `#6366f1` and
+  **2.98:1** on `#818cf8` — so the sign-in and subscribe buttons failed on **every install at
+  default settings**, before an operator touched a colour. The gradient stops are now `#4f46e5` and
+  `#5b5bd6` (6.29:1 and 5.37:1), and both are overridable via `--vp-accent` / `--vp-accent-2`.
+
+### Note on a check that was NOT added
+- Measuring "white button label on the accent" in the Theme Studio panel looks like the obvious
+  systematic fix, and it is **unsatisfiable**. For an accent to be readable *as text* on the dark
+  page it needs relative luminance ≥ 0.1966; to carry *white label text* on a filled button it
+  needs ≤ 0.1833. The ranges do not overlap, so no single accent can do both, and adding the
+  pairing to a summary that grades the weakest one would mark **every possible palette** "Hard to
+  read".
+
+  A check that can never pass is worse than no check — it is noise that trains people to ignore
+  the panel. The right resolution is the one taken here: the button carries **its own** colour,
+  decoupled from the text accent, precisely because the two roles have incompatible requirements.
+
+---
+
 ## [3.15.73] — 2026-07-27
 
 ### Fixed
