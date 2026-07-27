@@ -417,6 +417,26 @@ if [[ -f "$WKD_SETUP" ]]; then
   CACHE_DIR="$CACHE_DIR" bash "$WKD_SETUP" || true
 fi
 
+# Refresh the root-owned copies that back one-click provisioning from VayuOS,
+# and install the units if this box predates them. Without this an existing
+# install would never gain the feature, because the in-app updater only swaps
+# the binary -- which is the exact gap being closed.
+UPD_SRC="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if [[ -f "${UPD_SRC}/provision-subdomains.sh" ]] && [[ $EUID -eq 0 ]]; then
+  mkdir -p /usr/local/lib/vayupress
+  for _s in provision-subdomains.sh setup-openpgpkey-subdomain.sh setup-talk-subdomain.sh \
+            setup-mcp-subdomain.sh setup-api-subdomain.sh setup-vayudomain.sh; do
+    [[ -f "${UPD_SRC}/${_s}" ]] && install -o root -g root -m 0755 "${UPD_SRC}/${_s}" "/usr/local/lib/vayupress/${_s}"
+  done
+  chown root:root /usr/local/lib/vayupress && chmod 0755 /usr/local/lib/vayupress
+  if [[ ! -f /etc/systemd/system/vayupress-provision.path ]]; then
+    warn "One-click provisioning units are missing — re-run deploy-vayupress.sh once to install them."
+  else
+    systemctl daemon-reload 2>/dev/null || true
+    systemctl enable --now vayupress-provision.path vayupress-provision.timer 2>/dev/null || true
+  fi
+fi
+
 # Keep every SYNC-APPROVED VayuDomains secondary domain's TLS cert + nginx vhost
 # in place across updates (VayuDomains P4+P5). Domains the operator has not
 # approved ("manual hold" in VayuOS → Domains) are never provisioned by an

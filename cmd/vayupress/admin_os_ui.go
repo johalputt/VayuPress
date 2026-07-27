@@ -366,6 +366,12 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/update/apply", a.handleOSUpdateApply)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/update/restart", a.handleOSUpdateRestart)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/update/rollback", a.handleOSUpdateRollback)
+		// Subdomain provisioning: the console asks, a root-side systemd unit acts.
+		// CSRF-protected because it makes the server run certbot on demand, and
+		// Let's Encrypt rate limits are a finite resource worth not letting an
+		// off-origin page burn.
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/provision/run", a.handleOSProvisionRequest)
+		pr.Get("/os/api/provision/status", a.handleOSProvisionStatus)
 		pr.Get("/os/api/backup/export", a.handleOSBackupExport)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/backup/import", a.handleOSBackupImport)
 

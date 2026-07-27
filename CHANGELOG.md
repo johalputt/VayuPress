@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **Subdomain certificates can now be provisioned from VayuOS — no terminal.** This closes a
+  real hole rather than adding a convenience. The service runs as `www-data` with
+  `NoNewPrivileges=yes`, so the in-app updater can swap the binary but **can never obtain a TLS
+  certificate or reload nginx** — both need root. That is correct hardening, and the consequence
+  was that an operator who used only **Update now** got a current binary and no subdomains, with
+  nothing anywhere saying so: certificates silently absent, PGP key discovery silently dead, and
+  SSH the only way to find out — in a product whose promise is that you never need the terminal.
+
+  **Update & Backup** now carries a *Subdomains & certificates* card showing whether the last run
+  was clean, with a button that provisions every subdomain whose DNS is pointed (`mail.`,
+  `openpgpkey.`, `talk.`, `mcp.`, `api.`). Unpointed subdomains are skipped, so running it is
+  always safe. A **daily timer** runs the same worker regardless, so a record pointed later is
+  picked up with nobody asking.
+
+  **The privilege boundary is not crossed.** The console creates an *empty flag file*; a root-side
+  `systemd` `.path` unit notices it and runs a fixed, root-owned script. No argument is passed and
+  the worker never reads the flag's contents, so the only thing the unprivileged side can express
+  is "go". The scripts live in `/usr/local/lib/vayupress` owned `root:root` `0755` — without that
+  ownership this mechanism would be a local privilege escalation rather than a feature, which is
+  why four tests pin it: the request stays empty, the worker never reads it, both endpoints are
+  admin-gated, and the run endpoint is CSRF-protected (a POST that makes the server run certbot on
+  demand is a real rate-limit denial-of-service lever).
+
 ### Changed
 - **Every DNS record an install needs is now in one table, in both `README.md` and
   `docs/INSTALLATION.md`.** `openpgpkey.` was missing from the installation guide's Step 1

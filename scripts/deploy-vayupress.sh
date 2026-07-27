@@ -506,6 +506,105 @@ run systemctl daemon-reload
 ok "Systemd service written."
 
 # =============================================================================
+# ── PRIVILEGED SUBDOMAIN PROVISIONING (one-click, no terminal) ───────────────
+# =============================================================================
+# The service runs as www-data with NoNewPrivileges, so the in-app updater can
+# swap the binary but can never obtain a certificate or reload nginx. That left
+# a real hole: an operator using only VayuOS → Update now got a current binary
+# and no subdomains, with nothing anywhere saying so — certificates silently
+# absent and PGP key discovery silently dead.
+#
+# These three units close it. The unprivileged service creates an EMPTY flag
+# file; the .path unit notices and runs the provisioning worker as root; the
+# .timer re-runs it daily so a DNS record added later is picked up on its own.
+#
+# The security property: www-data can say "please provision" and nothing else.
+# It passes no arguments, and the worker never reads the flag's contents. The
+# scripts live in a root-owned directory the service user cannot write, so it
+# cannot change what root executes — without that ownership this would be a
+# local privilege escalation rather than a feature.
+SD_LIB_DIR=/usr/local/lib/vayupress
+# Where this script's siblings live. When deploy is piped from curl there is no
+# local checkout, so fall back to the location update-vayupress.sh clones into
+# and finally to a find — installing nothing is acceptable (the next update
+# installs them), silently installing the WRONG file would not be.
+SD_SRC="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
+if [[ -z "$SD_SRC" || ! -f "${SD_SRC}/provision-subdomains.sh" ]]; then
+  for _cand in /tmp/VayuPress/scripts /opt/VayuPress/scripts; do
+    [[ -f "${_cand}/provision-subdomains.sh" ]] && { SD_SRC="$_cand"; break; }
+  done
+fi
+if [[ -n "$SD_SRC" && -f "${SD_SRC}/provision-subdomains.sh" ]]; then
+  run mkdir -p "$SD_LIB_DIR"
+  for _s in provision-subdomains.sh setup-openpgpkey-subdomain.sh setup-talk-subdomain.sh \
+            setup-mcp-subdomain.sh setup-api-subdomain.sh setup-vayudomain.sh; do
+    if [[ -f "${SD_SRC}/${_s}" ]]; then
+      run install -o root -g root -m 0755 "${SD_SRC}/${_s}" "${SD_LIB_DIR}/${_s}"
+    fi
+  done
+else
+  warn "Provisioning helpers not found next to this script — one-click subdomain setup will install on the next update."
+fi
+# root:root 0755 — readable and executable by all, writable by root only. This
+# is the line that makes the whole mechanism safe.
+run chown root:root "$SD_LIB_DIR"
+run chmod 0755 "$SD_LIB_DIR"
+
+cat > /etc/systemd/system/vayupress-provision.service <<'SYSTEMD'
+[Unit]
+Description=VayuPress — provision subdomain certificates and vhosts
+Documentation=https://github.com/johalputt/VayuPress/blob/main/docs/INSTALLATION.md
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Runs as root because certbot and `nginx -s reload` require it. The command is
+# a fixed, root-owned path with no arguments — nothing the requesting service
+# supplies reaches this line.
+ExecStart=/usr/local/lib/vayupress/provision-subdomains.sh
+TimeoutStartSec=900
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vayupress-provision
+SYSTEMD
+
+cat > /etc/systemd/system/vayupress-provision.path <<'SYSTEMD'
+[Unit]
+Description=VayuPress — watch for a subdomain provisioning request
+
+[Path]
+# The unprivileged service creates this file to request a run. Its CONTENTS are
+# never read: the request is the file's existence and nothing more, so there is
+# no channel from www-data into a root process beyond "go".
+PathExists=/var/lib/vayupress/provision.request
+Unit=vayupress-provision.service
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD
+
+cat > /etc/systemd/system/vayupress-provision.timer <<'SYSTEMD'
+[Unit]
+Description=VayuPress — daily subdomain provisioning sweep
+
+[Timer]
+# Catches a DNS record pointed after the last run without anyone having to
+# remember to ask, and renews any vhost whose certificate lineage changed.
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+SYSTEMD
+
+run systemctl daemon-reload
+run systemctl enable --now vayupress-provision.path
+run systemctl enable --now vayupress-provision.timer
+ok "One-click subdomain provisioning installed (VayuOS can now request it)."
+
+# =============================================================================
 # ── FILE PERMISSIONS ──────────────────────────────────────────────────────────
 # =============================================================================
 

@@ -451,6 +451,62 @@
   if (rollbackBtn) rollbackBtn.addEventListener('click', doRollback);
   if (importBtn) importBtn.addEventListener('click', doImport);
 
+  // ── Subdomain provisioning ────────────────────────────────────────────────
+  // Installing an update swaps the binary only; the service is unprivileged and
+  // cannot obtain a certificate or reload nginx. This asks a root-side systemd
+  // unit to do that step, then polls until it reports back — so the operator
+  // sees the outcome here instead of having to read a log over SSH.
+  (function () {
+    var btn = document.querySelector('[data-provision-run]');
+    var out = document.querySelector('[data-provision-status]');
+    if (!btn || !out) return;
+
+    var polls = 0;
+    function poll() {
+      // Bounded: a request nothing consumes must not spin forever. If the
+      // helper is missing the server says so and we stop with that message,
+      // rather than showing "running..." indefinitely.
+      if (polls++ > 60) { out.textContent = 'Still running — reload to see the result.'; return; }
+      fetch('/os/api/provision/status', { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.pending) { out.textContent = 'Running…'; setTimeout(poll, 3000); return; }
+          if (j && j.result && j.result.finished_at) {
+            var f = j.result.failed || 0;
+            out.textContent = f > 0
+              ? 'Finished — ' + f + ' helper(s) reported a problem. Reload for detail.'
+              : 'Finished cleanly. Reload to see the summary.';
+          } else {
+            out.textContent = 'Finished. Reload to see the summary.';
+          }
+          btn.disabled = false;
+        })
+        .catch(function () { out.textContent = 'Could not read status.'; btn.disabled = false; });
+    }
+
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      out.textContent = 'Requesting…';
+      polls = 0;
+      fetch('/os/api/provision/run', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() }
+      })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          if (!res.ok) {
+            out.textContent = (res.j && (res.j.detail || res.j.message)) || 'Request failed.';
+            btn.disabled = false;
+            return;
+          }
+          out.textContent = 'Running…';
+          setTimeout(poll, 3000);
+        })
+        .catch(function () { out.textContent = 'Request failed.'; btn.disabled = false; });
+    });
+  })();
+
   // Auto-check on load so the operator immediately sees whether an update exists.
   doCheck();
 })();

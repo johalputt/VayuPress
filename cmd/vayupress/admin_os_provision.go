@@ -1,0 +1,183 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+import (
+	"encoding/json"
+	"html"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// admin_os_provision.go — the unprivileged half of one-click subdomain setup.
+//
+// THE PROBLEM THIS SOLVES
+// The service runs as www-data with NoNewPrivileges=yes, so it can swap its own
+// binary but can never obtain a TLS certificate or reload nginx. Both need root.
+// That is correct hardening, and it left a hole worth naming plainly: an
+// operator who used only VayuOS → Update now received a current binary and no
+// subdomains, with nothing anywhere saying so. Certificates silently absent,
+// PGP key discovery silently dead, and the only diagnosis path was SSH — in a
+// product whose promise is that you never need the terminal again.
+//
+// HOW THE PRIVILEGE BOUNDARY IS CROSSED
+// It is not crossed. This code creates an EMPTY file. A root-side systemd .path
+// unit notices it and runs a fixed, root-owned script (see
+// scripts/provision-subdomains.sh). The request carries no arguments and its
+// contents are never read, so the only thing this process can express is "go" —
+// there is no channel through which a compromised web session could influence
+// what root executes.
+//
+// A daily .timer runs the same worker regardless, so a DNS record pointed later
+// is picked up without anyone asking.
+
+const (
+	provisionRequestFile = "provision.request"
+	provisionResultFile  = "provision.result"
+	// provisionRequestTTL bounds how long a pending request is considered live in
+	// the UI. If the units are not installed nothing consumes the flag, and
+	// showing "in progress" forever would be a lie that hides the real problem.
+	provisionRequestTTL = 5 * time.Minute
+)
+
+// provisionResult mirrors the JSON the root worker writes.
+type provisionResult struct {
+	StartedAt  string `json:"started_at"`
+	FinishedAt string `json:"finished_at"`
+	Ran        int    `json:"ran"`
+	Failed     int    `json:"failed"`
+	Details    string `json:"details"`
+}
+
+func provisionStateDir() string {
+	if d := strings.TrimSpace(os.Getenv("VAYU_DATA_DIR")); d != "" {
+		return d
+	}
+	return "/var/lib/vayupress"
+}
+
+// provisionUnitsInstalled reports whether the root-side worker exists. Without
+// it a request would sit unconsumed forever, so the UI must say so rather than
+// offering a button that does nothing — a dead button is worse than no button,
+// because it converts a fixable setup gap into a mystery.
+func provisionUnitsInstalled() bool {
+	_, err := os.Stat("/usr/local/lib/vayupress/provision-subdomains.sh")
+	return err == nil
+}
+
+func readProvisionResult() (provisionResult, bool) {
+	var res provisionResult
+	b, err := os.ReadFile(filepath.Join(provisionStateDir(), provisionResultFile))
+	if err != nil {
+		return res, false
+	}
+	if json.Unmarshal(b, &res) != nil {
+		return res, false
+	}
+	return res, true
+}
+
+// provisionPending reports whether a request is still waiting to be consumed.
+func provisionPending() bool {
+	fi, err := os.Stat(filepath.Join(provisionStateDir(), provisionRequestFile))
+	if err != nil {
+		return false
+	}
+	return time.Since(fi.ModTime()) < provisionRequestTTL
+}
+
+// handleOSProvisionRequest asks the root worker to provision subdomain
+// certificates and vhosts. Admin-only and CSRF-protected: it triggers privileged
+// work, and although that work takes no input from here, the ability to make a
+// server run certbot on demand is not something an anonymous caller should have
+// (Let's Encrypt rate limits are a finite resource an attacker could burn).
+func (a *App) handleOSProvisionRequest(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		a.denyAccess(w, r, "/os")
+		return
+	}
+	if !provisionUnitsInstalled() {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "provision-unavailable",
+			"One-click provisioning is not installed on this server",
+			"Re-run scripts/deploy-vayupress.sh once to install the privileged helper, then this button works.")
+		return
+	}
+	path := filepath.Join(provisionStateDir(), provisionRequestFile)
+	// Empty on purpose. The worker never reads the contents, and writing
+	// anything here would start a channel from an unprivileged process into a
+	// root one — the thing this design exists to avoid.
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "provision-request-failed",
+			"Could not create the provisioning request", err.Error())
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"status": "requested",
+		"note":   "Provisioning runs in the background; it usually finishes within a minute.",
+	})
+}
+
+// handleOSProvisionStatus reports the last run so the console can show what
+// happened without anyone reading a log over SSH.
+func (a *App) handleOSProvisionStatus(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		a.denyAccess(w, r, "/os")
+		return
+	}
+	res, have := readProvisionResult()
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"installed": provisionUnitsInstalled(),
+		"pending":   provisionPending(),
+		"have_run":  have,
+		"result":    res,
+	})
+}
+
+// provisionCardHTML renders the Update-page card.
+func provisionCardHTML() string {
+	installed := provisionUnitsInstalled()
+	res, haveRun := readProvisionResult()
+
+	var status string
+	switch {
+	case !installed:
+		status = `<span class="badge badge--warn">helper not installed</span>`
+	case provisionPending():
+		status = `<span class="badge badge--info">running…</span>`
+	case haveRun && res.Failed > 0:
+		status = `<span class="badge badge--warn">last run had ` + strconv.Itoa(res.Failed) + ` problem(s)</span>`
+	case haveRun:
+		status = `<span class="badge badge--ok">last run clean</span>`
+	default:
+		status = `<span class="badge badge--muted">never run</span>`
+	}
+
+	var detail string
+	if haveRun {
+		detail = `<p class="text-xs muted">Last run ` + html.EscapeString(res.FinishedAt) +
+			` — ` + strconv.Itoa(res.Ran) + ` helper(s) ran, ` + strconv.Itoa(res.Failed) + ` reported a problem. ` +
+			`<span class="mono">` + html.EscapeString(res.Details) + `</span></p>`
+	}
+
+	action := `<button type="button" class="btn btn--primary btn--sm" data-provision-run>Provision subdomains</button>`
+	if !installed {
+		action = `<p class="text-sm muted">This server does not have the privileged helper yet. Re-run ` +
+			`<code>scripts/deploy-vayupress.sh</code> once — after that, every subdomain is provisioned from here ` +
+			`and from a daily sweep, with no terminal.</p>`
+	}
+
+	return `<div class="section-head"><span class="section-head__title">Subdomains &amp; certificates</span>` +
+		`<span class="section-head__hint">Issue TLS and write vhosts for mail, PGP discovery, chat, MCP and the API</span></div>
+<div class="card">
+<p class="text-sm">` + status + `</p>
+<p class="text-sm muted">Installing an update swaps the <strong>binary only</strong> — the service runs unprivileged and cannot obtain a certificate or reload nginx by itself. This runs that privileged step for every subdomain whose DNS is pointed: <code>mail.</code>, <code>openpgpkey.</code>, <code>talk.</code>, <code>mcp.</code> and <code>api.</code>. A subdomain that is not pointed is skipped, so it is always safe to run.</p>
+<p class="text-sm muted">It also runs <strong>daily on its own</strong>, so a DNS record you point later is picked up without you doing anything.</p>
+` + detail + `
+<div class="vm-row">` + action + `<span class="text-sm muted" data-provision-status></span></div>
+<p class="text-xs muted">Requesting a run creates an empty flag file that a root-side service watches. No argument is passed and its contents are never read, so this console can ask for provisioning and cannot influence what the privileged step does.</p>
+</div>`
+}

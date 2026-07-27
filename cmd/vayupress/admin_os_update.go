@@ -278,6 +278,7 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>
 
+` + provisionCardHTML() + `
 <div class="section-head"><span class="section-head__title">Backup &amp; history</span><span class="section-head__hint">Snapshots and the full update log</span></div>
 <div class="mon-stack" data-backup-card>` +
 		monAcc(iconArchive, "Backup &amp; restore", "Download or restore a full, checksummed snapshot", "", false, backupBody) +
