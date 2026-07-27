@@ -281,3 +281,49 @@ func TestSetupIsClickableNotTypable(t *testing.T) {
 		t.Error("an env-managed install is not told where its configuration comes from")
 	}
 }
+
+// TestOperatorCanObtainAPassphrase — the form demands at least 12 characters, so
+// it must also offer a way to get one. Requiring a strong secret while leaving
+// the operator to invent it is how installs end up with "backup123" or with no
+// backups at all.
+func TestOperatorCanObtainAPassphrase(t *testing.T) {
+	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false)
+	for _, want := range []string{"data-vk-gen>", "data-vk-copy>", "Generate one", "getRandomValues"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the setup form is missing %q — it demands a strong passphrase without offering one", want)
+		}
+	}
+	// The generator must not use an ambiguous alphabet: these backups get written
+	// onto paper, and i/l/1 and o/0 are exactly what gets mistranscribed.
+	if !strings.Contains(got, "abcdefghjkmnpqrstuvwxyz23456789") {
+		t.Error("the generator alphabet is not the unambiguous set")
+	}
+
+	// And the warning must be honest about WHY an off-server copy is required:
+	// the sealed copy lives on the machine the backups protect.
+	for _, want := range []string{
+		"other than this server",
+		"lives on the machine your backups are protecting",
+		"There is no reset",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the passphrase warning is missing %q", want)
+		}
+	}
+}
+
+// TestNoTerminalEraCopyRemains — the setup path is a form now. Any leftover
+// instruction to edit a file or restart a service contradicts the button sitting
+// next to it, and a page that argues with itself is worse than either version.
+func TestNoTerminalEraCopyRemains(t *testing.T) {
+	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false)
+	for _, stale := range []string{
+		"Two lines and a restart",
+		"systemctl restart vayupress",
+		"/etc/vayupress/env",
+	} {
+		if strings.Contains(got, stale) {
+			t.Errorf("the setup path still carries terminal-era copy: %q", stale)
+		}
+	}
+}

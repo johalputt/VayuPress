@@ -6,6 +6,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.83] — 2026-07-27
+
+### Added
+- **A passphrase generator on the setup form.** The form demands at least 12
+  characters, so it now also offers a way to get them: **Generate one** mints a
+  20-character passphrase in the browser from a 32-symbol unambiguous alphabet
+  (no `i`/`l`/`1`, no `o`/`0` — the characters that get mistranscribed when this
+  ends up on paper), with a **Copy** button beside it. Demanding a strong secret
+  while leaving the operator to invent one is how installs end up with `backup123`.
+
+  Also removes the last of the terminal-era copy: the section still read "Two lines
+  and a restart" directly above the form that replaced it. A page that argues with
+  itself is worse than either version of it.
+
+  The warning that appears with it is deliberately specific about *why* an
+  off-server copy is required: VayuPress keeps a sealed copy so backups can run
+  unattended, but that copy lives on the machine the backups exist to protect. Lose
+  the machine and it goes with it.
+
+---
+
 ## [3.15.82] — 2026-07-27
 
 ### Changed

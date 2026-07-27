@@ -173,8 +173,15 @@ func keepSetupCard(bootErr, currentTarget string, envManaged bool) string {
 </div>
 <div class="field">
   <label class="field-label" for="vk-pass">Passphrase</label>
-  <input id="vk-pass" class="input" type="password" autocomplete="new-password" placeholder="At least 12 characters" spellcheck="false">
-  <div class="settings-row-hint"><strong>Write this down somewhere other than this server.</strong> It is the only key to your backups — without it nobody, including you, can read them. There is no reset.</div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+    <input id="vk-pass" class="input" type="password" autocomplete="new-password" placeholder="At least 12 characters" spellcheck="false" style="flex:1 1 18rem">
+    <button type="button" class="btn btn--sm" data-vk-gen>Generate one</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-vk-copy>Copy</button>
+  </div>
+  <div class="settings-row-hint">Make one up, or press <strong>Generate one</strong> for a strong random passphrase you can copy.</div>
+  <div id="vk-pass-warn" class="settings-row-hint mt-2" hidden>
+    <strong>Save this somewhere other than this server, now.</strong> VayuPress keeps an encrypted copy so backups can run unattended — but that copy lives on the machine your backups are protecting. If you lose the machine, that copy goes with it, and the backups become unreadable by any tool. A password manager, a note on your phone, a piece of paper. There is no reset.
+  </div>
 </div>
 <div class="mt-3" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
   <button type="button" class="btn btn--primary btn--sm" data-vk-setup>Turn on automatic backup</button>
@@ -306,7 +313,7 @@ func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vay
 ` + osVayuKeepStats(st, now)
 
 	if !st.Enabled || bootErr != "" {
-		body += `<div class="section-head"><span class="section-head__title">Get protected</span><span class="section-head__hint">Two lines and a restart</span></div>
+		body += `<div class="section-head"><span class="section-head__title">Get protected</span><span class="section-head__hint">A folder, a passphrase, one button</span></div>
 <div class="mon-stack">` +
 			monAcc(iconKeep, "Set up automatic backup", "Choose a folder and a passphrase", `<span class="mon-chip">● Not set up</span>`, true, keepSetupCard(bootErr, currentTarget, envManaged)) +
 			`</div>`
@@ -374,6 +381,28 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-vk-verify]'),funct
     vkPost('/os/api/vayukeep/verify',{name:el.getAttribute('data-vk-verify')},el,'Checking…','vk-verify-status');
   });
 });
+// Generate a passphrase in the browser so it never needs a round trip before
+// the operator has it. 20 characters from a 32-symbol unambiguous alphabet is
+// ~100 bits — and readable enough to copy onto paper, which is the point.
+var genBtn=document.querySelector('[data-vk-gen]');
+if(genBtn){genBtn.addEventListener('click',function(){
+  var alpha='abcdefghjkmnpqrstuvwxyz23456789'; // no i/l/o/0/1 — they get mistranscribed
+  var buf=new Uint8Array(20); (window.crypto||window.msCrypto).getRandomValues(buf);
+  var out=''; for(var i=0;i<buf.length;i++){ if(i&&i%5===0)out+='-'; out+=alpha[buf[i]%alpha.length]; }
+  var f=document.getElementById('vk-pass');
+  if(f){f.type='text';f.value=out;f.focus();f.select();}
+  var warn=document.getElementById('vk-pass-warn'); if(warn){warn.hidden=false;}
+});}
+var copyBtn=document.querySelector('[data-vk-copy]');
+if(copyBtn){copyBtn.addEventListener('click',function(){
+  var f=document.getElementById('vk-pass');
+  if(!f||!f.value){toast('Nothing to copy yet — generate or type a passphrase first.','error');return;}
+  f.type='text';f.select();
+  var done=function(){toast('Passphrase copied. Save it somewhere other than this server.','success');
+    var warn=document.getElementById('vk-pass-warn'); if(warn){warn.hidden=false;}};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(f.value).then(done,function(){document.execCommand('copy');done();});}
+  else{document.execCommand('copy');done();}
+});}
 var setupBtn=document.querySelector('[data-vk-setup]');
 if(setupBtn){setupBtn.addEventListener('click',function(){
   var t=document.getElementById('vk-target'), p=document.getElementById('vk-pass');
