@@ -9,6 +9,7 @@
 
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
+| [ADR-0145](ADR-0145-vayukeep-continuous-encrypted-replication.md) | VayuKeep: continuous, encrypted, self-verifying replication | Proposed | Core | 2026-07-27 |
 | [ADR-0144](ADR-0144-vayumail-account-recovery.md) | VayuMail Account Recovery | Accepted | Core | 2026-07-26 |
 | [ADR-0143](ADR-0143-tor-space-anonymity-model.md) | Tor Space Anonymity Model & Threat Boundary | Accepted | Core | 2026-07-24 |
 | [ADR-0142](ADR-0142-vayutalk-onion-to-onion-delivery.md) | VayuTalk Onion-to-Onion Delivery (Tor-World Federation) | Accepted | Core | 2026-07-20 |
