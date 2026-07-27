@@ -44,16 +44,19 @@
 # Without those credentials it degrades to the same behaviour as the other
 # subdomain helpers: it prints the one record to add and exits cleanly.
 #
-# EVERY MAIL DOMAIN, NOT JUST THE PRIMARY
-# WKD discovery is per-domain: a key for someone@shop.example is only findable at
-# openpgpkey.shop.example. So this provisions the primary DOMAIN plus every
-# mail-enabled VayuDomains secondary (`vayupress domains hosts --mail`). Covering
-# only the primary would leave every secondary domain's users silently
-# undiscoverable, which is the same outcome as never running this at all.
+# EVERY HOSTED DOMAIN, NOT JUST THE PRIMARY
+# WKD discovery is per-domain, and each domain needs its OWN certificate: a key
+# for someone@shop.example is only findable at openpgpkey.shop.example, and a
+# browser or client reaching that name on the primary's certificate gets a name
+# mismatch. So this provisions the primary DOMAIN plus every sync-approved
+# VayuDomains secondary (`vayupress domains hosts`). Covering only the primary
+# leaves every other domain's users silently undiscoverable — the same outcome as
+# never running this at all — and a domain omitted from the work list cannot even
+# report a failure.
 #
 # It is IDEMPOTENT and NON-FATAL. It runs automatically from
 # deploy-vayupress.sh and update-vayupress.sh, and by hand any time:
-#     sudo bash scripts/setup-openpgpkey-subdomain.sh              # all mail domains
+#     sudo bash scripts/setup-openpgpkey-subdomain.sh              # every hosted domain
 #     sudo bash scripts/setup-openpgpkey-subdomain.sh shop.example # just this one
 #
 # Config: environment, then /etc/vayupress/env, then defaults — DOMAIN, EMAIL,
@@ -137,6 +140,33 @@ EMAIL="${EMAIL:-}"; [[ -z "$EMAIL" ]] && EMAIL="postmaster@${DOMAIN}"
 CF_ZONE_ID="${CF_ZONE_ID:-$(env_get CF_ZONE_ID)}"
 CF_API_TOKEN="${CF_API_TOKEN:-$(env_get CF_API_TOKEN)}"
 VP_BIN="${VP_BIN:-$(command -v vayupress || echo /usr/local/bin/vayupress)}"
+SERVICE_USER="${SERVICE_USER:-www-data}"
+DB_PATH="${DB_PATH:-$(env_get DB_PATH)}"; [[ -n "$DB_PATH" ]] && export DB_PATH
+
+# vp — run the VayuPress CLI as the SERVICE USER, never as root.
+#
+# The CLI opens the SQLite database read-write, sets WAL mode and runs
+# migrations. Invoked as root — which is how every one of these helpers runs,
+# because certbot needs it — SQLite creates vayupress.db-wal and vayupress.db-shm
+# owned by root:root inside a directory owned by www-data. From that moment the
+# unprivileged service cannot write to its own database. Nothing fails during
+# provisioning, which reports success; the site starts failing writes later, with
+# nothing linking the two.
+#
+# Every call here is a read, so dropping privileges costs nothing and removes the
+# whole class of fault rather than one instance of it.
+vp() {
+  [[ -x "$VP_BIN" ]] || return 1
+  if [[ $EUID -eq 0 ]] && id -u "$SERVICE_USER" >/dev/null 2>&1; then
+    if command -v runuser >/dev/null 2>&1; then
+      runuser -u "$SERVICE_USER" -- "$VP_BIN" "$@" 2>/dev/null
+      return
+    fi
+    su -s /bin/sh "$SERVICE_USER" -c "$(printf '%q ' "$VP_BIN" "$@")" 2>/dev/null
+    return
+  fi
+  "$VP_BIN" "$@" 2>/dev/null
+}
 
 if [[ -z "$DOMAIN" || "$DOMAIN" == "localhost" ]]; then
   warn "No usable DOMAIN — skipping WKD subdomain setup."; exit 0
@@ -158,6 +188,13 @@ resolves() { getent hosts "$1" >/dev/null 2>&1; }
 # Creates openpgpkey.<domain> as an UNPROXIED A record. Unproxied is not a
 # preference — a proxied record puts a bot-challenge in front of a fetch made by
 # GnuPG, which cannot answer one.
+#
+# IPv4 is tried first because it is what almost every install has, but an
+# IPv6-ONLY server is a real deployment and this used to be unable to serve one:
+# every probe was `curl -4`, and the record type was hardcoded to "A". On such a
+# host it reported "could not determine this server's public IPv4 address" and
+# stopped — a correct statement of a fact that did not matter, about a machine
+# that was perfectly reachable at an address it declined to look for.
 public_ip() {
   local ip u
   for u in https://api.ipify.org https://icanhazip.com https://ifconfig.me/ip; do
@@ -168,24 +205,40 @@ public_ip() {
   # serving, that is by definition the right address.
   ip="$(getent ahostsv4 "$DOMAIN" 2>/dev/null | awk 'NR==1{print $1}')"
   [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && { echo "$ip"; return 0; }
+
+  # No IPv4 anywhere: try v6 before giving up.
+  for u in https://api6.ipify.org https://icanhazip.com; do
+    ip="$(curl -6 -sS --max-time 8 "$u" 2>/dev/null | tr -d '[:space:]')"
+    [[ "$ip" == *:* ]] && { echo "$ip"; return 0; }
+  done
+  ip="$(getent ahostsv6 "$DOMAIN" 2>/dev/null | awk 'NR==1{print $1}')"
+  [[ "$ip" == *:* ]] && { echo "$ip"; return 0; }
   return 1
 }
 
+# record_type — A for IPv4, AAAA for IPv6. Sending an IPv6 literal as an A record
+# is rejected by the API, and the previous code could only ever send "A".
+record_type() { [[ "$1" == *:* ]] && echo AAAA || echo A; }
+
 cf_create_record() { # $1=ip  $2=fqdn
-  local ip="$1" host="$2"
+  local ip="$1" host="$2" rtype
+  rtype="$(record_type "$ip")"
   local api="https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records"
   local existing resp
-  existing="$(curl -sS --max-time 15 -X GET "${api}?type=A&name=${host}" \
+  # Check BOTH families: an existing AAAA is just as much "already pointed" as an
+  # A, and adding a second record of the other family would split traffic between
+  # two answers for a host that must resolve to this origin and nowhere else.
+  existing="$(curl -sS --max-time 15 -X GET "${api}?name=${host}" \
       -H "Authorization: Bearer ${CF_API_TOKEN}" -H "Content-Type: application/json" 2>/dev/null)"
   if echo "$existing" | grep -q '"count":[1-9]'; then
-    info "Cloudflare already has an A record for ${host} — leaving it alone."
+    info "Cloudflare already has a record for ${host} — leaving it alone."
     return 0
   fi
   resp="$(curl -sS --max-time 15 -X POST "$api" \
       -H "Authorization: Bearer ${CF_API_TOKEN}" -H "Content-Type: application/json" \
-      --data "{\"type\":\"A\",\"name\":\"${host}\",\"content\":\"${ip}\",\"ttl\":300,\"proxied\":false}" 2>/dev/null)"
+      --data "{\"type\":\"${rtype}\",\"name\":\"${host}\",\"content\":\"${ip}\",\"ttl\":300,\"proxied\":false}" 2>/dev/null)"
   if echo "$resp" | grep -q '"success":true'; then
-    ok "Created DNS record ${host} → ${ip} (proxy OFF)."
+    ok "Created DNS record ${host} ${rtype} → ${ip} (proxy OFF)."
     return 0
   fi
   warn "Cloudflare API did not create ${host}. Check that CF_API_TOKEN carries Zone:DNS:Edit for this zone."
@@ -267,7 +320,7 @@ provision_wkd() {
         for _ in $(seq 1 20); do resolves "$wkd" && break; sleep 3; done
       fi
     else
-      warn "Could not determine this server's public IPv4 address — skipping DNS creation for ${dom}."
+      warn "Could not determine this server's public address — skipping DNS creation for ${dom}."
     fi
   fi
 
@@ -330,10 +383,24 @@ provision_wkd() {
   return 0
 }
 
-# ── Which domains carry mail ──────────────────────────────────────────────────
-# The primary always; plus every mail-enabled VayuDomains secondary, because
-# covering only the primary leaves those users silently undiscoverable — the same
-# outcome as never running this at all. Explicit arguments override both.
+# ── Which domains get a Web Key Directory ─────────────────────────────────────
+# EVERY hosted domain: the primary, plus every sync-approved VayuDomains
+# secondary. Explicit arguments override both.
+#
+# This used to filter on `--mail`, which was too narrow twice over and produced a
+# failure with no visible cause. A domain served from this same install would get
+# no openpgpkey host and no certificate — so a browser hitting it saw a name
+# mismatch and GnuPG saw nothing at all — while the run reported success, because
+# a domain the work list never contained cannot fail.
+#
+# The mail flag was the wrong gate: VayuPGP keys belong to users, and a user's
+# address can be at any hosted domain. Pointing the record is the operator's real
+# statement of intent, and `provision_wkd` already treats it as such — an
+# unpointed host is skipped cleanly, so widening the list costs nothing and
+# closes the hole. The sync gate (P5) IS kept, because it exists precisely so an
+# unattended run cannot provision a domain behind the operator's back — but a
+# held domain is now NAMED rather than passed over in silence, which is what made
+# this invisible in the first place.
 DOMAINS=()
 if [[ $# -gt 0 ]]; then
   DOMAINS=("$@")
@@ -342,7 +409,15 @@ else
   if [[ -x "$VP_BIN" ]]; then
     while IFS= read -r h; do
       [[ -n "$h" && "$h" != "$DOMAIN" ]] && DOMAINS+=("$h")
-    done < <("$VP_BIN" domains hosts --mail 2>/dev/null)
+    done < <(vp domains hosts)
+
+    # Say what was deliberately left out, and how to include it. Skipping in
+    # silence is indistinguishable from having done the work.
+    HELD="$(vp domains hosts --hold | tr '\n' ' ')"
+    if [[ -n "${HELD// /}" ]]; then
+      warn "On manual hold, so NO key discovery is provisioned for: ${HELD}"
+      warn "Approve in VayuOS → Domains (\"Sync now\"), or: vayupress domains sync <host>"
+    fi
   fi
 fi
 

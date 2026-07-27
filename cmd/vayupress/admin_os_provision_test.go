@@ -121,7 +121,7 @@ func TestProvisionRunIsCSRFProtected(t *testing.T) {
 // exact failure mode the page was built to end.
 func TestDNSRecordsCoverEveryProvisionedSubdomain(t *testing.T) {
 	got := map[string]bool{}
-	for _, r := range subdomainRecords("example.com") {
+	for _, r := range subdomainRecords("example.com", true, true) {
 		got[r.Host] = true
 	}
 	for _, want := range []string{
@@ -140,7 +140,7 @@ func TestDNSRecordsCoverEveryProvisionedSubdomain(t *testing.T) {
 // a bot challenge breaks it. Marking one of them "either" would send an operator
 // to a silent failure with the page's blessing.
 func TestProxyOffMarkedOnEveryMachineToMachineHost(t *testing.T) {
-	for _, r := range subdomainRecords("example.com") {
+	for _, r := range subdomainRecords("example.com", true, true) {
 		machineToMachine := strings.HasPrefix(r.Host, "mail.") ||
 			strings.HasPrefix(r.Host, "openpgpkey.") ||
 			strings.HasPrefix(r.Host, "talk.") ||
@@ -219,8 +219,88 @@ func TestUnverifiableDoesNotReportAFault(t *testing.T) {
 	}
 }
 
-// classifyForTest mirrors the classification in resolveRecords. Kept in the test
-// so the table above documents the intent; resolveRecords is exercised end to
+// TestSecondaryMailDomainGetsItsOwnKeyDiscoveryRecord — WKD is per-domain: a key
+// for someone@shop.example is only findable at openpgpkey.shop.example, on that
+// host's own certificate. A page that listed the primary's records alone told an
+// operator hosting several mail domains that everything was pointed while every
+// secondary domain's key discovery was silently dead.
+func TestSecondaryMailDomainGetsItsOwnKeyDiscoveryRecord(t *testing.T) {
+	got := map[string]bool{}
+	for _, r := range subdomainRecords("shop.example", false, true) {
+		got[r.Host] = true
+	}
+	for _, want := range []string{
+		"shop.example", "www.shop.example",
+		"mail.shop.example", "openpgpkey.shop.example",
+	} {
+		if !got[want] {
+			t.Errorf("a hosted mail domain does not list %s", want)
+		}
+	}
+}
+
+// TestSecondaryDomainsDoNotDemandInstallWideHosts — talk/mcp/api exist once per
+// install, on the primary. Listing them under every secondary would invent work
+// for the operator: they would point records at hosts with nothing behind them,
+// and the page would then report the install as incomplete forever.
+func TestSecondaryDomainsDoNotDemandInstallWideHosts(t *testing.T) {
+	for _, mail := range []bool{true, false} {
+		for _, r := range subdomainRecords("shop.example", false, mail) {
+			for _, installWide := range []string{"talk.", "mcp.", "api."} {
+				if strings.HasPrefix(r.Host, installWide) {
+					t.Errorf("secondary domain (mail=%v) demands %s, which is install-wide", mail, r.Host)
+				}
+			}
+		}
+	}
+}
+
+// TestNonMailSecondaryIsNotAskedForMailRecords — pointing mail./openpgpkey. at a
+// domain that serves no mailboxes buys nothing, and the page would report the
+// absence as a gap that can never legitimately close.
+func TestNonMailSecondaryIsNotAskedForMailRecords(t *testing.T) {
+	for _, r := range subdomainRecords("brochure.example", false, false) {
+		if strings.HasPrefix(r.Host, "mail.") || strings.HasPrefix(r.Host, "openpgpkey.") {
+			t.Errorf("a domain with mail disabled is asked for %s", r.Host)
+		}
+	}
+}
+
+// TestHeldDomainNeedsAttention — a domain on manual hold is skipped by every
+// provisioning helper, which is correct, and was previously skipped in SILENCE,
+// which is not: an operator saw no certificate and nothing explaining why. The
+// section must open itself rather than hide the reason behind a click.
+func TestHeldDomainNeedsAttention(t *testing.T) {
+	held := dnsDomainView{Host: "shop.example", SyncApproved: false}
+	if !held.NeedsAttention() {
+		t.Error("a domain on manual hold is folded away, so nothing says why it was never provisioned")
+	}
+	fine := dnsDomainView{Host: "shop.example", SyncApproved: true, Checks: []dnsCheck{
+		{dnsRecord: dnsRecord{Host: "shop.example", Required: true}, State: dnsPointedHere},
+	}}
+	if fine.NeedsAttention() {
+		t.Error("a fully pointed, approved domain is demanding attention it does not need")
+	}
+}
+
+// TestUnfinishedLookupIsNotReportedAsNotPointed — the page now issues many times
+// more lookups than it did for a single domain, so some can hit the deadline. A
+// lookup that did not finish is not evidence the record is missing, and counting
+// it as one would put a false number on the page.
+func TestUnfinishedLookupIsNotReportedAsNotPointed(t *testing.T) {
+	if dnsUnknown == dnsNotPointed {
+		t.Fatal("an unfinished lookup is indistinguishable from a missing record")
+	}
+	v := dnsDomainView{SyncApproved: true, Checks: []dnsCheck{
+		{dnsRecord: dnsRecord{Host: "mail.example.com", Required: true}, State: dnsUnknown},
+	}}
+	if v.NeedsAttention() {
+		t.Error("an unfinished lookup raised an alarm about a record it knows nothing about")
+	}
+}
+
+// classifyForTest mirrors the classification in resolveAll. Kept in the test
+// so the table above documents the intent; resolveAll is exercised end to
 // end by the page itself.
 func classifyForTest(addrs []string, local, apexAddrs map[string]bool, apexProxied, proxyOff bool) dnsState {
 	if len(addrs) == 0 {

@@ -99,14 +99,40 @@ for arg in "$@"; do
   esac
 done
 
+# EXISTING_DOMAIN — the domain a previous run configured, if any.
+#
+# This exists because of a failure that cost an afternoon. Re-running the
+# installer on a live server and pressing Enter at the domain prompt took the
+# "leave blank for localhost" default, which rewrote /etc/vayupress/env with
+# DOMAIN=localhost AND wrote a vhost whose ssl_certificate pointed at
+# /etc/letsencrypt/live/localhost/ — a path Let's Encrypt will never create. That
+# vhost was then symlinked into sites-enabled, so `nginx -t` failed permanently.
+# The running nginx was unaffected (it had loaded before the file appeared), so
+# the site kept serving and nothing looked wrong, while every subdomain helper
+# from then on aborted on the config test and blamed its own change.
+#
+# A blank line at a prompt means "no change", never "destroy what is configured".
+_existing_domain() {
+  [[ -r /etc/vayupress/env ]] || return 0
+  sed -n -E 's/^[[:space:]]*(export[[:space:]]+)?DOMAIN=[[:space:]]*//p' /etc/vayupress/env |
+    head -n1 | sed -E 's/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/; s/[[:space:]]+$//'
+}
+EXISTING_DOMAIN="$(_existing_domain)"
+[[ "$EXISTING_DOMAIN" == "localhost" ]] && EXISTING_DOMAIN=""
+
 # One-command friendliness: if the domain/email are still the placeholder values
 # and we have an interactive terminal, ask for them. Non-interactive callers must
 # pass DOMAIN=/EMAIL= in the environment (documented above).
 if [[ "$DRY_RUN" != true && -t 0 ]]; then
   if [[ "$DOMAIN" == "vayupress.com" ]]; then
-    read -rp "Your domain (e.g. example.com), or leave blank for localhost: " _d
-    [[ -n "$_d" ]] && DOMAIN="$_d"
-    [[ -z "$_d" ]] && DOMAIN="localhost"
+    if [[ -n "$EXISTING_DOMAIN" ]]; then
+      read -rp "Your domain [${EXISTING_DOMAIN}]: " _d
+      DOMAIN="${_d:-$EXISTING_DOMAIN}"
+    else
+      read -rp "Your domain (e.g. example.com), or leave blank for localhost: " _d
+      [[ -n "$_d" ]] && DOMAIN="$_d"
+      [[ -z "$_d" ]] && DOMAIN="localhost"
+    fi
   fi
   if [[ "$EMAIL" == "admin@vayupress.com" && "$DOMAIN" != "localhost" ]]; then
     read -rp "Contact email for Let's Encrypt (e.g. you@${DOMAIN}): " _e
@@ -121,6 +147,17 @@ if [[ "$DRY_RUN" != true && "$DOMAIN" == "vayupress.com" && ! -t 0 ]]; then
   curl -sSL <url> | sudo DOMAIN=example.com EMAIL=you@example.com bash
 Or download it and run interactively so it can prompt:
   curl -sSLo install.sh <url> && sudo bash install.sh"
+fi
+# Never downgrade a configured install to localhost. Reached when a
+# non-interactive re-run supplies no DOMAIN, or when one is passed explicitly.
+# Both write a certificate path that cannot exist and leave nginx unable to
+# validate its own configuration until someone finds the file by hand.
+if [[ "$DRY_RUN" != true && "$DOMAIN" == "localhost" && -n "$EXISTING_DOMAIN" ]]; then
+  die "This server is already configured for ${EXISTING_DOMAIN}, and installing for
+'localhost' would overwrite that — including an nginx vhost referencing
+/etc/letsencrypt/live/localhost/, a certificate that can never be issued.
+Re-run with the domain you want:
+  sudo DOMAIN=${EXISTING_DOMAIN} bash $0 --upgrade"
 fi
 # Recompute values derived from DOMAIN after any prompt/env override.
 [[ "$EMAIL" == "admin@vayupress.com" && "$DOMAIN" != "localhost" ]] && EMAIL="admin@${DOMAIN}"
@@ -822,12 +859,74 @@ server {
 }
 NGINX
 
-run ln -sf /etc/nginx/sites-available/vayupress /etc/nginx/sites-enabled/vayupress
+# Enable the vhost only if every certificate it names actually exists.
+#
+# nginx refuses to load a configuration whose ssl_certificate file is missing,
+# and it refuses ALL of it — one unresolvable path anywhere under sites-enabled
+# makes `nginx -t` fail for every other vhost too. The process already running is
+# unaffected, so the site keeps serving and nothing appears wrong, while every
+# later step that ends in a config test aborts and blames its own change. That is
+# how a single bad symlink turns into a hunt through five innocent scripts.
+#
+# So: check first. A vhost that cannot load is left in sites-available, where it
+# is preserved and harmless, and the certificate step below writes it into
+# sites-enabled once certbot has issued the certificate it names.
+vhost_certs_present() { # $1=vhost file — do all its ssl_certificate paths exist?
+  local f="$1" p missing=0
+  [[ -f "$f" ]] || return 1
+  while read -r p; do
+    [[ -z "$p" ]] && continue
+    [[ -f "$p" ]] || { warn "vhost references a certificate that does not exist: ${p}"; missing=1; }
+  done < <(grep -hoE '^[[:space:]]*ssl_certificate(_key)?[[:space:]]+[^;]+;' "$f" |
+             sed -E 's/^[[:space:]]*ssl_certificate(_key)?[[:space:]]+//; s/;[[:space:]]*$//')
+  [[ $missing -eq 0 ]]
+}
+
+# write_bootstrap_vhost — HTTP only, for the window before a certificate exists.
+#
+# Something must be enabled during that window or the ACME challenge cannot be
+# served and certbot can never issue the certificate the real vhost needs. This
+# serves the challenge from the webroot and proxies the rest to the origin, so
+# the site is reachable over HTTP while waiting rather than dark.
+write_bootstrap_vhost() {
+  cat > /etc/nginx/sites-available/vayupress-bootstrap <<NGINX
+server {
+    listen 80; listen [::]:80;
+    server_name ${DOMAIN} www.${DOMAIN} blog.${DOMAIN};
+    location ^~ /.well-known/acme-challenge/ { root ${CACHE_DIR}; default_type text/plain; try_files \$uri =404; }
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_http_version 1.1;
+    }
+}
+NGINX
+}
+
 run rm -f /etc/nginx/sites-enabled/default
-run nginx -t
-run systemctl enable nginx
-run systemctl reload nginx
-ok "Nginx configured."
+if [[ "$DRY_RUN" == true ]] || vhost_certs_present /etc/nginx/sites-available/vayupress; then
+  run rm -f /etc/nginx/sites-enabled/vayupress-bootstrap
+  run ln -sf /etc/nginx/sites-available/vayupress /etc/nginx/sites-enabled/vayupress
+  run nginx -t
+  run systemctl enable nginx
+  run systemctl reload nginx
+  ok "Nginx configured."
+else
+  # Expected on a first install. The full vhost stays in sites-available — written
+  # and preserved, simply not loaded — and is enabled by the TLS step below once
+  # the certificate it names exists.
+  run rm -f /etc/nginx/sites-enabled/vayupress
+  write_bootstrap_vhost
+  run ln -sf /etc/nginx/sites-available/vayupress-bootstrap /etc/nginx/sites-enabled/vayupress-bootstrap
+  run nginx -t
+  run systemctl enable nginx
+  run systemctl reload nginx
+  info "No certificate for ${DOMAIN} yet — serving over HTTP so the ACME challenge can be answered."
+  info "The HTTPS vhost is enabled automatically as soon as certbot issues the certificate."
+fi
 
 # =============================================================================
 # ── TLS (CERTBOT) ─────────────────────────────────────────────────────────────
@@ -874,6 +973,27 @@ if [[ -n "$DOMAIN" && "$DOMAIN" != "localhost" ]]; then
   Then: sudo nginx -t && sudo systemctl reload nginx"
   else
     ok "TLS certificate already exists for ${DOMAIN}."
+  fi
+
+  # Promote: the certificate now exists, so the HTTPS vhost can load. This is the
+  # other half of the guard above — the full config was written but held back
+  # rather than enabled against a path that did not exist, and this is where it
+  # goes live. If nginx still rejects it, the bootstrap vhost stays in place and
+  # the site keeps serving over HTTP instead of the whole config becoming
+  # unloadable.
+  if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" && ! -L /etc/nginx/sites-enabled/vayupress ]]; then
+    run ln -sf /etc/nginx/sites-available/vayupress /etc/nginx/sites-enabled/vayupress
+    run rm -f /etc/nginx/sites-enabled/vayupress-bootstrap
+    if nginx -t >/dev/null 2>&1; then
+      run systemctl reload nginx
+      ok "HTTPS enabled for ${DOMAIN}."
+    else
+      warn "nginx rejected the HTTPS vhost; staying on HTTP. It said:"
+      nginx -t 2>&1 | sed 's/^/      /' >&2
+      run rm -f /etc/nginx/sites-enabled/vayupress
+      run ln -sf /etc/nginx/sites-available/vayupress-bootstrap /etc/nginx/sites-enabled/vayupress-bootstrap
+      run systemctl reload nginx
+    fi
   fi
 
   # Make the certificate readable by the non-root mail service and keep it fresh:

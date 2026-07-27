@@ -6,6 +6,82 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.59] — 2026-07-27
+
+### Fixed
+- **Key discovery was provisioned for the primary domain only, so every other hosted domain
+  silently had none.** VayuPress serves many domains from one binary, but the WKD helper built
+  its work list from `domains hosts --mail` — sync-approved *and* mail-flagged secondaries. A
+  domain that missed either filter was never in the list, so it got no `openpgpkey.` host and no
+  certificate: a browser reaching that name saw a certificate-name mismatch, GnuPG saw nothing at
+  all, and the provisioning run reported success, because a domain the work list never contained
+  cannot fail.
+
+  The mail flag was the wrong gate — VayuPGP keys belong to users, and a user's address can be at
+  any hosted domain. Pointing the record is the operator's real statement of intent, and an
+  unpointed host was already skipped cleanly, so widening the list to every hosted domain costs
+  nothing and closes the hole. The sync gate is kept, because it exists so an unattended run
+  cannot provision a domain behind the operator's back — but a held domain is now **named** in the
+  output instead of passed over in silence, which is what made this invisible.
+
+- **The root provisioning helpers ran the CLI as root, which could take the database away from the
+  service.** `vayupress domains …` opens SQLite read-write, sets WAL mode and runs migrations. Run
+  as root — which is how these helpers always run, because certbot requires it — SQLite creates
+  `vayupress.db-wal` and `vayupress.db-shm` owned by `root:root` inside a directory owned by the
+  service user. From that moment the unprivileged service cannot write to its own database.
+  Nothing failed during provisioning, which reported success; writes started failing later, with
+  nothing linking the two.
+
+  Every such call is a read, so the helpers now drop to the service user for all of them. The
+  daily provisioning sweep also **repairs** ownership left behind by an older version, so an
+  affected install heals itself rather than waiting to be diagnosed.
+
+- **The installer could overwrite a working domain with `localhost`, and enable a vhost whose
+  certificate cannot exist.** These are the two faults behind the provisioning outage fixed in
+  3.15.56–3.15.58, addressed at the source rather than at the symptom:
+  - Pressing Enter at the domain prompt on a **re-run** took the "leave blank for localhost"
+    default and rewrote a configured install. The prompt now offers the existing domain as the
+    default, and a blank line means "no change". A non-interactive run that would resolve to
+    `localhost` on a configured server is refused outright, naming the domain it would have
+    destroyed.
+  - The site vhost was symlinked into `sites-enabled` before its certificate existed. One
+    unresolvable `ssl_certificate` path makes `nginx -t` fail for *every* vhost, permanently. The
+    installer now verifies each certificate path first; until they exist it enables an HTTP-only
+    bootstrap vhost that answers the ACME challenge and serves the site, then promotes the HTTPS
+    vhost once certbot has issued the certificate — and falls back to the bootstrap vhost, rather
+    than a broken config, if nginx still objects.
+
+- **Cloudflare DNS automation could not serve an IPv6-only host.** Every address probe was
+  `curl -4` and the record type was hardcoded to `A`, so on an IPv6-only server it reported that
+  it could not determine the public IPv4 address and stopped — a true statement about a machine
+  that was perfectly reachable at an address it never looked for. It now falls back to IPv6 and
+  creates an `AAAA` record, and checks both families before deciding a name is already pointed.
+
+### Changed
+- **Domains & DNS covers every hosted domain.** The page showed the primary domain's records
+  alone, which was the same silent-hole failure one level up: a secondary domain could be missing
+  its entire set of records and the page an operator opens to check DNS showed nothing but green.
+  Each hosted domain now gets its own section — expanded when something needs attention, folded
+  away when it does not — listing exactly the records that domain needs. `talk.`, `mcp.` and
+  `api.` stay on the primary, since they are install-wide and asking for them per domain would
+  invent work that can never legitimately complete.
+
+  A domain on manual hold is called out explicitly, with the reason and where to approve it. That
+  case previously produced a missing certificate and no explanation anywhere.
+
+- **An unfinished DNS lookup no longer reads as "not pointed".** The page now issues many times
+  more lookups than it did for one domain, so some can hit the deadline. A lookup that did not
+  finish is reported as *not checked* and counted in neither column — asserting a fault we cannot
+  substantiate is how a status page loses its credibility, and this one already made that mistake
+  once.
+
+### Upgrade Notes
+- If you host more than one domain and expected key discovery on all of them, check
+  **VayuOS → Operations → Domains & DNS** after updating: any domain on manual hold is now shown
+  as such. Approve it under **VayuOS → Domains**, then use **Provision subdomains**.
+
+---
+
 ## [3.15.58] — 2026-07-27
 
 ### Fixed

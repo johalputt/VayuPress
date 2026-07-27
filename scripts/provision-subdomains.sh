@@ -94,6 +94,30 @@ JSON
 fi
 log "provisioning for domain: ${DOMAIN}"
 
+# Repair database ownership before doing anything else.
+#
+# Earlier versions of the setup helpers ran `vayupress domains …` as root. That
+# command opens SQLite read-write, so it created vayupress.db-wal and
+# vayupress.db-shm owned by root:root in a directory owned by the service user —
+# and the unprivileged service then could not write to its own database. The
+# helpers no longer do this (they drop to the service user for every query), but
+# an install that ran an older version still carries the root-owned files, and
+# nothing else will ever put them right.
+#
+# This runs on the daily timer, so an affected install heals itself without
+# anyone having to diagnose why writes started failing.
+SERVICE_USER="${SERVICE_USER:-www-data}"
+DB_PATH="${DB_PATH:-/var/lib/vayupress/vayupress.db}"
+if id -u "$SERVICE_USER" >/dev/null 2>&1; then
+  for f in "$DB_PATH" "${DB_PATH}-wal" "${DB_PATH}-shm"; do
+    [[ -e "$f" ]] || continue
+    if [[ "$(stat -c '%U' "$f" 2>/dev/null)" == "root" ]]; then
+      log "repairing root-owned ${f} (left by an older provisioning run)"
+      chown "${SERVICE_USER}:${SERVICE_USER}" "$f" 2>/dev/null || true
+    fi
+  done
+fi
+
 # Each helper is optional: an older checkout may not carry all of them, and a
 # missing one must not fail the run.
 ran=0

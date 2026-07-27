@@ -64,6 +64,37 @@ keep full CDN protection for human traffic — only these direct hosts bypass it
 and each is deliberately narrow (the `api.` and `openpgpkey.` vhosts serve one
 path prefix and return 404 for everything else).
 
+### Hosting more than one domain
+
+VayuPress serves many domains from one binary, and **every hosted domain needs
+its own records** — the table above is per domain, not per install. In
+particular, a certificate is issued **per name**: `openpgpkey.second.example`
+cannot be served on `example.com`'s certificate, and a client that reaches it
+anyway gets a name mismatch rather than a key.
+
+What each additional domain needs:
+
+| Type | Name | CDN proxy | Needed when |
+|---|---|---|---|
+| A | `second.example` | on or off | Always |
+| A | `www.second.example` | on or off | Always |
+| A | `mail.second.example` | **OFF** | That domain has mailboxes |
+| A | `openpgpkey.second.example` | **OFF** | That domain has mailboxes |
+
+`talk.`, `mcp.` and `api.` are **install-wide** and live on your primary domain
+only — a second copy would have nothing behind it.
+
+Two things gate provisioning for an additional domain, and both are deliberate:
+
+1. **Register it** in **VayuOS → Domains**.
+2. **Approve it for sync** there ("Sync now"). A newly registered domain sits on
+   manual hold so that an unattended update can never provision a domain behind
+   your back. Nothing is issued for a held domain — no certificate, no key
+   discovery.
+
+**VayuOS → Operations → Domains & DNS** lists every hosted domain with its
+records and live status, and says plainly when a domain is on hold.
+
 ### Point the records before you run the installer
 
 The installer provisions a subdomain's certificate and vhost **only once its DNS

@@ -94,6 +94,30 @@ DOMAIN="${DOMAIN:-$(env_get DOMAIN)}"
 CACHE_DIR="${CACHE_DIR:-$(env_get CACHE_DIR)}"; CACHE_DIR="${CACHE_DIR:-/var/cache/vayupress}"
 EMAIL="${EMAIL:-}"; [[ -z "$EMAIL" ]] && EMAIL="postmaster@${DOMAIN}"
 VP_BIN="${VP_BIN:-$(command -v vayupress || echo /usr/local/bin/vayupress)}"
+SERVICE_USER="${SERVICE_USER:-www-data}"
+DB_PATH="${DB_PATH:-$(env_get DB_PATH)}"; [[ -n "$DB_PATH" ]] && export DB_PATH
+
+# vp — run the VayuPress CLI as the SERVICE USER, never as root.
+#
+# The CLI opens the SQLite database read-write, sets WAL mode and runs
+# migrations. Invoked as root -- which is how this script always runs, because
+# certbot needs it -- SQLite creates vayupress.db-wal and vayupress.db-shm owned
+# by root:root inside a directory owned by www-data. From that moment the
+# unprivileged service cannot write to its own database. Nothing fails here, so
+# provisioning reports success; the site starts failing writes later, with
+# nothing linking the two.
+vp() {
+  [[ -x "$VP_BIN" ]] || return 1
+  if [[ $EUID -eq 0 ]] && id -u "$SERVICE_USER" >/dev/null 2>&1; then
+    if command -v runuser >/dev/null 2>&1; then
+      runuser -u "$SERVICE_USER" -- "$VP_BIN" "$@" 2>/dev/null
+      return
+    fi
+    su -s /bin/sh "$SERVICE_USER" -c "$(printf '%q ' "$VP_BIN" "$@")" 2>/dev/null
+    return
+  fi
+  "$VP_BIN" "$@" 2>/dev/null
+}
 
 if [[ $EUID -ne 0 ]]; then
   warn "Not root — skipping VayuDomains TLS/nginx setup (run with sudo to enable)."; exit 0
@@ -113,11 +137,10 @@ cert_covers() { # $1=cert-name host $2=san — is $2 a SAN on that lineage's cer
   openssl x509 -in "$f" -noout -text 2>/dev/null | grep -oE 'DNS:[^,]+' | sed 's/DNS://' | grep -qx "$2"
 }
 set_tls() { # $1=host $2=state — best-effort record back into the registry
-  if [[ -x "$VP_BIN" ]]; then "$VP_BIN" domains set-tls "$1" "$2" >/dev/null 2>&1 || true; fi
+  vp domains set-tls "$1" "$2" >/dev/null 2>&1 || true
 }
 mail_enabled() { # $1=host — is it a mail_enabled secondary?
-  [[ -x "$VP_BIN" ]] || return 1
-  "$VP_BIN" domains hosts --mail 2>/dev/null | grep -qx "$1"
+  vp domains hosts --mail | grep -qx "$1"
 }
 
 # ── Resolve the host list: explicit args, else the registry's APPROVED ────────
@@ -126,21 +149,19 @@ mail_enabled() { # $1=host — is it a mail_enabled secondary?
 # never provision it behind their back. Explicit args are operator intent —
 # record the approval so future runs keep maintaining those domains too.
 HOSTS=("$@")
-if [[ ${#HOSTS[@]} -gt 0 && -x "$VP_BIN" ]]; then
+if [[ ${#HOSTS[@]} -gt 0 ]]; then
   for H in "${HOSTS[@]}"; do
-    "$VP_BIN" domains sync "$H" >/dev/null 2>&1 || true
+    vp domains sync "$H" >/dev/null 2>&1 || true
   done
 fi
 if [[ ${#HOSTS[@]} -eq 0 ]]; then
-  if [[ -x "$VP_BIN" ]]; then
-    mapfile -t HOSTS < <("$VP_BIN" domains hosts 2>/dev/null)
-  fi
+  mapfile -t HOSTS < <(vp domains hosts)
 fi
 
 # Surface (never act on) domains parked on manual hold, so an operator reading
 # the deploy/update log knows exactly why a registered domain wasn't touched.
 if [[ -x "$VP_BIN" ]]; then
-  HELD="$("$VP_BIN" domains hosts --hold 2>/dev/null | tr '\n' ' ')"
+  HELD="$(vp domains hosts --hold | tr '\n' ' ')"
   if [[ -n "${HELD// /}" ]]; then
     info "On manual hold (not provisioned): ${HELD}— approve in VayuOS → Domains or run: vayupress domains sync <host>"
   fi
