@@ -6,6 +6,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.73] — 2026-07-27
+
+### Fixed
+- **Tags, inline code and the footer badge failed WCAG AA in light mode.** All three draw their
+  text on a **translucent tint**, not on the page background — and a tint lightens a light page, so
+  it eats the contrast the same colour has against the page itself. Measured the way a browser
+  composites them:
+  - footer badge, green on a green tint: **2.01:1**
+  - tag chip and inline code, on an indigo tint: **4.27:1**
+
+  Each of these measured fine against the raw background and failed against what a reader actually
+  sees. Light-mode `--green` is now `#166534` (6.30:1) and the tinted chips use the darker
+  `--accent` rather than `--accent2` (5.32:1 light, 5.26:1 dark). Dark mode already passed
+  throughout and is unchanged.
+
+- **Tag chips were below the minimum tap target.** `padding:3px 10px` on 12px text renders around
+  20px tall, and tags appear as a dense row, so every chip in the row failed together. They now
+  carry `min-height:24px`, roomier padding and spacing between neighbours.
+
+### Added
+- **Contrast tests that measure composited colours, reading the shipped stylesheet.** Nothing in
+  the codebase had ever measured a colour over a translucent layer, which is exactly why three
+  tinted components could fail while every check passed.
+
+  The first version of this test hardcoded the hex values and kept passing when the real CSS was
+  reverted to a failing colour — it verified the arithmetic, not the product. It now parses the
+  theme blocks out of the stylesheet and models the cascade (`:root` as the dark base, the light
+  block overriding only what differs), and separately pins that the tinted rules actually *use*
+  the variable being measured. A check that cannot fail when the thing it guards breaks is not a
+  check.
+
+---
+
 ## [3.15.72] — 2026-07-27
 
 ### Changed
