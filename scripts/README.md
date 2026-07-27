@@ -25,15 +25,15 @@ sudo ./scripts/deploy-vayupress.sh --upgrade
 
 **What it installs** (in order):
 1. System dependencies (nginx, sqlite3, certbot, fail2ban, ufw, Go 1.25)
-3. Isso (self-hosted comment server)
-4. Self-hosted fonts — Inter + IBM Plex Mono, zero telemetry (ADR-0002)
-5. VayuPress Go application (`main.go`, ~2,500 lines)
-6. Systemd services (vayupress)
-7. Nginx with TLS (Let's Encrypt via Certbot)
-8. UFW firewall (ports 22, 80, 443)
-9. Logrotate configuration
-10. Cron jobs: nightly backup, orphan cleanup, restore validation
-11. Smoke tests + admin credential printout
+2. Isso (self-hosted comment server)
+3. Self-hosted fonts — Inter + IBM Plex Mono, zero telemetry (ADR-0002)
+4. VayuPress Go application (`main.go`, ~2,500 lines)
+5. Systemd services (vayupress)
+6. Nginx with TLS (Let's Encrypt via Certbot)
+7. UFW firewall (ports 22, 80, 443)
+8. Logrotate configuration
+9. Cron jobs: nightly backup, orphan cleanup, restore validation
+10. Smoke tests + admin credential printout
 
 **Governance compliance** (v1.0.0-p13):
 

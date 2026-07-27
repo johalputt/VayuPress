@@ -394,7 +394,6 @@ Based on benchmarks for SQLite WAL + Go HTTP on a single VPS:
 
 ---
 
-
 ## Troubleshooting
 
 **"UNIQUE constraint failed: articles.slug"** — Post with that slug already exists. `ghost2vayu` uses `INSERT OR IGNORE` so this is harmless; the existing post is kept.
