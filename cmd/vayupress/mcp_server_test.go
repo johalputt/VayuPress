@@ -216,3 +216,78 @@ func TestMCPToolsListReflectsScope(t *testing.T) {
 		t.Error("site_info is ungated and should always be visible")
 	}
 }
+
+// TestSiteSettingsProjectionKeepsTheResponseUsable is the regression test for a
+// tool that was correct about secrecy and useless in practice.
+//
+// theme.og_image stores the share image as raw base64 — routinely over a
+// megabyte. The projection copied it verbatim, so a single site_settings
+// response ran to ~1.9 MB, of which 99.98% was that one value, and clients could
+// not read the result at all. Nothing leaked; the tool simply could not do the
+// job its own description claims ("use it to understand the current site").
+//
+// The renderer had already solved this — OGImagePath maps the stored blob to its
+// public path so the page links the image instead of inlining it. Size is part of
+// the contract here, not only sensitivity.
+func TestSiteSettingsProjectionKeepsTheResponseUsable(t *testing.T) {
+	big := strings.Repeat("A", 1_500_000) // a realistic share image, base64
+	all := map[string]string{
+		settings.KeySiteName:     "Johal",
+		settings.KeyThemeOGImage: big,
+		"tor.bridges":            "obfs4 10.0.0.1:443 SECRET",
+		"shield.block_threshold": "80",
+	}
+
+	out := projectPublicSettings(all)
+
+	if got := out[settings.KeyThemeOGImage]; strings.Contains(got, "AAAA") {
+		t.Errorf("the raw image blob is still in the response (%d bytes) — no client can read this", len(got))
+	}
+	if got := out[settings.KeyThemeOGImage]; got != "/theme-assets/og" {
+		t.Errorf("og_image projected to %q, want the public path", got)
+	}
+	// An absent image must project to empty, not to a path that serves nothing.
+	if got := projectPublicSettings(map[string]string{settings.KeyThemeOGImage: ""}); got[settings.KeyThemeOGImage] != "" {
+		t.Errorf("no image set, but the projection advertised %q", got[settings.KeyThemeOGImage])
+	}
+	// The whole response must stay small enough to actually return.
+	total := 0
+	for k, v := range out {
+		total += len(k) + len(v)
+	}
+	if total > 100_000 {
+		t.Errorf("projected settings are %d bytes; the tool is unusable at this size", total)
+	}
+	// The original secrecy guarantee must still hold.
+	for _, k := range []string{"tor.bridges", "shield.block_threshold"} {
+		if _, leaked := out[k]; leaked {
+			t.Errorf("operational key %q reached a connector", k)
+		}
+	}
+}
+
+// TestOGImageIsNotWritableThroughTheTool — the read side returns a PATH, so a
+// client that reads the settings map, edits one field and writes it back (the
+// most natural way to use the pair) would otherwise store "/theme-assets/og" as
+// the image data and destroy it.
+func TestOGImageIsNotWritableThroughTheTool(t *testing.T) {
+	apply, ignored := partitionAllowedSettings(map[string]string{
+		settings.KeySiteName:     "Johal",
+		settings.KeyThemeOGImage: "/theme-assets/og",
+	})
+	if _, ok := apply[settings.KeyThemeOGImage]; ok {
+		t.Error("og_image is writable: a read-modify-write round trip would overwrite the image with its own URL")
+	}
+	if apply[settings.KeySiteName] != "Johal" {
+		t.Error("blocking og_image also blocked an ordinary writable key")
+	}
+	found := false
+	for _, k := range ignored {
+		if k == settings.KeyThemeOGImage {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("the refusal must be reported to the caller, not silent")
+	}
+}

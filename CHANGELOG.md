@@ -6,6 +6,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.65] — 2026-07-27
+
+### Fixed
+- **`site_settings` returned a megabyte-plus response no client could read.** `theme.og_image`
+  stores the share image as raw base64, and the tool's projection copied it verbatim. On a real
+  install that made a single response ~1.9 MB, of which **99.98% was that one value** — past the
+  limit every MCP client applies, so the call simply failed. Nothing leaked: the allowlist that
+  drops `tor.bridges` and the `shield.*` thresholds worked exactly as designed. The tool was
+  correct about secrecy and useless in practice, which is its own kind of broken — its description
+  says "use it to understand the current site before suggesting changes", and it could not.
+
+  The renderer had already solved this: `OGImagePath` maps the stored blob to its public path so a
+  page links the image instead of inlining it. The same reasoning now applies to the tool, which
+  returns `/theme-assets/og` (or empty when none is set). **Size is part of a tool's contract, not
+  only sensitivity.**
+
+- **`theme.og_image` is no longer writable through `update_site_settings`.** Now that the read
+  side returns a path, a client that reads the settings map, edits one field and writes the whole
+  map back — the most natural way to use the two tools together — would have stored
+  `/theme-assets/og` as the image data and destroyed the image. The key is refused and reported in
+  the ignored list rather than dropped silently. Uploading a share image belongs on the
+  CSRF-protected theme-asset endpoint, not in a text field of a tool call.
+
+---
+
 ## [3.15.64] — 2026-07-27
 
 Ships immediately: 3.15.63 is live and its probe can assert the opposite of the

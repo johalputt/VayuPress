@@ -25,6 +25,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/mcp"
+	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -524,16 +525,46 @@ func (a *App) buildMCPServer() *mcp.Server {
 	return srv
 }
 
+// mcpUnwritableSettingKeys are readable but never writable through the tool.
+//
+// theme.og_image is stored as raw base64 image data, and the read side projects
+// it to its public path (see projectPublicSettings). A client that reads the
+// settings map, edits one field and writes the whole thing back — the most
+// natural way to use these two tools together — would otherwise store that path
+// as the image and destroy it. Uploading an image belongs on the CSRF-protected
+// theme-asset endpoint, not in a text field of a tool call.
+var mcpUnwritableSettingKeys = map[string]bool{
+	settings.KeyThemeOGImage: true,
+}
+
 // projectPublicSettings returns only the presentational, non-sensitive settings
 // from a full GetAll map. Anything not on mcpPublicSettingKeys (tor.bridges,
 // shield.* thresholds, and every other operational key) is dropped, so the
 // site_settings tool can never leak operational config to a connector.
+//
+// SIZE IS PART OF THE CONTRACT, NOT JUST SENSITIVITY.
+// theme.og_image holds the share image as raw base64 — routinely over a
+// megabyte. Copying it verbatim did not leak anything, but it made the tool
+// useless: a single response ran to ~1.9 MB, of which 99.98% was one value, and
+// clients could not read the result at all. A tool whose stated job is "use it
+// to understand the current site" has to fit in the reply.
+//
+// The renderer already solved exactly this — OGImagePath maps the stored blob to
+// its public path so the page links the image instead of inlining it — and the
+// same reasoning applies here. Presence and location are what a caller can act
+// on; the bytes are not.
 func projectPublicSettings(all map[string]string) map[string]string {
 	out := make(map[string]string, len(mcpPublicSettingKeys))
 	for _, k := range mcpPublicSettingKeys {
-		if v, ok := all[k]; ok {
-			out[k] = v
+		v, ok := all[k]
+		if !ok {
+			continue
 		}
+		if k == settings.KeyThemeOGImage {
+			// "/theme-assets/og" when one is set, "" when none is.
+			v = render.OGImagePath(v)
+		}
+		out[k] = v
 	}
 	return out
 }
@@ -546,6 +577,9 @@ func projectPublicSettings(all map[string]string) map[string]string {
 func partitionAllowedSettings(in map[string]string) (apply map[string]string, ignored []string) {
 	allowed := make(map[string]bool, len(mcpPublicSettingKeys))
 	for _, k := range mcpPublicSettingKeys {
+		if mcpUnwritableSettingKeys[k] {
+			continue
+		}
 		allowed[k] = true
 	}
 	apply = make(map[string]string)
