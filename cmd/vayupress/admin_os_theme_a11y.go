@@ -44,9 +44,37 @@ func (c a11yCheck) grade() (label, cls string) {
 	}
 }
 
-// themeA11yChecks measures the accent colours against the backgrounds they are
-// actually read on. Accents are used for links and interactive text, which is
+// Reading-text tokens the public article theme ships (see articleCSSMin in
+// internal/render). Body text is the highest-contrast pairing on the page and
+// muted text is the lowest — and it is muted text that carries bylines, dates,
+// excerpts and captions, so it is read constantly while being the pairing most
+// likely to fail.
+const (
+	bodyTextDark   = "#e2e8f0"
+	bodyTextLight  = "#0f172a"
+	mutedTextDark  = "#7c8ba1"
+	mutedTextLight = "#64748b"
+	// Cards and code blocks sit on a lifted surface rather than the page
+	// background, which is a DARKER contrast against the same text in light mode
+	// and a LIGHTER one in dark mode. Measuring only against the page background
+	// therefore misses the worst case on a page full of cards.
+	darkModeSurface = "#0f1420"
+)
+
+// themeA11yChecks measures every pairing a reader actually reads, against the
+// backgrounds it is read on. Accents are used for links and interactive text —
 // normal-size text — so 4.5:1 is the bar that matters, not 3:1.
+//
+// IT USED TO MEASURE ONLY THE ACCENTS. That made the panel quietly misleading:
+// the accent is the colour an operator picked and is therefore the one they are
+// already thinking about, while body and muted text are shipped defaults nobody
+// re-examines. Muted text failing AA on a dark background is the single most
+// common contrast fault in any theme, and this panel reported "Readable" while
+// an external audit reported a contrast failure on the same page — because the
+// failing pairing was never one of the four it looked at.
+//
+// A check that covers a subset and presents as covering the whole is worse than
+// no check: it converts an unknown into a false assurance.
 func themeA11yChecks(accentDark, accent2Dark, accentLight, accent2Light string) []a11yCheck {
 	out := []a11yCheck{}
 	add := func(label, fg, bg string) {
@@ -59,6 +87,13 @@ func themeA11yChecks(accentDark, accent2Dark, accentLight, accent2Light string) 
 	add("Accent 2 on dark background", accent2Dark, darkModeBG)
 	add("Accent on light background", accentLight, lightModeBG)
 	add("Accent 2 on light background", accent2Light, lightModeBG)
+	// The shipped reading text — not operator-chosen, and therefore never
+	// questioned unless something measures it.
+	add("Body text on dark background", bodyTextDark, darkModeBG)
+	add("Body text on light background", bodyTextLight, lightModeBG)
+	add("Muted text on dark background", mutedTextDark, darkModeBG)
+	add("Muted text on dark card", mutedTextDark, darkModeSurface)
+	add("Muted text on light background", mutedTextLight, lightModeBG)
 	return out
 }
 

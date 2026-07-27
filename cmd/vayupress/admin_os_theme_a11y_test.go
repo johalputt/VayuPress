@@ -14,8 +14,21 @@ import (
 func TestThemeA11yGradesContrastHonestly(t *testing.T) {
 	// White on the dark background is very high contrast; mid-grey is poor.
 	checks := themeA11yChecks("#ffffff", "", "#111827", "")
-	if len(checks) != 2 {
-		t.Fatalf("want a check per supplied accent, got %d", len(checks))
+	// Every SUPPLIED accent is measured (blank ones are skipped), plus the shipped
+	// reading-text pairings. Asserting an exact total here would re-encode the old
+	// "accents only" contract, which is the gap that let a real contrast failure
+	// go unreported.
+	accents := 0
+	for _, c := range checks {
+		if strings.HasPrefix(c.Label, "Accent") {
+			accents++
+		}
+	}
+	if accents != 2 {
+		t.Fatalf("want a check per supplied accent, got %d", accents)
+	}
+	if len(checks) <= accents {
+		t.Fatal("the panel measures only accents; shipped body and muted text go unchecked")
 	}
 	for _, c := range checks {
 		if c.Ratio < 1 || c.Ratio > 21 {
@@ -66,5 +79,59 @@ func TestThemeA11yGradeBoundaries(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("ratio %.1f graded %q, want %q", tc.ratio, got, tc.want)
 		}
+	}
+}
+
+// TestShippedReadingTextClearsAA is the regression test for a contrast failure
+// that this panel could not see.
+//
+// The checker measured only the four accent pairings. Accents are the colours an
+// operator picked, so they are already being thought about; body and muted text
+// are shipped defaults nobody re-examines. Muted text on a dark background is the
+// most common contrast fault in any theme — and it was failing here at 4.14:1 on
+// the page background and 3.87:1 on cards, while the panel reported "Readable",
+// because the failing pairing was never one of the four it looked at.
+//
+// A check that covers a subset while presenting as covering the whole is worse
+// than no check: it turns an unknown into a false assurance.
+func TestShippedReadingTextClearsAA(t *testing.T) {
+	for _, c := range []struct{ label, fg, bg string }{
+		{"body on dark", bodyTextDark, darkModeBG},
+		{"body on light", bodyTextLight, lightModeBG},
+		{"muted on dark", mutedTextDark, darkModeBG},
+		{"muted on dark card", mutedTextDark, darkModeSurface},
+		{"muted on light", mutedTextLight, lightModeBG},
+	} {
+		if got := contrastRatio(c.fg, c.bg); got < wcagAANormal {
+			t.Errorf("%s: %s on %s = %.2f:1, below the WCAG AA bar of %.1f:1",
+				c.label, c.fg, c.bg, got, wcagAANormal)
+		}
+	}
+}
+
+// TestA11yPanelMeasuresReadingText — the shipped text tokens must actually be in
+// the panel's work list, not merely correct today. Without this, a future token
+// change silently reintroduces an unmeasured pairing.
+func TestA11yPanelMeasuresReadingText(t *testing.T) {
+	checks := themeA11yChecks("#6366f1", "#818cf8", "#4f46e5", "#6366f1")
+	seen := map[string]bool{}
+	for _, c := range checks {
+		seen[c.Label] = true
+	}
+	for _, want := range []string{
+		"Body text on dark background",
+		"Muted text on dark background",
+		"Muted text on dark card",
+		"Muted text on light background",
+	} {
+		if !seen[want] {
+			t.Errorf("the accessibility panel does not measure %q", want)
+		}
+	}
+	// The summary must still grade the WEAKEST pairing, now that more pairings
+	// exist — otherwise widening the check would hide the very failure it adds.
+	weak := themeA11yChecks("#1a1f2e", "#818cf8", "#4f46e5", "#6366f1")
+	if chip := a11ySummaryChip(weak); !strings.Contains(chip, "Hard to read") {
+		t.Errorf("summary chip = %q for a failing accent; it must grade the worst pairing", chip)
 	}
 }

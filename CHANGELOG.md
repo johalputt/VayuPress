@@ -6,6 +6,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.70] — 2026-07-27
+
+### Fixed
+- **Muted text failed WCAG AA in dark mode, on every article page.** The article theme used the
+  same `--muted` (`#64748b`) for both colour schemes. On light backgrounds that measures 4.56:1
+  and passes; on the dark page background it is **4.14:1** and on a dark card **3.87:1** — both
+  below the 4.5:1 AA bar for normal text. Muted text carries bylines, dates, excerpts and
+  captions, so it is read constantly. Dark mode now uses `#7c8ba1`, which clears AA on the page
+  background (5.69:1), on cards (5.31:1) and on the lifted surface (4.91:1). Light mode already
+  passed and is unchanged.
+
+- **The Theme Studio's accessibility panel could not see that failure.** It measured only the four
+  accent pairings — and an accent is the colour an operator picked, so it is the one they are
+  already thinking about. Body and muted text are shipped defaults nobody re-examines, and muted
+  text on a dark background is the most common contrast fault in any theme. The panel therefore
+  reported **"Readable"** while an external audit reported a contrast failure on the same page,
+  because the failing pairing was never one of the four it looked at.
+
+  It now measures body and muted text on both schemes, including **muted text on a dark card** —
+  the worst case on a page full of cards, and one that measuring against the page background alone
+  would still have missed. A check that covers a subset while presenting as covering the whole is
+  worse than no check: it turns an unknown into a false assurance.
+
+---
+
 ## [3.15.69] — 2026-07-27
 
 ### Security
