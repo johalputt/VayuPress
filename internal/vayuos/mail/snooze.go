@@ -100,21 +100,28 @@ func (e *Engine) Snooze(username, folder, id string, until time.Time) error {
 	if until.Before(time.Now()) {
 		return errors.New("the wake time is in the past")
 	}
-	domain := e.cfg.Domain
-	raw, err := e.maildir.ReadRawFolder(domain, username, folder, id)
+	// mailboxKey, like every other folder operation on the engine. This method
+	// predates VayuDomains and assumed username was a bare localpart on the
+	// primary domain: it hardcoded e.cfg.Domain, passed username straight through
+	// as the Maildir localpart, and built the wake key as username+"@"+domain —
+	// which for a full secondary address produced "bob@shop.example@example.com",
+	// a mailbox that does not exist. Snooze therefore did nothing at all outside
+	// the primary domain, and said so nowhere.
+	dom, local := e.mailboxKey(username)
+	raw, err := e.maildir.ReadRawFolder(dom, local, folder, id)
 	if err != nil {
 		return err
 	}
-	nid, err := e.maildir.DeliverTo(domain, username, "Snoozed", raw)
+	nid, err := e.maildir.DeliverTo(dom, local, "Snoozed", raw)
 	if err != nil {
 		return err
 	}
-	if err := e.accounts.recordSnooze(context.Background(), username+"@"+domain, nid, folder, until); err != nil {
+	if err := e.accounts.recordSnooze(context.Background(), local+"@"+dom, nid, folder, until); err != nil {
 		// Could not record the wake: undo rather than strand the message asleep.
-		_ = e.maildir.deleteMessage(domain, username, "Snoozed", nid)
+		_ = e.maildir.deleteMessage(dom, local, "Snoozed", nid)
 		return err
 	}
-	return e.maildir.deleteMessage(domain, username, folder, id)
+	return e.maildir.deleteMessage(dom, local, folder, id)
 }
 
 // sweepSnoozes wakes every due message: moved back to its original folder
@@ -126,9 +133,20 @@ func (e *Engine) sweepSnoozes(now time.Time) {
 	}
 	ctx := context.Background()
 	for _, r := range e.accounts.dueSnoozes(ctx, now) {
-		local, _ := splitAddress(r.Mailbox)
+		// mailboxKey, not a bare split: the row stores a full address, and every
+		// other folder operation (ListFolder, DeleteMessage) resolves it this way.
+		//
+		// This used to keep the localpart and pass e.cfg.Domain — the PRIMARY
+		// domain — whatever domain the mailbox was actually on. For a secondary
+		// mailbox that looked for the message in the primary's Maildir, where it
+		// does not exist, so the move failed; the error is discarded, and the row
+		// is cleared regardless (by design, to drop rows whose message was moved
+		// out of Snoozed by hand). The message therefore stayed in Snoozed for
+		// ever, never woke, and was never retried — snooze silently did nothing at
+		// all for every mailbox outside the primary domain.
+		dom, local := e.mailboxKey(r.Mailbox)
 		if local != "" {
-			_ = e.maildir.MoveBetween(e.cfg.Domain, local, r.ID, "Snoozed", canonicalFolder(r.OrigFolder))
+			_ = e.maildir.MoveBetween(dom, local, r.ID, "Snoozed", canonicalFolder(r.OrigFolder))
 		}
 		e.accounts.clearSnooze(ctx, r.Mailbox, r.ID)
 	}

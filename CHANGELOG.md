@@ -6,6 +6,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.62] — 2026-07-27
+
+### Fixed
+- **Snooze did nothing at all outside the primary domain.** `Snooze` predates VayuDomains and
+  still assumed its `username` argument was a bare localpart on the primary domain: it hardcoded
+  the primary domain, passed `username` straight through as the Maildir localpart, and built the
+  wake key as `username+"@"+domain` — which for a full secondary address produced
+  `bob@shop.example@example.com`, a mailbox that does not exist.
+
+  The sweeper had the matching half of the same assumption: it split the stored address, kept only
+  the localpart, and looked in the primary domain's Maildir whatever domain the mailbox was on. The
+  move failed, its error was discarded, and the wake row was cleared regardless — deliberately, so
+  that a message dragged out of Snoozed by hand does not wake for ever. The message therefore
+  stayed in Snoozed permanently, never woke, and was never retried.
+
+  Nothing surfaced anywhere: a user on a secondary domain snoozed a message and it simply never
+  came back. Both halves now resolve the mailbox with `mailboxKey`, the same helper every other
+  folder operation already used.
+
+### Audit
+- Swept the remaining multi-tenant surfaces for the domain-scoping class behind 3.15.60 and
+  3.15.61. Checked and found correctly scoped: app-password and device-credential lookup (keyed on
+  the full address), alias resolution (full address) and alias creation (administrator-only, with
+  the alias domain derived from the target mailbox's own domain), per-domain DKIM signing, VayuTalk
+  token and envelope storage (keyed on the full address), and Maildir isolation. The one further
+  defect found is the snooze fault above.
+
+---
+
 ## [3.15.61] — 2026-07-27
 
 Ships on its own, immediately, for the same reason as 3.15.60: it closes a
