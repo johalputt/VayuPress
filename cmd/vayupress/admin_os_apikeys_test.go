@@ -145,3 +145,65 @@ func TestParseAPIKeyExpiry(t *testing.T) {
 		t.Error("empty string is not a valid expiry at the parse layer")
 	}
 }
+
+// TestInternalKeyOffersNoImpossibleActions is the regression test for a control
+// that could only ever fail.
+//
+// The store refuses every lifecycle operation on the internal/system key by
+// design: rotating it would hand the caller a fresh unconditional superuser
+// token (audit C2). The row offered a Rotate button anyway, so pressing it
+// always produced an error. A control that cannot succeed is worse than no
+// control — it reads as a capability, and its refusal reads as a bug rather than
+// as the protection it actually is.
+func TestInternalKeyOffersNoImpossibleActions(t *testing.T) {
+	internal := apikeys.Key{
+		ID: apikeys.InternalKeyID, Label: "System (internal)", Prefix: "vp_sys000",
+		Scope: apikeys.ScopeInternal, Permissions: apikeys.Superuser(), Active: true,
+		CreatedAt: time.Now().Add(-30 * 24 * time.Hour),
+	}
+	out := osAPIKeysOwnSection([]apikeys.Key{internal})
+
+	for _, forbidden := range []string{
+		`data-action="ak-rotate" data-id="` + apikeys.InternalKeyID + `"`,
+		`data-action="ak-revoke" data-id="` + apikeys.InternalKeyID + `"`,
+		`data-action="ak-delete" data-id="` + apikeys.InternalKeyID + `"`,
+		`data-action="ak-deactivate" data-id="` + apikeys.InternalKeyID + `"`,
+	} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("the system key offers %s, which the store always refuses", forbidden)
+		}
+	}
+	if !strings.Contains(out, "Protected") {
+		t.Error("the system key should say why it has no controls, not just show a blank cell")
+	}
+}
+
+// TestAPIKeyStatsCountOnlyUsableGrants — a revoked or expired key is not
+// exposure. Inflating the full-access figure would make the one number on this
+// page that should provoke a reaction easy to ignore.
+func TestAPIKeyStatsCountOnlyUsableGrants(t *testing.T) {
+	past := time.Now().UTC().Add(-time.Hour)
+	keys := []apikeys.Key{
+		{ID: "sys", Scope: apikeys.ScopeInternal, Permissions: apikeys.Superuser(), Active: true},
+		{ID: "live", Scope: apikeys.ScopeExternal, Permissions: apikeys.Superuser(), Active: true},
+		{ID: "revoked", Scope: apikeys.ScopeExternal, Permissions: apikeys.Superuser(), Active: true, Revoked: true},
+		{ID: "expired", Scope: apikeys.ScopeExternal, Permissions: apikeys.Superuser(), Active: true, ExpiresAt: &past},
+		{ID: "off", Scope: apikeys.ScopeExternal, Permissions: apikeys.Superuser(), Active: false},
+	}
+	out := osAPIKeysStats(keys, nil)
+	// Exactly one usable external key, and exactly one usable full-access grant.
+	if !strings.Contains(out, ">1<") {
+		t.Error("stats do not report exactly one usable key among five rows")
+	}
+	if !strings.Contains(out, "inactive") {
+		t.Error("keys excluded from the active count should be accounted for, not silently dropped")
+	}
+	if !strings.Contains(out, "stat-card--warn") {
+		t.Error("a live full-access key exists but nothing marks it for attention")
+	}
+	// The auto-managed system key is not an operator-issued grant.
+	clean := osAPIKeysStats([]apikeys.Key{keys[0]}, nil)
+	if strings.Contains(clean, "stat-card--warn") {
+		t.Error("the auto-managed system key is being counted as an operator's full-access grant")
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"html"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/secrets"
 )
@@ -143,7 +145,7 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
     <span id="ak-status" role="status" aria-live="polite" class="text-xs muted"></span>
   </div>
 </div>
-<p class="text-sm muted mb-4 ak-intro">Manage the keys that authenticate calls to your VayuPress API, and store the credentials VayuPress uses to talk to third-party services. Third-party secrets are encrypted at rest with AES-256-GCM and are shown masked — they never leave your server in clear text.</p>
+<p class="page-sub">Manage the keys that authenticate calls to your VayuPress API, and store the credentials VayuPress uses to talk to third-party services. Third-party secrets are encrypted at rest with AES-256-GCM and are shown masked — they never leave your server in clear text. Every issue, rotate, revoke and reveal is written to the audit log.</p>
 
 <div id="ak-token-banner" class="card ak-token-banner" hidden>
   <div class="settings-block-title">Copy your new key now</div>
@@ -155,7 +157,15 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>
 
-` + osAPIBaseCard() + osAPIKeysOwnSection(keys) + osAPIKeysVCBCard() + osAPIKeysServicesSection(creds)
+` + osAPIKeysStats(keys, creds) +
+		`<div class="section-head"><span class="section-head__title">API base URL</span><span class="section-head__hint">Where scripts, CI and agents send their calls</span></div>` +
+		osAPIBaseCard() +
+		`<div class="section-head"><span class="section-head__title">Issued keys</span><span class="section-head__hint">Each key can do only what it was granted — nothing more</span></div>` +
+		osAPIKeysOwnSection(keys) +
+		`<div class="section-head"><span class="section-head__title">Third-party services</span><span class="section-head__hint">Credentials VayuPress uses to reach other providers</span></div>` +
+		osAPIKeysServicesSection(creds) +
+		`<div class="section-head"><span class="section-head__title">Extension compatibility</span><span class="section-head__hint">The contract an add-on must satisfy before it loads</span></div>` +
+		osAPIKeysVCBCard()
 
 	// This page hosts the filter island (x-data="filterList"), so it opts into
 	// the Alpine runtime; pageUsesAlpine keeps the decision tied to the markup.
@@ -226,6 +236,62 @@ func apiKeyCapabilitySummary(k apikeys.Key) string {
 	return `<span class="ak-caps">` + out + `</span>`
 }
 
+// osAPIKeysStats is the at-a-glance strip, matching Monetization and VayuMCP.
+//
+// Full-access keys get their own tile, marked for attention whenever any exist.
+// A superuser key can do anything the site can, and this page issues them from a
+// single checkbox — an operator should be able to see how many are live without
+// reading a table of eight rows. Counting only USABLE keys matters as much: a
+// revoked or expired grant is not exposure, and inflating the number here would
+// make the one figure that should provoke a reaction easy to ignore.
+func osAPIKeysStats(keys []apikeys.Key, creds []secrets.Credential) string {
+	now := time.Now().UTC()
+	live, full, idle := 0, 0, 0
+	for _, k := range keys {
+		if k.Scope == apikeys.ScopeInternal {
+			continue // auto-managed; not an operator-issued grant
+		}
+		usable := !k.Revoked && k.Active && (k.ExpiresAt == nil || k.ExpiresAt.After(now))
+		if !usable {
+			idle++
+			continue
+		}
+		live++
+		if k.Permissions.IsSuperuser() {
+			full++
+		}
+	}
+	enabled := 0
+	for _, c := range creds {
+		if c.Enabled {
+			enabled++
+		}
+	}
+
+	liveLabel := "Active keys"
+	if idle > 0 {
+		liveLabel += " · " + strconv.Itoa(idle) + " inactive"
+	}
+	fullTone := ""
+	if full > 0 {
+		fullTone = "warn"
+	}
+	tile := func(value, label, tone string) string {
+		cls := "stat-card"
+		if tone != "" {
+			cls += " stat-card--" + tone
+		}
+		return `<div class="` + cls + `"><div class="stat-card__label">` + html.EscapeString(label) +
+			`</div><div class="stat-card__value">` + html.EscapeString(value) + `</div></div>`
+	}
+	return `<div class="stat-grid">` +
+		tile(strconv.Itoa(live), liveLabel, "") +
+		tile(strconv.Itoa(full), "Full-access keys", fullTone) +
+		tile(strconv.Itoa(enabled), "Services connected", "") +
+		tile(strconv.Itoa(len(creds)), "Stored credentials", "") +
+		`</div>`
+}
+
 // osAPIKeysOwnSection renders the issued-token list and the scoped-key create
 // form (permission grid + expiry + rate). CSP-safe: no inline styles, all layout
 // via utility/component classes.
@@ -234,8 +300,14 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
 	for _, k := range keys {
 		var status, actions string
 		if k.Scope == apikeys.ScopeInternal {
+			// No actions. The store refuses every lifecycle operation on the internal
+			// key by design — rotating it would return a fresh unconditional
+			// superuser token to the caller (audit C2) — so offering Rotate here was
+			// a button that could only ever produce an error. A control that cannot
+			// succeed is worse than no control: it reads as a capability, and its
+			// failure reads as a bug rather than as the protection it actually is.
 			status = `<span class="badge">System · auto-managed</span>`
-			actions = `<button type="button" class="btn btn--sm" data-action="ak-rotate" data-id="` + html.EscapeString(k.ID) + `">Rotate</button>`
+			actions = `<span class="text-xs muted">Protected — not rotatable or revocable</span>`
 		} else if k.Revoked {
 			status = `<span class="badge">Revoked</span>`
 			actions = `<button type="button" class="btn btn--sm" data-action="ak-delete" data-id="` + html.EscapeString(k.ID) + `">Delete</button>`
@@ -277,8 +349,7 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
 	// vayu-islands.js). It is a pure enhancement: if Alpine is absent the input
 	// is inert and every row stays visible, and the create/rotate/revoke flows
 	// (vanilla JS) are untouched.
-	return `<div class="card" x-data="filterList" data-filter-noun="keys">
-  <div class="settings-block-title">VayuPress API keys</div>
+	list := `<div class="card" x-data="filterList" data-filter-noun="keys">
   <p class="text-sm muted mb-4">Issue keys for scripts, integrations, and CI. Send a key as the <code>X-API-Key</code> header or <code>Authorization: Bearer &lt;key&gt;</code>. Each key is granted <strong>only</strong> the sections and actions you check below — a key can do nothing it was not granted. Rotating invalidates the old value immediately; deactivating disables a key reversibly; revoking disables it permanently (audit row kept). The <strong>System</strong> key is auto-managed for internal use.</p>
   <div class="ak-filter"><input type="search" class="input ak-filter-input" placeholder="Filter keys by label or prefix…" x-model="q" @input="apply()" aria-label="Filter API keys"><span data-filter-status role="status" aria-live="polite" class="vp-sr-only"></span></div>
   <div class="table-wrap">
@@ -289,7 +360,8 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
   </div>
   <p class="field-hint mt-2">A root key set via the <code>API_KEY</code> environment variable always remains valid as a bootstrap credential (full access) and is not listed here.</p>
 </div>
-` + osAPIKeysCreateCard()
+`
+	return list + osAPIKeysCreateCard()
 }
 
 // osAPIKeysCreateCard renders the scoped-key create form: a 12×6 permission grid
@@ -314,8 +386,7 @@ func osAPIKeysCreateCard() string {
 		body += `<tr>` + cells + `</tr>`
 	}
 
-	return `<div class="card">
-  <div class="settings-block-title">Create a scoped key</div>
+	createBody := `<div class="card">
   <div class="ak-create-row">
     <div class="field ak-field-grow">
       <label class="field-label" for="ak-new-label">Label</label>
@@ -345,6 +416,13 @@ func osAPIKeysCreateCard() string {
     <span class="text-xs muted">The full key is shown once, immediately after creation.</span>
   </div>
 </div>`
+	// The permission matrix is twelve sections by seven actions — the largest
+	// control on the page, and needed only while actually issuing a key. Folded,
+	// it stops standing between the operator and the key list they came to read.
+	return `<div class="mon-stack">` +
+		monAcc("🔑", "Create a scoped key", "Grant exactly the sections and actions you choose",
+			`<span class="mon-chip mon-chip--off">○ Issue a key</span>`, false, createBody) +
+		`</div>`
 }
 
 // osAPIKeysVCBCard renders the one-click gateway to the Vayu Compatibility
@@ -352,17 +430,17 @@ func osAPIKeysCreateCard() string {
 // where the full contract lives, and how to validate a plugin/theme before
 // trusting it. Every action is a same-origin link — CSP-safe, no inline style.
 func osAPIKeysVCBCard() string {
-	return `<div class="card">
-  <div class="settings-block-title">Extension compatibility — the Vayu Compatibility Bible (VCB)</div>
+	return `<div class="mon-stack">` + monAcc("📘", "Vayu Compatibility Bible (VCB)",
+		"Validate a plugin or theme against the contract this API enforces",
+		`<span class="mon-chip mon-chip--off">○ Reference</span>`, false, `<div class="card">
   <p class="text-sm muted mb-4">Before you trust a plugin or theme, validate it against the <strong>same contract this API enforces</strong>. An extension declares the hooks, capabilities and <code>section:action</code> permissions it needs; VCB checks them and you mint a key granting <strong>only</strong> those — never more. Themes that fetch from another host, plugins that over-ask, or manifests built against a hook that doesn't exist are refused with a plain, exact reason.</p>
   <div class="ak-cred-actions">
-    <a class="btn btn--primary btn--sm" href="/docs/compatibility/vcb" target="_blank" rel="noopener">` + iconVCB + ` Open the Compatibility Bible</a>
+    <a class="btn btn--primary btn--sm" href="/docs/compatibility/vcb" target="_blank" rel="noopener">`+iconVCB+` Open the Compatibility Bible</a>
     <a class="btn btn--sm" href="/docs/compatibility/vayuapi" target="_blank" rel="noopener">API keys &amp; permissions reference</a>
     <a class="btn btn--sm" href="/docs/adr/ADR-0135-vayu-compatibility-bible" target="_blank" rel="noopener">Design record (ADR-0135)</a>
   </div>
   <p class="field-hint mt-2">Build tools can read the live contract at <code>GET /api/v1/vcb/contract</code> and check a manifest against this running host at <code>POST /api/v1/vcb/validate</code> (both need a key with <code>plugins:read</code>). The <code>vayu-compat</code> CLI runs the same checks offline for CI.</p>
-</div>
-`
+</div>`) + `</div>`
 }
 
 // osAPIKeysServicesSection renders a card per known provider plus custom creds.
@@ -581,6 +659,14 @@ func (a *App) handleOSAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "apikeys-error", err.Error(), "")
 		return
 	}
+	// Record WHAT was granted, not just that a key appeared. A full-access key is
+	// the most consequential thing this console issues, and "a key was created"
+	// without its scope is not enough to answer the question afterwards.
+	grant := strings.Join(perms.Capabilities(), ",")
+	if perms.IsSuperuser() {
+		grant = "FULL-ACCESS"
+	}
+	dbpkg.AuditLog("apikey.create", dbpkg.AuditActor(r), key.ID, "label="+label+" grant="+grant)
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"id": key.ID, "token": raw})
 }
 
@@ -610,7 +696,11 @@ func (e *apiKeyError) Error() string { return e.s }
 // (reversible enable/disable, distinct from terminal revocation).
 func (a *App) handleOSAPIKeySetActive(active bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		a.apiKeyMutate(w, r, func(id string) error { return a.apiKeys.SetActive(r.Context(), id, active) })
+		action := "deactivate"
+		if active {
+			action = "activate"
+		}
+		a.apiKeyMutate(w, r, action, func(id string) error { return a.apiKeys.SetActive(r.Context(), id, active) })
 	}
 }
 
@@ -636,11 +726,12 @@ func (a *App) handleOSAPIKeyRotate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "apikeys-error", err.Error(), "")
 		return
 	}
+	dbpkg.AuditLog("apikey.rotate", dbpkg.AuditActor(r), id, "")
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"token": raw})
 }
 
 func (a *App) handleOSAPIKeyRevoke(w http.ResponseWriter, r *http.Request) {
-	a.apiKeyMutate(w, r, func(id string) error {
+	a.apiKeyMutate(w, r, "revoke", func(id string) error {
 		if err := a.apiKeys.Revoke(r.Context(), id); err != nil {
 			return err
 		}
@@ -650,7 +741,7 @@ func (a *App) handleOSAPIKeyRevoke(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleOSAPIKeyDelete(w http.ResponseWriter, r *http.Request) {
-	a.apiKeyMutate(w, r, func(id string) error {
+	a.apiKeyMutate(w, r, "delete", func(id string) error {
 		if err := a.apiKeys.Delete(r.Context(), id); err != nil {
 			return err
 		}
@@ -670,7 +761,18 @@ func (a *App) revokeOAuthRefreshForKey(r *http.Request, id string) {
 }
 
 // apiKeyMutate is the shared revoke/delete/activate helper.
-func (a *App) apiKeyMutate(w http.ResponseWriter, r *http.Request, fn func(id string) error) {
+// apiKeyMutate runs one key-lifecycle change and RECORDS IT.
+//
+// Nothing on this page used to be audit-logged, while creating a post or
+// applying a theme was. That is the wrong way round: issuing a full-access key,
+// rotating one, or reviving a deactivated key are the highest-consequence
+// actions in the console — each one hands out or restores the ability to act as
+// the site — and they left no trace at all. An operator investigating "how did
+// this key come to exist" had nothing to read.
+//
+// action names the operation so the log distinguishes a deactivate from a
+// revoke; the key id is the target. No secret is ever recorded.
+func (a *App) apiKeyMutate(w http.ResponseWriter, r *http.Request, action string, fn func(id string) error) {
 	if a.apiKeys == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "apikeys-error", "API key store not initialised", "")
 		return
@@ -691,6 +793,7 @@ func (a *App) apiKeyMutate(w http.ResponseWriter, r *http.Request, fn func(id st
 		writeAPIError(w, r, http.StatusBadRequest, "apikeys-error", err.Error(), "")
 		return
 	}
+	dbpkg.AuditLog("apikey."+action, dbpkg.AuditActor(r), id, "")
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -719,6 +822,13 @@ func (a *App) handleOSCredentialSave(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "secrets-error", err.Error(), "")
 		return
 	}
+	// Provider and enabled state only — never the secret or the endpoint, which
+	// can itself carry a token in the path.
+	enabled := "disabled"
+	if body.Enabled {
+		enabled = "enabled"
+	}
+	dbpkg.AuditLog("credential.save", dbpkg.AuditActor(r), strings.TrimSpace(body.Provider), enabled)
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok", "id": id})
 }
 
@@ -740,6 +850,11 @@ func (a *App) handleOSCredentialReveal(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "secrets-error", err.Error(), "")
 		return
 	}
+	// A reveal returns a third-party secret in plaintext. It is the single most
+	// sensitive READ this console offers, and it recorded nothing — so a leaked
+	// provider key could never be traced to the moment it was displayed. The
+	// secret itself is of course never written to the log.
+	dbpkg.AuditLog("credential.reveal", dbpkg.AuditActor(r), strings.TrimSpace(body.ID), "")
 	writeJSON(w, r, http.StatusOK, map[string]string{"secret": secret})
 }
 
@@ -760,6 +875,7 @@ func (a *App) handleOSCredentialDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "secrets-error", err.Error(), "")
 		return
 	}
+	dbpkg.AuditLog("credential.delete", dbpkg.AuditActor(r), strings.TrimSpace(body.ID), "")
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 

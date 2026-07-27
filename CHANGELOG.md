@@ -6,6 +6,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.69] — 2026-07-27
+
+### Security
+- **Nothing on the API Keys page was audit-logged.** Issuing a key, rotating one, reviving a
+  deactivated one, revoking, deleting, storing a third-party credential and **revealing a stored
+  secret in plaintext** all left no trace — while creating a post or applying a theme were
+  recorded. That is exactly the wrong way round: these are the highest-consequence actions the
+  console offers, since each one hands out, restores or exposes the ability to act as the site,
+  and an operator asking "how did this key come to exist" or "when was that provider key last
+  displayed" had nothing to read.
+
+  All of them are now recorded: `apikey.create` (with the granted scope, or `FULL-ACCESS`),
+  `apikey.rotate`, `apikey.activate`, `apikey.deactivate`, `apikey.revoke`, `apikey.delete`,
+  `credential.save`, `credential.reveal` and `credential.delete`. **No secret, and no endpoint
+  URL, is ever written to the log** — an endpoint can carry a token in its path.
+
+### Fixed
+- **The System key offered a Rotate button that could never work.** The store refuses every
+  lifecycle operation on the internal key by design — rotating it would return a fresh
+  unconditional superuser token to the caller — so the button always produced an error. A control
+  that cannot succeed is worse than no control: it reads as a capability, and its refusal reads as
+  a bug rather than as the protection it is. The row now states that the key is protected.
+
+- **The stat figures counted grants that cannot be used.** Revoked, expired and deactivated keys
+  no longer inflate the active count, and the auto-managed system key is no longer counted as an
+  operator-issued full-access grant. A number that overstates exposure is a number people learn to
+  ignore.
+
+### Changed
+- **The API Keys page now follows the Monetization layout.** A stat strip (active keys with any
+  inactive ones named, full-access keys marked for attention, services connected, stored
+  credentials), `section-head` dividers, and the two largest blocks folded into collapsible cards:
+  the twelve-by-seven permission matrix, which is needed only while issuing a key, and the
+  Compatibility Bible reference. Both previously sat between the operator and the key list they
+  came to read.
+
+---
+
 ## [3.15.68] — 2026-07-27
 
 ### Added
