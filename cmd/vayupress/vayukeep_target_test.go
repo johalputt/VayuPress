@@ -8,6 +8,7 @@ package main
 // barrier. These cases pin the allow-list that now stands between the two.
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -105,6 +106,49 @@ func TestValidateKeepTargetWritableSanitisesItsOwnInput(t *testing.T) {
 	for _, in := range []string{"/etc/vayupress-probe", "relative/path", "/proc/self/x", "/"} {
 		if err := validateKeepTargetWritable(in); err == nil {
 			t.Errorf("validateKeepTargetWritable(%q) did not refuse an unsafe path", in)
+		}
+	}
+}
+
+// TestSanitizeKeepTargetRebuildsFromAConstantRoot — the value that reaches a
+// filesystem call must be assembled from a package constant plus a component
+// proven not to escape, never the operator's string with a check performed near
+// it. That distinction is what makes this a barrier rather than a comment.
+func TestSanitizeKeepTargetRebuildsFromAConstantRoot(t *testing.T) {
+	got, err := sanitizeKeepTarget("/var/backups/vayupress")
+	if err != nil {
+		t.Fatalf("refused a legitimate location: %v", err)
+	}
+	underRoot := false
+	for _, root := range keepTargetRoots {
+		rel, rerr := filepath.Rel(root, got)
+		if rerr != nil {
+			continue
+		}
+		if rel == ".." || strings.HasPrefix(rel, "../") || filepath.IsAbs(rel) {
+			continue
+		}
+		underRoot = true
+		break
+	}
+	if !underRoot {
+		t.Fatalf("the returned path %q is not contained by any allowed root", got)
+	}
+
+	// Every accepted result must be clean and absolute, whatever the input looked
+	// like — no leftover separators, dot segments or traversal.
+	for _, in := range []string{
+		"/var//backups///vayu", "/var/backups/./vayu", "/var/x/../backups/vayu", "/mnt/./usb/../usb/vayu",
+	} {
+		out, err := sanitizeKeepTarget(in)
+		if err != nil {
+			continue
+		}
+		if out != filepath.Clean(out) || !filepath.IsAbs(out) {
+			t.Errorf("sanitizeKeepTarget(%q) = %q, which is not a clean absolute path", in, out)
+		}
+		if strings.Contains(out, "..") || strings.Contains(out, "//") {
+			t.Errorf("sanitizeKeepTarget(%q) = %q still carries traversal or empty segments", in, out)
 		}
 	}
 }

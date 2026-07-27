@@ -206,14 +206,23 @@ func sanitizeKeepTarget(raw string) (string, error) {
 	}
 	clean := filepath.Clean(in)
 	for _, root := range keepTargetRoots {
-		// Path-boundary aware: "/var" must match "/var/backups" but never
-		// "/variant-of-something-else".
-		if clean == root || strings.HasPrefix(clean, root+string(filepath.Separator)) {
-			if clean == root {
-				return "", errors.New("pick a folder inside " + root + ", not " + root + " itself")
-			}
-			return clean, nil
+		// Containment by filepath.Rel, then REBUILD the path from the constant
+		// root. This is stronger than a prefix test — Rel resolves the relationship
+		// rather than comparing text — and it means the value that finally reaches
+		// a filesystem call is assembled from a package constant plus a component
+		// proven not to escape, rather than being the operator's string with a
+		// check performed near it.
+		rel, rerr := filepath.Rel(root, clean)
+		if rerr != nil {
+			continue
 		}
+		if rel == "." {
+			return "", errors.New("pick a folder inside " + root + ", not " + root + " itself")
+		}
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+			continue // escapes this root; try the next
+		}
+		return filepath.Join(root, rel), nil
 	}
 	return "", errors.New("backups must live under one of: " + strings.Join(keepTargetRoots, ", ") +
 		" — that keeps the service out of system directories")

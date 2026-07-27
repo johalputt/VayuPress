@@ -29,6 +29,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   environment-configured target skips this entirely — it never came from a
   browser, and an operator who can set it can already run anything.
 
+  Containment is by `filepath.Rel` and the accepted path is then **rebuilt** as
+  `filepath.Join(constantRoot, relativeComponent)`. Comparing text with a prefix
+  test and then handing on the operator's own string leaves the value that reaches
+  the syscall derived from the request; assembling it from a package constant plus
+  a component proven not to escape does not. It is also simply stronger — `Rel`
+  resolves the relationship rather than matching characters.
+
 ---
 
 ## [3.15.84] — 2026-07-27
