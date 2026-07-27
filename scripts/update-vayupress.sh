@@ -429,8 +429,14 @@ if [[ -f "${UPD_SRC}/provision-subdomains.sh" ]] && [[ $EUID -eq 0 ]]; then
     [[ -f "${UPD_SRC}/${_s}" ]] && install -o root -g root -m 0755 "${UPD_SRC}/${_s}" "/usr/local/lib/vayupress/${_s}"
   done
   chown root:root /usr/local/lib/vayupress && chmod 0755 /usr/local/lib/vayupress
-  if [[ ! -f /etc/systemd/system/vayupress-provision.path ]]; then
-    warn "One-click provisioning units are missing — re-run deploy-vayupress.sh once to install them."
+  # Install the units outright rather than warning about them. Warning left the
+  # install in the worst state available: the worker present, the units absent,
+  # so the console offered a button that created a request nothing would ever
+  # consume. install-provisioning.sh is the canonical writer, so delegate to it
+  # and keep one definition of the units.
+  PROV_INSTALL="${UPD_SRC}/install-provisioning.sh"
+  if [[ ! -f /etc/systemd/system/vayupress-provision.path && -f "$PROV_INSTALL" ]]; then
+    bash "$PROV_INSTALL" || warn "Provisioning setup reported a problem — see the output above."
   else
     systemctl daemon-reload 2>/dev/null || true
     systemctl enable --now vayupress-provision.path vayupress-provision.timer 2>/dev/null || true

@@ -6,6 +6,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.55] — 2026-07-27
+
+### Fixed
+- **The provisioning button could appear ready and do nothing.** `provisionUnitsInstalled`
+  checked for the worker *script*, while `update-vayupress.sh` installed that script and only
+  **warned** about the `systemd` units. That combination is reachable by the ordinary shell
+  update path, and it produced the worst available state: the console rendered an enabled
+  button, which created a request no `.path` unit would ever consume, and reported "running"
+  until it timed out. A control that looks like it works and silently does not is exactly what
+  that check exists to prevent. It now requires the worker **and** the `.path` unit.
+- **`update-vayupress.sh` installs the provisioning units instead of warning about them**,
+  delegating to `install-provisioning.sh` so there is one definition of the units rather than
+  two that can drift.
+
+---
+
 ## [3.15.54] — 2026-07-27
 
 ### Added

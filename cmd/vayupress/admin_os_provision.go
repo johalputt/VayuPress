@@ -72,7 +72,16 @@ func provisionStateDir() string {
 // offering a button that does nothing — a dead button is worse than no button,
 // because it converts a fixable setup gap into a mystery.
 func provisionUnitsInstalled() bool {
-	_, err := os.Stat("/usr/local/lib/vayupress/provision-subdomains.sh")
+	// BOTH halves, because either alone is a trap. The worker script without the
+	// .path unit is the worse one: the button renders enabled, creates a request
+	// nothing consumes, and reports "running" until it times out — a control that
+	// appears to work and does nothing, which is precisely what this check exists
+	// to prevent. The shell updater installs the script but does not write the
+	// units, so that combination is reachable in practice, not hypothetical.
+	if _, err := os.Stat("/usr/local/lib/vayupress/provision-subdomains.sh"); err != nil {
+		return false
+	}
+	_, err := os.Stat("/etc/systemd/system/vayupress-provision.path")
 	return err == nil
 }
 
