@@ -6,6 +6,55 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Security
+- **The encrypted backup format could not tell a complete archive from a truncated
+  one.** VPBK1 framed the stream as `magic · salt · (len · GCM ciphertext)…` with no
+  final-frame marker and no frame count, so cutting a file at any frame boundary
+  produced a clean `io.EOF`. It was caught in practice only by gzip's CRC trailer —
+  a layer with no idea it was acting as a security control — and the magic and salt
+  sat outside the AEAD entirely.
+
+  **VPBK2** wraps a random per-archive data key under the Argon2id passphrase key and
+  authenticates every frame with `AAD = headerHash ‖ seq ‖ prevTag ‖ final`. The
+  stream now ends with an explicit terminator frame, so "this is the end" is a claim
+  the writer makes and the reader verifies rather than an absence of bytes. Deleting
+  or reordering a frame breaks the chain; editing any header byte fails every frame.
+  Passphrase rotation became O(1), because the passphrase guards the wrapped key
+  rather than the data. VPBK1 archives stay readable.
+
+- **A failed restore left a half-replaced data directory.** The package promised
+  tampering was "detected before a single byte is written on restore", but entries
+  were streamed straight to their final paths, so a bad archive was caught only after
+  earlier files had already overwritten live ones. Restores now stage into a sibling
+  directory and are moved into place only after the archive reaches its terminator.
+  An existing data directory is preserved rather than deleted, so a restore of the
+  wrong generation is recoverable.
+
+  Closing this exposed a second hole in the first fix: tar and gzip stop reading at
+  their own end of data, which is *before* the sealed terminator, so an archive with
+  only its terminator stripped unpacked perfectly. Completion is now demanded
+  explicitly after unpacking.
+
+### Fixed
+- **`vayupress backup` could produce an unrestorable database.** It walked the live
+  data directory and archived `vayupress.db` with its `-wal` while writers were
+  active, and covered the risk with printed advice — "stop the service, or pick a
+  quiet moment". The database is now captured with `VACUUM INTO`, which reads through
+  a single read transaction and folds the write-ahead log in, so a backup taken from
+  a running site is consistent by construction and the stale sidecars are left out.
+
+### Added
+- **`vayupress restore -verify`** reads an archive end to end without writing
+  anything, confirming the passphrase, every authentication tag, the chain between
+  frames and the terminator.
+- **The backup passphrase can come from a file** (`-passphrase-file`), and the
+  interactive prompt now disables terminal echo on Linux. It is still never accepted
+  as a flag — argv is world-readable through `/proc` and lands in shell history.
+
+---
+
 ## [3.15.79] — 2026-07-27
 
 ### Fixed

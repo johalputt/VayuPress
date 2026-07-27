@@ -35,5 +35,5 @@ require (
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/yuin/goldmark v1.8.4
 	golang.org/x/net v0.57.0
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sys v0.47.0
 )

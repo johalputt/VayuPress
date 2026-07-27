@@ -9,7 +9,9 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/binary"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -104,22 +106,13 @@ func TestNotABackup(t *testing.T) {
 // crafted entry name lets us drive Extract's Zip-Slip guard end-to-end.
 func sealTar(t *testing.T, passphrase string, entries map[string]string) []byte {
 	t.Helper()
-	salt := make([]byte, saltLen)
-	if _, err := rand.Read(salt); err != nil {
-		t.Fatal(err)
-	}
-	block, err := aes.NewCipher(deriveKey(passphrase, salt))
-	if err != nil {
-		t.Fatal(err)
-	}
-	gcm, err := cipher.NewGCM(block)
+	hdr, gcm, genID, headerHash, err := buildHeader(passphrase)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	buf.WriteString(magic)
-	buf.Write(salt)
-	enc := &encWriter{w: &buf, gcm: gcm, buf: make([]byte, 0, chunkSize)}
+	buf.Write(hdr)
+	enc := newSealedWriter(&buf, gcm, genID, headerHash)
 	gz := gzip.NewWriter(enc)
 	tw := tar.NewWriter(gz)
 	for name, content := range entries {
@@ -136,8 +129,61 @@ func sealTar(t *testing.T, passphrase string, entries map[string]string) []byte 
 	if err := gz.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := enc.flush(); err != nil {
+	if err := enc.Close(); err != nil {
 		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// sealTarV1 builds a LEGACY (VPBK1) archive so the compatibility path stays
+// covered: an operator's existing backups must never become unreadable.
+func sealTarV1(t *testing.T, passphrase string, entries map[string]string) []byte {
+	t.Helper()
+	salt := make([]byte, saltLen)
+	if _, err := rand.Read(salt); err != nil {
+		t.Fatal(err)
+	}
+	block, err := aes.NewCipher(deriveKey(passphrase, salt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	buf.WriteString(magic)
+	buf.Write(salt)
+	var plain bytes.Buffer
+	gz := gzip.NewWriter(&plain)
+	tw := tar.NewWriter(gz)
+	for name, content := range entries {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: int64(len(content)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// v1 framing: length-prefixed GCM frames, positional nonce, no AAD.
+	body := plain.Bytes()
+	for i, counter := 0, uint64(0); i < len(body); counter++ {
+		end := i + chunkSize
+		if end > len(body) {
+			end = len(body)
+		}
+		ct := gcm.Seal(nil, frameNonce(counter), body[i:end], nil)
+		var lenb [4]byte
+		binary.BigEndian.PutUint32(lenb[:], uint32(len(ct)))
+		buf.Write(lenb[:])
+		buf.Write(ct)
+		i = end
 	}
 	return buf.Bytes()
 }
@@ -183,4 +229,17 @@ func TestEmptyPassphraseRefused(t *testing.T) {
 	if err := Create(&bytes.Buffer{}, "  ", t.TempDir()); err == nil {
 		t.Fatal("empty passphrase must be refused")
 	}
+}
+
+// Create and Extract are the ergonomic spellings the tests use. Production code
+// calls CreateWithOptions/ExtractStaged directly, so the wrappers live here
+// rather than widening the package's exported surface with functions nothing
+// ships against.
+func Create(w io.Writer, passphrase, srcDir string) error {
+	return CreateWithOptions(w, passphrase, srcDir, Options{})
+}
+
+func Extract(r io.Reader, passphrase, destDir string) error {
+	_, err := ExtractStaged(r, passphrase, destDir)
+	return err
 }
