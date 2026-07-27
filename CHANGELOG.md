@@ -6,12 +6,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.51] — 2026-07-27
 
 ### Security
-- **VayuMail and VayuTalk security audit — seven findings, all fixed.** Full write-up with
-  reproduction detail in `docs/SECURITY-AUDIT-2026-07-VAYUMAIL-VAYUTALK.md`; every fix carries a
-  regression test that encodes the attack.
+- **VayuMail and VayuTalk security audit — nine findings, all fixed.** An adversarial review of
+  the authentication, protocol-state, path-handling and resource-limit boundaries, working from
+  what an unauthenticated attacker reaches first. Full write-up with reproduction detail in
+  `docs/SECURITY-AUDIT-2026-07-VAYUMAIL-VAYUTALK.md`; every fix carries a regression test that
+  encodes the attack, and the residual risks that remain open are stated there rather than
+  implied. No behaviour visible to a legitimate user changes.
 
 - **DMARC bypass via the `From` header (High).** DMARC was keyed on the first `From` header
   parsed as a single address. Two `From` headers meant the verifier evaluated
