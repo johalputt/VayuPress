@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,10 +22,22 @@ func TestConnectorCardsCSPSafe(t *testing.T) {
 	intro := osConnectorIntro()
 	assertCSPSafe(t, "osConnectorIntro", intro)
 
-	epCard := osConnectorEndpointCard(endpoint)
+	epCard := osConnectorEndpointCard(endpoint, endpoint, false)
 	assertCSPSafe(t, "osConnectorEndpointCard", epCard)
 	if !strings.Contains(epCard, endpoint) {
 		t.Errorf("endpoint card must show the endpoint URL %q", endpoint)
+	}
+
+	// The dedicated-host variant is the one an operator sees when mcp.<domain> is
+	// provisioned, and it names both URLs — so it is the copy most at risk of
+	// drifting outside the CSP contract.
+	dedi := osConnectorEndpointCard("https://mcp.example.com/mcp", endpoint, true)
+	assertCSPSafe(t, "osConnectorEndpointCard/dedicated", dedi)
+	if !strings.Contains(dedi, "https://mcp.example.com/mcp") {
+		t.Error("dedicated endpoint card must offer the dedicated URL")
+	}
+	if !strings.Contains(dedi, endpoint) {
+		t.Error("dedicated endpoint card must explain which URL it replaced, or the difference reads as a bug")
 	}
 
 	grant := osConnectorGrantCard()
@@ -118,5 +131,47 @@ func TestPublicMCPEndpoint(t *testing.T) {
 	dev := httptest.NewRequest(http.MethodGet, "http://localhost:8080/os/connector", nil)
 	if got := publicMCPEndpoint(dev); got != "http://localhost:8080/mcp" {
 		t.Errorf("clearnet dev: got %q", got)
+	}
+}
+
+// TestDedicatedMCPHostRefusesUnusableBases pins the cases where no dedicated
+// host can exist, so the probe never fires for them.
+//
+// Each guard is load-bearing. A Tor Space must make no clearnet call at all, an
+// IP literal or localhost has no subdomain to build, and a page already served on
+// mcp.<domain> would otherwise probe mcp.mcp.<domain>. Without these the page
+// would spend three seconds on a lookup that cannot succeed, on every render.
+func TestDedicatedMCPHostRefusesUnusableBases(t *testing.T) {
+	for _, host := range []string{
+		"",                // nothing to build from
+		"localhost",       // no public subdomain
+		"localhost:8080",  // ditto, with a port
+		"127.0.0.1",       // IP literal
+		"5.189.133.235",   // ditto, public
+		"mcp.example.com", // already the dedicated host
+		"single",          // not a domain at all
+	} {
+		if got := dedicatedMCPHost(context.Background(), host); got != "" {
+			t.Errorf("dedicatedMCPHost(%q) = %q, want \"\" (no probe should be attempted)", host, got)
+		}
+	}
+}
+
+// TestConnectorEndpointFallsBackToTheRequestHost — with no dedicated host
+// reachable, the advertised endpoint must stay exactly what it has always been.
+// Changing the URL an operator pastes into their client is not a safe default;
+// it is only correct when the replacement is known to answer.
+func TestConnectorEndpointFallsBackToTheRequestHost(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "http://localhost:8080/os/connector", nil)
+	req.Host = "localhost:8080"
+	endpoint, apex, dedicated := connectorEndpoint(req)
+	if dedicated {
+		t.Error("claimed a dedicated host for a localhost admin session")
+	}
+	if endpoint != apex {
+		t.Errorf("endpoint %q != apex %q with no dedicated host", endpoint, apex)
+	}
+	if !strings.HasSuffix(endpoint, "/mcp") {
+		t.Errorf("endpoint %q does not end in /mcp", endpoint)
 	}
 }

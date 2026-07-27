@@ -6,6 +6,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.63] — 2026-07-27
+
+### Fixed
+- **VayuMCP advertised the one endpoint most likely to be blocked.** The connector URL on the
+  VayuMCP page is derived from the host the *operator's browser* is on — so it always showed the
+  apex, which is exactly the host most likely to sit behind a proxy that challenges machine
+  clients. The dedicated `mcp.<domain>` host, which cannot be challenged, was described only in
+  prose well below the copy box everyone actually uses.
+
+  That is not a documentation problem. An MCP client has no browser and cannot answer an
+  interactive challenge, so a proxy or firewall rule added at any point silently kills a connector
+  that worked the day before — and because the request is stopped in front of the server, it never
+  appears in any log here, which makes it close to undiagnosable from the panel.
+
+  The page now **probes** for a working `mcp.<domain>` host and offers it as the endpoint when one
+  answers, naming the URL it replaced and why they differ. It probes rather than infers: a DNS
+  record pointing here proves nothing about whether the certificate was ever issued, and
+  advertising an endpoint whose TLS fails would trade one broken connector for another. With no
+  dedicated host reachable, the advertised URL is unchanged — swapping the endpoint an operator
+  pastes into their client is only ever correct when the replacement is known to answer.
+
+  The probe uses the SSRF-guarded transport, is cached for five minutes, and is skipped entirely
+  in a Tor Space, where a clearnet call would be a leak and there is no proxy in front to work
+  around.
+
+---
+
 ## [3.15.62] — 2026-07-27
 
 ### Fixed

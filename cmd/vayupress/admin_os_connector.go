@@ -14,12 +14,17 @@ package main
 // exactly as powerful as the key minted here, never more.
 
 import (
+	"context"
 	"html"
+	"net"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/safefetch"
 )
 
 // iconConnector is the sidebar/plug glyph for the VayuMCP page.
@@ -50,11 +55,119 @@ func publicMCPEndpoint(r *http.Request) string {
 	return scheme + "://" + host + "/mcp"
 }
 
+// ── Dedicated connector host ─────────────────────────────────────────────────
+//
+// The endpoint above is derived from the host the OPERATOR'S BROWSER is on,
+// which is almost always the apex — and the apex is the one host most likely to
+// sit behind a proxy that challenges machine clients. So the page handed out the
+// single URL most likely to fail, while the dedicated mcp.<domain> host that
+// cannot be challenged was described only in prose, far below the copy box
+// everyone actually uses.
+//
+// That is not a documentation problem. An MCP client is machine-to-machine: it
+// has no browser and cannot answer an interactive challenge, so a proxy rule
+// added months later silently kills a connector that worked the day before, and
+// the request never reaches this server to be logged. When the dedicated host is
+// genuinely provisioned and answering, it is strictly better in every case —
+// same server, same auth, same VayuShield screening, minus the one failure mode
+// nobody can diagnose from here. Advertise that one.
+
+const mcpDedicatedTTL = 5 * time.Minute
+
+var mcpDedicated struct {
+	mu   sync.Mutex
+	seen map[string]mcpDedicatedEntry
+}
+
+type mcpDedicatedEntry struct {
+	checkedAt time.Time
+	live      bool
+}
+
+// dedicatedMCPHost returns "mcp.<host>" when that host is actually provisioned
+// and answering over TLS, else "".
+//
+// It PROBES rather than infers. A DNS record pointing here proves nothing about
+// whether the certificate was ever issued, and advertising an endpoint whose TLS
+// fails would trade one broken connector for another. Any HTTP status counts as
+// live — the route is POST-only, so a 405 is a perfectly good proof that TLS
+// terminated and VayuPress answered.
+func dedicatedMCPHost(ctx context.Context, adminHost string) string {
+	// A Tor Space must make no clearnet call, and a .onion has no proxy in front
+	// of it to work around, so there is nothing to gain and a leak to lose.
+	if safefetch.ClearnetBlocked() {
+		return ""
+	}
+	host := strings.ToLower(strings.TrimSpace(adminHost))
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	// Already on the dedicated host, or nothing usable to build one from.
+	if host == "" || strings.HasPrefix(host, "mcp.") || strings.Count(host, ".") < 1 {
+		return ""
+	}
+	if net.ParseIP(host) != nil || host == "localhost" {
+		return ""
+	}
+	cand := "mcp." + host
+
+	mcpDedicated.mu.Lock()
+	if mcpDedicated.seen == nil {
+		mcpDedicated.seen = map[string]mcpDedicatedEntry{}
+	}
+	if e, ok := mcpDedicated.seen[cand]; ok && time.Since(e.checkedAt) < mcpDedicatedTTL {
+		mcpDedicated.mu.Unlock()
+		if e.live {
+			return cand
+		}
+		return ""
+	}
+	mcpDedicated.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	live := false
+	// SafeTransport, not the default client: this is a server-side outbound call
+	// to an operator-supplied name, so it goes through the same SSRF guard as
+	// every other one and honours the Tor-Space kill switch.
+	client := &http.Client{
+		Transport: safefetch.SafeTransport(safefetch.TransportOptions{DialTimeout: 2 * time.Second}),
+		Timeout:   3 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	if req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+cand+"/mcp", nil); err == nil {
+		if resp, err := client.Do(req); err == nil {
+			_ = resp.Body.Close()
+			live = true
+		}
+	}
+
+	mcpDedicated.mu.Lock()
+	mcpDedicated.seen[cand] = mcpDedicatedEntry{checkedAt: time.Now(), live: live}
+	mcpDedicated.mu.Unlock()
+	if live {
+		return cand
+	}
+	return ""
+}
+
+// connectorEndpoint returns the URL the page should advertise, preferring a
+// provisioned dedicated host, plus the plain request-derived one for comparison.
+func connectorEndpoint(r *http.Request) (endpoint, apex string, dedicated bool) {
+	apex = publicMCPEndpoint(r)
+	if h := dedicatedMCPHost(r.Context(), r.Host); h != "" {
+		return "https://" + h + "/mcp", apex, true
+	}
+	return apex, apex, false
+}
+
 // handleOSConnector renders the VayuMCP page.
 func (a *App) handleOSConnector(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	endpoint := publicMCPEndpoint(r)
+	endpoint, apexEndpoint, dedicated := connectorEndpoint(r)
 
 	// Existing external keys, so the operator can see and revoke connectors they
 	// already granted without leaving the page. The internal/system key and
@@ -71,7 +184,7 @@ func (a *App) handleOSConnector(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := osConnectorIntro() +
-		osConnectorEndpointCard(endpoint) +
+		osConnectorEndpointCard(endpoint, apexEndpoint, dedicated) +
 		osConnectorGrantCard() +
 		osConnectorConnectCard(endpoint) +
 		osConnectorManageCard(connectors)
@@ -103,11 +216,25 @@ func osConnectorIntro() string {
 </div>`
 }
 
-func osConnectorEndpointCard(endpoint string) string {
+func osConnectorEndpointCard(endpoint, apex string, dedicated bool) string {
 	e := html.EscapeString(endpoint)
+	note := ""
+	if dedicated {
+		// Say WHY this differs from the address in the browser bar. An endpoint
+		// that silently disagrees with the site you are administering reads as a
+		// mistake, and an operator who "corrects" it back to the apex walks
+		// straight into the failure this is here to avoid.
+		note = `<p class="text-sm muted mb-4"><span class="badge badge--ok">dedicated host</span> This install has a working <code>` +
+			html.EscapeString(strings.TrimSuffix(strings.TrimPrefix(endpoint, "https://"), "/mcp")) +
+			`</code> host, so that is the endpoint offered above rather than <code>` + html.EscapeString(apex) +
+			`</code>. Both reach this same server with the same authentication, but the dedicated host is not proxied — so a bot challenge or firewall rule on your main domain can never sit in front of it. An MCP client has no browser and cannot answer a challenge, and when one appears the request never reaches this server to be logged, which makes it very hard to diagnose from here.</p>`
+	} else {
+		note = `<p class="text-sm muted mb-4">If your domain sits behind a proxy or firewall that can challenge visitors, this endpoint can stop working without warning — an MCP client has no browser and cannot answer a challenge. A dedicated <code>mcp.&lt;your-domain&gt;</code> host with the proxy switched off avoids that permanently; see the note below. Once it is pointed and provisioned, this page offers it here automatically.</p>`
+	}
 	return `<div class="card">
   <div class="settings-block-title">Your connector endpoint</div>
   <p class="text-sm muted mb-4">This is the single URL an MCP client (Claude, Claude Code, or any other) connects to. It is served by VayuPress itself — no extra service, no extra port. Requests are authenticated with the key you grant below.</p>
+  ` + note + `
   <div class="ak-token-row">
     <input id="cx-endpoint" class="input font-mono ak-token-input" type="text" readonly value="` + e + `">
     <button type="button" class="btn btn--sm" data-copy="#cx-endpoint">Copy</button>
