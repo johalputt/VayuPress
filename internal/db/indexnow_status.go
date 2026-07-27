@@ -16,14 +16,23 @@ import (
 )
 
 // IndexNowState is the recorded outcome of the most recent submission attempt.
+//
+// The 200/202 split is deliberate and load-bearing. The protocol defines 200 as
+// "URL submitted successfully" and 202 as "received — key validation pending":
+// a 202 is only honoured once the engine has fetched keyLocation and matched the
+// body against the key, and when that fetch fails the URL is discarded with no
+// error returned, no retry, and no entry in the engine's console. Collapsing
+// both into one "submitted" state is what lets an install show a green tick on
+// every post while nothing is ever received.
 const (
-	IndexNowSubmitted = "submitted" // the endpoint accepted the URL (2xx)
+	IndexNowSubmitted = "submitted" // the endpoint accepted the URL outright (HTTP 200)
+	IndexNowPending   = "pending"   // received, key validation still pending (HTTP 202)
 	IndexNowFailed    = "failed"    // network error or a non-2xx response
 )
 
 // IndexNowStatus is one post's last IndexNow submission outcome.
 type IndexNowStatus struct {
-	State       string    // IndexNowSubmitted, IndexNowFailed, or "" when never attempted
+	State       string    // IndexNowSubmitted, IndexNowPending, IndexNowFailed, or "" when never attempted
 	HTTPCode    int       // HTTP status of the attempt (0 for a transport error)
 	Detail      string    // short human-readable reason (error text or status)
 	SubmittedAt time.Time // when the attempt was made

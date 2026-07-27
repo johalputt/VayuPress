@@ -82,6 +82,16 @@ type Config struct {
 	// (feeds, health, the admin panel, the shield's own endpoints).
 	BypassPrefixes []string
 
+	// BypassFn is an optional predicate for machine endpoints whose path is not a
+	// fixed prefix, evaluated after BypassPrefixes. It exists for paths derived
+	// from runtime state — the IndexNow verification file is named after the
+	// operator's rotatable key — where a static list would either go stale or have
+	// to be widened into a shape an attacker could ride. Implementations must
+	// match exactly and stay cheap: this runs on every request that reaches the
+	// shield, so it must not perform a database read or any unbounded work.
+	// nil disables it.
+	BypassFn func(*http.Request) bool
+
 	SessionCookieName string        // default "vayushield"
 	SessionTTL        time.Duration // default 12h
 	ChallengeTTL      time.Duration // default 5m
@@ -769,6 +779,14 @@ func (m *Manager) isBypassed(r *http.Request) bool {
 		if p == pre || strings.HasPrefix(p, pre+"/") {
 			return true
 		}
+	}
+	// A dynamic bypass for machine endpoints whose path is not a fixed prefix —
+	// today the site-root IndexNow verification file, whose name IS the operator's
+	// rotatable key. A static list cannot express that, and the caller (a search
+	// engine's key verifier) can no more solve a challenge than a feed reader can.
+	// The predicate is supplied by the app layer and must match exactly.
+	if m.cfg.BypassFn != nil && m.cfg.BypassFn(r) {
+		return true
 	}
 	// Feeds/sitemaps/robots are machine endpoints legit clients (feed readers,
 	// crawlers, unfurlers) hit WITHOUT JS — they can never solve a challenge, so

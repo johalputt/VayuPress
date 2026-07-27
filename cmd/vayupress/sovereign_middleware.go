@@ -121,6 +121,13 @@ func (a *App) isSovereignLane(r *http.Request) bool {
 	if vayushield.IsFeedLikePath(p) {
 		return true
 	}
+	// The IndexNow key file belongs to the same class: a 503 there fails the
+	// engine's key validation, which silently voids every URL submitted with that
+	// key. It is a single exact path and a 32-byte response, so admitting it costs
+	// nothing and cannot be used to bypass the public-lane cap.
+	if a.isIndexNowKeyPath(r) {
+		return true
+	}
 	if a.vayuShield != nil && a.vayuShield.HasVerifiedSession(r) {
 		return true
 	}

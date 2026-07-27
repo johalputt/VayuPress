@@ -28,8 +28,10 @@ func TestValidIndexNowKey(t *testing.T) {
 }
 
 // TestIndexNowStatusHint maps the overloaded IndexNow status codes to advice.
+// 200 and 202 deliberately differ: the protocol defines 202 as "received — key
+// validation pending", and a 202 whose key never validates is dropped silently.
 func TestIndexNowStatusHint(t *testing.T) {
-	cases := map[int]string{200: "accepted", 202: "accepted", 400: "invalid", 403: "key", 422: "host", 429: "rate"}
+	cases := map[int]string{200: "submitted", 202: "pending", 400: "invalid", 403: "key", 422: "host", 429: "rate"}
 	for code, want := range cases {
 		if got := indexNowStatusHint(code); !strings.Contains(strings.ToLower(got), want) {
 			t.Errorf("hint for %d = %q, want it to mention %q", code, got, want)

@@ -178,7 +178,14 @@ func (a *App) bootVayuShield() {
 		// their own defences: /mcp requires an API key and enforces the per-key
 		// rate budget; /oauth/register + /oauth/token sit behind the discovery
 		// rate limit and /oauth/authorize requires an admin session.
-		BypassPrefixes:    shieldBypassPrefixes,
+		BypassPrefixes: shieldBypassPrefixes,
+		// The site-root IndexNow verification file cannot be a static prefix — it
+		// is named after the operator's rotatable key — but it is fetched by a
+		// search engine's key verifier, which can no more solve a challenge than
+		// an MCP client can. An interstitial there is silent: the engine replies
+		// 202 "key validation pending", never completes the validation, and drops
+		// every submitted URL with no error reported anywhere.
+		BypassFn:          a.isIndexNowKeyPath,
 		SessionCookieName: "vayushield",
 		CountryFn:         geoip.Country,
 		ClientIP:          auth.ClientIP,

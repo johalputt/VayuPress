@@ -2274,6 +2274,16 @@ func osIndexNowBadge(slugEsc string, st dbpkg.IndexNowStatus, ok, isDraft bool) 
 	case ok && st.State == dbpkg.IndexNowSubmitted:
 		when := st.SubmittedAt.Format("2 Jan 2006 15:04 UTC")
 		inner = `<span class="chip chip--brand" title="Submitted to IndexNow on ` + html.EscapeString(when) + `">✓ IndexNow</span>`
+	case ok && st.State == dbpkg.IndexNowPending:
+		// HTTP 202 — received, but the engine has not yet validated the key file.
+		// Shown distinctly on purpose: if that validation fails the URL is dropped
+		// silently, so a tick here would be a claim the install cannot support.
+		when := st.SubmittedAt.Format("2 Jan 2006 15:04 UTC")
+		title := st.Detail
+		if title == "" {
+			title = "The engine received this URL but has not finished validating your key file."
+		}
+		inner = `<span class="chip" style="color:#f59e0b" title="` + html.EscapeString(title+" Sent "+when) + `">◌ IndexNow pending</span>`
 	case ok && st.State == dbpkg.IndexNowFailed:
 		inner = `<span class="chip" style="color:#f59e0b" title="` + html.EscapeString(st.Detail) + `">⚠ IndexNow failed</span>`
 	default:
@@ -2299,7 +2309,7 @@ func osIndexNowButton(slugEsc string, st dbpkg.IndexNowStatus, ok, isDraft bool)
 		return ""
 	}
 	label := "Ping IndexNow"
-	if ok && st.State == dbpkg.IndexNowSubmitted {
+	if ok && (st.State == dbpkg.IndexNowSubmitted || st.State == dbpkg.IndexNowPending) {
 		label = "Re-ping"
 	}
 	return `<button type="button" class="btn btn--ghost btn--sm"` +

@@ -100,7 +100,7 @@ var knownProviders = []providerMeta{
 // works without the operator ever uploading a static file. Anything else 404s.
 func (a *App) handleIndexNowKeyFile(w http.ResponseWriter, r *http.Request) {
 	file := strings.TrimSpace(chi.URLParam(r, "file"))
-	key := a.indexNowKey() // already trimmed at the source
+	key := a.cachedIndexNowKey() // already trimmed at the source
 	if key == "" || file != key+".txt" {
 		http.NotFound(w, r)
 		return
@@ -828,6 +828,11 @@ func (a *App) handleOSCredentialSave(w http.ResponseWriter, r *http.Request) {
 	if body.Enabled {
 		enabled = "enabled"
 	}
+	// Drop the cached IndexNow key unconditionally: a save may have set, rotated
+	// or disabled it, and the key file must reflect that on the very next request
+	// — a stale key means search engines read the wrong value and every
+	// submission is silently voided until the cache expires.
+	a.invalidateIndexNowKey()
 	dbpkg.AuditLog("credential.save", dbpkg.AuditActor(r), strings.TrimSpace(body.Provider), enabled)
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok", "id": id})
 }
@@ -875,6 +880,10 @@ func (a *App) handleOSCredentialDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "secrets-error", err.Error(), "")
 		return
 	}
+	// The delete carries only an opaque id, so we cannot tell whether it was the
+	// IndexNow credential — invalidate regardless. One extra resolve is far
+	// cheaper than continuing to serve a key file for a credential that is gone.
+	a.invalidateIndexNowKey()
 	dbpkg.AuditLog("credential.delete", dbpkg.AuditActor(r), strings.TrimSpace(body.ID), "")
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }

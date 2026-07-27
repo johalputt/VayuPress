@@ -8,10 +8,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -47,6 +49,7 @@ import (
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/redirects"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/scheduler"
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/secrets"
@@ -126,6 +129,15 @@ type App struct {
 	// tokens, plus encrypted-at-rest third-party service credentials.
 	apiKeys *apikeys.Store
 	secrets *secrets.Store
+
+	// Resolved IndexNow key, cached. Resolving it means a SQL row read plus an
+	// AES-GCM open, and three hot paths need it on unauthenticated requests (the
+	// root key-file shortcut in handleArticlePage, the key-file handler, and the
+	// shield/L0 bypass predicates). Doing that work per request put a decrypt on
+	// every article view; the cache turns it into one atomic load. Invalidated
+	// explicitly on every credential mutation, with a short TTL as the backstop
+	// for an out-of-band change.
+	indexNowKeyCache atomic.Pointer[indexNowKeyEntry]
 
 	// OAuth 2.1 authorization server (migration 066, ADR-0140) — the one-click
 	// "Connect" flow on claude.ai. Access tokens are scoped apikeys, so this only
@@ -389,6 +401,70 @@ func (a *App) indexNowKey() string {
 	return strings.TrimSpace(config.Cfg.IndexNowKey)
 }
 
+// indexNowKeyEntry is one cached resolution of the active IndexNow key.
+type indexNowKeyEntry struct {
+	key string
+	at  time.Time
+}
+
+// indexNowKeyCacheTTL bounds how long a resolved key is reused before it is
+// re-read from the credential store. Mutations invalidate the cache outright, so
+// this only covers a change made outside the admin console (a direct DB edit, or
+// a second process rotating the credential).
+const indexNowKeyCacheTTL = 30 * time.Second
+
+// cachedIndexNowKey is indexNowKey for the hot, unauthenticated paths: the root
+// key-file shortcut that runs before every article render, the /.well-known
+// key-file handler, and the shield/L0 bypass predicates. Those all run per
+// request, and indexNowKey costs a SQL read plus an AES-GCM open — so calling it
+// directly made a key lookup part of the cost of viewing any post, and made the
+// bypass predicate an amplifier a flood of "/anything.txt" could pull on.
+//
+// A stale value is harmless in both directions: the key file 404s (or the bypass
+// declines) for at most one TTL after a rotation, and callers that must see a
+// just-written key call invalidateIndexNowKey first.
+func (a *App) cachedIndexNowKey() string {
+	if e := a.indexNowKeyCache.Load(); e != nil && time.Since(e.at) < indexNowKeyCacheTTL {
+		return e.key
+	}
+	k := a.indexNowKey()
+	a.indexNowKeyCache.Store(&indexNowKeyEntry{key: k, at: time.Now()})
+	return k
+}
+
+// invalidateIndexNowKey drops the cached key so the next resolve re-reads the
+// credential store. Called after every credential write, so a key set, rotated
+// or deleted in the API Keys console takes effect on the very next request
+// rather than up to a TTL later.
+func (a *App) invalidateIndexNowKey() { a.indexNowKeyCache.Store(nil) }
+
+// isIndexNowKeyPath reports whether the request is for the site-root IndexNow
+// verification file — https://<domain>/<key>.txt, the exact URL announced as
+// keyLocation on every submission.
+//
+// It exists because that URL is fetched by a search engine's key verifier: a
+// machine client with no JavaScript, no cookies and no way to solve a bot
+// challenge. Serving it an interstitial is indistinguishable from not serving
+// the key at all — the engine returns 202 ("received, key validation pending"),
+// the validation never completes, and the URLs are dropped with no error
+// anywhere. The /.well-known copy of the same file has always been bypassed;
+// the root copy is the one IndexNow actually reads, because a key only vouches
+// for URLs at or below its own directory.
+//
+// The match is deliberately exact — the literal active key, nothing else. A
+// looser rule (any "*.txt") would hand an attacker an unshielded route into the
+// themed 404 renderer, which is far more expensive than this handler's 32-byte
+// write. The shape pre-filter keeps the cached-key load off every other request.
+func (a *App) isIndexNowKeyPath(r *http.Request) bool {
+	p := r.URL.Path
+	if len(p) < len("/12345678.txt") || p[0] != '/' ||
+		!strings.HasSuffix(p, ".txt") || strings.Contains(p[1:], "/") {
+		return false
+	}
+	k := a.cachedIndexNowKey()
+	return k != "" && p == "/"+k+".txt"
+}
+
 // pingIndexNow announces a published post's URL to IndexNow. It returns the
 // outcome — state is one of "submitted", "failed", or "skipped" — and records
 // every real attempt (submitted/failed) to indexnow_submissions so the Posts
@@ -454,9 +530,78 @@ func (a *App) pingIndexNow(slug string) (state, detail string) {
 		dbpkg.RecordIndexNow(slug, dbpkg.IndexNowFailed, status, detail)
 		return "failed", detail
 	}
+	// IndexNow overloads its 2xx codes and they do NOT mean the same thing: 200
+	// is "URL submitted successfully", 202 is "received — key validation
+	// pending". A 202 whose key file the engine cannot then read is dropped
+	// silently: no error is returned, no retry happens, and nothing ever appears
+	// in the engine's console. Recording it as a completed submission is exactly
+	// how an install reports a green "✓ IndexNow" on every post while zero URLs
+	// are actually received, so keep the distinction all the way to the badge.
+	if status == http.StatusAccepted {
+		detail := "received — the engine is still validating your key file at https://" +
+			config.Cfg.Domain + "/" + indexNowKey + ".txt"
+		logging.LogInfo("indexnow", "received, key validation pending: "+slug)
+		dbpkg.RecordIndexNow(slug, dbpkg.IndexNowPending, status, detail)
+		return "pending", detail
+	}
 	logging.LogInfo("indexnow", "submitted "+slug)
 	dbpkg.RecordIndexNow(slug, dbpkg.IndexNowSubmitted, status, "")
 	return "submitted", ""
+}
+
+// indexNowKeyFileCheck fetches the site's own IndexNow verification file the way
+// a search engine's key verifier does, and returns "" when it is served
+// correctly or an operator-facing explanation when it is not.
+//
+// This is the check that was missing. IndexNow's whole trust model is "prove you
+// own the host by serving <key> at keyLocation" — so when that URL is 404, or
+// behind a bot challenge, or answers with an HTML interstitial, every
+// submission is discarded after the endpoint has already replied 200/202. The
+// submission call alone therefore cannot tell an operator whether indexing
+// works; only reading the file back can.
+//
+// It goes through safefetch (the SSRF-hardened fetcher) even though the URL is
+// operator-configured and not request-derived: same guard, one code path, and
+// the Tor-Space egress kill-switch applies for free.
+func (a *App) indexNowKeyFileCheck(ctx context.Context, domain, key string) string {
+	u := "https://" + domain + "/" + key + ".txt"
+	res, err := safefetch.New(safefetch.Options{
+		MaxBytes:       32 << 10,
+		Timeout:        8 * time.Second,
+		AllowedSchemes: []string{"https"},
+		UserAgent:      "VayuPress-IndexNow-Verify/1.0 (+https://" + domain + ")",
+	}).Get(ctx, u)
+	if err != nil {
+		return indexNowKeyFileVerdict(u, key, 0, nil, err)
+	}
+	return indexNowKeyFileVerdict(u, key, res.Status, res.Body, nil)
+}
+
+// indexNowKeyFileVerdict turns one key-file fetch into either "" (the file is
+// served exactly as an engine requires) or the operator-facing reason it is not.
+// Split out from the fetch so every branch is exercised by a test — a check that
+// cannot be shown to fail when the thing it guards breaks is not a check.
+func indexNowKeyFileVerdict(u, key string, status int, body []byte, err error) string {
+	if err != nil {
+		if errors.Is(err, safefetch.ErrBlockedAddress) {
+			return "Your domain does not resolve to a public address from this server, so " + u +
+				" could not be checked from here. Search engines fetch it over the public internet — confirm it is reachable externally before relying on IndexNow."
+		}
+		return "The key file at " + u + " could not be fetched: " + err.Error() +
+			". Search engines read this file to validate your key; while it is unreachable every submitted URL is discarded."
+	}
+	switch {
+	case status == http.StatusNotFound:
+		return "The key file at " + u + " returned 404. Without it no engine can validate your key, so submissions are accepted and then dropped. Check that the site is serving the root key file."
+	case status == http.StatusForbidden || status == http.StatusTooManyRequests || status == http.StatusServiceUnavailable:
+		return "The key file at " + u + " returned HTTP " + strconv.Itoa(status) +
+			" — a proxy or firewall in front of your site is challenging machine clients. A search engine's verifier cannot solve a challenge, so it never reads your key. Add a skip/allow rule for /" + key + ".txt at the edge."
+	case status != http.StatusOK:
+		return "The key file at " + u + " returned HTTP " + strconv.Itoa(status) + " instead of 200, so engines cannot validate your key."
+	case strings.TrimSpace(string(body)) != key:
+		return "The URL " + u + " is reachable but its contents are not the key — it is most likely a bot-challenge or error page served in place of the file. Engines compare the body byte-for-byte against the key, so validation fails and submissions are dropped."
+	}
+	return ""
 }
 
 // indexNowSubmit performs the raw IndexNow submission: it POSTs the host, key,
@@ -544,6 +689,7 @@ func (a *App) handleOSIndexNowTest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		key = gen
+		a.invalidateIndexNowKey() // serve the new key file on the very next request
 		logging.LogInfo("indexnow", "auto-generated an IndexNow key on first connect")
 	}
 	if !validIndexNowKey(key) {
@@ -559,8 +705,19 @@ func (a *App) handleOSIndexNowTest(w http.ResponseWriter, r *http.Request) {
 		fail("Submissions are suppressed while the system is in " + string(m) + " mode. Return to normal mode to submit.")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
+	// Read the key file back FIRST. It is the precondition for everything that
+	// follows: an engine only honours a submission after fetching keyLocation and
+	// matching the body against the key, and it reports nothing when that fails —
+	// the submission is simply discarded. Checking it first is what turns "we
+	// pinged and got a 2xx" into "instant indexing actually works", and it is the
+	// only part of this self-test that can detect the common real-world failure
+	// (an edge proxy challenging the verifier).
+	if problem := a.indexNowKeyFileCheck(ctx, d, key); problem != "" {
+		fail(problem)
+		return
+	}
 	status, err := a.indexNowSubmit(ctx, key, []string{"https://" + d + "/"})
 	if err != nil {
 		fail("Could not reach the IndexNow endpoint: " + err.Error() + ". Check outbound network / DNS from the server.")
@@ -574,7 +731,7 @@ func (a *App) handleOSIndexNowTest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]any{
 		"ok":     true,
 		"status": status,
-		"detail": fmt.Sprintf("Connected — IndexNow accepted your submission (HTTP %d). Your key is set up automatically and every post you publish is now submitted to Bing, Yandex and other engines instantly.", status),
+		"detail": fmt.Sprintf("Connected — your key file at https://%s/%s.txt is served correctly and IndexNow accepted your submission (HTTP %d, %s). Every post you publish is now announced to Bing, Yandex and other participating engines.", d, key, status, indexNowStatusHint(status)),
 	})
 }
 
@@ -592,8 +749,14 @@ func newIndexNowKey() string {
 // explanation for operators (the protocol overloads a handful of codes).
 func indexNowStatusHint(status int) string {
 	switch status {
-	case http.StatusOK, http.StatusAccepted:
-		return "accepted"
+	case http.StatusOK:
+		return "submitted"
+	// 202 is NOT a success: the protocol defines it as "received — key
+	// validation pending". If the engine then cannot read the key file, the URLs
+	// are dropped and nothing is reported anywhere, so it must never be worded
+	// like an acceptance.
+	case http.StatusAccepted:
+		return "received — key validation pending"
 	case http.StatusBadRequest:
 		return "invalid request format"
 	case http.StatusForbidden:

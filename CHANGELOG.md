@@ -6,6 +6,55 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.79] — 2026-07-27
+
+### Fixed
+- **IndexNow reported every post as submitted while search engines received none of them.** Two
+  independent defects combined into a silent outage, and each one on its own was enough to hide the
+  other.
+
+  **The verification file was not exempt from our own bot protection.** IndexNow's entire trust
+  model is "prove you own the host by serving the key at `keyLocation`". Because a key only vouches
+  for URLs at or below its own directory, `keyLocation` has to be the site root —
+  `https://<domain>/<key>.txt` — and that path was never in VayuShield's bypass list. The
+  `/.well-known/` copy of the same file was exempt; the copy engines actually read was not. So the
+  key verifier — a machine client with no JavaScript, no cookies and no way to solve a challenge —
+  could be handed an interstitial instead of the key. The path is named after the operator's
+  rotatable key, so a static prefix list could not express it; the shield now takes an exact-match
+  predicate for it, and the sovereign lane never sheds it either (a 503 there voids the key just as
+  effectively as a challenge).
+
+  **HTTP 202 was recorded as a completed submission.** The protocol defines 200 as "URL submitted
+  successfully" and 202 as "received — key validation pending". A 202 is only honoured once the
+  engine has fetched the key file and matched it byte-for-byte; when that fetch fails the URL is
+  discarded with no error returned, no retry, and no entry in the engine's console. Recording both
+  as `submitted` is precisely what let an install show a green tick on every post while zero URLs
+  were ever received. 202 is now a distinct **pending** state with its own badge and wording.
+
+  Together these meant the failure was completely invisible: the ping succeeded, the badge went
+  green, and the URLs went nowhere.
+
+### Added
+- **The IndexNow self-test now reads the key file back before submitting.** It previously reported
+  "Connected — IndexNow accepted your submission" on the strength of the submission's status code
+  alone, which cannot detect the failure above; the only hint was a line in the *failure* branch
+  telling the operator to go and check the key file by hand. The check now fetches
+  `https://<domain>/<key>.txt` the way an engine's verifier does and names the specific problem —
+  not served (404), challenged at the edge (403/429/503, with the advice to add a skip rule for that
+  path), an interstitial served in place of the file, a body that is not the key, or a domain that
+  does not resolve publicly. Every branch is covered by a test that fails when the check is
+  neutered.
+
+### Changed
+- **Resolving the IndexNow key no longer costs a decrypt on every article view.** The root key-file
+  shortcut runs before every post render and called straight through to the credential store — a SQL
+  read plus an AES-GCM open per page view. It is now cached behind an atomic load, invalidated
+  immediately on any credential write and backed by a short TTL. That also keeps the new shield
+  predicate free: it can never be turned into a per-request database read by a flood of
+  `/anything.txt`.
+
+---
+
 ## [3.15.78] — 2026-07-27
 
 ### Fixed
