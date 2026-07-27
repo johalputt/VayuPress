@@ -6,6 +6,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.68] — 2026-07-27
+
+### Added
+- **Connector management on the VayuMCP page: see each client, and pause, disconnect or remove
+  it.** Every granted connector is now its own expandable panel showing what it is, what it can
+  reach, when it last called and how many times, when it was granted, and any expiry or rate
+  limit.
+
+  The old view was a three-column table — label, access, Revoke — which could not answer the
+  question an operator actually has: *which of these is Claude and which is Cline?* Every row
+  looked the same, and the data that distinguishes them (last used, call count) was being recorded
+  and never displayed. With several clients connected and a leftover key for every connect attempt
+  that did not finish, the list became least readable exactly when it mattered most.
+
+  Controls, in order of severity:
+  - **Pause** stops a connector immediately and is reversible — the same key works again on
+    Resume. The auth cache loads keys `WHERE revoked=0 AND active=1` and the mutation invalidates
+    it, so this takes effect at once rather than being a label.
+  - **Disconnect** is the existing permanent revoke; the record is kept for the audit log.
+  - **Remove** deletes the record too.
+
+  Pause and Resume are offered only where they can change something: an **expired** key is already
+  refused by the auth cache, so it is labelled expired rather than paused and gets no Resume
+  button — a control that visibly does nothing costs more trust than a missing one. Connectors
+  that have **never made a call** are counted and called out, since those are almost always
+  leftovers from a failed connect and are safe to remove.
+
+  No new backend surface: this drives the existing CSRF-protected, administrator-only
+  `/os/api/apikeys/{activate,deactivate,revoke,delete}` endpoints, and every action is audit-logged.
+
+### Fixed
+- **The stat strip counted paused and expired connectors as active.** "Active connectors" now
+  means connectors that can actually authenticate, with any paused ones reported alongside rather
+  than folded in, and a paused full-control key no longer inflates the full-control count — a
+  grant that cannot be used is not exposure.
+
+---
+
 ## [3.15.67] — 2026-07-27
 
 Ships immediately: 3.15.64 reports a correctly configured dedicated host as

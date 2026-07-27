@@ -1070,6 +1070,34 @@
   opacity: 0.75;
 }
 .vp-os .stat-card--warn .stat-card__value { color: var(--warn); }
+
+/* ── Connector detail panel (VayuMCP) ──────────────────────────────────────
+   A connector's facts as label/value rows rather than a table: the values are
+   short and heterogeneous (a masked key, a relative time, a count), so a grid
+   reads faster than columns and reflows cleanly on a phone. */
+.vp-os .cx-details { display: flex; flex-direction: column; gap: .35rem; margin-bottom: .85rem; }
+.vp-os .cx-detail {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 9rem) 1fr;
+  gap: .75rem;
+  align-items: baseline;
+  padding: .3rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+.vp-os .cx-detail:last-child { border-bottom: 0; }
+.vp-os .cx-detail__k { font-size: .82rem; color: var(--text-muted); }
+.vp-os .cx-detail__v { font-size: .9rem; word-break: break-word; }
+.vp-os .cx-cap {
+  display: inline-block;
+  padding: .1rem .4rem;
+  margin: 0 .25rem .25rem 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface-2);
+}
+@media (max-width: 30rem) {
+  .vp-os .cx-detail { grid-template-columns: 1fr; gap: .15rem; }
+}
 @media (prefers-reduced-motion: reduce) {
   .vp-os .stat-card { transition: border-color var(--t), box-shadow var(--t); }
   .vp-os .stat-card:hover { transform: none; }

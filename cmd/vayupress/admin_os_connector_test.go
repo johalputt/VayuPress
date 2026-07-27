@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 )
@@ -78,31 +79,93 @@ func TestConnectorEndpointNotDoubleEscaped(t *testing.T) {
 	}
 }
 
-// TestConnectorManageCard proves the live-connectors table renders a revoke
-// control per key and labels full-control vs. limited access correctly.
+// TestConnectorManageCard proves each connector renders as its own panel with
+// the facts that tell two clients apart, and the controls to govern them.
 func TestConnectorManageCard(t *testing.T) {
-	full := apikeys.Key{ID: "k-full", Label: "Claude (full control)", Prefix: "vp_full00", Scope: apikeys.ScopeExternal, Permissions: apikeys.Superuser()}
 	limited := apikeys.NewPermissions()
 	limited.Grant(apikeys.SectionPosts, apikeys.ActionWrite)
-	lim := apikeys.Key{ID: "k-lim", Label: "Claude (author)", Prefix: "vp_lim000", Scope: apikeys.ScopeExternal, Permissions: limited}
+	used := time.Now().Add(-2 * time.Hour)
 
-	out := osConnectorManageCard([]apikeys.Key{full, lim})
+	full := apikeys.Key{
+		ID: "k-full", Label: "Claude (full control)", Prefix: "vp_full00",
+		Scope: apikeys.ScopeExternal, Permissions: apikeys.Superuser(),
+		Active: true, CreatedAt: time.Now().Add(-72 * time.Hour),
+		LastUsedAt: &used, UseCount: 412,
+	}
+	paused := apikeys.Key{
+		ID: "k-lim", Label: "Cline", Prefix: "vp_lim000",
+		Scope: apikeys.ScopeExternal, Permissions: limited,
+		Active: false, CreatedAt: time.Now().Add(-48 * time.Hour),
+	}
+
+	out := osConnectorManageCard([]apikeys.Key{full, paused})
 	assertCSPSafe(t, "osConnectorManageCard", out)
 
-	if !strings.Contains(out, `data-revoke="k-full"`) || !strings.Contains(out, `data-revoke="k-lim"`) {
-		t.Error("manage card must offer a revoke control for every listed key")
+	// Every governing control must be present, for the right key.
+	for _, want := range []string{
+		`data-cx-pause="k-full"`,  // an active connector can be paused
+		`data-cx-resume="k-lim"`,  // a paused one can be resumed
+		`data-revoke="k-full"`,    // permanent disconnect
+		`data-cx-remove="k-full"`, // delete the record
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("manage card missing control %q", want)
+		}
 	}
-	if !strings.Contains(out, "Full control") {
-		t.Error("a superuser key must be labelled 'Full control'")
+	// A paused key must NOT also offer Pause, or the panel contradicts itself.
+	if strings.Contains(out, `data-cx-pause="k-lim"`) {
+		t.Error("a paused connector is still offering Pause")
 	}
-	if !strings.Contains(out, "Limited") {
-		t.Error("a scoped key must be labelled 'Limited'")
+	if strings.Contains(out, `data-cx-resume="k-full"`) {
+		t.Error("an active connector is offering Resume")
+	}
+
+	// The usage facts are the whole point: without them every row looks alike and
+	// an operator cannot tell which connector is which client.
+	if !strings.Contains(out, "412") {
+		t.Error("call count is not shown — it is the main way to tell two connectors apart")
+	}
+	if !strings.Contains(out, "Never used") {
+		t.Error("a connector that never made a call must say so; those are the removable leftovers")
+	}
+	if !strings.Contains(out, "Full control") || !strings.Contains(out, "Limited") {
+		t.Error("access level must be labelled per connector")
+	}
+	if !strings.Contains(out, "Paused") {
+		t.Error("a paused connector must be visibly paused")
+	}
+	// The masked prefix may be shown; the secret never can be.
+	if strings.Contains(out, "vp_full00") && !strings.Contains(out, apikeys.Mask("vp_full00")) {
+		t.Error("an unmasked key prefix is rendered")
 	}
 
 	// Empty state is friendly, not blank.
 	empty := osConnectorManageCard(nil)
-	if !strings.Contains(empty, "No active connector keys") {
+	if !strings.Contains(empty, "No connectors yet") {
 		t.Error("empty manage card should show a helpful empty state")
+	}
+}
+
+// TestExpiredConnectorIsNotOfferedResume — an expired key is already refused by
+// the auth cache, so a Resume button would be a control that does nothing. The
+// operator would press it, see no change, and lose trust in the whole panel.
+func TestExpiredConnectorIsNotOfferedResume(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	expired := apikeys.Key{
+		ID: "k-exp", Label: "Old client", Prefix: "vp_exp000",
+		Scope: apikeys.ScopeExternal, Permissions: apikeys.NewPermissions(),
+		Active: true, CreatedAt: time.Now().Add(-96 * time.Hour), ExpiresAt: &past,
+	}
+	out := osConnectorManageCard([]apikeys.Key{expired})
+	if strings.Contains(out, `data-cx-resume="k-exp"`) || strings.Contains(out, `data-cx-pause="k-exp"`) {
+		t.Error("an expired connector offers a pause/resume control that cannot change anything")
+	}
+	if !strings.Contains(out, "Expired") {
+		t.Error("an expired connector must be labelled expired, not paused")
+	}
+	// It must still be removable, or a dead entry can never be cleared.
+	if !strings.Contains(out, `data-cx-remove="k-exp"`) {
+		t.Error("an expired connector cannot be removed")
 	}
 }
 
@@ -270,9 +333,9 @@ func TestConnectorStatsSurfaceFullControlKeys(t *testing.T) {
 	limited := apikeys.NewPermissions()
 	limited.Grant(apikeys.SectionPosts, apikeys.ActionWrite)
 	keys := []apikeys.Key{
-		{ID: "a", Permissions: apikeys.Superuser()},
-		{ID: "b", Permissions: limited},
-		{ID: "c", Permissions: apikeys.Superuser()},
+		{ID: "a", Permissions: apikeys.Superuser(), Active: true},
+		{ID: "b", Permissions: limited, Active: true},
+		{ID: "c", Permissions: apikeys.Superuser(), Active: true},
 	}
 
 	out := osConnectorStats("https://mcp.example.com/mcp", keys, true, "")
@@ -301,5 +364,24 @@ func TestConnectorStatsSurfaceFullControlKeys(t *testing.T) {
 	clean := osConnectorStats("https://example.com/mcp", nil, false, "")
 	if strings.Contains(clean, "stat-card--warn") {
 		t.Error("an install with no keys and no dedicated host is showing a warning")
+	}
+}
+
+// TestStatStripCountsOnlyUsableConnectors — a paused connector is not active,
+// and a paused full-control key is not a live grant. Counting either would put a
+// number in the strip that the panels below it contradict.
+func TestStatStripCountsOnlyUsableConnectors(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	keys := []apikeys.Key{
+		{ID: "live", Permissions: apikeys.Superuser(), Active: true},
+		{ID: "paused", Permissions: apikeys.Superuser(), Active: false},
+		{ID: "expired", Permissions: apikeys.Superuser(), Active: true, ExpiresAt: &past},
+	}
+	out := osConnectorStats("https://example.com/mcp", keys, false, "")
+	if !strings.Contains(out, ">1<") {
+		t.Error("the strip does not report exactly one active connector out of three rows")
+	}
+	if !strings.Contains(out, "paused") {
+		t.Error("connectors that are not counted as active should be accounted for, not silently dropped")
 	}
 }

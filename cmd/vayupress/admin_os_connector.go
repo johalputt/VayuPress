@@ -330,10 +330,21 @@ func osConnectorIntro() string {
 // whole site, and this page hands them out in one click — an operator should be
 // able to see how many exist without reading down a table.
 func osConnectorStats(endpoint string, keys []apikeys.Key, dedicated bool, blockedHost string) string {
-	full := 0
+	// "Active" must mean active. Counting paused and expired connectors here would
+	// put a number on the page that the panels underneath contradict — and a
+	// full-control key that is paused is not a live grant, so folding it into the
+	// warning count would overstate exposure too.
+	full, live, idle := 0, 0, 0
+	now := time.Now()
 	for _, k := range keys {
-		if k.Permissions.IsSuperuser() {
-			full++
+		usable := k.Active && (k.ExpiresAt == nil || k.ExpiresAt.After(now))
+		if usable {
+			live++
+			if k.Permissions.IsSuperuser() {
+				full++
+			}
+		} else {
+			idle++
 		}
 	}
 	host := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(endpoint, "https://"), "http://"), "/mcp")
@@ -357,8 +368,12 @@ func osConnectorStats(endpoint string, keys []apikeys.Key, dedicated bool, block
 		return `<div class="` + cls + `"><div class="stat-card__label">` + html.EscapeString(label) +
 			`</div><div class="stat-card__value">` + html.EscapeString(value) + `</div></div>`
 	}
+	activeLabel := "Active connectors"
+	if idle > 0 {
+		activeLabel += " · " + strconv.Itoa(idle) + " paused"
+	}
 	return `<div class="stat-grid">` +
-		tile(strconv.Itoa(len(keys)), "Active connectors", "") +
+		tile(strconv.Itoa(live), activeLabel, "") +
 		tile(strconv.Itoa(full), "Full-control keys", fullTone) +
 		tile(host, "Serving on", "") +
 		tile(hostLabel, "Endpoint host", hostTone) +
@@ -509,30 +524,142 @@ starts_with(http.request.uri.path, "/.well-known/")</pre>
 // osConnectorManageCard lists the operator's live (non-revoked, external) keys so
 // a connector can be revoked here. It intentionally mirrors a subset of the API
 // Keys console; the full grid lives on /os/apikeys.
+// relTimeAgo renders a timestamp as a short human interval.
+func relTimeAgo(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return strconv.Itoa(int(d.Minutes())) + "m ago"
+	case d < 24*time.Hour:
+		return strconv.Itoa(int(d.Hours())) + "h ago"
+	case d < 30*24*time.Hour:
+		return strconv.Itoa(int(d.Hours()/24)) + "d ago"
+	}
+	return t.UTC().Format("2 Jan 2006")
+}
+
+// connectorDetailRow is one label/value line in a connector's detail panel.
+func connectorDetailRow(label, value string) string {
+	return `<div class="cx-detail"><span class="cx-detail__k">` + html.EscapeString(label) +
+		`</span><span class="cx-detail__v">` + value + `</span></div>`
+}
+
+// osConnectorManageCard lists every granted connector as its own expandable
+// panel: what it is, what it can reach, when it last did, and the controls to
+// pause, disconnect or remove it.
+//
+// It replaces a three-column table showing label, access and a Revoke button.
+// That table could not answer the question an operator actually has — "which of
+// these is Claude and which is Cline?" — because every row looked the same and
+// the only distinguishing data (last used, call count) was recorded but never
+// displayed. With several clients connected, and a leftover key for every failed
+// connect attempt, the list became unreadable exactly when it mattered.
+//
+// Pausing is a real control, not a label: the auth cache loads keys WHERE
+// revoked=0 AND active=1, and SetActive invalidates that cache, so a paused
+// connector stops authenticating at once and resumes with the same secret. That
+// is the difference between this and Revoke, which is permanent.
 func osConnectorManageCard(keys []apikeys.Key) string {
-	rows := ""
+	if len(keys) == 0 {
+		return `<div class="card"><div class="empty-state">No connectors yet. Grant a key above, then connect a client.</div></div>`
+	}
+
+	unused := 0
+	panels := ""
 	for _, k := range keys {
+		id := html.EscapeString(k.ID)
+
 		scope := "Limited"
 		if k.Permissions.IsSuperuser() {
 			scope = "Full control"
 		}
-		rows += `<tr>
-      <td><div class="ak-key-label">` + html.EscapeString(k.Label) + `</div><code class="font-mono text-xs muted">` + html.EscapeString(apikeys.Mask(k.Prefix)) + `</code></td>
-      <td>` + html.EscapeString(scope) + `</td>
-      <td class="ak-row-actions"><button type="button" class="btn btn--sm" data-revoke="` + html.EscapeString(k.ID) + `">Revoke</button></td>
-    </tr>`
-	}
-	if rows == "" {
-		rows = `<tr><td colspan="3" class="text-sm muted ak-empty">No active connector keys yet. Grant one above to connect a client.</td></tr>`
-	}
-	return `<div class="card">
-  <p class="text-sm muted mb-4">Keys you have granted. Revoking one disconnects that connector immediately — the old key stops working at once. Full management (rotate, expiry, per-section grants) lives on the <a href="/os/apikeys">API Keys</a> page.</p>
-  <div class="table-wrap">
-    <table class="table">
-      <thead><tr><th>Key</th><th>Access</th><th></th></tr></thead>
-      <tbody>` + rows + `</tbody>
-    </table>
+
+		// Status. Expiry is checked before the active flag: an expired key is
+		// already refused by the auth cache, so calling it "Paused" would invite an
+		// operator to press Resume and watch nothing change.
+		state, chip, icon := "active", `<span class="mon-chip mon-chip--on">● Active</span>`, "🔌"
+		switch {
+		case k.ExpiresAt != nil && k.ExpiresAt.Before(time.Now()):
+			state, chip, icon = "expired", `<span class="mon-chip mon-chip--off">○ Expired</span>`, "⌛"
+		case !k.Active:
+			state, chip, icon = "paused", `<span class="mon-chip mon-chip--off">⏸ Paused</span>`, "⏸️"
+		}
+
+		// The subtitle carries the one fact that tells two connectors apart.
+		activity := "Never used"
+		if k.LastUsedAt != nil {
+			activity = "Last used " + relTimeAgo(*k.LastUsedAt)
+		} else {
+			unused++
+		}
+		if k.UseCount > 0 {
+			activity += " · " + strconv.FormatInt(k.UseCount, 10) + " calls"
+		}
+
+		details := connectorDetailRow("Key", `<code class="font-mono">`+html.EscapeString(apikeys.Mask(k.Prefix))+`</code>`) +
+			connectorDetailRow("Access", html.EscapeString(scope)) +
+			connectorDetailRow("Granted", html.EscapeString(relTimeAgo(k.CreatedAt))) +
+			connectorDetailRow("Last used", html.EscapeString(func() string {
+				if k.LastUsedAt == nil {
+					return "never"
+				}
+				return relTimeAgo(*k.LastUsedAt)
+			}())) +
+			connectorDetailRow("Calls", strconv.FormatInt(k.UseCount, 10))
+		if k.ExpiresAt != nil {
+			details += connectorDetailRow("Expires", html.EscapeString(k.ExpiresAt.UTC().Format("2 Jan 2006 15:04")+" UTC"))
+		}
+		if k.RatePerMin > 0 {
+			details += connectorDetailRow("Rate limit", strconv.Itoa(k.RatePerMin)+"/min")
+		}
+		if caps := k.Permissions.Capabilities(); len(caps) > 0 && !k.Permissions.IsSuperuser() {
+			chips := ""
+			for _, c := range caps {
+				chips += `<code class="font-mono text-xs cx-cap">` + html.EscapeString(c) + `</code> `
+			}
+			details += connectorDetailRow("Can reach", chips)
+		}
+
+		// Pause/Resume is offered only where it can do something. An expired key
+		// cannot be resumed by flipping a flag, so offering the button would be a
+		// control that lies.
+		toggle := ""
+		switch state {
+		case "active":
+			toggle = `<button type="button" class="btn btn--sm" data-cx-pause="` + id + `">Pause</button>`
+		case "paused":
+			toggle = `<button type="button" class="btn btn--sm" data-cx-resume="` + id + `">Resume</button>`
+		}
+
+		body := `<div class="card">
+  <div class="cx-details">` + details + `</div>
+  <div class="ak-cred-actions">` + toggle +
+			`<button type="button" class="btn btn--sm" data-revoke="` + id + `">Disconnect</button>
+    <button type="button" class="btn btn--sm btn--danger" data-cx-remove="` + id + `">Remove</button>
   </div>
+  <p class="field-hint mt-2"><strong>Pause</strong> stops this connector immediately and can be undone — the same key works again on Resume. <strong>Disconnect</strong> is permanent: the key stops working for good and the record is kept for the audit log. <strong>Remove</strong> also deletes the record.</p>
+</div>`
+
+		panels += monAcc(icon, html.EscapeString(k.Label), html.EscapeString(activity), chip, false, body)
+	}
+
+	hint := `<p class="text-sm muted mb-4">Every client that has connected, and what it can reach. Each action is written to the audit log.</p>`
+	if unused > 0 {
+		// Directly actionable: a key that has never been used is almost always a
+		// leftover from a connect attempt that failed, and these accumulate
+		// invisibly. Saying so turns a confusing list into a cleanup.
+		n := strconv.Itoa(unused)
+		word := " connectors have"
+		if unused == 1 {
+			word = " connector has"
+		}
+		hint += `<p class="text-sm muted mb-4"><span class="mon-chip mon-chip--off">○ ` + n + ` never used</span> ` +
+			n + word + ` never made a call. That usually means a connect attempt that did not finish — safe to remove.</p>`
+	}
+	return `<div class="card">` + hint + `<div class="mon-stack">` + panels + `</div>
+  <p class="field-hint mt-2">Rotating a key, changing its expiry or editing per-section grants lives on the <a href="/os/apikeys">API Keys</a> page.</p>
 </div>`
 }
 
@@ -589,12 +716,43 @@ document.addEventListener('click',function(ev){
   }
   var revBtn=ev.target.closest('[data-revoke]');
   if(revBtn){
-    if(!confirm('Revoke this connector key? Claude will be disconnected immediately.'))return;
+    if(!confirm('Disconnect this connector permanently? Its key stops working immediately and cannot be re-enabled. To stop it temporarily, use Pause instead.'))return;
     var id=revBtn.getAttribute('data-revoke');
     revBtn.disabled=true;
     cxPost('/os/api/apikeys/revoke',{id:id}).then(function(res){
-      if(res.ok){location.reload();}else{revBtn.disabled=false;cxSet(res.d.detail||'Could not revoke',true);}
+      if(res.ok){location.reload();}else{revBtn.disabled=false;cxSet(res.d.detail||'Could not disconnect',true);}
     }).catch(function(e){revBtn.disabled=false;cxSet('Error: '+e,true);});
+    return;
+  }
+  // Pause / Resume. Reversible, so no confirm on the way in -- the cost of an
+  // accidental pause is one click back, and a prompt on a safe action trains
+  // people to click through the prompts that matter.
+  var pauseBtn=ev.target.closest('[data-cx-pause]');
+  if(pauseBtn){
+    var pid=pauseBtn.getAttribute('data-cx-pause');
+    pauseBtn.disabled=true;
+    cxPost('/os/api/apikeys/deactivate',{id:pid}).then(function(res){
+      if(res.ok){location.reload();}else{pauseBtn.disabled=false;cxSet(res.d.detail||'Could not pause',true);}
+    }).catch(function(e){pauseBtn.disabled=false;cxSet('Error: '+e,true);});
+    return;
+  }
+  var resumeBtn=ev.target.closest('[data-cx-resume]');
+  if(resumeBtn){
+    var rid=resumeBtn.getAttribute('data-cx-resume');
+    resumeBtn.disabled=true;
+    cxPost('/os/api/apikeys/activate',{id:rid}).then(function(res){
+      if(res.ok){location.reload();}else{resumeBtn.disabled=false;cxSet(res.d.detail||'Could not resume',true);}
+    }).catch(function(e){resumeBtn.disabled=false;cxSet('Error: '+e,true);});
+    return;
+  }
+  var rmBtn=ev.target.closest('[data-cx-remove]');
+  if(rmBtn){
+    if(!confirm('Remove this connector and delete its record? The client is disconnected and the entry disappears from this list. This cannot be undone.'))return;
+    var mid=rmBtn.getAttribute('data-cx-remove');
+    rmBtn.disabled=true;
+    cxPost('/os/api/apikeys/delete',{id:mid}).then(function(res){
+      if(res.ok){location.reload();}else{rmBtn.disabled=false;cxSet(res.d.detail||'Could not remove',true);}
+    }).catch(function(e){rmBtn.disabled=false;cxSet('Error: '+e,true);});
     return;
   }
 });
