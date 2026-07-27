@@ -1120,10 +1120,30 @@ func (e *Engine) submissionSenderAllowed(authUser, fromAddr string) bool {
 	if !e.isLocalRecipient(fromAddr) {
 		return true
 	}
-	// Tolerate a localpart-only or differently-cased login that still names the
-	// same identity (localparts equal, and any domain the login carried matches).
+	// Tolerate a differently-cased login that still names the same identity.
+	//
+	// A localpart-only login is resolved here the SAME way the authenticator
+	// resolved it — bare "bob" authenticated against bob@<primary domain>, because
+	// that is the only address AuthUser could have checked the password against.
+	//
+	// This used to treat an empty login domain as "matches any domain", on the
+	// stated grounds that a localpart-only login is ambiguous and the guard should
+	// fail open rather than break delivery. The ambiguity does not exist: the
+	// authenticator has already pinned the login to the primary domain. What the
+	// gap did exist for was multi-domain installs, where it handed back exactly
+	// the impersonation this guard was added to stop — bob@primary, logging in as
+	// plain "bob", could send as bob@secondary, a different person's mailbox,
+	// simply by omitting the domain at login. The localparts most likely to exist
+	// on several hosted domains are the role accounts (admin, billing, support),
+	// which are also the ones worth impersonating.
 	al, ad := splitAddress(authUser)
 	fl, fd := splitAddress(fromAddr)
+	if ad == "" {
+		ad = e.cfg.Domain
+	}
+	// Still fails open when there is genuinely nothing to compare — an install
+	// with no primary domain configured — so legitimate delivery is never broken
+	// by a check that cannot be evaluated.
 	if strings.EqualFold(al, fl) && (ad == "" || strings.EqualFold(ad, fd)) {
 		return true
 	}

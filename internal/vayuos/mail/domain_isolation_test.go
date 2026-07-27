@@ -158,3 +158,50 @@ func TestMailboxDomainFor(t *testing.T) {
 		}
 	}
 }
+
+// TestLocalpartOnlyLoginCannotSendAsAnotherDomain is the regression test for a
+// bypass of sender-login binding (audit M5) on multi-domain installs.
+//
+// The guard stops an authenticated submitter sending as a local mailbox they do
+// not own. It compared the login and the From address, and treated a login that
+// carried no domain as matching ANY domain — documented as failing open because a
+// localpart-only login is ambiguous.
+//
+// It is not ambiguous. AuthUser resolves a bare "bob" to bob@<primary domain>,
+// because that is the only address it could have checked the password against.
+// So on an install serving a second domain, bob@example.com could log in as
+// plain "bob" and send as bob@shop.example — a different person's mailbox, per
+// TestCrossDomainMaildirIsolation above — just by omitting the domain at login.
+// The localparts most likely to exist on several hosted domains are the role
+// accounts (admin, billing, support), which are also the ones worth
+// impersonating.
+func TestLocalpartOnlyLoginCannotSendAsAnotherDomain(t *testing.T) {
+	t.Parallel()
+	cfg := DefaultConfig()
+	cfg.Domain = "example.com"
+	cfg.MailAccepts = func(h string) bool { return strings.EqualFold(h, "shop.example") }
+	e := NewEngine(&cfg, nil, nil)
+
+	if e.submissionSenderAllowed("bob", "bob@shop.example") {
+		t.Error("a localpart-only login sent as the same localpart on another hosted domain — " +
+			"sender-login binding is bypassable by omitting the domain at login")
+	}
+	if e.submissionSenderAllowed("bob@example.com", "bob@shop.example") {
+		t.Error("a fully-qualified login sent as another domain's mailbox")
+	}
+
+	// No regression: the ordinary cases must still pass, or the guard has simply
+	// started refusing legitimate mail.
+	if !e.submissionSenderAllowed("bob", "bob@example.com") {
+		t.Error("a localpart-only login was refused its own primary-domain address")
+	}
+	if !e.submissionSenderAllowed("BOB", "bob@EXAMPLE.com") {
+		t.Error("case differences in a login are being treated as a different identity")
+	}
+	if !e.submissionSenderAllowed("bob", "someone@partner.test") {
+		t.Error("an external From was blocked; this guard is only for local mailboxes")
+	}
+	if !e.submissionSenderAllowed("bob@shop.example", "bob@shop.example") {
+		t.Error("a secondary-domain user was refused their own address")
+	}
+}

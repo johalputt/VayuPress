@@ -6,6 +6,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.61] — 2026-07-27
+
+Ships on its own, immediately, for the same reason as 3.15.60: it closes a
+sender-impersonation path that is live on every multi-domain install today.
+
+### Security
+- **Sender-login binding was bypassable by omitting the domain at login.** The submission guard
+  (audit M5) stops an authenticated user sending as a local mailbox they do not own. It compared
+  the login against the `From` address and treated a login carrying **no domain** as matching
+  **any** domain — documented as failing open on the grounds that a localpart-only login is
+  ambiguous.
+
+  It is not ambiguous. `AuthUser` resolves a bare `bob` to `bob@<primary domain>`, because that is
+  the only address it could have checked the password against. So on an install serving a second
+  domain, `bob@primary` could log in as plain `bob` and send as `bob@secondary` — a different
+  person's mailbox, which VayuPress already treats as an entirely separate Maildir — purely by
+  leaving the domain off at login. The localparts most likely to exist on several hosted domains
+  are the role accounts (`admin`, `billing`, `support`, `security`), which are also the ones worth
+  impersonating.
+
+  A localpart-only login is now resolved the same way the authenticator resolved it, so the domain
+  comparison actually runs. The guard still fails open when there is genuinely nothing to compare
+  (no primary domain configured), so legitimate delivery is never broken by a check that cannot be
+  evaluated.
+
+  As with 3.15.60, a single-domain install could not tell the two behaviours apart, and was never
+  exposed.
+
+---
+
 ## [3.15.60] — 2026-07-27
 
 Ships on its own, immediately, rather than waiting to be batched: it corrects a
