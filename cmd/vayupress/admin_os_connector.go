@@ -18,6 +18,7 @@ import (
 	"html"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -90,31 +91,50 @@ type mcpDedicatedEntry struct {
 	challenged bool
 }
 
-// mcpProbeAccepts is the set of statuses that PROVE VayuPress answered a GET on
-// the POST-only /mcp route: 405 from the router, or 401 from the auth middleware
-// with its RFC 9728 challenge. Nothing else does.
+// mcpProbeFingerprint is the token requireMCPAuth puts in its WWW-Authenticate
+// header (RFC 9728 resource metadata). Seeing it back is proof that THIS
+// application's MCP endpoint answered, and nothing in front of it.
+const mcpProbeFingerprint = "resource_metadata"
+
+// isVayuMCPResponse reports whether a probe response came from VayuMCP itself.
 //
-// This list is the security property of the whole probe, and getting it wrong is
-// how the first version of this code defeated its own purpose: it treated ANY
-// HTTP response as proof of life. A bot challenge IS a successful response — 403
-// with an HTML body — so a proxied host would have been marked live and the page
-// would have advertised, with confidence, precisely the endpoint that cannot
-// work. "The request completed" and "the right server answered" are different
-// questions, and only the second one matters here.
-var mcpProbeAccepts = map[int]bool{
-	http.StatusUnauthorized:     true, // requireMCPAuth
-	http.StatusMethodNotAllowed: true, // chi: /mcp is POST-only
+// TWO EARLIER VERSIONS OF THIS CHECK WERE WRONG, in opposite directions, and
+// both are worth recording because the same trap catches every "is it up?" test.
+//
+// The first accepted any completed HTTP request. But a bot challenge IS a
+// completed request — 403 with an HTML body — so a proxied host was reported
+// healthy, which is the exact situation the probe exists to detect.
+//
+// The second over-corrected: it probed with GET and treated an HTML response as
+// proof of a proxy. Both halves were wrong. There is no GET handler on /mcp, so
+// on this router the request falls through to r.Get("/{slug}") and renders the
+// site's ordinary themed 404 — HTML, from VayuPress, on a perfectly healthy
+// host. A correctly configured install was reported as blocked.
+//
+// The lesson is that neither status code nor content type identifies WHO
+// answered. Only a response that this application alone can produce does. An
+// unauthenticated POST to /mcp gets 401 plus a WWW-Authenticate header carrying
+// RFC 9728 resource metadata, emitted by requireMCPAuth and by nothing else on
+// the path. That is a fingerprint, not a guess.
+func isVayuMCPResponse(resp *http.Response) bool {
+	return resp.StatusCode == http.StatusUnauthorized &&
+		strings.Contains(resp.Header.Get("Www-Authenticate"), mcpProbeFingerprint)
 }
 
 // looksLikeProxyInterstitial reports whether a response came from something in
 // front of the origin rather than the origin itself.
+//
+// Deliberately NARROW. Content type is not a signal here: VayuPress serves HTML
+// for any unmatched path, so treating HTML as a proxy signature mislabels a
+// healthy install. Only signals a proxy uniquely produces qualify — Cloudflare
+// naming its own mitigation, or the refuse/throttle codes this endpoint never
+// returns for an unauthenticated call (it answers 401).
+//
+// Under-claiming is the right failure here: a host that is not positively
+// identified is simply not advertised, and a wrong "blocked" badge sends an
+// operator to change DNS that was already correct.
 func looksLikeProxyInterstitial(resp *http.Response) bool {
-	// Cloudflare states it outright; other proxies at least return HTML where a
-	// machine endpoint would never produce any.
 	if resp.Header.Get("Cf-Mitigated") != "" {
-		return true
-	}
-	if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
 		return true
 	}
 	switch resp.StatusCode {
@@ -131,7 +151,7 @@ func looksLikeProxyInterstitial(resp *http.Response) bool {
 // whether the certificate was ever issued, and advertising an endpoint whose TLS
 // fails would trade one broken connector for another.
 //
-// "Live" means THIS SERVER answered — see mcpProbeAccepts. A response arriving is
+// "Live" means THIS SERVER answered — see isVayuMCPResponse. A response arriving is
 // not enough on its own, because the failure being detected produces a perfectly
 // valid response of its own.
 func dedicatedMCPHost(ctx context.Context, adminHost string) string {
@@ -182,18 +202,23 @@ func dedicatedMCPHost(ctx context.Context, adminHost string) string {
 			return http.ErrUseLastResponse
 		},
 	}
-	// The REAL path, not a cheaper stand-in. A skip rule that exempts /health but
-	// not /mcp would make a /health probe report success for an endpoint that is
-	// still challenged — testing the path that must work is the only test worth
-	// running. No credentials are sent: an unauthenticated 401 is a pass.
-	if req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+cand+"/mcp", nil); err == nil {
+	// The REAL path and the REAL method. A skip rule that exempts /health but not
+	// /mcp would make a /health probe report success for an endpoint that is still
+	// challenged, and a GET on /mcp does not reach the MCP handler at all — it
+	// falls through to the article route. Only an unauthenticated POST exercises
+	// the path a client actually uses.
+	//
+	// No credentials are sent and no side effect is possible: requireMCPAuth
+	// rejects the request before any tool handler runs.
+	if req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+cand+"/mcp", strings.NewReader("{}")); err == nil {
+		req.Header.Set("Content-Type", "application/json")
 		if resp, err := client.Do(req); err == nil {
 			_ = resp.Body.Close()
 			switch {
+			case isVayuMCPResponse(resp):
+				live = true
 			case looksLikeProxyInterstitial(resp):
 				challenged = true
-			case mcpProbeAccepts[resp.StatusCode]:
-				live = true
 			}
 		}
 	}
@@ -261,9 +286,13 @@ func (a *App) handleOSConnector(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := osConnectorIntro() +
+		osConnectorStats(endpoint, connectors, dedicated, blockedHost) +
+		`<div class="section-head"><span class="section-head__title">Your connector endpoint</span><span class="section-head__hint">The single URL every MCP client connects to</span></div>` +
 		osConnectorEndpointCard(endpoint, apexEndpoint, dedicated, blockedHost) +
+		`<div class="section-head"><span class="section-head__title">Grant access</span><span class="section-head__hint">A connector is exactly as powerful as the key you give it</span></div>` +
 		osConnectorGrantCard() +
 		osConnectorConnectCard(endpoint) +
+		`<div class="section-head"><span class="section-head__title">Active connectors</span><span class="section-head__hint">Revoking one disconnects that client immediately</span></div>` +
 		osConnectorManageCard(connectors)
 
 	full := adminOSShellHead(nonce, "VayuMCP", "connector", cfg) +
@@ -291,6 +320,49 @@ func osConnectorIntro() string {
     <button type="button" class="btn btn--primary btn--sm" id="cx-token-done">Done</button>
   </div>
 </div>`
+}
+
+// osConnectorStats is the at-a-glance strip, matching the Monetization and
+// Domains & DNS pages: what is granted, and whether the endpoint is on the host
+// that cannot be challenged.
+//
+// Full-control keys get their own tile deliberately. A superuser key can run the
+// whole site, and this page hands them out in one click — an operator should be
+// able to see how many exist without reading down a table.
+func osConnectorStats(endpoint string, keys []apikeys.Key, dedicated bool, blockedHost string) string {
+	full := 0
+	for _, k := range keys {
+		if k.Permissions.IsSuperuser() {
+			full++
+		}
+	}
+	host := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(endpoint, "https://"), "http://"), "/mcp")
+
+	hostLabel, hostTone := "Main domain", ""
+	switch {
+	case dedicated:
+		hostLabel = "Dedicated host"
+	case blockedHost != "":
+		hostLabel, hostTone = "Dedicated host blocked", "warn"
+	}
+	fullTone := ""
+	if full > 0 {
+		fullTone = "warn"
+	}
+	tile := func(value, label, tone string) string {
+		cls := "stat-card"
+		if tone != "" {
+			cls += " stat-card--" + tone
+		}
+		return `<div class="` + cls + `"><div class="stat-card__label">` + html.EscapeString(label) +
+			`</div><div class="stat-card__value">` + html.EscapeString(value) + `</div></div>`
+	}
+	return `<div class="stat-grid">` +
+		tile(strconv.Itoa(len(keys)), "Active connectors", "") +
+		tile(strconv.Itoa(full), "Full-control keys", fullTone) +
+		tile(host, "Serving on", "") +
+		tile(hostLabel, "Endpoint host", hostTone) +
+		`</div>`
 }
 
 func osConnectorEndpointCard(endpoint, apex string, dedicated bool, blockedHost string) string {
@@ -331,7 +403,6 @@ func osConnectorEndpointCard(endpoint, apex string, dedicated bool, blockedHost 
 // create endpoint; the preset buttons carry their capability set in data-caps.
 func osConnectorGrantCard() string {
 	return `<div class="card">
-  <div class="settings-block-title">Grant access</div>
   <p class="text-sm muted mb-4">Pick how much control to hand over to the connected client. You can revoke any grant instantly below, and every action the client takes is written to the audit log.</p>
 
   <div class="cx-grant-grid">
@@ -387,33 +458,52 @@ func osConnectorConnectCard(endpoint string) string {
   }
 }`
 	cli := `claude mcp add --transport http vayupress ` + endpoint + ` --header "Authorization: Bearer YOUR_KEY_HERE"`
-	return `<div class="card">
-  <div class="settings-block-title">Connect a client</div>
-  <p class="text-sm muted mb-4">After you grant a key above, it is filled into the snippets below automatically. Claude, Claude Code and any other MCP client all use the same endpoint — choose your client:</p>
 
-  <div class="settings-block-title text-sm">Claude Desktop</div>
+	oneClick := `<div class="card">
+  <p class="text-sm muted">This needs <strong>no key at all</strong>. The Connect button lives on <strong>Claude's side</strong>, not on this page — this site runs the OAuth&nbsp;2.1 server it signs into. On <strong>claude.ai</strong> (or Claude Desktop) open <em>Settings → Connectors → Add custom connector</em>, paste your connector endpoint <code>` + e + `</code>, and click <strong>Connect</strong>. Claude signs you in through this site and shows an <strong>Approve&nbsp;&amp;&nbsp;connect</strong> screen where you choose Full&nbsp;control / Author / Read-only.</p>
+  <p class="field-hint mt-2">Custom connectors on claude.ai may require a paid plan (Pro/Max/Team/Enterprise). The Desktop and CLI options remain for clients that use a pasted key. Technical detail: <a href="/docs/adr/ADR-0140-vayu-mcp-oauth" target="_blank" rel="noopener">ADR-0140</a>.</p>
+</div>`
+
+	desktop := `<div class="card">
   <p class="text-sm muted">Add this to your <code>claude_desktop_config.json</code> (Settings → Developer → Edit config), then restart Claude Desktop:</p>
   <pre class="cx-code font-mono" id="cx-cfg-desktop" data-endpoint="` + e + `">` + html.EscapeString(cfg) + `</pre>
   <div class="ak-cred-actions">
     <button type="button" class="btn btn--sm" data-copy="#cx-cfg-desktop">Copy config</button>
   </div>
+</div>`
 
-  <div class="settings-block-title text-sm mt-4">Claude Code (CLI)</div>
+	cliCard := `<div class="card">
   <p class="text-sm muted">One command:</p>
   <pre class="cx-code font-mono" id="cx-cfg-cli" data-endpoint="` + html.EscapeString(endpoint) + `">` + html.EscapeString(cli) + `</pre>
   <div class="ak-cred-actions">
     <button type="button" class="btn btn--sm" data-copy="#cx-cfg-cli">Copy command</button>
   </div>
-
-  <div class="settings-block-title text-sm mt-4">One-click Connect on claude.ai — no key to copy</div>
-  <p class="text-sm muted">This is the easiest way and needs <strong>no key at all</strong>. The Connect button lives on <strong>Claude's side</strong>, not on this page — this site now runs the OAuth&nbsp;2.1 server it signs into. On <strong>claude.ai</strong> (or Claude Desktop) open <em>Settings → Connectors → Add custom connector</em>, paste your connector endpoint <code>` + e + `</code>, and click <strong>Connect</strong>. Claude signs you in through this site and shows an <strong>Approve&nbsp;&amp;&nbsp;connect</strong> screen where you choose Full&nbsp;control / Author / Read-only — then you are connected. Revoke it anytime below or on the <a href="/os/apikeys">API&nbsp;Keys</a> page.</p>
-  <p class="field-hint mt-2">Custom connectors on claude.ai may require a paid plan (Pro/Max/Team/Enterprise). The Desktop/CLI snippets above remain for clients that use a pasted key. Technical detail: <a href="/docs/adr/ADR-0140-vayu-mcp-oauth" target="_blank" rel="noopener">ADR-0140</a>.</p>
-  <div class="settings-block-title text-sm mt-4">Behind Cloudflare or another proxy / WAF? (common gotcha)</div>
-  <p class="text-sm muted">Claude connects to this server <strong>machine-to-machine</strong> — there is no browser in the loop for the API calls — so it <strong>cannot pass a JavaScript &ldquo;challenge&rdquo; / &ldquo;Just a moment&hellip;&rdquo; page</strong>. If your site is proxied through Cloudflare (or any WAF) with <em>Bot&nbsp;Fight&nbsp;Mode</em>, a <em>Managed&nbsp;Challenge</em>, or <em>Under&nbsp;Attack</em> mode on, those requests are blocked <strong>before they reach VayuPress</strong> and Connect fails with &ldquo;couldn't register&rdquo; — the request never even shows up in this server's log.</p>
-  <p class="text-sm muted">Let these exact paths <strong>bypass the challenge</strong>: <code>/mcp</code>, <code>/oauth/*</code> and <code>/.well-known/*</code>. The <code>/mcp</code> path matters <em>after</em> connecting too — Claude's tool calls run over it, so a challenge there breaks the connector on first use. In Cloudflare: <em>Security → WAF → Custom rules</em>, action <strong>Skip</strong>, ticking <em>Managed rules</em>, <em>Super Bot Fight Mode</em>, <em>Rate limiting rules</em> and <em>Browser Integrity Check</em>. <strong>On the free plan</strong> you only get a handful of custom rules — if you're at the cap, don't add a new rule, just append these paths to an existing Skip rule's expression, e.g.<br><code>starts_with(http.request.uri.path,&nbsp;"/mcp") or starts_with(http.request.uri.path,&nbsp;"/oauth/") or starts_with(http.request.uri.path,&nbsp;"/.well-known/")</code></p>
-  <p class="field-hint mt-2">Verify with a plain <code>curl</code> of your site's <code>/health</code> endpoint: it must return JSON (the version), <strong>not</strong> a challenge page from the proxy. When curl gets through, Claude's backend will too.</p>
-  <p class="field-hint mt-2"><strong>Can't scope the challenge (e.g. Cloudflare free — Bot Fight Mode can't be skipped per-path)?</strong> Point a dedicated <code>mcp.&lt;your-domain&gt;</code> record straight at this server with the <strong>proxy OFF (&ldquo;DNS only&rdquo;)</strong>, and connect Claude to <code>https://mcp.&lt;your-domain&gt;/mcp</code>. Your main site keeps full proxy protection; only this subdomain is direct (VayuShield still guards it). VayuPress auto-provisions the TLS cert + vhost — run <code>sudo bash scripts/setup-mcp-subdomain.sh</code> or just re-run your update once the DNS record exists.</p>
 </div>`
+
+	// The proxy/WAF section is reference material: essential when it bites, noise
+	// on every other visit. It used to run to five dense paragraphs sitting between
+	// the operator and the connector list, so it dominated a page whose actual job
+	// is "copy an endpoint, grant a key". Folded away, findable by its own title.
+	proxy := `<div class="card">
+  <p class="text-sm muted">An MCP client reaches this server <strong>machine-to-machine</strong> — no browser is in the loop for the API calls — so it <strong>cannot pass a JavaScript &ldquo;challenge&rdquo; / &ldquo;Just a moment&hellip;&rdquo; page</strong>. If your site is proxied with <em>Bot&nbsp;Fight&nbsp;Mode</em>, a <em>Managed&nbsp;Challenge</em>, a custom rule, or <em>Under&nbsp;Attack</em> mode on, those requests are stopped <strong>before they reach VayuPress</strong> and Connect fails with &ldquo;couldn't register&rdquo; — the request never appears in this server's log, which is what makes it hard to diagnose.</p>
+  <p class="text-sm muted">Let these exact paths <strong>bypass the challenge</strong>: <code>/mcp</code>, <code>/oauth/*</code> and <code>/.well-known/*</code>. <code>/mcp</code> matters <em>after</em> connecting too — every tool call runs over it, so a challenge there breaks the connector on first use. In Cloudflare: <em>Security → WAF → Custom rules</em>, action <strong>Skip</strong>, ticking <em>Managed rules</em>, <em>Super Bot Fight Mode</em>, <em>Rate limiting rules</em> and <em>Browser Integrity Check</em>. <strong>On the free plan</strong> you get only a handful of custom rules — if you are at the cap, append these paths to an existing Skip rule instead of adding one:</p>
+  <pre class="cx-code font-mono" id="cx-waf-expr">starts_with(http.request.uri.path, "/mcp") or
+starts_with(http.request.uri.path, "/oauth/") or
+starts_with(http.request.uri.path, "/.well-known/")</pre>
+  <div class="ak-cred-actions">
+    <button type="button" class="btn btn--sm" data-copy="#cx-waf-expr">Copy expression</button>
+  </div>
+  <p class="field-hint mt-2">Verify with a plain <code>curl</code> of your site's <code>/health</code> endpoint: it must return JSON, <strong>not</strong> a challenge page. When curl gets through, an MCP client will too.</p>
+  <p class="field-hint mt-2"><strong>Can't scope the challenge per path?</strong> (Bot&nbsp;Fight&nbsp;Mode on the free plan cannot be.) Point a dedicated <code>mcp.&lt;your-domain&gt;</code> record straight at this server with the <strong>proxy OFF (&ldquo;DNS only&rdquo;)</strong>. Your main site keeps full protection; only this host is direct, and VayuShield still guards it. VayuPress provisions the certificate and vhost itself — run <code>sudo bash scripts/setup-mcp-subdomain.sh</code>, or re-run your update once the record exists. This page then offers that host automatically.</p>
+</div>`
+
+	return `<div class="section-head"><span class="section-head__title">Connect a client</span><span class="section-head__hint">A granted key is filled into these automatically — pick your client</span></div>
+<div class="mon-stack">` +
+		monAcc("✨", "One-click Connect on claude.ai", "Easiest — no key to copy", `<span class="mon-chip mon-chip--on">● Recommended</span>`, true, oneClick) +
+		monAcc("🖥️", "Claude Desktop", "Paste a config block", `<span class="mon-chip mon-chip--off">○ Needs a key</span>`, false, desktop) +
+		monAcc("⌨️", "Claude Code (CLI)", "One command", `<span class="mon-chip mon-chip--off">○ Needs a key</span>`, false, cliCard) +
+		monAcc("🛡️", "Behind a proxy or WAF?", "The most common reason Connect fails", `<span class="mon-chip mon-chip--off">○ Reference</span>`, false, proxy) +
+		`</div>`
 }
 
 // osConnectorManageCard lists the operator's live (non-revoked, external) keys so
@@ -436,7 +526,6 @@ func osConnectorManageCard(keys []apikeys.Key) string {
 		rows = `<tr><td colspan="3" class="text-sm muted ak-empty">No active connector keys yet. Grant one above to connect a client.</td></tr>`
 	}
 	return `<div class="card">
-  <div class="settings-block-title">Active connectors</div>
   <p class="text-sm muted mb-4">Keys you have granted. Revoking one disconnects that connector immediately — the old key stops working at once. Full management (rotate, expiry, per-section grants) lives on the <a href="/os/apikeys">API Keys</a> page.</p>
   <div class="table-wrap">
     <table class="table">

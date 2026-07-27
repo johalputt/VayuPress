@@ -1060,6 +1060,16 @@
   transform: translateY(-2px);
 }
 .vp-os .stat-card:hover::before { opacity: 1; }
+/* Attention variant: same panel, warm seam + value. Used where a number is not
+   merely informational — full-control keys granted, a dedicated host that a
+   proxy is answering for — so what needs a decision reads at a glance instead of
+   being one more figure in a row. */
+.vp-os .stat-card--warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
+.vp-os .stat-card--warn::before {
+  background: linear-gradient(90deg, transparent, var(--warn) 50%, transparent);
+  opacity: 0.75;
+}
+.vp-os .stat-card--warn .stat-card__value { color: var(--warn); }
 @media (prefers-reduced-motion: reduce) {
   .vp-os .stat-card { transition: border-color var(--t), box-shadow var(--t); }
   .vp-os .stat-card:hover { transform: none; }

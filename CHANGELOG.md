@@ -6,6 +6,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.67] — 2026-07-27
+
+Ships immediately: 3.15.64 reports a correctly configured dedicated host as
+blocked.
+
+### Fixed
+- **The connector probe reported a healthy `mcp.<domain>` host as blocked.** 3.15.64 probed with a
+  `GET` on `/mcp` and treated an HTML response as evidence of a proxy. Both halves were wrong.
+  There is no `GET` handler on `/mcp`, so on this router the request falls through to
+  `r.Get("/{slug}")` and renders the site's ordinary themed 404 — **HTML, from VayuPress, on a
+  perfectly healthy host**. The page then told operators their dedicated host was being blocked and
+  sent them to change DNS that was already correct.
+
+  Neither status code nor content type identifies *who* answered. The probe now sends an
+  unauthenticated **POST** — the method a client actually uses — and accepts only a **401 carrying
+  the RFC 9728 `resource_metadata` challenge**, which `requireMCPAuth` emits and nothing else on
+  the path does. That is a fingerprint rather than a guess. `text/html` is no longer treated as a
+  proxy signature at all; only `cf-mitigated` and the refuse/throttle codes this endpoint never
+  returns for an unauthenticated call qualify.
+
+  Under-claiming is the intended failure mode here: a host that is not positively identified is
+  simply not advertised, whereas a wrong "blocked" badge actively sends an operator to break
+  working DNS.
+
+### Changed
+- **The VayuMCP page now follows the Monetization layout.** A stat strip (active connectors,
+  full-control keys, host actually served, endpoint host state), `section-head` dividers, and the
+  client setup options as collapsible cards. The proxy/WAF guidance — five dense paragraphs that
+  previously sat between the operator and the connector list — is now one folded card, findable by
+  its title and quiet the rest of the time. The Cloudflare skip expression is a copyable block
+  instead of inline prose.
+
+  Full-control keys get their own tile, marked for attention when any exist: this page mints
+  superuser keys in one click, and how many are live should not require reading down a table.
+
+---
+
 ## [3.15.66] — 2026-07-27
 
 ### Fixed

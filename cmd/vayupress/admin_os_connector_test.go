@@ -176,57 +176,70 @@ func TestConnectorEndpointFallsBackToTheRequestHost(t *testing.T) {
 	}
 }
 
-// TestProbeRejectsAProxyInterstitial is the regression test for a flaw that
-// defeated this feature's entire purpose in its first release.
+// TestProbeIdentifiesWhoAnswered is the regression test for two opposite
+// mistakes in this check, both shipped.
 //
-// The probe exists to avoid advertising an endpoint that a proxy will challenge.
-// Its first version treated ANY completed HTTP response as proof of life — but a
-// bot challenge IS a completed response: 403, HTML body, served by the proxy. So
-// a proxied host would have been marked live and the page would have offered,
-// with a confident green badge, exactly the URL that cannot work.
+// The first accepted any completed HTTP request as proof of life. A bot
+// challenge IS a completed request — 403 with an HTML body — so a proxied host
+// was reported healthy, the exact situation the probe exists to detect.
 //
-// "The request completed" and "the right server answered" are different
-// questions. Only the second one is worth anything here.
-func TestProbeRejectsAProxyInterstitial(t *testing.T) {
-	challenge := func(h http.Header, code int) *http.Response {
+// The second over-corrected: it probed with GET and treated an HTML response as
+// a proxy signature. There is no GET handler on /mcp, so the request falls
+// through to r.Get("/{slug}") and renders the site's ordinary themed 404 — HTML,
+// from VayuPress, on a perfectly healthy host. A correct install was reported as
+// blocked, and the operator was told to change DNS that was already right.
+//
+// Neither status code nor content type says WHO answered. Only a response this
+// application alone can produce does.
+func TestProbeIdentifiesWhoAnswered(t *testing.T) {
+	mk := func(code int, hdr map[string]string) *http.Response {
+		h := http.Header{}
+		for k, v := range hdr {
+			h.Set(k, v)
+		}
 		return &http.Response{StatusCode: code, Header: h}
 	}
 
-	// Cloudflare says so outright.
-	cf := http.Header{}
-	cf.Set("Cf-Mitigated", "challenge")
-	cf.Set("Content-Type", "text/html; charset=UTF-8")
-	if !looksLikeProxyInterstitial(challenge(cf, http.StatusForbidden)) {
+	// The fingerprint: 401 + RFC 9728 resource metadata, from requireMCPAuth.
+	ok := mk(http.StatusUnauthorized, map[string]string{
+		"WWW-Authenticate": `Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"`,
+	})
+	if !isVayuMCPResponse(ok) {
+		t.Error("the real VayuMCP 401 was not recognised — a healthy host would never be advertised")
+	}
+	if looksLikeProxyInterstitial(ok) {
+		t.Error("the real VayuMCP 401 was mislabelled as a proxy interstitial")
+	}
+
+	// The regression: this site's themed 404 for an unmatched path. HTML, from
+	// VayuPress, on a healthy host. It is not the MCP endpoint, but it is
+	// emphatically NOT evidence of a proxy.
+	themed404 := mk(http.StatusNotFound, map[string]string{"Content-Type": "text/html; charset=utf-8"})
+	if isVayuMCPResponse(themed404) {
+		t.Error("a themed 404 was accepted as the MCP endpoint")
+	}
+	if looksLikeProxyInterstitial(themed404) {
+		t.Error("this site's own HTML 404 was reported as a proxy blocking the host — the false positive")
+	}
+
+	// A bare 401 without the fingerprint proves nothing: anything can return 401.
+	if isVayuMCPResponse(mk(http.StatusUnauthorized, nil)) {
+		t.Error("a 401 with no resource_metadata was accepted; that is not a fingerprint")
+	}
+
+	// Genuine proxy signals.
+	cf := mk(http.StatusForbidden, map[string]string{"Cf-Mitigated": "challenge", "Content-Type": "text/html"})
+	if isVayuMCPResponse(cf) || !looksLikeProxyInterstitial(cf) {
 		t.Error("a cf-mitigated challenge was not recognised as a proxy interstitial")
 	}
-	// A proxy that does not announce itself still returns HTML where a machine
-	// endpoint never would.
-	html := http.Header{}
-	html.Set("Content-Type", "text/html")
-	if !looksLikeProxyInterstitial(challenge(html, http.StatusOK)) {
-		t.Error("an HTML 200 on a machine endpoint was not treated as an interstitial")
-	}
-	// The block/throttle codes a machine client can never work through.
 	for _, code := range []int{http.StatusForbidden, http.StatusTooManyRequests, http.StatusServiceUnavailable} {
-		if !looksLikeProxyInterstitial(challenge(http.Header{}, code)) {
+		if !looksLikeProxyInterstitial(mk(code, nil)) {
 			t.Errorf("HTTP %d was not treated as unusable for a machine client", code)
 		}
 	}
-
-	// The two statuses that DO prove VayuPress answered must not be mistaken for
-	// an interstitial, or the probe would never accept a healthy host.
-	for code := range mcpProbeAccepts {
-		if looksLikeProxyInterstitial(challenge(http.Header{}, code)) {
-			t.Errorf("HTTP %d proves the app answered but was rejected as an interstitial", code)
-		}
-	}
-	if !mcpProbeAccepts[http.StatusUnauthorized] || !mcpProbeAccepts[http.StatusMethodNotAllowed] {
-		t.Error("the accept set must contain 401 (auth middleware) and 405 (POST-only route)")
-	}
-	// A bare 200 is NOT proof: /mcp is POST-only, so this server cannot produce
-	// one for a GET. Something else did.
-	if mcpProbeAccepts[http.StatusOK] {
-		t.Error("200 accepted on a POST-only route — that answer did not come from this server")
+	// A 200 is not proof either: the endpoint answers 401 when unauthenticated.
+	if isVayuMCPResponse(mk(http.StatusOK, nil)) {
+		t.Error("a bare 200 was accepted; the endpoint cannot produce one for an unauthenticated call")
 	}
 }
 
@@ -247,5 +260,46 @@ func TestBlockedHostIsReportedDistinctlyFromMissing(t *testing.T) {
 	}
 	if blocked == apexOnly {
 		t.Error("a blocked dedicated host renders identically to having none — the two need opposite actions")
+	}
+}
+
+// TestConnectorStatsSurfaceFullControlKeys — this page mints superuser keys in
+// one click, and a superuser key can run the entire site. How many exist is the
+// one number an operator should not have to read down a table to find.
+func TestConnectorStatsSurfaceFullControlKeys(t *testing.T) {
+	limited := apikeys.NewPermissions()
+	limited.Grant(apikeys.SectionPosts, apikeys.ActionWrite)
+	keys := []apikeys.Key{
+		{ID: "a", Permissions: apikeys.Superuser()},
+		{ID: "b", Permissions: limited},
+		{ID: "c", Permissions: apikeys.Superuser()},
+	}
+
+	out := osConnectorStats("https://mcp.example.com/mcp", keys, true, "")
+	assertCSPSafe(t, "osConnectorStats", out)
+	if !strings.Contains(out, "Full-control keys") {
+		t.Error("the stat strip does not surface how many superuser keys are live")
+	}
+	// Two superuser keys, and the tile must be marked for attention.
+	if !strings.Contains(out, "stat-card--warn") {
+		t.Error("full-control keys exist but nothing marks the tile as needing attention")
+	}
+	if !strings.Contains(out, "mcp.example.com") {
+		t.Error("the strip must name the host actually being served")
+	}
+	if !strings.Contains(out, "Dedicated host") {
+		t.Error("a dedicated endpoint host is not reflected in the strip")
+	}
+
+	// A blocked dedicated host is a warning state, distinct from serving on the
+	// main domain by choice.
+	blocked := osConnectorStats("https://example.com/mcp", nil, false, "mcp.example.com")
+	if !strings.Contains(blocked, "blocked") && !strings.Contains(blocked, "Dedicated host blocked") {
+		t.Error("a blocked dedicated host is not surfaced in the stat strip")
+	}
+	// No keys at all: nothing should be flagged.
+	clean := osConnectorStats("https://example.com/mcp", nil, false, "")
+	if strings.Contains(clean, "stat-card--warn") {
+		t.Error("an install with no keys and no dedicated host is showing a warning")
 	}
 }
