@@ -49,6 +49,10 @@ const (
 	// the passphrase is a sealed credential, never a setting.
 	KeyVayuKeepTarget  = "vayukeep.target"
 	KeyVayuKeepEnabled = "vayukeep.enabled"
+	// Retention, settable from the console so "auto-delete old backups" is a
+	// control an operator can see and change rather than an environment variable.
+	KeyVayuKeepRetainGen  = "vayukeep.retain_generations"
+	KeyVayuKeepRetainDays = "vayukeep.retain_days"
 
 	// Business-website mode (VayuOS → Website). KeySiteMode selects what the
 	// root domain serves: "" / "blog" keeps the blog at the root (the historic

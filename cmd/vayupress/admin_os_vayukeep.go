@@ -33,6 +33,8 @@ import (
 	"github.com/johalputt/vayupress/internal/vayukeep"
 )
 
+var iconArchive = svgIcon("M2.5 4.5h15V8h-15zM4 8h12v8H4zM8 11h4")
+
 var iconKeep = svgIcon("M10 2.5l6 2v5c0 3.8-2.8 6.4-6 7.4-3.2-1-6-3.6-6-7.4v-5l6-2zM7.4 9.8l1.8 1.8 3.4-3.8")
 
 // humanAgo renders "how long ago" in the shortest honest form. A zero time is
@@ -227,7 +229,8 @@ func keepPointsCard(gens []vayukeep.Generation, now time.Time) string {
 		rows += `<tr><td><code>` + esc + `</code></td><td>` + html.EscapeString(g.Taken.Format("2 Jan 2006 15:04")) + ` UTC</td><td>` +
 			html.EscapeString(humanAgo(g.Taken, now)) + `</td><td>` + html.EscapeString(humanBytes(g.Bytes)) + `</td>` +
 			`<td><button type="button" class="btn btn--ghost btn--sm" data-vk-verify="` + esc + `">Check</button> ` +
-			`<button type="button" class="btn btn--danger btn--sm" data-vk-restore="` + esc + `">Restore</button></td></tr>`
+			`<button type="button" class="btn btn--danger btn--sm" data-vk-restore="` + esc + `">Restore</button> ` +
+			`<button type="button" class="btn btn--ghost btn--sm" data-vk-delete="` + esc + `">Delete</button></td></tr>`
 	}
 	return `<p class="text-sm muted">Each entry is a complete, independent copy of your whole site at that moment — database, media, mailboxes and settings. <strong>Check</strong> reads one end to end without writing anything.</p>
 <div class="table-wrap"><table class="table">
@@ -237,21 +240,64 @@ func keepPointsCard(gens []vayukeep.Generation, now time.Time) string {
 <p class="text-xs muted mt-2"><strong>Restore</strong> puts your site back to that moment and restarts. Your current database is copied aside first, so it is reversible. It restores the database — posts, pages, settings, members, comments and mailbox accounts. Uploaded files and stored mail are left alone, because swapping those under a running site is how a half-restored install happens; use the command below for a complete one.</p>`
 }
 
-// keepRestoreCard is the recovery runbook, inline, so an operator in trouble does
-// not have to go and find the docs first.
+// keepManualCard is the hand-operated half: download a copy to your own machine,
+// or restore one you already have. Moved here from Update & Backup so every way
+// of protecting and recovering this install lives on one page — an operator
+// hunting for "backup" should never have to guess which of two pages has it.
+func keepManualCard() string {
+	return `<p class="text-sm">Download your whole site as one file, or restore one you downloaded earlier — including onto a different server.</p>
+<div class="settings-block-title mt-3">Download a copy</div>
+<p class="text-sm muted mb-2">A consistent, checksummed snapshot of the database and every setting, saved to your computer. No size limit.</p>
+<a class="btn btn--primary btn--sm" href="/os/api/backup/export" data-backup-export download>Download full backup</a>
+<div class="section-divider mt-4"></div>
+<div class="settings-block-title mt-4">Restore from a file</div>
+<p class="text-sm muted mb-2">Your current database is copied aside first, then the service restarts to load the restored data. <strong>This replaces all current content and settings.</strong></p>
+<div class="theme-actions" data-restore-wrap>
+  <input type="file" id="backup-file" class="input upd-file" accept=".gz,.tgz,application/gzip,application/x-gzip" data-backup-file>
+  <button type="button" class="btn btn--danger btn--sm" data-backup-import>Restore from file</button>
+  <span class="text-xs muted" data-backup-msg role="status" aria-live="polite"></span>
+</div>
+<div class="progress mt-3" data-restore-progress hidden><div class="progress__bar progress__bar--ok w-0" data-restore-bar></div></div>`
+}
+
+// keepRetentionCard lets the operator set how much history is kept, so
+// "auto-delete old backups" is a control rather than an environment variable.
+func keepRetentionCard(gens, days int) string {
+	return `<p class="text-sm">Old restore points are deleted automatically. A point survives if it is within <strong>either</strong> limit, so a quiet month cannot age out your only copy.</p>
+<div class="field">
+  <label class="field-label" for="vk-keep-n">Always keep at least this many</label>
+  <input id="vk-keep-n" class="input" type="number" min="1" max="500" value="` + strconv.Itoa(gens) + `" style="max-width:9rem">
+</div>
+<div class="field">
+  <label class="field-label" for="vk-keep-d">And anything from the last (days)</label>
+  <input id="vk-keep-d" class="input" type="number" min="1" max="3650" value="` + strconv.Itoa(days) + `" style="max-width:9rem">
+</div>
+<div class="mt-3" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+  <button type="button" class="btn btn--sm" data-vk-retention>Save</button>
+  <button type="button" class="btn btn--ghost btn--sm" data-vk-prune>Clean up now</button>
+  <span id="vk-retention-status" role="status" aria-live="polite" class="text-xs muted"></span>
+</div>
+<p class="text-xs muted mt-2">Deleting a restore point is permanent — the copy is gone, not moved to a bin.</p>`
+}
+
+// keepRestoreCard is the recovery runbook. It leads with the buttons, because an
+// operator in trouble should not have to read a manual first; the commands stay
+// for the one case the console genuinely cannot cover — a server that will not
+// start, or recovering onto a different machine.
 func keepRestoreCard(st vayukeep.Status) string {
 	target := st.Target
 	if target == "" {
 		target = "/var/backups/vayupress"
 	}
 	t := html.EscapeString(target)
-	return `<p class="text-sm">Restoring replaces your live site with a saved copy. Always check the restore point first — it costs nothing and takes seconds.</p>
-<p class="text-sm"><strong>1.</strong> Check the one you intend to use:</p>
-<pre class="code-block"><code>vayupress restore -in ` + t + `/vk-YYYYMMDD-HHMMSS.vpbk -verify</code></pre>
-<p class="text-sm"><strong>2.</strong> Stop the service, restore, start again:</p>
-<pre class="code-block"><code>sudo systemctl stop vayupress
+	return `<p class="text-sm"><strong>From this page.</strong> Open <em>Restore points</em> above, press <strong>Check</strong> on the one you want to confirm it is readable, then <strong>Restore</strong>. VayuPress copies your current database aside, puts the saved one in its place and restarts. Nothing to type but the confirmation.</p>
+<div class="section-divider"></div>
+<p class="text-sm"><strong>If this site will not start</strong>, or you are recovering onto a different machine, the console is not reachable — so the same job from a shell:</p>
+<pre class="code-block"><code>vayupress restore -in ` + t + `/vk-YYYYMMDD-HHMMSS.vpbk -verify
+sudo systemctl stop vayupress
 vayupress restore -in ` + t + `/vk-YYYYMMDD-HHMMSS.vpbk -dest /var/lib/vayupress
 sudo systemctl start vayupress</code></pre>
+<p class="text-xs muted">That form also restores uploaded files and stored mail, which the one-click restore leaves alone.</p>
 <div class="section-divider"></div>
 <div class="cx-details">` +
 		detailRow("Your old data is kept", "The restore moves your current data directory aside and prints where. Nothing is deleted until you delete it.") +
@@ -332,13 +378,16 @@ func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vay
 
 	body += `<div class="section-head"><span class="section-head__title">Recovery</span><span class="section-head__hint">Exactly what to do when you need it</span></div>
 <div class="mon-stack">` +
-		monAcc(iconVCB, "How to restore", "Step by step, including onto a different server", "", false, keepRestoreCard(st)) +
+		monAcc(iconVCB, "How to restore", "One click here, or from a shell if the site will not start", "", false, keepRestoreCard(st)) +
+		monAcc(iconArchive, "Manual backup &amp; restore", "Download a copy, or restore one you already have", "", false, keepManualCard()) +
 		`</div>
 
 <div class="section-head"><span class="section-head__title">How it works</span><span class="section-head__hint">The guarantees, stated plainly</span></div>
 <div class="mon-stack">` +
 		monAcc(iconKey, "Encryption &amp; safety", "What is protected, and what deliberately is not", "", false, keepSpecCard(st)) +
 		monAcc(iconVCB, "Schedule &amp; retention", "When it runs and how much it keeps", "", false, keepScheduleCard()) +
+		monAcc(iconArchive, "Housekeeping", "How long copies are kept, and deleting them", "", false,
+			keepRetentionCard(config.Cfg.VayuKeepRetainGen, config.Cfg.BackupRetainDays)) +
 		`</div>
 
 <script nonce="` + nonce + `">
@@ -403,6 +452,23 @@ if(copyBtn){copyBtn.addEventListener('click',function(){
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(f.value).then(done,function(){document.execCommand('copy');done();});}
   else{document.execCommand('copy');done();}
 });}
+Array.prototype.forEach.call(document.querySelectorAll('[data-vk-delete]'),function(el){
+  el.addEventListener('click',function(){
+    var name=el.getAttribute('data-vk-delete');
+    if(!window.confirm('Delete '+name+' permanently?\n\nThis copy is gone, not moved to a bin.'))return;
+    vkPost('/os/api/vayukeep/delete',{name:name},el,'Deleting…','vk-verify-status');
+  });
+});
+var retBtn=document.querySelector('[data-vk-retention]');
+if(retBtn){retBtn.addEventListener('click',function(){
+  var n=document.getElementById('vk-keep-n'), d=document.getElementById('vk-keep-d');
+  vkPost('/os/api/vayukeep/retention',{generations:parseInt(n?n.value:'0',10),days:parseInt(d?d.value:'0',10)},retBtn,'Saving…','vk-retention-status');
+});}
+var pruneBtn=document.querySelector('[data-vk-prune]');
+if(pruneBtn){pruneBtn.addEventListener('click',function(){
+  if(!window.confirm('Delete every restore point that is outside both limits?'))return;
+  vkPost('/os/api/vayukeep/prune',{},pruneBtn,'Cleaning…','vk-retention-status');
+});}
 var setupBtn=document.querySelector('[data-vk-setup]');
 if(setupBtn){setupBtn.addEventListener('click',function(){
   var t=document.getElementById('vk-target'), p=document.getElementById('vk-pass');
@@ -423,7 +489,8 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-vk-restore]'),func
   });
 });
 })();
-</script>`
+</script>
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-update.js?v=` + assetVer("js/admin-os-update.js") + `"></script>`
 	return body
 }
 
@@ -700,4 +767,105 @@ func (a *App) handleOSVayuKeepRestore(w http.ResponseWriter, r *http.Request) {
 		"ok": true, "restart": true,
 		"detail": "Restore prepared from " + chosen.Name + ". Restarting now — your current database is copied aside first, so this is itself reversible.",
 	})
+}
+
+// handleOSVayuKeepDelete removes one restore point permanently.
+//
+// Like Check and Restore, the name is resolved against the engine's own listing
+// rather than joined onto a path — this endpoint deletes files, so treating a
+// browser-supplied string as a filename would be the most dangerous traversal
+// primitive on the page.
+//
+// It refuses to delete the last remaining copy. An operator clearing out old
+// backups should not be able to click their way to having none, and the button
+// that would do it looks identical to the one that removes the ninth of ten.
+func (a *App) handleOSVayuKeepDelete(w http.ResponseWriter, r *http.Request) {
+	if !a.keepGuard(w, r) {
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	gens, err := a.vayuKeep.List()
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "vayukeep-error", err.Error(), "")
+		return
+	}
+	if len(gens) <= 1 {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false,
+			"detail": "That is your only restore point. Take a new one first if you really want to remove it."})
+		return
+	}
+	for _, g := range gens {
+		if g.Name != body.Name {
+			continue
+		}
+		if derr := a.vayuKeep.Delete(g); derr != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "vayukeep-error", derr.Error(), "")
+			return
+		}
+		dbpkg.AuditLog("vayukeep.delete", dbpkg.AuditActor(r), g.Name, humanBytes(g.Bytes))
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": true,
+			"detail": g.Name + " deleted (" + humanBytes(g.Bytes) + " freed)."})
+		return
+	}
+	writeAPIError(w, r, http.StatusNotFound, "not-found", "no restore point by that name", "")
+}
+
+// handleOSVayuKeepRetention saves how much history to keep and applies it.
+func (a *App) handleOSVayuKeepRetention(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrator access required", "")
+		return
+	}
+	if a.siteSettings == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "settings storage is not ready", "")
+		return
+	}
+	var body struct {
+		Generations int `json:"generations"`
+		Days        int `json:"days"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	// Both bounds must be at least one. Zero would mean "keep nothing", which no
+	// operator means and which the form's own minimums already disallow — this is
+	// the guard for anything that does not come from the form.
+	if body.Generations < 1 || body.Days < 1 {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": "Both limits must be at least 1."})
+		return
+	}
+	if err := a.siteSettings.SetMany(r.Context(), map[string]string{
+		settings.KeyVayuKeepRetainGen:  strconv.Itoa(body.Generations),
+		settings.KeyVayuKeepRetainDays: strconv.Itoa(body.Days),
+	}); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "settings-error", err.Error(), "")
+		return
+	}
+	dbpkg.AuditLog("vayukeep.retention", dbpkg.AuditActor(r),
+		strconv.Itoa(body.Generations)+" generations", strconv.Itoa(body.Days)+" days")
+	_ = a.applyKeepConfig(r.Context())
+	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": true,
+		"detail": "Saved — keeping at least " + strconv.Itoa(body.Generations) + " restore points, and anything from the last " + strconv.Itoa(body.Days) + " days."})
+}
+
+// handleOSVayuKeepPrune applies retention immediately instead of at the next cycle.
+func (a *App) handleOSVayuKeepPrune(w http.ResponseWriter, r *http.Request) {
+	if !a.keepGuard(w, r) {
+		return
+	}
+	before, _ := a.vayuKeep.List()
+	if err := a.vayuKeep.Prune(); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "vayukeep-error", err.Error(), "")
+		return
+	}
+	after, _ := a.vayuKeep.List()
+	removed := len(before) - len(after)
+	detail := "Nothing to clean up — every restore point is still within your limits."
+	if removed > 0 {
+		detail = strconv.Itoa(removed) + " restore point(s) removed."
+		dbpkg.AuditLog("vayukeep.prune", dbpkg.AuditActor(r), strconv.Itoa(removed), "")
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": removed > 0, "detail": detail})
 }

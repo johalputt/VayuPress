@@ -6,6 +6,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.84] — 2026-07-27
+
+### Changed
+- **Everything backup-related now lives on one page.** Manual export and import
+  moved from Update &amp; Backup to Operations → Backup &amp; Recovery. An operator
+  hunting for "backup" should never have to guess which of two pages has it — and
+  the split meant the automatic system and the hand-operated one each looked like
+  the whole story. Update &amp; Backup keeps the update history and links across.
+
+- **Recovery leads with the buttons, not a shell transcript.** The card previously
+  opened with `systemctl stop vayupress`; it now explains the one-click path first
+  and keeps the commands for the case they are genuinely for — a site that will not
+  start, or recovering onto a different machine, where the console is unreachable
+  by definition. That form also restores uploaded files and stored mail, which the
+  one-click restore leaves alone, and it now says so.
+
+### Added
+- **Delete a restore point** from the list, with a confirmation. It refuses to
+  delete the last remaining copy: an operator clearing out old backups should not
+  be able to click their way to having none, and the button that would do it looks
+  identical to the one removing the ninth of ten.
+- **Retention is a control, not an environment variable.** "Always keep at least N"
+  and "anything from the last D days" are editable on the page and apply
+  immediately, with **Clean up now** to run retention on demand instead of waiting
+  for the next cycle.
+- **Check** on each restore point reads that specific copy end to end — passphrase,
+  every authentication tag, the chain, the end marker — without writing anything.
+
+### Security
+- Delete resolves the requested name against the engine's own listing rather than
+  joining it onto a path. This endpoint removes files, so treating a
+  browser-supplied string as a filename would be the most dangerous traversal
+  primitive on the page.
+- Retention refuses either bound below 1. Zero would mean "keep nothing", which no
+  operator means; the form's own minimums already prevent it, and this covers
+  anything that does not come from the form.
+
+---
+
 ## [3.15.83] — 2026-07-27
 
 ### Added

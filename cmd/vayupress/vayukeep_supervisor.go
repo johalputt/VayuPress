@@ -26,6 +26,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -85,6 +86,17 @@ func (a *App) keepEnabled(ctx context.Context) bool {
 	return a.siteSettings.Get(ctx, settings.KeyVayuKeepEnabled) == "true"
 }
 
+// keepInt reads a saved numeric setting, falling back to the configured default.
+func (a *App) keepInt(ctx context.Context, key string, def int) int {
+	if a.siteSettings == nil {
+		return def
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(a.siteSettings.Get(ctx, key))); err == nil && n > 0 {
+		return n
+	}
+	return def
+}
+
 // buildKeepConfig assembles the engine configuration from every source.
 func (a *App) buildKeepConfig(ctx context.Context) vayukeep.Config {
 	return vayukeep.Config{
@@ -96,8 +108,8 @@ func (a *App) buildKeepConfig(ctx context.Context) vayukeep.Config {
 		MinInterval:       time.Duration(config.Cfg.VayuKeepMinMin) * time.Minute,
 		MaxInterval:       time.Duration(config.Cfg.VayuKeepMaxMin) * time.Minute,
 		DrillInterval:     time.Duration(config.Cfg.VayuKeepDrillMin) * time.Minute,
-		RetainGenerations: config.Cfg.VayuKeepRetainGen,
-		RetainDays:        config.Cfg.BackupRetainDays,
+		RetainGenerations: a.keepInt(ctx, settings.KeyVayuKeepRetainGen, config.Cfg.VayuKeepRetainGen),
+		RetainDays:        a.keepInt(ctx, settings.KeyVayuKeepRetainDays, config.Cfg.BackupRetainDays),
 		Snapshot:          snapshotLiveDB,
 		Pressure: func() bool {
 			g := a.sovereign

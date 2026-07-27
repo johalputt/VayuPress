@@ -205,22 +205,7 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 	// actually available and the mode allows applying.
 	applyDisabled := " disabled"
 
-	iconArchive := `<svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="M2.5 4.5h15V8h-15zM4 8h12v8H4zM8 11h4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/></svg>`
 	iconHistory := `<svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.4"/><path d="M10 5.6V10l2.9 1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`
-
-	backupBody := `<p class="text-sm muted mb-4">Download your entire site — database and every setting — as a single consistent, checksummed archive. Restore it on this or another server. There is no size limit on export or import.</p>
-  <div class="settings-block-title">Export</div>
-  <p class="text-sm muted mb-2">Creates a point-in-time <code>.tar.gz</code> snapshot and downloads it to your computer.</p>
-  <a class="btn btn--primary btn--sm" href="/os/api/backup/export" data-backup-export download>Download full backup</a>
-  <div class="section-divider mt-4"></div>
-  <div class="settings-block-title mt-4">Import / restore</div>
-  <p class="text-sm muted mb-2">Restores a previously exported snapshot. Your current database is automatically backed up first, then the service restarts to load the restored data. <strong>This replaces all current content and settings.</strong></p>
-  <div class="theme-actions" data-restore-wrap>
-    <input type="file" id="backup-file" class="input upd-file" accept=".gz,.tgz,application/gzip,application/x-gzip" data-backup-file>
-    <button type="button" class="btn btn--danger btn--sm" data-backup-import>Restore from file</button>
-    <span class="text-xs muted" data-backup-msg role="status" aria-live="polite"></span>
-  </div>
-  <div class="progress mt-3" data-restore-progress hidden><div class="progress__bar progress__bar--ok w-0" data-restore-bar></div></div>`
 
 	historyBody := `<div class="table-wrap"><table class="table">
     <thead><tr><th>#</th><th>From</th><th>To</th><th>Status</th><th>Detail</th><th>When</th></tr></thead>
@@ -279,11 +264,11 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 </div>
 
 ` + provisionCardHTML() + `
-<div class="section-head"><span class="section-head__title">Backup &amp; history</span><span class="section-head__hint">Snapshots and the full update log</span></div>
-<div class="mon-stack" data-backup-card>` +
-		monAcc(iconArchive, "Backup &amp; restore", "Download or restore a full, checksummed snapshot", "", false, backupBody) +
+<div class="section-head"><span class="section-head__title">Update history</span><span class="section-head__hint">Every check, install and rollback</span></div>
+<div class="mon-stack">` +
 		monAcc(iconHistory, "Update history", "Every check, install and rollback, newest first", "", false, historyBody) +
 		`</div>
+<p class="text-sm muted mt-4">Backups moved to <a href="/os/vayukeep">Operations → Backup &amp; Recovery</a> — automatic copies, manual export and import, and restore, all in one place.</p>
 
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-update.js?v=` + assetVer("js/admin-os-update.js") + `"></script>`
 

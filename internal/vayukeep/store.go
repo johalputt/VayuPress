@@ -265,3 +265,22 @@ func (e *Engine) refreshFromTarget() {
 		}
 	})
 }
+
+// Delete removes one generation from the target permanently.
+func (e *Engine) Delete(gen Generation) error {
+	if err := os.Remove(gen.Path); err != nil {
+		return err
+	}
+	e.cfg.Log("info", "generation "+gen.Name+" deleted by the operator")
+	e.refreshFromTarget()
+	return nil
+}
+
+// Prune applies retention now rather than at the next cycle.
+func (e *Engine) Prune() error {
+	if err := e.prune(); err != nil {
+		return err
+	}
+	e.refreshFromTarget()
+	return nil
+}

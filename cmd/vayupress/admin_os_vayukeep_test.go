@@ -327,3 +327,43 @@ func TestNoTerminalEraCopyRemains(t *testing.T) {
 		}
 	}
 }
+
+// TestEverythingBackupRelatedIsOnOnePage — an operator hunting for "backup"
+// should never have to guess which of two pages has it. Manual export/import
+// moved here from Update & Backup; recovery leads with the buttons rather than a
+// shell transcript; housekeeping is a control, not an environment variable.
+func TestEverythingBackupRelatedIsOnOnePage(t *testing.T) {
+	live := osVayuKeepBody("n", vayukeep.Status{
+		Enabled: true, Target: "/mnt/replica", Generations: 3, NewestGen: vkNow,
+		LastDrill: vkNow, LastDrillOK: true,
+	}, "", []vayukeep.Generation{
+		{Name: "vk-20260727-120000.vpbk", Taken: vkNow, Bytes: 4 << 20},
+	}, vkNow, "/mnt/replica", false)
+
+	for _, want := range []string{
+		// Manual export / import, moved from Update & Backup.
+		"/os/api/backup/export", "data-backup-import", "Download full backup",
+		// Housekeeping: manual delete plus auto-delete limits.
+		`data-vk-delete="`, "data-vk-retention>", "data-vk-prune>",
+		`id="vk-keep-n"`, `id="vk-keep-d"`,
+		// Health check of a specific copy.
+		`data-vk-verify="`,
+	} {
+		if !strings.Contains(live, want) {
+			t.Errorf("the console is missing %q", want)
+		}
+	}
+
+	// Recovery must lead with the click path, not the shell.
+	restoreIdx := strings.Index(live, "From this page.")
+	shellIdx := strings.Index(live, "systemctl stop vayupress")
+	if restoreIdx < 0 {
+		t.Fatal("the recovery card does not describe restoring from this page")
+	}
+	if shellIdx > 0 && shellIdx < restoreIdx {
+		t.Error("the recovery card leads with shell commands instead of the buttons")
+	}
+	if !strings.Contains(live, "will not start") {
+		t.Error("the shell fallback does not say when it is actually needed")
+	}
+}

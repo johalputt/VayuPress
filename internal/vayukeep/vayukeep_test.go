@@ -596,3 +596,49 @@ func TestRetentionSweepsAbandonedScratch(t *testing.T) {
 		t.Error("abandoned scratch space survived retention")
 	}
 }
+
+// TestDeleteAndPruneAreOperatorControls — housekeeping has to be usable from the
+// console, and Delete must actually free the space it claims to.
+func TestDeleteAndPruneAreOperatorControls(t *testing.T) {
+	// Generous limits during setup: tight ones would prune the fixtures away
+	// mid-loop and leave the test asserting against whatever survived.
+	h := newHarness(t, func(c *Config) { c.RetainGenerations = 10; c.RetainDays = 30 })
+	ctx := context.Background()
+	for i := 0; i < 4; i++ {
+		h.engine.cycle(ctx, true)
+		h.advance(12 * time.Hour)
+	}
+	gens, err := h.engine.List()
+	if err != nil || len(gens) != 4 {
+		t.Fatalf("setup: %v (%d generations, want 4)", err, len(gens))
+	}
+
+	target := gens[len(gens)-1] // the oldest
+	if err := h.engine.Delete(target); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := os.Stat(target.Path); err == nil {
+		t.Error("Delete left the file on disk")
+	}
+	after, _ := h.engine.List()
+	if len(after) != len(gens)-1 {
+		t.Errorf("after delete: %d generations, want %d", len(after), len(gens)-1)
+	}
+	// Status must follow, or the page keeps reporting a copy that is gone.
+	if st := h.engine.Status(); st.Generations != len(after) {
+		t.Errorf("status still reports %d generations, want %d", st.Generations, len(after))
+	}
+
+	// Everything left is inside both limits, so cleaning up must remove nothing.
+	// A prune that deletes anyway is the more dangerous bug of the two.
+	if err := h.engine.Prune(); err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	pruned, _ := h.engine.List()
+	if len(pruned) != len(after) {
+		t.Errorf("prune removed %d restore points that were within both limits", len(after)-len(pruned))
+	}
+	if st := h.engine.Status(); st.Generations != len(pruned) {
+		t.Errorf("status not refreshed after prune: %d vs %d", st.Generations, len(pruned))
+	}
+}
