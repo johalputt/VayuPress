@@ -6,6 +6,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.75] — 2026-07-27
+
+### Fixed
+- **The comment button's white label failed WCAG AA — and 3.15.71 made it worse.**
+  `.vayu-comment-submit` fills with a colour and labels itself in fixed white, using
+  `var(--accent)` — the same token used for link *text*. Those two roles have mathematically
+  incompatible requirements: to be readable **as text** on the dark page an accent needs relative
+  luminance **≥ 0.1966**; to carry a **white label** on a filled button it needs **≤ 0.1833**. The
+  ranges do not overlap.
+
+  So lightening `--accent` in 3.15.71 to fix link contrast necessarily degraded the button, from
+  **4.47:1** (already failing) to **3.46:1**. Fixing one audit broke another through a shared
+  token, which is exactly the conflict 3.15.74 described and then failed to apply here.
+
+  Filled buttons now carry their own `--btn-fill` (`#4f46e5`, white label at **6.29:1** in both
+  schemes), decoupled from the text accent so the two can be tuned independently.
+
+### Added
+- **A test measuring every filled button's label against its own fill**, reading both values from
+  the shipped stylesheet, plus an assertion that the button has not drifted back onto
+  `var(--accent)`. Nothing measured a label-on-fill pairing before, which is why a change made to
+  satisfy one contrast audit could silently fail another.
+
+---
+
 ## [3.15.74] — 2026-07-27
 
 ### Fixed

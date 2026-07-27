@@ -196,3 +196,57 @@ func themeBlockVars(t *testing.T, marker string) map[string]string {
 	}
 	return out
 }
+
+// TestFilledButtonLabelsClearAA is the regression test for a failure I INTRODUCED
+// while fixing a different one.
+//
+// .vayu-comment-submit fills with a colour and labels itself in fixed white. It
+// used var(--accent) — the same token used for link TEXT. Those two roles have
+// mathematically incompatible requirements: to be readable as text on the dark
+// page an accent needs relative luminance >= 0.1966, and to carry a white label
+// on a filled button it needs <= 0.1833. The ranges do not overlap.
+//
+// So lightening --accent to fix link contrast necessarily degraded the button:
+// white on it went from 4.47:1 (already failing) to 3.46:1. One token cannot
+// serve both roles, which is why filled buttons now carry --btn-fill.
+func TestFilledButtonLabelsClearAA(t *testing.T) {
+	const aa = 4.5
+	base := themeBlockVars(t, ":root{")
+	for _, mode := range []struct{ name, block string }{
+		{"dark", "html[data-theme=dark]{"},
+		{"light", "html[data-theme=light]{"},
+	} {
+		vars := map[string]string{}
+		for k, v := range base {
+			vars[k] = v
+		}
+		for k, v := range themeBlockVars(t, mode.block) {
+			vars[k] = v
+		}
+		fill := vars["--btn-fill"]
+		if fill == "" {
+			t.Fatalf("%s mode: --btn-fill is not defined; filled buttons have no colour of their own", mode.name)
+		}
+		fr, fg, fb := hexRGB(t, "#ffffff")
+		br, bg, bb := hexRGB(t, fill)
+		got := contrast(relLuminance(fr, fg, fb), relLuminance(br, bg, bb))
+		if got < aa {
+			t.Errorf("%s mode: white button label on --btn-fill %s = %.2f:1, below AA %.1f:1",
+				mode.name, fill, got, aa)
+		}
+	}
+
+	// The button must not drift back onto the text accent. That coupling is the
+	// bug: the two tokens are pulled in opposite directions by their own audits.
+	i := strings.Index(articleCSSMin, ".vayu-comment-submit{")
+	if i < 0 {
+		t.Fatal(".vayu-comment-submit rule has disappeared from the article stylesheet")
+	}
+	rule := articleCSSMin[i : i+strings.Index(articleCSSMin[i:], "}")]
+	if strings.Contains(rule, "background:var(--accent)") {
+		t.Error("the filled button is back on var(--accent); a light-enough accent for link text is too light for a white label")
+	}
+	if !strings.Contains(rule, "background:var(--btn-fill)") {
+		t.Errorf("the filled button does not use --btn-fill:\n  %s", rule)
+	}
+}
