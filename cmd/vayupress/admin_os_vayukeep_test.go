@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/vayukeep"
 )
 
@@ -29,7 +30,7 @@ func TestPanelWarnsWhenNothingHasBeenRestored(t *testing.T) {
 		NewestGen: vkNow.Add(-5 * time.Minute), LastSuccess: vkNow.Add(-5 * time.Minute),
 		// LastDrill deliberately zero.
 	}
-	got := osVayuKeepSection(st, "", vkNow)
+	got := osVayuKeepBody("n", st, "", nil, vkNow)
 	if !strings.Contains(got, "badge--warn") {
 		t.Error("a never-verified replica rendered without a warning badge")
 	}
@@ -53,8 +54,8 @@ func TestPanelSurfacesAFailedDrill(t *testing.T) {
 		LastDrill: vkNow.Add(-time.Hour), LastDrillOK: false,
 		LastDrillError: "integrity_check reported \"malformed database\"",
 	}
-	got := osVayuKeepSection(st, "", vkNow)
-	for _, want := range []string{"Restore FAILED", "badge--warn", "malformed database"} {
+	got := osVayuKeepBody("n", st, "", nil, vkNow)
+	for _, want := range []string{"Test restore FAILED", "badge--warn", "malformed database"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("a failed drill must surface %q:\n%s", want, got)
 		}
@@ -71,9 +72,9 @@ func TestPanelReportsVerifiedOnlyWhenEarned(t *testing.T) {
 		NewestGen: vkNow.Add(-3 * time.Minute), LastSuccess: vkNow.Add(-3 * time.Minute),
 		LastDrill: vkNow.Add(-20 * time.Minute), LastDrillOK: true, LastDrillRows: 431,
 	}
-	got := osVayuKeepSection(st, "", vkNow)
-	if !strings.Contains(got, "badge--ok") || !strings.Contains(got, "Verified") {
-		t.Errorf("a healthy, drilled replica should read as verified:\n%s", got)
+	got := osVayuKeepBody("n", st, "", nil, vkNow)
+	if !strings.Contains(got, "badge--ok") || !strings.Contains(got, "Protected") {
+		t.Errorf("a healthy, drilled replica should read as protected:\n%s", got)
 	}
 	if strings.Contains(got, "badge--warn") {
 		t.Errorf("a healthy replica showed a warning:\n%s", got)
@@ -91,7 +92,7 @@ func TestPanelFlagsAStaleReplica(t *testing.T) {
 		NewestGen: vkNow.Add(-72 * time.Hour),
 		LastDrill: vkNow.Add(-time.Hour), LastDrillOK: true,
 	}
-	got := osVayuKeepSection(st, "", vkNow)
+	got := osVayuKeepBody("n", st, "", nil, vkNow)
 	if !strings.Contains(got, "Stale") || !strings.Contains(got, "badge--warn") {
 		t.Errorf("a three-day-old newest generation must be flagged stale:\n%s", got)
 	}
@@ -100,15 +101,15 @@ func TestPanelFlagsAStaleReplica(t *testing.T) {
 // TestPanelDistinguishesOffFromRefused — "I never set this up" and "I set this
 // up and it is not running" need different answers.
 func TestPanelDistinguishesOffFromRefused(t *testing.T) {
-	off := osVayuKeepSection(vayukeep.Status{}, "", vkNow)
-	if !strings.Contains(off, "Not configured") {
+	off := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow)
+	if !strings.Contains(off, "Not set up") {
 		t.Errorf("an unconfigured install should say so:\n%s", off)
 	}
 	if strings.Contains(off, "Refused to start") {
 		t.Error("an unconfigured install must not claim it refused to start")
 	}
 
-	refused := osVayuKeepSection(vayukeep.Status{}, "the target /var/lib/vayupress/backups is inside the data directory", vkNow)
+	refused := osVayuKeepBody("n", vayukeep.Status{}, "the target /var/lib/vayupress/backups is inside the data directory", nil, vkNow)
 	if !strings.Contains(refused, "Refused to start") {
 		t.Errorf("a refused configuration must say so:\n%s", refused)
 	}
@@ -129,8 +130,8 @@ func TestPanelReportsPaused(t *testing.T) {
 		LastError: "no space left on device",
 		LastDrill: vkNow.Add(-time.Hour), LastDrillOK: true,
 	}
-	got := osVayuKeepSection(st, "", vkNow)
-	for _, want := range []string{"Paused", "badge--warn", "no space left on device", "Nothing new is being backed up"} {
+	got := osVayuKeepBody("n", st, "", nil, vkNow)
+	for _, want := range []string{"Paused", "badge--warn", "no space left on device", "Nothing new is being saved"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("a paused engine must surface %q:\n%s", want, got)
 		}
@@ -148,11 +149,12 @@ func TestPanelEscapesUntrustedText(t *testing.T) {
 		LastDrillError: `<img src=x onerror="alert(2)">`,
 		LastError:      `<b>boom</b>`,
 	}
-	got := osVayuKeepSection(st, "", vkNow)
-	// Assert on the TAG OPENINGS, which is the actual security property. A bare
-	// `onerror=` contains no HTML-special character, so it survives escaping as
-	// inert text — asserting on it would fail correct code.
-	for _, bad := range []string{"<script>", "<img src=x", "<b>boom</b>", "</script>"} {
+	got := osVayuKeepBody("n", st, "", nil, vkNow)
+	// Assert on the injected VALUES, not on generic markup. Two traps here:
+	// a bare `onerror=` carries no HTML-special character so it survives escaping
+	// as inert text, and the page legitimately contains its own `<script>` block —
+	// asserting on either would fail correct code while proving nothing.
+	for _, bad := range []string{"<script>alert(1)", "<img src=x", "<b>boom</b>"} {
 		if strings.Contains(got, bad) {
 			t.Errorf("unescaped %q reached the page:\n%s", bad, got)
 		}
@@ -161,7 +163,7 @@ func TestPanelEscapesUntrustedText(t *testing.T) {
 		t.Error("the target should appear escaped rather than dropped")
 	}
 
-	refused := osVayuKeepSection(vayukeep.Status{}, `<script>alert(3)</script>`, vkNow)
+	refused := osVayuKeepBody("n", vayukeep.Status{}, `<script>alert(3)</script>`, nil, vkNow)
 	if strings.Contains(refused, "<script>alert(3)") {
 		t.Errorf("the boot error was not escaped:\n%s", refused)
 	}
@@ -204,22 +206,56 @@ func TestHumanAgoSaysNeverNotDash(t *testing.T) {
 	}
 }
 
-// TestPowerPageCarriesTheSection keeps the panel wired into the operations page
-// rather than orphaned behind a route nobody links to.
-func TestPowerPageCarriesTheSection(t *testing.T) {
-	body := osPowerBody("nonce", false, "", false, "feedback@example.com", vayukeep.Status{}, "", vkNow)
-	for _, want := range []string{"Backup &amp; recovery", "VAYUKEEP_TARGET"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("the Power & Maintenance page is missing %q", want)
+// TestConsoleIsReachableAndOperable — the page must carry its controls, and the
+// Operations hub must carry a badge whenever backups are not actually working.
+// A backup console nobody can find, or a hub that looks calm while the recovery
+// path is broken, is the failure this whole feature exists to prevent.
+func TestConsoleIsReachableAndOperable(t *testing.T) {
+	live := osVayuKeepBody("n", vayukeep.Status{
+		Enabled: true, Target: "/mnt/replica", Generations: 2, NewestGen: vkNow,
+		LastDrill: vkNow, LastDrillOK: true,
+	}, "", []vayukeep.Generation{
+		{Name: "vk-20260727-120000.vpbk", Taken: vkNow, Bytes: 4 << 20},
+	}, vkNow)
+	for _, want := range []string{
+		"data-vk-backup", "data-vk-drill", "data-vk-verify",
+		"/os/api/vayukeep/backup", "/os/api/vayukeep/drill", "/os/api/vayukeep/verify",
+		"vk-20260727-120000.vpbk", // the restore point is listed, not just counted
+		"vayupress restore",       // the recovery runbook is on the page
+	} {
+		if !strings.Contains(live, want) {
+			t.Errorf("the console is missing %q", want)
 		}
 	}
-	// And the controls must be present once replication is running.
-	live := osPowerBody("nonce", false, "", false, "x@y.z", vayukeep.Status{
-		Enabled: true, Generations: 1, NewestGen: vkNow, LastDrill: vkNow, LastDrillOK: true,
-	}, "", vkNow)
-	for _, want := range []string{"data-vk-backup", "data-vk-drill", "/os/api/vayukeep/drill"} {
-		if !strings.Contains(live, want) {
-			t.Errorf("the running panel is missing %q", want)
+
+	// The hub links to it, and badges it only when something is wrong.
+	healthy := osOperationsGrid(mode.ModeNormal, 40, false, "")
+	if !strings.Contains(healthy, `href="/os/vayukeep"`) {
+		t.Error("the Operations hub does not link to the Backup & Recovery console")
+	}
+	broken := osOperationsGrid(mode.ModeNormal, 40, false, "Test restore FAILED")
+	if !strings.Contains(broken, "Test restore FAILED") {
+		t.Error("the Operations hub hides a broken recovery path instead of badging it")
+	}
+}
+
+// TestSetupInstructionsAreActionable — an operator who has not set this up needs
+// to leave the page knowing exactly what to type.
+func TestSetupInstructionsAreActionable(t *testing.T) {
+	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow)
+	for _, want := range []string{
+		"VAYUKEEP_TARGET=/var/backups/vayupress",
+		"VAYU_BACKUP_PASSPHRASE",
+		"/etc/vayupress/env",
+		"systemctl restart vayupress",
+		"Test restore now",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("setup instructions are missing %q", want)
 		}
+	}
+	// And it must be honest about the passphrase being unrecoverable.
+	if !strings.Contains(got, "no recovery path") {
+		t.Error("the page does not warn that a lost passphrase cannot be recovered")
 	}
 }

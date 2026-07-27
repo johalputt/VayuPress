@@ -2,28 +2,33 @@
 
 package main
 
-// admin_os_vayukeep.go — the replication panel on Power & Maintenance (ADR-0145).
+// admin_os_vayukeep.go — the Backup & Recovery console (/os/vayukeep, ADR-0145).
 //
-// It lives inside the existing operations page rather than claiming a sidebar
-// entry of its own: replication is something an operator checks alongside
-// maintenance mode and restarts, not a destination they navigate to.
+// A full page under Operations, laid out like Monetization: a status banner, an
+// at-a-glance strip, then collapsible cards grouped by section. It is reached
+// from the Operations hub, not from a sidebar entry of its own.
 //
-// The panel's one job is to refuse to flatter. "Enabled" is a configuration
-// value and worth nothing; what an operator needs to know is how much work they
-// would lose right now and whether anything has actually read a generation back.
-// So the headline figures are the recovery point and the last VERIFIED restore,
-// and both can — and must be able to — read badly.
+// The page has one rule it must never break: it does not flatter. "Enabled" is a
+// configuration value and worth nothing. What an operator needs to know is how
+// much work they would lose right now, and whether anything has ever actually
+// read a backup back. Those are the two headline figures, and both can — and
+// must be able to — read badly.
 
 import (
 	"context"
+	"encoding/json"
 	"html"
+	htmpl "html/template"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/vayukeep"
 )
+
+var iconKeep = svgIcon("M10 2.5l6 2v5c0 3.8-2.8 6.4-6 7.4-3.2-1-6-3.6-6-7.4v-5l6-2zM7.4 9.8l1.8 1.8 3.4-3.8")
 
 // humanAgo renders "how long ago" in the shortest honest form. A zero time is
 // "never" — deliberately not "—", which reads as "not applicable" when it
@@ -44,11 +49,41 @@ func humanAgo(t, now time.Time) string {
 	return strconv.Itoa(int(d.Hours()/24)) + " days ago"
 }
 
-// osVayuKeepStats is the at-a-glance strip, in the Monetization / API Keys idiom.
-//
-// The recovery-point tile is the one that matters and it is deliberately the one
-// most likely to be red: it answers "how much work would I lose", which is the
-// question a backup page exists to answer and the question "backups: on" dodges.
+// keepVerdict is the page's single source of truth for "how are we doing", so
+// the banner, the title badge and the stat tiles can never disagree.
+type keepVerdict struct {
+	Tone     string // "ok" | "warn"
+	Chip     string
+	Headline string
+}
+
+func keepStatusVerdict(st vayukeep.Status, bootErr string, now time.Time) keepVerdict {
+	switch {
+	case bootErr != "":
+		return keepVerdict{"warn", "Refused to start",
+			"VayuKeep declined the settings it was given, so <strong>nothing is being backed up automatically</strong>. Your site is unaffected."}
+	case !st.Enabled:
+		return keepVerdict{"warn", "Not set up",
+			"Automatic backup is <strong>off</strong>. Your only copies are the ones you take by hand. Setting this up takes two lines and a restart."}
+	case st.Paused:
+		return keepVerdict{"warn", "Paused",
+			"Backups are <strong>paused</strong>: " + html.EscapeString(st.PauseWhy) + ". Nothing new is being saved."}
+	case st.LastDrill.IsZero():
+		return keepVerdict{"warn", "Unverified",
+			"Backups are being written, but <strong>none has been restored yet</strong>. Until a test restore passes, these are files rather than proven backups."}
+	case !st.LastDrillOK:
+		return keepVerdict{"warn", "Test restore FAILED",
+			"The last test restore <strong>failed</strong>: " + html.EscapeString(st.LastDrillError) + ". Treat this as an outage of your recovery path."}
+	case st.RPO(now) > 24*time.Hour:
+		return keepVerdict{"warn", "Stale",
+			"The newest backup is <strong>" + html.EscapeString(humanAgo(st.NewestGen, now)) + "</strong>. Check that writes are reaching the target."}
+	}
+	return keepVerdict{"ok", "Protected",
+		"Backups are running and the last test restore <strong>passed</strong>. You would lose at most " +
+			html.EscapeString(humanAgo(st.NewestGen, now)) + " of work."}
+}
+
+// osVayuKeepStats is the at-a-glance strip, in the Monetization idiom.
 func osVayuKeepStats(st vayukeep.Status, now time.Time) string {
 	tile := func(value, label, tone string) string {
 		cls := "stat-card"
@@ -58,107 +93,41 @@ func osVayuKeepStats(st vayukeep.Status, now time.Time) string {
 		return `<div class="` + cls + `"><div class="stat-card__label">` + html.EscapeString(label) +
 			`</div><div class="stat-card__value">` + html.EscapeString(value) + `</div></div>`
 	}
-
 	rpoVal, rpoTone := "never", "warn"
 	if !st.NewestGen.IsZero() {
-		rpoVal = humanAgo(st.NewestGen, now)
-		rpoTone = ""
+		rpoVal, rpoTone = humanAgo(st.NewestGen, now), ""
 		if st.RPO(now) > 24*time.Hour {
 			rpoTone = "warn"
 		}
 	}
 	verVal, verTone := "never", "warn"
 	if !st.LastDrill.IsZero() {
-		verVal = humanAgo(st.LastDrill, now)
+		verVal, verTone = humanAgo(st.LastDrill, now), ""
 		if !st.LastDrillOK {
-			verVal = "FAILED " + verVal
-			verTone = "warn"
-		} else {
-			verTone = ""
+			verVal, verTone = "FAILED "+verVal, "warn"
 		}
 	}
 	if !st.Enabled {
-		rpoVal, verVal = "off", "off"
-		rpoTone, verTone = "warn", "warn"
+		rpoVal, verVal, rpoTone, verTone = "off", "off", "warn", "warn"
 	}
 	return `<div class="stat-grid">` +
-		tile(rpoVal, "Recovery point", rpoTone) +
+		tile(rpoVal, "You would lose", rpoTone) +
 		tile(verVal, "Last verified restore", verTone) +
-		tile(strconv.Itoa(st.Generations), "Generations kept", "") +
-		tile(humanBytes(st.TotalBytes), "Replica size", "") +
+		tile(strconv.Itoa(st.Generations), "Restore points", "") +
+		tile(humanBytes(st.TotalBytes), "Space used", "") +
 		`</div>`
 }
 
-// osVayuKeepSection renders the whole replication block for the operations page.
-func osVayuKeepSection(st vayukeep.Status, bootErr string, now time.Time) string {
-	body := `<div class="section-head"><span class="section-head__title">Backup &amp; recovery</span>` +
-		`<span class="section-head__hint">Encrypted generations of everything, continuously proven restorable</span></div>`
-
-	// Not configured, or refused to start. Both are states an operator must be
-	// able to tell apart at a glance, because one means "I have not set this up"
-	// and the other means "I set this up and it is not running".
-	if bootErr != "" {
-		return body + `<div class="card">
-  <div class="settings-block-title">Replication is not running <span class="badge badge--warn">Refused to start</span></div>
-  <p class="text-sm muted">VayuKeep declined the configuration it was given, so <strong>nothing is being backed up</strong>. Your site is unaffected.</p>
-  <p class="text-sm"><code>` + html.EscapeString(bootErr) + `</code></p>
-</div>`
-	}
-	if !st.Enabled {
-		return body + `<div class="card">
-  <div class="settings-block-title">Replication is off <span class="badge">Not configured</span></div>
-  <p class="text-sm muted">Point <code>VAYUKEEP_TARGET</code> at a directory VayuPress can write to — a second disk, a mounted volume, anything outside your data directory — and set <code>VAYU_BACKUP_PASSPHRASE</code>. VayuPress then keeps encrypted, consistent generations of your database, media, mailboxes and settings, and restores one on a schedule to prove they work.</p>
-  <p class="text-sm muted">Until then your only copies are the ones you take by hand with <code>vayupress backup</code>.</p>
-</div>`
-	}
-
-	// Running. Lead with the honest headline, then the detail.
-	badge := `<span class="badge badge--ok">Verified</span>`
-	headline := `Replication is running and the last restore drill passed.`
-	switch {
-	case st.Paused:
-		badge = `<span class="badge badge--warn">Paused</span>`
-		headline = `Replication is <strong>paused</strong>: ` + html.EscapeString(st.PauseWhy) + `. Nothing new is being backed up.`
-	case st.LastDrill.IsZero():
-		badge = `<span class="badge badge--warn">Unverified</span>`
-		headline = `Generations are being written, but <strong>none has been restored yet</strong>. Until a drill passes, these are files rather than proven backups.`
-	case !st.LastDrillOK:
-		badge = `<span class="badge badge--warn">Restore FAILED</span>`
-		headline = `The last restore drill <strong>failed</strong>: ` + html.EscapeString(st.LastDrillError) + `. Treat this as an outage of your recovery path.`
-	case st.RPO(now) > 24*time.Hour:
-		badge = `<span class="badge badge--warn">Stale</span>`
-		headline = `The newest generation is ` + html.EscapeString(humanAgo(st.NewestGen, now)) + `. Check that writes are reaching the target.`
-	}
-
-	rows := detailRow("Target", st.Target) +
-		detailRow("Newest generation", humanAgo(st.NewestGen, now)) +
-		detailRow("Last successful write", humanAgo(st.LastSuccess, now)) +
-		detailRow("Last restore drill", drillSummary(st, now)) +
-		detailRow("Generations kept", strconv.Itoa(st.Generations)+" ("+humanBytes(st.TotalBytes)+")") +
-		detailRow("Newest generation size", humanBytes(st.LastGenBytes))
-	if st.LastError != "" {
-		rows += detailRow("Last error", st.LastError)
-	}
-
-	detail := `<div class="cx-details">` + rows + `</div>
-<div class="mt-3" style="display:flex;gap:.5rem;flex-wrap:wrap">
-  <button type="button" class="btn btn--sm" data-vk-backup>Back up now</button>
-  <button type="button" class="btn btn--sm btn--ghost" data-vk-drill>Run a restore drill</button>
-  <span id="vk-status" role="status" aria-live="polite" class="text-xs muted"></span>
-</div>
-<p class="text-xs muted mt-2">A drill restores the newest generation into a temporary directory, opens the database inside it and runs <code>integrity_check</code>, then throws it away. It never touches your live data.</p>`
-
-	return body + osVayuKeepStats(st, now) + `<div class="card">
-  <div class="settings-block-title">Backup &amp; recovery ` + badge + `</div>
-  <p class="text-sm muted">` + headline + `</p>
-</div>` +
-		monAcc(iconVCB, "Replication detail", "Target, cadence, generations and the last verified restore", "", false, detail)
+// detailRow is one label/value line, reusing the connector panel's markup.
+func detailRow(label, value string) string {
+	return `<div class="cx-detail"><span class="cx-cap">` + html.EscapeString(label) +
+		`</span><span>` + html.EscapeString(value) + `</span></div>`
 }
 
-// drillSummary renders the drill outcome as one honest phrase.
+// drillSummary renders the test-restore outcome as one honest phrase.
 func drillSummary(st vayukeep.Status, now time.Time) string {
 	if st.LastDrill.IsZero() {
-		return "never — no generation has been restored yet"
+		return "never — no backup has been restored yet"
 	}
 	if !st.LastDrillOK {
 		return "FAILED " + humanAgo(st.LastDrill, now) + " — " + st.LastDrillError
@@ -170,58 +139,316 @@ func drillSummary(st vayukeep.Status, now time.Time) string {
 	return s
 }
 
-// detailRow is one label/value line inside the accordion, reusing the connector
-// panel's markup so the two read identically.
-func detailRow(label, value string) string {
-	return `<div class="cx-detail"><span class="cx-cap">` + html.EscapeString(label) +
-		`</span><span>` + html.EscapeString(value) + `</span></div>`
+// ── Cards ────────────────────────────────────────────────────────────────────
+
+// keepSetupCard is the whole setup path, written for someone who has not read
+// the ADR: two lines, one restart, one button to prove it worked.
+func keepSetupCard(bootErr string) string {
+	problem := ""
+	if bootErr != "" {
+		problem = `<p class="text-sm"><strong>VayuKeep refused these settings:</strong></p>
+<p class="text-sm"><code>` + html.EscapeString(bootErr) + `</code></p>
+<p class="text-sm muted">Fix that and restart. Refusing is deliberate — a backup system that started anyway and quietly did nothing would be worse.</p>
+<div class="section-divider"></div>`
+	}
+	return problem + `<p class="text-sm"><strong>1.</strong> Add two lines to <code>/etc/vayupress/env</code>:</p>
+<pre class="code-block"><code>VAYUKEEP_TARGET=/var/backups/vayupress
+VAYU_BACKUP_PASSPHRASE=&lt;a long passphrase&gt;</code></pre>
+<p class="text-sm"><strong>2.</strong> Restart the service:</p>
+<pre class="code-block"><code>sudo systemctl restart vayupress</code></pre>
+<p class="text-sm"><strong>3.</strong> Come back here and press <strong>Test restore now</strong>. Until that passes you do not have working backups — and this page will keep saying so.</p>
+<div class="section-divider"></div>
+<div class="cx-details">` +
+		detailRow("Why /var/backups/vayupress", "It is already writable by the service and already outside your data directory, so nothing else needs changing.") +
+		detailRow("Where to keep the passphrase", "Anywhere except this server. Without it the backups cannot be read by any tool — there is no recovery path and no reset.") +
+		detailRow("For real disaster recovery", "Use a separate disk or mounted volume. A copy on the same disk survives a bad migration or a mistaken edit, but not losing the disk.") +
+		detailRow("If you use another path", "Add it to the service unit as ReadWritePaths — and RequiresMountsFor for a mount — or the sandbox will deny the write.") +
+		`</div>`
+}
+
+// keepStatusCard is the live operational detail plus the two controls.
+func keepStatusCard(st vayukeep.Status, now time.Time) string {
+	rows := detailRow("Backing up to", st.Target) +
+		detailRow("Newest backup", humanAgo(st.NewestGen, now)) +
+		detailRow("Last successful write", humanAgo(st.LastSuccess, now)) +
+		detailRow("Last test restore", drillSummary(st, now)) +
+		detailRow("Restore points kept", strconv.Itoa(st.Generations)+" ("+humanBytes(st.TotalBytes)+")") +
+		detailRow("Newest backup size", humanBytes(st.LastGenBytes))
+	if st.LastError != "" {
+		rows += detailRow("Last error", st.LastError)
+	}
+	return `<div class="cx-details">` + rows + `</div>
+<div class="mt-3" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+  <button type="button" class="btn btn--primary btn--sm" data-vk-drill>Test restore now</button>
+  <button type="button" class="btn btn--sm" data-vk-backup>Back up now</button>
+  <span id="vk-status" role="status" aria-live="polite" class="text-xs muted"></span>
+</div>
+<p class="text-xs muted mt-2"><strong>Test restore</strong> takes your newest backup, unpacks it into a temporary folder, opens the database inside it and checks every page, then deletes it. It never touches your live site. This is the only control on this page that proves a backup actually works.</p>`
+}
+
+// keepPointsCard lists the restore points with a per-row integrity check.
+func keepPointsCard(gens []vayukeep.Generation, now time.Time) string {
+	if len(gens) == 0 {
+		return `<p class="text-sm muted">No restore points yet. One is written within a few minutes of your next change, or press <strong>Back up now</strong> above.</p>`
+	}
+	rows := ""
+	for _, g := range gens {
+		esc := html.EscapeString(g.Name)
+		rows += `<tr><td><code>` + esc + `</code></td><td>` + html.EscapeString(g.Taken.Format("2 Jan 2006 15:04")) + ` UTC</td><td>` +
+			html.EscapeString(humanAgo(g.Taken, now)) + `</td><td>` + html.EscapeString(humanBytes(g.Bytes)) + `</td>` +
+			`<td><button type="button" class="btn btn--ghost btn--sm" data-vk-verify="` + esc + `">Check</button></td></tr>`
+	}
+	return `<p class="text-sm muted">Each entry is a complete, independent copy of your whole site at that moment — database, media, mailboxes and settings. <strong>Check</strong> reads one end to end without writing anything.</p>
+<div class="table-wrap"><table class="table">
+<thead><tr><th>Restore point</th><th>Taken</th><th>Age</th><th>Size</th><th></th></tr></thead>
+<tbody>` + rows + `</tbody></table></div>
+<div class="mt-2"><span id="vk-verify-status" role="status" aria-live="polite" class="text-xs muted"></span></div>`
+}
+
+// keepRestoreCard is the recovery runbook, inline, so an operator in trouble does
+// not have to go and find the docs first.
+func keepRestoreCard(st vayukeep.Status) string {
+	target := st.Target
+	if target == "" {
+		target = "/var/backups/vayupress"
+	}
+	t := html.EscapeString(target)
+	return `<p class="text-sm">Restoring replaces your live site with a saved copy. Always check the restore point first — it costs nothing and takes seconds.</p>
+<p class="text-sm"><strong>1.</strong> Check the one you intend to use:</p>
+<pre class="code-block"><code>vayupress restore -in ` + t + `/vk-YYYYMMDD-HHMMSS.vpbk -verify</code></pre>
+<p class="text-sm"><strong>2.</strong> Stop the service, restore, start again:</p>
+<pre class="code-block"><code>sudo systemctl stop vayupress
+vayupress restore -in ` + t + `/vk-YYYYMMDD-HHMMSS.vpbk -dest /var/lib/vayupress
+sudo systemctl start vayupress</code></pre>
+<div class="section-divider"></div>
+<div class="cx-details">` +
+		detailRow("Your old data is kept", "The restore moves your current data directory aside and prints where. Nothing is deleted until you delete it.") +
+		detailRow("A failed restore is safe", "Files are unpacked into a staging folder and only moved into place once the whole archive verifies. A truncated or tampered file leaves your live site untouched.") +
+		detailRow("Restoring to a moment in time", "Pick the newest restore point taken at or BEFORE the moment you want — never a later one, since that is the data you are trying to escape.") +
+		detailRow("Restoring on a different server", "Copy the file across and run the same command. You need the passphrase; nothing else.") +
+		`</div>`
+}
+
+// keepSpecCard states what the protection actually is, without overclaiming.
+func keepSpecCard(st vayukeep.Status) string {
+	rows := detailRow("Encryption", "AES-256-GCM. Each backup gets its own random key, sealed with an Argon2id key derived from your passphrase.") +
+		detailRow("Tamper detection", "Every block is chained to the one before it and the file ends with an authenticated end marker, so a truncated, edited or reordered backup fails to open rather than restoring partially.") +
+		detailRow("There is no unencrypted mode", "A copy carries member emails, mailbox contents and comment data. Making encryption optional would make the wrong thing easy.") +
+		detailRow("Database consistency", "Captured with VACUUM INTO through a single read transaction, so a backup taken while the site is live is consistent. The service never needs stopping.") +
+		detailRow("What is included", "Database, media, VayuMail mailboxes, settings and public PGP material.") +
+		detailRow("What is excluded", "Keystore secrets never leave the machine, so a stolen backup cannot decrypt your stored third-party credentials.") +
+		detailRow("Effect on site speed", "None on any page request. Change detection is two file checks, and both backup and test restore stand aside while the site is busy.")
+	if st.Enabled {
+		rows += detailRow("Changing the passphrase", "Future backups are sealed with the new one. Keep the old passphrase for as long as you keep backups made with it.")
+	}
+	return `<div class="cx-details">` + rows + `</div>`
+}
+
+// keepScheduleCard explains when it runs and what it keeps.
+func keepScheduleCard() string {
+	hrs := func(m int) string {
+		if m >= 60 && m%60 == 0 {
+			return strconv.Itoa(m/60) + " h"
+		}
+		return strconv.Itoa(m) + " min"
+	}
+	return `<div class="cx-details">` +
+		detailRow("While you are writing", "A new restore point at most every "+hrs(config.Cfg.VayuKeepMinMin)+", and only when something actually changed.") +
+		detailRow("While nothing changes", "It backs off to "+hrs(config.Cfg.VayuKeepMaxMin)+", so an idle site does no work at all.") +
+		detailRow("Test restore", "Automatically every "+hrs(config.Cfg.VayuKeepDrillMin)+", plus whenever you press the button.") +
+		detailRow("Before an update", "A restore point is taken automatically before an in-place update, so you can roll back to the moment before it.") +
+		detailRow("How many are kept", strconv.Itoa(config.Cfg.VayuKeepRetainGen)+" restore points OR "+strconv.Itoa(config.Cfg.BackupRetainDays)+" days — whichever keeps more, so a quiet month cannot age out your only copy.") +
+		detailRow("If the target breaks", "After repeated failures it stops trying and says so here, rather than retrying into a full disk. A failing backup never slows or blocks your site.") +
+		`</div>
+<p class="text-xs muted mt-2">Tune with <code>VAYUKEEP_MIN_MINUTES</code>, <code>VAYUKEEP_MAX_MINUTES</code>, <code>VAYUKEEP_DRILL_MINUTES</code>, <code>VAYUKEEP_RETAIN_GENERATIONS</code>. Turn it off with <code>VAYUKEEP_OFF=true</code>.</p>`
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
+
+// osVayuKeepBody builds the whole Backup & Recovery console.
+func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vayukeep.Generation, now time.Time) string {
+	v := keepStatusVerdict(st, bootErr, now)
+	bannerTone := "ok"
+	if v.Tone == "warn" {
+		bannerTone = "warn"
+	}
+	body := `<div class="page-header">
+  <h1>Backup &amp; Recovery <span class="badge badge--` + bannerTone + `">` + html.EscapeString(v.Chip) + `</span></h1>
+  <div class="page-actions"><span id="vk-page-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
+</div>
+<p class="page-sub">Automatic, encrypted copies of your entire site — database, media, mailboxes and settings — checked on a schedule so you know they actually restore. Tap a card to expand it.</p>
+<div class="card"><p class="text-sm">` + v.Headline + `</p></div>
+` + osVayuKeepStats(st, now)
+
+	if !st.Enabled || bootErr != "" {
+		body += `<div class="section-head"><span class="section-head__title">Get protected</span><span class="section-head__hint">Two lines and a restart</span></div>
+<div class="mon-stack">` +
+			monAcc(iconKeep, "Set up automatic backup", "What to add, and where", `<span class="mon-chip">● Not set up</span>`, true, keepSetupCard(bootErr)) +
+			`</div>`
+	} else {
+		chipCls := "mon-chip mon-chip--on"
+		if v.Tone == "warn" {
+			chipCls = "mon-chip"
+		}
+		chip := `<span class="` + chipCls + `">● ` + html.EscapeString(v.Chip) + `</span>`
+		body += `<div class="section-head"><span class="section-head__title">Protection</span><span class="section-head__hint">What is saved, and proof that it restores</span></div>
+<div class="mon-stack">` +
+			monAcc(iconKeep, "Status &amp; controls", "Back up now, or prove a restore works", chip, true, keepStatusCard(st, now)) +
+			monAcc(iconVCB, "Restore points", strconv.Itoa(len(gens))+" saved · "+humanBytes(st.TotalBytes), "", false, keepPointsCard(gens, now)) +
+			`</div>`
+	}
+
+	body += `<div class="section-head"><span class="section-head__title">Recovery</span><span class="section-head__hint">Exactly what to do when you need it</span></div>
+<div class="mon-stack">` +
+		monAcc(iconVCB, "How to restore", "Step by step, including onto a different server", "", false, keepRestoreCard(st)) +
+		`</div>
+
+<div class="section-head"><span class="section-head__title">How it works</span><span class="section-head__hint">The guarantees, stated plainly</span></div>
+<div class="mon-stack">` +
+		monAcc(iconKey, "Encryption &amp; safety", "What is protected, and what deliberately is not", "", false, keepSpecCard(st)) +
+		monAcc(iconVCB, "Schedule &amp; retention", "When it runs and how much it keeps", "", false, keepScheduleCard()) +
+		`</div>
+
+<script nonce="` + nonce + `">
+(function(){'use strict';
+function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
+function toast(msg,kind){if(window.vpToast){window.vpToast(msg,kind);}}
+// Every control reports the real outcome. The test restore is synchronous on
+// purpose: an operator asking whether their backups work is owed the answer they
+// waited for, not an optimistic "started" that a later failure never corrects.
+function vkPost(url,payload,btn,working,outId){
+  var out=document.getElementById(outId||'vk-status');
+  var label=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent=working;}
+  if(out){out.textContent='Working…';}
+  fetch(url,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify(payload||{})})
+    .then(function(r){return r.json().catch(function(){return {ok:false,detail:'Unexpected response ('+r.status+').'};});})
+    .then(function(d){
+      if(out){out.textContent=d.detail||'';}
+      toast(d.detail||'Done',d.ok?'success':'error');
+      if(d.reload){setTimeout(function(){location.reload();},1500);}
+    })
+    .catch(function(e){
+      var m='Request failed: '+e;
+      if(out){out.textContent=m;}
+      toast(m,'error');
+    })
+    .finally(function(){ if(btn){btn.disabled=false;btn.textContent=label;} });
+}
+var b=document.querySelector('[data-vk-backup]');
+if(b){b.addEventListener('click',function(){vkPost('/os/api/vayukeep/backup',{},b,'Saving…');});}
+var d=document.querySelector('[data-vk-drill]');
+if(d){d.addEventListener('click',function(){vkPost('/os/api/vayukeep/drill',{},d,'Restoring…');});}
+Array.prototype.forEach.call(document.querySelectorAll('[data-vk-verify]'),function(el){
+  el.addEventListener('click',function(){
+    vkPost('/os/api/vayukeep/verify',{name:el.getAttribute('data-vk-verify')},el,'Checking…','vk-verify-status');
+  });
+});
+})();
+</script>`
+	return body
+}
+
+// handleOSVayuKeep renders the Backup & Recovery console.
+func (a *App) handleOSVayuKeep(w http.ResponseWriter, r *http.Request) {
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+	csrfTokenFor(w, r)
+	st := a.vayuKeepStatus()
+	var gens []vayukeep.Generation
+	if a.vayuKeep != nil {
+		gens, _ = a.vayuKeep.List()
+	}
+	writeOSHTML(w, r, adminOSLayout(nonce, "Backup & Recovery", "operations", cfg,
+		htmpl.HTML(osVayuKeepBody(nonce, st, a.vayuKeepErr, gens, time.Now().UTC()))))
 }
 
 // ── Endpoints ────────────────────────────────────────────────────────────────
 
-// handleOSVayuKeepBackup takes a generation on demand.
-func (a *App) handleOSVayuKeepBackup(w http.ResponseWriter, r *http.Request) {
+// keepGuard rejects the request unless an admin is asking and replication runs.
+func (a *App) keepGuard(w http.ResponseWriter, r *http.Request) bool {
 	if !a.isAdminRequest(r) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrator access required", "")
-		return
+		return false
 	}
 	if a.vayuKeep == nil || !config.Cfg.VayuKeepEnabled {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "vayukeep-off", "replication is not running", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "vayukeep-off", "automatic backup is not set up", "")
+		return false
+	}
+	return true
+}
+
+// handleOSVayuKeepBackup takes a restore point on demand.
+func (a *App) handleOSVayuKeepBackup(w http.ResponseWriter, r *http.Request) {
+	if !a.keepGuard(w, r) {
 		return
 	}
 	a.vayuKeep.TriggerNow()
 	writeJSON(w, r, http.StatusOK, map[string]any{
 		"ok":     true,
-		"detail": "A generation was requested — it appears here once written.",
+		"reload": true,
+		"detail": "A new restore point was requested — it appears in the list once written.",
 	})
 }
 
-// handleOSVayuKeepDrill runs a restore drill synchronously and reports the real
-// outcome. It is deliberately synchronous: an operator who clicks this is asking
-// "do my backups work", and the only useful answer is the one that made them wait.
+// handleOSVayuKeepDrill runs a test restore synchronously and reports the real
+// outcome, then asks the page to reload so the status reflects it.
 func (a *App) handleOSVayuKeepDrill(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrator access required", "")
-		return
-	}
-	if a.vayuKeep == nil || !config.Cfg.VayuKeepEnabled {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "vayukeep-off", "replication is not running", "")
+	if !a.keepGuard(w, r) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
 	res := a.vayuKeep.Drill(ctx)
-	detail := "Restore drill PASSED — the newest generation decrypted, unpacked and its database passed integrity_check."
+	detail := "Test restore PASSED — your newest backup unpacked and its database checked out clean."
 	if res.Rows > 0 {
 		detail += " " + strconv.FormatInt(res.Rows, 10) + " posts were read back."
 	}
 	if !res.OK {
-		detail = "Restore drill FAILED — " + res.Err
+		detail = "Test restore FAILED — " + res.Err
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{
-		"ok":         res.OK,
-		"detail":     detail,
-		"generation": res.Generation,
-		"ms":         res.Duration.Milliseconds(),
+		"ok": res.OK, "detail": detail, "reload": true,
+		"generation": res.Generation, "ms": res.Duration.Milliseconds(),
 	})
+}
+
+// handleOSVayuKeepVerify reads one named restore point end to end without
+// writing anything.
+func (a *App) handleOSVayuKeepVerify(w http.ResponseWriter, r *http.Request) {
+	if !a.keepGuard(w, r) {
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	// Resolve the name against our own listing rather than joining it onto a
+	// path. The value arrives from the browser, so treating it as a filename
+	// would make this a path-traversal primitive; matching it against generations
+	// we already found means an unknown value is simply not found.
+	gens, err := a.vayuKeep.List()
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "vayukeep-error", err.Error(), "")
+		return
+	}
+	for _, g := range gens {
+		if g.Name != body.Name {
+			continue
+		}
+		if verr := a.vayuKeep.VerifyGeneration(g); verr != nil {
+			writeJSON(w, r, http.StatusOK, map[string]any{
+				"ok":     false,
+				"detail": g.Name + " is NOT usable — " + verr.Error(),
+			})
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]any{
+			"ok":     true,
+			"detail": g.Name + " checks out: the passphrase is right, every block authenticates, the chain is unbroken and the file is complete.",
+		})
+		return
+	}
+	writeAPIError(w, r, http.StatusNotFound, "not-found", "no restore point by that name", "")
 }

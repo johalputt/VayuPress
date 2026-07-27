@@ -100,7 +100,10 @@ func osPathMinLevel(path string) int {
 		// and resolved addresses and offers the privileged provisioning control,
 		// so it sits with the other infrastructure surfaces rather than being
 		// readable by an author.
-		"domains", "dns", "backup", "power", "users",
+		// "vayukeep" is the Backup & Recovery console: it names the backup target
+		// on disk, lists every restore point, and offers controls that read those
+		// archives back. Same class as "backup" and "power" — admin-only.
+		"domains", "dns", "backup", "vayukeep", "power", "users",
 		// Growth is the hub that fronts Members / Newsletter / Monetization /
 		// Advertising; Operations fronts Modes / Policy / Topology / Replay / Faults
 		// / ADR — both inherit their fronted pages' admin gate.

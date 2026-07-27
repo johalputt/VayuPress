@@ -6,6 +6,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.81] — 2026-07-27
+
+### Changed
+- **VayuKeep gets its own console** at Operations → **Backup &amp; Recovery**
+  (`/os/vayukeep`), laid out like Monetization: status banner, at-a-glance strip,
+  then collapsible cards. v3.15.80 put it as a panel on Power &amp; Maintenance,
+  which was the wrong call — backup is a place an operator goes deliberately, not
+  something they stumble across next to the restart button.
+
+  The page is the whole system in one screen:
+  - **You would lose** and **Last verified restore** as the two headline figures,
+    because those are measurements. "Enabled" is a setting and worth nothing.
+  - **Test restore now** — unpacks your newest backup into a temporary folder,
+    opens the database inside it, checks every page, deletes it. Synchronous on
+    purpose: an operator asking whether their backups work is owed the answer they
+    waited for.
+  - **Restore points** listed individually with age and size, each with a
+    **Check** button that reads that one archive end to end without writing.
+  - **How to restore** — the recovery runbook inline, so nobody has to find the
+    docs mid-incident.
+  - **Encryption &amp; safety** and **Schedule &amp; retention** — the actual
+    guarantees, including what is deliberately *not* protected.
+  - When it is not set up, the page is a two-line setup guide instead, and says
+    plainly that a lost passphrase has no recovery path.
+
+- **The Operations hub badges a broken recovery path.** The Backup &amp; Recovery
+  card carries "Unverified", "Test restore FAILED", "Stale", "Paused" or "Not set
+  up" — and is blank only when backups genuinely work. An operator scanning the
+  hub finds out their recovery path is broken without opening anything.
+
+### Security
+- The restore-point **Check** endpoint resolves the requested name against the
+  engine's own listing rather than joining it onto a path. The value arrives from
+  the browser, so treating it as a filename would have made it a path-traversal
+  primitive.
+- `/os/vayukeep` and its three endpoints are admin-only, alongside `backup` and
+  `power`: the page names the backup target on disk, lists every restore point,
+  and offers controls that read those archives back.
+
+---
+
 ## [3.15.80] — 2026-07-27
 
 ### Added

@@ -30,14 +30,14 @@ func (a *App) handleOSOperations(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	snap := a.getAdminSnapshot()
 	writeOSHTML(w, r, adminOSLayout(nonce, "Operations", "operations", cfg,
-		htmpl.HTML(osOperationsGrid(mode.Global.Current(), int(snap.StoragePct), a.maintenanceModeOn(r)))))
+		htmpl.HTML(osOperationsGrid(mode.Global.Current(), int(snap.StoragePct), a.maintenanceModeOn(r), a.vayuKeepHubBadge()))))
 }
 
 // osOperationsGrid builds the Operations hub body. The System Modes card carries a
 // status badge whenever the install is not in normal mode, and Storage & System
 // carries a usage badge when disk is running high (>= 75%), so a state that needs
 // attention is impossible to miss from the hub.
-func osOperationsGrid(current mode.Mode, storagePct int, maintenanceOn bool) string {
+func osOperationsGrid(current mode.Mode, storagePct int, maintenanceOn bool, keepBadge string) string {
 	var b strings.Builder
 	b.WriteString(`<div class="page-head"><div><h1 class="page-title">Operations</h1><p class="page-sub">Advanced controls, diagnostics and governance for your install.</p></div></div>`)
 
@@ -53,6 +53,10 @@ func osOperationsGrid(current mode.Mode, storagePct int, maintenanceOn bool) str
 	if current != "" && current != mode.ModeNormal {
 		modeBadge = string(current)
 	}
+	// Backup sits beside Power because it answers the other half of "can I
+	// recover from this" — and its badge is the only place an operator finds out
+	// that their backups are not actually working.
+	b.WriteString(osWorkCard("/os/vayukeep", "Backup &amp; Recovery", "Automatic encrypted copies, proven restorable", iconKeep, 0, keepBadge, true))
 	b.WriteString(osWorkCard("/os/modes", "System Modes", "Normal · read-only · quarantine", iconModes, 0, modeBadge, true))
 	b.WriteString(osWorkCard("/os/policy", "Policy Inspector", "Effective policy & guardrails", iconPolicy, 0, "", false))
 	b.WriteString(osWorkCard("/os/topology", "Topology", "Services & connections map", iconTopology, 0, "", false))

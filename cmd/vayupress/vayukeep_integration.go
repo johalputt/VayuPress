@@ -132,3 +132,15 @@ func (a *App) vayuKeepPreflight(reason string) {
 	logging.LogInfo("vayukeep", "pre-flight generation requested before "+reason)
 	a.vayuKeep.TriggerNow()
 }
+
+// vayuKeepHubBadge is the one-word verdict the Operations hub card carries. It
+// is empty only when backups are genuinely working, so an operator scanning the
+// hub finds out that their recovery path is broken without opening anything.
+func (a *App) vayuKeepHubBadge() string {
+	st := a.vayuKeepStatus()
+	v := keepStatusVerdict(st, a.vayuKeepErr, time.Now().UTC())
+	if v.Tone == "ok" {
+		return ""
+	}
+	return v.Chip
+}
