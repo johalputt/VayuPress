@@ -6,6 +6,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.71] — 2026-07-27
+
+### Fixed
+- **Three more shipped colours failed WCAG AA.** 3.15.70 fixed muted text on dark; measuring the
+  whole palette against every background it is actually read on found the rest:
+  - **the dark link colour** (`--accent` `#6366f1`) at **4.41:1** on the page and **3.81:1** on a
+    card — links are normal-size text, so 4.5:1 is the bar. Now `#767ef4` (5.69 / 5.31 / 4.91).
+  - **the light secondary accent** (`--accent2` `#6366f1`) at 4.28:1 → `#5a5de8` (4.83 / 5.04 /
+    4.60).
+  - **light muted text on a card** at 4.34:1 → `#5d6b80` (5.19 / 5.41 / 4.94).
+
+- **The accessibility panel measured accents against the page background only.** A lifted surface
+  is the *weaker* pairing in dark mode, so a palette could clear the bar on the page and fail
+  everywhere a card appears — which on an article page is most of the interactive text. The panel
+  reported the more flattering of the two. It now measures accents on a card as well.
+
+  The panel's tests no longer assert a check *count*. Twice now a count has silently encoded a
+  coverage assumption — first "accents only", then "one background each" — and both assumptions
+  were precisely what let a real failure go unreported. They assert which colours got measured.
+
+---
+
 ## [3.15.70] — 2026-07-27
 
 ### Fixed

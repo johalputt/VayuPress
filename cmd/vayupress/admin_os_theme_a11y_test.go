@@ -14,21 +14,37 @@ import (
 func TestThemeA11yGradesContrastHonestly(t *testing.T) {
 	// White on the dark background is very high contrast; mid-grey is poor.
 	checks := themeA11yChecks("#ffffff", "", "#111827", "")
-	// Every SUPPLIED accent is measured (blank ones are skipped), plus the shipped
-	// reading-text pairings. Asserting an exact total here would re-encode the old
-	// "accents only" contract, which is the gap that let a real contrast failure
-	// go unreported.
-	accents := 0
+	// Every SUPPLIED accent must be measured, blank ones never, and the shipped
+	// reading text must be measured too. Counting labels or totals would re-encode
+	// a coverage assumption — first "accents only", then "one background each" —
+	// and each of those assumptions is exactly what let a real contrast failure go
+	// unreported. Assert the property instead: which colours got measured.
+	measured := map[string]bool{}
 	for _, c := range checks {
-		if strings.HasPrefix(c.Label, "Accent") {
-			accents++
+		measured[strings.ToLower(c.Foreground)] = true
+	}
+	for _, want := range []string{"#ffffff", "#111827"} {
+		if !measured[want] {
+			t.Fatalf("supplied accent %s was never measured", want)
 		}
 	}
-	if accents != 2 {
-		t.Fatalf("want a check per supplied accent, got %d", accents)
+	if measured[""] {
+		t.Error("a blank accent produced a check")
 	}
-	if len(checks) <= accents {
+	if !measured[strings.ToLower(mutedTextDark)] || !measured[strings.ToLower(bodyTextDark)] {
 		t.Fatal("the panel measures only accents; shipped body and muted text go unchecked")
+	}
+	// Each accent must be measured on a card as well as the page background: a
+	// lifted surface is the weaker pairing in dark mode, so page-only measurement
+	// reports the more flattering of the two.
+	onCard := false
+	for _, c := range checks {
+		if strings.EqualFold(c.Foreground, "#ffffff") && strings.EqualFold(c.Background, darkModeSurface) {
+			onCard = true
+		}
+	}
+	if !onCard {
+		t.Error("accents are measured only against the page background, never against a card")
 	}
 	for _, c := range checks {
 		if c.Ratio < 1 || c.Ratio > 21 {

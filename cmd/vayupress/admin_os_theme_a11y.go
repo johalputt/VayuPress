@@ -53,7 +53,7 @@ const (
 	bodyTextDark   = "#e2e8f0"
 	bodyTextLight  = "#0f172a"
 	mutedTextDark  = "#7c8ba1"
-	mutedTextLight = "#64748b"
+	mutedTextLight = "#5d6b80"
 	// Cards and code blocks sit on a lifted surface rather than the page
 	// background, which is a DARKER contrast against the same text in light mode
 	// and a LIGHTER one in dark mode. Measuring only against the page background
@@ -87,6 +87,13 @@ func themeA11yChecks(accentDark, accent2Dark, accentLight, accent2Light string) 
 	add("Accent 2 on dark background", accent2Dark, darkModeBG)
 	add("Accent on light background", accentLight, lightModeBG)
 	add("Accent 2 on light background", accent2Light, lightModeBG)
+	// Also on a CARD, not only on the page. A lifted surface is a weaker contrast
+	// against the same colour in dark mode, so a palette can clear the bar on the
+	// page background and fail everywhere a card appears — which on an article
+	// page is most of the interactive text. Measuring only the page background
+	// reports the most flattering of the two.
+	add("Accent on dark card", accentDark, darkModeSurface)
+	add("Accent 2 on dark card", accent2Dark, darkModeSurface)
 	// The shipped reading text — not operator-chosen, and therefore never
 	// questioned unless something measures it.
 	add("Body text on dark background", bodyTextDark, darkModeBG)
