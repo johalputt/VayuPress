@@ -22,6 +22,8 @@ hard they were to spot.
 | M-5 | Medium | DoS | Accept loop spins at 100% CPU on descriptor exhaustion | Fixed |
 | M-6 | Medium | SMTP state | `DATA` reachable without an accepted `MAIL FROM` | Fixed |
 | T-1 | **High** | VayuTalk | One ordinary account can sign every user out | Fixed |
+| R-1 | Medium | Brute force | Password spraying accrued no delay (per-mailbox keying) | Fixed |
+| R-2 | Medium | DoS | Inbound verification unbounded: DNS hold + DKIM amplification | Fixed |
 
 **What was checked and found sound** is recorded at the end — it is as much a part of an
 audit as the defects, and several of these were the first places worth attacking.
@@ -231,27 +233,78 @@ were examined is part of the result.
 
 ---
 
+## R-1 — Password spraying accrued no delay
+
+**Where:** `internal/vayuos/mail/auththrottle.go` and the three auth paths
+
+**What it was.** `AuthThrottle` is keyed by **mailbox**. Spraying — one likely password
+against many accounts — is therefore invisible to it: a thousand accounts each failing
+once leaves a thousand counters holding one failure apiece, and not one of them reaches a
+delay. This is the dominant attack against mail servers precisely because it sidesteps
+per-account defences, and it is what finds the one mailbox whose owner chose
+`Summer2026!`.
+
+**Fix.** `sourceAuthThrottle`, keyed by client IP and **shared across SMTP, IMAP and
+POP3** — separate counters per protocol would hand an attacker three independent budgets
+and a trivial evasion (spray a third of the guesses over each port). Its ceiling is 8s
+against the mailbox throttle's 2s, because the signal is stronger: one mailbox failing
+repeatedly is usually a typo or a stale client, while one source failing across many
+mailboxes is not something legitimate use produces.
+
+It stays a **delay, not a block**, for the same reason the mailbox throttle does: a hard
+per-IP ban is a denial-of-service lever against everyone sharing a NAT, and shared
+addresses are the norm on mobile networks. A successful authentication clears the
+source's history immediately, so a legitimate user behind a guessing neighbour is not
+left penalised.
+
+---
+
+## R-2 — Inbound verification was unbounded
+
+**Where:** `internal/vayuos/mail/authverify.go`
+
+**Two problems, both inside the SMTP transaction.**
+
+*A hostile nameserver could park connections.* SPF, DKIM and DMARC are all DNS-dependent
+and ran with no deadline — the libraries default to `net.LookupTXT`, which takes no
+context and cannot be cancelled at all. A sender operating their own authoritative
+nameserver answers each query as slowly as the resolver tolerates, opens connections up
+to the per-source cap, and parks every one of them for minutes.
+
+*DKIM verification was uncapped.* `dkim.Verify` was called with no options, so a message
+could carry a thousand `DKIM-Signature` headers and force a thousand public-key
+operations and a thousand DNS lookups. Signature headers are small, so the message size
+limit is no defence — this is a genuine CPU and DNS amplifier from one cheap message.
+
+**Fix.** The whole verification now runs under a single 10s context (one budget, not one
+per stage — three sequential timeouts would still sum to three times the intended hold).
+SPF takes `spf.WithContext`; DKIM and DMARC take a `LookupTXT` bound to a
+context-aware `net.Resolver`. `maxDKIMVerifications` caps signature checks at 10 —
+real mail carries one or two, and three is already unusual.
+
+---
+
 ## Residual risk
 
 Stated plainly, because an audit that reports everything closed is not describing
 software.
 
 - **The per-source connection cap is keyed on IP.** A distributed attacker with many
-  source addresses still consumes the global budget. The global cap bounds the damage to
-  refused connections rather than exhaustion, but a large botnet can deny service. Closing
-  this properly needs reputation or proof-of-work at the connection layer, which is a
-  larger design decision than an audit fix.
-- **`AuthThrottle` is keyed by mailbox, not by source.** Password *spraying* — one
-  password against many accounts — accrues no delay, because each address has its own
-  counter. The connection caps now bound the rate, but a per-source failure counter would
-  be a genuine improvement and is not yet implemented.
-- **Inbound message parsing runs in the SMTP transaction.** DKIM verification and DMARC
-  lookups happen inline, so a slow DNS path holds a connection. The five-minute deadline
-  and the connection caps bound this; moving verification off the transaction would be
-  better.
+  source addresses still consumes the global budget, and the same applies to the source
+  throttle in R-1: a botnet with a fresh address per attempt defeats both. The global cap
+  bounds the damage to refused connections rather than exhaustion, but a large botnet can
+  deny service. Closing this properly needs reputation or proof-of-work at the connection
+  layer, which is a larger design decision than an audit fix.
+- **Verification still runs inside the SMTP transaction**, now bounded to 10s rather than
+  unbounded. Moving it to a post-acceptance queue would remove the hold entirely, at the
+  cost of returning `250` before the verdict is known — a real delivery-semantics change
+  that deserves its own decision rather than being smuggled in as a hardening fix.
 - **`stripTrustedHeaders` allowlists by name.** A future header that the pipeline starts
   trusting must be added to `trustedInboundHeaders` or it inherits the M-2 problem. The
   list carries a comment saying so; that is a process guard, not a technical one.
+- **The source throttle holds a goroutine while it sleeps.** Bounded by the per-source
+  connection cap (16 × 8s worst case), so it cannot be turned into an exhaustion vector,
+  but it is a real cost.
 
 ---
 

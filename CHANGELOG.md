@@ -61,6 +61,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   everyone else's session. Tokens are now capped per mailbox (10), with eviction ordered so an
   account's own pressure costs only its own oldest session.
 
+- **Password spraying accrued no delay (Medium).** `AuthThrottle` is keyed by *mailbox*, so one
+  password tried against a thousand accounts left a thousand counters holding one failure each
+  and never reached a delay — which is exactly why spraying is the dominant attack against mail
+  servers. A source-keyed throttle now sits alongside it, **shared across SMTP, IMAP and POP3**
+  because separate counters would give an attacker three budgets and a trivial evasion. Its
+  ceiling is 8s against the mailbox throttle's 2s, since one source failing across many mailboxes
+  is not something legitimate use produces. Still a delay rather than a block: a per-IP ban is a
+  denial-of-service lever against everyone behind a shared NAT, and a success clears the source's
+  history immediately.
+
+- **Inbound verification was unbounded (Medium).** Two problems, both inside the SMTP
+  transaction. SPF/DKIM/DMARC ran with no deadline — the libraries default to `net.LookupTXT`,
+  which takes no context and cannot be cancelled — so a sender running their own authoritative
+  nameserver could answer slowly and park connections for minutes. And `dkim.Verify` was called
+  with no options, so a message could carry a thousand signatures and force a thousand public-key
+  operations plus a thousand DNS lookups; signature headers are small, so the size limit was no
+  defence. Verification now runs under a single 10s context (one budget, not one per stage) with
+  context-bound resolvers throughout, and signature checks are capped at 10 — real mail carries
+  one or two.
+
 ### Added
 - **Every mailbox's PGP public key is now in its account card** (VayuOS → Mail accounts). Each
   card carries the fingerprint, the armoured **public** key in a copy-ready box, a one-click

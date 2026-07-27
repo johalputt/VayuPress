@@ -3,6 +3,7 @@
 package mail
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -12,7 +13,7 @@ import (
 func TestVerifyInboundNoneResults(t *testing.T) {
 	t.Parallel()
 	raw := []byte(crlf("From: someone@nodomain.invalid\nSubject: hi\n\nbody\n"))
-	v := verifyInbound("mail.test", nil, "", "", raw)
+	v := verifyInbound(context.Background(), "mail.test", nil, "", "", raw)
 	if v.SPF != "none" {
 		t.Errorf("spf = %q, want none", v.SPF)
 	}
@@ -33,7 +34,7 @@ func TestVerifyInboundNoneResults(t *testing.T) {
 func TestVerifyInboundNoDKIM(t *testing.T) {
 	t.Parallel()
 	raw := []byte(crlf("From: a@b.example\n\nno signature here\n"))
-	if v := verifyInbound("h", nil, "", "", raw); v.DKIM != "none" {
+	if v := verifyInbound(context.Background(), "h", nil, "", "", raw); v.DKIM != "none" {
 		t.Errorf("dkim = %q, want none", v.DKIM)
 	}
 }

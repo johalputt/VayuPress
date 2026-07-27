@@ -217,15 +217,21 @@ func (s *POP3Server) handle(conn net.Conn) {
 				return
 			}
 			authTries++
+			// Source-keyed throttle: per-mailbox counters cannot see one password
+			// sprayed across many accounts.
+			recordSource := throttleSource(conn.RemoteAddr())
 			if s.bridge == nil {
+				recordSource(false)
 				errResp("authentication unavailable")
 				continue
 			}
 			okAuth, aerr := s.bridge.AuthUser(user, strings.TrimSpace(arg))
 			if aerr != nil || !okAuth {
+				recordSource(false)
 				errResp("[AUTH] invalid credentials")
 				continue
 			}
+			recordSource(true)
 			authed = true
 			localUser = user
 			if i := strings.IndexByte(user, '@'); i >= 0 {

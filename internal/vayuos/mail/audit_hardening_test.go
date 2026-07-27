@@ -3,9 +3,11 @@
 package mail
 
 import (
+	"context"
 	"net"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ── M-1: DMARC bypass via From-header abuse ──────────────────────────────────
@@ -24,7 +26,7 @@ func TestDMARCFailsClosedOnDuplicateFrom(t *testing.T) {
 		t.Fatalf("two From headers accepted as well-formed (domain=%q)", got)
 	}
 
-	v := verifyInbound("mx.test", net.ParseIP("192.0.2.1"), "evil.example", "a@evil.example", raw)
+	v := verifyInbound(context.Background(), "mx.test", net.ParseIP("192.0.2.1"), "evil.example", "a@evil.example", raw)
 	if v.DMARC != "fail" {
 		t.Errorf("DMARC = %q, want fail", v.DMARC)
 	}
@@ -46,7 +48,7 @@ func TestDMARCFailsClosedOnMultiAddressFrom(t *testing.T) {
 	if _, ok := headerFromDomain(raw); ok {
 		t.Fatal("multi-address From accepted as well-formed")
 	}
-	v := verifyInbound("mx.test", net.ParseIP("192.0.2.1"), "evil.example", "a@evil.example", raw)
+	v := verifyInbound(context.Background(), "mx.test", net.ParseIP("192.0.2.1"), "evil.example", "a@evil.example", raw)
 	if v.DMARC == "none" {
 		t.Error("DMARC evaluation was skipped — the exact bypass this guards")
 	}
@@ -212,5 +214,133 @@ func TestConnLimiterDoesNotLeakPerAddrEntries(t *testing.T) {
 	}
 	if len(l.perAddr) != 0 {
 		t.Fatalf("perAddr retained %d entries after all releases", len(l.perAddr))
+	}
+}
+
+// ── R-1: password spraying (per-source throttle) ─────────────────────────────
+
+// TestSourceThrottleCatchesSpraying is the regression for the residual risk left
+// open by the first audit pass: AuthThrottle is keyed by MAILBOX, so one password
+// tried against a thousand different accounts accrues no delay anywhere — every
+// address has its own independent counter and each sees exactly one failure.
+// Spraying is the dominant attack against mail servers for precisely that reason.
+func TestSourceThrottleCatchesSpraying(t *testing.T) {
+	th := NewAuthThrottleWithMax(8 * time.Second)
+	src := "198.51.100.42"
+
+	// Same source, every failure against a DIFFERENT mailbox — the shape a
+	// per-mailbox counter is blind to.
+	for i := 0; i < 6; i++ {
+		if th.Delay(src) > 0 && i == 0 {
+			t.Fatal("delay applied before any failure")
+		}
+		th.Fail(src)
+	}
+	if th.Delay(src) <= 0 {
+		t.Fatal("spraying from one source accrued no delay")
+	}
+
+	// A different source must be untouched, or one noisy host degrades everyone.
+	if d := th.Delay("203.0.113.9"); d != 0 {
+		t.Errorf("unrelated source delayed by %v", d)
+	}
+}
+
+// TestSourceThrottleCeilingIsHigher — the source signal is stronger than the
+// per-mailbox one (a mailbox failing repeatedly is usually a typo or a stale
+// client; a source failing across many mailboxes is not something legitimate use
+// produces), so it is allowed to bite harder.
+func TestSourceThrottleCeilingIsHigher(t *testing.T) {
+	mailbox := NewAuthThrottle()
+	source := NewAuthThrottleWithMax(8 * time.Second)
+	for i := 0; i < 200; i++ {
+		mailbox.Fail("someone@example.com")
+		source.Fail("198.51.100.43")
+	}
+	mb, sd := mailbox.Delay("someone@example.com"), source.Delay("198.51.100.43")
+	if mb > authDelayMax {
+		t.Errorf("mailbox delay %v exceeded its ceiling %v", mb, authDelayMax)
+	}
+	if sd <= mb {
+		t.Errorf("source delay %v is not above the mailbox ceiling %v", sd, mb)
+	}
+}
+
+// TestSourceThrottleForgivesSuccess — a legitimate user behind a shared NAT whose
+// neighbour was guessing must not stay penalised once they authenticate. This is
+// why the defence is a decaying delay rather than a per-IP block: shared
+// addresses are the norm on mobile networks.
+func TestSourceThrottleForgivesSuccess(t *testing.T) {
+	th := NewAuthThrottleWithMax(8 * time.Second)
+	src := "198.51.100.44"
+	for i := 0; i < 5; i++ {
+		th.Fail(src)
+	}
+	if th.Delay(src) == 0 {
+		t.Fatal("no delay after failures")
+	}
+	th.Success(src)
+	if d := th.Delay(src); d != 0 {
+		t.Errorf("delay %v persisted after a successful authentication", d)
+	}
+}
+
+// ── R-2: inbound verification is bounded ─────────────────────────────────────
+
+// TestInboundVerificationRespectsDeadline pins that DNS-dependent verification
+// cannot hold an SMTP connection indefinitely. A sender controlling their own
+// authoritative nameserver can answer as slowly as the resolver tolerates, and
+// this work runs inside the transaction.
+func TestInboundVerificationRespectsDeadline(t *testing.T) {
+	raw := []byte("From: someone@example.com\r\nSubject: hi\r\n\r\nbody\r\n")
+
+	// An already-cancelled context must not stall: every lookup is bound to it.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan AuthVerdict, 1)
+	go func() { done <- verifyInbound(ctx, "mx.test", net.ParseIP("192.0.2.1"), "h", "a@example.com", raw) }()
+
+	select {
+	case v := <-done:
+		// A cancelled context yields degraded verdicts, never a hang.
+		if v.Header == "" {
+			t.Error("no Authentication-Results assembled")
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("verification ignored a cancelled context — the connection-hold vector")
+	}
+}
+
+// TestDKIMVerificationIsCapped guards the amplifier: each signature costs a
+// public-key operation plus a DNS lookup, signature headers are small, so an
+// unbounded count turns one cheap message into thousands of asymmetric operations
+// and thousands of queries. The message size limit is no defence.
+func TestDKIMVerificationIsCapped(t *testing.T) {
+	if maxDKIMVerifications <= 0 {
+		t.Fatal("DKIM verification count is unbounded")
+	}
+	if maxDKIMVerifications > 20 {
+		t.Errorf("maxDKIMVerifications = %d is too generous to bound the work",
+			maxDKIMVerifications)
+	}
+
+	var sigs strings.Builder
+	for i := 0; i < 500; i++ {
+		sigs.WriteString("DKIM-Signature: v=1; a=rsa-sha256; d=evil.example; s=s; b=AAAA\r\n")
+	}
+	raw := []byte(sigs.String() + "From: a@evil.example\r\n\r\nbody\r\n")
+
+	done := make(chan struct{})
+	go func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_ = verifyInbound(ctx, "mx.test", net.ParseIP("192.0.2.1"), "h", "a@evil.example", raw)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("500 signatures were not bounded")
 	}
 }

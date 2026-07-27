@@ -293,10 +293,17 @@ func (s *SMTPServer) handle(conn net.Conn) {
 				return
 			}
 			authTries++
+			// Source-keyed throttle, in addition to the per-mailbox one applied
+			// inside the AuthFunc: spraying one password across many accounts
+			// accrues no per-mailbox delay at all, because each address has its
+			// own counter.
+			recordSource := throttleSource(conn.RemoteAddr())
 			if ok, user := s.runAuth(br, write, arg); ok {
+				recordSource(true)
 				authed, authUser = true, user
 				write("235 2.7.0 Authentication successful")
 			} else {
+				recordSource(false)
 				write("535 5.7.8 Authentication credentials invalid")
 			}
 		case "MAIL":
@@ -372,7 +379,7 @@ func (s *SMTPServer) handle(conn net.Conn) {
 				if !s.submission {
 					// Verify against the message AS RECEIVED — DKIM signatures cover
 					// the headers, so stripping must not happen before verification.
-					v := verifyInbound(s.hostname(), clientIP, helo, from, raw)
+					v := verifyInbound(context.Background(), s.hostname(), clientIP, helo, from, raw)
 					// Then remove any header the sender forged under a name this
 					// server stamps and later trusts (RFC 8601 §5 and the
 					// X-VayuMail-* assertions), so the delivered message carries

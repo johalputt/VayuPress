@@ -4,14 +4,52 @@ package mail
 
 import (
 	"bytes"
+	"context"
 	"net"
 	netmail "net/mail"
 	"strings"
+	"time"
 
 	"blitiri.com.ar/go/spf"
 	"github.com/emersion/go-msgauth/dkim"
 	"github.com/emersion/go-msgauth/dmarc"
 )
+
+// inboundAuthTimeout bounds every DNS lookup and signature check performed for
+// one inbound message.
+//
+// SPF, DKIM and DMARC are all DNS-dependent, and this work runs INSIDE the SMTP
+// transaction — the connection is held open until it finishes. Without a
+// deadline the hold time is whatever a remote resolver decides it is, and a
+// sender who controls their own authoritative nameserver decides it deliberately:
+// answer each query as slowly as the resolver will tolerate, open connections up
+// to the per-source cap, and each one is parked for minutes. That converts a few
+// sockets into a sustained occupation of the listener.
+//
+// Ten seconds is far above a healthy lookup (tens of milliseconds) and far below
+// the five-minute connection deadline, so legitimate mail is never affected and a
+// hostile nameserver buys seconds instead of minutes.
+const inboundAuthTimeout = 10 * time.Second
+
+// maxDKIMVerifications caps how many signatures are checked per message.
+//
+// Each verification is a public-key operation plus a DNS lookup for the signing
+// key, and nothing stops a sender attaching a thousand DKIM-Signature headers to
+// a single message. Unbounded, that is a CPU and DNS amplifier: one cheap message
+// costs the server a thousand asymmetric operations and a thousand queries, and
+// the message size limit is no defence because signature headers are small. Real
+// mail carries one or two signatures; three or four is already unusual.
+const maxDKIMVerifications = 10
+
+// ctxLookupTXT returns a TXT resolver bound to ctx, so a DNS call cannot outlive
+// the deadline the caller set. The libraries default to net.LookupTXT, which
+// takes no context and therefore cannot be cancelled at all.
+func ctxLookupTXT(ctx context.Context) func(string) ([]string, error) {
+	var r net.Resolver
+	return func(domain string) ([]string, error) {
+		return r.LookupTXT(ctx, domain)
+	}
+}
 
 // AuthVerdict summarises the inbound authentication checks for a received
 // message. Result strings use the standard tokens (pass/fail/none/…) so they
@@ -34,19 +72,28 @@ type AuthVerdict struct {
 // received message. Every lookup is best-effort — a DNS error degrades to
 // "none"/"temperror" and never blocks delivery — so this is safe to call inline
 // during the SMTP transaction. hostname is the authserv-id for the header.
-func verifyInbound(hostname string, ip net.IP, helo, mailFrom string, raw []byte) AuthVerdict {
+func verifyInbound(ctx context.Context, hostname string, ip net.IP, helo, mailFrom string, raw []byte) AuthVerdict {
 	v := AuthVerdict{SPF: "none", DKIM: "none", DMARC: "none"}
+
+	// Bound the whole verification, not each lookup: three sequential stages each
+	// with their own timeout would still add up to three times the budget.
+	ctx, cancel := context.WithTimeout(ctx, inboundAuthTimeout)
+	defer cancel()
+	lookupTXT := ctxLookupTXT(ctx)
 
 	// ── SPF: connecting IP against the envelope MAIL FROM domain. ──
 	if ip != nil && mailFrom != "" {
-		if res, _ := spf.CheckHostWithSender(ip, helo, mailFrom); res != "" {
+		if res, _ := spf.CheckHostWithSender(ip, helo, mailFrom, spf.WithContext(ctx)); res != "" {
 			v.SPF = string(res)
 		}
 	}
 	spfDomain := domainOf(mailFrom)
 
-	// ── DKIM: verify all signatures; remember the first that passes. ──
-	if verifs, err := dkim.Verify(bytes.NewReader(raw)); err == nil {
+	// ── DKIM: verify signatures (capped); remember the first that passes. ──
+	if verifs, err := dkim.VerifyWithOptions(bytes.NewReader(raw), &dkim.VerifyOptions{
+		LookupTXT:        lookupTXT,
+		MaxVerifications: maxDKIMVerifications,
+	}); err == nil {
 		for _, ver := range verifs {
 			if ver.Err == nil {
 				v.DKIM, v.DKIMDomain = "pass", ver.Domain
@@ -69,7 +116,7 @@ func verifyInbound(hostname string, ip net.IP, helo, mailFrom string, raw []byte
 		v.MalformedFrom = true
 		v.Quarantine = true
 	default:
-		if rec, err := dmarc.Lookup(fromDomain); err == nil {
+		if rec, err := dmarc.LookupWithOptions(fromDomain, &dmarc.LookupOptions{LookupTXT: lookupTXT}); err == nil {
 			spfAligned := v.SPF == "pass" && domainsAligned(spfDomain, fromDomain, rec.SPFAlignment)
 			dkimAligned := v.DKIM == "pass" && domainsAligned(v.DKIMDomain, fromDomain, rec.DKIMAlignment)
 			if spfAligned || dkimAligned {

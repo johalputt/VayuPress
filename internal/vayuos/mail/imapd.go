@@ -242,11 +242,19 @@ func (s *IMAPServer) handle(conn net.Conn) {
 				return
 			}
 			sess.authTries++
+			// Source-keyed throttle, on top of the per-mailbox one inside the
+			// bridge: spraying one password across many accounts accrues no
+			// per-mailbox delay, because each address has its own counter.
+			recordSource := throttleSource(conn.RemoteAddr())
+			before := sess.authedUser
 			if cmd == "LOGIN" {
 				s.doLogin(line, sess, tag, arg)
 			} else {
 				s.doAuthenticate(br, w, line, sess, tag, arg)
 			}
+			// The handlers set the session user on success, so comparing before
+			// and after is the authoritative outcome regardless of which path ran.
+			recordSource(sess.authedUser != "" && sess.authedUser != before)
 		case "LIST", "LSUB":
 			s.doList(line, sess, tag, cmd, arg)
 		case "SUBSCRIBE", "UNSUBSCRIBE":
