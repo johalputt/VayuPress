@@ -51,7 +51,7 @@ They may be replaced, upgraded, or removed as long as the contract is maintained
 | **AI Runtime** | `internal/ai` LocalEmbedder | `Embedder` interface, policy.Apply | Replaceable (e.g., remote inference, LLM API) |
 | **Storage Backend** | `internal/storage` file + IPFS stubs | `Backend` interface | Replaceable per Backend interface |
 | **Federation Transport** | `internal/federation` ActivityPub | ActivityPub + HTTP Signature | Replaceable (e.g., AT Protocol, Nostr) |
-| **Search Index** | `internal/search` FTS5 + semantic | Search query + result contract | Replaceable (e.g., Meilisearch, Elasticsearch) |
+| **Search Index** | `internal/search` FTS5 + semantic | Search query + result contract | Replaceable (the adapter keeps an external engine possible) |
 | **Cluster Coordination** | `internal/cluster` leader election | `Node.IsLeader()` contract | Replaceable (e.g., Raft, etcd) |
 | **Metrics Backend** | `internal/metrics` in-process counters | Prometheus exposition format | Replaceable (e.g., OpenTelemetry) |
 | **Tracing Backend** | `internal/trace` SQLite store | OpenTelemetry-compatible span format | Replaceable (e.g., Jaeger, Tempo) |

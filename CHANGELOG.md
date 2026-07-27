@@ -6,6 +6,53 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.77] — 2026-07-27
+
+### Removed
+- **Every live reference to Meilisearch.** Search has been built in since ADR-0101 (VayuFind,
+  accepted 2026-06-29), but the removal never reached the documentation, the configuration, or the
+  health and metrics surface. The worst of it was not stale prose:
+  - **`GHOST-MIGRATION.md` instructed operators to install and run Meilisearch** — a systemd unit,
+    a service user, a data directory and two env vars, for a service VayuPress does not talk to.
+    That section appeared **twice** in the file. Replaced with the one command that actually
+    applies: rebuild the index.
+  - **`disaster-recovery.md` DR-05** told an operator to `systemctl restart meilisearch` during an
+    incident. Rewritten: search is in-process, so recovery is a rebuild, not a restart, and the
+    escalation is a database restore.
+  - **`GOVERNANCE-CONSTITUTION.md`** still declared Meilisearch the default search backend,
+    contradicting the ADR that superseded it, and listed it as a runtime dependency under
+    "One Binary".
+  - **`internal/config`** read `MEILI_HOST` and `MEILI_MASTER_KEY` into fields **nothing has
+    referenced since the removal**.
+  - **`THREAT-MODEL.md`** documented a Meilisearch master key as a critical asset and its API as
+    an attack-surface endpoint. Neither exists; the index is in-process with no port and no key.
+
+  Also corrected in `ARCHITECTURE.md`, `OPERATIONS.md`, `TROUBLESHOOTING.md`, `DEVELOPMENT.md`,
+  `API-REFERENCE.md`, `SUSTAINABILITY.md` (which listed it as a supply-chain dependency),
+  `kernel-boundary.md`, `scripts/README.md`, the issue and PR templates, and several code comments.
+
+### Changed
+- **`/health/search` stopped describing an architecture this engine has not had.** It reported
+  `"Meilisearch unavailable"` and `sqlite_fallback_active` — there is no external service to be
+  unavailable and no fallback to activate. It now reports whether the index is available and how to
+  rebuild it.
+- **`vayupress_search_errors_total`** is the accurate metric name. `vayupress_meili_errors_total` is
+  still exported with the same value so existing dashboards and alert rules keep working; the
+  counter was always VayuFind's own errors.
+
+### Kept deliberately
+- **`/health/meilisearch` still answers**, on its own handler, keeping its **503**-on-failure
+  semantics. `/health/search` answers 200 with `status: "degraded"` (ADR-0041) — collapsing the two
+  would have silently stopped any alert firing on a non-2xx from the legacy path. Both contracts are
+  now pinned by tests.
+- **The `feature.meili` settings key**, already documented as deprecated: stored rows may still
+  carry it, and dropping the constant would orphan them.
+- **ADRs and this changelog are untouched.** They are the historical record; ADR-0101 exists
+  precisely to say the backend was replaced, and editing that history to remove the name would
+  destroy the reason the change is traceable.
+
+---
+
 ## [3.15.76] — 2026-07-27
 
 ### Fixed

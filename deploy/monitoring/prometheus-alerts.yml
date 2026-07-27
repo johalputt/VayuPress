@@ -80,12 +80,12 @@ groups:
           description: "Migration checksum drift was detected — investigate before further writes."
 
       - alert: VayuPressSearchBackendErrors
-        expr: increase(vayupress_meili_errors_total[10m]) > 5
+        expr: increase(vayupress_search_errors_total[10m]) > 5
         for: 5m
         labels: { severity: warning }
         annotations:
           summary: "Search backend erroring"
-          description: "More than 5 Meilisearch errors in 10m; the SQLite fallback is likely active. Consider a /admin/search/reindex once Meili recovers."
+          description: "More than 5 search errors in 10m. Search is built in, so there is no service to restart — rebuild the index with /admin/reindex."
 
   - name: vayupress.security
     rules:

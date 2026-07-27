@@ -127,29 +127,26 @@ sudo openssl req -x509 -newkey rsa:4096 -keyout /etc/ssl/private/vp-temp.key \
 
 ---
 
-## DR-05: Search Service Down (Meilisearch)
+## DR-05: Search Degraded
 
 **Trigger**: `/health/search` returns `"status": "degraded"`. Articles still readable; search returns empty.
 
+Search is **built in** (VayuFind, [ADR-0101](../adr/ADR-0101-builtin-search-vayufind.md)) — there is
+no second service to restart. A degraded result means the index is missing or stale,
+so recovery is a rebuild, not a restart.
+
 ```bash
-# Check Meilisearch status
-sudo systemctl status meilisearch
-sudo journalctl -u meilisearch -n 50
+# Confirm the engine is answering, and check the log for index errors.
+curl -s http://localhost:8080/health/search
+sudo journalctl -u vayupress -n 50 | grep -i search
 
-# Restart if crashed
-sudo systemctl restart meilisearch
-
-# Re-index all articles (safe, non-destructive)
-curl -X POST http://localhost:8080/admin/reindex \
-  -H "X-API-Key: $VAYU_API_KEY"
-
-# If Meilisearch data dir is corrupt — wipe and re-index
-sudo systemctl stop meilisearch
-sudo rm -rf /var/lib/meilisearch/data.ms
-sudo systemctl start meilisearch
+# Rebuild the index (safe, non-destructive — articles are never touched).
 curl -X POST http://localhost:8080/admin/reindex \
   -H "X-API-Key: $VAYU_API_KEY"
 ```
+
+If a rebuild does not clear it, the index lives inside the VayuPress database, so
+DR-01 (database restore) is the escalation — not a separate search recovery.
 
 ---
 

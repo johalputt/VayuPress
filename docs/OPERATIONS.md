@@ -10,7 +10,7 @@
 
 ```bash
 # Service status
-systemctl status vayupress meilisearch isso
+systemctl status vayupress
 
 # Health check
 curl -s http://localhost:8080/health | jq .
@@ -34,7 +34,6 @@ systemctl stop vayupress
 |---------|------|------|-----------|
 | vayupress | 8080 (localhost) | vayupress | systemd |
 | nginx | 80, 443 | www-data | systemd |
-| meilisearch | 7700 (localhost) | meilisearch | systemd |
 | isso | 8090 (localhost) | isso | systemd |
 
 ---
@@ -96,7 +95,7 @@ systemctl stop vayupress
 1. Check error logs: `journalctl -u vayupress | grep 'level=error' | tail -20`
 2. Check `/health/dependencies` for failing deps
 3. If database errors: check WAL size, run integrity check (RB-03 step 1)
-4. If Meilisearch errors: `systemctl restart meilisearch` (app degrades gracefully)
+4. If search errors: rebuild the index with `POST /admin/reindex` (publishing is never blocked)
 5. If nginx errors: `nginx -t && systemctl reload nginx`
 
 ### RB-06: Disk Space Running Low (<20% free)

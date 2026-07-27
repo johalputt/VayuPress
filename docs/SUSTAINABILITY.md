@@ -150,7 +150,6 @@ We track the sustainability of our dependencies:
 |-----------|-----------------|---------------------|
 | Go stdlib | Excellent (Google) | N/A |
 | mattn/go-sqlite3 | Good (active) | Consider modernc.org/sqlite |
-| Meilisearch | Good (funded startup) | Fall back to SQLite FTS5 |
 | Isso | Moderate (small project) | Replace with Go implementation |
 | Let's Encrypt | Excellent (ISRG) | N/A |
 

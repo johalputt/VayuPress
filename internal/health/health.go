@@ -25,8 +25,8 @@ var (
 	BootTime      time.Time
 )
 
-// MeiliDoFn is injected by main to check Meilisearch health without importing the search package.
-var MeiliDoFn func(method, path string, body interface{}) error
+// SearchPingFn is injected by main to check Meilisearch health without importing the search package.
+var SearchPingFn func(method, path string, body interface{}) error
 
 // WriteJSON and WriteAPIError are injected by main.
 var (
@@ -78,9 +78,19 @@ func HandleHealthEthics(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleHealthMeilisearch handles GET /health/meilisearch.
-func HandleHealthMeilisearch(w http.ResponseWriter, r *http.Request) {
-	if MeiliDoFn == nil || MeiliDoFn("GET", "/health", nil) != nil {
+// HandleHealthSearchLegacy serves the historical /health/meilisearch path.
+//
+// It checks the SAME built-in engine as /health/search — Meilisearch was removed
+// in ADR-0101 and there has been nothing else to check since. The path and this
+// handler survive only because an operator's monitoring may still call them, and
+// a health check that starts 404ing is a worse failure than one with a dated
+// name.
+//
+// It keeps its 503-on-failure semantics deliberately. /health/search answers 200
+// with status:"degraded" instead, so collapsing the two would silently stop any
+// alert that fires on a non-2xx here.
+func HandleHealthSearchLegacy(w http.ResponseWriter, r *http.Request) {
+	if SearchPingFn == nil || SearchPingFn("GET", "/health", nil) != nil {
 		WriteJSON(w, r, 503, map[string]string{"status": "down"})
 		return
 	}
@@ -200,7 +210,7 @@ func HandleHealthDependencies(w http.ResponseWriter, r *http.Request) {
 	} else {
 		components["workers"] = compStatus{Status: "ok"}
 	}
-	if MeiliDoFn == nil || MeiliDoFn("GET", "/health", nil) != nil {
+	if SearchPingFn == nil || SearchPingFn("GET", "/health", nil) != nil {
 		components["search"] = compStatus{"degraded", "Meilisearch unavailable — SQLite fallback active"}
 		overallStatus = "degraded"
 	} else {
@@ -236,15 +246,17 @@ func HandleHealthDependencies(w http.ResponseWriter, r *http.Request) {
 
 // HandleHealthSearch handles GET /health/search (ADR-0041).
 func HandleHealthSearch(w http.ResponseWriter, r *http.Request) {
-	meiliStatus := "ok"
-	meiliMsg := ""
-	if MeiliDoFn == nil || MeiliDoFn("GET", "/health", nil) != nil {
-		meiliStatus = "degraded"
-		meiliMsg = "Meilisearch unavailable"
+	// Search is built in (VayuFind, ADR-0101). There is no external service to be
+	// unavailable and no SQLite fallback to activate — reporting either was
+	// describing an architecture this engine has not had since that ADR.
+	status, msg := "ok", ""
+	if SearchPingFn == nil || SearchPingFn("GET", "/health", nil) != nil {
+		status = "degraded"
+		msg = "search index unavailable — rebuild with /admin/reindex"
 	}
 	WriteJSON(w, r, 200, map[string]interface{}{
-		"status": meiliStatus, "message": meiliMsg,
-		"sqlite_fallback_active": meiliStatus != "ok",
+		"status": status, "message": msg,
+		"index_available": status == "ok",
 	})
 }
 

@@ -89,7 +89,11 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/health/live", health.HandleHealthLiveness)
 	r.Get("/health/ready", health.HandleHealthReady)
 	r.Get("/health/db", health.HandleHealthDB)
-	r.Get("/health/meilisearch", health.HandleHealthMeilisearch)
+	r.Get("/health/search", health.HandleHealthSearch)
+	// Kept as an alias, not revived: it points at the same built-in engine. An
+	// operator's monitoring may still call it, and silently 404ing a health check
+	// is a worse failure than an inaccurate path.
+	r.Get("/health/meilisearch", health.HandleHealthSearchLegacy)
 	r.Get("/health/workers", health.HandleHealthWorkers)
 	r.Get("/health/storage", health.HandleHealthStorage)
 	r.Get("/health/benchmarks", a.handleHealthBenchmarks)

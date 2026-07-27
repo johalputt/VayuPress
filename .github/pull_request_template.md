@@ -16,7 +16,7 @@
 
 <!-- Required for all PRs -->
 
-- [ ] Code follows SQLite-first doctrine (feature works without Meilisearch)
+- [ ] Code follows SQLite-first doctrine (feature works with SQLite alone)
 - [ ] No heavy frontend frameworks in public paths (HTMX + Alpine.js only)
 - [ ] No new external dependencies without RFC approval
 - [ ] Backward compatibility maintained (or this is a MAJOR bump with migration guide)

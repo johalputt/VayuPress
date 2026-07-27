@@ -12,7 +12,6 @@ graph TD
     Nginx -->|Cache hit| StaticFiles[/var/cache/vayupress]
     Nginx -->|Cache miss| VayuPress[VayuPress :8080]
     VayuPress --> SQLite[SQLite WAL]
-    VayuPress -->|Optional| Meilisearch[Meilisearch :7700]
     VayuPress -->|Optional| Isso[Isso :8081]
     Admin -->|API Key| VayuPress
 ```
@@ -24,7 +23,7 @@ graph TD
 | Nginx           | Static-file serving, TLS, reverse proxy          | VayuPress serves directly|
 | VayuPress (Go)  | Write queue, cache renderer, admin API           | N/A (primary)           |
 | SQLite (WAL)    | Articles, jobs, schema migrations                | No degradation possible |
-| Meilisearch     | Full-text search (<50ms p95)                     | Falls back to LIKE queries|
+| VayuFind        | Full-text search, built in (<50ms p95)          | No external service       |
 | Isso            | Self-hosted comments                             | Comments unavailable    |
 
 ## Request Flow
@@ -53,7 +52,7 @@ graph LR
     DB --> Worker2[Worker goroutine 2]
     DB --> Worker3[Worker goroutine N]
     Worker1 --> Articles[(articles table)]
-    Worker1 --> Meili[Meilisearch index]
+    Worker1 --> Idx[VayuFind index]
     Worker1 --> CacheInval[Cache invalidation]
 ```
 

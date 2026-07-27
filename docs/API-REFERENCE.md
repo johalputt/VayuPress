@@ -119,7 +119,7 @@ Returns `204 No Content`.
 GET /api/v1/search?q=<query>&limit=20&offset=0
 ```
 
-Searches via Meilisearch if available, falls back to SQLite `LIKE` queries.
+Served by VayuFind, the built-in search engine (ADR-0101). No external search service.
 
 - Search queries are never logged or stored.
 - Rate limited: 10 req/s per IP.
@@ -157,7 +157,7 @@ Returns:
 | `GET /health`             | Liveness — 200 = alive               |
 | `GET /health/ready`       | Readiness — checks DB, search, storage|
 | `GET /health/db`          | Database connectivity                |
-| `GET /health/meilisearch` | Search availability                  |
+| `GET /health/search`      | Search availability                  |
 | `GET /health/workers`     | Queue worker health                  |
 | `GET /health/storage`     | Storage quota (503 if >90% full)     |
 | `GET /health/dependencies`| All subsystem status (structured)    |

@@ -451,7 +451,7 @@ func SetActiveSettings(s SiteSettings) {
 }
 
 // searchEnabled gates whether the public site search box (nav + /search page) is
-// shown. It is tied to the Meilisearch toggle: turning Meilisearch off hides the
+// shown. It is tied to the search toggle: turning search off hides the
 // search box entirely. Default on. Set at boot and whenever the operator flips
 // the toggle; the page cache is purged on toggle so cached pages re-render.
 var searchEnabled atomic.Bool
@@ -1433,7 +1433,7 @@ type articlePage struct {
 	IsPage             bool   // true → render without post chrome (date/tags/related)
 	// Related articles (same-tag suggestions)
 	Related []RelatedArticle
-	// ShowSearch gates the public search box in the nav (tied to the Meili toggle).
+	// ShowSearch gates the public search box in the nav (tied to the search toggle).
 	ShowSearch bool
 	// TrendingJSLink is the content-hashed <script> tag that hydrates the
 	// trending/pinned widget under each post (empty for standalone pages).
@@ -1723,7 +1723,7 @@ type homePage struct {
 	PrevURL    string
 	NextURL    string
 	Canonical  string // canonical path for this page: "/" or "/page/N"
-	ShowSearch bool   // show the public search box (tied to the Meili toggle)
+	ShowSearch bool   // show the public search box (tied to the search toggle)
 	// TrendingJSLink is the content-hashed <script> tag that hydrates the
 	// trending/pinned widget on the homepage.
 	TrendingJSLink template.HTML

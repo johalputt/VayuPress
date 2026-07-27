@@ -165,7 +165,13 @@ func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		"vayupress_uptime_seconds %.0f\nvayupress_articles_total %d\n"+
 			"vayupress_articles_created_total %d\nvayupress_articles_updated_total %d\nvayupress_articles_deleted_total %d\n"+
 			"vayupress_queue_processed_total %d\nvayupress_queue_failed_total %d\nvayupress_queue_stuck_resets_total %d\n"+
-			"vayupress_meili_errors_total %d\nvayupress_cache_hits_total %d\nvayupress_cache_misses_total %d\n"+
+			// vayupress_search_errors_total is the accurate name; the meili-prefixed one
+			// is kept alongside it so existing dashboards and alert rules keep working.
+			// The counter is the same value — VayuFind's error count — which the old
+			// name has been misreporting as an external service's since that service
+			// was removed.
+			"vayupress_search_errors_total %d\nvayupress_meili_errors_total %d\n"+
+			"vayupress_cache_hits_total %d\nvayupress_cache_misses_total %d\n"+
 			"vayupress_cache_hit_ratio %.4f\nvayupress_memory_alloc_bytes %d\nvayupress_workers_alive %d\n"+
 			"vayupress_storage_used_bytes %d\nvayupress_plugin_panics_total %d\nvayupress_auth_lockouts_total %d\n"+
 			"vayupress_wal_checkpoints_total %d\nvayupress_slow_queries_total %d\nvayupress_dead_letter_total %d\n"+
@@ -179,7 +185,8 @@ func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		time.Since(bootTime).Seconds(), totalArticles,
 		atomic.LoadInt64(&metrics.MetricArticlesCreated), atomic.LoadInt64(&metrics.MetricArticlesUpdated), atomic.LoadInt64(&metrics.MetricArticlesDeleted),
 		atomic.LoadInt64(&metrics.MetricQueueProcessed), atomic.LoadInt64(&metrics.MetricQueueFailed), atomic.LoadInt64(&metrics.MetricQueueStuckResets),
-		atomic.LoadInt64(&metrics.MetricMeiliErrors), atomic.LoadInt64(&metrics.MetricCacheHits), atomic.LoadInt64(&metrics.MetricCacheMisses),
+		atomic.LoadInt64(&metrics.MetricSearchErrors), atomic.LoadInt64(&metrics.MetricSearchErrors),
+		atomic.LoadInt64(&metrics.MetricCacheHits), atomic.LoadInt64(&metrics.MetricCacheMisses),
 		metrics.CacheHitRatio(), ms.Alloc, atomic.LoadInt64(&metrics.WorkerLiveness),
 		atomic.LoadInt64(&metrics.CachedStorageBytes), atomic.LoadInt64(&metrics.MetricPluginPanics), atomic.LoadInt64(&metrics.MetricAuthLockouts),
 		atomic.LoadInt64(&metrics.MetricWALCheckpoints), atomic.LoadInt64(&metrics.MetricSlowQueries), atomic.LoadInt64(&metrics.MetricDeadLetterJobs),

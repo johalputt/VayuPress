@@ -105,20 +105,41 @@ func TestHandleHealthEthics(t *testing.T) {
 	}
 }
 
-func TestHandleHealthMeilisearch_Down(t *testing.T) {
-	MeiliDoFn = nil
-	rr := get(HandleHealthMeilisearch)
+// The two search endpoints answer DIFFERENTLY on purpose, and that difference is
+// load-bearing: /health/search reports 200 with status:"degraded" (ADR-0041),
+// while the legacy /health/meilisearch path answers 503. Collapsing them onto one
+// handler would silently stop any alert that fires on a non-2xx from the legacy
+// path, so both contracts are pinned here.
+func TestHandleHealthSearchLegacy_Down(t *testing.T) {
+	SearchPingFn = nil
+	rr := get(HandleHealthSearchLegacy)
 	if rr.Code != 503 {
-		t.Fatalf("nil MeiliDoFn: want 503, got %d", rr.Code)
+		t.Fatalf("nil SearchPingFn on the legacy path: want 503, got %d", rr.Code)
 	}
 }
 
-func TestHandleHealthMeilisearch_Up(t *testing.T) {
-	MeiliDoFn = func(method, path string, body interface{}) error { return nil }
-	defer func() { MeiliDoFn = nil }()
-	rr := get(HandleHealthMeilisearch)
+func TestHandleHealthSearch_DegradesWithout503(t *testing.T) {
+	SearchPingFn = nil
+	rr := get(HandleHealthSearch)
 	if rr.Code != 200 {
-		t.Fatalf("healthy meili: want 200, got %d", rr.Code)
+		t.Fatalf("/health/search: want 200 even when degraded (ADR-0041), got %d", rr.Code)
+	}
+	if body := rr.Body.String(); !strings.Contains(body, "degraded") {
+		t.Errorf("/health/search did not report a degraded index: %s", body)
+	}
+	// It must not name a service this engine no longer has.
+	if body := rr.Body.String(); strings.Contains(strings.ToLower(body), "meili") ||
+		strings.Contains(body, "sqlite_fallback_active") {
+		t.Errorf("the search health endpoint still describes the removed external backend: %s", body)
+	}
+}
+
+func TestHandleHealthSearch_Up(t *testing.T) {
+	SearchPingFn = func(method, path string, body interface{}) error { return nil }
+	defer func() { SearchPingFn = nil }()
+	rr := get(HandleHealthSearchLegacy)
+	if rr.Code != 200 {
+		t.Fatalf("healthy search on the legacy path: want 200, got %d", rr.Code)
 	}
 }
 

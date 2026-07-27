@@ -31,7 +31,7 @@
 │  ─────────┼───────────────────┼──────── TrustBoundary3      │
 │           ▼                   ▼                              │
 │  ┌──────────────┐   ┌──────────────────┐                   │
-│  │ SQLite /data │   │ Meilisearch      │                   │
+│  │ SQLite /data │   │ VayuFind (in-proc)│                   │
 │  │ (rw, WAL)    │   │ localhost:7700   │                   │
 │  └──────────────┘   └──────────────────┘                   │
 └─────────────────────────────────────────────────────────────┘
@@ -56,7 +56,7 @@
 | EP-07 | `POST /webhooks/github` | HTTPS | HMAC-SHA256 | Signature verified |
 | EP-08 | SSH (port 22) | SSH | Key auth only | Admin server access |
 | EP-09 | `GET/POST /isso/*` | HTTPS | CSRF token | Comment system proxy |
-| EP-10 | Meilisearch API | localhost only | Master key | Never exposed publicly |
+| EP-10 | Search index | in-process | No network surface | Not reachable at all — no port, no key |
 
 ---
 
@@ -67,13 +67,12 @@
 | A-01 | Published posts | Public | SQLite `/data/vayupress.db` | VayuPress |
 | A-02 | Draft posts | Confidential | SQLite, author-only | Authors |
 | A-03 | Admin API key | Critical | Env var `VAYU_API_KEY` | Operator |
-| A-04 | Meilisearch master key | Critical | Env var `VAYU_MEILI_KEY` | Operator |
 | A-05 | TLS private key | Critical | `/etc/letsencrypt/live/` | Certbot |
 | A-06 | SQLite database | High | `/data/vayupress.db` | VayuPress |
 | A-07 | Backup archives | High | `/data/backups/` | VayuPress |
 | A-08 | Audit logs | High | `audit_log` table (WORM) | VayuPress |
 | A-09 | User comments | Internal | Isso SQLite | VayuPress |
-| A-10 | Search index | Internal | Meilisearch data dir | VayuPress |
+| A-10 | Search index | Internal | Inside the VayuPress database | VayuPress |
 | A-11 | Media uploads | Internal | `/data/media/` | VayuPress |
 | A-12 | Config / env vars | Critical | `/etc/vayupress/` | Operator |
 
@@ -165,7 +164,6 @@
 | RR-01 | Single SQLite writer is a bottleneck | Low | Architecture Lead | Design choice; escape hatch to PG exists |
 | RR-02 | Isso comment system is 3rd-party Go | Low | Security Lead | Isolated process, no DB access |
 | RR-03 | Let's Encrypt outbound ACME traffic | Low | Security Lead | Required for TLS; ACME pinned to LE CAs |
-| RR-04 | Meilisearch has no auth in dev mode | Medium | Operator | Must set master key in production |
 | RR-05 | Inbound ActivityPub inbox accepts unsigned requests unless a key resolver is configured | Low | Security Lead | `internal/federation` now implements RSA-SHA256 HTTP Signature verification (`VerifyRequest`), with body Digest validation and a ±5 min clock-skew window, enforced on the inbox whenever `Server.SetKeyResolver` is set. It also caps payloads at 10 MiB and applies replay protection (`federation_seen_activities`, 7-day TTL), and federation is suspended in `quarantined` mode. Residual: enforcement is opt-in, so a deployment that exposes the inbox without wiring a resolver remains open — operators federating with untrusted peers must configure a resolver. |
 | RR-06 | IndexNow submissions trust the configured key/host | Low | Operator | `pingIndexNow` is mode-aware (suppressed in `read-only`/`quarantined`/`maintenance`) and journals success/failure/suppression, but the IndexNow key is operator-supplied and not rotated automatically. |
 

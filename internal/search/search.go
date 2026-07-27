@@ -224,7 +224,7 @@ func (s *builtinService) Load(ctx context.Context) error {
 		`SELECT id,title,slug,content,tags,created_at FROM articles
 		 WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0`)
 	if err != nil {
-		atomic.AddInt64(&metrics.MetricMeiliErrors, 1)
+		atomic.AddInt64(&metrics.MetricSearchErrors, 1)
 		return err
 	}
 	defer rows.Close()
@@ -238,7 +238,7 @@ func (s *builtinService) Load(ctx context.Context) error {
 		next[id] = makeDoc(id, title, slug, content, splitCSV(tagsCSV), created.Unix())
 	}
 	if err := rows.Err(); err != nil {
-		atomic.AddInt64(&metrics.MetricMeiliErrors, 1)
+		atomic.AddInt64(&metrics.MetricSearchErrors, 1)
 		return err
 	}
 	s.mu.Lock()

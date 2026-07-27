@@ -15,18 +15,16 @@ const ConfigVersion = "1.0"
 const MinCompatibleConfigVersion = "1.0"
 
 var Cfg struct {
-	APIKey         string
-	DBPath         string
-	CacheDir       string
-	MediaDir       string
-	MeiliHost      string
-	MeiliMasterKey string
-	Domain         string
-	Port           string
-	WorkerCount    int
-	CFZoneID       string
-	CFAPIToken     string
-	IndexNowKey    string
+	APIKey      string
+	DBPath      string
+	CacheDir    string
+	MediaDir    string
+	Domain      string
+	Port        string
+	WorkerCount int
+	CFZoneID    string
+	CFAPIToken  string
+	IndexNowKey string
 	// APIHost is an optional dedicated, CDN-proxy-off host for the REST API
 	// (e.g. api.<domain>), so machine clients reach /api without a CDN
 	// bot-challenge. Empty means the REST API is advertised on the apex domain.
@@ -105,8 +103,6 @@ func Load() {
 	Cfg.DBPath = EnvOr("DB_PATH", "/var/lib/vayupress/vayupress.db")
 	Cfg.CacheDir = EnvOr("CACHE_DIR", "/var/cache/vayupress")
 	Cfg.MediaDir = EnvOr("MEDIA_DIR", "/var/lib/vayupress/media")
-	Cfg.MeiliHost = EnvOr("MEILI_HOST", "http://localhost:7700")
-	Cfg.MeiliMasterKey = EnvOr("MEILI_MASTER_KEY", "")
 	Cfg.Domain = EnvOr("DOMAIN", "localhost")
 	Cfg.Port = EnvOr("PORT", "8080")
 	Cfg.CFZoneID = EnvOr("CF_ZONE_ID", "")

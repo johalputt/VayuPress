@@ -61,7 +61,7 @@ body:
       options:
         - Write Queue
         - Cache / Rendering
-        - Search (Meilisearch)
+        - Search (VayuFind)
         - Database (SQLite)
         - API
         - Deploy Script

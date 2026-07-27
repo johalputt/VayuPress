@@ -34,14 +34,14 @@ import (
 // =============================================================================
 
 // internalServiceHosts are trusted, operator-configured loopback endpoints
-// (Meilisearch, a local AI runtime) that the shared outbound client is allowed
+// (a local AI runtime, for example) that the shared outbound client is allowed
 // to reach even though they resolve to a private/loopback address. Webhook and
 // update traffic uses the same client, so this is the *only* private
 // destination any guarded outbound request may reach.
 var internalServiceHosts = []string{"127.0.0.1", "localhost", "::1"}
 
 // safeOutboundTransport builds the SSRF-hardened transport for the shared
-// outbound HTTP client (webhooks, update checks, AI/Meili service calls).
+// outbound HTTP client (webhooks, update checks, AI service calls).
 func safeOutboundTransport() *http.Transport {
 	return safefetch.SafeTransport(safefetch.TransportOptions{AllowHosts: internalServiceHosts})
 }

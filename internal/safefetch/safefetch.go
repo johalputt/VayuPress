@@ -124,7 +124,7 @@ func (c *Client) transport() *http.Transport {
 // dials the resolved public IP), so in OnionMode a direct dial to any public host
 // is a deanonymising leak — a webhook, image import, or embed unfurl would open a
 // clearnet connection from the onion server's real IP. Loopback AllowHosts
-// (Meilisearch/Ollama) still work; anything that legitimately needs onion egress
+// (a local Ollama, say) still work; anything that legitimately needs onion egress
 // must use the Tor transport instead. This one flag centrally closes every
 // current and future safefetch clearnet callsite in a Tor Space.
 var blockClearnetEgress atomic.Bool
@@ -233,7 +233,7 @@ func IsLoopbackHost(host string) bool {
 type TransportOptions struct {
 	// AllowHosts lists hostnames / IP literals that may resolve to a private or
 	// reserved address. Use it only for trusted, operator-configured internal
-	// services — e.g. a loopback Meilisearch or Ollama endpoint. Matching is
+	// services — e.g. a loopback Ollama endpoint. Matching is
 	// exact and case-insensitive on the request host. Leave empty for the
 	// strictest behaviour (refuse every private/reserved destination).
 	AllowHosts []string
@@ -266,7 +266,7 @@ func SafeTransport(opts TransportOptions) *http.Transport {
 		if err != nil {
 			return nil, err
 		}
-		// Trusted internal service (e.g. localhost Meilisearch/Ollama): dial as
+		// Trusted internal service (e.g. localhost Ollama): dial as
 		// given, without the public-IP requirement.
 		if allow[strings.ToLower(host)] {
 			return base.DialContext(ctx, network, addr)

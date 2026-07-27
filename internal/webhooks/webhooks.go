@@ -50,7 +50,7 @@ type Store struct {
 
 // New creates a Store. Webhooks POST to an operator-supplied URL, so delivery
 // uses a STRICT SSRF-hardened client with NO loopback allowlist — unlike the
-// shared outbound client (which allows 127.0.0.1 for local Meili/Ollama). This
+// shared outbound client (which allows 127.0.0.1 for a local AI runtime). This
 // stops a webhook target from reaching internal services or the cloud metadata
 // endpoint (audit L5). The passed client is consulted only for its timeout so
 // callers keep one place to tune it.

@@ -60,7 +60,7 @@ func (a *App) reindexAllArticles(ctx context.Context) (*reindexResult, error) {
 		}
 		res.Indexed++
 		// Pace indexing so a full rebuild stays gentle on both the VPS CPU and the
-		// Meilisearch process. Respects context cancellation. Tunable via
+		// indexing pass. Respects context cancellation. Tunable via
 		// VAYU_REINDEX_THROTTLE_MS.
 		if throttle > 0 {
 			select {

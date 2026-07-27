@@ -117,7 +117,7 @@ Growth is desirable **only when it does not compromise architectural integrity o
 ---
 
 ## **🏗️ OPERATIONAL SIMPLICITY DOCTRINE (IMMUTABLE)**
-- **One Binary**: Single static binary. No runtime dependencies beyond SQLite and Meilisearch (optional).
+- **One Binary**: Single static binary. No runtime dependencies beyond SQLite.
 - **One Process**: Workers are internal goroutines; no separate daemons.
 - **One Database**: SQLite is the default and preferred architecture; PostgreSQL is an escape hatch, not a primary target.
 - **One Command**: Install/upgrade via a single command.
@@ -419,17 +419,17 @@ Controlled extensibility without WordPress-style bloat.
 ---
 
 ## **🔍 Search Governance**
-Meilisearch is default, but publishing must work without it.
+Search is built in (VayuFind), and publishing must work without it.
 
 <mui:table-metadata title="Search Governance" />
 
 | **Aspect**               | **Policy**                                                                                     |
 |--------------------------|-------------------------------------------------------------------------------------------------|
-| **Default Backend**      | Meilisearch (embedded or external).                                                             |
-| **Optional**             | Search is not mandatory. VayuPress must degrade gracefully (fallback to SQLite `LIKE` queries). |
-| **Embedded Mode**        | Meilisearch can run as an embedded process (same binary); external is default for most users.   |
+| **Default Backend**      | VayuFind — built into the binary (ADR-0101). No external search service.                        |
+| **Optional**             | Search is not mandatory. VayuPress must degrade gracefully when the index is absent or stale.   |
+| **No Second Service**    | Nothing to install, secure, version, monitor or back up alongside the binary.                   |
 | **Failure Handling**    | Publishing continues; indexing retries; degraded search activates automatically.                |
-| **Replaceable**          | Adapters allow swapping Meilisearch for Typesense, Elasticsearch, etc.                         |
+| **Replaceable**          | The search adapter stays swappable, so an external engine remains possible without a rewrite.  |
 | **No Blocking**          | Search failures must not block publishing or rendering.                                        |
 | **New: Privacy**         | Search queries are never logged or stored.                                                      |
 
@@ -884,7 +884,7 @@ Default stance: *"No to everything that doesn’t align with our core mission or
 | `/health`         | Liveness                         | 200          | 500          |
 | `/health/ready`   | Readiness (DB, search, storage)  | 200          | 503          |
 | `/health/db`      | Database connectivity            | 200          | 503          |
-| `/health/meilisearch` | Search availability          | 200          | 503          |
+| `/health/search`      | Search availability          | 200          | 503          |
 | `/health/workers` | Queue worker health              | 200          | 503          |
 | `/health/storage` | Storage quota (fail if >90% full) | 200          | 503          |
 | **New: `/health/ai`** | AI subsystem health          | 200          | 503          |
@@ -984,7 +984,7 @@ Default stance: *"If it can’t be monitored, logged, or debugged, it’s not pr
 | Scenario                   | Expected Behavior                                      |
 |----------------------------|--------------------------------------------------------|
 | SQLite DB Locked           | Worker retries (3x), marks job failed.                |
-| Meilisearch Down           | Circuit breaker opens; article saved to DB.            |
+| Search Index Unavailable   | Circuit breaker opens; article saved to DB.            |
 | Disk Full During Write     | Graceful error, no corruption.                         |
 | Process Killed Mid-Job     | Stale jobs reset to `pending` on restart.              |
 | Cache Directory Unwritable | Fall back to dynamic rendering, log error.             |
@@ -1018,7 +1018,7 @@ Every PR must pass:
 ---
 
 ## **🌫️ Smoke Test**
-Extended endpoint tests: image pipeline, webhooks, Meilisearch indexing, cache invalidation, storage quota, **AI subsystem**, **security checks**.
+Extended endpoint tests: image pipeline, webhooks, search indexing, cache invalidation, storage quota, **AI subsystem**, **security checks**.
 
 ---
 

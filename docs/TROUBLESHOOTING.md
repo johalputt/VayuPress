@@ -20,13 +20,13 @@ curl http://localhost:8080/health/dependencies
 # Check which component reports "unavailable"
 ```
 
-### `/health/meilisearch` returns 503
+### `/health/search` returns 503
 
-Meilisearch is down — this is non-critical. VayuPress falls back to SQLite `LIKE` queries.
+The search index is unavailable or stale — non-critical. Publishing and reading are unaffected; rebuild with `POST /admin/reindex`.
 
 ```bash
-sudo systemctl status meilisearch
-sudo systemctl restart meilisearch
+curl -s http://localhost:8080/health/search
+sudo journalctl -u vayupress -n 50 | grep -i search
 ```
 
 ## Write Queue Issues
@@ -384,8 +384,8 @@ sudo journalctl -u vayupress -f
 # Nginx access logs
 sudo tail -f /var/log/nginx/access.log
 
-# Meilisearch logs
-sudo tail -f /var/log/meilisearch/meilisearch.log
+# Search index activity (built in — no separate service log)
+sudo journalctl -u vayupress -f | grep -i search
 ```
 
 ## Support

@@ -116,7 +116,7 @@ func (a *App) handleListTags(w http.ResponseWriter, r *http.Request) {
 }
 
 // =============================================================================
-// Search — delegates to a.search (Meilisearch + SQLite fallback)
+// Search — delegates to a.search (VayuFind, built in; ADR-0101)
 // =============================================================================
 
 func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {

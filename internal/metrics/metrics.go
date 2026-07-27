@@ -12,10 +12,13 @@ import (
 
 // Atomic counters
 var (
-	MetricArticlesCreated         int64
-	MetricArticlesUpdated         int64
-	MetricArticlesDeleted         int64
-	MetricMeiliErrors             int64
+	MetricArticlesCreated int64
+	MetricArticlesUpdated int64
+	MetricArticlesDeleted int64
+	// MetricSearchErrors counts VayuFind errors. It was named after Meilisearch,
+	// the external service VayuFind replaced (ADR-0101), so the old name reported
+	// a service that no longer exists.
+	MetricSearchErrors            int64
 	MetricQueueProcessed          int64
 	MetricQueueFailed             int64
 	MetricCacheHits               int64

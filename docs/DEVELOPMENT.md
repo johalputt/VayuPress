@@ -8,7 +8,6 @@ A new developer should be able to run `make dev` in under 10 minutes and make th
 
 - Go 1.23+ (CI & deploy build with the latest stable Go, currently 1.25.x)
 - SQLite3 (`apt install sqlite3`)
-- (Optional) Meilisearch for full-text search testing
 
 ## Quick Start
 
@@ -84,7 +83,6 @@ export DB_PATH=/tmp/vayupress-dev.db
 export CACHE_DIR=/tmp/vayupress-cache
 export DOMAIN=localhost
 export PORT=8080
-export MEILI_HOST=http://localhost:7700   # optional
 export VAYU_MAINTENANCE=false
 export VAYU_MIGRATE_DRY_RUN=false        # set true to preview migrations
 ```
@@ -106,7 +104,7 @@ export VAYU_MIGRATE_DRY_RUN=false        # set true to preview migrations
 See [ARCHITECTURE.md](ARCHITECTURE.md) for diagrams and component descriptions.
 
 Key constraints for development:
-- **SQLite-first**: every feature must work without Meilisearch.
+- **SQLite-first**: every feature must work with SQLite alone — no external service.
 - **No heavy frontend**: public paths use HTMX + Alpine.js only.
 - **No new dependencies** without RFC approval.
 - **No breaking API changes** without a MAJOR version bump.
