@@ -22,7 +22,7 @@ func TestConnectorCardsCSPSafe(t *testing.T) {
 	intro := osConnectorIntro()
 	assertCSPSafe(t, "osConnectorIntro", intro)
 
-	epCard := osConnectorEndpointCard(endpoint, endpoint, false)
+	epCard := osConnectorEndpointCard(endpoint, endpoint, false, "")
 	assertCSPSafe(t, "osConnectorEndpointCard", epCard)
 	if !strings.Contains(epCard, endpoint) {
 		t.Errorf("endpoint card must show the endpoint URL %q", endpoint)
@@ -31,7 +31,7 @@ func TestConnectorCardsCSPSafe(t *testing.T) {
 	// The dedicated-host variant is the one an operator sees when mcp.<domain> is
 	// provisioned, and it names both URLs — so it is the copy most at risk of
 	// drifting outside the CSP contract.
-	dedi := osConnectorEndpointCard("https://mcp.example.com/mcp", endpoint, true)
+	dedi := osConnectorEndpointCard("https://mcp.example.com/mcp", endpoint, true, "")
 	assertCSPSafe(t, "osConnectorEndpointCard/dedicated", dedi)
 	if !strings.Contains(dedi, "https://mcp.example.com/mcp") {
 		t.Error("dedicated endpoint card must offer the dedicated URL")
@@ -164,7 +164,7 @@ func TestDedicatedMCPHostRefusesUnusableBases(t *testing.T) {
 func TestConnectorEndpointFallsBackToTheRequestHost(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://localhost:8080/os/connector", nil)
 	req.Host = "localhost:8080"
-	endpoint, apex, dedicated := connectorEndpoint(req)
+	endpoint, apex, dedicated, _ := connectorEndpoint(req)
 	if dedicated {
 		t.Error("claimed a dedicated host for a localhost admin session")
 	}
@@ -173,5 +173,79 @@ func TestConnectorEndpointFallsBackToTheRequestHost(t *testing.T) {
 	}
 	if !strings.HasSuffix(endpoint, "/mcp") {
 		t.Errorf("endpoint %q does not end in /mcp", endpoint)
+	}
+}
+
+// TestProbeRejectsAProxyInterstitial is the regression test for a flaw that
+// defeated this feature's entire purpose in its first release.
+//
+// The probe exists to avoid advertising an endpoint that a proxy will challenge.
+// Its first version treated ANY completed HTTP response as proof of life — but a
+// bot challenge IS a completed response: 403, HTML body, served by the proxy. So
+// a proxied host would have been marked live and the page would have offered,
+// with a confident green badge, exactly the URL that cannot work.
+//
+// "The request completed" and "the right server answered" are different
+// questions. Only the second one is worth anything here.
+func TestProbeRejectsAProxyInterstitial(t *testing.T) {
+	challenge := func(h http.Header, code int) *http.Response {
+		return &http.Response{StatusCode: code, Header: h}
+	}
+
+	// Cloudflare says so outright.
+	cf := http.Header{}
+	cf.Set("Cf-Mitigated", "challenge")
+	cf.Set("Content-Type", "text/html; charset=UTF-8")
+	if !looksLikeProxyInterstitial(challenge(cf, http.StatusForbidden)) {
+		t.Error("a cf-mitigated challenge was not recognised as a proxy interstitial")
+	}
+	// A proxy that does not announce itself still returns HTML where a machine
+	// endpoint never would.
+	html := http.Header{}
+	html.Set("Content-Type", "text/html")
+	if !looksLikeProxyInterstitial(challenge(html, http.StatusOK)) {
+		t.Error("an HTML 200 on a machine endpoint was not treated as an interstitial")
+	}
+	// The block/throttle codes a machine client can never work through.
+	for _, code := range []int{http.StatusForbidden, http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+		if !looksLikeProxyInterstitial(challenge(http.Header{}, code)) {
+			t.Errorf("HTTP %d was not treated as unusable for a machine client", code)
+		}
+	}
+
+	// The two statuses that DO prove VayuPress answered must not be mistaken for
+	// an interstitial, or the probe would never accept a healthy host.
+	for code := range mcpProbeAccepts {
+		if looksLikeProxyInterstitial(challenge(http.Header{}, code)) {
+			t.Errorf("HTTP %d proves the app answered but was rejected as an interstitial", code)
+		}
+	}
+	if !mcpProbeAccepts[http.StatusUnauthorized] || !mcpProbeAccepts[http.StatusMethodNotAllowed] {
+		t.Error("the accept set must contain 401 (auth middleware) and 405 (POST-only route)")
+	}
+	// A bare 200 is NOT proof: /mcp is POST-only, so this server cannot produce
+	// one for a GET. Something else did.
+	if mcpProbeAccepts[http.StatusOK] {
+		t.Error("200 accepted on a POST-only route — that answer did not come from this server")
+	}
+}
+
+// TestBlockedHostIsReportedDistinctlyFromMissing — "not set up" and "set up but
+// proxied" need opposite actions, so the page must not collapse them into one
+// message. Getting this wrong sends an operator to provision a host that already
+// exists, which is exactly the wrong hour of work.
+func TestBlockedHostIsReportedDistinctlyFromMissing(t *testing.T) {
+	apexOnly := osConnectorEndpointCard("https://example.com/mcp", "https://example.com/mcp", false, "")
+	blocked := osConnectorEndpointCard("https://example.com/mcp", "https://example.com/mcp", false, "mcp.example.com")
+	assertCSPSafe(t, "osConnectorEndpointCard/blocked", blocked)
+
+	if !strings.Contains(blocked, "mcp.example.com") {
+		t.Error("the blocked notice must name the host that is being blocked")
+	}
+	if !strings.Contains(blocked, "DNS only") {
+		t.Error("the blocked notice must say what to change; naming a fault without the fix is half a message")
+	}
+	if blocked == apexOnly {
+		t.Error("a blocked dedicated host renders identically to having none — the two need opposite actions")
 	}
 }

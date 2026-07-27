@@ -82,6 +82,46 @@ var mcpDedicated struct {
 type mcpDedicatedEntry struct {
 	checkedAt time.Time
 	live      bool
+	// challenged records that SOMETHING answered but it was not VayuPress —
+	// almost always a proxy interstitial. Kept separate from "not live" because
+	// the two need opposite advice: one host needs provisioning, the other needs
+	// its proxy switched off, and telling an operator the wrong one costs an
+	// evening.
+	challenged bool
+}
+
+// mcpProbeAccepts is the set of statuses that PROVE VayuPress answered a GET on
+// the POST-only /mcp route: 405 from the router, or 401 from the auth middleware
+// with its RFC 9728 challenge. Nothing else does.
+//
+// This list is the security property of the whole probe, and getting it wrong is
+// how the first version of this code defeated its own purpose: it treated ANY
+// HTTP response as proof of life. A bot challenge IS a successful response — 403
+// with an HTML body — so a proxied host would have been marked live and the page
+// would have advertised, with confidence, precisely the endpoint that cannot
+// work. "The request completed" and "the right server answered" are different
+// questions, and only the second one matters here.
+var mcpProbeAccepts = map[int]bool{
+	http.StatusUnauthorized:     true, // requireMCPAuth
+	http.StatusMethodNotAllowed: true, // chi: /mcp is POST-only
+}
+
+// looksLikeProxyInterstitial reports whether a response came from something in
+// front of the origin rather than the origin itself.
+func looksLikeProxyInterstitial(resp *http.Response) bool {
+	// Cloudflare states it outright; other proxies at least return HTML where a
+	// machine endpoint would never produce any.
+	if resp.Header.Get("Cf-Mitigated") != "" {
+		return true
+	}
+	if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
+		return true
+	}
+	switch resp.StatusCode {
+	case http.StatusForbidden, http.StatusTooManyRequests, http.StatusServiceUnavailable:
+		return true
+	}
+	return false
 }
 
 // dedicatedMCPHost returns "mcp.<host>" when that host is actually provisioned
@@ -89,9 +129,11 @@ type mcpDedicatedEntry struct {
 //
 // It PROBES rather than infers. A DNS record pointing here proves nothing about
 // whether the certificate was ever issued, and advertising an endpoint whose TLS
-// fails would trade one broken connector for another. Any HTTP status counts as
-// live — the route is POST-only, so a 405 is a perfectly good proof that TLS
-// terminated and VayuPress answered.
+// fails would trade one broken connector for another.
+//
+// "Live" means THIS SERVER answered — see mcpProbeAccepts. A response arriving is
+// not enough on its own, because the failure being detected produces a perfectly
+// valid response of its own.
 func dedicatedMCPHost(ctx context.Context, adminHost string) string {
 	// A Tor Space must make no clearnet call, and a .onion has no proxy in front
 	// of it to work around, so there is nothing to gain and a leak to lose.
@@ -126,10 +168,13 @@ func dedicatedMCPHost(ctx context.Context, adminHost string) string {
 
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	live := false
+	live, challenged := false, false
 	// SafeTransport, not the default client: this is a server-side outbound call
 	// to an operator-supplied name, so it goes through the same SSRF guard as
-	// every other one and honours the Tor-Space kill switch.
+	// every other one — private and reserved destinations refused, the validated
+	// IP pinned at dial time — and honours the Tor-Space kill switch. Redirects
+	// are never followed: a redirect off this host proves nothing about this host,
+	// and following one would hand an operator-controlled name a second hop.
 	client := &http.Client{
 		Transport: safefetch.SafeTransport(safefetch.TransportOptions{DialTimeout: 2 * time.Second}),
 		Timeout:   3 * time.Second,
@@ -137,15 +182,24 @@ func dedicatedMCPHost(ctx context.Context, adminHost string) string {
 			return http.ErrUseLastResponse
 		},
 	}
+	// The REAL path, not a cheaper stand-in. A skip rule that exempts /health but
+	// not /mcp would make a /health probe report success for an endpoint that is
+	// still challenged — testing the path that must work is the only test worth
+	// running. No credentials are sent: an unauthenticated 401 is a pass.
 	if req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+cand+"/mcp", nil); err == nil {
 		if resp, err := client.Do(req); err == nil {
 			_ = resp.Body.Close()
-			live = true
+			switch {
+			case looksLikeProxyInterstitial(resp):
+				challenged = true
+			case mcpProbeAccepts[resp.StatusCode]:
+				live = true
+			}
 		}
 	}
 
 	mcpDedicated.mu.Lock()
-	mcpDedicated.seen[cand] = mcpDedicatedEntry{checkedAt: time.Now(), live: live}
+	mcpDedicated.seen[cand] = mcpDedicatedEntry{checkedAt: time.Now(), live: live, challenged: challenged}
 	mcpDedicated.mu.Unlock()
 	if live {
 		return cand
@@ -153,21 +207,44 @@ func dedicatedMCPHost(ctx context.Context, adminHost string) string {
 	return ""
 }
 
+// dedicatedMCPChallenged reports whether the last probe of mcp.<host> was
+// answered by something other than VayuPress. Read from cache only — it never
+// probes, so rendering the warning cannot cost a second round trip.
+func dedicatedMCPChallenged(adminHost string) (host string, challenged bool) {
+	h := strings.ToLower(strings.TrimSpace(adminHost))
+	if x, _, err := net.SplitHostPort(h); err == nil {
+		h = x
+	}
+	if h == "" || strings.HasPrefix(h, "mcp.") {
+		return "", false
+	}
+	cand := "mcp." + h
+	mcpDedicated.mu.Lock()
+	defer mcpDedicated.mu.Unlock()
+	e, ok := mcpDedicated.seen[cand]
+	return cand, ok && e.challenged
+}
+
 // connectorEndpoint returns the URL the page should advertise, preferring a
 // provisioned dedicated host, plus the plain request-derived one for comparison.
-func connectorEndpoint(r *http.Request) (endpoint, apex string, dedicated bool) {
+// blockedHost names a dedicated host that exists but is answered by a proxy, so
+// the page can say which of the two very different problems this install has.
+func connectorEndpoint(r *http.Request) (endpoint, apex string, dedicated bool, blockedHost string) {
 	apex = publicMCPEndpoint(r)
 	if h := dedicatedMCPHost(r.Context(), r.Host); h != "" {
-		return "https://" + h + "/mcp", apex, true
+		return "https://" + h + "/mcp", apex, true, ""
 	}
-	return apex, apex, false
+	if h, challenged := dedicatedMCPChallenged(r.Host); challenged {
+		return apex, apex, false, h
+	}
+	return apex, apex, false, ""
 }
 
 // handleOSConnector renders the VayuMCP page.
 func (a *App) handleOSConnector(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	endpoint, apexEndpoint, dedicated := connectorEndpoint(r)
+	endpoint, apexEndpoint, dedicated, blockedHost := connectorEndpoint(r)
 
 	// Existing external keys, so the operator can see and revoke connectors they
 	// already granted without leaving the page. The internal/system key and
@@ -184,7 +261,7 @@ func (a *App) handleOSConnector(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := osConnectorIntro() +
-		osConnectorEndpointCard(endpoint, apexEndpoint, dedicated) +
+		osConnectorEndpointCard(endpoint, apexEndpoint, dedicated, blockedHost) +
 		osConnectorGrantCard() +
 		osConnectorConnectCard(endpoint) +
 		osConnectorManageCard(connectors)
@@ -216,7 +293,7 @@ func osConnectorIntro() string {
 </div>`
 }
 
-func osConnectorEndpointCard(endpoint, apex string, dedicated bool) string {
+func osConnectorEndpointCard(endpoint, apex string, dedicated bool, blockedHost string) string {
 	e := html.EscapeString(endpoint)
 	note := ""
 	if dedicated {
@@ -228,6 +305,13 @@ func osConnectorEndpointCard(endpoint, apex string, dedicated bool) string {
 			html.EscapeString(strings.TrimSuffix(strings.TrimPrefix(endpoint, "https://"), "/mcp")) +
 			`</code> host, so that is the endpoint offered above rather than <code>` + html.EscapeString(apex) +
 			`</code>. Both reach this same server with the same authentication, but the dedicated host is not proxied — so a bot challenge or firewall rule on your main domain can never sit in front of it. An MCP client has no browser and cannot answer a challenge, and when one appears the request never reaches this server to be logged, which makes it very hard to diagnose from here.</p>`
+	} else if blockedHost != "" {
+		// The diagnosis an operator otherwise has to reach with curl and a header
+		// dump: the dedicated host EXISTS, and something in front of it answered
+		// instead of this server. Naming that distinctly matters — "not set up" and
+		// "set up but proxied" need opposite actions.
+		note = `<p class="text-sm muted mb-4"><span class="badge badge--warn">blocked</span> <code>` +
+			html.EscapeString(blockedHost) + `</code> exists, but a request to it was answered by <strong>something in front of this server</strong> — a bot challenge or firewall interstitial, not VayuPress. A machine client cannot answer one, so that host is unusable until it is switched to <strong>DNS only</strong> (the grey cloud in Cloudflare) at your DNS provider. Nothing needs changing here; the endpoint above stays on your main domain until the dedicated host answers directly.</p>`
 	} else {
 		note = `<p class="text-sm muted mb-4">If your domain sits behind a proxy or firewall that can challenge visitors, this endpoint can stop working without warning — an MCP client has no browser and cannot answer a challenge. A dedicated <code>mcp.&lt;your-domain&gt;</code> host with the proxy switched off avoids that permanently; see the note below. Once it is pointed and provisioned, this page offers it here automatically.</p>`
 	}

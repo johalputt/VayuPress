@@ -6,6 +6,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.64] — 2026-07-27
+
+Ships immediately: 3.15.63 is live and its probe can assert the opposite of the
+truth.
+
+### Fixed
+- **The connector-endpoint probe treated a bot challenge as proof of life.** 3.15.63 added a probe
+  so the VayuMCP page would only advertise a `mcp.<domain>` host that actually answers. It marked
+  the host live whenever the HTTP request *completed* — but a challenge **is** a completed
+  response: 403, HTML body, served by the proxy. A proxied dedicated host would therefore have
+  been marked healthy and offered with a green badge, which is precisely the endpoint the feature
+  exists to steer operators away from. The check defeated its own purpose.
+
+  A probe now passes only on the two statuses this server can actually produce for an
+  unauthenticated `GET /mcp`: **401** from the auth middleware, or **405** from the router on a
+  POST-only route. Anything carrying `cf-mitigated`, anything returning HTML where a machine
+  endpoint never would, and 403/429/503 are rejected. "The request completed" and "the right
+  server answered" are different questions, and only the second one was ever worth asking.
+
+- **A blocked dedicated host now says so, instead of silently looking absent.** When
+  `mcp.<domain>` exists but a proxy answers for it, the page reports it as **blocked** and names
+  the change to make (switch that record to DNS only) — distinct from "no dedicated host", which
+  needs the opposite action. Collapsing the two sent an operator to provision a host that already
+  existed. This is the diagnosis that otherwise requires a header dump on the command line.
+
+---
+
 ## [3.15.63] — 2026-07-27
 
 ### Fixed
