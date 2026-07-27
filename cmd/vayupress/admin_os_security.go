@@ -119,8 +119,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 	// feed fragment from /os/members/activity (hx-get → innerHTML swap) with no
 	// page reload and no bespoke JavaScript. Without HTMX the card still renders
 	// the server-side feed, so the page degrades gracefully.
-	activityCard := `<div class="card mb-6">
-  <h2 class="card-title">Recent activity</h2>
+	activityCard := `<div class="card">
   <button type="button" class="btn btn--ghost btn--sm mb-4" hx-get="/os/members/activity" hx-target="#os-activity-feed" hx-swap="innerHTML" hx-indicator="#os-activity-feed" hx-disabled-elt="this" aria-label="Refresh activity feed">↻ Refresh</button>
   <div id="os-activity-feed">` + activityFeedHTML(activity, stats.Currency) + `</div>
 </div>`
@@ -253,7 +252,18 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 
 	// Unconfirmed leftovers from the old pre-send signup path. The card only exists
 	// while there is something to clean up, so a healthy install never sees it.
-	unconfirmedCard := unverifiedMembersCardHTML(a.members.CountUnverified(ctx))
+	unverifiedCount := a.members.CountUnverified(ctx)
+	unconfirmedCard := unverifiedMembersCardHTML(unverifiedCount)
+	unconfirmedAcc := ""
+	if unconfirmedCard != "" {
+		chip := `<span class="mon-chip mon-chip--on">● All confirmed</span>`
+		sub := "Everyone has proved they control their address"
+		if unverifiedCount > 0 {
+			chip = `<span class="mon-chip mon-chip--off">○ ` + strconv.Itoa(unverifiedCount) + ` waiting</span>`
+			sub = "Added as members before their sign-in link was used"
+		}
+		unconfirmedAcc = monAcc("✉️", "Unconfirmed addresses", sub, chip, unverifiedCount > 0, unconfirmedCard)
+	}
 
 	// ── Team & roles (admin-only; staff accounts, not readers) ────────────────
 	teamCard := a.teamCardHTML(r)
@@ -311,7 +321,26 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 
 	body := `<div class="page-header"><h1>Members</h1></div>
 <p class="page-sub">Everyone in your community — memberships, tiers, your team and activity, with growth insights, all owned by you.</p>` +
-		statGrid + insightsCard + activityCard + tiersCard + teamCard + unconfirmedCard + membersCard + modal +
+		statGrid +
+		`<div class="section-head"><span class="section-head__title">Growth &amp; revenue</span><span class="section-head__hint">New members and recurring revenue over the last 30 days</span></div>` +
+		insightsCard +
+		`<div class="section-head"><span class="section-head__title">Membership tiers</span><span class="section-head__hint">What people can buy, and what each tier unlocks</span></div>` +
+		tiersCard +
+		`<div class="section-head"><span class="section-head__title">People</span><span class="section-head__hint">Everyone who has joined — search, label and manage</span></div>` +
+		membersCard +
+		// Folded: each is consulted occasionally, and together they pushed the
+		// members table — the reason most visits happen — far down the page.
+		// Unconfirmed addresses opens itself when there are any, because that is a
+		// state needing a decision rather than a section to browse.
+		`<div class="section-head"><span class="section-head__title">Community operations</span><span class="section-head__hint">Activity, your team, and addresses awaiting confirmation</span></div>` +
+		`<div class="mon-stack">` +
+		monAcc("📈", "Recent activity", "Sign-ups, upgrades and cancellations",
+			`<span class="mon-chip mon-chip--off">○ Log</span>`, false, activityCard) +
+		monAcc("👥", "Team &amp; roles", "Staff accounts for your workspace",
+			`<span class="mon-chip mon-chip--off">○ Staff</span>`, false, teamCard) +
+		unconfirmedAcc +
+		`</div>` +
+		modal +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-members.js?v=` + assetVer("js/admin-os-members.js") + `"></script>`
 
 	writeOSHTML(w, r, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))

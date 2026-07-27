@@ -1704,7 +1704,28 @@
   width: 100%;
   max-width: 520px;
   animation: vp3-modal-in var(--t-spring) both;
+  /* A tall dialog must never grow past the viewport. The backdrop is fixed and
+     centres its child, so without a ceiling a long form (the tier editor has a
+     dozen fields) overflows off BOTH edges and its footer — the Save button —
+     becomes unreachable, with nothing to scroll because the backdrop itself does
+     not scroll. Cap the panel and let the BODY scroll inside it, so the header
+     and the actions stay pinned and visible at any height.
+     dvh accounts for mobile browser chrome; vh is the fallback. */
+  max-height: calc(100vh - var(--sp-4) * 2);
+  max-height: calc(100dvh - var(--sp-4) * 2);
+  display: flex;
+  flex-direction: column;
 }
+/* The tier editor wraps body+footer in a <form>, so the flex column has to pass
+   through it or the body has no bounded height to scroll within. min-height:0
+   is what actually permits a flex child to shrink below its content. */
+.vp-os .modal-panel > form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.vp-os .modal-header, .vp-os .modal-footer { flex: 0 0 auto; }
 .vp-os .modal-panel--lg { max-width: 720px; }
 .vp-os .modal-header {
   padding: var(--sp-5) var(--sp-6);
@@ -1716,7 +1737,13 @@
 .vp-os .modal-title { font-family: var(--font-head); font-weight: 600; font-size: var(--text-lg); }
 .vp-os .modal-close { color: var(--text-3); transition: color var(--t-fast); }
 .vp-os .modal-close:hover { color: var(--text); }
-.vp-os .modal-body { padding: var(--sp-6); }
+.vp-os .modal-body {
+  padding: var(--sp-6);
+  overflow-y: auto;
+  overscroll-behavior: contain; /* don't scroll the page behind the dialog */
+  min-height: 0;
+  flex: 1 1 auto;
+}
 .vp-os .modal-footer {
   padding: var(--sp-4) var(--sp-6);
   border-top: 1px solid var(--border);

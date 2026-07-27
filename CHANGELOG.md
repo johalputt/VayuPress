@@ -6,6 +6,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.76] — 2026-07-27
+
+### Fixed
+- **A tall dialog could put its own Save button out of reach.** The modal backdrop is
+  `position:fixed` and centres its panel, and the panel had **no `max-height`** while the body had
+  **no `overflow-y`**. A form longer than the viewport — the tier editor has a dozen fields —
+  therefore overflowed off *both* edges, and because the backdrop does not scroll there was no way
+  to reach the footer. The Save button existed and could not be clicked.
+
+  The panel is now capped to the viewport and laid out as a column, the **body** scrolls inside it,
+  and the header and actions stay pinned. The intermediate `<form>` carries the column through
+  (the tier editor wraps body and footer in one), and `min-height: 0` is what actually permits
+  those flex children to shrink below their content — without it nothing scrolls. `dvh` accounts
+  for mobile browser chrome, with `vh` as the fallback.
+
+### Changed
+- **The Members page now follows the Monetization layout.** `section-head` dividers group the page
+  into Growth & revenue → Membership tiers → People → Community operations, and the three sections
+  consulted only occasionally — recent activity, team & roles, unconfirmed addresses — are
+  collapsible cards. Together they had pushed the members table, the reason most visits happen,
+  far down the page.
+
+  **Unconfirmed addresses opens itself when there are any**, and its chip carries the count: that
+  is a state needing a decision, not a section to browse. When there are none it reads "All
+  confirmed" and stays folded.
+
+---
+
 ## [3.15.75] — 2026-07-27
 
 ### Fixed

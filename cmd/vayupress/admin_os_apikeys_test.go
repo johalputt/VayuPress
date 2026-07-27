@@ -3,6 +3,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -205,5 +206,56 @@ func TestAPIKeyStatsCountOnlyUsableGrants(t *testing.T) {
 	clean := osAPIKeysStats([]apikeys.Key{keys[0]}, nil)
 	if strings.Contains(clean, "stat-card--warn") {
 		t.Error("the auto-managed system key is being counted as an operator's full-access grant")
+	}
+}
+
+// TestModalPanelCanScroll is the regression test for a dialog whose actions
+// could become unreachable.
+//
+// The backdrop is position:fixed and centres its child, so a panel taller than
+// the viewport overflows off BOTH edges — and because the backdrop does not
+// scroll, there is no way to reach the footer. The tier editor has a dozen
+// fields and hit exactly that: the Save button existed and could not be clicked.
+//
+// The fix is structural, not cosmetic: cap the panel, let the BODY scroll inside
+// it, and keep the header and actions pinned. The intermediate <form> has to
+// carry the flex column too, and min-height:0 is what actually permits a flex
+// child to shrink below its content — without it the body never scrolls.
+func TestModalPanelCanScroll(t *testing.T) {
+	css, err := os.ReadFile("../../static/css/admin-os.css")
+	if err != nil {
+		t.Skipf("stylesheet not readable: %v", err)
+	}
+	s := string(css)
+
+	block := func(sel string) string {
+		i := strings.Index(s, sel)
+		if i < 0 {
+			t.Fatalf("%s has disappeared from the stylesheet", sel)
+		}
+		return s[i : i+strings.Index(s[i:], "}")]
+	}
+
+	panel := block(".vp-os .modal-panel {")
+	if !strings.Contains(panel, "max-height") {
+		t.Error("the modal panel has no max-height; a tall dialog overflows the viewport with no way to scroll")
+	}
+	if !strings.Contains(panel, "flex-direction: column") {
+		t.Error("the modal panel is not a flex column, so its body cannot be given a bounded scroll area")
+	}
+
+	body := block(".vp-os .modal-body {")
+	if !strings.Contains(body, "overflow-y: auto") {
+		t.Error("the modal body does not scroll; the footer becomes unreachable on a tall dialog")
+	}
+	if !strings.Contains(body, "min-height: 0") {
+		t.Error("the modal body lacks min-height:0, so as a flex child it will not shrink and will not scroll")
+	}
+
+	// The tier editor wraps body+footer in a <form>; the column must pass through
+	// it or the body has no bounded height to scroll within.
+	form := block(".vp-os .modal-panel > form {")
+	if !strings.Contains(form, "min-height: 0") {
+		t.Error("the intermediate <form> does not pass the flex column through; the body will not scroll")
 	}
 }
