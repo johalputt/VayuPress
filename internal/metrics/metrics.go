@@ -121,13 +121,29 @@ func (h *Histogram) Percentile(pct float64) int64 {
 	}
 	cumulative := int64(0)
 	for i, b := range buckets {
+		prev := cumulative
 		cumulative += b
-		if cumulative >= target {
-			if HistBoundMS[i] == 1<<62 && i > 0 {
+		if cumulative < target {
+			continue
+		}
+		if HistBoundMS[i] == 1<<62 {
+			if i > 0 {
 				return HistBoundMS[i-1] * 2
 			}
-			return HistBoundMS[i]
+			return HistBoundMS[i-1]
 		}
+		// Interpolate inside the bucket — see WindowedHistogram.Percentile for why
+		// returning the ceiling makes the figure useless for judging a change.
+		lower := int64(0)
+		if i > 0 {
+			lower = HistBoundMS[i-1]
+		}
+		upper := HistBoundMS[i]
+		if b <= 0 {
+			return upper
+		}
+		frac := float64(target-prev) / float64(b)
+		return lower + int64(float64(upper-lower)*frac+0.5)
 	}
 	return HistBoundMS[14]
 }
@@ -225,13 +241,41 @@ func (h *WindowedHistogram) Percentile(pct float64) int64 {
 	}
 	cumulative := int64(0)
 	for i, b := range agg {
+		prev := cumulative
 		cumulative += b
-		if cumulative >= target {
-			if HistBoundMS[i] == 1<<62 && i > 0 {
+		if cumulative < target {
+			continue
+		}
+		// Overflow bucket has no upper bound to interpolate towards.
+		if HistBoundMS[i] == 1<<62 {
+			if i > 0 {
 				return HistBoundMS[i-1] * 2
 			}
-			return HistBoundMS[i]
+			return HistBoundMS[i-1]
 		}
+		// INTERPOLATE INSIDE THE BUCKET instead of returning its ceiling.
+		//
+		// Buckets double: 1, 2, 4, 8, 16, 32, 64, 128… Returning HistBoundMS[i]
+		// reported the worst case in the bucket as though it were the measurement,
+		// so a P95 of 65 ms and one of 128 ms both read "128 ms". That is not just
+		// pessimistic, it makes the number useless for the thing an operator
+		// actually wants it for: seeing whether a change helped. Halving real
+		// latency from 128 ms to 70 ms moved this figure not at all, and the only
+		// way to see any improvement was to cross a power of two.
+		//
+		// Assuming a uniform spread within the bucket — the same estimate
+		// Prometheus histogram_quantile makes — gives a figure that moves
+		// continuously with real latency.
+		lower := int64(0)
+		if i > 0 {
+			lower = HistBoundMS[i-1]
+		}
+		upper := HistBoundMS[i]
+		if b <= 0 {
+			return upper
+		}
+		frac := float64(target-prev) / float64(b)
+		return lower + int64(float64(upper-lower)*frac+0.5)
 	}
 	return HistBoundMS[14]
 }

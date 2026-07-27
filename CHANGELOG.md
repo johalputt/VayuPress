@@ -6,6 +6,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.78] — 2026-07-27
+
+### Fixed
+- **Latency percentiles reported the bucket ceiling, so an improvement could be invisible.** The
+  histogram buckets double — 1, 2, 4, 8, 16, 32, 64, 128 ms — and `Percentile` returned
+  `HistBoundMS[i]`, the **upper bound** of whichever bucket the target fell in. A p95 of 65 ms and
+  one of 128 ms both reported **"128 ms"**.
+
+  That is not merely pessimistic. It makes the figure useless for the one thing an operator wants
+  it for: seeing whether a change helped. Halving real latency from 128 ms to 70 ms moved the
+  number not at all, and the only way to observe any gain was to cross a power of two. The same
+  applied to every percentile on the Monitoring page and to `http_p95`/`http_p99` in the metrics
+  endpoint.
+
+  Both the windowed and cumulative histograms now **interpolate within the bucket**, assuming a
+  uniform spread — the same estimate `histogram_quantile` makes. The reported figure moves
+  continuously with real latency instead of jumping between powers of two.
+
+  **This does not make anything faster.** It makes the number honest: the dashboard was
+  overstating latency by up to a factor of two, and a site already at 70 ms was being displayed as
+  128 ms.
+
+  The limit is stated rather than papered over: a bucketed histogram cannot separate two
+  distributions that fall entirely inside one bucket — that detail was never recorded, and no
+  interpolation recovers it. The tests assert what interpolation genuinely delivers (a figure that
+  tracks the tail monotonically) rather than demanding resolution the data does not contain.
+
+---
+
 ## [3.15.77] — 2026-07-27
 
 ### Removed

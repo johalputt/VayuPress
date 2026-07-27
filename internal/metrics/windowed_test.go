@@ -76,3 +76,67 @@ func TestWindowedPartialRotationKeepsRecent(t *testing.T) {
 		t.Fatalf("recent samples lost on a partial rotation: have %d, want 30", count)
 	}
 }
+
+// TestPercentileResolvesWithinTheBucket is the regression test for a dashboard
+// figure that could not show an improvement.
+//
+// Buckets double: 1, 2, 4, 8, 16, 32, 64, 128… Returning the bucket's CEILING
+// reported the worst case in the bucket as though it were the measurement, so a
+// P95 of 65 ms and one of 128 ms both read "128 ms". An operator halving real
+// latency from 128 ms to 70 ms saw the number not move at all — the only way to
+// observe any gain was to cross a power of two.
+func TestPercentileResolvesWithinTheBucket(t *testing.T) {
+	// Everything lands in the (64,128] bucket, but concentrated at its bottom.
+	var lowInBucket WindowedHistogram
+	for i := 0; i < 100; i++ {
+		lowInBucket.Record(66 * time.Millisecond)
+	}
+	got := lowInBucket.Percentile(95)
+	if got > 128 {
+		t.Fatalf("P95 = %d ms, above the bucket ceiling", got)
+	}
+	if got == 128 {
+		t.Errorf("P95 = %d ms — still reporting the bucket ceiling, so a real improvement inside the bucket is invisible", got)
+	}
+
+	// What interpolation CAN deliver: a figure that moves continuously as the
+	// distribution shifts across buckets, instead of jumping only at powers of two.
+	//
+	// It cannot separate two distributions that fall entirely inside ONE bucket —
+	// the stored state for those is identical by construction, and no amount of
+	// interpolation recovers detail that was never recorded. Asking for that would
+	// be asking the histogram to be something it is not.
+	prev := int64(-1)
+	for slow := 0; slow <= 20; slow++ {
+		var h WindowedHistogram
+		for i := 0; i < 100-slow; i++ {
+			h.Record(10 * time.Millisecond) // (8,16]
+		}
+		for i := 0; i < slow; i++ {
+			h.Record(200 * time.Millisecond) // (128,256]
+		}
+		got := h.Percentile(95)
+		if prev >= 0 && got < prev {
+			t.Errorf("P95 fell from %d to %d ms as MORE slow requests were added", prev, got)
+		}
+		prev = got
+	}
+	// With 20%% slow requests the P95 must have climbed out of the fast bucket.
+	if prev <= 16 {
+		t.Errorf("P95 = %d ms with a fifth of requests at 200 ms; it is not tracking the tail", prev)
+	}
+}
+
+// TestPercentileStaysWithinItsBucketBounds — interpolation must estimate, never
+// invent. A reported value outside the bucket the sample fell in would be worse
+// than the ceiling it replaced.
+func TestPercentileStaysWithinItsBucketBounds(t *testing.T) {
+	var h WindowedHistogram
+	for i := 0; i < 200; i++ {
+		h.Record(70 * time.Millisecond) // (64,128]
+	}
+	got := h.Percentile(95)
+	if got <= 64 || got > 128 {
+		t.Errorf("P95 = %d ms, outside the (64,128] bucket the samples fell in", got)
+	}
+}
