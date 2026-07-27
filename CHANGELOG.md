@@ -6,9 +6,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.52] — 2026-07-27
 
 ### Added
+- **Operations → Domains & DNS.** One page listing every record an install needs, with a **live
+  check of whether each is actually pointed here**. Three states per record, and the middle one
+  is the point: *pointed here*, *resolves elsewhere*, *not pointed*. "Resolves elsewhere" is the
+  dangerous state — a certificate can issue while the service never works, which reads as a
+  VayuPress fault rather than a DNS one, and nothing surfaced it before.
+
+  It exists because **every one of these fails quietly**: mail does not arrive, PGP key discovery
+  silently stops and correspondents fall back to cleartext, and an MCP client receives a
+  challenge page it cannot read. The only way to learn an install was half-configured was to
+  notice a symptom weeks later. The page carries the provisioning control too, so a wrong record
+  can be fixed from where it is discovered rather than somewhere else.
+
+  Lookups run concurrently under a 5s budget, each compared against the apex — "resolves" and
+  "resolves *here*" are different questions and only the second means the subdomain will work.
+  Admin-gated: it reveals the install's own hostnames and addresses and offers a privileged
+  control.
+
 - **Subdomain certificates can now be provisioned from VayuOS — no terminal.** This closes a
   real hole rather than adding a convenience. The service runs as `www-data` with
   `NoNewPrivileges=yes`, so the in-app updater can swap the binary but **can never obtain a TLS
@@ -33,6 +50,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   demand is a real rate-limit denial-of-service lever).
 
 ### Changed
+- **The PGP key section in each mailbox card is collapsible**, like vacation, aliases, filters
+  and recovery beside it. An armoured key is twenty lines of base64 nobody reads inline, and
+  leaving it expanded pushed every action below it off the screen on every card.
+
 - **Every DNS record an install needs is now in one table, in both `README.md` and
   `docs/INSTALLATION.md`.** `openpgpkey.` was missing from the installation guide's Step 1
   table entirely — it was documented only in its own section further down, so an operator

@@ -56,6 +56,9 @@ func osOperationsGrid(current mode.Mode, storagePct int, maintenanceOn bool) str
 	b.WriteString(osWorkCard("/os/modes", "System Modes", "Normal · read-only · quarantine", iconModes, 0, modeBadge, true))
 	b.WriteString(osWorkCard("/os/policy", "Policy Inspector", "Effective policy & guardrails", iconPolicy, 0, "", false))
 	b.WriteString(osWorkCard("/os/topology", "Topology", "Services & connections map", iconTopology, 0, "", false))
+	// Sits beside Topology because it answers the same class of question — what
+	// this install is wired to, and whether the wiring is actually live.
+	b.WriteString(osWorkCard("/os/dns", "Domains &amp; DNS", "Records to point &amp; live status", iconDNS, 0, "", false))
 	b.WriteString(osWorkCard("/os/replay", "Replay Explorer", "Inspect & replay requests", iconReplay, 0, "", false))
 	b.WriteString(osWorkCard("/os/faults", "Fault Engine", "Inject & observe failures", iconFaults, 0, "", false))
 	b.WriteString(osWorkCard("/os/adr", "ADR Registry", "Architecture decisions", iconADR, 0, "", false))

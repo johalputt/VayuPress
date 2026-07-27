@@ -96,7 +96,11 @@ func osPathMinLevel(path string) int {
 		// Infrastructure & operator controls: domain registration + TLS
 		// provisioning, encrypted backup export, power (restart/shutdown), and
 		// staff-user management each control the machine or its identities.
-		"domains", "backup", "power", "users",
+		// "dns" is the Domains & DNS page: it reveals the install's own hostnames
+		// and resolved addresses and offers the privileged provisioning control,
+		// so it sits with the other infrastructure surfaces rather than being
+		// readable by an author.
+		"domains", "dns", "backup", "power", "users",
 		// Growth is the hub that fronts Members / Newsletter / Monetization /
 		// Advertising; Operations fronts Modes / Policy / Topology / Replay / Faults
 		// / ADR — both inherit their fronted pages' admin gate.

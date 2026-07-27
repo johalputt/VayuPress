@@ -372,6 +372,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// off-origin page burn.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/provision/run", a.handleOSProvisionRequest)
 		pr.Get("/os/api/provision/status", a.handleOSProvisionStatus)
+		// Domains & DNS — which records an install needs and whether each is
+		// actually pointed here. Every subdomain fails quietly when its record is
+		// missing, so this is the page that makes a half-configured install visible.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/dns", a.handleOSDNS)
 		pr.Get("/os/api/backup/export", a.handleOSBackupExport)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/backup/import", a.handleOSBackupImport)
 
@@ -1122,6 +1126,7 @@ var (
 	iconPages      = svgIcon("M5 2h7l3 3v13H5V2zm7 0v3h3M7 9h6M7 12h6M7 15h4")
 	iconMessages   = svgIcon("M2 4h16v10H6l-4 3V4zm3 4h10M5 11h7")
 	iconTalk       = svgIcon("M4 3h9a3 3 0 013 3v4a3 3 0 01-3 3H8l-4 3v-3a3 3 0 01-3-3V6a3 3 0 013-3zm2 4h7M6 9.5h4")
+	iconDNS        = svgIcon("M10 2.5a7.5 7.5 0 100 15 7.5 7.5 0 000-15zM2.5 10h15M10 2.5c2 2.4 3 4.9 3 7.5s-1 5.1-3 7.5c-2-2.4-3-4.9-3-7.5s1-5.1 3-7.5z")
 	iconTor        = svgIcon("M10 2.5a7.5 7.5 0 100 15 7.5 7.5 0 000-15zM10 6.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM10 9.2a.8.8 0 100 1.6.8.8 0 000-1.6z")
 	iconNewPost    = svgIcon("M10 4v12m-6-6h12")
 	iconMedia      = svgIcon("M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm0 8l4-4 3 3 2-2 4 4")

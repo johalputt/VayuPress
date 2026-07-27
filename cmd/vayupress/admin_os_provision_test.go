@@ -114,3 +114,51 @@ func TestProvisionRunIsCSRFProtected(t *testing.T) {
 	}
 	t.Error("provision run route not registered")
 }
+
+// TestDNSRecordsCoverEveryProvisionedSubdomain keeps the page honest against the
+// provisioning worker. If a helper gains a new subdomain and this list does not,
+// the page shows a green install that is quietly missing a record — which is the
+// exact failure mode the page was built to end.
+func TestDNSRecordsCoverEveryProvisionedSubdomain(t *testing.T) {
+	got := map[string]bool{}
+	for _, r := range subdomainRecords("example.com") {
+		got[r.Host] = true
+	}
+	for _, want := range []string{
+		"example.com", "www.example.com", "mail.example.com",
+		"openpgpkey.example.com", "talk.example.com",
+		"mcp.example.com", "api.example.com",
+	} {
+		if !got[want] {
+			t.Errorf("Domains & DNS does not list %s", want)
+		}
+	}
+}
+
+// TestProxyOffMarkedOnEveryMachineToMachineHost — the apex and www may sit behind
+// a proxy; every other host is fetched by software with no JavaScript engine, so
+// a bot challenge breaks it. Marking one of them "either" would send an operator
+// to a silent failure with the page's blessing.
+func TestProxyOffMarkedOnEveryMachineToMachineHost(t *testing.T) {
+	for _, r := range subdomainRecords("example.com") {
+		machineToMachine := strings.HasPrefix(r.Host, "mail.") ||
+			strings.HasPrefix(r.Host, "openpgpkey.") ||
+			strings.HasPrefix(r.Host, "talk.") ||
+			strings.HasPrefix(r.Host, "mcp.") ||
+			strings.HasPrefix(r.Host, "api.")
+		if machineToMachine && !r.ProxyOff {
+			t.Errorf("%s is machine-to-machine but not marked proxy-off", r.Host)
+		}
+		if !machineToMachine && r.ProxyOff {
+			t.Errorf("%s is browser traffic; forcing proxy-off needlessly gives up CDN protection", r.Host)
+		}
+	}
+}
+
+// TestDNSPageIsAdminGated — the page lists the install's own hostnames and
+// resolved addresses and carries the privileged provisioning control.
+func TestDNSPageIsAdminGated(t *testing.T) {
+	if osPathMinLevel("/os/dns") < osPathMinLevel("/os/update") {
+		t.Error("/os/dns is gated below /os/update; it exposes infrastructure detail and a privileged control")
+	}
+}

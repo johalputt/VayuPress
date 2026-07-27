@@ -306,9 +306,10 @@ func (a *App) vayuCardPGP(ac vmail.Account) string {
 	if err != nil || pk == nil || strings.TrimSpace(pk.Armor) == "" {
 		// A mailbox created before VayuPGP was enabled has no key yet. Say so
 		// plainly rather than showing an empty box that looks broken.
-		return `<div class="vm-acct__sub"><span class="field-label">PGP public key</span>` +
+		return `<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">PGP public key</span> ` +
+			`<span class="badge badge--muted">no key</span></summary>` +
 			`<span class="muted text-sm">No key yet for this mailbox. Keys are generated automatically on account creation; ` +
-			`enable VayuPGP and re-create or re-save this account to mint one.</span></div>`
+			`enable VayuPGP and re-create or re-save this account to mint one.</span></details>`
 	}
 
 	wkd := pgp.WKDURL(ac.Email)
@@ -322,8 +323,13 @@ func (a *App) vayuCardPGP(ac vmail.Account) string {
 			`(<code>scripts/setup-openpgpkey-subdomain.sh</code>).</span>`
 	}
 
-	return `<div class="vm-acct__sub vm-pgp">` +
-		`<span class="field-label">PGP public key</span>` +
+	// Collapsed by default, like every other per-mailbox section (vacation,
+	// aliases, filters, recovery). An armoured key is twenty lines of base64 that
+	// nobody reads inline, so leaving it expanded pushed the actions below it off
+	// the screen on every card.
+	return `<details class="vm-ooo vm-acct__sub vm-pgp">` +
+		`<summary><span class="field-label">PGP public key</span> ` +
+		`<span class="badge badge--ok">key active</span></summary>` +
 		`<div class="vm-row"><span class="field-label">Fingerprint</span>` +
 		`<code class="mono text-xs">` + esc(pk.Fingerprint) + `</code></div>` +
 		`<textarea class="input vm-pgp__armor mono text-xs" readonly rows="6" ` +
@@ -337,7 +343,7 @@ func (a *App) vayuCardPGP(ac vmail.Account) string {
 		`<span class="text-xs muted">This is the <strong>public</strong> half — safe to publish anywhere. ` +
 		`The private key is never shown here and is not downloadable by an administrator; only the ` +
 		`mailbox's own signed-in device can retrieve it.</span>` +
-		`</div>`
+		`</details>`
 }
 
 // handleVayuOSAccountPubKey serves a mailbox's armored PUBLIC key as a
