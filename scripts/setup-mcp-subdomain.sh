@@ -40,6 +40,25 @@ ok()   { echo -e "${GREEN}✅ $*${NC}"; }
 info() { echo -e "${CYAN}ℹ  $*${NC}"; }
 warn() { echo -e "${YELLOW}⚠  $*${NC}"; }
 
+# nginx_ok runs the config test and, on failure, PRINTS what nginx said.
+#
+# This previously ran with output discarded, so a rejected vhost produced
+# "nginx config test failed" and nothing else — the operator was told the step
+# aborted and never told why, with the real message discarded a line before it
+# would have solved the problem. A diagnostic that is generated and then thrown
+# away is worse than one that was never produced: it costs the same to compute
+# and it teaches the reader the tool does not know.
+nginx_ok() {
+  local out
+  if out="$(nginx -t 2>&1)"; then
+    return 0
+  fi
+  warn "nginx rejected the configuration. It said:"
+  printf '%s\n' "$out" | sed 's/^/      /' >&2
+  return 1
+}
+
+
 ENV_FILE=/etc/vayupress/env
 env_get() { # $1=KEY — read a value from /etc/vayupress/env if present
   # Deliberately tolerant of how the file is actually written. The original
@@ -142,7 +161,7 @@ if [[ ! -f "${CERT_DIR}/fullchain.pem" ]]; then
   # reaches nginx directly and is never intercepted by a CDN.
   write_mcp_http_only
   ln -sf "$AVAIL" "$ENABLED"
-  if ! nginx -t >/dev/null 2>&1; then warn "nginx config test failed — aborting MCP setup."; rm -f "$ENABLED"; exit 0; fi
+  if ! nginx_ok; then warn "nginx config test failed — aborting MCP setup."; rm -f "$ENABLED"; exit 0; fi
   systemctl reload nginx 2>/dev/null || true
 
   certbot certonly --webroot -w "$CACHE_DIR" --cert-name "$MCP" \
@@ -154,7 +173,7 @@ fi
 if [[ -f "${CERT_DIR}/fullchain.pem" ]]; then
   write_mcp_full
   ln -sf "$AVAIL" "$ENABLED"
-  if nginx -t >/dev/null 2>&1; then
+  if nginx_ok; then
     systemctl reload nginx 2>/dev/null || true
     ok "VayuMCP subdomain live: https://${MCP}/mcp  (CDN proxy OFF — no challenge)."
     info "In Claude → Settings → Connectors → Add custom connector, use:  https://${MCP}/mcp"

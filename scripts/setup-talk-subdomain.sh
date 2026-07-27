@@ -34,6 +34,25 @@ ok()   { echo -e "${GREEN}✅ $*${NC}"; }
 info() { echo -e "${CYAN}ℹ  $*${NC}"; }
 warn() { echo -e "${YELLOW}⚠  $*${NC}"; }
 
+# nginx_ok runs the config test and, on failure, PRINTS what nginx said.
+#
+# This previously ran with output discarded, so a rejected vhost produced
+# "nginx config test failed" and nothing else — the operator was told the step
+# aborted and never told why, with the real message discarded a line before it
+# would have solved the problem. A diagnostic that is generated and then thrown
+# away is worse than one that was never produced: it costs the same to compute
+# and it teaches the reader the tool does not know.
+nginx_ok() {
+  local out
+  if out="$(nginx -t 2>&1)"; then
+    return 0
+  fi
+  warn "nginx rejected the configuration. It said:"
+  printf '%s\n' "$out" | sed 's/^/      /' >&2
+  return 1
+}
+
+
 ENV_FILE=/etc/vayupress/env
 env_get() { # $1=KEY — read a value from /etc/vayupress/env if present
   # Deliberately tolerant of how the file is actually written. The original
@@ -154,7 +173,7 @@ if ! cert_covers "$TALK"; then
   # Phase A: HTTP-only vhost so certbot's HTTP-01 challenge for talk validates.
   write_talk_http_only
   ln -sf "$AVAIL" "$ENABLED"
-  if ! nginx -t >/dev/null 2>&1; then warn "nginx config test failed — aborting talk setup."; rm -f "$ENABLED"; exit 0; fi
+  if ! nginx_ok; then warn "nginx config test failed — aborting talk setup."; rm -f "$ENABLED"; exit 0; fi
   systemctl reload nginx 2>/dev/null || true
 
   # Re-issue the SAME lineage with its CURRENT SANs (so mail/site keep their
@@ -184,7 +203,7 @@ fi
 if cert_covers "$TALK"; then
   write_talk_full
   ln -sf "$AVAIL" "$ENABLED"
-  if nginx -t >/dev/null 2>&1; then
+  if nginx_ok; then
     systemctl reload nginx 2>/dev/null || true
     set_env_var VAYUOS_TALK_HOST "$TALK"
     # Apply the new advertisement without forcing a start on a fresh install

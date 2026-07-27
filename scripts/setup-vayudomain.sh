@@ -37,6 +37,25 @@ ok()   { echo -e "${GREEN}✅ $*${NC}"; }
 info() { echo -e "${CYAN}ℹ  $*${NC}"; }
 warn() { echo -e "${YELLOW}⚠  $*${NC}"; }
 
+# nginx_ok runs the config test and, on failure, PRINTS what nginx said.
+#
+# This previously ran with output discarded, so a rejected vhost produced
+# "nginx config test failed" and nothing else — the operator was told the step
+# aborted and never told why, with the real message discarded a line before it
+# would have solved the problem. A diagnostic that is generated and then thrown
+# away is worse than one that was never produced: it costs the same to compute
+# and it teaches the reader the tool does not know.
+nginx_ok() {
+  local out
+  if out="$(nginx -t 2>&1)"; then
+    return 0
+  fi
+  warn "nginx rejected the configuration. It said:"
+  printf '%s\n' "$out" | sed 's/^/      /' >&2
+  return 1
+}
+
+
 ENV_FILE=/etc/vayupress/env
 env_get() { [[ -r "$ENV_FILE" ]] && sed -n "s/^$1=//p" "$ENV_FILE" | head -n1; }
 
@@ -145,7 +164,7 @@ server {
 NGINX
 }
 
-reload_ok() { nginx -t >/dev/null 2>&1 && { systemctl reload nginx 2>/dev/null || true; return 0; }; return 1; }
+reload_ok() { nginx_ok && { systemctl reload nginx 2>/dev/null || true; return 0; }; return 1; }
 
 for HOST in "${HOSTS[@]}"; do
   HOST="${HOST//[[:space:]]/}"

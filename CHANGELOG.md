@@ -6,6 +6,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.57] — 2026-07-27
+
+### Fixed
+- **Subdomain helpers discarded the one message that explains the failure.** Every helper ran
+  `nginx -t >/dev/null 2>&1`, so a rejected vhost produced "nginx config test failed — aborting"
+  and nothing else. The operator was told the step stopped and never told why, with nginx's
+  actual message thrown away one line before it would have solved the problem.
+
+  A diagnostic that is generated and then discarded is worse than one never produced: it costs
+  the same to compute, and it teaches the reader that the tool does not know. All five helpers
+  now print what nginx said, indented, on failure.
+
+---
+
 ## [3.15.56] — 2026-07-27
 
 ### Fixed
