@@ -8,6 +8,59 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+- **VayuMail and VayuTalk security audit — seven findings, all fixed.** Full write-up with
+  reproduction detail in `docs/SECURITY-AUDIT-2026-07-VAYUMAIL-VAYUTALK.md`; every fix carries a
+  regression test that encodes the attack.
+
+- **DMARC bypass via the `From` header (High).** DMARC was keyed on the first `From` header
+  parsed as a single address. Two `From` headers meant the verifier evaluated
+  `attacker@evil.example` while the client rendered `ceo@bank.example`. A multi-address `From`
+  made the parse fail, the domain come back empty, and **the whole DMARC block be skipped** —
+  leaving `dmarc=none`, which downstream reads as "this domain publishes no policy" rather than
+  "we could not tell", so a `p=reject` domain was delivered unflagged. Now fails closed: exactly
+  one `From` with exactly one address, or the message is quarantined and the reason recorded in
+  `Authentication-Results`.
+
+- **Forged `Authentication-Results` and `X-VayuMail-*` headers accepted (High).** Inbound mail
+  was never stripped of headers this server stamps and later trusts — an RFC 8601 §5 violation.
+  The stamped copy being prepended saved the junk filter by accident of ordering, but anything
+  reading the raw source, taking the last match, or inspecting headers by hand was deceived. The
+  sharpest case was `X-VayuMail-Forwarded`: a sender who set it inbound **silently suppressed the
+  recipient's own auto-forward** — invisible, targeted mail loss that would look like a product
+  bug. Stripping now runs after verification (DKIM covers the headers) and removes folded
+  continuations with their parent.
+
+- **The brute-force throttle was defeated by opening more connections (High).** `AuthThrottle`
+  imposes a 2s decaying delay per mailbox and its comment claims this crushes guessing to under
+  one attempt per second. It did not: nothing bounded concurrency, so an attacker opened N
+  sockets, each slept its 2s in parallel, and the aggregate was N/2 guesses per second —
+  ~500/sec at a thousand sockets. There was also no cap on attempts per connection. Fixed with a
+  connection limiter (256 global, 16 per source) plus a five-attempt cap after which the
+  connection is dropped. The delay was never the problem; the missing concurrency bound was.
+
+- **Unbounded concurrent connections on SMTP/IMAP/POP3 (High).** Each accept spawned a goroutine
+  with no limit, every one holding a reader sized against `MaxMessageBytes` for up to five
+  minutes — unauthenticated memory and descriptor exhaustion on ports that must face the
+  internet. Same limiter; over-cap peers get a transient refusal before any work is done.
+
+- **Accept loops spun at 100% CPU on descriptor exhaustion (Medium).** A bare `continue` on
+  `Accept` error meant that `EMFILE` — which the previous finding let an attacker cause on
+  purpose — escalated into a full CPU denial of service across every listener at once. Now backs
+  off 5ms doubling to 1s, reset on the first successful accept.
+
+- **`DATA` was reachable without an accepted `MAIL FROM` (Medium).** `DATA` gated on recipients
+  alone, and a `MAIL` rejected by the sender-login binding cleared the sender but left the
+  recipient list intact — so the binding refused the spoofed address and the message was
+  submitted anyway with a null envelope sender. An explicit accepted-`MAIL` flag now gates both
+  `RCPT` and `DATA`, and a rejected `MAIL` clears the whole transaction.
+
+- **VayuTalk: one ordinary account could sign every user out (High).** Each connect minted a new
+  token without invalidating the old, and eviction picked the soonest-to-expire entry across
+  **all** users — so a single unprivileged mailbox could mint past the 20,000 cap and evict
+  everyone else's session. Tokens are now capped per mailbox (10), with eviction ordered so an
+  account's own pressure costs only its own oldest session.
+
 ### Added
 - **Every mailbox's PGP public key is now in its account card** (VayuOS → Mail accounts). Each
   card carries the fingerprint, the armoured **public** key in a copy-ready box, a one-click

@@ -22,7 +22,11 @@ type AuthVerdict struct {
 	DKIMDomain string // signing domain of the first passing DKIM signature
 	DMARC      string // pass/fail/none
 	Quarantine bool   // DMARC failed AND the From domain publishes p=quarantine/reject
-	Header     string // assembled Authentication-Results header value
+	// MalformedFrom records that the message had zero, several, or a
+	// multi-address From header — the shape used to make a verifier and a mail
+	// client disagree about who sent it. Always accompanies DMARC="fail".
+	MalformedFrom bool
+	Header        string // assembled Authentication-Results header value
 }
 
 // verifyInbound runs SPF (connecting IP vs envelope sender), DKIM (message
@@ -53,8 +57,18 @@ func verifyInbound(hostname string, ip net.IP, helo, mailFrom string, raw []byte
 	}
 
 	// ── DMARC: keyed on the From-header domain, with alignment. ──
-	fromDomain := headerFromDomain(raw)
-	if fromDomain != "" {
+	fromDomain, fromOK := headerFromDomain(raw)
+	switch {
+	case !fromOK:
+		// A message whose From cannot be identified unambiguously is not a
+		// message DMARC can be evaluated for, and it is not an innocent one
+		// either — a legitimate sender emits one From with one address. Treat it
+		// as a failure and quarantine it, rather than letting it through with
+		// "dmarc=none", which downstream reads as "the domain has no policy".
+		v.DMARC = "fail"
+		v.MalformedFrom = true
+		v.Quarantine = true
+	default:
 		if rec, err := dmarc.Lookup(fromDomain); err == nil {
 			spfAligned := v.SPF == "pass" && domainsAligned(spfDomain, fromDomain, rec.SPFAlignment)
 			dkimAligned := v.DKIM == "pass" && domainsAligned(v.DKIMDomain, fromDomain, rec.DKIMAlignment)
@@ -81,21 +95,55 @@ func verifyInbound(hostname string, ip net.IP, helo, mailFrom string, raw []byte
 	if fromDomain != "" {
 		h.WriteString(" header.from=" + fromDomain)
 	}
+	if v.MalformedFrom {
+		// Say why, so an operator reading raw headers can tell this apart from an
+		// ordinary alignment failure.
+		h.WriteString(" reason=\"malformed From header\"")
+	}
 	v.Header = h.String()
 	return v
 }
 
-// headerFromDomain returns the domain of the message's From header.
-func headerFromDomain(raw []byte) string {
+// headerFromDomain returns the domain of the message's From header, and whether
+// the From header is well-formed enough for DMARC to mean anything.
+//
+// This is where DMARC is most often bypassed, so it fails CLOSED. RFC 5322
+// permits exactly one From header carrying exactly one address; real phishing
+// routinely sends neither, because the two halves of the pipeline disagree about
+// which one wins:
+//
+//   - TWO From headers. Header.Get returns the first, so a naive verifier
+//     evaluates attacker@evil.example (which passes its own DMARC) while many
+//     clients render the LAST one — ceo@bank.example. Alignment passes and the
+//     reader sees the bank.
+//   - A multi-address From ("a@evil.example, ceo@bank.example"). ParseAddress
+//     errors, an empty domain falls out, and the DMARC block is skipped
+//     entirely — so a message that should have been quarantined is delivered
+//     with no policy applied at all. Silently skipping the check is the worst
+//     outcome available, because everything downstream reads "dmarc=none" as
+//     "the domain publishes no policy" rather than "we could not tell".
+//
+// So: exactly one From header, exactly one address, or the message is reported
+// as malformed and treated as a DMARC failure by the caller.
+func headerFromDomain(raw []byte) (domain string, wellFormed bool) {
 	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
-		return ""
+		return "", false
 	}
-	addr, err := netmail.ParseAddress(msg.Header.Get("From"))
-	if err != nil {
-		return ""
+	froms := msg.Header["From"]
+	if len(froms) != 1 {
+		// Zero (no From at all) or two-plus (the display/verify split above).
+		return "", false
 	}
-	return domainOf(addr.Address)
+	list, err := netmail.ParseAddressList(froms[0])
+	if err != nil || len(list) != 1 {
+		return "", false
+	}
+	d := domainOf(list[0].Address)
+	if d == "" {
+		return "", false
+	}
+	return d, true
 }
 
 // domainsAligned reports DMARC identifier alignment. Strict requires an exact
@@ -119,4 +167,94 @@ func domainsAligned(d, fromDomain string, mode dmarc.AlignmentMode) bool {
 // authResultsHeader renders the full Authentication-Results header line.
 func (v AuthVerdict) authResultsHeader() string {
 	return "Authentication-Results: " + v.Header + "\r\n"
+}
+
+// trustedInboundHeaders are the header names this server stamps and later
+// TRUSTS. Anything a remote sender supplies under these names is a forgery
+// attempt by definition, because only this server is entitled to assert them.
+var trustedInboundHeaders = []string{
+	"authentication-results",      // RFC 8601 §5 requires deleting extant ones
+	"x-vayumail-auth-quarantine",  // consumed by the junk filter (spam.go)
+	"x-vayumail-forwarded",        // forwarding loop breaker (inbound.go)
+	"x-vayumail-spam",             // any future X-VayuMail assertion
+	"x-vayumail-authenticated-as", //
+}
+
+// stripTrustedHeaders removes every header a remote sender must not be able to
+// assert, returning the message with its body untouched.
+//
+// RFC 8601 §5 makes this mandatory for Authentication-Results: a verifier MUST
+// delete extant fields bearing its own authserv-id, or a sender simply writes
+// "dkim=pass" itself. The same reasoning extends to every X-VayuMail-* header
+// the pipeline later believes:
+//
+//   - X-VayuMail-Auth-Quarantine is read by the junk filter. Today the stamped
+//     copy is prepended and Header.Get returns the first, so a forgery loses —
+//     but that is an accident of ordering, not a guarantee. Any consumer that
+//     iterates, takes the last, or reads the raw source is deceived, and a human
+//     inspecting headers to decide whether a message is genuine is deceived too.
+//   - X-VayuMail-Forwarded is the forwarding loop breaker. A sender who sets it
+//     on the way in silently suppresses the recipient's own auto-forward — a
+//     targeted, invisible mail-loss attack that would look like a VayuMail bug.
+//
+// Stripping runs before the stamped headers are prepended, so the delivered
+// message carries exactly one set: ours.
+func stripTrustedHeaders(raw []byte) []byte {
+	// Header section ends at the first blank line; everything after is the body
+	// and must be preserved byte for byte (signatures cover it).
+	end := len(raw)
+	if i := bytes.Index(raw, []byte("\r\n\r\n")); i >= 0 {
+		end = i + 2 // keep the CRLF that terminates the last header line
+	} else if i := bytes.Index(raw, []byte("\n\n")); i >= 0 {
+		end = i + 1
+	}
+	head, body := raw[:end], raw[end:]
+
+	var out bytes.Buffer
+	out.Grow(len(head))
+	drop := false
+	for _, line := range splitLinesKeepEnds(head) {
+		// A continuation line (leading space/tab) belongs to the header above it,
+		// so it inherits that header's fate — otherwise a folded forgery survives
+		// with its first line removed.
+		if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
+			if drop {
+				continue
+			}
+			out.Write(line)
+			continue
+		}
+		drop = false
+		if colon := bytes.IndexByte(line, ':'); colon > 0 {
+			name := strings.ToLower(strings.TrimSpace(string(line[:colon])))
+			for _, bad := range trustedInboundHeaders {
+				if name == bad {
+					drop = true
+					break
+				}
+			}
+		}
+		if drop {
+			continue
+		}
+		out.Write(line)
+	}
+	out.Write(body)
+	return out.Bytes()
+}
+
+// splitLinesKeepEnds splits on \n while retaining the line terminator, so the
+// header block can be reassembled without altering line endings.
+func splitLinesKeepEnds(b []byte) [][]byte {
+	var out [][]byte
+	for len(b) > 0 {
+		i := bytes.IndexByte(b, '\n')
+		if i < 0 {
+			out = append(out, b)
+			break
+		}
+		out = append(out, b[:i+1])
+		b = b[i+1:]
+	}
+	return out
 }

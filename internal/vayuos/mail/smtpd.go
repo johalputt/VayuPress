@@ -29,6 +29,10 @@ type AuthFunc func(username, password string) (bool, error)
 // STARTTLS + AUTH and relays authenticated users' mail outbound. STARTTLS is
 // offered whenever a TLS config is attached.
 type SMTPServer struct {
+	// limiter bounds concurrent connections globally and per source address.
+	// Without it the AuthThrottle delay is defeated by simply opening more
+	// sockets — see connlimit.go.
+	limiter    *connLimiter
 	cfg        Config
 	handler    InboundHandler
 	listenAddr string
@@ -57,9 +61,14 @@ type SMTPServer struct {
 // an amplification lever for the Maildir-creation DoS (audit H4).
 const maxRcptsPerTxn = 100
 
+// maxAuthTriesPerConn caps authentication attempts on a single connection before
+// it is dropped. The AuthThrottle delay slows each attempt but never ends the
+// conversation, so without this one socket buys unlimited guesses.
+const maxAuthTriesPerConn = 5
+
 // NewSMTPServer creates a receive server bound to cfg.SMTPListen.
 func NewSMTPServer(cfg Config, handler InboundHandler) *SMTPServer {
-	return &SMTPServer{cfg: cfg, handler: handler, listenAddr: cfg.SMTPListen}
+	return &SMTPServer{cfg: cfg, handler: handler, listenAddr: cfg.SMTPListen, limiter: newConnLimiter(0, 0)}
 }
 
 // WithTLS attaches a TLS config, enabling the STARTTLS command. Returns the
@@ -88,7 +97,7 @@ func (s *SMTPServer) WithSenderCheck(allowed func(authUser, fromAddr string) boo
 // bound to cfg.SubmissionListen. STARTTLS is required before AUTH, and only
 // authenticated senders may relay; relay delivers each accepted message.
 func NewSubmissionServer(cfg Config, t *tls.Config, auth AuthFunc, relay InboundHandler) *SMTPServer {
-	return &SMTPServer{cfg: cfg, handler: relay, listenAddr: cfg.SubmissionListen, tls: t, submission: true, auth: auth}
+	return &SMTPServer{cfg: cfg, handler: relay, listenAddr: cfg.SubmissionListen, tls: t, submission: true, auth: auth, limiter: newConnLimiter(0, 0)}
 }
 
 // Addr returns the actual listen address (useful when binding to :0 in tests).
@@ -134,6 +143,7 @@ func (s *SMTPServer) Stop(_ context.Context) error {
 
 func (s *SMTPServer) acceptLoop() {
 	defer s.wg.Done()
+	var bo acceptBackoff
 	for {
 		conn, err := s.ln.Accept()
 		if err != nil {
@@ -143,11 +153,26 @@ func (s *SMTPServer) acceptLoop() {
 			if closed {
 				return
 			}
+			// Back off instead of spinning: the way Accept fails persistently is
+			// descriptor exhaustion, and a bare `continue` there burns a core at
+			// 100% until it clears (see acceptBackoff).
+			bo.pause()
+			continue
+		}
+		bo.reset()
+		release, ok := s.limiter.acquire(conn.RemoteAddr())
+		if !ok {
+			// Over the global or per-source cap. Answer with a transient refusal so
+			// a legitimate peer retries, then close — serving it would let an
+			// attacker convert concurrency into brute-force throughput.
+			_, _ = conn.Write([]byte("421 4.7.0 Too many connections, try again later\r\n"))
+			_ = conn.Close()
 			continue
 		}
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
+			defer release()
 			s.handle(conn)
 		}()
 	}
@@ -175,6 +200,15 @@ func (s *SMTPServer) handle(conn net.Conn) {
 		helo     string
 		from     string
 		rcpts    []string
+		// mailSeen tracks whether a MAIL command has been ACCEPTED for the current
+		// transaction. DATA previously gated on len(rcpts) alone, so a client could
+		// skip MAIL entirely — or have it rejected by the sender-login binding — and
+		// still submit with a null envelope sender.
+		mailSeen bool
+		// authTries caps guesses per connection. The AuthThrottle delay alone does
+		// not bound them: it sleeps, and a client is free to keep trying forever on
+		// one socket.
+		authTries int
 	)
 	var clientIP net.IP
 	if ta, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
@@ -186,7 +220,7 @@ func (s *SMTPServer) handle(conn net.Conn) {
 	}
 	setup(conn)
 	write := func(str string) { _, _ = bw.WriteString(str + "\r\n"); _ = bw.Flush() }
-	reset := func() { from, rcpts = "", nil }
+	reset := func() { from, rcpts, mailSeen = "", nil, false }
 
 	role := "ESMTP"
 	if s.submission {
@@ -250,6 +284,15 @@ func (s *SMTPServer) handle(conn net.Conn) {
 				write("503 5.5.1 Already authenticated")
 				continue
 			}
+			if authTries >= maxAuthTriesPerConn {
+				// Drop the connection rather than answering again. Combined with the
+				// per-source connection cap this is what actually bounds guessing:
+				// an attacker must pay a new TCP handshake for every few attempts,
+				// and only a handful of sockets at a time.
+				write("421 4.7.0 Too many authentication failures")
+				return
+			}
+			authTries++
 			if ok, user := s.runAuth(br, write, arg); ok {
 				authed, authUser = true, user
 				write("235 2.7.0 Authentication successful")
@@ -265,13 +308,21 @@ func (s *SMTPServer) handle(conn net.Conn) {
 			// Sender-login binding (audit M5): an authenticated submitter may not
 			// use another local mailbox's address as the envelope sender.
 			if s.submission && s.senderAllowed != nil && from != "" && !s.senderAllowed(authUser, from) {
-				from = ""
+				// Clear the WHOLE transaction, not just the sender. Leaving rcpts
+				// populated let a rejected MAIL be followed by DATA, submitting with
+				// an empty envelope sender — the binding refused the address and the
+				// message went out anyway.
+				from, rcpts, mailSeen = "", nil, false
 				write("553 5.7.1 Sender address not owned by the authenticated account")
 				continue
 			}
-			rcpts = nil
+			rcpts, mailSeen = nil, true
 			write("250 2.1.0 Ok")
 		case "RCPT":
+			if !mailSeen {
+				write("503 5.5.1 MAIL first")
+				continue
+			}
 			addr := extractAddr(arg)
 			if addr == "" {
 				write("501 5.1.3 Bad recipient")
@@ -299,6 +350,10 @@ func (s *SMTPServer) handle(conn net.Conn) {
 			rcpts = append(rcpts, addr)
 			write("250 2.1.5 Ok")
 		case "DATA":
+			if !mailSeen {
+				write("503 5.5.1 MAIL first")
+				continue
+			}
 			if len(rcpts) == 0 {
 				write("503 5.5.1 RCPT first")
 				continue
@@ -315,12 +370,19 @@ func (s *SMTPServer) handle(conn net.Conn) {
 				// Authentication-Results header. A DMARC failure under an
 				// enforcing policy is flagged for the junk filter.
 				if !s.submission {
+					// Verify against the message AS RECEIVED — DKIM signatures cover
+					// the headers, so stripping must not happen before verification.
 					v := verifyInbound(s.hostname(), clientIP, helo, from, raw)
+					// Then remove any header the sender forged under a name this
+					// server stamps and later trusts (RFC 8601 §5 and the
+					// X-VayuMail-* assertions), so the delivered message carries
+					// exactly one set of verdicts: ours.
+					clean := stripTrustedHeaders(raw)
 					pre := v.authResultsHeader()
 					if v.Quarantine {
 						pre += "X-VayuMail-Auth-Quarantine: yes\r\n"
 					}
-					msg = append([]byte(pre), raw...)
+					msg = append([]byte(pre), clean...)
 				}
 				if herr := s.handler(from, rcpts, msg); herr != nil {
 					write("451 4.3.0 Message handling failed")

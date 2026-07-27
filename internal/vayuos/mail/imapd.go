@@ -35,6 +35,10 @@ type DecryptHook func(accountEmail string, raw []byte) []byte
 // APPEND (RFC 3502 multiappend not required), EXPUNGE, CLOSE, UNSELECT, IDLE,
 // CHECK, NOOP, LOGOUT.
 type IMAPServer struct {
+	// limiter bounds concurrent connections globally and per source address.
+	// Without it the AuthThrottle delay is defeated by simply opening more
+	// sockets — see connlimit.go.
+	limiter *connLimiter
 	cfg     Config
 	bridge  Bridge
 	maildir *Maildir
@@ -53,7 +57,7 @@ type IMAPServer struct {
 
 // NewIMAPServer creates an IMAP server bound to cfg.IMAPListen.
 func NewIMAPServer(cfg Config, bridge Bridge, md *Maildir, decrypt DecryptHook) *IMAPServer {
-	return &IMAPServer{cfg: cfg, bridge: bridge, maildir: md, decrypt: decrypt, listenAddr: cfg.IMAPListen}
+	return &IMAPServer{cfg: cfg, bridge: bridge, maildir: md, decrypt: decrypt, listenAddr: cfg.IMAPListen, limiter: newConnLimiter(0, 0)}
 }
 
 // WithTLS enables the STARTTLS command on the plaintext (143) listener.
@@ -115,6 +119,7 @@ func (s *IMAPServer) Stop(_ context.Context) error {
 
 func (s *IMAPServer) acceptLoop() {
 	defer s.wg.Done()
+	var bo acceptBackoff
 	for {
 		conn, err := s.ln.Accept()
 		if err != nil {
@@ -124,11 +129,26 @@ func (s *IMAPServer) acceptLoop() {
 			if closed {
 				return
 			}
+			// Back off instead of spinning: Accept fails persistently on
+			// descriptor exhaustion, and a bare `continue` there burns a core at
+			// 100% until it clears (see acceptBackoff).
+			bo.pause()
+			continue
+		}
+		bo.reset()
+		release, ok := s.limiter.acquire(conn.RemoteAddr())
+		if !ok {
+			// Over the global or per-source cap. Refuse before doing any work:
+			// servicing it would let an attacker turn concurrency into
+			// brute-force throughput against the auth delay.
+			_, _ = conn.Write([]byte("* BYE Too many connections, try again later\r\n"))
+			_ = conn.Close()
 			continue
 		}
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
+			defer release()
 			c := conn
 			if s.implicitTLS && s.tls != nil {
 				c = tls.Server(conn, s.tls)
@@ -142,9 +162,12 @@ type imapSession struct {
 	authedUser   string // local username
 	authedMail   string // full email
 	authedDomain string // owning mail domain (VayuDomains Stage 3b): the Maildir key
-	selected     string // canonical folder name, "" if none selected
-	readOnly     bool
-	msgs         []imapMsg
+	// authTries counts authentication attempts on this connection so the session
+	// can be dropped rather than answering guesses indefinitely.
+	authTries int
+	selected  string // canonical folder name, "" if none selected
+	readOnly  bool
+	msgs      []imapMsg
 }
 
 func (sess *imapSession) authed() bool { return sess.authedUser != "" }
@@ -210,10 +233,20 @@ func (s *IMAPServer) handle(conn net.Conn) {
 			// clients treat as a fatal handshake error and then never sync.
 			line("* ENABLED")
 			line(tag + " OK ENABLE completed")
-		case "LOGIN":
-			s.doLogin(line, sess, tag, arg)
-		case "AUTHENTICATE":
-			s.doAuthenticate(br, w, line, sess, tag, arg)
+		case "LOGIN", "AUTHENTICATE":
+			if sess.authTries >= maxAuthTriesPerConn {
+				// Drop rather than keep answering: the throttle delays an attempt
+				// but never ends the session, so one socket would buy unlimited
+				// guesses.
+				line("* BYE Too many authentication failures")
+				return
+			}
+			sess.authTries++
+			if cmd == "LOGIN" {
+				s.doLogin(line, sess, tag, arg)
+			} else {
+				s.doAuthenticate(br, w, line, sess, tag, arg)
+			}
 		case "LIST", "LSUB":
 			s.doList(line, sess, tag, cmd, arg)
 		case "SUBSCRIBE", "UNSUBSCRIBE":

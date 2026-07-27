@@ -24,6 +24,10 @@ import (
 
 // POP3Server is a POP3 listener (plaintext+STLS on 110, or implicit TLS on 995).
 type POP3Server struct {
+	// limiter bounds concurrent connections globally and per source address.
+	// Without it the AuthThrottle delay is defeated by simply opening more
+	// sockets — see connlimit.go.
+	limiter *connLimiter
 	cfg     Config
 	bridge  Bridge
 	maildir *Maildir
@@ -41,7 +45,7 @@ type POP3Server struct {
 
 // NewPOP3Server creates a POP3 server bound to cfg.POP3Listen.
 func NewPOP3Server(cfg Config, bridge Bridge, md *Maildir, decrypt DecryptHook) *POP3Server {
-	return &POP3Server{cfg: cfg, bridge: bridge, maildir: md, decrypt: decrypt, listenAddr: cfg.POP3Listen}
+	return &POP3Server{cfg: cfg, bridge: bridge, maildir: md, decrypt: decrypt, listenAddr: cfg.POP3Listen, limiter: newConnLimiter(0, 0)}
 }
 
 // WithTLS enables the STLS command on the plaintext (110) listener.
@@ -99,6 +103,7 @@ func (s *POP3Server) Stop(_ context.Context) error {
 
 func (s *POP3Server) acceptLoop() {
 	defer s.wg.Done()
+	var bo acceptBackoff
 	for {
 		conn, err := s.ln.Accept()
 		if err != nil {
@@ -108,11 +113,26 @@ func (s *POP3Server) acceptLoop() {
 			if closed {
 				return
 			}
+			// Back off instead of spinning: Accept fails persistently on
+			// descriptor exhaustion, and a bare `continue` there burns a core at
+			// 100% until it clears (see acceptBackoff).
+			bo.pause()
+			continue
+		}
+		bo.reset()
+		release, ok := s.limiter.acquire(conn.RemoteAddr())
+		if !ok {
+			// Over the global or per-source cap. Refuse before doing any work:
+			// servicing it would let an attacker turn concurrency into
+			// brute-force throughput against the auth delay.
+			_, _ = conn.Write([]byte("-ERR too many connections, try again later\r\n"))
+			_ = conn.Close()
 			continue
 		}
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
+			defer release()
 			c := conn
 			if s.implicitTLS && s.tls != nil {
 				c = tls.Server(conn, s.tls)
@@ -144,6 +164,7 @@ func (s *POP3Server) handle(conn net.Conn) {
 	var (
 		user        string
 		authed      bool
+		authTries   int
 		localUser   string
 		localDomain = s.cfg.Domain // Maildir key; a secondary login overrides it (Stage 3b)
 		msgs        []pop3Msg
@@ -188,6 +209,14 @@ func (s *POP3Server) handle(conn net.Conn) {
 				errResp("USER first")
 				continue
 			}
+			if authTries >= maxAuthTriesPerConn {
+				// Drop rather than keep answering. The throttle delays each attempt
+				// but never ends the session, so without this one socket buys
+				// unlimited guesses.
+				errResp("too many authentication failures")
+				return
+			}
+			authTries++
 			if s.bridge == nil {
 				errResp("authentication unavailable")
 				continue
