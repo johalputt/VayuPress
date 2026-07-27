@@ -241,6 +241,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Power & Maintenance: take the public site offline behind a premium
 		// maintenance page, restart, or shut down. Preview renders that page.
 		pr.Get("/os/power", a.handleOSPower)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/backup", a.handleOSVayuKeepBackup)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/drill", a.handleOSVayuKeepDrill)
 		pr.Get("/os/power/preview", a.handleOSPowerPreview)
 		// Optimize hub: consolidates SEO / Analytics / Bot Shield / Theme Studio /
 		// Theme Store + Tools / Domains / Settings / VayuAPI / VayuMCP into one

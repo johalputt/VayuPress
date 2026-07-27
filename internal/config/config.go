@@ -54,10 +54,22 @@ var Cfg struct {
 	CSPReportOnly        bool // send Content-Security-Policy-Report-Only (staging) instead of enforcing
 	GovernanceActuation  bool // when true, exhausted governance budgets drive automatic mode escalation (default off)
 	VacuumCooldownMin    int
-	MaxReplayCount       int
-	ReplayBatchLimit     int
-	WALSizeThresholdMB   int
-	PprofRateLimit       int
+
+	// VayuKeep — automatic encrypted replication (ADR-0145). Off by default:
+	// Experimental under the constitution's feature lifecycle. The passphrase is
+	// deliberately NOT a dedicated variable — it is the same VAYU_BACKUP_PASSPHRASE
+	// the CLI uses, so an operator has exactly one secret to look after and a
+	// generation is always restorable with `vayupress restore`.
+	VayuKeepEnabled    bool
+	VayuKeepTarget     string
+	VayuKeepMinMin     int
+	VayuKeepMaxMin     int
+	VayuKeepDrillMin   int
+	VayuKeepRetainGen  int
+	MaxReplayCount     int
+	ReplayBatchLimit   int
+	WALSizeThresholdMB int
+	PprofRateLimit     int
 	// SearchReconcileMin is the interval, in minutes, between background search
 	// drift checks. 0 disables the periodic reconciler entirely.
 	SearchReconcileMin int
@@ -128,6 +140,16 @@ func Load() {
 	Cfg.CSPReportOnly = os.Getenv("CSP_REPORT_ONLY") == "true"
 	Cfg.GovernanceActuation = os.Getenv("GOVERNANCE_ACTUATION") == "true"
 	Cfg.VacuumCooldownMin = GetEnvAsInt("VACUUM_COOLDOWN_MIN", 10)
+
+	Cfg.VayuKeepTarget = strings.TrimSpace(EnvOr("VAYUKEEP_TARGET", ""))
+	// Enabled follows the target: configuring somewhere to replicate to IS the
+	// intent to replicate. A separate on/off switch only creates the state where
+	// an operator set a target, believes they have backups, and does not.
+	Cfg.VayuKeepEnabled = Cfg.VayuKeepTarget != "" && os.Getenv("VAYUKEEP_OFF") != "true"
+	Cfg.VayuKeepMinMin = GetEnvAsInt("VAYUKEEP_MIN_MINUTES", 5)
+	Cfg.VayuKeepMaxMin = GetEnvAsInt("VAYUKEEP_MAX_MINUTES", 360)
+	Cfg.VayuKeepDrillMin = GetEnvAsInt("VAYUKEEP_DRILL_MINUTES", 720)
+	Cfg.VayuKeepRetainGen = GetEnvAsInt("VAYUKEEP_RETAIN_GENERATIONS", 24)
 	Cfg.MaxReplayCount = GetEnvAsInt("MAX_REPLAY_COUNT", 3)
 	Cfg.ReplayBatchLimit = GetEnvAsInt("REPLAY_BATCH_LIMIT", 100)
 	Cfg.WALSizeThresholdMB = GetEnvAsInt("WAL_SIZE_THRESHOLD_MB", 32)

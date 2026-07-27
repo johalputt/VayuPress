@@ -86,7 +86,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.15.79"
+var Version = "3.15.80"
 var bootTime = time.Now()
 
 // onionSafeBindAddr picks the HTTP listen address (ADR-0141). A Tor Space
@@ -801,6 +801,10 @@ func main() {
 
 	// ── VayuShield + VayuAnalytics Enterprise: bot protection + engagement ───
 	a.bootVayuShield()
+	// Replication last: it depends on the sovereign lane for its pressure signal,
+	// and starting it after the shield means a slow or unreachable backup target
+	// can never delay the site coming up.
+	a.bootVayuKeep(context.Background())
 
 	// Mode journal — durable SQLite-backed transition log (Ω6).
 	dbPath := config.EnvOr("DB_PATH", "./vayupress.db")

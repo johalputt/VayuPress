@@ -1,6 +1,6 @@
 # ADR-0145 — VayuKeep: continuous, encrypted, self-verifying replication
 
-Status: Proposed
+Status: Accepted (P1 and the generation engine shipped in v3.15.80; continuous WAL shipping deferred to phase 2b)
 Date: 2026-07-27
 Deciders: VayuPress core
 

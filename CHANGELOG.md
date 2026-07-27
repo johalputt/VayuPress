@@ -6,7 +6,61 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.80] — 2026-07-27
+
+### Added
+- **VayuKeep — automatic, encrypted, self-verifying replication** (ADR-0145). Point
+  `VAYUKEEP_TARGET` at a directory outside your data directory, set
+  `VAYU_BACKUP_PASSPHRASE`, and VayuPress keeps sealed generations of the whole
+  install — database, media, mailboxes, settings, PGP public material — and
+  restores one on a schedule to prove they work.
+
+  **The documented backup schedule did not exist.** The disaster-recovery runbook
+  published "Full DB, nightly 02:00 UTC, 30 days". No such job was ever installed:
+  the only recurring units the deploy script creates are the DNS provision timer,
+  and the database backup at `deploy-vayupress.sh:1177` sits inside `if $UPGRADE`.
+  The real recovery point was **"whenever you last upgraded"** — weeks on a stable
+  install. Anyone who sized their risk from that table was wrong by an order of
+  magnitude. The table is now correct, and the schedule now exists.
+
+  Design notes, each of which is a deliberate refusal rather than a feature:
+  - **No unencrypted mode.** A replica carries member emails, mailbox contents and
+    comment metadata. Making encryption optional would make the wrong thing easy.
+  - **A target inside the data directory is refused**, not warned about — a copy on
+    the disk it insures against, replicating its own output, is not a backup.
+  - **A remote target in Tor mode is refused** (ADR-0141): replication must not
+    become the one subsystem that phones home.
+  - **`Healthy` requires a drill that actually passed.** Files on a disk are not a
+    backup until something has read one back.
+  - **Scratch space lives on the target, never `/tmp`** — that is a tmpfs on most
+    distributions, and vacuuming or restoring a multi-gigabyte install through RAM
+    takes the machine down.
+  - **The circuit breaker pauses after repeated failures** and says so, rather than
+    retrying into a full disk forever. Replication never blocks publishing.
+
+- **Backup & recovery panel** on VayuOS → Power & Maintenance. It reports the
+  **recovery point** and the **last verified restore** rather than "enabled",
+  because the first two are measurements and the third is a configuration value
+  worth nothing. Every failure state — never verified, drill failed, stale, paused,
+  refused to start — renders a warning the operator can see. "Back up now" and "Run
+  a restore drill" are there; the drill is synchronous on purpose, because an
+  operator asking whether their backups work is owed the answer they waited for.
+
+- **A pre-flight generation before an in-place update**, so the restore point is
+  from immediately before the upgrade rather than whenever the cadence last fired.
+
+- **`DR-07: Point-in-Time Restore`** in the disaster-recovery runbook, and a
+  rewritten `DR-06` that starts from what the engine actually reports.
+
+### Changed
+- Retention keeps a generation that is within **either** bound — the newest N *or*
+  the last D days — so a quiet month cannot age out the only copy that exists.
+- Point-in-time selection returns the last generation taken **at or before** the
+  requested moment. It never rolls forward, because rolling forward hands back
+  exactly the data an operator is trying to escape.
+- The deploy-time `sqlite3 .backup` is superseded; nothing in the backup path now
+  needs the `sqlite3` CLI, which was an external runtime dependency against
+  *"One Binary"*.
 
 ### Security
 - **The encrypted backup format could not tell a complete archive from a truncated
@@ -52,6 +106,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **The backup passphrase can come from a file** (`-passphrase-file`), and the
   interactive prompt now disables terminal echo on Linux. It is still never accepted
   as a flag — argv is world-readable through `/proc` and lands in shell history.
+
+### Notes
+- Continuous WAL-frame shipping (second-level recovery point) is **deliberately not
+  in this release**. Generations are consistent, encrypted and verified, which takes
+  the recovery point from weeks to minutes; taking it from minutes to seconds means
+  parsing write-ahead-log frames, and shipping data-integrity-critical code that has
+  not been validated to the standard the rest of this subsystem holds would be the
+  loophole, not the feature. It is tracked as ADR-0145 phase 2b.
+- Zero new Go modules. `golang.org/x/sys` moves from indirect to direct for the
+  termios call.
 
 ---
 

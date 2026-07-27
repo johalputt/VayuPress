@@ -540,6 +540,14 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ask VayuKeep for a restore point from immediately BEFORE the upgrade. This
+	// is the moment the old upgrade-only backup was accidentally right about, and
+	// the one an operator most often needs to roll back to. It never blocks or
+	// fails the update (ADR-0145).
+	if !body.DryRun {
+		a.vayuKeepPreflight("an in-place update")
+	}
+
 	st := a.updateStore
 	var histID int64
 	if st != nil {

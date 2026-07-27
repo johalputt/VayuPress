@@ -59,6 +59,7 @@ import (
 	"github.com/johalputt/vayupress/internal/users"
 	vasession "github.com/johalputt/vayupress/internal/vayuanalytics/session"
 	vastore "github.com/johalputt/vayupress/internal/vayuanalytics/store"
+	"github.com/johalputt/vayupress/internal/vayukeep"
 	vkernel "github.com/johalputt/vayupress/internal/vayuos/kernel"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
@@ -193,6 +194,13 @@ type App struct {
 	emailTmpl *emailtmpl.Store
 	// UI/content internationalisation (Tier 4).
 	i18n *i18n.Catalog
+
+	// VayuKeep — automatic encrypted replication (ADR-0145). nil when the
+	// subsystem refused to start; vayuKeepErr then carries the reason, which the
+	// operations page surfaces rather than showing an absent-and-therefore-fine
+	// panel.
+	vayuKeep    *vayukeep.Engine
+	vayuKeepErr string
 
 	// VayuOS — native control layer (Phase 2): mail sovereignty + PGP privacy.
 	vayuKernel *vkernel.Bus

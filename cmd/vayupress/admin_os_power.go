@@ -33,6 +33,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/vayukeep"
 )
 
 // maintenanceExemptPrefixes are path prefixes that stay reachable while the site
@@ -158,7 +159,8 @@ func (a *App) handleOSPower(w http.ResponseWriter, r *http.Request) {
 	}
 	crawlersOff := a.crawlersBlocked(r.Context())
 	feedbackAddr := a.feedbackEmail(r.Context())
-	writeOSHTML(w, r, adminOSLayout(nonce, "Power & Maintenance", "operations", cfg, htmpl.HTML(osPowerBody(nonce, on, msg, crawlersOff, feedbackAddr))))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Power & Maintenance", "operations", cfg,
+		htmpl.HTML(osPowerBody(nonce, on, msg, crawlersOff, feedbackAddr, a.vayuKeepStatus(), a.vayuKeepErr, time.Now().UTC()))))
 }
 
 // handleOSPowerPreview renders the public maintenance page inside the console so
@@ -176,7 +178,7 @@ func (a *App) handleOSPowerPreview(w http.ResponseWriter, r *http.Request) {
 // osPowerBody builds the control page. The inline script (nonce'd) drives the
 // toggle and the restart/shutdown buttons; all three POST to the CSRF-protected
 // /os/api/power/* endpoints.
-func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedbackAddr string) string {
+func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedbackAddr string, keep vayukeep.Status, keepErr string, now time.Time) string {
 	esc := html.EscapeString
 	onAttr := "0"
 	if on {
@@ -250,6 +252,8 @@ func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedba
   </div>
 </div>
 
+` + osVayuKeepSection(keep, keepErr, now) + `
+
 <div class="card">
   <div class="settings-block-title">Restart &amp; shutdown</div>
   <p class="text-sm muted">The app drains in-flight requests, then restarts. It comes back automatically within a few seconds (your service runs with auto-restart).</p>
@@ -273,6 +277,31 @@ func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedba
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
 function toast(msg,kind){if(window.vpToast){window.vpToast(msg,kind);}}
+// Backup & recovery. The drill is synchronous on purpose: an operator asking
+// "do my backups work" is owed the answer they waited for, not an optimistic
+// "started" that a failure would never come back to correct.
+function vkPost(url,btn,working){
+  var out=document.getElementById('vk-status');
+  var label=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent=working;}
+  if(out){out.textContent='';}
+  fetch(url,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:'{}'})
+    .then(function(r){return r.json().catch(function(){return {ok:false,detail:'Unexpected response ('+r.status+').'};});})
+    .then(function(d){
+      if(out){out.textContent=d.detail||'';}
+      toast(d.detail||'Done',d.ok?'success':'error');
+    })
+    .catch(function(e){
+      var m='Request failed: '+e;
+      if(out){out.textContent=m;}
+      toast(m,'error');
+    })
+    .finally(function(){ if(btn){btn.disabled=false;btn.textContent=label;} });
+}
+var vkB=document.querySelector('[data-vk-backup]');
+if(vkB){vkB.addEventListener('click',function(){vkPost('/os/api/vayukeep/backup',vkB,'Requesting…');});}
+var vkD=document.querySelector('[data-vk-drill]');
+if(vkD){vkD.addEventListener('click',function(){vkPost('/os/api/vayukeep/drill',vkD,'Restoring…');});}
 function post(url,body){return fetch(url,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:body?JSON.stringify(body):'{}'});}
 var card=document.querySelector('[data-power-card]');
 var tgl=document.querySelector('[data-power-toggle]');
