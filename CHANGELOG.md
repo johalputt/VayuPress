@@ -6,6 +6,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.85] — 2026-07-27
+
+### Security
+- **The backup folder was untrusted input in a path expression** (CodeQL #104,
+  #105 — both High, both introduced by v3.15.82). The setup form's target field
+  went from the browser into `os.MkdirAll` and `os.CreateTemp` behind nothing but
+  an `IsAbs` check. That is not a barrier: `/etc` needs no traversal to be a
+  terrible place for this service to start creating directories and probe files.
+
+  A backup target must now sit under one of `/var`, `/mnt`, `/media`, `/srv`,
+  `/opt`, `/home`, `/data`, `/backup`, `/backups` — wide enough to constrain
+  nothing an operator would actually do (a second disk, a mounted volume,
+  `/var/backups`), and narrow enough to keep the service out of `/`, `/etc`,
+  `/usr`, `/boot`, `/dev`, `/proc` and `/sys`. Matching is path-boundary aware, so
+  `/variant` is not mistaken for something under `/var`. Control characters and
+  embedded NULs are refused, the path is cleaned before use, and a bare root is
+  rejected in favour of a folder inside it.
+
+  Both filesystem calls sanitise their own input rather than trusting the caller,
+  so the barrier cannot be bypassed by a future code path that forgets. An
+  environment-configured target skips this entirely — it never came from a
+  browser, and an operator who can set it can already run anything.
+
+---
+
 ## [3.15.84] — 2026-07-27
 
 ### Changed

@@ -168,16 +168,75 @@ func (a *App) applyKeepConfig(ctx context.Context) error {
 // ErrKeepBadTarget is returned when the operator's chosen directory cannot be used.
 var ErrKeepBadTarget = errors.New("that folder cannot be used")
 
+// keepTargetRoots are the directory trees a backup target may live under.
+//
+// This is an allow-list, and it is the answer to a real finding: the target
+// arrives from a form field and flows into MkdirAll and CreateTemp, so without a
+// barrier it is untrusted input in a path expression. Cleaning alone is not
+// enough — "/etc" needs no traversal to be a terrible place for this service to
+// start creating directories and probe files.
+//
+// The list is deliberately wide enough that it constrains nothing an operator
+// would actually do: a second disk, a mounted volume, /var/backups. What it
+// excludes is the system itself — /, /etc, /usr, /bin, /boot, /dev, /proc, /sys,
+// /lib — where a mistyped or malicious value would do real damage. An
+// environment-configured target skips this entirely: it never came from a
+// browser, and an operator with the ability to set it can already run anything.
+var keepTargetRoots = []string{
+	"/var", "/mnt", "/media", "/srv", "/opt", "/home", "/data", "/backup", "/backups",
+}
+
+// sanitizeKeepTarget validates an operator-supplied backup folder and returns the
+// only form of it that may reach a filesystem call. Callers must use the returned
+// value, never their input.
+func sanitizeKeepTarget(raw string) (string, error) {
+	in := strings.TrimSpace(raw)
+	if in == "" {
+		return "", errors.New("choose a folder")
+	}
+	// Control characters and NUL have no business in a path and are a classic way
+	// to confuse whatever ends up reading it.
+	for _, r := range in {
+		if r < 0x20 || r == 0x7f {
+			return "", errors.New("that folder name contains characters that are not allowed")
+		}
+	}
+	if !filepath.IsAbs(in) {
+		return "", errors.New("use a full path starting with / — for example /var/backups/vayupress")
+	}
+	clean := filepath.Clean(in)
+	for _, root := range keepTargetRoots {
+		// Path-boundary aware: "/var" must match "/var/backups" but never
+		// "/variant-of-something-else".
+		if clean == root || strings.HasPrefix(clean, root+string(filepath.Separator)) {
+			if clean == root {
+				return "", errors.New("pick a folder inside " + root + ", not " + root + " itself")
+			}
+			return clean, nil
+		}
+	}
+	return "", errors.New("backups must live under one of: " + strings.Join(keepTargetRoots, ", ") +
+		" — that keeps the service out of system directories")
+}
+
 // validateKeepTargetWritable confirms VayuPress can actually create and write
-// files there. The systemd sandbox restricts where the service may write, so a
-// path that looks fine can still be denied — and finding that out at the first
-// scheduled backup, silently, is exactly the failure mode this whole subsystem
-// exists to prevent. Better to refuse now, on screen, with the real reason.
+// files in an ALREADY-SANITISED directory. The systemd sandbox restricts where
+// the service may write, so a path that looks fine can still be denied — and
+// finding that out at the first scheduled backup, silently, is exactly the
+// failure mode this whole subsystem exists to prevent. Better to refuse now, on
+// screen, with the real reason.
+//
+// It takes the output of sanitizeKeepTarget. Passing it raw input reintroduces
+// the path-injection this pair exists to close.
 func validateKeepTargetWritable(dir string) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	safe, err := sanitizeKeepTarget(dir)
+	if err != nil {
 		return err
 	}
-	probe, err := os.CreateTemp(dir, ".vk-writetest-")
+	if err := os.MkdirAll(safe, 0o700); err != nil {
+		return err
+	}
+	probe, err := os.CreateTemp(safe, ".vk-writetest-")
 	if err != nil {
 		return err
 	}

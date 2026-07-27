@@ -627,10 +627,16 @@ func (a *App) handleOSVayuKeepSetup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": "Choose a folder to keep the backups in."})
 		return
 	}
-	if !filepath.IsAbs(target) {
-		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": "Use a full path starting with / — for example /var/backups/vayupress."})
+	// Sanitise FIRST, and use only what comes back. Everything below — the
+	// data-directory check, the write test, and what gets stored — operates on the
+	// validated value, so no path derived from the request body ever reaches a
+	// filesystem call unchecked.
+	safeTarget, terr := sanitizeKeepTarget(target)
+	if terr != nil {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": terr.Error()})
 		return
 	}
+	target = safeTarget
 	// A short passphrase on the one artefact that leaves the machine is not a
 	// preference to respect. Refuse it here rather than let an operator believe
 	// they are protected.
