@@ -58,9 +58,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - Point-in-time selection returns the last generation taken **at or before** the
   requested moment. It never rolls forward, because rolling forward hands back
   exactly the data an operator is trying to escape.
-- The deploy-time `sqlite3 .backup` is superseded; nothing in the backup path now
-  needs the `sqlite3` CLI, which was an external runtime dependency against
-  *"One Binary"*.
+- The deploy-time `sqlite3 .backup` is **superseded but deliberately left in place**.
+  It is a pre-upgrade safety net that still works for installs which have not
+  configured a replication target, and removing it would reduce safety for exactly
+  the operators who need it most. The `sqlite3` CLI therefore remains a deploy-time
+  dependency, against *"One Binary"*; retiring it is follow-up work, not something
+  this release did.
 
 ### Security
 - **The encrypted backup format could not tell a complete archive from a truncated
