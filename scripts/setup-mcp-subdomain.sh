@@ -58,6 +58,37 @@ nginx_ok() {
   return 1
 }
 
+# nginx_baseline_ok checks whether nginx's config was ALREADY invalid before this
+# script touched anything.
+#
+# This distinction is the difference between a five-minute fix and an afternoon.
+# A single stale vhost anywhere under sites-enabled — most commonly one written
+# while DOMAIN was still "localhost", pointing at a certificate Let's Encrypt will
+# never issue — makes `nginx -t` fail forever. Every helper then aborts with
+# "nginx config test failed", each blaming its own change, none of them at fault,
+# and provisioning silently never happens again. The running nginx is unaffected
+# because it loaded before the bad file appeared, so the site keeps serving and
+# nothing looks wrong.
+#
+# Checking first means the message can name the real problem instead of pointing
+# at the innocent change that happened to run next.
+nginx_baseline_ok() {
+  local out
+  if out="$(nginx -t 2>&1)"; then
+    return 0
+  fi
+  warn "nginx configuration is ALREADY invalid, before this script changed anything."
+  warn "Nothing here can be provisioned until that is fixed. nginx said:"
+  printf '%s\n' "$out" | sed 's/^/      /' >&2
+  if printf '%s' "$out" | grep -q "letsencrypt/live/localhost"; then
+    warn "That path is the giveaway: a vhost was written while DOMAIN was still localhost,"
+    warn "referencing a certificate that cannot exist. Find and disable it with:"
+    warn "    sudo grep -rln letsencrypt/live/localhost /etc/nginx/sites-enabled/"
+    warn "    sudo rm -f /etc/nginx/sites-enabled/<name>   # the file stays in sites-available"
+  fi
+  return 1
+}
+
 
 ENV_FILE=/etc/vayupress/env
 env_get() { # $1=KEY — read a value from /etc/vayupress/env if present
@@ -83,6 +114,13 @@ if [[ -z "$DOMAIN" || "$DOMAIN" == "localhost" ]]; then
 fi
 if [[ $EUID -ne 0 ]]; then
   warn "Not root — skipping VayuMCP subdomain setup (run with sudo to enable)."; exit 0
+fi
+
+# Fail here, not later. If nginx is already broken, every write below is pointless
+# and the resulting "config test failed" would blame this script for someone
+# else's stale vhost — which is exactly how a one-line fix becomes a long hunt.
+if ! nginx_baseline_ok; then
+  exit 0
 fi
 
 MCP="mcp.${DOMAIN}"

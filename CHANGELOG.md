@@ -6,6 +6,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.58] — 2026-07-27
+
+### Fixed
+- **One stale vhost silently blocked all subdomain provisioning, and every helper blamed
+  itself.** A vhost written while `DOMAIN` was still `localhost` references
+  `/etc/letsencrypt/live/localhost/fullchain.pem` — a certificate Let's Encrypt will never issue.
+  From that moment `nginx -t` fails permanently. The running nginx is unaffected, because it
+  loaded before the file appeared, so the site keeps serving and nothing looks wrong.
+
+  But every subdomain helper tests the configuration after writing its own vhost, so each one
+  aborted with "nginx config test failed" — each appearing to blame its own change, none of them
+  at fault, and provisioning simply never happened again. The message pointed at the innocent
+  step that happened to run next.
+
+  Helpers now test the configuration **before** writing anything. If it is already invalid they
+  say so in those words, print what nginx said, and — when the error names
+  `letsencrypt/live/localhost` — name the likely cause and the two commands that clear it.
+
+  The general shape is worth stating: a check that runs only after your change can attribute a
+  pre-existing fault to you, and that misattribution costs far more than the fault. Establish the
+  baseline first.
+
+---
+
 ## [3.15.57] — 2026-07-27
 
 ### Fixed
