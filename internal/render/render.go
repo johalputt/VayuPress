@@ -437,10 +437,17 @@ func SetThemeCSS(css string) {
 }
 
 // SetActiveSettings replaces the global active site settings. Thread-safe.
+//
+// It also derives the portal-widget gate from ShowMembership. Doing it HERE
+// rather than at each call site is deliberate: this is the one chokepoint every
+// settings path already goes through (boot, Theme Studio, the settings API), so
+// a future save path cannot forget to refresh the gate and leave the renderer
+// shipping — or withholding — a script that contradicts the live setting.
 func SetActiveSettings(s SiteSettings) {
 	activeSettingsMu.Lock()
 	activeSettings = s
 	activeSettingsMu.Unlock()
+	SetMembershipEnabled(s.ShowMembership)
 }
 
 // searchEnabled gates whether the public site search box (nav + /search page) is

@@ -6,6 +6,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.72] — 2026-07-27
+
+### Changed
+- **The member-portal widget no longer ships on installs that have membership switched off.**
+  `portal.js` is ~10 KiB — on a public page with the third-party scripts removed it is the single
+  largest script, around 59% of the homepage's JavaScript. It was emitted on every public page
+  unconditionally, and then its own `init()` fetched `/api/v1/members/me` and returned immediately
+  unless the response said membership was enabled.
+
+  So an install with membership off made **every visitor download ~10 KiB and pay an extra request
+  to learn something the server already knew when it rendered the page.** Deciding on the client
+  what the server can decide at render time costs a round trip and a payload to learn nothing.
+
+  The gate is derived inside `SetActiveSettings` — the one chokepoint every settings path already
+  goes through (boot, Theme Studio, the settings API) — rather than at each call site, so a future
+  save path cannot forget to refresh it and leave the renderer contradicting the live setting.
+
+  Installs **with** membership enabled are unaffected: the widget is genuinely needed there and
+  ships exactly as before.
+
+---
+
 ## [3.15.71] — 2026-07-27
 
 ### Fixed

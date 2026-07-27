@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // PortalJS is the VayuPortal membership widget: a floating launch button plus a
@@ -819,8 +820,30 @@ func PortalJSVersion() string {
 	return portalJSVerStr
 }
 
+// membershipEnabled mirrors the install-wide membership setting so the renderer
+// can decide, at render time, whether the portal widget is worth shipping. It is
+// a single setting for the whole install (not per-domain), so one flag is
+// correct here; the app refreshes it at boot and whenever the setting changes.
+var membershipEnabled atomic.Bool
+
+// SetMembershipEnabled updates the renderer's view of the membership setting.
+func SetMembershipEnabled(on bool) { membershipEnabled.Store(on) }
+
 // PortalJSLink returns the deferred <script> tag for the VayuPortal widget,
 // versioned so neither a new build nor a restyle can be masked by a cached copy.
+//
+// It returns NOTHING when membership is switched off.
+//
+// The widget used to ship on every public page unconditionally, then discover at
+// runtime that it had no work: its init() fetches /api/v1/members/me and returns
+// immediately unless the response says membership is enabled. So an install with
+// membership off made every visitor download ~10 KiB of JavaScript and pay an
+// extra request, to reach the answer the SERVER ALREADY HAD when it rendered the
+// page. Deciding on the client something the server knows is a round trip and a
+// payload spent to learn nothing.
 func PortalJSLink() template.HTML {
+	if !membershipEnabled.Load() {
+		return ""
+	}
 	return template.HTML(`<script src="/static/js/portal.js?v=` + PortalJSVersion() + `" defer></script>`)
 }
