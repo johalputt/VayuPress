@@ -14,28 +14,73 @@
 
 You need a fresh **Ubuntu 24.04** server and a **domain name**. That's it.
 
-**Step 1 — point your domain at the server.** In your DNS provider, create three
-**A records** pointing at your server's IP address:
+**Step 1 — point your domain at the server.** In your DNS provider, create **A
+records** (add `AAAA` too if your server has IPv6) pointing at your server's IP.
 
-| Type | Name              | Value            | Notes |
-|------|-------------------|------------------|-------|
-| A    | `example.com`     | your server's IP | your website / blog |
-| A    | `www.example.com` | your server's IP | www redirect |
-| A    | `mail.example.com`| your server's IP | mail server (keep CDN proxy **off**) |
-| A    | `talk.example.com`| your server's IP | *optional* — VayuTalk chat relay (CDN proxy **off**) |
-| A    | `mcp.example.com` | your server's IP | *optional* — VayuMCP (Claude / MCP connector) (CDN proxy **off**) |
-| A    | `api.example.com` | your server's IP | *optional* — VayuAPI direct host for scripts / CI / agents (CDN proxy **off**) |
+Every record below takes the same value — your server's IP. The column that
+actually matters is the last one.
 
-(Replace `example.com` with your domain. The `mail.` record lets VayuPress run
-your email; the optional `talk.` record enables the real-time **VayuTalk** chat
-relay — see *"Add VayuTalk chat"* below; the optional `mcp.` record lets **Claude
-connect** to your site — see *"Connect Claude"* below; the optional `api.` record
-gives scripts, CI jobs and AI agents a **challenge-free REST API host** — see
-*"Direct API host"* below. **Point every record you plan to use before you run the
-installer** — the installer only provisions a subdomain's certificate + vhost once
-its DNS resolves. If a CDN like Cloudflare fronts your site, leave `mail.`, `talk.`,
-`mcp.` **and `api.`** as **DNS-only / grey-cloud** so their direct,
-machine-to-machine connections aren't proxied or challenged.)
+**Required:**
+
+| Type | Name | CDN proxy | What it is |
+|---|---|---|---|
+| A | `example.com` | on or off | Your website / blog |
+| A | `www.example.com` | on or off | `www` redirect |
+
+**Add these for the features you want** — each is independent, and you can add
+any of them later:
+
+| Type | Name | CDN proxy | What it is |
+|---|---|---|---|
+| A | `mail.example.com` | **OFF** | VayuMail — your own mail server |
+| A | `openpgpkey.example.com` | **OFF** | VayuPGP key discovery, so encryption is automatic |
+| A | `talk.example.com` | **OFF** | VayuTalk — real-time encrypted chat relay |
+| A | `mcp.example.com` | **OFF** | VayuMCP — one-click Connect from Claude and any MCP client |
+| A | `api.example.com` | **OFF** | VayuAPI — challenge-free REST host for scripts, CI and agents |
+
+Replace `example.com` with your domain.
+
+### Why "CDN proxy OFF" is not optional on those records
+
+This is the single most common way a VayuPress install ends up half-working, and
+the failures are quiet ones, so it is worth thirty seconds.
+
+If a CDN such as Cloudflare fronts your domain, its proxy can present a **bot
+challenge** — a "checking your browser" page that a human passes without noticing.
+Every service above is **machine-to-machine**. A mail server, GnuPG, a CI job and
+an MCP client have no JavaScript engine and cannot answer a challenge. What
+happens instead:
+
+- **`mail.`** — a CDN HTTP proxy does not carry SMTP or IMAP at all, so mail
+  simply does not arrive.
+- **`openpgpkey.`** — key discovery fails **silently**, and correspondents quietly
+  fall back to unencrypted mail. Nothing appears broken, which is what makes this
+  the worst one.
+- **`talk.`, `mcp.`, `api.`** — clients receive an HTML challenge page where they
+  expected a response, and fail in ways whose error messages point nowhere useful.
+
+In Cloudflare this is the grey cloud, labelled **DNS only**. Your apex and `www`
+keep full CDN protection for human traffic — only these direct hosts bypass it,
+and each is deliberately narrow (the `api.` and `openpgpkey.` vhosts serve one
+path prefix and return 404 for everything else).
+
+### Point the records before you run the installer
+
+The installer provisions a subdomain's certificate and vhost **only once its DNS
+resolves**, so a record added afterwards is skipped until you re-run it. That is
+not a problem — every update runs the same steps — but it is why a subdomain you
+added later appears to do nothing until the next update.
+
+Adding one later:
+
+```bash
+sudo bash /path/to/VayuPress/scripts/update-vayupress.sh   # provisions everything pointed
+```
+
+**If your DNS is on Cloudflare, you can skip the manual step entirely.** Set
+`CF_ZONE_ID` and `CF_API_TOKEN` (token needs `Zone:DNS:Edit`) in
+`/etc/vayupress/env`, and the `openpgpkey.` record is created for you — proxy off
+— on the next deploy or update.
 
 **Step 2 — run one command** on the server (SSH in as root or a sudo user):
 
@@ -233,11 +278,57 @@ The script self-checks the WKD policy file after reloading nginx and tells you i
 VayuPGP is switched off, which is the one condition that makes it 404 while
 looking otherwise healthy.
 
+## Check every record actually works
+
+Run these after the installer. Each one is the check that would have caught the
+corresponding failure, and they take under a minute together. **Assume nothing
+works until it answers** — most of these fail silently, which is precisely why
+they are worth checking rather than trusting.
+
+```bash
+D=example.com   # your domain
+
+# Apex + www — expect 200
+curl -sS -o /dev/null -w 'apex   %{http_code}\n' "https://$D/"
+curl -sS -o /dev/null -w 'www    %{http_code}\n' "https://www.$D/"
+
+# Mail — expect the VayuMail SMTP banner, not a timeout
+printf 'QUIT\r\n' | timeout 10 openssl s_client -quiet -starttls smtp \
+  -connect "mail.$D:587" 2>/dev/null | head -1
+
+# PGP key discovery — expect a key for a real mailbox on your domain
+gpg --locate-keys "you@$D"
+
+# VayuTalk / VayuMCP / VayuAPI — expect JSON, never an HTML challenge page
+curl -sS -o /dev/null -w 'talk   %{http_code}\n' "https://talk.$D/health"
+curl -sS -o /dev/null -w 'mcp    %{http_code}\n' "https://mcp.$D/health"
+curl -sS -o /dev/null -w 'api    %{http_code}\n' "https://api.$D/health"
+```
+
+**Reading the results:**
+
+| Symptom | Almost always means |
+|---|---|
+| Timeout / connection refused | The DNS record isn't pointed, or the installer hasn't run since you added it |
+| HTML instead of JSON, or a "checking your browser" page | The **CDN proxy is still on** for that record — switch it to DNS only and re-run the installer |
+| Certificate error | The certificate wasn't issued yet; re-run the installer with the record already resolving |
+| `gpg --locate-keys` finds nothing | Either `openpgpkey.` isn't pointed, or VayuPGP is switched off in **VayuOS → VayuPGP** |
+
+That last row is worth knowing: the setup script self-checks the WKD policy file
+after reloading nginx and will tell you which of the two it is, rather than
+leaving you to guess.
+
 ### What the certificate covers
 
 The installer requests one certificate covering `example.com`, `www.example.com`,
 `mail.example.com` and (when its DNS is pointed) `talk.example.com` — dropping any
 name that doesn't yet resolve so a missing optional record never blocks issuance.
+
+`openpgpkey.`, `mcp.` and `api.` each get their **own separate certificate**
+instead of being added to that one. This is deliberate: a single certificate with
+many names fails as a unit, so one subdomain whose DNS moved would break renewal
+for the website and mail too. Separate lineages also keep the shared certificate
+well clear of the 100-name limit as an install adds domains.
 
 ## Manual / advanced install
 

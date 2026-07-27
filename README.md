@@ -174,7 +174,20 @@ sudo ./scripts/deploy-vayupress.sh
 
 The installer provisions the binary, systemd service, Nginx, and Let's Encrypt certificates for your website, blog, and mail hostnames. A fresh install auto-creates an `admin@yourdomain` account (random password, saved to a root-only file) and forces a password change on first sign-in — no extra CLI step.
 
-**Add VayuTalk chat (optional, one DNS record).** VayuTalk works on the main domain out of the box; for the seamless real-time relay behind a CDN, point one `A`/`AAAA` record — `talk.yourdomain.com` → your server, **CDN proxy OFF** (the same "DNS-only" mode you use for `mail.`) — and re-run the installer (or let the next update run it). It adds the subdomain's TLS certificate, writes its Nginx vhost, and advertises it to the app automatically. Nothing else to configure. *(See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) → "VayuTalk".)*
+**DNS records — point these before you install.** The apex and `www` are all you need for a website. Each subdomain below unlocks one product, is independent of the others, and can be added later (re-run the installer, or let the next update pick it up).
+
+| Name | CDN proxy | Unlocks |
+|---|---|---|
+| `yourdomain.com`, `www.` | on or off | Website & blog |
+| `mail.yourdomain.com` | **OFF** | VayuMail — your own mail server |
+| `openpgpkey.yourdomain.com` | **OFF** | VayuPGP key discovery — makes encryption automatic |
+| `talk.yourdomain.com` | **OFF** | VayuTalk — real-time encrypted chat relay |
+| `mcp.yourdomain.com` | **OFF** | VayuMCP — one-click Connect from Claude and any MCP client |
+| `api.yourdomain.com` | **OFF** | VayuAPI — challenge-free REST host for scripts, CI and agents |
+
+**The proxy column is the one people get wrong.** Every service on those subdomains is machine-to-machine — a mail server, GnuPG, a CI job and an MCP client have no JavaScript engine and cannot answer a CDN bot challenge. Behind one they fail, and `openpgpkey.` fails *silently*: key discovery just stops and correspondents quietly fall back to unencrypted mail. In Cloudflare, that's the grey cloud marked **DNS only**. Your apex and `www` keep full CDN protection for human traffic.
+
+If your DNS is on Cloudflare, set `CF_ZONE_ID` and `CF_API_TOKEN` in `/etc/vayupress/env` and the `openpgpkey.` record is created for you, proxy off, on the next update. Full detail, per-record verification commands and what each failure looks like: *([installation guide →](docs/INSTALLATION.md))*
 
 Runs comfortably on a single **8 GB RAM / 4 vCPU / 50 GB NVMe** VPS.
 

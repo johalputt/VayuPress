@@ -6,6 +6,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **Every DNS record an install needs is now in one table, in both `README.md` and
+  `docs/INSTALLATION.md`.** `openpgpkey.` was missing from the installation guide's Step 1
+  table entirely — it was documented only in its own section further down, so an operator
+  following the setup in order never saw it and PGP key discovery silently never worked.
+
+  The tables now carry an explicit **CDN proxy** column, because that is the field people
+  actually get wrong and the old guidance was buried in a prose paragraph after the table. Each
+  failure mode is spelled out rather than left as "keep the proxy off": a CDN HTTP proxy does
+  not carry SMTP or IMAP at all, so `mail.` simply does not deliver; `talk.`, `mcp.` and `api.`
+  hand clients an HTML challenge page where they expected a response; and `openpgpkey.` fails
+  **silently**, with correspondents quietly falling back to unencrypted mail and nothing
+  appearing broken anywhere. That last one is the reason the column is worth a paragraph.
+- **A per-record verification section** in `docs/INSTALLATION.md` — one command per subdomain
+  and a table mapping each symptom to its cause, so an operator can confirm the records work
+  instead of assuming they do. Most of these fail quietly, which is exactly why checking beats
+  trusting.
+- **Certificate layout documented**: `openpgpkey.`, `mcp.` and `api.` each take their own
+  certificate rather than joining the shared one, so a subdomain whose DNS moved cannot break
+  renewal for the website and mail.
+
+### Added
+- **`docs/TROUBLESHOOTING.md` — PGP key discovery.** The three causes of
+  `gpg --locate-keys` finding nothing, in the order worth checking, with the commands that
+  distinguish them: the record not pointed, the CDN proxy intercepting (which surfaces no error
+  at all), and VayuPGP switched off (which looks identical to a DNS fault from outside). Plus
+  the per-domain case — a key for `someone@shop.example` is findable only at
+  `openpgpkey.shop.example`, so every mail-enabled domain needs its own record.
+
+---
+
 ## [3.15.51] — 2026-07-27
 
 ### Security

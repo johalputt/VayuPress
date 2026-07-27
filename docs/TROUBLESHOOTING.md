@@ -314,6 +314,67 @@ Expected in a **Tor Space**. It needs clearnet egress, which a Tor Space refuses
 by design, so it is disabled and labelled rather than failing at the moment it is
 needed. Recovery codes and the mobile-app path both work there.
 
+## PGP Key Discovery Issues
+
+### `gpg --locate-keys you@example.com` finds nothing
+
+VayuPress mints a PGP keypair for every mailbox and serves the Web Key Directory,
+so if discovery finds nothing the keys almost certainly exist and are simply not
+reachable where clients look. There are exactly three causes, in the order worth
+checking.
+
+**1. `openpgpkey.<domain>` is not pointed at the server.** PGP clients do not look
+on your main domain — the WKD specification defines a dedicated hostname, and
+without it your keys are published where nobody checks. Confirm:
+
+```bash
+getent hosts openpgpkey.example.com     # no output = not pointed
+```
+
+Add an `A`/`AAAA` record for `openpgpkey.example.com` → your server, **CDN proxy
+OFF**, then run:
+
+```bash
+sudo bash /path/to/VayuPress/scripts/setup-openpgpkey-subdomain.sh
+```
+
+It provisions the certificate and vhost, and self-checks afterwards. With
+`CF_ZONE_ID` and `CF_API_TOKEN` set in `/etc/vayupress/env` it creates the record
+for you.
+
+**2. The CDN proxy is on for that record.** This is the failure worth
+understanding, because **nothing appears broken**: a key fetch is
+machine-to-machine, GnuPG has no JavaScript engine and cannot answer a bot
+challenge, so discovery fails and correspondents quietly fall back to sending in
+cleartext. No error surfaces anywhere. Fetch the policy file — HTML instead of an
+empty `200` means the proxy is intercepting:
+
+```bash
+curl -sSI "https://openpgpkey.example.com/.well-known/openpgpkey/example.com/policy"
+```
+
+Set the record to **DNS only** (Cloudflare: grey cloud). Do not disable protection
+site-wide; only this host needs to be direct, and its vhost serves one path prefix
+and returns 404 for everything else.
+
+**3. VayuPGP is switched off.** With the engine disabled the directory returns 404
+even though the host and certificate are perfect — which looks identical to a DNS
+problem from outside. Check **VayuOS → VayuPGP**. The setup script distinguishes
+these two for you: it fetches its own policy file after reloading nginx and says
+which of them it is.
+
+### Keys resolve for the primary domain but not a secondary one
+
+Discovery is **per-domain**: a key for `someone@shop.example` is findable only at
+`openpgpkey.shop.example`, never via the primary domain's host. Every mail-enabled
+domain needs its own record. The setup script provisions the primary plus every
+mail-enabled VayuDomains secondary (`vayupress domains hosts --mail`) in one run,
+so this usually means the secondary's record is missing:
+
+```bash
+sudo bash /path/to/VayuPress/scripts/setup-openpgpkey-subdomain.sh shop.example
+```
+
 ## Logs
 
 ```bash
