@@ -6,6 +6,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.60] — 2026-07-27
+
+Ships on its own, immediately, rather than waiting to be batched: it corrects a
+key-discovery fault that is live on every multi-domain install today.
+
+### Security
+- **Web Key Directory served keys across domain boundaries.** `ServeWKD` took a domain argument
+  and never read it. Lookups matched on the **local-part hash alone**, across every key in the
+  keystore, so on an install serving several domains a request for `alice@one.example` returned
+  `alice@two.example`'s key whenever the first address had no key of its own — the hash of
+  `alice` is the same either way, and the domain segment of the request was discarded.
+
+  The damage is not a 404 in the wrong place. A correspondent's client accepts that key as the
+  answer for `alice@one.example` and encrypts to it, so mail intended for one person is encrypted
+  to a **different person's key**: the intended recipient cannot read it, and someone else can. On
+  a host serving unrelated domains those are unrelated people, and WKD exists precisely so this
+  happens automatically, with nobody checking.
+
+  Both spec methods are now scoped to the domain actually asked for — the path segment for the
+  advanced method (`openpgpkey.<domain>/.well-known/openpgpkey/<domain>/hu/<hash>`), the request
+  host for the direct method (`<domain>/.well-known/openpgpkey/hu/<hash>`). A host that is an IP
+  literal or `localhost` cannot scope a lookup, so those fall back to the configured primary
+  domain, which is the local-development and behind-a-proxy case.
+
+  A single-domain install cannot tell the difference between the two behaviours, which is why
+  this survived: it becomes reachable the moment a second domain is hosted — the configuration
+  3.15.59 exists to support. Anyone running one domain was never exposed.
+
+---
+
 ## [3.15.59] — 2026-07-27
 
 ### Fixed

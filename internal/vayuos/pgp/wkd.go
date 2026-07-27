@@ -129,10 +129,71 @@ func dearmorPublic(armored string) ([]byte, error) {
 	return io.ReadAll(block.Body)
 }
 
-// ServeWKD returns an http.Handler implementing the WKD advanced method for the
-// given domain at /.well-known/openpgpkey/<domain>/hu/<hash> plus the policy
-// file. It serves the binary public key for any locally-held address.
-func (e *Engine) ServeWKD(domain string) http.Handler {
+// wkdMarker is the path prefix both WKD methods share.
+const wkdMarker = "/.well-known/openpgpkey/"
+
+// wkdRequestDomain works out WHICH domain a request is asking about.
+//
+// The two spec methods carry it differently:
+//
+//	advanced: https://openpgpkey.<domain>/.well-known/openpgpkey/<domain>/hu/<hash>
+//	direct:   https://<domain>/.well-known/openpgpkey/hu/<hash>
+//
+// The advanced form states the domain in the path; the direct form implies it
+// from the host. Both must be honoured, because an install serving several
+// domains answers on all of their hostnames.
+func wkdRequestDomain(r *http.Request, fallback string) string {
+	if i := strings.Index(r.URL.Path, wkdMarker); i >= 0 {
+		rest := strings.TrimPrefix(r.URL.Path[i+len(wkdMarker):], "/")
+		// A leading segment that is not "hu" or "policy" is the domain.
+		if j := strings.IndexByte(rest, '/'); j > 0 {
+			if seg := rest[:j]; seg != "hu" && seg != "policy" {
+				return normalizeEmail(seg)
+			}
+		}
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = normalizeEmail(host)
+	// The advanced host is openpgpkey.<domain>; the domain is what follows.
+	host = strings.TrimPrefix(host, "openpgpkey.")
+	// An IP literal or "localhost" is not a domain anyone holds mail at, so it
+	// cannot scope a lookup. That is the local-development and behind-a-proxy
+	// case, and the configured primary domain is the only sensible reading of
+	// which directory was meant.
+	if validExternalWKDDomain(host) {
+		return host
+	}
+	return normalizeEmail(fallback)
+}
+
+// ServeWKD returns an http.Handler implementing both Web Key Directory methods —
+// the advanced form at /.well-known/openpgpkey/<domain>/hu/<hash> and the direct
+// form at /.well-known/openpgpkey/hu/<hash> — plus the policy file. fallback is
+// used only when a request carries no usable host, which in practice means a
+// synthetic request in a test.
+//
+// EVERY LOOKUP IS SCOPED TO THE DOMAIN THAT WAS ASKED FOR.
+//
+// That scoping is the security property, not a detail. This handler previously
+// took a domain argument and never read it: it matched on the local-part hash
+// alone, across every key in the keystore. On a single-domain install that is
+// indistinguishable from correct, which is why it survived. On an install
+// serving several domains it means a lookup for alice@one.example returns
+// alice@two.example's key whenever the first address has no key of its own —
+// because the hash of "alice" is the same either way, and the domain segment of
+// the request was thrown away.
+//
+// The consequence is not a 404 in the wrong place. A correspondent's client
+// accepts that key as the answer for alice@one.example and encrypts to it, so
+// mail meant for one person is encrypted to a different person's key: the
+// intended recipient cannot read it and someone else can. For a host serving
+// unrelated domains those are unrelated people. WKD exists so encryption happens
+// without the user doing anything, and this made that automatic step silently
+// address the wrong party.
+func (e *Engine) ServeWKD(fallbackDomain string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !e.cfg.WKDEnabled || e.ks == nil {
 			http.NotFound(w, r)
@@ -158,13 +219,21 @@ func (e *Engine) ServeWKD(domain string) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
+		want := wkdRequestDomain(r, fallbackDomain)
+		if want == "" {
+			http.NotFound(w, r)
+			return
+		}
 		recs, err := e.ks.list()
 		if err != nil {
 			http.Error(w, "wkd unavailable", http.StatusInternalServerError)
 			return
 		}
 		for _, rec := range recs {
-			local, _ := splitEmail(rec.Email)
+			local, dom := splitEmail(normalizeEmail(rec.Email))
+			if dom != want {
+				continue
+			}
 			if wkdLocalHash(local) != hash {
 				continue
 			}
