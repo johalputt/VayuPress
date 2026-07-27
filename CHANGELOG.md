@@ -6,6 +6,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.66] — 2026-07-27
+
+### Fixed
+- **Average visit duration was never computed — every install has always reported 0.** The field
+  was declared on the analytics overview, returned in the JSON API and the MCP summary, and
+  written to the CSV export, but neither overview query ever assigned it. A zero here is worse
+  than an absent field: it reads as a measurement ("every visitor leaves instantly") rather than
+  as "not measured", and from outside the two are indistinguishable.
+
+  The data needed was being recorded the whole time; nothing queried it. It is now computed per
+  session as the span from a visit's first pageview to its last, averaged across visits.
+
+  The limit is stated rather than hidden: with no exit beacon, the dwell on a visit's **last** page
+  cannot be measured, so a single-pageview visit scores 0 and every visit is undercounted by its
+  final page. That is the same approximation the mainstream analytics products make, and it keeps
+  the metric consistent with the bounce rate, which counts exactly those visits as bounces.
+
+---
+
 ## [3.15.65] — 2026-07-27
 
 ### Fixed

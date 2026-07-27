@@ -250,13 +250,32 @@ func trunc(s string, n int) string {
 
 // ── Overview ─────────────────────────────────────────────────────────────────
 
+// avgSessionSecondsSQL computes average visit duration in seconds: per session,
+// the span from its first pageview to its last, averaged across sessions.
+//
+// This field was declared, returned in JSON, and written to the CSV export
+// WITHOUT EVER BEING ASSIGNED — every install has always reported an average
+// visit duration of exactly 0. That is worse than omitting it: 0 reads as a
+// measurement ("everyone leaves instantly") rather than as "not measured", and
+// there is no way to tell the two apart from the outside. The data to compute it
+// was already being recorded the whole time; nothing ever queried it.
+//
+// Known limit, stated rather than hidden: with no exit beacon, the time spent on
+// the LAST page of a visit is unmeasurable, so a single-pageview visit scores 0
+// and every visit is undercounted by its final dwell. That is the same
+// approximation the mainstream analytics products make, and single-pageview
+// visits counting as 0 is also what makes this consistent with BounceRate above.
+const avgSessionSecondsSQL = `(julianday(MAX(created_at))-julianday(MIN(created_at)))*86400.0`
+
 // Overview holds aggregate stats for a date range.
 type Overview struct {
 	TotalPageviews int     `json:"total_pageviews"`
 	UniqueVisitors int     `json:"unique_visitors"`
 	TotalVisits    int     `json:"total_visits"`
 	BounceRate     float64 `json:"bounce_rate"`
-	AvgDuration    float64 `json:"avg_duration"`
+	// AvgDuration is the mean visit length in seconds. See avgSessionSecondsSQL
+	// for what it can and cannot measure.
+	AvgDuration float64 `json:"avg_duration"`
 }
 
 // OverviewSince returns aggregate analytics for the trailing N days.
@@ -278,6 +297,10 @@ func (s *Store) OverviewSince(ctx context.Context, days int) (*Overview, error) 
 	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? GROUP BY session_id) v`, from).
 		Scan(&o.BounceRate)
+	// Average visit duration.
+	_ = s.readDB().QueryRowContext(ctx,
+		`SELECT COALESCE(AVG(v.dur),0) FROM (SELECT `+avgSessionSecondsSQL+` dur FROM analytics_pageviews WHERE created_at>=? GROUP BY session_id) v`, from).
+		Scan(&o.AvgDuration)
 	return o, nil
 }
 
@@ -296,6 +319,9 @@ func (s *Store) OverviewBetween(ctx context.Context, fromInclusive, toExclusive 
 	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? AND created_at<? GROUP BY session_id) v`, fromInclusive, toExclusive).
 		Scan(&o.BounceRate)
+	_ = s.readDB().QueryRowContext(ctx,
+		`SELECT COALESCE(AVG(v.dur),0) FROM (SELECT `+avgSessionSecondsSQL+` dur FROM analytics_pageviews WHERE created_at>=? AND created_at<? GROUP BY session_id) v`, fromInclusive, toExclusive).
+		Scan(&o.AvgDuration)
 	return o, nil
 }
 

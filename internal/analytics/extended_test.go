@@ -136,3 +136,68 @@ func TestRetentionClampsWindow(t *testing.T) {
 		}
 	}
 }
+
+// TestAverageVisitDurationIsActuallyMeasured is the regression test for a metric
+// that was declared, returned in JSON, written to the CSV export — and never
+// assigned. Every install has always reported an average visit duration of
+// exactly 0.
+//
+// A zero here is worse than an absent field: it reads as a measurement
+// ("everyone leaves instantly") rather than as "not measured", and from outside
+// the two are indistinguishable. The data needed to compute it was being
+// recorded the entire time; nothing ever queried it.
+func TestAverageVisitDurationIsActuallyMeasured(t *testing.T) {
+	t.Parallel()
+	s := newExtStore(t)
+	ctx := context.Background()
+
+	// One visitor, two pageviews five minutes apart — the same session, because
+	// sessions bucket on a 30-minute window.
+	if err := s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome"); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	if err := s.Collect(ctx, CollectRequest{URL: "/post", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome"); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	// Backdate the first pageview so the session spans a measurable stretch.
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE analytics_pageviews SET created_at=datetime(created_at,'-300 seconds') WHERE url_path='/'`); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+
+	ov, err := s.OverviewSince(ctx, 14)
+	if err != nil {
+		t.Fatalf("overview: %v", err)
+	}
+	if ov.AvgDuration <= 0 {
+		t.Fatalf("avg_duration=%v — the metric is still never computed", ov.AvgDuration)
+	}
+	// ~300s for the one session. Loose bounds: this asserts a real measurement,
+	// not an exact clock.
+	if ov.AvgDuration < 250 || ov.AvgDuration > 350 {
+		t.Errorf("avg_duration=%v seconds, want roughly 300 for a 5-minute visit", ov.AvgDuration)
+	}
+}
+
+// TestSinglePageviewVisitScoresZeroDuration — with no exit beacon the dwell on a
+// visit's last page cannot be measured, so a one-page visit is 0. That is the
+// honest answer and it keeps the metric consistent with BounceRate, which counts
+// exactly those visits as bounces.
+func TestSinglePageviewVisitScoresZeroDuration(t *testing.T) {
+	t.Parallel()
+	s := newExtStore(t)
+	ctx := context.Background()
+	if err := s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "9.9.9.9", "Chrome"); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	ov, err := s.OverviewSince(ctx, 14)
+	if err != nil {
+		t.Fatalf("overview: %v", err)
+	}
+	if ov.AvgDuration != 0 {
+		t.Errorf("avg_duration=%v for a single-pageview visit, want 0 (its dwell is unmeasurable)", ov.AvgDuration)
+	}
+	if ov.BounceRate != 100 {
+		t.Errorf("bounce_rate=%v, want 100 — the two metrics must agree on what a one-page visit is", ov.BounceRate)
+	}
+}
