@@ -42,12 +42,59 @@ type dnsRecord struct {
 	ProxyOff bool // CDN proxy must be off
 }
 
+// dnsState is what a record's resolution actually tells us.
+type dnsState int
+
+const (
+	dnsNotPointed  dnsState = iota
+	dnsPointedHere          // resolves to an address this machine holds — definitive
+	dnsProxied              // resolves to the same addresses as the proxied apex
+	dnsUnverified           // resolves, but this machine cannot prove it is the target
+)
+
 // dnsCheck is a record plus its live resolution result.
 type dnsCheck struct {
 	dnsRecord
-	Resolved  bool
-	SameAsAPX bool     // resolves to at least one address the apex resolves to
-	Addrs     []string // what it resolves to
+	State dnsState
+	Addrs []string // what it resolves to
+}
+
+// localAddrSet returns the non-loopback addresses this machine holds.
+//
+// This is the ground truth for "points HERE", and it replaces an earlier check
+// that compared each subdomain against the APEX — which was not merely
+// imprecise, it was inverted. On any CDN-fronted install the apex resolves to
+// the proxy while the direct subdomains resolve to the origin, exactly as the
+// documentation instructs. Comparing the two therefore reported a correctly
+// configured install as broken, and sent the operator to fix something that was
+// already right. A check that cries wolf on the correct configuration is worse
+// than no check at all, because it trains people to ignore it.
+func localAddrSet() map[string]bool {
+	out := map[string]bool{}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return out
+	}
+	for _, ifc := range ifaces {
+		addrs, err := ifc.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			var ip net.IP
+			switch v := a.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			out[ip.String()] = true
+		}
+	}
+	return out
 }
 
 // dnsLookupTimeout bounds the whole page's resolution work. These are ordinary
@@ -85,10 +132,22 @@ func resolveRecords(ctx context.Context, recs []dnsRecord, apex string) []dnsChe
 		return addrs
 	}
 
+	local := localAddrSet()
+
+	// The apex's addresses are used only to RECOGNISE A PROXY, never as a
+	// definition of "here". If the apex resolves somewhere this machine is not,
+	// something in front of it is answering — a CDN — and a direct-only subdomain
+	// sharing those addresses is proxied too, which is the misconfiguration that
+	// breaks it silently.
 	apexAddrs := map[string]bool{}
+	apexIsLocal := false
 	for _, a := range lookup(apex) {
 		apexAddrs[a] = true
+		if local[a] {
+			apexIsLocal = true
+		}
 	}
+	apexProxied := len(apexAddrs) > 0 && !apexIsLocal && len(local) > 0
 
 	out := make([]dnsCheck, len(recs))
 	var wg sync.WaitGroup
@@ -97,11 +156,39 @@ func resolveRecords(ctx context.Context, recs []dnsRecord, apex string) []dnsChe
 		go func(i int, rec dnsRecord) {
 			defer wg.Done()
 			addrs := lookup(rec.Host)
-			c := dnsCheck{dnsRecord: rec, Resolved: len(addrs) > 0, Addrs: addrs}
-			for _, a := range addrs {
-				if apexAddrs[a] {
-					c.SameAsAPX = true
+			c := dnsCheck{dnsRecord: rec, Addrs: addrs}
+
+			switch {
+			case len(addrs) == 0:
+				c.State = dnsNotPointed
+			default:
+				for _, a := range addrs {
+					if local[a] {
+						c.State = dnsPointedHere
+						break
+					}
+				}
+				if c.State == dnsPointedHere {
 					break
+				}
+				// Not one of ours. Behind the same front as the apex?
+				shares := false
+				for _, a := range addrs {
+					if apexAddrs[a] {
+						shares = true
+						break
+					}
+				}
+				switch {
+				case shares && apexProxied && rec.ProxyOff:
+					c.State = dnsProxied
+				default:
+					// Resolves, but this machine cannot prove it is the target —
+					// normal behind NAT, where the public address is not on any
+					// local interface. Reported as unverified rather than wrong,
+					// because asserting a fault we cannot substantiate is how a
+					// status page loses its credibility.
+					c.State = dnsUnverified
 				}
 			}
 			out[i] = c
@@ -134,26 +221,28 @@ func (a *App) handleOSDNS(w http.ResponseWriter, r *http.Request) {
 	recs := subdomainRecords(domain)
 	checks := resolveRecords(r.Context(), recs, domain)
 
-	pointed, missing, elsewhere := 0, 0, 0
+	pointed, missing, proxied, unverified := 0, 0, 0, 0
 	for _, c := range checks {
-		switch {
-		case !c.Resolved:
-			missing++
-		case c.SameAsAPX:
+		switch c.State {
+		case dnsPointedHere:
 			pointed++
+		case dnsProxied:
+			proxied++
+		case dnsUnverified:
+			unverified++
 		default:
-			elsewhere++
+			missing++
 		}
 	}
 
 	// Stats strip, matching the Mail accounts / Monetization language.
 	body.WriteString(`<div class="vm-stats">`)
-	body.WriteString(vmStatTile(strconv.Itoa(pointed), "Pointed here", ""))
-	elseTone := ""
-	if elsewhere > 0 {
-		elseTone = "warn"
+	body.WriteString(vmStatTile(strconv.Itoa(pointed+unverified), "Resolving", ""))
+	proxTone := ""
+	if proxied > 0 {
+		proxTone = "warn"
 	}
-	body.WriteString(vmStatTile(strconv.Itoa(elsewhere), "Resolve elsewhere", elseTone))
+	body.WriteString(vmStatTile(strconv.Itoa(proxied), "Behind the proxy", proxTone))
 	body.WriteString(vmStatTile(strconv.Itoa(missing), "Not pointed", ""))
 	body.WriteString(vmStatTile(html.EscapeString(domain), "Primary domain", ""))
 	body.WriteString(`</div>`)
@@ -165,13 +254,16 @@ func (a *App) handleOSDNS(w http.ResponseWriter, r *http.Request) {
 	for _, c := range checks {
 		var status string
 		switch {
-		case c.Resolved && c.SameAsAPX:
+		case c.State == dnsPointedHere:
 			status = `<span class="badge badge--ok">pointed here</span>`
-		case c.Resolved:
-			// Resolving somewhere else is the dangerous middle state: certificates
-			// may issue and the service still not work, which reads as a product
-			// fault rather than a DNS one.
-			status = `<span class="badge badge--warn">resolves elsewhere</span>`
+		case c.State == dnsProxied:
+			// The real misconfiguration, and the only one worth a warning: a
+			// machine-to-machine host sitting behind the same proxy as the apex.
+			// It resolves, a certificate may even issue, and the service still
+			// fails — because the client cannot answer a bot challenge.
+			status = `<span class="badge badge--warn">behind the proxy</span>`
+		case c.State == dnsUnverified:
+			status = `<span class="badge badge--ok">resolving</span>`
 		case c.Required:
 			status = `<span class="badge badge--warn">not pointed</span>`
 		default:
@@ -193,7 +285,8 @@ func (a *App) handleOSDNS(w http.ResponseWriter, r *http.Request) {
 			`<td>` + html.EscapeString(c.Label) + `<div class="text-xs muted">` + html.EscapeString(c.Why) + `</div></td></tr>`)
 	}
 	body.WriteString(`</tbody></table></div>`)
-	body.WriteString(`<p class="text-xs muted">“Pointed here” means the record resolves to an address this site's own domain also resolves to. “Resolves elsewhere” is worth attention: a certificate may still issue while the service never works, which looks like a VayuPress fault rather than a DNS one.</p></div>`)
+	body.WriteString(`<p class="text-xs muted"><strong>Pointed here</strong> — resolves to an address this server actually holds. <strong>Resolving</strong> — resolves, but this server cannot prove it is the target; normal behind NAT, and not a fault. <strong>Behind the proxy</strong> — the record resolves to the same front as your apex, so a bot challenge sits in front of a client that cannot answer one; switch it to DNS only.</p>
+<p class="text-xs muted">Your apex and <code>www</code> being proxied is correct and expected — only the direct hosts below them need to bypass it.</p></div>`)
 
 	// Why the proxy matters, stated once rather than repeated per row.
 	body.WriteString(`<div class="section-head"><span class="section-head__title">Why “CDN proxy off”</span><span class="section-head__hint">The field most often set wrong</span></div>`)

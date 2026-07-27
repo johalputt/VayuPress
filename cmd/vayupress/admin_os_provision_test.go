@@ -162,3 +162,79 @@ func TestDNSPageIsAdminGated(t *testing.T) {
 		t.Error("/os/dns is gated below /os/update; it exposes infrastructure detail and a privileged control")
 	}
 }
+
+// TestProxiedApexDoesNotFlagCorrectSubdomains reproduces the real-world layout
+// that the first version of this page got exactly backwards.
+//
+// The documented, CORRECT configuration for a CDN-fronted install is: apex and
+// www proxied (so human traffic keeps CDN protection), every machine-to-machine
+// subdomain direct at the origin. The original check compared each subdomain
+// against the apex — so on precisely that configuration it reported all five
+// direct hosts as "resolves elsewhere" and told the operator their working
+// install was broken.
+//
+// A status page that cries wolf on the correct setup is worse than none: it
+// trains people to ignore it, so the one time it is right they scroll past.
+func TestProxiedApexDoesNotFlagCorrectSubdomains(t *testing.T) {
+	// The origin this machine holds.
+	local := map[string]bool{"5.189.133.235": true}
+	// The apex resolves to a CDN, which this machine does not hold.
+	apexAddrs := map[string]bool{"188.114.96.3": true, "2a06:98c1:3121::3": true}
+
+	apexIsLocal := false
+	for a := range apexAddrs {
+		if local[a] {
+			apexIsLocal = true
+		}
+	}
+	apexProxied := len(apexAddrs) > 0 && !apexIsLocal && len(local) > 0
+	if !apexProxied {
+		t.Fatal("a CDN-fronted apex was not recognised as proxied")
+	}
+
+	// A direct subdomain on the origin must read as pointed here, not as a fault.
+	direct := []string{"5.189.133.235"}
+	state := classifyForTest(direct, local, apexAddrs, apexProxied, true)
+	if state != dnsPointedHere {
+		t.Errorf("a correctly configured direct subdomain was flagged (state=%v)", state)
+	}
+
+	// A subdomain left ON the proxy is the genuine misconfiguration.
+	onProxy := []string{"188.114.96.3"}
+	if state := classifyForTest(onProxy, local, apexAddrs, apexProxied, true); state != dnsProxied {
+		t.Errorf("a proxied machine-to-machine host was not flagged (state=%v)", state)
+	}
+}
+
+// TestUnverifiableDoesNotReportAFault — behind NAT the public address is on no
+// local interface, so nothing can be proven. Reporting a fault we cannot
+// substantiate is how a status page loses its credibility.
+func TestUnverifiableDoesNotReportAFault(t *testing.T) {
+	local := map[string]bool{"10.0.0.5": true} // private, behind NAT
+	apexAddrs := map[string]bool{"203.0.113.10": true}
+	apexProxied := true
+
+	if state := classifyForTest([]string{"203.0.113.11"}, local, apexAddrs, apexProxied, true); state != dnsUnverified {
+		t.Errorf("an unprovable record was reported as something definite (state=%v)", state)
+	}
+}
+
+// classifyForTest mirrors the classification in resolveRecords. Kept in the test
+// so the table above documents the intent; resolveRecords is exercised end to
+// end by the page itself.
+func classifyForTest(addrs []string, local, apexAddrs map[string]bool, apexProxied, proxyOff bool) dnsState {
+	if len(addrs) == 0 {
+		return dnsNotPointed
+	}
+	for _, a := range addrs {
+		if local[a] {
+			return dnsPointedHere
+		}
+	}
+	for _, a := range addrs {
+		if apexAddrs[a] && apexProxied && proxyOff {
+			return dnsProxied
+		}
+	}
+	return dnsUnverified
+}

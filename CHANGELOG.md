@@ -6,6 +6,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.53] — 2026-07-27
+
+Ships immediately rather than batching: v3.15.52's new Domains & DNS page reported a
+**correctly configured install as broken**, and it is live now.
+
+### Fixed
+- **Domains & DNS flagged correct subdomains as "resolves elsewhere".** The check compared each
+  record against the **apex** — but the documented, correct layout for a CDN-fronted install is
+  apex and `www` proxied (so human traffic keeps CDN protection) with every machine-to-machine
+  subdomain direct at the origin. Those two can never match, so on exactly the configuration the
+  documentation prescribes the page marked all five direct hosts as faulty and told the operator
+  their working mail server was misconfigured.
+
+  A status page that cries wolf on the correct setup is worse than no page: it trains people to
+  ignore it, so the one time it is right they scroll past.
+
+  The check now uses this machine's **own interface addresses** as ground truth, and the apex is
+  used only to *recognise a proxy*, never to define "here". Four states, and only one is a
+  warning: **pointed here** (resolves to an address this server holds), **resolving** (resolves,
+  but unprovable — normal behind NAT, and not a fault), **behind the proxy** (shares the apex's
+  front, so a bot challenge sits in front of a client that cannot answer one — the genuine
+  misconfiguration, which the old logic could not detect at all), and **not pointed**.
+
+  The page now also says outright that a proxied apex is correct and expected.
+
+---
+
 ## [3.15.52] — 2026-07-27
 
 ### Added
