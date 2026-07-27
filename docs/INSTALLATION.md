@@ -251,11 +251,23 @@ The installer provisions it on every deploy *and* every update:
 - **Otherwise**, add one record and re-run: `openpgpkey.example.com` A/AAAA → your
   server, **CDN proxy OFF** (Cloudflare: *DNS only / grey cloud*).
 
-Or run it alone at any time:
+### The one command that needs root
+
+Installing a `systemd` unit requires root, and the VayuPress service runs
+unprivileged and deliberately cannot become root — so this is the **single**
+privileged step in an otherwise terminal-free product:
 
 ```bash
-sudo bash /path/to/VayuPress/scripts/setup-openpgpkey-subdomain.sh
+curl -sSL https://raw.githubusercontent.com/johalputt/VayuPress/main/scripts/install-provisioning.sh | sudo bash
 ```
+
+It installs the provisioning helper, enables a daily sweep, and runs one pass
+immediately. It does **not** rebuild the binary, restart the site, or touch the
+database, and it is safe to re-run.
+
+After that, **VayuOS → Operations → Domains & DNS** provisions every subdomain on
+demand, and a record you point later is picked up on its own. No further terminal
+use.
 
 **The proxy must be off.** A WKD fetch is machine-to-machine — GnuPG has no
 JavaScript engine and cannot answer a CDN bot-challenge. Behind one, key

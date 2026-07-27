@@ -35,6 +35,13 @@ import (
 // A daily .timer runs the same worker regardless, so a DNS record pointed later
 // is picked up without anyone asking.
 
+// provisionInstallCommand is the single privileged step an operator ever needs.
+// It is rendered verbatim and copyable, because the previous instruction —
+// "re-run scripts/deploy-vayupress.sh" — assumed knowledge of where that
+// checkout lives, and a full redeploy rebuilds the binary and restarts a live
+// site merely to install three small files.
+const provisionInstallCommand = "curl -sSL https://raw.githubusercontent.com/johalputt/VayuPress/main/scripts/install-provisioning.sh | sudo bash"
+
 const (
 	provisionRequestFile = "provision.request"
 	provisionResultFile  = "provision.result"
@@ -165,9 +172,21 @@ func provisionCardHTML() string {
 
 	action := `<button type="button" class="btn btn--primary btn--sm" data-provision-run>Provision subdomains</button>`
 	if !installed {
-		action = `<p class="text-sm muted">This server does not have the privileged helper yet. Re-run ` +
-			`<code>scripts/deploy-vayupress.sh</code> once — after that, every subdomain is provisioned from here ` +
-			`and from a daily sweep, with no terminal.</p>`
+		// Show the EXACT command, copyable. The previous wording said "re-run
+		// scripts/deploy-vayupress.sh", which assumes the operator knows where
+		// that checkout is — and a full redeploy rebuilds the binary and restarts
+		// a live site to install three small files. Both are why this step got
+		// postponed and the certificate never appeared. This command installs only
+		// the privileged helper, runs one pass immediately, and touches neither
+		// the binary nor the database.
+		action = `<p class="text-sm muted">Installing a <code>systemd</code> unit needs root, and this service ` +
+			`deliberately cannot become root. That makes this the <strong>one</strong> command you ever have to run ` +
+			`— it installs only the helper and provisions immediately, leaving the binary and database untouched:</p>` +
+			`<div class="vm-row"><code class="mono text-xs vm-pgp__wkd" data-provision-cmd>` +
+			html.EscapeString(provisionInstallCommand) + `</code>` +
+			`<button type="button" class="btn btn--sm" data-provision-copy>Copy</button></div>` +
+			`<p class="text-xs muted">After it finishes, every subdomain is provisioned from this page and from a ` +
+			`daily sweep, with no further terminal use.</p>`
 	}
 
 	return `<div class="section-head"><span class="section-head__title">Subdomains &amp; certificates</span>` +

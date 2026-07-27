@@ -6,6 +6,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.54] — 2026-07-27
+
+### Added
+- **`scripts/install-provisioning.sh` — the one command that needs root, and only that.**
+  Installing a `systemd` unit requires root, and the service runs unprivileged and deliberately
+  cannot become root, so one privileged step is unavoidable. The instruction for it was "re-run
+  `scripts/deploy-vayupress.sh`" — which assumes the operator knows where that checkout is, and
+  rebuilds the binary and restarts a live site to install three small files. Both are reasons to
+  postpone it, and postponing it is why certificates never appeared.
+
+  This does only the privileged part: place the helpers root-owned, write and enable the units,
+  and **run one pass immediately** so the certificate exists now rather than at the next daily
+  sweep. It touches neither the binary nor the database and is safe to re-run. A fetched helper
+  that is not a shell script is refused rather than installed — a truncated download or an error
+  page written to a root-executed path is far worse than a failed install.
+
+### Changed
+- **The provisioning card shows the exact command, copyable**, instead of naming a script at an
+  unknown path. That gap was the whole friction: the step was clear in intent and unactionable in
+  practice.
+- `docs/INSTALLATION.md` documents it as *the single privileged step*, and says plainly what it
+  does not do — no rebuild, no restart, no database change.
+
+---
+
 ## [3.15.53] — 2026-07-27
 
 Ships immediately rather than batching: v3.15.52's new Domains & DNS page reported a

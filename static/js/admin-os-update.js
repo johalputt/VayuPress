@@ -509,4 +509,32 @@
 
   // Auto-check on load so the operator immediately sees whether an update exists.
   doCheck();
+
+  // Copy the one privileged install command. Delegated from document because the
+  // card renders on two pages and only one of them has the run button.
+  (function () {
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('[data-provision-copy]') : null;
+      if (!b) return;
+      var code = document.querySelector('[data-provision-cmd]');
+      if (!code) return;
+      var text = code.textContent || '';
+      var was = b.textContent;
+      var done = function (msg) { b.textContent = msg; setTimeout(function () { b.textContent = was; }, 2000); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { done('Copied'); }).catch(function () {
+          // Clipboard needs a secure context and a permission some browsers
+          // refuse; select the text so Ctrl-C still works rather than leaving a
+          // button that silently did nothing.
+          selectText(code); done('Press Ctrl-C');
+        });
+      } else { selectText(code); done('Press Ctrl-C'); }
+    });
+    function selectText(el) {
+      try {
+        var r = document.createRange(); r.selectNodeContents(el);
+        var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      } catch (err) { /* selection unavailable — nothing further to try */ }
+    }
+  })();
 })();
