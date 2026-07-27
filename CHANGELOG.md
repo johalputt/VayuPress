@@ -6,6 +6,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.56] — 2026-07-27
+
+### Fixed
+- **Provisioning reported success while doing nothing at all.** Every helper skipped with "No
+  usable DOMAIN" — the correct behaviour for an unconfigured box, since an unconfigured box must
+  never block a deploy — and the run then reported *"5 helpers ran, 0 reported a problem"*. An
+  operator reads that as done and goes hunting for the fault somewhere else entirely.
+
+  **Skipping is indistinguishable from succeeding to the caller**, and nothing bridged that gap.
+  The worker now resolves `DOMAIN` once and exports it to the helpers, **fails loudly** when it
+  cannot be used instead of skipping quietly, and counts a skip as a skip rather than a success.
+  The console shows "provisioned nothing" instead of "clean" and points at the log line that says
+  why.
+
+  This is the second time in this release series the same mistake has surfaced — a control that
+  looks like it worked and did not. It is the failure mode this whole surface exists to remove,
+  so it is now checked at both ends: the helper reports what it actually did, and the console
+  refuses to render a no-op as clean.
+
+### Changed
+- **`env_get` tolerates how the environment file is really written** — `export KEY=`, leading
+  whitespace, and quoted values, any of which previously yielded an empty result and the same
+  silent skip. Not the cause of the case above (that was a literal `DOMAIN=localhost`), but the
+  identical failure with no diagnostic, waiting to happen.
+
+---
+
 ## [3.15.55] — 2026-07-27
 
 ### Fixed

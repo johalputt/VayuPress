@@ -61,10 +61,44 @@ rm -f "$REQUEST"
 started="$(date -u +%FT%TZ)"
 log "starting subdomain provisioning at ${started}"
 
+# Resolve DOMAIN here and export it, rather than letting each helper parse
+# /etc/vayupress/env for itself.
+#
+# This is where a real failure hid. Every helper skips cleanly when DOMAIN is
+# empty -- correct on its own, so a deploy is never blocked by an unconfigured
+# box -- but skipping is indistinguishable from succeeding to the caller, so a
+# run in which NOTHING was provisioned reported "0 problems". An operator read
+# that as done and went looking for the fault somewhere else entirely.
+ENV_FILE=/etc/vayupress/env
+if [[ -z "${DOMAIN:-}" && -r "$ENV_FILE" ]]; then
+  DOMAIN="$(sed -n -E 's/^[[:space:]]*(export[[:space:]]+)?DOMAIN=[[:space:]]*//p' "$ENV_FILE" |
+            head -n1 | sed -E 's/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/; s/[[:space:]]+$//')"
+fi
+export DOMAIN="${DOMAIN:-}"
+
+if [[ -z "$DOMAIN" || "$DOMAIN" == "localhost" ]]; then
+  # Report it as a failure, loudly. Silence here is what turned a one-line
+  # configuration problem into a long hunt.
+  log "ERROR: no usable DOMAIN found in ${ENV_FILE} — nothing can be provisioned"
+  umask 022
+  cat > "$RESULT" <<JSON
+{
+  "started_at": "${started}",
+  "finished_at": "$(date -u +%FT%TZ)",
+  "ran": 0,
+  "failed": 1,
+  "details": "no usable DOMAIN in ${ENV_FILE}"
+}
+JSON
+  exit 0
+fi
+log "provisioning for domain: ${DOMAIN}"
+
 # Each helper is optional: an older checkout may not carry all of them, and a
 # missing one must not fail the run.
 ran=0
 failed=0
+skipped=0
 declare -a details=()
 
 for helper in setup-openpgpkey-subdomain.sh setup-talk-subdomain.sh \
@@ -72,9 +106,18 @@ for helper in setup-openpgpkey-subdomain.sh setup-talk-subdomain.sh \
   script="${LIB_DIR}/${helper}"
   [[ -x "$script" ]] || { log "skip ${helper} (not installed)"; continue; }
   log "running ${helper}"
+  before="$(wc -c <"${STATE_DIR}/provision.log" 2>/dev/null || echo 0)"
   if bash "$script" >>"${STATE_DIR}/provision.log" 2>&1; then
-    ran=$((ran + 1))
-    details+=("${helper}=ok")
+    # An exit status of 0 is not the same as work done: every helper exits 0
+    # when it skips, by design. Read back what this run appended and record a
+    # skip as a SKIP, so the result cannot claim success for a no-op.
+    if tail -c "+$((before + 1))" "${STATE_DIR}/provision.log" 2>/dev/null | grep -qi "skipping"; then
+      skipped=$((skipped + 1))
+      details+=("${helper}=skipped")
+    else
+      ran=$((ran + 1))
+      details+=("${helper}=ok")
+    fi
   else
     # Non-fatal by design: one subdomain whose DNS is not pointed must never
     # stop the others from being provisioned.
@@ -96,6 +139,7 @@ cat > "$RESULT" <<JSON
   "finished_at": "${finished}",
   "ran": ${ran},
   "failed": ${failed},
+  "skipped": ${skipped},
   "details": "$(IFS=,; echo "${details[*]:-none}")"
 }
 JSON
@@ -106,5 +150,5 @@ if [[ -f "${STATE_DIR}/provision.log" ]]; then
     mv "${STATE_DIR}/provision.log.tmp" "${STATE_DIR}/provision.log"
 fi
 
-log "finished: ${ran} helper(s) ran, ${failed} reported a problem"
+log "finished: ${ran} provisioned, ${skipped} skipped, ${failed} reported a problem"
 exit 0

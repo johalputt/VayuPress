@@ -45,7 +45,16 @@ warn() { echo -e "${YELLOW}⚠  $*${NC}"; }
 
 ENV_FILE=/etc/vayupress/env
 env_get() { # $1=KEY — read a value from /etc/vayupress/env if present
-  [[ -r "$ENV_FILE" ]] && sed -n "s/^$1=//p" "$ENV_FILE" | head -n1
+  # Deliberately tolerant of how the file is actually written. The original
+  # matched only a line beginning exactly "KEY=", which silently returned empty
+  # for `export KEY=`, for a leading space, and returned the quotes themselves
+  # for KEY="value". Empty DOMAIN makes every subdomain helper skip with "No
+  # usable DOMAIN", and because skipping is deliberately non-fatal the whole run
+  # then reported success while provisioning nothing at all.
+  [[ -r "$ENV_FILE" ]] || return 0
+  sed -n -E "s/^[[:space:]]*(export[[:space:]]+)?$1=[[:space:]]*//p" "$ENV_FILE" |
+    head -n1 |
+    sed -E "s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/; s/[[:space:]]+$//"
 }
 
 # ── Resolve config (env → /etc/vayupress/env → default) ───────────────────────

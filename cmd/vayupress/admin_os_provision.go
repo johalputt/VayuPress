@@ -57,7 +57,10 @@ type provisionResult struct {
 	FinishedAt string `json:"finished_at"`
 	Ran        int    `json:"ran"`
 	Failed     int    `json:"failed"`
-	Details    string `json:"details"`
+	// Skipped counts helpers that exited 0 without doing anything — the state
+	// that used to be reported as success and sent operators looking elsewhere.
+	Skipped int    `json:"skipped"`
+	Details string `json:"details"`
 }
 
 func provisionStateDir() string {
@@ -166,6 +169,13 @@ func provisionCardHTML() string {
 		status = `<span class="badge badge--info">running…</span>`
 	case haveRun && res.Failed > 0:
 		status = `<span class="badge badge--warn">last run had ` + strconv.Itoa(res.Failed) + ` problem(s)</span>`
+	case haveRun && res.Ran == 0:
+		// Nothing was provisioned. Previously this rendered as "clean", which is
+		// how a run that did absolutely nothing came to look like success.
+		status = `<span class="badge badge--warn">last run provisioned nothing</span>`
+	case haveRun && res.Skipped > 0:
+		status = `<span class="badge badge--ok">` + strconv.Itoa(res.Ran) + ` provisioned, ` +
+			strconv.Itoa(res.Skipped) + ` skipped</span>`
 	case haveRun:
 		status = `<span class="badge badge--ok">last run clean</span>`
 	default:
@@ -175,8 +185,14 @@ func provisionCardHTML() string {
 	var detail string
 	if haveRun {
 		detail = `<p class="text-xs muted">Last run ` + html.EscapeString(res.FinishedAt) +
-			` — ` + strconv.Itoa(res.Ran) + ` helper(s) ran, ` + strconv.Itoa(res.Failed) + ` reported a problem. ` +
+			` — ` + strconv.Itoa(res.Ran) + ` provisioned, ` + strconv.Itoa(res.Skipped) + ` skipped, ` +
+			strconv.Itoa(res.Failed) + ` reported a problem. ` +
 			`<span class="mono">` + html.EscapeString(res.Details) + `</span></p>`
+		if res.Ran == 0 {
+			detail += `<p class="text-xs muted">A helper skips when its DNS is not pointed — or when <code>DOMAIN</code> ` +
+				`cannot be read from <code>/etc/vayupress/env</code>, which skips every one of them at once. ` +
+				`Check <code>/var/lib/vayupress/provision.log</code> for the reason.</p>`
+		}
 	}
 
 	action := `<button type="button" class="btn btn--primary btn--sm" data-provision-run>Provision subdomains</button>`
