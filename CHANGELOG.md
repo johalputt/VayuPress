@@ -6,6 +6,61 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.82] — 2026-07-27
+
+### Changed
+- **VayuKeep is now set up from VayuOS — no terminal, no restart.** v3.15.80 and
+  v3.15.81 took the whole configuration from environment variables, which meant
+  "turn on automatic backups" really meant "SSH in, edit `/etc/vayupress/env`,
+  restart the service". For the one subsystem an operator most needs to actually
+  switch on, that is the wrong bar — and the operators who never open a terminal
+  are exactly the ones running with no backups.
+
+  Operations → Backup &amp; Recovery now has a form: choose a folder, set a
+  passphrase, press **Turn on automatic backup**. The engine restarts in place and
+  the first copy is written immediately, so what comes back is proof rather than a
+  promise. **Turn off** stops the schedule and leaves existing restore points
+  exactly where they are — turning a schedule off is not consent to delete what it
+  already saved.
+
+  Where each setting lives is deliberate: the folder is an ordinary setting because
+  it is not a secret and an operator should be able to see it; the passphrase is a
+  sealed credential in the same AES-256-GCM store as every other secret this
+  install holds, never a setting, never logged, never sent back to the browser.
+
+  Environment variables still work and still win, so a configuration-managed
+  install is unaffected. Such an install is told plainly that the console will not
+  override it, rather than being shown a form whose button would silently do
+  nothing.
+
+- **One-click restore.** Each restore point has a **Restore** button that puts the
+  site back to that moment and restarts. It restores the database — posts, pages,
+  settings, members, comments, mailbox accounts. Uploaded files and stored mail are
+  left alone, because swapping those under a running process is how a
+  half-restored install happens, and the page says so rather than implying a
+  completeness it cannot deliver.
+
+### Security
+- **A restore is validated before it is staged, not after.** The chosen archive is
+  unpacked, and the database inside it is opened and `integrity_check`ed, while the
+  live database is still intact. Only then is it staged for the boot path to swap
+  in — which renames whatever it finds over the live file, so handing it an
+  unverified archive would turn "restore" into "replace the site with rubble".
+- **Restore needs a typed confirmation**, not a click. It replaces the live
+  database; a misclick must not be enough on its own.
+- **The chosen folder is write-tested before it is saved.** The service runs
+  sandboxed and may be denied a path that looks perfectly reasonable. Discovering
+  that at the first scheduled backup, silently, is the exact failure this
+  subsystem exists to prevent — so it is refused on screen, with the real reason.
+- A passphrase shorter than 12 characters is refused. It is the only key to every
+  copy of the whole site; that is not a preference to respect.
+
+### Fixed
+- `cmd/vayupress/vayukeep_gate_test.go` was committed without its Apache-2.0 SPDX
+  header, failing P10 License Compliance on v3.15.81.
+
+---
+
 ## [3.15.81] — 2026-07-27
 
 ### Changed

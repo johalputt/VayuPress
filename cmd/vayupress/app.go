@@ -201,6 +201,7 @@ type App struct {
 	// panel.
 	vayuKeep    *vayukeep.Engine
 	vayuKeepErr string
+	keepSup     keepSupervisor
 
 	// VayuOS — native control layer (Phase 2): mail sovereignty + PGP privacy.
 	vayuKernel *vkernel.Bus

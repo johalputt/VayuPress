@@ -44,6 +44,12 @@ const (
 	// VayuOS console and operational endpoints are never affected. Defaults OFF.
 	KeyBlockCrawlers = "site.block_crawlers"
 
+	// VayuKeep — automatic backup, configured from VayuOS (ADR-0145). The target
+	// is a setting rather than an env var so it can be changed from the console;
+	// the passphrase is a sealed credential, never a setting.
+	KeyVayuKeepTarget  = "vayukeep.target"
+	KeyVayuKeepEnabled = "vayukeep.enabled"
+
 	// Business-website mode (VayuOS → Website). KeySiteMode selects what the
 	// root domain serves: "" / "blog" keeps the blog at the root (the historic
 	// behaviour — existing installs never change on update), "business" serves

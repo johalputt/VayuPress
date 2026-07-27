@@ -20,11 +20,16 @@ import (
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/secrets"
+	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/vayukeep"
 )
 
@@ -64,7 +69,7 @@ func keepStatusVerdict(st vayukeep.Status, bootErr string, now time.Time) keepVe
 			"VayuKeep declined the settings it was given, so <strong>nothing is being backed up automatically</strong>. Your site is unaffected."}
 	case !st.Enabled:
 		return keepVerdict{"warn", "Not set up",
-			"Automatic backup is <strong>off</strong>. Your only copies are the ones you take by hand. Setting this up takes two lines and a restart."}
+			"Automatic backup is <strong>off</strong>. Your only copies are the ones you take by hand. Turning it on takes a folder, a passphrase and one button."}
 	case st.Paused:
 		return keepVerdict{"warn", "Paused",
 			"Backups are <strong>paused</strong>: " + html.EscapeString(st.PauseWhy) + ". Nothing new is being saved."}
@@ -141,28 +146,45 @@ func drillSummary(st vayukeep.Status, now time.Time) string {
 
 // ── Cards ────────────────────────────────────────────────────────────────────
 
-// keepSetupCard is the whole setup path, written for someone who has not read
-// the ADR: two lines, one restart, one button to prove it worked.
-func keepSetupCard(bootErr string) string {
+// keepSetupCard is the setup form. Everything happens here — choose a folder,
+// set a passphrase, press the button. No file editing and no service restart:
+// asking an operator to SSH in to enable backups is how installs end up with
+// none.
+func keepSetupCard(bootErr, currentTarget string, envManaged bool) string {
 	problem := ""
 	if bootErr != "" {
-		problem = `<p class="text-sm"><strong>VayuKeep refused these settings:</strong></p>
+		problem = `<p class="text-sm"><strong>Backups could not start with the current settings:</strong></p>
 <p class="text-sm"><code>` + html.EscapeString(bootErr) + `</code></p>
-<p class="text-sm muted">Fix that and restart. Refusing is deliberate — a backup system that started anyway and quietly did nothing would be worse.</p>
+<p class="text-sm muted">Refusing is deliberate — a backup system that started anyway and quietly did nothing would be worse. Fix it below.</p>
 <div class="section-divider"></div>`
 	}
-	return problem + `<p class="text-sm"><strong>1.</strong> Add two lines to <code>/etc/vayupress/env</code>:</p>
-<pre class="code-block"><code>VAYUKEEP_TARGET=/var/backups/vayupress
-VAYU_BACKUP_PASSPHRASE=&lt;a long passphrase&gt;</code></pre>
-<p class="text-sm"><strong>2.</strong> Restart the service:</p>
-<pre class="code-block"><code>sudo systemctl restart vayupress</code></pre>
-<p class="text-sm"><strong>3.</strong> Come back here and press <strong>Test restore now</strong>. Until that passes you do not have working backups — and this page will keep saying so.</p>
+	if envManaged {
+		return problem + `<p class="text-sm">This install is configured by environment variables (<code>VAYUKEEP_TARGET</code>), so the console does not override it. Change it where those are set, or clear the variable to manage backups from here.</p>`
+	}
+	target := currentTarget
+	if target == "" {
+		target = "/var/backups/vayupress"
+	}
+	return problem + `<p class="text-sm">Pick a folder and a passphrase. VayuPress does the rest — it starts immediately, no restart needed.</p>
+<div class="field">
+  <label class="field-label" for="vk-target">Where to keep the backups</label>
+  <input id="vk-target" class="input" type="text" value="` + html.EscapeString(target) + `" placeholder="/var/backups/vayupress" spellcheck="false">
+  <div class="settings-row-hint">Must be outside your site's data folder. The suggested path already works with no other changes.</div>
+</div>
+<div class="field">
+  <label class="field-label" for="vk-pass">Passphrase</label>
+  <input id="vk-pass" class="input" type="password" autocomplete="new-password" placeholder="At least 12 characters" spellcheck="false">
+  <div class="settings-row-hint"><strong>Write this down somewhere other than this server.</strong> It is the only key to your backups — without it nobody, including you, can read them. There is no reset.</div>
+</div>
+<div class="mt-3" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+  <button type="button" class="btn btn--primary btn--sm" data-vk-setup>Turn on automatic backup</button>
+  <span id="vk-setup-status" role="status" aria-live="polite" class="text-xs muted"></span>
+</div>
 <div class="section-divider"></div>
 <div class="cx-details">` +
-		detailRow("Why /var/backups/vayupress", "It is already writable by the service and already outside your data directory, so nothing else needs changing.") +
-		detailRow("Where to keep the passphrase", "Anywhere except this server. Without it the backups cannot be read by any tool — there is no recovery path and no reset.") +
-		detailRow("For real disaster recovery", "Use a separate disk or mounted volume. A copy on the same disk survives a bad migration or a mistaken edit, but not losing the disk.") +
-		detailRow("If you use another path", "Add it to the service unit as ReadWritePaths — and RequiresMountsFor for a mount — or the sandbox will deny the write.") +
+		detailRow("What gets saved", "Your whole site — database, media, mailboxes and settings — encrypted, every few minutes while you are working.") +
+		detailRow("For real disaster recovery", "Use a separate disk or mounted volume. A copy on the same disk survives a bad edit or a failed migration, but not losing the disk.") +
+		detailRow("If a folder is refused", "The service runs sandboxed and may not be allowed to write there. VayuPress tests the folder before saving and tells you exactly what went wrong.") +
 		`</div>`
 }
 
@@ -181,6 +203,7 @@ func keepStatusCard(st vayukeep.Status, now time.Time) string {
 <div class="mt-3" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
   <button type="button" class="btn btn--primary btn--sm" data-vk-drill>Test restore now</button>
   <button type="button" class="btn btn--sm" data-vk-backup>Back up now</button>
+  <button type="button" class="btn btn--ghost btn--sm" data-vk-disable>Turn off</button>
   <span id="vk-status" role="status" aria-live="polite" class="text-xs muted"></span>
 </div>
 <p class="text-xs muted mt-2"><strong>Test restore</strong> takes your newest backup, unpacks it into a temporary folder, opens the database inside it and checks every page, then deletes it. It never touches your live site. This is the only control on this page that proves a backup actually works.</p>`
@@ -196,13 +219,15 @@ func keepPointsCard(gens []vayukeep.Generation, now time.Time) string {
 		esc := html.EscapeString(g.Name)
 		rows += `<tr><td><code>` + esc + `</code></td><td>` + html.EscapeString(g.Taken.Format("2 Jan 2006 15:04")) + ` UTC</td><td>` +
 			html.EscapeString(humanAgo(g.Taken, now)) + `</td><td>` + html.EscapeString(humanBytes(g.Bytes)) + `</td>` +
-			`<td><button type="button" class="btn btn--ghost btn--sm" data-vk-verify="` + esc + `">Check</button></td></tr>`
+			`<td><button type="button" class="btn btn--ghost btn--sm" data-vk-verify="` + esc + `">Check</button> ` +
+			`<button type="button" class="btn btn--danger btn--sm" data-vk-restore="` + esc + `">Restore</button></td></tr>`
 	}
 	return `<p class="text-sm muted">Each entry is a complete, independent copy of your whole site at that moment — database, media, mailboxes and settings. <strong>Check</strong> reads one end to end without writing anything.</p>
 <div class="table-wrap"><table class="table">
 <thead><tr><th>Restore point</th><th>Taken</th><th>Age</th><th>Size</th><th></th></tr></thead>
 <tbody>` + rows + `</tbody></table></div>
-<div class="mt-2"><span id="vk-verify-status" role="status" aria-live="polite" class="text-xs muted"></span></div>`
+<div class="mt-2"><span id="vk-verify-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
+<p class="text-xs muted mt-2"><strong>Restore</strong> puts your site back to that moment and restarts. Your current database is copied aside first, so it is reversible. It restores the database — posts, pages, settings, members, comments and mailbox accounts. Uploaded files and stored mail are left alone, because swapping those under a running site is how a half-restored install happens; use the command below for a complete one.</p>`
 }
 
 // keepRestoreCard is the recovery runbook, inline, so an operator in trouble does
@@ -266,7 +291,7 @@ func keepScheduleCard() string {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 // osVayuKeepBody builds the whole Backup & Recovery console.
-func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vayukeep.Generation, now time.Time) string {
+func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vayukeep.Generation, now time.Time, currentTarget string, envManaged bool) string {
 	v := keepStatusVerdict(st, bootErr, now)
 	bannerTone := "ok"
 	if v.Tone == "warn" {
@@ -283,7 +308,7 @@ func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vay
 	if !st.Enabled || bootErr != "" {
 		body += `<div class="section-head"><span class="section-head__title">Get protected</span><span class="section-head__hint">Two lines and a restart</span></div>
 <div class="mon-stack">` +
-			monAcc(iconKeep, "Set up automatic backup", "What to add, and where", `<span class="mon-chip">● Not set up</span>`, true, keepSetupCard(bootErr)) +
+			monAcc(iconKeep, "Set up automatic backup", "Choose a folder and a passphrase", `<span class="mon-chip">● Not set up</span>`, true, keepSetupCard(bootErr, currentTarget, envManaged)) +
 			`</div>`
 	} else {
 		chipCls := "mon-chip mon-chip--on"
@@ -326,7 +351,12 @@ function vkPost(url,payload,btn,working,outId){
     .then(function(d){
       if(out){out.textContent=d.detail||'';}
       toast(d.detail||'Done',d.ok?'success':'error');
-      if(d.reload){setTimeout(function(){location.reload();},1500);}
+      if(d.restart){
+        setTimeout(function(){
+          fetch('/os/api/power/restart',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:'{}'})
+            .finally(function(){setTimeout(function(){location.reload();},6000);});
+        },800);
+      } else if(d.reload){setTimeout(function(){location.reload();},1500);}
     })
     .catch(function(e){
       var m='Request failed: '+e;
@@ -344,6 +374,25 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-vk-verify]'),funct
     vkPost('/os/api/vayukeep/verify',{name:el.getAttribute('data-vk-verify')},el,'Checking…','vk-verify-status');
   });
 });
+var setupBtn=document.querySelector('[data-vk-setup]');
+if(setupBtn){setupBtn.addEventListener('click',function(){
+  var t=document.getElementById('vk-target'), p=document.getElementById('vk-pass');
+  vkPost('/os/api/vayukeep/setup',{target:t?t.value:'',passphrase:p?p.value:''},setupBtn,'Setting up…','vk-setup-status');
+});}
+var offBtn=document.querySelector('[data-vk-disable]');
+if(offBtn){offBtn.addEventListener('click',function(){
+  if(!window.confirm('Turn automatic backup off? Your existing restore points are kept, but no new ones will be made.'))return;
+  vkPost('/os/api/vayukeep/disable',{},offBtn,'Turning off…');
+});}
+Array.prototype.forEach.call(document.querySelectorAll('[data-vk-restore]'),function(el){
+  el.addEventListener('click',function(){
+    var name=el.getAttribute('data-vk-restore');
+    // Typed confirmation, not a click. This replaces the live database.
+    var typed=window.prompt('This puts your site back to '+name+' and restarts.\n\nYour current database is copied aside first, so it is reversible.\n\nType RESTORE to confirm:');
+    if(typed!=='RESTORE')return;
+    vkPost('/os/api/vayukeep/restore',{name:name,confirm:typed},el,'Restoring…','vk-verify-status');
+  });
+});
 })();
 </script>`
 	return body
@@ -359,8 +408,10 @@ func (a *App) handleOSVayuKeep(w http.ResponseWriter, r *http.Request) {
 	if a.vayuKeep != nil {
 		gens, _ = a.vayuKeep.List()
 	}
+	envManaged := strings.TrimSpace(config.Cfg.VayuKeepTarget) != ""
 	writeOSHTML(w, r, adminOSLayout(nonce, "Backup & Recovery", "operations", cfg,
-		htmpl.HTML(osVayuKeepBody(nonce, st, a.vayuKeepErr, gens, time.Now().UTC()))))
+		htmpl.HTML(osVayuKeepBody(nonce, st, a.vayuKeepErr, gens, time.Now().UTC(),
+			a.resolveKeepTarget(r.Context()), envManaged))))
 }
 
 // ── Endpoints ────────────────────────────────────────────────────────────────
@@ -451,4 +502,173 @@ func (a *App) handleOSVayuKeepVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeAPIError(w, r, http.StatusNotFound, "not-found", "no restore point by that name", "")
+}
+
+// handleOSVayuKeepSetup turns automatic backup on from the console: it validates
+// the folder, seals the passphrase, saves the setting and restarts the engine —
+// no file editing, no service restart.
+func (a *App) handleOSVayuKeepSetup(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrator access required", "")
+		return
+	}
+	if a.siteSettings == nil || a.secrets == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "settings storage is not ready", "")
+		return
+	}
+	var body struct {
+		Target     string `json:"target"`
+		Passphrase string `json:"passphrase"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	target := strings.TrimSpace(body.Target)
+	pass := strings.TrimSpace(body.Passphrase)
+
+	if target == "" {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": "Choose a folder to keep the backups in."})
+		return
+	}
+	if !filepath.IsAbs(target) {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": "Use a full path starting with / — for example /var/backups/vayupress."})
+		return
+	}
+	// A short passphrase on the one artefact that leaves the machine is not a
+	// preference to respect. Refuse it here rather than let an operator believe
+	// they are protected.
+	existing := a.resolveKeepPassphrase(r.Context())
+	if pass == "" && existing == "" {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": "Set a passphrase. It is the only key to these backups — without it nobody, including you, can read them."})
+		return
+	}
+	if pass != "" && len(pass) < 12 {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": "Use at least 12 characters. This one passphrase protects every copy of your whole site."})
+		return
+	}
+
+	// Reject a target inside the data directory before saving it, so the console
+	// gives the same answer the engine would — with the reason.
+	dataDir := filepath.Dir(config.Cfg.DBPath)
+	if abs, err := filepath.Abs(filepath.Clean(target)); err == nil {
+		if rel, rerr := filepath.Rel(dataDir, abs); rerr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			writeJSON(w, r, http.StatusOK, map[string]any{"ok": false,
+				"detail": "That folder is inside your data directory. A copy on the disk it is meant to protect, replicating its own output, is not a backup — pick somewhere outside " + dataDir + "."})
+			return
+		}
+	}
+	if err := validateKeepTargetWritable(target); err != nil {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false,
+			"detail": "VayuPress cannot write to " + target + " — " + err.Error() + ". If this is a new location, add it to the service's ReadWritePaths."})
+		return
+	}
+
+	if pass != "" {
+		if _, err := a.secrets.Upsert(r.Context(), secrets.ProviderVayuKeep, "Backup passphrase", "", pass, true, false); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "secrets-error", err.Error(), "")
+			return
+		}
+	}
+	if err := a.siteSettings.SetMany(r.Context(), map[string]string{
+		settings.KeyVayuKeepTarget:  target,
+		settings.KeyVayuKeepEnabled: "true",
+	}); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "settings-error", err.Error(), "")
+		return
+	}
+	dbpkg.AuditLog("vayukeep.enable", dbpkg.AuditActor(r), target, "")
+
+	if err := a.applyKeepConfig(r.Context()); err != nil {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": "Saved, but backups could not start: " + err.Error()})
+		return
+	}
+	// Take the first one immediately so the operator sees proof rather than a promise.
+	a.vayuKeep.TriggerNow()
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"ok": true, "reload": true,
+		"detail": "Automatic backup is on. The first copy is being written now — then press Test restore to prove it works.",
+	})
+}
+
+// handleOSVayuKeepDisable turns automatic backup off. Existing copies are left
+// exactly where they are: turning the schedule off is not consent to delete
+// what it already saved.
+func (a *App) handleOSVayuKeepDisable(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrator access required", "")
+		return
+	}
+	if a.siteSettings == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "settings storage is not ready", "")
+		return
+	}
+	if err := a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyVayuKeepEnabled: "false"}); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "settings-error", err.Error(), "")
+		return
+	}
+	dbpkg.AuditLog("vayukeep.disable", dbpkg.AuditActor(r), "", "")
+	_ = a.applyKeepConfig(r.Context())
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"ok": true, "reload": true,
+		"detail": "Automatic backup is off. Your existing restore points are untouched.",
+	})
+}
+
+// handleOSVayuKeepRestore stages a restore point's database and restarts, so a
+// recovery is one click instead of an SSH session.
+//
+// It restores the DATABASE — posts, pages, settings, members, mailbox metadata,
+// comments. Media files and mail message files on disk are not swapped from here,
+// because doing that under a running process is how a half-restored install
+// happens; the page says so rather than implying a completeness it cannot deliver.
+//
+// The mechanism is the one already proven for snapshot imports: stage the file
+// beside the database, let the boot path swap it in atomically after taking a
+// safety copy of the current one, then restart.
+func (a *App) handleOSVayuKeepRestore(w http.ResponseWriter, r *http.Request) {
+	if !a.keepGuard(w, r) {
+		return
+	}
+	var body struct {
+		Name    string `json:"name"`
+		Confirm string `json:"confirm"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	// Typed confirmation. This replaces the live database; a misclick must not be
+	// enough on its own.
+	if strings.TrimSpace(body.Confirm) != "RESTORE" {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": "Type RESTORE to confirm."})
+		return
+	}
+
+	gens, err := a.vayuKeep.List()
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "vayukeep-error", err.Error(), "")
+		return
+	}
+	var chosen *vayukeep.Generation
+	for i := range gens {
+		if gens[i].Name == body.Name {
+			chosen = &gens[i]
+			break
+		}
+	}
+	if chosen == nil {
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "no restore point by that name", "")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	defer cancel()
+	staged, err := a.vayuKeepStageRestore(ctx, *chosen)
+	if err != nil {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": "Restore could not be prepared — " + err.Error() + ". Nothing was changed."})
+		return
+	}
+	dbpkg.AuditLog("vayukeep.restore", dbpkg.AuditActor(r), chosen.Name, staged)
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"ok": true, "restart": true,
+		"detail": "Restore prepared from " + chosen.Name + ". Restarting now — your current database is copied aside first, so this is itself reversible.",
+	})
 }

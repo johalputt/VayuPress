@@ -53,7 +53,12 @@ import (
 // Provider identifies the downstream service a credential targets. Known
 // providers get first-class UI affordances; "custom" covers anything else.
 const (
-	ProviderIndexNow   = "indexnow"
+	ProviderIndexNow = "indexnow"
+	// ProviderVayuKeep holds the backup passphrase. It lives in the encrypted
+	// credential store rather than an environment variable so an operator can set
+	// it from VayuOS without touching a terminal — and so it is sealed at rest
+	// like every other secret this install holds.
+	ProviderVayuKeep   = "vayukeep"
 	ProviderN8N        = "n8n"
 	ProviderOllama     = "ollama"
 	ProviderOpenRouter = "openrouter"
