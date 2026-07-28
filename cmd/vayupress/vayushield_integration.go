@@ -221,18 +221,26 @@ func (a *App) bootVayuShield() {
 		// Googlebot/Bingbot/GPTBot (IP-verified) is served content before every
 		// availability gate; a UA merely CLAIMING to be a crawler from an IP that
 		// is not the vendor's is reported as a spoof and gets no free pass.
-		VerifiedBotFn: func(ip netip.Addr, ua string) (bool, bool) {
+		VerifiedBotFn: func(ip netip.Addr, ua string) vayushield.BotFastPath {
 			if a.verifiedBots == nil {
-				return false, false
+				return vayushield.BotNotRecognised
 			}
 			verdict, _, _ := a.verifiedBots.Classify(ip, ua)
 			switch verdict {
-			case verifiedbot.Verified, verifiedbot.Unverifiable:
-				return true, false // fast-path allow (SEO-safe)
+			case verifiedbot.Verified:
+				// Confirmed against the vendor's published ranges or by FCrDNS.
+				return vayushield.BotVerified
+			case verifiedbot.Unverifiable:
+				// Recognised UA, identity neither confirmed nor disproved. This is
+				// reached by ~34 UA-only vendors from any address, by an in-flight
+				// reverse-DNS lookup, and by any crawler UA before the published-
+				// range feeds have loaded after a boot. It buys exemption from
+				// challenges the client may be unable to execute — nothing more.
+				return vayushield.BotUnprovable
 			case verifiedbot.SpoofSuspect:
-				return false, true // strip the UA's good-bot benefit
+				return vayushield.BotSpoof
 			default:
-				return false, false // not a recognised crawler
+				return vayushield.BotNotRecognised
 			}
 		},
 		// L1 kernel offload: jailed IPs also get dropped by nftables/XDP.

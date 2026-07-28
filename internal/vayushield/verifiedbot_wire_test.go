@@ -20,14 +20,16 @@ func verifiedBotManager(surge bool) *Manager {
 		Enabled:  true,
 		Signer:   challenge.NewSigner([]byte("s")),
 		ClientIP: func(r *http.Request) string { return "203.0.113.9:1" },
-		VerifiedBotFn: func(_ netip.Addr, ua string) (bool, bool) {
+		VerifiedBotFn: func(_ netip.Addr, ua string) BotFastPath {
 			switch {
 			case strings.Contains(ua, "verified"):
-				return true, false
+				return BotVerified
+			case strings.Contains(ua, "unprovable"):
+				return BotUnprovable
 			case strings.Contains(ua, "spoof"):
-				return false, true
+				return BotSpoof
 			default:
-				return false, false
+				return BotNotRecognised
 			}
 		},
 	})
@@ -86,7 +88,7 @@ func TestSpoofDoesNotBlockHuman(t *testing.T) {
 		Signer:   challenge.NewSigner([]byte("s")),
 		ClientIP: func(r *http.Request) string { return "203.0.113.9:1" },
 		// Force spoof for everything, including the human browser UA.
-		VerifiedBotFn: func(_ netip.Addr, _ string) (bool, bool) { return false, true },
+		VerifiedBotFn: func(_ netip.Addr, _ string) BotFastPath { return BotSpoof },
 	})
 	m.ApplySettings(Settings{Enabled: true})
 	rr := httptest.NewRecorder()

@@ -8,6 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+- **A User-Agent string could bypass the entire shield.** Gate 0's crawler fast
+  path treated "identity confirmed" and "identity unconfirmable" as the same
+  verdict — both returned `next.ServeHTTP; return`, ahead of the blocklist, the
+  reputation jail, load shedding, fair shedding, the rate limiter and Sovereign
+  Surge.
+
+  The unconfirmable verdict is reachable by claiming one of ~34 UA-only vendor
+  strings from **any** address, by an in-flight reverse-DNS lookup, and — on a
+  fresh boot, before the published-range feeds have loaded — by a plain
+  `Googlebot` UA from any address. So a client could opt out of every gate in the
+  shield by setting the one header it fully controls.
+
+  `VerifiedBotFn` now returns a `BotFastPath` rather than a pair of booleans.
+  `BotVerified` — confirmed against the vendor's published ranges or by
+  forward-confirmed reverse DNS — keeps the full fast path, because that identity
+  is a fact about the network rather than a claim in a string. `BotUnprovable`
+  falls through to every gate; those answer 429/503 with `Retry-After`, which a
+  real crawler backs off on and an impostor gains nothing from.
+
+  The SEO protection that justified the path is unaffected and was verified
+  rather than assumed: a recognised crawler UA is still served without a
+  challenge, via `Decide`'s existing `TypeGoodBot` branch. A first attempt added
+  a separate challenge-exemption marker for this; a probe showed it changed no
+  outcome for any User-Agent, so it was removed rather than shipped with a
+  comment describing behaviour it did not produce.
+
 ### Changed
 - **The proxy-allowlist flag filename is now a constant, not a concatenation.**
   Code scanning raised a high-severity "uncontrolled data used in path

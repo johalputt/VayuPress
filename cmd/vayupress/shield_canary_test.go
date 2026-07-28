@@ -21,7 +21,7 @@ func TestShieldCanaryPassesWithVerifiedBots(t *testing.T) {
 		Enabled:       true,
 		Signer:        challenge.NewSigner([]byte("s")),
 		ClientIP:      func(r *http.Request) string { return r.RemoteAddr },
-		VerifiedBotFn: func(_ netip.Addr, _ string) (bool, bool) { return true, false },
+		VerifiedBotFn: func(_ netip.Addr, _ string) vayushield.BotFastPath { return vayushield.BotVerified },
 	})
 	a.vayuShield.ApplySettings(vayushield.Settings{Enabled: true, Surge: true})
 
@@ -44,7 +44,7 @@ func TestShieldCanaryRealReadersAreNeverChallenged(t *testing.T) {
 		Enabled:       true,
 		Signer:        challenge.NewSigner([]byte("s")),
 		ClientIP:      func(r *http.Request) string { return r.RemoteAddr },
-		VerifiedBotFn: func(_ netip.Addr, _ string) (bool, bool) { return false, false },
+		VerifiedBotFn: func(_ netip.Addr, _ string) vayushield.BotFastPath { return vayushield.BotNotRecognised },
 	})
 	// The shipped defaults: classification on, no surge, no anti-DDoS gates.
 	a.vayuShield.ApplySettings(vayushield.Settings{
@@ -79,7 +79,7 @@ func TestShieldCanaryDetectsDeIndex(t *testing.T) {
 		ClientIP: func(r *http.Request) string { return r.RemoteAddr },
 		// Pretend nothing is a crawler: gate 0 never fast-paths, so under forced
 		// surge every crawler probe is challenged (503).
-		VerifiedBotFn: func(_ netip.Addr, _ string) (bool, bool) { return false, false },
+		VerifiedBotFn: func(_ netip.Addr, _ string) vayushield.BotFastPath { return vayushield.BotNotRecognised },
 	})
 	a.vayuShield.ApplySettings(vayushield.Settings{Enabled: true, Surge: true})
 

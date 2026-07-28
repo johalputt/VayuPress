@@ -138,21 +138,14 @@ type Config struct {
 	OffloadFn func(ip string, ttl time.Duration)
 
 	// VerifiedBotFn authoritatively classifies a request's (client IP, UA) as a
-	// legitimate crawler by IDENTITY, not by the spoofable UA string. It is the
-	// spoof-proof upgrade of the gate-0 SEO fast path:
-	//   - allow=true  → take the crawler fast path (IP-verified against the
-	//     vendor's published ranges / forward-confirmed reverse DNS, OR a
-	//     recognised crawler that cannot be disproved — the SEO-safe default so a
-	//     feed-fetch failure never de-indexes a real crawler).
-	//   - spoof=true  → the UA claims a crawler whose real network this IP is NOT;
-	//     do not fast-path, and do not let the UA earn a good-bot allow in the
-	//     classifier either — it falls to behavioural scoring.
-	//   - both false  → not a recognised crawler; handle normally.
+	// legitimate crawler by IDENTITY, not by the spoofable UA string. See
+	// BotFastPath for what each verdict earns.
+	//
 	// Optional; when nil the shield falls back to UA-only recognition
 	// (IsGoodBotCandidate). Must be cheap and non-blocking (see internal/
 	// vayushield/verifiedbot, which fronts everything with a sharded cache and
 	// runs reverse-DNS off the hot path).
-	VerifiedBotFn func(ip netip.Addr, ua string) (allow, spoof bool)
+	VerifiedBotFn func(ip netip.Addr, ua string) BotFastPath
 
 	// TrustedFn reports whether the request carries a valid OPERATOR login
 	// session (the admin console cookie — not the shield's own PoW cookie).
@@ -608,6 +601,44 @@ func ipOnly(s string) string {
 	return s
 }
 
+// BotFastPath is how much benefit the verified-bot recogniser's verdict earns.
+//
+// The distinction between BotVerified and BotUnprovable is the whole point of
+// this type, and collapsing the two was a bypass of the entire shield. Both used
+// to return a single allow=true, which took gate 0's `next.ServeHTTP; return` —
+// ahead of the blocklist, the reputation jail, load shedding, fair shedding, the
+// rate limiter and Sovereign Surge. BotUnprovable is reached by claiming one of
+// ~34 UA-only vendor strings from ANY address, by an in-flight FCrDNS lookup,
+// and — on a fresh boot, before the published-range feeds have loaded — by a
+// plain "Googlebot" UA from any address. So any client could opt out of every
+// gate by choosing a User-Agent.
+type BotFastPath uint8
+
+const (
+	// BotNotRecognised — not a crawler this build knows. Handle normally.
+	BotNotRecognised BotFastPath = iota
+
+	// BotVerified — identity confirmed against the vendor's published ranges or
+	// by forward-confirmed reverse DNS. Earns the full gate-0 fast path, because
+	// the identity is a fact about the network, not a claim in a string.
+	BotVerified
+
+	// BotUnprovable — a recognised crawler UA that can be neither confirmed nor
+	// disproved. Earns exemption from CHALLENGES ONLY.
+	//
+	// That is the actual SEO reason this path exists: a non-JS crawler cannot
+	// solve a proof-of-work, and a search engine reads sustained non-200s as a
+	// crawl error and de-indexes. It is NOT a reason to skip availability gates,
+	// which answer 429/503 with Retry-After — a back-off signal every real
+	// crawler handles correctly, and one an impostor gains nothing by receiving.
+	BotUnprovable
+
+	// BotSpoof — the UA claims a crawler whose real network this address is not.
+	// Earns nothing, and additionally forfeits the good-bot allow it would
+	// otherwise get from the classifier.
+	BotSpoof
+)
+
 // spoofSuspectKey marks a request whose User-Agent claims a crawler that the
 // verified-bot engine could not confirm (the IP is not the vendor's real
 // network). Decide reads it so the spoofed UA cannot short-circuit to a good-bot
@@ -963,13 +994,28 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 				// Spoof-proof path: identity is confirmed by published IP range /
 				// reverse DNS, not the UA string.
 				ipAddr, _ := netip.ParseAddr(ipKey)
-				allow, spoof := fn(ipAddr, r.UserAgent())
-				if allow {
+				switch fn(ipAddr, r.UserAgent()) {
+				case BotVerified:
+					// Identity is a fact about the network. Full fast path.
 					m.onEvent(ActionAllow, 0)
 					next.ServeHTTP(w, r)
 					return
-				}
-				if spoof {
+				case BotUnprovable:
+					// A crawler UA nobody can confirm or disprove gets NO fast path:
+					// it falls through to the blocklist, the jail, load shedding and
+					// the rate limiter like any other stranger. Those answer 429/503
+					// with Retry-After, which a real crawler backs off on and an
+					// impostor gains nothing from.
+					//
+					// Its protection from CHALLENGES is already provided further
+					// down, by Decide's TypeGoodBot branch: a recognised crawler UA
+					// returns ActionAllow there unless it is a spoof suspect. That is
+					// the correct place for it — the exemption belongs to "looks like
+					// a crawler", which is a classification question, not to "we
+					// could not verify it", which is an identity question. Verified
+					// by test: a Googlebot UA is served without a challenge with no
+					// special handling here.
+				case BotSpoof:
 					// A UA claiming a crawler from an IP that is not the vendor's —
 					// strip its good-bot benefit for the rest of the pipeline.
 					r = r.WithContext(withSpoofSuspect(r.Context()))
