@@ -6,6 +6,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **The VayuOS console requested three fonts that have never existed.**
+  `admin-os.css` declared `@font-face` for `space-grotesk.woff2`, `inter.woff2`
+  and `jetbrains-mono.woff2` under `/os/static/fonts/`. None of those files is in
+  this repository, embedded in any binary, or placed by any deploy script — so
+  every console page load fired three 404s and fell through to the system font
+  stack.
+
+  It stayed invisible for the obvious reason: a missing web font is silent. The
+  browser just uses the next family in the stack, so the panel looked correct
+  while wasting three requests per load.
+
+  The route serving them read from `STATIC_DIR` on disk with **no embedded
+  fallback**, unlike `serveAdminOSAsset` — which is why the console's CSS and JS
+  survived a binary-only update and the fonts did not. That route is removed.
+  Space Grotesk, the brand face, now loads the three weights the public theme
+  already embeds and allowlists at `/static/fonts`, so it works on every install
+  and adds no bytes. Inter and JetBrains Mono are dropped: putting ~200 KB of
+  typefaces inside a single-binary product to restyle an admin panel that already
+  reads correctly is the wrong trade, and both family names stay first in their
+  stacks so a locally-installed copy is still used.
+
+  Two gates now check it — every `url()` in the console CSS must resolve to a
+  font `handleStaticFont` actually allowlists, and each font stack must keep a
+  real system fallback.
+
+---
+
 ## [3.15.89] — 2026-07-28
 
 One plan, one release: make trending count the traffic it was missing, and stop a

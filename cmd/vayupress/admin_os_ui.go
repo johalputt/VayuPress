@@ -115,24 +115,19 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-website.js", serveAdminOSAsset("js/admin-os-website.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/purify.min.js", serveAdminOSAsset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
-	// Fonts — path-traversal prevented by switch allowlist (same pattern as v2).
-	r.Get("/os/static/fonts/{file}", func(w http.ResponseWriter, req *http.Request) {
-		var canon string
-		switch chi.URLParam(req, "file") {
-		case "space-grotesk.woff2":
-			canon = "space-grotesk.woff2"
-		case "inter.woff2":
-			canon = "inter.woff2"
-		case "jetbrains-mono.woff2":
-			canon = "jetbrains-mono.woff2"
-		default:
-			http.NotFound(w, req)
-			return
-		}
-		w.Header().Set("Content-Type", "font/woff2")
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		http.ServeFile(w, req, filepath.Join(adminOSStaticDir(), "fonts", canon))
-	})
+	// Fonts are NOT served from /os. This route used to allowlist three names —
+	// space-grotesk.woff2, inter.woff2, jetbrains-mono.woff2 — and read them from
+	// STATIC_DIR on disk. None of those files exists in this repository or in any
+	// binary, so the route could only ever 404, and admin-os.css referenced all
+	// three: every console page load fired three failed requests and silently fell
+	// back to the system font stack.
+	//
+	// Unlike serveAdminOSAsset it had no embedded fallback, which is why the CSS
+	// and JS survived a binary-only update and the fonts did not. Rather than ship
+	// ~200 KB of typefaces inside a single-binary product to fix cosmetics that
+	// already looked right, admin-os.css now points at the Space Grotesk weights
+	// the public theme already embeds (/static/fonts, handleStaticFont) and leaves
+	// the rest to the system stack.
 
 	// Country flag SVGs (flag-icons, MIT) compiled into the binary and served
 	// on demand from /os/static/flags/<cc>.svg. Path-traversal is impossible:

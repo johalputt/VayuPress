@@ -6,24 +6,20 @@
    ============================================================ */
 
 /* ── Fonts ─────────────────────────────────────────────────── */
-@font-face {
-  font-family: "Space Grotesk";
-  src: url("/os/static/fonts/space-grotesk.woff2") format("woff2");
-  font-weight: 300 700;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Inter";
-  src: url("/os/static/fonts/inter.woff2") format("woff2");
-  font-weight: 300 700;
-  font-display: swap;
-}
-@font-face {
-  font-family: "JetBrains Mono";
-  src: url("/os/static/fonts/jetbrains-mono.woff2") format("woff2");
-  font-weight: 400 700;
-  font-display: swap;
-}
+/* Space Grotesk — the brand face, served from the SAME embedded files the public
+   theme uses (internal/theme/vayu.css). These three weights are compiled into the
+   binary and allowlisted at /static/fonts, so they work on every install.
+
+   This previously pointed at /os/static/fonts/space-grotesk.woff2 — a file that
+   exists nowhere in the repo and is embedded in no binary, so every console page
+   load fired a 404 and fell through to the system stack. Inter and JetBrains Mono
+   were declared the same way and are gone entirely: shipping ~200 KB of fonts
+   inside a single-binary product to restyle an admin panel that already reads
+   correctly is the wrong trade, and their family names stay first in the stacks
+   below so anyone who has them installed locally still gets them. */
+@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 500; font-display: swap; src: url("/static/fonts/space-grotesk-latin-500.woff2") format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 600; font-display: swap; src: url("/static/fonts/space-grotesk-latin-600.woff2") format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 700; font-display: swap; src: url("/static/fonts/space-grotesk-latin-700.woff2") format("woff2"); }
 
 /* ── Design Tokens ──────────────────────────────────────────── */
 .vp-os {
