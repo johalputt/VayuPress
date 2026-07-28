@@ -888,45 +888,86 @@
         </p>
       </header>
 
+      <!-- Measured proof, not claims — the numbers behind the table below. -->
+      <div data-reveal class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-10 sm:mb-12">
+        <template x-for="p in compareProof" :key="p.l">
+          <div class="rounded-2xl border border-teal-400/[0.18] bg-teal-400/[0.04] p-5">
+            <div class="font-display text-2xl sm:text-3xl font-bold text-teal-300 tracking-tight" x-text="p.n"></div>
+            <div class="mt-1.5 text-sm text-gray-300 leading-snug" x-text="p.l"></div>
+            <div class="mt-1 text-xs text-gray-500 leading-snug" x-text="p.s"></div>
+          </div>
+        </template>
+      </div>
+      <p data-reveal class="-mt-6 sm:-mt-8 mb-10 sm:mb-12 text-sm text-gray-400">
+        Measured on a live install you can open and re-test yourself —
+        <a href="https://johal.in" target="_blank" rel="noopener"
+           class="text-teal-400 hover:text-teal-300 underline underline-offset-4 decoration-teal-400/30">johal.in</a>,
+        running this binary with a quarter of a million posts on one small VPS
+        that also serves a second domain and a full mail server.
+      </p>
+
       <div data-reveal class="overflow-x-auto rounded-2xl border border-white/[0.08]">
-        <table class="w-full text-left border-collapse min-w-[640px]">
+        <table class="w-full text-left border-collapse min-w-[680px]">
           <thead>
             <tr class="bg-white/[0.03]">
-              <th class="py-4 px-5 text-sm font-semibold text-gray-300">Capability</th>
+              <th class="py-4 px-5 text-sm font-semibold text-gray-300 sticky left-0 bg-ink-950/95 backdrop-blur-sm z-10">Capability</th>
               <template x-for="(c, ci) in compareCols" :key="c">
-                <th class="py-4 px-5 text-sm font-semibold"
-                    :class="ci === 0 ? 'text-teal-300' : 'text-gray-400'"
+                <th class="py-4 px-5 text-sm font-semibold whitespace-nowrap"
+                    :class="ci === 0 ? 'text-teal-300 bg-teal-400/[0.06]' : 'text-gray-400'"
                     x-text="c"></th>
               </template>
             </tr>
           </thead>
-          <tbody>
-            <template x-for="(row, ri) in compareRows" :key="row.f">
-              <tr class="border-t border-white/[0.05] hover:bg-white/[0.02] transition-colors">
-                <td class="py-3.5 px-5 text-sm text-gray-300" x-text="row.f"></td>
-                <template x-for="(val, vi) in row.v" :key="vi">
-                  <td class="py-3.5 px-5 text-sm"
-                      :class="vi === 0 ? 'font-medium' : ''">
-                    <span x-show="val === 'yes'" class="inline-flex items-center gap-1.5"
-                          :class="vi === 0 ? 'text-teal-300' : 'text-emerald-400/80'">
-                      <span aria-hidden="true">✓</span><span x-text="vi === 0 ? 'Built in' : 'Yes'"></span>
-                    </span>
-                    <span x-show="val === 'no'" class="text-gray-600">—</span>
-                    <span x-show="val === 'partial'" class="text-amber-400/80">Partial</span>
-                    <span x-show="val === 'plugin'" class="text-amber-400/70">Plugin</span>
-                    <span x-show="val === 'hosted-only'" class="text-amber-400/70">Hosted only</span>
-                    <span x-show="val === 'n/a'" class="text-gray-600">n/a</span>
-                  </td>
+          <template x-for="grp in compareGroups" :key="grp.g">
+            <tbody>
+                <tr class="border-t border-white/[0.05]">
+                  <th :colspan="compareCols.length + 1" scope="colgroup"
+                      class="py-2.5 px-5 text-left text-[11px] font-mono uppercase tracking-[0.18em] text-teal-400/70 bg-white/[0.02]"
+                      x-text="grp.g"></th>
+                </tr>
+                <template x-for="row in grp.rows" :key="row.f">
+                  <tr class="border-t border-white/[0.05] hover:bg-white/[0.02] transition-colors">
+                    <td class="py-3.5 px-5 text-sm text-gray-300 sticky left-0 bg-ink-950/95 backdrop-blur-sm z-10" x-text="row.f"></td>
+                    <template x-for="(val, vi) in row.v" :key="vi">
+                      <td class="py-3.5 px-5 text-sm"
+                          :class="vi === 0 ? 'font-medium bg-teal-400/[0.045]' : ''">
+                        <span x-show="val === 'yes'" class="inline-flex items-center gap-1.5"
+                              :class="vi === 0 ? 'text-teal-300' : 'text-emerald-400/80'">
+                          <span aria-hidden="true">✓</span><span x-text="vi === 0 ? 'Built in' : 'Yes'"></span>
+                        </span>
+                        <span x-show="val === 'none'" class="text-teal-300 font-medium">None</span>
+                        <span x-show="val === 'several'" class="text-amber-400/80">Several</span>
+                        <span x-show="val === 'no'" class="text-gray-600">—</span>
+                        <span x-show="val === 'partial'" class="text-amber-400/80">Partial</span>
+                        <span x-show="val === 'plugin'" class="text-amber-400/70">Plugin</span>
+                        <span x-show="val === 'hosted-only'" class="text-amber-400/70">Hosted only</span>
+                        <span x-show="val === 'n/a'" class="text-gray-600">n/a</span>
+                      </td>
+                    </template>
+                  </tr>
                 </template>
-              </tr>
+              </tbody>
             </template>
-          </tbody>
         </table>
       </div>
-      <p class="mt-5 text-xs text-gray-500 font-mono" data-reveal>
-        Comparison reflects out-of-the-box, self-hosted defaults. WordPress/Ghost
-        capabilities marked “Plugin” are achievable via third-party extensions;
-        Substack is hosted-only and not self-hostable.
+
+      <div data-reveal class="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-gray-500">
+        <template x-for="l in compareLegend" :key="l.k">
+          <span class="inline-flex items-center gap-1.5">
+            <span class="font-medium"
+                  :class="l.k === 'yes' ? 'text-emerald-400/80' : (l.k === 'no' ? 'text-gray-600' : 'text-amber-400/80')"
+                  x-text="l.k === 'yes' ? '✓ Yes' : (l.k === 'no' ? '— No' : (l.k === 'partial' ? 'Partial' : (l.k === 'plugin' ? 'Plugin' : 'Hosted only')))"></span>
+            <span x-text="l.t"></span>
+          </span>
+        </template>
+      </div>
+
+      <p class="mt-4 text-xs text-gray-500 font-mono leading-relaxed" data-reveal>
+        Compares out-of-the-box, self-hosted defaults as of July 2026 — not what
+        each platform can be made to do with enough work. Rows marked “Plugin”
+        are achievable via third-party extensions; Substack is hosted-only and
+        not self-hostable, so infrastructure rows read n/a. Corrections welcome
+        on GitHub.
       </p>
     </div>
   </section>

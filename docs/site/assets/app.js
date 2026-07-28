@@ -449,18 +449,51 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
 
     /* ── How VayuPress compares ── */
     compareCols: ['VayuPress', 'WordPress', 'Ghost', 'Substack'],
-    compareRows: [
-      { f:'Single self-contained binary',       v:['yes','no','no','n/a'] },
-      { f:'Website + blog + mail on one domain', v:['yes','partial','no','no'] },
-      { f:'Your data in your own SQLite file',  v:['yes','partial','partial','no'] },
-      { f:'Native mail server built in (DKIM)', v:['yes','no','no','no'] },
-      { f:'IMAP/POP3 + official mobile app',    v:['yes','no','no','no'] },
-      { f:'End-to-end PGP encryption + WKD',    v:['yes','no','no','no'] },
-      { f:'Zero reader-side trackers / cookies', v:['yes','no','partial','no'] },
-      { f:'Offline analytics — no external GeoIP', v:['yes','plugin','partial','partial'] },
-      { f:'Memberships & paywalls, no SDK lock-in', v:['yes','plugin','yes','hosted-only'] },
-      { f:'Local-LLM AI assistant (no cloud)',  v:['yes','no','no','no'] },
-      { f:'Apache-2.0, self-hostable, no SaaS lock-in', v:['yes','yes','yes','no'] },
+
+    /* Measured on a live install (johal.in), not a staged benchmark. These are
+       the numbers behind the table: anyone can re-run them against the site. */
+    compareProof: [
+      { n:'234,477', l:'posts in one SQLite file', s:'on a single small VPS' },
+      { n:'156 ms',  l:'time to first byte',       s:'measured from Iowa' },
+      { n:'100',     l:'PageSpeed, desktop',       s:'all four categories, every run' },
+      { n:'13%',     l:'of the machine’s RAM',     s:'while serving all of it' },
+    ],
+
+    compareGroups: [
+      { g:'Sovereignty & your data', rows:[
+        { f:'Single self-contained binary',              v:['yes','no','no','n/a'] },
+        { f:'Your data in your own SQLite file',         v:['yes','partial','partial','no'] },
+        { f:'Apache-2.0, self-hostable, no SaaS lock-in',v:['yes','yes','yes','no'] },
+        { f:'Plain export, no proprietary format',       v:['yes','partial','yes','partial'] },
+      ]},
+      { g:'Built in — not a plugin, not a tier', rows:[
+        { f:'Website + blog + mail on one domain',       v:['yes','partial','no','no'] },
+        { f:'Native mail server (SMTP/IMAP/POP3, DKIM)', v:['yes','no','no','no'] },
+        { f:'Official mobile mail app',                  v:['yes','no','no','no'] },
+        { f:'End-to-end PGP encryption + WKD discovery', v:['yes','no','no','no'] },
+        { f:'Ephemeral end-to-end encrypted chat',       v:['yes','no','no','no'] },
+        { f:'One-click Tor .onion for every domain',     v:['yes','no','no','no'] },
+        { f:'MCP server for AI clients & agents',        v:['yes','no','no','no'] },
+        { f:'Bot shield & anti-DDoS at your own origin', v:['yes','plugin','no','n/a'] },
+        { f:'Cookieless analytics — no external GeoIP',  v:['yes','plugin','partial','partial'] },
+        { f:'Memberships & paywalls, no SDK lock-in',    v:['yes','plugin','yes','hosted-only'] },
+      ]},
+      { g:'Running it in production', rows:[
+        { f:'Zero reader-side trackers or cookies',      v:['yes','no','partial','no'] },
+        { f:'Signed releases + one-click self-update',   v:['yes','partial','partial','n/a'] },
+        { f:'Encrypted backups with automatic restore drills', v:['yes','plugin','partial','n/a'] },
+        { f:'Services to run alongside it',              v:['none','several','several','n/a'] },
+      ]},
+    ],
+
+    /* Legend for the cell vocabulary above — rendered under the table so the
+       shorthand is never left to inference. */
+    compareLegend: [
+      { k:'yes',         t:'Built in and on by default' },
+      { k:'partial',     t:'Possible, but not out of the box' },
+      { k:'plugin',      t:'Needs a third-party extension' },
+      { k:'hosted-only', t:'Only on the vendor’s hosted tier' },
+      { k:'no',          t:'Not available' },
     ],
 
     steps: [
