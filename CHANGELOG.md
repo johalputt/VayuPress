@@ -8,6 +8,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **Brotli and HTTP/3 in the nginx template.** An install that fronts VayuPress
+  with a CDN gets both for free and never notices; the moment it stops doing so,
+  they disappear. `deploy/nginx-vayupress.conf` had `gzip` at level 6 and HTTP/2
+  only, so going CDN-free meant silently giving up roughly 15–20% on the wire for
+  text and losing QUIC's loss recovery on mobile links.
+
+  Both ship **commented out with enable instructions**, deliberately. Brotli needs
+  a module that is not installed by default and HTTP/3 needs nginx ≥ 1.25 built
+  with the v3 module; an unknown directive is a hard `nginx -t` failure, not a
+  warning, and a failed test means the next reload silently does nothing — which
+  is how a bad template becomes an expired certificate weeks later. The QUIC block
+  documents the two things that actually catch people out: `reuseport` may appear
+  only once per address:port in the whole config, and UDP/443 has to be open or
+  clients quietly fall back to HTTP/2.
+
+  `gzip` gains a 256-byte floor and now covers SVG, the web manifest, RSS and
+  Atom.
+
+### Changed
+- **OCSP stapling removed from the nginx template.** Let's Encrypt has retired its
+  OCSP responders, so their certificates carry no responder URL and nginx logged
+  `"ssl_stapling" ignored…` on every config test and every reload. Stapling
+  nothing costs no security; training operators to scroll past nginx warnings
+  does.
+
+- Four tests now gate the deploy templates: braces balance, the optional
+  directives stay commented, no stapling directive returns, and `gzip` keeps
+  covering the types VayuPress serves. They also assert the Brotli and QUIC
+  blocks remain **present as documentation**, so nobody "tidies up" the only
+  path a self-hosted install has back to what the CDN was providing.
+
 ### Fixed
 - **Trending silently dropped every view recorded with a trailing slash.** Both
   trending queries joined the analytics path to the article slug with
