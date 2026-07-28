@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -70,7 +71,8 @@ func TestInstallHealthCoversEveryRequirement(t *testing.T) {
 // header is what makes that detectable.
 func TestIconSizeCheckCatchesAMismatch(t *testing.T) {
 	// The real 192 icon, checked against a claim of 512.
-	b, _ := webAppIconBytes("/static/icons/webapp-192.png")
+	// A zero App has no settings store, so this is the embedded-default branch.
+	b, _ := (&App{}).webAppIconBytes(context.Background(), "/static/icons/webapp-192.png")
 	w, h, ok := pngSize(b)
 	if !ok {
 		t.Fatal("the embedded 192 icon is not a readable PNG")

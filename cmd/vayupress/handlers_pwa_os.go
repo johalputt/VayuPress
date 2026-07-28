@@ -31,14 +31,32 @@ var osIconMaskablePNG []byte
 var osIconApplePNG []byte
 
 // handleOSManifest returns the Web App Manifest for the VayuOS console, so the
-// browser offers "Install app" and the installed app opens straight into /os.
+// browser offers "Install app" and the installed app opens straight into /os/.
+//
+// START_URL MUST END IN A SLASH, and that is not cosmetic — it is the difference
+// between a real installed app and an icon that vanishes on the next reboot.
+//
+// This manifest declared start_url "/os" against scope "/os/". Scope matching is
+// a plain prefix test on the serialised URL, and "/os" does not begin with
+// "/os/", so the start URL sat OUTSIDE its own scope. Two things followed. The
+// service worker, registered with scope "/os/" (admin-os.js), could not control
+// "/os" either — and Chrome's installability check requires a worker that
+// controls the start URL. Failing it does not surface an error: the browser
+// silently downgrades "Install" to a legacy home-screen shortcut, which lives in
+// the launcher's database rather than as a package, and is routinely discarded
+// when the device restarts. That is precisely the "my app disappeared after a
+// reboot" report, and nothing in the install flow hints at which one you got.
+//
+// "id" deliberately stays "/os". Identity is independent of start_url and has no
+// scope requirement, so keeping it preserves the app's identity for any install
+// that did survive rather than orphaning it as a second app.
 func (a *App) handleOSManifest(w http.ResponseWriter, r *http.Request) {
 	manifest := map[string]any{
 		"id":               "/os",
 		"name":             "VayuOS",
 		"short_name":       "VayuOS",
 		"description":      "Your sovereign console — mail, chat, site, security and more, in one app.",
-		"start_url":        "/os",
+		"start_url":        "/os/",
 		"scope":            "/os/",
 		"display":          "standalone",
 		"display_override": []string{"standalone", "minimal-ui"},

@@ -9,6 +9,77 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Fixed
+- **The installed VayuOS app vanished after a phone restart.** The console's
+  manifest declared `start_url: "/os"` against `scope: "/os/"`. Scope matching is
+  a plain prefix test on the serialised URL, and `/os` does not begin with
+  `/os/`, so the start URL sat outside its own scope.
+
+  Two things followed, neither of them visible. The service worker — registered
+  with scope `/os/` — could not control `/os` either, and Chrome's installability
+  check requires a worker that controls the start URL. Failing it raises no
+  error: the browser silently downgrades "Install" from minting a real Android
+  package to creating a legacy launcher shortcut, which lives in the launcher's
+  database rather than on disk as a package and is routinely discarded when the
+  device restarts. Nothing in the install flow says which of the two you got —
+  you find out weeks later, when the icon is gone.
+
+  `start_url` is now `/os/`, and `/os/` is routed to the dashboard directly
+  rather than redirecting to `/os`: the installability check follows the start
+  URL, and answering it with a 30x is itself what a shortcut-only install looks
+  like from the browser's side. `id` deliberately stays `/os`, because identity
+  is independent of `start_url` — keeping it preserves any install that did
+  survive instead of orphaning it as a second app.
+
+  A shortcut cannot upgrade itself into a real package, so anyone whose VayuOS
+  icon has been disappearing needs to remove it from the home screen once and
+  re-add it after this release.
+
+  The existing test asserted `start_url == "/os"` and `scope == "/os/"` — the
+  exact broken pair — so it locked the bug in rather than catching it. It now
+  asserts the invariant instead: the start URL must sit inside the scope, whatever
+  the two are set to. A second test pins that `/os/` is actually routed.
+
+- **Installing a site put the VayuPress mark on the home screen instead of the
+  site's own logo.** The public manifest already took its name and description
+  from site settings, but its icons pointed at the embedded VayuPress brand
+  assets and nothing consulted the operator's uploaded logo. The installed app is
+  the operator's site, so it must wear the operator's identity. (The VayuOS
+  console app is the opposite case and deliberately keeps the VayuPress mark —
+  that app *is* VayuPress, and its icons are untouched.)
+
+  The uploaded logo is now decoded once and re-rendered to the exact square each
+  icon URL declares, rather than being passed through. That matters: the manifest
+  promises a 192 and a 512, Android mints a package from what it is promised, and
+  an upload is typically a small favicon. Serving 64×64 bytes at a URL claiming
+  512×512 leaves the launcher rescaling whatever it gets, and an icon below 192
+  fails installability outright — which lands right back on the shortcut-that-a-
+  reboot-deletes failure above.
+
+  The maskable icon is generated separately and deliberately, because Android
+  crops a maskable icon to its own shape: it is drawn at 80% on an opaque
+  backdrop, so a transparent or edge-to-edge logo does not get its own edges
+  clipped. The plain icons keep their transparency, since the launcher composites
+  those itself.
+
+  The override happens at the serving layer, so the manifest, the HTML `<link>`
+  tags and the minting server all keep their fixed URLs. Renders are cached
+  keyed on a hash of the source bytes, so replacing the logo invalidates every
+  derived size at once — a stale icon would otherwise stay invisible until
+  somebody reinstalled. Neither branch is cached immutable, including the
+  embedded default: a browser that cached an immutable default would keep it for
+  a year and never notice a later upload, so the new logo would appear to do
+  nothing.
+
+  ICO and WebP uploads have no decoder in the standard library, so those keep the
+  embedded mark for the app icon rather than pulling in a dependency for two
+  formats; they still work everywhere the raw bytes are served. Any icon route
+  that failed would break installability rather than degrade, so every path
+  writes something.
+
+  The install-health card (`/os` → PWA health) reads through the same path, so it
+  reports on the bytes actually served. Reading only the embedded asset would have
+  shown a green "every icon matches its declared size" for bytes nobody receives.
+
 - **The marketing site advertised the wrong VayuMCP address.** Two places on
   vayupress.com named it `mcp.yourdomain.com`, while every other surface — the
   console, the docs, the installer, the ADRs — says `<your-domain>/mcp`.

@@ -175,6 +175,13 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 
 		// Pages
 		pr.Get("/os", a.handleOSDashboard)
+		// "/os/" serves the dashboard directly rather than redirecting to "/os".
+		// It is the installed app's start_url, and it has to be inside the service
+		// worker's "/os/" scope for the browser to mint a real app instead of a
+		// shortcut (see handleOSManifest). A redirect here would not do: the
+		// installability check follows the start URL, and answering it with a 30x
+		// is what a shortcut-only install looks like from the browser's side.
+		pr.Get("/os/", a.handleOSDashboard)
 		pr.Get("/os/change-password", a.handleOSChangePassword)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/change-password", a.handleOSChangePasswordSubmit)
 		pr.Get("/os/posts", a.handleOSPosts)

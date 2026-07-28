@@ -146,10 +146,15 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// degrades to a launcher shortcut that a device restart can discard.
 	r.Get("/static/js/pwa.js", a.handlePWARegisterJS)
 	// Public web-app icons (a real 192, a real 512, and a padded maskable 512).
-	r.Get("/static/icons/webapp-192.png", servePNG(webAppIcon192PNG))
-	r.Get("/static/icons/webapp-512.png", servePNG(webAppIcon512PNG))
-	r.Get("/static/icons/webapp-maskable-512.png", servePNG(webAppIconMaskablePNG))
-	r.Get("/static/icons/webapp-apple-180.png", servePNG(webAppIconApplePNG))
+	// These serve the OPERATOR's uploaded logo, rendered to the exact size the
+	// manifest promises, falling back to the embedded mark when none is set: the
+	// installed app is the operator's site, so it must wear the site's identity,
+	// not the software's. (The VayuOS console app is the opposite case and keeps
+	// its own mark — see handlers_pwa_os.go.)
+	r.Get("/static/icons/webapp-192.png", a.serveAppIcon(192, false, webAppIcon192PNG))
+	r.Get("/static/icons/webapp-512.png", a.serveAppIcon(512, false, webAppIcon512PNG))
+	r.Get("/static/icons/webapp-maskable-512.png", a.serveAppIcon(512, true, webAppIconMaskablePNG))
+	r.Get("/static/icons/webapp-apple-180.png", a.serveAppIcon(180, false, webAppIconApplePNG))
 	// Favicon routes serve the operator's uploaded brand mark when one is stored
 	// (see /admin/theme branding), falling back to the embedded default per scheme.
 	r.Get("/static/favicon-dark.png", a.serveFavicon(faviconDarkPNG))

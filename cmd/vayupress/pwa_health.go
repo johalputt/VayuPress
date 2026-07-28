@@ -26,6 +26,7 @@ package main
 // the manifest survive the round trip through the CDN — are only knowable there.
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"html"
@@ -130,7 +131,7 @@ func (a *App) pwaHealthChecks(r *http.Request) []pwaCheck {
 	iconDetail := []string{}
 	iconsOK := true
 	for _, ic := range m.Icons {
-		body, served := webAppIconBytes(ic.Src)
+		body, served := a.webAppIconBytes(r.Context(), ic.Src)
 		if !served {
 			iconsOK = false
 			iconDetail = append(iconDetail, ic.Src+" is not served by this build")
@@ -202,26 +203,40 @@ func (a *App) pwaHealthChecks(r *http.Request) []pwaCheck {
 	return out
 }
 
-// webAppIconBytes returns the bytes this build serves for a manifest icon URL.
-// Reading the embedded asset is the honest check: it is literally what the route
-// writes, so a mismatch here is a mismatch on the wire.
+// webAppIconBytes returns the bytes this install serves for a manifest icon URL.
+// Reading what the route would write is the honest check: a mismatch here is a
+// mismatch on the wire.
+//
+// It asks customAppIcon FIRST, for exactly that reason. Once the icon routes
+// began serving the operator's uploaded logo rendered to size, reading only the
+// embedded asset would have checked bytes nobody is served — and it would have
+// reported a green "every icon matches its declared size" while the launcher was
+// being handed something else. Any breakage in the render path now surfaces here
+// instead of on somebody's home screen.
 //
 // It deliberately does NOT prove the same bytes survive a CDN or reverse proxy in
 // front of the origin — that is what the browser-side probe is for, and it is a
 // real failure mode: an edge challenging /manifest.json breaks installation while
 // the origin itself looks perfect.
-func webAppIconBytes(src string) ([]byte, bool) {
+func (a *App) webAppIconBytes(ctx context.Context, src string) ([]byte, bool) {
+	var fallback []byte
+	size, maskable := 0, false
 	switch src {
 	case "/static/icons/webapp-192.png":
-		return webAppIcon192PNG, true
+		fallback, size = webAppIcon192PNG, 192
 	case "/static/icons/webapp-512.png":
-		return webAppIcon512PNG, true
+		fallback, size = webAppIcon512PNG, 512
 	case "/static/icons/webapp-maskable-512.png":
-		return webAppIconMaskablePNG, true
+		fallback, size, maskable = webAppIconMaskablePNG, 512, true
 	case "/static/icons/webapp-apple-180.png":
-		return webAppIconApplePNG, true
+		fallback, size = webAppIconApplePNG, 180
+	default:
+		return nil, false
 	}
-	return nil, false
+	if b := a.customAppIcon(ctx, size, maskable); len(b) > 0 {
+		return b, true
+	}
+	return fallback, true
 }
 
 // pwaHealthCardHTML renders the checklist in the console's accordion grammar.
