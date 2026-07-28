@@ -6,7 +6,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.90] — 2026-07-28
+
+Two things that were wrong in the same way: both reported a clean state while
+something was quietly failing. A console requesting fonts that do not exist looks
+correct because a missing web font is silent, and a panel measuring the
+administrator's own connection reads like a measurement of the site.
+
+The proxy-advisory fix corrects a defect introduced one release earlier, in
+v3.15.89. That is the honest framing — the previous release removed a hardcoded
+false claim and replaced it with a measurement that fails in the same direction
+under conditions administrators meet routinely.
 
 ### Fixed
 - **The hardening panel judged the whole site by the administrator's own
