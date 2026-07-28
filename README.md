@@ -29,6 +29,8 @@
 
 ## About
 
+> **Live install:** **[johal.in](https://johal.in)** — **234,477 posts**, **100 across Performance, Accessibility, Best Practices and SEO**, 2 domains and a full mail server, all on **one Contabo VPS 10**. [See the numbers →](#running-in-production--johalin)
+
 **Vayu** is Sanskrit for *wind* — the invisible force that moves everything and is owned by no one. VayuPress moves your online presence the same way: entirely under your control, seen by no third party.
 
 VayuPress began as a publishing engine. It is now a **complete sovereign platform** —
@@ -239,6 +241,70 @@ VayuPress is a single Go binary and a single SQLite database. There is no second
 ```
 
 Under the hood: an **immutable platform kernel** (Ed25519 article signing, checksum-verified migrations, transactional event outbox, WORM audit log, a policy engine and six adaptive system modes), an async SQLite write queue with dead-letter replay, sandboxed out-of-process plugins with seccomp + capability enforcement, and full observability (structured logs, tracing, SLO error budgets). Architecture and every decision are recorded in [`docs/`](docs/) and the [ADR registry](docs/adr/).
+
+---
+
+## Running in production — [johal.in](https://johal.in)
+
+Benchmarks are easy to stage. This is a live install you can open right now and check yourself.
+
+| | |
+|---|---|
+| **Site** | **[johal.in](https://johal.in)** — a working blog, publicly reachable |
+| **Published posts** | **234,477** in one SQLite database |
+| **Hardware** | A single **Contabo VPS&nbsp;10** — one box, nothing else |
+| **Running on it** | 2 domains **+** a full mail server **+** the blog |
+| **Version** | VayuPress `3.15.87` — the current release |
+
+### Google PageSpeed Insights
+
+Not just performance — all four categories, on **both** mobile and desktop:
+
+| Category | Mobile | Desktop |
+|---|---|---|
+| **Performance** | 99–100 | **100** |
+| **Accessibility** | **100** | **100** |
+| **Best Practices** | **100** | **100** |
+| **SEO** | **100** | **100** |
+| Agentic Browsing | 2/2 | 2/2 |
+
+Core Web Vitals behind those scores:
+
+| Metric | Mobile | Desktop |
+|---|---|---|
+| First Contentful Paint | 1.2–1.3 s | **0.3 s** |
+| Largest Contentful Paint | 1.5–1.7 s | **0.3 s** |
+| Total Blocking Time | 0–60 ms | **0 ms** |
+| Cumulative Layout Shift | 0–0.004 | 0.003–0.005 |
+
+An article page ships **21.8 KiB of JavaScript in total** — all of it first-party, from the origin.
+
+Ranges rather than headline numbers, because that is what you will actually see. Measured across the homepage and two article pages over two days: **desktop sits at 100 on every category, every run**; mobile Performance lands at 99 or 100 depending on the run, and Accessibility, Best Practices and SEO were 100 on every single run of both.
+
+### Cloudflare synthetic monitoring — the server-side number
+
+A second, independent Lighthouse run (Cloudflare Synthetic Monitoring, from Iowa, USA) scores **100 on both mobile and desktop**, and reports the metric that matters most for the architecture claim:
+
+| Metric | Mobile | Desktop |
+|---|---|---|
+| **Time to First Byte** | **161 ms** | **156 ms** |
+| Time to Interactive | 1,492 ms | **391 ms** |
+| Total Blocking Time | 29 ms | **0 ms** |
+| Cumulative Layout Shift | **0** | **0** |
+
+**156 ms to first byte, from Iowa to a single VPS, with 234,477 posts in SQLite.** That is the answer to the scaling objection stated as a number: the database is not the bottleneck, and at this size it is not close to being one.
+
+Three things worth drawing out.
+
+**234,477 posts on SQLite, on one small VPS.** "SQLite doesn't scale" is the most common objection to this architecture, and this is the answer to it: a quarter of a million articles, served from a single file, on hardware that costs less per month than most managed-database add-ons. WAL mode, prepared statements and an async write queue do the work — details in [One binary, by design](#one-binary-by-design) above.
+
+**Everything on one box.** The same VPS terminates TLS for two domains, runs the mail server (SMTP/IMAP/POP3, DKIM, WKD) and serves the blog — from one binary and one database. No managed Postgres, no Redis, no separate mail provider, no CDN origin shield.
+
+**0 ms blocking time is a design outcome, not a tuning trick.** There is no third-party analytics, no tag manager, no font CDN and no tracking pixel to block on, because the platform ships its own analytics and serves every byte from your origin under a strict `style-src 'self'` policy. The pages are fast largely because nothing else is invited onto them.
+
+Open it, run your own test, browse the archive. That is the entire pitch, deployed.
+
+> Measured 27–28 July 2026 by two independent tools — Google PageSpeed Insights across three URLs, and Cloudflare Synthetic Monitoring from Iowa, USA. Post count and version read live from the site's own API. Your numbers will depend on your content, VPS and network.
 
 ---
 
