@@ -55,6 +55,13 @@ func safeOutboundTransport() *http.Transport {
 func realIPMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.RemoteAddr = auth.ClientIP(r)
+		// Record whether this request came through a CDN, so the hardening panel
+		// can answer "is this SITE proxied?" rather than only "did the request I
+		// am serving come through a proxy?". Those differ exactly when an operator
+		// reaches the console via a hosts entry pointing at the origin — common
+		// practice, and the reason the panel once told a proxied site that nothing
+		// was in front of it. Rate-limited internally to near-zero cost.
+		noteCDNObservation(r)
 		next.ServeHTTP(w, r)
 	})
 }

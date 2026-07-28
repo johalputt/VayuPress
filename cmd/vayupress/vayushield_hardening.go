@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/settings"
@@ -188,10 +189,67 @@ var shieldCDNVendors = []struct{ header, vendor string }{
 	{"CDN-Loop", "a proxy"}, // RFC 8586 — the standard, vendor-neutral marker
 }
 
-// shieldDetectCDN reports whether this request arrived through a CDN proxy, and
-// which one. It reads the live request rather than a stored setting, because the
-// setting records what the operator BELIEVES and this has to report what is
-// actually happening.
+// cdnSeenUnix / cdnSeenVendor record the last time ANY request arrived through a
+// proxy. This is the signal that answers the question the panel actually needs
+// answered — "is this SITE proxied?" — as opposed to "did the request I am
+// currently serving come through a proxy?", which is all the headers can tell us.
+//
+// The two differ precisely when an administrator reaches the console another way,
+// and that is not an edge case: pointing a hosts entry at the origin so the panel
+// stays reachable when the CDN is having a bad day is ordinary practice. The one
+// person guaranteed to read this notice is therefore the one most likely to be
+// bypassing the edge, which is how the first version of this came to tell a
+// Cloudflare-proxied site that nothing was in front of it.
+var (
+	cdnSeenUnix   atomic.Int64
+	cdnSeenVendor atomic.Value // string
+)
+
+// cdnObservationTTL bounds how long an observation stays meaningful. Long enough
+// that a quiet site does not forget between visits to the panel, short enough
+// that turning a proxy off is noticed within a day.
+const cdnObservationTTL = 24 * time.Hour
+
+// noteCDNObservation records a proxy sighting from ordinary traffic. Called from
+// the request path, so it is written to be nearly free: once a sighting is fresh
+// it does not look at headers again for two minutes.
+//
+// It deliberately does NOT verify that the header is genuine. Anyone connecting
+// straight to the origin could forge one and make the panel believe a proxy is in
+// front. The consequence is that the panel shows the Tier 2 kernel warning to
+// someone who does not need it — a paragraph of unnecessary advice. The opposite
+// error hides that warning from someone whose firewall is silently dropping their
+// CDN's connections. Erring toward showing it is the right direction, so the
+// cheap check stands.
+func noteCDNObservation(r *http.Request) {
+	if time.Since(time.Unix(cdnSeenUnix.Load(), 0)) < 2*time.Minute {
+		return
+	}
+	if ok, vendor := shieldDetectCDN(r); ok {
+		cdnSeenVendor.Store(vendor)
+		cdnSeenUnix.Store(time.Now().Unix())
+	}
+}
+
+// lastCDNObservation returns the vendor seen on recent ordinary traffic, or "" if
+// none has been seen inside the TTL.
+func lastCDNObservation() string {
+	at := cdnSeenUnix.Load()
+	if at == 0 || time.Since(time.Unix(at, 0)) > cdnObservationTTL {
+		return ""
+	}
+	v, _ := cdnSeenVendor.Load().(string)
+	return v
+}
+
+// shieldDetectCDN reports whether THIS request arrived through a CDN proxy, and
+// which one.
+//
+// Read the asymmetry carefully: a header present is proof a proxy is in front; a
+// header absent proves nothing at all about the site, only about this one
+// connection. Callers must never turn a false return into a positive claim that
+// the origin is unproxied — see shieldCDNAdvisory, which combines this with the
+// operator's setting and with sightings from real traffic.
 func shieldDetectCDN(r *http.Request) (bool, string) {
 	if r == nil {
 		return false, ""
@@ -255,21 +313,52 @@ func (a *App) shieldHardeningBody(r *http.Request) string {
 //     ranges — which is why this is called out separately rather than folded in
 //     with the other two.
 func (a *App) shieldCDNAdvisory(r *http.Request) string {
-	viaCDN, vendor := shieldDetectCDN(r)
-	if !viaCDN {
-		return `<p class="muted text-xs">No proxy detected in front of this origin on your own request, so Tier 2 and Tier 3 per-IP limits apply to real visitor addresses and are fully effective. If you later put a CDN in front, come back here — this notice updates on its own, and the per-IP limits would then need adjusting.</p>`
+	// Three independent signals, deliberately combined rather than ranked by
+	// convenience. `here` is the strongest evidence FOR a proxy and no evidence
+	// against one; `seen` is what actually describes the site; `declared` is the
+	// operator telling us directly, and outranks a silent absence of the other two.
+	here, hereVendor := shieldDetectCDN(r)
+	seen := lastCDNObservation()
+	declared := false
+	if a.siteSettings != nil {
+		declared = a.siteSettings.Get(r.Context(), settings.KeyShieldBehindCDN) == "on"
 	}
 
-	trusted := false
-	if a.siteSettings != nil {
-		trusted = a.siteSettings.Get(r.Context(), settings.KeyShieldBehindCDN) == "on"
+	vendor := hereVendor
+	if vendor == "" {
+		vendor = seen
+	}
+	if vendor == "" {
+		vendor = "a proxy"
+	}
+
+	// Nothing points at a proxy. Say only that — an absence of signal is not a
+	// finding. The previous version turned it into "no proxy detected … limits
+	// are fully effective", which is the reassurance that stops an operator
+	// allowlisting the ranges their kernel is dropping.
+	if !here && seen == "" && !declared {
+		return `<p class="muted text-xs">No proxy signal has reached this server — not on your own request, and not on recent visitor traffic. If nothing is in front of this origin, Tier 2 and Tier 3 per-IP limits apply to real visitor addresses and are effective. Treat that as the absence of a signal rather than proof: put a CDN in front later and this notice updates on its own.</p>`
 	}
 
 	var b strings.Builder
-	b.WriteString(`<p class="muted text-xs"><strong>` + html.EscapeString(vendor) +
-		` is proxying this origin</strong> — detected from the headers on this very request. That changes what the tiers below can see.</p>`)
+	switch {
+	case here:
+		b.WriteString(`<p class="muted text-xs"><strong>` + html.EscapeString(vendor) +
+			` is proxying this origin</strong> — detected from the headers on this very request. That changes what the tiers below can see.</p>`)
+	case seen != "":
+		// The case that produced this whole design. The site IS proxied — real
+		// visitor traffic proves it — while the administrator reads the panel over
+		// a connection that skips the edge, usually a hosts entry pointing at the
+		// origin so the console stays reachable when the CDN is unwell. Naming the
+		// cause here saves the hours it otherwise takes to work out why the panel
+		// and the DNS disagree.
+		b.WriteString(`<p class="muted text-xs"><strong>` + html.EscapeString(vendor) +
+			` is proxying this site</strong> — seen on recent visitor traffic. <strong>Your own connection is not going through it</strong>, which normally means a <code>hosts</code> entry (or split-horizon DNS) pointing this domain at the origin address. That is a reasonable thing to have; it just means what you see here is not what your readers get.</p>`)
+	default:
+		b.WriteString(`<p class="muted text-xs">You have marked this site as being <strong>behind a proxy</strong>, but no proxy header has arrived — not on this request, nor on visitor traffic in the last day. Either the proxy is no longer in front, or the site is too quiet to have shown one yet. The guidance below assumes your setting is right, since acting on it costs a paragraph and ignoring it costs dropped traffic.</p>`)
+	}
 
-	if !trusted {
+	if !declared {
 		b.WriteString(`<p class="muted text-xs">⚠️ <strong>“Behind Cloudflare / a CDN” is switched off above.</strong> VayuShield is therefore treating each proxy edge address as if it were one visitor, so your whole audience looks like a handful of IPs — which trips the rate limit and can show everyone a challenge page. Turn that switch on: it reads the real visitor from the proxy's header, and only genuine edge addresses are trusted, so it cannot be spoofed.</p>`)
 	} else {
 		b.WriteString(`<p class="muted text-xs">✅ Tier 1 is reading the real visitor address from the proxy's header, so in-binary rate limiting applies per reader rather than per edge node.</p>`)

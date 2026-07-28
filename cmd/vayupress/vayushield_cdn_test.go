@@ -141,16 +141,30 @@ func TestAdvisoryConfirmsTier1WhenTrusted(t *testing.T) {
 	}
 }
 
-// TestAdvisoryReportsDirectWhenNotProxied — the honest converse. An unproxied
-// origin must not be nagged about a CDN it does not have.
+// TestAdvisoryReportsDirectWhenNotProxied — the honest converse. With no signal
+// from any of the three sources, an unproxied origin must not be nagged about a
+// CDN it does not have.
+//
+// It asserts the SEMANTICS rather than a phrase. An earlier version pinned the
+// literal string "No proxy detected", which had to be removed precisely because
+// that wording made a positive claim out of an absence of evidence — so the test
+// was holding the bug in place.
 func TestAdvisoryReportsDirectWhenNotProxied(t *testing.T) {
+	// The sighting is package-level and survives between tests; without this the
+	// result depends on which tests ran first.
+	resetCDNObservation(t)
 	a := newShieldApp(t, "")
 	got := a.shieldCDNAdvisory(httptest.NewRequest(http.MethodGet, "/os/shield", nil))
-	if !strings.Contains(got, "No proxy detected") {
-		t.Errorf("advisory does not report a direct origin:\n%s", got)
-	}
+
 	if strings.Contains(got, "no switch fixes it") {
-		t.Errorf("advisory shows the Tier 2 proxy warning with no proxy present:\n%s", got)
+		t.Errorf("advisory shows the Tier 2 proxy warning with no proxy signal at all:\n%s", got)
+	}
+	// It must acknowledge the quiet case without overclaiming.
+	if !strings.Contains(got, "No proxy signal") {
+		t.Errorf("advisory does not address the no-signal case:\n%s", got)
+	}
+	if !strings.Contains(got, "absence of a signal") {
+		t.Errorf("advisory presents an absence of evidence as a finding:\n%s", got)
 	}
 }
 

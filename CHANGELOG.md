@@ -9,6 +9,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Fixed
+- **The hardening panel judged the whole site by the administrator's own
+  connection.** v3.15.89 replaced a hardcoded "no CDN in front" sentence with
+  live detection, and the detection asked the wrong question: it read the headers
+  on the request it was serving, then reported the answer as though it described
+  the site.
+
+  Those differ exactly when an administrator reaches the console another way —
+  a `hosts` entry pointing the domain at the origin so the panel stays reachable
+  when the CDN is unwell is ordinary practice. On a real Cloudflare-proxied
+  install the panel therefore announced "No proxy detected in front of this
+  origin" while the kernel firewall was rate-limiting that CDN's edge nodes. The
+  detection was not buggy; it measured its own connection perfectly. The design
+  was wrong, and wrong in the dangerous direction: an absence of headers became a
+  positive claim that per-IP limits were "fully effective", which is precisely the
+  reassurance that stops an operator allowlisting the ranges their kernel is
+  dropping. The person guaranteed to read that notice is the administrator, and
+  administrators are the population most likely to be bypassing their own edge.
+
+  The advisory now weighs three independent signals:
+
+  - **This request's headers** — proof of a proxy when present, and no evidence at
+    all about the site when absent.
+  - **Sightings from ordinary visitor traffic**, recorded in memory as requests
+    are served (rate-limited to one header scan every two minutes, expiring after
+    a day). This is the signal that actually describes the site, and it is
+    unaffected by how the operator happens to be connecting.
+  - **The `shield.behind_cdn` setting** — the operator stating it outright, which
+    now outranks a silent absence of the other two.
+
+  When traffic shows a proxy but the operator's request does not, the panel says
+  so and names the usual cause, rather than leaving the reader to reconcile a
+  panel that contradicts their DNS. When nothing at all indicates a proxy it
+  reports an absence of signal instead of a finding. The Tier 2 kernel carve-out
+  appears whenever a proxy is plausible under any signal, because showing it
+  unnecessarily costs a paragraph and hiding it costs silently dropped traffic.
+
 - **The VayuOS console requested three fonts that have never existed.**
   `admin-os.css` declared `@font-face` for `space-grotesk.woff2`, `inter.woff2`
   and `jetbrains-mono.woff2` under `/os/static/fonts/`. None of those files is in
