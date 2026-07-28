@@ -50,20 +50,36 @@ func ClientIP(r *http.Request) string {
 		return host // direct / untrusted peer: never trust forwarding headers
 	}
 	// Cloudflare / CDN: CF-Connecting-IP is the single real visitor IP the edge
-	// observed; True-Client-IP is the Enterprise/Akamai equivalent. Honour them
-	// first — reached ONLY when the peer is a trusted edge — so per-visitor rate
-	// limiting, reputation and lockout work behind a proxy instead of pooling the
-	// whole audience onto the edge's handful of IPs (which trips the rate limit
-	// and throttles everyone). A direct/untrusted peer already returned above, so
-	// these headers can never be spoofed from off-edge.
-	if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
-		if net.ParseIP(cf) != nil {
-			return cf
+	// observed; True-Client-IP is the Enterprise/Akamai equivalent. They are
+	// honoured ONLY when the immediate peer is genuinely one of those edges.
+	//
+	// That peer check is the whole security of this branch, and it used to be
+	// missing. "The peer is a trusted proxy" was treated as sufficient, but on
+	// every ordinary install the peer is the LOCAL nginx — trusted because
+	// TRUSTED_PROXIES defaults to loopback, and nginx forwards unknown request
+	// headers untouched. So any visitor could send `CF-Connecting-IP: 1.2.3.4`
+	// and become 1.2.3.4 for every purpose that keys on the client address: the
+	// rate limiter, the reputation jail, auto-block, and the auth lockout. Rotate
+	// the header per request and none of them can ever fire. It applied whether
+	// or not the "behind a CDN" switch was on, because that switch only widened
+	// which peers count as trusted — it never gated this read.
+	//
+	// With a local reverse proxy in front, nginx is the authority instead: it
+	// overwrites X-Real-IP from the real connection (proxy_set_header X-Real-IP
+	// $remote_addr), so a client cannot influence it. An operator behind a CDN
+	// must therefore give nginx set_real_ip_from + real_ip_header for their edge
+	// ranges, so nginx resolves the visitor before VayuPress ever sees it — see
+	// deploy/nginx-vayupress.conf.
+	if config.TrustCloudflareEnabled() && config.IsCloudflareIP(peer) {
+		if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
+			if net.ParseIP(cf) != nil {
+				return cf
+			}
 		}
-	}
-	if tc := strings.TrimSpace(r.Header.Get("True-Client-IP")); tc != "" {
-		if net.ParseIP(tc) != nil {
-			return tc
+		if tc := strings.TrimSpace(r.Header.Get("True-Client-IP")); tc != "" {
+			if net.ParseIP(tc) != nil {
+				return tc
+			}
 		}
 	}
 	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {

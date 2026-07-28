@@ -6,6 +6,49 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.91] — 2026-07-28
+
+Released on its own, under the standing exception for a fix to something already
+shipped and exploitable right now.
+
+### Security
+- **Any visitor could choose their own client IP, defeating every per-IP
+  defence.** `auth.ClientIP` honoured `CF-Connecting-IP` (and `True-Client-IP`)
+  whenever the immediate peer was a *trusted proxy*. On every ordinary install the
+  peer is the local nginx — trusted because `TRUSTED_PROXIES` defaults to
+  loopback — and nginx forwards unknown request headers untouched. So a request
+  carrying `CF-Connecting-IP: 1.2.3.4` was believed, and the sender became
+  1.2.3.4 for every purpose that keys on the client address.
+
+  That is the rate limiter, the reputation jail, auto-block, and the auth
+  lockout. Rotating the header per request meant none of them could ever fire:
+  unlimited requests from one machine, no jail, and password brute-forcing with a
+  fresh identity per attempt. It applied **whether or not** the "behind a CDN"
+  switch was on — that switch only widened which peers counted as trusted, it
+  never gated this read.
+
+  The intent was documented correctly in `internal/config/cloudflare.go` ("ONLY
+  when the peer is genuinely a Cloudflare edge IP, so a direct attacker cannot
+  spoof the header"); the code did not implement it. The edge headers are now read
+  only when the peer really is one of those edges *and* the operator has declared
+  they are behind it.
+
+  X-Forwarded-For was never affected — it is walked right-to-left, so nginx's
+  appended address wins over anything a client prepends. That behaviour is now
+  pinned by a test too.
+
+  **Operators behind a CDN must configure their reverse proxy to recover the
+  visitor**, because VayuPress will no longer do it across a local proxy hop: at
+  that point it cannot distinguish a header the edge set from one a visitor typed.
+  nginx can, since it sees the real peer. `deploy/nginx-vayupress.conf` now
+  carries the `set_real_ip_from` / `real_ip_header` block and the command to
+  generate it. Skipping this does not expose anything — it pools every reader onto
+  the edge's addresses, which trips the rate limit for everyone — and the
+  VayuShield panel now detects exactly that state and says so, since it is
+  otherwise silent.
+
+---
+
 ## [3.15.90] — 2026-07-28
 
 Two things that were wrong in the same way: both reported a clean state while

@@ -20,6 +20,7 @@ package main
 import (
 	"errors"
 	"html"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -28,6 +29,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -360,8 +363,21 @@ func (a *App) shieldCDNAdvisory(r *http.Request) string {
 
 	if !declared {
 		b.WriteString(`<p class="muted text-xs">⚠️ <strong>“Behind Cloudflare / a CDN” is switched off above.</strong> VayuShield is therefore treating each proxy edge address as if it were one visitor, so your whole audience looks like a handful of IPs — which trips the rate limit and can show everyone a challenge page. Turn that switch on: it reads the real visitor from the proxy's header, and only genuine edge addresses are trusted, so it cannot be spoofed.</p>`)
+	} else if config.IsCloudflareIP(net.ParseIP(auth.ClientIP(r))) {
+		// The switch is on, but the address this request resolves to is itself an
+		// edge address — so the visitor was never recovered and every reader is
+		// being counted as one of a handful of edge nodes. That is the pooling
+		// failure the switch exists to prevent, and it is otherwise invisible:
+		// nothing errors, the limits simply apply to the wrong subject.
+		//
+		// It happens when a local reverse proxy sits between the edge and
+		// VayuPress. VayuPress will not read CF-Connecting-IP across that hop —
+		// it cannot distinguish a header the edge set from one a visitor typed,
+		// and trusting it there let any client choose its own identity. nginx can
+		// tell, because it sees the real peer, so nginx has to do the resolving.
+		b.WriteString(`<p class="muted text-xs">⚠️ <strong>The switch is on, but this request still resolves to an edge address</strong> — so your readers are being counted as a handful of proxy nodes, which is exactly what trips the rate limit for everyone. Your reverse proxy needs to recover the visitor before VayuPress sees the request: add <code>set_real_ip_from</code> for your proxy's ranges plus <code>real_ip_header</code> to nginx (the generator command is in <code>deploy/nginx-vayupress.conf</code>), then reload. VayuPress will not read the edge header across a local proxy hop itself, because at that point it cannot tell a header your CDN set from one a visitor typed.</p>`)
 	} else {
-		b.WriteString(`<p class="muted text-xs">✅ Tier 1 is reading the real visitor address from the proxy's header, so in-binary rate limiting applies per reader rather than per edge node.</p>`)
+		b.WriteString(`<p class="muted text-xs">✅ Tier 1 is reading the real visitor address, so in-binary rate limiting applies per reader rather than per edge node.</p>`)
 	}
 
 	b.WriteString(`<p class="muted text-xs"><strong>Tier 2 is different, and no switch fixes it.</strong> The kernel firewall runs before any HTTP header exists, so its per-IP limits always see the proxy's addresses — a busy edge node easily exceeds a per-visitor connection cap and gets dropped, which reads as intermittent failures you cannot reproduce. The fix is to allowlist the edge ranges, which also sharpens the firewall: anything arriving from outside them skipped the proxy and still meets the full ruleset.</p>`)
