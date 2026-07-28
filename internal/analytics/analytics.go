@@ -105,11 +105,17 @@ func (s *Store) TrendingArticles(ctx context.Context, days, limit int) ([]Trendi
 		limit = 10
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	// RTRIM(…, '/') strips a trailing slash before the join. Slugs never carry
+	// one, but recorded paths do: "/post" and "/post/" are the same article and
+	// were stored as two different rows, so the trailing-slash spelling matched
+	// nothing and its views vanished from trending. Grouping on the trimmed slug
+	// merges the two spellings into one total instead of scoring only one of them.
 	rows, err := s.readDB().QueryContext(ctx, `
 		SELECT a.slug, a.title, COALESCE(a.feature_image,''), SUM(d.views) AS v
 		FROM analytics_daily d
-		JOIN articles a ON a.slug = SUBSTR(d.path, 2)
+		JOIN articles a ON a.slug = RTRIM(SUBSTR(d.path, 2), '/')
 		WHERE d.day >= ? AND d.path LIKE '/%'
+		  AND RTRIM(SUBSTR(d.path, 2), '/') <> ''
 		  AND a.status = 'published' AND a.is_page = 0
 		GROUP BY a.slug, a.title, a.feature_image
 		ORDER BY v DESC, a.created_at DESC
@@ -144,24 +150,31 @@ func (s *Store) TrendingArticlesByViews(ctx context.Context, days, limit int) ([
 		limit = 10
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	// Aggregate pageviews per url_path FIRST, then join to articles. Each article
-	// maps to exactly one url_path ("/<slug>", slug being UNIQUE), so grouping by
-	// url_path is identical to grouping by article — but this shape lets the hot
-	// inner scan be served index-only by idx_apv_trending (event_type, created_at,
+	// Aggregate pageviews per slug FIRST, then join to articles. This shape lets
+	// the hot inner scan be served by idx_apv_trending (event_type, created_at,
 	// url_path) and probes the articles slug index once per distinct path instead
 	// of once per pageview row. On a large event log under a cold cache this is
 	// the difference between an index range scan and a full-table scan with a
 	// row fetch per view.
+	//
+	// The grouping key is the path with its LEADING slash removed and any
+	// TRAILING slash stripped, because that is what actually identifies an
+	// article. It used to group on the raw url_path and join with SUBSTR(…, 2),
+	// which strips only the leading slash — so "/post/" became "post/", matched no
+	// slug, and every view recorded with a trailing slash was silently dropped
+	// from trending. Normalising inside the GROUP BY (rather than only at the
+	// join) matters: the two spellings are one article, and grouping them
+	// separately would score the same post twice at half its real traffic each.
 	rows, err := s.readDB().QueryContext(ctx, `
 		SELECT a.slug, a.title, COALESCE(a.feature_image,''), pv.v
 		FROM (
-			SELECT url_path, COUNT(1) AS v
+			SELECT RTRIM(SUBSTR(url_path, 2), '/') AS slug, COUNT(1) AS v
 			FROM analytics_pageviews
 			WHERE event_type = 1 AND created_at >= ? AND url_path LIKE '/%'
-			GROUP BY url_path
+			GROUP BY RTRIM(SUBSTR(url_path, 2), '/')
 		) pv
-		JOIN articles a ON a.slug = SUBSTR(pv.url_path, 2)
-		WHERE a.status = 'published' AND a.is_page = 0
+		JOIN articles a ON a.slug = pv.slug
+		WHERE pv.slug <> '' AND a.status = 'published' AND a.is_page = 0
 		ORDER BY pv.v DESC, a.created_at DESC
 		LIMIT ?`, from, limit)
 	if err != nil {

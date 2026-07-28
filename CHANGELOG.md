@@ -6,6 +6,48 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Trending silently dropped every view recorded with a trailing slash.** Both
+  trending queries joined the analytics path to the article slug with
+  `SUBSTR(path, 2)`, which strips the **leading** slash only. A slug never carries
+  a trailing slash but a recorded path often does, so `/post/` became `post/`,
+  matched nothing, and its views vanished from the ranking.
+
+  On a real install this was not a rounding error. Six of the ten busiest pages
+  on a 234k-post site were recorded with a trailing slash, so the widget was
+  ranking on a thin, arbitrary subset of the traffic and the highest-traffic
+  posts were the ones missing.
+
+  Normalising had to happen in the `GROUP BY`, not just at the join. Fixing only
+  the join would have aggregated the two spellings separately and returned the
+  same article twice, each with part of its traffic — which reads as a duplicate
+  in the widget and ranks both copies below the post's true position.
+
+  The daily-aggregate fallback carried the identical join and is fixed the same
+  way, so a young site with no event log yet is not left broken in the same
+  manner. Both queries now also refuse an empty join key: `/` normalises to the
+  empty string, which would otherwise let an article with a blank slug absorb
+  every homepage view.
+
+- **"Top pages" listed the same page twice at partial totals.** The admin
+  analytics panel grouped on the raw path, so `/post` and `/post/` were two rows
+  and a page's real total was split between them. It now merges them —
+  `handlers_trending.go` deliberately sources the public Trending widget from
+  this panel's data "so the public Trending list matches it exactly", and
+  normalising one without the other would have made the two disagree. The
+  homepage is preserved explicitly: a plain `RTRIM(path,'/')` turns `/` into the
+  empty string and would list the busiest page on the site with no path at all.
+
+- **The event log stored two spellings of one page.** `normalizePathExtended`
+  stripped the query and fragment but not a trailing slash, so the split above
+  kept accumulating with every pageview. It now collapses the trailing slash on
+  the way in, leaving the root untouched. The read-side normalisation stays
+  regardless — it is what repairs history already recorded.
+
+---
+
 ## [3.15.88] — 2026-07-28
 
 Released on its own rather than batched, under the standing exception for a fix

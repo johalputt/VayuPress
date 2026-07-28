@@ -375,8 +375,22 @@ func (s *Store) TopPages(ctx context.Context, days, limit int) ([]PageStat, erro
 		limit = 20
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	// Group on the path with any trailing slash stripped. "/post" and "/post/"
+	// are one page: a reader can arrive at either spelling, and grouping the raw
+	// value listed the same page twice with its traffic split between the rows —
+	// so a page's real total was under-reported and its rank was wrong. Merging
+	// them here also keeps this panel agreeing with the public Trending widget,
+	// which reads the same event log and deliberately mirrors these numbers.
+	// New pageviews are normalised on the way in; the trim covers history that
+	// was recorded before that.
+	// The expression trims the slash off the REMAINDER and puts the leading one
+	// back, so the homepage survives: a plain RTRIM(url_path,'/') turns "/" into
+	// the empty string and the busiest page on the site would be listed with no
+	// path at all.
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT url_path,COUNT(1) as pv,COUNT(DISTINCT session_id) as uv FROM analytics_pageviews WHERE created_at>=? AND event_type=1 GROUP BY url_path ORDER BY pv DESC LIMIT ?`, from, limit)
+		`SELECT '/' || RTRIM(SUBSTR(url_path,2),'/') AS p,COUNT(1) as pv,COUNT(DISTINCT session_id) as uv
+		 FROM analytics_pageviews WHERE created_at>=? AND event_type=1
+		 GROUP BY '/' || RTRIM(SUBSTR(url_path,2),'/') ORDER BY pv DESC LIMIT ?`, from, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1041,6 +1055,16 @@ func normalizePathExtended(p string) string {
 	}
 	if len(p) > 512 {
 		p = p[:512]
+	}
+	// Collapse the trailing slash so one page is one row. "/post" and "/post/"
+	// are the same article, and storing both split its traffic in two: each
+	// spelling got its own count, "Top pages" listed the page twice at partial
+	// totals, and trending — which joins on the slug — matched only the spelling
+	// without the slash and dropped the rest of the views entirely.
+	//
+	// The root is exempt: trimming "/" would leave "", which is not a path.
+	for len(p) > 1 && p[len(p)-1] == '/' {
+		p = p[:len(p)-1]
 	}
 	return p
 }
