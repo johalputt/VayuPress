@@ -18,6 +18,7 @@ package main
 // live state and to know whether the helper is installed.
 
 import (
+	"errors"
 	"html"
 	"net/http"
 	"os"
@@ -120,6 +121,53 @@ func (a *App) handleOSShieldTier(w http.ResponseWriter, r *http.Request) {
 	}
 	// Return the refreshed section so the toggle updates in place (HTMX swaps the
 	// body); the section also self-polls so applying → active appears on its own.
+	writeOSFragment(w, a.shieldHardeningBody(r))
+}
+
+// shieldCDNAllowVendors is the fixed set of proxies whose published ranges the
+// agent knows how to fetch. The panel may only ever name one of these, and the
+// agent independently re-checks the name against its own copy of the list — the
+// web app is unprivileged and its output must never be able to widen what a root
+// process will run.
+var shieldCDNAllowVendors = map[string]bool{"cloudflare": true}
+
+// shieldCDNAllowState returns the agent-reported state of the last allowlist
+// fetch: "applying", "active", "error" or "" when it has never been asked.
+func shieldCDNAllowState() string {
+	b, err := os.ReadFile(filepath.Join(shieldControlDir(), "cdnallow.state"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// shieldRequestCDNAllow asks the root agent to populate the Tier 2 proxy
+// allowlist. It writes an EMPTY file whose NAME carries the vendor, so no content
+// the web app produces is ever read as a command or an argument.
+func shieldRequestCDNAllow(vendor string) error {
+	if !shieldCDNAllowVendors[vendor] {
+		return errors.New("unknown proxy vendor")
+	}
+	f, err := os.OpenFile(filepath.Join(shieldControlDir(), "cdnallow."+vendor+".want"),
+		os.O_CREATE|os.O_WRONLY, 0o640)
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
+
+// handleOSShieldCDNAllow is the admin/CSRF-gated endpoint behind the "Allowlist
+// the edge ranges" button.
+func (a *App) handleOSShieldCDNAllow(w http.ResponseWriter, r *http.Request) {
+	vendor := strings.ToLower(strings.TrimSpace(r.PostFormValue("vendor")))
+	if !shieldCDNAllowVendors[vendor] {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "unknown proxy vendor", "")
+		return
+	}
+	if err := shieldRequestCDNAllow(vendor); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "control-error", "Could not record the request: "+err.Error(), "")
+		return
+	}
 	writeOSFragment(w, a.shieldHardeningBody(r))
 }
 
@@ -227,9 +275,37 @@ func (a *App) shieldCDNAdvisory(r *http.Request) string {
 		b.WriteString(`<p class="muted text-xs">✅ Tier 1 is reading the real visitor address from the proxy's header, so in-binary rate limiting applies per reader rather than per edge node.</p>`)
 	}
 
-	b.WriteString(`<p class="muted text-xs"><strong>Tier 2 is different, and no switch fixes it.</strong> The kernel firewall runs before any HTTP header exists, so its per-IP limits always see the proxy's addresses — a busy edge node easily exceeds a per-visitor connection cap and gets dropped, which reads as intermittent failures you cannot reproduce. Allowlist your proxy's ranges before enabling Tier 2, or leave Tier 2 for origins that take traffic directly (a subdomain that is not proxied, for instance).</p>`)
+	b.WriteString(`<p class="muted text-xs"><strong>Tier 2 is different, and no switch fixes it.</strong> The kernel firewall runs before any HTTP header exists, so its per-IP limits always see the proxy's addresses — a busy edge node easily exceeds a per-visitor connection cap and gets dropped, which reads as intermittent failures you cannot reproduce. The fix is to allowlist the edge ranges, which also sharpens the firewall: anything arriving from outside them skipped the proxy and still meets the full ruleset.</p>`)
+	b.WriteString(a.shieldCDNAllowRow(vendor))
 	b.WriteString(`<p class="muted text-xs"><strong>Tier 3</strong> needs <code>set_real_ip_from</code> for your proxy's ranges plus <code>real_ip_header</code>, or nginx's per-IP shaping keys on the edge too. The SYN-flood and slow-loris protections in both tiers are unaffected either way — those do not depend on identifying the visitor.</p>`)
 	return b.String()
+}
+
+// shieldCDNAllowRow renders the one-click allowlist control. Without the root
+// agent there is nothing to click, so it degrades to the exact command instead of
+// showing a button that would silently do nothing.
+func (a *App) shieldCDNAllowRow(vendor string) string {
+	// Only vendors the agent can actually fetch get a button. Anything else —
+	// including a proxy detected only by the vendor-neutral CDN-Loop header — gets
+	// the manual path, because pretending to support it would be worse than saying
+	// so.
+	key := strings.ToLower(strings.TrimSpace(vendor))
+	if !shieldCDNAllowVendors[key] {
+		return `<p class="muted text-xs">Write your proxy's published ranges to <code>/etc/vayushield/cdn-allow.conf</code>, one CIDR per line, then re-apply Tier 2.</p>`
+	}
+	if !shieldAgentAlive() {
+		return `<div class="vs-cmd"><code id="vs-cmd-cdnallow">sudo bash deploy/vayushield-firewall.sh cdn-allow ` + html.EscapeString(key) +
+			` &amp;&amp; sudo bash deploy/vayushield-firewall.sh apply</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-cdnallow">Copy</button></div>`
+	}
+	switch shieldCDNAllowState() {
+	case "applying":
+		return `<p class="muted text-xs"><span class="vs-hard-state is-work">◐ Fetching the edge ranges…</span></p>`
+	case "active":
+		return `<p class="muted text-xs"><span class="vs-hard-state is-on">● Edge ranges allowlisted</span> — re-run after your proxy publishes new ranges. <button type="button" class="btn btn--sm" hx-post="/os/api/shield/cdn-allow" hx-vals='{"vendor":"` + html.EscapeString(key) + `"}' hx-target="#vs-body-hardening" hx-swap="innerHTML">Refresh ranges</button></p>`
+	case "error":
+		return `<p class="muted text-xs"><span class="vs-hard-state is-err">✕ Could not fetch the edge ranges</span> — the previous allowlist, if any, is unchanged. <button type="button" class="btn btn--sm" hx-post="/os/api/shield/cdn-allow" hx-vals='{"vendor":"` + html.EscapeString(key) + `"}' hx-target="#vs-body-hardening" hx-swap="innerHTML">Retry</button></p>`
+	}
+	return `<p class="muted text-xs"><button type="button" class="btn btn--primary btn--sm" hx-post="/os/api/shield/cdn-allow" hx-vals='{"vendor":"` + html.EscapeString(key) + `"}' hx-target="#vs-body-hardening" hx-swap="innerHTML">Allowlist ` + html.EscapeString(vendor) + `'s edge ranges</button> Fetches the published ranges and re-applies Tier 2. Survives reboots — the agent re-applies on boot.</p>`
 }
 
 // shieldOffloadStatus returns the agent-reported L1 offload state ("active",

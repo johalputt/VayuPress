@@ -111,8 +111,15 @@ func TestAdvisoryAlwaysSeparatesTier2(t *testing.T) {
 		if !strings.Contains(got, "no switch fixes it") {
 			t.Errorf("behind_cdn=%s: advisory does not say Tier 2 is unfixable by a setting:\n%s", trust, got)
 		}
-		if !strings.Contains(got, "Allowlist") {
-			t.Errorf("behind_cdn=%s: advisory does not give the Tier 2 remedy:\n%s", trust, got)
+		// Match case-insensitively, and require a CONCRETE remedy rather than the
+		// word alone: whether that is the one-click button or the fallback command
+		// depends on the root agent being installed, and both are correct.
+		low := strings.ToLower(got)
+		if !strings.Contains(low, "allowlist") {
+			t.Errorf("behind_cdn=%s: advisory does not name the Tier 2 remedy:\n%s", trust, got)
+		}
+		if !strings.Contains(low, "cdn-allow") {
+			t.Errorf("behind_cdn=%s: advisory names the remedy but offers no way to do it:\n%s", trust, got)
 		}
 	}
 }

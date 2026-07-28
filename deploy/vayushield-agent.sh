@@ -159,6 +159,57 @@ reconcile_banlist() {
   rm -f "$batch" "$xdp_new"
 }
 
+# reconcile_cdnallow — one-click population of the Tier 2 proxy allowlist.
+#
+# Behind a CDN, Tier 2's per-IP limits key on edge addresses because the kernel
+# cannot see an HTTP header, so a busy edge node trips a per-visitor cap and its
+# traffic is dropped with no log line anywhere. The remedy is a range allowlist,
+# and asking an operator to run a fetch by hand is exactly the terminal step this
+# agent exists to remove.
+#
+# The panel writes an EMPTY flag file; it never supplies a vendor name, a URL or
+# any other content. The vendor is read from the flag's NAME (cdnallow.<vendor>)
+# and matched against a fixed list here, so nothing the unprivileged web app can
+# write ever reaches a command line. Anything unrecognised is refused outright.
+reconcile_cdnallow() {
+  local flag vendor
+  for flag in "${CONTROL_DIR}"/cdnallow.*.want; do
+    [ -e "$flag" ] || continue
+    vendor="${flag##*/cdnallow.}"
+    vendor="${vendor%.want}"
+    # Fixed allowlist of vendors. Never interpolate the flag name into a command
+    # without passing it through this gate first.
+    case "$vendor" in
+      cloudflare) ;;
+      *)
+        write_state cdnallow error
+        printf 'unknown vendor %s' "$vendor" >"${CONTROL_DIR}/cdnallow.reason" 2>/dev/null || true
+        rm -f "$flag" 2>/dev/null || true
+        continue
+        ;;
+    esac
+    write_state cdnallow applying
+    if [ -f "$FIREWALL" ] && bash "$FIREWALL" cdn-allow "$vendor" >"${CONTROL_DIR}/cdnallow.log" 2>&1; then
+      # Re-apply so the kernel picks the ranges up now rather than at next boot.
+      # A failure here matters more than the fetch: the file is on disk but the
+      # rules are stale, which looks like success from the panel.
+      if bash "$FIREWALL" apply >>"${CONTROL_DIR}/cdnallow.log" 2>&1; then
+        write_state cdnallow active
+        clear_reason cdnallow
+      else
+        write_state cdnallow error
+        write_reason cdnallow "${CONTROL_DIR}/cdnallow.log"
+      fi
+    else
+      write_state cdnallow error
+      write_reason cdnallow "${CONTROL_DIR}/cdnallow.log"
+    fi
+    # One-shot: the flag is intent to fetch ONCE, not a state to hold. Leaving it
+    # would re-fetch on every poll and hammer the vendor's endpoint.
+    rm -f "$flag" 2>/dev/null || true
+  done
+}
+
 reconcile_tier2() {
   local want=0 active=0
   [ -f "${CONTROL_DIR}/tier2.want" ] && want=1
@@ -223,6 +274,7 @@ run_agent() {
   while true; do
     if [ -d "$CONTROL_DIR" ]; then
       printf '%s' "$(date -u +%s)" >"${CONTROL_DIR}/agent.alive" 2>/dev/null || true
+      reconcile_cdnallow
       reconcile_tier2
       reconcile_tier3
       reconcile_banlist

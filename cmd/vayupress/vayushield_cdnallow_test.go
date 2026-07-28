@@ -1,0 +1,215 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// The allowlist button crosses a privilege boundary: an unprivileged web app
+// asks a root agent to fetch ranges and reload a kernel ruleset. The design keeps
+// that safe by never letting app-produced CONTENT reach a command — the vendor
+// travels in the FILENAME and is re-validated on both sides. These tests pin that
+// property, because it is the kind that quietly erodes when someone later wants
+// to pass "just one more parameter".
+
+func withControlDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("VAYUSHIELD_CONTROL_DIR", dir)
+	return dir
+}
+
+func TestRequestCDNAllowWritesAnEmptyNamedFlag(t *testing.T) {
+	dir := withControlDir(t)
+	if err := shieldRequestCDNAllow("cloudflare"); err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	flag := filepath.Join(dir, "cdnallow.cloudflare.want")
+	fi, err := os.Stat(flag)
+	if err != nil {
+		t.Fatalf("flag not written: %v", err)
+	}
+	// Empty is the point. Anything the app can write into a file the root agent
+	// reads is content the agent would have to sanitise; a zero-length file has
+	// nothing to sanitise.
+	if fi.Size() != 0 {
+		t.Errorf("flag carries %d bytes of app-controlled content; it must be empty", fi.Size())
+	}
+}
+
+func TestRequestCDNAllowRejectsUnknownVendors(t *testing.T) {
+	dir := withControlDir(t)
+	for _, bad := range []string{
+		"", "aws", "CLOUDFLARE ", "cloudflare; rm -rf /",
+		"../../etc/cron.d/x", "cloudflare/../../../root",
+	} {
+		if err := shieldRequestCDNAllow(bad); err == nil {
+			t.Errorf("vendor %q was accepted", bad)
+		}
+	}
+	// Nothing at all should have been created — a rejected vendor must not leave
+	// a partial flag, and a traversal attempt must not escape the control dir.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("rejected vendors created %d file(s) in the control dir", len(entries))
+	}
+}
+
+// TestCDNAllowEndpointRejectsUnknownVendors — the handler must validate too. A
+// caller reaches it directly with a POST body; relying on the button to send only
+// good values is not validation.
+func TestCDNAllowEndpointRejectsUnknownVendors(t *testing.T) {
+	withControlDir(t)
+	a := newShieldApp(t, "on")
+	for _, tc := range []struct {
+		vendor string
+		want   int
+	}{
+		{"cloudflare", http.StatusOK},
+		{"aws", http.StatusBadRequest},
+		{"", http.StatusBadRequest},
+		{"cloudflare; id", http.StatusBadRequest},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/os/api/shield/cdn-allow",
+			strings.NewReader("vendor="+tc.vendor))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("CF-Ray", "abc-DEL")
+		rr := httptest.NewRecorder()
+		a.handleOSShieldCDNAllow(rr, req)
+		if rr.Code != tc.want {
+			t.Errorf("vendor %q: status %d, want %d", tc.vendor, rr.Code, tc.want)
+		}
+	}
+}
+
+// TestAgentReValidatesTheVendor is the half that matters most, and it RUNS the
+// agent's reconcile rather than grepping it. The agent executes as root and the
+// control directory is writable by the unprivileged web app, so "the app only
+// ever writes good vendor names" is an assumption, not a control. A textual
+// version of this test passed against a mutation that left the `case` statement
+// in place while making it inert.
+//
+// The firewall script is replaced with a recorder, so what the agent would have
+// executed is observable without touching a real ruleset.
+func TestAgentReValidatesTheVendor(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	src, err := os.ReadFile("../../deploy/vayushield-agent.sh")
+	if err != nil {
+		t.Fatalf("read agent: %v", err)
+	}
+	cut := strings.Index(string(src), `case "${1:-run}" in`)
+	if cut < 0 {
+		t.Fatal("could not find the agent's command dispatcher")
+	}
+
+	dir := t.TempDir()
+	control := filepath.Join(dir, "control")
+	lib := filepath.Join(dir, "lib")
+	if err := os.MkdirAll(control, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(lib, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	agent := filepath.Join(dir, "agent.sh")
+	if err := os.WriteFile(agent, src[:cut], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A recorder in place of the real firewall script: it appends its arguments
+	// and always succeeds, so the agent proceeds down the happy path.
+	calls := filepath.Join(dir, "calls.txt")
+	if err := os.WriteFile(filepath.Join(lib, "vayushield-firewall.sh"),
+		[]byte("#!/usr/bin/env bash\necho \"$@\" >> "+calls+"\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// One legitimate request and several hostile flag names side by side.
+	for _, name := range []string{
+		"cdnallow.cloudflare.want",
+		"cdnallow.aws.want",
+		"cdnallow.cloudflare; id.want",
+		"cdnallow.$(id).want",
+	} {
+		if err := os.WriteFile(filepath.Join(control, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	out, err := exec.Command("bash", "-c",
+		"VAYUSHIELD_CONTROL_DIR="+control+" VAYUSHIELD_LIB_DIR="+lib+
+			" source "+agent+" >/dev/null 2>&1; reconcile_cdnallow; echo done").CombinedOutput()
+	if err != nil {
+		t.Fatalf("running reconcile_cdnallow: %v (%s)", err, out)
+	}
+
+	recorded, _ := os.ReadFile(calls)
+	got := string(recorded)
+
+	// The legitimate vendor must have been fetched AND re-applied. Without the
+	// re-apply the ranges sit on disk while the kernel keeps the old ruleset,
+	// which reads as success from the panel.
+	if !strings.Contains(got, "cdn-allow cloudflare") {
+		t.Errorf("the valid vendor was not fetched; recorded calls:\n%s", got)
+	}
+	if !strings.Contains(got, "apply") {
+		t.Errorf("ranges were fetched but never re-applied to the kernel:\n%s", got)
+	}
+	// Nothing hostile may reach the firewall script.
+	for _, bad := range []string{"aws", "id", "$(", ";"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("a rejected vendor reached the privileged script (%q):\n%s", bad, got)
+		}
+	}
+	// Every flag must be consumed. A flag left behind re-fetches on every poll.
+	entries, err := os.ReadDir(control)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".want") {
+			t.Errorf("flag %q survived the reconcile — the fetch would repeat every poll", e.Name())
+		}
+	}
+}
+
+// TestCDNAllowRowDegradesWithoutTheAgent — with no root agent there is nothing to
+// action a click, so showing a button would be a lie. It must fall back to the
+// command instead.
+func TestCDNAllowRowDegradesWithoutTheAgent(t *testing.T) {
+	withControlDir(t) // empty: no agent.alive heartbeat
+	a := newShieldApp(t, "on")
+	got := a.shieldCDNAllowRow("Cloudflare")
+	if strings.Contains(got, "hx-post") {
+		t.Error("a button is shown with no agent installed — clicking it would do nothing")
+	}
+	if !strings.Contains(got, "cdn-allow cloudflare") {
+		t.Errorf("no manual fallback command offered:\n%s", got)
+	}
+}
+
+// TestCDNAllowRowHandlesAnUnfetchableProxy — CDN-Loop identifies "a proxy" without
+// naming a vendor whose ranges we can fetch. Offering a button there would promise
+// something the agent cannot do.
+func TestCDNAllowRowHandlesAnUnfetchableProxy(t *testing.T) {
+	withControlDir(t)
+	a := newShieldApp(t, "on")
+	got := a.shieldCDNAllowRow("a proxy")
+	if strings.Contains(got, "hx-post") {
+		t.Error("a fetch button is offered for a proxy whose ranges cannot be fetched")
+	}
+	if !strings.Contains(got, "cdn-allow.conf") {
+		t.Errorf("no manual path given for an unknown proxy:\n%s", got)
+	}
+}

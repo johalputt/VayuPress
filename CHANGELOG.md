@@ -28,6 +28,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   Atom.
 
 ### Added
+- **One-click proxy allowlisting from the VayuShield panel.** When a proxy is
+  detected, the hardening section now offers a button that fetches the published
+  edge ranges and re-applies Tier 2 — no terminal, and it survives reboots because
+  the reconcile agent re-applies on boot.
+
+  It respects the same privilege separation as the Tier 2/3 toggles (ADR-0123),
+  and tightens it. The unprivileged app writes an **empty** flag file whose *name*
+  carries the vendor (`cdnallow.cloudflare.want`), so no content the web app
+  produces ever reaches a command line. Both sides validate independently against
+  a fixed vendor list — the app because a caller can POST the endpoint directly,
+  and the root agent because a control directory the app can write to is not
+  something a root process may trust on the app's promise. The flag is consumed on
+  use, so a fetch cannot repeat on every poll.
+
+  Where there is no root agent the button is replaced by the exact command rather
+  than shown inert, and a proxy identified only by the vendor-neutral `CDN-Loop`
+  header gets the manual path instead of a button promising a fetch that cannot
+  happen.
+
+  The agent test runs the real reconcile against hostile flag names
+  (`cdnallow.aws.want`, `cdnallow.cloudflare; id.want`, `cdnallow.$(id).want`)
+  with the firewall script swapped for a recorder, and asserts none of them reach
+  it. A textual version of that test passed against a mutation that left the
+  vendor `case` statement in place while making it inert, which is why it runs the
+  code instead.
+
 - **The Tier 2 kernel firewall can allowlist a CDN's edge ranges.** Every limit in
   `deploy/vayushield-firewall.sh` keys on the source address, and the kernel has
   no concept of an HTTP header — so on a proxied site it saw a handful of edge
