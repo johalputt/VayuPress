@@ -223,3 +223,55 @@ Worked examples to copy from: `/os/vayukeep`, `/os/buzz`, `/os/claudecode`.
 Also, for any page that mints API keys: add its nav key to `adminAreas` in
 `osPathMinLevel` (`handlers_auth.go`) or it silently inherits the permissive
 author default, and pin that with a test.
+
+## 12. Writing posts on the blog (standing rule)
+
+Posts are published to the live site through the MCP server. Follow this
+without being asked; it is not a per-post negotiation.
+
+### Style
+
+- **Length: always OVER 2000 words** unless the user says otherwise.
+- **Unique content** — no duplicated blocks across posts; repetition is bad SEO.
+- **SEO- and GEO-optimised by default**, every post.
+- Tone: **human-written, professional, beautiful, informative** — never robotic
+  or templated.
+- Technical, in-depth feel: summary block, **real code blocks**, comparison
+  tables, deep sections, **FAQ**, **conclusion**.
+- Dark-native design: **SVG hero with no text badge**, **label-free summary
+  box** (no "Executive summary" heading), feature cards, cross-links.
+- **No competitor product names.** Say "a managed relational database", not the
+  vendor; "an independent synthetic monitor", not the brand.
+- **Ground every detail in the source** — ADRs, handlers, real pragmas. Never
+  invent a number or a mechanism.
+- Backlink to related posts **and** to the product site and GitHub repo.
+
+### Posting
+
+- **Publish directly.** No draft step, no asking permission, no pre-publish
+  audit. Edit directly afterwards if something needs changing.
+- Still confirm genuinely destructive or site-wide actions.
+
+### Tooling — the two mistakes that have actually happened
+
+- **`content` takes RAW HTML.** Passing entities (`&lt;div&gt;`) stores them as
+  literal text and the post renders as visible source code. This shipped once.
+- **Always re-fetch with `get_post` after writing** to confirm it stored as
+  markup. The `queued` response tells you nothing about correctness.
+
+### Numbers in a post
+
+- **Read them from an API or tool, never off a screenshot.** A dashboard header
+  read "1,609,007 views" next to a 90-day card reading "173,340"; the API
+  confirmed 173,342 for the period. Quoting the header would have overstated it
+  ninefold.
+- **Publish ranges, not headline numbers**, when a metric varies between runs
+  (e.g. mobile Performance 99–100). A reader who tests and sees something lower
+  discounts the whole page.
+- **Watch for metrics that are artifacts of your own activity.** The write-queue
+  p99 sits at 0 on a read-only blog and only rises while something is
+  publishing — including the agent writing the post. Publishing that as a
+  steady-state figure would be wrong.
+- State the limits of any benchmark explicitly. A result that only flatters
+  itself gets discounted; naming what it does *not* prove is what makes the rest
+  credible.
