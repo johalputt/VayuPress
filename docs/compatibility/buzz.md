@@ -48,7 +48,8 @@ what, and revoking one does not disconnect the others.
 
 The page shows your endpoint and fills your new key into both configurations.
 
-For **Claude Code**, run this where the agent runs:
+For **Claude Code** — which has its own page too, see
+[claude-code.md](claude-code.md) — run this where the agent runs:
 
 ```bash
 claude mcp add --transport http vayupress https://<your-domain>/mcp \

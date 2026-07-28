@@ -23,18 +23,29 @@ VayuShield, or VayuTor — VayuMCP covers the publishing/site/analytics surface 
   nothing more.
 - **Toggle:** on by default; set `VAYUOS_MCP=off` to disable the endpoint.
 
-## One-click: the VayuMCP page
+## The console pages
 
-The fastest way to connect is **VayuOS → VayuMCP** (`/os/connector`):
+**VayuMCP** (`/os/connector`) is the protocol surface:
 
+- Your live endpoint, and whether it is on a dedicated host.
 - **Grant full control** — one click mints a superuser key so the client can run
   the whole site.
 - **Author** / **Read-only** presets — one click mints a safely-scoped key.
-- Your live endpoint is shown, and your freshly-minted key is filled straight
-  into ready-to-paste **Claude Desktop** and **Claude Code** configurations.
-- Every active connector is listed with an instant **Revoke**.
+- The generic MCP configuration, with your freshly-minted key filled in.
+- Every connected client, with pause / disconnect / remove.
+- The proxy-and-WAF reference for when Connect fails.
 
-The page is admin-only and adds no new write surface — it mints and revokes
+Two clients have their own guided pages, because their setup differs enough to be
+worth its own walkthrough ([ADR-0147](../adr/ADR-0147-per-client-connector-pages.md)):
+
+- **[Claude Code](claude-code.md)** (`/os/claudecode`) — Claude Code, Claude
+  Desktop and claude.ai, including the one-click route that needs no key.
+- **[Buzz](buzz.md)** (`/os/buzz`) — agents in a Buzz workspace.
+
+Anything else — Cursor, Cline, a custom client — uses the generic configuration
+on the VayuMCP page unchanged.
+
+All three pages are admin-only and add no new write surface — they mint and revoke
 through the same API-key endpoints as the API Keys page.
 
 ## Full control vs. limited

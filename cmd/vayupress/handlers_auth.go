@@ -86,9 +86,10 @@ func osPathInArea(path, area string) bool {
 // areas are gated, so adding a benign page never accidentally locks it out.
 func osPathMinLevel(path string) int {
 	adminAreas := []string{
-		// "buzz" is the Buzz connector console: it mints API keys, so it sits with
-		// "connector" and "apikeys" rather than being readable by an author.
-		"settings", "security", "apikeys", "connector", "buzz", "update", "storage", "monitoring", "governance",
+		// "buzz" and "claudecode" are the per-client connector consoles: both mint
+		// API keys, so they sit with "connector" and "apikeys" rather than being
+		// readable by an author.
+		"settings", "security", "apikeys", "connector", "buzz", "claudecode", "update", "storage", "monitoring", "governance",
 		"tools", "modes", "mode", "policy", "topology", "replay", "faults", "adr", "budgets",
 		"members", "newsletter", "monetization", "ads", "website", "branding", "shield",
 		// Money & fulfilment: payment-gateway secrets, the order ledger, and the

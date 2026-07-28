@@ -92,10 +92,10 @@ func TestBuzzSnippetsCarryTemplate(t *testing.T) {
 		}
 	}
 	// The script's substitution must target the same marker the HTML emits.
-	if !strings.Contains(osBuzzScript, keyTemplatePlaceholder) {
+	if !strings.Contains(mcpClientScript, keyTemplatePlaceholder) {
 		t.Error("page script does not reference the placeholder it is meant to replace")
 	}
-	if !strings.Contains(osBuzzScript, "data-tpl") {
+	if !strings.Contains(mcpClientScript, "data-tpl") {
 		t.Error("page script does not select the snippets it is meant to fill")
 	}
 }

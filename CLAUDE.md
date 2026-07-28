@@ -187,3 +187,39 @@ Go 1.25+ is required (govulncheck / x/tools need it).
 - The **P16 go-native** job runs golangci-lint first (fail-fast), then gosec /
   race build+test / govulncheck / deadcode. `govulncheck` can't fetch its DB in
   this sandbox (proxy) but passes on GitHub — don't block on the local failure.
+
+## 11. VayuOS page design — the house style (standing rule)
+
+**Every new VayuOS page follows the Monetization page's design sense unless the
+user asks for something else.** This is the default, not a suggestion — do not
+invent a new layout per page, and do not ask which style to use.
+
+The reference is `cmd/vayupress/admin_os_monetization.go`. The shape:
+
+1. `page-header` — `<h1>`, plus a `page-actions` div holding any docs link and a
+   `role="status" aria-live="polite"` span for inline feedback.
+2. `page-sub` (or a `text-sm muted` lede) — one sentence on what the page is for.
+3. `stat-grid` of `stat-card` tiles — the four numbers that answer "what is the
+   state of this?" at a glance. `stat-card--warn` tones a tile that wants
+   attention.
+4. `section-head` (`section-head__title` + `section-head__hint`) to open each
+   band of content.
+5. `mon-stack` of `monAcc(icon, title, subtitle, chip, open, body)` accordions.
+   `monAcc` is pure CSS `<details>` — no JS, CSP-safe, keyboard-accessible. Give
+   the first/most important one `open: true`; give every summary a `mon-chip`
+   (`mon-chip--on` / `mon-chip--off`) so state reads while collapsed.
+6. Card bodies are `<div class="card">` with `settings-block-title`,
+   `text-sm muted` prose, `field` / `field-label` / `field-hint` inputs, and
+   `btn btn--primary btn--sm` actions.
+7. One inline `<script nonce="…">`, or a page-script const passed to
+   `adminOSShellFoot`. Never an inline `style="…"` attribute — `assertCSPSafe`
+   fails on it, along with the literals `cdn`, `googleapis`, `unpkg`, `jsdelivr`.
+
+Render via `adminOSShellHead(nonce, title, navKey, cfg)` + body +
+`adminOSShellFoot(nonce, pageScript, pageUsesAlpine(body))`, then `writeOSHTML`.
+
+Worked examples to copy from: `/os/vayukeep`, `/os/buzz`, `/os/claudecode`.
+
+Also, for any page that mints API keys: add its nav key to `adminAreas` in
+`osPathMinLevel` (`handlers_auth.go`) or it silently inherits the permissive
+author default, and pin that with a test.

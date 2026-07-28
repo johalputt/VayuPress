@@ -396,7 +396,7 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
         points:[
           'One-click Connect on claude.ai — OAuth 2.1 + PKCE',
           'Standard MCP — Claude, Claude Code or any MCP client',
-          'Buzz agents connect too — guided setup in VayuOS',
+          'Guided setup pages for Claude Code and for Buzz agents',
           'Built-in server at /mcp — no extra service',
           'Read analytics · create, edit & publish posts and pages',
           'Update settings & switch themes just by asking',

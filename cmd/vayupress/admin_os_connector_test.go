@@ -59,9 +59,24 @@ func TestConnectorCardsCSPSafe(t *testing.T) {
 
 	connect := osConnectorConnectCard(endpoint)
 	assertCSPSafe(t, "osConnectorConnectCard", connect)
-	for _, want := range []string{"mcpServers", endpoint, "claude mcp add", "Authorization"} {
+	// The generic, client-agnostic configuration is what this page is for.
+	for _, want := range []string{"mcpServers", endpoint, "Authorization"} {
 		if !strings.Contains(connect, want) {
 			t.Errorf("connect card missing %q", want)
+		}
+	}
+	// Client-specific setup moved to its own pages (ADR-0147). This page must
+	// route the reader there — dropping the instructions without a pointer would
+	// leave a Claude or Buzz operator with nowhere to go.
+	for _, want := range []string{`href="/os/claudecode"`, `href="/os/buzz"`} {
+		if !strings.Contains(connect, want) {
+			t.Errorf("connect card must link to the guided page %q", want)
+		}
+	}
+	// …and must not have kept a stale copy of them, or the two pages drift.
+	for _, gone := range []string{"claude mcp add", "claude_desktop_config.json"} {
+		if strings.Contains(connect, gone) {
+			t.Errorf("connect card still carries client-specific setup %q — it belongs on /os/claudecode", gone)
 		}
 	}
 }

@@ -6,6 +6,66 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.87] — 2026-07-28
+
+### Added
+- **Claude Code connector page** (ADR-0147). **Optimize → Claude Code**
+  (`/os/claudecode`) walks through all three ways Claude reaches this site, best
+  first: **one-click Connect on claude.ai** (open by default, needs no key at
+  all — Claude signs in through this site's OAuth 2.1 server and you approve a
+  scope on screen), then the Claude Code CLI command, then the Claude Desktop
+  config block.
+
+  The one-click route leading is the point of the change. It creates no token to
+  leak, paste wrongly or forget to revoke, and it was previously one of four
+  equal-looking accordions on a page about a protocol.
+
+### Changed
+- **VayuMCP is now the protocol surface, not a pile of per-client instructions.**
+  `/os/connector` had grown four "Connect a client" accordions — three of them
+  Claude — so a reader connecting Cursor scrolled past three sections that were
+  not theirs to reach a generic configuration that was never given its own block,
+  only implied by the Claude Desktop example.
+
+  It now carries the endpoint, the grants, a **generic MCP configuration of its
+  own**, the connected-client list and the proxy/WAF reference, plus signposts to
+  the two guided pages. Adding the next client is a new page and a nav card, not
+  another accordion.
+
+  A test pins the split in both directions: the page must link to
+  `/os/claudecode` and `/os/buzz`, and must **not** still contain
+  `claude mcp add` or `claude_desktop_config.json`. Two copies of the same
+  instructions would drift the first time one was fixed.
+
+- **The two connector pages deliberately have different defaults.** Buzz leads
+  with **Author**; Claude Code leads with **Full control**. A Buzz agent sits in a
+  shared channel and acts for more than one person, so the safe grant should look
+  like the default; the Claude page's common case is an operator connecting their
+  own assistant to their own site. Both are pinned by tests so neither gets
+  "fixed" to match the other without the reason being reconsidered.
+
+- **Shared scaffolding for per-client pages.** The token banner, stat strip,
+  grant tiles, snippet renderer and mint controller now live in one place
+  (`admin_os_mcpclient.go`) instead of once per page. Snippets carry their own
+  template in `data-tpl`, so the controller fills whatever it finds — previously
+  it rebuilt two specific blocks by id, which meant every new snippet had to be
+  taught to the function or silently kept its placeholder. `/os/connector` moved
+  onto the same mechanism.
+
+- Each page counts only the keys it minted (`Claude …`, `Buzz agent …`). A key
+  granted to Claude is not a Buzz agent, and an operator auditing which clients
+  can reach their site needs them separated rather than summed. A test asserts
+  the two do not cross-count, including that a Claude full-control key does not
+  raise the warning tone on the Buzz page.
+
+- `/os/claudecode` is admin-gated alongside `connector`, `apikeys` and `buzz` —
+  it mints API keys. Confirmed by removing the entry and watching the gate test
+  report level 1 instead of admin.
+
+Docs: [`docs/compatibility/claude-code.md`](docs/compatibility/claude-code.md).
+
+---
+
 ## [3.15.86] — 2026-07-28
 
 ### Added

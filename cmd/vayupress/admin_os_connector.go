@@ -309,7 +309,9 @@ func osConnectorIntro() string {
     <span id="cx-status" role="status" aria-live="polite" class="text-xs muted"></span>
   </div>
 </div>
-<p class="text-sm muted mb-4"><strong>VayuMCP</strong> is a built-in <strong>Model Context Protocol</strong> connector: it lets an AI client connect directly to this site and run it with a native set of tools — publish posts, build pages, read analytics, search content, and more. <strong>Claude and Claude Code connect in one click</strong>, but claude.ai is just one client — <strong>any MCP client works the same way</strong> (Claude Desktop, Claude Code, Cursor, or anything that speaks MCP over HTTP + OAuth). What a client can do is decided <strong>entirely by the key you grant below</strong>: a full-control key lets it run the whole site; a limited key exposes only what you allow. It is simply your API, spoken in MCP.</p>
+<p class="text-sm muted mb-4"><strong>VayuMCP</strong> is a built-in <strong>Model Context Protocol</strong> connector: it lets an AI client connect directly to this site and run it with a native set of tools — publish posts, build pages, read analytics, search content, and more. This page is the <strong>protocol surface</strong> — your endpoint, your grants, and every client currently connected. What a client can do is decided <strong>entirely by the key you grant below</strong>: a full-control key lets it run the whole site; a limited key exposes only what you allow. It is simply your API, spoken in MCP.</p>
+
+<p class="text-sm muted mb-4">Setting up a specific client? <a href="/os/claudecode"><strong>Claude Code</strong></a> and <a href="/os/buzz"><strong>Buzz</strong></a> have their own step-by-step pages. Everything else — Cursor, Cline, or anything that speaks MCP over HTTP — connects with the endpoint and configuration below.</p>
 
 <div id="cx-token-banner" class="card ak-token-banner" hidden>
   <div class="settings-block-title">Copy your new connector key now</div>
@@ -453,46 +455,39 @@ func osConnectorGrantCard() string {
 </div>`
 }
 
-// osConnectorConnectCard shows the ready-to-paste configuration for Claude
-// Desktop and the Claude Code CLI. The key placeholder is replaced live once a
-// key is minted above (see the page script), so the operator gets a genuinely
-// copy-paste result.
+// osConnectorConnectCard shows the generic, client-agnostic configuration plus
+// the proxy reference.
+//
+// It used to carry four blocks — claude.ai one-click, Claude Desktop, Claude Code
+// CLI, and the proxy note — which made a page about a protocol spend most of its
+// height on one vendor, and made a reader scroll past three sections that were
+// not theirs to find the one that was. Claude and Buzz have their own pages now
+// (ADR-0147); what belongs here is the shape every other MCP client needs.
+//
+// cfg embeds the RAW endpoint. mcpSnippet html-escapes the whole block exactly
+// once; escaping the endpoint first would double-encode any HTML-special char a
+// valid Host may contain.
 func osConnectorConnectCard(endpoint string) string {
-	e := html.EscapeString(endpoint)
-	// The template carries a visible placeholder; JS swaps in the real key after
-	// a mint. data-endpoint lets the script rebuild the block with the live token.
-	// cfg embeds the RAW endpoint: the whole block is html-escaped exactly once
-	// when rendered into the <pre> below (matching the CLI path). Escaping e here
-	// would double-encode any HTML-special char a valid Host may contain.
 	cfg := `{
   "mcpServers": {
     "vayupress": {
       "url": "` + endpoint + `",
-      "headers": { "Authorization": "Bearer YOUR_KEY_HERE" }
+      "headers": { "Authorization": "Bearer ` + keyTemplatePlaceholder + `" }
     }
   }
 }`
-	cli := `claude mcp add --transport http vayupress ` + endpoint + ` --header "Authorization: Bearer YOUR_KEY_HERE"`
 
-	oneClick := `<div class="card">
-  <p class="text-sm muted">This needs <strong>no key at all</strong>. The Connect button lives on <strong>Claude's side</strong>, not on this page — this site runs the OAuth&nbsp;2.1 server it signs into. On <strong>claude.ai</strong> (or Claude Desktop) open <em>Settings → Connectors → Add custom connector</em>, paste your connector endpoint <code>` + e + `</code>, and click <strong>Connect</strong>. Claude signs you in through this site and shows an <strong>Approve&nbsp;&amp;&nbsp;connect</strong> screen where you choose Full&nbsp;control / Author / Read-only.</p>
-  <p class="field-hint mt-2">Custom connectors on claude.ai may require a paid plan (Pro/Max/Team/Enterprise). The Desktop and CLI options remain for clients that use a pasted key. Technical detail: <a href="/docs/adr/ADR-0140-vayu-mcp-oauth" target="_blank" rel="noopener">ADR-0140</a>.</p>
+	generic := `<div class="card">
+  <p class="text-sm muted">Most MCP clients take a remote server as a URL plus a header. Grant a key above and this block is filled in for you:</p>
+  ` + mcpSnippet("cx-cfg-generic", cfg) + `
+  <p class="field-hint mt-2">Some clients want the key as <code>X-API-Key</code> instead of <code>Authorization: Bearer</code> — both are accepted. The transport is MCP over Streamable HTTP (JSON-RPC 2.0).</p>
 </div>`
 
-	desktop := `<div class="card">
-  <p class="text-sm muted">Add this to your <code>claude_desktop_config.json</code> (Settings → Developer → Edit config), then restart Claude Desktop:</p>
-  <pre class="cx-code font-mono" id="cx-cfg-desktop" data-endpoint="` + e + `">` + html.EscapeString(cfg) + `</pre>
-  <div class="ak-cred-actions">
-    <button type="button" class="btn btn--sm" data-copy="#cx-cfg-desktop">Copy config</button>
-  </div>
-</div>`
-
-	cliCard := `<div class="card">
-  <p class="text-sm muted">One command:</p>
-  <pre class="cx-code font-mono" id="cx-cfg-cli" data-endpoint="` + html.EscapeString(endpoint) + `">` + html.EscapeString(cli) + `</pre>
-  <div class="ak-cred-actions">
-    <button type="button" class="btn btn--sm" data-copy="#cx-cfg-cli">Copy command</button>
-  </div>
+	clients := `<div class="card">
+  <p class="text-sm muted">Two clients have guided pages, because their setup differs enough to be worth its own walkthrough:</p>
+  <p class="text-sm muted mt-2"><a href="/os/claudecode"><strong>Claude Code →</strong></a> Claude Code, Claude Desktop and claude.ai. The one-click route there needs no key at all — Claude signs in through this site's OAuth&nbsp;2.1 server and you approve a scope on screen.</p>
+  <p class="text-sm muted mt-2"><a href="/os/buzz"><strong>Buzz →</strong></a> agents in a Buzz workspace, which reach this endpoint through their agent harness.</p>
+  <p class="field-hint mt-2">Anything else — Cursor, Cline, a custom client — uses the configuration above unchanged.</p>
 </div>`
 
 	// The proxy/WAF section is reference material: essential when it bites, noise
@@ -512,11 +507,10 @@ starts_with(http.request.uri.path, "/.well-known/")</pre>
   <p class="field-hint mt-2"><strong>Can't scope the challenge per path?</strong> (Bot&nbsp;Fight&nbsp;Mode on the free plan cannot be.) Point a dedicated <code>mcp.&lt;your-domain&gt;</code> record straight at this server with the <strong>proxy OFF (&ldquo;DNS only&rdquo;)</strong>. Your main site keeps full protection; only this host is direct, and VayuShield still guards it. VayuPress provisions the certificate and vhost itself — run <code>sudo bash scripts/setup-mcp-subdomain.sh</code>, or re-run your update once the record exists. This page then offers that host automatically.</p>
 </div>`
 
-	return `<div class="section-head"><span class="section-head__title">Connect a client</span><span class="section-head__hint">A granted key is filled into these automatically — pick your client</span></div>
+	return `<div class="section-head"><span class="section-head__title">Connect a client</span><span class="section-head__hint">A granted key is filled in automatically</span></div>
 <div class="mon-stack">` +
-		monAcc("✨", "One-click Connect on claude.ai", "Easiest — no key to copy", `<span class="mon-chip mon-chip--on">● Recommended</span>`, true, oneClick) +
-		monAcc("🖥️", "Claude Desktop", "Paste a config block", `<span class="mon-chip mon-chip--off">○ Needs a key</span>`, false, desktop) +
-		monAcc("⌨️", "Claude Code (CLI)", "One command", `<span class="mon-chip mon-chip--off">○ Needs a key</span>`, false, cliCard) +
+		monAcc("🔌", "Any MCP client", "URL plus a header — the standard shape", `<span class="mon-chip mon-chip--on">● Start here</span>`, true, generic) +
+		monAcc("🧭", "Guided setup for a specific client", "Claude Code · Buzz", `<span class="mon-chip mon-chip--off">○ Own pages</span>`, false, clients) +
 		monAcc("🛡️", "Behind a proxy or WAF?", "The most common reason Connect fails", `<span class="mon-chip mon-chip--off">○ Reference</span>`, false, proxy) +
 		`</div>`
 }
@@ -674,14 +668,14 @@ function cxCopy(text){if(navigator.clipboard){navigator.clipboard.writeText(text
 // ── Token banner + live config fill ──
 var banner=document.getElementById('cx-token-banner');
 var tokenVal=document.getElementById('cx-token-value');
+// Snippets carry their own template in data-tpl with a placeholder where the key
+// goes, so this does not need to know what any of them say. The previous version
+// rebuilt two specific blocks by id from a data-endpoint attribute, which meant
+// every new snippet had to be taught to this function or silently kept its
+// placeholder.
 function fillConfigs(tok){
-  document.querySelectorAll('[data-endpoint]').forEach(function(el){
-    var ep=el.getAttribute('data-endpoint');
-    if(el.id==='cx-cfg-desktop'){
-      el.textContent='{\n  "mcpServers": {\n    "vayupress": {\n      "url": "'+ep+'",\n      "headers": { "Authorization": "Bearer '+tok+'" }\n    }\n  }\n}';
-    }else if(el.id==='cx-cfg-cli'){
-      el.textContent='claude mcp add --transport http vayupress '+ep+' --header "Authorization: Bearer '+tok+'"';
-    }
+  document.querySelectorAll('[data-tpl]').forEach(function(el){
+    el.textContent=el.getAttribute('data-tpl').split('` + keyTemplatePlaceholder + `').join(tok);
   });
 }
 function showToken(tok){

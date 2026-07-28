@@ -568,6 +568,11 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// its own.
 		pr.Get("/os/buzz", a.handleOSBuzz)
 
+		// Claude Code connector (ADR-0147): the Claude-specific routes in, split
+		// off /os/connector so the protocol page stops answering a question
+		// nobody asked. GET-only, same reasoning as above.
+		pr.Get("/os/claudecode", a.handleOSClaudeCode)
+
 		// VayuOS Spaces (ADR-0141): the Clearnet/Tor worlds + the one-click
 		// Anonymous Tor Space toggle. The GET is wrapped in CSRFTokenMiddleware so
 		// loading the page (re)issues the vp_csrf cookie the toggle POST reads back
