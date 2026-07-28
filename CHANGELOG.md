@@ -27,6 +27,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `gzip` gains a 256-byte floor and now covers SVG, the web manifest, RSS and
   Atom.
 
+### Added
+- **The Tier 2 kernel firewall can allowlist a CDN's edge ranges.** Every limit in
+  `deploy/vayushield-firewall.sh` keys on the source address, and the kernel has
+  no concept of an HTTP header — so on a proxied site it saw a handful of edge
+  nodes instead of thousands of readers and measured the whole audience as a few
+  extremely busy clients. A per-visitor cap of 64 concurrent connections is
+  nothing for one edge node, so connections were dropped in the kernel: no log
+  line, no error page, just requests that intermittently failed to arrive.
+
+  No in-app setting could fix this. "Behind Cloudflare / a CDN" teaches the
+  *application* to read `CF-Connecting-IP`; it cannot teach the kernel, which runs
+  long before that header is parsed.
+
+  Ranges now come from `/etc/vayushield/cdn-allow.conf` (one CIDR per line) and
+  are emitted **ahead of every limiter** — including the SYN guard, which is a
+  *global* rate rather than a per-IP one and would otherwise cap the entire site's
+  new connections rather than an attacker's. This sharpens the firewall rather
+  than loosening it: traffic arriving from anywhere other than the edge is by
+  definition someone who found the origin address and skipped the proxy, and it
+  still meets the full ruleset. That is not hypothetical on a host that also runs
+  mail, whose address is already public in DNS via its MX record.
+
+  `vayushield-firewall.sh cdn-allow cloudflare` populates the file. It is the only
+  code path that touches the network: `apply` never calls out by itself, so an
+  offline host or an onion-only install is never made to reach the clearnet as a
+  side effect of enabling a firewall. Persistence comes free — the reconcile agent
+  re-runs `apply` on every boot, so the allowlist survives restarts without any
+  extra machinery. `status` now reports when the allowlist is missing, since a
+  proxied origin without one is the likeliest reason traffic vanishes silently.
+
+  Allowlist lines are operator-edited text spliced into a ruleset loaded as root,
+  so every entry is validated against a strict CIDR pattern. A test runs the
+  parser against real injection attempts (`1.2.3.4/24; drop`,
+  `$(touch /tmp/pwned)/24`, `0.0.0.0/0 accept; ip saddr {`) and asserts none of
+  them survive.
+
 ### Changed
 - **The network-hardening panel no longer claims your origin is unproxied when it
   is.** VayuShield's hardening section ended with a fixed sentence — "Your origin

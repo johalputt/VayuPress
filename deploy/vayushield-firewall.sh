@@ -26,11 +26,111 @@ NEW_CONN_BURST=100        # burst above the rate before dropping
 SYN_RATE="25/second"      # global SYN accept rate (flood guard)
 SYN_BURST=50
 
+# --- CDN / reverse-proxy allowlist --------------------------------------------
+# Every limit above keys on the SOURCE IP, and the kernel has no idea what an
+# HTTP header is. So when a CDN proxies the site, this layer sees a handful of
+# edge addresses instead of thousands of readers, and measures the whole audience
+# as if it were a few extremely busy clients: a per-visitor connection cap of 64
+# is nothing for one edge node. Connections then get dropped in the kernel, which
+# surfaces as intermittent, unreproducible failures — no log line, no error page,
+# just requests that sometimes do not arrive.
+#
+# No in-app setting can fix this. "Behind Cloudflare / a CDN" in VayuOS teaches
+# the *application* to read the real visitor from CF-Connecting-IP; it cannot
+# teach the kernel, which runs long before that header is parsed.
+#
+# So the edge ranges are allowlisted here instead, ahead of every limiter — which
+# also sharpens the firewall rather than weakening it. Traffic arriving from
+# anywhere OTHER than the CDN is, by definition, someone who found the origin
+# address and skipped the edge, and that traffic still meets the full ruleset.
+# (Worth knowing: if this host also runs mail, its address is already public in
+# DNS via the MX record, so direct-to-origin traffic is not hypothetical.)
+#
+# One CIDR per line; blank lines and '#' comments ignored. Populate it with
+#   vayushield-firewall.sh cdn-allow cloudflare
+# which is a deliberate, explicit fetch — apply never reaches the network by
+# itself, so an offline or onion-only host is never made to call out.
+CDN_ALLOW_FILE="${CDN_ALLOW_FILE:-/etc/vayushield/cdn-allow.conf}"
+
 require_root() {
   if [ "$(id -u)" -ne 0 ]; then
     echo "error: must run as root" >&2
     exit 1
   fi
+}
+
+# read_cdn_allow <4|6> — print a comma-separated nft set body of allowlisted
+# CIDRs for the given family, or nothing when the file is absent or has no
+# entries of that family.
+#
+# Every line is validated against a strict pattern before it is allowed anywhere
+# near the ruleset. The file is root-owned, but it is still operator-edited text
+# being spliced into a rule set that is loaded as root: one stray line ending in
+# a semicolon would otherwise become an nft statement rather than an address.
+# Anything that does not look exactly like a CIDR is skipped with a warning
+# rather than silently dropped, because a typo that quietly removes an allowlist
+# entry reintroduces the throttling this exists to prevent.
+read_cdn_allow() {
+  local family="$1" line out=""
+  [ -r "$CDN_ALLOW_FILE" ] || return 0
+  while IFS= read -r line; do
+    line="${line%%#*}"
+    line="$(printf '%s' "$line" | tr -d '[:space:]')"
+    [ -n "$line" ] || continue
+    if [ "$family" = 4 ]; then
+      printf '%s' "$line" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$' || {
+        printf '%s' "$line" | grep -q ':' || echo "  ! skipping malformed allowlist entry: $line" >&2
+        continue
+      }
+    else
+      printf '%s' "$line" | grep -Eq '^[0-9a-fA-F:]+/[0-9]{1,3}$' || continue
+    fi
+    out="${out:+$out, }$line"
+  done <"$CDN_ALLOW_FILE"
+  printf '%s' "$out"
+}
+
+# cdn_allow_fetch <vendor> — write CDN_ALLOW_FILE from a vendor's published
+# ranges. Explicit by design: this is the ONLY code path here that touches the
+# network, so `apply` stays offline-safe and an onion-only install never makes a
+# clearnet call as a side effect of enabling a firewall.
+cdn_allow_fetch() {
+  local vendor="${1:-cloudflare}" tmp v4 v6
+  command -v curl >/dev/null 2>&1 || { echo "error: curl is required to fetch ranges" >&2; return 1; }
+  case "$vendor" in
+    cloudflare)
+      v4="https://www.cloudflare.com/ips-v4"
+      v6="https://www.cloudflare.com/ips-v6"
+      ;;
+    *)
+      echo "error: unknown vendor '$vendor' (known: cloudflare)" >&2
+      echo "  For any other proxy, write its ranges to ${CDN_ALLOW_FILE}, one CIDR per line." >&2
+      return 1
+      ;;
+  esac
+  tmp="$(mktemp)"
+  {
+    echo "# VayuShield CDN/proxy allowlist — ranges fetched from ${vendor}."
+    echo "# Regenerate with: vayushield-firewall.sh cdn-allow ${vendor}"
+    echo "# Re-apply afterwards so the kernel picks it up: vayushield-firewall.sh apply"
+  } >"$tmp"
+  if ! curl -fsSL "$v4" >>"$tmp" || ! curl -fsSL "$v6" >>"$tmp"; then
+    rm -f "$tmp"
+    echo "error: could not fetch ${vendor} ranges; the existing allowlist is unchanged." >&2
+    return 1
+  fi
+  # Refuse to install an empty or obviously-wrong file. Truncating the allowlist
+  # to nothing would silently restore the throttling of every edge node.
+  if ! grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$' "$tmp"; then
+    rm -f "$tmp"
+    echo "error: the fetched ranges contained no usable IPv4 CIDR; nothing written." >&2
+    return 1
+  fi
+  mkdir -p "$(dirname "$CDN_ALLOW_FILE")"
+  install -o root -g root -m 0644 "$tmp" "$CDN_ALLOW_FILE"
+  rm -f "$tmp"
+  echo "✓ wrote $(grep -Ec '^[^#]' "$CDN_ALLOW_FILE") ${vendor} range(s) to ${CDN_ALLOW_FILE}"
+  echo "  Now run: $0 apply"
 }
 
 apply_sysctl() {
@@ -75,8 +175,28 @@ apply_nft() {
     return 1
   fi
   echo "• installing nftables table '${TABLE}'…"
-  local rules
+  local rules cdn4 cdn6 cdn_rules=""
   rules="$(mktemp)"
+  cdn4="$(read_cdn_allow 4)"
+  cdn6="$(read_cdn_allow 6)"
+  # Placed ahead of the SYN guard as well as the per-IP limiters. The SYN guard
+  # is a GLOBAL rate (not per-IP), so behind a proxy — where every connection on
+  # the site arrives from the edge — it would cap the whole site's new
+  # connections, not an attacker's. Letting the edge past it keeps the guard
+  # aimed at what it is for: traffic that reached this address directly.
+  if [ -n "$cdn4" ]; then
+    cdn_rules="${cdn_rules}
+    ip saddr { ${cdn4} } tcp dport ${HTTP_PORTS} accept"
+  fi
+  if [ -n "$cdn6" ]; then
+    cdn_rules="${cdn_rules}
+    ip6 saddr { ${cdn6} } tcp dport ${HTTP_PORTS} accept"
+  fi
+  if [ -n "$cdn_rules" ]; then
+    echo "• allowlisting proxy edge ranges from ${CDN_ALLOW_FILE}"
+  elif [ -e "$CDN_ALLOW_FILE" ]; then
+    echo "  ! ${CDN_ALLOW_FILE} exists but yielded no usable ranges — edge traffic WILL be rate-limited" >&2
+  fi
   # Per-IP concurrent connections are limited with a keyed meter (ip saddr) — the
   # portable idiom; a bare "ct count over N" is not per-IP and is rejected by some
   # nft versions. The rate limiter above already uses the same meter mechanism.
@@ -89,6 +209,7 @@ table inet ${TABLE} {
     ct state established,related accept
     iif "lo" accept
     ct state invalid drop
+${cdn_rules}
 
     # Global SYN-flood guard.
     tcp flags & (syn|ack) == syn limit rate ${SYN_RATE} burst ${SYN_BURST} packets return
@@ -127,17 +248,33 @@ case "${1:-apply}" in
     apply_nft
     echo "✓ VayuShield Tier-2 firewall applied. Verify with: $0 status"
     ;;
+  cdn-allow)
+    require_root
+    cdn_allow_fetch "${2:-cloudflare}"
+    ;;
   status)
     nft list table inet "${TABLE}" 2>/dev/null || echo "table '${TABLE}' not installed"
+    echo
+    if [ -r "$CDN_ALLOW_FILE" ]; then
+      echo "proxy allowlist: $(grep -Ec '^[^#[:space:]]' "$CDN_ALLOW_FILE" 2>/dev/null || echo 0) range(s) in ${CDN_ALLOW_FILE}"
+    else
+      # Not an error on a direct-to-origin host, but the single most likely
+      # reason a proxied site sees traffic disappear, so it is always stated.
+      echo "proxy allowlist: none (${CDN_ALLOW_FILE} absent)"
+      echo "  If a CDN proxies this site, its edge nodes are being rate-limited as"
+      echo "  if each were one very busy visitor. Fix: $0 cdn-allow cloudflare && $0 apply"
+    fi
     ;;
   remove)
     require_root
     nft delete table inet "${TABLE}" 2>/dev/null || true
     rm -f /etc/sysctl.d/99-vayushield.conf
+    # The allowlist is left in place on purpose: it is configuration, not state,
+    # and removing it would mean re-fetching it the next time Tier 2 is enabled.
     echo "✓ VayuShield Tier-2 firewall removed."
     ;;
   *)
-    echo "usage: $0 [apply|status|remove]" >&2
+    echo "usage: $0 [apply|status|remove|cdn-allow [vendor]]" >&2
     exit 2
     ;;
 esac
