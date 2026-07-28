@@ -28,6 +28,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   Atom.
 
 ### Changed
+- **The network-hardening panel no longer claims your origin is unproxied when it
+  is.** VayuShield's hardening section ended with a fixed sentence — "Your origin
+  serves visitors directly (no CDN proxy in front), so Tier 2's per-IP limits
+  apply to real client IPs and are fully effective" — printed unconditionally,
+  with nothing checked. On a proxied install it was false, and false in the worst
+  direction: it told the operator the limits they had just switched on were
+  protecting visitors, when those limits were measuring a handful of edge
+  addresses. A site could show "Behind Cloudflare / a CDN: ON" a few inches above
+  the sentence denying any proxy existed.
+
+  It now detects the proxy from the headers on the request being served —
+  `CF-Ray`, `CF-Connecting-IP`, `X-Amz-Cf-Id`, `Fastly-Client-IP`, `X-Azure-Ref`,
+  `True-Client-IP` and the vendor-neutral `CDN-Loop` (RFC 8586). `X-Forwarded-For`
+  is deliberately excluded: a local nginx sets it on every request, so trusting it
+  would report a CDN in front of every ordinary install and make the whole notice
+  noise.
+
+  The advisory then splits the three tiers, because they do not behave alike
+  behind a proxy and conflating them is what leaves someone throttling their own
+  CDN:
+
+  - **Tier 1** reads the visitor from the proxy header once the trust switch is
+    on, and the panel now confirms that rather than warning forever.
+  - **Tier 3** needs `set_real_ip_from` plus `real_ip_header`, or nginx's shaping
+    keys on the edge.
+  - **Tier 2 cannot be fixed by any switch.** It runs in the kernel, before an
+    HTTP header exists, so its per-IP limits always see the proxy's addresses — a
+    busy edge node exceeds a per-visitor connection cap and gets dropped, which
+    surfaces as intermittent failures that cannot be reproduced. The remedy is to
+    allowlist the edge ranges, and the panel now says so instead of implying the
+    trust switch covered it.
+
+  Six tests pin the behaviour, including that an unproxied origin is never nagged
+  about a CDN it does not have, and that the Tier 2 carve-out appears whether or
+  not the trust switch is on.
+
 - **OCSP stapling removed from the nginx template.** Let's Encrypt has retired its
   OCSP responders, so their certificates carry no responder URL and nginx logged
   `"ssl_stapling" ignored…` on every config test and every reload. Stapling

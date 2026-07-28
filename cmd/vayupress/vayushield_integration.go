@@ -571,7 +571,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Defense &amp; intelligence</span><span class="section-head__hint">Server-level hardening and the self-learning bot database</span></div>`)
 	b.WriteString(`<div class="mon-stack">`)
 	b.WriteString(monAcc("🧱", "Network hardening", "Tier 2 nftables · Tier 3 nginx edge — server-level", `<span class="mon-chip mon-chip--on">● Live</span>`, false,
-		`<div id="vs-body-hardening" hx-get="/os/shield/section/hardening" hx-trigger="every 10s" hx-swap="innerHTML">`+a.shieldHardeningBody()+`</div>`))
+		`<div id="vs-body-hardening" hx-get="/os/shield/section/hardening" hx-trigger="every 10s" hx-swap="innerHTML">`+a.shieldHardeningBody(r)+`</div>`))
 
 	// ── Bot intelligence — collapsible + individually refreshable. Both bodies
 	// also listen for vs-refresh-sig (fired after a Confirm/Dismiss) so their
@@ -1038,7 +1038,7 @@ func (a *App) handleOSShieldSection(w http.ResponseWriter, r *http.Request) {
 	case "engagement":
 		out = a.shieldEngagementBody(r.Context(), shieldDays(r))
 	case "hardening":
-		out = a.shieldHardeningBody()
+		out = a.shieldHardeningBody(r)
 	case "selftest":
 		out = shieldSelfTestBody(a.runShieldCanary())
 	default:

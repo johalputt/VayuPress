@@ -25,6 +25,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/settings"
 )
 
 // shieldControlDir returns the directory the panel and the root agent use to
@@ -118,13 +120,53 @@ func (a *App) handleOSShieldTier(w http.ResponseWriter, r *http.Request) {
 	}
 	// Return the refreshed section so the toggle updates in place (HTMX swaps the
 	// body); the section also self-polls so applying → active appears on its own.
-	writeOSFragment(w, a.shieldHardeningBody())
+	writeOSFragment(w, a.shieldHardeningBody(r))
+}
+
+// shieldCDNVendors maps a request header to the proxy that sets it. Any of these
+// means a CDN terminated the visitor's connection, so what reaches this server is
+// the CDN's address rather than the reader's.
+//
+// X-Forwarded-For is deliberately NOT in this list. A local nginx reverse proxy
+// sets it on every request, so treating it as a CDN signal would report a CDN in
+// front of every normal install — the opposite of the honesty this is for.
+var shieldCDNVendors = []struct{ header, vendor string }{
+	{"CF-Ray", "Cloudflare"},
+	{"CF-Connecting-IP", "Cloudflare"},
+	{"X-Amz-Cf-Id", "CloudFront"},
+	{"Fastly-Client-IP", "Fastly"},
+	{"X-Azure-Ref", "Azure Front Door"},
+	{"True-Client-IP", "a proxy"},
+	{"CDN-Loop", "a proxy"}, // RFC 8586 — the standard, vendor-neutral marker
+}
+
+// shieldDetectCDN reports whether this request arrived through a CDN proxy, and
+// which one. It reads the live request rather than a stored setting, because the
+// setting records what the operator BELIEVES and this has to report what is
+// actually happening.
+func shieldDetectCDN(r *http.Request) (bool, string) {
+	if r == nil {
+		return false, ""
+	}
+	for _, v := range shieldCDNVendors {
+		if strings.TrimSpace(r.Header.Get(v.header)) != "" {
+			return true, v.vendor
+		}
+	}
+	return false, ""
 }
 
 // shieldHardeningBody renders the Network-hardening section body: live Tier 2/3
 // state with real toggles when the root agent is installed, or a clear
 // explanation + copy-paste fallback when it is not yet.
-func (a *App) shieldHardeningBody() string {
+//
+// It takes the request so it can report the CDN situation truthfully. The copy
+// here used to assert, unconditionally, that the origin served visitors directly
+// with no proxy in front — on a proxied install that is simply false, and it is
+// false in the most misleading direction, because it tells the operator the
+// per-IP limits they just enabled are "fully effective" when those limits are in
+// fact measuring a handful of CDN edge addresses.
+func (a *App) shieldHardeningBody(r *http.Request) string {
 	var b strings.Builder
 	b.WriteString(vsRefresh("hardening", "vs-body-hardening", ""))
 	b.WriteString(`<p class="muted text-sm">The toggles above are <strong>Tier 1</strong> — VayuShield's in-binary defenses. <strong>Tier 2</strong> (kernel firewall) and <strong>Tier 3</strong> (nginx edge) sit below and in front of the app; they drop abuse before it reaches VayuPress, so they <strong>improve</strong> performance under attack rather than degrade it, with no cost to legitimate visitors.</p>`)
@@ -134,7 +176,8 @@ func (a *App) shieldHardeningBody() string {
 		b.WriteString(shieldTierRow(2, "🛡️ Tier 2 · Kernel firewall (nftables)", "Per-IP connection/packet rate limits + SYN-flood cookies, enforced in the Linux kernel. Turning this on also activates the L1 live offload below."))
 		b.WriteString(shieldTierRow(3, "🌐 Tier 3 · Edge shaping (nginx)", "Per-IP request/connection shaping + slow-loris timeouts at the reverse proxy."))
 		b.WriteString(shieldOffloadRow())
-		b.WriteString(`<p class="muted text-xs">Your origin serves visitors directly (no CDN proxy in front), so Tier 2's per-IP limits apply to real client IPs and are fully effective. (If you ever put a CDN/proxy in front, per-IP limits would then see the CDN's IPs — the SYN/edge hardening stays safe either way.) Both tiers are fully reversible from here.</p>`)
+		b.WriteString(a.shieldCDNAdvisory(r))
+		b.WriteString(`<p class="muted text-xs">Both tiers are fully reversible from here.</p>`)
 	} else {
 		b.WriteString(`<div class="vs-tier"><div class="vs-tier-head">One-time setup — enable the in-panel switches</div>`)
 		b.WriteString(`<p class="muted text-sm">A true in-panel toggle needs a tiny <strong>root helper</strong> installed once. The <strong>in-app one-click updater cannot install it</strong> — that updater is unprivileged by design (which is exactly what keeps VayuPress safe). Install it with <strong>one command as root</strong> from your VayuPress checkout, then this section turns into on/off switches (no terminal afterwards):</p>`)
@@ -146,6 +189,46 @@ func (a *App) shieldHardeningBody() string {
 		b.WriteString(`<p class="muted text-xs">Undo: <code>… vayushield-firewall.sh remove</code>; delete the nginx conf + reload.</p></div>`)
 	}
 	b.WriteString(`<p class="muted text-sm">A true volumetric flood still needs anycast/scrubbing capacity no single host provides; Tiers 1–3 handle what a typical publisher actually faces.</p>`)
+	return b.String()
+}
+
+// shieldCDNAdvisory states what is actually in front of this origin and what
+// that means for each tier, because the three tiers do NOT behave the same way
+// behind a proxy and conflating them is what leaves an operator throttling their
+// own CDN:
+//
+//   - Tier 1 (in-binary) reads the visitor from CF-Connecting-IP once the
+//     "Behind Cloudflare / a CDN" switch is on. Only genuine edge addresses are
+//     trusted, so the header cannot be spoofed.
+//   - Tier 3 (nginx) needs set_real_ip_from + real_ip_header to see the visitor.
+//   - Tier 2 (nftables) can NEVER see the visitor. It runs in the kernel, before
+//     any HTTP header exists, so its per-IP limits key on the proxy's addresses
+//     no matter what any setting says. The only fix is to allowlist the edge
+//     ranges — which is why this is called out separately rather than folded in
+//     with the other two.
+func (a *App) shieldCDNAdvisory(r *http.Request) string {
+	viaCDN, vendor := shieldDetectCDN(r)
+	if !viaCDN {
+		return `<p class="muted text-xs">No proxy detected in front of this origin on your own request, so Tier 2 and Tier 3 per-IP limits apply to real visitor addresses and are fully effective. If you later put a CDN in front, come back here — this notice updates on its own, and the per-IP limits would then need adjusting.</p>`
+	}
+
+	trusted := false
+	if a.siteSettings != nil {
+		trusted = a.siteSettings.Get(r.Context(), settings.KeyShieldBehindCDN) == "on"
+	}
+
+	var b strings.Builder
+	b.WriteString(`<p class="muted text-xs"><strong>` + html.EscapeString(vendor) +
+		` is proxying this origin</strong> — detected from the headers on this very request. That changes what the tiers below can see.</p>`)
+
+	if !trusted {
+		b.WriteString(`<p class="muted text-xs">⚠️ <strong>“Behind Cloudflare / a CDN” is switched off above.</strong> VayuShield is therefore treating each proxy edge address as if it were one visitor, so your whole audience looks like a handful of IPs — which trips the rate limit and can show everyone a challenge page. Turn that switch on: it reads the real visitor from the proxy's header, and only genuine edge addresses are trusted, so it cannot be spoofed.</p>`)
+	} else {
+		b.WriteString(`<p class="muted text-xs">✅ Tier 1 is reading the real visitor address from the proxy's header, so in-binary rate limiting applies per reader rather than per edge node.</p>`)
+	}
+
+	b.WriteString(`<p class="muted text-xs"><strong>Tier 2 is different, and no switch fixes it.</strong> The kernel firewall runs before any HTTP header exists, so its per-IP limits always see the proxy's addresses — a busy edge node easily exceeds a per-visitor connection cap and gets dropped, which reads as intermittent failures you cannot reproduce. Allowlist your proxy's ranges before enabling Tier 2, or leave Tier 2 for origins that take traffic directly (a subdomain that is not proxied, for instance).</p>`)
+	b.WriteString(`<p class="muted text-xs"><strong>Tier 3</strong> needs <code>set_real_ip_from</code> for your proxy's ranges plus <code>real_ip_header</code>, or nginx's per-IP shaping keys on the edge too. The SYN-flood and slow-loris protections in both tiers are unaffected either way — those do not depend on identifying the visitor.</p>`)
 	return b.String()
 }
 
