@@ -110,6 +110,7 @@ func osOptimizeGrid(level int, sites []optimizeSite) string {
 		card("/os/settings", "Settings", "Site & install settings", iconSettings, false),
 		card("/os/apikeys", "VayuAPI", "API keys & access", iconKey, false),
 		card("/os/connector", "VayuMCP", "Model Context Protocol", iconConnector, false),
+		card("/os/buzz", "Buzz", "Connect Buzz agents", iconBuzz, false),
 	))
 	return b.String()
 }

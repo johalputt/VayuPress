@@ -562,6 +562,12 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// the CSRF-protected API-key endpoints above, adding no new write surface.
 		pr.Get("/os/connector", a.handleOSConnector)
 
+		// Buzz connector (ADR-0146): the same MCP surface, walked through for a
+		// Buzz agent. GET-only for the same reason — it mints through the
+		// CSRF-protected API-key endpoints above and adds no write surface of
+		// its own.
+		pr.Get("/os/buzz", a.handleOSBuzz)
+
 		// VayuOS Spaces (ADR-0141): the Clearnet/Tor worlds + the one-click
 		// Anonymous Tor Space toggle. The GET is wrapped in CSRFTokenMiddleware so
 		// loading the page (re)issues the vp_csrf cookie the toggle POST reads back

@@ -6,6 +6,54 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.86] — 2026-07-28
+
+### Added
+- **Buzz connector** (ADR-0146). [Buzz](https://github.com/block/buzz) is Block's
+  open-source workspace, built on Nostr, where AI agents are members holding
+  their own cryptographic identity rather than bots wearing a human's login.
+  VayuOS now has a guided page for connecting one to your site: **Optimize →
+  Buzz** (`/os/buzz`).
+
+  The useful finding is how little was needed. Buzz agents run through a harness
+  that bridges them into workspace channels over **MCP tools**, and the agents
+  Buzz ships with — Claude Code, Goose, Codex — all speak MCP. VayuPress already
+  serves its whole toolset over MCP with OAuth 2.1 in front of it, so a Buzz
+  agent was already a supported client. Nothing new has to be spoken, signed or
+  dialled. What was missing was an operator being told this works and shown the
+  four steps.
+
+  So the page adds **no new dependency, no new secret, no new outbound path and
+  no new backend surface**. It mints through the same CSRF-protected API-key
+  endpoints `/os/connector` uses, and a Buzz agent is exactly as powerful as the
+  key granted to it — never more. Because nothing outbound was added, the
+  Tor-Space posture is untouched.
+
+  Three deliberate choices inside it:
+  - **Author is the primary grant, not full control.** The VayuMCP page leads
+    with full control because its common case is an operator connecting their own
+    assistant. A Buzz workspace is a team, and an agent in a shared channel acts
+    for more than one person — so the safe grant is the one that looks like the
+    default. A test pins this, so a later edit cannot quietly promote the
+    superuser button.
+  - **Keys minted here are labelled `Buzz agent (…)`** and the stat strip counts
+    only those. A key granted to Claude Desktop is not a Buzz agent, and an
+    operator auditing agent access needs them separated rather than summed.
+  - **The page is admin-gated.** It mints API keys, so it belongs beside
+    `connector` and `apikeys`. Without that entry it would have inherited the
+    permissive author default — confirmed by removing it and watching the gate
+    test report level 1 instead of admin.
+
+  The connector runs in **one direction**: agents reach in and use the site's
+  tools. It does not post from this site into a Buzz channel, and the page says
+  so rather than leaving it to be discovered. That direction would mean secp256k1
+  Schnorr signing, a relay credential at rest, and an egress path to hold behind
+  the clearnet kill-switch — a different feature with a different risk profile.
+  ADR-0146 records why they are separated and what building the second one would
+  involve. Docs: [`docs/compatibility/buzz.md`](docs/compatibility/buzz.md).
+
+---
+
 ## [3.15.85] — 2026-07-27
 
 ### Security
