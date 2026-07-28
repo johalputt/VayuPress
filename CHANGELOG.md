@@ -6,6 +6,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **The marketing site advertised the wrong VayuMCP address.** Two places on
+  vayupress.com named it `mcp.yourdomain.com`, while every other surface — the
+  console, the docs, the installer, the ADRs — says `<your-domain>/mcp`.
+
+  Both halves of that were wrong. The endpoint is **always a `/mcp` path**:
+  `connectorEndpoint()` returns `<host>/mcp` by default and
+  `https://mcp.<host>/mcp` when a dedicated host is provisioned, so even the
+  subdomain form keeps the path. And the subdomain is **optional** — it exists
+  only for installs whose proxy cannot skip a bot challenge on `/mcp`, and its
+  DNS record ships turned off. Naming it as the product's address told a reader
+  they needed a subdomain they almost certainly do not.
+
+  Nothing was functionally broken — no configuration anywhere carried a bare host
+  — but the front page contradicted the documentation, which is how an operator
+  ends up provisioning DNS they did not need. Both lines now read
+  `yourdomain.com/mcp`.
+
+  A test pins it: every `host:` field on the site mentioning MCP must carry the
+  `/mcp` path and must not lead with the `mcp.` subdomain, and a second test
+  asserts against the code that both forms `connectorEndpoint()` can return end
+  in `/mcp`. The DNS-record tables in the README and installation guide are left
+  alone — a DNS table is a list of hostnames, and `mcp.example.com` is exactly
+  right there.
+
+---
+
 ## [3.15.87] — 2026-07-28
 
 ### Added
