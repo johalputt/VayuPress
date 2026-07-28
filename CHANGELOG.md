@@ -6,7 +6,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.89] — 2026-07-28
+
+One plan, one release: make trending count the traffic it was missing, and stop a
+proxied install from quietly throttling its own edge.
+
+Both problems shared a shape — something reported success while what it described
+was not happening. Trending ranked on a fraction of the pageviews and still looked
+populated; the hardening panel declared no proxy was in front while the switch a
+few inches above it said otherwise. Neither surfaced an error anywhere, which is
+what let both persist.
 
 ### Added
 - **Brotli and HTTP/3 in the nginx template.** An install that fronts VayuPress
