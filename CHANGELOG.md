@@ -6,7 +6,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.88] — 2026-07-28
+
+Released on its own rather than batched, under the standing exception for a fix
+to something already shipped and broken for users right now: installed VayuOS
+apps are disappearing from home screens on restart, and every hosted site's
+installed app is currently wearing the wrong logo.
 
 ### Fixed
 - **The installed VayuOS app vanished after a phone restart.** The console's
