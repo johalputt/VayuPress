@@ -128,12 +128,33 @@ func (a *App) handleOSShieldTier(w http.ResponseWriter, r *http.Request) {
 	writeOSFragment(w, a.shieldHardeningBody(r))
 }
 
-// shieldCDNAllowVendors is the fixed set of proxies whose published ranges the
-// agent knows how to fetch. The panel may only ever name one of these, and the
-// agent independently re-checks the name against its own copy of the list — the
-// web app is unprivileged and its output must never be able to widen what a root
-// process will run.
-var shieldCDNAllowVendors = map[string]bool{"cloudflare": true}
+// shieldCDNAllowFlags maps a proxy vendor to the EXACT flag filename the root
+// agent looks for. The value is a constant; a caller-supplied name is only ever
+// used as a lookup KEY and never becomes part of a path.
+//
+// That indirection is the point. The first version validated the name against an
+// allowlist and then built the path by concatenation —
+// "cdnallow." + vendor + ".want" — which is safe only for as long as the
+// validation stays exactly where it is and stays an exact match. Code scanning
+// flagged it as uncontrolled data in a path expression, and it was right to: the
+// guard was real but the shape invited a future refactor (a prefix match, a
+// second caller, an extra vendor added carelessly) to turn it into a traversal
+// into a directory a root agent reads. Deriving the filename from a constant
+// removes the class rather than the symptom.
+//
+// The agent independently re-checks the vendor against its own copy of the list —
+// the web app is unprivileged and its output must never be able to widen what a
+// root process will run.
+var shieldCDNAllowFlags = map[string]string{
+	"cloudflare": "cdnallow.cloudflare.want",
+}
+
+// shieldCDNAllowFlag returns the constant flag filename for a vendor, and whether
+// the vendor is one this build supports.
+func shieldCDNAllowFlag(vendor string) (string, bool) {
+	name, ok := shieldCDNAllowFlags[vendor]
+	return name, ok
+}
 
 // shieldCDNAllowState returns the agent-reported state of the last allowlist
 // fetch: "applying", "active", "error" or "" when it has never been asked.
@@ -149,10 +170,12 @@ func shieldCDNAllowState() string {
 // allowlist. It writes an EMPTY file whose NAME carries the vendor, so no content
 // the web app produces is ever read as a command or an argument.
 func shieldRequestCDNAllow(vendor string) error {
-	if !shieldCDNAllowVendors[vendor] {
+	// The vendor selects a constant filename; it never reaches the path itself.
+	flag, ok := shieldCDNAllowFlag(vendor)
+	if !ok {
 		return errors.New("unknown proxy vendor")
 	}
-	f, err := os.OpenFile(filepath.Join(shieldControlDir(), "cdnallow."+vendor+".want"),
+	f, err := os.OpenFile(filepath.Join(shieldControlDir(), flag),
 		os.O_CREATE|os.O_WRONLY, 0o640)
 	if err != nil {
 		return err
@@ -164,7 +187,10 @@ func shieldRequestCDNAllow(vendor string) error {
 // the edge ranges" button.
 func (a *App) handleOSShieldCDNAllow(w http.ResponseWriter, r *http.Request) {
 	vendor := strings.ToLower(strings.TrimSpace(r.PostFormValue("vendor")))
-	if !shieldCDNAllowVendors[vendor] {
+	// Validated here as well as in shieldRequestCDNAllow: this endpoint is
+	// reachable directly with any POST body, so the button sending good values is
+	// not validation.
+	if _, ok := shieldCDNAllowFlag(vendor); !ok {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "unknown proxy vendor", "")
 		return
 	}
@@ -395,7 +421,7 @@ func (a *App) shieldCDNAllowRow(vendor string) string {
 	// the manual path, because pretending to support it would be worse than saying
 	// so.
 	key := strings.ToLower(strings.TrimSpace(vendor))
-	if !shieldCDNAllowVendors[key] {
+	if _, ok := shieldCDNAllowFlag(key); !ok {
 		return `<p class="muted text-xs">Write your proxy's published ranges to <code>/etc/vayushield/cdn-allow.conf</code>, one CIDR per line, then re-apply Tier 2.</p>`
 	}
 	if !shieldAgentAlive() {

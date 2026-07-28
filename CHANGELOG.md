@@ -6,6 +6,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **The proxy-allowlist flag filename is now a constant, not a concatenation.**
+  Code scanning raised a high-severity "uncontrolled data used in path
+  expression" against `shieldRequestCDNAllow`, which built its path as
+  `"cdnallow." + vendor + ".want"` from a caller-supplied name.
+
+  It was not exploitable: the name was checked against an exact-match allowlist of
+  one entry, on both the endpoint and the writer, so only `cloudflare` could ever
+  reach it. The finding was still worth acting on, because the *shape* was wrong.
+  Safety depended on that guard staying exactly where it was and staying an exact
+  match; a later prefix match, a second caller, or a carelessly added vendor would
+  turn it into a name written into a directory a root agent reads.
+
+  The vendor now selects a **constant** filename from a table and never becomes
+  part of a path. A test feeds the writer traversal sequences, an embedded NUL, a
+  4 KB name and percent-encoded escapes, then asserts the control directory
+  contains nothing but the known constants — and that each constant is itself a
+  plain basename, so the table cannot become the traversal vector the input no
+  longer is.
+
+---
+
 ## [3.15.91] — 2026-07-28
 
 Released on its own, under the standing exception for a fix to something already

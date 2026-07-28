@@ -44,6 +44,59 @@ func TestRequestCDNAllowWritesAnEmptyNamedFlag(t *testing.T) {
 	}
 }
 
+// TestFlagPathNeverContainsCallerInput is the property code scanning was pointing
+// at (CodeQL "uncontrolled data used in path expression",
+// vayushield_hardening.go:155). The original built the filename by concatenation
+// — "cdnallow." + vendor + ".want" — behind an exact-match allowlist. That was
+// safe as written and still the wrong shape: the guard has to stay exactly where
+// it is, and stay an exact match, forever, or a caller-supplied string starts
+// naming files in a directory a root agent reads.
+//
+// The invariant now is stronger and checkable: every path the writer can produce
+// is one of a fixed set of constants, whatever it is handed.
+func TestFlagPathNeverContainsCallerInput(t *testing.T) {
+	dir := withControlDir(t)
+
+	hostile := []string{
+		"cloudflare", // the one legitimate value
+		"../../../etc/cron.d/x",
+		"cloudflare/../../root/.ssh/authorized_keys",
+		"..%2f..%2fetc%2fpasswd",
+		"cloudflare\x00.want",
+		strings.Repeat("a", 4096),
+		"", " ", "CLOUDFLARE",
+	}
+	for _, v := range hostile {
+		_ = shieldRequestCDNAllow(v) // errors are fine; escaping the dir is not
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if _, ok := shieldCDNAllowFlags["cloudflare"]; !ok {
+			t.Fatal("the flag table lost its only entry")
+		}
+		known := false
+		for _, want := range shieldCDNAllowFlags {
+			if e.Name() == want {
+				known = true
+			}
+		}
+		if !known {
+			t.Errorf("control dir contains %q — a caller-supplied name reached the filesystem", e.Name())
+		}
+	}
+	// Every flag filename must itself be a plain basename, or the constant table
+	// becomes the traversal vector instead of the input.
+	for vendor, name := range shieldCDNAllowFlags {
+		if name != filepath.Base(name) || strings.Contains(name, "..") {
+			t.Errorf("flag for %q is %q, which is not a plain filename", vendor, name)
+		}
+	}
+}
+
 func TestRequestCDNAllowRejectsUnknownVendors(t *testing.T) {
 	dir := withControlDir(t)
 	for _, bad := range []string{
