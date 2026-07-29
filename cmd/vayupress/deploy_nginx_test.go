@@ -219,3 +219,61 @@ func TestTemplateIsAcceptedByNginx(t *testing.T) {
 		t.Errorf("nginx rejected the template:\n%s", body)
 	}
 }
+
+// TestTier3IsValidInHTTPContext.
+//
+// The trap this exists for: /etc/nginx/conf.d/ is http context, and `location`
+// is NOT valid there. A location block in this file fails `nginx -t` outright,
+// which rolls back the entire Tier 3 install — and it reads as perfectly
+// ordinary nginx to anyone reviewing it, because it is ordinary nginx in the
+// place it belongs.
+//
+// It was nearly shipped that way while adding the machine-endpoint carve-out.
+func TestTier3IsValidInHTTPContext(t *testing.T) {
+	b, err := os.ReadFile("../../deploy/nginx-vayushield.conf")
+	if err != nil {
+		t.Skipf("nginx snippet not readable here: %v", err)
+	}
+	s := string(b)
+	for _, line := range strings.Split(s, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "location ") || strings.HasPrefix(trimmed, "server ") {
+			t.Errorf("%q is a server-context directive in a file loaded into http context — "+
+				"nginx -t fails and Tier 3 rolls back entirely", trimmed)
+		}
+	}
+}
+
+// TestMachineEndpointsAreMeteredSeparately — Tier 1 exempts /mcp, /api and
+// /oauth from challenges because their callers are software with their own
+// API-key auth and per-key budget. Tier 3 metering them like a browser meant
+// nginx could 429 a caller Tier 1 had deliberately waved through, which presents
+// as "the connector is broken" with nothing in the app's logs.
+func TestMachineEndpointsAreMeteredSeparately(t *testing.T) {
+	b, err := os.ReadFile("../../deploy/nginx-vayushield.conf")
+	if err != nil {
+		t.Skipf("nginx snippet not readable here: %v", err)
+	}
+	s := string(b)
+	for _, want := range []string{"$vp_browser_key", "$vp_machine_key", "zone=vp_mach"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Tier 3 does not separate machine traffic from reader traffic (missing %q)", want)
+		}
+	}
+	// Every path Tier 1 bypasses for the machine-protocol reason must be in the
+	// map, or the two tiers disagree again about the same request.
+	for _, p := range []string{"mcp", "api", "oauth"} {
+		if !strings.Contains(s, p) {
+			t.Errorf("%q is exempt from Tier 1 challenges but not routed to the machine zone in "+
+				"Tier 3 — the tiers disagree about the same request", p)
+		}
+	}
+	// SEPARATE zones, not a raised global limit. A flood against the machine
+	// endpoints must not consume the budget public pages depend on.
+	if !strings.Contains(s, "zone=vp_req") || !strings.Contains(s, "zone=vp_mach") {
+		t.Error("the two populations share a zone, so one can exhaust the other's budget")
+	}
+}

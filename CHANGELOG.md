@@ -6,6 +6,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.14] — 2026-07-29
+
+### Fixed
+- **Tier 3 rate-limited your MCP and API endpoints like a browser.** Reported
+  after a connector reconnect: Tier 3's config lives in `/etc/nginx/conf.d/`,
+  which is **http context**, so its 8r/s per-IP limit inherits into every vhost —
+  the apex, `api.`, `mcp.`, `mail.`, all of them.
+
+  Tier 1 has always exempted `/mcp`, `/api` and `/oauth` from challenges, for the
+  stated reason that their callers are software that cannot solve a browser check
+  and already carry API-key authentication and a per-key rate budget. Tier 3 knew
+  none of that. So nginx could 429 a caller Tier 1 had deliberately waved
+  through — and to an operator that presents as "the connector is broken", with
+  nothing in the application logs to explain it. An MCP client issuing a burst of
+  tool calls is exactly the shape that trips 8r/s.
+
+  Machine traffic now gets its own zone at 40r/s with a burst of 120 — **looser,
+  not open**, and separate so a flood against those endpoints cannot consume the
+  budget public pages depend on, or the reverse. The API-key budget underneath is
+  unchanged; this layer exists so a legitimate burst is not refused before that
+  control is ever consulted.
+
+  Routed with `map`, not `location` blocks. `location` is **not valid in http
+  context** — it fails `nginx -t` outright and rolls back the entire Tier 3
+  install. That version was written, tested against a real nginx, and rejected
+  before it shipped; a test now rejects any server-context directive in this file,
+  because it reads as perfectly ordinary nginx to anyone reviewing it.
+
+### Note for operators upgrading from before 3.16.10
+- **Tier 3 may be enforcing for the first time on your machine.** The
+  `enable --now` bug meant the reconcile agent kept running whatever it was first
+  given, so installs have been carrying a stale `nginx-vayushield.conf` — in some
+  cases the version whose limits were declared but never applied. Once the helper
+  is current, the shipped limits are genuinely in force. Watch
+  `grep 'limiting requests' /var/log/nginx/error.log` for a day and tune the rates
+  to your real traffic.
+
 ## [3.16.13] — 2026-07-29
 
 ### Fixed
