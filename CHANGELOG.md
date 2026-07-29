@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+- **One solved proof of work could admit an entire swarm.** `VerifyPoW` is
+  stateless — HMAC, expiry, solution — and nothing recorded that a proof had been
+  spent, so a solved `(salt, nonce)` pair stayed redeemable until it expired.
+
+  The damaging part is not that one client could mint several sessions for
+  itself; it needs one, and each is bound to its own address. It is that the
+  proof was bound to **nobody** before redemption. An attacker solves once,
+  distributes the pair to N hosts, and each redeems it for a session bound to its
+  own address — collapsing the cost of entry for a whole swarm from N proofs to
+  one, which inverts what the challenge exists to do.
+
+  A proof is now spendable exactly once, claimed atomically. A check-then-set
+  would let a burst of concurrent redemptions all observe "unspent" and all
+  succeed, which is precisely the attack; the test races 64 claimants over 200
+  rounds in a single run, because a race caught one run in twenty is a test that
+  gets reverted the first time it flakes. The PoW core is untouched.
+
+  Two bugs found by those tests rather than by review: eviction used the shard
+  capacity as a number of *seconds*, so a proof expiring in nine minutes was swept
+  away by fillers expiring in two; and an earlier version of the eviction test
+  waited for a condition eviction makes unreachable, so it silently skipped
+  itself instead of running.
+
 ### Added
 - **The fingerprint claim is retired, with the measurement that retires it.**
   `Config.Capture` was declared, read, and assigned nowhere;

@@ -5,6 +5,7 @@ package vayushield
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -262,4 +263,60 @@ func TestObserveOffIsTheDefault(t *testing.T) {
 	if m.Status().ObserveOnly {
 		t.Error("Status reports observe mode with it unset")
 	}
+}
+
+// TestOneSolvedProofAdmitsOneClient — the end-to-end shape of the replay, at the
+// level an attacker would actually use it.
+//
+// VerifyPoW is stateless, so before the redeemer existed a proof was bound to
+// nobody until it was redeemed. An attacker solves once, hands the pair to N
+// hosts, and each redeems it for a session bound to its OWN address: the cost of
+// entry for a whole swarm collapses from N proofs to one.
+func TestOneSolvedProofAdmitsOneClient(t *testing.T) {
+	signer := challenge.NewSigner([]byte("secret"))
+	m := New(Config{Enabled: true, Signer: signer,
+		ClientIP: func(r *http.Request) string { return r.RemoteAddr }})
+	m.ApplySettings(Settings{Enabled: true})
+
+	pow, err := signer.IssuePoW(challenge.DefaultDifficulty, 5*time.Minute)
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	nonce := solveFor(t, pow)
+
+	// First host redeems it.
+	r1 := httptest.NewRequest(http.MethodPost, "/verify", nil)
+	r1.RemoteAddr = "203.0.113.10:1111"
+	if _, ok := m.VerifyPoW(r1, pow, nonce); !ok {
+		t.Fatal("the first redemption of a valid solved proof was refused")
+	}
+
+	// The swarm replays the SAME pair from other addresses.
+	admitted := 0
+	for i := 0; i < 25; i++ {
+		r := httptest.NewRequest(http.MethodPost, "/verify", nil)
+		r.RemoteAddr = "198.51.100." + strconv.Itoa(i+1) + ":2222"
+		if _, ok := m.VerifyPoW(r, pow, nonce); ok {
+			admitted++
+		}
+	}
+	if admitted != 0 {
+		t.Errorf("%d of 25 other hosts were admitted on a proof they did not solve — one "+
+			"proof of work is buying an entire swarm its way in", admitted)
+	}
+}
+
+// solveFor brute-forces a nonce for the issued proof. The difficulty is the
+// default (cheap by design — the cost is meant to be trivial for one client and
+// meaningful only in aggregate), so this is fast.
+func solveFor(t *testing.T, p challenge.PoW) string {
+	t.Helper()
+	for i := 0; i < 1<<24; i++ {
+		n := strconv.Itoa(i)
+		if challenge.SolutionValid(p.Salt, n, p.Difficulty) {
+			return n
+		}
+	}
+	t.Fatal("could not solve the proof")
+	return ""
 }

@@ -295,6 +295,9 @@ type Manager struct {
 	// surgeServed counts stateless surge-mode PoW interstitials served (telemetry).
 	surgeServed atomic.Int64
 
+	// redeemer makes a solved proof of work spendable exactly once.
+	redeemer *challenge.Redeemer
+
 	// wouldHave counts, per gate, the requests observe-only mode let through that
 	// enforcement would have stopped. Cumulative since boot, like every other
 	// counter here — the audit-trail aggregates carry the time dimension.
@@ -398,6 +401,7 @@ func New(cfg Config) *Manager {
 	m.prefilter = prefilter.New()
 	m.brain = brain.New()
 	m.calib = calibrate.New()
+	m.redeemer = challenge.NewRedeemer()
 	m.sigCache = sigcache.New(sigCacheTTL)
 	m.jailTTLns.Store(int64(10 * time.Minute))
 	// Seed the live config from the constructor Config (challenge tunables on,
@@ -1865,6 +1869,15 @@ func (m *Manager) VerifyPoW(r *http.Request, pow challenge.PoW, nonce string) (t
 		return "", false
 	}
 	if err := m.cfg.Signer.VerifyPoW(pow, nonce); err != nil {
+		return "", false
+	}
+	// One-shot: a solved proof may be redeemed exactly once.
+	//
+	// Without this the proof is bound to NOBODY before redemption, so an attacker
+	// solves once, hands the pair to N hosts, and each redeems it for a session
+	// bound to its own address — pricing an entire swarm at one proof of work.
+	// That inverts what the challenge is for.
+	if !m.redeemer.Claim(challenge.ProofID(pow), pow.Expires) {
 		return "", false
 	}
 	tok, err := m.cfg.Signer.IssueSession(m.cfg.SessionTTL, m.clientBind(r))
