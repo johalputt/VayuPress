@@ -29,6 +29,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/config"
 )
 
 // ── Visitor identity (privacy-preserving, non-persistent) ────────────────────
@@ -287,7 +289,7 @@ func (s *Store) OverviewSince(ctx context.Context, days int) (*Overview, error) 
 	o := &Overview{}
 	// Pageviews and visits (sessions).
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=?`, from).
+		`SELECT COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? AND event_type=1`, from).
 		Scan(&o.TotalPageviews, &o.TotalVisits)
 	// Unique visitors counts distinct visitor_id (NOT sessions).
 	_ = s.readDB().QueryRowContext(ctx,
@@ -311,13 +313,13 @@ func (s *Store) OverviewSince(ctx context.Context, days int) (*Overview, error) 
 func (s *Store) OverviewBetween(ctx context.Context, fromInclusive, toExclusive string) (*Overview, error) {
 	o := &Overview{}
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? AND created_at<?`, fromInclusive, toExclusive).
+		`SELECT COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? AND created_at<? AND event_type=1`, fromInclusive, toExclusive).
 		Scan(&o.TotalPageviews, &o.TotalVisits)
 	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND created_at<?`, fromInclusive, toExclusive).
 		Scan(&o.UniqueVisitors)
 	_ = s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? AND created_at<? GROUP BY session_id) v`, fromInclusive, toExclusive).
+		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? AND created_at<? AND event_type=1 GROUP BY session_id) v`, fromInclusive, toExclusive).
 		Scan(&o.BounceRate)
 	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COALESCE(AVG(v.dur),0) FROM (SELECT `+avgSessionSecondsSQL+` dur FROM analytics_pageviews WHERE created_at>=? AND created_at<? GROUP BY session_id) v`, fromInclusive, toExclusive).
@@ -424,8 +426,27 @@ func (s *Store) TopReferrers(ctx context.Context, days, limit int) ([]ReferrerSt
 		limit = 20
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	// Two filters, both of which were missing and both of which inflated this
+	// table past the total pageview count it is a breakdown of.
+	//
+	// event_type=1 because a custom event is not an arrival. TopPages already
+	// filtered it and this did not, so the two panels were counting different
+	// things and could not be reconciled.
+	//
+	// The site's own host and its subdomains are excluded because internal
+	// navigation is not a referrer. The classifier already knows this — it
+	// classifies a same-site referrer as Direct/"internal" — but it records
+	// ReferrerDomain BEFORE reaching that decision and never clears it, so the
+	// host survived into this table while the Audience card correctly counted it
+	// as direct. One dataset, two panels, opposite answers: the referrer list was
+	// topped by the operator's own webmail and MCP hosts, each with a count larger
+	// than the site's entire pageview total.
+	site := strings.ToLower(strings.TrimSpace(config.Cfg.Domain))
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT referrer,COUNT(1) as cnt FROM analytics_pageviews WHERE created_at>=? AND referrer!='' GROUP BY referrer ORDER BY cnt DESC LIMIT ?`, from, limit)
+		`SELECT referrer,COUNT(1) as cnt FROM analytics_pageviews
+		 WHERE created_at>=? AND event_type=1 AND referrer!=''
+		   AND LOWER(referrer)<>? AND LOWER(referrer) NOT LIKE ?
+		 GROUP BY referrer ORDER BY cnt DESC LIMIT ?`, from, site, "%."+site, limit)
 	if err != nil {
 		return nil, err
 	}

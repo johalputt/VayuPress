@@ -6,6 +6,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.6] — 2026-07-29
+
+### Fixed
+- **The headline pageview count included every custom event.** `OverviewSince`
+  ran `COUNT(1)` over `analytics_pageviews` with no `event_type` filter, so each
+  engagement-beacon event — scroll depth, time-on-page, every custom event —
+  counted as a pageview. `TopPages` **did** filter, which is how this surfaced: a
+  site reporting 173,097 pageviews had a busiest page of 836, and the two panels
+  could not be reconciled because they were counting different things.
+
+  Bounce rate came from the same unfiltered set, so a session with one pageview
+  and twelve beacon events did not read as a bounce. Both now filter to
+  `event_type=1`. Expect your pageview and bounce numbers to **drop** after
+  updating — that is the inflation leaving, not traffic.
+
+- **The referrers table counted the site's own navigation.** The query excluded
+  only the empty string. The classifier already knows better — it classifies a
+  same-site referrer as Direct/`internal` — but it records `ReferrerDomain`
+  *before* reaching that decision and never clears it, so the host survived into
+  the referrer table while the Audience card correctly counted it as direct. One
+  dataset, two panels, opposite answers: a real site's referrer list was topped by
+  its own webmail and MCP subdomains, each with a count **larger than the site's
+  entire pageview total**.
+
+  The query now excludes the configured domain and its subdomains, case-folded,
+  and filters to `event_type=1` like every other breakdown. A test asserts the
+  general property that made this visible from outside — a breakdown may never sum
+  past the total it breaks down — so any future filter mismatch between the two
+  queries is caught, not just this one.
+
+  Both shipped alone under the standing exception: these are live numbers
+  operators plan and report against.
+
 ## [3.16.5] — 2026-07-29
 
 ### Fixed

@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
+
+	"github.com/johalputt/vayupress/internal/config"
 )
 
 func newExtStore(t *testing.T) *Store {
@@ -199,5 +201,138 @@ func TestSinglePageviewVisitScoresZeroDuration(t *testing.T) {
 	}
 	if ov.BounceRate != 100 {
 		t.Errorf("bounce_rate=%v, want 100 — the two metrics must agree on what a one-page visit is", ov.BounceRate)
+	}
+}
+
+// TestTheOverviewCountsPageviewsNotEveryEvent.
+//
+// The headline number on the analytics page was `COUNT(1)` over
+// analytics_pageviews with no event_type filter — so every custom event counted
+// as a pageview. TopPages DID filter, which is how this surfaced: a site
+// reporting 173,097 pageviews had a busiest page of 836, and the two panels
+// could not be reconciled because they were counting different things.
+//
+// An inflated headline is not a cosmetic bug. It is the number an operator
+// reports, plans against, and sells on.
+func TestTheOverviewCountsPageviewsNotEveryEvent(t *testing.T) {
+	t.Parallel()
+	s := newExtStore(t)
+	ctx := context.Background()
+
+	// Three real pageviews...
+	for i := 0; i < 3; i++ {
+		if err := s.Collect(ctx, CollectRequest{URL: "/article", Hostname: "blog.test", EventType: 1}, "203.0.113.1", "Mozilla/5.0 Chrome/120"); err != nil {
+			t.Fatalf("collect: %v", err)
+		}
+	}
+	// ...and twenty custom events, which is what an engagement beacon produces.
+	for i := 0; i < 20; i++ {
+		if err := s.Collect(ctx, CollectRequest{URL: "/article", Hostname: "blog.test", EventType: 2, EventName: "scroll"}, "203.0.113.1", "Mozilla/5.0 Chrome/120"); err != nil {
+			t.Fatalf("collect: %v", err)
+		}
+	}
+
+	ov, err := s.OverviewSince(ctx, 30)
+	if err != nil {
+		t.Fatalf("overview: %v", err)
+	}
+	if ov.TotalPageviews != 3 {
+		t.Errorf("overview reports %d pageviews, want 3. Custom events are being counted as "+
+			"pageviews, so the headline metric is inflated by however chatty the beacon is",
+			ov.TotalPageviews)
+	}
+
+	// And it must agree with the panel that breaks it down.
+	pages, err := s.TopPages(ctx, 30, 10)
+	if err != nil {
+		t.Fatalf("top pages: %v", err)
+	}
+	var sum int64
+	for _, p := range pages {
+		sum += int64(p.Pageviews)
+	}
+	if sum != int64(ov.TotalPageviews) {
+		t.Errorf("the top-pages breakdown sums to %d against an overview total of %d. A total "+
+			"and its own breakdown disagreeing is what makes a dashboard untrustworthy",
+			sum, ov.TotalPageviews)
+	}
+}
+
+// TestInternalNavigationIsNotAReferrer.
+//
+// The classifier already decides a same-site referrer is Direct/"internal" — but
+// it records ReferrerDomain BEFORE reaching that decision and never clears it, so
+// the host survived into the referrers table while the Audience card correctly
+// counted it as direct. One dataset, two panels, opposite answers: a real site's
+// referrer list was topped by its own webmail and MCP subdomains, each with a
+// count larger than the site's entire pageview total.
+func TestInternalNavigationIsNotAReferrer(t *testing.T) {
+	s := newExtStore(t)
+	ctx := context.Background()
+	prev := config.Cfg.Domain
+	config.Cfg.Domain = "johal.in"
+	t.Cleanup(func() { config.Cfg.Domain = prev })
+
+	for _, ref := range []string{
+		"johal.in",      // the site itself
+		"mail.johal.in", // its own webmail
+		"mcp.johal.in",  // its own MCP host
+		"JOHAL.IN",      // case must not smuggle it through
+	} {
+		for i := 0; i < 5; i++ {
+			if err := s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://" + ref + "/x", Hostname: "johal.in", EventType: 1}, "203.0.113.1", "Mozilla/5.0 Chrome/120"); err != nil {
+				t.Fatalf("collect: %v", err)
+			}
+		}
+	}
+	// One genuine external referrer.
+	if err := s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://news.example.com/p", Hostname: "johal.in", EventType: 1}, "203.0.113.2", "Mozilla/5.0 Chrome/120"); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+
+	refs, err := s.TopReferrers(ctx, 30, 20)
+	if err != nil {
+		t.Fatalf("top referrers: %v", err)
+	}
+	for _, r := range refs {
+		if strings.Contains(strings.ToLower(r.Referrer), "johal.in") {
+			t.Errorf("%q is listed as a referrer with %d hits — that is the site's own traffic, "+
+				"and counting it means the referrer table is topped by the operator's own "+
+				"subdomains instead of by where readers actually come from", r.Referrer, r.Count)
+		}
+	}
+	if len(refs) != 1 || !strings.Contains(refs[0].Referrer, "news.example.com") {
+		t.Errorf("the genuine external referrer was lost: %+v", refs)
+	}
+}
+
+// TestAReferrerBreakdownNeverExceedsItsTotal — the property that made the bug
+// visible from the outside. A breakdown that sums past the number it breaks down
+// is self-evidently wrong, and it is worth asserting directly because it catches
+// any future filter mismatch between the two queries, not just this one.
+func TestAReferrerBreakdownNeverExceedsItsTotal(t *testing.T) {
+	s := newExtStore(t)
+	ctx := context.Background()
+	prev := config.Cfg.Domain
+	config.Cfg.Domain = "johal.in"
+	t.Cleanup(func() { config.Cfg.Domain = prev })
+
+	for i := 0; i < 4; i++ {
+		_ = s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://news.example.com/p", Hostname: "johal.in", EventType: 1}, "203.0.113.1", "Mozilla/5.0 Chrome/120")
+	}
+	for i := 0; i < 30; i++ {
+		_ = s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://mail.johal.in/x", Hostname: "johal.in", EventType: 2, EventName: "scroll"}, "203.0.113.1", "Mozilla/5.0 Chrome/120")
+	}
+
+	ov, _ := s.OverviewSince(ctx, 30)
+	refs, _ := s.TopReferrers(ctx, 30, 50)
+	var sum int64
+	for _, r := range refs {
+		sum += int64(r.Count)
+	}
+	if sum > int64(ov.TotalPageviews) {
+		t.Errorf("the referrer breakdown sums to %d against %d total pageviews. A breakdown "+
+			"cannot exceed what it breaks down; when it does, the two queries are filtering "+
+			"differently and neither number can be trusted", sum, ov.TotalPageviews)
 	}
 }
