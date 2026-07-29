@@ -9,6 +9,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **Serve cheap: a micro-cache, static off disk, and static shed pages.** The
+  largest single-node capacity multiplier available, and mostly configuration.
+  Every request — including static assets — proxied to Go, and the render cache's
+  own disk pages were walked past, so nginx asked Go for a page Go had already
+  written.
+
+  The micro-cache is the part that matters under attack. The commonest L7 flood
+  shape is thousands of identical anonymous GETs for the same few URLs; a
+  one-second cache collapses them to one origin request per URL per interval,
+  whatever the arrival rate, so the origin's cost stops scaling with the attack.
+  Measured against a live nginx and a counting origin: **500 concurrent identical
+  anonymous GETs produced 1 origin request**, and five static-asset requests
+  produced none.
+
+  Three directives are load-bearing rather than tuning, and the comments say so:
+  `proxy_cache_lock` (without it a miss under load sends every waiting request
+  upstream at once — a stampede *caused* by the cache), `use_stale updating`, and
+  the cookie bypass in **both** directions, so a signed-in reader's page can
+  neither enter the shared cache nor be served from it.
+
+  `429`/`503` now come from a small static body with `Retry-After`, since under
+  the load that produces them, rendering an error page is work the machine cannot
+  spare. The HTTP/3 listen lines stay commented: the firewall models UDP/443 now,
+  so the prerequisite is met, but enabling them also needs a QUIC-capable build
+  and an `Alt-Svc` header.
+
+  Running the config instead of reading it found a real defect: `expires 30d`
+  emits its own `Cache-Control`, so pairing it with an `add_header` produced a
+  response carrying **two** — some intermediaries take the first, some the last,
+  and `immutable` ended up in whichever they discarded.
+
+  **Honest limit:** this is an origin cache. It saves CPU and SQLite. It never
+  saves a byte of uplink, never saves a millisecond of round-trip for a distant
+  reader, and does nothing at all once the pipe itself is full.
+
 - **Tier 2 now models the ports this binary actually binds.** The ruleset covered
   `{ 80, 443 }` while the same process listens on `:25/:110/:143/:465/:587/:993/
   :995`, and the script's own comment already noted that an MX record publishes
