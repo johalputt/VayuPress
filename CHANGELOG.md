@@ -53,6 +53,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   never touches the block threshold, so even with every gate defeated the
   reachable state is a bounded, self-draining shift of the challenge bands.
 
+- **VayuShield metrics on `/metrics`.** `grep -c vayushield` in the metrics
+  handler was 0, alongside ~37 `vayupress_*` series — while everything needed was
+  already in memory and thrown away every ten seconds into an HTML fragment. A
+  panel cannot page anyone at 3am, retain history, or alert on a trend, which is
+  precisely what a shield's numbers are for.
+
+  Fifteen series now cover the attack meter, in-flight, the jail and reputation
+  counts, fair-shed, pardons, surge, the challenge pass rate and the calibration
+  bias, each with HELP and TYPE. The posture report is exported too, with the
+  actionable failure count as its **own** series: alerting on the raw count would
+  fire forever because of the permanent volumetric row, and an alert that always
+  fires is an alert someone mutes.
+
+  Stated in the code rather than left as a gap: Tiers 2 and 3 are invisible from
+  in here. An nginx 429 and an nft drop never reach this process, so nothing
+  counts them. The two layers most recently switched from no-op to enforcing are
+  the two with the least telemetry, and the posture report is what covers them
+  instead.
+
 - **A posture report that says what is actually enforcing.** `internal/shieldaudit`
   computes a Pass/Warn/Info/Fail report, shown first on `/os/vayushield` and
   written to the boot log so a defect is visible on an install nobody has opened

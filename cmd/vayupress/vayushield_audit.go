@@ -17,7 +17,9 @@ package main
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"html"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -265,4 +267,103 @@ func (a *App) logShieldPosture() {
 	if fail <= shieldaudit.BaselineFails && warn == 0 {
 		logging.LogInfo("vayushield", "posture: every control verified enforcing (volumetric absorption remains out of scope for any single origin)")
 	}
+}
+
+// --- Metrics ------------------------------------------------------------------
+
+// writeShieldMetrics exports VayuShield's live state in Prometheus text format.
+//
+// Everything here was already in memory and thrown away every ten seconds into
+// an HTML fragment, so a panel was the only way to see it — and a panel cannot
+// page anyone at 3am, cannot retain history, and cannot alert on a trend. The
+// series a shield most needs are exactly the ones nobody is watching when they
+// matter.
+//
+// What this deliberately does NOT cover, because pretending otherwise would be
+// worse than the gap: Tier 2 and Tier 3 are invisible from in here. An nginx 429
+// and an nft drop never reach this process, so nothing below counts them. The
+// two layers that were switched from no-op to enforcing are the two with the
+// least telemetry, and the posture report is what covers them instead.
+func (a *App) writeShieldMetrics(w io.Writer) {
+	if a.vayuShield == nil {
+		return
+	}
+	st := a.vayuShield.Status()
+
+	b := func(v bool) int {
+		if v {
+			return 1
+		}
+		return 0
+	}
+	fmt.Fprintf(w,
+		"# HELP vayushield_under_attack Whether adaptive under-attack mode is engaged.\n"+
+			"# TYPE vayushield_under_attack gauge\n"+
+			"vayushield_under_attack %d\n"+
+			"# HELP vayushield_surge_active Whether Sovereign Surge is challenging every unproven visitor.\n"+
+			"# TYPE vayushield_surge_active gauge\n"+
+			"vayushield_surge_active %d\n"+
+			"# HELP vayushield_requests_per_second Requests observed by the attack meter.\n"+
+			"# TYPE vayushield_requests_per_second gauge\n"+
+			"vayushield_requests_per_second %d\n"+
+			"# HELP vayushield_in_flight Requests currently in flight against the load-shed cap.\n"+
+			"# TYPE vayushield_in_flight gauge\n"+
+			"vayushield_in_flight %d\n"+
+			"# HELP vayushield_blocklisted Sources currently in the O(1) jail.\n"+
+			"# TYPE vayushield_blocklisted gauge\n"+
+			"vayushield_blocklisted %d\n"+
+			"# HELP vayushield_suspects Sources the reputation brain is tracking.\n"+
+			"# TYPE vayushield_suspects gauge\n"+
+			"vayushield_suspects %d\n"+
+			"# HELP vayushield_reputation_jailed Sources serving a reputation sentence.\n"+
+			"# TYPE vayushield_reputation_jailed gauge\n"+
+			"vayushield_reputation_jailed %d\n"+
+			"# HELP vayushield_fair_shed_total Requests shed by the L2 fair-share pre-filter.\n"+
+			"# TYPE vayushield_fair_shed_total counter\n"+
+			"vayushield_fair_shed_total %d\n"+
+			"# HELP vayushield_pardons_total Sentences lifted by a solved challenge.\n"+
+			"# TYPE vayushield_pardons_total counter\n"+
+			"vayushield_pardons_total %d\n"+
+			"# HELP vayushield_surge_challenges_total Up-front surge interstitials served.\n"+
+			"# TYPE vayushield_surge_challenges_total counter\n"+
+			"vayushield_surge_challenges_total %d\n"+
+			"# HELP vayushield_challenges_served_total Challenges issued in the live calibration window.\n"+
+			"# TYPE vayushield_challenges_served_total counter\n"+
+			"vayushield_challenges_served_total %d\n"+
+			"# HELP vayushield_challenges_passed_total Challenges solved in the live calibration window.\n"+
+			"# TYPE vayushield_challenges_passed_total counter\n"+
+			"vayushield_challenges_passed_total %d\n"+
+			"# HELP vayushield_calibration_bias Loosen-only threshold bias the L4 controller has applied.\n"+
+			"# TYPE vayushield_calibration_bias gauge\n"+
+			"vayushield_calibration_bias %.4f\n"+
+			"# HELP vayushield_sig_cache_hits_total Signature lookups served from memory.\n"+
+			"# TYPE vayushield_sig_cache_hits_total counter\n"+
+			"vayushield_sig_cache_hits_total %d\n"+
+			"# HELP vayushield_sig_cache_misses_total Signature lookups that fell through to SQLite.\n"+
+			"# TYPE vayushield_sig_cache_misses_total counter\n"+
+			"vayushield_sig_cache_misses_total %d\n",
+		b(st.UnderAttack), b(st.SurgeActive), st.RPS, st.InFlight, st.Blocklisted,
+		st.Suspects, st.RepJailed, st.FairShed, st.Pardons, st.SurgeChallenges,
+		st.ChallengesServed, st.ChallengesPassed, st.CalibrationBias,
+		st.SigCacheHits, st.SigCacheMisses,
+	)
+
+	// The posture report as a metric, so a regression that makes a layer inert is
+	// alertable rather than only visible to whoever opens the panel. Exported as
+	// a count per status, with the permanent volumetric row reported separately —
+	// alerting on `failing > 0` would fire forever on a healthy install, which is
+	// how a page gets muted and then ignored.
+	checks := shieldaudit.Run(a.shieldAuditInputs(nil))
+	pass, warn, info, fail := shieldaudit.Summary(checks)
+	fmt.Fprintf(w,
+		"# HELP vayushield_posture_checks Posture-report rows by verdict.\n"+
+			"# TYPE vayushield_posture_checks gauge\n"+
+			"vayushield_posture_checks{status=\"pass\"} %d\n"+
+			"vayushield_posture_checks{status=\"warn\"} %d\n"+
+			"vayushield_posture_checks{status=\"info\"} %d\n"+
+			"vayushield_posture_checks{status=\"fail\"} %d\n"+
+			"# HELP vayushield_posture_failures_actionable Failing rows EXCLUDING the permanent volumetric-absorption limit. Alert on this, not on the raw fail count, which can never reach zero.\n"+
+			"# TYPE vayushield_posture_failures_actionable gauge\n"+
+			"vayushield_posture_failures_actionable %d\n",
+		pass, warn, info, fail, max(0, fail-shieldaudit.BaselineFails))
 }

@@ -198,6 +198,7 @@ func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		atomic.LoadInt64(&metrics.MetricCommentsModerated), atomic.LoadInt64(&metrics.MetricPostStatusToggles),
 		atomic.LoadInt64(&metrics.MetricPostPinToggles),
 	)
+	a.writeShieldMetrics(w)
 	fmt.Fprint(w, metrics.HTTPLatency.Prometheus("vayupress_http_request_duration_seconds", "HTTP latency"))
 	fmt.Fprint(w, metrics.RenderLatency.Prometheus("vayupress_render_duration_seconds", "Render latency"))
 	fmt.Fprint(w, metrics.QueueJobLatency.Prometheus("vayupress_queue_job_duration_seconds", "Queue job latency"))
