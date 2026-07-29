@@ -174,6 +174,8 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		settings.KeyShieldAllowCountries: true,
 		settings.KeyShieldDenyCountries:  true,
 		settings.KeyShieldRouteCosts:     true,
+		settings.KeyShieldClusterPeers:   true,
+		settings.KeyShieldClusterNode:    true,
 		// The VayuAnalytics engagement beacon is toggled in Tools & Plugins /
 		// the Analytics console, not the theme editor.
 		settings.KeyAnalyticsBeacon: true,

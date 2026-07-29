@@ -179,6 +179,13 @@ type Inputs struct {
 	// carries — the ruleset is never fetched, so "latest" means nothing and the
 	// binary's own number is the only honest answer.
 	InspectRules, InspectRuleset int
+	// ClusterPeers is how many OTHER nodes this one shares verdicts with. Used to
+	// state the aggregate ingress and, in the same breath, its ceiling.
+	ClusterPeers int
+	// ClusterVerdictsIn and ClusterRefused are what the applier actually did with
+	// inbound verdicts, so "clustering is on" is backed by evidence rather than
+	// by the toggle the operator flipped — the same discipline as the tier rows.
+	ClusterVerdictsIn, ClusterRefused int64
 
 	// --- What the agent observed ---------------------------------------------
 
@@ -324,8 +331,35 @@ func Run(in Inputs) []Check {
 			"This host's link speed could not be read. It is still the ceiling every layer above shares: once inbound traffic exceeds the uplink, packets are dropped upstream and nothing running here is consulted.")
 	}
 
+	// Clustering, stated with its ceiling in the same row. N nodes multiply
+	// ingress LINEARLY — from one uplink to N — which is a real improvement in
+	// availability and is routinely sold as something much larger. The number is
+	// computed from the operator's own measured link so they can see their actual
+	// cliff rather than a figure this product asserts.
+	if in.ClusterPeers > 0 {
+		nodes := in.ClusterPeers + 1
+		detail := fmt.Sprintf("Verdicts are shared with %d other node(s), so a jail, a reputation loss or a pardon decided anywhere applies everywhere — a swarm no longer gets one free ride per node, and an attacker's escalation survives a deploy. %d nodes multiply your ingress LINEARLY: %d uplinks instead of one. That is not anycast, not scrubbing, and not a defence against anyone who brings more bandwidth than the sum of your links — and renting that capacity scales faster and cheaper than adding nodes does.",
+			in.ClusterPeers, nodes, nodes)
+		if in.LinkSpeedMbps > 0 {
+			detail += fmt.Sprintf(" On this host's %d Mbps link that is roughly %d Mbps aggregate, IF every node has the same uplink and traffic is spread evenly across them; DNS-based routing moves traffic in minutes, not milliseconds, so a node failing is a minutes-long event.",
+				in.LinkSpeedMbps, in.LinkSpeedMbps*nodes)
+		}
+		add("Multi-node ingress", Info, detail)
+
+		if in.ClusterVerdictsIn == 0 {
+			add("Peer verdicts", Warn,
+				"Clustering is configured but no verdict from any peer has been applied. Either the peers are not reaching this node, or they are not sharing the same install secret — the gossip key is derived from it, so a mismatch fails authentication silently and by design. Until one arrives, each node is defending alone.")
+		} else {
+			d := fmt.Sprintf("%d verdicts from peers applied.", in.ClusterVerdictsIn)
+			if in.ClusterRefused > 0 {
+				d += fmt.Sprintf(" %d were refused because your own allow list covers the source — that override is what stops a compromised node from locking you out of your own fleet.", in.ClusterRefused)
+			}
+			add("Peer verdicts", Pass, d)
+		}
+	}
+
 	add("Volumetric absorption", Fail,
-		"Not provided by this or any single-origin product, and no setting on this page changes that. Every defence here runs after packets have already crossed your uplink, so a flood large enough to fill the link is decided by your provider's network, not by software on this machine. Absorbing that requires capacity in more places than one — an anycast network, or several origins in front of this one.")
+		"Not provided by this or any single-origin product, and no setting on this page changes that. Every defence here runs after packets have already crossed your uplink, so a flood large enough to fill the link is decided by your provider's network, not by software on this machine. Absorbing that requires capacity in more places than one — an anycast network, or several origins in front of this one. Adding nodes raises the ceiling in proportion to the nodes; it does not remove it.")
 
 	return checks
 }

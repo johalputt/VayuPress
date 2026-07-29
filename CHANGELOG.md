@@ -9,6 +9,64 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **Nodes share VayuShield verdicts (ADR-0148).** Running the binary on several
+  machines already shared one thing for free — the challenge signer is derived
+  from the install secret, so a visitor who solves a proof of work on one node
+  walks onto another unchallenged. Everything else was per-process memory, which
+  meant a distributed swarm got one free run at *every* node instead of one at
+  the fleet, and a reader who solved a check then landed elsewhere was challenged
+  again.
+
+  Now a jail, a reputation loss or a pardon decided anywhere applies everywhere.
+  Verdicts only: not content, not sessions, not learned signatures, not accounts.
+
+  **The key is derived, never the shared secret.** `API_KEY` also guards the REST
+  API and the MCP server, so handing it raw to N edge nodes would mean one
+  compromised edge compromises all three, everywhere. The gossip key is HKDF over
+  it, so a node can vouch for verdicts and cannot recover the secret, mint an API
+  token or speak to the MCP server. It also means there is no new secret to
+  rotate, store or leak — the peer list is the only configuration.
+
+  Messages are **sealed with AES-256-GCM rather than signed**: they carry visitor
+  IP addresses, the cost is identical, and a product that ships a Tor Space
+  should not put its audience in cleartext between its own machines.
+
+  **The threat model is a compromised node, not a stranger.** Authentication
+  proves a message came from a key-holder and says nothing about whether that
+  key-holder is still trustworthy, so the design bounds the blast radius instead
+  of pretending to prevent it: the receiver applies its *own* jail TTL; the
+  receiving operator's allow list wins (which is what stops one bad node locking
+  an operator out of their whole fleet); per-origin budgets cap how much any one
+  node can do; the peer table refuses rather than evicts, so a node cannot rotate
+  its name to mint a fresh budget; inbound reputation deltas are clamped and must
+  be positive, so a peer cannot whitelist its own swarm through the penalty
+  channel; and peers never reach the kernel banlist, because a kernel drop cannot
+  be un-dropped.
+
+  There is deliberately **no forwarding** — no hop count, no TTL. A relaying mesh
+  turns one message into N, and a loop in the peer graph is a self-inflicted
+  flood on the machines already under attack.
+
+  **The ceiling is stated where the operator configures it, not only in a doc.**
+  N nodes multiply ingress *linearly* — N uplinks instead of one. That is a real
+  gain in availability and it is routinely sold as something much larger. It is
+  not anycast, not scrubbing, and no defence against an attacker who brings more
+  bandwidth than the sum of your links. The posture report computes the aggregate
+  from the operator's own measured link speed and names the assumptions it rests
+  on; the permanent volumetric-absorption row stays red and now adds that nodes
+  raise the ceiling without removing it.
+
+  A mismatched install secret across nodes fails authentication silently — right
+  for security, terrible for diagnosis — so the posture report warns when
+  clustering is configured and no peer verdict has ever been applied, naming the
+  secret as the likely cause. Every rejection is a uniform empty 403, so a prober
+  gets no oracle.
+
+### Removed
+- **The placeholder `internal/cluster`** (leader election, "for production use,
+  replace with Raft"). Nothing imported it outside its own test, and verdict
+  sharing needs no leader: there is no state to agree on, only decisions to
+  propagate.
 - **A compiled-in inspection layer that names scanners on their first request.**
   The behavioural scorer already catches path scanning through the 404 ratio,
   but it needs a sample before any ratio means anything, and even then a high

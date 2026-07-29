@@ -126,6 +126,7 @@ func linkSpeedMbps() int {
 // shieldAuditInputs assembles the report's inputs from live state.
 func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 	cur := a.shieldCurrentSettings()
+	clusterPeers, clusterIn, clusterRefused, _, _ := a.vayuShield.ClusterStats()
 
 	in := shieldaudit.Inputs{
 		Tier2Wanted: shieldTierWanted(2),
@@ -144,6 +145,12 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 		ObserveOnly:    a.vayuShield.Observing(),
 		InspectRules:   inspect.RuleCount(),
 		InspectRuleset: inspect.RulesetVersion,
+		ClusterPeers:   clusterPeers,
+		// Reported from what the applier actually DID, never from the fact that
+		// peers are configured. The tier rows exist because a layer once read
+		// "active" while enforcing nothing; clustering deserves the same standard.
+		ClusterVerdictsIn: clusterIn,
+		ClusterRefused:    clusterRefused,
 		TorInertGates: func() []string {
 			if !config.Cfg.OnionMode {
 				return nil

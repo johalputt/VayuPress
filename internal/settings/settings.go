@@ -268,6 +268,13 @@ const (
 	KeyShieldDenyCountries  = "shield.deny_countries"  // ISO-3166-1 alpha-2, one per line
 	KeyShieldRouteCosts     = "shield.route_costs"     // "<path> <weight>" per line: what a route costs to serve
 
+	// Multi-node verdict sharing. Peers are the base URLs of the OTHER nodes,
+	// one per line; the node name identifies this one in a peer's accounting.
+	// The gossip key is DERIVED from the install secret, never stored here — a
+	// key in the settings table would be a key in every backup.
+	KeyShieldClusterPeers = "shield.cluster_peers"
+	KeyShieldClusterNode  = "shield.cluster_node"
+
 	// KeyAnalyticsBeacon toggles the VayuAnalytics engagement beacon (time on
 	// page / scroll depth) injected on public pages. Default ON — it is
 	// cookieless and stores no PII, the same posture as the existing view
@@ -440,6 +447,8 @@ var AllKeys = map[string]bool{
 	KeyShieldAllowCountries: true,
 	KeyShieldDenyCountries:  true,
 	KeyShieldRouteCosts:     true,
+	KeyShieldClusterPeers:   true,
+	KeyShieldClusterNode:    true,
 	KeyAnalyticsBeacon:      true,
 	KeyTorEnabled:           true,
 	KeyTorVisits:            true,
@@ -546,6 +555,8 @@ var Defaults = map[string]string{
 	KeyShieldAllowCountries: "",
 	KeyShieldDenyCountries:  "",
 	KeyShieldRouteCosts:     "",
+	KeyShieldClusterPeers:   "",
+	KeyShieldClusterNode:    "",
 	KeyAnalyticsBeacon:      "on",
 	KeyTorEnabled:           "off",
 	KeyTorVisits:            "0",

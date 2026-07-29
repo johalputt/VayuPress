@@ -43,6 +43,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/calibrate"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
 	"github.com/johalputt/vayupress/internal/vayushield/fingerprint"
+	"github.com/johalputt/vayupress/internal/vayushield/gossip"
 	"github.com/johalputt/vayupress/internal/vayushield/inspect"
 	"github.com/johalputt/vayupress/internal/vayushield/policy"
 	"github.com/johalputt/vayupress/internal/vayushield/prefilter"
@@ -307,6 +308,10 @@ type Manager struct {
 
 	// redeemer makes a solved proof of work spendable exactly once.
 	redeemer *challenge.Redeemer
+
+	// clusterFields carries the multi-node verdict-sharing surface. Zero-valued
+	// and inert on a single-node install, which is nearly all of them.
+	clusterFields
 
 	// policy holds the operator's own rules — allow/deny networks, country
 	// verdicts, per-route cost. Swapped atomically because it is read on every
@@ -1292,6 +1297,11 @@ func (m *Manager) RewardProof(r *http.Request) {
 	// The pardon also lifts the blocklist jail, so every browser and device
 	// behind that IP recovers the moment one of them proves human.
 	m.blocklist.Unblock(ip)
+	// And it is shared, because a false positive that heals only on the node the
+	// visitor happened to land on is a false positive that keeps recurring: the
+	// next request goes to a different node, gets challenged again, and the
+	// reader concludes the site is broken.
+	m.shareVerdict(gossip.KindPardon, m.enforcementKey(ip), 0)
 }
 
 // ctxKey carries the Verdict on the request context for downstream handlers
@@ -1531,9 +1541,15 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			// legacy 20-breach violation meter would take 4x longer to reach).
 			if lc.autoBlock && m.brain.Jailed(enfKey) {
 				m.blocklist.Block(enfKey, m.jailTTL())
+				m.shareVerdict(gossip.KindJail, enfKey, 0)
 				// L1 offload: drop this flooding source in-kernel too — never in
 				// observe mode, because a kernel drop cannot be un-dropped.
 				m.offload(lc, ipKey, m.jailTTL())
+			} else if lc.autoBlock {
+				// Not jailed yet. Share the SUSPICION so the escalation accumulates
+				// across the fleet rather than restarting on each node — which is
+				// the free ride a distributed swarm currently gets for nothing.
+				m.shareVerdict(gossip.KindSuspect, enfKey, 0.1)
 			}
 			if !m.observing(lc, GateRateLimit) {
 				reqclass.MarkShielded(r.Context())
@@ -1830,6 +1846,10 @@ func (m *Manager) jailBadActor(ctx context.Context, ipKey string, autoBlock bool
 		// kernel offload below by the exact address — the nft banlist sets take
 		// no CIDR element. See enforcementKey.
 		m.blocklist.Block(m.enforcementKey(ipKey), m.jailTTL())
+		// Tell the fleet. This is the verdict most worth sharing: it is the one
+		// the shield is most confident about, and without it a swarm gets one
+		// free run at every node instead of one at the fleet.
+		m.shareVerdict(gossip.KindJail, m.enforcementKey(ipKey), 0)
 		// L1 offload: a jailed confirmed bad actor is also dropped in-kernel, so
 		// its follow-up packets never even create a connection. Routed through
 		// m.offload so observe mode suppresses it — a kernel drop happens outside

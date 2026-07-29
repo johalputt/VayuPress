@@ -14,6 +14,7 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/health"
+	"github.com/johalputt/vayupress/internal/vayushield/gossip"
 )
 
 // registerRoutes wires all HTTP routes onto r. Route registration is kept in
@@ -241,6 +242,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// script-src 'self'. The privacy report documents the GDPR posture.
 	r.Get("/__vayushield/challenge.js", a.handleVayuShieldJS)
 	r.Post("/__vayushield/pow", a.handleVayuShieldPoW)
+	// Multi-node verdict sharing. Mounted only when peers are configured: an
+	// install with no fleet should not expose the route at all, rather than
+	// exposing one that always refuses and invites probing.
+	if h := a.vayuShield.GossipHandler(); h != nil {
+		r.Post(gossip.Path, h.ServeHTTP)
+	}
 	r.Post("/__vayuanalytics/enter", a.handleVAEnter)
 	r.Post("/__vayuanalytics/event", a.handleVAEvent)
 	r.Get("/static/js/vp-engagement.js", a.handleVAEngagementJS)

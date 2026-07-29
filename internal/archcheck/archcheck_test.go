@@ -22,7 +22,6 @@ var infraPkgs = []string{
 	"internal/metrics",
 	"internal/db",
 	"internal/queue",
-	"internal/cluster",
 	"internal/config",
 	"internal/lifecycle",
 }

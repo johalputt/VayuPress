@@ -14,6 +14,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -275,6 +277,16 @@ func (a *App) bootVayuShield() {
 	if a.siteSettings != nil && a.siteSettings.Get(context.Background(), settings.KeyShieldBehindCDN) == "on" {
 		config.SetTrustCloudflare(true)
 	}
+
+	// Multi-node verdict sharing. Off unless the operator has configured peers,
+	// and it costs nothing when off — which is nearly every install.
+	//
+	// The gossip key is DERIVED from API_KEY rather than being API_KEY: that
+	// secret also guards the REST API and the MCP server, so handing it raw to N
+	// edge nodes would mean one compromised edge compromises all three
+	// everywhere. A node holding the derived key can vouch for verdicts and
+	// nothing else.
+	a.startShieldCluster(context.Background())
 
 	// Persist the shield's learning + challenge/block records on a bounded,
 	// batched background writer instead of one synchronous writer transaction per
@@ -993,6 +1005,34 @@ func (a *App) shieldPolicyBand(ctx context.Context) string {
 		"/search 8\n/feed 3\nPOST /contact 6\nmcp.example.com 2", get(settings.KeyShieldRouteCosts)))
 	b.WriteString(`</div></div>`)
 
+	// Clustering, with its ceiling stated where the operator configures it rather
+	// than only in the posture report. This is the only control in the product
+	// that touches volumetric capacity at all, which makes it the easiest thing
+	// here to over-read.
+	b.WriteString(`<div class="card-title vs-section">More than one node</div>`)
+	b.WriteString(`<p class="muted text-sm">Run this binary on several machines and they share verdicts: a jail, a reputation loss or a pardon decided anywhere applies everywhere. A swarm stops getting one free run at each node, an attacker&rsquo;s escalation survives a deploy, and a reader who solves one check is not challenged again when the next request lands elsewhere. <strong>Adding nodes multiplies your ingress linearly</strong> &mdash; N uplinks instead of one. That is a real gain in availability, and it is not anycast, not scrubbing, and no defence at all against anyone who brings more bandwidth than the sum of your links.</p>`)
+	b.WriteString(`<div class="vs-feat"><div class="vs-adv vs-adv--open">`)
+	b.WriteString(vsArea("sh_cluster_peers", "Other nodes",
+		`One base URL per line &mdash; the address each other node is reachable at. Nodes authenticate each other with a key derived from this install&rsquo;s API key, so every node must share it; there is no separate secret to distribute and none is stored here. A node with a different API key is refused silently, which is right for security and hard to diagnose, so the posture report says so explicitly. Verdicts carry visitor addresses and are encrypted, not merely signed. Leave empty for a single-node install.`,
+		"https://edge2.example.com\nhttps://edge3.example.com", get(settings.KeyShieldClusterPeers)))
+	b.WriteString(vsArea("sh_cluster_node", "This node&rsquo;s name",
+		`Optional. Used only for a peer&rsquo;s per-node rate accounting, which bounds how much damage any single node can do if it is ever compromised. A stable name is derived automatically if you leave this blank.`,
+		"edge-1", get(settings.KeyShieldClusterNode)))
+	b.WriteString(`</div></div>`)
+	if a.vayuShield != nil {
+		if peers, in, refused, sent, failed := a.vayuShield.ClusterStats(); peers > 0 {
+			b.WriteString(`<p class="muted text-xs">` + strconv.Itoa(peers) + ` peer(s) · ` +
+				strconv.FormatInt(in, 10) + ` verdicts received · ` +
+				strconv.FormatInt(sent, 10) + ` pushes delivered · ` +
+				strconv.FormatInt(failed, 10) + ` failed`)
+			if refused > 0 {
+				b.WriteString(` · ` + strconv.FormatInt(refused, 10) +
+					` refused because your own allow list covers the source`)
+			}
+			b.WriteString(`</p>`)
+		}
+	}
+
 	// Malformed entries are named. One typo must not lose the other nine lines,
 	// and a silently dropped allow entry means the source it was protecting
 	// starts being challenged with nothing on screen to explain why.
@@ -1451,6 +1491,8 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		settings.KeyShieldAllowCountries: area("sh_allow_countries"),
 		settings.KeyShieldDenyCountries:  area("sh_deny_countries"),
 		settings.KeyShieldRouteCosts:     area("sh_route_costs"),
+		settings.KeyShieldClusterPeers:   area("sh_cluster_peers"),
+		settings.KeyShieldClusterNode:    area("sh_cluster_node"),
 	}
 	// Diff BEFORE the write, so the audit record says what actually changed
 	// rather than what was submitted. Nineteen keys went in here with no actor,
@@ -1786,3 +1828,51 @@ document.addEventListener('visibilitychange',function(){if(document.visibilitySt
 window.addEventListener('pagehide',send);
 try{fetch('/__vayuanalytics/enter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p:location.pathname,q:location.search,r:document.referrer||''}),keepalive:true}).catch(function(){});}catch(e){}
 })();`
+
+// startShieldCluster joins this node to a fleet, if the operator configured one,
+// and drives the outbound flush.
+//
+// Verdicts are batched rather than pushed per decision: the moment they are
+// produced fastest is a flood, and that is the moment the node can least afford
+// N outbound requests per local verdict. One second is well inside the gossip
+// freshness window and turns a burst into a single message per peer.
+func (a *App) startShieldCluster(ctx context.Context) {
+	if a.vayuShield == nil || a.siteSettings == nil {
+		return
+	}
+	peers := policyLines(a.siteSettings.Get(ctx, settings.KeyShieldClusterPeers))
+	if len(peers) == 0 {
+		return
+	}
+	node := strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyShieldClusterNode))
+	if node == "" {
+		// A stable, non-identifying default. The name is only ever used for a
+		// peer's per-node rate accounting, so it needs to be distinct rather than
+		// meaningful — and it must not leak the hostname to other operators'
+		// machines if a peer list is ever misconfigured.
+		sum := sha256.Sum256([]byte(config.Cfg.Domain + "|" + strings.Join(peers, ",")))
+		node = "node-" + hex.EncodeToString(sum[:4])
+	}
+	if err := a.vayuShield.JoinCluster(node, config.Cfg.APIKey, peers); err != nil {
+		logging.LogWarn("vayushield", "clustering not started: "+err.Error())
+		return
+	}
+	logging.LogInfo("vayushield", "verdict sharing active with "+strconv.Itoa(len(peers))+
+		" peer(s) as "+node+" — jails, reputation losses and pardons apply fleet-wide. "+
+		"This multiplies ingress linearly with node count; it is not anycast and not scrubbing.")
+
+	go func() {
+		t := time.NewTicker(vayushield.FlushInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-queue.DoneCh:
+				return
+			case <-t.C:
+				fctx, cancel := context.WithTimeout(context.Background(), vayushield.FlushInterval*4)
+				a.vayuShield.FlushCluster(fctx)
+				cancel()
+			}
+		}
+	}()
+}

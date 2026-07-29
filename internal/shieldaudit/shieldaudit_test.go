@@ -386,3 +386,93 @@ func TestInspectionRowRefusesToClaimItIsAWAF(t *testing.T) {
 		}
 	}
 }
+
+// TestTheMultiNodeRowStatesItsCeilingInTheSameBreath. Adding nodes is the only
+// mechanism in this product that touches volumetric capacity at all, which makes
+// it the single easiest thing to over-claim. N nodes multiply ingress LINEARLY —
+// a real improvement in availability, and routinely sold as something much
+// larger. An operator who reads "multi-node protection" and hears "anycast" will
+// find out during an attack instead of before one.
+func TestTheMultiNodeRowStatesItsCeilingInTheSameBreath(t *testing.T) {
+	out := Run(Inputs{ClusterPeers: 3, LinkSpeedMbps: 1000, ClusterVerdictsIn: 12})
+	var row *Check
+	for i := range out {
+		if strings.Contains(out[i].Title, "Multi-node ingress") {
+			row = &out[i]
+		}
+	}
+	if row == nil {
+		t.Fatal("clustering is configured but nothing states what it does or does not buy")
+	}
+	d := strings.ToLower(row.Detail)
+	for _, must := range []string{
+		"linearly",    // the shape of the gain
+		"not anycast", // the thing it is most often mistaken for
+		"not scrubbing",
+		"more bandwidth than the sum of your links", // the attack it does not stop
+	} {
+		if !strings.Contains(d, must) {
+			t.Errorf("the multi-node row does not say %q — without it this reads as a volumetric "+
+				"defence, which it is not", must)
+		}
+	}
+	// The aggregate is computed from the operator's OWN measured link, so they
+	// see their real cliff rather than a number this product asserts.
+	if !strings.Contains(row.Detail, "4000 Mbps") {
+		t.Errorf("the row does not compute the aggregate from this host's measured link: %q",
+			row.Detail)
+	}
+	// And it must not present that aggregate as a fact when it rests on
+	// assumptions the operator has to check.
+	if !strings.Contains(d, "if every node has the same uplink") {
+		t.Error("the aggregate is stated without its assumption. Nodes with different uplinks, " +
+			"or traffic that lands unevenly, make the figure wrong in the direction that flatters")
+	}
+
+	// The volumetric row must stay Fail, and must say that nodes raise the
+	// ceiling rather than remove it.
+	for _, c := range out {
+		if strings.Contains(c.Title, "Volumetric absorption") {
+			if c.Status != Fail {
+				t.Errorf("the volumetric row went %v once clustering was configured — no number "+
+					"of nodes makes single-origin software absorb a flood", c.Status)
+			}
+			if !strings.Contains(c.Detail, "does not remove it") {
+				t.Error("the volumetric row does not say that adding nodes raises the ceiling " +
+					"without removing it")
+			}
+		}
+	}
+}
+
+// TestClusteringConfiguredButSilentIsAWarning — a shared-secret mismatch fails
+// gossip authentication silently and by design, which is correct for security
+// and terrible for diagnosis. The report has to say so, or an operator believes
+// their fleet is sharing verdicts when every node is defending alone.
+func TestClusteringConfiguredButSilentIsAWarning(t *testing.T) {
+	var got *Check
+	for _, c := range Run(Inputs{ClusterPeers: 2}) {
+		if strings.Contains(c.Title, "Peer verdicts") {
+			got = &c
+		}
+	}
+	if got == nil {
+		t.Fatal("no peer-verdict row")
+	}
+	if got.Status != Warn {
+		t.Errorf("status = %v, want Warn — configured-but-never-delivered is exactly the state "+
+			"that looks like success from the panel", got.Status)
+	}
+	if !strings.Contains(got.Detail, "install secret") {
+		t.Error("the row does not name the most likely cause. The gossip key is derived from the " +
+			"install secret, so a mismatch is silent by design and unguessable without this hint")
+	}
+
+	// And an install with no peers must not show the row at all rather than
+	// warning about a fleet that does not exist.
+	for _, c := range Run(Inputs{}) {
+		if strings.Contains(c.Title, "Peer verdicts") || strings.Contains(c.Title, "Multi-node") {
+			t.Errorf("a single-node install reported %q", c.Title)
+		}
+	}
+}
