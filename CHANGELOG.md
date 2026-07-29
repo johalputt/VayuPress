@@ -56,6 +56,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   on the exact fresh-boot case it was added to report, would have been worse than
   the silent success it replaced.
 
+- **Enabling the DDoS firewall silently shrank the accept queue 16x.**
+  `deploy/vps-kernel-tuning.sh` writes `99-vayupress.conf` with
+  `net.core.somaxconn` and `net.ipv4.tcp_max_syn_backlog` at 65535 for a
+  high-concurrency workload, and `deploy/vayupress.service` asks for
+  `LimitNOFILE=65536` citing 10k+ concurrent connections. `sysctl.d` applies
+  lexicographically and `'p' < 's'`, so the hardening drop-in loaded last and
+  replaced both with 4096 — on the exact box that had just been tuned for the
+  opposite, with nothing anywhere reporting it.
+
+  Worse under attack, not just slower: a short accept queue reaches syncookie
+  fallback sooner, and syncookies cost window scaling and SACK on every
+  connection that takes that path. A deep queue is the partner to
+  `tcp_syncookies`, not its rival. Both are now 65535.
+
+  `apply` and `status` also report drop-in collisions in both directions, naming
+  the file and saying which one wins at boot. The read-back added above cannot
+  see this class of failure on its own: `sysctl -p` applies one file immediately,
+  which is not the order systemd uses at boot, so a value can verify clean and
+  still be overwritten on the next reboot.
+
 ### Security
 - **The crawler verifier could make a clearnet DNS call in onion mode.** It was
   handed `net.DefaultResolver` unconditionally, under a call-site comment

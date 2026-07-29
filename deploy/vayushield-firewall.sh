@@ -152,6 +152,77 @@ cdn_allow_fetch() {
   echo "  Now run: $0 apply"
 }
 
+# sysctl_pairs <file> — print "key value" for every assignment in a sysctl
+# drop-in, ignoring comments and blank lines.
+sysctl_pairs() {
+  [ -r "$1" ] || return 0
+  awk -F= '
+    /^[[:space:]]*[#;]/ { next }
+    NF < 2 { next }
+    {
+      k = $1; gsub(/[[:space:]]/, "", k)
+      v = $2; for (i = 3; i <= NF; i++) v = v "=" $i
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+      if (k != "" && v != "") print k, v
+    }' "$1"
+}
+
+# sysctl_sort_key <path> — the name sysctl.d actually orders by. systemd treats
+# /etc/sysctl.conf as though it were /etc/sysctl.d/99-sysctl.conf, so comparing
+# raw paths would get the boot order wrong for the one file most likely to
+# contain an operator's own overrides.
+sysctl_sort_key() {
+  case "$1" in
+    /etc/sysctl.conf) echo "99-sysctl.conf" ;;
+    *) basename "$1" ;;
+  esac
+}
+
+# sysctl_collisions — report keys this drop-in shares with another one.
+#
+# sysctl.d applies lexicographically and the last writer wins, so two files can
+# each look correct on their own and still produce a value neither author
+# intended. This is not theoretical: 99-vayushield.conf sorts after
+# 99-vayupress.conf, so the hardening file's accept queues silently replaced the
+# performance file's — and nothing anywhere said so.
+#
+# Two directions, and only one of them is ours to fix:
+#   • a file sorting AFTER this one overrides a hardening key, so at the next
+#     boot the shield's setting is not what is in effect. The read-back in
+#     apply_sysctl cannot catch this — `sysctl -p` applies one file immediately,
+#     which is not the boot order.
+#   • this file overrides someone else's key. Reported for the record.
+sysctl_collisions() {
+  local ours base mine f fk theirs k v ok ov
+  ours="$SYSCTL_CONF"
+  [ -r "$ours" ] || return 0
+  base="$(sysctl_sort_key "$ours")"
+  mine="$(sysctl_pairs "$ours")"
+  [ -n "$mine" ] || return 0
+
+  for f in /etc/sysctl.d/*.conf /etc/sysctl.conf; do
+    [ -r "$f" ] || continue
+    [ "$f" != "$ours" ] || continue
+    fk="$(sysctl_sort_key "$f")"
+    [ "$fk" != "$base" ] || continue
+    theirs="$(sysctl_pairs "$f")"
+    [ -n "$theirs" ] || continue
+    while read -r k v; do
+      [ -n "$k" ] || continue
+      while read -r ok ov; do
+        [ "$ok" = "$k" ] || continue
+        [ "$ov" != "$v" ] || continue
+        if [[ "$fk" > "$base" ]]; then
+          echo "  ! ${k}: ${f} sets ${ov} and loads AFTER this file — at the next boot the shield's ${v} is NOT in effect" >&2
+        else
+          echo "  · ${k}: overriding ${ov} from ${f} with ${v}" >&2
+        fi
+      done <<<"$theirs"
+    done <<<"$mine"
+  done
+  return 0
+}
+
 apply_sysctl() {
   echo "• applying kernel DDoS sysctls (SYN cookies, backlog, conntrack)…"
 
@@ -170,11 +241,25 @@ apply_sysctl() {
   cat >"$SYSCTL_CONF" <<'EOF'
 # VayuShield kernel hardening — SYN-flood and connection-flood resistance.
 net.ipv4.tcp_syncookies = 1
-net.ipv4.tcp_max_syn_backlog = 4096
 net.ipv4.tcp_synack_retries = 2
-net.core.somaxconn = 4096
 net.ipv4.tcp_rfc1337 = 1
 net.ipv4.tcp_fin_timeout = 15
+
+# ── Accept queues ────────────────────────────────────────────────────────────
+# These two are deliberately 65535 and NOT a smaller "hardening" number.
+#
+# deploy/vps-kernel-tuning.sh writes 99-vayupress.conf with both at 65535 for a
+# high-concurrency workload, and deploy/vayupress.service asks for
+# LimitNOFILE=65536 citing 10k+ concurrent connections. sysctl.d applies
+# lexicographically and 'p' < 's', so this file loads LAST — which meant turning
+# on the DDoS firewall quietly cut both backlogs 16x, on the exact box that had
+# just been tuned for the opposite. Slower under normal load, and worse under
+# attack: a short queue reaches syncookie fallback sooner, and syncookies drop
+# window scaling and SACK for every connection that takes that path.
+#
+# A deep accept queue is the correct partner to tcp_syncookies, not its rival.
+net.core.somaxconn = 65535
+net.ipv4.tcp_max_syn_backlog = 65535
 
 # ── Connection tracking ──────────────────────────────────────────────────────
 # Sized so a flood exhausts an attacker's per-source caps long before it
@@ -214,6 +299,11 @@ EOF
       failed="${failed:+$failed, }${key}(want ${want}, got ${got:-unset})"
     fi
   done <"$SYSCTL_CONF"
+
+  # A key can be correct right now and wrong after a reboot, if a drop-in that
+  # sorts later sets it too. `sysctl -p` on one file is not the boot order, so
+  # the read-back above cannot see that; only comparing the files can.
+  sysctl_collisions
 
   if [ -n "$failed" ]; then
     # Not fatal: a container without CAP_SYS_ADMIN, or a kernel without the
@@ -364,6 +454,9 @@ case "${1:-apply}" in
       echo "  If a CDN proxies this site, its edge nodes are being rate-limited as"
       echo "  if each were one very busy visitor. Fix: $0 cdn-allow cloudflare && $0 apply"
     fi
+    echo
+    echo "kernel tunables: ${SYSCTL_CONF}"
+    sysctl_collisions
     ;;
   remove)
     require_root

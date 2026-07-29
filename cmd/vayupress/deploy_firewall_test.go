@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -425,5 +426,132 @@ func TestSysctlFailureIsReportedAndNonFatal(t *testing.T) {
 	// The non-netfilter keys did apply and must not be reported as failures.
 	if strings.Contains(stderr, "tcp_syncookies") {
 		t.Errorf("a setting that applied cleanly was reported as failed:\nstderr:\n%s", stderr)
+	}
+}
+
+// TestAcceptQueuesAreNotSilentlyShrunk — deploy/vps-kernel-tuning.sh writes
+// 99-vayupress.conf with somaxconn and tcp_max_syn_backlog at 65535 for a
+// high-concurrency workload, and deploy/vayupress.service asks for
+// LimitNOFILE=65536 citing 10k+ concurrent connections. sysctl.d applies
+// lexicographically and 'p' < 's', so this file loads last: the hardening
+// drop-in shipped both at 4096, which meant enabling the DDoS firewall quietly
+// cut both backlogs 16x on the box that had just been tuned for the opposite.
+//
+// A deep accept queue is the partner to tcp_syncookies, not its rival — a short
+// queue reaches cookie fallback sooner, and cookies cost window scaling and SACK
+// on every connection that takes that path.
+func TestAcceptQueuesAreNotSilentlyShrunk(t *testing.T) {
+	shield := readFirewallScript(t)
+
+	tuning, err := os.ReadFile("../../deploy/vps-kernel-tuning.sh")
+	if err != nil {
+		t.Fatalf("read the kernel-tuning script: %v", err)
+	}
+
+	// Read the value each script sets, and require the hardening file never to
+	// be the smaller of the two. Pinning a literal 65535 here would pass even if
+	// the tuning script later moved.
+	for _, key := range []string{"net.core.somaxconn", "net.ipv4.tcp_max_syn_backlog"} {
+		want := sysctlValue(t, string(tuning), key)
+		got := sysctlValue(t, shield, key)
+		if want == 0 || got == 0 {
+			t.Errorf("%s: could not read both values (tuning=%d shield=%d)", key, want, got)
+			continue
+		}
+		if got < want {
+			t.Errorf("%s: the shield sets %d and loads AFTER the tuning file's %d — "+
+				"turning on the firewall shrinks the accept queue by %dx", key, got, want, want/got)
+		}
+	}
+}
+
+func sysctlValue(t *testing.T, src, key string) int {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(key) + `\s*=\s*(\d+)\s*$`).FindStringSubmatch(src)
+	if m == nil {
+		return 0
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// TestSysctlCollisionsReportBootOrder RUNS the detector against a fake
+// /etc/sysctl.d. The failure it exists to catch is invisible to the read-back in
+// apply_sysctl: `sysctl -p` applies one file immediately, which is not the order
+// systemd uses at boot, so a value can verify clean now and be overwritten by a
+// later-sorting drop-in on the next reboot.
+func TestSysctlCollisionsReportBootOrder(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	dir := t.TempDir()
+
+	src := readFirewallScript(t)
+	cut := strings.Index(src, `case "${1:-apply}" in`)
+	if cut < 0 {
+		t.Fatal("could not find the command dispatcher")
+	}
+	lib := filepath.Join(dir, "lib.sh")
+	if err := os.WriteFile(lib, []byte(src[:cut]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	confd := filepath.Join(dir, "sysctl.d")
+	if err := os.MkdirAll(confd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ours := filepath.Join(confd, "99-vayushield.conf")
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(confd, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("99-vayushield.conf", "# ours\nnet.core.somaxconn = 65535\nnet.ipv4.tcp_syncookies = 1\nnet.ipv4.tcp_rfc1337 = 1\n")
+	write("99-vayupress.conf", "net.core.somaxconn = 65535\n") // identical: not a collision
+	write("10-earlier.conf", "net.ipv4.tcp_rfc1337 = 0\n")     // we win
+	write("99-zz-provider.conf", "net.ipv4.tcp_syncookies = 0\n")
+
+	// The glob is baked into the function, so point it at the fake tree with a
+	// sed-free override: run with the temp dir standing in for /etc.
+	body, err := os.ReadFile(lib)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched := strings.ReplaceAll(string(body), "/etc/sysctl.d/*.conf /etc/sysctl.conf", confd+"/*.conf")
+	if patched == string(body) {
+		t.Fatal("the drop-in glob is no longer where the test can redirect it")
+	}
+	if err := os.WriteFile(lib, []byte(patched), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("bash", "-c", "source "+lib+"; sysctl_collisions")
+	cmd.Env = append(os.Environ(), "SYSCTL_CONF="+ours)
+	var outBuf, errBuf strings.Builder
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("sysctl_collisions exited non-zero (%v): %s", err, errBuf.String())
+	}
+	got := errBuf.String()
+
+	// The dangerous direction: a later-sorting file silently reverts hardening.
+	if !strings.Contains(got, "tcp_syncookies") || !strings.Contains(got, "99-zz-provider.conf") {
+		t.Errorf("a later-sorting drop-in disabling syncookies was not reported:\n%s", got)
+	}
+	if !strings.Contains(got, "NOT in effect") {
+		t.Errorf("the report does not say the shield's value loses at boot:\n%s", got)
+	}
+	// An earlier-sorting file we override is informational, not a warning.
+	if !strings.Contains(got, "tcp_rfc1337") {
+		t.Errorf("overriding an earlier drop-in went unrecorded:\n%s", got)
+	}
+	// Agreeing on a value is not a collision — reporting it would train the
+	// operator to ignore the whole block.
+	if strings.Contains(got, "somaxconn") {
+		t.Errorf("two files agreeing on a value was reported as a collision:\n%s", got)
 	}
 }
