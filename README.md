@@ -256,7 +256,7 @@ Benchmarks are easy to stage. This is a live install you can open right now and 
 | **Published posts** | **234,477** in one SQLite database |
 | **Hardware** | A single **Contabo VPS&nbsp;10** — one box, nothing else |
 | **Running on it** | 2 domains **+** a full mail server **+** the blog |
-| **Version** | VayuPress `3.15.87` — the current release |
+| **Version** | VayuPress — the current release |
 
 ### Google PageSpeed Insights
 
