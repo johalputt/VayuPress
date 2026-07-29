@@ -109,6 +109,20 @@ const (
 	MinEntriesForDelta = 50
 )
 
+// DatacenterDelta is everything a datacenter match is worth to the score, and
+// the number is small on purpose.
+//
+// On the shipped 0.25 base it lands an otherwise-featureless client at 0.40 —
+// the challenge threshold exactly, a puzzle and nothing more. A VPN user with a
+// coherent browser User-Agent nets out BELOW it, because the "consistent browser
+// User-Agent" credit applies at 0.40; a scraper announcing python-requests from
+// the same address is already past a block on its User-Agent alone.
+//
+// That is the intended shape. This signal is about the network, and the question
+// the shield is actually asking is about the visitor. It should be able to tip a
+// decision, never make one.
+const DatacenterDelta = 0.15
+
 // rng is one merged address range, held as a comparable integer pair so the hot
 // path is a comparison rather than a prefix operation.
 type rng struct {

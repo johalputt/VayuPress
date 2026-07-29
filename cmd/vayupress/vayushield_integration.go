@@ -156,6 +156,13 @@ func (a *App) bootVayuShield() {
 	})
 	a.verifiedBots.Start(queue.DoneCh)
 
+	// Third-party network intelligence. Built before the manager so IntelFn can
+	// be handed over below; costs nothing until an operator enables a feed, and
+	// the boot-time cache load is what stops a restart leaving the shield with no
+	// intelligence until the first refresh lands — which on a slow or firewalled
+	// network could be never.
+	a.bootShieldIntel(context.Background())
+
 	bots := botdb.New(dbpkg.DB)
 	// The per-request signature Lookup runs on the hot classification path for
 	// every unverified request; route it (and the panel reads) through the
@@ -251,6 +258,10 @@ func (a *App) bootVayuShield() {
 				return vayushield.BotNotRecognised
 			}
 		},
+		// Third-party feeds. The signature returns intel.Kind, which has no allow
+		// value at all — so an operator's feed can add suspicion or a refusal and
+		// can never hand anyone a bypass, whatever the endpoint serves.
+		IntelFn: a.shieldIntel.Match,
 		// L1 kernel offload: jailed IPs also get dropped by nftables/XDP.
 		OffloadFn: a.shieldOffload.Ban,
 		// Operator immunity: a valid admin login session is exempt from every
@@ -963,6 +974,7 @@ func (a *App) shieldProtectionBody(ctx context.Context) string {
 	b.WriteString(vsRow("sh_surge", "Sovereign Surge (Under-Attack Mode)", "Meet every unverified visitor with a one-time browser check BEFORE any classification — so a million-bot swarm is absorbed at ~one hash per request, with no CDN. Real browsers pass silently in a moment (their clearance is bound to their network, so a solved check can't be shared across a botnet); bots that won't run it never reach the site. Surge also engages automatically during a flood even when this is off, and a manually-forced surge auto-expires after 12h so a forgotten switch can never keep challenging visitors.", cur.Surge, false))
 	b.WriteString(`</div>`)
 	b.WriteString(a.shieldPolicyBand(ctx))
+	b.WriteString(a.shieldIntelBand(ctx))
 	b.WriteString(`<div class="card-title vs-section">Analytics</div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_beacon", "Engagement analytics", "Measure time-on-page and scroll depth on public pages. Cookieless, no PII.", beaconOn, false))
@@ -1542,6 +1554,13 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		settings.KeyShieldRouteCosts:         area("sh_route_costs"),
 		settings.KeyShieldClusterPeers:       area("sh_cluster_peers"),
 		settings.KeyShieldClusterNode:        area("sh_cluster_node"),
+
+		// Feed opt-ins arrive as one checkbox per feed and are stored as a single
+		// comma-separated list, filtered to the IDs this build ships. An unknown
+		// ID posted into the form is dropped rather than stored: the value is
+		// re-read on every request path, and a settings row is a poor place to
+		// discover that somebody typed something.
+		settings.KeyShieldIntelFeeds: strings.Join(postedIntelFeeds(r), ","),
 	}
 	// Diff BEFORE the write, so the audit record says what actually changed
 	// rather than what was submitted. Nineteen keys went in here with no actor,
@@ -1571,6 +1590,11 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		logging.LogInfo("vayushield", "settings changed by "+dbpkg.AuditActor(r)+": "+strings.Join(changed, "; "))
 	}
 	a.vayuShield.ApplySettings(a.shieldSettings(r.Context()))
+	// Feeds apply live too. A feed switched OFF stops being consulted on the very
+	// next request — Add clears its live set rather than merely hiding it, so
+	// "off" means the data is gone and not just unrendered.
+	a.applyShieldIntelSettings(r.Context())
+	a.kickShieldIntelRefresh()
 	// "Behind Cloudflare/CDN" trust applies live (no restart): from now on the
 	// real visitor IP is read from CF-Connecting-IP so per-visitor gates work.
 	config.SetTrustCloudflare(bs("sh_behind_cdn") == "on")

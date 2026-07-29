@@ -85,6 +85,50 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   These are third-party lists with third-party terms, some restricting commercial
   use, and that is the operator's call to make.
 
+- **The feeds are wired into the shield, and the wiring is an ordering.** A
+  datacenter match adds `intel.DatacenterDelta` (0.15) to the score and nothing
+  else; a hostile match is its own gate, `GateIntelDeny`.
+
+  Splitting them that way is the point. Blending "a publisher lists this netblock
+  as criminal" into a composite would make it invisible in exactly the case an
+  operator most needs to see it, and would let an unrelated human-leaning signal
+  cancel it out. Meanwhile the datacenter weight is small on purpose: on the
+  shipped 0.25 base it lands a featureless client at the challenge threshold
+  exactly — a puzzle, never a wall — and a VPN user with a coherent browser
+  User-Agent nets out below even that.
+
+  Where the deny gate sits decides everything, so each neighbour is deliberate.
+  It runs **after** the operator's own rules, so their ALLOW beats a third
+  party's list — a human who wrote down "serve this network" made a decision, a
+  feed made a claim. It runs **after** the verified-crawler fast path, so no feed
+  can de-index the site; "a search engine's range could never appear on DROP" is
+  exactly the kind of assumption this design refuses to build on. And it does
+  **not** yield to a solved proof-of-work: the puzzle proves a browser, and being
+  a browser is not the objection. A valid operator session is the one exemption,
+  the same never-locked-out guarantee every other gate carries. Six tests pin
+  that ordering, each verified by re-breaking the code it covers.
+
+  The refusal is a flat 403 that **names the publisher**, not the challenge page
+  every other jail serves. Offering work that cannot change the answer would be
+  asking for it dishonestly — and a visitor refused over someone else's file can
+  only act on that if they are told whose file it was. It is not recorded for
+  operator review either: a feed match is not a judgement this install made, and
+  filling that queue with entries whose only remedy is a toggle would bury the
+  ones needing a verdict.
+
+  Inert in a Tor Space, and declared so in the enforcement-contract registry —
+  which refused the change until the obligation was stated. Every peer there is
+  127.0.0.1, so the lookup describes the Tor daemon; worse, a feed that ever grew
+  an entry covering loopback would refuse the whole audience at once from a file
+  nobody on that machine controls.
+
+  Network intelligence is the **third** heuristic source, and it did not need
+  `scorer.HeuristicBudget` raised — which is why the sum is clamped rather than
+  the parts. Adding a signal costs the others headroom instead of quietly
+  extending the total, so no future input can walk the ceiling up one plausible
+  increment at a time. A test puts all three at maximum and checks the result
+  still lands short of a block.
+
 - **VayuShield is readable over MCP — and only readable.** Five tools:
   `vayushield_status` (live state and every layer counter), `vayushield_posture`
   (the full report with each control's verdict and reasoning),

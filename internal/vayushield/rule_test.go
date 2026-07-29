@@ -82,6 +82,7 @@ func TestTorInertRulesAreTheOnesKeyedOnASource(t *testing.T) {
 		GatePolicyDeny:   true, // an allow entry of 127.0.0.1 would exempt every onion visitor
 		GateGeoDeny:      true, // a country lookup returns the server's own location for everyone
 		GateGeoChallenge: true, // same, plus no PoW solver exists on the plain-http onion
+		GateIntelDeny:    true, // a third-party list entry covering loopback would refuse everyone
 	}
 	for _, r := range rules {
 		inert := r.Onion == OnionInert

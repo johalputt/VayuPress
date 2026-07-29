@@ -68,6 +68,7 @@ import (
 	vtalk "github.com/johalputt/vayupress/internal/vayuos/vayutalk"
 	vtor "github.com/johalputt/vayupress/internal/vayuos/vayutor"
 	"github.com/johalputt/vayupress/internal/vayushield"
+	"github.com/johalputt/vayupress/internal/vayushield/intel"
 	"github.com/johalputt/vayupress/internal/vayushield/offload"
 	"github.com/johalputt/vayupress/internal/vayushield/sovereign"
 	"github.com/johalputt/vayupress/internal/vayushield/verifiedbot"
@@ -235,6 +236,13 @@ type App struct {
 	// range + forward-confirmed reverse DNS, so the shield can fast-path a real
 	// Googlebot/Bingbot/GPTBot past every gate without trusting a spoofable UA.
 	verifiedBots *verifiedbot.Verifier
+
+	// shieldIntel holds the third-party network-intelligence feeds an operator
+	// has opted into: which addresses belong to datacenters, and which belong to
+	// networks a credible publisher lists as hostile. Always non-nil once
+	// bootVayuShield runs, and empty — costing one length check per request —
+	// until a feed is enabled.
+	shieldIntel *intel.Fetcher
 
 	// trustedSessions caches operator-session validation (TTL) so the shield's
 	// operator-immunity check stays off the SQLite read path under load.

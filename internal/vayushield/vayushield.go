@@ -25,6 +25,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"html"
 	"html/template"
 	"net"
 	"net/http"
@@ -45,6 +46,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/fingerprint"
 	"github.com/johalputt/vayupress/internal/vayushield/gossip"
 	"github.com/johalputt/vayupress/internal/vayushield/inspect"
+	"github.com/johalputt/vayupress/internal/vayushield/intel"
 	"github.com/johalputt/vayupress/internal/vayushield/policy"
 	"github.com/johalputt/vayupress/internal/vayushield/prefilter"
 	"github.com/johalputt/vayupress/internal/vayushield/resilience"
@@ -196,6 +198,18 @@ type Config struct {
 	// their own IP and getting that IP jailed. Optional; must be cheap when
 	// the request carries no session cookie (a header parse).
 	TrustedFn func(r *http.Request) bool
+
+	// IntelFn looks a source up in the operator's enabled third-party feeds and
+	// returns what they say about it, plus the name of the feed that said so.
+	//
+	// The return type is why this is safe to wire at all: intel.Kind cannot
+	// express an allow, so a feed — however compromised — can add suspicion or a
+	// refusal and can never grant a bypass. See internal/vayushield/intel.
+	//
+	// Optional; when nil the shield behaves exactly as it did before feeds
+	// existed, which is also what every install with no feed enabled gets.
+	// Must be cheap: it runs on unverified requests (a binary search).
+	IntelFn func(ip string) (intel.Kind, string)
 }
 
 // liveConfig is the runtime-tunable subset of the shield, swapped atomically so
@@ -328,6 +342,20 @@ type Manager struct {
 	// very different things: a count that is nearly all payload is most likely
 	// the site's own search box, and reporting one number would hide that.
 	inspectHits [3]atomic.Int64
+
+	// intelHostile and intelDatacenter count feed matches on the request path.
+	//
+	// Counted in the middleware and never in Classify, which the analytics
+	// beacon also calls — the same lesson inspectHits learned. A number inflated
+	// by how chatty the beacon is would answer "how much did the site talk to
+	// itself" while appearing to answer "how much of my traffic is hosting
+	// infrastructure", and the second is what an operator reads it as.
+	//
+	// Separate counters because they mean different things: hostile is a refusal
+	// an operator should look at, datacenter is a weight that mostly resolved to
+	// serving the visitor anyway.
+	intelHostile    atomic.Int64
+	intelDatacenter atomic.Int64
 
 	// behaviour scores a client by what it DOES, which is the one signal a
 	// client cannot fake for free. Every other input is either transport-derived
@@ -749,6 +777,7 @@ const (
 	GatePolicyDeny               // an operator's own allow/deny list
 	GateGeoDeny                  // an operator's own country rules
 	GateGeoChallenge             // an operator's country rules, in their solvable form
+	GateIntelDeny                // a published hostile-network feed the operator turned on
 	gateCount
 )
 
@@ -757,7 +786,7 @@ const (
 var GateNames = [gateCount]string{
 	"blocklist", "reputation", "load_shed", "fair_shed",
 	"rate_limit", "surge", "challenge", "block",
-	"policy_deny", "geo_deny", "geo_challenge",
+	"policy_deny", "geo_deny", "geo_challenge", "intel_deny",
 }
 
 // SetPolicy installs the operator's own rules. Safe to call at any time.
@@ -792,6 +821,13 @@ func (m *Manager) InspectFindings() [3]int64 {
 		out[i] = m.inspectHits[i].Load()
 	}
 	return out
+}
+
+// IntelHits reports how many requests matched a hostile feed and how many
+// matched a datacenter feed, since the last restart. Both are zero on an install
+// with no feed enabled, which is every install until an operator opts in.
+func (m *Manager) IntelHits() (hostile, datacenter int64) {
+	return m.intelHostile.Load(), m.intelDatacenter.Load()
 }
 
 // RouteCost reports how many sovereignty-lane slots a request should reserve,
@@ -1048,6 +1084,28 @@ func (m *Manager) Classify(r *http.Request) Verdict {
 	if f, ok := inspect.Scan(r.URL.Path, r.URL.RawQuery); ok {
 		in.InspectDelta = f.Delta()
 		in.InspectReasons = []string{f.Reason()}
+	}
+
+	// Third-party network intelligence, as a fourth input and the weakest one.
+	//
+	// Only the datacenter tier arrives here. A hostile-tier match is a gate in
+	// the middleware, not a number in a score: blending "a publisher lists this
+	// netblock as criminal" into a composite would make it invisible in exactly
+	// the case an operator most needs to see it, and would let an unrelated
+	// human-leaning signal cancel it out.
+	//
+	// The delta is small (intel.DatacenterDelta) because the fact is about the
+	// network and the question is about the visitor. A VPN exit, a corporate
+	// egress and a scraper share an address space; two of those are people.
+	//
+	// Off in a Tor Space for the same reason the hostile gate is: every peer is
+	// 127.0.0.1 there, so the answer would be identical for the whole audience
+	// and would be describing this server's own address.
+	if m.cfg.IntelFn != nil && !m.cfg.OnionMode {
+		if kind, source := m.cfg.IntelFn(ipOnly(m.cfg.ClientIP(r))); kind == intel.KindDatacenter {
+			in.NetworkDelta = intel.DatacenterDelta
+			in.NetworkReasons = []string{"datacenter or hosting network (" + source + ")"}
+		}
 	}
 	if m.cfg.Static != nil {
 		if s, ok := m.cfg.Static.MatchUA(sig.UserAgent); ok {
@@ -1463,6 +1521,52 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			}
 		}
 
+		// 0b. A published hostile network, if the operator turned such a feed on.
+		//
+		// The position in this list is the whole design of the gate, so each
+		// neighbour is deliberate:
+		//
+		//   • AFTER the operator's own policy block, so their ALLOW beats a third
+		//     party's list. A human who wrote down "serve this network" has made a
+		//     decision; a feed has made a claim, and the human wins.
+		//   • AFTER the verified-crawler fast path, so no feed can de-index the
+		//     site. A DROP entry covering a search engine's published range should
+		//     be impossible — and "should be impossible" is exactly the kind of
+		//     assumption this package refuses to build on, since a hijacked feed is
+		//     the threat it was designed around.
+		//   • BEFORE the challenge ladder and NOT gated on `verified`, because a
+		//     hijacked netblock solving a proof-of-work is not an argument. The
+		//     puzzle proves a browser, and the objection here is not about browsers.
+		//
+		// The trusted-operator check is re-run rather than read from `verified`
+		// because it costs a session lookup and this is the only path that needs
+		// it: an operator whose office egress lands on a published list must still
+		// be able to open their own site, which is the same never-locked-out
+		// guarantee TrustedFn carries everywhere else.
+		//
+		// Inert in a Tor Space, and this one is not merely a no-op there. Every
+		// peer arrives as 127.0.0.1, so the lookup is about the Tor daemon rather
+		// than the visitor — and a feed that ever grew an entry covering loopback
+		// would refuse the entire audience at once, from a third party's file, in
+		// the one deployment where the operator has no way to tell who was lost.
+		//
+		// The refusal is flat rather than serveJailed's solvable challenge. A
+		// puzzle offered here would be dishonest: solving it changes nothing,
+		// because this gate does not consult the session — so the visitor would
+		// spend real work to arrive at the same answer, every request.
+		if m.cfg.IntelFn != nil && !m.cfg.OnionMode {
+			if kind, source := m.cfg.IntelFn(ipKey); kind == intel.KindHostile {
+				m.intelHostile.Add(1)
+				if !m.observing(lc, GateIntelDeny) &&
+					!(m.cfg.TrustedFn != nil && m.cfg.TrustedFn(r)) {
+					reqclass.MarkShielded(r.Context())
+					m.onEvent(ActionBlock, 1.0)
+					m.serveRefused(w, r, source)
+					return
+				}
+			}
+		}
+
 		// 1. Blocklist — the cheapest possible gate for a known-abusive IP.
 		if !verified && lc.autoBlock && m.blocklist.Blocked(enfKey) && !m.observing(lc, GateBlocklist) {
 			reqclass.MarkShielded(r.Context())
@@ -1658,6 +1762,14 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		if f, ok := inspect.Scan(r.URL.Path, r.URL.RawQuery); ok {
 			if i := int(f.Class) - 1; i >= 0 && i < len(m.inspectHits) {
 				m.inspectHits[i].Add(1)
+			}
+		}
+		// Same reasoning for the datacenter tally: Classify applied the weight,
+		// the request path is what counts it. (The hostile tally is incremented at
+		// its own gate above, which the beacon never reaches.)
+		if m.cfg.IntelFn != nil && !m.cfg.OnionMode {
+			if kind, _ := m.cfg.IntelFn(ipKey); kind == intel.KindDatacenter {
+				m.intelDatacenter.Add(1)
 			}
 		}
 		action := m.Decide(r, v)
@@ -2041,6 +2153,44 @@ func (m *Manager) serveBlock(w http.ResponseWriter, r *http.Request, v Verdict) 
 	w.Header().Set("X-VayuShield", "block")
 	w.WriteHeader(http.StatusForbidden)
 	_, _ = w.Write([]byte(blockHTML))
+}
+
+// serveRefused returns a flat 403 for a source a published hostile-network list
+// covers, naming the list.
+//
+// Naming it is the point. Every other refusal in the shield is the shield's own
+// inference, and "blocked by bot protection" is an adequate explanation for
+// those. This one is somebody else's claim about the visitor's network, and a
+// person who has just been refused deserves to know which claim to go and argue
+// with — their hosting provider can act on "Spamhaus DROP" and can do nothing
+// whatever with "access denied".
+//
+// It is not recorded as a block for review. The block list exists so an operator
+// can inspect what the CLASSIFIER decided and correct it; a feed match is not a
+// judgement this install made, and filling that queue with entries whose only
+// remedy is to switch a feed off would bury the ones that need a verdict.
+func (m *Manager) serveRefused(w http.ResponseWriter, r *http.Request, source string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-VayuShield", "listed")
+	w.WriteHeader(http.StatusForbidden)
+	_, _ = w.Write([]byte(refusedHTML(source)))
+}
+
+// refusedHTML renders the refusal page. The source is escaped: it originates in
+// a feed definition rather than a request, but it reaches a browser, and a value
+// that reaches a browser is escaped where it is written and not where it is
+// declared.
+func refusedHTML(source string) string {
+	return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Access denied</title><meta name="robots" content="noindex"></head>
+<body><main style="max-width:32rem;margin:16vh auto;font-family:system-ui,sans-serif;text-align:center;color:#e5e7eb;background:#0b0f14;padding:2rem;border-radius:12px">
+<h1 style="font-size:1.25rem">Access denied</h1>
+<p style="color:#94a3b8">Your network is listed by <strong>` + html.EscapeString(source) +
+		`</strong>, a published list of networks reported as hijacked or hosting abuse. This site declines to serve it.</p>
+<p style="color:#94a3b8">If that is wrong, the listing is held by that publisher rather than by this site &mdash; your network operator or hosting provider can request removal.</p>
+</main></body></html>`
 }
 
 // serveTarpit accepts the request but delays it, wasting scraper compute. The

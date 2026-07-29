@@ -177,6 +177,11 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		settings.KeyShieldRouteCosts:         true,
 		settings.KeyShieldClusterPeers:       true,
 		settings.KeyShieldClusterNode:        true,
+		// Which third-party network lists an operator has opted into. Same
+		// reasoning as the rules above, plus one of its own: enabling a feed
+		// carries that publisher's licence terms, and a theme import must never
+		// accept somebody else's terms on this operator's behalf.
+		settings.KeyShieldIntelFeeds: true,
 		// The VayuAnalytics engagement beacon is toggled in Tools & Plugins /
 		// the Analytics console, not the theme editor.
 		settings.KeyAnalyticsBeacon: true,

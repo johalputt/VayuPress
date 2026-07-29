@@ -197,6 +197,23 @@ var rules = []Rule{
 			"location for every visitor there, and the plain-http onion has no window.crypto." +
 			"subtle, so no visitor could solve it even if the geography meant something.",
 	},
+	{
+		Gate: GateIntelDeny, Name: "published hostile list",
+		Onion: OnionInert, Crawler: CrawlerExempt, Lifetime: SelfExpiring,
+		Rationale: "The only rule here that acts on somebody else's claim rather than this install's " +
+			"inference or its operator's instruction, which sets all four answers. Crawler-EXEMPT, " +
+			"unlike the operator's own deny list: an operator refusing a network accepted the " +
+			"indexing consequence, while a third-party feed making the same refusal is a file " +
+			"this site did not write, and a hijacked one must not be able to de-index it — so the " +
+			"confirmed-crawler fast path runs first. Self-expiring in the strongest sense " +
+			"available: nothing is stored against the source at all, the verdict is recomputed " +
+			"from the live feed on every request, and it ends when the publisher delists the " +
+			"network or the operator switches the feed off. That is also why amnesty is nil — " +
+			"there is no sentence to lift, and no refusal that outlives the listing. Inert in a " +
+			"Tor Space, where every peer is 127.0.0.1: the lookup would describe the Tor daemon, " +
+			"and a feed that ever grew an entry covering loopback would refuse the whole audience " +
+			"at once from a file nobody here controls.",
+	},
 }
 
 // amnestyNotConfiguration is the amnesty answer for a rule the operator wrote

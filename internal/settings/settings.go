@@ -279,6 +279,17 @@ const (
 	KeyShieldClusterPeers = "shield.cluster_peers"
 	KeyShieldClusterNode  = "shield.cluster_node"
 
+	// KeyShieldIntelFeeds holds the IDs of the third-party network-intelligence
+	// feeds the operator has switched on, comma-separated. Empty by default, and
+	// empty means no feed is fetched and none is consulted.
+	//
+	// There is one setting rather than one per feed, and no separate "and
+	// actually enforce it" switch, because the feed's KIND already carries what
+	// it means: a datacenter list weighs a score, a hostile list refuses. Two
+	// decisions where the operator made one is how a list ends up enabled,
+	// fetching, displayed as healthy, and connected to nothing.
+	KeyShieldIntelFeeds = "shield.intel_feeds"
+
 	// KeyAnalyticsBeacon toggles the VayuAnalytics engagement beacon (time on
 	// page / scroll depth) injected on public pages. Default ON — it is
 	// cookieless and stores no PII, the same posture as the existing view
@@ -454,6 +465,7 @@ var AllKeys = map[string]bool{
 	KeyShieldRouteCosts:         true,
 	KeyShieldClusterPeers:       true,
 	KeyShieldClusterNode:        true,
+	KeyShieldIntelFeeds:         true,
 	KeyAnalyticsBeacon:          true,
 	KeyTorEnabled:               true,
 	KeyTorVisits:                true,
@@ -563,6 +575,7 @@ var Defaults = map[string]string{
 	KeyShieldRouteCosts:         "",
 	KeyShieldClusterPeers:       "",
 	KeyShieldClusterNode:        "",
+	KeyShieldIntelFeeds:         "",
 	KeyAnalyticsBeacon:          "on",
 	KeyTorEnabled:               "off",
 	KeyTorVisits:                "0",

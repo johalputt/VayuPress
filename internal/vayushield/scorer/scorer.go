@@ -44,6 +44,19 @@ type Input struct {
 	// signature a person decided on.
 	InspectDelta   float64
 	InspectReasons []string
+
+	// NetworkDelta is the bounded contribution of third-party network
+	// intelligence — currently only "this address belongs to a datacenter".
+	//
+	// It is the weakest of the three and deliberately so. Datacenter membership
+	// is a fact about the network, not about the visitor: a VPN exit, a corporate
+	// egress and a scraper all live there, and the first two are people. So it
+	// buys a puzzle at most, and it can only arrive through this field — the
+	// hostile tier never reaches the scorer at all, because a verdict that strong
+	// belongs at a gate where an operator can see it fire, not blended into a
+	// number.
+	NetworkDelta   float64
+	NetworkReasons []string
 }
 
 // HeuristicBudget caps the COMBINED contribution of every heuristic input, and
@@ -61,6 +74,11 @@ type Input struct {
 // With the shipped defaults it takes an unknown client to at most 0.70: well past
 // the 0.4 challenge threshold, and short of a block. Heuristics reach a puzzle;
 // only evidence reaches a wall.
+//
+// Network intelligence became the third source and did not need the number
+// raised — which is the point of clamping the sum rather than the parts. Adding a
+// signal costs the others some headroom instead of quietly extending the total,
+// so no future input can walk the ceiling up one plausible increment at a time.
 const HeuristicBudget = 0.45
 
 // Result is the scorer's verdict.
@@ -153,13 +171,14 @@ func Score(in Input) Result {
 	score := 0.25
 	reasons := []string{}
 	// Every heuristic source, summed and then clamped ONCE. See HeuristicBudget.
-	if h := in.BehaviourDelta + in.InspectDelta; h != 0 {
+	if h := in.BehaviourDelta + in.InspectDelta + in.NetworkDelta; h != 0 {
 		if h > HeuristicBudget {
 			h = HeuristicBudget
 		}
 		score += h
 		reasons = append(reasons, in.BehaviourReasons...)
 		reasons = append(reasons, in.InspectReasons...)
+		reasons = append(reasons, in.NetworkReasons...)
 	}
 	s := in.Signals
 	fam := uaFamily(s.UserAgent)
