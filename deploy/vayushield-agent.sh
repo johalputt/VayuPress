@@ -240,20 +240,48 @@ reconcile_tier2() {
 }
 
 reconcile_tier3() {
-  local want=0 active=0
+  local want=0 active=0 drift=0
   [ -f "${CONTROL_DIR}/tier3.want" ] && want=1
   [ -f "$NGINX_CONF_DST" ] && active=1
-  if [ "$want" = 1 ] && [ "$active" = 0 ]; then
+
+  # DRIFT: the installed conf differs from the vetted source, i.e. an upgrade
+  # shipped a new one. Without this check nothing ever re-copies: "active" was
+  # computed purely from the file EXISTING, and the copy lived only in the
+  # want=1 && active=0 branch. So every fix to the Tier 3 conf reached exactly
+  # zero already-enabled installs, silently — the agent kept reporting "active"
+  # against whatever was installed the first time, however stale.
+  #
+  # That is not a hypothetical: the release that made Tier 3 stop reporting
+  # "Active" while enforcing nothing changes this very file, and without drift
+  # detection it would have landed only on installs that had never switched
+  # Tier 3 on.
+  if [ "$want" = 1 ] && [ "$active" = 1 ] && [ -f "$NGINX_CONF_SRC" ] \
+     && ! cmp -s "$NGINX_CONF_SRC" "$NGINX_CONF_DST"; then
+    drift=1
+  fi
+
+  if [ "$want" = 1 ] && { [ "$active" = 0 ] || [ "$drift" = 1 ]; }; then
     write_state tier3 applying
-    # Install the vetted conf, validate, then reload. If validation fails, roll
-    # the file back so nginx is never left broken. Output is captured so the
-    # panel can show the reason on failure.
+    # Keep the current conf so a failed validation restores exactly what was
+    # working. The old code rm'd the destination on failure, which is right for
+    # a first install (there was nothing before) and wrong for a drift re-copy
+    # (it would delete a working config because a NEW one failed to parse).
+    local backup=""
+    if [ "$active" = 1 ]; then
+      backup="${NGINX_CONF_DST}.vayushield-prev"
+      cp -f "$NGINX_CONF_DST" "$backup" 2>/dev/null || backup=""
+    fi
     if [ -f "$NGINX_CONF_SRC" ] && cp -f "$NGINX_CONF_SRC" "$NGINX_CONF_DST" >"${CONTROL_DIR}/tier3.log" 2>&1 && nginx -t >>"${CONTROL_DIR}/tier3.log" 2>&1 && systemctl reload nginx >>"${CONTROL_DIR}/tier3.log" 2>&1; then
+      rm -f "$backup" 2>/dev/null || true
       write_state tier3 active
       clear_reason tier3
     else
-      rm -f "$NGINX_CONF_DST" 2>/dev/null || true
-      systemctl reload nginx >/dev/null 2>&1 || true
+      if [ -n "$backup" ] && [ -f "$backup" ]; then
+        mv -f "$backup" "$NGINX_CONF_DST" 2>/dev/null || true
+      else
+        rm -f "$NGINX_CONF_DST" 2>/dev/null || true
+      fi
+      nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
       write_state tier3 error
       write_reason tier3 "${CONTROL_DIR}/tier3.log"
     fi

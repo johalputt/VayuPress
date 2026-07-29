@@ -18,6 +18,7 @@ package main
 // live state and to know whether the helper is installed.
 
 import (
+	"context"
 	"errors"
 	"html"
 	"net"
@@ -310,7 +311,7 @@ func (a *App) shieldHardeningBody(r *http.Request) string {
 		b.WriteString(`<p class="muted text-xs">✅ Privileged helper installed — you can switch these on and off right here, no terminal needed. VayuPress itself stays unprivileged; a separate root agent applies only the vetted scripts.</p>`)
 		b.WriteString(shieldTierRow(2, "🛡️ Tier 2 · Kernel firewall (nftables)", "Per-IP connection/packet rate limits + SYN-flood cookies, enforced in the Linux kernel. Turning this on also activates the L1 live offload below."))
 		b.WriteString(shieldTierRow(3, "🌐 Tier 3 · Edge shaping (nginx)", "Per-IP request/connection shaping + slow-loris timeouts at the reverse proxy."))
-		b.WriteString(shieldOffloadRow())
+		b.WriteString(a.shieldOffloadRow())
 		b.WriteString(a.shieldCDNAdvisory(r))
 		b.WriteString(`<p class="muted text-xs">Both tiers are fully reversible from here.</p>`)
 	} else {
@@ -459,7 +460,16 @@ func shieldOffloadStatus() (state, count string) {
 // agent is enforcing the shield's live jail verdicts in-kernel, and how many
 // IPs are currently banned there. Read-only — the offload follows Tier 2
 // automatically (on when Tier 2 is on), so there is nothing to configure.
-func shieldOffloadRow() string {
+// shieldAutoBlockOn reports whether the setting that FEEDS the kernel offload is
+// enabled. Without it the offload table exists and stays empty forever.
+func (a *App) shieldAutoBlockOn() bool {
+	if a.siteSettings == nil {
+		return false
+	}
+	return a.siteSettings.Get(context.Background(), settings.KeyShieldAutoBlock) == "on"
+}
+
+func (a *App) shieldOffloadRow() string {
 	state, count := shieldOffloadStatus()
 	var pill string
 	switch state {
@@ -475,9 +485,20 @@ func shieldOffloadRow() string {
 		}
 		pill = `<span class="vs-hard-state is-err">✕ ` + html.EscapeString(reason) + `</span>`
 	default:
-		pill = `<span class="vs-hard-state is-off">○ Follows Tier 2 — turns on with it</span>`
+		pill = `<span class="vs-hard-state is-off">○ Idle — no jail verdicts to push</span>`
 	}
-	return `<div class="vs-tier"><div class="vs-hard-row"><div><div class="vs-tier-head">⚡ L1 · Live kernel offload (Aegis)</div><p class="muted text-sm">VayuShield's own jail verdicts (confirmed bad actors, reputation sentences) are pushed into a kernel nftables timeout-set — and an XDP filter where available — so a banned attacker's packets are dropped before a connection even exists. Fully automatic; bans expire on their own.</p></div><div class="vs-hard-ctl">` + pill + `</div></div></div>`
+	// The offload only ever receives verdicts from auto-block-guarded paths, and
+	// "Auto-block abusive IPs" defaults OFF. So on a default install this ships
+	// INERT: the table is created, nothing is ever added to it, and the row used
+	// to read "Follows Tier 2 — turns on with it", which describes a dependency
+	// that is real but not sufficient. Turning Tier 2 on does not populate it.
+	// Saying so is the difference between an operator who knows they have one
+	// more switch to flip and one who believes the layer is working.
+	note := ``
+	if !a.shieldAutoBlockOn() {
+		note = `<p class="muted text-xs">⚠️ Nothing reaches this layer yet: it is fed by <strong>Auto-block abusive IPs</strong>, which is switched off above. Tier 2 alone does not populate it.</p>`
+	}
+	return `<div class="vs-tier"><div class="vs-hard-row"><div><div class="vs-tier-head">⚡ L1 · Live kernel offload (Aegis)</div><p class="muted text-sm">VayuShield's own jail verdicts (confirmed bad actors, reputation sentences) are pushed into a kernel nftables timeout-set — and an XDP filter where available — so a banned attacker's packets are dropped before a connection even exists. Bans expire on their own.</p>` + note + `</div><div class="vs-hard-ctl">` + pill + `</div></div></div>`
 }
 
 // shieldTierRow renders one tier's status pill + enable/disable toggle button.

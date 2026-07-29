@@ -6,6 +6,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Every Tier 3 fix reached zero already-enabled installs.** The reconcile agent
+  computed "active" purely from the destination file EXISTING, and the copy lived
+  only in the `want=1 && active=0` branch. So once Tier 3 had been switched on
+  once, the agent kept reporting "active" against whatever conf was installed that
+  first time, however stale — and an upgrade shipping a corrected conf changed
+  nothing on exactly the installs that had the feature turned on.
+
+  That is not hypothetical: the release that made Tier 3 stop claiming "Active"
+  while enforcing nothing edits that very file, and without this it would have
+  landed only on installs that had never enabled Tier 3.
+
+  The agent now compares the installed conf against the vetted source and
+  re-copies on drift. The failure path is stronger too: it keeps a backup and
+  restores it if the new conf fails `nginx -t`, where before it deleted the
+  destination — correct for a first install, badly wrong for a re-copy, since it
+  would remove a working config because a *new* one failed to parse.
+
+- **The kernel-offload row claimed a dependency it does not have.** It read
+  "Follows Tier 2 — turns on with it". The offload is fed only by auto-block-
+  guarded paths, and "Auto-block abusive IPs" defaults **off**, so on a default
+  install the table is created and nothing is ever added to it. Turning Tier 2 on
+  does not populate it. The row now says the layer is idle and names the switch
+  that actually feeds it.
+
+---
+
 ## [3.16.0] — 2026-07-28
 
 The security-hardening track from the sovereign-edge review. Two adversarial
