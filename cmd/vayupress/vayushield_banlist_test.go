@@ -3,6 +3,7 @@
 package main
 
 import (
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -108,31 +109,63 @@ func TestBanlistAddressesAreParsedNotPatternMatched(t *testing.T) {
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-// TestParserNeverAdmitsWhatNftRejects is the differential that matters. The
-// parser's job is to be the gate in front of nft, so every address it accepts
-// must be one nft accepts; being STRICTER than nft is fine and costs at most one
-// ban, while being looser is what produced the resolver call.
+// TestParserNeverAdmitsANonLiteral is the invariant that matters, checked against
+// an oracle available everywhere: Go's own netip.ParseAddr.
+//
+// The defect being closed is that a string which is not a literal address reaches
+// nft, which then treats it as a HOSTNAME and calls the resolver. "Is this a
+// literal address" is exactly the question netip.ParseAddr answers, so anything
+// it rejects must not survive our parser either. Being STRICTER than netip is
+// fine — it costs at most one ban — while being looser is the bug.
+func TestParserNeverAdmitsANonLiteral(t *testing.T) {
+	dir := t.TempDir()
+	lib := agentLib(t, dir)
+
+	for _, addr := range banlistCandidates {
+		fn := "valid_ip4"
+		if strings.Contains(addr, ":") {
+			fn = "valid_ip6"
+		}
+		parserOK := exec.Command("bash", "-c", "set -u; source "+lib+"; "+fn+" "+shellQuote(addr)).Run() == nil
+		if _, err := netip.ParseAddr(addr); parserOK && err != nil {
+			t.Errorf("parser accepted %q, which is not a literal address — nft would resolve it "+
+				"as a hostname from the root agent", addr)
+		}
+	}
+}
+
+// banlistCandidates is the shared corpus: valid addresses, near-misses, and the
+// strings the old character filter let through.
+var banlistCandidates = []string{
+	"1.2.3.4", "0.0.0.0", "255.255.255.255", "127.0.0.1", "66.249.66.1",
+	"1.2.3.4.5", "999.999.999.999", "256.1.1.1", "1.2.3", "abcd", "0abc",
+	"010.1.1.1", "1..2.3", ".1.2.3", "1.2.3.", "deadbeef", "ffff",
+	"::1", "::", "dead::beef", "fe80::1", "2400:cb00::1", "1::", "::2",
+	"2001:db8:0:0:0:0:0:1", "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+	"1:2:3:4:5:6:7:8", "a::b:c:d:e:f:1", "a::b:c:d:e:f:1:2", "::::", ":::",
+	"1:::2", "12345::1", "1:2:3:4:5:6:7:8:9", "1:2:3:4:5:6:7",
+	":1:2:3:4:5:6:7:8", "1:2:3:4:5:6:7:8:", "g::1", "1::2::3",
+	"0:0:0:0:0:0:0:0", "::ffff:1",
+}
+
+// TestParserNeverAdmitsWhatNftRejects runs the same corpus against the real
+// consumer. nft is the process that would do the resolving, so where it can be
+// run it is the authoritative oracle — but ONLY where it can be run.
+//
+// An earlier version of this test looked up `nft` on PATH and treated a non-zero
+// exit as a rejection. On a GitHub runner the binary is installed and refuses to
+// execute unprivileged, including `-c`, so CI reported that nft rejects
+// "1.2.3.4". Presence is not capability; nftValidator probes for the difference.
 func TestParserNeverAdmitsWhatNftRejects(t *testing.T) {
-	nftBin, err := exec.LookPath("nft")
-	if err != nil {
-		t.Skip("nft unavailable — the differential needs the real parser")
+	nftBin := nftValidator()
+	if nftBin == "" {
+		t.Skip("nft cannot validate a ruleset here (absent, or refuses to run unprivileged) — " +
+			"TestParserNeverAdmitsANonLiteral covers the same invariant against netip")
 	}
 	dir := t.TempDir()
 	lib := agentLib(t, dir)
 
-	candidates := []string{
-		"1.2.3.4", "0.0.0.0", "255.255.255.255", "127.0.0.1", "66.249.66.1",
-		"1.2.3.4.5", "999.999.999.999", "256.1.1.1", "1.2.3", "abcd", "0abc",
-		"010.1.1.1", "1..2.3", ".1.2.3", "1.2.3.", "deadbeef", "ffff",
-		"::1", "::", "dead::beef", "fe80::1", "2400:cb00::1", "1::", "::2",
-		"2001:db8:0:0:0:0:0:1", "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
-		"1:2:3:4:5:6:7:8", "a::b:c:d:e:f:1", "a::b:c:d:e:f:1:2", "::::", ":::",
-		"1:::2", "12345::1", "1:2:3:4:5:6:7:8:9", "1:2:3:4:5:6:7",
-		":1:2:3:4:5:6:7:8", "1:2:3:4:5:6:7:8:", "g::1", "1::2::3",
-		"0:0:0:0:0:0:0:0", "::ffff:1",
-	}
-
-	for _, addr := range candidates {
+	for _, addr := range banlistCandidates {
 		fn, set := "valid_ip4", "b4"
 		if strings.Contains(addr, ":") {
 			fn, set = "valid_ip6", "b6"
@@ -146,9 +179,7 @@ func TestParserNeverAdmitsWhatNftRejects(t *testing.T) {
 		if err := os.WriteFile(f, []byte(rules), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		nftOK := exec.Command(nftBin, "-c", "-f", f).Run() == nil
-
-		if parserOK && !nftOK {
+		if parserOK && exec.Command(nftBin, "-c", "-f", f).Run() != nil {
 			t.Errorf("parser accepted %q but nft rejects it — this element would abort the batch "+
 				"or trigger a hostname resolution from the root agent", addr)
 		}

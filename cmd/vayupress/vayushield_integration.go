@@ -838,6 +838,16 @@ func (a *App) shieldProtectionBody(ctx context.Context) string {
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_autoblock", "Auto-block abusive IPs", "Temporarily jail IPs that relentlessly breach the rate limit. Jailing only ever happens while this is ON — turning it off immediately stops every sentence being served, including the self-learning reputation jail.", cur.AutoBlock, true))
 	b.WriteString(`<div class="vs-adv">` + vsField("sh_jail", "Jail for (minutes)", strconv.Itoa(cur.AutoBlockJailMinutes)) + `</div>`)
+	// The IPv4 half of prefix-keyed enforcement. IPv6 /64 grouping is not a
+	// toggle: without it an attacker on one routed /64 has 2^64 identities and
+	// every durable gate is bypassed by definition. IPv4 is a real trade the
+	// operator has to make, so the copy states the collateral rather than
+	// selling the feature.
+	b.WriteString(`<div class="vs-adv">` + `<div class="vs-field vs-field--tog">` +
+		vsToggle("sh_group_ipv4", cur.GroupIPv4, false) +
+		`<label for="sh_group_ipv4">Also jail IPv4 by /24 subnet</label></div>` +
+		`<p class="muted text-xs">Jail sentences already apply per IPv6 /64, because a single IPv6 allocation hands an attacker billions of addresses and per-address limits never catch up. IPv4 is different: one /24 behind a mobile carrier or a shared broadband gateway can be thousands of unrelated people, and jailing one scraper would lock all of them out. Leave this off unless you know your traffic.</p>` +
+		`</div>`)
 	// Amnesty: sentences self-expire but escalate to hours, so after fixing the
 	// cause of a false-positive run the operator needs a way to free their own
 	// readers now rather than waiting the punishment out.
@@ -1276,6 +1286,7 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		settings.KeyShieldUnderAttackRPS: num("sh_rps"),
 		settings.KeyShieldSurge:          bs("sh_surge"),
 		settings.KeyShieldBehindCDN:      bs("sh_behind_cdn"),
+		settings.KeyShieldGroupIPv4:      bs("sh_group_ipv4"),
 		settings.KeyAnalyticsBeacon:      bs("sh_beacon"),
 	}
 	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
@@ -1473,6 +1484,7 @@ func (a *App) shieldSettings(ctx context.Context) vayushield.Settings {
 		UnderAttack:          on(settings.KeyShieldUnderAttack),
 		UnderAttackRPS:       inum(settings.KeyShieldUnderAttackRPS, 200),
 		Surge:                on(settings.KeyShieldSurge) || shieldEnvBool("VAYUSHIELD_SURGE", false),
+		GroupIPv4:            on(settings.KeyShieldGroupIPv4),
 	}
 }
 

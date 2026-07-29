@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -558,6 +559,38 @@ func TestSysctlCollisionsReportBootOrder(t *testing.T) {
 
 // --- Service-aware ports ------------------------------------------------------
 
+// nftValidator returns the path of an `nft` that can actually validate a ruleset
+// in THIS environment, or "" when none can.
+//
+// Presence is not capability, and conflating the two produced a CI failure that
+// reported every address as invalid — including 1.2.3.4. On a GitHub runner nft
+// is installed but refuses to run unprivileged, including `-c`, which looks like
+// a pure syntax check and is not. So a test that reads "the binary exited
+// non-zero" as "nftables rejected this content" is not testing nftables, it is
+// testing whether it happens to be root.
+//
+// The probe is a ruleset that must succeed anywhere nft works at all. If it
+// fails, the caller has to skip rather than report findings it cannot support.
+var nftValidator = sync.OnceValue(func() string {
+	bin, err := exec.LookPath("nft")
+	if err != nil {
+		return ""
+	}
+	f, err := os.CreateTemp("", "vs-canary-*.nft")
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = os.Remove(f.Name()) }()
+	_, _ = f.WriteString("table inet vs_canary {\n" +
+		"  set b4 { type ipv4_addr; flags timeout; }\n}\n" +
+		"add element inet vs_canary b4 { 1.2.3.4 timeout 60s }\n")
+	_ = f.Close()
+	if exec.Command(bin, "-c", "-f", f.Name()).Run() != nil {
+		return ""
+	}
+	return bin
+})
+
 // generateRuleset runs the script's own apply_nft and returns the ruleset it
 // would load. `nft` is stubbed so nothing touches this machine's kernel, but the
 // stub delegates `-c` to the real binary when one is present — so the emitted
@@ -584,7 +617,10 @@ func generateRuleset(t *testing.T, env ...string) string {
 		t.Fatal(err)
 	}
 	capture := filepath.Join(dir, "ruleset.nft")
-	real, _ := exec.LookPath("nft")
+	// Delegate to the real nft only where it can actually validate — see
+	// nftValidator. Where it cannot, the ruleset is still captured and the
+	// structural assertions below still run; only the syntax check is skipped.
+	real := nftValidator()
 	stub := "#!/usr/bin/env bash\n" +
 		"if [ \"$1\" = \"-c\" ]; then\n" +
 		"  cp \"$3\" \"" + capture + "\"\n" +

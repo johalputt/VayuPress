@@ -107,6 +107,14 @@ type Config struct {
 	// Tor Space the moment any challenge band is reached.
 	OnionMode bool
 
+	// GroupIPv4 extends prefix-keyed enforcement to IPv4 /24. OFF by default and
+	// deliberately opt-in: behind carrier-grade NAT a /24 can be thousands of
+	// unrelated subscribers, so one jailed scraper takes a town's worth of real
+	// readers with it. IPv6 /64 grouping is unconditional because an attacker
+	// there gets 2^64 free identities and the exact-address key is no defence at
+	// all — see enforcementKey.
+	GroupIPv4 bool
+
 	// Injected side channels (all optional).
 	CountryFn func(ip string) string        // e.g. geoip.Country
 	ClientIP  func(r *http.Request) string  // trusted-proxy-aware client IP
@@ -170,6 +178,7 @@ type liveConfig struct {
 	autoBlock      bool    // auto-jail IPs that keep breaching the rate limit
 	underAttack    bool    // adaptive: tighten thresholds during a flood
 	surge          bool    // Aegis L3: operator-forced surge (challenge all unproven)
+	groupIPv4      bool    // extend prefix-keyed enforcement to IPv4 /24 (opt-in)
 }
 
 // Settings is the full operator-tunable configuration, persisted by the cmd
@@ -196,6 +205,14 @@ type Settings struct {
 	// or an active flood trips the attack meter, so the site self-defends even if
 	// the operator never touches this.
 	Surge bool
+
+	// GroupIPv4 extends prefix-keyed enforcement to IPv4 /24. IPv6 /64 grouping
+	// is unconditional (an attacker there gets 2^64 free identities and the
+	// exact-address key is no defence at all); IPv4 is opt-in because a /24
+	// behind carrier-grade NAT can be thousands of unrelated subscribers, so one
+	// jailed scraper would take a town's worth of real readers with it. See
+	// enforcementKey.
+	GroupIPv4 bool
 }
 
 // Manager is the live bot-protection + resilience engine.
@@ -463,6 +480,7 @@ func (m *Manager) ApplySettings(s Settings) {
 		autoBlock:   s.AutoBlock,
 		underAttack: s.UnderAttack,
 		surge:       s.Surge,
+		groupIPv4:   s.GroupIPv4,
 	})
 	// Preserve the resolved numeric fields for the dashboard.
 	s.PoWThreshold = clamp(s.PoWThreshold, 0.4)
@@ -599,6 +617,66 @@ func ipOnly(s string) string {
 		return h
 	}
 	return s
+}
+
+// enforcementKey is the identity the rate limiter, violation meter, blocklist and
+// reputation brain count against. It is NOT always the exact address.
+//
+// IPv6 is the reason. A routed /64 is the standard allocation for one network,
+// and every address inside it is free to use — so an attacker on a single /64 has
+// 2^64 identities. Keyed on the exact address, none of the durable gates can ever
+// catch up: each request arrives as a first-time visitor, no bucket is ever
+// drained twice, no jail sentence is ever served, and reputation never
+// accumulates. The exact-address key is not a weak defence there, it is no
+// defence at all.
+//
+// Why /64 and not the /48 the L2 pre-filter groups on: those two layers do
+// different jobs and the granularity should follow the job.
+//
+//   - The pre-filter is DETECTION. It sheds probabilistically, only under
+//     pressure, and forgets. A wide group is right: it is looking for a pattern
+//     spread across a site's whole allocation, and a false positive costs one
+//     shed request.
+//   - This key is ENFORCEMENT. A jail sentence is durable and punitive. A /48 can
+//     be an entire company or a whole residential allocation, so jailing one
+//     would punish thousands of unrelated people for one machine. /64 is the
+//     smallest unit that closes the 2^64 hole, and it is the unit a single
+//     network actually controls.
+//
+// IPv4 is deliberately NOT grouped by default. A /24 behind carrier-grade NAT can
+// be thousands of unrelated subscribers, so grouping it trades a real
+// availability guarantee for a marginal gain against an attacker who, unlike the
+// IPv6 case, has to pay for every address. Operators who know their traffic can
+// turn it on; the collateral is theirs to accept, not ours to impose.
+//
+// The exact address is still used for the kernel offload and the L2 sketch — see
+// the call site.
+func (m *Manager) enforcementKey(ip string) string {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		// Not an address at all. Pass it through verbatim rather than folding
+		// every unknown source onto one shared key, which would make a single
+		// malformed client able to jail all of them.
+		return ip
+	}
+	// An IPv4-mapped IPv6 literal is an IPv4 client. Unmapping is not cosmetic:
+	// treating ::ffff:a.b.c.d as v6 would group it into a /64 spanning the whole
+	// of IPv4, and returning the string as given would let one host hold two
+	// identities by arriving in either notation.
+	addr = addr.Unmap().WithZone("")
+	if addr.Is4() {
+		if !m.live().groupIPv4 && !m.cfg.GroupIPv4 {
+			return addr.String()
+		}
+		if p, err := addr.Prefix(24); err == nil {
+			return p.String()
+		}
+		return addr.String()
+	}
+	if p, err := addr.Prefix(64); err == nil {
+		return p.String()
+	}
+	return addr.String()
 }
 
 // BotFastPath is how much benefit the verified-bot recogniser's verdict earns.
@@ -966,6 +1044,22 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 
 		ipKey := ipOnly(m.cfg.ClientIP(r))
 
+		// enfKey is the identity the DURABLE gates count against — the /64 for
+		// IPv6, and the /24 for IPv4 only when the operator opted in. Keyed on the
+		// exact address, an attacker with one routed /64 arrives as a brand-new
+		// visitor 2^64 times and no bucket, sentence or reputation ever applies.
+		//
+		// ipKey stays the exact address in two places, on purpose:
+		//   • the L2 pre-filter, which does its own (wider, /48) grouping
+		//     internally and needs the address to do it;
+		//   • OffloadFn, which hands the value to the kernel banlist. Those nft
+		//     sets are declared without `flags interval`, so no CIDR element can
+		//     be added to them at all — passing a prefix there would not widen the
+		//     ban, it would be rejected. Teaching the kernel path about prefixes
+		//     is a separate change (set redefinition, on-disk format, overlap
+		//     collapse), not a one-line substitution.
+		enfKey := m.enforcementKey(ipKey)
+
 		// A verified visitor (signed PoW session, unspoofable) or a trusted
 		// operator (valid admin login session) is exempt from EVERY gate below —
 		// including the blocklist and reputation jail. This must be decided
@@ -1029,7 +1123,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		}
 
 		// 1. Blocklist — the cheapest possible gate for a known-abusive IP.
-		if !verified && lc.autoBlock && m.blocklist.Blocked(ipKey) {
+		if !verified && lc.autoBlock && m.blocklist.Blocked(enfKey) {
 			reqclass.MarkShielded(r.Context())
 			m.onEvent(ActionBlock, 1.0)
 			m.serveJailed(w, r, ipKey, "blocked")
@@ -1050,7 +1144,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// page has no switch left to reach for, which is precisely the trap this
 		// closes. Classification/challenges are unaffected — they are governed by
 		// the bot-protection switch, not this one.
-		if !verified && lc.autoBlock && m.brain.Jailed(ipKey) {
+		if !verified && lc.autoBlock && m.brain.Jailed(enfKey) {
 			reqclass.MarkShielded(r.Context())
 			m.onEvent(ActionBlock, 1.0)
 			m.serveJailed(w, r, ipKey, "reputation")
@@ -1090,18 +1184,18 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		}
 
 		// 4. Per-IP rate limit — generous burst, so a normal reader never trips it.
-		if lc.rateLimit && !verified && !m.limiter.Allow(ipKey) {
-			if lc.autoBlock && !m.violation.Allow(ipKey) {
+		if lc.rateLimit && !verified && !m.limiter.Allow(enfKey) {
+			if lc.autoBlock && !m.violation.Allow(enfKey) {
 				// This IP keeps breaching the limit — jail it for a while.
-				m.blocklist.Block(ipKey, m.jailTTL())
+				m.blocklist.Block(enfKey, m.jailTTL())
 			}
-			m.brain.Observe(ipKey, brain.SignalRateBurst)
+			m.brain.Observe(enfKey, brain.SignalRateBurst)
 			// If the breaches collapsed this source's reputation, escalate to
 			// the O(1) blocklist jail immediately — subsequent requests are then
 			// dropped by the very first gate (the brain reached the verdict the
 			// legacy 20-breach violation meter would take 4x longer to reach).
-			if lc.autoBlock && m.brain.Jailed(ipKey) {
-				m.blocklist.Block(ipKey, m.jailTTL())
+			if lc.autoBlock && m.brain.Jailed(enfKey) {
+				m.blocklist.Block(enfKey, m.jailTTL())
 				// L1 offload: drop this flooding source in-kernel too.
 				if m.cfg.OffloadFn != nil {
 					m.cfg.OffloadFn(ipKey, m.jailTTL())
@@ -1178,14 +1272,14 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			// standing (no-op for untracked sources — the innocent are never
 			// tracked), so a mis-scored real user heals automatically.
 			if v.Result.BotScore < 0.3 {
-				m.brain.Observe(ipKey, brain.SignalHuman)
+				m.brain.Observe(enfKey, brain.SignalHuman)
 			}
 			next.ServeHTTP(w, r)
 		case ActionChallengePoW:
 			// Reputation-scaled difficulty (L5→L4): an unknown client works a
 			// light, silent PoW; a source already under suspicion works harder.
 			diff := challenge.DefaultDifficulty
-			if m.brain.Standing(ipKey) < 0.3 {
+			if m.brain.Standing(enfKey) < 0.3 {
 				diff = challenge.HardDifficulty
 			}
 			if !m.serveChallenge(w, r, v, diff, true) {
@@ -1200,7 +1294,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			if m.softenForNavigation(w, r, v, next) {
 				return
 			}
-			m.brain.Observe(ipKey, brain.SignalBlock)
+			m.brain.Observe(enfKey, brain.SignalBlock)
 			m.jailBadActor(r.Context(), ipKey, lc.autoBlock, v)
 			m.serveTarpit(w, r, v, next)
 		case ActionBlock:
@@ -1211,7 +1305,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			if m.softenForNavigation(w, r, v, next) {
 				return
 			}
-			m.brain.Observe(ipKey, brain.SignalBlock)
+			m.brain.Observe(enfKey, brain.SignalBlock)
 			m.jailBadActor(r.Context(), ipKey, lc.autoBlock, v)
 			m.serveBlock(w, r, v)
 		}
@@ -1237,7 +1331,7 @@ func (m *Manager) serveJailed(w http.ResponseWriter, r *http.Request, ipKey, rea
 	// (assets, API calls, non-browser clients) and the whole carve-out collapses
 	// under attack, so a flood is still answered by the cheap rejection.
 	navigation := acceptsHTML(r)
-	if m.cfg.Signer != nil && !m.controller.UnderAttack() && (navigation || m.redeem.Allow(ipKey)) {
+	if m.cfg.Signer != nil && !m.controller.UnderAttack() && (navigation || m.redeem.Allow(m.enforcementKey(ipKey))) {
 		if m.serveChallenge(w, r, Verdict{}, challenge.DefaultDifficulty, false) {
 			return
 		}
@@ -1369,7 +1463,10 @@ func (m *Manager) maybeLearn(ctx context.Context, v Verdict, action Action) {
 // or the full User-Agent.
 func (m *Manager) jailBadActor(ctx context.Context, ipKey string, autoBlock bool, v Verdict) {
 	if autoBlock && ipKey != "" {
-		m.blocklist.Block(ipKey, m.jailTTL())
+		// The sentence is served by the enforcement key (the /64 for IPv6), the
+		// kernel offload below by the exact address — the nft banlist sets take
+		// no CIDR element. See enforcementKey.
+		m.blocklist.Block(m.enforcementKey(ipKey), m.jailTTL())
 		// L1 offload: a jailed confirmed bad actor is also dropped in-kernel,
 		// so its follow-up packets never even create a connection.
 		if m.cfg.OffloadFn != nil {

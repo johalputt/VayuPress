@@ -28,6 +28,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   expected mail ports are read out of `vayuos.go` by the test rather than written
   down twice.
 
+- **Prefix-keyed enforcement, so an IPv6 attacker cannot buy their way out.**
+  The rate limiter, violation meter, blocklist and reputation brain all keyed on
+  the exact client address. For IPv4 that is a resource an attacker pays for; for
+  IPv6 it is not. A routed `/64` is the standard allocation for one network and
+  every address inside it is free, so an attacker on a single `/64` arrived as a
+  brand-new visitor 2^64 times: no bucket ever drained twice, no jail sentence
+  was ever served, no reputation ever accumulated. Not a weak defence — the
+  absence of one, and invisible to any test that reuses an address.
+
+  The durable gates now key on the `/64`. Deliberately narrower than the L2
+  pre-filter's `/48`, because the two layers do different jobs: the pre-filter is
+  detection, which sheds probabilistically, only under pressure, and forgets — a
+  wide group is right there. A jail sentence is enforcement: durable and
+  punitive, and a `/48` can be an entire company or a whole residential
+  allocation.
+
+  IPv4 `/24` grouping is opt-in, off by default, with the collateral stated on
+  the toggle rather than the benefit: behind carrier-grade NAT a `/24` can be
+  thousands of unrelated subscribers. The kernel offload still receives the exact
+  address — those nft sets are declared without `flags interval`, so a CIDR
+  element cannot be added to them at all, and teaching that path about prefixes
+  is its own change.
+
 - **A kernel drop for the app's own port.** Reaching the Go listener directly
   bypasses nginx, and with it every Tier 3 limit, TLS termination and the
   real-client-IP headers the app is configured to trust. `onionSafeBindAddr` binds
@@ -42,6 +65,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   lock an operator out of SSH.
 
 ### Fixed
+- **Two CI-only test failures, both from the same mistake.** New tests shelled out
+  to the real `nft` and read a non-zero exit as "nftables rejected this content".
+  On a GitHub runner `nft` is installed but refuses to execute unprivileged —
+  including `-c`, which looks like a pure syntax check and is not — so CI reported
+  that nft rejects `1.2.3.4`. Presence is not capability. A probe now establishes
+  whether `nft` can validate anything at all in this environment; where it cannot,
+  the syntax check is skipped rather than reported as a finding, and the same
+  invariant is covered against `netip.ParseAddr`, which is available everywhere.
+
 - **Every Tier 3 fix reached zero already-enabled installs.** The reconcile agent
   computed "active" purely from the destination file EXISTING, and the copy lived
   only in the `want=1 && active=0` branch. So once Tier 3 had been switched on
