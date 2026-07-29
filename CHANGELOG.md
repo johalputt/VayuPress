@@ -6,6 +6,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.11] — 2026-07-29
+
+### Fixed
+- **The Tier 2 firewall could never be re-applied over itself.** Reported from a
+  live install: pressing "Allowlist the edge ranges" fetched 21 Cloudflare ranges
+  **successfully**, then failed with nftables rejecting every meter as `Device or
+  resource busy` — and the panel blamed the download for a firewall error.
+
+  The cause was the order of the safety check. `nft -c` validates against the
+  **live kernel**, and the `nft delete table` ran *after* it, so on a machine
+  where the table already existed the dry run was asked to add meters that were
+  already there. The first apply on a clean box worked; every apply after it
+  failed. That is precisely the moment an operator re-runs the firewall, changes
+  a limit, or allowlists their proxy — so for anyone with Tier 2 already active,
+  the firewall was frozen at whatever it was first given.
+
+  The delete now lives **inside** the ruleset (`table inet X` then `delete table
+  inet X`, the standard idiom for an idempotent delete), so the dry run evaluates
+  exactly what the apply will do. Verified against a real kernel: the old shape
+  errors on a live table, the new one checks and re-applies cleanly.
+
+  This also closes a gap that was worse than the bug. The old sequence deleted
+  the table and *then* loaded the new one as a separate command — if that load
+  failed, the host was left with **no firewall at all** while the script reported
+  a load failure. One transaction applies completely or changes nothing, which is
+  what the error message already claimed and can now honestly say.
+
 ## [3.16.10] — 2026-07-29
 
 ### Fixed

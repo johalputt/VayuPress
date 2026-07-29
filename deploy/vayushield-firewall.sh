@@ -499,7 +499,30 @@ apply_nft() {
   # Per-IP concurrent connections are limited with a keyed meter (ip saddr) — the
   # portable idiom; a bare "ct count over N" is not per-IP and is rejected by some
   # nft versions. The rate limiter above already uses the same meter mechanism.
+  # The delete lives INSIDE the ruleset, and that is the whole point.
+  #
+  # It used to be a separate `nft delete table` run AFTER the `nft -c` dry run,
+  # which made re-applying impossible. `nft -c` validates against the LIVE
+  # kernel, so on a machine where this table already exists it was asked to add
+  # meters that were already there and answered "Device or resource busy" — for
+  # every meter, every time. The first apply on a clean box worked; every apply
+  # after it failed, which is precisely the moment an operator presses
+  # "Allowlist the edge ranges" or re-runs the firewall.
+  #
+  # Declaring the table before deleting it is the standard nftables idiom for an
+  # idempotent delete: the bare `table` line creates it if absent so the delete
+  # cannot fail on a clean box. Both then live in the same transaction, so the
+  # dry run evaluates exactly what the apply will do.
+  #
+  # It also closes a real gap. The old order deleted the table and THEN loaded
+  # the new one as a separate command; if that second step failed, the machine
+  # was left with NO firewall while the script reported a load failure. One
+  # transaction is atomic — it applies completely or changes nothing, which is
+  # what the error message already claimed.
   cat >"$rules" <<EOF
+table inet ${TABLE}
+delete table inet ${TABLE}
+
 table inet ${TABLE} {
   chain input {
     type filter hook input priority -10; policy accept;
@@ -555,10 +578,10 @@ EOF
     echo "error: nftables rejected the ruleset (see the message above); no changes applied." >&2
     return 1
   fi
-  nft delete table inet "${TABLE}" 2>/dev/null || true
+  # No separate delete: the ruleset carries its own, atomically.
   if ! nft -f "$rules" 2>&1; then
     rm -f "$rules"
-    echo "error: failed to load the nftables ruleset." >&2
+    echo "error: failed to load the nftables ruleset; the previous rules are still in force." >&2
     return 1
   fi
   rm -f "$rules"

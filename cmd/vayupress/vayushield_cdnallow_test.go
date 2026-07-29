@@ -864,3 +864,63 @@ func TestTheUpgradeControlSurvivesAHealthyHelper(t *testing.T) {
 			"warning clears there is no way to upgrade it ever again")
 	}
 }
+
+// TestTheFirewallCanBeReAppliedOverItself.
+//
+// Reported from a live install: pressing "Allowlist the edge ranges" fetched 21
+// Cloudflare ranges successfully and then failed, with nftables rejecting every
+// meter as "Device or resource busy".
+//
+// The cause was the ORDER of the safety check. `nft -c` validates against the
+// LIVE kernel, and the `nft delete table` ran AFTER it — so on a machine where
+// the table already existed, the dry run was asked to add meters that were
+// already there. The first apply on a clean box worked and every apply after it
+// failed, which is exactly the moment an operator re-runs the firewall or
+// allowlists their proxy.
+//
+// Putting the delete inside the ruleset makes the dry run evaluate what the
+// apply will actually do, and makes the apply atomic.
+func TestTheFirewallCanBeReAppliedOverItself(t *testing.T) {
+	src, err := os.ReadFile("../../deploy/vayushield-firewall.sh")
+	if err != nil {
+		t.Skipf("firewall script not readable here: %v", err)
+	}
+	s := string(src)
+
+	// The ruleset must carry its own delete, and declare the table first so the
+	// delete is idempotent on a clean box.
+	decl := strings.Index(s, "table inet ${TABLE}\ndelete table inet ${TABLE}")
+	if decl < 0 {
+		t.Fatal("the ruleset does not delete the table inside its own transaction, so `nft -c` " +
+			"validates an add against a kernel that already has it and every re-apply fails")
+	}
+	// And there must be no separate delete between the check and the load: that
+	// is both the bug and a window where the machine has no firewall at all.
+	check := strings.Index(s, "nft -c -f")
+	load := strings.LastIndex(s, `if ! nft -f "$rules"`)
+	if check < 0 || load < 0 {
+		t.Fatal("check/load sequence not found; this test needs updating with it")
+	}
+	between := s[check:load]
+	if strings.Contains(between, `nft delete table inet "${TABLE}"`) {
+		t.Error("a bare `nft delete table` still runs between the dry run and the load — the dry " +
+			"run therefore validates a different state than the one the load runs in, and a failed " +
+			"load leaves the host with NO firewall")
+	}
+}
+
+// TestAFailedLoadDoesNotDisarmTheHost — the old sequence deleted the table and
+// then loaded the new one as a separate command. If the load failed, the machine
+// was left with no firewall while the script reported a load failure. The
+// message has to match what actually happens.
+func TestAFailedLoadDoesNotDisarmTheHost(t *testing.T) {
+	src, err := os.ReadFile("../../deploy/vayushield-firewall.sh")
+	if err != nil {
+		t.Skipf("firewall script not readable here: %v", err)
+	}
+	if !strings.Contains(string(src), "the previous rules are still in force") {
+		t.Error("the load-failure message does not state that the host is still protected, which " +
+			"is only true because the transaction is atomic — say it, so an operator does not " +
+			"assume they are exposed and start improvising")
+	}
+}
