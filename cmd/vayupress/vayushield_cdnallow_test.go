@@ -297,11 +297,15 @@ func TestTheHardeningPanelNeverPrintsAPlaceholderPath(t *testing.T) {
 			t.Errorf("the %s command uses a relative deploy/ path (%q): it fails everywhere "+
 				"except inside the checkout", action, cmd)
 		}
-		// Either absolute, or it locates the script itself. Nothing in between.
-		absolute := strings.Contains(cmd, " /")
+		// The property is that the command does not depend on where the operator's
+		// shell happens to be. Three shapes satisfy it: an absolute path, one that
+		// locates the script itself, or one that fetches into a directory it
+		// creates and cd's into. Anything else inherits the working directory.
+		absolute := strings.Contains(cmd, " "+shieldAgentPath)
 		selfLocating := strings.Contains(cmd, "find /")
-		if !absolute && !selfLocating {
-			t.Errorf("the %s command is neither absolute nor self-locating: %q", action, cmd)
+		selfFetching := strings.Contains(cmd, "mktemp -d") && strings.Contains(cmd, `cd "$d"`)
+		if !absolute && !selfLocating && !selfFetching {
+			t.Errorf("the %s command depends on the working directory: %q", action, cmd)
 		}
 		// A self-locating command must SAY what it found before running it as
 		// root. Executing whatever a filesystem search turned up, silently, is not
@@ -454,6 +458,9 @@ func TestTheUpgradeButtonExplainsWhyItIsOnlyAButton(t *testing.T) {
 	t.Setenv("VAYUSHIELD_CONTROL_DIR", dir)
 	writeAgentCaps(t, dir)
 	row := shieldAgentUpgradeRow()
+	if !strings.Contains(row, "hx-post=\"/os/api/shield/agent-upgrade\"") {
+		t.Fatal("no upgrade control rendered for a capable helper")
+	}
 	for _, want := range []string{"verifies the signature", "never supplies the code", "root process"} {
 		if !strings.Contains(row, want) {
 			t.Errorf("the upgrade control does not say %q, so the operator cannot tell a designed "+
@@ -674,5 +681,186 @@ func TestTheAgentAdvertisesItsOwnCapabilities(t *testing.T) {
 	if strings.Count(s, "write_caps") < 3 {
 		t.Error("write_caps is not called both at startup and in the poll loop — the control dir " +
 			"is app-created and may not exist when the agent starts")
+	}
+}
+
+// TestTheInstallCommandCannotBeANoOp.
+//
+// The worst failure an installer can have: it succeeded loudly and changed
+// nothing. The panel offered `sudo bash /usr/local/lib/vayushield/
+// vayushield-agent.sh install`, and install_agent copies from the directory the
+// script lives in — so that copies the installed files onto themselves, prints
+// "✓ VayuShield agent installed and started", and upgrades nothing. An operator
+// upgrading a stale helper ran it, saw success, and still had the stale helper.
+//
+// Pointing at a checkout is no better as a default: the updater clones to a
+// temporary directory, so whatever checkout is on disk is usually older than the
+// release being run.
+func TestTheInstallCommandCannotBeANoOp(t *testing.T) {
+	// Point the installed-agent path at a file that EXISTS, so a "reuse the
+	// installed copy" shortcut is actually reachable from this test. Without
+	// this, the check silently evaluates the branch that was never the bug.
+	real := shieldAgentPath
+	t.Cleanup(func() { shieldAgentPath = real })
+	present := filepath.Join(t.TempDir(), "vayushield-agent.sh")
+	if err := os.WriteFile(present, []byte("#!/bin/sh\n"), 0o755); err != nil { //nolint:gosec // test fixture
+		t.Fatal(err)
+	}
+	shieldAgentPath = present
+
+	cmd := shieldAgentCmd("install")
+	// Checked STRUCTURALLY, not against this machine's filesystem. The first
+	// version of this test only failed when /usr/local/lib/vayushield existed,
+	// which it does not in CI — so it passed against a reintroduction of the very
+	// bug it was written for. A test whose verdict depends on the host it runs on
+	// is not a test of the code.
+	if strings.Contains(cmd, shieldAgentPath) {
+		t.Fatalf("the install command references the ALREADY INSTALLED script (%s), which copies "+
+			"those files onto themselves and reports success without upgrading anything: %q",
+			shieldAgentPath, cmd)
+	}
+	// It must bring in a new agent from somewhere, and check it before running it.
+	if !strings.Contains(cmd, "releases/latest/download/vayushield-agent.tar.gz") {
+		t.Error("the install command does not fetch the published agent, so it cannot upgrade a " +
+			"helper that is older than the release")
+	}
+	if !strings.Contains(cmd, "sha256sum -c") {
+		t.Error("the command executes a downloaded script as root without checking it first")
+	}
+	// The digest check must gate the execution, not follow it.
+	sum := strings.Index(cmd, "sha256sum -c")
+	run := strings.Index(cmd, "bash ./vayushield-agent.sh")
+	if sum < 0 || run < 0 || sum > run {
+		t.Error("the checksum is verified after the script has already run")
+	}
+}
+
+// TestThePanelAndTheHelperUseTheSameSupplyChain — a panel telling operators to
+// install from one place while the helper upgrades itself from another is two
+// supply chains where everybody believes there is one.
+func TestThePanelAndTheHelperUseTheSameSupplyChain(t *testing.T) {
+	src, err := os.ReadFile("../../deploy/vayushield-agent.sh")
+	if err != nil {
+		t.Skipf("agent script not readable here: %v", err)
+	}
+	if !strings.Contains(string(src), shieldAgentRepo) {
+		t.Errorf("the panel installs from %q but the helper upgrades itself from somewhere else",
+			shieldAgentRepo)
+	}
+	if !strings.Contains(shieldAgentCmd("install"), shieldAgentRepo) {
+		t.Error("the install command does not use the pinned repository")
+	}
+}
+
+// TestTheBootstrapDoesNotClaimASignatureCheck — it verifies a checksum, which is
+// weaker than the signature the installed helper verifies later. Describing the
+// two as the same thing is the overstatement this project's posture report
+// exists to avoid.
+func TestTheBootstrapDoesNotClaimASignatureCheck(t *testing.T) {
+	hint := shieldCheckoutHint()
+	if !strings.Contains(hint, "SHA-256") {
+		t.Error("the hint does not say what the bootstrap actually verifies")
+	}
+	if !strings.Contains(hint, "weaker check") {
+		t.Error("the hint does not admit the bootstrap is weaker than the helper's own upgrade " +
+			"verification, so an operator reads them as equivalent")
+	}
+}
+
+// TestInstallRestartsAnAlreadyRunningAgent.
+//
+// The bug that made every previous fix look like it had not worked.
+//
+// install_agent ended with `systemctl enable --now`. `--now` starts a unit that
+// is STOPPED and does nothing whatsoever to one that is already running. So
+// re-installing over a running agent copied the new script to disk while the old
+// process carried on executing the old one from memory — and printed
+// "installed and started".
+//
+// That is the worst shape a bug can take in an installer: repeated, confident
+// success with no effect. An operator upgrading a stale helper ran it three
+// times, saw three successes, and still had the stale helper — with no signal
+// anywhere that anything was wrong.
+func TestInstallRestartsAnAlreadyRunningAgent(t *testing.T) {
+	src, err := os.ReadFile("../../deploy/vayushield-agent.sh")
+	if err != nil {
+		t.Skipf("agent script not readable here: %v", err)
+	}
+	s := string(src)
+	if !strings.Contains(s, "systemctl restart vayushield-agent") {
+		t.Fatal("install does not restart the unit, so installing over a running agent leaves the " +
+			"old process executing the old script while reporting success")
+	}
+	// `enable --now` must not be the thing that is relied on to start it.
+	if strings.Contains(s, "systemctl enable --now vayushield-agent") {
+		t.Error("install still uses `enable --now`, which is a no-op against a running unit")
+	}
+	// And the restart has to come after the files are in place, or it restarts
+	// into the old script.
+	inst := strings.Index(s, `install -m 0755 "${src}/vayushield-agent.sh"`)
+	restart := strings.Index(s, "systemctl restart vayushield-agent")
+	if inst < 0 || restart < inst {
+		t.Error("the unit is restarted before the new script is installed, so it restarts into " +
+			"the old one")
+	}
+}
+
+// TestEveryInstallPathRestartsTheAgent.
+//
+// The restart bug existed in TWO places, and the second is why it went unnoticed
+// for so long: the normal root updater had it as well. So no operator on any
+// update path was ever actually receiving a new agent — the script on disk moved
+// forward while the running process did not, on every install, silently.
+//
+// Fixing one and not the other would have left the commonest path broken while
+// the rarer one worked, which is the harder failure to diagnose of the two.
+func TestEveryInstallPathRestartsTheAgent(t *testing.T) {
+	for _, f := range []string{
+		"../../deploy/vayushield-agent.sh",
+		"../../scripts/update-vayupress.sh",
+	} {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Skipf("%s not readable here: %v", f, err)
+		}
+		s := string(src)
+		if strings.Contains(s, "enable --now vayushield-agent") {
+			t.Errorf("%s uses `enable --now`, a no-op against a running unit — it installs a new "+
+				"agent and leaves the old process running it", f)
+		}
+		if !strings.Contains(s, "systemctl restart vayushield-agent") {
+			t.Errorf("%s never restarts the agent, so the code it just installed never runs", f)
+		}
+	}
+}
+
+// TestTheUpgradeControlSurvivesAHealthyHelper.
+//
+// The control used to live only inside the stale-agent warning, which fires on
+// one specific symptom: a helper too old to write an enforcement digest. A
+// helper merely a few versions behind shows none of that — so the button existed
+// exactly once in a helper's life and then disappeared for good.
+//
+// "Nothing to upgrade right now" and "no way to upgrade" are different states
+// and they looked identical.
+func TestTheUpgradeControlSurvivesAHealthyHelper(t *testing.T) {
+	src, err := os.ReadFile("../../cmd/vayupress/vayushield_hardening.go")
+	if err != nil {
+		src, err = os.ReadFile("vayushield_hardening.go")
+	}
+	if err != nil {
+		t.Skipf("source not readable here: %v", err)
+	}
+	s := string(src)
+	// The healthy branch is the one guarded by shieldAgentAlive(); the upgrade row
+	// must be rendered there and not only from inside the stale notice.
+	alive := strings.Index(s, "if shieldAgentAlive() {")
+	stale := strings.Index(s, "} else {")
+	if alive < 0 || stale < alive {
+		t.Skip("panel structure changed; this test needs updating with it")
+	}
+	if !strings.Contains(s[alive:stale], "shieldAgentUpgradeRow()") {
+		t.Error("the upgrade control is not offered to a healthy helper, so once the stale-agent " +
+			"warning clears there is no way to upgrade it ever again")
 	}
 }

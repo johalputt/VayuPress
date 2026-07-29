@@ -238,9 +238,9 @@ func shieldAgentUpgradeRow() string {
 			`later upgrades are one click. There is no way around this: the code that would act on a ` +
 			`request from this panel is the code you do not have yet.</p>`
 	}
-	b.WriteString(`<div class="vs-adv"><button type="button" class="btn btn--primary btn--sm"` +
+	b.WriteString(`<div class="vs-adv"><button type="button" class="btn btn--ghost btn--sm"` +
 		` hx-post="/os/api/shield/agent-upgrade" hx-target="#vs-body-hardening" hx-swap="innerHTML">` +
-		`Upgrade the helper</button> <span class="muted text-xs">The helper fetches the signed bundle ` +
+		`Check for a helper upgrade</button> <span class="muted text-xs">The helper fetches the signed bundle ` +
 		`from the release itself and verifies the signature before installing. This panel only records ` +
 		`that you asked &mdash; it never supplies the code, which is what keeps an unprivileged web app ` +
 		`from being able to choose what a root process runs.</span></div>`)
@@ -455,6 +455,16 @@ func (a *App) shieldHardeningBody(r *http.Request) string {
 	if shieldAgentAlive() {
 		b.WriteString(`<p class="muted text-xs">✅ Privileged helper installed — you can switch these on and off right here, no terminal needed. VayuPress itself stays unprivileged; a separate root agent applies only the vetted scripts.</p>`)
 		b.WriteString(shieldAgentStaleNotice())
+		// The upgrade control belongs on the HEALTHY path too, not only inside the
+		// stale-agent warning.
+		//
+		// That warning fires on one specific symptom — an agent too old to write an
+		// enforcement digest. A helper that is merely a few versions behind shows
+		// none of it, so putting the only upgrade control inside the warning meant
+		// the button existed exactly once in a helper's life and then vanished for
+		// good. "There is nothing to upgrade right now" and "there is no way to
+		// upgrade" are different states and looked identical.
+		b.WriteString(shieldAgentUpgradeRow())
 		b.WriteString(shieldTierRow(2, "🛡️ Tier 2 · Kernel firewall (nftables)", "Per-IP connection/packet rate limits + SYN-flood cookies, enforced in the Linux kernel. Turning this on also activates the L1 live offload below."))
 		b.WriteString(shieldTierRow(3, "🌐 Tier 3 · Edge shaping (nginx)", "Per-IP request/connection shaping + slow-loris timeouts at the reverse proxy."))
 		b.WriteString(a.shieldOffloadRow())
@@ -749,13 +759,22 @@ func shieldAgentStaleNotice() string {
 // a diagram of one, and pasting it produces "No such file or directory". An
 // instruction an operator cannot paste is an instruction that has not been given.
 func shieldCheckoutHint() string {
-	return `The command locates the script itself, so it works from any directory — including the one ` +
-		`you land in when you log in. <code>git pull</code> in your checkout first if you want the newest agent.`
+	return `The command needs no checkout and works from any directory. It downloads the published ` +
+		`agent, verifies its SHA-256 before running anything, and installs it. That is a weaker check ` +
+		`than the signature the helper verifies on its own later upgrades &mdash; this one is the ` +
+		`bootstrap, run by hand on a machine that may not have <code>cosign</code> yet, and it is worth ` +
+		`saying so rather than implying more. Find <code>find /</code> useful instead? ` +
+		`<code>sudo find / -name vayushield-agent.sh -path '*/deploy/*'</code>.`
 }
 
-// shieldAgentPath is where the updater installs the agent, and the reason the
-// copy button can usually offer a plain absolute path.
-const shieldAgentPath = "/usr/local/lib/vayushield/vayushield-agent.sh"
+// shieldAgentPath is where the updater installs the agent.
+//
+// A var rather than a const so a test can point it at a file that exists. That
+// is not gratuitous: the test guarding against "install runs the already
+// installed script" could only observe the bug on a machine where this path is
+// present, so in CI it passed against a faithful reintroduction of the bug. A
+// test whose verdict depends on the host is not a test of the code.
+var shieldAgentPath = "/usr/local/lib/vayushield/vayushield-agent.sh"
 
 // shieldAgentCmd returns an install/uninstall command that runs from ANY
 // directory.
@@ -774,12 +793,61 @@ const shieldAgentPath = "/usr/local/lib/vayushield/vayushield-agent.sh"
 // before running it, because a root command that silently executes whatever a
 // filesystem search turned up is not something to hand somebody.
 func shieldAgentCmd(action string) string {
-	if _, err := os.Stat(shieldAgentPath); err == nil {
-		return "sudo bash " + shieldAgentPath + " " + action
+	if action == "uninstall" {
+		if _, err := os.Stat(shieldAgentPath); err == nil {
+			return "sudo bash " + shieldAgentPath + " uninstall"
+		}
+		return shieldAgentLocateCmd("uninstall")
 	}
+	// INSTALL is not "run the script that is already there".
+	//
+	// That was the bug this replaced, and it failed silently, which is the worst
+	// way for an installer to fail. install_agent copies from the directory the
+	// script lives in — so pointing it at the installed copy copies those files
+	// onto themselves, prints "✓ VayuShield agent installed and started", and
+	// upgrades nothing. An operator upgrading a stale helper ran it, saw success,
+	// and had exactly the same stale helper.
+	//
+	// Pointing at a checkout is no better as a default: the updater clones to a
+	// temporary directory, so the checkout an operator finds is usually older than
+	// the release they are running.
+	//
+	// So the install command fetches the agent from the RELEASE. It is always the
+	// newest, it works from any directory, and it does not depend on a clone
+	// existing at all.
+	return shieldAgentBootstrapCmd()
+}
+
+// shieldAgentBootstrapCmd fetches, checks and installs the published agent.
+//
+// The checksum is verified before anything is executed. That is weaker than the
+// signature check the installed helper performs on its own upgrades, and the
+// difference is stated in the panel rather than glossed: this is the bootstrap
+// step, run by a human with root on a machine that may not have cosign yet, and
+// claiming more than a checksum here would be the same overstatement this
+// project's posture report exists to avoid.
+func shieldAgentBootstrapCmd() string {
+	base := "https://github.com/" + shieldAgentRepo + "/releases/latest/download"
+	return `sudo bash -c 'd=$(mktemp -d) && cd "$d" && ` +
+		`curl -fsSLO ` + base + `/vayushield-agent.tar.gz && ` +
+		`curl -fsSL -o sum ` + base + `/vayushield-agent.tar.gz.sha256 && ` +
+		`echo "$(cat sum)  vayushield-agent.tar.gz" | sha256sum -c - && ` +
+		`tar -xzf vayushield-agent.tar.gz && bash ./vayushield-agent.sh install; rm -rf "$d"'`
+}
+
+// shieldAgentLocateCmd finds the script on disk and runs it, printing what it
+// found first — a root command that silently executes whatever a filesystem
+// search turned up is not something to hand somebody.
+func shieldAgentLocateCmd(action string) string {
 	return `sudo bash -c 's=$(find / -name vayushield-agent.sh -path "*/deploy/*" -print -quit 2>/dev/null); ` +
 		`echo "agent script: ${s:-NOT FOUND}"; [ -n "$s" ] && bash "$s" ` + action + `'`
 }
+
+// shieldAgentRepo is the repository the published agent bundle comes from. It
+// matches the constant in the root-owned script; a test pins the pair, because a
+// panel telling operators to install from one place while the helper upgrades
+// itself from another is two supply chains where everyone believes there is one.
+const shieldAgentRepo = "johalputt/VayuPress"
 
 // shieldCmdRow renders one copyable command block.
 func shieldCmdRow(id, cmd string) string {

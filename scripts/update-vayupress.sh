@@ -252,8 +252,14 @@ if [[ "$VAYUSHIELD_AGENT" == "1" ]] && command -v systemctl >/dev/null 2>&1 && [
   install -d -m 0750 -o "$SERVICE_USER" -g "$SERVICE_USER" "$VS_CONTROL_DIR" 2>/dev/null || install -d -m 0750 "$VS_CONTROL_DIR" 2>/dev/null || true
   if install -m 0644 "$SRC_DIR/deploy/vayushield-agent.service" /etc/systemd/system/vayushield-agent.service 2>/dev/null; then
     systemctl daemon-reload 2>/dev/null || true
-    systemctl enable --now vayushield-agent 2>/dev/null || true
-    ok "VayuShield helper agent installed — Tier 2/3 can now be toggled from VayuOS → Bot Shield → Network hardening."
+    systemctl enable vayushield-agent 2>/dev/null || true
+    # restart, NOT `enable --now`. `--now` starts a STOPPED unit and does nothing
+    # at all to a running one — so every update since this agent shipped copied a
+    # new script over the old one while the running process carried on executing
+    # the old code from memory, and said "installed" while nothing had changed.
+    # No operator on any update path was actually receiving a new agent.
+    systemctl restart vayushield-agent 2>/dev/null || true
+    ok "VayuShield helper agent installed and restarted — Tier 2/3 toggle from VayuOS → VayuShield → Network hardening."
   else
     warn "Could not install the VayuShield agent unit (need root?) — Tier 2/3 stay manual for now."
   fi

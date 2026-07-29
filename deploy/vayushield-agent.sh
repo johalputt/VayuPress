@@ -752,8 +752,21 @@ install_agent() {
   fi
   install -m 0644 "${src}/vayushield-agent.service" /etc/systemd/system/vayushield-agent.service
   systemctl daemon-reload
-  systemctl enable --now vayushield-agent
-  echo "✓ VayuShield agent installed and started."
+  systemctl enable vayushield-agent
+  # restart, NOT `enable --now`.
+  #
+  # `--now` starts a unit that is stopped and does nothing at all to one that is
+  # already running. So re-installing over a running agent copied the new script
+  # to disk while the OLD process carried on executing the old one from memory —
+  # and printed "installed and started" while nothing whatsoever had changed.
+  #
+  # That is the worst shape a bug can take in an installer: repeated, confident
+  # success with no effect. An operator upgrading a stale helper ran this three
+  # times, saw three successes, and still had the stale helper. bash also reads
+  # scripts incrementally, so leaving the old process running on a replaced file
+  # is not merely stale, it is undefined.
+  systemctl restart vayushield-agent
+  echo "✓ VayuShield agent installed and (re)started."
   echo "  Toggle Tier 2/3 from VayuOS → Bot Shield → Network hardening (hard-refresh the page)."
 }
 

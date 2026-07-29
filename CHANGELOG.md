@@ -6,6 +6,54 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.10] — 2026-07-29
+
+### Fixed
+- **No operator on any update path had ever actually received a new agent.** The
+  root cause of a whole afternoon of upgrades that appeared to succeed and
+  changed nothing.
+
+  Both install paths ended with `systemctl enable --now vayushield-agent`.
+  `--now` starts a unit that is **stopped** and does nothing whatsoever to one
+  that is already **running**. So every install copied a new script to disk while
+  the old process carried on executing the old code from memory — and printed
+  "✓ VayuShield agent installed and started". Repeated, confident success with no
+  effect, which is the worst shape a bug can take in an installer: there is no
+  symptom to notice, only a symptom that fails to go away.
+
+  It was in `deploy/vayushield-agent.sh` **and** in `scripts/update-vayupress.sh`,
+  which is why it survived: fixing the rarer path alone would have left the
+  commonest one broken. Both now `enable` and then `restart`, after the files are
+  in place. Anyone whose helper is stale gets it repaired by their next ordinary
+  update, with nothing to type.
+
+- **The install command reinstalled the agent from itself.** The panel offered
+  `sudo bash /usr/local/lib/vayushield/vayushield-agent.sh install`, and
+  `install_agent` copies from the directory the script lives in — so it copied
+  the installed files onto themselves and reported success. Pointing at a checkout
+  is no better as a default, since the updater clones to a temporary directory and
+  whatever checkout is on disk is usually older than the running release. The
+  command now fetches the published agent, verifies its SHA-256 **before**
+  executing anything, and needs no checkout at all. The panel says plainly that a
+  checksum is weaker than the signature the installed helper verifies on its own
+  later upgrades, rather than letting the two read as equivalent.
+
+- **The upgrade control vanished once the helper was healthy.** It lived only
+  inside the stale-agent warning, which fires on one specific symptom — a helper
+  too old to write an enforcement digest. A helper merely a few versions behind
+  showed none of it, so the button existed exactly once in a helper's life and
+  then disappeared. "Nothing to upgrade right now" and "no way to upgrade" are
+  different states and looked identical.
+
+- **A test that could only fail on the maintainer's laptop.** The guard against
+  "install runs the already-installed script" checked a path that does not exist
+  in CI, so it passed against a faithful reintroduction of the bug it was written
+  for. The path is injectable now and the mutation is caught. A test whose verdict
+  depends on the host it runs on is not a test of the code.
+
+**Shipped immediately** under the standing exception: every install in the field
+is silently failing to upgrade its helper right now.
+
 ## [3.16.9] — 2026-07-29
 
 ### Fixed
