@@ -489,15 +489,34 @@ var Defaults = map[string]string{
 	// while the aggressive resilience gates below (tarpit, rate-limit, load-shed,
 	// auto-block, under-attack, surge) stay OFF until the operator opts in. An
 	// operator can still turn the whole shield off from the panel or VAYUSHIELD=off.
-	KeyShieldEnabled:        "on",
-	KeyShieldPoW:            "0.4",
-	KeyShieldJS:             "0.6",
-	KeyShieldBlock:          "0.8",
-	KeyShieldTarpit:         "off",
-	KeyShieldRateLimit:      "off",
-	KeyShieldRateRPM:        "120",
-	KeyShieldBurst:          "60",
-	KeyShieldLoadShed:       "off",
+	KeyShieldEnabled:   "on",
+	KeyShieldPoW:       "0.4",
+	KeyShieldJS:        "0.6",
+	KeyShieldBlock:     "0.8",
+	KeyShieldTarpit:    "off",
+	KeyShieldRateLimit: "off",
+	KeyShieldRateRPM:   "120",
+	KeyShieldBurst:     "60",
+	// Load shedding is the ONE availability gate that is safe to default on, and
+	// the reasoning is worth writing down because the other two look equally
+	// harmless and are not.
+	//
+	// It caps concurrent in-flight requests and answers a cheap 503 with
+	// Retry-After when the process is genuinely saturated. It has no per-visitor
+	// keying at all, so it cannot single anyone out, cannot be wrong about who a
+	// visitor is, and cannot lock a reader out — the worst it does under load is
+	// what the process would do anyway, but cheaply and with a signal a crawler
+	// honours instead of a timeout.
+	//
+	// Rate limiting is deliberately NOT defaulted on beside it. It keys on the
+	// client address, and on a proxied origin that has not set "Behind a CDN"
+	// every visitor resolves to a handful of edge addresses — so the whole
+	// audience shares one bucket and 120 requests a minute is nothing. Defaulting
+	// it on would take exactly the installs that have never opened this panel and
+	// show all of their readers a 429. Auto-block is not defaulted on either: it
+	// is the punitive one, and observe mode now exists so an operator can watch
+	// what it would have done to their own traffic first.
+	KeyShieldLoadShed:       "on",
 	KeyShieldMaxInFlight:    "0",
 	KeyShieldAutoBlock:      "off",
 	KeyShieldJailMinutes:    "10",

@@ -190,6 +190,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   this on every boot. The base chain keeps `policy accept` so no rule here can
   lock an operator out of SSH.
 
+### Upgrade Notes
+- **Load shedding now defaults ON.** This is a behaviour change on upgrade for any
+  install that never saved its shield settings — which is most of them, and
+  exactly the population that had nothing at all standing between a flood and
+  process collapse.
+
+  It caps concurrent in-flight requests and answers a cheap 503 with `Retry-After`
+  when the process is genuinely saturated, at a ceiling derived from the machine
+  (64 per core, floor 256, cap 2048) unless you set one. It has **no per-visitor
+  keying**, so it cannot single anyone out, cannot be wrong about who a visitor
+  is, and cannot lock a reader out. Turn it off in VayuOS → VayuShield if you
+  would rather the process take the load.
+
+  Rate limiting is deliberately **not** defaulted on beside it, and the reason is
+  specific rather than caution for its own sake: it keys on the client address,
+  and on a proxied origin that has not set *Behind Cloudflare / a CDN* every
+  visitor resolves to a handful of edge addresses. The whole audience then shares
+  one bucket and the default 120 requests a minute is nothing — so defaulting it
+  on would take exactly the installs that have never opened the panel and show
+  all of their readers a 429. Auto-block stays off for the same class of reason:
+  it is the punitive gate, and observe-only mode now exists so you can watch what
+  it would have done to your own traffic first.
+
 ### Changed
 - **Copy that the product's own posture report contradicts.** The shield now
   carries a permanent row stating that volumetric absorption is not provided by

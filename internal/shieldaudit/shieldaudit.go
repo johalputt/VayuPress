@@ -211,9 +211,14 @@ func Run(in Inputs) []Check {
 	case in.RateLimit && in.LoadShed:
 		add("Tier 1 · in-binary gates", Pass,
 			"Rate limiting and load shedding are both on. These are the only layers that see an HTTP request, so they are the only ones that can tell a reader from a scraper.")
-	case in.RateLimit || in.LoadShed:
+	case in.LoadShed && !in.RateLimit:
+		// The shipped default, so the row explains the gap and how to close it
+		// safely rather than reading as a misconfiguration.
 		add("Tier 1 · in-binary gates", Warn,
-			"Only one of rate limiting and load shedding is on. Rate limiting bounds one source; load shedding protects the process from all of them at once. They cover different failures.")
+			"Load shedding is on, so the process cannot be driven to collapse — but nothing bounds what a SINGLE source can ask for. Rate limiting is the gate for that, and it is off by default because it keys on the client address: on a proxied origin without \"Behind a CDN\" set, every visitor resolves to a few edge addresses and one shared bucket. Check the real-visitor-IP row below, then trial rate limiting in observe-only mode before enforcing it.")
+	case in.RateLimit && !in.LoadShed:
+		add("Tier 1 · in-binary gates", Warn,
+			"Rate limiting is on but load shedding is off. Rate limiting bounds one source at a time; load shedding is what stops many sources at once from driving the process into collapse. They cover different failures.")
 	default:
 		add("Tier 1 · in-binary gates", Fail,
 			"Rate limiting and load shedding are both off. Nothing bounds how much work a single visitor can ask this process to do.")
