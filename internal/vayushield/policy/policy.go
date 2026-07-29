@@ -247,6 +247,40 @@ func (r Rules) Country(code string) Verdict {
 	return VerdictNone
 }
 
+// AllowsAny reports whether the allow list covers ANY address in key, where key
+// may be a bare address or a CIDR prefix.
+//
+// It exists because the shield's enforcement key is a PREFIX for IPv6 (always)
+// and for IPv4 under /24 grouping, so Source — which parses an address — could
+// never match one and every prefix-keyed source read as untrusted. That was fine
+// where the answer only decided whether to skip gates, and not fine at all where
+// it decides whether a remote node may jail the operator's own network.
+//
+// Overlap, not containment, and deliberately so. If an operator trusts one
+// address and something asks to jail the /64 around it, jailing that /64 takes
+// the trusted host with it. The failure modes are not symmetric: refusing the
+// jail costs a fleet-wide sentence that each node still reaches locally, while
+// applying it locks an operator out of their own infrastructure.
+func (r Rules) AllowsAny(key string) bool {
+	if len(r.allow) == 0 || key == "" {
+		return false
+	}
+	if !strings.Contains(key, "/") {
+		return r.Source(key) == VerdictAllow
+	}
+	p, err := netip.ParsePrefix(key)
+	if err != nil {
+		return false
+	}
+	p = p.Masked()
+	for _, a := range r.allow {
+		if a.Overlaps(p) {
+			return true
+		}
+	}
+	return false
+}
+
 // GeoActive reports whether country rules can mean anything in this mode, so the
 // panel can show them as disabled rather than as configured-but-ignored.
 func (r Rules) GeoActive() bool { return !r.onionMode }

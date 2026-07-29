@@ -1038,12 +1038,15 @@ func (m *Manager) Classify(r *http.Request) Verdict {
 	// to publish it. The contribution shares one clamped budget with behaviour
 	// (scorer.HeuristicBudget) rather than carrying its own, because two bounds
 	// that are individually correct still add up to a hard block.
+	// The counter is NOT incremented here. Classify is documented as pure so the
+	// analytics beacon can call it freely, and the beacon does — once per
+	// engagement event, on requests the middleware has already classified. A
+	// counter moved here would be inflated by how chatty the beacon is rather
+	// than by how many probes arrived, and that number is what an operator uses
+	// to decide whether they are under attack. The middleware counts it once.
 	if f, ok := inspect.Scan(r.URL.Path, r.URL.RawQuery); ok {
 		in.InspectDelta = f.Delta()
 		in.InspectReasons = []string{f.Reason()}
-		if i := int(f.Class) - 1; i >= 0 && i < len(m.inspectHits) {
-			m.inspectHits[i].Add(1)
-		}
 	}
 	if m.cfg.Static != nil {
 		if s, ok := m.cfg.Static.MatchUA(sig.UserAgent); ok {
@@ -1607,6 +1610,13 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			return
 		}
 		v := m.Classify(r)
+		// Count the inspection finding exactly once, on the request path, rather
+		// than inside Classify — which analytics also calls.
+		if f, ok := inspect.Scan(r.URL.Path, r.URL.RawQuery); ok {
+			if i := int(f.Class) - 1; i >= 0 && i < len(m.inspectHits) {
+				m.inspectHits[i].Add(1)
+			}
+		}
 		action := m.Decide(r, v)
 		m.onEvent(action, v.Result.BotScore)
 

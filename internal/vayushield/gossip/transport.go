@@ -29,6 +29,16 @@ const HeaderIssued = "X-Vayushield-Issued"
 // Path is the endpoint a node exposes to its peers.
 const Path = "/__vayushield/gossip"
 
+// IngressPerMinute is how many pushes ONE source address may make per minute.
+//
+// A real peer flushes once a second, so 60 is its steady state; the allowance is
+// double that so a burst after a network hiccup is not refused. The point is the
+// ceiling, not the number: this route is exempt from the shield's own gates —
+// like every machine-protocol endpoint, because a peer cannot solve a browser
+// challenge — and an exemption without a limit of its own is not "it carries its
+// own rate limit", it is an unmetered route.
+const IngressPerMinute = 120
+
 // Handler returns the HTTP handler that receives peer verdicts.
 //
 // It is deliberately terse in what it tells an unauthenticated caller. Every
@@ -39,9 +49,19 @@ func Handler(key [32]byte, seen *Seen, apply func(Message) int, now func() time.
 	if now == nil {
 		now = time.Now
 	}
+	ing := newIngress()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		// Rate-limited by source address BEFORE any work — before the body is
+		// read and long before an AEAD open. Everything below is cheap per
+		// request and unbounded in aggregate, which is the shape of a compute
+		// sink rather than an endpoint. Same uniform 403, so this is not an
+		// oracle either.
+		if !ing.allow(sourceOf(r), now()) {
+			w.WriteHeader(http.StatusForbidden)
 			return
 		}
 		// Read at most one message's worth. http.MaxBytesReader caps the read
@@ -189,10 +209,79 @@ func (p *Pusher) Stats() (sent, failed int64) {
 	return p.sent, p.failed
 }
 
+// Pending reports how many verdicts are queued but not yet pushed. Exported for
+// tests that need to assert a node queued NOTHING — an observe-only install must
+// not be enforcing on its peers.
+func (p *Pusher) Pending() int {
+	if p == nil {
+		return 0
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.pending)
+}
+
 // Peers returns how many peers are configured.
 func (p *Pusher) Peers() int {
 	if p == nil {
 		return 0
 	}
 	return len(p.peers)
+}
+
+// ── Ingress limiting ──────────────────────────────────────────────────────────
+
+// ingress is a fixed-memory per-source request counter.
+//
+// Fixed memory rather than a map that grows: the key is the caller's address, so
+// a growing table is a table an attacker sizes — which would make the defence
+// against a flood into a second way to mount one.
+type ingress struct {
+	mu     sync.Mutex
+	counts map[string]int
+	window int64
+}
+
+func newIngress() *ingress { return &ingress{counts: make(map[string]int, 8)} }
+
+// maxIngressSources bounds the table. Beyond it every new source is refused for
+// the rest of the window — which under a distributed flood also refuses some
+// real peers, and that is the right trade: a peer retries a second later, and
+// the alternative is unbounded memory chosen by the attacker.
+const maxIngressSources = 1024
+
+func (i *ingress) allow(src string, now time.Time) bool {
+	if src == "" {
+		return false
+	}
+	win := now.Unix() / 60
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if win != i.window {
+		i.window = win
+		clear(i.counts)
+	}
+	n, known := i.counts[src]
+	if !known && len(i.counts) >= maxIngressSources {
+		return false
+	}
+	if n >= IngressPerMinute {
+		return false
+	}
+	i.counts[src] = n + 1
+	return true
+}
+
+// sourceOf is the caller's address as the socket sees it.
+//
+// Deliberately NOT any forwarded header. Peer addresses are operator-configured
+// and reached directly, so there is no proxy whose header would be meaningful —
+// and trusting one here would let any caller mint an unlimited number of
+// identities and walk straight through the limit above.
+func sourceOf(r *http.Request) string {
+	host := r.RemoteAddr
+	if i := strings.LastIndexByte(host, ':'); i > 0 && !strings.Contains(host[i:], "]") {
+		host = host[:i]
+	}
+	return strings.Trim(host, "[]")
 }

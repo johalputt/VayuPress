@@ -138,12 +138,15 @@ func TestAStrangerCannotFillTheReplayCache(t *testing.T) {
 	seen := NewSeen(64)
 	h := Handler(key, seen, func(Message) int { return 0 }, func() time.Time { return now })
 
+	// Spread across many source addresses so the per-source ingress limit is not
+	// what stops them — this test is about the replay cache, not that limit.
 	for i := 0; i < 5_000; i++ {
 		m := Message{Node: "stranger", Issued: now.Unix(),
 			Verdicts: []Verdict{{Kind: KindJail, Source: "198.51.100." + strconv.Itoa(i%256)}}}
 		b, _ := Seal(other, m) // a fresh random nonce every time
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, Path, strings.NewReader(string(b)))
+		r.RemoteAddr = "203.0.113." + strconv.Itoa(i%200) + ":9000"
 		r.Header.Set(HeaderIssued, strconv.FormatInt(m.Issued, 10))
 		h.ServeHTTP(w, r)
 	}
@@ -158,10 +161,108 @@ func TestAStrangerCannotFillTheReplayCache(t *testing.T) {
 	b, _ := Seal(key, m)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, Path, strings.NewReader(string(b)))
+	r.RemoteAddr = "198.51.100.20:9000" // a real peer, not one of the flooders
 	r.Header.Set(HeaderIssued, strconv.FormatInt(m.Issued, 10))
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusNoContent {
 		t.Errorf("a legitimate peer got %d after the flood", w.Code)
+	}
+}
+
+// TestTheEndpointCarriesItsOwnRateLimit.
+//
+// This route is exempt from the shield's gates — like every machine-protocol
+// endpoint, because a peer cannot solve a browser challenge — and it does real
+// work for an UNAUTHENTICATED caller: a 64 KiB read and an AEAD open, before it
+// can possibly know the caller is a stranger. An exemption without a limit of
+// its own is not "it carries its own rate limit", it is an unmetered compute
+// sink, and it was one.
+func TestTheEndpointCarriesItsOwnRateLimit(t *testing.T) {
+	key := testKey(t)
+	other, _ := DeriveKey("stranger")
+	now := time.Now()
+	h := Handler(key, NewSeen(1024), func(Message) int { return 0 }, func() time.Time { return now })
+
+	accepted := 0
+	for i := 0; i < IngressPerMinute*20; i++ {
+		m := Message{Node: "stranger", Issued: now.Unix(),
+			Verdicts: []Verdict{{Kind: KindJail, Source: "198.51.100.1"}}}
+		b, _ := Seal(other, m)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, Path, strings.NewReader(string(b)))
+		r.RemoteAddr = "203.0.113.99:5555"
+		r.Header.Set(HeaderIssued, strconv.FormatInt(m.Issued, 10))
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusForbidden {
+			accepted++
+		}
+	}
+	if accepted != 0 {
+		t.Errorf("%d forged pushes were processed", accepted)
+	}
+
+	// A real peer flushes once a second, so its steady state is 60/minute and it
+	// must be nowhere near the ceiling.
+	for i := 0; i < 60; i++ {
+		m := Message{Node: "edge-2", Issued: now.Unix(),
+			Verdicts: []Verdict{{Kind: KindJail, Source: "192.0.2.1"}}}
+		b, _ := Seal(key, m)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, Path, strings.NewReader(string(b)))
+		r.RemoteAddr = "203.0.113.50:5555"
+		r.Header.Set(HeaderIssued, strconv.FormatInt(m.Issued, 10))
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("a peer pushing at its normal once-a-second cadence was refused on push %d "+
+				"(%d) — the limit is tighter than the protocol it is protecting", i, w.Code)
+		}
+	}
+
+	// The source is the socket address, never a forwarded header. Peers are
+	// operator-configured and reached directly, so there is no proxy whose header
+	// would mean anything — and trusting one would let a caller mint unlimited
+	// identities and walk straight through the limit above.
+	blocked := 0
+	for i := 0; i < IngressPerMinute*3; i++ {
+		m := Message{Node: "stranger", Issued: now.Unix(),
+			Verdicts: []Verdict{{Kind: KindJail, Source: "198.51.100.1"}}}
+		b, _ := Seal(other, m)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, Path, strings.NewReader(string(b)))
+		r.RemoteAddr = "203.0.113.77:5555"
+		r.Header.Set("X-Forwarded-For", "10.0.0."+strconv.Itoa(i%250))
+		r.Header.Set("CF-Connecting-IP", "10.1.0."+strconv.Itoa(i%250))
+		r.Header.Set(HeaderIssued, strconv.FormatInt(m.Issued, 10))
+		h.ServeHTTP(w, r)
+		if w.Code == http.StatusForbidden {
+			blocked++
+		}
+	}
+	if blocked < IngressPerMinute {
+		t.Errorf("only %d of %d rotating-header pushes were refused — a forwarded header is "+
+			"being used as the identity, so one caller mints unlimited identities and the "+
+			"limit does not exist", blocked, IngressPerMinute*3)
+	}
+}
+
+// TestTheIngressTableIsFixedMemory — the key is the caller's address, so a table
+// that grows with traffic is a table an attacker sizes: the defence against a
+// flood would become a second way to mount one.
+func TestTheIngressTableIsFixedMemory(t *testing.T) {
+	ing := newIngress()
+	now := time.Now()
+	for i := 0; i < maxIngressSources*20; i++ {
+		ing.allow("10."+strconv.Itoa(i/65536%256)+"."+strconv.Itoa(i/256%256)+"."+strconv.Itoa(i%256), now)
+	}
+	ing.mu.Lock()
+	n := len(ing.counts)
+	ing.mu.Unlock()
+	if n > maxIngressSources {
+		t.Errorf("the ingress table holds %d sources against a %d cap", n, maxIngressSources)
+	}
+	// The window rolls, so a burst does not wedge the endpoint forever.
+	if !ing.allow("198.51.100.1", now.Add(2*time.Minute)) {
+		t.Error("the table never clears, so the endpoint is refused for the life of the process")
 	}
 }
 

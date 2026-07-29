@@ -10,7 +10,6 @@ import (
 
 	"github.com/johalputt/vayupress/internal/vayushield/brain"
 	"github.com/johalputt/vayupress/internal/vayushield/gossip"
-	"github.com/johalputt/vayupress/internal/vayushield/policy"
 )
 
 // cluster.go — the shield's side of multi-node verdict sharing.
@@ -85,9 +84,24 @@ func (m *Manager) ClusterStats() (peers int, in, refused, sent, failed int64) {
 
 // shareVerdict queues a local decision for the fleet. A no-op on the
 // overwhelmingly common single-node install.
+//
+// Suppressed in observe-only mode, and that is the same correctness point the
+// kernel offload makes. In-memory state IS still updated while observing, on
+// purpose, so the counters reflect what a real rollout would look like including
+// escalation. A push to a peer is not in-memory state: it is enforcement, on
+// another machine, in a mode whose entire promise is that nothing enforces — and
+// carried out in the one place the observing operator's own panel would never
+// show it. A PARDON is exempt, because it only ever restores access, and
+// withholding it would let observe mode make a peer's false positive last longer
+// than it otherwise would.
 func (m *Manager) shareVerdict(kind gossip.Kind, source string, weight float64) {
 	if m == nil || m.gossipPush == nil {
 		return
+	}
+	if kind != gossip.KindPardon {
+		if lc := m.live(); lc != nil && lc.observe {
+			return
+		}
 	}
 	m.gossipPush.Queue(gossip.Verdict{Kind: kind, Source: source, Weight: weight})
 }
@@ -135,9 +149,12 @@ func (s clusterSink) Pardon(source string) {
 // a compromised peer from locking an operator out of their entire fleet with one
 // message, and it is the same precedence the local middleware applies: an
 // operator's stated fact outranks anything anyone inferred, including a peer.
+// The source here is an ENFORCEMENT KEY, which is a prefix for IPv6 (always)
+// and for IPv4 under /24 grouping — so AllowsAny rather than Source. Comparing a
+// bare address against a prefix silently answered "not trusted" for every IPv6
+// verdict, which meant this control did not exist for IPv6 at all.
 func (s clusterSink) Trusted(source string) bool {
-	pol := s.m.Policy()
-	return !pol.Empty() && pol.Source(source) == policy.VerdictAllow
+	return s.m.Policy().AllowsAny(source)
 }
 
 // clusterFields is embedded in Manager. Grouped here so the cluster surface is

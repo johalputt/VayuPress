@@ -8,6 +8,50 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+- **The gossip endpoint was an unmetered compute sink on the protected lane.**
+  It inherited the `/__vayushield` prefix, which the L0 sovereignty lane admits
+  unconditionally and never counts against the public budget — correct for the
+  challenge endpoints under it, because a visitor who cannot reach the verifier
+  can never stop being challenged, and exactly wrong here. Gossip serves an
+  *unauthenticated* caller and does real work (a 64 KiB read, an AEAD open)
+  before it can know the caller is a stranger, so a flood of it spent unbounded
+  concurrency inside the one budget reserved for keeping the admin plane alive
+  during an attack. It is now excluded from the priority lane — verdicts are
+  perishable, so a push shed under saturation costs a little convergence speed
+  and nothing else — and the handler enforces its own per-source ceiling of 120
+  pushes a minute, checked before the body is read. A real peer's steady state is
+  60. The shield bypass stays (a peer cannot solve a browser challenge, the same
+  reason `/mcp` is exempt), but it is now paid for rather than assumed.
+- **A compromised peer could jail an operator's own IPv6 network.** The
+  allow-list override is the control that stops one bad node locking an operator
+  out of their whole fleet. It compared a bare address against the source in a
+  verdict — which is an *enforcement key*, and for IPv6 that is always a prefix
+  (`2001:db8::/64`), never an address. A prefix matched nothing, so the control
+  did not exist for IPv6 at all, nor for IPv4 with `/24` grouping enabled. The
+  lookup is now overlap-based: if a verdict's key covers any allowed address, it
+  is refused. Overlap rather than containment because the failure modes are not
+  symmetric — refusing costs a fleet-wide sentence each node still reaches
+  locally, while applying it locks an operator out of their own infrastructure.
+- **Observe-only mode still enforced, on other machines.** A node in observe mode
+  kept pushing jail verdicts to its peers. In-memory state is updated while
+  observing on purpose, so the counters reflect a real rollout including
+  escalation — but a push to a peer is not in-memory state, it is enforcement on
+  another machine, in a mode whose entire promise is that nothing enforces, and
+  in the one place the observing operator's own panel would never show it. Same
+  category as the kernel offload, which was already suppressed. Pardons are
+  exempt: they only ever restore access, and withholding one would make a peer's
+  false positive last longer than it otherwise would.
+
+### Fixed
+- **The inspection counter was inflated by the analytics beacon.** `Classify` is
+  documented as pure so the beacon can call it freely, and the beacon does — once
+  per engagement event, on requests the middleware has already classified. The
+  new finding counter was incremented inside it, so every probe was counted
+  repeatedly at a rate set by how chatty the beacon is rather than by how many
+  probes arrived. That is the number an operator reads to decide whether they are
+  under attack. Counting now happens once, on the request path.
+
 ### Added
 - **Nodes share VayuShield verdicts (ADR-0148).** Running the binary on several
   machines already shared one thing for free — the challenge signer is derived

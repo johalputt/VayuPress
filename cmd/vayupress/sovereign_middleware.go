@@ -12,6 +12,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/vayushield"
+	"github.com/johalputt/vayupress/internal/vayushield/gossip"
 )
 
 // trustedSessionTTL bounds how long a validated (or rejected) operator session
@@ -106,6 +107,23 @@ var sovereignPrefixes = []string{
 // HMAC verification, and a header parse when no admin cookie is present.
 func (a *App) isSovereignLane(r *http.Request) bool {
 	p := r.URL.Path
+	// The peer-gossip endpoint lives under /__vayushield but is emphatically NOT
+	// a priority request, so it is excluded before the prefix scan.
+	//
+	// The rest of that prefix is the challenge machinery, which must stay
+	// reachable: a visitor who cannot reach the verifier can never stop being
+	// challenged. Gossip is the opposite — an UNAUTHENTICATED caller on a route
+	// that does real work (a 64 KiB read and an AEAD open) before it can know the
+	// caller is a stranger. Admitting that unconditionally would put an unmetered
+	// compute sink inside the one budget reserved for keeping the admin plane
+	// alive during a flood, which is the resource this lane exists to protect.
+	//
+	// It costs nothing to demote: verdicts are perishable, peers reach the same
+	// conclusions from the same traffic, and a push shed under saturation costs a
+	// little convergence speed and nothing else.
+	if p == gossip.Path {
+		return false
+	}
 	for _, pre := range sovereignPrefixes {
 		if p == pre || strings.HasPrefix(p, pre+"/") {
 			return true
