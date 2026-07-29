@@ -41,6 +41,7 @@ package shieldaudit
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -173,6 +174,11 @@ type Inputs struct {
 	// LinkSpeedMbps is the operator's measured ingress capacity, read from
 	// /sys/class/net/*/speed. Zero when it could not be determined.
 	LinkSpeedMbps int
+	// InspectRules and InspectRuleset describe the compiled-in request-inspection
+	// ruleset. They are reported so an operator can tell which rules their build
+	// carries — the ruleset is never fetched, so "latest" means nothing and the
+	// binary's own number is the only honest answer.
+	InspectRules, InspectRuleset int
 
 	// --- What the agent observed ---------------------------------------------
 
@@ -285,6 +291,25 @@ func Run(in Inputs) []Check {
 	}
 
 	// --- Tier 2 and Tier 3, judged on evidence rather than intent ------------
+
+	// --- Request inspection, and what it is not ------------------------------
+	//
+	// This row exists to be read, not to be passed. The layer it describes is the
+	// one most likely to be mistaken for a web application firewall, and an
+	// operator who believes they have a WAF is an operator who might relax a
+	// control that is actually holding. Info rather than Pass is the point: there
+	// is nothing here to congratulate.
+	if in.InspectRules > 0 {
+		add("Request inspection", Info,
+			"The compiled-in ruleset ("+itoa(in.InspectRules)+" rules, set v"+itoa(in.InspectRuleset)+
+				") recognises scanners from the shape of their requests and raises their score. "+
+				"It is NOT a web application firewall and it filters nothing: injection defence in "+
+				"this product is parameterised queries, output sanitising, a strict CSP and path "+
+				"hardening, and none of that becomes less necessary because this exists. It reads "+
+				"only the path and the query — never a body — so writing about attacks is still "+
+				"publishing. It can raise a client into a solvable challenge and can never, on its "+
+				"own, block one.")
+	}
 
 	checks = append(checks, tierChecks(in, stale)...)
 
@@ -409,6 +434,8 @@ func tierChecks(in Inputs, stale bool) []Check {
 
 	return out
 }
+
+func itoa(n int) string { return strconv.Itoa(n) }
 
 // isLoopback reports whether a bind address is loopback-only. The address is
 // read from configuration, not parsed from a packet, so a simple prefix test is

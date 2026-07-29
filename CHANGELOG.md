@@ -9,6 +9,62 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **A compiled-in inspection layer that names scanners on their first request.**
+  The behavioural scorer already catches path scanning through the 404 ratio,
+  but it needs a sample before any ratio means anything, and even then a high
+  404 rate cannot tell a scanner from a site with broken links. A single request
+  for `/wp-login.php` can: this is one Go binary that serves no PHP, has no
+  `wp-admin` and stores no `.env`, so no reader's browser produces one.
+
+  Three tiers, scored very differently because they are not remotely equally
+  confident. Probes for foreign software are near certain and reach a challenge
+  on their own. Traversal shapes and null bytes are close behind — a browser
+  cannot emit them by accident. Injection-shaped strings in a query are the
+  *weakest* tier at a third the weight, because the most likely producer of one
+  on this platform is a reader using the search box: a security blog must be able
+  to search itself for "union select" without being challenged, and a test pins
+  that specific case.
+
+  **Only the path and the query are ever read — never a body, never a header.**
+  The editor submits bodies, and an author writing an article about SQL injection
+  has to be able to publish it.
+
+  The ruleset is a Go constant and is **never fetched**. A downloaded ruleset
+  would be a clearnet callback a Tor Space forbids, an unsigned supply-chain
+  dependency in a product that claims sovereignty, and a remote party's ability
+  to change what an install refuses. The rule count and set version are shown in
+  the panel and the posture report, because "latest" means nothing when the rules
+  ship with the binary.
+
+  **The posture report states plainly that this is not a web application
+  firewall**, and the row is Info rather than Pass because there is nothing here
+  to congratulate. It filters nothing; injection defence in this product remains
+  parameterised queries, output sanitising, a strict CSP and path hardening, and
+  none of that becomes less necessary. A test pins that copy, because on this
+  feature the copy *is* the control — a WAF a defender trusts is worse than no
+  WAF at all.
+
+### Fixed
+- **Two bounded heuristics were not a bounded thing, again.** The behavioural
+  scorer clamps itself at 0.35 and the new inspection layer at 0.30; each bound
+  reads correctly in its own file, and together on the 0.25 base they reach 0.90
+  — past the 0.80 hard-block threshold. That is the same arithmetic that a
+  header-coherence signal produced once before. Heuristic contributions are now
+  summed and clamped **once**, at the only place that can see every source
+  (`scorer.HeuristicBudget`), taking an unknown client to at most 0.70: well past
+  the challenge threshold, short of a block. The test asserts the property
+  against the sum rather than the current numbers, so a third heuristic source
+  added later is caught rather than discovered.
+- **A scanner could switch the inspection off with a `+`.** The first version of
+  the query decoder deliberately left `+` alone, reasoning that it is a space
+  only in a form-encoded value. It *is* a form-encoded value — `url.ParseQuery`
+  turns it into a space before the handler ever sees it — so `?q=union+select`
+  matched nothing while the application read the phrase exactly. A scanner that
+  disagrees with the parser in front of it is the oldest bypass there is. Found
+  by a test that was skipping itself rather than failing, which is why it no
+  longer skips. Malformed escapes are tolerated for the same class of reason:
+  `url.QueryUnescape` rejects the whole string on one bad escape, so a stray `%`
+  anywhere would have been an opt-out.
 - **Your own rules — allow/deny networks, country verdicts, and what a route
   costs to serve.** Everything else in the shield reaches a verdict by
   inference — a score, a sketch, a reputation — which is why those gates end in

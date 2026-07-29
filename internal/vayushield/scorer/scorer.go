@@ -36,7 +36,32 @@ type Input struct {
 	// it on a sketch would let heuristics override the person who set it.
 	BehaviourDelta   float64
 	BehaviourReasons []string
+
+	// InspectDelta is the bounded contribution of the compiled-in request
+	// inspection — a probe for software this binary is not, a traversal shape, an
+	// injection-shaped query. Same restriction as BehaviourDelta and for the same
+	// reason: it is evidence about an unknown client, not grounds to overrule a
+	// signature a person decided on.
+	InspectDelta   float64
+	InspectReasons []string
 }
+
+// HeuristicBudget caps the COMBINED contribution of every heuristic input, and
+// it is one number rather than one per source on purpose.
+//
+// This has already gone wrong once. The behavioural scorer and a header-coherence
+// signal each clamped themselves, each bound looked correct in its own file, and
+// together they let a client accumulate enough to cross the hard-block threshold
+// on heuristics alone — two bounded things are not a bounded thing. Adding
+// request inspection as a second source recreates that exact arithmetic:
+// behaviour's 0.35 plus inspection's 0.3 on the 0.25 base is 0.90, past the 0.8
+// block threshold.
+//
+// So the sum is clamped here, once, at the only place that can see all of them.
+// With the shipped defaults it takes an unknown client to at most 0.70: well past
+// the 0.4 challenge threshold, and short of a block. Heuristics reach a puzzle;
+// only evidence reaches a wall.
+const HeuristicBudget = 0.45
 
 // Result is the scorer's verdict.
 type Result struct {
@@ -127,9 +152,14 @@ func Score(in Input) Result {
 	// 3) Heuristic scoring for unknown clients.
 	score := 0.25
 	reasons := []string{}
-	if in.BehaviourDelta != 0 {
-		score += in.BehaviourDelta
+	// Every heuristic source, summed and then clamped ONCE. See HeuristicBudget.
+	if h := in.BehaviourDelta + in.InspectDelta; h != 0 {
+		if h > HeuristicBudget {
+			h = HeuristicBudget
+		}
+		score += h
 		reasons = append(reasons, in.BehaviourReasons...)
+		reasons = append(reasons, in.InspectReasons...)
 	}
 	s := in.Signals
 	fam := uaFamily(s.UserAgent)

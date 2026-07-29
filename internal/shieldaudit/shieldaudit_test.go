@@ -337,3 +337,52 @@ func TestTorSpaceSaysWhichDefencesAreOff(t *testing.T) {
 		t.Error("a clearnet install was told about Tor-mode exemptions that do not apply to it")
 	}
 }
+
+// TestInspectionRowRefusesToClaimItIsAWAF. The request-inspection layer is the
+// one thing in this shield most likely to be mistaken for a web application
+// firewall, and that mistake is expensive in a specific way: an operator who
+// believes they have a WAF may relax a control that is actually holding.
+//
+// So the row is Info, never Pass — there is nothing here to congratulate — and
+// it has to say what it does not do. This test pins the copy because the copy IS
+// the control.
+func TestInspectionRowRefusesToClaimItIsAWAF(t *testing.T) {
+	out := Run(Inputs{InspectRules: 41, InspectRuleset: 1})
+	var row *Check
+	for i := range out {
+		if strings.Contains(out[i].Title, "Request inspection") {
+			row = &out[i]
+		}
+	}
+	if row == nil {
+		t.Fatal("no request-inspection row; an operator has no way to see which rules their " +
+			"build carries, and the ruleset is never fetched so there is no other source")
+	}
+	if row.Status != Info {
+		t.Errorf("status = %v, want Info — a Pass invites an operator to read pattern matching "+
+			"as protection", row.Status)
+	}
+	d := strings.ToLower(row.Detail)
+	for _, must := range []string{
+		"not a web application firewall", // the disclaimer, stated plainly
+		"parameterised queries",          // what actually defends against injection
+		"never a body",                   // why writing about attacks still publishes
+		"solvable challenge",             // the bound: it cannot block alone
+	} {
+		if !strings.Contains(d, must) {
+			t.Errorf("the row does not say %q. This copy is the control: without it the feature "+
+				"reads as a WAF, and a WAF a defender trusts is worse than no WAF", must)
+		}
+	}
+	if !strings.Contains(row.Detail, "41 rules") || !strings.Contains(row.Detail, "v1") {
+		t.Errorf("the row does not report the rule count and ruleset version: %q", row.Detail)
+	}
+
+	// And an install whose build carries no ruleset must not show the row at all,
+	// rather than showing one that describes rules it does not have.
+	for _, c := range Run(Inputs{}) {
+		if strings.Contains(c.Title, "Request inspection") {
+			t.Error("a build with no ruleset still reported a request-inspection row")
+		}
+	}
+}

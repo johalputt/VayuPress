@@ -34,6 +34,7 @@ import (
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/shieldaudit"
 	"github.com/johalputt/vayupress/internal/vayushield"
+	"github.com/johalputt/vayupress/internal/vayushield/inspect"
 )
 
 // shieldDigestName is the file the root agent writes. Kept as a constant so the
@@ -136,11 +137,13 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 		BindAddr:  onionSafeBindAddr(config.Cfg.Port, config.Cfg.OnionMode),
 		OnionMode: config.Cfg.OnionMode,
 
-		RateLimit:   cur.RateLimit,
-		LoadShed:    cur.LoadShed,
-		AutoBlock:   cur.AutoBlock,
-		Surge:       cur.Surge,
-		ObserveOnly: a.vayuShield.Observing(),
+		RateLimit:      cur.RateLimit,
+		LoadShed:       cur.LoadShed,
+		AutoBlock:      cur.AutoBlock,
+		Surge:          cur.Surge,
+		ObserveOnly:    a.vayuShield.Observing(),
+		InspectRules:   inspect.RuleCount(),
+		InspectRuleset: inspect.RulesetVersion,
 		TorInertGates: func() []string {
 			if !config.Cfg.OnionMode {
 				return nil

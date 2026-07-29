@@ -808,6 +808,22 @@ func (a *App) shieldAegisBody() string {
 		"suspects "+strconv.Itoa(stt.Suspects)+" · jailed "+strconv.Itoa(stt.RepJailed),
 		"pardons "+strconv.FormatInt(stt.Pardons, 10)))
 
+	// L7 — compiled-in request inspection. The stats deliberately show the split
+	// rather than a total: a count that is nearly all "payload" is most likely
+	// this site's own search box seeing the words it publishes about, while
+	// "probes" are unambiguously scanners. One number would hide that difference
+	// and invite an operator to read their own readers as attackers.
+	l7 := "live"
+	if stt.InspectFindings[0] > 0 {
+		l7 = "hot"
+	}
+	b.WriteString(vsLayer("L7", "Request inspection", l7,
+		"Names scanners on their first request — never blocks alone",
+		"probes "+strconv.FormatInt(stt.InspectFindings[0], 10)+
+			" · traversal "+strconv.FormatInt(stt.InspectFindings[1], 10)+
+			" · payload "+strconv.FormatInt(stt.InspectFindings[2], 10),
+		strconv.Itoa(stt.InspectRules)+" rules · set v"+strconv.Itoa(stt.InspectRuleset)))
+
 	b.WriteString(`</div>`)
 	return b.String()
 }

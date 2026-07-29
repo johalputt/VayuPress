@@ -5,9 +5,16 @@ package scorer
 import (
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/vayushield/behaviour"
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 	"github.com/johalputt/vayupress/internal/vayushield/fingerprint"
+	"github.com/johalputt/vayupress/internal/vayushield/inspect"
 )
+
+// realBrowserUA is a current Chrome string, so the heuristic tests below are
+// measuring the heuristic inputs rather than a User-Agent penalty.
+const realBrowserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+	"(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 
 func TestStaticBadBotScoresHigh(t *testing.T) {
 	sig := botdb.Signature{Name: "python-requests", Classification: botdb.ClassBadBot}
@@ -175,4 +182,72 @@ func TestLearnedSignatureCannotBlockRealBrowser(t *testing.T) {
 			t.Error("a good-bot row must remain usable — it only widens access")
 		}
 	})
+}
+
+// TestHeuristicsCannotReachAHardBlock is the bound that makes every heuristic
+// input in this engine safe to ship, and it is written against the SUM rather
+// than against any one source because the sum is what has gone wrong before.
+//
+// The behavioural scorer and a header-coherence signal each clamped themselves.
+// Both bounds read correctly in their own file. Together they let a client
+// accumulate past the hard-block threshold on heuristics alone — two bounded
+// things are not a bounded thing. Adding request inspection recreated exactly
+// that arithmetic: 0.35 + 0.30 on the 0.25 base is 0.90, past 0.80.
+//
+// So this test asserts the property, not the current numbers: whatever
+// heuristic sources exist, and whatever each of them is bounded at, the most
+// they can do together is reach a solvable challenge.
+func TestHeuristicsCannotReachAHardBlock(t *testing.T) {
+	const unknownStart, powThreshold, blockThreshold = 0.25, 0.4, 0.8
+
+	// Every heuristic source pinned at its own maximum, simultaneously.
+	in := Input{
+		Signals:        fingerprint.Signals{UserAgent: realBrowserUA},
+		BehaviourDelta: behaviour.MaxDelta,
+		InspectDelta:   inspect.MaxDelta,
+	}
+	got := Score(in).BotScore
+	if got >= blockThreshold {
+		t.Errorf("every heuristic at maximum scores %v, at or past the %v block threshold — a "+
+			"client can be hard-blocked on inference alone, with no signature and no operator "+
+			"decision behind it", got, blockThreshold)
+	}
+	if got <= unknownStart {
+		t.Errorf("every heuristic at maximum scores %v, no more than the %v an unknown client "+
+			"starts at — the inputs are being discarded", got, unknownStart)
+	}
+	if got < powThreshold {
+		t.Errorf("every heuristic at maximum reaches only %v, below the %v challenge threshold — "+
+			"the heuristic inputs cannot change any outcome", got, powThreshold)
+	}
+
+	// And the clamp must be the thing holding it, not the individual bounds
+	// happening to be small. A source that ignored its own cap must still not
+	// break the ceiling.
+	wild := Input{
+		Signals:        fingerprint.Signals{UserAgent: realBrowserUA},
+		BehaviourDelta: 10,
+		InspectDelta:   10,
+	}
+	if got := Score(wild).BotScore; got >= blockThreshold {
+		t.Errorf("an unbounded heuristic input reached %v — the budget is not being clamped at "+
+			"the one place that can see every source", got)
+	}
+}
+
+// TestAuthoritativeVerdictsIgnoreHeuristics — a compiled-in signature or one an
+// operator verified reflects a person's judgement. Heuristics must not move it
+// in either direction, or a sketch overrules the human who set it.
+func TestAuthoritativeVerdictsIgnoreHeuristics(t *testing.T) {
+	human := botdb.StoredSignature{Classification: botdb.ClassHuman, Confidence: 0.9}
+	in := Input{
+		Signals:        fingerprint.Signals{UserAgent: realBrowserUA},
+		Learned:        &human,
+		BehaviourDelta: behaviour.MaxDelta,
+		InspectDelta:   inspect.MaxDelta,
+	}
+	if got := Score(in).BotScore; got > 0.25 {
+		t.Errorf("a signature an operator verified as human scored %v once heuristics were "+
+			"applied — inference is overruling the person who made the call", got)
+	}
 }

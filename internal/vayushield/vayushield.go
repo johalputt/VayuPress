@@ -43,6 +43,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/calibrate"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
 	"github.com/johalputt/vayupress/internal/vayushield/fingerprint"
+	"github.com/johalputt/vayupress/internal/vayushield/inspect"
 	"github.com/johalputt/vayupress/internal/vayushield/policy"
 	"github.com/johalputt/vayupress/internal/vayushield/prefilter"
 	"github.com/johalputt/vayupress/internal/vayushield/resilience"
@@ -316,6 +317,12 @@ type Manager struct {
 	// panel can name them. A rule an operator wrote and the shield silently threw
 	// away is worse than one it refused loudly.
 	policyIssues atomic.Pointer[[]string]
+
+	// inspectHits counts compiled-in inspection findings by tier (foreign-stack,
+	// traversal, payload). Split rather than totalled because the tiers mean
+	// very different things: a count that is nearly all payload is most likely
+	// the site's own search box, and reporting one number would hide that.
+	inspectHits [3]atomic.Int64
 
 	// behaviour scores a client by what it DOES, which is the one signal a
 	// client cannot fake for free. Every other input is either transport-derived
@@ -660,6 +667,14 @@ type Status struct {
 	ChallengesServed int64   `json:"challenges_served"`
 	ChallengesPassed int64   `json:"challenges_passed"`
 
+	// L7 compiled-in request inspection: cumulative findings, split by tier so a
+	// number that is almost all ClassPayload reads differently from one that is
+	// almost all ClassForeignStack — the first is probably the site's own search
+	// box, the second is unambiguously scanners.
+	InspectFindings [3]int64 `json:"inspect_findings"` // foreign-stack, traversal, payload
+	InspectRules    int      `json:"inspect_rules"`
+	InspectRuleset  int      `json:"inspect_ruleset"`
+
 	// Observe-only mode: whether it is engaged, and how many requests each gate
 	// would have acted on but did not. Indexed by Gate; GateNames labels them.
 	ObserveOnly bool             `json:"observe_only"`
@@ -689,6 +704,9 @@ func (m *Manager) Status() Status {
 		SurgeChallenges:  m.surgeServed.Load(),
 		SigCacheHits:     m.sigCache.Hits(),
 		SigCacheMisses:   m.sigCache.Misses(),
+		InspectFindings:  m.InspectFindings(),
+		InspectRules:     inspect.RuleCount(),
+		InspectRuleset:   inspect.RulesetVersion,
 	}
 }
 
@@ -757,6 +775,17 @@ func (m *Manager) Policy() policy.Rules {
 		return *p
 	}
 	return policy.Rules{}
+}
+
+// InspectFindings returns the inspection counters by tier, so the panel can
+// show the split rather than a single number that conflates a scanner sweep
+// with a reader searching for "union select".
+func (m *Manager) InspectFindings() [3]int64 {
+	var out [3]int64
+	for i := range m.inspectHits {
+		out[i] = m.inspectHits[i].Load()
+	}
+	return out
 }
 
 // RouteCost reports how many sovereignty-lane slots a request should reserve,
@@ -989,6 +1018,27 @@ func (m *Manager) Classify(r *http.Request) Verdict {
 	if m.behaviour != nil {
 		bs := m.behaviour.Observe(m.enforcementKey(ipOnly(m.cfg.ClientIP(r))), r.URL.Path, 0)
 		in.BehaviourDelta, in.BehaviourReasons = bs.Score()
+	}
+
+	// Compiled-in request inspection, as a third independent input.
+	//
+	// It answers a question behaviour cannot answer quickly: behaviour needs a
+	// sample before any ratio means anything, and even then a high 404 ratio
+	// cannot tell a scanner from a site with broken links. A single request for
+	// /wp-login.php can — this binary serves no PHP, so no reader's browser
+	// produces one.
+	//
+	// Only the path and the query, never a body or a header. The editor submits
+	// bodies, and an author writing an article about SQL injection has to be able
+	// to publish it. The contribution shares one clamped budget with behaviour
+	// (scorer.HeuristicBudget) rather than carrying its own, because two bounds
+	// that are individually correct still add up to a hard block.
+	if f, ok := inspect.Scan(r.URL.Path, r.URL.RawQuery); ok {
+		in.InspectDelta = f.Delta()
+		in.InspectReasons = []string{f.Reason()}
+		if i := int(f.Class) - 1; i >= 0 && i < len(m.inspectHits) {
+			m.inspectHits[i].Add(1)
+		}
 	}
 	if m.cfg.Static != nil {
 		if s, ok := m.cfg.Static.MatchUA(sig.UserAgent); ok {
