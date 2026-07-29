@@ -1554,8 +1554,15 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// puzzle offered here would be dishonest: solving it changes nothing,
 		// because this gate does not consult the session — so the visitor would
 		// spend real work to arrive at the same answer, every request.
+		//
+		// Looked up ONCE and carried down, rather than asked again where the
+		// datacenter tally is taken. Two calls would double the cost on every
+		// unverified request for no gain, and would let a refresh landing between
+		// them produce a request that was neither counted nor refused.
+		intelKind := intel.Kind(0)
 		if m.cfg.IntelFn != nil && !m.cfg.OnionMode {
-			if kind, source := m.cfg.IntelFn(ipKey); kind == intel.KindHostile {
+			var source string
+			if intelKind, source = m.cfg.IntelFn(ipKey); intelKind == intel.KindHostile {
 				m.intelHostile.Add(1)
 				if !m.observing(lc, GateIntelDeny) &&
 					!(m.cfg.TrustedFn != nil && m.cfg.TrustedFn(r)) {
@@ -1766,11 +1773,10 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		}
 		// Same reasoning for the datacenter tally: Classify applied the weight,
 		// the request path is what counts it. (The hostile tally is incremented at
-		// its own gate above, which the beacon never reaches.)
-		if m.cfg.IntelFn != nil && !m.cfg.OnionMode {
-			if kind, _ := m.cfg.IntelFn(ipKey); kind == intel.KindDatacenter {
-				m.intelDatacenter.Add(1)
-			}
+		// its own gate above, which the beacon never reaches.) The verdict is the
+		// one taken at that gate — not a second lookup.
+		if intelKind == intel.KindDatacenter {
+			m.intelDatacenter.Add(1)
 		}
 		action := m.Decide(r, v)
 		m.onEvent(action, v.Result.BotScore)
@@ -2169,10 +2175,19 @@ func (m *Manager) serveBlock(w http.ResponseWriter, r *http.Request, v Verdict) 
 // can inspect what the CLASSIFIER decided and correct it; a feed match is not a
 // judgement this install made, and filling that queue with entries whose only
 // remedy is to switch a feed off would bury the ones that need a verdict.
+// The page is rendered only for a real browser navigation. Everything else — an
+// asset fetch, an API call, a scraper — gets a flat line, because a listed
+// network under a flood is precisely when this path is hottest and building a
+// kilobyte of HTML per request would make the refusal cost more than serving.
 func (m *Manager) serveRefused(w http.ResponseWriter, r *http.Request, source string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-VayuShield", "listed")
+	if !acceptsHTML(r) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte("Refused: your network is listed by " + source + "."))
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusForbidden)
 	_, _ = w.Write([]byte(refusedHTML(source)))
 }

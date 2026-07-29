@@ -153,6 +153,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   is public and anyone can already read it, while knowing which networks bypass
   the shield names the addresses worth impersonating.
 
+- **The adversarial pass before this release found four things.** The standing
+  rule now says the audit gates a version bump rather than trailing it, so these
+  ship in the same release as the code they are about.
+
+  **A hostile list could refuse the whole internet, and the integrity bound was
+  structurally blind to it.** `AcceptRefresh` compares entry *counts*, so
+  swapping one line of a thousand-line list for `0.0.0.0/0` changes the count by
+  nothing at all, sails through the 35% delta, and turns every visitor away.
+  Counting entries answers "was this list replaced"; it says nothing about what
+  one entry now covers. Hostile entries are now floored at `/8` for IPv4 and
+  `/32` for IPv6, and loopback, private and link-local space is refused outright
+  — those can never be a public visitor's address on a correct install, but they
+  are exactly what a request carries when something in front of the app is
+  misconfigured, and what *every* request carries in a Tor Space. One bad entry
+  fails the whole build rather than being skipped: salvaging the rest would apply
+  an attacker's edit minus the part that made it obvious. The datacenter tier is
+  deliberately exempt — cloud vendors publish very large blocks legitimately, and
+  a wrong one there adds 0.15 to a score.
+
+  **Three feed lookups per request became one.** The hostile gate and the
+  datacenter tally each asked independently, which doubled the cost on every
+  unverified request and left a window where a refresh landing between them
+  produced a request that was neither counted nor refused.
+
+  **A cache-seeded feed reported no fetch time**, so a restart showed a thousand
+  loaded ranges beside a blank timestamp — which reads as "this has never
+  worked", the opposite of the truth. It now reports the cache file's
+  modification time, which is genuinely when that data was fetched. Stamping it
+  `now` would have been worse: a copy of unknown age presented as fresh.
+
+  **The refusal page is rendered only for a real browser navigation.** Everything
+  else gets a flat line. A listed network under a flood is exactly when that path
+  is hottest, and building a kilobyte of HTML per request would make refusing
+  cost more than serving.
+
 - **VayuShield is readable over MCP — and only readable.** Five tools:
   `vayushield_status` (live state and every layer counter), `vayushield_posture`
   (the full report with each control's verdict and reasoning),

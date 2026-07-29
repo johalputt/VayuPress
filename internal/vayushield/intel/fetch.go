@@ -212,9 +212,19 @@ func (f *Fetcher) LoadCache() {
 		if !st.enabled {
 			continue
 		}
-		b, err := os.ReadFile(f.cachePath(id)) //nolint:gosec // path is derived from a hashed feed ID
+		path := f.cachePath(id)
+		b, err := os.ReadFile(path) //nolint:gosec // path is derived from a hashed feed ID
 		if err != nil {
 			continue
+		}
+		// The file's modification time IS when this data was fetched, so it is
+		// what the panel should show. Leaving fetchedAt zero would report a feed
+		// with a thousand loaded ranges and no fetch time at all, which reads as
+		// "this has never worked" — the opposite of the truth. Claiming NOW would
+		// be worse: it would present a copy of unknown age as fresh.
+		fetched := time.Time{}
+		if fi, err := os.Stat(path); err == nil {
+			fetched = fi.ModTime()
 		}
 		// Re-parsed with the feed's OWN parser, from the bytes it served. Caching
 		// the compiled set instead would mean converting merged ranges back into
@@ -227,6 +237,7 @@ func (f *Fetcher) LoadCache() {
 		}
 		if set, err := Build(st.def.Kind, st.def.Name, prefixes); err == nil && set.Len() > 0 {
 			st.live.Store(set)
+			st.fetchedAt = fetched
 		}
 	}
 }

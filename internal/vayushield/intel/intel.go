@@ -123,6 +123,25 @@ const (
 // decision, never make one.
 const DatacenterDelta = 0.15
 
+// The floor on how broad a HOSTILE entry may be.
+//
+// This closes a gap the delta bound cannot see. AcceptRefresh compares entry
+// COUNTS, so swapping one entry of a thousand-line list for `0.0.0.0/0` changes
+// the count by nothing at all, sails through the 35% bound, and refuses every
+// visitor to the site from a file the operator does not control. Counting
+// entries answers "was this list replaced"; it says nothing about what a single
+// entry now covers.
+//
+// A /8 is already 1/256th of IPv4 — far broader than anything a conservative
+// hijacked-netblock list publishes, and broad enough that an operator would want
+// to look at it rather than have it applied silently. The datacenter tier is
+// deliberately exempt: cloud vendors legitimately publish very large blocks, and
+// the worst a wrong one does there is add 0.15 to a score.
+const (
+	minHostileBitsV4 = 8
+	minHostileBitsV6 = 32
+)
+
 // rng is one merged address range, held as a comparable integer pair so the hot
 // path is a comparison rather than a prefix operation.
 type rng struct {
@@ -200,6 +219,16 @@ func Build(kind Kind, source string, prefixes []netip.Prefix) (Set, error) {
 	for _, p := range prefixes {
 		if !p.IsValid() {
 			continue
+		}
+		if kind == KindHostile {
+			if err := hostileEntryIsSane(p); err != nil {
+				// Fails the WHOLE build rather than skipping the entry. A list that
+				// wants to refuse loopback, or a quarter of the internet, is not a
+				// list that has one bad line in it — it is a list that is not what it
+				// is supposed to be, and salvaging the rest would apply an
+				// attacker's edit minus the part that made it obvious.
+				return Set{}, err
+			}
 		}
 		entries++
 		p = p.Masked()
@@ -306,6 +335,36 @@ func (l *Live) Get() Set {
 	return Set{}
 }
 
+// hostileEntryIsSane rejects an entry no conservative hijacked-netblock list
+// would ever legitimately carry.
+//
+// Two separate refusals, and the second matters more than the first.
+//
+// Too BROAD: see minHostileBitsV4. The delta bound measures counts, so one
+// swapped line covering a quarter of the internet is invisible to it.
+//
+// Special-use SPACE: loopback, private ranges, link-local. These can never be a
+// public visitor's source address on a correctly configured install — but they
+// are exactly what a request carries when something in front of the app is
+// misconfigured, or when the install is a Tor Space where every peer is
+// 127.0.0.1. An entry here would not refuse an attacker; it would refuse the
+// whole audience, and on a Tor Space it would do so silently.
+func hostileEntryIsSane(p netip.Prefix) error {
+	min := minHostileBitsV4
+	if p.Addr().Is6() && !p.Addr().Is4In6() {
+		min = minHostileBitsV6
+	}
+	if p.Bits() < min {
+		return errHostileTooBroad
+	}
+	a := p.Masked().Addr()
+	if a.IsLoopback() || a.IsPrivate() || a.IsLinkLocalUnicast() ||
+		a.IsLinkLocalMulticast() || a.IsUnspecified() {
+		return errHostileReserved
+	}
+	return nil
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 func lastAddr(p netip.Prefix) netip.Addr {
@@ -356,6 +415,10 @@ type intelError string
 func (e intelError) Error() string { return string(e) }
 
 const (
-	errUnsetKind intelError = "intel: a set must state whether it is datacenter or hostile"
-	errTooLarge  intelError = "intel: feed exceeds the entry limit"
+	errUnsetKind       intelError = "intel: a set must state whether it is datacenter or hostile"
+	errTooLarge        intelError = "intel: feed exceeds the entry limit"
+	errHostileTooBroad intelError = "intel: a hostile list contains a prefix far broader than any " +
+		"conservative list publishes — refusing the whole feed"
+	errHostileReserved intelError = "intel: a hostile list contains loopback, private or link-local " +
+		"space, which can only match this install's own traffic — refusing the whole feed"
 )

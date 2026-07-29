@@ -4,6 +4,7 @@ package intel
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"net/netip"
 	"strconv"
@@ -135,19 +136,19 @@ func TestAWholesaleSwapIsRefused(t *testing.T) {
 	// merged ranges instead of published entries.
 	base := make([]netip.Prefix, 0, 200)
 	for i := 0; i < 200; i++ {
-		base = append(base, netip.MustParsePrefix("10."+strconv.Itoa(i*2%256)+"."+strconv.Itoa(i/128)+".0/24"))
+		base = append(base, netip.MustParsePrefix("203."+strconv.Itoa(i*2%256)+"."+strconv.Itoa(i/128)+".0/24"))
 	}
 	current, _ := Build(KindHostile, "feed", base)
 
 	// A vendor adding a region: a few percent. Accepted.
 	grown, _ := Build(KindHostile, "feed", append(append([]netip.Prefix{}, base...),
-		netip.MustParsePrefix("11.0.0.0/16"), netip.MustParsePrefix("11.1.0.0/16")))
+		netip.MustParsePrefix("205.0.0.0/16"), netip.MustParsePrefix("205.1.0.0/16")))
 	if ok, why := AcceptRefresh(current, grown); !ok {
 		t.Errorf("a small legitimate growth was refused: %s", why)
 	}
 
 	// The file replaced wholesale. Refused.
-	if ok, _ := AcceptRefresh(current, mustSet(t, KindHostile, "feed", "0.0.0.0/1")); ok {
+	if ok, _ := AcceptRefresh(current, mustSet(t, KindHostile, "feed", "203.0.113.0/24")); ok {
 		t.Error("a feed that shrank to a single entry was accepted — that is precisely what a " +
 			"hijacked or truncated endpoint looks like, and accepting it replaces a working " +
 			"blocklist with whatever the attacker chose")
@@ -155,7 +156,7 @@ func TestAWholesaleSwapIsRefused(t *testing.T) {
 	// Grown tenfold. Also refused.
 	big := make([]netip.Prefix, 0, 2000)
 	for i := 0; i < 2000; i++ {
-		big = append(big, netip.MustParsePrefix("172."+strconv.Itoa(i%256)+"."+strconv.Itoa(i/256)+".0/24"))
+		big = append(big, netip.MustParsePrefix("204."+strconv.Itoa(i%256)+"."+strconv.Itoa(i/256)+".0/24"))
 	}
 	blown, _ := Build(KindHostile, "feed", big)
 	if ok, _ := AcceptRefresh(current, blown); ok {
@@ -175,7 +176,7 @@ func TestAWholesaleSwapIsRefused(t *testing.T) {
 func TestASmallFeedStaysUpdatable(t *testing.T) {
 	current := mustSet(t, KindHostile, "small", "203.0.113.0/24", "198.51.100.0/24")
 	next := mustSet(t, KindHostile, "small",
-		"203.0.113.0/24", "198.51.100.0/24", "192.0.2.0/24", "10.0.0.0/8")
+		"203.0.113.0/24", "198.51.100.0/24", "192.0.2.0/24", "100.64.0.0/10")
 	if ok, why := AcceptRefresh(current, next); !ok {
 		t.Errorf("a small curated list could not be updated: %s", why)
 	}
@@ -438,5 +439,73 @@ func TestATorSpaceMakesNoOutboundRequest(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(st[0].LastError), "clearnet") {
 		t.Errorf("the recorded reason does not name the cause: %q", st[0].LastError)
+	}
+}
+
+// TestAHostileListCannotRefuseTheWholeInternet is the gap the delta bound could
+// never see.
+//
+// AcceptRefresh compares entry COUNTS, so swapping one line of a thousand-line
+// list for 0.0.0.0/0 changes the count by nothing, passes the 35% bound, and
+// refuses every visitor to the site. Counting entries answers "was this list
+// replaced"; it says nothing about what one entry now covers.
+func TestAHostileListCannotRefuseTheWholeInternet(t *testing.T) {
+	for _, cidr := range []string{"0.0.0.0/0", "0.0.0.0/4", "128.0.0.0/2", "2000::/3"} {
+		if _, err := Build(KindHostile, "poisoned", []netip.Prefix{netip.MustParsePrefix(cidr)}); err == nil {
+			t.Errorf("a hostile list containing %s must be refused outright", cidr)
+		}
+	}
+	// The datacenter tier is exempt on purpose: cloud vendors publish very large
+	// blocks legitimately, and the worst a wrong one does there is add to a score.
+	if _, err := Build(KindDatacenter, "cloud", []netip.Prefix{netip.MustParsePrefix("0.0.0.0/4")}); err != nil {
+		t.Errorf("a broad datacenter range is legitimate and must build: %v", err)
+	}
+}
+
+// TestAHostileListCannotRefuseThisMachine — loopback and private space can never
+// be a public visitor's source on a correct install, but they are exactly what a
+// request carries when something in front of the app is misconfigured, and they
+// are what EVERY request carries in a Tor Space. An entry here would not refuse
+// an attacker; it would refuse the whole audience.
+func TestAHostileListCannotRefuseThisMachine(t *testing.T) {
+	for _, cidr := range []string{"127.0.0.1/32", "127.0.0.0/8", "10.0.0.0/8", "192.168.1.0/24",
+		"169.254.0.0/16", "::1/128"} {
+		if _, err := Build(KindHostile, "poisoned", []netip.Prefix{netip.MustParsePrefix(cidr)}); err == nil {
+			t.Errorf("a hostile list containing %s must be refused — it can only match this "+
+				"install's own traffic", cidr)
+		}
+	}
+}
+
+// TestOneBadEntryFailsTheWholeHostileList — salvaging the rest would apply an
+// attacker's edit minus the part that made it obvious. A list wanting to refuse
+// a quarter of the internet does not have one bad line; it is not the list it is
+// supposed to be.
+func TestOneBadEntryFailsTheWholeHostileList(t *testing.T) {
+	good := make([]netip.Prefix, 0, 200)
+	for i := 0; i < 200; i++ {
+		good = append(good, netip.MustParsePrefix(fmt.Sprintf("203.0.%d.0/24", i%256)))
+	}
+	if _, err := Build(KindHostile, "ok", good); err != nil {
+		t.Fatalf("the clean list must build: %v", err)
+	}
+	if _, err := Build(KindHostile, "poisoned", append(good, netip.MustParsePrefix("0.0.0.0/0"))); err == nil {
+		t.Fatal("one poisoned entry among 200 good ones must fail the whole build")
+	}
+}
+
+// TestTheSanityFloorSurvivesRealisticEntries — a bound that also rejects what
+// these lists genuinely publish would make the layer unusable, which is its own
+// kind of failure.
+func TestTheSanityFloorSurvivesRealisticEntries(t *testing.T) {
+	realistic := []netip.Prefix{
+		netip.MustParsePrefix("203.0.113.0/24"),
+		netip.MustParsePrefix("198.51.100.0/22"),
+		netip.MustParsePrefix("192.0.2.0/23"),
+		netip.MustParsePrefix("100.64.0.0/10"), // DROP does publish blocks this size
+		netip.MustParsePrefix("2001:db8::/32"),
+	}
+	if _, err := Build(KindHostile, "drop-shaped", realistic); err != nil {
+		t.Fatalf("entries of the shape a real hostile list publishes must build: %v", err)
 	}
 }
