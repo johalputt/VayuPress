@@ -32,6 +32,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -127,6 +128,114 @@ func (a *App) handleOSShieldTier(w http.ResponseWriter, r *http.Request) {
 	// Return the refreshed section so the toggle updates in place (HTMX swaps the
 	// body); the section also self-polls so applying → active appears on its own.
 	writeOSFragment(w, a.shieldHardeningBody(r))
+}
+
+// ── Helper self-upgrade ──────────────────────────────────────────────────────
+//
+// The upgrade that used to need a shell. The panel's whole contribution is ONE
+// BIT — an empty file — and that is not minimalism, it is the security property.
+//
+// The agent runs as root. If the web app could hand it code, a URL, a version or
+// a path, then compromising the unprivileged web app would mean choosing what a
+// root process executes, which is the exact escalation the separation in
+// ADR-0123 exists to prevent. So the app says only "the operator asked", and the
+// agent decides everything else: it fetches from a repository hardcoded in the
+// root-owned script and verifies the signature before running any of it.
+
+// shieldAgentUpgradeState returns the agent's report on the last upgrade
+// request: "checking", "restarting", "unverifiable", "error", or "" when none
+// has been made.
+func shieldAgentUpgradeState() string {
+	b, err := os.ReadFile(filepath.Join(shieldControlDir(), "agent.upgrade.state"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// shieldAgentUpgradeDetail returns the agent's explanation for that state.
+func shieldAgentUpgradeDetail() string {
+	b, err := os.ReadFile(filepath.Join(shieldControlDir(), "agent.upgrade.detail"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// shieldRequestAgentUpgrade asks the root agent to upgrade itself.
+//
+// Writes an EMPTY file. Nothing the web app produces is ever read as a command,
+// an argument or a path by the privileged process — the request is carried
+// entirely by the file's existence.
+func shieldRequestAgentUpgrade() error {
+	f, err := os.OpenFile(filepath.Join(shieldControlDir(), "agent.upgrade.want"),
+		os.O_CREATE|os.O_WRONLY, 0o640)
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
+
+// handleOSShieldAgentUpgrade is the admin/CSRF-gated endpoint behind the
+// "Upgrade the helper" button.
+func (a *App) handleOSShieldAgentUpgrade(w http.ResponseWriter, r *http.Request) {
+	if !shieldAgentAlive() {
+		writeAPIError(w, r, http.StatusPreconditionFailed, "no-agent",
+			"The helper is not running, so there is nothing to upgrade. Install it first.", "")
+		return
+	}
+	if err := shieldRequestAgentUpgrade(); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "control-error",
+			"Could not record the request: "+err.Error(), "")
+		return
+	}
+	dbpkg.AuditLog("vayushield.agent.upgrade", dbpkg.AuditActor(r), "shield",
+		"requested a helper self-upgrade")
+	writeOSFragment(w, a.shieldHardeningBody(r))
+}
+
+// shieldAgentUpgradeRow renders the button and whatever the agent last said.
+//
+// The state is reported in the agent's own words rather than as a spinner that
+// resolves to nothing. "unverifiable" in particular is a REFUSAL and is written
+// as one: the helper declined to install code it could not check, which is the
+// system working, and phrasing it as a failure would push an operator toward
+// finding a way around it.
+func shieldAgentUpgradeRow() string {
+	var b strings.Builder
+	b.WriteString(`<div class="vs-adv"><button type="button" class="btn btn--primary btn--sm"` +
+		` hx-post="/os/api/shield/agent-upgrade" hx-target="#vs-body-hardening" hx-swap="innerHTML">` +
+		`Upgrade the helper</button> <span class="muted text-xs">The helper fetches the signed bundle ` +
+		`from the release itself and verifies the signature before installing. This panel only records ` +
+		`that you asked &mdash; it never supplies the code, which is what keeps an unprivileged web app ` +
+		`from being able to choose what a root process runs.</span></div>`)
+
+	state, detail := shieldAgentUpgradeState(), shieldAgentUpgradeDetail()
+	if state == "" {
+		return b.String()
+	}
+	label := map[string]string{
+		"checking":     "▲ Checking",
+		"restarting":   "● Verified &mdash; installing and restarting",
+		"unverifiable": "▲ Refused &mdash; nothing was installed",
+		"error":        "✕ Could not upgrade",
+	}[state]
+	if label == "" {
+		label = "○ " + html.EscapeString(state)
+	}
+	cls := "is-work"
+	switch state {
+	case "restarting":
+		cls = "is-on"
+	case "error":
+		cls = "is-err"
+	}
+	b.WriteString(`<p class="text-sm"><span class="vs-hard-state ` + cls + `">` + label + `</span>`)
+	if detail != "" {
+		b.WriteString(` <span class="muted">` + html.EscapeString(detail) + `</span>`)
+	}
+	b.WriteString(`</p>`)
+	return b.String()
 }
 
 // shieldCDNAllowFlags maps a proxy vendor to the EXACT flag filename the root
@@ -587,7 +696,9 @@ func shieldAgentStaleNotice() string {
 		`<strong>enforcement digest</strong>, so it cannot report back what is actually in force. That is why the posture ` +
 		`report marks the tier rows <em>unverified</em> rather than green: absent evidence is never counted as a pass. ` +
 		`Your defences are almost certainly fine; what is missing is the proof.</p>` +
-		`<p class="muted text-xs">` + shieldCheckoutHint() + `</p>` +
+		shieldAgentUpgradeRow() +
+		`<p class="muted text-xs">Prefer to do it yourself? This command is the same operation by hand. ` +
+		shieldCheckoutHint() + `</p>` +
 		shieldCmdRow("vs-cmd-agent-up", shieldAgentCmd("install")) +
 		`<p class="muted text-xs">Pull your checkout first so it installs the newest agent. It is idempotent — re-running it on a current ` +
 		`agent changes nothing. This one step cannot be a button here: VayuPress is unprivileged by design, and an ` +

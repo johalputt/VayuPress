@@ -132,6 +132,43 @@ jobs:
             --bundle "dist/vayupress-${{ steps.ver.outputs.version }}.sbom.cosign.bundle" \
             || echo "cosign SBOM signing skipped/failed — publishing SBOM without signature"
 
+      - name: Package the VayuShield helper agent
+        if: steps.exists.outputs.skip != 'true'
+        # The Tier 2/3 reconcile agent runs as ROOT and therefore cannot take its
+        # code from the unprivileged web app -- an unprivileged process able to
+        # replace what a root service runs is a full privilege escalation, and
+        # that boundary is the reason the agent is safe to run at all (ADR-0123).
+        #
+        # So the agent upgrades itself: the panel writes one empty flag, and the
+        # agent fetches THIS bundle from the pinned repository and verifies it
+        # before installing. Publishing it here is what makes that possible --
+        # without a signed asset the only alternative is an operator with a shell.
+        run: |
+          set -euo pipefail
+          mkdir -p dist/agent
+          cp deploy/vayushield-agent.sh      dist/agent/
+          cp deploy/vayushield-firewall.sh   dist/agent/
+          cp deploy/vayushield-agent.service dist/agent/
+          cp deploy/nginx-vayushield.conf    dist/agent/
+          # Reproducible: fixed mtime, sorted order, no owner metadata. A bundle
+          # whose digest changes when nothing changed teaches operators to ignore
+          # a digest change, which is the one signal that must stay meaningful.
+          tar --sort=name --mtime='UTC 2020-01-01' --owner=0 --group=0 --numeric-owner \
+              -czf dist/vayushield-agent.tar.gz -C dist/agent .
+          sha256sum dist/vayushield-agent.tar.gz | awk '{print $1}' > dist/vayushield-agent.tar.gz.sha256
+          echo "agent bundle sha256: $(cat dist/vayushield-agent.tar.gz.sha256)"
+
+      - name: Sign the helper agent bundle (keyless OIDC)
+        if: steps.exists.outputs.skip != 'true'
+        continue-on-error: true
+        # Same reasoning as the SBOM: an unsigned bundle beside a signed binary is
+        # the gap an attacker uses. This one matters more than most -- what it
+        # contains is executed as root.
+        run: |
+          cosign sign-blob --yes dist/vayushield-agent.tar.gz \
+            --bundle dist/vayushield-agent.tar.gz.cosign.bundle \
+            || echo "cosign agent signing skipped/failed — the agent will refuse to self-update from this release"
+
       - name: Extract release notes from CHANGELOG
         if: steps.exists.outputs.skip != 'true'
         run: |
@@ -164,3 +201,6 @@ jobs:
             dist/vayupress.cosign.bundle
             dist/vayupress-${{ steps.ver.outputs.version }}.sbom.json
             dist/vayupress-${{ steps.ver.outputs.version }}.sbom.cosign.bundle
+            dist/vayushield-agent.tar.gz
+            dist/vayushield-agent.tar.gz.sha256
+            dist/vayushield-agent.tar.gz.cosign.bundle

@@ -8,6 +8,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **The privileged helper upgrades itself from VayuOS — no terminal.** The one
+  operation on this whole panel that still needed a shell now has a button.
+
+  The reason it was a shell command is real and does not go away: the helper runs
+  as **root**, and the panel that asks is an **unprivileged web app**. If that app
+  could hand the helper code, a URL, a version or a path, then compromising the
+  web app would mean choosing what a root process executes — the exact escalation
+  ADR-0123's separation exists to create. So the button does not send any of
+  those. It writes **one empty file**. A test asserts the file is zero bytes,
+  because the emptiness *is* the security property, not an implementation detail.
+
+  The helper does the rest itself: the repository is a constant in the root-owned
+  script, the asset name is a constant, and the bundle is **cosign-verified
+  before it is unpacked** — unpacking an unverified archive as root is already the
+  compromise, whatever gets checked afterwards. Only the four files the helper is
+  made of are installed, by name; a verified archive still does not earn the right
+  to place arbitrary files. The running script is replaced last and via
+  rename-over, since bash reads a script incrementally and overwriting it in place
+  under a live interpreter can execute a spliced half-old, half-new file.
+
+  **Where cosign is absent the upgrade is refused, not downgraded.** An operator
+  who believes their root helper only accepts signed code, while it actually
+  accepts anything served over TLS, is worse off than one who was told to install
+  cosign — so the panel says exactly that, styles it as a refusal rather than a
+  failure, and names the fix. Releases now publish and sign
+  `vayushield-agent.tar.gz` alongside the binary and the SBOM; the tarball is
+  built reproducibly, because a digest that changes when nothing changed teaches
+  operators to ignore the one signal that has to stay meaningful.
+
+  The upgrade flag is consumed **before** the work rather than after: a failure
+  that left it in place would re-download and re-run an installer every five
+  seconds, a denial of service the operator triggered by accident.
+
 ### Fixed
 - **The agent-install copy button handed out a command that only worked from
   inside the checkout.** `sudo bash deploy/vayushield-agent.sh install` is a

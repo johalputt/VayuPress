@@ -343,3 +343,141 @@ func TestAStaleAgentIsToldItIsStale(t *testing.T) {
 			"like a failure gets acted on as one")
 	}
 }
+
+// ── Helper self-upgrade ──────────────────────────────────────────────────────
+
+// TestTheUpgradeRequestCarriesNothingButTheRequest is the property the whole
+// design rests on.
+//
+// The agent runs as root. If the unprivileged web app could put a URL, a
+// version, a path or a byte of code in front of it, then compromising the web
+// app would mean choosing what a root process executes — the exact escalation
+// the privilege separation exists to prevent. The request must therefore be
+// carried by the file's EXISTENCE and nothing else.
+func TestTheUpgradeRequestCarriesNothingButTheRequest(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VAYUSHIELD_CONTROL_DIR", dir)
+
+	if err := shieldRequestAgentUpgrade(); err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "agent.upgrade.want"))
+	if err != nil {
+		t.Fatalf("the flag was not written: %v", err)
+	}
+	if len(b) != 0 {
+		t.Fatalf("the upgrade flag carries %d bytes of content (%q). A root process reading "+
+			"anything the web app wrote is the escalation this separation exists to prevent",
+			len(b), string(b))
+	}
+}
+
+// TestTheAgentChoosesItsOwnSourceAndVerifiesBeforeExecuting.
+//
+// Read against the agent script itself rather than against a description of it.
+// Every clause here is something whose absence turns a convenience button into a
+// remote-root primitive.
+func TestTheAgentChoosesItsOwnSourceAndVerifiesBeforeExecuting(t *testing.T) {
+	src, err := os.ReadFile("../../deploy/vayushield-agent.sh")
+	if err != nil {
+		t.Skipf("agent script not readable here: %v", err)
+	}
+	s := string(src)
+
+	// The repository is the agent's own constant, never something handed to it.
+	if !strings.Contains(s, `UPGRADE_REPO="${VAYUSHIELD_UPGRADE_REPO:-johalputt/VayuPress}"`) {
+		t.Error("the agent does not pin its own upgrade source; a source it is TOLD is a source " +
+			"an attacker can choose")
+	}
+	// Verification must precede unpacking. Unpacking an unverified archive as
+	// root is already the compromise, whatever is checked afterwards.
+	verify := strings.Index(s, "cosign verify-blob")
+	untar := strings.Index(s, "tar -xzf")
+	if verify < 0 {
+		t.Fatal("the agent installs an upgrade without verifying a signature")
+	}
+	if untar < 0 || untar < verify {
+		t.Error("the agent unpacks the bundle before verifying it — by then it has already " +
+			"written attacker-chosen files to disk as root")
+	}
+	// No signature available must mean REFUSE, never "carry on unverified".
+	if !strings.Contains(s, "refusing to install unverified code as root") {
+		t.Error("the agent does not refuse when it cannot verify. An operator who believes their " +
+			"root helper only accepts signed code, and is actually accepting anything over TLS, " +
+			"is worse off than one who was told to install cosign")
+	}
+	// The flag is consumed before the work, or a persistent failure becomes a
+	// five-second loop that re-downloads and re-runs an installer forever.
+	up := strings.Index(s, "reconcile_upgrade()")
+	rm := strings.Index(s[up:], `rm -f "$flag"`)
+	run := strings.Index(s[up:], "self_upgrade")
+	if up < 0 || rm < 0 || run < 0 || rm > run {
+		t.Error("the upgrade flag is not cleared before the upgrade runs, so a failing upgrade " +
+			"repeats on every poll")
+	}
+}
+
+// TestARefusedUpgradeIsNotReportedAsAFailure — declining to install code it
+// could not verify is the helper working correctly. Wording it as a breakage
+// pushes an operator toward finding a way around it, which is the opposite of
+// what the refusal is for.
+func TestARefusedUpgradeIsNotReportedAsAFailure(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VAYUSHIELD_CONTROL_DIR", dir)
+	if err := os.WriteFile(filepath.Join(dir, "agent.upgrade.state"), []byte("unverifiable"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "agent.upgrade.detail"),
+		[]byte("cosign is not installed, so the bundle's signature cannot be checked"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	row := shieldAgentUpgradeRow()
+	if !strings.Contains(row, "Refused") || !strings.Contains(row, "nothing was installed") {
+		t.Errorf("a refusal must read as a refusal with its consequence stated, got: %s", row)
+	}
+	if strings.Contains(row, "is-err") {
+		t.Error("a refusal is styled as an error. The helper did its job; only a real failure " +
+			"should read as one")
+	}
+	// And the fix must be on screen, or the operator is stuck at a wall.
+	if !strings.Contains(row, "cosign") {
+		t.Error("the refusal does not name what to install to clear it")
+	}
+}
+
+// TestTheUpgradeButtonExplainsWhyItIsOnlyAButton — an operator told "click here"
+// with no reason learns nothing about why the OTHER privileged steps are not
+// buttons, and reads the difference as inconsistency rather than as design.
+func TestTheUpgradeButtonExplainsWhyItIsOnlyAButton(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VAYUSHIELD_CONTROL_DIR", dir)
+	row := shieldAgentUpgradeRow()
+	for _, want := range []string{"verifies the signature", "never supplies the code", "root process"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("the upgrade control does not say %q, so the operator cannot tell a designed "+
+				"boundary from an arbitrary one", want)
+		}
+	}
+}
+
+// TestTheReleasePublishesWhatTheAgentGoesLookingFor — the agent fetches
+// vayushield-agent.tar.gz and its cosign bundle from the latest release. If the
+// workflow does not publish both, the button fails for everyone, and it fails
+// with a signature error that reads like an attack.
+func TestTheReleasePublishesWhatTheAgentGoesLookingFor(t *testing.T) {
+	wf, err := os.ReadFile("../../.github/workflows/tag-release.yml")
+	if err != nil {
+		t.Skipf("workflow not readable here: %v", err)
+	}
+	s := string(wf)
+	for _, want := range []string{
+		"dist/vayushield-agent.tar.gz",
+		"dist/vayushield-agent.tar.gz.cosign.bundle",
+		"cosign sign-blob --yes dist/vayushield-agent.tar.gz",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("the release workflow does not produce %q — the self-upgrade button would "+
+				"fail on every install", want)
+		}
+	}
+}

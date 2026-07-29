@@ -531,12 +531,130 @@ write_digest() {
   rm -f "$tmp" 2>/dev/null || true
 }
 
+
+# ── Self-upgrade ─────────────────────────────────────────────────────────────
+#
+# The one operation that had to be a terminal command, and no longer is.
+#
+# The constraint that shapes all of this: the agent runs as ROOT, and the panel
+# that asks for the upgrade is an UNPRIVILEGED web app. An unprivileged process
+# able to choose what a root process executes is a complete privilege
+# escalation — it is precisely the separation ADR-0123 exists to create. So the
+# app is never allowed to supply the code, a URL, a version, or a path.
+#
+# What the app supplies is ONE BIT: an empty file named agent.upgrade.want. This
+# script decides everything else. The repository is hardcoded below, the asset
+# name is hardcoded, and the bundle is verified before a single byte of it is
+# executed.
+#
+# Verification is cosign, matching how every other release artefact in this
+# project is signed. When cosign is not installed the upgrade is REFUSED rather
+# than downgraded silently — an operator who believes their root helper only
+# accepts signed code, and is actually accepting anything served over TLS, is
+# worse off than one who was told to install cosign. The refusal names the fix.
+UPGRADE_REPO="${VAYUSHIELD_UPGRADE_REPO:-johalputt/VayuPress}"
+UPGRADE_ASSET="vayushield-agent.tar.gz"
+
+upgrade_status() { # $1=state word, $2=detail
+  [ -d "$CONTROL_DIR" ] || return 0
+  printf '%s' "$1" >"${CONTROL_DIR}/agent.upgrade.state" 2>/dev/null || true
+  printf '%s' "${2:0:300}" >"${CONTROL_DIR}/agent.upgrade.detail" 2>/dev/null || true
+}
+
+# reconcile_upgrade acts on the operator's request, exactly once per request.
+#
+# The flag is removed BEFORE the work starts, not after. A crash mid-upgrade
+# would otherwise leave the flag in place and the agent would retry it on every
+# poll for as long as it kept failing — a five-second loop downloading and
+# re-running an installer, which is a denial of service the operator asked for
+# by accident.
+reconcile_upgrade() {
+  local flag="${CONTROL_DIR}/agent.upgrade.want"
+  [ -f "$flag" ] || return 0
+  rm -f "$flag" 2>/dev/null || true
+  upgrade_status "checking" "Looking for a newer signed helper bundle."
+  self_upgrade
+}
+
+self_upgrade() {
+  if ! command -v curl >/dev/null 2>&1; then
+    upgrade_status "error" "curl is not installed, so the helper cannot fetch its own upgrade."
+    return 1
+  fi
+  if ! command -v cosign >/dev/null 2>&1; then
+    # Named as a refusal with a fix, not as a failure. This is the one dependency
+    # the design genuinely needs, and it is a single static binary.
+    upgrade_status "unverifiable" \
+      "cosign is not installed, so the bundle's signature cannot be checked — refusing to install unverified code as root. Install cosign (https://github.com/sigstore/cosign/releases) and press the button again."
+    return 1
+  fi
+
+  local tmp
+  tmp="$(mktemp -d)" || { upgrade_status "error" "Could not create a working directory."; return 1; }
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmp'" RETURN
+
+  local base="https://github.com/${UPGRADE_REPO}/releases/latest/download"
+  if ! curl -fsSL --max-time 120 -o "${tmp}/${UPGRADE_ASSET}" "${base}/${UPGRADE_ASSET}"; then
+    upgrade_status "error" "Could not download the helper bundle from the release."
+    return 1
+  fi
+  if ! curl -fsSL --max-time 60 -o "${tmp}/bundle.json" "${base}/${UPGRADE_ASSET}.cosign.bundle"; then
+    upgrade_status "error" "The release carries no signature bundle for the helper — refusing to install it."
+    return 1
+  fi
+
+  # Verify BEFORE unpacking. Unpacking an unverified archive as root is already
+  # the compromise, whatever is checked afterwards.
+  if ! cosign verify-blob "${tmp}/${UPGRADE_ASSET}" \
+        --bundle "${tmp}/bundle.json" \
+        --certificate-identity-regexp "^https://github.com/${UPGRADE_REPO}/" \
+        --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+        >"${tmp}/verify.log" 2>&1; then
+    upgrade_status "error" "Signature verification FAILED — the bundle was not signed by this project's release workflow. Nothing was installed. $(tail -n 1 "${tmp}/verify.log" 2>/dev/null)"
+    return 1
+  fi
+
+  mkdir -p "${tmp}/x"
+  if ! tar -xzf "${tmp}/${UPGRADE_ASSET}" -C "${tmp}/x" 2>/dev/null; then
+    upgrade_status "error" "The verified bundle could not be unpacked."
+    return 1
+  fi
+  # Install only the four files this agent is made of, by name. Extracting a
+  # verified archive still does not mean copying whatever it happens to contain.
+  local f
+  for f in vayushield-agent.sh vayushield-firewall.sh vayushield-agent.service nginx-vayushield.conf; do
+    if [ ! -f "${tmp}/x/${f}" ]; then
+      upgrade_status "error" "The bundle is missing ${f} — refusing a partial install."
+      return 1
+    fi
+  done
+
+  install -d -m 0755 "$LIB_DIR"
+  install -m 0755 "${tmp}/x/vayushield-firewall.sh" "${LIB_DIR}/vayushield-firewall.sh"
+  install -m 0644 "${tmp}/x/nginx-vayushield.conf"  "${LIB_DIR}/nginx-vayushield.conf"
+  install -m 0644 "${tmp}/x/vayushield-agent.service" /etc/systemd/system/vayushield-agent.service
+  # The running script is replaced last. bash reads a script incrementally, so
+  # overwriting it in place under a live interpreter can execute a spliced
+  # half-old, half-new file; install(1) writes to a temp file and renames, which
+  # leaves the running process on the old inode until it restarts.
+  install -m 0755 "${tmp}/x/vayushield-agent.sh" "${LIB_DIR}/vayushield-agent.sh"
+
+  upgrade_status "restarting" "Signature verified. Installed and restarting the helper."
+  systemctl daemon-reload 2>/dev/null || true
+  # The restart replaces this process. Anything after it is not guaranteed to run,
+  # which is why the status above is written first.
+  systemctl restart vayushield-agent 2>/dev/null || true
+  return 0
+}
+
 run_agent() {
   echo "vayushield-agent: watching ${CONTROL_DIR} (poll ${POLL}s)"
   local ticks=0
   while true; do
     if [ -d "$CONTROL_DIR" ]; then
       printf '%s' "$(date -u +%s)" >"${CONTROL_DIR}/agent.alive" 2>/dev/null || true
+      reconcile_upgrade
       reconcile_cdnallow
       reconcile_tier2
       reconcile_tier3
@@ -592,7 +710,8 @@ uninstall_agent() {
 case "${1:-run}" in
   run) run_agent ;;
   install) install_agent ;;
+  selfupdate) self_upgrade ;;
   uninstall) uninstall_agent ;;
   status) systemctl status vayushield-agent --no-pager 2>/dev/null || echo "agent not installed" ;;
-  *) echo "usage: $0 [run|install|uninstall|status]" >&2; exit 2 ;;
+  *) echo "usage: $0 [run|install|selfupdate|uninstall|status]" >&2; exit 2 ;;
 esac
