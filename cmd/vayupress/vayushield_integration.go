@@ -144,7 +144,11 @@ func (a *App) bootVayuShield() {
 		Client:   &http.Client{Transport: safeOutboundTransport(), Timeout: 20 * time.Second},
 		CacheDir: filepath.Join(config.Cfg.CacheDir, "verifiedbot"),
 		Resolver: net.DefaultResolver,
-		Logf:     func(format string, args ...any) { logging.LogInfo("vayushield", fmt.Sprintf(format, args...)) },
+		// Onion mode blocks the DNS half of verification. safefetch already
+		// closes the HTTP feed half; a resolver call has no such switch and would
+		// go straight out through the system stack.
+		OnionMode: config.Cfg.OnionMode,
+		Logf:      func(format string, args ...any) { logging.LogInfo("vayushield", fmt.Sprintf(format, args...)) },
 	})
 	a.verifiedBots.Start(queue.DoneCh)
 

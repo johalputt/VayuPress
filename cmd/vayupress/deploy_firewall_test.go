@@ -258,3 +258,172 @@ func TestStatusSurfacesAMissingAllowlist(t *testing.T) {
 		t.Error("`status` no longer tells the operator how to populate the allowlist")
 	}
 }
+
+// --- Tier 2 kernel tunables ---------------------------------------------------
+
+// writeSysctlStubs plants fake `sysctl` and `modprobe` binaries on PATH and
+// returns the directory to prepend, plus the paths of the two recorder files.
+//
+// The `sysctl` stub emulates the real thing closely enough to matter: `-p`
+// commits each key from the drop-in into a state store, and `-n` reads a key
+// back, exiting 1 when it does not exist. Setting stubSkip to a shell glob makes
+// `-p` silently ignore matching keys — which is precisely what a real kernel does
+// on a fresh boot before nf_conntrack is loaded, and precisely the failure this
+// whole read-back exists to surface.
+func writeSysctlStubs(t *testing.T, dir, stubSkip string) (state, modprobeLog string) {
+	t.Helper()
+	state = filepath.Join(dir, "sysctl.state")
+	modprobeLog = filepath.Join(dir, "modprobe.log")
+	if err := os.WriteFile(state, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sysctl := "#!/usr/bin/env bash\n" +
+		"case \"$1\" in\n" +
+		"  -p)\n" +
+		"    while IFS= read -r line; do\n" +
+		"      case \"$line\" in ''|\\#*) continue ;; esac\n" +
+		"      k=\"${line%%=*}\"; k=\"$(printf '%s' \"$k\" | tr -d '[:space:]')\"\n" +
+		"      v=\"${line#*=}\"; v=\"$(printf '%s' \"$v\" | tr -d '[:space:]')\"\n" +
+		"      skip=0\n" +
+		"      if [ -n \"" + stubSkip + "\" ]; then case \"$k\" in " + orGlob(stubSkip) + ") skip=1 ;; esac; fi\n" +
+		"      [ \"$skip\" = 1 ] && continue\n" +
+		"      printf '%s %s\\n' \"$k\" \"$v\" >>\"$STUB_STATE\"\n" +
+		"    done <\"$2\"\n" +
+		"    ;;\n" +
+		"  -n)\n" +
+		"    v=\"$(awk -v k=\"$2\" '$1==k{print $2}' \"$STUB_STATE\" | tail -1)\"\n" +
+		"    [ -n \"$v\" ] || exit 1\n" +
+		"    printf '%s\\n' \"$v\"\n" +
+		"    ;;\n" +
+		"esac\n" +
+		"exit 0\n"
+	modprobe := "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >>\"$STUB_MODPROBE\"\n"
+
+	for name, body := range map[string]string{"sysctl": sysctl, "modprobe": modprobe} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return state, modprobeLog
+}
+
+// orGlob keeps an empty skip pattern from becoming a bare `)` in the stub's case.
+func orGlob(pat string) string {
+	if pat == "" {
+		return "__none__"
+	}
+	return pat
+}
+
+// runApplySysctl sources the script's function library and calls apply_sysctl
+// against a temporary drop-in, with the stubs above on PATH.
+func runApplySysctl(t *testing.T, stubSkip string) (stdout, stderr, conf, modprobeLog string) {
+	t.Helper()
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	dir := t.TempDir()
+
+	src := readFirewallScript(t)
+	cut := strings.Index(src, `case "${1:-apply}" in`)
+	if cut < 0 {
+		t.Fatal("could not find the command dispatcher — cannot isolate the functions")
+	}
+	lib := filepath.Join(dir, "lib.sh")
+	if err := os.WriteFile(lib, []byte(src[:cut]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	state, modLog := writeSysctlStubs(t, dir, stubSkip)
+	conf = filepath.Join(dir, "99-vayushield.conf")
+
+	cmd := exec.Command("bash", "-c", "source "+lib+"; apply_sysctl")
+	cmd.Env = append(os.Environ(),
+		"PATH="+dir+":"+os.Getenv("PATH"),
+		"SYSCTL_CONF="+conf,
+		"STUB_STATE="+state,
+		"STUB_MODPROBE="+modLog,
+	)
+	var outBuf, errBuf strings.Builder
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		// A non-zero exit is itself a finding: apply_sysctl is called from
+		// `apply` before the nftables ruleset is loaded, so aborting here means
+		// the firewall never gets installed at all.
+		t.Fatalf("apply_sysctl exited non-zero (%v) — `apply` would abort before loading any rules\nstdout:\n%s\nstderr:\n%s",
+			err, outBuf.String(), errBuf.String())
+	}
+	return outBuf.String(), errBuf.String(), conf, modLog
+}
+
+// TestSysctlIsVerifiedNotAssumed — the original code was
+// `sysctl --quiet -p … 2>/dev/null || true`, which cannot distinguish a setting
+// that took from one that did not. That is not a cosmetic gap: every rule in the
+// Tier 2 table is ct-stateful, so the conntrack table is the shield's own
+// dependency, and exhausting it produces unattributable packet loss for every
+// visitor with nothing in the panel to say why.
+func TestSysctlIsVerifiedNotAssumed(t *testing.T) {
+	stdout, stderr, conf, modLog := runApplySysctl(t, "")
+
+	if !strings.Contains(stdout, "verified") {
+		t.Errorf("a fully-applied run did not report verification:\nstdout:\n%s", stdout)
+	}
+	if strings.Contains(stderr, "did not take") {
+		t.Errorf("a fully-applied run reported a failure:\nstderr:\n%s", stderr)
+	}
+
+	// nf_conntrack has to be loaded BEFORE the write, or the net.netfilter.*
+	// keys do not exist yet and the conntrack half of the drop-in is inert.
+	b, err := os.ReadFile(modLog)
+	if err != nil || !strings.Contains(string(b), "nf_conntrack") {
+		t.Error("nf_conntrack was never modprobed — its sysctl keys do not exist until it loads")
+	}
+
+	// The settings that bound an attacker's slice of the connection table must
+	// actually be in the drop-in.
+	c, err := os.ReadFile(conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"nf_conntrack_max",
+		"nf_conntrack_buckets",              // default max/8 makes each bucket a long chain
+		"nf_conntrack_tcp_timeout_syn_recv", // a slot per SYN, held for a minute
+		"nf_conntrack_tcp_timeout_established",
+		"nf_conntrack_tcp_loose = 0", // no state from mid-stream packets
+		"tcp_syncookies = 1",
+	} {
+		if !strings.Contains(string(c), want) {
+			t.Errorf("drop-in is missing %q", want)
+		}
+	}
+}
+
+// TestSysctlFailureIsReportedAndNonFatal is the case that actually happens: a
+// container without CAP_SYS_ADMIN, or a boot where the module is not loaded, so
+// the net.netfilter.* keys do not exist.
+//
+// Two properties, and they pull against each other. The run must SAY the setting
+// did not take — that is the entire point of reading it back. And it must still
+// exit 0, because apply_sysctl runs before apply_nft: under `set -euo pipefail` a
+// failed read-back would abort the script and the host would end up with no
+// firewall at all, which is strictly worse than the silent success it replaced.
+func TestSysctlFailureIsReportedAndNonFatal(t *testing.T) {
+	stdout, stderr, _, _ := runApplySysctl(t, "net.netfilter.*")
+
+	if !strings.Contains(stderr, "did not take") {
+		t.Errorf("conntrack keys never applied, yet nothing was reported:\nstdout:\n%s\nstderr:\n%s", stdout, stderr)
+	}
+	if !strings.Contains(stderr, "nf_conntrack_max") {
+		t.Errorf("the report does not name the key that failed, so it is not actionable:\nstderr:\n%s", stderr)
+	}
+	if strings.Contains(stdout, "verified") {
+		t.Errorf("a partially-applied run still claimed verification:\nstdout:\n%s", stdout)
+	}
+	// The non-netfilter keys did apply and must not be reported as failures.
+	if strings.Contains(stderr, "tcp_syncookies") {
+		t.Errorf("a setting that applied cleanly was reported as failed:\nstderr:\n%s", stderr)
+	}
+}

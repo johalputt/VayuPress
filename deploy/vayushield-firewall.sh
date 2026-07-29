@@ -67,6 +67,10 @@ NEW_CONN_BURST=100        # burst above the rate before dropping
 # itself, so an offline or onion-only host is never made to call out.
 CDN_ALLOW_FILE="${CDN_ALLOW_FILE:-/etc/vayushield/cdn-allow.conf}"
 
+# Where the kernel-tunable drop-in lands. Overridable so the apply-and-verify
+# path can be exercised by tests against a temporary file instead of /etc.
+SYSCTL_CONF="${SYSCTL_CONF:-/etc/sysctl.d/99-vayushield.conf}"
+
 require_root() {
   if [ "$(id -u)" -ne 0 ]; then
     echo "error: must run as root" >&2
@@ -150,17 +154,76 @@ cdn_allow_fetch() {
 
 apply_sysctl() {
   echo "• applying kernel DDoS sysctls (SYN cookies, backlog, conntrack)…"
-  cat >/etc/sysctl.d/99-vayushield.conf <<'EOF'
+
+  # nf_conntrack must be loaded BEFORE its keys exist. Every rule in this table
+  # is ct-stateful, so the connection table is the shield's own dependency — and
+  # the conntrack settings below silently did nothing on a fresh boot, because
+  # net.netfilter.* keys do not exist until the module loads and the whole sysctl
+  # run had its stderr discarded and its exit status forced to success.
+  #
+  # Exhaustion of that table does not surface as a shield event. It surfaces as
+  # "nf_conntrack: table full, dropping packet" in dmesg and as unattributable
+  # packet loss for every visitor — the shield being disarmed by the same flood
+  # it exists to absorb, with nothing in the panel to say so.
+  modprobe nf_conntrack 2>/dev/null || true
+
+  cat >"$SYSCTL_CONF" <<'EOF'
 # VayuShield kernel hardening — SYN-flood and connection-flood resistance.
 net.ipv4.tcp_syncookies = 1
 net.ipv4.tcp_max_syn_backlog = 4096
 net.ipv4.tcp_synack_retries = 2
 net.core.somaxconn = 4096
 net.ipv4.tcp_rfc1337 = 1
-net.netfilter.nf_conntrack_max = 262144
 net.ipv4.tcp_fin_timeout = 15
+
+# ── Connection tracking ──────────────────────────────────────────────────────
+# Sized so a flood exhausts an attacker's per-source caps long before it
+# exhausts the table every rule here depends on.
+net.netfilter.nf_conntrack_max = 262144
+# Buckets default to max/8 on many kernels, which turns each bucket into a long
+# chain under load. 1:4 keeps lookups short at a modest memory cost.
+net.netfilter.nf_conntrack_buckets = 65536
+# A half-open connection held 60s is a slot an attacker gets for one SYN.
+net.netfilter.nf_conntrack_tcp_timeout_syn_recv = 10
+net.netfilter.nf_conntrack_tcp_timeout_time_wait = 30
+# The default ESTABLISHED timeout is FIVE DAYS. On a web server that means an
+# abandoned connection holds a slot for the rest of the week.
+net.netfilter.nf_conntrack_tcp_timeout_established = 3600
+# Refuse to create state from a packet that is not a valid handshake opener, so
+# a spray of mid-stream packets cannot allocate table entries.
+net.netfilter.nf_conntrack_tcp_loose = 0
 EOF
-  sysctl --quiet -p /etc/sysctl.d/99-vayushield.conf 2>/dev/null || true
+
+  # Apply, then VERIFY. The previous version piped stderr to /dev/null and ended
+  # in `|| true`, so a failed write was indistinguishable from a successful one —
+  # which is how the conntrack sizing came to be inert on every fresh boot.
+  local failed=""
+  sysctl -p "$SYSCTL_CONF" >/dev/null 2>&1 || true
+  local want got key
+  while IFS= read -r line; do
+    case "$line" in ''|\#*) continue ;; esac
+    key="${line%%=*}"; key="$(printf '%s' "$key" | tr -d '[:space:]')"
+    want="${line#*=}"; want="$(printf '%s' "$want" | tr -d '[:space:]')"
+    # `|| true` is load-bearing: this file runs under `set -euo pipefail`, and a
+    # missing key makes `sysctl -n` exit 1, which fails the pipeline and aborts
+    # the assignment — taking the whole script with it. A read-back that kills
+    # `apply` on the exact fresh-boot case it was added to report would be worse
+    # than the silent failure it replaced.
+    got="$(sysctl -n "$key" 2>/dev/null | tr -d '[:space:]')" || true
+    if [ "$got" != "$want" ]; then
+      failed="${failed:+$failed, }${key}(want ${want}, got ${got:-unset})"
+    fi
+  done <"$SYSCTL_CONF"
+
+  if [ -n "$failed" ]; then
+    # Not fatal: a container without CAP_SYS_ADMIN, or a kernel without the
+    # module, still benefits from the nftables rules. But say so, rather than
+    # reporting a hardening level that was never applied.
+    echo "  ! some kernel settings did not take: ${failed}" >&2
+    echo "  ! the nftables rules still apply; conntrack sizing may be the kernel default" >&2
+    return 0
+  fi
+  echo "• kernel settings verified."
 }
 
 apply_nft() {
@@ -305,7 +368,7 @@ case "${1:-apply}" in
   remove)
     require_root
     nft delete table inet "${TABLE}" 2>/dev/null || true
-    rm -f /etc/sysctl.d/99-vayushield.conf
+    rm -f "$SYSCTL_CONF"
     # The allowlist is left in place on purpose: it is configuration, not state,
     # and removing it would mean re-fetching it the next time Tier 2 is enabled.
     echo "✓ VayuShield Tier-2 firewall removed."

@@ -65,6 +65,27 @@ type Config struct {
 	Logf     func(format string, args ...any)
 	Workers  int // FCrDNS worker goroutines (default 8)
 	QueueLen int // FCrDNS job queue depth (default 512)
+
+	// OnionMode disables reverse-DNS verification outright.
+	//
+	// In an onion-only install nothing may make a clearnet callback (ADR-0141).
+	// The HTTP feed half is covered by safefetch's egress kill-switch, but DNS
+	// has no equivalent — a resolver call goes straight out through the system
+	// stack, past every guard the shield has. The call site carried a comment
+	// promising the verifier "degrades to UA-recognition rather than leaking a
+	// clearnet DNS/HTTP call" while handing it net.DefaultResolver
+	// unconditionally, so the guarantee was asserted and not implemented.
+	//
+	// The guard lives here rather than as a nil Resolver at the call site
+	// because this is the package that would do the leaking: a future caller
+	// wiring up a resolver cannot silently undo it, and it can be tested from
+	// inside.
+	//
+	// Honest severity: with OnionMode on, the app binds loopback and Tor's
+	// HiddenServicePort connects from 127.0.0.1, so the only address ever
+	// reaching FCrDNS is loopback — whose PTR resolves from /etc/hosts. This is
+	// defence in depth and a corrected comment, not a live deanonymisation fix.
+	OnionMode bool
 }
 
 // Verifier is the crawler-identity engine. Safe for concurrent use.
@@ -102,12 +123,20 @@ func New(cfg Config) *Verifier {
 		cfg.QueueLen = 512
 	}
 	v := &Verifier{
-		cfg:      cfg,
-		resolver: cfg.Resolver,
-		sets:     make(map[string]*atomicCIDRSet, len(registry)),
-		cache:    newVerdictCache(),
-		jobs:     make(chan fcrdnsJob, cfg.QueueLen),
-		counts:   make(map[string]*atomic.Int64, len(registry)),
+		cfg: cfg,
+		// Onion mode: refuse the resolver entirely. A nil resolver is the
+		// package's own documented "disables reverse-DNS verification" state, so
+		// this degrades to feed + UA recognition exactly as the call site claims.
+		resolver: func() Resolver {
+			if cfg.OnionMode {
+				return nil
+			}
+			return cfg.Resolver
+		}(),
+		sets:   make(map[string]*atomicCIDRSet, len(registry)),
+		cache:  newVerdictCache(),
+		jobs:   make(chan fcrdnsJob, cfg.QueueLen),
+		counts: make(map[string]*atomic.Int64, len(registry)),
 	}
 	for i := range registry {
 		if registry[i].tier == tierFeed {

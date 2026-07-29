@@ -33,6 +33,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   does not populate it. The row now says the layer is idle and names the switch
   that actually feeds it.
 
+- **Tier 2's connection-tracking settings were inert on every fresh boot.** The
+  drop-in set `nf_conntrack_max` and applied it with stderr discarded and the
+  exit status forced to success — but `net.netfilter.*` keys do not exist until
+  the `nf_conntrack` module loads, so the write failed and nothing said so. Every
+  rule in the Tier 2 table is `ct`-stateful, which makes the connection table the
+  shield's own dependency; exhausting it surfaces as `nf_conntrack: table full`
+  in `dmesg` and as unattributable packet loss for every visitor, with nothing in
+  the panel to explain it — the shield disarmed by the same flood it exists to
+  absorb.
+
+  The module is now loaded first, the settings are read back and any that did not
+  take are named on stderr, and the sizing itself is sane for a web server: 1:4
+  bucket ratio, `syn_recv` down to 10s, and an ESTABLISHED timeout of one hour
+  instead of the kernel default of **five days**, which let an abandoned
+  connection hold a table slot for the rest of the week. `tcp_loose = 0` stops a
+  spray of mid-stream packets from allocating state at all.
+
+  The read-back is deliberately non-fatal, and that took a second fix: this
+  script runs under `set -euo pipefail`, so the first missing key aborted it —
+  ahead of `apply_nft`. A verification step that leaves a host with no firewall,
+  on the exact fresh-boot case it was added to report, would have been worse than
+  the silent success it replaced.
+
+### Security
+- **The crawler verifier could make a clearnet DNS call in onion mode.** It was
+  handed `net.DefaultResolver` unconditionally, under a call-site comment
+  claiming it "degrades to UA-recognition rather than leaking a clearnet DNS/HTTP
+  call". `safefetch`'s egress kill-switch closes the HTTP feed half; DNS has no
+  equivalent and goes straight out through the system stack, past every guard the
+  shield has. `verifiedbot.Config` now carries an explicit `OnionMode` that
+  refuses the resolver outright, so the guard lives in the package that would do
+  the leaking rather than depending on every future caller passing nil.
+
+  Honest severity: with onion mode on, the app binds loopback and Tor's
+  `HiddenServicePort` connects from `127.0.0.1`, so the only address ever reaching
+  reverse-DNS is loopback, whose PTR resolves locally. This is defence in depth
+  and a comment corrected to match the code — not a live deanonymisation fix.
+
 ---
 
 ## [3.16.0] — 2026-07-28
