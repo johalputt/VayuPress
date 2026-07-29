@@ -593,6 +593,32 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	dbpkg.AuditLog("update.apply", dbpkg.AuditActor(r), newVersion, "binary updated "+Version+" -> "+newVersion+" via VayuOS")
 	logging.LogInfo("update", "applied "+newVersion+" via VayuOS admin")
 
+	// Carry the update through to the privileged helper.
+	//
+	// This closes the gap that made a whole class of fixes undeliverable. The
+	// helper ships its OWN copies of the reconcile and firewall scripts, so a bug
+	// fixed in either of those needs the HELPER upgraded — and the in-app updater
+	// only ever swapped the binary. An operator who updates from the panel would
+	// take the new app and keep the old firewall script indefinitely, with the
+	// panel showing everything healthy. That is exactly how a firewall that could
+	// not be re-applied survived across releases.
+	//
+	// The consent is the same as the button's: an operator clicked "Update now",
+	// which is a request to be on the new version, and the helper is part of the
+	// version. The app still supplies ONE BIT — the helper picks its own source
+	// and verifies the signature before running anything, so this changes what
+	// triggers an upgrade and nothing about what is trusted.
+	//
+	// Skipped when the helper is too old to act on it: the flag would sit unread
+	// forever, and a request nobody will ever answer is worse than none.
+	if shieldAgentSupportsSelfUpgrade() {
+		if err := shieldRequestAgentUpgrade(); err != nil {
+			logging.LogWarn("update", "could not ask the VayuShield helper to upgrade itself: "+err.Error())
+		} else {
+			logging.LogInfo("update", "asked the VayuShield helper to upgrade itself to match "+newVersion)
+		}
+	}
+
 	if body.Restart {
 		update.ScheduleRestartExec(realPath, 1500*time.Millisecond, restartCleanup)
 		writeJSON(w, r, http.StatusOK, map[string]interface{}{

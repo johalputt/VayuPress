@@ -6,6 +6,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.12] — 2026-07-29
+
+### Fixed
+- **An in-app update now carries through to the privileged helper.** This is the
+  gap that made a whole class of fixes undeliverable, and it is why one operator
+  spent an afternoon on a firewall bug that had already been fixed twice.
+
+  The helper ships its **own copies** of the reconcile and firewall scripts. So a
+  bug fixed in either of those needs the *helper* upgraded — and the in-app
+  updater only ever swapped the binary. An operator updating from the panel took
+  the new app and kept the old firewall script indefinitely, with every indicator
+  reading healthy. That is precisely how a firewall that could not be re-applied
+  survived across several releases: each fix shipped, and nobody received it.
+
+  A successful update now asks the helper to upgrade itself. The consent is the
+  same as the button's — clicking "Update now" is a request to be on the new
+  version, and the helper is part of the version. The app still supplies **one
+  bit**; the helper picks its own source and verifies the signature before
+  running anything, so this changes what *triggers* an upgrade and nothing about
+  what is *trusted*. Skipped when the helper is too old to act on it, since a
+  request nobody will answer is worse than none, and never on a dry run.
+
+  Combined with the restart fix in 3.16.10, both update paths now deliver helper
+  changes without anyone opening a shell: the script updater installs and
+  restarts it, and the in-app updater asks it to upgrade itself.
+
 ## [3.16.11] — 2026-07-29
 
 ### Fixed

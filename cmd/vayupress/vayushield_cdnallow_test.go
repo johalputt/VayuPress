@@ -924,3 +924,48 @@ func TestAFailedLoadDoesNotDisarmTheHost(t *testing.T) {
 			"assume they are exposed and start improvising")
 	}
 }
+
+// TestAnInAppUpdateCarriesThroughToTheHelper.
+//
+// The gap that made a whole class of fixes undeliverable, and the reason one
+// operator spent an afternoon on it.
+//
+// The helper ships its OWN copies of the reconcile and firewall scripts, so a
+// bug fixed in either needs the HELPER upgraded — and the in-app updater only
+// ever swapped the binary. An operator updating from the panel took the new app
+// and kept the old firewall script indefinitely, with everything reading
+// healthy. That is precisely how a firewall that could not be re-applied
+// survived across several releases.
+//
+// The consent is the same as the button's: clicking "Update now" is a request to
+// be on the new version, and the helper is part of the version.
+func TestAnInAppUpdateCarriesThroughToTheHelper(t *testing.T) {
+	src, err := os.ReadFile("admin_os_update.go")
+	if err != nil {
+		src, err = os.ReadFile("../../cmd/vayupress/admin_os_update.go")
+	}
+	if err != nil {
+		t.Skipf("source not readable here: %v", err)
+	}
+	s := string(src)
+	if !strings.Contains(s, "shieldRequestAgentUpgrade()") {
+		t.Fatal("a successful in-app update does not ask the helper to upgrade, so an operator who " +
+			"never opens a shell keeps the old firewall and reconcile scripts forever")
+	}
+	// Gated on capability: an old helper would never read the flag, and a request
+	// nobody will answer is worse than none.
+	if !strings.Contains(s, "if shieldAgentSupportsSelfUpgrade() {") {
+		t.Error("the request is not gated on the helper being able to act on it")
+	}
+	// And only after the update actually succeeded — never on a dry run.
+	applied := strings.Index(s, `logging.LogInfo("update", "applied "`)
+	ask := strings.Index(s, "shieldRequestAgentUpgrade()")
+	dry := strings.Index(s, "if body.DryRun {")
+	if applied < 0 || ask < applied {
+		t.Error("the helper is asked to upgrade before the binary update is known to have succeeded")
+	}
+	if dry > 0 && ask < dry {
+		t.Error("a dry run would ask the helper to upgrade — a verification that changes nothing " +
+			"must change nothing")
+	}
+}
