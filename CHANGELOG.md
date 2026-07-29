@@ -6,6 +6,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.9] — 2026-07-29
+
+### Fixed
+- **The self-upgrade button did nothing on every install that had it.** Shipped
+  in 3.16.8 and found by attacking it: an older helper has no code that reads the
+  request flag, so the panel recorded the click, nothing ever acted on it, and no
+  status ever appeared. The operator waits, decides it is slow, and stops
+  trusting the panel.
+
+  A control that silently does nothing is worse than one that is absent —
+  absence at least tells the truth. The helper now advertises what it can do
+  (`agent.caps`), and the panel shows **no button at all** until the running
+  helper says it can honour one, with a sentence explaining why. The endpoint
+  refuses too: a panel that declines to render a button is not a control, since a
+  POST can arrive from a stale page. The capability is read from what the helper
+  itself reports, never inferred from the app's version — the two upgrade
+  independently, which is the whole reason an old helper runs under a new binary.
+
+- **An unreachable trust root was reported as a supply-chain attack.** Found by
+  running the real verification against the real published bundle: it failed with
+  `tuf-repo-cdn.sigstore.dev: Forbidden` — the trust root was unreachable, so
+  *nothing* about the signature had been determined. The code announced "the
+  bundle was not signed by this project's release workflow", which is an
+  accusation.
+
+  Those two conclusions are opposites and lead to opposite actions: an operator
+  told they are under attack does not go and check their egress firewall. Keyless
+  verification needs sigstore.dev as well as GitHub, so a restrictive firewall,
+  an outage or a Tor Space all land here having proved nothing. The failure is now
+  classified before it is described — unreachable reads as "neither proved nor
+  disproved", a genuine bad signature still reads as alarming, and both say
+  plainly that nothing was installed.
+
+  This is the same defect class the posture report exists to prevent: a claim
+  that overstates what was actually established.
+
+**Shipped immediately rather than batched**, under the standing exception for a
+fix to something already released and broken for users right now: 3.16.8's button
+is inert on every existing install, and its verification failure message would
+falsely accuse a firewalled host of a compromised release.
+
 ## [3.16.8] — 2026-07-29
 
 ### Added

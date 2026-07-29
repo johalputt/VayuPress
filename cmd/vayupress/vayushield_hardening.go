@@ -184,6 +184,12 @@ func (a *App) handleOSShieldAgentUpgrade(w http.ResponseWriter, r *http.Request)
 			"The helper is not running, so there is nothing to upgrade. Install it first.", "")
 		return
 	}
+	if !shieldAgentSupportsSelfUpgrade() {
+		writeAPIError(w, r, http.StatusPreconditionFailed, "agent-too-old",
+			"The running helper predates the self-upgrade feature, so it would never see this "+
+				"request. Upgrade it once from a shell; after that this becomes a button.", "")
+		return
+	}
 	if err := shieldRequestAgentUpgrade(); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "control-error",
 			"Could not record the request: "+err.Error(), "")
@@ -192,6 +198,27 @@ func (a *App) handleOSShieldAgentUpgrade(w http.ResponseWriter, r *http.Request)
 	dbpkg.AuditLog("vayushield.agent.upgrade", dbpkg.AuditActor(r), "shield",
 		"requested a helper self-upgrade")
 	writeOSFragment(w, a.shieldHardeningBody(r))
+}
+
+// shieldAgentSupportsSelfUpgrade reports whether the RUNNING helper is new
+// enough to act on an upgrade request.
+//
+// This exists because the button was, briefly, a trap. An older helper has no
+// code that reads the request flag, so the panel would have recorded the click,
+// nothing would have acted on it, and no status would ever have appeared. The
+// operator waits, concludes it is slow, and stops trusting the panel — and a
+// control that silently does nothing is worse than one that is absent, because
+// absence at least tells the truth.
+//
+// Read from what the helper itself advertises, never inferred from the app's own
+// version: the whole point is that the two are upgraded independently, which is
+// exactly why an old helper can be running under a new binary.
+func shieldAgentSupportsSelfUpgrade() bool {
+	b, err := os.ReadFile(filepath.Join(shieldControlDir(), "agent.caps"))
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(b), "selfupgrade=1")
 }
 
 // shieldAgentUpgradeRow renders the button and whatever the agent last said.
@@ -203,6 +230,14 @@ func (a *App) handleOSShieldAgentUpgrade(w http.ResponseWriter, r *http.Request)
 // finding a way around it.
 func shieldAgentUpgradeRow() string {
 	var b strings.Builder
+	if !shieldAgentSupportsSelfUpgrade() {
+		// No button at all. Offering one that cannot work, and explaining the
+		// caveat underneath, still leaves an operator clicking it first.
+		return `<p class="muted text-sm">Your running helper predates the self-upgrade feature, so ` +
+			`this one upgrade still needs the command below &mdash; after it, the button appears and ` +
+			`later upgrades are one click. There is no way around this: the code that would act on a ` +
+			`request from this panel is the code you do not have yet.</p>`
+	}
 	b.WriteString(`<div class="vs-adv"><button type="button" class="btn btn--primary btn--sm"` +
 		` hx-post="/os/api/shield/agent-upgrade" hx-target="#vs-body-hardening" hx-swap="innerHTML">` +
 		`Upgrade the helper</button> <span class="muted text-xs">The helper fetches the signed bundle ` +

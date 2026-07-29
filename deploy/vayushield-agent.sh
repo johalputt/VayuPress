@@ -532,6 +532,22 @@ write_digest() {
 }
 
 
+# AGENT_CAPS is what this build can do, written where the panel can read it.
+#
+# Without this the self-upgrade button is a trap: an older helper has no code
+# that reads the request flag, so the panel would record an operator's click,
+# nothing would ever act on it, and no status would ever appear. A control that
+# silently does nothing is worse than one that is absent -- the operator waits,
+# concludes the upgrade is slow, and eventually stops trusting the panel.
+#
+# Written on every start, so it also tracks correctly through a downgrade.
+AGENT_CAPS="selfupgrade=1 digest=1"
+
+write_caps() {
+  [ -d "$CONTROL_DIR" ] || return 0
+  printf '%s' "$AGENT_CAPS" >"${CONTROL_DIR}/agent.caps" 2>/dev/null || true
+}
+
 # ── Self-upgrade ─────────────────────────────────────────────────────────────
 #
 # The one operation that had to be a terminal command, and no longer is.
@@ -611,7 +627,25 @@ self_upgrade() {
         --certificate-identity-regexp "^https://github.com/${UPGRADE_REPO}/" \
         --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
         >"${tmp}/verify.log" 2>&1; then
-    upgrade_status "error" "Signature verification FAILED — the bundle was not signed by this project's release workflow. Nothing was installed. $(tail -n 1 "${tmp}/verify.log" 2>/dev/null)"
+    # WHY it failed decides what to tell the operator, and the two answers are
+    # opposites. Keyless verification needs Sigstore's TUF trust root and the
+    # transparency log, so a host that can reach GitHub but not sigstore.dev --
+    # a restrictive egress firewall, an outage, a Tor Space -- fails here having
+    # determined NOTHING about the signature.
+    #
+    # Reporting that as "the bundle was not signed by this project" is a false
+    # accusation of an attack, and it is the exact defect class this project's
+    # posture report exists to avoid: a claim that overstates what was actually
+    # established. An operator told they are under attack acts very differently
+    # from one told their firewall blocks a CDN.
+    local why
+    why="$(tail -n 3 "${tmp}/verify.log" 2>/dev/null | tr '\n' ' ')"
+    if printf '%s' "$why" | grep -qiE 'tuf|rekor|sigstore\.dev|timeout|dial|no such host|connection refused|forbidden|network'; then
+      upgrade_status "unverifiable" \
+        "Could not REACH the signature infrastructure, so the bundle was neither proved nor disproved — nothing was installed. Keyless verification needs sigstore.dev as well as GitHub; check egress from this host. ${why:0:160}"
+      return 1
+    fi
+    upgrade_status "error" "Signature verification FAILED — the bundle is not signed by this project's release workflow. Nothing was installed. ${why:0:160}"
     return 1
   fi
 
@@ -674,11 +708,13 @@ resolve_pending_upgrade() {
 
 run_agent() {
   echo "vayushield-agent: watching ${CONTROL_DIR} (poll ${POLL}s)"
+  write_caps
   resolve_pending_upgrade
   local ticks=0
   while true; do
     if [ -d "$CONTROL_DIR" ]; then
       printf '%s' "$(date -u +%s)" >"${CONTROL_DIR}/agent.alive" 2>/dev/null || true
+      write_caps
       reconcile_upgrade
       reconcile_cdnallow
       reconcile_tier2

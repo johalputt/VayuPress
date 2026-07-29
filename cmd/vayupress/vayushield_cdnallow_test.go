@@ -424,6 +424,7 @@ func TestTheAgentChoosesItsOwnSourceAndVerifiesBeforeExecuting(t *testing.T) {
 func TestARefusedUpgradeIsNotReportedAsAFailure(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("VAYUSHIELD_CONTROL_DIR", dir)
+	writeAgentCaps(t, dir)
 	if err := os.WriteFile(filepath.Join(dir, "agent.upgrade.state"), []byte("unverifiable"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -451,6 +452,7 @@ func TestARefusedUpgradeIsNotReportedAsAFailure(t *testing.T) {
 func TestTheUpgradeButtonExplainsWhyItIsOnlyAButton(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("VAYUSHIELD_CONTROL_DIR", dir)
+	writeAgentCaps(t, dir)
 	row := shieldAgentUpgradeRow()
 	for _, want := range []string{"verifies the signature", "never supplies the code", "root process"} {
 		if !strings.Contains(row, want) {
@@ -537,5 +539,140 @@ func TestTheAgentDoesNotDeadlockRestartingItself(t *testing.T) {
 	if !strings.Contains(s, "systemctl restart --no-block vayushield-agent") {
 		t.Error("the agent restarts its own unit and waits for the job to complete — it is waiting " +
 			"for itself to exit. --no-block queues the job and returns")
+	}
+}
+
+// TestAnUnreachableTrustRootIsNotReportedAsAnAttack.
+//
+// Found by running the real verification against the real published bundle: it
+// failed with "tuf-repo-cdn.sigstore.dev: Forbidden" — the trust root was
+// unreachable, so NOTHING about the signature had been determined. The code
+// reported that as "the bundle was not signed by this project's release
+// workflow", which is an accusation of supply-chain attack.
+//
+// The two conclusions are opposites and lead to opposite actions. An operator
+// told they are under attack does not go and check their egress firewall. This
+// is the same defect class the posture report exists to prevent: a claim that
+// overstates what was actually established.
+func TestAnUnreachableTrustRootIsNotReportedAsAnAttack(t *testing.T) {
+	src, err := os.ReadFile("../../deploy/vayushield-agent.sh")
+	if err != nil {
+		t.Skipf("agent script not readable here: %v", err)
+	}
+	s := string(src)
+
+	// The failure must be classified before it is described.
+	if !strings.Contains(s, "sigstore\\.dev") || !strings.Contains(s, "tuf") {
+		t.Error("the agent does not distinguish an unreachable trust root from a bad signature, " +
+			"so a firewalled host is told it is under supply-chain attack")
+	}
+	// Unreachable is a REFUSAL ("neither proved nor disproved"), not an accusation.
+	if !strings.Contains(s, "neither proved nor disproved") {
+		t.Error("the unreachable-infrastructure path does not say that nothing was determined")
+	}
+	// And the real signature failure must still say so plainly — softening both
+	// cases into one gentle message loses the alarm that matters.
+	if !strings.Contains(s, "is not signed by this project's release workflow") {
+		t.Error("a genuine signature failure no longer reads as one")
+	}
+	// Either way: nothing installed. That claim must appear on both paths.
+	unreachable := strings.Index(s, "neither proved nor disproved")
+	failed := strings.Index(s, "is not signed by this project's release workflow")
+	for name, at := range map[string]int{"unreachable": unreachable, "failed": failed} {
+		if at < 0 {
+			continue
+		}
+		if !strings.Contains(s[at:at+400], "Nothing was installed") &&
+			!strings.Contains(s[max0(at-200):at+400], "nothing was installed") {
+			t.Errorf("the %q path does not state that nothing was installed", name)
+		}
+	}
+}
+
+func max0(n int) int {
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+
+func writeAgentCaps(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "agent.caps"), []byte("selfupgrade=1 digest=1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestAnOldHelperIsNotOfferedAButtonItCannotHonour.
+//
+// The feature was, briefly, dead on arrival for every existing install: an older
+// helper has no code that reads the request flag, so the panel would record the
+// click, nothing would act on it, and no status would ever appear. The operator
+// waits, decides it is slow, and stops trusting the panel.
+//
+// A control that silently does nothing is worse than one that is absent —
+// absence at least tells the truth. So there is no button at all until the
+// running helper advertises that it can act on one.
+func TestAnOldHelperIsNotOfferedAButtonItCannotHonour(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VAYUSHIELD_CONTROL_DIR", dir)
+
+	// No agent.caps file: an older helper, which is every install before this.
+	row := shieldAgentUpgradeRow()
+	if strings.Contains(row, "hx-post") {
+		t.Error("the panel offers an upgrade button to a helper that has no code to receive the " +
+			"request — the click would vanish with no feedback at all")
+	}
+	if !strings.Contains(row, "predates the self-upgrade feature") {
+		t.Error("the panel does not explain why the button is missing, so its absence reads as a bug")
+	}
+
+	// With capabilities advertised, the button appears.
+	writeAgentCaps(t, dir)
+	if !strings.Contains(shieldAgentUpgradeRow(), "hx-post") {
+		t.Error("a helper that advertises selfupgrade=1 is still not offered the button")
+	}
+}
+
+// TestTheEndpointRefusesAnOldHelperToo — the panel not rendering a button is not
+// a control. A POST can arrive from a stale page, a retried request, or anything
+// else that did not just re-read the page.
+func TestTheEndpointRefusesAnOldHelperToo(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VAYUSHIELD_CONTROL_DIR", dir)
+	// A live heartbeat, so the request gets past the "no agent" check and reaches
+	// the capability check this test is actually about.
+	if err := os.WriteFile(filepath.Join(dir, "agent.alive"), []byte("1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := &App{}
+	rr := httptest.NewRecorder()
+	a.handleOSShieldAgentUpgrade(rr, httptest.NewRequest("POST", "/os/api/shield/agent-upgrade", nil))
+	if rr.Code == http.StatusOK || rr.Code == http.StatusNoContent {
+		t.Fatalf("the endpoint accepted an upgrade request a pre-feature helper can never see (%d)", rr.Code)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "agent.upgrade.want")); err == nil {
+		t.Error("the flag was written anyway, so it sits there forever waiting for code that " +
+			"does not exist on this machine")
+	}
+}
+
+// TestTheAgentAdvertisesItsOwnCapabilities — read from what the HELPER says, not
+// inferred from the app's version. The two upgrade independently, which is the
+// entire reason an old helper can be running under a new binary.
+func TestTheAgentAdvertisesItsOwnCapabilities(t *testing.T) {
+	src, err := os.ReadFile("../../deploy/vayushield-agent.sh")
+	if err != nil {
+		t.Skipf("agent script not readable here: %v", err)
+	}
+	s := string(src)
+	if !strings.Contains(s, `AGENT_CAPS="selfupgrade=1`) {
+		t.Error("the agent does not advertise its capabilities, so the panel has to guess")
+	}
+	// Written on start AND on poll: the control dir is created by the app and may
+	// not exist yet when the agent first comes up.
+	if strings.Count(s, "write_caps") < 3 {
+		t.Error("write_caps is not called both at startup and in the poll loop — the control dir " +
+			"is app-created and may not exist when the agent starts")
 	}
 }
