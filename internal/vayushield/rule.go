@@ -184,6 +184,19 @@ var rules = []Rule{
 			"appearing to do geography, which is worse than having no rule at all.",
 		Amnesty: amnestyNotConfiguration,
 	},
+	{
+		Gate: GateGeoChallenge, Name: "operator geo challenge",
+		Onion: OnionInert, Crawler: CrawlerExempt, Lifetime: SelfExpiring,
+		Rationale: "The softer half of the country rules, and the only one that is crawler-EXEMPT: " +
+			"a refusal is a decision an operator makes about customers, while a challenge is a " +
+			"claim that traffic is mostly automated — and a crawler pool is spread across " +
+			"countries, so an operator challenging one has no way to know which of their crawlers " +
+			"live there. Recognised crawlers take the SEO fast path before this gate. Self-" +
+			"expiring because solving it issues a session, so a reader is asked once. Inert in a " +
+			"Tor Space for two independent reasons: a country lookup returns the server's own " +
+			"location for every visitor there, and the plain-http onion has no window.crypto." +
+			"subtle, so no visitor could solve it even if the geography meant something.",
+	},
 }
 
 // amnestyNotConfiguration is the amnesty answer for a rule the operator wrote

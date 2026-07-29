@@ -261,3 +261,65 @@ func TestIPv4MappedAddressesAreNormalised(t *testing.T) {
 			"writing the address differently", got)
 	}
 }
+
+// TestChallengeIsTheMiddleSettingCountryRulesNeeded.
+//
+// Before this there were two answers about a country: refuse it, or ignore it.
+// An operator whose traffic from somewhere is mostly automated but not entirely
+// had to pick between locking out the real readers and doing nothing. That is
+// not a threshold question, it is a missing verdict.
+func TestChallengeIsTheMiddleSettingCountryRulesNeeded(t *testing.T) {
+	r, bad := Compile(Config{
+		DenyCountries:      []string{"VN"},
+		ChallengeCountries: []string{"CN", "ru", "TR"},
+	})
+	if len(bad) != 0 {
+		t.Fatalf("parse failures: %v", bad)
+	}
+	if got := r.Country("CN"); got != VerdictChallenge {
+		t.Errorf("a challenged country got %v, want challenge", got)
+	}
+	if got := r.Country("RU"); got != VerdictChallenge {
+		t.Errorf("case-insensitivity failed: %v", got)
+	}
+	if got := r.Country("VN"); got != VerdictDeny {
+		t.Errorf("a denied country got %v, want deny", got)
+	}
+	if got := r.Country("GB"); got != VerdictNone {
+		t.Errorf("an unlisted country got %v, want none", got)
+	}
+}
+
+// TestARefusalBeatsAChallengeForTheSameCountry — an operator who lists a country
+// in both fields meant the refusal. It is the more specific intent, and it is the
+// same precedence the address rules already use, so the two halves of this page
+// cannot disagree about what "both" means.
+func TestARefusalBeatsAChallengeForTheSameCountry(t *testing.T) {
+	r, _ := Compile(Config{DenyCountries: []string{"CN"}, ChallengeCountries: []string{"CN"}})
+	if got := r.Country("CN"); got != VerdictDeny {
+		t.Errorf("a country both denied and challenged got %v, want deny", got)
+	}
+	// And an exclusive allow list still refuses everything off it, rather than
+	// letting a challenge entry quietly re-admit a country the operator excluded.
+	r2, _ := Compile(Config{AllowCountries: []string{"GB"}, ChallengeCountries: []string{"CN"}})
+	if got := r2.Country("CN"); got != VerdictDeny {
+		t.Errorf("a country off an exclusive allow list got %v — a challenge entry re-admitted "+
+			"a country the operator had excluded", got)
+	}
+}
+
+// TestChallengeCountriesAreInertInTorMode — two independent reasons, either
+// enough on its own: a lookup there returns the SERVER's location for every
+// visitor, and the plain-http onion exposes no window.crypto.subtle, so nobody
+// could solve the check even if the geography meant something.
+func TestChallengeCountriesAreInertInTorMode(t *testing.T) {
+	onion, _ := Compile(Config{ChallengeCountries: []string{"CN"}, OnionMode: true})
+	if got := onion.Country("CN"); got != VerdictNone {
+		t.Errorf("a Tor Space returned %v — every visitor would be handed a check they have no "+
+			"crypto API to solve, on the strength of the server's own location", got)
+	}
+	if !onion.Empty() {
+		t.Error("a Tor Space compiled challenge countries into a non-empty rule set, so the " +
+			"per-request path pays for a rule that can never fire")
+	}
+}

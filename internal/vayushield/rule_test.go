@@ -75,12 +75,13 @@ func TestNoRuleGatesAVerifiedCrawlerWithoutSayingWhy(t *testing.T) {
 // must not, or a Tor Space silently loses defences it could have had.
 func TestTorInertRulesAreTheOnesKeyedOnASource(t *testing.T) {
 	wantInert := map[Gate]bool{
-		GateFairShed:   true, // sketch keyed on source + network group
-		GateRateLimit:  true, // per-source token bucket
-		GateSurge:      true, // needs a PoW solver the plain-http onion cannot run
-		GateChallenge:  true, // same solver problem
-		GatePolicyDeny: true, // an allow entry of 127.0.0.1 would exempt every onion visitor
-		GateGeoDeny:    true, // a country lookup returns the server's own location for everyone
+		GateFairShed:     true, // sketch keyed on source + network group
+		GateRateLimit:    true, // per-source token bucket
+		GateSurge:        true, // needs a PoW solver the plain-http onion cannot run
+		GateChallenge:    true, // same solver problem
+		GatePolicyDeny:   true, // an allow entry of 127.0.0.1 would exempt every onion visitor
+		GateGeoDeny:      true, // a country lookup returns the server's own location for everyone
+		GateGeoChallenge: true, // same, plus no PoW solver exists on the plain-http onion
 	}
 	for _, r := range rules {
 		inert := r.Onion == OnionInert

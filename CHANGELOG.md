@@ -6,6 +6,52 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.3] — 2026-07-29
+
+### Added
+- **Country rules gained their missing middle setting: a solvable check.** Until
+  now there were two answers about a country — refuse it, or ignore it. An
+  operator whose traffic from somewhere is mostly automated but not entirely had
+  to choose between locking out the real readers and doing nothing. That is not a
+  threshold to tune, it is a verdict that did not exist.
+
+  "Check visitors from these countries" meets them with the one-time proof-of-work
+  interstitial instead of a refusal. Solve it once and the session carries, so a
+  reader is asked once and never again — a test pins that, because without it the
+  rule is a wall with extra steps.
+
+  Three properties make it safe to ship, each with a test that a mutation kills:
+
+  - **It never degrades into a refusal.** Sustained traffic from a challenged
+    country keeps being offered the puzzle. The first version of that test
+    asserted on the first response and was worthless — the deny path is
+    deliberately generous to a first request and offers the same challenge while
+    the redeem budget lasts, so a mutation swapping challenge for deny passed. The
+    two only part company under load, where a refused source exhausts that budget
+    and starts getting 429s. Measured over 60 requests: 60/60 solvable versus
+    1/60.
+  - **It cannot de-index the site.** Confirmed crawlers take the SEO fast path
+    before this gate. That matters more here than for any other rule: a crawler
+    pool is spread across countries, so an operator challenging one has no way to
+    know which of their crawlers live there.
+  - **It never escalates to a block.** A rule keyed on geography is wrong about
+    individuals by construction — a traveller, a corporate VPN and a privacy
+    network all resolve somewhere other than where the person is — so the worst it
+    can cost anyone is one puzzle.
+
+  A refusal beats a challenge for the same country, and an exclusive allow list
+  still refuses everything off it, so a challenge entry cannot quietly re-admit a
+  country the operator excluded. Inert in a Tor Space for two independent reasons:
+  the lookup returns the server's own location for every visitor there, and the
+  plain-http onion exposes no `window.crypto.subtle`, so nobody could solve it
+  even if the geography meant something.
+
+  Uses the standard difficulty rather than surge's harder tier — this is a
+  standing policy, not an emergency, and the visitor is not suspected of anything
+  beyond where their address resolves. It is kept out of the L4 ladder's
+  self-tuning, which measures how well the *score* separates browsers from bots;
+  feeding it challenges that were never scored would teach it from noise.
+
 ## [3.16.2] — 2026-07-29
 
 ### Changed

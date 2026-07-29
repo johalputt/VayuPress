@@ -48,6 +48,19 @@ const (
 	VerdictAllow
 	// VerdictDeny — an operator-refused source. Refused outright.
 	VerdictDeny
+	// VerdictChallenge — serve a solvable proof-of-work first.
+	//
+	// The middle setting country rules needed. A deny is a statement that these
+	// people are not customers; a challenge is a statement that this traffic is
+	// mostly automated and a human should be able to prove otherwise in a moment.
+	// Those are very different claims about a place, and having only the first
+	// meant an operator who wanted the second had to refuse a country outright.
+	//
+	// It can only ever cost a visitor one puzzle. It never escalates to a block,
+	// because a rule keyed on geography is wrong about individuals by
+	// construction — a traveller, a VPN and a privacy network all resolve
+	// somewhere other than where the person is.
+	VerdictChallenge
 )
 
 // Rules is a compiled policy set. The zero value is a valid empty policy that
@@ -56,8 +69,9 @@ type Rules struct {
 	allow []netip.Prefix
 	deny  []netip.Prefix
 
-	allowCountries map[string]bool // when non-empty, ONLY these are served
-	denyCountries  map[string]bool
+	allowCountries     map[string]bool // when non-empty, ONLY these are served
+	denyCountries      map[string]bool
+	challengeCountries map[string]bool
 
 	routes []Route
 
@@ -96,7 +110,10 @@ type Config struct {
 	DenyCIDRs      []string
 	AllowCountries []string
 	DenyCountries  []string
-	Routes         []Route
+	// ChallengeCountries are served a solvable proof of work rather than
+	// refused. See VerdictChallenge.
+	ChallengeCountries []string
+	Routes             []Route
 	// OnionMode compiles away both the address rules and the country rules,
 	// leaving only the route rules. See Source and Country for why each is wrong
 	// rather than merely useless where every peer is 127.0.0.1.
@@ -163,6 +180,7 @@ func Compile(c Config) (Rules, []string) {
 	if !c.OnionMode {
 		r.allowCountries = set(c.AllowCountries)
 		r.denyCountries = set(c.DenyCountries)
+		r.challengeCountries = set(c.ChallengeCountries)
 	}
 
 	for _, rt := range c.Routes {
@@ -235,14 +253,17 @@ func (r Rules) Country(code string) Verdict {
 		return VerdictNone
 	}
 	code = strings.ToUpper(code)
+	// Refusals first, then the softer verdict. An operator who both denies a
+	// country and lists it for a challenge meant the refusal — it is the more
+	// specific intent, and the same precedence the address rules use.
 	if r.denyCountries[code] {
 		return VerdictDeny
 	}
-	if len(r.allowCountries) > 0 {
-		if r.allowCountries[code] {
-			return VerdictNone // on the list: proceed to the rest of the shield
-		}
+	if len(r.allowCountries) > 0 && !r.allowCountries[code] {
 		return VerdictDeny
+	}
+	if r.challengeCountries[code] {
+		return VerdictChallenge
 	}
 	return VerdictNone
 }
@@ -365,5 +386,6 @@ func stripPort(host string) string {
 // none of this.
 func (r Rules) Empty() bool {
 	return len(r.allow) == 0 && len(r.deny) == 0 &&
-		len(r.allowCountries) == 0 && len(r.denyCountries) == 0 && len(r.routes) == 0
+		len(r.allowCountries) == 0 && len(r.denyCountries) == 0 &&
+		len(r.challengeCountries) == 0 && len(r.routes) == 0
 }

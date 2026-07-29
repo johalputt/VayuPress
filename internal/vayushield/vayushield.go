@@ -738,16 +738,17 @@ func (m *Manager) CaptureWired() bool { return m != nil && m.cfg.Capture != nil 
 type Gate uint8
 
 const (
-	GateBlocklist  Gate = iota // the O(1) jail
-	GateReputation             // the self-learning sentence
-	GateLoadShed               // the in-flight cap
-	GateFairShed               // the L2 probabilistic pre-filter
-	GateRateLimit              // the per-source token bucket
-	GateSurge                  // Sovereign Surge's up-front interstitial
-	GateChallenge              // the classification ladder's PoW/JS challenge
-	GateBlock                  // the ladder's hard block or tarpit
-	GatePolicyDeny             // an operator's own allow/deny list
-	GateGeoDeny                // an operator's own country rules
+	GateBlocklist    Gate = iota // the O(1) jail
+	GateReputation               // the self-learning sentence
+	GateLoadShed                 // the in-flight cap
+	GateFairShed                 // the L2 probabilistic pre-filter
+	GateRateLimit                // the per-source token bucket
+	GateSurge                    // Sovereign Surge's up-front interstitial
+	GateChallenge                // the classification ladder's PoW/JS challenge
+	GateBlock                    // the ladder's hard block or tarpit
+	GatePolicyDeny               // an operator's own allow/deny list
+	GateGeoDeny                  // an operator's own country rules
+	GateGeoChallenge             // an operator's country rules, in their solvable form
 	gateCount
 )
 
@@ -756,7 +757,7 @@ const (
 var GateNames = [gateCount]string{
 	"blocklist", "reputation", "load_shed", "fair_shed",
 	"rate_limit", "surge", "challenge", "block",
-	"policy_deny", "geo_deny",
+	"policy_deny", "geo_deny", "geo_challenge",
 }
 
 // SetPolicy installs the operator's own rules. Safe to call at any time.
@@ -1602,6 +1603,48 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			}
 			next.ServeHTTP(w, r)
 			return
+		}
+
+		// 4d. The operator's country challenge.
+		//
+		// The middle setting a country rule needs. Refusing a country says these
+		// people are not customers; challenging one says the traffic is mostly
+		// automated and a human should be able to prove otherwise in a moment.
+		// Only the first was expressible, so an operator who wanted the second had
+		// to refuse a country outright.
+		//
+		// Everything that makes this safe has already happened above. A verified
+		// session returned at the top, so a reader who solved this once is never
+		// asked again. A recognised crawler took the SEO fast path at gate 0, so
+		// this cannot de-index a site — which matters more here than anywhere
+		// else, because a crawler pool is spread across countries and an operator
+		// challenging one has no idea which of their crawlers live there.
+		//
+		// DefaultDifficulty, not surge's harder tier: this is a standing policy
+		// rather than an emergency, and the visitor is not suspected of anything
+		// beyond where their address resolves. feedCalib=false keeps a
+		// geography-driven challenge out of the L4 ladder's self-tuning, which
+		// measures how well the SCORE is separating browsers from bots — feeding
+		// it challenges that were never scored would teach it from noise.
+		//
+		// It never escalates. A rule keyed on geography is wrong about individuals
+		// by construction — a traveller, a corporate VPN and a privacy network all
+		// resolve somewhere other than where the person is — so the worst it can
+		// cost anyone is one puzzle.
+		if !verified && m.cfg.CountryFn != nil {
+			if pol := m.Policy(); !pol.Empty() && pol.GeoActive() {
+				if pol.Country(m.cfg.CountryFn(ipKey)) == policy.VerdictChallenge &&
+					!m.observing(lc, GateGeoChallenge) {
+					if m.serveChallenge(w, r, Verdict{}, challenge.DefaultDifficulty, false) {
+						reqclass.MarkShielded(r.Context())
+						return
+					}
+					// The challenge could not be issued (no signer). Fail OPEN — a
+					// country rule must never become an empty response.
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
 		}
 
 		// 5. Bot classification + challenge ladder (only when enabled).

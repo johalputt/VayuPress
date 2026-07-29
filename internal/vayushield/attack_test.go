@@ -252,3 +252,131 @@ func TestObserveModeStillPardonsAcrossTheFleet(t *testing.T) {
 			"positive elsewhere last longer than it would have")
 	}
 }
+
+// TestAChallengedCountryNeverDegradesIntoARefusal.
+//
+// The whole reason this verdict exists is that refusing a country and ignoring
+// it were the only two options.
+//
+// The first version of this test asserted on the FIRST response and was useless:
+// a mutation that replaced the challenge with the deny path still passed, because
+// the deny path is deliberately generous to a first request — it offers the same
+// solvable challenge while the per-source redeem budget lasts. The two only part
+// company under sustained traffic, where a refused source exhausts that budget
+// and starts getting throttled while a challenged one keeps being offered the
+// puzzle. So that is what this measures.
+func TestAChallengedCountryNeverDegradesIntoARefusal(t *testing.T) {
+	m := New(Config{
+		Enabled:   true,
+		Signer:    challenge.NewSigner([]byte("test-secret")),
+		Now:       time.Now,
+		ClientIP:  func(r *http.Request) string { return "198.51.100.9:1234" },
+		CountryFn: func(string) string { return "CN" },
+	})
+	m.ApplySettings(Settings{
+		Enabled: true, PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8,
+		Policy: policy.Config{ChallengeCountries: []string{"CN"}},
+	})
+
+	served := 0
+	h := m.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { served++ }))
+
+	challenged, other := 0, 0
+	var firstOther int
+	for i := 0; i < 60; i++ {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/asset/app.css", nil)
+		req.Header.Set("User-Agent", realBrowserUA)
+		h.ServeHTTP(rec, req)
+		if rec.Header().Get("X-VayuShield") == "challenge" {
+			challenged++
+		} else {
+			other++
+			if firstOther == 0 {
+				firstOther = rec.Code
+			}
+		}
+	}
+	if served != 0 {
+		t.Errorf("%d requests from a challenged country reached the handler unchallenged", served)
+	}
+	if other != 0 {
+		t.Errorf("%d of 60 requests stopped being offered a puzzle (first was %d). A challenged "+
+			"country must never degrade into a refusal — that is the deny rule wearing a "+
+			"different name, and it is the outcome this verdict exists to avoid",
+			other, firstOther)
+	}
+	if challenged != 60 {
+		t.Errorf("only %d of 60 requests got the solvable interstitial", challenged)
+	}
+	if n := m.WouldHave()[GateGeoChallenge]; n != 0 {
+		t.Errorf("the observe counter moved while enforcing (%d)", n)
+	}
+}
+
+// TestAVerifiedReaderFromAChallengedCountryIsAskedOnce — the check has to be
+// worth solving. If a solved session did not carry, every page view would be
+// another puzzle and the country rule would be a wall with extra steps.
+func TestAVerifiedReaderFromAChallengedCountryIsAskedOnce(t *testing.T) {
+	m := New(Config{
+		Enabled:   true,
+		Signer:    challenge.NewSigner([]byte("test-secret")),
+		Now:       time.Now,
+		ClientIP:  func(r *http.Request) string { return "198.51.100.9:1234" },
+		CountryFn: func(string) string { return "CN" },
+	})
+	m.ApplySettings(Settings{
+		Enabled: true, PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8,
+		Policy: policy.Config{ChallengeCountries: []string{"CN"}},
+	})
+
+	served := false
+	h := m.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { served = true }))
+
+	tok, err := m.cfg.Signer.IssueSession(m.cfg.SessionTTL, "198.51.100.9")
+	if err != nil {
+		t.Fatalf("issue session: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/article", nil)
+	req.Header.Set("User-Agent", realBrowserUA)
+	req.AddCookie(m.SessionCookie(tok))
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	if !served {
+		t.Error("a reader who had already solved the check was challenged again on their next " +
+			"page view, which makes the country rule a wall with extra steps")
+	}
+}
+
+// TestAChallengedCountryCannotDeIndexTheSite is the SEO obligation, and it
+// matters more for this rule than for any other in the shield: a crawler pool is
+// spread across countries, so an operator challenging one has no way to know
+// which of their crawlers live there. A non-JS crawler cannot solve a PoW, and
+// Google reads sustained non-200s on a content URL as a crawl error.
+func TestAChallengedCountryCannotDeIndexTheSite(t *testing.T) {
+	m := New(Config{
+		Enabled:   true,
+		Signer:    challenge.NewSigner([]byte("test-secret")),
+		Now:       time.Now,
+		ClientIP:  func(r *http.Request) string { return "198.51.100.9:1234" },
+		CountryFn: func(string) string { return "CN" },
+	})
+	m.ApplySettings(Settings{
+		Enabled: true, PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8,
+		Policy: policy.Config{ChallengeCountries: []string{"CN"}},
+	})
+
+	served := false
+	h := m.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { served = true }))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/article/indexed-page", nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)")
+	h.ServeHTTP(rec, req)
+
+	if !served || rec.Code == http.StatusServiceUnavailable {
+		t.Errorf("a search-engine crawler was challenged by a country rule (served=%v code=%d). "+
+			"It cannot run the solver, so this is a sustained non-200 on a content URL — the "+
+			"exact mechanism that drops pages from the index", served, rec.Code)
+	}
+}

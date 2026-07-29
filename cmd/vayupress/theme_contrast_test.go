@@ -169,13 +169,14 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// presentation, so they have no place in a theme bundle: exporting a theme
 		// that carried someone's network deny list and importing it elsewhere
 		// would move access control between sites as a side effect of a look.
-		settings.KeyShieldAllowCIDRs:     true,
-		settings.KeyShieldDenyCIDRs:      true,
-		settings.KeyShieldAllowCountries: true,
-		settings.KeyShieldDenyCountries:  true,
-		settings.KeyShieldRouteCosts:     true,
-		settings.KeyShieldClusterPeers:   true,
-		settings.KeyShieldClusterNode:    true,
+		settings.KeyShieldAllowCIDRs:         true,
+		settings.KeyShieldDenyCIDRs:          true,
+		settings.KeyShieldAllowCountries:     true,
+		settings.KeyShieldDenyCountries:      true,
+		settings.KeyShieldChallengeCountries: true,
+		settings.KeyShieldRouteCosts:         true,
+		settings.KeyShieldClusterPeers:       true,
+		settings.KeyShieldClusterNode:        true,
 		// The VayuAnalytics engagement beacon is toggled in Tools & Plugins /
 		// the Analytics console, not the theme editor.
 		settings.KeyAnalyticsBeacon: true,

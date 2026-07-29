@@ -1032,6 +1032,12 @@ func (a *App) shieldPolicyBand(ctx context.Context) string {
 	}
 	b.WriteString(vsArea("sh_deny_countries", "Never serve (countries)", geoNote,
 		"RU\nCN", get(settings.KeyShieldDenyCountries)))
+	challengeNote := `The middle setting, and usually the right one. These visitors are not refused &mdash; they are met with a one-time browser check they can solve in a moment, and once solved they are never asked again. Use it where the traffic is mostly automated but real readers exist: a refusal says &ldquo;you are not a customer&rdquo;, a check says &ldquo;prove you are a person&rdquo;. Verified search engines skip it entirely, so it cannot cost you indexing, and it never escalates to a block.`
+	if config.Cfg.OnionMode {
+		challengeNote = `<strong>Disabled in this Space.</strong> Two reasons, either of which alone would be enough: a country lookup returns this server&rsquo;s own location for every Tor visitor, and the check needs browser crypto that a plain-http onion does not expose &mdash; so nobody could solve it even if the geography meant something.`
+	}
+	b.WriteString(vsArea("sh_challenge_countries", "Check visitors from these countries", challengeNote,
+		"CN\nRU\nTR", get(settings.KeyShieldChallengeCountries)))
 	b.WriteString(vsArea("sh_allow_countries", "Serve ONLY these countries", `Sharper than the field above: anything not on this list is refused. Empty means no restriction. Filling this in on a public site normally costs more real readers than it stops abuse.`,
 		"GB\nDE\nIN", get(settings.KeyShieldAllowCountries)))
 	b.WriteString(`</div></div>`)
@@ -1528,13 +1534,14 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		// The operator's own rules. Stored as typed, minus a size cap: these are
 		// paste targets, and an unbounded textarea is a way to put megabytes into
 		// a settings row that is then re-parsed on every save.
-		settings.KeyShieldAllowCIDRs:     area("sh_allow_cidrs"),
-		settings.KeyShieldDenyCIDRs:      area("sh_deny_cidrs"),
-		settings.KeyShieldAllowCountries: area("sh_allow_countries"),
-		settings.KeyShieldDenyCountries:  area("sh_deny_countries"),
-		settings.KeyShieldRouteCosts:     area("sh_route_costs"),
-		settings.KeyShieldClusterPeers:   area("sh_cluster_peers"),
-		settings.KeyShieldClusterNode:    area("sh_cluster_node"),
+		settings.KeyShieldAllowCIDRs:         area("sh_allow_cidrs"),
+		settings.KeyShieldDenyCIDRs:          area("sh_deny_cidrs"),
+		settings.KeyShieldAllowCountries:     area("sh_allow_countries"),
+		settings.KeyShieldDenyCountries:      area("sh_deny_countries"),
+		settings.KeyShieldChallengeCountries: area("sh_challenge_countries"),
+		settings.KeyShieldRouteCosts:         area("sh_route_costs"),
+		settings.KeyShieldClusterPeers:       area("sh_cluster_peers"),
+		settings.KeyShieldClusterNode:        area("sh_cluster_node"),
 	}
 	// Diff BEFORE the write, so the audit record says what actually changed
 	// rather than what was submitted. Nineteen keys went in here with no actor,
@@ -1767,12 +1774,13 @@ func (a *App) shieldSettings(ctx context.Context) vayushield.Settings {
 		GroupIPv4:            on(settings.KeyShieldGroupIPv4),
 		ObserveOnly:          on(settings.KeyShieldObserve),
 		Policy: policy.Config{
-			AllowCIDRs:     policyLines(g(settings.KeyShieldAllowCIDRs)),
-			DenyCIDRs:      policyLines(g(settings.KeyShieldDenyCIDRs)),
-			AllowCountries: policyLines(g(settings.KeyShieldAllowCountries)),
-			DenyCountries:  policyLines(g(settings.KeyShieldDenyCountries)),
-			Routes:         parseRouteCosts(g(settings.KeyShieldRouteCosts)),
-			OnionMode:      config.Cfg.OnionMode,
+			AllowCIDRs:         policyLines(g(settings.KeyShieldAllowCIDRs)),
+			DenyCIDRs:          policyLines(g(settings.KeyShieldDenyCIDRs)),
+			AllowCountries:     policyLines(g(settings.KeyShieldAllowCountries)),
+			DenyCountries:      policyLines(g(settings.KeyShieldDenyCountries)),
+			ChallengeCountries: policyLines(g(settings.KeyShieldChallengeCountries)),
+			Routes:             parseRouteCosts(g(settings.KeyShieldRouteCosts)),
+			OnionMode:          config.Cfg.OnionMode,
 		},
 	}
 }
