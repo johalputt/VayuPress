@@ -109,7 +109,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   which is not the order systemd uses at boot, so a value can verify clean and
   still be overwritten on the next reboot.
 
+- **One bad banlist line froze every ban and every pardon.** The kernel offload
+  reconciled the whole list as a single nft transaction, so an element nft
+  disliked took the flush down with it: nothing flushed, nothing added, every
+  stale ban left in place and — the part that harms a real person — every
+  **pardon failing to lift**. A visitor who solved the challenge stayed banned
+  until the batch happened to become valid again, signalled only by
+  `offload.state=error`.
+
+  The agent now falls back to applying the flush on its own and then each element
+  individually, so one bad line costs one ban and pardons always lift. The panel
+  gained a `degraded` state for that case: enforcement is running, some bans are
+  missing, and it says so — a state the switch did not know would have fallen
+  through to the default pill, which reads "Idle — no jail verdicts to push".
+
 ### Security
+- **A malformed banlist line made the ROOT agent perform a DNS lookup.**
+  Validation was a character whitelist (`*[!0-9a-fA-F.:]*`). It does foreclose
+  injection — no space, `;` or `{` survives it — but it is not a parser, and it
+  admits strings that are not addresses: `abcd` is entirely hex characters,
+  `999.999.999.999` is entirely digits and dots. nft treats an unparseable
+  element as a **hostname** and calls the resolver, so content written by the
+  unprivileged app became a DNS query issued by the most privileged process on
+  the box, on every poll — and in onion mode, a clearnet callback.
+
+  Addresses are now parsed rather than pattern-matched, with a test that
+  differentially checks the parser against real `nft` so it can be stricter but
+  never looser. It is deliberately stricter in one place: a leading-zero octet
+  such as `010.1.1.1` is refused, because nft reads it as octal — `010.1.1.1` and
+  `10.1.1.1` coexist in one set as **different addresses**, so accepting it would
+  ban a host nobody chose.
+
 - **The crawler verifier could make a clearnet DNS call in onion mode.** It was
   handed `net.DefaultResolver` unconditionally, under a call-site comment
   claiming it "degrades to UA-recognition rather than leaking a clearnet DNS/HTTP

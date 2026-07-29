@@ -82,6 +82,91 @@ remove_dyn_table() {
   nft delete table inet "${DYN_TABLE}" 2>/dev/null || true
 }
 
+# ── Address parsing ───────────────────────────────────────────────────────────
+# The banlist used to be filtered with a character whitelist (`*[!0-9a-fA-F.:]*`).
+# That does foreclose injection — no space, ';' or '{' survives it — but it is
+# not a parser, and it admits strings that are not addresses at all: `abcd` is
+# entirely hex characters, `999.999.999.999` is entirely digits and dots.
+#
+# Handing those to nft is not merely useless. nft treats an unparseable element
+# as a HOSTNAME and calls the resolver:
+#
+#   Error: Could not resolve hostname: Name or service not known
+#
+# So a malformed line in a file written by the unprivileged app turned into a DNS
+# lookup made by the root agent, on every poll — and in onion mode that is a
+# clearnet callback from the most privileged process on the box. Parsing properly
+# means nothing but a literal address ever reaches nft.
+
+# _hex_groups <colon-separated list> — echo the group count, or fail if any group
+# is not 1–4 hex digits. An empty list is zero groups.
+_hex_groups() {
+  local part n=0
+  [ -n "$1" ] || { printf '0'; return 0; }
+  local IFS=:
+  set -f
+  # shellcheck disable=SC2086 # deliberate word split on IFS=:
+  set -- $1
+  set +f
+  for part; do
+    case "$part" in ''|*[!0-9a-fA-F]*) return 1 ;; esac
+    [ "${#part}" -le 4 ] || return 1
+    n=$((n + 1))
+  done
+  printf '%s' "$n"
+}
+
+valid_ip4() {
+  local s="$1" o
+  case "$s" in *[!0-9.]*) return 1 ;; esac
+  local IFS=.
+  set -f
+  # shellcheck disable=SC2086 # deliberate word split on IFS=.
+  set -- $s
+  set +f
+  [ "$#" -eq 4 ] || return 1
+  for o; do
+    case "$o" in
+      ''|*[!0-9]*) return 1 ;;
+      # A multi-digit octet with a leading zero is a parsing differential: some
+      # parsers read it as octal. Refuse rather than pick a side.
+      0?*) return 1 ;;
+    esac
+    [ "${#o}" -le 3 ] || return 1
+    [ "$o" -le 255 ] || return 1
+  done
+  return 0
+}
+
+valid_ip6() {
+  local s="$1" head tail hn tn
+  case "$s" in *[!0-9a-fA-F:]*) return 1 ;; esac
+  case "$s" in *:*) ;; *) return 1 ;; esac
+  # "::" is the zero-run and there can be only one. Anything else with a run of
+  # colons (":::" and friends) is malformed.
+  case "$s" in *:::*) return 1 ;; esac
+  case "$s" in
+    *::*::*) return 1 ;;
+    *::*)
+      head="${s%%::*}"
+      tail="${s#*::}"
+      hn="$(_hex_groups "$head")" || return 1
+      tn="$(_hex_groups "$tail")" || return 1
+      # "::" stands for at least one all-zero group, so the explicit groups on
+      # either side can total at most 7.
+      [ $((hn + tn)) -le 7 ] || return 1
+      return 0
+      ;;
+    *)
+      # No zero-run: a leading or trailing colon is then unbalanced by definition.
+      case "$s" in :*|*:) return 1 ;; esac
+      hn="$(_hex_groups "$s")" || return 1
+      [ "$hn" -eq 8 ] || return 1
+      return 0
+      ;;
+  esac
+}
+
 reconcile_banlist() {
   # Gated: dynamic offload only while the operator wants Tier 2 and nft exists.
   if [ ! -f "${CONTROL_DIR}/tier2.want" ] || ! command -v nft >/dev/null 2>&1; then
@@ -96,30 +181,36 @@ reconcile_banlist() {
   fi
   local now count=0
   now="$(date -u +%s)"
-  local batch xdp_new
+  local batch xdp_new flushonly
   batch="$(mktemp)"
   xdp_new="$(mktemp)"
+  flushonly="$(mktemp)"
   # Mirror the file EXACTLY: flush both sets and re-add every valid entry in
   # the same atomic nft transaction. This honours removals (pardons — e.g. a
   # jailed visitor solved the challenge), not just additions.
-  printf 'flush set inet %s banned4\nflush set inet %s banned6\n' "$DYN_TABLE" "$DYN_TABLE" >>"$batch"
+  printf 'flush set inet %s banned4\nflush set inet %s banned6\n' "$DYN_TABLE" "$DYN_TABLE" >"$flushonly"
+  cat "$flushonly" >>"$batch"
+  local skipped=0
   if [ -f "$BANLIST" ]; then
-    # Strict per-line validation: field 1 must be only [0-9a-fA-F.:] (an IP),
-    # field 2 only digits (the expiry). Anything else is ignored.
+    # Field 1 is PARSED as an address (see valid_ip4/valid_ip6 above), field 2
+    # must be only digits. Parsing rather than character-filtering is what keeps
+    # a malformed line from reaching nft, which would treat it as a hostname and
+    # resolve it.
     while read -r ip exp _; do
-      case "$ip" in
-        ''|\#*) continue ;;
-        *[!0-9a-fA-F.:]*) continue ;;
-      esac
-      case "$exp" in
-        ''|*[!0-9]*) continue ;;
-      esac
+      case "$ip" in ''|\#*) continue ;; esac
+      case "$exp" in ''|*[!0-9]*) skipped=$((skipped + 1)); continue ;; esac
       local ttl=$((exp - now))
       [ "$ttl" -le 0 ] && continue
       [ "$ttl" -gt 86400 ] && ttl=86400
       case "$ip" in
-        *:*) printf 'add element inet %s banned6 { %s timeout %ss }\n' "$DYN_TABLE" "$ip" "$ttl" >>"$batch" ;;
-        *)   printf 'add element inet %s banned4 { %s timeout %ss }\n' "$DYN_TABLE" "$ip" "$ttl" >>"$batch" ;;
+        *:*)
+          valid_ip6 "$ip" || { skipped=$((skipped + 1)); continue; }
+          printf 'add element inet %s banned6 { %s timeout %ss }\n' "$DYN_TABLE" "$ip" "$ttl" >>"$batch"
+          ;;
+        *)
+          valid_ip4 "$ip" || { skipped=$((skipped + 1)); continue; }
+          printf 'add element inet %s banned4 { %s timeout %ss }\n' "$DYN_TABLE" "$ip" "$ttl" >>"$batch"
+          ;;
       esac
       count=$((count + 1))
       printf '%s\n' "$ip" >>"$xdp_new"
@@ -148,15 +239,52 @@ reconcile_banlist() {
       write_state offload active
       clear_reason offload
     else
-      write_state offload error
-      write_reason offload "${CONTROL_DIR}/offload.log"
+      # One transaction means one bad element takes the FLUSH down with it:
+      # nothing is flushed, nothing is added, every stale ban stays in the kernel
+      # and — the part that actually harms a person — every pardon fails to lift.
+      # A visitor who solved the challenge stays banned until the batch happens
+      # to become valid again, signalled only by offload.state=error.
+      #
+      # So fall back to applying the flush on its own and then each element
+      # individually. One bad line then costs one ban, and pardons always lift.
+      local rejected=0 applied=0 line
+      if nft -f "$flushonly" >>"${CONTROL_DIR}/offload.log" 2>&1; then
+        while IFS= read -r line; do
+          case "$line" in "add element"*) ;; *) continue ;; esac
+          if printf '%s\n' "$line" | nft -f - >>"${CONTROL_DIR}/offload.log" 2>&1; then
+            applied=$((applied + 1))
+          else
+            rejected=$((rejected + 1))
+          fi
+        done <"$batch"
+        count="$applied"
+        if [ "$rejected" -gt 0 ]; then
+          write_state offload degraded
+          printf 'applied %s ban(s); %s rejected by nft. Pardons DID lift.' \
+            "$applied" "$rejected" >"${CONTROL_DIR}/offload.reason" 2>/dev/null || true
+        else
+          write_state offload active
+          clear_reason offload
+        fi
+      else
+        # The flush itself failed, so the set is untouched and stale. This is the
+        # only case where nothing at all could be reconciled.
+        write_state offload error
+        write_reason offload "${CONTROL_DIR}/offload.log"
+      fi
     fi
   else
     write_state offload active
     clear_reason offload
   fi
+  if [ "$skipped" -gt 0 ]; then
+    # Not an error state: these lines never reached nft, which is the point. But
+    # a banlist the app is writing and the agent is silently discarding is worth
+    # a line in the log rather than nothing at all.
+    printf 'skipped %s unparseable banlist line(s)\n' "$skipped" >>"${CONTROL_DIR}/offload.log" 2>/dev/null || true
+  fi
   printf '%s' "$count" >"${CONTROL_DIR}/offload.count" 2>/dev/null || true
-  rm -f "$batch" "$xdp_new"
+  rm -f "$batch" "$xdp_new" "$flushonly"
 }
 
 # reconcile_cdnallow — one-click population of the Tier 2 proxy allowlist.

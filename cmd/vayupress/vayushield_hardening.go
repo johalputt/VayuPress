@@ -456,6 +456,22 @@ func shieldOffloadStatus() (state, count string) {
 	return state, count
 }
 
+// shieldOffloadReason returns the agent's one-line explanation for a non-active
+// offload state, truncated so a runaway nft error cannot fill the row.
+func shieldOffloadReason() string {
+	b, err := os.ReadFile(filepath.Join(shieldControlDir(), "offload.reason"))
+	if err != nil {
+		return ""
+	}
+	reason := strings.TrimSpace(string(b))
+	// Truncate on runes, not bytes: the reason can carry an nft error verbatim,
+	// and slicing mid-rune emits invalid UTF-8 into the page.
+	if r := []rune(reason); len(r) > 160 {
+		return string(r[:160]) + "…"
+	}
+	return reason
+}
+
 // shieldOffloadRow renders the L1 dynamic-offload status line: whether the
 // agent is enforcing the shield's live jail verdicts in-kernel, and how many
 // IPs are currently banned there. Read-only — the offload follows Tier 2
@@ -475,15 +491,15 @@ func (a *App) shieldOffloadRow() string {
 	switch state {
 	case "active":
 		pill = `<span class="vs-hard-state is-on">● Enforcing — ` + html.EscapeString(count) + ` IP(s) banned in-kernel</span>`
+	case "degraded":
+		// The agent applied the flush and then each ban individually because the
+		// atomic batch was rejected. Enforcement IS running and pardons DID lift,
+		// so this is not an error — but some bans are missing, and falling through
+		// to the "Idle" default would hide that behind a reassuring pill.
+		pill = `<span class="vs-hard-state is-work">▲ Enforcing ` + html.EscapeString(count) +
+			` IP(s) — some bans were rejected. ` + html.EscapeString(shieldOffloadReason()) + `</span>`
 	case "error":
-		reason := ""
-		if b, err := os.ReadFile(filepath.Join(shieldControlDir(), "offload.reason")); err == nil {
-			reason = strings.TrimSpace(string(b))
-		}
-		if len(reason) > 160 {
-			reason = reason[:160] + "…"
-		}
-		pill = `<span class="vs-hard-state is-err">✕ ` + html.EscapeString(reason) + `</span>`
+		pill = `<span class="vs-hard-state is-err">✕ ` + html.EscapeString(shieldOffloadReason()) + `</span>`
 	default:
 		pill = `<span class="vs-hard-state is-off">○ Idle — no jail verdicts to push</span>`
 	}
