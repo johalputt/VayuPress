@@ -155,6 +155,8 @@ type Inputs struct {
 	OnionMode bool
 	// RateLimit, LoadShed, AutoBlock, Surge are the in-binary gates.
 	RateLimit, LoadShed, AutoBlock, Surge bool
+	// ObserveOnly is the measure-but-do-not-enforce mode.
+	ObserveOnly bool
 	// CaptureWired is whether TLS ClientHello capture is available, without which
 	// classification runs on HTTP signals alone.
 	CaptureWired bool
@@ -190,6 +192,17 @@ func Run(in Inputs) []Check {
 	var checks []Check
 	add := func(title string, st Status, detail string) {
 		checks = append(checks, Check{Title: title, Status: st, Detail: detail})
+	}
+
+	// --- Observe-only mode ---------------------------------------------------
+	//
+	// First, and unconditionally Fail. It is a legitimate and useful mode, but a
+	// site running it is a site with nothing enforcing, and the one way that goes
+	// wrong is being left on and forgotten. A row an operator has to scroll past
+	// on every visit is the cheapest possible protection against that.
+	if in.ObserveOnly {
+		add("Observe-only mode is ENGAGED", Fail,
+			"Every gate is counting what it would have done and letting the request through. Nothing is being blocked, rate-limited, challenged or banned in the kernel. This is the right way to trial a threshold change — and the wrong state to leave a site in.")
 	}
 
 	// --- Tier 1: the in-binary engine ----------------------------------------

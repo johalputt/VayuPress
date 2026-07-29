@@ -33,6 +33,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/shieldaudit"
+	"github.com/johalputt/vayupress/internal/vayushield"
 )
 
 // shieldDigestName is the file the root agent writes. Kept as a constant so the
@@ -135,10 +136,11 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 		BindAddr:  onionSafeBindAddr(config.Cfg.Port, config.Cfg.OnionMode),
 		OnionMode: config.Cfg.OnionMode,
 
-		RateLimit: cur.RateLimit,
-		LoadShed:  cur.LoadShed,
-		AutoBlock: cur.AutoBlock,
-		Surge:     cur.Surge,
+		RateLimit:   cur.RateLimit,
+		LoadShed:    cur.LoadShed,
+		AutoBlock:   cur.AutoBlock,
+		Surge:       cur.Surge,
+		ObserveOnly: a.vayuShield.Observing(),
 
 		CaptureWired:  a.vayuShield.CaptureWired(),
 		LinkSpeedMbps: linkSpeedMbps(),
@@ -341,12 +343,26 @@ func (a *App) writeShieldMetrics(w io.Writer) {
 			"vayushield_sig_cache_hits_total %d\n"+
 			"# HELP vayushield_sig_cache_misses_total Signature lookups that fell through to SQLite.\n"+
 			"# TYPE vayushield_sig_cache_misses_total counter\n"+
-			"vayushield_sig_cache_misses_total %d\n",
+			"vayushield_sig_cache_misses_total %d\n"+
+			"# HELP vayushield_observe_only Whether observe-only mode is engaged (1 = nothing is being enforced).\n"+
+			"# TYPE vayushield_observe_only gauge\n"+
+			"vayushield_observe_only %d\n",
 		b(st.UnderAttack), b(st.SurgeActive), st.RPS, st.InFlight, st.Blocklisted,
 		st.Suspects, st.RepJailed, st.FairShed, st.Pardons, st.SurgeChallenges,
 		st.ChallengesServed, st.ChallengesPassed, st.CalibrationBias,
-		st.SigCacheHits, st.SigCacheMisses,
+		st.SigCacheHits, st.SigCacheMisses, b(st.ObserveOnly),
 	)
+
+	// Per-gate would-have counters. These are the point of observe mode: an
+	// operator can see that a proposed threshold would have blocked 40,000
+	// requests before it blocks any of them. Labelled by gate rather than summed,
+	// because "the rate limiter would have refused 40k" and "the classifier would
+	// have blocked 40k" call for completely different responses.
+	fmt.Fprint(w, "# HELP vayushield_would_have_total Requests observe-only mode let through that this gate would have acted on.\n"+
+		"# TYPE vayushield_would_have_total counter\n")
+	for i, n := range st.WouldHave {
+		fmt.Fprintf(w, "vayushield_would_have_total{gate=%q} %d\n", vayushield.GateNames[i], n)
+	}
 
 	// The posture report as a metric, so a regression that makes a layer inert is
 	// alertable rather than only visible to whoever opens the panel. Exported as

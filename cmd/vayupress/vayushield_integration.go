@@ -838,7 +838,15 @@ func (a *App) shieldProtectionBody(ctx context.Context) string {
 	b.WriteString(vsField("sh_block", "Block at ≥", ftoa2(cur.BlockThreshold)))
 	b.WriteString(`<div class="vs-field vs-field--tog">` + vsToggle("sh_tarpit", cur.Tarpit, false) + `<label for="sh_tarpit">Tarpit the worst offenders</label></div>`)
 	b.WriteString(`</div></div>`)
+	// Observe-only mode is placed first in this band and worded as a cost, not a
+	// feature. It is the primitive that makes a threshold change safe to roll
+	// out — and while it is on, nothing below it enforces anything.
 	b.WriteString(`<div class="card-title vs-section">Availability &amp; anti-DDoS</div>`)
+	b.WriteString(`<div class="vs-feat">`)
+	b.WriteString(vsRow("sh_observe", "Observe only — measure, do not enforce",
+		"Every gate below counts what it WOULD have done and then lets the request through. Use it to see what a threshold change does to your real traffic before it does it. <strong>While this is on your site is undefended</strong> — no blocks, no rate limits, no challenges, and no kernel bans. The counts appear in the posture report and on /metrics.",
+		cur.ObserveOnly, false))
+	b.WriteString(`</div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_behind_cdn", "Behind Cloudflare / a CDN", "Turn this ON if your site is proxied through Cloudflare (or any CDN). It reads each real visitor's IP from the CF-Connecting-IP header, so rate-limiting and abuse-blocking apply per visitor. WITHOUT it, a CDN makes your whole audience look like a handful of CDN IPs — which instantly trips the rate limit and shows EVERYONE the &ldquo;Just a moment&rdquo; page. Only genuine Cloudflare edge IPs are trusted, so the header can&rsquo;t be spoofed.", behindCDN, false))
 	b.WriteString(`</div>`)
@@ -1304,6 +1312,7 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		settings.KeyShieldSurge:          bs("sh_surge"),
 		settings.KeyShieldBehindCDN:      bs("sh_behind_cdn"),
 		settings.KeyShieldGroupIPv4:      bs("sh_group_ipv4"),
+		settings.KeyShieldObserve:        bs("sh_observe"),
 		settings.KeyAnalyticsBeacon:      bs("sh_beacon"),
 	}
 	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
@@ -1502,6 +1511,7 @@ func (a *App) shieldSettings(ctx context.Context) vayushield.Settings {
 		UnderAttackRPS:       inum(settings.KeyShieldUnderAttackRPS, 200),
 		Surge:                on(settings.KeyShieldSurge) || shieldEnvBool("VAYUSHIELD_SURGE", false),
 		GroupIPv4:            on(settings.KeyShieldGroupIPv4),
+		ObserveOnly:          on(settings.KeyShieldObserve),
 	}
 }
 

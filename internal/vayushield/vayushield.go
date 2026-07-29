@@ -179,6 +179,7 @@ type liveConfig struct {
 	underAttack    bool    // adaptive: tighten thresholds during a flood
 	surge          bool    // Aegis L3: operator-forced surge (challenge all unproven)
 	groupIPv4      bool    // extend prefix-keyed enforcement to IPv4 /24 (opt-in)
+	observe        bool    // observe-only: count what every gate WOULD do, enforce nothing
 }
 
 // Settings is the full operator-tunable configuration, persisted by the cmd
@@ -213,6 +214,13 @@ type Settings struct {
 	// jailed scraper would take a town's worth of real readers with it. See
 	// enforcementKey.
 	GroupIPv4 bool
+
+	// ObserveOnly turns every gate into a counter. Nothing is blocked, shed,
+	// throttled or challenged; the shield reports what it WOULD have done to this
+	// traffic. It is the primitive that makes a threshold change safe to roll out
+	// — and while it is on the site is undefended, which the panel, the posture
+	// report and the boot log all say plainly.
+	ObserveOnly bool
 }
 
 // Manager is the live bot-protection + resilience engine.
@@ -258,6 +266,11 @@ type Manager struct {
 
 	// surgeServed counts stateless surge-mode PoW interstitials served (telemetry).
 	surgeServed atomic.Int64
+
+	// wouldHave counts, per gate, the requests observe-only mode let through that
+	// enforcement would have stopped. Cumulative since boot, like every other
+	// counter here — the audit-trail aggregates carry the time dimension.
+	wouldHave [gateCount]atomic.Int64
 	// surgeArmedNs is when operator-forced surge (the toggle) was last armed, in
 	// unix nanoseconds; 0 = not armed. Operator-forced surge auto-expires after
 	// maxForcedSurge so a forgotten toggle can never serve 503s indefinitely (a
@@ -481,6 +494,7 @@ func (m *Manager) ApplySettings(s Settings) {
 		underAttack: s.UnderAttack,
 		surge:       s.Surge,
 		groupIPv4:   s.GroupIPv4,
+		observe:     s.ObserveOnly,
 	})
 	// Preserve the resolved numeric fields for the dashboard.
 	s.PoWThreshold = clamp(s.PoWThreshold, 0.4)
@@ -578,6 +592,11 @@ type Status struct {
 	CalibrationBias  float64 `json:"calibration_bias"`
 	ChallengesServed int64   `json:"challenges_served"`
 	ChallengesPassed int64   `json:"challenges_passed"`
+
+	// Observe-only mode: whether it is engaged, and how many requests each gate
+	// would have acted on but did not. Indexed by Gate; GateNames labels them.
+	ObserveOnly bool             `json:"observe_only"`
+	WouldHave   [gateCount]int64 `json:"would_have"`
 }
 
 // Status returns the current resilience meters.
@@ -585,6 +604,8 @@ func (m *Manager) Status() Status {
 	bs := m.brain.Stats()
 	served, passed, bias := m.calib.Snapshot()
 	return Status{
+		ObserveOnly:      m.live().observe,
+		WouldHave:        m.WouldHave(),
 		UnderAttack:      m.controller.UnderAttack(),
 		RPS:              m.controller.RPS(),
 		InFlight:         m.inflight.Current(),
@@ -615,6 +636,92 @@ func (m *Manager) onEvent(a Action, score float64) {
 // attacker controls entirely — so the posture report states it rather than
 // leaving an operator to assume the deeper signal is in play.
 func (m *Manager) CaptureWired() bool { return m != nil && m.cfg.Capture != nil }
+
+// Gate identifies one enforcement point in the middleware, for observe-only
+// mode's would-have counters.
+//
+// There are eight of them and they are NOT reducible to Decide's Action. Only
+// the classification ladder goes through Decide; the blocklist, the reputation
+// jail, load shedding, fair shedding, the rate limiter and Sovereign Surge are
+// inline early returns that never call it. That is why observe mode is a change
+// to the hottest function in the codebase rather than a flag on one switch.
+type Gate uint8
+
+const (
+	GateBlocklist  Gate = iota // the O(1) jail
+	GateReputation             // the self-learning sentence
+	GateLoadShed               // the in-flight cap
+	GateFairShed               // the L2 probabilistic pre-filter
+	GateRateLimit              // the per-source token bucket
+	GateSurge                  // Sovereign Surge's up-front interstitial
+	GateChallenge              // the classification ladder's PoW/JS challenge
+	GateBlock                  // the ladder's hard block or tarpit
+	gateCount
+)
+
+// GateNames are stable identifiers for metrics labels and the panel. Changing
+// one silently breaks an operator's dashboard, so they are written once here.
+var GateNames = [gateCount]string{
+	"blocklist", "reputation", "load_shed", "fair_shed",
+	"rate_limit", "surge", "challenge", "block",
+}
+
+// observing reports whether observe-only mode is engaged and, when it is,
+// records that this gate WOULD have acted.
+//
+// Callers put it last in the condition so the counter only moves when the gate
+// would genuinely have fired:
+//
+//	if gateWouldFire && !m.observing(lc, GateX) { …enforce…; return }
+//
+// The point of the mode is to make a threshold change safe to roll out: an
+// operator can see what a setting would have done to their own traffic before it
+// does it. The cost is real and stated in the panel — while it is on, none of
+// these gates enforce anything.
+func (m *Manager) observing(lc *liveConfig, g Gate) bool {
+	if lc == nil || !lc.observe || g >= gateCount {
+		return false
+	}
+	m.wouldHave[g].Add(1)
+	return true
+}
+
+// offload pushes a ban to the kernel, unless observe mode is engaged.
+//
+// This suppression is the sharpest correctness point in the whole mode.
+// Everything else the middleware decides is an in-memory verdict it can simply
+// decline to act on, and a request that was let through is still served. A
+// kernel drop happens OUTSIDE this process and cannot be un-dropped: an
+// "observe-only" mode that still installed nftables bans would be enforcing,
+// silently, in the one layer the operator cannot see from the panel.
+//
+// In-memory state (the blocklist, the reputation brain) is still updated in
+// observe mode on purpose, so the counters reflect what a real rollout would
+// look like — including escalation — rather than a first-request-only sample.
+func (m *Manager) offload(lc *liveConfig, ip string, ttl time.Duration) {
+	if lc != nil && lc.observe {
+		return
+	}
+	if m.cfg.OffloadFn != nil {
+		m.cfg.OffloadFn(ip, ttl)
+	}
+}
+
+// WouldHave returns the observe-mode counters, indexed by Gate.
+func (m *Manager) WouldHave() [gateCount]int64 {
+	var out [gateCount]int64
+	for i := range m.wouldHave {
+		out[i] = m.wouldHave[i].Load()
+	}
+	return out
+}
+
+// Observing reports whether observe-only mode is currently engaged.
+//
+// Deliberately read from the LIVE manager rather than from the saved setting.
+// The setting says what an operator wrote; this says what is in force, and the
+// whole point of the posture report is to prefer the second.
+func (m *Manager) Observing() bool { return m != nil && m.live().observe }
 
 // ipOnly strips a port from a host:port client address so the rate limiter and
 // blocklist key on the IP alone.
@@ -1129,7 +1236,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		}
 
 		// 1. Blocklist — the cheapest possible gate for a known-abusive IP.
-		if !verified && lc.autoBlock && m.blocklist.Blocked(enfKey) {
+		if !verified && lc.autoBlock && m.blocklist.Blocked(enfKey) && !m.observing(lc, GateBlocklist) {
 			reqclass.MarkShielded(r.Context())
 			m.onEvent(ActionBlock, 1.0)
 			m.serveJailed(w, r, ipKey, "blocked")
@@ -1150,7 +1257,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// page has no switch left to reach for, which is precisely the trap this
 		// closes. Classification/challenges are unaffected — they are governed by
 		// the bot-protection switch, not this one.
-		if !verified && lc.autoBlock && m.brain.Jailed(enfKey) {
+		if !verified && lc.autoBlock && m.brain.Jailed(enfKey) && !m.observing(lc, GateReputation) {
 			reqclass.MarkShielded(r.Context())
 			m.onEvent(ActionBlock, 1.0)
 			m.serveJailed(w, r, ipKey, "reputation")
@@ -1159,12 +1266,16 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 
 		// 2. Load shedding — protect the process from collapse under saturation.
 		if lc.loadShed && !verified {
-			if !m.inflight.Acquire() {
+			if m.inflight.Acquire() {
+				defer m.inflight.Release()
+			} else if !m.observing(lc, GateLoadShed) {
 				reqclass.MarkShielded(r.Context())
 				m.serveThrottled(w, r, http.StatusServiceUnavailable, "load-shed", "5")
 				return
 			}
-			defer m.inflight.Release()
+			// Observed only: proceed WITHOUT a slot, so there is no Release to
+			// defer. Releasing one that was never acquired would inflate the cap
+			// by one for every observed shed.
 		}
 
 		// 3. Attack meter (lock-free) drives adaptive under-attack mode.
@@ -1181,7 +1292,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		if !verified {
 			pressure := m.controller.UnderAttack() ||
 				(m.cfg.PressureFn != nil && m.cfg.PressureFn())
-			if m.prefilter.Check(ipKey, pressure) {
+			if m.prefilter.Check(ipKey, pressure) && !m.observing(lc, GateFairShed) {
 				reqclass.MarkShielded(r.Context())
 				m.onEvent(ActionBlock, 1.0)
 				m.serveThrottled(w, r, http.StatusTooManyRequests, "fair-shed", "5")
@@ -1191,6 +1302,10 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 
 		// 4. Per-IP rate limit — generous burst, so a normal reader never trips it.
 		if lc.rateLimit && !verified && !m.limiter.Allow(enfKey) {
+			// The in-memory consequences run even in observe mode, so the counters
+			// reflect what a real rollout would look like — including escalation —
+			// rather than a first-request-only sample. Only the RESPONSE and the
+			// kernel offload are withheld.
 			if lc.autoBlock && !m.violation.Allow(enfKey) {
 				// This IP keeps breaching the limit — jail it for a while.
 				m.blocklist.Block(enfKey, m.jailTTL())
@@ -1202,15 +1317,16 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			// legacy 20-breach violation meter would take 4x longer to reach).
 			if lc.autoBlock && m.brain.Jailed(enfKey) {
 				m.blocklist.Block(enfKey, m.jailTTL())
-				// L1 offload: drop this flooding source in-kernel too.
-				if m.cfg.OffloadFn != nil {
-					m.cfg.OffloadFn(ipKey, m.jailTTL())
-				}
+				// L1 offload: drop this flooding source in-kernel too — never in
+				// observe mode, because a kernel drop cannot be un-dropped.
+				m.offload(lc, ipKey, m.jailTTL())
 			}
-			reqclass.MarkShielded(r.Context())
-			m.onEvent(ActionBlock, 1.0)
-			m.serveThrottled(w, r, http.StatusTooManyRequests, "rate-limited", "10")
-			return
+			if !m.observing(lc, GateRateLimit) {
+				reqclass.MarkShielded(r.Context())
+				m.onEvent(ActionBlock, 1.0)
+				m.serveThrottled(w, r, http.StatusTooManyRequests, "rate-limited", "10")
+				return
+			}
 		}
 
 		// 4c. Sovereign Surge (Aegis L3). Under genuine pressure — an operator-
@@ -1229,7 +1345,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// vendor's real network skips surge.) Verified sessions, trusted operators
 		// and bypassed paths already returned above; a nil signer disables it
 		// (fail-open).
-		if !verified && m.underSurge(lc) {
+		if !verified && m.underSurge(lc) && !m.observing(lc, GateSurge) {
 			// Impose real cost: surge exists to defend against clients that will
 			// (headless browsers) or won't (plain scrapers) run JS during a flood.
 			// A difficulty-4 PoW (~65k hashes) is trivial for a headless engine, so
@@ -1270,6 +1386,24 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// own 5s sleep pins the tail for as long as bots keep probing.
 		if action != ActionAllow {
 			reqclass.MarkShielded(ctx)
+		}
+
+		// Gates 7 and 8. The classification ladder is the ONLY path that goes
+		// through Decide, which is why "Decide already returns an Action" was never
+		// a sufficient basis for observe mode — six of the eight gates above never
+		// reach it. Here the mapping is direct: a challenge and a block are both
+		// things the ladder would have done.
+		if action != ActionAllow {
+			g := GateChallenge
+			if action == ActionBlock || action == ActionTarpit {
+				g = GateBlock
+			}
+			if m.observing(lc, g) {
+				// Still record the verdict on the request so downstream handlers and
+				// the audit trail see what the shield thought, then serve normally.
+				next.ServeHTTP(w, r)
+				return
+			}
 		}
 
 		switch action {
@@ -1473,11 +1607,12 @@ func (m *Manager) jailBadActor(ctx context.Context, ipKey string, autoBlock bool
 		// kernel offload below by the exact address — the nft banlist sets take
 		// no CIDR element. See enforcementKey.
 		m.blocklist.Block(m.enforcementKey(ipKey), m.jailTTL())
-		// L1 offload: a jailed confirmed bad actor is also dropped in-kernel,
-		// so its follow-up packets never even create a connection.
-		if m.cfg.OffloadFn != nil {
-			m.cfg.OffloadFn(ipKey, m.jailTTL())
-		}
+		// L1 offload: a jailed confirmed bad actor is also dropped in-kernel, so
+		// its follow-up packets never even create a connection. Routed through
+		// m.offload so observe mode suppresses it — a kernel drop happens outside
+		// this process and cannot be un-dropped, which would make "observe only"
+		// a lie in the one layer the panel cannot see.
+		m.offload(m.live(), ipKey, m.jailTTL())
 	}
 	if m.cfg.Bots == nil || v.Composite.FingerprintHash == "" {
 		return

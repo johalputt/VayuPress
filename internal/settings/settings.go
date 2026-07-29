@@ -255,6 +255,7 @@ const (
 	KeyShieldSurge          = "shield.surge"           // Aegis L3: challenge all unproven visitors up front
 	KeyShieldBehindCDN      = "shield.behind_cdn"      // trust Cloudflare/CDN CF-Connecting-IP for the real visitor IP
 	KeyShieldGroupIPv4      = "shield.group_ipv4"      // extend prefix-keyed enforcement to IPv4 /24 (IPv6 /64 is unconditional)
+	KeyShieldObserve        = "shield.observe"         // observe-only: count what every gate WOULD do, enforce nothing
 
 	// KeyAnalyticsBeacon toggles the VayuAnalytics engagement beacon (time on
 	// page / scroll depth) injected on public pages. Default ON — it is
@@ -422,6 +423,7 @@ var AllKeys = map[string]bool{
 	KeyShieldSurge:          true,
 	KeyShieldBehindCDN:      true,
 	KeyShieldGroupIPv4:      true,
+	KeyShieldObserve:        true,
 	KeyAnalyticsBeacon:      true,
 	KeyTorEnabled:           true,
 	KeyTorVisits:            true,
@@ -503,6 +505,7 @@ var Defaults = map[string]string{
 	KeyShieldUnderAttackRPS: "200",
 	KeyShieldBehindCDN:      "off",
 	KeyShieldGroupIPv4:      "off",
+	KeyShieldObserve:        "off",
 	KeyAnalyticsBeacon:      "on",
 	KeyTorEnabled:           "off",
 	KeyTorVisits:            "0",

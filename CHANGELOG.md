@@ -53,6 +53,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   never touches the block threshold, so even with every gate defeated the
   reachable state is a bounded, self-draining shift of the challenge bands.
 
+- **Observe-only mode.** Every gate counts what it *would* have done and lets the
+  request through, so a threshold change can be measured against real traffic
+  before it touches any of it. The would-have counts appear in the posture report
+  and on `/metrics`, labelled per gate — "the rate limiter would have refused
+  40,000" and "the classifier would have blocked 40,000" call for completely
+  different responses.
+
+  This was not the one-line flag it looks like. "`Decide` already returns an
+  Action" is true of exactly one of the eight enforcement points; the blocklist,
+  the reputation jail, load shedding, fair shedding, the rate limiter and
+  Sovereign Surge are all inline early returns that never call it, so the mode had
+  to be threaded through every one.
+
+  The sharpest correctness point is the kernel. Every other verdict is an
+  in-memory decision the middleware can decline to act on, and a request that was
+  let through is still served — but a kernel ban happens outside the process and
+  cannot be un-dropped. An "observe only" mode that still installed nftables bans
+  would be enforcing, silently, in the one layer the panel cannot see. It is
+  suppressed, and a test proves it. In-memory state is still updated on purpose,
+  so the counts reflect a real rollout including escalation rather than a
+  first-request-only sample.
+
+  While it is on, the site is undefended. The toggle says so, and the posture
+  report carries an unconditional Fail row that an operator has to scroll past on
+  every visit — the cheapest available protection against leaving it on and
+  forgetting.
+
 - **The audit trail is finally read.** `vayushield_blocked` and
   `vayushield_challenges` have been INSERTed on every event since they were
   introduced, and the only other SQL touching either table was a DELETE purge —
