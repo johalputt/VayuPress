@@ -6,6 +6,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **A second nil-collection reaching the wire.** Found by sweeping for the class
+  of defect behind the tool-list outage rather than for the defect itself:
+  `vayushield_settings` emitted `"network_intelligence": null` on any install with
+  no feed enabled, because the helper returned a nil slice. It does not break a
+  client the way a null *schema* does — but it is the same mistake, a Go nil that
+  looks harmless until it crosses the boundary, and a consumer reading a list
+  field should not have to special-case null where `[]` iterates zero times.
+
+### Added
+- **Three tests that check the artifact rather than the transport.** Every wrong
+  diagnosis in the 3.16.15 outage came from testing that bytes moved instead of
+  what the bytes were. `curl` returned 200 from the app, through nginx, through
+  the CDN; the access log was clean; the payload was 8 KB of well-formed JSON that
+  a client could not use.
+
+  - every registered tool's schema is marshalled and validated as a client
+    parses it — `type: object`, `properties` an object, no nulls;
+  - the whole `tools/list` is validated as the single document a client receives,
+    because the failure was never "one tool is broken" but "one tool takes every
+    other tool with it";
+  - every shield tool handler is invoked on a completely uninitialised install,
+    since a panic there kills the connection and an MCP client retries.
+
+### Note — post-release audit of the 3.16.7 → 3.16.15 work
+- Scope verified: nothing outside VayuShield, analytics, MCP and their deploy
+  assets was touched. The one surprise, a `deadcode-allow.txt` refresh, was
+  checked line by line — 11 stale entries dropped, one test-only accessor added,
+  so the gate got stricter.
+- Hot path measured, not assumed: the per-request feed lookup is **42 ns with no
+  feed enabled** (what nearly every install runs) and **175 ns with all three
+  datacenter feeds loaded**, zero allocations either way — worst case, a miss that
+  searches every feed.
+- Race detector clean across vayushield, analytics and shieldaudit; the Tier 3
+  nginx file validated against a real nginx; shellcheck clean; 113 packages green.
+
 ## [3.16.15] — 2026-07-29
 
 ### Fixed

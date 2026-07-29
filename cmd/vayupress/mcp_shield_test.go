@@ -3,6 +3,8 @@
 package main
 
 import (
+	"context"
+
 	"bytes"
 	"encoding/json"
 
@@ -186,5 +188,56 @@ func TestTheWholeToolListSurvivesAStrictClient(t *testing.T) {
 	// also "contain no nulls".
 	if len(srv.Tools()) < 10 {
 		t.Errorf("only %d tools registered — the surface collapsed", len(srv.Tools()))
+	}
+}
+
+// TestNoShieldToolPanicsOnAnUninitialisedInstall.
+//
+// A panicking handler kills the request, and on an install where VayuShield has
+// not booted — a fresh deploy, a failed boot, a Tor Space mid-start — every one
+// of these tools is reachable before the thing it reads exists.
+//
+// The guard is cheap and the failure is not: a panic in a tool handler takes out
+// the connection, and an MCP client retries, so it takes it out repeatedly.
+func TestNoShieldToolPanicsOnAnUninitialisedInstall(t *testing.T) {
+	a := &App{} // nothing initialised: no shield, no settings, no analytics
+	srv := a.buildMCPServer()
+
+	for _, tool := range srv.Tools() {
+		if !strings.HasPrefix(tool.Name, "vayushield_") && tool.Name != "analytics_referrers" {
+			continue
+		}
+		t.Run(tool.Name, func(t *testing.T) {
+			defer func() {
+				if p := recover(); p != nil {
+					t.Fatalf("%s panicked on an uninitialised install: %v", tool.Name, p)
+				}
+			}()
+			// Empty args, the shape a client sends for a no-argument tool.
+			_, err := tool.Handler(context.Background(), json.RawMessage(`{}`))
+			// An error is the CORRECT answer here. Only a panic is a defect.
+			_ = err
+		})
+	}
+}
+
+// TestShieldToolResultsCarryNoNullCollections.
+//
+// The nil-schema bug's smaller sibling. A Go nil slice or map marshals to `null`,
+// so a consumer reading a list field has to special-case null where `[]` would
+// simply iterate zero times. It does not break a client the way a null schema
+// does, but it is the same mistake — a nil that looks harmless until it crosses
+// the wire — and this is where it was found on the settings tool.
+func TestShieldToolResultsCarryNoNullCollections(t *testing.T) {
+	a := &App{}
+	if got := a.shieldIntelStatus(); got == nil {
+		t.Error("shieldIntelStatus returns nil, which marshals to null in the settings tool result")
+	}
+	b, err := json.Marshal(map[string]any{"network_intelligence": a.shieldIntelStatus()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(b, []byte(`"network_intelligence":null`)) {
+		t.Errorf("the settings tool emits a null collection: %s", b)
 	}
 }

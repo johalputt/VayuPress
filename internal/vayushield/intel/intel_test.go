@@ -509,3 +509,44 @@ func TestTheSanityFloorSurvivesRealisticEntries(t *testing.T) {
 		t.Fatalf("entries of the shape a real hostile list publishes must build: %v", err)
 	}
 }
+
+// BenchmarkMatchNoFeeds is the case nearly every install is in: the feature
+// exists and nobody enabled it. It must cost approximately nothing, because it
+// runs on every unverified request whether or not anyone opted in.
+func BenchmarkMatchNoFeeds(b *testing.B) {
+	f := NewFetcher(b.TempDir())
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = f.Match("203.0.113.7")
+	}
+}
+
+// BenchmarkMatchThreeFeeds is the shipped datacenter configuration — AWS, GCP
+// and DigitalOcean, at roughly their real sizes. This is the number that decides
+// whether enabling the feature is felt by a reader.
+func BenchmarkMatchThreeFeeds(b *testing.B) {
+	f := NewFetcher(b.TempDir())
+	for n, size := range map[string]int{"aws": 10000, "gcp": 1000, "do": 1200} {
+		prefixes := make([]netip.Prefix, 0, size)
+		for i := 0; i < size; i++ {
+			prefixes = append(prefixes, netip.MustParsePrefix(
+				fmt.Sprintf("%d.%d.%d.0/24", 12+i/65536, (i/256)%256, i%256)))
+		}
+		set, err := Build(KindDatacenter, n, prefixes)
+		if err != nil {
+			b.Fatal(err)
+		}
+		def := Feed{ID: n, Name: n, Kind: KindDatacenter,
+			Parse: func([]byte) ([]netip.Prefix, error) { return prefixes, nil }}
+		f.Add(def, true)
+		f.mu.Lock()
+		f.feeds[n].live.Store(set)
+		f.mu.Unlock()
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = f.Match("203.0.113.7") // a miss: the worst case, every feed searched
+	}
+}

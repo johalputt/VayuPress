@@ -202,14 +202,19 @@ func (a *App) shieldIntelAudit() []shieldaudit.IntelFeed {
 // "whose list is this?" — the question that decides whether the feed should be
 // trusted at all.
 func (a *App) shieldIntelStatus() []map[string]any {
+	// An EMPTY slice, never nil. A nil slice marshals to `null`, and a JSON
+	// consumer reading "network_intelligence": null has to special-case it where
+	// [] would just iterate zero times. This is the same class of defect as the
+	// nil schema map that took the whole tool list down — a Go nil that looks
+	// harmless until it crosses the wire.
+	out := []map[string]any{}
 	if a.shieldIntel == nil {
-		return nil
+		return out
 	}
 	byID := map[string]intel.Feed{}
 	for _, def := range intel.DefaultFeeds() {
 		byID[def.ID] = def
 	}
-	var out []map[string]any
 	for _, s := range a.shieldIntel.Statuses() {
 		if !s.Enabled {
 			continue
