@@ -476,3 +476,62 @@ func TestClusteringConfiguredButSilentIsAWarning(t *testing.T) {
 		}
 	}
 }
+
+// TestTheRealVisitorIPRowDoesNotJudgeTheSiteByTheOperatorsOwnRequest.
+//
+// This row was computed from a sample of ONE — the request rendering the report,
+// which is the operator's. And an operator commonly keeps a hosts entry pointing
+// the domain at the origin so the console stays reachable when the edge is
+// unwell, so their request carries no forwarding header, resolution correctly
+// does nothing, and the row declared FAIL on a site whose actual readers were
+// resolving perfectly.
+//
+// A sample of one is bad enough. A sample of one drawn from the least
+// representative request on the site is worse, and a red row that is wrong is not
+// a neutral cost — it is what teaches an operator to stop reading the report.
+func TestTheRealVisitorIPRowDoesNotJudgeTheSiteByTheOperatorsOwnRequest(t *testing.T) {
+	find := func(out []Check) *Check {
+		for i := range out {
+			if strings.Contains(out[i].Title, "Real visitor IP") {
+				return &out[i]
+			}
+		}
+		return nil
+	}
+
+	// The operator's own request skips the proxy, but visitor traffic proves the
+	// site IS proxied and resolving.
+	row := find(Run(Inputs{BehindCDN: true, ClientIPResolved: true, ClientIPFromVisitorTraffic: true}))
+	if row == nil {
+		t.Fatal("no real-visitor-IP row")
+	}
+	if row.Status != Pass {
+		t.Errorf("status = %v, want Pass. The operator reaches their own console without going "+
+			"through the proxy — the ordinary setup — and the row reported their readers as "+
+			"broken on the strength of that one request", row.Status)
+	}
+	if !strings.Contains(row.Detail, "readers") {
+		t.Error("the row does not say the evidence came from visitor traffic rather than from " +
+			"this request. Those are different strengths of evidence and overstating either is " +
+			"the one thing this report must not do")
+	}
+
+	// The genuine pooling failure must still be a Fail: proxied, and NOTHING —
+	// not this request, not visitor traffic — resolved to a distinct visitor.
+	broken := find(Run(Inputs{BehindCDN: true}))
+	if broken == nil || broken.Status != Fail {
+		t.Errorf("a genuinely unresolved proxied origin no longer fails (%v) — that is the "+
+			"failure that makes every per-IP limit measure the edge instead of the reader, and "+
+			"softening it to make the false positive go away would have removed the real signal "+
+			"with it", broken)
+	}
+
+	// And an unproxied origin is still a plain Pass with no visitor-traffic caveat.
+	direct := find(Run(Inputs{}))
+	if direct == nil || direct.Status != Pass {
+		t.Errorf("a direct-served origin did not pass: %v", direct)
+	}
+	if strings.Contains(direct.Detail, "readers' requests") {
+		t.Error("an unproxied origin is being described with the proxied-site caveat")
+	}
+}

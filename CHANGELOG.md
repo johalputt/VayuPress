@@ -6,6 +6,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.4] — 2026-07-29
+
+### Fixed
+- **The posture report judged a whole site by the operator's own request, and
+  cried wolf.** "Real visitor IP" was computed from a sample of one — the request
+  rendering the report, which is the administrator's. An administrator commonly
+  keeps a `hosts` entry (or split-horizon DNS) pointing the domain at the origin
+  so the console stays reachable when the edge is unwell, so their request
+  carries no forwarding header, resolution correctly does nothing, and the row
+  reported **Fail** on a site whose actual readers were resolving perfectly.
+
+  A sample of one is bad enough; a sample of one drawn from the least
+  representative request on the site is worse. The hardening panel already
+  tracked proxy sightings from real *visitor* traffic — it had the right answer on
+  screen, a paragraph away from the row contradicting it — so the posture row now
+  defers to that when the operator's own connection skips the proxy, and says
+  which evidence it used, because "verified from your readers' traffic" and
+  "verified from your own request" are different strengths of claim.
+
+  The genuine pooling failure still fails: proxied, with nothing — not this
+  request and not visitor traffic — resolving to a distinct visitor. That is the
+  failure that makes every per-IP limit measure the edge instead of the reader,
+  and a test pins that softening the false positive did not remove the real
+  signal with it. A red row that is wrong is not a neutral cost — it is what
+  teaches an operator to stop reading the report.
+
+  Released on its own under the standing exception for a defect already live and
+  misleading operators now.
+
 ## [3.16.3] — 2026-07-29
 
 ### Added

@@ -172,6 +172,27 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 	// failure but had nowhere to record it.
 	if r != nil {
 		in.ClientIPResolved = auth.ClientIP(r) != stripPort(r.RemoteAddr)
+		// ...unless this request is the operator's, and the operator does not go
+		// through their own proxy.
+		//
+		// That is the common case, not an edge case: an administrator keeps a hosts
+		// entry (or split-horizon DNS) pointing the domain at the origin so the
+		// console stays reachable when the CDN is unwell. Their request therefore
+		// carries no forwarding header, resolution correctly does nothing, and a
+		// row derived from that one sample declared "Real visitor IP: FAIL" on a
+		// site whose actual readers were resolving perfectly.
+		//
+		// A sample of one is bad enough. A sample of one drawn from the least
+		// representative request on the site is worse — and a red row that is wrong
+		// is not a neutral cost, it is what teaches an operator to stop reading the
+		// report. The hardening panel already tracks proxy sightings from REAL
+		// visitor traffic for exactly this reason; the posture row now defers to it.
+		if !in.ClientIPResolved && lastCDNObservation() != "" {
+			if here, _ := shieldDetectCDN(r); !here {
+				in.ClientIPResolved = true
+				in.ClientIPFromVisitorTraffic = true
+			}
+		}
 	}
 	return in
 }

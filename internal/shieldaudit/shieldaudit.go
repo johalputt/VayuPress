@@ -171,6 +171,13 @@ type Inputs struct {
 	// site is proxied and this is false, every visitor is being counted as the
 	// edge — the failure that makes per-IP limits meaningless.
 	ClientIPResolved bool
+	// ClientIPFromVisitorTraffic marks that the answer above came from recent
+	// VISITOR traffic rather than from the request being reported on — which
+	// happens when the operator reaches their own console without going through
+	// the proxy. The row says so, because "verified from your readers' traffic"
+	// and "verified from your own request" are different strengths of evidence
+	// and the report's whole value is not overstating either.
+	ClientIPFromVisitorTraffic bool
 	// LinkSpeedMbps is the operator's measured ingress capacity, read from
 	// /sys/class/net/*/speed. Zero when it could not be determined.
 	LinkSpeedMbps int
@@ -260,6 +267,9 @@ func Run(in Inputs) []Check {
 	case in.BehindCDN && !in.ClientIPResolved:
 		add("Real visitor IP", Fail,
 			"This site is marked as proxied, but the request that generated this report did not resolve to a visitor address distinct from the peer. Every per-IP limit is therefore measuring the edge, not the reader: the whole audience shares one bucket, and the first busy minute shows everyone a challenge.")
+	case in.BehindCDN && in.ClientIPFromVisitorTraffic:
+		add("Real visitor IP", Pass,
+			"Recent visitor traffic arrives through the proxy and resolves to distinct reader addresses, so per-IP limits apply per reader. Your OWN connection skips the proxy — usually a hosts entry so the console stays reachable when the edge is unwell — so this row is verified from your readers' requests rather than from this one.")
 	case in.BehindCDN:
 		add("Real visitor IP", Pass, "The proxy's forwarding header resolved to a distinct visitor address, so per-IP limits apply per reader.")
 	case in.ClientIPResolved:
