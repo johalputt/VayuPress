@@ -257,6 +257,17 @@ const (
 	KeyShieldGroupIPv4      = "shield.group_ipv4"      // extend prefix-keyed enforcement to IPv4 /24 (IPv6 /64 is unconditional)
 	KeyShieldObserve        = "shield.observe"         // observe-only: count what every gate WOULD do, enforce nothing
 
+	// The operator's own rules, as opposed to everything the shield infers. All
+	// four are newline-separated free text so they can be pasted from a firewall
+	// config, and all four default to empty: a shield that arrives with opinions
+	// about which networks or countries an operator serves would be making a
+	// political decision on their behalf.
+	KeyShieldAllowCIDRs     = "shield.allow_cidrs"     // never challenged, never jailed (office, probe, CI runner)
+	KeyShieldDenyCIDRs      = "shield.deny_cidrs"      // never served
+	KeyShieldAllowCountries = "shield.allow_countries" // when non-empty, ONLY these are served
+	KeyShieldDenyCountries  = "shield.deny_countries"  // ISO-3166-1 alpha-2, one per line
+	KeyShieldRouteCosts     = "shield.route_costs"     // "<path> <weight>" per line: what a route costs to serve
+
 	// KeyAnalyticsBeacon toggles the VayuAnalytics engagement beacon (time on
 	// page / scroll depth) injected on public pages. Default ON — it is
 	// cookieless and stores no PII, the same posture as the existing view
@@ -424,6 +435,11 @@ var AllKeys = map[string]bool{
 	KeyShieldBehindCDN:      true,
 	KeyShieldGroupIPv4:      true,
 	KeyShieldObserve:        true,
+	KeyShieldAllowCIDRs:     true,
+	KeyShieldDenyCIDRs:      true,
+	KeyShieldAllowCountries: true,
+	KeyShieldDenyCountries:  true,
+	KeyShieldRouteCosts:     true,
 	KeyAnalyticsBeacon:      true,
 	KeyTorEnabled:           true,
 	KeyTorVisits:            true,
@@ -525,6 +541,11 @@ var Defaults = map[string]string{
 	KeyShieldBehindCDN:      "off",
 	KeyShieldGroupIPv4:      "off",
 	KeyShieldObserve:        "off",
+	KeyShieldAllowCIDRs:     "",
+	KeyShieldDenyCIDRs:      "",
+	KeyShieldAllowCountries: "",
+	KeyShieldDenyCountries:  "",
+	KeyShieldRouteCosts:     "",
 	KeyAnalyticsBeacon:      "on",
 	KeyTorEnabled:           "off",
 	KeyTorVisits:            "0",

@@ -164,6 +164,16 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		settings.KeyShieldBehindCDN:      true,
 		settings.KeyShieldGroupIPv4:      true,
 		settings.KeyShieldObserve:        true,
+		// The operator's own allow/deny/route rules live in the same console, in
+		// the "Your own rules" band. They are multi-line policy text rather than
+		// presentation, so they have no place in a theme bundle: exporting a theme
+		// that carried someone's network deny list and importing it elsewhere
+		// would move access control between sites as a side effect of a look.
+		settings.KeyShieldAllowCIDRs:     true,
+		settings.KeyShieldDenyCIDRs:      true,
+		settings.KeyShieldAllowCountries: true,
+		settings.KeyShieldDenyCountries:  true,
+		settings.KeyShieldRouteCosts:     true,
 		// The VayuAnalytics engagement beacon is toggled in Tools & Plugins /
 		// the Analytics console, not the theme editor.
 		settings.KeyAnalyticsBeacon: true,

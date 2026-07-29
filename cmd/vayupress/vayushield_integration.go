@@ -47,6 +47,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
 	"github.com/johalputt/vayupress/internal/vayushield/offload"
+	"github.com/johalputt/vayupress/internal/vayushield/policy"
 	"github.com/johalputt/vayupress/internal/vayushield/sovereign"
 	"github.com/johalputt/vayupress/internal/vayushield/verifiedbot"
 )
@@ -893,12 +894,112 @@ func (a *App) shieldProtectionBody(ctx context.Context) string {
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_surge", "Sovereign Surge (Under-Attack Mode)", "Meet every unverified visitor with a one-time browser check BEFORE any classification — so a million-bot swarm is absorbed at ~one hash per request, with no CDN. Real browsers pass silently in a moment (their clearance is bound to their network, so a solved check can't be shared across a botnet); bots that won't run it never reach the site. Surge also engages automatically during a flood even when this is off, and a manually-forced surge auto-expires after 12h so a forgotten switch can never keep challenging visitors.", cur.Surge, false))
 	b.WriteString(`</div>`)
+	b.WriteString(a.shieldPolicyBand(ctx))
 	b.WriteString(`<div class="card-title vs-section">Analytics</div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_beacon", "Engagement analytics", "Measure time-on-page and scroll depth on public pages. Cookieless, no PII.", beaconOn, false))
 	b.WriteString(`</div>`)
 	b.WriteString(`<div class="vs-save"><button class="btn btn--primary" type="submit">Save &amp; apply</button><span class="muted text-sm">Applies live to every request.</span></div>`)
 	return b.String()
+}
+
+// maxPolicyFieldBytes bounds one operator policy textarea. Far above any real
+// allow list (roughly a thousand CIDR lines) and far below anything that would
+// make a settings row expensive to store, re-parse on save, or re-render.
+const maxPolicyFieldBytes = 32 << 10
+
+// clipPolicyField bounds one pasted policy textarea.
+//
+// The cap matters because these rows are re-parsed on every save and re-rendered
+// on every page load, so an unbounded textarea is a way to make the settings page
+// permanently expensive. The line-boundary truncation matters more: clipping
+// mid-entry would leave a half-written prefix that the compiler then reports back
+// as a malformed entry, sending the operator to hunt a typo they did not make.
+func clipPolicyField(v string) string {
+	v = strings.TrimSpace(v)
+	if len(v) <= maxPolicyFieldBytes {
+		return v
+	}
+	v = v[:maxPolicyFieldBytes]
+	if i := strings.LastIndexByte(v, '\n'); i > 0 {
+		v = v[:i]
+	}
+	return strings.TrimSpace(v)
+}
+
+// shieldPolicyBand renders "Your own rules" — the part of the shield that is
+// not a heuristic.
+//
+// Everything above it reaches a verdict by inference and can be wrong about
+// someone, which is why those gates end in a solvable challenge. These four
+// fields are statements of fact by the operator, so they do exactly what they
+// say: a denied network is refused even if it solves a challenge, and an allowed
+// one skips every gate including the jail.
+func (a *App) shieldPolicyBand(ctx context.Context) string {
+	get := func(k string) string {
+		if a.siteSettings == nil {
+			return ""
+		}
+		return a.siteSettings.Get(ctx, k)
+	}
+	var b strings.Builder
+	b.WriteString(`<div class="card-title vs-section">Your own rules</div>`)
+	b.WriteString(`<p class="muted text-sm">Everything above decides by inference and can be wrong about a visitor, which is why it ends in a challenge they can solve. These are facts you state, so they are obeyed literally — an allowed network skips every gate including the jail, and a denied one is refused even if it solves a challenge. Leave them empty and nothing here applies.</p>`)
+	b.WriteString(`<div class="vs-feat"><div class="vs-adv vs-adv--open">`)
+	b.WriteString(vsArea("sh_allow_cidrs", "Always allow (networks)",
+		"Your office, a monitoring probe, a CI runner — anything that must never be challenged or jailed. One per line; a bare address means that address alone. This is also the way back in after a false-positive run.",
+		"203.0.113.0/24\n198.51.100.7\n2001:db8::/32", get(settings.KeyShieldAllowCIDRs)))
+	b.WriteString(vsArea("sh_deny_cidrs", "Never serve (networks)",
+		"Refused outright. A deny entry beats an allow entry that covers the same address, so you can trust a /24 and still refuse one host inside it.",
+		"192.0.2.0/24", get(settings.KeyShieldDenyCIDRs)))
+	b.WriteString(`</div></div>`)
+
+	// Geography is presented with its limits attached, in both directions: it is
+	// the control most likely to be reached for after one bad night and the one
+	// most likely to quietly cost real readers.
+	b.WriteString(`<div class="vs-feat"><div class="vs-adv vs-adv--open">`)
+	geoNote := `Two-letter country codes, one per line. Location is inferred from the visitor's address and is approximate — a traveller, a corporate VPN, or anyone using a privacy network is attributed somewhere else, so this refuses people rather than places. Search-engine crawlers are refused too, which removes those pages from results.`
+	if config.Cfg.OnionMode {
+		geoNote = `<strong>Disabled in this Space.</strong> Every visitor arrives through Tor as 127.0.0.1, so a country lookup would return this server's own location for all of them — the rule would refuse everyone or serve everyone while appearing to do geography. Saved values are kept and will apply on a clearnet install.`
+	}
+	b.WriteString(vsArea("sh_deny_countries", "Never serve (countries)", geoNote,
+		"RU\nCN", get(settings.KeyShieldDenyCountries)))
+	b.WriteString(vsArea("sh_allow_countries", "Serve ONLY these countries", `Sharper than the field above: anything not on this list is refused. Empty means no restriction. Filling this in on a public site normally costs more real readers than it stops abuse.`,
+		"GB\nDE\nIN", get(settings.KeyShieldAllowCountries)))
+	b.WriteString(`</div></div>`)
+
+	// Route weights. The default of one-slot-per-request is what makes an
+	// expensive route cheap to flood, so the copy leads with that rather than
+	// with the syntax.
+	b.WriteString(`<div class="vs-feat"><div class="vs-adv vs-adv--open">`)
+	b.WriteString(vsArea("sh_route_costs", "What a route costs to serve",
+		`The availability lane counts every request as one, so a full-text search that takes 400 ms reserves exactly as much capacity as a cached article that takes 2 ms — which is why aiming a flood at the expensive route works at a fraction of the rate. Weight a route and it reserves that many slots, so filling the lane costs roughly what serving it costs this server. One rule per line: a path or a hostname, an optional method, then the weight. Unlisted routes stay at 1, and a weight is capped so no route can be configured offline.`,
+		"/search 8\n/feed 3\nPOST /contact 6\nmcp.example.com 2", get(settings.KeyShieldRouteCosts)))
+	b.WriteString(`</div></div>`)
+
+	// Malformed entries are named. One typo must not lose the other nine lines,
+	// and a silently dropped allow entry means the source it was protecting
+	// starts being challenged with nothing on screen to explain why.
+	if a.vayuShield != nil {
+		if issues := a.vayuShield.PolicyIssues(); len(issues) > 0 {
+			b.WriteString(`<div class="vs-feat"><p class="text-sm"><strong>` +
+				strconv.Itoa(len(issues)) + ` entr` + pluralY(len(issues)) +
+				` could not be read and are being ignored.</strong> Everything else on those lines is applied.</p><ul class="muted text-xs">`)
+			for _, s := range issues {
+				b.WriteString(`<li>` + html.EscapeString(s) + `</li>`)
+			}
+			b.WriteString(`</ul></div>`)
+		}
+	}
+	return b.String()
+}
+
+// pluralY picks the right ending for "entry"/"entries".
+func pluralY(n int) string {
+	if n == 1 {
+		return "y"
+	}
+	return "ies"
 }
 
 // shieldSelfTestChip summarises the self-test for the collapsed accordion, so a
@@ -1302,6 +1403,7 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		return "off"
 	}
 	num := func(field string) string { return strings.TrimSpace(r.PostFormValue(field)) }
+	area := func(field string) string { return clipPolicyField(r.PostFormValue(field)) }
 	// shieldSettings parses the numeric strings with safe fallbacks and
 	// ApplySettings clamps thresholds to (0,1].
 	kv := map[string]string{
@@ -1324,6 +1426,15 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		settings.KeyShieldGroupIPv4:      bs("sh_group_ipv4"),
 		settings.KeyShieldObserve:        bs("sh_observe"),
 		settings.KeyAnalyticsBeacon:      bs("sh_beacon"),
+
+		// The operator's own rules. Stored as typed, minus a size cap: these are
+		// paste targets, and an unbounded textarea is a way to put megabytes into
+		// a settings row that is then re-parsed on every save.
+		settings.KeyShieldAllowCIDRs:     area("sh_allow_cidrs"),
+		settings.KeyShieldDenyCIDRs:      area("sh_deny_cidrs"),
+		settings.KeyShieldAllowCountries: area("sh_allow_countries"),
+		settings.KeyShieldDenyCountries:  area("sh_deny_countries"),
+		settings.KeyShieldRouteCosts:     area("sh_route_costs"),
 	}
 	// Diff BEFORE the write, so the audit record says what actually changed
 	// rather than what was submitted. Nineteen keys went in here with no actor,
@@ -1389,6 +1500,16 @@ func vsRow(id, title, desc string, on, master bool) string {
 // vsField renders a compact labelled number input for a feature's advanced area.
 func vsField(id, label, val string) string {
 	return `<div class="vs-field"><label for="` + id + `">` + html.EscapeString(label) + `</label><input type="number" id="` + id + `" name="` + id + `" value="` + html.EscapeString(val) + `" step="any" min="0"></div>`
+}
+
+// vsArea renders a labelled multi-line policy field with a worked example in
+// the placeholder, because these fields take a syntax and an empty box that
+// takes a syntax teaches nobody anything.
+func vsArea(id, label, hint, placeholder, val string) string {
+	return `<div class="vs-field vs-field--area"><label for="` + id + `">` + html.EscapeString(label) + `</label>` +
+		`<textarea id="` + id + `" name="` + id + `" rows="4" spellcheck="false" placeholder="` +
+		html.EscapeString(placeholder) + `">` + html.EscapeString(val) + `</textarea>` +
+		`<p class="muted text-xs">` + hint + `</p></div>`
 }
 
 // vsStat renders a stat card (big number + label).
@@ -1545,7 +1666,87 @@ func (a *App) shieldSettings(ctx context.Context) vayushield.Settings {
 		Surge:                on(settings.KeyShieldSurge) || shieldEnvBool("VAYUSHIELD_SURGE", false),
 		GroupIPv4:            on(settings.KeyShieldGroupIPv4),
 		ObserveOnly:          on(settings.KeyShieldObserve),
+		Policy: policy.Config{
+			AllowCIDRs:     policyLines(g(settings.KeyShieldAllowCIDRs)),
+			DenyCIDRs:      policyLines(g(settings.KeyShieldDenyCIDRs)),
+			AllowCountries: policyLines(g(settings.KeyShieldAllowCountries)),
+			DenyCountries:  policyLines(g(settings.KeyShieldDenyCountries)),
+			Routes:         parseRouteCosts(g(settings.KeyShieldRouteCosts)),
+			OnionMode:      config.Cfg.OnionMode,
+		},
 	}
+}
+
+// policyLines splits an operator's pasted block into entries. Commas as well as
+// newlines, because a list copied out of a firewall config or an allowlist
+// field arrives either way and rejecting one of the two forms would read as a
+// bug in the product rather than in the paste.
+func policyLines(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	raw := strings.FieldsFunc(s, func(r rune) bool {
+		return r == '\n' || r == '\r' || r == ',' || r == ';'
+	})
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if v = strings.TrimSpace(v); v != "" && !strings.HasPrefix(v, "#") {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// parseRouteCosts reads the route-weight block: one "<path> <weight>" per line,
+// with an optional "# comment" tail.
+//
+//	/search   8     # a full-text query, ~400ms
+//	/feed     3
+//	POST /api 6
+//
+// A line without a usable weight is skipped rather than defaulted to 1. A
+// default would look identical to a correctly-parsed line while doing nothing,
+// and the whole point of the weight is that the operator chose the number.
+func parseRouteCosts(s string) []policy.Route {
+	var out []policy.Route
+	for _, line := range strings.Split(s, "\n") {
+		if i := strings.IndexByte(line, '#'); i >= 0 {
+			line = line[:i]
+		}
+		f := strings.Fields(line)
+		if len(f) < 2 {
+			continue
+		}
+		cost, err := strconv.Atoi(f[len(f)-1])
+		if err != nil || cost < 1 {
+			continue
+		}
+		rt := policy.Route{Cost: cost}
+		// An optional leading METHOD, so "POST /api 6" weights writes without
+		// weighting the reads on the same path.
+		path := f[0]
+		if len(f) >= 3 && isHTTPMethod(f[0]) {
+			rt.Methods = []string{strings.ToUpper(f[0])}
+			path = f[1]
+		}
+		if strings.HasPrefix(path, "/") {
+			rt.Prefix = path
+		} else {
+			rt.Host = path // a bare token is a host: "mcp.example.com 2"
+		}
+		rt.Name = strings.TrimSpace(path)
+		out = append(out, rt)
+	}
+	return out
+}
+
+func isHTTPMethod(s string) bool {
+	switch strings.ToUpper(s) {
+	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch,
+		http.MethodDelete, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	return false
 }
 
 // readCappedJSON decodes a size-capped JSON request body into v.

@@ -9,6 +9,61 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **Your own rules — allow/deny networks, country verdicts, and what a route
+  costs to serve.** Everything else in the shield reaches a verdict by
+  inference — a score, a sketch, a reputation — which is why those gates end in
+  a challenge the visitor can solve. There was no way for an operator to state a
+  *fact*. Now there is, in a new "Your own rules" band on the VayuShield console,
+  and the two kinds are handled differently on purpose: a heuristic that is wrong
+  about someone costs them a puzzle, and a rule an operator wrote down does
+  exactly what it says.
+
+  The gate sits **ahead of the verified-session short-circuit**, in both
+  directions. A denied network stays denied even when it arrives holding a solved
+  proof of work — a rule a client can escape by solving a puzzle is not a rule.
+  And an allowed network skips every gate *including the jail*, because this is
+  the control an operator uses to get back into their own site after a
+  false-positive run, and an escape hatch that is itself subject to the sentence
+  is no escape hatch. A deny entry beats an allow entry covering the same
+  address, so a trusted `/24` can still refuse one host inside it.
+
+  **Route weights fix a real asymmetry in the availability lane.** It counted
+  every public request as one slot, so a full-text search that takes 400 ms
+  reserved exactly as much capacity as a cached article that takes 2 ms — which
+  meant aiming a flood at the expensive route saturated the lane at a fraction of
+  the request rate the cheap one needed. A weighted route reserves that many
+  slots, so filling the lane costs an attacker roughly what serving it costs the
+  server. Weights are capped at a quarter of the live ceiling: a number larger
+  than the cap would mean the first request on that route already exceeds the
+  budget and every request on it sheds forever, which is an admission controller
+  configured into being the outage it exists to prevent.
+
+  Both country fields and both address fields are **inert in a Tor Space**, and
+  the allow list is why rather than the deny list. Every peer there is
+  `127.0.0.1`, so a deny list can only refuse everyone or nobody — useless, but
+  survivable. An allow entry as ordinary as `127.0.0.1`, written for a health
+  check on a clearnet install, would match *every* visitor to the onion and hand
+  each one the operator-trusted bypass past every gate in the shield. Country
+  rules are inert for the matching reason: a lookup returns the server's own
+  location for every visitor, so the rule would refuse everyone or serve everyone
+  while appearing to do geography. Saved values are kept and apply on clearnet;
+  the panel says which are disabled rather than showing them as configured.
+
+  Malformed entries are **skipped and named** rather than dropped. One typo in
+  ten lines must not lose the other nine — and it must not be silent either,
+  because a silently discarded allow entry means the source it was protecting
+  starts being challenged with nothing on screen to explain why. Fields are
+  bounded and truncate on a line boundary, so a clipped paste never reports a
+  parse error the operator did not make.
+
+  Amnesty deliberately does **not** touch any of this. "Release all sentences"
+  lifts the shield's own verdicts; an operator's deny list is not a verdict, and
+  silently emptying it would start serving exactly the networks they had decided
+  not to serve. The two new gates declare that answer in the enforcement-contract
+  registry alongside their Tor and crawler obligations — including that they gate
+  confirmed search-engine crawlers on purpose, with the de-indexing consequence
+  stated, because that is the operator's call to make about their own list rather
+  than one the shield quietly overrides.
 - **A behavioural scorer — what a client does, not what it claims to be.** Every
   other signal is either transport-derived (empty behind a TLS-terminating
   proxy) or a header the client sets itself, which is why a scraper that simply

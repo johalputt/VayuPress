@@ -43,6 +43,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/calibrate"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
 	"github.com/johalputt/vayupress/internal/vayushield/fingerprint"
+	"github.com/johalputt/vayupress/internal/vayushield/policy"
 	"github.com/johalputt/vayupress/internal/vayushield/prefilter"
 	"github.com/johalputt/vayupress/internal/vayushield/resilience"
 	"github.com/johalputt/vayupress/internal/vayushield/scorer"
@@ -250,6 +251,13 @@ type Settings struct {
 	// — and while it is on the site is undefended, which the panel, the posture
 	// report and the boot log all say plainly.
 	ObserveOnly bool
+
+	// Policy is the operator's own rules — allow/deny networks, country
+	// verdicts, route weights. It rides in Settings rather than in a separate
+	// setter so there is exactly ONE path that applies operator configuration:
+	// two paths would eventually mean a save that updated the thresholds and
+	// silently left the deny list on its previous value.
+	Policy policy.Config
 }
 
 // Manager is the live bot-protection + resilience engine.
@@ -298,6 +306,16 @@ type Manager struct {
 
 	// redeemer makes a solved proof of work spendable exactly once.
 	redeemer *challenge.Redeemer
+
+	// policy holds the operator's own rules — allow/deny networks, country
+	// verdicts, per-route cost. Swapped atomically because it is read on every
+	// request and written only when an operator saves.
+	policy atomic.Pointer[policy.Rules]
+
+	// policyIssues are the entries the last compile could not parse, kept so the
+	// panel can name them. A rule an operator wrote and the shield silently threw
+	// away is worse than one it refused loudly.
+	policyIssues atomic.Pointer[[]string]
 
 	// behaviour scores a client by what it DOES, which is the one signal a
 	// client cannot fake for free. Every other input is either transport-derived
@@ -523,6 +541,14 @@ func (m *Manager) ApplySettings(s Settings) {
 	}
 	m.jailTTLns.Store(int64(time.Duration(jm) * time.Minute))
 
+	// The operator's own rules. Malformed entries are skipped and REMEMBERED
+	// rather than dropped: a silently discarded allow entry means the source it
+	// was protecting starts getting challenged with no visible cause, which is
+	// close to undiagnosable from the operator's side of the screen.
+	rules, badPolicy := policy.Compile(s.Policy)
+	m.policy.Store(&rules)
+	m.policyIssues.Store(&badPolicy)
+
 	m.liveCfg.Store(&liveConfig{
 		enabled:     s.Enabled,
 		pow:         clamp(s.PoWThreshold, 0.4),
@@ -697,6 +723,8 @@ const (
 	GateSurge                  // Sovereign Surge's up-front interstitial
 	GateChallenge              // the classification ladder's PoW/JS challenge
 	GateBlock                  // the ladder's hard block or tarpit
+	GatePolicyDeny             // an operator's own allow/deny list
+	GateGeoDeny                // an operator's own country rules
 	gateCount
 )
 
@@ -705,6 +733,47 @@ const (
 var GateNames = [gateCount]string{
 	"blocklist", "reputation", "load_shed", "fair_shed",
 	"rate_limit", "surge", "challenge", "block",
+	"policy_deny", "geo_deny",
+}
+
+// SetPolicy installs the operator's own rules. Safe to call at any time.
+// ApplySettings is the normal path; this exists for tests and for callers that
+// compile a rule set themselves.
+func (m *Manager) SetPolicy(r policy.Rules) { m.policy.Store(&r) }
+
+// PolicyIssues returns the operator-written entries the last compile could not
+// parse, so the panel can name them instead of leaving a typo to be discovered
+// by its effect.
+func (m *Manager) PolicyIssues() []string {
+	if p := m.policyIssues.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
+
+// Policy returns the live rules. Never nil.
+func (m *Manager) Policy() policy.Rules {
+	if p := m.policy.Load(); p != nil {
+		return *p
+	}
+	return policy.Rules{}
+}
+
+// RouteCost reports how many sovereignty-lane slots a request should reserve,
+// per the operator's route weights. Always at least 1.
+//
+// Costs nothing on an install that has configured no policy, which is nearly
+// all of them: the compiled rule set reports itself empty and the path returns
+// before touching the request at all.
+func (m *Manager) RouteCost(r *http.Request) int {
+	if m == nil || r == nil || r.URL == nil {
+		return 1
+	}
+	pol := m.Policy()
+	if pol.Empty() {
+		return 1
+	}
+	return pol.CostOf(r.Host, r.URL.Path, r.Method)
 }
 
 // observing reports whether observe-only mode is engaged and, when it is,
@@ -1214,6 +1283,43 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		}
 
 		ipKey := ipOnly(m.cfg.ClientIP(r))
+
+		// The operator's own rules, before anything the shield infers.
+		//
+		// Placed ahead of the verified-session short-circuit deliberately. Every
+		// other gate below yields to a signed session, because a visitor who solved
+		// a challenge has proved something about themselves. An operator's DENY has
+		// not been out-argued by that proof: they said not to serve this network,
+		// and a rule that a client can escape by solving a puzzle is not a rule.
+		//
+		// The symmetric case is the reason ALLOW sits here too: it is the escape
+		// hatch that gets an operator back into their own site after a
+		// false-positive run, and an escape hatch that is itself subject to the
+		// jail is no escape hatch.
+		if pol := m.Policy(); !pol.Empty() {
+			switch pol.Source(ipKey) {
+			case policy.VerdictDeny:
+				if !m.observing(lc, GatePolicyDeny) {
+					reqclass.MarkShielded(r.Context())
+					m.onEvent(ActionBlock, 1.0)
+					m.serveJailed(w, r, ipKey, "operator policy")
+					return
+				}
+			case policy.VerdictAllow:
+				m.onEvent(ActionAllow, 0)
+				next.ServeHTTP(w, r)
+				return
+			}
+			if m.cfg.CountryFn != nil && pol.GeoActive() {
+				if pol.Country(m.cfg.CountryFn(ipKey)) == policy.VerdictDeny &&
+					!m.observing(lc, GateGeoDeny) {
+					reqclass.MarkShielded(r.Context())
+					m.onEvent(ActionBlock, 1.0)
+					m.serveJailed(w, r, ipKey, "operator geo policy")
+					return
+				}
+			}
+		}
 
 		// enfKey is the identity the DURABLE gates count against — the /64 for
 		// IPv6, and the /24 for IPv4 only when the operator opted in. Keyed on the

@@ -159,7 +159,44 @@ var rules = []Rule{
 			"so a single mis-scored browser is never simply shown a wall.",
 		Amnesty: func(m *Manager) int { return 0 }, // shares the blocklist and brain, released above
 	},
+	{
+		Gate: GatePolicyDeny, Name: "operator policy",
+		Onion: OnionInert, Crawler: CrawlerGated, Lifetime: ExplicitlyPermanent,
+		Rationale: "Gates verified crawlers on purpose. Every other rule here yields to a confirmed " +
+			"search engine because the shield INFERRED something and could be wrong; this one is a " +
+			"fact the operator wrote down. Refusing a crawler will de-index whatever it was reading, " +
+			"and that is the operator's call to make about their own network list rather than one " +
+			"the shield quietly overrides — the panel says so next to the field. Inert in a Tor " +
+			"Space: every peer is 127.0.0.1, so a deny list refuses everyone or nobody, and an allow " +
+			"entry as ordinary as 127.0.0.1 would match every visitor and hand each one the " +
+			"operator-trusted bypass past every gate below. Permanent because it is configuration, " +
+			"not a sentence; the operator lifts it by editing the list.",
+		Amnesty: amnestyNotConfiguration,
+	},
+	{
+		Gate: GateGeoDeny, Name: "operator geo policy",
+		Onion: OnionInert, Crawler: CrawlerGated, Lifetime: ExplicitlyPermanent,
+		Rationale: "Same standing as the address list, and the same indexing consequence, with one " +
+			"extra hazard worth stating: a crawler pool is spread across countries, so refusing a " +
+			"country can de-index a site through a crawler the operator never associated with it. " +
+			"Inert in a Tor Space, where a country lookup returns the SERVER's own location for " +
+			"every visitor — a rule built on that would refuse everyone or serve everyone while " +
+			"appearing to do geography, which is worse than having no rule at all.",
+		Amnesty: amnestyNotConfiguration,
+	},
 }
+
+// amnestyNotConfiguration is the amnesty answer for a rule the operator wrote
+// themselves, and returning zero here is the behaviour rather than a stub.
+//
+// Amnesty lifts the shield's OWN verdicts — the jail, the reputation sentence,
+// everything reached by inference — so that an operator who mis-tuned a
+// threshold or ran a load test against their own site can undo the damage in one
+// click. It must not touch the allow/deny lists, because those are not damage:
+// silently emptying an operator's deny list because they pressed "release
+// everyone" would serve exactly the networks they had decided not to serve, and
+// they would have no reason to suspect it. A test pins this.
+func amnestyNotConfiguration(*Manager) int { return 0 }
 
 // Complete reports whether every obligation has been answered. The zero value of
 // each policy is not an answer, so a Rule literal that omits a field fails here

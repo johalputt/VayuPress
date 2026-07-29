@@ -5253,6 +5253,29 @@
 .vp-os .vs-field--tog { flex-direction: row; align-items: center; gap: var(--sp-3); }
 .vp-os .vs-field--tog label { text-transform: none; font-size: var(--text-sm); color: var(--text); }
 
+/* ── Operator policy fields ──────────────────────────────────────
+   vs-adv--open is an advanced block with no master toggle above it: the
+   operator's own allow/deny lists are the section, not a detail of one, so
+   they must be visible without a switch to reveal them. */
+.vp-os .vs-adv--open { display: flex; }
+.vp-os .vs-field--area { flex: 1 1 22rem; min-width: 0; }
+.vp-os .vs-field--area textarea {
+  width: 100%;
+  min-height: 5.5rem;
+  resize: vertical;
+  background: var(--bg-base);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  border-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+.vp-os .vs-field--area textarea:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-glow); }
+.vp-os .vs-field--area textarea::placeholder { color: var(--text-3); opacity: 0.7; }
+.vp-os .vs-field--area p { margin: 0; max-width: 62ch; }
+
 /* ── Save bar ────────────────────────────────────────────────── */
 .vp-os .vs-save { display: flex; align-items: center; gap: var(--sp-4); padding-top: var(--sp-5); margin-top: var(--sp-4); border-top: 1px solid var(--border); flex-wrap: wrap; }
 

@@ -183,7 +183,16 @@ func (a *App) sovereignMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		release, ok := a.sovereign.Admit(a.isSovereignLane(r))
+		// The weight is only consulted for public traffic, and only when the
+		// operator has actually written route rules — a priority request never
+		// touches the public budget, and an install with no policy short-circuits
+		// on an empty rule set.
+		priority := a.isSovereignLane(r)
+		cost := 1
+		if !priority {
+			cost = a.vayuShield.RouteCost(r)
+		}
+		release, ok := a.sovereign.AdmitCost(priority, cost)
 		if !ok {
 			// Public overflow during saturation. Shed cheaply so the CPU we save
 			// keeps the admin plane and verified readers responsive. 503 (not a
