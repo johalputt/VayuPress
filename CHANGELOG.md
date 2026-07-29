@@ -190,6 +190,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   this on every boot. The base chain keeps `policy accept` so no rule here can
   lock an operator out of SSH.
 
+### Changed
+- **Copy that the product's own posture report contradicts.** The shield now
+  carries a permanent row stating that volumetric absorption is not provided by
+  this or any single-origin product, so marketing copy claiming otherwise is
+  worse than either statement alone — an operator who reads one and relies on the
+  other finds out during an attack.
+
+  Corrected, and pinned by a test: the site card claimed *"keeps Save and refresh
+  working even during a volumetric flood"* and carried a bullet reading
+  *"Admin-sovereignty lane survives a volumetric flood"* directly beneath a blurb
+  saying the shield cannot absorb one. "anti-DDoS" is gone from the README
+  heading, the site tag and the comparison table.
+
+  The engine's own Sovereign Surge comment claimed it "lets a single VPS absorb a
+  distributed 1M-source swarm with no CDN". Surge genuinely makes the
+  per-request cost of an unproven client one HMAC instead of a fingerprint, a
+  SQLite read and a render. What it cannot change is what a source costs to
+  *reach* the process: a million sources is a million TCP and a million TLS
+  handshakes on one uplink, and that is what saturates first. The comment now
+  says so, and says that a benchmark of the HMAC path measures the HMAC and not
+  the uplink — a result from one instance type being no promise about another.
+
+- **Shield settings changes are attributed.** Nineteen keys were writable with no
+  actor, no diff and no revert, so an operator who found the shield behaving
+  oddly had no way to learn that a threshold had moved, when, or from what. Saves
+  now record who changed what, diffed before the write and limited to keys that
+  actually changed — logging all nineteen on every save would bury the one that
+  matters.
+
 ### Fixed
 - **Two CI-only test failures, both from the same mistake.** New tests shelled out
   to the real `nft` and read a non-zero exit as "nftables rejected this content".

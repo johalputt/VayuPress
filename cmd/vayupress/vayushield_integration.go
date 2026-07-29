@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/netip"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -1315,9 +1316,32 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		settings.KeyShieldObserve:        bs("sh_observe"),
 		settings.KeyAnalyticsBeacon:      bs("sh_beacon"),
 	}
+	// Diff BEFORE the write, so the audit record says what actually changed
+	// rather than what was submitted. Nineteen keys went in here with no actor,
+	// no diff and no revert: an operator who found the shield behaving oddly had
+	// no way to learn that someone had moved a threshold, or when, or from what.
+	//
+	// Only changed keys are recorded. Logging all nineteen on every save would
+	// bury the one that matters, which is the same as not logging it.
+	changed := make([]string, 0, len(kv))
+	for k, v := range kv {
+		if prev := a.siteSettings.Get(r.Context(), k); prev != v {
+			changed = append(changed, k+": "+prev+" → "+v)
+		}
+	}
+	sort.Strings(changed) // map iteration order is random; a diff must be stable
+
 	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
+	}
+	if len(changed) > 0 {
+		// Attributed: who, and what moved. dbpkg.AuditActor resolves the real
+		// client through the trusted-proxy chain, so behind a proxy this records
+		// the operator rather than the edge.
+		dbpkg.AuditLog("vayushield.settings", dbpkg.AuditActor(r), "shield",
+			strings.Join(changed, "; "))
+		logging.LogInfo("vayushield", "settings changed by "+dbpkg.AuditActor(r)+": "+strings.Join(changed, "; "))
 	}
 	a.vayuShield.ApplySettings(a.shieldSettings(r.Context()))
 	// "Behind Cloudflare/CDN" trust applies live (no restart): from now on the

@@ -5,6 +5,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -216,5 +217,59 @@ func TestSparseHoursAreOmittedFromTheRate(t *testing.T) {
 	}
 	if !strings.Contains(out, "50%") {
 		t.Errorf("the 40-sample hour's rate is missing:\n%s", out)
+	}
+}
+
+// --- Copy honesty --------------------------------------------------------------
+
+// TestNoCopyClaimsVolumetricAbsorption — the product's own posture report carries
+// a permanent Fail row saying volumetric absorption is not provided by this or
+// any single-origin product. Marketing copy that contradicts it is worse than
+// either statement alone: an operator who reads one and relies on the other
+// finds out during an attack.
+//
+// This is a real regression, not a hypothetical. The site card carried a bullet
+// reading "Admin-sovereignty lane survives a volumetric flood" directly beneath a
+// blurb saying the shield cannot absorb one.
+func TestNoCopyClaimsVolumetricAbsorption(t *testing.T) {
+	for _, f := range []string{"../../README.md", "../../docs/site/assets/app.js"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
+		}
+		body := string(b)
+		for _, claim := range []string{
+			"survives a volumetric flood",
+			"even during a volumetric flood",
+			"absorb a distributed",
+			"anti-DDoS",
+		} {
+			if strings.Contains(body, claim) {
+				t.Errorf("%s contains %q — the posture report states that no single origin "+
+					"can do this, and the two must not disagree", f, claim)
+			}
+		}
+	}
+}
+
+// TestSurgeClaimStatesItsLimits — surge genuinely makes the per-request cost of
+// an unproven client one HMAC. What it cannot change is what a source costs to
+// REACH the process: a million sources is a million TCP and TLS handshakes on one
+// uplink, and that is what saturates first. A benchmark of the HMAC path is not
+// a measurement of uplink survival, and a number from one instance type is not a
+// promise about another.
+func TestSurgeClaimStatesItsLimits(t *testing.T) {
+	b, err := os.ReadFile("../../internal/vayushield/vayushield.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(b)
+	if strings.Contains(body, "lets a single VPS absorb a distributed 1M-source swarm") {
+		t.Error("the unqualified surge claim is back in the engine")
+	}
+	for _, want := range []string{"uplink", "TLS handshakes"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the surge comment no longer names the real ceiling (%q missing)", want)
+		}
 	}
 }

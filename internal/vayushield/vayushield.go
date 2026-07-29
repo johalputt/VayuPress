@@ -1336,8 +1336,17 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// adaptive-signature SELECT). A real browser solves it once in a Web Worker
 		// (<100 ms) and rides the verified lane thereafter; a client that will not
 		// run JS never reaches fingerprinting, SQLite or rendering — it costs one
-		// HMAC. This is what lets a single VPS absorb a distributed 1M-source swarm
-		// with no CDN. Recognised search-engine/AI crawlers already took the SEO
+		// HMAC.
+		//
+		// The measured claim, and its limits. Surge makes the PER-REQUEST cost of
+		// an unproven client one HMAC instead of a fingerprint, a SQLite read and
+		// a render — genuinely the difference between absorbing an
+		// application-layer flood and collapsing under it. What it does NOT do is
+		// change what a source costs to REACH this code: a million sources is a
+		// million TCP handshakes and a million TLS handshakes on one uplink, and
+		// that is what saturates first. Any benchmark of this path measures the
+		// HMAC, not the uplink, and a number from one instance type is not a
+		// promise about another. Recognised search-engine/AI crawlers already took the SEO
 		// fast path at gate 0, so surge never challenges them — that is what stops a
 		// flood from de-indexing the site; every other unproven client is challenged
 		// here. (Gate-0 recognition is UA-only in Phase 1; Phase 2's published-IP +
