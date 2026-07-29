@@ -3,10 +3,14 @@
 package intel
 
 import (
+	"context"
 	"math/rand"
 	"net/netip"
 	"strconv"
+	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/safefetch"
 )
 
 func mustPrefixes(t *testing.T, ss ...string) []netip.Prefix {
@@ -263,5 +267,176 @@ func BenchmarkContains(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		s.Contains(a)
+	}
+}
+
+// ── feeds ────────────────────────────────────────────────────────────────────
+
+// TestEveryShippedFeedIsCoherent — a feed definition with a wrong kind or a
+// missing parser is a feed that either does nothing or does the wrong thing, and
+// both are silent.
+func TestEveryShippedFeedIsCoherent(t *testing.T) {
+	seen := map[string]bool{}
+	for _, f := range DefaultFeeds() {
+		if f.ID == "" || seen[f.ID] {
+			t.Errorf("feed %q has a missing or duplicate ID — the ID keys its cache file and its "+
+				"opt-in setting, so a collision silently shares both", f.ID)
+		}
+		seen[f.ID] = true
+		if !f.Kind.Valid() {
+			t.Errorf("feed %q states no kind", f.ID)
+		}
+		if f.Parse == nil {
+			t.Errorf("feed %q has no parser", f.ID)
+		}
+		if !strings.HasPrefix(f.URL, "https://") {
+			t.Errorf("feed %q is not fetched over https (%q). Plain http means anyone on the "+
+				"path chooses what this install treats as hostile", f.ID, f.URL)
+		}
+		if strings.TrimSpace(f.Note) == "" {
+			t.Errorf("feed %q says nothing about its provenance. \"Trust this list\" is not a "+
+				"thing to ask without naming whose list it is", f.ID)
+		}
+	}
+}
+
+// TestOnlyConservativeListsMayDeny — the datacenter tier is evidence and the
+// hostile tier is grounds to refuse, so what lands in the second one is a much
+// sharper decision. A community abuse aggregation in KindHostile would start
+// denying real readers on a third party's false positive.
+func TestOnlyConservativeListsMayDeny(t *testing.T) {
+	for _, f := range DefaultFeeds() {
+		if f.Kind != KindHostile {
+			continue
+		}
+		if !strings.Contains(strings.ToLower(f.Note), "conservative") {
+			t.Errorf("feed %q may DENY but its note does not state why it is conservative enough "+
+				"to. Only lists that are conservative by construction belong in this tier", f.ID)
+		}
+	}
+}
+
+// TestAParserRefusesADocumentThatIsNotItsOwn.
+//
+// The failure this guards against is not a malformed line, it is an endpoint that
+// starts serving something else — a login page, an error document, another
+// vendor's list. A tolerant parser scanning for anything CIDR-shaped would keep
+// "working" through that, which is the opposite of what is wanted from the one
+// feed permitted to deny.
+func TestAParserRefusesADocumentThatIsNotItsOwn(t *testing.T) {
+	notOurs := [][]byte{
+		[]byte("<html><body>Access denied</body></html>"),
+		[]byte("{\"error\":\"forbidden\"}"),
+		[]byte(""),
+		[]byte("\n\n\n"),
+		[]byte("; only comments\n; and nothing else\n"),
+	}
+	for _, b := range notOurs {
+		if _, err := parseDROP(b); err == nil {
+			t.Errorf("the DROP parser accepted %.40q — an endpoint serving something else would "+
+				"silently replace the blocklist", b)
+		}
+	}
+	// Its real shape still parses, comments and trailing SBL ids and all.
+	good := []byte("; Spamhaus DROP List\n192.0.2.0/24 ; SBL123\n198.51.100.0/22 ; SBL456\n\n")
+	got, err := parseDROP(good)
+	if err != nil {
+		t.Fatalf("the real format was rejected: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("parsed %d prefixes from the real format, want 2", len(got))
+	}
+}
+
+// TestTheCloudParsersReadTheirOwnShapes — and refuse each other's, because a
+// feed URL that silently started returning a different vendor's document would
+// otherwise be applied without complaint.
+func TestTheCloudParsersReadTheirOwnShapes(t *testing.T) {
+	aws := []byte(`{"prefixes":[{"ip_prefix":"3.5.140.0/22"}],"ipv6_prefixes":[{"ipv6_prefix":"2600:1f00::/24"}]}`)
+	gcp := []byte(`{"prefixes":[{"ipv4Prefix":"34.80.0.0/15"},{"ipv6Prefix":"2600:1900::/28"}]}`)
+
+	if got, err := parseAWS(aws); err != nil || len(got) != 2 {
+		t.Errorf("the AWS parser read its own format as %v (%v), want 2 prefixes", got, err)
+	}
+	if got, err := parseGCP(gcp); err != nil || len(got) != 2 {
+		t.Errorf("the GCP parser read its own format as %v (%v), want 2 prefixes", got, err)
+	}
+	// Cross-fed, each yields nothing usable and must say so rather than return
+	// an empty set that would be applied as "this vendor now owns no addresses".
+	if _, err := parseAWS(gcp); err == nil {
+		t.Error("the AWS parser accepted a GCP document and produced no prefixes without erroring")
+	}
+	if _, err := parseGCP(aws); err == nil {
+		t.Error("the GCP parser accepted an AWS document and produced no prefixes without erroring")
+	}
+}
+
+// TestAFeedIsOffUntilAnOperatorTurnsItOn — these are third-party lists with
+// third-party terms, some restricting commercial use. Shipping one enabled would
+// make that decision on the operator's behalf, and would also mean every install
+// fetching from an endpoint nobody chose.
+func TestAFeedIsOffUntilAnOperatorTurnsItOn(t *testing.T) {
+	f := NewFetcher(t.TempDir())
+	for _, def := range DefaultFeeds() {
+		f.Add(def, false)
+	}
+	for _, st := range f.Statuses() {
+		if st.Enabled {
+			t.Errorf("feed %q registered as enabled", st.ID)
+		}
+		if st.Entries != 0 {
+			t.Errorf("feed %q holds %d entries while disabled", st.ID, st.Entries)
+		}
+	}
+	// And a disabled feed matches nothing, rather than merely being hidden.
+	if k, _ := f.Match("3.5.140.1"); k.Valid() {
+		t.Errorf("a disabled feed produced the verdict %v", k)
+	}
+}
+
+// TestHostileBeatsDatacenter — a source in both answers two different questions,
+// and the operator-relevant answer is the one that can refuse.
+func TestHostileBeatsDatacenter(t *testing.T) {
+	f := NewFetcher(t.TempDir())
+	both := "192.0.2.0/24"
+	f.Add(Feed{ID: "dc", Name: "dc", Kind: KindDatacenter, URL: "https://x", Note: "n",
+		Parse: func([]byte) ([]netip.Prefix, error) { return nil, nil }}, true)
+	f.Add(Feed{ID: "bad", Name: "bad", Kind: KindHostile, URL: "https://x", Note: "n",
+		Parse: func([]byte) ([]netip.Prefix, error) { return nil, nil }}, true)
+
+	f.mu.Lock()
+	f.feeds["dc"].live.Store(mustSet(t, KindDatacenter, "dc", both))
+	f.feeds["bad"].live.Store(mustSet(t, KindHostile, "bad", both))
+	f.mu.Unlock()
+
+	if k, src := f.Match("192.0.2.7"); k != KindHostile {
+		t.Errorf("an address in both a datacenter and a hostile list resolved to %v (%s), want "+
+			"hostile — the two answer different questions and only one of them can refuse", k, src)
+	}
+}
+
+// TestATorSpaceMakesNoOutboundRequest — a feed refresh is a clearnet callback,
+// and ADR-0141 forbids those there. The reason must also be RECORDED per feed,
+// because a layer that silently makes no requests is indistinguishable from one
+// that is broken.
+func TestATorSpaceMakesNoOutboundRequest(t *testing.T) {
+	safefetch.SetBlockClearnetEgress(true)
+	t.Cleanup(func() { safefetch.SetBlockClearnetEgress(false) })
+
+	f := NewFetcher(t.TempDir())
+	f.Add(Feed{ID: "x", Name: "x", Kind: KindHostile, URL: "https://example.invalid/list",
+		Note: "conservative", Parse: parseDROP}, true)
+	f.Refresh(context.Background())
+
+	st := f.Statuses()
+	if len(st) != 1 {
+		t.Fatalf("want one feed, got %d", len(st))
+	}
+	if st[0].LastError == "" {
+		t.Error("a Tor Space refresh recorded no reason. A layer that silently does nothing " +
+			"looks exactly like one that is working")
+	}
+	if !strings.Contains(strings.ToLower(st[0].LastError), "clearnet") {
+		t.Errorf("the recorded reason does not name the cause: %q", st[0].LastError)
 	}
 }

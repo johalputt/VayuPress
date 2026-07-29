@@ -46,6 +46,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   the exact two shapes it exists to refuse. A feed's size is what it published,
   not what the lookup structure compressed it to.
 
+- **Four published network feeds, every one of them off until you turn it on.**
+  AWS, Google Cloud and DigitalOcean published ranges classify a source as
+  datacenter; Spamhaus DROP is the only list here permitted to deny.
+
+  The bar for each tier is different and deliberate. A **datacenter** feed must be
+  **first-party** — published by the network operator about their own address
+  space. AWS saying which ranges are AWS is not an opinion, it is a fact from the
+  only party who knows. That is why there is no aggregated "known VPN and hosting
+  IPs" list: those are compiled by third parties from inference, and inference
+  about someone's connection must not silently cost a reader access. A **hostile**
+  feed must be **conservative by construction** — DROP qualifies because of what
+  it is, netblocks hijacked or under criminal control whose publisher's own
+  guidance is not to route to them. Community abuse aggregations do not qualify,
+  however useful, because they carry a real false-positive rate and this tier can
+  deny.
+
+  Each feed gets **its own parser** rather than one tolerant scanner, and the DROP
+  parser fails the entire document on a line that is neither a comment nor a
+  prefix. A parser loose enough to accept all four shapes would also accept a
+  hijacked response resembling none of them. An empty or unrecognised body is
+  refused outright: a 200 that parses to nothing would otherwise be applied as
+  "this list is now empty", silently disarming the layer while every indicator
+  still read healthy.
+
+  Fetches go through `safefetch`, so the SSRF barrier covers operator-supplied
+  URLs and a **Tor Space makes no outbound request at all** — the block is
+  recorded per feed rather than left to look like a working feed that never
+  changes. Refresh fails soft per feed and keeps the last-good set, because the
+  alternative is that one unreachable endpoint disarms a layer and turns a third
+  party's outage into this site's vulnerability. The cache stores the **raw bytes**
+  and re-parses them at boot; caching the compiled set would mean converting
+  merged ranges back to prefixes, which loses the published entry count — and that
+  count is the baseline the next refresh's delta bound is measured against.
+
+  Every feed ships **disabled** and the panel names the publisher, so an operator
+  opts in to a source they have chosen rather than to a URL somebody embedded.
+  These are third-party lists with third-party terms, some restricting commercial
+  use, and that is the operator's call to make.
+
 - **VayuShield is readable over MCP — and only readable.** Five tools:
   `vayushield_status` (live state and every layer counter), `vayushield_posture`
   (the full report with each control's verdict and reasoning),
