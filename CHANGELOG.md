@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.1] — 2026-07-29
 
 ### Security
 - **The gossip endpoint was an unmetered compute sink on the protected lane.**
