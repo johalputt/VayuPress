@@ -159,6 +159,13 @@ func TestTemplateIsAcceptedByNginx(t *testing.T) {
 
 	// Neutralise what a sandbox cannot provide — certificates, privileged ports,
 	// IPv6 — and validate everything else for real.
+	//
+	// The absolute paths are rewritten for the same reason, and that one was
+	// learned the hard way: nginx CREATES a proxy_cache_path directory during
+	// `-t`, so the template's /var/cache/nginx failed with "No such file or
+	// directory" on a machine that had never run nginx. It passed locally only
+	// because an earlier manual probe had created that directory as a side
+	// effect — the test was reading the machine's history, not the config.
 	src := readNginxTemplate(t)
 	for _, r := range [][2]string{
 		{"ssl_certificate", "#ssl_certificate"},
@@ -167,8 +174,16 @@ func TestTemplateIsAcceptedByNginx(t *testing.T) {
 		{"listen 443 ssl default_server;", "listen 18443 default_server;"},
 		{"listen 80 default_server;", "listen 18081 default_server;"},
 		{"listen 80;", "listen 18082;"},
+		{"/var/cache/nginx", dir + "/ngxcache"},
+		{"/var/cache/vayupress", dir + "/vpcache"},
+		{"/opt/vayupress", dir + "/opt"},
 	} {
 		src = strings.ReplaceAll(src, r[0], r[1])
+	}
+	for _, d := range []string{"/ngxcache", "/vpcache", "/opt"} {
+		if err := os.MkdirAll(dir+d, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	var kept []string
 	for _, line := range strings.Split(src, "\n") {
