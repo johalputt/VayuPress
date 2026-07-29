@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.2] — 2026-07-29
 
 ### Changed
 - **The VayuShield page opens with four tiles instead of nine counters.** The
