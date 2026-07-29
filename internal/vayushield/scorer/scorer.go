@@ -28,6 +28,14 @@ type Input struct {
 	StaticMatch *botdb.Signature       // static UA match, or nil
 	Learned     *botdb.StoredSignature // adaptive-DB match by fingerprint, or nil
 	HasTLS      bool                   // whether TLS ClientHello signals were captured
+
+	// BehaviourDelta is the bounded contribution of the behavioural signals — how
+	// the client has ACTED, rather than what it claims to be. Applied only to the
+	// heuristic path below: an authoritative verdict (a compiled-in signature, or
+	// one the operator verified) already reflects a human's judgement, and moving
+	// it on a sketch would let heuristics override the person who set it.
+	BehaviourDelta   float64
+	BehaviourReasons []string
 }
 
 // Result is the scorer's verdict.
@@ -119,6 +127,10 @@ func Score(in Input) Result {
 	// 3) Heuristic scoring for unknown clients.
 	score := 0.25
 	reasons := []string{}
+	if in.BehaviourDelta != 0 {
+		score += in.BehaviourDelta
+		reasons = append(reasons, in.BehaviourReasons...)
+	}
 	s := in.Signals
 	fam := uaFamily(s.UserAgent)
 

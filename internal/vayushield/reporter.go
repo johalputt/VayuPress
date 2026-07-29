@@ -32,10 +32,27 @@ func (m *Manager) RunLearningCycle(ctx context.Context, retainDays int) (Learnin
 	if m.cfg.DB == nil {
 		return out, nil
 	}
-	const minSightings = 5
+	// "Recurring" needs a time window, and until now had none: five sightings
+	// spread over ninety days promoted exactly as five sightings in a minute. The
+	// first is a fingerprint that shows up occasionally — which describes a
+	// browser build, not a bot — and promoting it hard-blocks everyone using that
+	// build. The second is the recurring cluster this cycle is meant to catch.
+	//
+	// Two bounds, both required. The sightings must be CLUSTERED (first to last
+	// within promoteSpanDays), and the signature must still be ACTIVE (seen within
+	// promoteActiveDays), so a burst from last quarter cannot promote today.
+	const (
+		minSightings      = 5
+		promoteSpanDays   = 7
+		promoteActiveDays = 2
+	)
 	res, err := m.cfg.DB.ExecContext(ctx, `UPDATE vayushield_signatures
 SET classification='bad_bot', confidence=MAX(confidence,0.85), notes=CASE WHEN notes='' THEN 'auto-promoted: recurring bot-like fingerprint' ELSE notes END
-WHERE auto_learned=1 AND operator_verified=0 AND classification='unknown' AND request_count>=? AND false_positive_count=0`, minSightings)
+WHERE auto_learned=1 AND operator_verified=0 AND classification='unknown'
+  AND request_count>=? AND false_positive_count=0
+  AND julianday(last_seen) - julianday(first_seen) <= ?
+  AND julianday('now') - julianday(last_seen) <= ?`,
+		minSightings, promoteSpanDays, promoteActiveDays)
 	if err != nil {
 		return out, err
 	}

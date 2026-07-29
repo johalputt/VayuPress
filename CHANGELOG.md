@@ -8,6 +8,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **A behavioural scorer — what a client does, not what it claims to be.** Every
+  other signal is either transport-derived (empty behind a TLS-terminating
+  proxy) or a header the client sets itself, which is why a scraper that simply
+  sets a Chrome User-Agent scored 0.15 and was classified as a human. Behaviour
+  is the one input a client cannot fake without paying the cost of actually
+  behaving like a browser.
+
+  Three signals over a fixed 4096-slot table — atomics only, no locks, no
+  allocation on the request path, modelled on the L2 pre-filter: a high 404 ratio
+  over a real sample, fetching many distinct documents and none of their
+  sub-resources, and walking many distinct paths in a minute. Bounded to 0.35 by
+  construction, so behaviour can move an unknown client into a **solvable
+  challenge** and never on its own into a block — a test pins that against the
+  shipped thresholds rather than against the numbers happening to work out.
+
+  **Header coherence was built, tested and deliberately not shipped**, and the
+  reasoning is recorded in the source so it is not re-added without answering it.
+  Its false positives land on exactly the wrong people: privacy tooling strips
+  `Accept-Language` *on purpose*, because it is a fingerprinting surface, so
+  penalising its absence penalises the readers who care most — on a product that
+  ships a Tor Space. It also reclassified requests this repository's own test
+  corpus treats as browsers, which is evidence about the signal rather than about
+  the fixtures.
+
+### Fixed
+- **Auto-promotion had no time window.** Five sightings spread over ninety days
+  promoted a signature to `bad_bot` at 0.85 confidence exactly as five sightings
+  in a minute would. Those are opposite things: a fingerprint seen occasionally
+  over months is the shape of a browser *build*, and promoting it hard-blocks
+  everyone using that build. Promotion now requires the sightings to be clustered
+  (first to last within a week) **and** the signature to still be active (seen in
+  the last two days).
+
 ### Security
 - **One solved proof of work could admit an entire swarm.** `VerifyPoW` is
   stateless — HMAC, expiry, solution — and nothing recorded that a proof had been

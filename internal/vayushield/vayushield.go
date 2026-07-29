@@ -37,6 +37,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/dbbatch"
 	"github.com/johalputt/vayupress/internal/reqclass"
+	"github.com/johalputt/vayupress/internal/vayushield/behaviour"
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 	"github.com/johalputt/vayupress/internal/vayushield/brain"
 	"github.com/johalputt/vayupress/internal/vayushield/calibrate"
@@ -298,6 +299,13 @@ type Manager struct {
 	// redeemer makes a solved proof of work spendable exactly once.
 	redeemer *challenge.Redeemer
 
+	// behaviour scores a client by what it DOES, which is the one signal a
+	// client cannot fake for free. Every other input is either transport-derived
+	// (unavailable behind a TLS-terminating proxy) or a header the client sets
+	// itself — which is why a scraper that sets a Chrome User-Agent scores 0.15
+	// and is classified as a human.
+	behaviour *behaviour.Tracker
+
 	// wouldHave counts, per gate, the requests observe-only mode let through that
 	// enforcement would have stopped. Cumulative since boot, like every other
 	// counter here — the audit-trail aggregates carry the time dimension.
@@ -402,6 +410,7 @@ func New(cfg Config) *Manager {
 	m.brain = brain.New()
 	m.calib = calibrate.New()
 	m.redeemer = challenge.NewRedeemer()
+	m.behaviour = behaviour.New()
 	m.sigCache = sigcache.New(sigCacheTTL)
 	m.jailTTLns.Store(int64(10 * time.Minute))
 	// Seed the live config from the constructor Config (challenge tunables on,
@@ -895,6 +904,23 @@ func (m *Manager) Classify(r *http.Request) Verdict {
 	comp := sig.Fingerprint()
 
 	in := scorer.Input{Signals: sig, Composite: comp, HasTLS: hasTLS}
+
+	// Behavioural signals, as a second independent input.
+	//
+	// Independent is the operative word: every other input is either
+	// transport-derived — and empty behind a TLS-terminating proxy — or a header
+	// the client sets itself. Behaviour is the only one a client cannot fake
+	// without paying the cost of actually behaving like a browser.
+	//
+	// It is bounded on purpose (behaviour.MaxDelta) so it can move an unknown
+	// client into a solvable challenge and never, on its own, into a block. Each
+	// signal has a legitimate client that trips it — a feed reader fetches no
+	// assets, a broken link produces 404s — so a verdict from heuristics alone
+	// would be a verdict on the wrong person often enough to matter.
+	if m.behaviour != nil {
+		bs := m.behaviour.Observe(m.enforcementKey(ipOnly(m.cfg.ClientIP(r))), r.URL.Path, 0)
+		in.BehaviourDelta, in.BehaviourReasons = bs.Score()
+	}
 	if m.cfg.Static != nil {
 		if s, ok := m.cfg.Static.MatchUA(sig.UserAgent); ok {
 			in.StaticMatch = &s

@@ -111,3 +111,55 @@ func TestSolvedChallengeArmsFPGuard(t *testing.T) {
 		t.Fatal("a solved challenge must record a false positive for its fingerprint")
 	}
 }
+
+// TestPromotionRequiresARecentCluster — "recurring" needs a time window, and
+// until this the promotion query had none: five sightings spread over ninety
+// days promoted exactly as five in a minute.
+//
+// That difference matters more than it looks. A fingerprint seen occasionally
+// over months is what a browser BUILD looks like — and promoting it to bad_bot
+// at 0.85 confidence hard-blocks everyone using that build. A cluster of
+// sightings inside a week that is still active today is the recurring bot the
+// cycle exists to catch.
+func TestPromotionRequiresARecentCluster(t *testing.T) {
+	m, _, db := learningManager(t)
+	defer func() { _ = db.Close() }()
+
+	ins := func(fp string, first, last time.Time, count int) {
+		if _, err := db.Exec(`INSERT INTO vayushield_signatures
+(fingerprint_hash,classification,auto_learned,operator_verified,confidence,first_seen,last_seen,request_count,false_positive_count)
+VALUES(?,'unknown',1,0,0.5,?,?,?,0)`, fp, first, last, count); err != nil {
+			t.Fatalf("insert %s: %v", fp, err)
+		}
+	}
+	now := time.Now().UTC()
+
+	// The genuine recurring cluster: many sightings, inside a week, still active.
+	ins("recent-cluster", now.AddDate(0, 0, -3), now.Add(-time.Hour), 20)
+	// A fingerprint seen occasionally over months — a browser build's profile.
+	ins("long-tail", now.AddDate(0, 0, -90), now.Add(-time.Hour), 6)
+	// A tight cluster, but from last quarter: whatever it was, it is not here now.
+	ins("stale-burst", now.AddDate(0, 0, -60), now.AddDate(0, 0, -58), 40)
+
+	if _, err := m.RunLearningCycle(context.Background(), 0); err != nil {
+		t.Fatalf("learning cycle: %v", err)
+	}
+
+	class := func(fp string) string {
+		var c string
+		if err := db.QueryRow(`SELECT classification FROM vayushield_signatures WHERE fingerprint_hash=?`, fp).Scan(&c); err != nil {
+			t.Fatalf("read %s: %v", fp, err)
+		}
+		return c
+	}
+	if got := class("recent-cluster"); got != "bad_bot" {
+		t.Errorf("a recent, clustered, recurring signature was not promoted (got %q)", got)
+	}
+	if got := class("long-tail"); got != "unknown" {
+		t.Errorf("a signature seen six times across ninety days was promoted to %q — that is "+
+			"the shape of a browser build, and promoting it hard-blocks everyone using it", got)
+	}
+	if got := class("stale-burst"); got != "unknown" {
+		t.Errorf("a burst from two months ago was promoted to %q — it is not active now", got)
+	}
+}
