@@ -162,6 +162,8 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 		LinkSpeedMbps: linkSpeedMbps(),
 
 		Digest: readShieldDigest(),
+
+		IntelFeeds: a.shieldIntelAudit(),
 	}
 	if a.siteSettings != nil {
 		in.BehindCDN = a.siteSettings.Get(context.Background(), settings.KeyShieldBehindCDN) == "on"

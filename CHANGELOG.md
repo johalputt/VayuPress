@@ -129,6 +129,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   increment at a time. A test puts all three at maximum and checks the result
   still lands short of a block.
 
+- **Feeds are reported on the same standard as every other layer.** The posture
+  report gains a row per enabled feed, judged on what it holds rather than on the
+  toggle — the discipline that exists because Tier 3 once read "Active" while
+  every `limit_req` inside it was commented out. A feed switched on and holding
+  nothing is a **Warn**, not a pass: it is a setting, not a defence.
+
+  A refused refresh and a failed one are separate rows with separate wording,
+  because they look alike in a status column and mean opposite things. A
+  transport error is the publisher being unreachable; a refusal is the publisher
+  *answering* with something unlike what they served yesterday. The summary row
+  also states what the integrity bound does **not** catch — a wholesale swap,
+  yes; a patient attacker adding ten entries at a time, no — since a control
+  described only by its strengths is a control that gets over-trusted.
+
+  Installs with no feed enabled gain no rows at all. A report that grows a
+  section per unused feature is a report that stops being read.
+
+  `vayushield_status` and `vayushield_settings` carry the same state over MCP,
+  including each feed's checksum, entry count and the effect a match has spelled
+  out rather than left to be inferred from a kind string. The publisher's URL is
+  included, which the allow list's contents deliberately are not: a feed endpoint
+  is public and anyone can already read it, while knowing which networks bypass
+  the shield names the addresses worth impersonating.
+
 - **VayuShield is readable over MCP — and only readable.** Five tools:
   `vayushield_status` (live state and every layer counter), `vayushield_posture`
   (the full report with each control's verdict and reasoning),

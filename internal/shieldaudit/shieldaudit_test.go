@@ -535,3 +535,81 @@ func TestTheRealVisitorIPRowDoesNotJudgeTheSiteByTheOperatorsOwnRequest(t *testi
 		t.Error("an unproxied origin is being described with the proxied-site caveat")
 	}
 }
+
+// TestNoFeedsMeansNoRows — the report answers "what is enforcing". A row per
+// feature nobody enabled is how a report stops being read, so a default install
+// gains nothing from this section.
+func TestNoFeedsMeansNoRows(t *testing.T) {
+	for _, c := range Run(Inputs{}) {
+		if strings.HasPrefix(c.Title, "Feed:") || c.Title == "Published network lists" {
+			t.Fatalf("an install with no feed enabled must gain no feed rows, got %q", c.Title)
+		}
+	}
+}
+
+// TestAFeedHoldingNothingIsNotAPass is the defect this whole report exists for,
+// in its newest form: a layer switched on and doing no work must not read as
+// healthy just because the operator flipped a switch.
+func TestAFeedHoldingNothingIsNotAPass(t *testing.T) {
+	rows := Run(Inputs{IntelFeeds: []IntelFeed{{Name: "Empty List", Entries: 0}}})
+	got := findCheck(t, rows, "Feed: Empty List")
+	if got.Status != Warn {
+		t.Fatalf("an enabled feed holding nothing must warn, got %v", got.Status)
+	}
+}
+
+// TestARefusedRefreshReadsDifferentlyFromAFailedOne — they look alike in a
+// status column and mean opposite things. A transport error is the publisher
+// being unreachable; a refusal is the publisher ANSWERING with something unlike
+// what they served before, which is the event the delta bound exists to catch.
+func TestARefusedRefreshReadsDifferentlyFromAFailedOne(t *testing.T) {
+	refused := findCheck(t, Run(Inputs{IntelFeeds: []IntelFeed{
+		{Name: "L", Entries: 900, Refused: "changed by 80% in one refresh"},
+	}}), "Feed: L")
+	failed := findCheck(t, Run(Inputs{IntelFeeds: []IntelFeed{
+		{Name: "L", Entries: 900, LastError: "dial tcp: timeout"},
+	}}), "Feed: L")
+
+	if refused.Status != Warn || failed.Status != Warn {
+		t.Fatalf("both are worth an operator's attention: refused=%v failed=%v", refused.Status, failed.Status)
+	}
+	if refused.Detail == failed.Detail {
+		t.Fatal("a refused refresh and a failed one must not read identically — one is an outage, " +
+			"the other is the endpoint serving something unrecognisable")
+	}
+	if !strings.Contains(strings.ToLower(refused.Detail), "refus") {
+		t.Errorf("the refusal row must say it was refused, got %q", refused.Detail)
+	}
+}
+
+// TestTheReportSaysWhichTierCanRefuse — an operator scanning this section has to
+// be able to tell a list that weighs a score from one that turns visitors away,
+// because turning the second on is a different decision entirely.
+func TestTheReportSaysWhichTierCanRefuse(t *testing.T) {
+	scoreOnly := findCheck(t, Run(Inputs{IntelFeeds: []IntelFeed{
+		{Name: "DC", Entries: 5000},
+	}}), "Published network lists")
+	if !strings.Contains(scoreOnly.Detail, "None of these can refuse") {
+		t.Errorf("with only datacenter feeds on, the summary must say none can refuse: %q", scoreOnly.Detail)
+	}
+	withHostile := findCheck(t, Run(Inputs{IntelFeeds: []IntelFeed{
+		{Name: "DC", Entries: 5000}, {Name: "H", Hostile: true, Entries: 900},
+	}}), "Published network lists")
+	if !strings.Contains(withHostile.Detail, "can refuse a visitor outright") {
+		t.Errorf("with a hostile feed on, the summary must say so: %q", withHostile.Detail)
+	}
+	// And the ceiling is stated rather than implied: the delta bound catches a
+	// wholesale swap and does not catch a patient attacker.
+	if !strings.Contains(withHostile.Detail, "would NOT catch") {
+		t.Error("the summary must state what the integrity bound does not catch")
+	}
+}
+
+func findCheck(t *testing.T, checks []Check, title string) Check {
+	t.Helper()
+	c, ok := find(checks, title)
+	if !ok {
+		t.Fatalf("no %q row in the report", title)
+	}
+	return c
+}

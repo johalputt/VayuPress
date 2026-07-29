@@ -193,6 +193,10 @@ type Inputs struct {
 	// inbound verdicts, so "clustering is on" is backed by evidence rather than
 	// by the toggle the operator flipped — the same discipline as the tier rows.
 	ClusterVerdictsIn, ClusterRefused int64
+	// IntelFeeds is the live state of every third-party network-intelligence feed
+	// the operator has switched on. Empty on the installs that enabled none,
+	// which is the default.
+	IntelFeeds []IntelFeed
 
 	// --- What the agent observed ---------------------------------------------
 
@@ -200,6 +204,22 @@ type Inputs struct {
 	// DigestMaxAge is how old a digest may be before it is reported as stale.
 	// Zero uses the default.
 	DigestMaxAge time.Duration
+}
+
+// IntelFeed is one enabled third-party feed, as the report needs to see it.
+//
+// Entries is the count the publisher actually served, which is the number that
+// separates "on" from "working" — a feed that is switched on and holds nothing
+// looks identical to a healthy one in every other indicator.
+type IntelFeed struct {
+	Name    string
+	Hostile bool
+	Entries int
+	// Refused and LastError are kept apart because they are different events. A
+	// transport error is the publisher being unreachable; a refusal is the
+	// publisher ANSWERING with something unlike what they served yesterday, which
+	// is the one thing the delta bound exists to catch.
+	Refused, LastError string
 }
 
 const defaultDigestMaxAge = 10 * time.Minute
@@ -328,6 +348,8 @@ func Run(in Inputs) []Check {
 				"own, block one.")
 	}
 
+	checks = append(checks, intelChecks(in)...)
+
 	checks = append(checks, tierChecks(in, stale)...)
 
 	// --- The two rows that never turn green ----------------------------------
@@ -378,6 +400,65 @@ func Run(in Inputs) []Check {
 // contradicts the state file when the two disagree.
 //
 // This is the row that would have caught the defect that motivated the package:
+// intelChecks reports the third-party network feeds, judged on their contents
+// rather than on the toggle.
+//
+// The same standard as the tier rows and for the same reason: a feed that
+// stopped updating months ago, or that was switched on and never fetched, reads
+// as healthy everywhere except its entry count. Nothing is reported at all when
+// no feed is enabled — the report exists to say what is enforcing, and a row per
+// unused feature is how a report stops being read.
+func intelChecks(in Inputs) []Check {
+	if len(in.IntelFeeds) == 0 {
+		return nil
+	}
+	var out []Check
+	add := func(title string, s Status, detail string) {
+		out = append(out, Check{Title: title, Status: s, Detail: detail})
+	}
+
+	hostile := 0
+	for _, f := range in.IntelFeeds {
+		if f.Hostile {
+			hostile++
+		}
+	}
+	ceiling := "Third-party lists are consulted on unverified requests. " +
+		"None of them can grant access — that is the type rather than a check, so a hijacked " +
+		"endpoint's worst case is over-blocking, which is visible and recoverable, instead of a " +
+		"silent bypass of every gate here. Most carry no signature to verify, so integrity rests " +
+		"on refusing any refresh that changes a list by more than a third and keeping the last-good " +
+		"copy: that catches a wholesale swap and would NOT catch a careful attacker adding ten " +
+		"entries at a time."
+	if hostile > 0 {
+		ceiling += " " + itoa(hostile) + " of these can refuse a visitor outright."
+	} else {
+		ceiling += " None of these can refuse a visitor; they weigh a score toward a solvable check."
+	}
+	add("Published network lists", Info, ceiling)
+
+	for _, f := range in.IntelFeeds {
+		switch {
+		case f.Refused != "":
+			add("Feed: "+f.Name, Warn,
+				"The last refresh was REFUSED and the previous copy is still in use — "+f.Refused+
+					". This is the integrity bound doing its job, and it means the endpoint answered "+
+					"with something unlike what it served before. Worth looking at rather than waiting out.")
+		case f.Entries == 0:
+			add("Feed: "+f.Name, Warn,
+				"Enabled but holding nothing. It is switched on and doing no work — either it has "+
+					"not fetched yet, or every attempt has failed. Until it loads, this layer is a "+
+					"setting rather than a defence.")
+		case f.LastError != "":
+			add("Feed: "+f.Name, Warn, itoa(f.Entries)+" range(s) in use from the last good copy, but the "+
+				"most recent refresh failed — "+f.LastError+". The data is stale, not absent.")
+		default:
+			add("Feed: "+f.Name, Pass, itoa(f.Entries)+" published range(s) loaded and consulted.")
+		}
+	}
+	return out
+}
+
 // Tier 3 reported "active" from the mere existence of its conf file, while every
 // limit_req inside it was commented out.
 func tierChecks(in Inputs, stale bool) []Check {

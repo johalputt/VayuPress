@@ -111,6 +111,16 @@ func (a *App) registerShieldTools(srv *mcp.Server) {
 				// is answerable without the panel. Indexed by gate name.
 				"would_have": shieldWouldHaveByName(st),
 			}
+			// Third-party feed matches, reported only when a feed is enabled.
+			// Omitting the key on installs that opted into none says "this is not
+			// in play here", which two zeroes would not.
+			if hostile, datacenter := a.vayuShield.IntelHits(); len(a.shieldIntelStatus()) > 0 {
+				out["network_intelligence"] = map[string]any{
+					"hostile_matches":    hostile,
+					"datacenter_matches": datacenter,
+					"feeds":              a.shieldIntelStatus(),
+				}
+			}
 			if peers > 0 {
 				out["cluster"] = map[string]any{
 					"peers": peers, "verdicts_in": verdictsIn,
@@ -207,6 +217,12 @@ func (a *App) registerShieldTools(srv *mcp.Server) {
 					"parse_errors":        a.vayuShield.PolicyIssues(),
 				},
 				"tor_inert_gates": vayushield.GatesInertInTorMode(),
+				// Which third-party lists the operator opted into, and whether each
+				// is actually holding data. The URL is included because "trust this
+				// list" is not answerable without knowing whose list it is — and
+				// unlike the allow list, a published feed's address has no offensive
+				// value: it is a public endpoint anyone can already read.
+				"network_intelligence": a.shieldIntelStatus(),
 			}), nil
 		},
 	})

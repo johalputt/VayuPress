@@ -25,6 +25,7 @@ import (
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/shieldaudit"
 	"github.com/johalputt/vayupress/internal/vayushield/intel"
 )
 
@@ -167,6 +168,81 @@ func (a *App) kickShieldIntelRefresh() {
 			return
 		}
 	}
+}
+
+// shieldIntelAudit reports the ENABLED feeds to the posture report. Disabled
+// ones are omitted rather than listed as off: the report answers "what is
+// enforcing", and a row per unused option is how a report stops being read.
+func (a *App) shieldIntelAudit() []shieldaudit.IntelFeed {
+	if a.shieldIntel == nil {
+		return nil
+	}
+	var out []shieldaudit.IntelFeed
+	for _, s := range a.shieldIntel.Statuses() {
+		if !s.Enabled {
+			continue
+		}
+		out = append(out, shieldaudit.IntelFeed{
+			Name:      s.Name,
+			Hostile:   s.Kind == intel.KindHostile.String(),
+			Entries:   s.Entries,
+			Refused:   s.Refused,
+			LastError: s.LastError,
+		})
+	}
+	return out
+}
+
+// shieldIntelStatus reports the ENABLED feeds for the MCP read tools.
+//
+// The publisher's URL is included, unlike anything in the allow/deny lists. The
+// asymmetry is deliberate: knowing which networks bypass the shield names the
+// addresses worth impersonating, while a feed URL is a public endpoint anyone
+// can already fetch, and withholding it would only stop a reader answering
+// "whose list is this?" — the question that decides whether the feed should be
+// trusted at all.
+func (a *App) shieldIntelStatus() []map[string]any {
+	if a.shieldIntel == nil {
+		return nil
+	}
+	byID := map[string]intel.Feed{}
+	for _, def := range intel.DefaultFeeds() {
+		byID[def.ID] = def
+	}
+	var out []map[string]any
+	for _, s := range a.shieldIntel.Statuses() {
+		if !s.Enabled {
+			continue
+		}
+		row := map[string]any{
+			"id": s.ID, "name": s.Name, "kind": s.Kind,
+			"entries": s.Entries, "ranges": s.Ranges, "checksum": s.Checksum,
+			"url": byID[s.ID].URL,
+			// What a match MEANS, spelled out rather than left to be inferred
+			// from the kind string. A reader that treats "datacenter" as grounds
+			// to block has misread the whole design.
+			"effect": intelEffect(s.Kind),
+		}
+		if !s.FetchedAt.IsZero() {
+			row["fetched_at"] = s.FetchedAt.UTC().Format(time.RFC3339)
+		}
+		if s.Refused != "" {
+			row["refused"] = s.Refused
+		}
+		if s.LastError != "" {
+			row["last_error"] = s.LastError
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func intelEffect(kind string) string {
+	if kind == intel.KindHostile.String() {
+		return "refuses matching sources at their own gate; a solved challenge does not bypass it"
+	}
+	return "adds " + strconv.FormatFloat(intel.DatacenterDelta, 'f', 2, 64) +
+		" to the bot score, sharing one clamped budget with the other heuristics; never blocks alone"
 }
 
 // shieldIntelBand renders "Published network lists" inside the protection form.
