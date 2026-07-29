@@ -216,7 +216,8 @@ func shieldAgentUpgradeRow() string {
 	}
 	label := map[string]string{
 		"checking":     "▲ Checking",
-		"restarting":   "● Verified &mdash; installing and restarting",
+		"restarting":   "▲ Verified &mdash; installing and restarting",
+		"done":         "● Upgraded",
 		"unverifiable": "▲ Refused &mdash; nothing was installed",
 		"error":        "✕ Could not upgrade",
 	}[state]
@@ -225,7 +226,7 @@ func shieldAgentUpgradeRow() string {
 	}
 	cls := "is-work"
 	switch state {
-	case "restarting":
+	case "done":
 		cls = "is-on"
 	case "error":
 		cls = "is-err"

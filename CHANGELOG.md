@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.8] — 2026-07-29
 
 ### Added
 - **The privileged helper upgrades itself from VayuOS — no terminal.** The one
@@ -37,6 +37,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `vayushield-agent.tar.gz` alongside the binary and the SBOM; the tarball is
   built reproducibly, because a digest that changes when nothing changed teaches
   operators to ignore the one signal that has to stay meaningful.
+
+  Two defects the adversarial pass found in this feature before it shipped.
+  `systemctl restart` on the unit you are *running inside* waits for the job, and
+  the job cannot finish until the process exits — systemd waiting for the script
+  while the script waits for systemd. It is `--no-block` now. And the status would
+  have read "installing and restarting" **forever**: the process that would write
+  the final state is the one the restart kills, so nothing ever closed it out. A
+  freshly started agent now resolves it, because reaching that line is the proof
+  the restart completed — and it runs exactly once, at startup, since running it
+  in the five-second poll loop would clobber a genuine in-progress status.
 
   The upgrade flag is consumed **before** the work rather than after: a failure
   that left it in place would re-download and re-run an installer every five

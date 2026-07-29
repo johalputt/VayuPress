@@ -481,3 +481,61 @@ func TestTheReleasePublishesWhatTheAgentGoesLookingFor(t *testing.T) {
 		}
 	}
 }
+
+// TestARestartingUpgradeDoesNotHangForever.
+//
+// The agent writes "restarting" and then restarts the unit, so the process that
+// would have written the final state no longer exists. Nothing else closes the
+// status out, and the panel would show "installing and restarting" permanently —
+// a spinner over an operation that finished, which reads as a hang and is worse
+// than showing nothing.
+func TestARestartingUpgradeDoesNotHangForever(t *testing.T) {
+	src, err := os.ReadFile("../../deploy/vayushield-agent.sh")
+	if err != nil {
+		t.Skipf("agent script not readable here: %v", err)
+	}
+	s := string(src)
+	if !strings.Contains(s, "resolve_pending_upgrade") {
+		t.Fatal("nothing closes out an upgrade whose last act was killing the reporting process")
+	}
+	// It has to run on STARTUP. Reaching a fresh agent's first line is the proof
+	// that the restart completed; anywhere else it would be guessing.
+	run := strings.Index(s, "run_agent() {")
+	loop := strings.Index(s, "while true; do")
+	call := strings.Index(s, "\n  resolve_pending_upgrade")
+	if call < run || call > loop {
+		t.Error("the pending-upgrade resolution does not run at agent startup, which is the only " +
+			"moment that actually proves the restart happened")
+	}
+	// And it must NOT run inside the poll loop, or it would overwrite a genuine
+	// in-progress status every five seconds. Counted as CALL SITES — a bare
+	// invocation on its own line — so the definition and the comment above it do
+	// not read as extra calls.
+	calls := 0
+	for _, line := range strings.Split(s, "\n") {
+		if strings.TrimSpace(line) == "resolve_pending_upgrade" {
+			calls++
+		}
+	}
+	if calls != 1 {
+		t.Errorf("resolve_pending_upgrade has %d call sites, want exactly 1 — inside the poll "+
+			"loop it would clobber a real in-progress status every five seconds", calls)
+	}
+}
+
+// TestTheAgentDoesNotDeadlockRestartingItself.
+//
+// `systemctl restart` on the unit you are running inside waits for the job, and
+// the job cannot finish until this process exits: systemd waits for the script,
+// the script waits for systemd. The upgrade hangs until something times out.
+func TestTheAgentDoesNotDeadlockRestartingItself(t *testing.T) {
+	src, err := os.ReadFile("../../deploy/vayushield-agent.sh")
+	if err != nil {
+		t.Skipf("agent script not readable here: %v", err)
+	}
+	s := string(src)
+	if !strings.Contains(s, "systemctl restart --no-block vayushield-agent") {
+		t.Error("the agent restarts its own unit and waits for the job to complete — it is waiting " +
+			"for itself to exit. --no-block queues the job and returns")
+	}
+}

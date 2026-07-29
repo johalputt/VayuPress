@@ -642,14 +642,39 @@ self_upgrade() {
 
   upgrade_status "restarting" "Signature verified. Installed and restarting the helper."
   systemctl daemon-reload 2>/dev/null || true
-  # The restart replaces this process. Anything after it is not guaranteed to run,
-  # which is why the status above is written first.
-  systemctl restart vayushield-agent 2>/dev/null || true
+  # --no-block matters. `systemctl restart` on the unit you are RUNNING INSIDE
+  # waits for the job to finish, and the job cannot finish until this process
+  # exits — systemd is waiting for the script and the script is waiting for
+  # systemd. --no-block queues the job and returns, so the stop signal arrives
+  # normally and the restart completes.
+  #
+  # The status above is written first because nothing after this line is
+  # guaranteed to run.
+  systemctl restart --no-block vayushield-agent 2>/dev/null || true
   return 0
+}
+
+# resolve_pending_upgrade closes out an upgrade whose last act was to kill the
+# process that was reporting on it.
+#
+# self_upgrade writes "restarting" and then restarts the unit, so the process
+# that would have written the final state no longer exists. Without this the
+# panel shows "installing and restarting" forever — a permanent in-progress
+# spinner over an operation that finished successfully, which is worse than no
+# status at all because it reads as a hang.
+#
+# Reaching this line IS the completion: it only runs in a freshly started agent.
+resolve_pending_upgrade() {
+  [ -d "$CONTROL_DIR" ] || return 0
+  local st=""
+  [ -f "${CONTROL_DIR}/agent.upgrade.state" ] && st="$(cat "${CONTROL_DIR}/agent.upgrade.state" 2>/dev/null)"
+  [ "$st" = "restarting" ] || return 0
+  upgrade_status "done" "Upgraded and running. The helper restarted into the new build."
 }
 
 run_agent() {
   echo "vayushield-agent: watching ${CONTROL_DIR} (poll ${POLL}s)"
+  resolve_pending_upgrade
   local ticks=0
   while true; do
     if [ -d "$CONTROL_DIR" ]; then
