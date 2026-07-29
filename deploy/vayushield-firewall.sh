@@ -19,10 +19,54 @@ set -euo pipefail
 TABLE="vayushield"
 HTTP_PORTS='{ 80, 443 }'
 
+# HTTP/3 is UDP. deploy/nginx-vayupress.conf tells operators to enable it, and
+# the ruleset did not model the port at all — so the one transport with no
+# handshake to exhaust, and therefore the easiest to flood, was the one transport
+# with no per-source cap on it.
+QUIC_PORTS="${QUIC_PORTS-{ 443 \}}"
+
+# The same binary binds :25/:110/:143/:587/:993/:995 (cmd/vayupress/vayuos.go),
+# and the allowlist comment below already notes that an MX record publishes this
+# host's address to the world. Modelling only the web ports left SMTP — the
+# classic connection-exhaustion target — with no per-source cap.
+#
+# Set to empty to opt out entirely (a dedicated relay expecting very high
+# per-peer concurrency is the case that wants this). Note the ${VAR-default}
+# form, without the colon: with `:-` an explicitly-empty value would fall back to
+# the default, so the documented opt-out would silently do nothing.
+MAIL_PORTS="${MAIL_PORTS-{ 25, 110, 143, 465, 587, 993, 995 \}}"
+
+# The Go process's own listener. VayuPress reads PORT (internal/config/config.go)
+# and onionSafeBindAddr now binds loopback unless it detects a container — but a
+# bind is a runtime decision that a stray BIND_ADDR, a container misdetection or
+# an operator's systemd override can reverse, and nothing outside the process
+# would notice. A kernel rule is the backstop that does not depend on the app
+# having got it right.
+#
+# Reaching this port directly bypasses nginx entirely, and with it every Tier 3
+# limit, the TLS termination and the real-client-IP headers the app trusts.
+APP_PORT="${APP_PORT-${PORT:-8080}}"
+
 # --- Tunables (per source IP) -------------------------------------------------
 CONN_LIMIT=64            # max concurrent connections per IP
 NEW_CONN_RATE="50/second" # new-connection rate per IP
 NEW_CONN_BURST=100        # burst above the rate before dropping
+
+# Mail gets its own budget, deliberately not the web one. Two reasons, and the
+# second is the important one:
+#
+#   • the shapes differ. A browser opens six connections and a mail peer opens
+#     one or two, so a cap sized for web traffic is not a meaningful cap on SMTP.
+#   • a web flood must never be able to spend the mail allowance. Sharing one
+#     meter would let an HTTP attack throttle inbound mail as a side effect,
+#     which is the shield causing the outage.
+#
+# Honest failure mode: these rules DROP, so a false positive makes a sending peer
+# time out and retry. Mail is not lost — every serious sender retries for days —
+# but it is delayed, so these are set well above any normal peer's behaviour.
+MAIL_CONN_LIMIT=24
+MAIL_CONN_RATE="10/second"
+MAIL_CONN_BURST=20
 # There is deliberately NO global SYN rate limit here any more.
 #
 # The previous ruleset carried `tcp flags & (syn|ack) == syn limit rate 25/second`
@@ -316,6 +360,31 @@ EOF
   echo "• kernel settings verified."
 }
 
+# report_ports <t|u> <nft port set> <label> — list the ports this ruleset models
+# and mark the ones that actually have a listener.
+#
+# The point is service-awareness in both directions: a modelled port with no
+# listener is dead weight, and a service running on a port NOT listed here has no
+# per-source cap at all. Reading that off `nft list table` alone means knowing
+# which of these numbers the binary happens to bind.
+report_ports() {
+  local proto="$1" set="$2" label="$3" p out=""
+  if [ -z "$set" ]; then
+    echo "  ${label}: not modelled (opted out) — no per-source cap on these ports"
+    return 0
+  fi
+  for p in $(printf '%s' "$set" | tr -d '{}' | tr ',' ' '); do
+    if ! command -v ss >/dev/null 2>&1; then
+      out="${out:+$out }${p}"
+    elif ss -H -ln "-${proto}" "sport = :${p}" 2>/dev/null | grep -q .; then
+      out="${out:+$out }${p}(listening)"
+    else
+      out="${out:+$out }${p}(no listener)"
+    fi
+  done
+  echo "  ${label}: ${out}"
+}
+
 apply_nft() {
   # Tier 2 inherently needs nftables. If it's missing, install it automatically
   # (best-effort, across the common package managers) so enabling Tier 2 is truly
@@ -352,19 +421,81 @@ apply_nft() {
   # the site arrives from the edge — it would cap the whole site's new
   # connections, not an attacker's. Letting the edge past it keeps the guard
   # aimed at what it is for: traffic that reached this address directly.
+  # The allowlist covers UDP/443 as well as TCP. A proxy that fronts the site
+  # over HTTP/3 arrives on the UDP port, and an accept that only names tcp would
+  # allowlist the edge for half its traffic and rate-limit it for the other half
+  # — which presents as HTTP/3 being intermittently broken while HTTP/2 is fine,
+  # about the least diagnosable failure this file could produce.
   if [ -n "$cdn4" ]; then
     cdn_rules="${cdn_rules}
-    ip saddr { ${cdn4} } tcp dport ${HTTP_PORTS} accept"
+    ip saddr { ${cdn4} } tcp dport ${HTTP_PORTS} accept
+    ip saddr { ${cdn4} } udp dport ${QUIC_PORTS} accept"
   fi
   if [ -n "$cdn6" ]; then
     cdn_rules="${cdn_rules}
-    ip6 saddr { ${cdn6} } tcp dport ${HTTP_PORTS} accept"
+    ip6 saddr { ${cdn6} } tcp dport ${HTTP_PORTS} accept
+    ip6 saddr { ${cdn6} } udp dport ${QUIC_PORTS} accept"
+  fi
+  # Defence in depth for the app's own port. Emitted only when it is safe to do
+  # so, and skipped loudly rather than quietly when it is not — a firewall that
+  # silently drops the port the site is actually served on is an outage, and this
+  # script is re-run automatically by the reconcile agent, so it would be an
+  # outage that reinstates itself on every boot.
+  #
+  # Refused when APP_PORT collides with a port this ruleset already models: an
+  # operator terminating TLS in the Go binary on :443, or running the app on a
+  # mail port, would otherwise lose the service outright.
+  local app_rule="" app_note=""
+  if [ -n "$APP_PORT" ]; then
+    case " $(printf '%s %s %s' "$HTTP_PORTS" "$QUIC_PORTS" "$MAIL_PORTS" | tr -d '{}' | tr ',' ' ') " in
+      *" ${APP_PORT} "*)
+        app_note="  · app port ${APP_PORT} is already a modelled service port — not adding a direct-access drop"
+        ;;
+      *)
+        # `iif != "lo"` and `tcp dport` are both family-neutral, so one rule
+        # covers v4 and v6. Loopback is accepted higher up regardless, which is
+        # what keeps nginx -> 127.0.0.1:APP_PORT working.
+        app_rule="
+    iif != \"lo\" tcp dport ${APP_PORT} drop"
+        app_note="  · dropping direct external access to app port ${APP_PORT} (nginx reaches it over loopback)"
+        ;;
+    esac
+  fi
+
+  # Mail is deliberately NOT allowlisted for the CDN ranges: no CDN proxies SMTP,
+  # so an edge address opening a mail connection is not the edge doing its job.
+  local mail_rules="" mail_chains=""
+  if [ -n "$MAIL_PORTS" ]; then
+    mail_rules="
+    tcp dport ${MAIL_PORTS} ct state new jump vs_mail"
+    mail_chains="
+  # Mail keeps its own meters. Sharing the web ones would let an HTTP flood spend
+  # the mail budget, so an attack on the website would throttle inbound mail as a
+  # side effect — the shield causing the outage.
+  chain vs_mail {
+    meta nfproto ipv4 jump vs_mail4
+    meta nfproto ipv6 jump vs_mail6
+  }
+
+  chain vs_mail4 {
+    meter vs_mconn4 { ip saddr ct count over ${MAIL_CONN_LIMIT} } drop
+    meter vs_mrate4 { ip saddr limit rate ${MAIL_CONN_RATE} burst ${MAIL_CONN_BURST} packets } return
+    drop
+  }
+
+  chain vs_mail6 {
+    meter vs_mconn6 { ip6 saddr ct count over ${MAIL_CONN_LIMIT} } drop
+    meter vs_mrate6 { ip6 saddr limit rate ${MAIL_CONN_RATE} burst ${MAIL_CONN_BURST} packets } return
+    drop
+  }
+"
   fi
   if [ -n "$cdn_rules" ]; then
     echo "• allowlisting proxy edge ranges from ${CDN_ALLOW_FILE}"
   elif [ -e "$CDN_ALLOW_FILE" ]; then
     echo "  ! ${CDN_ALLOW_FILE} exists but yielded no usable ranges — edge traffic WILL be rate-limited" >&2
   fi
+  [ -z "$app_note" ] || echo "$app_note"
   # Per-IP concurrent connections are limited with a keyed meter (ip saddr) — the
   # portable idiom; a bare "ct count over N" is not per-IP and is rejected by some
   # nft versions. The rate limiter above already uses the same meter mechanism.
@@ -377,7 +508,7 @@ table inet ${TABLE} {
     ct state established,related accept
     iif "lo" accept
     ct state invalid drop
-${cdn_rules}
+${cdn_rules}${app_rule}
 
     # New web connections go to a REGULAR chain. This is load-bearing: in a base
     # chain a "return" verdict means the chain policy, which here is accept, so a
@@ -385,6 +516,9 @@ ${cdn_rules}
     # dead. In a regular chain a return resumes the caller, which is what lets
     # more than one meter see the same packet.
     tcp dport ${HTTP_PORTS} ct state new jump vs_web
+    # HTTP/3. QUIC has no handshake to make an attacker pay for state, so the
+    # per-source caps matter more here than on TCP, not less.
+    udp dport ${QUIC_PORTS} ct state new jump vs_web${mail_rules}
   }
 
   # vs_web splits by address family before touching a source address. In the
@@ -412,7 +546,7 @@ ${cdn_rules}
     meter vs_rate6 { ip6 saddr limit rate ${NEW_CONN_RATE} burst ${NEW_CONN_BURST} packets } return
     drop
   }
-}
+${mail_chains}}
 EOF
   # Validate first so a syntax error is reported clearly and nothing is applied
   # half-way (the existing state is left intact on failure).
@@ -454,6 +588,11 @@ case "${1:-apply}" in
       echo "  If a CDN proxies this site, its edge nodes are being rate-limited as"
       echo "  if each were one very busy visitor. Fix: $0 cdn-allow cloudflare && $0 apply"
     fi
+    echo
+    echo "modelled ports:"
+    report_ports t "$HTTP_PORTS" "web        "
+    report_ports u "$QUIC_PORTS" "http/3     "
+    report_ports t "$MAIL_PORTS" "mail       "
     echo
     echo "kernel tunables: ${SYSCTL_CONF}"
     sysctl_collisions

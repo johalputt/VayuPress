@@ -555,3 +555,217 @@ func TestSysctlCollisionsReportBootOrder(t *testing.T) {
 		t.Errorf("two files agreeing on a value was reported as a collision:\n%s", got)
 	}
 }
+
+// --- Service-aware ports ------------------------------------------------------
+
+// generateRuleset runs the script's own apply_nft and returns the ruleset it
+// would load. `nft` is stubbed so nothing touches this machine's kernel, but the
+// stub delegates `-c` to the real binary when one is present — so the emitted
+// text is syntax-checked by nftables itself rather than by a regex here.
+func generateRuleset(t *testing.T, env ...string) string {
+	t.Helper()
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	dir := t.TempDir()
+
+	src := readFirewallScript(t)
+	cut := strings.Index(src, `case "${1:-apply}" in`)
+	if cut < 0 {
+		t.Fatal("could not find the command dispatcher")
+	}
+	lib := filepath.Join(dir, "lib.sh")
+	if err := os.WriteFile(lib, []byte(src[:cut]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	bin := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	capture := filepath.Join(dir, "ruleset.nft")
+	real, _ := exec.LookPath("nft")
+	stub := "#!/usr/bin/env bash\n" +
+		"if [ \"$1\" = \"-c\" ]; then\n" +
+		"  cp \"$3\" \"" + capture + "\"\n" +
+		"  if [ -x \"" + real + "\" ]; then exec \"" + real + "\" \"$@\"; fi\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"exit 0\n"
+	if err := os.WriteFile(filepath.Join(bin, "nft"), []byte(stub), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("bash", "-c", "set -u; source "+lib+"; apply_nft")
+	cmd.Env = append(append(os.Environ(),
+		"PATH="+bin+":"+os.Getenv("PATH"),
+		"CDN_ALLOW_FILE="+filepath.Join(dir, "absent.conf"),
+	), env...)
+	var errBuf strings.Builder
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("apply_nft failed (%v) — nftables rejected the generated ruleset:\n%s", err, errBuf.String())
+	}
+	b, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatalf("no ruleset was captured: %v", err)
+	}
+	return string(b)
+}
+
+// TestMailPortsAreModelled — the same binary that serves the site binds
+// :25/:110/:143/:587/:993/:995, and the allowlist comment in this very script
+// notes that an MX record publishes the origin address to the world. The ruleset
+// modelled { 80, 443 } only, so SMTP — the classic connection-exhaustion target,
+// on a port whose address is published by design — had no per-source cap at all.
+//
+// The expected ports are read out of vayuos.go rather than written down here, so
+// adding a listener there and forgetting this file fails the build.
+func TestMailPortsAreModelled(t *testing.T) {
+	b, err := os.ReadFile("vayuos.go")
+	if err != nil {
+		t.Fatalf("read vayuos.go: %v", err)
+	}
+	// mailCfg.XListen = config.EnvOr("VAYUOS_MAIL_…", ":25")
+	bound := regexp.MustCompile(`mailCfg\.\w*Listen\s*=\s*config\.EnvOr\("VAYUOS_MAIL_\w+",\s*":(\d+)"\)`).
+		FindAllStringSubmatch(string(b), -1)
+	if len(bound) == 0 {
+		t.Fatal("could not read the mail listener defaults out of vayuos.go")
+	}
+
+	rules := generateRuleset(t)
+	for _, m := range bound {
+		if !regexp.MustCompile(`\b` + m[1] + `\b`).MatchString(rules) {
+			t.Errorf("port %s is bound by the mail engine but absent from the ruleset — "+
+				"no per-source connection cap applies to it", m[1])
+		}
+	}
+	if !strings.Contains(rules, "jump vs_mail") {
+		t.Error("mail traffic is not handed to a limiter chain")
+	}
+}
+
+// TestMailAndWebDoNotShareAMeter — an nft meter is a keyed namespace, so pointing
+// web and mail at the same one makes them spend a single per-source budget. An
+// HTTP flood would then throttle inbound mail as a side effect: the shield
+// causing an outage in a service the attack never touched.
+func TestMailAndWebDoNotShareAMeter(t *testing.T) {
+	rules := generateRuleset(t)
+	meters := regexp.MustCompile(`meter (\w+) \{`).FindAllStringSubmatch(rules, -1)
+	seen := map[string]int{}
+	for _, m := range meters {
+		seen[m[1]]++
+	}
+	if len(seen) < 8 {
+		t.Errorf("expected separate web and mail meters per address family, got %d distinct: %v", len(seen), seen)
+	}
+	// Both families, both services. The v4/v6 split is the same landmine as on
+	// the web chains: an `ip saddr` meter never matches a v6 packet, while a bare
+	// drop beside it matches everything.
+	for _, want := range []string{"vs_mconn4", "vs_mrate4", "vs_mconn6", "vs_mrate6"} {
+		if seen[want] == 0 {
+			t.Errorf("missing meter %q — one address family or one limit is unprotected on mail", want)
+		}
+	}
+	if !strings.Contains(rules, "chain vs_mail4") || !strings.Contains(rules, "chain vs_mail6") {
+		t.Error("the mail limiters are not split by address family")
+	}
+}
+
+// TestQUICIsModelled — deploy/nginx-vayupress.conf instructs operators to turn on
+// HTTP/3, and the ruleset did not model UDP at all. QUIC has no handshake to make
+// a flooder pay for state, which makes a per-source cap matter more there than on
+// TCP, not less.
+func TestQUICIsModelled(t *testing.T) {
+	rules := generateRuleset(t)
+	if !regexp.MustCompile(`udp dport \{ ?443 ?\}[^\n]*jump vs_web`).MatchString(rules) {
+		t.Errorf("UDP/443 does not reach the per-source limiters:\n%s", rules)
+	}
+}
+
+// TestAllowlistCoversQUIC — half-allowlisting an edge is worse than not
+// allowlisting it. If only TCP is accepted, a proxy fronting the site over HTTP/3
+// is rate-limited on its UDP traffic while its TCP traffic sails through, which
+// presents as HTTP/3 being intermittently broken and HTTP/2 being fine — close to
+// undiagnosable from either end.
+func TestAllowlistCoversQUIC(t *testing.T) {
+	dir := t.TempDir()
+	allow := filepath.Join(dir, "cdn-allow.conf")
+	if err := os.WriteFile(allow, []byte("173.245.48.0/20\n2400:cb00::/32\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rules := generateRuleset(t, "CDN_ALLOW_FILE="+allow)
+
+	for _, want := range []string{
+		"ip saddr { 173.245.48.0/20 } tcp dport",
+		"ip saddr { 173.245.48.0/20 } udp dport",
+		"ip6 saddr { 2400:cb00::/32 } tcp dport",
+		"ip6 saddr { 2400:cb00::/32 } udp dport",
+	} {
+		if !strings.Contains(rules, want) {
+			t.Errorf("allowlist is missing %q:\n%s", want, rules)
+		}
+	}
+}
+
+// TestMailOptOutActuallyOptsOut — the tunable is documented as "set to empty to
+// opt out", and `${MAIL_PORTS:-default}` substitutes the default for an empty
+// value, so the documented escape hatch did nothing at all. A relay operator
+// would have set it, believed mail was unshaped, and still been shaped.
+func TestMailOptOutActuallyOptsOut(t *testing.T) {
+	rules := generateRuleset(t, "MAIL_PORTS=")
+	if strings.Contains(rules, "vs_mail") {
+		t.Errorf("MAIL_PORTS= left the mail rules in the ruleset:\n%s", rules)
+	}
+	// The web side must be untouched by the opt-out.
+	if !strings.Contains(rules, "jump vs_web") {
+		t.Errorf("opting out of mail shaping also removed the web limiters:\n%s", rules)
+	}
+}
+
+// --- App-port drop ------------------------------------------------------------
+
+// TestAppPortIsDroppedFromOutside — reaching the Go listener directly bypasses
+// nginx, and with it every Tier 3 limit, TLS termination, and the real-client-IP
+// headers the app is configured to trust. onionSafeBindAddr binds loopback unless
+// it detects a container, but a bind is a runtime decision that a stray
+// BIND_ADDR, a container misdetection or a systemd override can reverse — with
+// nothing outside the process to notice. This is the backstop that does not
+// depend on the app having got it right.
+func TestAppPortIsDroppedFromOutside(t *testing.T) {
+	rules := generateRuleset(t, "APP_PORT=9000")
+	if !strings.Contains(rules, `iif != "lo" tcp dport 9000 drop`) {
+		t.Errorf("the app port is reachable from off-host:\n%s", rules)
+	}
+	// Loopback must still be accepted ahead of it, or nginx cannot reach the app
+	// it is proxying to and the site is down.
+	lo := strings.Index(rules, `iif "lo" accept`)
+	drop := strings.Index(rules, `iif != "lo" tcp dport 9000 drop`)
+	if lo < 0 || lo > drop {
+		t.Error("the loopback accept no longer precedes the app-port drop — nginx could not reach the app")
+	}
+	// The chain policy stays accept. The chain runs at priority -10 with an
+	// accept policy specifically so a bad rule here cannot lock an operator out
+	// of SSH; a default-drop redesign strands people with no way back in.
+	if !strings.Contains(rules, "policy accept;") {
+		t.Error("the base chain is no longer policy accept — a bad rule can now lock the operator out")
+	}
+}
+
+// TestAppPortDropRefusesToBreakTheSite — an operator terminating TLS in the Go
+// binary on :443, or running the app on a mail port, would lose the service
+// outright. This script is re-applied by the reconcile agent on every boot, so
+// that would be an outage that reinstates itself.
+func TestAppPortDropRefusesToBreakTheSite(t *testing.T) {
+	for _, port := range []string{"443", "80", "25", "993"} {
+		rules := generateRuleset(t, "APP_PORT="+port)
+		if strings.Contains(rules, `iif != "lo" tcp dport `+port+` drop`) {
+			t.Errorf("APP_PORT=%s produced a drop on a port the ruleset already serves — "+
+				"the site or mail would go dark on every apply", port)
+		}
+	}
+	// And the opt-out has to work, for the same ${VAR-default} reason as MAIL_PORTS.
+	if rules := generateRuleset(t, "APP_PORT="); strings.Contains(rules, `iif != "lo" tcp dport`) {
+		t.Errorf("APP_PORT= did not suppress the drop:\n%s", rules)
+	}
+}

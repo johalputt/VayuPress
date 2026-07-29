@@ -8,6 +8,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **Tier 2 now models the ports this binary actually binds.** The ruleset covered
+  `{ 80, 443 }` while the same process listens on `:25/:110/:143/:465/:587/:993/
+  :995`, and the script's own comment already noted that an MX record publishes
+  the origin address to the world. SMTP — the classic connection-exhaustion
+  target, on a port whose address is public by design — had no per-source cap at
+  all. Mail gets its own meters rather than sharing the web ones, so an HTTP flood
+  cannot spend the mail budget and take inbound mail down as a side effect.
+
+  HTTP/3 is covered too. `deploy/nginx-vayupress.conf` tells operators to enable
+  it and the ruleset did not model UDP anywhere — the one transport with no
+  handshake to make a flooder pay for state was the one transport with no cap.
+  The proxy allowlist covers UDP/443 as well, since accepting only TCP would
+  rate-limit an edge's HTTP/3 while its HTTP/2 sailed through: HTTP/3
+  intermittently broken, HTTP/2 fine, and nothing in any log to connect the two.
+
+  `status` now lists the modelled ports and marks which have a listener, and the
+  expected mail ports are read out of `vayuos.go` by the test rather than written
+  down twice.
+
+- **A kernel drop for the app's own port.** Reaching the Go listener directly
+  bypasses nginx, and with it every Tier 3 limit, TLS termination and the
+  real-client-IP headers the app is configured to trust. `onionSafeBindAddr` binds
+  loopback unless it detects a container, but a bind is a runtime decision a stray
+  `BIND_ADDR`, a container misdetection or a systemd override can reverse with
+  nothing outside the process to notice.
+
+  The rule is refused, with a printed reason, when `APP_PORT` collides with a port
+  the ruleset already serves — an operator terminating TLS in the binary on `:443`
+  would otherwise lose the site on every apply, and the reconcile agent re-applies
+  this on every boot. The base chain keeps `policy accept` so no rule here can
+  lock an operator out of SSH.
+
 ### Fixed
 - **Every Tier 3 fix reached zero already-enabled installs.** The reconcile agent
   computed "active" purely from the destination file EXISTING, and the copy lived
