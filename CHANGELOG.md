@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.7] — 2026-07-29
 
 ### Added
 - **A network-intelligence core for third-party feeds, built rule-first.** New
