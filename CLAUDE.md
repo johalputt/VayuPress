@@ -40,6 +40,13 @@ that too — it holds the release-versioning rule).
     users right now** — that ships immediately on its own, because leaving a live
     install broken to respect a batching rule is the wrong trade. Say so
     explicitly in the release notes when this exception is used.
+  - **A hotfix is not "a plan", and several of them in a row are not a violation.**
+    The rule counts *feature* releases inside one plan. Four hotfixes in an
+    afternoon, each for something broken in the field, is the exception working —
+    not the rule being ignored four times. Do not batch a live breakage to keep a
+    release count down, and do not apologise for the count afterwards; the thing
+    worth examining in that situation is why the breakage shipped, which is a
+    testing question, not a release-cadence one.
   - When in doubt, do not bump. Ask.
 
 ### Before every release cut: a hacker audit, then improve
