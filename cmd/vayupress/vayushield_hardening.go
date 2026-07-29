@@ -309,6 +309,7 @@ func (a *App) shieldHardeningBody(r *http.Request) string {
 
 	if shieldAgentAlive() {
 		b.WriteString(`<p class="muted text-xs">✅ Privileged helper installed — you can switch these on and off right here, no terminal needed. VayuPress itself stays unprivileged; a separate root agent applies only the vetted scripts.</p>`)
+		b.WriteString(shieldAgentStaleNotice())
 		b.WriteString(shieldTierRow(2, "🛡️ Tier 2 · Kernel firewall (nftables)", "Per-IP connection/packet rate limits + SYN-flood cookies, enforced in the Linux kernel. Turning this on also activates the L1 live offload below."))
 		b.WriteString(shieldTierRow(3, "🌐 Tier 3 · Edge shaping (nginx)", "Per-IP request/connection shaping + slow-loris timeouts at the reverse proxy."))
 		b.WriteString(a.shieldOffloadRow())
@@ -317,10 +318,10 @@ func (a *App) shieldHardeningBody(r *http.Request) string {
 	} else {
 		b.WriteString(`<div class="vs-tier"><div class="vs-tier-head">One-time setup — enable the in-panel switches</div>`)
 		b.WriteString(`<p class="muted text-sm">A true in-panel toggle needs a tiny <strong>root helper</strong> installed once. The <strong>in-app one-click updater cannot install it</strong> — that updater is unprivileged by design (which is exactly what keeps VayuPress safe). Install it with <strong>one command as root</strong> from your VayuPress checkout, then this section turns into on/off switches (no terminal afterwards):</p>`)
-		b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-agent">cd /path/to/VayuPress &amp;&amp; git pull &amp;&amp; sudo bash deploy/vayushield-agent.sh install</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-agent">Copy</button></div>`)
-		b.WriteString(`<p class="muted text-xs">Your checkout is usually <code>/tmp/VayuPress</code> (find it: <code>sudo find / -name vayushield-agent.sh -path '*/deploy/*'</code>). Running your normal shell updater (<code>scripts/update-vayupress.sh</code>) installs it too. Undo any time: <code>sudo bash deploy/vayushield-agent.sh uninstall</code>.</p>`)
+		b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-agent">sudo bash deploy/vayushield-agent.sh install</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-agent">Copy</button></div>`)
+		b.WriteString(`<p class="muted text-xs">` + shieldCheckoutHint() + ` Running your normal root updater (<code>scripts/update-vayupress.sh</code>) installs it too. Undo any time: <code>sudo bash deploy/vayushield-agent.sh uninstall</code>.</p>`)
 		b.WriteString(`<p class="muted text-sm">Prefer to apply Tier 2/3 by hand instead? (idempotent &amp; reversible)</p>`)
-		b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-t2">cd /path/to/VayuPress &amp;&amp; sudo bash deploy/vayushield-firewall.sh apply</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-t2">Copy</button></div>`)
+		b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-t2">sudo bash deploy/vayushield-firewall.sh apply</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-t2">Copy</button></div>`)
 		b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-t3">sudo cp deploy/nginx-vayushield.conf /etc/nginx/conf.d/ &amp;&amp; sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-t3">Copy</button></div>`)
 		b.WriteString(`<p class="muted text-xs">Undo: <code>… vayushield-firewall.sh remove</code>; delete the nginx conf + reload.</p></div>`)
 	}
@@ -563,4 +564,43 @@ func shieldTierRow(tier int, title, desc string) string {
 // refreshed hardening section in place.
 func shieldTierBtn(tier int, action, label, cls string) string {
 	return `<button type="button" class="btn ` + cls + `" hx-post="/os/api/shield/tier" hx-vals='{"tier":"` + strconv.Itoa(tier) + `","action":"` + action + `"}' hx-target="#vs-body-hardening" hx-swap="innerHTML">` + label + `</button>`
+}
+
+// shieldAgentStaleNotice warns when the helper is RUNNING but too old to write
+// an enforcement digest.
+//
+// This case had no notice at all, and it is the one an operator actually hits.
+// The install prompt below renders only when the agent is missing entirely, so a
+// stale agent — toggles working, tiers reported active, nothing verified —
+// offered no upgrade path anywhere on the page. The posture report meanwhile
+// showed four warnings whose single shared cause was exactly this, without ever
+// naming it. Four rows saying "unverified" and no row saying "here is why, and
+// here is the fix" is a diagnosis left as an exercise.
+func shieldAgentStaleNotice() string {
+	if readShieldDigest().Present {
+		return ""
+	}
+	return `<div class="vs-tier"><div class="vs-tier-head">⚠️ The helper is running, but it is an older build</div>` +
+		`<p class="muted text-sm">It applies Tier 2 and Tier 3 correctly — the switches above work — but it predates the ` +
+		`<strong>enforcement digest</strong>, so it cannot report back what is actually in force. That is why the posture ` +
+		`report marks the tier rows <em>unverified</em> rather than green: absent evidence is never counted as a pass. ` +
+		`Your defences are almost certainly fine; what is missing is the proof.</p>` +
+		`<p class="muted text-xs">` + shieldCheckoutHint() + `</p>` +
+		`<div class="vs-cmd"><code id="vs-cmd-agent-up">sudo bash deploy/vayushield-agent.sh install</code>` +
+		`<button type="button" class="vs-copy-btn" data-copy="vs-cmd-agent-up">Copy</button></div>` +
+		`<p class="muted text-xs">Run it from an up-to-date checkout. It is idempotent — re-running it on a current ` +
+		`agent changes nothing. This one step cannot be a button here: VayuPress is unprivileged by design, and an ` +
+		`unprivileged process being able to replace a root one is the exact escalation that separation exists to ` +
+		`prevent.</p></div>`
+}
+
+// shieldCheckoutHint tells the operator how to find their own checkout rather
+// than printing a placeholder path.
+//
+// The previous copy read "cd /path/to/VayuPress", which is not a command — it is
+// a diagram of one, and pasting it produces "No such file or directory". An
+// instruction an operator cannot paste is an instruction that has not been given.
+func shieldCheckoutHint() string {
+	return `Find your checkout with <code>sudo find / -name vayushield-agent.sh -path '*/deploy/*' 2>/dev/null</code>, ` +
+		`then <code>cd</code> to the directory above <code>deploy/</code> and <code>git pull</code> first.`
 }

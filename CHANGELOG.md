@@ -6,6 +6,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.5] — 2026-07-29
+
+### Fixed
+- **The hardening panel printed a path that does not exist.** It told operators to
+  run `cd /path/to/VayuPress && …`. That is not a command, it is a diagram of one:
+  pasting it returns "No such file or directory", and an instruction an operator
+  cannot paste is an instruction that was not given. Every command the panel
+  offers is now either runnable as printed, or accompanied by the command that
+  locates the missing piece. A test forbids placeholders in that copy.
+- **A helper that was running but out of date said nothing.** The install prompt
+  renders only when the agent is MISSING — so an agent that was alive, applying
+  Tier 2 and Tier 3 correctly, but too old to write an enforcement digest, left
+  the posture report showing four `unverified` rows whose single shared cause was
+  never named, and offered no upgrade path anywhere on the page. That is the state
+  an operator actually reaches, and it was the one state with no guidance.
+
+  There is now a notice for it that names the condition, names the missing
+  capability, gives the fix, and says plainly that the defences are almost
+  certainly fine — only the proof is missing. A warning that reads like a failure
+  gets acted on as one, so the copy is pinned by test in both directions.
+
+  It also states why this single step cannot be a button: VayuPress is
+  unprivileged by design, and an unprivileged process being able to replace a root
+  one is the exact escalation that separation exists to prevent.
+
+  Both shipped alone under the standing exception for defects already live and
+  blocking operators now.
+
 ## [3.16.4] — 2026-07-29
 
 ### Fixed

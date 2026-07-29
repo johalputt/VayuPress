@@ -266,3 +266,57 @@ func TestCDNAllowRowHandlesAnUnfetchableProxy(t *testing.T) {
 		t.Errorf("no manual path given for an unknown proxy:\n%s", got)
 	}
 }
+
+// TestTheHardeningPanelNeverPrintsAPlaceholderPath.
+//
+// The panel told operators to run `cd /path/to/VayuPress && …`. That is not a
+// command, it is a diagram of one: pasting it returns "No such file or
+// directory", and an instruction an operator cannot paste is an instruction that
+// was not given. Every command the panel offers must be either runnable as
+// printed or accompanied by the way to find the missing piece.
+func TestTheHardeningPanelNeverPrintsAPlaceholderPath(t *testing.T) {
+	for _, body := range []string{shieldAgentStaleNotice(), shieldCheckoutHint()} {
+		for _, bad := range []string{"/path/to/", "<your", "YOUR_", "&lt;path"} {
+			if strings.Contains(body, bad) {
+				t.Errorf("the panel prints the placeholder %q. An operator pastes what is on "+
+					"screen; a placeholder produces an error and no way forward", bad)
+			}
+		}
+	}
+	// The hint has to actually tell them how to locate their checkout.
+	if !strings.Contains(shieldCheckoutHint(), "find /") {
+		t.Error("the checkout hint does not give a command that locates the checkout, so an " +
+			"operator who does not know where it is still has nowhere to start")
+	}
+}
+
+// TestAStaleAgentIsToldItIsStale.
+//
+// This is the case an operator actually hits, and it had no notice anywhere. The
+// install prompt renders only when the helper is MISSING, so a helper that is
+// running but too old to write an enforcement digest left the posture report
+// showing four "unverified" rows whose single shared cause was never named, and
+// no upgrade path on the page at all.
+func TestAStaleAgentIsToldItIsStale(t *testing.T) {
+	notice := shieldAgentStaleNotice()
+	if notice == "" {
+		t.Skip("a digest is present in this environment, so there is nothing stale to report")
+	}
+	for _, want := range []string{
+		"older build",                 // names the condition
+		"enforcement digest",          // names the specific missing capability
+		"vayushield-agent.sh install", // gives the fix
+		"unprivileged by design",      // says why this one step is not a button
+	} {
+		if !strings.Contains(notice, want) {
+			t.Errorf("the stale-agent notice does not mention %q — without it the operator sees "+
+				"four unexplained warnings and no way to clear them", want)
+		}
+	}
+	// It must NOT read as an outage. The tiers are enforcing; only the proof is
+	// missing, and overstating that would push someone into unnecessary changes.
+	if !strings.Contains(notice, "almost certainly fine") {
+		t.Error("the notice does not say the defences are probably working. A warning that reads " +
+			"like a failure gets acted on as one")
+	}
+}
