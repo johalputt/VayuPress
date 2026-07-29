@@ -6,6 +6,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.13] — 2026-07-29
+
+### Fixed
+- **Your own site was 93% of your "referrals", in three panels.** Reported from a
+  live install: the Referrers list was topped by `mail.<domain>` 33%,
+  `<domain>` 31% and `mcp.<domain>` 29% — the site talking to itself, counted as
+  traffic somebody sent it.
+
+  3.16.6 fixed this. It fixed it in `TopReferrers`, and the panel calls `Since`,
+  which reads a **different table entirely** (`analytics_referrers` rather than
+  `analytics_pageviews`). Fixing the function whose name matches the symptom is
+  not the same as fixing the one the panel calls, and nothing connected them.
+  Writing a test that reads every referrer query then found a **third** offender
+  nobody had looked at: the Live visitors referrer list.
+
+  All three now share one `selfHostPatterns` predicate, so there is exactly one
+  place to change. The test asserts on the **SQL each query actually sends**, not
+  on a helper's name — the first version checked for the string
+  `selfHostPatterns()`, which the function *definition* also satisfies, so it
+  passed against a mutation that removed every call.
+
+  Deliberately NOT filtered: the query that classifies referrers into acquisition
+  channels. It has to see the whole set, because a same-site referrer belongs in
+  **Direct** rather than deleted from the breakdown. The test distinguishes them
+  structurally — a ranked list has `ORDER BY` and `LIMIT`, a classifier feed does
+  not — so a new list panel is covered the day it is written.
+
+### Note on two numbers that cannot be compared
+- The Referrers panel and the Pageviews headline read **different tables with
+  different populations**: `analytics_referrers` is written server-side from the
+  HTTP `Referer` header on recorded views, while the headline counts beacon
+  pageviews. That is why the referrer totals could exceed the pageview count and
+  why self-referrals dominated one panel while Audience correctly reported 97%
+  Direct. The self-host fix removes the misleading rows; the two counters remain
+  independent by design, and no percentage should be read across them.
+
 ## [3.16.12] — 2026-07-29
 
 ### Fixed

@@ -29,8 +29,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/johalputt/vayupress/internal/config"
 )
 
 // ── Visitor identity (privacy-preserving, non-persistent) ────────────────────
@@ -441,12 +439,12 @@ func (s *Store) TopReferrers(ctx context.Context, days, limit int) ([]ReferrerSt
 	// as direct. One dataset, two panels, opposite answers: the referrer list was
 	// topped by the operator's own webmail and MCP hosts, each with a count larger
 	// than the site's entire pageview total.
-	site := strings.ToLower(strings.TrimSpace(config.Cfg.Domain))
+	site, sub := selfHostPatterns()
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT referrer,COUNT(1) as cnt FROM analytics_pageviews
 		 WHERE created_at>=? AND event_type=1 AND referrer!=''
 		   AND LOWER(referrer)<>? AND LOWER(referrer) NOT LIKE ?
-		 GROUP BY referrer ORDER BY cnt DESC LIMIT ?`, from, site, "%."+site, limit)
+		 GROUP BY referrer ORDER BY cnt DESC LIMIT ?`, from, site, sub, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -736,8 +734,18 @@ func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 	}
 
 	// How active visitors arrived (referrer host, recorded at ingest).
+	//
+	// The self-host exclusion belongs here for the same reason as the other two
+	// referrer lists: internal navigation is not a referral. This is the third
+	// place the same predicate was needed and the third place it was missing —
+	// which is why they now share selfHostPatterns rather than each carrying a
+	// copy of the WHERE clause.
+	liveSite, liveSub := selfHostPatterns()
 	if rows, err := s.readDB().QueryContext(ctx,
-		`SELECT referrer,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND referrer!='' GROUP BY referrer ORDER BY 2 DESC LIMIT 10`, since); err == nil {
+		`SELECT referrer,COUNT(1) FROM analytics_pageviews
+		 WHERE created_at>=? AND referrer!=''
+		   AND LOWER(referrer)<>? AND LOWER(referrer) NOT LIKE ?
+		 GROUP BY referrer ORDER BY 2 DESC LIMIT 10`, since, liveSite, liveSub); err == nil {
 		for rows.Next() {
 			var a AudienceStat
 			if err := rows.Scan(&a.Label, &a.Count); err == nil {

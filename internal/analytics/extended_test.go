@@ -5,6 +5,7 @@ package analytics
 import (
 	"context"
 	"database/sql"
+	"os"
 	"strings"
 	"testing"
 
@@ -335,4 +336,93 @@ func TestAReferrerBreakdownNeverExceedsItsTotal(t *testing.T) {
 			"cannot exceed what it breaks down; when it does, the two queries are filtering "+
 			"differently and neither number can be trusted", sum, ov.TotalPageviews)
 	}
+}
+
+// TestBothReferrerQueriesExcludeTheSiteItself.
+//
+// Found on a live install: the Referrers panel was topped by the operator's own
+// hosts — mail.<domain> 33%, <domain> 31%, mcp.<domain> 29%. Ninety-three per
+// cent of "referrals" were the site talking to itself.
+//
+// The exclusion HAD been written — into TopReferrers, over analytics_pageviews.
+// The panel calls Since, which reads a different table entirely
+// (analytics_referrers). Fixing the function whose name matched the symptom is
+// not the same as fixing the one the panel calls, and the two are far enough
+// apart in the file that nothing connected them.
+//
+// Asserted over both queries, from one shared predicate, so they cannot drift.
+func TestBothReferrerQueriesExcludeTheSiteItself(t *testing.T) {
+	src, err := os.ReadFile("analytics.go")
+	if err != nil {
+		t.Skipf("source not readable here: %v", err)
+	}
+	ext, err := os.ReadFile("extended.go")
+	if err != nil {
+		t.Skipf("source not readable here: %v", err)
+	}
+	// Asserted on the SQL, not on the helper's name. The first version of this
+	// checked for the string "selfHostPatterns()", which the FUNCTION DEFINITION
+	// also satisfies — so it passed against a mutation that removed the call
+	// entirely. What matters is that each query carries the exclusion.
+	for name, s := range map[string]string{"analytics.go": string(src), "extended.go": string(ext)} {
+		for _, q := range referrerQueries(s) {
+			if !strings.Contains(q, "LOWER(host)<>?") && !strings.Contains(q, "LOWER(referrer)<>?") {
+				t.Errorf("%s has a referrer query with no self-host exclusion, so internal "+
+					"navigation still counts as a referral:\n%s", name, q)
+			}
+			if !strings.Contains(q, "NOT LIKE ?") {
+				t.Errorf("%s has a referrer query that does not exclude subdomains — mail.<domain> "+
+					"and mcp.<domain> were the two largest false entries:\n%s", name, q)
+			}
+		}
+	}
+	// One definition, not two. A predicate duplicated across two files is a
+	// predicate that gets fixed in one of them — which is exactly what happened.
+	if strings.Count(string(src)+string(ext), "func selfHostPatterns(") != 1 {
+		t.Error("selfHostPatterns is defined more than once; the point of it is that there is " +
+			"exactly one place to change")
+	}
+}
+
+// TestTheSelfHostPredicateCoversSubdomains — mail.<domain> and mcp.<domain> were
+// the two largest entries, so matching only the bare domain would have fixed
+// almost nothing.
+func TestTheSelfHostPredicateCoversSubdomains(t *testing.T) {
+	host, like := selfHostPatterns()
+	if like != "%."+host {
+		t.Fatalf("subdomain pattern %q does not cover subdomains of %q", like, host)
+	}
+	if !strings.HasPrefix(like, "%.") {
+		t.Error("the pattern would not match mail.<domain> or mcp.<domain>, which were the two " +
+			"largest false referrers on the install that reported this")
+	}
+}
+
+// referrerQueries extracts the SQL statements that read a referrer breakdown, so
+// the assertions above run against what the database is actually asked.
+func referrerQueries(src string) []string {
+	var out []string
+	for _, chunk := range strings.Split(src, "`") {
+		u := strings.ToUpper(chunk)
+		if !strings.Contains(u, "SELECT") {
+			continue
+		}
+		if !strings.Contains(chunk, "analytics_referrers") &&
+			!(strings.Contains(chunk, "analytics_pageviews") && strings.Contains(chunk, "referrer")) {
+			continue
+		}
+		// Only queries that PRODUCE A RANKED LIST of referrers. A query that reads
+		// every referrer in order to CLASSIFY them into acquisition channels must
+		// see the whole set: excluding the site's own host there would delete
+		// those visits from the channel breakdown instead of counting them as
+		// Direct, which is a worse answer than the one being fixed.
+		//
+		// ORDER BY + LIMIT is the structural tell, rather than a function name, so
+		// a new list panel is covered the day it is written.
+		if !strings.Contains(u, "ORDER BY") || !strings.Contains(u, "LIMIT") {
+			continue
+		}
+		out = append(out, chunk)
+	}
+	return out
 }

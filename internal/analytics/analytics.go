@@ -17,6 +17,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/config"
 )
 
 // Store aggregates page views in SQLite.
@@ -74,6 +76,17 @@ func (s *Store) Record(ctx context.Context, path, referrer string) error {
 		}
 	}
 	return nil
+}
+
+// selfHostPatterns returns the site's own host and the LIKE pattern matching its
+// subdomains, for excluding internal navigation from referrer lists.
+//
+// It exists because the same exclusion was written once, in one of the two
+// referrer queries, and the panel called the other one. A predicate duplicated
+// across two files is a predicate that will be fixed in one of them.
+func selfHostPatterns() (host, subdomainLike string) {
+	host = strings.ToLower(strings.TrimSpace(config.Cfg.Domain))
+	return host, "%." + host
 }
 
 // PathCount is a path with its view total over the queried window.
@@ -247,8 +260,24 @@ func (s *Store) Since(ctx context.Context, days, limit int) (*Summary, error) {
 		return nil, err
 	}
 
+	// The site's own host and its subdomains are excluded here too.
+	//
+	// They were not, and that is why the operator-facing panel was topped by the
+	// operator's own webmail and MCP hosts at 93% of all "referrals". Internal
+	// navigation is not a referral, and the classifier already agrees — it counts
+	// a same-site referrer as Direct — so the Audience card and the Referrers list
+	// were giving opposite answers about the same traffic.
+	//
+	// This is a SECOND query over a SECOND table. The same defect was fixed in
+	// TopReferrers (analytics_pageviews) and left here (analytics_referrers),
+	// because fixing the function whose name matched is not the same as fixing the
+	// one the panel calls. Both now share selfHostPatterns so they cannot drift
+	// apart again.
+	site, sub := selfHostPatterns()
 	if rows, err := s.readDB().QueryContext(ctx,
-		`SELECT host,SUM(hits) h FROM analytics_referrers WHERE day>=? GROUP BY host ORDER BY h DESC LIMIT ?`, from, limit); err == nil {
+		`SELECT host,SUM(hits) h FROM analytics_referrers
+		 WHERE day>=? AND LOWER(host)<>? AND LOWER(host) NOT LIKE ?
+		 GROUP BY host ORDER BY h DESC LIMIT ?`, from, site, sub, limit); err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var h HostCount
