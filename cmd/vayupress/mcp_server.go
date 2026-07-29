@@ -625,8 +625,26 @@ func mcpActor(ctx context.Context) string {
 
 // ── small schema/format helpers ──────────────────────────────────────────────
 
+// objSchema builds a tool's JSON Schema.
+//
+// props is normalised to an EMPTY OBJECT when nil, never left as a nil map.
+// This matters more than it looks: a nil map marshals to `"properties": null`,
+// and `null` is not a valid value for `properties` in JSON Schema — it must be
+// an object. A client that validates tool schemas rejects the tool, and some
+// reject the entire tools/list, so ONE no-argument tool with a nil schema
+// silently removes EVERY tool the server offers.
+//
+// That shipped. Three no-argument tools were added with objSchema(nil, nil) and
+// the connector went from ~20 working tools to zero across every session, while
+// the server kept answering tools/list with HTTP 200 and 8 KB of JSON. Nothing
+// server-side reported a problem, because nothing server-side was wrong: the
+// bytes went out fine and were refused at the other end. Every diagnostic that
+// tests the transport passes while the payload is unusable.
 func objSchema(required []string, props map[string]any) map[string]any {
 	s := mcp.NewObjectSchema()
+	if props == nil {
+		props = map[string]any{}
+	}
 	s["properties"] = props
 	if len(required) > 0 {
 		s["required"] = required

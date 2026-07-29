@@ -6,6 +6,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.15] — 2026-07-29
+
+### Fixed
+- **Three no-argument tools took the entire MCP connector down with them.** Every
+  session — new ones included — showed the connector as connected with **zero
+  tools**, and no server-side check could see anything wrong.
+
+  `objSchema(nil, nil)` sets `properties` to a nil map, which marshals to
+  `"properties": null`. `null` is not a valid value for `properties` in JSON
+  Schema; it must be an object. A client that validates tool schemas rejects the
+  tool, and some reject the whole `tools/list` — so three tools with no arguments
+  removed **all twenty** the server offers.
+
+  Introduced in 3.16.7 with the VayuShield read tools: `objSchema(nil, nil)`
+  appears three times in `mcp_shield.go` and **nowhere in the codebase before
+  it**. Every existing tool had at least one property and never hit the path.
+
+  What made it expensive to find is worth recording. The server kept answering
+  `tools/list` with **HTTP 200 and 8.2 KB of JSON**, so every diagnostic that
+  exercised the transport passed: direct-to-app, through nginx, through the CDN,
+  the OAuth discovery header, the access log. Nothing server-side was wrong. The
+  bytes went out correctly and were refused at the other end, and a 200 was read
+  as proof the payload was usable when it only ever proved it was sent.
+
+  `objSchema` now normalises a nil map to `{}`, which fixes it for every current
+  and future caller. Two tests marshal what actually goes on the wire: one
+  rejects `"properties":null` on any tool, the other validates the whole
+  `tools/list` as the single document a client receives — because the failure was
+  never "one tool is broken", it was "one tool takes every other tool with it".
+
+**Shipped immediately** under the standing exception: every VayuMCP install
+updated to 3.16.7 or later has had a connector with no tools.
+
 ## [3.16.14] — 2026-07-29
 
 ### Fixed

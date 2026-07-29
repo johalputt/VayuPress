@@ -3,6 +3,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+
 	"strings"
 	"testing"
 
@@ -89,4 +92,99 @@ func TestTheAllowListIsNeverDisclosedOverMCP(t *testing.T) {
 		return
 	}
 	t.Fatal("vayushield_settings is not registered")
+}
+
+// TestEveryToolSchemaIsValidOnTheWire.
+//
+// The check that was missing, and its absence cost a working connector.
+//
+// Three no-argument tools were registered with objSchema(nil, nil). A nil map
+// marshals to `"properties": null`, and null is not a valid value for
+// `properties` in JSON Schema — it must be an object. A client that validates
+// tool schemas rejects the tool, and some reject the whole tools/list. So three
+// tools with an empty schema removed EVERY tool the server offered, across every
+// session.
+//
+// Nothing caught it because nothing looked at the payload. The server answered
+// tools/list with HTTP 200 and 8 KB of JSON; the bytes were fine and were refused
+// at the other end. Every test and every probe exercised the transport.
+//
+// This marshals what actually goes on the wire and validates it.
+func TestEveryToolSchemaIsValidOnTheWire(t *testing.T) {
+	a := &App{}
+	srv := a.buildMCPServer()
+	tools := srv.Tools()
+	if len(tools) == 0 {
+		t.Fatal("no tools registered")
+	}
+
+	for _, tool := range tools {
+		raw, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Errorf("%s: input schema does not marshal: %v", tool.Name, err)
+			continue
+		}
+		// The literal that broke it. Checked on the encoded bytes, because that is
+		// what the client parses — a Go-side nil map looks harmless in a debugger
+		// and only becomes null at the boundary.
+		if bytes.Contains(raw, []byte(`"properties":null`)) {
+			t.Errorf("%s: emits \"properties\":null, which is invalid JSON Schema and can cause a "+
+				"client to discard the ENTIRE tool list: %s", tool.Name, raw)
+		}
+
+		var decoded map[string]any
+		if err := json.Unmarshal(raw, &decoded); err != nil {
+			t.Errorf("%s: schema is not valid JSON: %v", tool.Name, err)
+			continue
+		}
+		if decoded["type"] != "object" {
+			t.Errorf("%s: schema type is %v, want \"object\"", tool.Name, decoded["type"])
+		}
+		props, ok := decoded["properties"]
+		if !ok {
+			t.Errorf("%s: schema has no properties key", tool.Name)
+			continue
+		}
+		if _, isObj := props.(map[string]any); !isObj {
+			t.Errorf("%s: properties is %T (%v), want an object — a no-argument tool needs {}, "+
+				"not null", tool.Name, props, props)
+		}
+	}
+}
+
+// TestTheWholeToolListSurvivesAStrictClient — the failure mode was not "one tool
+// is broken", it was "one tool takes every other tool with it". So the assertion
+// that matters is over the WHOLE list as a single document, the way a client
+// receives it.
+func TestTheWholeToolListSurvivesAStrictClient(t *testing.T) {
+	a := &App{}
+	srv := a.buildMCPServer()
+
+	type wireTool struct {
+		Name        string         `json:"name"`
+		Description string         `json:"description"`
+		InputSchema map[string]any `json:"inputSchema"`
+	}
+	var list []wireTool
+	for _, tool := range srv.Tools() {
+		list = append(list, wireTool{tool.Name, tool.Description, tool.InputSchema})
+	}
+	payload, err := json.Marshal(map[string]any{"tools": list})
+	if err != nil {
+		t.Fatalf("the tools/list payload does not marshal: %v", err)
+	}
+	if bytes.Contains(payload, []byte("null")) {
+		// Narrow the report to the offender rather than the whole document.
+		for _, tool := range srv.Tools() {
+			b, _ := json.Marshal(tool.InputSchema)
+			if bytes.Contains(b, []byte("null")) {
+				t.Errorf("tool %q contributes a null to the tools/list payload: %s", tool.Name, b)
+			}
+		}
+	}
+	// Sanity: the list is substantial. A payload that shrank to nothing would
+	// also "contain no nulls".
+	if len(srv.Tools()) < 10 {
+		t.Errorf("only %d tools registered — the surface collapsed", len(srv.Tools()))
+	}
 }
