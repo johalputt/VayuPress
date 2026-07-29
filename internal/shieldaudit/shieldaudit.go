@@ -157,6 +157,9 @@ type Inputs struct {
 	RateLimit, LoadShed, AutoBlock, Surge bool
 	// ObserveOnly is the measure-but-do-not-enforce mode.
 	ObserveOnly bool
+	// TorInertGates names the enforcement rules that deliberately do not act in a
+	// Tor Space. Empty on a clearnet install.
+	TorInertGates []string
 	// CaptureWired is whether TLS ClientHello capture is available, without which
 	// classification runs on HTTP signals alone.
 	CaptureWired bool
@@ -261,6 +264,19 @@ func Run(in Inputs) []Check {
 			"A Tor Space bound "+in.BindAddr+" rather than loopback. The onion service reaches the app over 127.0.0.1; anything wider is a clearnet listener on a host whose whole purpose is not having one.")
 	case in.OnionMode:
 		add("Listener binding", Pass, "Bound to loopback. Only the Tor daemon can reach the app.")
+		// A Tor Space does not run the same shield, and an operator who assumes it
+		// does will misread every other row on this page. The gates keyed on a
+		// source address are measuring the Tor daemon there, and the ones needing a
+		// browser to compute a proof cannot be satisfied at all over plain-http
+		// .onion — so they are off by design rather than by misconfiguration.
+		if len(in.TorInertGates) > 0 {
+			add("Defences inactive in this Tor Space", Info,
+				"These do not enforce here, deliberately: "+strings.Join(in.TorInertGates, ", ")+
+					". Every peer is 127.0.0.1, so a per-source limit would shed the whole audience as "+
+					"one heavy hitter; and the plain-http onion leaves window.crypto.subtle undefined, "+
+					"so no visitor could ever solve a challenge. The gates that do not depend on either "+
+					"still enforce.")
+		}
 	case isLoopback(in.BindAddr):
 		add("Listener binding", Pass, "Bound to loopback, so the app is reachable only through the local reverse proxy and every Tier 3 limit is unavoidable.")
 	default:

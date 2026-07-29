@@ -1768,20 +1768,6 @@ func (m *Manager) CrawlerIdentityIsIPVerified() bool {
 	return m.cfg.VerifiedBotFn != nil
 }
 
-// ReleaseAllSentences lifts every active jail sentence — the reputation brain's
-// standing records AND the O(1) blocklist — and returns the number of sources
-// released. It is the operator's amnesty control: sentences self-expire but
-// escalate to hours, so after fixing the cause of a false-positive run (a load
-// test, a proxy that made every reader look like one IP, a threshold set too
-// tight) the operator would otherwise still have to wait out punishments aimed at
-// their own readers. Verified sessions and the SEO crawler lane were never
-// affected by sentences, so this only ever restores access.
-func (m *Manager) ReleaseAllSentences() int {
-	n := m.brain.ReleaseAll()
-	n += m.blocklist.UnblockAll()
-	return n
-}
-
 // softenForNavigation converts a score-only tarpit/block verdict into the
 // solvable challenge when the request is a top-level browser navigation, and
 // reports whether it handled the response.

@@ -304,3 +304,36 @@ func TestConntrackFailureIsSurfaced(t *testing.T) {
 		t.Errorf("status = %v when the conntrack sizing did not take, want Fail", c.Status)
 	}
 }
+
+// TestTorSpaceSaysWhichDefencesAreOff — a Tor Space does not run the same
+// shield, and an operator who assumes it does will misread every other row on
+// the page. The gates keyed on a source address are measuring the Tor daemon
+// there, and the ones needing a browser to compute a proof cannot be satisfied
+// at all over a plain-http onion. That they are off is a design decision, and a
+// design decision nobody states is indistinguishable from a bug.
+func TestTorSpaceSaysWhichDefencesAreOff(t *testing.T) {
+	in := healthy()
+	in.OnionMode = true
+	in.BindAddr = "127.0.0.1:8080"
+	in.TorInertGates = []string{"fair shed", "rate limit", "sovereign surge", "challenge ladder"}
+
+	c, ok := find(Run(in), "Defences inactive in this Tor Space")
+	if !ok {
+		t.Fatal("a Tor Space's report says nothing about which gates do not enforce there")
+	}
+	if c.Status != Info {
+		t.Errorf("status = %v, want Info — these are off by design, not broken", c.Status)
+	}
+	for _, want := range []string{"rate limit", "challenge ladder", "127.0.0.1"} {
+		if !strings.Contains(c.Detail, want) {
+			t.Errorf("the row does not mention %q", want)
+		}
+	}
+
+	// A clearnet install must not carry the row at all.
+	in.OnionMode = false
+	in.TorInertGates = nil
+	if _, ok := find(Run(in), "Defences inactive in this Tor Space"); ok {
+		t.Error("a clearnet install was told about Tor-mode exemptions that do not apply to it")
+	}
+}

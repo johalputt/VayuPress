@@ -293,6 +293,7 @@ func (a *App) bootVayuShield() {
 	// nobody has opened the panel on. This is the one place the report is
 	// computed without a request, so it carries no client-IP row.
 	a.logShieldPosture()
+	logShieldContract()
 	// The learning/purge reporter always runs (cheap 24h ticker) so the adaptive
 	// database stays curated regardless of the current toggle state.
 	a.vayuShield.StartReporter(queue.DoneCh, 24*time.Hour, config.Cfg.AnalyticsRetainDays, func(res vayushield.LearningResult, err error) {

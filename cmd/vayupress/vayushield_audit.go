@@ -141,6 +141,12 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 		AutoBlock:   cur.AutoBlock,
 		Surge:       cur.Surge,
 		ObserveOnly: a.vayuShield.Observing(),
+		TorInertGates: func() []string {
+			if !config.Cfg.OnionMode {
+				return nil
+			}
+			return vayushield.GatesInertInTorMode()
+		}(),
 
 		CaptureWired:  a.vayuShield.CaptureWired(),
 		LinkSpeedMbps: linkSpeedMbps(),
@@ -240,6 +246,34 @@ func (a *App) shieldAuditChip(r *http.Request) string {
 		return `<span class="mon-chip mon-chip--off">▲ ` + strconv.Itoa(warn) + ` to review</span>`
 	}
 	return `<span class="mon-chip mon-chip--on">● Verified</span>`
+}
+
+// logShieldContract writes the enforcement contract to the boot log.
+//
+// Every gate declares what it does in a Tor Space, what it does to a confirmed
+// crawler, how its effect ends and whether amnesty covers it. Printing that at
+// boot is the difference between obligations that are documented and obligations
+// an operator can actually see — particularly in a Tor Space, where several
+// gates are off by design and would otherwise look broken.
+func logShieldContract() {
+	var inert []string
+	for _, r := range vayushield.EnforcementRules() {
+		if !r.Complete() {
+			// A programming error rather than an operator one: the registry is a
+			// compile-time literal. Logged rather than fatal, because a shield with
+			// an under-described rule still defends better than one that refused to
+			// start.
+			logging.LogWarn("vayushield", "enforcement rule leaves an obligation unanswered: "+r.String())
+			continue
+		}
+		if r.Onion == vayushield.OnionInert {
+			inert = append(inert, r.String())
+		}
+	}
+	if config.Cfg.OnionMode && len(inert) > 0 {
+		logging.LogInfo("vayushield", "Tor Space — these gates do not enforce here by design: "+
+			strings.Join(inert, "; "))
+	}
 }
 
 // logShieldPosture writes the posture report to the boot log.

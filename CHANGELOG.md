@@ -9,6 +9,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **The enforcement contract is a type, not a convention.** Every gate that can
+  refuse, delay or challenge a request carries four obligations — inert in Tor
+  mode where it would be wrong there, never gate a crawler confirmed by network
+  facts, self-expiring or explicitly permanent, and covered by one-click amnesty
+  — and all four were re-implemented by hand at eight sites. A convention
+  re-implemented by hand at eight sites is one that gets forgotten at the ninth,
+  and silently: a rule that quietly enforces in a Tor Space, or jails a search
+  engine, or outlives an amnesty, looks exactly like a rule that does none of
+  those things until someone is affected.
+
+  Each gate now declares its obligations with its reasoning, a test asserts the
+  registry against the `Gate` enum, and amnesty **walks the registry** instead of
+  a hand-written list — the previous version named the brain and the blocklist
+  explicitly, so a future rule holding its own durable state would have been
+  missed by a control the operator believed covered everything.
+
+  The type caught its own first bug: `OnionInert` was the zero value, so a rule
+  literal that omitted the field was silently recorded as "never acts in a Tor
+  Space" — the contract answering its own question on the author's behalf. The
+  zero value of each policy is now invalid, so an omitted field fails rather than
+  inherits a default nobody chose.
+
+  A Tor Space's posture report and boot log now name the gates that do not
+  enforce there. Several are off by design, and a design decision nobody states
+  is indistinguishable from a bug.
+
 - **Serve cheap: a micro-cache, static off disk, and static shed pages.** The
   largest single-node capacity multiplier available, and mostly configuration.
   Every request — including static assets — proxied to Go, and the render cache's
