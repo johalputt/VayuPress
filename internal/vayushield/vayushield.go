@@ -1713,7 +1713,18 @@ func (m *Manager) VerifyPoW(r *http.Request, pow challenge.PoW, nonce string) (t
 	// are not informative about the score-based ladder and would wrongly loosen
 	// it for hours after an attack. Only score-driven ladder outcomes calibrate.
 	if !m.underSurge(m.live()) {
-		m.calib.Passed()
+		// A solve proves a real BROWSER. A headless one is also a real browser, so
+		// this is the one calibrator input an attacker can manufacture — and the
+		// direction it moves is "loosen". Qualify it with a signal the solve
+		// cannot produce: the brain's standing, which is fed by sustained
+		// low-score browsing in the Allow path and never by solving a challenge.
+		//
+		// The brain only tracks suspects, so an unseen source returns neutral and
+		// qualifies. That is the honest limit: this excludes a source already
+		// observed misbehaving, and the calibrator's own diversity floor is what
+		// bounds a clean-slate farm.
+		key := m.enforcementKey(ipOnly(m.cfg.ClientIP(r)))
+		m.calib.Passed(m.brain.Standing(key) >= brain.Neutral, key)
 	}
 	// Arm the false-positive guard: a solved challenge is human proof, so if the
 	// challenged fingerprint had been auto-learned as a bad-bot candidate this

@@ -28,6 +28,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   expected mail ports are read out of `vayuos.go` by the test rather than written
   down twice.
 
+- **The self-calibrator no longer takes an attacker's word for it.** The Aegis L4
+  controller loosens the challenge thresholds when the pass rate is high, on the
+  reasoning that a solved proof-of-work proves a real browser. A headless browser
+  is also a real browser — so the one signal that drives the site more permissive
+  was the one an attacker could manufacture by running a JS engine.
+
+  Loosening now needs two things a solve cannot produce on its own. The solver
+  must be one the reputation brain has not already downgraded (standing is fed by
+  sustained low-score browsing in the Allow path, never by solving a challenge,
+  so it is genuinely independent), and the window must carry passes from at least
+  eight **different** sources. A real audience clears the floor without noticing;
+  a solver farm has to buy address diversity to reach it, and under the
+  prefix-keyed enforcement above that means distinct `/64`s.
+
+  Only loosening is gated. Tightening back toward the operator's settings needs
+  no independent signal — there is nothing to gain by driving a site stricter
+  than its operator asked for — and gating both directions would let an attacker
+  freeze the calibrator at its loosest instead, which is the same win by another
+  route.
+
+  Stated plainly, because the previous framing overclaimed: the clamp was always
+  the real bound. The bias is `[0, +0.2]` in 0.05 steps, decays toward zero, and
+  never touches the block threshold, so even with every gate defeated the
+  reachable state is a bounded, self-draining shift of the challenge bands.
+
 - **Prefix-keyed enforcement, so an IPv6 attacker cannot buy their way out.**
   The rate limiter, violation meter, blocklist and reputation brain all keyed on
   the exact client address. For IPv4 that is a resource an attacker pays for; for

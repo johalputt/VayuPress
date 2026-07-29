@@ -180,6 +180,11 @@ func (b *Brain) Jailed(key string) bool {
 // Standing returns the current (decayed) reputation for key; unknown sources
 // are neutral. Exposed for the dashboard and downstream layers (L4 uses it to
 // pick challenge difficulty).
+// Neutral is the standing of a source the brain has never observed. Only
+// suspects are tracked, so an unseen source reads exactly here — callers using
+// standing as a filter get "not already downgraded", not "known good".
+const Neutral = neutral
+
 func (b *Brain) Standing(key string) float64 {
 	if key == "" {
 		return neutral
