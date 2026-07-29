@@ -160,20 +160,41 @@ server {
     client_max_body_size 50M;
     proxy_pass_header X-CSRF-Token;
 
+    # Declared once at server level; every location below inherits them, because
+    # proxy_set_header only stops inheriting when a location declares its own.
+    proxy_set_header Host              \$host;
+    proxy_set_header X-Real-IP         \$remote_addr;
+    proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+
     location ^~ /.well-known/acme-challenge/ { root ${CACHE_DIR}; default_type text/plain; try_files \$uri =404; }
 
-    # The whole app, straight to the origin. The full OAuth sign-in + consent flow
-    # (/.well-known/oauth-*, /oauth/*, /mcp, and the /os login + static assets the
-    # consent page loads) must all be reachable on this host, so proxy everything.
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host              \$host;
-        proxy_set_header X-Real-IP         \$remote_addr;
-        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-    }
+    # Only what the connector flow needs. This host is provisioned with the CDN
+    # proxy deliberately OFF (an edge bot challenge breaks machine-to-machine MCP
+    # calls), so anything reachable here is reachable straight from the internet
+    # with no edge in front of it.
+    #
+    # It used to proxy "/" — the whole app, admin console included — which made
+    # this the widest-open vhost on the install AND one whose paths sit in
+    # shieldBypassPrefixes, because an MCP client cannot solve a proof-of-work.
+    # Widest-open plus shield-bypassed is not a combination to leave on a
+    # wildcard. The sibling api-host script already closes with `return 404`;
+    # this now matches it.
+    location ^~ /.well-known/oauth-authorization-server { proxy_pass http://127.0.0.1:8080; }
+    location ^~ /.well-known/oauth-protected-resource   { proxy_pass http://127.0.0.1:8080; }
+    location ^~ /oauth/    { proxy_pass http://127.0.0.1:8080; }
+    location ^~ /mcp       { proxy_pass http://127.0.0.1:8080; }
+    # The consent page is served under /os and loads its own CSS/JS from there.
+    location ^~ /os/       { proxy_pass http://127.0.0.1:8080; }
+    location = /os         { proxy_pass http://127.0.0.1:8080; }
+    location ^~ /static/   { proxy_pass http://127.0.0.1:8080; }
+    location = /health     { proxy_pass http://127.0.0.1:8080; access_log off; }
+
+    # Everything else — the public site, the API, the editor, media — is served on
+    # the apex, where the edge and Tier 3 shaping actually apply.
+    location / { return 404; }
 
     access_log /var/log/nginx/vayupress-mcp-access.log;
     error_log  /var/log/nginx/vayupress-mcp-error.log warn;

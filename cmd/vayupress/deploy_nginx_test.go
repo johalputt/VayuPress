@@ -98,6 +98,51 @@ func TestOptionalDirectivesStayCommented(t *testing.T) {
 	}
 }
 
+// TestCatchAllVhostExists — nginx makes the first server block for an
+// address:port the implicit default, so with no catch-all an unknown-SNI or
+// direct-IP probe is served the production site, /os included. It also confirms
+// to anyone scanning that they have found the origin behind a CDN.
+func TestCatchAllVhostExists(t *testing.T) {
+	active := strings.Join(activeLines(readDeployConf(t, "nginx-vayupress.conf")), "\n")
+	if !strings.Contains(active, "default_server") {
+		t.Error("no default_server block — a request naming no vhost is served the production site")
+	}
+	if !strings.Contains(active, "return 444") {
+		t.Error("the catch-all does not close the connection (444)")
+	}
+	// ACME has to keep working on the catch-all, or a renewal for a name not yet
+	// in a vhost fails and the certificate silently expires.
+	i := strings.Index(active, "default_server")
+	if j := strings.Index(active[i:], "acme-challenge"); j < 0 || j > 400 {
+		t.Error("the catch-all does not serve ACME — certificate renewal for an unlisted name would fail")
+	}
+}
+
+// TestMCPHostIsNotAWildcard — the mcp host is provisioned with the CDN proxy
+// deliberately off, because an edge bot challenge breaks machine-to-machine MCP
+// calls. Anything reachable there is reachable straight from the internet, and
+// its paths are in shieldBypassPrefixes for the same reason. Widest-open plus
+// shield-bypassed is not a combination to leave on a wildcard.
+func TestMCPHostIsNotAWildcard(t *testing.T) {
+	b, err := os.ReadFile("../../scripts/setup-mcp-subdomain.sh")
+	if err != nil {
+		t.Fatalf("read mcp script: %v", err)
+	}
+	src := string(b)
+	if !strings.Contains(src, "location / { return 404; }") {
+		t.Error("the mcp vhost does not close with `return 404` — it still proxies the whole app off-edge")
+	}
+	if strings.Contains(src, "location / {\n        proxy_pass") {
+		t.Error("the mcp vhost still has a wildcard proxy_pass")
+	}
+	// The connector flow must still be reachable, or the host is useless.
+	for _, need := range []string{"/oauth/", "/mcp", "/os", "oauth-authorization-server"} {
+		if !strings.Contains(src, need) {
+			t.Errorf("the mcp vhost no longer routes %q — the connector flow would break", need)
+		}
+	}
+}
+
 // TestTier3ActuallyEnforces is the regression test for the product's largest
 // honesty defect. nginx-vayushield.conf declared its rate-limit ZONES while every
 // limit_req / limit_conn that uses them sat in a commented example. nginx accepts

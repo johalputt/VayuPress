@@ -9,7 +9,6 @@ import (
 	"embed"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"runtime"
@@ -19,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
@@ -604,18 +604,16 @@ func AuditLog(action, actor, target, detail string) {
 }
 
 // AuditActor derives a stable actor identifier (client IP) from the request.
+//
+// It delegates to auth.ClientIP, which honours forwarding headers ONLY when the
+// immediate peer is a configured trusted proxy. The previous implementation read
+// X-Real-IP, then the FIRST X-Forwarded-For entry, with no peer check at all —
+// so anyone able to reach the origin directly could write whatever actor they
+// liked into the audit log, and the left-most XFF entry is the one a client
+// prepends. An audit trail an attacker can author is worse than none: it does not
+// merely fail to record them, it records someone else.
 func AuditActor(r *http.Request) string {
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return strings.TrimSpace(strings.Split(xff, ",")[0])
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil {
-		return host
-	}
-	return r.RemoteAddr
+	return auth.ClientIP(r)
 }
 
 // ── Migration system ──────────────────────────────────────────────────────────

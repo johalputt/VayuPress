@@ -69,12 +69,24 @@ func TestTorOnionMiddlewareOnionPrimary(t *testing.T) {
 }
 
 // TestOnionSafeBindAddr: a Tor Space binds loopback only (its content must never
-// be reachable on the host's public clearnet IP — a deanonymisation vector),
-// while a clearnet install binds all interfaces exactly as before (ADR-0141).
+// be reachable on the host's public clearnet IP — a deanonymisation vector).
+//
+// A clearnet install now binds loopback too, by default. It used to bind every
+// interface, which served the whole app — admin console included — on
+// http://<host>:8080 with no proxy, no TLS and no edge shaping, to anyone who
+// scanned the port. This test previously PINNED that behaviour as correct, so it
+// would have blocked the fix.
 func TestOnionSafeBindAddr(t *testing.T) {
-	if got := onionSafeBindAddr("8080", false); got != ":8080" {
-		t.Errorf("clearnet bind = %q, want %q", got, ":8080")
+	t.Setenv("BIND_ADDR", "")
+	if got := onionSafeBindAddr("8080", false); got != "127.0.0.1:8080" && !runningInContainer() {
+		t.Errorf("clearnet bind = %q, want %q — the app must not be reachable off-box without a proxy", got, "127.0.0.1:8080")
 	}
+	// The explicit opt-in for an install that really does serve directly.
+	t.Setenv("BIND_ADDR", "0.0.0.0")
+	if got := onionSafeBindAddr("8080", false); got != "0.0.0.0:8080" {
+		t.Errorf("BIND_ADDR=0.0.0.0 bind = %q, want %q", got, "0.0.0.0:8080")
+	}
+	t.Setenv("BIND_ADDR", "")
 	if got := onionSafeBindAddr("8081", true); got != "127.0.0.1:8081" {
 		t.Errorf("tor bind = %q, want %q (must be loopback-only)", got, "127.0.0.1:8081")
 	}

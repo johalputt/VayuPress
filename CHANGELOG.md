@@ -9,6 +9,53 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Security
+- **The whole app, admin console included, was served on `:8080` to anyone who
+  scanned the port.** A clearnet install bound every interface unconditionally,
+  so `http://<host>:8080/os` reached VayuOS with no reverse proxy, no TLS and no
+  Tier 3 shaping in front of it. The kernel tier did not cover it either — its
+  chain policy is accept and its rules only name 80 and 443. The reasoning that
+  binds a Tor Space to loopback applies just as well to a clearnet one; it had
+  simply never been generalised.
+
+  The default is now loopback. Two escapes exist because both are needed:
+  `BIND_ADDR` is honoured verbatim (`0.0.0.0` being the explicit opt-in for an
+  install that genuinely serves directly), and **containers keep binding all
+  interfaces automatically** — `docker-compose.yml` exposes 8080 on the private
+  Compose network and both Caddyfiles proxy to `vayupress:8080` *by hostname*, so
+  a loopback bind inside the netns is unreachable and the site would simply stop
+  working.
+
+  The existing test asserted `":8080"` as correct for clearnet, so it had been
+  pinning the exposure in place.
+
+- **The audit log could be authored by an attacker.** `AuditActor` read
+  `X-Real-IP`, then the **first** `X-Forwarded-For` entry, with no trusted-peer
+  check — and the left-most XFF entry is the one a client prepends. Anyone able
+  to reach the origin directly could write whatever actor they liked into the
+  WORM audit trail. A trail an attacker can author is worse than none: it does
+  not merely fail to record them, it records someone else. It now delegates to
+  `auth.ClientIP`, which honours forwarding headers only from a configured
+  trusted proxy.
+
+- **No `default_server` anywhere, so a direct-IP probe was served the site.**
+  nginx makes the first server block for an `address:port` the implicit default,
+  so an unknown-SNI or bare-IP request received the production vhost — `/os`
+  included — and confirmed to whoever asked that they had found the origin behind
+  a CDN. That matters more than usual on a host that also runs mail, whose
+  address is already public via its MX record. The template now opens with a
+  catch-all returning **444** (connection closed, no response), while still
+  serving ACME so a renewal for a name not yet in a vhost cannot fail.
+
+- **The `mcp.<domain>` host proxied the entire application off-edge.** It is
+  provisioned with the CDN proxy deliberately off, because an edge bot challenge
+  breaks machine-to-machine MCP calls — so everything reachable there is reachable
+  straight from the internet, and its paths are in `shieldBypassPrefixes` for the
+  same reason. Widest-open *and* shield-bypassed is not a combination to leave on
+  a `location /` wildcard. It now routes only the connector flow — the OAuth
+  discovery documents, `/oauth/`, `/mcp`, the consent page under `/os` and its
+  static assets — and closes with `return 404`, matching the sibling api-host
+  script that already did this.
+
 - **Tier 3 reported "Active" and enforced nothing.** `nginx-vayushield.conf`
   declared its rate-limit *zones* while every `limit_req` / `limit_conn` that
   uses them sat in a commented example block. nginx accepts unused zones, so

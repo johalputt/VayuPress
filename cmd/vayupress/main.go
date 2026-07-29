@@ -89,17 +89,66 @@ import (
 var Version = "3.15.91"
 var bootTime = time.Now()
 
-// onionSafeBindAddr picks the HTTP listen address (ADR-0141). A Tor Space
-// (OnionMode) is reached ONLY through Tor's HiddenServicePort → 127.0.0.1, so
-// the app binds loopback and its content is never exposed on the host's public
-// clearnet IP — closing an onion-deanonymisation vector (a port scan of the VPS
-// could otherwise serve the "anonymous" site in cleartext). A clearnet install
-// binds all interfaces exactly as before (nginx/TLS terminate in front).
+// onionSafeBindAddr picks the HTTP listen address (ADR-0141).
+//
+// A Tor Space (OnionMode) is reached ONLY through Tor's HiddenServicePort →
+// 127.0.0.1, so it binds loopback and its content is never exposed on the host's
+// public clearnet IP — closing an onion-deanonymisation vector.
+//
+// A clearnet install used to bind every interface unconditionally, which meant
+// the whole app — the admin console included — was served on http://<host>:8080
+// with no nginx, no TLS and no Tier 3 shaping in front of it, to anyone who
+// scanned the port. The kernel tier does not cover it either: its chain policy is
+// accept and its rules only name 80 and 443. The onion reasoning above applies
+// just as well here; it had simply never been generalised.
+//
+// The default is now loopback, because on the overwhelmingly common deployment a
+// reverse proxy on the same host is the only thing that should reach the app.
+// Two escapes exist, and both are needed:
+//
+//   - BIND_ADDR is honoured verbatim. "0.0.0.0" is the explicit opt-in for an
+//     install that really does serve directly.
+//   - Containers bind all interfaces automatically. docker-compose.yml exposes
+//     8080 on the private Compose network and both Caddyfiles proxy to
+//     "vayupress:8080" BY HOSTNAME — cross-container, so a loopback bind inside
+//     the netns is unreachable and the site would simply stop working. Detecting
+//     this beats breaking every containerised install to close a port that the
+//     container runtime already isolates.
 func onionSafeBindAddr(port string, onion bool) string {
 	if onion {
 		return "127.0.0.1:" + port
 	}
-	return ":" + port
+	if b := strings.TrimSpace(config.EnvOr("BIND_ADDR", "")); b != "" {
+		if strings.Contains(b, ":") && !strings.HasPrefix(b, "[") {
+			return b // already host:port (or an IPv6 literal the operator bracketed)
+		}
+		return b + ":" + port
+	}
+	if runningInContainer() {
+		return ":" + port
+	}
+	return "127.0.0.1:" + port
+}
+
+// runningInContainer reports whether this process is inside a container, where
+// binding loopback would make the app unreachable from a sibling container.
+func runningInContainer() bool {
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+	// cgroup v1 names the runtime in the path; v2 exposes it here too on the
+	// runtimes that matter. A read failure means "not a container" — the safe
+	// direction, since the cost of guessing wrong is a bind that is too tight
+	// rather than a port opened to the internet.
+	if b, err := os.ReadFile("/proc/1/cgroup"); err == nil {
+		s := string(b)
+		for _, marker := range []string{"docker", "containerd", "kubepods", "podman", "lxc"} {
+			if strings.Contains(s, marker) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Immutable package-level values (compiled once, never mutated).
