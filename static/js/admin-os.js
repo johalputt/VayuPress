@@ -197,7 +197,7 @@ window.vpToast = toast;
    checkbox (management grids that read better as a horizontal scroll).
 
    Runs on first load AND after every HTMX swap, scoped to the swapped subtree —
-   so tables delivered by HTMX (analytics, Bot Shield sections, the mailbox
+   so tables delivered by HTMX (analytics, VayuShield sections, the mailbox
    list) get the same phone-friendly card layout as server-rendered ones,
    instead of a wide horizontal scroll. Idempotent: cells already labelled and
    wrappers already flagged are skipped, so repeated swaps never re-walk work. */

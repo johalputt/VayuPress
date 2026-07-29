@@ -256,7 +256,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/backup", a.handleOSVayuKeepBackup)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/drill", a.handleOSVayuKeepDrill)
 		pr.Get("/os/power/preview", a.handleOSPowerPreview)
-		// Optimize hub: consolidates SEO / Analytics / Bot Shield / Theme Studio /
+		// Optimize hub: consolidates SEO / Analytics / VayuShield / Theme Studio /
 		// Theme Store + Tools / Domains / Settings / VayuAPI / VayuMCP into one
 		// dashboard-style card page (editor+; admin-only cards hidden from editors).
 		pr.Get("/os/optimize", a.handleOSOptimize)
@@ -407,7 +407,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/api/analytics/realtime", a.handleAnalyticsRealtime)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/analytics/goals", a.handleAnalyticsCreateGoal)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/analytics/goals/{id}", a.handleAnalyticsDeleteGoal)
-		// VayuShield — Bot Shield & Analytics operator panel (admin-gated).
+		// VayuShield operator panel (admin-gated).
 		// Both the page load AND the section poll re-issue the vp_csrf cookie
 		// (CSRFTokenMiddleware) so it never goes stale while the panel is open.
 		// The hero polls the section route every 10s, so within 10s of a CSRF
@@ -1117,7 +1117,7 @@ func osSidebarNav(active string, s *osSettings) string {
 	// live counts, mirroring the Dashboard pattern — so the sidebar stays minimal.
 	// (My Profile also remains reachable from the sidebar footer avatar.)
 	b.WriteString(gate(navItem("/os/growth", "Growth", "growth", active, iconGrowth), "/os/growth"))
-	// Optimize hub. SEO, Analytics, Bot Shield, Theme Studio, Theme Store AND the
+	// Optimize hub. SEO, Analytics, VayuShield, Theme Studio, Theme Store AND the
 	// everyday config surfaces (Tools & Plugins, Domains, Settings, VayuAPI, VayuMCP)
 	// all live inside this one card page now.
 	b.WriteString(gate(navItem("/os/optimize", "Optimize", "optimize", active, iconOptimize), "/os/optimize"))

@@ -2,14 +2,14 @@
 
 package main
 
-// admin_os_optimize.go — the "Optimize" hub. SEO, Analytics, Bot Shield, Theme
+// admin_os_optimize.go — the "Optimize" hub. SEO, Analytics, VayuShield, Theme
 // Studio and Theme Store, PLUS the everyday configuration surfaces (Tools &
 // Plugins, Domains, Settings, VayuAPI, VayuMCP), are consolidated from the sidebar
 // into ONE pinned tab of premium cards — the same dashboard-hub pattern used for
 // content, Growth and Operations — so the VayuOS sidebar stays minimal and clean.
 // Each card is gated to the viewer's access level, exactly like the sidebar it
 // replaced, so an editor sees SEO/Analytics/Theme but never the admin-only cards
-// (Bot Shield, Domains, Settings, VayuAPI, VayuMCP, Tools).
+// (VayuShield, Domains, Settings, VayuAPI, VayuMCP, Tools).
 
 import (
 	"html"
@@ -100,7 +100,7 @@ func osOptimizeGrid(level int, sites []optimizeSite) string {
 	b.WriteString(row("Reach, protect &amp; polish", "Grow visibility and safeguard your site",
 		card("/os/seo", "SEO", "Search visibility & metadata", iconSEO, true),
 		card("/os/analytics", "Analytics", "Traffic & audience insights", iconAnalytics, false),
-		card("/os/shield", "Bot Shield", "Bot & abuse protection", iconSecurity, false),
+		card("/os/shield", "VayuShield", "Bot & abuse protection", iconSecurity, false),
 		card("/os/theme", "Theme Studio", "Design & customise your theme", iconTheme, false),
 		card("/os/theme/store", "Theme Store", "Browse & install themes", iconThemeStore, false),
 	))

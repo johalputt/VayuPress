@@ -6,7 +6,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.0] — 2026-07-28
+
+The security-hardening track from the sovereign-edge review. Two adversarial
+design passes produced 41 hypotheses; what survived refutation is fixed here.
+
+**Minor bump, not micro.** `auth.ClientIP`, `AuditActor` and the `:8080` bind
+change behaviour on every install, and `VerifiedBotFn` changes signature. An
+operator behind a CDN must configure their reverse proxy to recover the visitor
+(see Upgrade notes) or per-IP limits will meter their edge instead of their
+readers.
+
+The recurring shape across these findings is worth naming: **a control that
+reported success while doing nothing.** Tier 3 said "Active" with every limit
+commented out. Tier 2's tunables were unreachable behind a rule that always
+returned. A crawler UA opted out of every gate. None of them errored; all of
+them looked fine.
+
+### Changed
+- **"Bot Shield" is now "VayuShield" throughout VayuOS.** One product, one name —
+  it was already VayuShield everywhere except the console that operates it.
+
+- **Two false claims removed from the README.** It promised "a bot shield **so
+  you never need Cloudflare**" and — worse — "an admin-sovereignty lane that keeps
+  **Save and refresh working even during a volumetric flood**". The second
+  asserts function *during* the exact event that is architecturally impossible on
+  a single host: every layer runs after a completed TCP handshake on your uplink,
+  so a flood that saturates that uplink is decided upstream by your provider's
+  routers. The section now states plainly what VayuShield does not do, because a
+  security claim that overstates is worse than one that is merely absent.
 
 ### Security
 - **The whole app, admin console included, was served on `:8080` to anyone who
@@ -144,6 +172,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   contains nothing but the known constants — and that each constant is itself a
   plain basename, so the table cannot become the traversal vector the input no
   longer is.
+
+---
+
+### Upgrade notes
+- **Behind a CDN?** Configure your reverse proxy to recover the visitor address
+  before VayuPress sees the request — `set_real_ip_from` for your edge ranges plus
+  `real_ip_header`. The generator command is in `deploy/nginx-vayupress.conf`.
+  Without it, per-IP limits meter your edge nodes rather than your readers and
+  trip for everyone at once. The VayuShield panel detects and reports this state.
+- **Serving directly on `:8080` with no reverse proxy?** Set `BIND_ADDR=0.0.0.0`.
+  Containers are detected and keep binding all interfaces automatically.
+- **Enabling the 443 catch-all?** Remove
+  `/etc/nginx/sites-enabled/default` first — two `default_server` blocks for one
+  address:port is a hard `nginx -t` failure, which rolls back the Tier 3 install.
+- **Tier 2 and Tier 3 now actually enforce.** Watch your logs for 429s for a day
+  and tune `rate=8r/s` / `burst=20` (nginx) and `CONN_LIMIT` / `NEW_CONN_RATE`
+  (nftables) to your real traffic before relying on them.
 
 ---
 

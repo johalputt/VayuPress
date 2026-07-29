@@ -116,9 +116,9 @@ func osPathMinLevel(path string) int {
 		// services / a second server process — admin-only (ADR-0141 review).
 		"tor", "spaces", "torworld",
 	}
-	// "optimize" is the hub that fronts SEO / Analytics / Bot Shield / Theme Studio
+	// "optimize" is the hub that fronts SEO / Analytics / VayuShield / Theme Studio
 	// / Theme Store; it opens at editor level (its editor-safe cards) and hides the
-	// admin-only Bot Shield card from non-admins in the grid itself.
+	// admin-only VayuShield card from non-admins in the grid itself.
 	editorAreas := []string{"comments", "pages", "seo", "analytics", "theme", "messages", "optimize"}
 	// Author-safe API areas: the self-service and content-authoring endpoints an
 	// author legitimately calls. Every OTHER /os/api/* path is fail-CLOSED to

@@ -234,7 +234,7 @@ const (
 	KeyAffiliateDisclosure = "ads.affiliate_disclosure"
 
 	// VayuShield — bot protection + Tier-1 (in-binary) DDoS resilience. All of
-	// these are operator-toggleable live from VayuOS → Bot Shield & Analytics
+	// these are operator-toggleable live from VayuOS → VayuShield
 	// with no restart. Booleans are "on"/"off"; shield.enabled and every
 	// resilience toggle default OFF so a fresh install never challenges or
 	// throttles a real visitor until the operator explicitly opts in.

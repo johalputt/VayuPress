@@ -5151,7 +5151,7 @@
 
 
 /* ============================================================
-   Bot Shield & Analytics console (VayuShield / VayuAnalytics)
+   VayuShield console (VayuShield / VayuAnalytics)
    Strict-CSP safe: all rules are classes served from this same
    -origin stylesheet (style-src 'self'); no inline <style>/style=.
    Toggle switches, :has() progressive disclosure, stat cards.

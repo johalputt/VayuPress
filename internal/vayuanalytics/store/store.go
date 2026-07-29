@@ -55,7 +55,7 @@ func New(db *sql.DB) *Store { return &Store{db: db, reader: db} }
 // read pool instead of the single writer connection. The analytics dashboards
 // run a dozen heavy aggregate scans over the ever-growing vayuanalytics_sessions
 // table; on the writer they serialise behind the beacon write stream and each
-// other, so opening the Analytics / Bot Shield panel could exceed the 30s server
+// other, so opening the Analytics / VayuShield panel could exceed the 30s server
 // timeout and 502. Writes (beacon ingest, purge) stay on the writer; WAL gives
 // the reader read-your-writes (a ~1s batch-flush lag is fine for a dashboard). A
 // nil reader is ignored.

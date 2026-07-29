@@ -37,7 +37,7 @@ func TestTorWorldNav(t *testing.T) {
 	// Tor world's own DB), so it is intentionally NOT in this deny list.
 	for _, deny := range []string{
 		">Monetization<", ">Advertising<", ">Newsletter<", ">Members<",
-		">VayuMCP<", ">SEO<", ">Bot Shield<", ">VayuTor<", ">Website<",
+		">VayuMCP<", ">SEO<", ">VayuShield<", ">VayuTor<", ">Website<",
 		">Governance<", ">Fault Engine<",
 		">Posts<", ">Pages<", ">Comments<", ">Media<", ">New Post<",
 	} {

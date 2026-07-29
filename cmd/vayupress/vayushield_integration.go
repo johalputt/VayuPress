@@ -5,7 +5,7 @@ package main
 // vayushield_integration.go — wires VayuShield (bot protection) and
 // VayuAnalytics Enterprise (cookieless engagement analytics) into the VayuPress
 // server: boot, public beacon/challenge endpoints, the GDPR privacy report, and
-// the VayuOS "Bot Shield & Analytics" operator panel.
+// the VayuOS "VayuShield" operator panel.
 //
 // The internal/vayushield and internal/vayuanalytics packages are deliberately
 // free of the governance/geoip imports; this file injects those side channels
@@ -115,7 +115,7 @@ func (a *App) bootVayuShield() {
 	a.vaEngagement = vastore.New(dbpkg.DB)
 	// Dashboard reads (Overview, sources, AI traffic, top pages, realtime) run a
 	// dozen heavy aggregate scans over the ever-growing vayuanalytics_sessions
-	// table. Route them at the DEDICATED ADMIN read pool so opening the Bot Shield
+	// table. Route them at the DEDICATED ADMIN read pool so opening the VayuShield
 	// / Analytics panel never serialises behind the beacon write stream on the
 	// writer, and is fully isolated from public/bot read load on the public pool.
 	// Writes stay on the writer.
@@ -279,7 +279,7 @@ func (a *App) bootVayuShield() {
 	if a.vayuShield.Enabled() {
 		logging.LogInfo("vayushield", "bot protection ENABLED — PoW→JS→block→tarpit ladder + adaptive learning active")
 	} else {
-		logging.LogInfo("vayushield", "bot protection disabled — enable it in VayuOS → Bot Shield & Analytics (no restart needed)")
+		logging.LogInfo("vayushield", "bot protection disabled — enable it in VayuOS → VayuShield (no restart needed)")
 	}
 	// SEO canary: assert verified crawlers are served content, not a challenge —
 	// a loud, deterministic startup signal that the shield is not de-indexing.
@@ -518,7 +518,7 @@ func (a *App) handlePrivacyReport(w http.ResponseWriter, r *http.Request) {
 
 // ── VayuOS panel ──────────────────────────────────────────────────────────────
 
-// handleOSShield renders the "Bot Shield & Analytics" operator panel: bot
+// handleOSShield renders the "VayuShield" operator panel: bot
 // intelligence (classification breakdown, learned signatures, review queue) plus
 // engagement analytics (source breakdown and AI-vs-organic comparison).
 func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
@@ -536,7 +536,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	// via HTMX — see the per-section body builders and handleOSShieldSection.
 	var b strings.Builder
 	b.WriteString(`<div class="vs-page">`)
-	b.WriteString(`<div class="page-header"><h1>Bot Shield &amp; Analytics</h1><div class="page-actions"><span class="muted text-sm">Sovereign bot protection · cookieless analytics · GDPR by design</span></div></div>`)
+	b.WriteString(`<div class="page-header"><h1>VayuShield &amp; Analytics</h1><div class="page-actions"><span class="muted text-sm">Sovereign bot protection · cookieless analytics · GDPR by design</span></div></div>`)
 	b.WriteString(`<p class="page-sub">Enterprise-grade, self-hosted bot protection — verified search &amp; AI crawlers always pass, real readers are never challenged, and every defense layer is live below. Tap a card to expand it.</p>`)
 
 	// ── Live status hero — always visible. Auto-polls every 10s and on the
@@ -637,7 +637,7 @@ document.querySelectorAll('.vs-copy-btn').forEach(function(btn){
 </script>`)
 
 	b.WriteString(`</div>`) // .vs-page
-	writeOSHTML(w, r, adminOSLayout(nonce, "Bot Shield & Analytics", "shield", cfg, htmpl.HTML(b.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, "VayuShield", "shield", cfg, htmpl.HTML(b.String())))
 }
 
 // shieldDays parses the ?days analytics window (default 30, clamped 1..365).

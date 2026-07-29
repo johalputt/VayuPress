@@ -163,7 +163,7 @@ func (a *App) runShieldCanary() shieldCanaryResult {
 // canaryCache memoises the self-test. runShieldCanary drives EIGHT synthetic
 // requests through the full middleware (classification, fingerprint hashing, a
 // signature-cache lookup each), which is fine on demand but must not be paid on
-// every render of the Bot Shield page — that is a page an operator reloads
+// every render of the VayuShield page — that is a page an operator reloads
 // repeatedly while tuning, and the cost showed up as console lag. The verdict
 // only changes when the settings change, so a short TTL is ample; the panel's
 // Refresh button calls the fragment endpoint, which forces a fresh run.

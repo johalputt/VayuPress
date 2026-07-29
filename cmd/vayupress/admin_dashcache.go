@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // admin_dashcache.go — background-computed cache for heavy VayuOS dashboard
-// sections (Analytics, Bot Shield engagement).
+// sections (Analytics, VayuShield engagement).
 //
 // Why: those panels run a dozen aggregate scans (COUNT(DISTINCT), GROUP BY, AVG)
 // over the large analytics tables. Even on the dedicated admin DB lane a single

@@ -106,7 +106,7 @@ func TestOptimizeHubConsolidatesSidebar(t *testing.T) {
 	}
 	// Moved into hubs — must NOT be sidebar rows anymore.
 	for _, gone := range []string{
-		">SEO<", ">Analytics<", ">Bot Shield<", ">Theme Studio<", ">Theme Store<",
+		">SEO<", ">Analytics<", ">VayuShield<", ">Theme Studio<", ">Theme Store<",
 		">Tools & Plugins<", ">Domains<", ">Settings<", ">API Keys<", ">VayuMCP<",
 	} {
 		if strings.Contains(nav, gone) {
@@ -139,7 +139,7 @@ func TestOptimizeHubConsolidatesSidebar(t *testing.T) {
 			t.Errorf("admin Optimize hub missing %q", want)
 		}
 	}
-	// Editors see the editor cards but NOT the admin-only ones (Bot Shield, config).
+	// Editors see the editor cards but NOT the admin-only ones (VayuShield, config).
 	editor := osOptimizeGrid(accessEditor, nil)
 	for _, deny := range []string{`href="/os/shield"`, `href="/os/settings"`, `href="/os/apikeys"`} {
 		if strings.Contains(editor, deny) {
