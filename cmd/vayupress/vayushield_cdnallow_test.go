@@ -283,10 +283,33 @@ func TestTheHardeningPanelNeverPrintsAPlaceholderPath(t *testing.T) {
 			}
 		}
 	}
-	// The hint has to actually tell them how to locate their checkout.
-	if !strings.Contains(shieldCheckoutHint(), "find /") {
-		t.Error("the checkout hint does not give a command that locates the checkout, so an " +
-			"operator who does not know where it is still has nowhere to start")
+	// Every command with a Copy button must run from ANY directory.
+	//
+	// This is the second form of the same defect, and it shipped: the button
+	// offered `sudo bash deploy/vayushield-agent.sh install`, a RELATIVE path
+	// that works only if the operator's shell happens to be sitting in the
+	// checkout. From the home directory every SSH session starts in, it returns
+	// "No such file or directory" — which is what an operator reported. A copy
+	// button is a promise that the thing copied will run.
+	for _, action := range []string{"install", "uninstall"} {
+		cmd := shieldAgentCmd(action)
+		if strings.Contains(cmd, " deploy/") {
+			t.Errorf("the %s command uses a relative deploy/ path (%q): it fails everywhere "+
+				"except inside the checkout", action, cmd)
+		}
+		// Either absolute, or it locates the script itself. Nothing in between.
+		absolute := strings.Contains(cmd, " /")
+		selfLocating := strings.Contains(cmd, "find /")
+		if !absolute && !selfLocating {
+			t.Errorf("the %s command is neither absolute nor self-locating: %q", action, cmd)
+		}
+		// A self-locating command must SAY what it found before running it as
+		// root. Executing whatever a filesystem search turned up, silently, is not
+		// something to hand somebody with sudo in front of it.
+		if selfLocating && !strings.Contains(cmd, "echo") {
+			t.Errorf("the %s command searches the filesystem and runs the result as root "+
+				"without printing what it found first: %q", action, cmd)
+		}
 	}
 }
 
@@ -303,10 +326,10 @@ func TestAStaleAgentIsToldItIsStale(t *testing.T) {
 		t.Skip("a digest is present in this environment, so there is nothing stale to report")
 	}
 	for _, want := range []string{
-		"older build",                 // names the condition
-		"enforcement digest",          // names the specific missing capability
-		"vayushield-agent.sh install", // gives the fix
-		"unprivileged by design",      // says why this one step is not a button
+		"older build",            // names the condition
+		"enforcement digest",     // names the specific missing capability
+		"vayushield-agent.sh",    // gives the fix
+		"unprivileged by design", // says why this one step is not a button
 	} {
 		if !strings.Contains(notice, want) {
 			t.Errorf("the stale-agent notice does not mention %q — without it the operator sees "+

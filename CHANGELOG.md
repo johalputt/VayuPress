@@ -6,6 +6,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **The agent-install copy button handed out a command that only worked from
+  inside the checkout.** `sudo bash deploy/vayushield-agent.sh install` is a
+  relative path: paste it from the home directory every SSH session starts in and
+  it answers "No such file or directory". An operator hit exactly that.
+
+  This is the second form of a defect this panel already fixed once — the copy
+  that read `cd /path/to/VayuPress`. A copy button is a promise that the thing
+  copied will run, and a command whose success depends on the operator's working
+  directory does not keep it.
+
+  The panel now emits an absolute command when the updater has already placed the
+  agent at `/usr/local/lib/vayushield/`, and a self-locating one otherwise. The
+  self-locating form **prints what it found before running it** — handing somebody
+  a root command that silently executes whatever a filesystem search turned up is
+  not an improvement on the broken one. A test now rejects any panel command
+  containing a relative `deploy/` path, and requires every one to be either
+  absolute or self-locating.
+
 ## [3.16.7] — 2026-07-29
 
 ### Added

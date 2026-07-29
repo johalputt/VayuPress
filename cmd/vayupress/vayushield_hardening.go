@@ -318,8 +318,10 @@ func (a *App) shieldHardeningBody(r *http.Request) string {
 	} else {
 		b.WriteString(`<div class="vs-tier"><div class="vs-tier-head">One-time setup — enable the in-panel switches</div>`)
 		b.WriteString(`<p class="muted text-sm">A true in-panel toggle needs a tiny <strong>root helper</strong> installed once. The <strong>in-app one-click updater cannot install it</strong> — that updater is unprivileged by design (which is exactly what keeps VayuPress safe). Install it with <strong>one command as root</strong> from your VayuPress checkout, then this section turns into on/off switches (no terminal afterwards):</p>`)
-		b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-agent">sudo bash deploy/vayushield-agent.sh install</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-agent">Copy</button></div>`)
-		b.WriteString(`<p class="muted text-xs">` + shieldCheckoutHint() + ` Running your normal root updater (<code>scripts/update-vayupress.sh</code>) installs it too. Undo any time: <code>sudo bash deploy/vayushield-agent.sh uninstall</code>.</p>`)
+		b.WriteString(shieldCmdRow("vs-cmd-agent", shieldAgentCmd("install")))
+		b.WriteString(`<p class="muted text-xs">` + shieldCheckoutHint() +
+			` Running your normal root updater (<code>scripts/update-vayupress.sh</code>) installs it too, so most operators never need this command at all. Undo any time with <code>` +
+			html.EscapeString(shieldAgentCmd("uninstall")) + `</code>.</p>`)
 		b.WriteString(`<p class="muted text-sm">Prefer to apply Tier 2/3 by hand instead? (idempotent &amp; reversible)</p>`)
 		b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-t2">sudo bash deploy/vayushield-firewall.sh apply</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-t2">Copy</button></div>`)
 		b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-t3">sudo cp deploy/nginx-vayushield.conf /etc/nginx/conf.d/ &amp;&amp; sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-t3">Copy</button></div>`)
@@ -586,9 +588,8 @@ func shieldAgentStaleNotice() string {
 		`report marks the tier rows <em>unverified</em> rather than green: absent evidence is never counted as a pass. ` +
 		`Your defences are almost certainly fine; what is missing is the proof.</p>` +
 		`<p class="muted text-xs">` + shieldCheckoutHint() + `</p>` +
-		`<div class="vs-cmd"><code id="vs-cmd-agent-up">sudo bash deploy/vayushield-agent.sh install</code>` +
-		`<button type="button" class="vs-copy-btn" data-copy="vs-cmd-agent-up">Copy</button></div>` +
-		`<p class="muted text-xs">Run it from an up-to-date checkout. It is idempotent — re-running it on a current ` +
+		shieldCmdRow("vs-cmd-agent-up", shieldAgentCmd("install")) +
+		`<p class="muted text-xs">Pull your checkout first so it installs the newest agent. It is idempotent — re-running it on a current ` +
 		`agent changes nothing. This one step cannot be a button here: VayuPress is unprivileged by design, and an ` +
 		`unprivileged process being able to replace a root one is the exact escalation that separation exists to ` +
 		`prevent.</p></div>`
@@ -601,6 +602,40 @@ func shieldAgentStaleNotice() string {
 // a diagram of one, and pasting it produces "No such file or directory". An
 // instruction an operator cannot paste is an instruction that has not been given.
 func shieldCheckoutHint() string {
-	return `Find your checkout with <code>sudo find / -name vayushield-agent.sh -path '*/deploy/*' 2>/dev/null</code>, ` +
-		`then <code>cd</code> to the directory above <code>deploy/</code> and <code>git pull</code> first.`
+	return `The command locates the script itself, so it works from any directory — including the one ` +
+		`you land in when you log in. <code>git pull</code> in your checkout first if you want the newest agent.`
+}
+
+// shieldAgentPath is where the updater installs the agent, and the reason the
+// copy button can usually offer a plain absolute path.
+const shieldAgentPath = "/usr/local/lib/vayushield/vayushield-agent.sh"
+
+// shieldAgentCmd returns an install/uninstall command that runs from ANY
+// directory.
+//
+// The panel used to print `sudo bash deploy/vayushield-agent.sh install`, which
+// is a relative path: it works only if the operator's shell happens to be
+// sitting in the checkout, and fails with "No such file or directory" everywhere
+// else — including the home directory every SSH session starts in. That is the
+// same defect as the `/path/to/VayuPress` placeholder this file already fixed
+// once: an instruction that cannot be pasted is an instruction that has not been
+// given, and a COPY BUTTON makes the promise explicit.
+//
+// Two forms. When the updater has already placed the agent at its stable path,
+// the command is a plain absolute one anybody can read and check before running
+// as root. Otherwise it is self-locating — a `find` that prints what it will run
+// before running it, because a root command that silently executes whatever a
+// filesystem search turned up is not something to hand somebody.
+func shieldAgentCmd(action string) string {
+	if _, err := os.Stat(shieldAgentPath); err == nil {
+		return "sudo bash " + shieldAgentPath + " " + action
+	}
+	return `sudo bash -c 's=$(find / -name vayushield-agent.sh -path "*/deploy/*" -print -quit 2>/dev/null); ` +
+		`echo "agent script: ${s:-NOT FOUND}"; [ -n "$s" ] && bash "$s" ` + action + `'`
+}
+
+// shieldCmdRow renders one copyable command block.
+func shieldCmdRow(id, cmd string) string {
+	return `<div class="vs-cmd"><code id="` + id + `">` + html.EscapeString(cmd) +
+		`</code><button type="button" class="vs-copy-btn" data-copy="` + id + `">Copy</button></div>`
 }
