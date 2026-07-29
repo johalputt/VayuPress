@@ -605,6 +605,8 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(monAcc("🔍", "Review queue", "Auto-learned candidates awaiting your verdict", "", false,
 			`<div id="vs-body-queue" hx-get="/os/shield/section/queue" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`+a.shieldQueueBody(r.Context())+`</div>`))
 	}
+	b.WriteString(monAcc("📈", "Recorded history", "Blocks and challenges over time — the trail the panel never read", "", false,
+		`<div id="vs-body-trail" hx-get="/os/shield/section/trail" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+a.shieldTrailBody(r)+`</div>`))
 	b.WriteString(`</div>`) // close the Defense & intelligence mon-stack
 
 	// The old per-IP "Recent blocks" list was removed (ADR-0137): a scrolling log
@@ -1074,6 +1076,8 @@ func (a *App) handleOSShieldSection(w http.ResponseWriter, r *http.Request) {
 		out = a.shieldHardeningBody(r)
 	case "audit":
 		out = a.shieldAuditBody(r)
+	case "trail":
+		out = a.shieldTrailBody(r)
 	case "selftest":
 		out = shieldSelfTestBody(a.runShieldCanary())
 	default:

@@ -53,6 +53,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   never touches the block threshold, so even with every gate defeated the
   reachable state is a bounded, self-draining shift of the challenge bands.
 
+- **The audit trail is finally read.** `vayushield_blocked` and
+  `vayushield_challenges` have been INSERTed on every event since they were
+  introduced, and the only other SQL touching either table was a DELETE purge —
+  every event the shield has ever recorded was written and never looked at.
+
+  ADR-0137 was right to drop the old scrolling per-IP list: a page of hashed
+  addresses was stale the moment it rendered, because the live jail is in memory,
+  and it was routinely misread as "these people are blocked right now". But it
+  was removed rather than replaced, which left the panel with no time dimension
+  at all — every counter on it is cumulative-since-boot, so an operator could see
+  that 4,000 requests were blocked without being able to tell whether that was
+  last night or over six weeks.
+
+  A new "Recorded history" section shows top block reasons, the paths being hit,
+  origin countries, activity by hour, and the challenge pass rate over time —
+  aggregates only, nothing that can identify a visitor. Two deliberate
+  refusals: an hour with fewer than ten challenges shows no pass rate at all,
+  because a percentage over three samples is noise an operator might retune
+  thresholds on; and the report states the retention boundary, because an empty
+  stretch beyond it means those rows were deleted, not that nothing happened.
+
 - **VayuShield metrics on `/metrics`.** `grep -c vayushield` in the metrics
   handler was 0, alongside ~37 `vayupress_*` series — while everything needed was
   already in memory and thrown away every ten seconds into an HTML fragment. A

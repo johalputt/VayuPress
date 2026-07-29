@@ -5288,6 +5288,13 @@
    + on/off button on the right. */
 .vp-os .vs-hard-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; }
 .vp-os .vs-hard-ctl { display: flex; align-items: center; gap: var(--sp-3); flex: none; }
+/* VayuShield audit trail — compact aggregate tables and the hourly sparkline.
+   No inline styles anywhere: assertCSPSafe fails the page on a style="…" attr. */
+.vp-os .vs-trail { width: 100%; border-collapse: collapse; font-size: var(--text-sm); margin-top: 0.5rem; }
+.vp-os .vs-trail td { padding: 0.28rem 0.5rem 0.28rem 0; border-bottom: 1px solid var(--border); word-break: break-all; }
+.vp-os .vs-trail tr:last-child td { border-bottom: 0; }
+.vp-os .vs-trail-n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; width: 1%; }
+.vp-os .vs-trail-spark { font-family: var(--font-mono, ui-monospace, monospace); font-size: 1.25rem; line-height: 1; letter-spacing: 0.05em; margin: 0.4rem 0 0.2rem; overflow-x: auto; white-space: nowrap; }
 .vp-os .vs-hard-state { font-size: var(--text-xs); font-weight: 700; white-space: nowrap; }
 .vp-os .vs-hard-state.is-on { color: #16a34a; }
 .vp-os .vs-hard-state.is-off { color: var(--text-3); }
