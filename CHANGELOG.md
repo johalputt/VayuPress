@@ -6,6 +6,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **The VayuShield page opens with four tiles instead of nine counters.** The
+  house style asks for a `stat-grid` carrying the numbers that answer "what is
+  the state of this?" at a glance; the hero had grown into a wall of
+  equal-weight metrics, where a figure that never moves sat beside the one that
+  mattered and both read the same. It is now Status, Visitors now, Requests/sec
+  and Sentences active, with the per-layer counters moved into a collapsed
+  "Live throughput" band — that is what an operator reads *during* an incident,
+  not at a glance.
+
+  `stat-card--warn` is spent on the state that goes wrong by being forgotten:
+  observe-only mode, where every other number on the page describes enforcement
+  that is not happening. A jail count is normal operation and does not warn. The
+  Sentences tile warns only while observe mode means none of them are actually
+  served — a number that looks like protection and is not.
+
+  The page header gained the docs link and the `role="status" aria-live="polite"`
+  region the house style calls for. That is not decoration here: settings on this
+  page save over HTMX with no page reload, so without it a screen-reader user got
+  no confirmation that anything had happened. Also adds the L7 inspection layer
+  and the peer-node counters to the throughput band, which shipped in 3.16.1 with
+  nowhere on the page to read them.
+
+  The shape is now pinned by test rather than by review — tile count, which state
+  warns, and the structural elements the standing rule names.
+
 ## [3.16.1] — 2026-07-29
 
 ### Security

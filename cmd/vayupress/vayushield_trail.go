@@ -117,9 +117,24 @@ func (a *App) shieldTrailBody(r *http.Request) string {
 // reuses the existing muted text-xs pair rather than depending on CSS that would
 // have to be added for it.
 func shieldStat(label, value, hint string) string {
-	return `<div class="stat-card"><div class="stat-card__label">` + html.EscapeString(label) +
-		`</div><div class="stat-card__value">` + html.EscapeString(value) +
-		`</div><div class="muted text-xs">` + html.EscapeString(hint) + `</div></div>`
+	return shieldStatTile(label, value, hint, false)
+}
+
+// shieldStatTile is the house-style tile. warn tones it with stat-card--warn,
+// which is reserved for a number that WANTS ATTENTION rather than one that is
+// merely large — a jail count is normal operation, an install that is observing
+// and enforcing nothing is not.
+func shieldStatTile(label, value, hint string, warn bool) string {
+	cls := "stat-card"
+	if warn {
+		cls += " stat-card--warn"
+	}
+	out := `<div class="` + cls + `"><div class="stat-card__label">` + html.EscapeString(label) +
+		`</div><div class="stat-card__value">` + html.EscapeString(value) + `</div>`
+	if hint != "" {
+		out += `<div class="muted text-xs">` + html.EscapeString(hint) + `</div>`
+	}
+	return out + `</div>`
 }
 
 func shieldTrailTable(title string, rows []botdb.Count, total int64) string {

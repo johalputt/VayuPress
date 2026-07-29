@@ -559,13 +559,12 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	// via HTMX — see the per-section body builders and handleOSShieldSection.
 	var b strings.Builder
 	b.WriteString(`<div class="vs-page">`)
-	b.WriteString(`<div class="page-header"><h1>VayuShield &amp; Analytics</h1><div class="page-actions"><span class="muted text-sm">Sovereign bot protection · cookieless analytics · GDPR by design</span></div></div>`)
-	b.WriteString(`<p class="page-sub">Enterprise-grade, self-hosted bot protection — verified search &amp; AI crawlers always pass, real readers are never challenged, and every defense layer is live below. Tap a card to expand it.</p>`)
+	b.WriteString(shieldPageChrome())
 
-	// ── Live status hero — always visible. Auto-polls every 10s and on the
-	// vs-refresh event (fired after a settings save), so the state + realtime
-	// metrics update in place with no page reload. ────────────────────────────
-	b.WriteString(`<div class="card vs-hero" id="vs-body-hero" hx-get="/os/shield/section/hero" hx-trigger="every 10s, vs-refresh from:body" hx-swap="innerHTML">`)
+	// ── The four numbers that answer "what is the state of this?" at a glance.
+	// Auto-polls every 10s and on vs-refresh (fired after a settings save), so
+	// the state updates in place with no page reload. ────────────────────────
+	b.WriteString(`<div id="vs-body-hero" hx-get="/os/shield/section/hero" hx-trigger="every 10s, vs-refresh from:body" hx-swap="innerHTML">`)
 	b.WriteString(a.shieldHeroBody(r.Context()))
 	b.WriteString(`</div>`)
 
@@ -576,6 +575,8 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	b.WriteString(`<div class="card" id="vs-body-aegis" hx-get="/os/shield/section/aegis" hx-trigger="every 10s, vs-refresh from:body" hx-swap="innerHTML">`)
 	b.WriteString(a.shieldAegisBody())
 	b.WriteString(`</div>`)
+
+	b.WriteString(shieldThroughputBand(a.shieldThroughputBody()))
 
 	// ── Protection & settings — collapsible. The form saves via HTMX (hx-post)
 	// and the server replies with an HX-Trigger that fires vs-refresh, so ONLY
@@ -705,42 +706,81 @@ func (a *App) shieldHeroBody(ctx context.Context) string {
 	if a.vayuShield != nil {
 		stt = a.vayuShield.Status()
 	}
-	dot, word := "", "Off"
-	if cur.Enabled {
-		dot, word = " on", "Protected"
-	}
-	if stt.UnderAttack {
-		dot, word = " attack", "Under attack"
-	}
-	if stt.SurgeActive {
-		dot, word = " attack", "Surge active — verifying visitors"
-	}
 	var activeVisitors int64
 	if a.vaEngagement != nil {
 		if rt, err := a.vaEngagement.Realtime(ctx, 5); err == nil {
 			activeVisitors = rt.ActiveVisitors
 		}
 	}
+
+	// The four tiles answer "what is the state of this?" at a glance. The old
+	// hero showed nine equal-weight counters, which is the opposite: a number
+	// that never changes sits beside the one that matters and both read the same.
+	// The detail moved down to the throughput band, where it is still available
+	// and no longer competing with the headline.
+	state, stateWarn := "Protected", false
+	switch {
+	case stt.ObserveOnly:
+		// Ranked above everything: an install in observe mode is undefended, and
+		// the one way that goes wrong is being left on and forgotten.
+		state, stateWarn = "Observing — nothing enforcing", true
+	case !cur.Enabled:
+		state, stateWarn = "Off", true
+	case stt.SurgeActive:
+		state, stateWarn = "Surge — verifying visitors", true
+	case stt.UnderAttack:
+		state, stateWarn = "Under attack", true
+	}
+
+	sentences := int64(stt.Blocklisted + stt.RepJailed)
+
 	var b strings.Builder
-	b.WriteString(`<div class="vs-title"><span class="vs-dot` + dot + `"></span>Bot protection — ` + word + `</div><div class="vs-metrics">`)
-	b.WriteString(vsMetric(strconv.FormatInt(activeVisitors, 10), "Visitors now"))
-	b.WriteString(vsMetric(strconv.FormatInt(stt.RPS, 10), "Requests/sec"))
+	b.WriteString(`<div class="stat-grid">`)
+	b.WriteString(shieldStatTile("Status", state, "", stateWarn))
+	b.WriteString(shieldStatTile("Visitors now", strconv.FormatInt(activeVisitors, 10), "last 5 minutes", false))
+	b.WriteString(shieldStatTile("Requests / sec", strconv.FormatInt(stt.RPS, 10), "across every visitor", false))
+	// Sentences are normal operation, so this tile only warns when they are being
+	// counted while observe mode means none of them are actually served — the
+	// case where a number that looks like protection is not protection.
+	sentHint := "jailed + reputation-jailed"
+	if stt.ObserveOnly && sentences > 0 {
+		sentHint = "counted, but observe mode serves none of them"
+	}
+	b.WriteString(shieldStatTile("Sentences active", strconv.FormatInt(sentences, 10), sentHint,
+		stt.ObserveOnly && sentences > 0))
+	b.WriteString(`</div>`)
+	return b.String()
+}
+
+// shieldThroughputBody is the detail the four tiles deliberately leave out: the
+// per-layer counters, which are what an operator reads DURING an incident rather
+// than at a glance.
+func (a *App) shieldThroughputBody() string {
+	var stt vayushield.Status
+	if a.vayuShield != nil {
+		stt = a.vayuShield.Status()
+	}
+	var b strings.Builder
+	b.WriteString(`<div class="vs-metrics">`)
 	b.WriteString(vsMetric(strconv.FormatInt(stt.InFlight, 10), "In-flight"))
-	b.WriteString(vsMetric(strconv.Itoa(stt.Blocklisted), "Blocked IPs"))
-	// Aegis L0 — admin-sovereignty lane. Shows how many public requests are in
-	// flight against the CPU-derived cap and how many have been shed to keep the
-	// admin plane responsive. Under normal traffic these read 0 / low; a spike in
-	// "Shed (L0)" is the visible proof the console stayed alive through a flood.
 	if a.sovereign != nil {
-		b.WriteString(vsMetric(strconv.FormatInt(a.sovereign.Inflight(), 10)+" / "+strconv.FormatInt(a.sovereign.Cap(), 10), "Public lane"))
+		b.WriteString(vsMetric(strconv.FormatInt(a.sovereign.Inflight(), 10)+" / "+
+			strconv.FormatInt(a.sovereign.Cap(), 10), "Public lane"))
 		b.WriteString(vsMetric(strconv.FormatInt(a.sovereign.Shed(), 10), "Shed (L0)"))
 	}
 	b.WriteString(vsMetric(strconv.FormatInt(stt.FairShed, 10), "Fair-shed (L2)"))
 	b.WriteString(vsMetric(strconv.FormatInt(stt.SurgeChallenges, 10), "Surge checks (L3)"))
+	b.WriteString(vsMetric(strconv.Itoa(stt.RepJailed)+" / "+strconv.Itoa(stt.Suspects), "Jailed / suspects (L5)"))
 	if total := stt.SigCacheHits + stt.SigCacheMisses; total > 0 {
 		b.WriteString(vsMetric(strconv.FormatInt(stt.SigCacheHits*100/total, 10)+"%", "Cache hit (L6)"))
 	}
-	b.WriteString(vsMetric(strconv.Itoa(stt.RepJailed)+" / "+strconv.Itoa(stt.Suspects), "Rep-jailed / suspects (L5)"))
+	b.WriteString(vsMetric(strconv.FormatInt(stt.InspectFindings[0]+stt.InspectFindings[1]+
+		stt.InspectFindings[2], 10), "Inspection hits (L7)"))
+	if peers, in, _, sent, failed := a.vayuShield.ClusterStats(); peers > 0 {
+		b.WriteString(vsMetric(strconv.Itoa(peers), "Peer nodes"))
+		b.WriteString(vsMetric(strconv.FormatInt(in, 10), "Verdicts in"))
+		b.WriteString(vsMetric(strconv.FormatInt(sent, 10)+" / "+strconv.FormatInt(failed, 10), "Pushes ok / failed"))
+	}
 	b.WriteString(`</div>`)
 	return b.String()
 }
@@ -1239,6 +1279,8 @@ func (a *App) handleOSShieldSection(w http.ResponseWriter, r *http.Request) {
 		out = a.shieldHeroBody(r.Context())
 	case "aegis":
 		out = a.shieldAegisBody()
+	case "throughput":
+		out = a.shieldThroughputBody()
 	case "protection":
 		out = a.shieldProtectionBody(r.Context())
 	case "signatures":
@@ -1875,4 +1917,38 @@ func (a *App) startShieldCluster(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// shieldPageChrome is the page's static top matter, in the VayuOS house style:
+// header, a docs link and a polite live region, then one sentence on what the
+// page is for.
+//
+// Pure and separate from the handler so the house-style shape can be asserted by
+// test rather than by review. The live region is not decoration — settings on
+// this page save over HTMX with no page reload, so without it a screen-reader
+// user gets no confirmation that anything happened.
+func shieldPageChrome() string {
+	return `<div class="page-header"><h1>VayuShield &amp; Analytics</h1><div class="page-actions">` +
+		`<a class="btn btn--ghost btn--sm" rel="noopener noreferrer" target="_blank" ` +
+		`href="https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0148-multi-node-verdict-sharing.md">Docs</a>` +
+		`<span id="vs-status" role="status" aria-live="polite" class="text-xs muted"></span>` +
+		`</div></div>` +
+		`<p class="page-sub">Enterprise-grade, self-hosted bot protection — verified search &amp; AI ` +
+		`crawlers always pass, real readers are never challenged, and every defense layer is live ` +
+		`below. Tap a card to expand it.</p>`
+}
+
+// shieldThroughputBand wraps the per-layer counters in their own section.
+//
+// Collapsed, and deliberately below the tiles: this is what an operator reads
+// DURING an incident rather than at a glance, and having it in the headline is
+// what made the previous hero unreadable.
+func shieldThroughputBand(body string) string {
+	return `<div class="section-head"><span class="section-head__title">Live throughput</span>` +
+		`<span class="section-head__hint">Per-layer counters — cumulative since this process started</span></div>` +
+		`<div class="mon-stack">` +
+		monAcc("📟", "Layer counters", "In-flight, shed, challenges, jails, inspection and peers", "", false,
+			`<div id="vs-body-throughput" hx-get="/os/shield/section/throughput" `+
+				`hx-trigger="every 10s, vs-refresh from:body" hx-swap="innerHTML">`+body+`</div>`) +
+		`</div>`
 }
