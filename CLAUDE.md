@@ -42,6 +42,50 @@ that too — it holds the release-versioning rule).
     explicitly in the release notes when this exception is used.
   - When in doubt, do not bump. Ask.
 
+### Before every release cut: a hacker audit, then improve
+
+**No version is bumped until an adversarial pass has run over everything going
+into it. The audit gates the release; it does not trail it.** Not optional, not
+"if there is time", and not a code review under a different name.
+
+The distinction that makes it worth doing: a review asks whether the code does
+what it says. An audit asks what you would do to it if you wanted it to fail.
+Those find different things. A feature review of the multi-node work passed
+cleanly; attacking the same code found an unmetered compute sink on the lane
+reserved for the admin plane, a control that silently did not exist for IPv6, and
+observe-only mode enforcing on other people's machines.
+
+How to run it:
+
+- **Attack everything accumulated under `## [Unreleased]`**, plus anything it
+  touched. Start from "what would I do to this", never from the feature list.
+- **Write the finding as a failing test first**, in the attacker's voice, with
+  the consequence spelled out. A finding with no test is an opinion.
+- **Mutation-test every fix.** Re-break the code and confirm the test fails. A
+  test that passes against the broken version proves nothing, and this has
+  happened: an assertion on the first response passed while the gate was
+  refusing people, because the deny path is generous to a first request. The two
+  only parted company under sustained load.
+- **Check the claims, not just the code.** A panel row, a posture verdict or a
+  copy line that overstates what is enforcing is a defect of the same kind — the
+  report that told an operator their readers were broken, on the strength of the
+  operator's own request, was found this way.
+
+Findings are fixed and land under `## [Unreleased]` **before** the version bump,
+so they ship in the release they were found in rather than a version later. That
+is the whole reason the audit runs first: a release that is known to contain a
+hole, shipped anyway because the fix "can go in the next one", is a decision
+nobody would defend out loud.
+
+Two consequences worth stating, because both have been got wrong:
+
+- **A clean audit is a real result, not a skipped step.** Record that it ran and
+  what was attacked. "Nothing found" written after genuinely trying is different
+  from silence, and only one of them is evidence.
+- **Fixing an audit finding does not restart the cycle.** Re-attack what the fix
+  touched — mutation-testing it covers this — but a fix landing under
+  `[Unreleased]` does not oblige a fresh full pass, or no release ever ships.
+
 ## 2. Branch & push model
 
 - **Push directly to `origin/main`.** The whole pipeline is release-on-`main`
@@ -76,6 +120,13 @@ bash scripts/deadcode-gate.sh          # no NEW unreachable code
 ```
 
 Go 1.25+ is required (govulncheck / x/tools need it).
+
+**These gates are necessary and not sufficient.** They prove the code compiles,
+passes its own tests and carries no known vulnerable dependency. They cannot tell
+you whether a control is reachable, whether a claim on the panel is true, or what
+a determined person would do to the surface you just added. Before a **release**
+specifically, the adversarial pass in §1 runs as well — green gates have never
+been the bar for cutting a version.
 
 ## 5. Marketing website (`docs/site/`)
 
