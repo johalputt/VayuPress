@@ -610,6 +610,12 @@ func (m *Manager) onEvent(a Action, score float64) {
 	}
 }
 
+// CaptureWired reports whether TLS ClientHello capture is available to this
+// manager. Without it, classification runs on HTTP signals alone — which an
+// attacker controls entirely — so the posture report states it rather than
+// leaving an operator to assume the deeper signal is in play.
+func (m *Manager) CaptureWired() bool { return m != nil && m.cfg.Capture != nil }
+
 // ipOnly strips a port from a host:port client address so the rate limiter and
 // blocklist key on the IP alone.
 func ipOnly(s string) string {

@@ -53,6 +53,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   never touches the block threshold, so even with every gate defeated the
   reachable state is a bounded, self-draining shift of the challenge bands.
 
+- **A posture report that says what is actually enforcing.** `internal/shieldaudit`
+  computes a Pass/Warn/Info/Fail report, shown first on `/os/vayushield` and
+  written to the boot log so a defect is visible on an install nobody has opened
+  the panel on.
+
+  It exists because of a defect this codebase shipped: Tier 3 declared its
+  rate-limit zones, applied none of them, and reported "Active" for as long as
+  nobody looked. Every other section of that page reports what the operator
+  switched on. This one reports what is in force, and contradicts the tier's own
+  state file when the two disagree.
+
+  Respecting the privilege boundary (ADR-0123) meant a new agent→app data
+  direction. The app is unprivileged — it cannot run `nft list table` and has no
+  business reading `/etc/nginx` — so the root agent now writes a fixed-schema
+  **enforcement digest**: is the nftables table loaded, do per-source meters exist
+  for *both* address families, did `nf_conntrack_max` read back, and — the row
+  that started this — does the installed nginx conf contain an active `limit_req`
+  rather than merely exist. Everything the app says about itself is
+  introspection, never a probe: it must not call itself over the network to find
+  out, because in onion mode that is the clearnet callback the Tor Space design
+  forbids.
+
+  Two rows never turn green. An Info row states the host's measured ingress
+  capacity read from `/sys/class/net/*/speed`, and a permanent Fail row reads
+  *volumetric absorption: not provided by this or any single-origin product*.
+  Because of that, "zero failures" is unreachable by design, and the summary
+  compares against `shieldaudit.BaselineFails` rather than zero — an indicator
+  that is always red is an indicator nobody reads.
+
+  Absent evidence is never a pass, and never a failure either. A missing agent,
+  an empty digest or a key an older agent did not write all degrade to
+  "unverified", because a routine version skew that paints the panel red teaches
+  the operator to ignore it just as surely as a false green does.
+
 - **Prefix-keyed enforcement, so an IPv6 attacker cannot buy their way out.**
   The rate limiter, violation meter, blocklist and reputation brain all keyed on
   the exact client address. For IPv4 that is a resource an attacker pays for; for

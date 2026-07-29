@@ -288,6 +288,10 @@ func (a *App) bootVayuShield() {
 	// SEO canary: assert verified crawlers are served content, not a challenge —
 	// a loud, deterministic startup signal that the shield is not de-indexing.
 	a.logShieldCanary()
+	// Posture report at boot, so a defect is visible in the log of an install
+	// nobody has opened the panel on. This is the one place the report is
+	// computed without a request, so it carries no client-IP row.
+	a.logShieldPosture()
 	// The learning/purge reporter always runs (cheap 24h ticker) so the adaptive
 	// database stays curated regardless of the current toggle state.
 	a.vayuShield.StartReporter(queue.DoneCh, 24*time.Hour, config.Cfg.AnalyticsRetainDays, func(res vayushield.LearningResult, err error) {
@@ -582,6 +586,13 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	// the operator flips Tier 2/3 on/off right here with no terminal.
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Defense &amp; intelligence</span><span class="section-head__hint">Server-level hardening and the self-learning bot database</span></div>`)
 	b.WriteString(`<div class="mon-stack">`)
+	// The posture report comes FIRST, and opens by default. Every other section on
+	// this page reports what the operator switched on; this one reports what is
+	// actually enforcing, which is the only one of the two that would have caught
+	// a tier reading "Active" while doing no work.
+	b.WriteString(monAcc("🔎", "Posture report", "What is actually enforcing — verified, not assumed",
+		a.shieldAuditChip(r), true,
+		`<div id="vs-body-audit" hx-get="/os/shield/section/audit" hx-trigger="every 30s" hx-swap="innerHTML">`+a.shieldAuditBody(r)+`</div>`))
 	b.WriteString(monAcc("🧱", "Network hardening", "Tier 2 nftables · Tier 3 nginx edge — server-level", `<span class="mon-chip mon-chip--on">● Live</span>`, false,
 		`<div id="vs-body-hardening" hx-get="/os/shield/section/hardening" hx-trigger="every 10s" hx-swap="innerHTML">`+a.shieldHardeningBody(r)+`</div>`))
 
@@ -1061,6 +1072,8 @@ func (a *App) handleOSShieldSection(w http.ResponseWriter, r *http.Request) {
 		out = a.shieldEngagementBody(r.Context(), shieldDays(r))
 	case "hardening":
 		out = a.shieldHardeningBody(r)
+	case "audit":
+		out = a.shieldAuditBody(r)
 	case "selftest":
 		out = shieldSelfTestBody(a.runShieldCanary())
 	default:

@@ -28,6 +28,15 @@ NGINX_CONF_SRC="${LIB_DIR}/nginx-vayushield.conf"
 NGINX_CONF_DST="${VAYUSHIELD_NGINX_DST:-/etc/nginx/conf.d/vayushield.conf}"
 POLL="${VAYUSHIELD_POLL_SECONDS:-5}"
 
+# The Tier 2 table and kernel drop-in, named here so the enforcement digest can
+# observe the same objects vayushield-firewall.sh creates. Kept in sync with that
+# script's TABLE and SYSCTL_CONF; a test pins the pair.
+TABLE_MAIN="${VAYUSHIELD_TABLE:-vayushield}"
+SYSCTL_CONF_PATH="${VAYUSHIELD_SYSCTL_CONF:-/etc/sysctl.d/99-vayushield.conf}"
+# Digest refreshes every N polls. It shells out to nft and `nginx -T`, which is
+# far too expensive to do at the reconcile cadence.
+DIGEST_EVERY="${VAYUSHIELD_DIGEST_EVERY:-12}"
+
 write_state() { # $1=tier tag, $2=state word — best-effort.
   [ -d "$CONTROL_DIR" ] || return 0
   printf '%s' "$2" >"${CONTROL_DIR}/$1.state" 2>/dev/null || true
@@ -425,8 +434,106 @@ reconcile_tier3() {
   fi
 }
 
+# ── Enforcement digest ────────────────────────────────────────────────────────
+# A fixed-schema file recording what the agent OBSERVES to be in force, as
+# distinct from what it was asked to do.
+#
+# This is a new agent -> app data direction and it exists because the app cannot
+# get this information any other way: it runs unprivileged (ADR-0123), so
+# `nft list table` needs a capability it does not have and /etc/nginx is none of
+# its business. Until now the app could only read back the agent's own report of
+# what it did, which is intent one step removed — and intent is exactly what was
+# wrong when Tier 3 declared its rate-limit zones, applied none of them, and
+# reported "Active" for as long as nobody looked.
+#
+# Schema rules, because a root process writes this and an unprivileged one parses
+# it: one `key=value` per line, values drawn from a fixed vocabulary, and an
+# OMITTED key means "not observed" — never "no". A newer app reading an older
+# agent's digest must degrade to "unverified", not to "broken".
+DIGEST="${CONTROL_DIR}/enforcement.digest"
+DIGEST_SCHEMA=1
+
+# tri <command...> — echo yes when the command succeeds, no when it fails.
+tri() { if "$@" >/dev/null 2>&1; then printf 'yes'; else printf 'no'; fi; }
+
+write_digest() {
+  [ -d "$CONTROL_DIR" ] || return 0
+  local tmp
+  tmp="$(mktemp)" || return 0
+
+  {
+    printf 'schema=%s\n' "$DIGEST_SCHEMA"
+    printf 'generated=%s\n' "$(date -u +%s)"
+
+    # Tier 2 — read the live ruleset rather than the file that was loaded from.
+    if command -v nft >/dev/null 2>&1; then
+      local rules=""
+      rules="$(nft list table inet "${TABLE_MAIN}" 2>/dev/null || true)"
+      if [ -n "$rules" ]; then
+        printf 'tier2_table=yes\n'
+        # The v4/v6 split is checked separately on purpose. In the inet family an
+        # `ip saddr` match never matches an IPv6 packet, so a ruleset with only
+        # v4 meters leaves IPv6 either unlimited or dropped wholesale — and looks
+        # perfectly healthy from an IPv4 client.
+        printf 'tier2_meters_v4=%s\n' "$(printf '%s' "$rules" | grep -q 'meter vs_conn4' && echo yes || echo no)"
+        printf 'tier2_meters_v6=%s\n' "$(printf '%s' "$rules" | grep -q 'meter vs_conn6' && echo yes || echo no)"
+      else
+        printf 'tier2_table=no\n'
+      fi
+      # Conntrack sizing is read BACK from the kernel, not from the drop-in that
+      # asked for it. Those two disagreed on every fresh boot.
+      local want got
+      want="$(grep -E '^net\.netfilter\.nf_conntrack_max' "$SYSCTL_CONF_PATH" 2>/dev/null | tail -1 | tr -d '[:space:]')"
+      want="${want#*=}"
+      got="$(sysctl -n net.netfilter.nf_conntrack_max 2>/dev/null | tr -d '[:space:]')" || got=""
+      if [ -n "$want" ] && [ -n "$got" ]; then
+        printf 'conntrack_sized=%s\n' "$([ "$got" = "$want" ] && echo yes || echo no)"
+      fi
+    fi
+
+    # Tier 3 — the contents of the INSTALLED file, not its existence. This is the
+    # distinction the whole digest was added for.
+    if [ -f "$NGINX_CONF_DST" ]; then
+      printf 'tier3_installed=yes\n'
+      # A declared limit_req_zone enforces nothing; a limit_req that is not
+      # commented out does. Match on the applying directive only.
+      if grep -Eq '^[[:space:]]*limit_(req|conn)[[:space:]]+zone=' "$NGINX_CONF_DST"; then
+        printf 'tier3_enforcing=yes\n'
+      else
+        printf 'tier3_enforcing=no\n'
+      fi
+    else
+      printf 'tier3_installed=no\n'
+      printf 'tier3_enforcing=no\n'
+    fi
+
+    if command -v nginx >/dev/null 2>&1; then
+      if nginx -T 2>/dev/null | grep -Eq 'listen[^;]*443[^;]*default_server'; then
+        printf 'default_server_443=yes\n'
+      else
+        printf 'default_server_443=no\n'
+      fi
+      # The dedicated MCP host should expose only /mcp and /health. Anything
+      # serving a bare location / there is a second front door to the whole app.
+      if nginx -T 2>/dev/null | grep -q 'server_name[[:space:]]*mcp\.'; then
+        if nginx -T 2>/dev/null | awk '/server_name[[:space:]]*mcp\./,/^}/' | grep -Eq '^[[:space:]]*location[[:space:]]+/[[:space:]]*\{'; then
+          printf 'mcp_vhost_restricted=no\n'
+        else
+          printf 'mcp_vhost_restricted=yes\n'
+        fi
+      fi
+    fi
+  } >"$tmp" 2>/dev/null
+
+  # Replace atomically: the app polls this and must never read a half-written
+  # file as a set of "no" answers.
+  install -m 0644 "$tmp" "$DIGEST" 2>/dev/null || cp -f "$tmp" "$DIGEST" 2>/dev/null || true
+  rm -f "$tmp" 2>/dev/null || true
+}
+
 run_agent() {
   echo "vayushield-agent: watching ${CONTROL_DIR} (poll ${POLL}s)"
+  local ticks=0
   while true; do
     if [ -d "$CONTROL_DIR" ]; then
       printf '%s' "$(date -u +%s)" >"${CONTROL_DIR}/agent.alive" 2>/dev/null || true
@@ -434,6 +541,13 @@ run_agent() {
       reconcile_tier2
       reconcile_tier3
       reconcile_banlist
+      # The digest shells out to nft and nginx -T, which is far too expensive for
+      # a 5-second poll. Refresh it about once a minute and on the first tick, so
+      # a freshly-started agent does not leave the panel unverified for a minute.
+      if [ "$ticks" = 0 ] || [ $((ticks % DIGEST_EVERY)) = 0 ]; then
+        write_digest
+      fi
+      ticks=$((ticks + 1))
     fi
     sleep "$POLL"
   done
