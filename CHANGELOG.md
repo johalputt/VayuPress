@@ -9,6 +9,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **The fingerprint claim is retired, with the measurement that retires it.**
+  `Config.Capture` was declared, read, and assigned nowhere;
+  `fingerprint.NewStore` had no call sites at all. Behind a reverse proxy that
+  terminates TLS — which is how essentially every install runs — there is no
+  ClientHello to read, so JA3 and JA4 were empty strings, `HasTLS` was false, and
+  the composite hash collapsed to a coarse client family plus the protocol
+  version.
+
+  Measured rather than estimated: **320 genuinely distinct clients produce 16
+  distinct fingerprints**, against a structural ceiling of 20. Two scorer
+  branches are dead as a consequence — the Go-default-HTTP/2-SETTINGS
+  contradiction and the post-quantum key share — which is also why the
+  anti-poisoning guards around the adaptive signature database are load-bearing
+  rather than belt-and-braces.
+
+  The panel now says what a signature here actually is: HTTP-layer signals,
+  enough to tell a scripted client from a browser and not enough to tell two
+  browsers apart. The derivation code is kept because it is correct and would run
+  unchanged wherever TLS is terminated in-process — and the reachability test
+  fails the moment that happens, telling whoever wired it to restore the copy.
+
+  The plan suggested wiring `Capture` behind the in-process-TLS path. This binary
+  has no such path, so wiring it would have created a second inert capability
+  rather than removing one. The boundary is documented at the field instead,
+  because a declared field with no assignment reads as a bug and invites someone
+  to "fix" it by wiring it to nothing.
+
 - **The enforcement contract is a type, not a convention.** Every gate that can
   refuse, delay or challenge a request carries four obligations — inert in Tor
   mode where it would be wrong there, never gate a crawler confirmed by network

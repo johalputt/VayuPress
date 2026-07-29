@@ -139,6 +139,12 @@ func Score(in Input) Result {
 	// Transport-vs-UA contradiction: the strongest spoofing tell. A UA that
 	// claims a modern browser but whose HTTP/2 SETTINGS match Go's client
 	// default is almost certainly an untuned Go scraper wearing a browser mask.
+	//
+	// DEAD in the standard deployment, and knowingly so. HTTP2InitialWindowSize
+	// is only ever populated from a captured ClientHello, and nothing captures one
+	// when a reverse proxy terminates TLS — see vayushield.Config.Capture. The
+	// code stays because it is correct and costs one comparison; what would be
+	// wrong is describing the shield as if this branch were running.
 	headless := false
 	if isBrowserUA && s.HTTP2InitialWindowSize != 0 && s.LooksLikeGoDefaultHTTP2() {
 		score += 0.5
@@ -146,6 +152,8 @@ func Score(in Input) Result {
 		reasons = append(reasons, "HTTP/2 SETTINGS match Go default despite browser User-Agent")
 	}
 
+	// Also dead behind a terminating proxy: HasTLS is set from a capture, or from
+	// r.TLS on an in-process handshake this binary never performs.
 	if in.HasTLS && isBrowserUA {
 		if s.PostQuantum() {
 			// A 2026 browser offering X25519MLKEM768 is a strong human signal.

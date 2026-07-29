@@ -602,7 +602,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	// also listen for vs-refresh-sig (fired after a Confirm/Dismiss) so their
 	// counts update in place without touching the rest of the page. ───────────
 	if a.vayuShield != nil && a.vayuShield.BotStore() != nil {
-		b.WriteString(monAcc("🧬", "Bot signatures", "Learned fingerprints &amp; the community knowledge base", "", false,
+		b.WriteString(monAcc("🧬", "Bot signatures", "Learned client signatures &amp; the community knowledge base", "", false,
 			`<div id="vs-body-signatures" hx-get="/os/shield/section/signatures" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`+a.shieldSignaturesBody(r.Context())+`</div>`))
 		b.WriteString(monAcc("🔍", "Review queue", "Auto-learned candidates awaiting your verdict", "", false,
 			`<div id="vs-body-queue" hx-get="/os/shield/section/queue" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`+a.shieldQueueBody(r.Context())+`</div>`))
@@ -999,6 +999,14 @@ func (a *App) shieldSignaturesBody(ctx context.Context) string {
 		b.WriteString(`<p class="muted text-sm">Signatures are momentarily unavailable — try Refresh.</p>`)
 		return b.String()
 	}
+	// What a "signature" is here, stated plainly — because the word invites an
+	// assumption the standard deployment cannot support. TLS ClientHello capture
+	// only exists when this process terminates TLS itself; behind nginx (which is
+	// how almost every install runs) there is no ClientHello to read, so a
+	// signature is derived from the HTTP layer: a coarse client family and the
+	// protocol version. That is enough to tell a scripted client from a browser
+	// and not enough to tell two browsers apart.
+	b.WriteString(`<p class="muted text-sm">A signature here is derived from HTTP-layer signals — client family and protocol version — not from a TLS handshake. When a reverse proxy terminates TLS, which is the normal setup, this process never sees a ClientHello, so transport-level fingerprinting is unavailable by construction rather than switched off. Signatures distinguish a scripted client from a browser; they do not distinguish two browsers.</p>`)
 	b.WriteString(`<div class="vs-stats">`)
 	b.WriteString(vsStat(strconv.FormatInt(s.Total, 10), "Total signatures"))
 	b.WriteString(vsStat(strconv.FormatInt(s.LearnedLast24h, 10), "Learned (24h)"))

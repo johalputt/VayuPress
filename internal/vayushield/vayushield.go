@@ -64,11 +64,39 @@ const (
 type Config struct {
 	Enabled bool
 
-	Static  *botdb.StaticDB
-	Bots    *botdb.Store       // adaptive learning DB (nil disables learning)
-	Signer  *challenge.Signer  // required for challenges; nil disables them
-	Capture *fingerprint.Store // TLS ClientHello capture (nil = HTTP-only signals)
-	DB      *sql.DB            // for recording challenges/blocks (nil disables recording)
+	Static *botdb.StaticDB
+	Bots   *botdb.Store      // adaptive learning DB (nil disables learning)
+	Signer *challenge.Signer // required for challenges; nil disables them
+	// Capture is TLS ClientHello capture. It is nil in this binary, and that is a
+	// structural fact rather than an oversight — recorded here because a declared
+	// field with no assignment reads as a wiring bug and invites someone to
+	// "fix" it by wiring it to nothing.
+	//
+	// Three reasons it stays nil:
+	//
+	//   • This process never terminates TLS. The web listener is plain HTTP behind
+	//     a reverse proxy, so there is no handshake here to capture. No change in
+	//     Go can produce a ClientHello that nginx already consumed.
+	//   • crypto/tls cannot expose the raw extension list or its ORDER, which is
+	//     most of what a JA3/JA4 value is. Values derived without it would never
+	//     match public corpora, which removes the main reason to compute them.
+	//   • Reading the handshake at the edge would mean an nginx JA3 module — a
+	//     third-party dependency in precisely the place this product claims
+	//     sovereignty.
+	//
+	// The consequence is measured, not asserted: see the cardinality test in
+	// internal/vayushield/fingerprint, where 320 genuinely distinct clients
+	// produce 16 distinct composite hashes. Two scorer branches are dead as a
+	// result (the Go-default-HTTP/2-SETTINGS contradiction and the post-quantum
+	// key share), which is also why the anti-poisoning guards around the adaptive
+	// signature database are load-bearing rather than belt-and-braces.
+	//
+	// The derivation code is kept because it is correct and would run unchanged
+	// wherever TLS IS terminated in-process. If that day comes, assign this field
+	// and the fingerprint package's reachability test will fail and tell you to
+	// restore the operator-facing copy that was retired for exactly this reason.
+	Capture *fingerprint.Store
+	DB      *sql.DB // for recording challenges/blocks (nil disables recording)
 
 	// Score thresholds (0..1). Defaults: PoW 0.4, JS 0.6, Block 0.8.
 	PoWThreshold   float64
