@@ -9,6 +9,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **A network-intelligence core for third-party feeds, built rule-first.** New
+  `internal/vayushield/intel` holds the lookup structure and the integrity
+  controls that any feed must pass before it can affect a request.
+
+  **A feed can never produce an ALLOW, and that is the type rather than a check.**
+  `Kind` has exactly two values — datacenter and hostile — and neither grants
+  anything. The reason is the threat model: the realistic compromise of a feed is
+  not that it goes offline, it is that somebody edits what it serves. A hijacked
+  feed able to add entries to an always-allow set would hand an attacker a silent
+  bypass of every gate in the shield, with no local misconfiguration to find. A
+  hijacked feed that can only add suspicion or denial causes over-blocking — bad,
+  visible, recoverable. Those two failures are not comparable, and that asymmetry
+  is the whole design. ADR-0141 declined managed threat intel partly because "a
+  hijacked vendor endpoint could inject CIDRs into an always-allow fast path";
+  this is the answer to that objection rather than a disagreement with it.
+
+  Most of these feeds are plain text over HTTPS with nothing to verify, so the
+  integrity story cannot be "we check the signature". Instead: a refresh that
+  changes a feed by more than 35% is **refused** and the last-good set is kept, so
+  an attacker must inject slowly enough to span days of visible churn; every fetch
+  records a checksum; and entry counts and response sizes are bounded at build
+  time rather than at the call site.
+
+  Lookups are a binary search over merged, sorted ranges — **36 ns and zero
+  allocations against 20,000 prefixes**, measured on a 2.1 GHz Xeon. Merging is
+  not an optimisation: cloud vendors publish nested and adjacent ranges routinely,
+  and a list answering containment by first match would be correct only when the
+  publisher happened to order things helpfully. A property test checks the fast
+  path against a linear scan over 20,000 random addresses.
+
+  Found while writing the tests: the delta check was measuring **merged ranges**
+  rather than published entries. A fixture of 200 contiguous `/16`s collapses to a
+  single range, so the check compared 1 against 1, fell below the small-feed
+  floor, and waved through both a wholesale truncation and a tenfold expansion —
+  the exact two shapes it exists to refuse. A feed's size is what it published,
+  not what the lookup structure compressed it to.
+
 - **VayuShield is readable over MCP — and only readable.** Five tools:
   `vayushield_status` (live state and every layer counter), `vayushield_posture`
   (the full report with each control's verdict and reasoning),
