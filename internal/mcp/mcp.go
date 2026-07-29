@@ -72,6 +72,20 @@ func (s *Server) Register(t Tool) {
 	s.tools = append(s.tools, t)
 }
 
+// Tools returns every registered tool, ignoring visibility.
+//
+// Exported for tests that assert properties of the SURFACE rather than of one
+// caller's view of it — notably that the VayuShield tools are all read-only. A
+// visibility-filtered list would let a mutation hide behind a permission the test
+// happens not to hold, which is the opposite of what such a test is for.
+func (s *Server) Tools() []Tool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Tool, len(s.tools))
+	copy(out, s.tools)
+	return out
+}
+
 // visibleTools returns the tools visible for this request context, sorted by
 // name for a stable listing.
 func (s *Server) visibleTools(ctx context.Context) []Tool {

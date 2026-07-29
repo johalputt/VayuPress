@@ -6,6 +6,46 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Added
+- **VayuShield is readable over MCP — and only readable.** Five tools:
+  `vayushield_status` (live state and every layer counter), `vayushield_posture`
+  (the full report with each control's verdict and reasoning),
+  `vayushield_settings` (which gates are on, at what thresholds),
+  `vayushield_history` (the block/challenge trail), and `analytics_referrers`
+  (which `analytics_summary` never carried, and which is exactly where a
+  self-referral or referrer-spam problem shows up).
+
+  **There are deliberately no write tools, and that is not caution for its own
+  sake.** An MCP tool is invoked by a model, and a model's context carries text
+  from wherever it has been reading — a blog comment, a fetched page, a mail
+  body. A write tool therefore turns any of that text into a potential
+  instruction. For most surfaces that is manageable; for this one it is not. The
+  operator ALLOW list is the single most dangerous field in the product, because a
+  source on it skips every gate including the jail — so a writable allow list
+  means anyone who can get text in front of a model can add themselves to it and
+  walk past the entire shield. Observe-only mode is the same shape from the other
+  end: one write turns every defence into a counter.
+
+  The answer is not a cleverer permission check. A model observes this system; a
+  human changes it. A test enforces that as a property rather than a promise —
+  every tool name is checked segment-wise for a mutating verb, so adding a write
+  tool means deleting a test and saying why in the diff.
+
+  **The allow and deny lists are reported as counts, never as values.** Knowing
+  which networks bypass the shield is the one piece of shield state with direct
+  offensive value — it names the addresses worth impersonating. Least disclosure
+  costs nothing, because an operator reading their own panel sees the values
+  anyway; only the remote reader is narrowed. No visitor address, fingerprint or
+  session token is exposed by any tool.
+
+  Scoped to `settings/read` rather than a section of its own: the canonical
+  section vocabulary is a fixed twelve that the admin permission grid, the VCB
+  validator and the API docs all read from, and adding a thirteenth to hang four
+  read tools off would change three unrelated surfaces to express something
+  `settings/read` already says.
+
 ## [3.16.6] — 2026-07-29
 
 ### Fixed

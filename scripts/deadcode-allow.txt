@@ -38,7 +38,6 @@
 # go.mod, invisible to the root ./... deadcode walk) and are the entry points
 # for the future host-side package-install flow. The rest of internal/vcb is
 # reachable via the /api/v1/vcb endpoints.
-cmd/vayupress/brand.go: unreachable func: servePNG
 internal/ai/agent.go: unreachable func: AgentRunner.Run
 internal/ai/agent.go: unreachable func: AgentRunner.execStep
 internal/ai/agent.go: unreachable func: NewAgentRunner
@@ -57,14 +56,6 @@ internal/archive/snapshot.go: unreachable func: NewManager
 internal/archive/snapshot.go: unreachable func: addFile
 internal/budget/actuator.go: unreachable func: Actuator.LastActuations
 internal/budget/budget.go: unreachable func: Ledger.Record
-internal/cluster/node.go: unreachable func: New
-internal/cluster/node.go: unreachable func: Node.Heartbeat
-internal/cluster/node.go: unreachable func: Node.ID
-internal/cluster/node.go: unreachable func: Node.IsLeader
-internal/cluster/node.go: unreachable func: Node.LivePeers
-internal/cluster/node.go: unreachable func: Node.Role
-internal/cluster/node.go: unreachable func: Node.RunHeartbeat
-internal/cluster/node.go: unreachable func: Node.electLeader
 internal/db/db.go: unreachable func: RollbackMigration
 internal/did/did.go: unreachable func: Authenticator.IssueChallenge
 internal/did/did.go: unreachable func: Authenticator.Verify
@@ -125,6 +116,7 @@ internal/graph/graph.go: unreachable func: Graph.Successors
 internal/graph/graph.go: unreachable func: New
 internal/imageproc/imageproc.go: unreachable func: DefaultMaxWidthStr
 internal/lifecycle/lifecycle.go: unreachable func: Manager.Stop
+internal/mcp/mcp.go: unreachable func: Server.Tools
 internal/merkle/tree.go: unreachable func: New
 internal/merkle/tree.go: unreachable func: Tree.Proof
 internal/merkle/tree.go: unreachable func: Tree.Root
@@ -174,11 +166,9 @@ internal/registry/registry.go: unreachable func: Registry.Install
 internal/registry/registry.go: unreachable func: Registry.List
 internal/registry/registry.go: unreachable func: Registry.Register
 internal/render/csp.go: unreachable func: AllowedFrameOrigin
-internal/render/portal.go: unreachable func: PortalJSLink
 internal/render/render.go: unreachable func: AdminCSSLink
 internal/render/render.go: unreachable func: WaitForPurges
 internal/resource/resource.go: unreachable func: Watchdog.Watch
-internal/safefetch/safefetch.go: unreachable func: IsPrivateOrReservedIP
 internal/sandbox/capability_enforcer.go: unreachable func: EnforceCapabilities
 internal/sandbox/cgroup_linux.go: unreachable func: enableControllersUpward
 internal/sandbox/cgroup_linux.go: unreachable func: setupCgroup

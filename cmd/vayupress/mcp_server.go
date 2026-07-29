@@ -522,6 +522,11 @@ func (a *App) buildMCPServer() *mcp.Server {
 		},
 	})
 
+	// VayuShield, read-only. See mcp_shield.go for why there are no write tools:
+	// the operator ALLOW list is the one field where a prompt-injected write
+	// would hand a stranger a total bypass of every gate.
+	a.registerShieldTools(srv)
+
 	return srv
 }
 
