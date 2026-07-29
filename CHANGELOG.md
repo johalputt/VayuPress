@@ -9,6 +9,49 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Security
+- **Tier 3 reported "Active" and enforced nothing.** `nginx-vayushield.conf`
+  declared its rate-limit *zones* while every `limit_req` / `limit_conn` that
+  uses them sat in a commented example block. nginx accepts unused zones, so
+  `nginx -t` passed, the reconcile agent wrote `tier3 active`, and the panel
+  rendered "● Active" beside copy promising per-IP request and connection
+  shaping — with 32 MiB of shared memory allocated for rules that did not exist
+  and nothing anywhere reporting a problem.
+
+  Enforcement now lives in the same file, in `http{}` context, which
+  `/etc/nginx/conf.d/` already is — so the file the agent installs is sufficient,
+  with no vhost patching and nothing that requires a root agent to edit a file an
+  operator wrote. Refusals return **429** rather than the default 503: a crawler
+  reads 503 as "the site is down" and 429 as "you are going too fast", and the
+  difference is whether shedding costs you the search index.
+
+- **Tier 2's per-source limits were unreachable, and fixing that alone would have
+  dropped all IPv6.** Two defects were cancelling each other out.
+
+  The chain opened with a *global* SYN rate limit ending in `return`. In an
+  nftables **base** chain `return` means the chain policy, which is `accept`, so
+  every new connection was accepted there and the per-source meters below were
+  dead code — `CONN_LIMIT` and `NEW_CONN_RATE` were operator-facing tunables that
+  changed nothing. Worse, exceeding that global rate put the chain into its drop
+  state and **every new visitor** was dropped in the kernel while established
+  connections carried on: an attacker-operated site-wide outage for the price of a
+  trivial packet rate, presenting as "works for me, nobody new can load it". It
+  also ran at hook priority −10, ahead of the `tcp_syncookies` the same script
+  enables, pre-empting the correct stateless defence with a worse one.
+
+  The second defect was hidden behind the first. In the `inet` family an
+  `ip saddr` match carries an implicit IPv4-only dependency, so a v4-keyed meter
+  never matches a v6 packet — while the bare drop beside it carries no dependency
+  and matches everything. Because the meters were unreachable, that drop never
+  fired. Repairing reachability without splitting by family would have dropped
+  **100% of IPv6 HTTP** the moment the fix landed.
+
+  The limiters now live in a regular chain (where `return` resumes the caller, so
+  more than one meter sees the same packet), reached by a `jump`, and split into
+  `vs_web4` / `vs_web6` with matching `ip saddr` and `ip6 saddr` meters. The
+  global SYN limiter is gone; syncookies cover that ground without handing anyone
+  a lever on everyone else's traffic. Both ruleset variants — with and without a
+  proxy allowlist — are validated against real `nft`.
+
 - **A User-Agent string could bypass the entire shield.** Gate 0's crawler fast
   path treated "identity confirmed" and "identity unconfirmable" as the same
   verdict — both returned `next.ServeHTTP; return`, ahead of the blocklist, the

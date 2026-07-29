@@ -98,6 +98,47 @@ func TestOptionalDirectivesStayCommented(t *testing.T) {
 	}
 }
 
+// TestTier3ActuallyEnforces is the regression test for the product's largest
+// honesty defect. nginx-vayushield.conf declared its rate-limit ZONES while every
+// limit_req / limit_conn that uses them sat in a commented example. nginx accepts
+// unused zones, `nginx -t` passed, the reconcile agent wrote "tier3 active", and
+// the panel rendered "● Active" beside copy promising per-IP shaping — while 32
+// MiB of shared memory was allocated for rules that did not exist.
+//
+// A zone with no consumer is the exact shape of that bug, so the test checks for
+// the pairing rather than for either half.
+func TestTier3ActuallyEnforces(t *testing.T) {
+	active := strings.Join(activeLines(readDeployConf(t, "nginx-vayushield.conf")), "\n")
+
+	for _, pair := range []struct{ zone, use string }{
+		{"limit_req_zone", "limit_req "},
+		{"limit_conn_zone", "limit_conn "},
+	} {
+		if !strings.Contains(active, pair.zone) {
+			t.Errorf("%s is gone — Tier 3 declares no limits at all", pair.zone)
+			continue
+		}
+		if !strings.Contains(active, pair.use) {
+			t.Errorf("%s is declared but nothing uses it — nginx allocates the shared memory, "+
+				"passes nginx -t, reports active, and enforces nothing", pair.zone)
+		}
+	}
+	// Refusals must be 429, not the default 503. A crawler reads 503 as "the site
+	// is down" and 429 as "you are going too fast"; the difference is whether
+	// shedding costs you the index.
+	for _, want := range []string{"limit_req_status  429", "limit_conn_status 429"} {
+		if !strings.Contains(active, want) {
+			t.Errorf("missing %q — refusals default to 503, which a crawler reads as an outage", want)
+		}
+	}
+	// Slow-loris protection has to survive alongside the new limits.
+	for _, want := range []string{"client_header_timeout", "client_body_timeout", "send_timeout"} {
+		if !strings.Contains(active, want) {
+			t.Errorf("missing %q — the slow-loris defence was dropped", want)
+		}
+	}
+}
+
 // TestNoOCSPStaplingDirective — Let's Encrypt retired its OCSP responders, so
 // their certificates carry no responder URL and nginx warns on every config test
 // and every reload. The warning is harmless; training operators to scroll past

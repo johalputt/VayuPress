@@ -23,8 +23,23 @@ HTTP_PORTS='{ 80, 443 }'
 CONN_LIMIT=64            # max concurrent connections per IP
 NEW_CONN_RATE="50/second" # new-connection rate per IP
 NEW_CONN_BURST=100        # burst above the rate before dropping
-SYN_RATE="25/second"      # global SYN accept rate (flood guard)
-SYN_BURST=50
+# There is deliberately NO global SYN rate limit here any more.
+#
+# The previous ruleset carried `tcp flags & (syn|ack) == syn limit rate 25/second`
+# followed by an unconditional drop. That rate was GLOBAL, not per source, so any
+# attacker willing to emit more than 25 SYN/s put the chain into its drop state
+# and every NEW visitor was dropped in the kernel while established connections
+# carried on. The failure presents as "the site works for me and nobody new can
+# load it", which is close to unfalsifiable from the inside — and it handed an
+# attacker a site-wide outage for the price of a trivial packet rate.
+#
+# It also ran at hook priority -10, ahead of the tcp_syncookies this same script
+# enables, pre-empting the correct stateless defence with a worse one.
+#
+# The honest trade: syncookies only engage once the accept queue overflows, so
+# the limiter did bound conntrack insertion pressure in the window before that.
+# The per-source caps below cover the same ground without giving anyone a lever
+# on everyone else's traffic.
 
 # --- CDN / reverse-proxy allowlist --------------------------------------------
 # Every limit above keys on the SOURCE IP, and the kernel has no idea what an
@@ -211,16 +226,38 @@ table inet ${TABLE} {
     ct state invalid drop
 ${cdn_rules}
 
-    # Global SYN-flood guard.
-    tcp flags & (syn|ack) == syn limit rate ${SYN_RATE} burst ${SYN_BURST} packets return
-    tcp flags & (syn|ack) == syn drop
+    # New web connections go to a REGULAR chain. This is load-bearing: in a base
+    # chain a "return" verdict means the chain policy, which here is accept, so a
+    # rule ending in return terminated evaluation and everything after it was
+    # dead. In a regular chain a return resumes the caller, which is what lets
+    # more than one meter see the same packet.
+    tcp dport ${HTTP_PORTS} ct state new jump vs_web
+  }
 
-    # Per-IP new-connection rate limit to the web ports.
-    tcp dport ${HTTP_PORTS} ct state new meter vs_rate { ip saddr limit rate ${NEW_CONN_RATE} burst ${NEW_CONN_BURST} packets } accept
-    tcp dport ${HTTP_PORTS} ct state new drop
+  # vs_web splits by address family before touching a source address. In the
+  # inet family an "ip saddr" match carries an implicit IPv4-only dependency, so
+  # a v4-keyed meter simply never matches a v6 packet — and a bare drop beside it
+  # carries no such dependency and matches everything. Mixing the two in one
+  # chain is how you drop 100% of IPv6 while the IPv4 rules look correct.
+  chain vs_web {
+    meta nfproto ipv4 jump vs_web4
+    meta nfproto ipv6 jump vs_web6
+  }
 
-    # Per-IP concurrent-connection cap to the web ports.
-    tcp dport ${HTTP_PORTS} ct state new meter vs_conn { ip saddr ct count over ${CONN_LIMIT} } drop
+  chain vs_web4 {
+    # Concurrent connections per source. Checked first: a host already holding
+    # the cap should be refused regardless of how slowly it opens the next one.
+    meter vs_conn4 { ip saddr ct count over ${CONN_LIMIT} } drop
+    # New-connection rate per source. Under the limit -> return to the caller and
+    # on to the chain policy; over it -> fall through to the drop below.
+    meter vs_rate4 { ip saddr limit rate ${NEW_CONN_RATE} burst ${NEW_CONN_BURST} packets } return
+    drop
+  }
+
+  chain vs_web6 {
+    meter vs_conn6 { ip6 saddr ct count over ${CONN_LIMIT} } drop
+    meter vs_rate6 { ip6 saddr limit rate ${NEW_CONN_RATE} burst ${NEW_CONN_BURST} packets } return
+    drop
   }
 }
 EOF

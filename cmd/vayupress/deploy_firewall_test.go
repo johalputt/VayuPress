@@ -63,10 +63,9 @@ func TestAllowlistPrecedesEveryLimiter(t *testing.T) {
 		t.Fatal("the ruleset no longer interpolates ${cdn_rules} — the allowlist is not being emitted")
 	}
 	for _, later := range []string{
-		"syn limit rate",    // global SYN-flood guard
-		"meter vs_rate",     // per-IP new-connection rate
-		"meter vs_conn",     // per-IP concurrent connections
-		"ct state new drop", // the drop the rate limiter falls through to
+		"jump vs_web",   // entry to the per-source limiters
+		"meter vs_rate", // per-source new-connection rate
+		"meter vs_conn", // per-source concurrent connections
 	} {
 		j := strings.Index(src, later)
 		if j < 0 {
@@ -82,6 +81,69 @@ func TestAllowlistPrecedesEveryLimiter(t *testing.T) {
 	// from it.
 	if k := strings.Index(src, "ct state invalid drop"); k < 0 || k > i {
 		t.Error("`ct state invalid drop` must precede the allowlist so allowlisted sources are still state-checked")
+	}
+}
+
+// TestLimitersAreReachableAndCoverBothFamilies pins the two defects that made
+// Tier 2's operator-facing tunables decorative.
+//
+// Reachability: in a BASE chain a `return` verdict means the chain policy, and
+// the policy here is accept. The old ruleset front-loaded a SYN rule ending in
+// `return`, so every new connection was accepted there and the per-source meters
+// below it were dead — `CONN_LIMIT` and `NEW_CONN_RATE` changed nothing. The
+// limiters now live in a REGULAR chain, where `return` resumes the caller.
+//
+// Families: in the inet family an `ip saddr` match carries an implicit IPv4-only
+// dependency, so a v4-keyed meter never matches a v6 packet — while a bare drop
+// beside it carries no dependency and matches everything. In the old ruleset two
+// bugs cancelled: the meters were unreachable, so the family-blind drop never
+// fired. Fixing reachability alone would have dropped 100% of IPv6 HTTP.
+func TestLimitersAreReachableAndCoverBothFamilies(t *testing.T) {
+	src := ruleSetHeredoc(t, readFirewallScript(t))
+
+	if !strings.Contains(src, "chain vs_web4") || !strings.Contains(src, "chain vs_web6") {
+		t.Error("the ruleset does not split the limiters by address family — " +
+			"a v4-keyed meter silently ignores IPv6 while a bare drop beside it does not")
+	}
+	for _, want := range []string{
+		"meter vs_conn4 { ip saddr",
+		"meter vs_rate4 { ip saddr",
+		"meter vs_conn6 { ip6 saddr",
+		"meter vs_rate6 { ip6 saddr",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("missing %q — one address family is unprotected", want)
+		}
+	}
+	// The limiters must NOT sit in the base chain, or `return` means accept and
+	// everything after the first one is unreachable again.
+	base := src[strings.Index(src, "chain input"):]
+	if j := strings.Index(base, "chain vs_web"); j > 0 {
+		base = base[:j]
+	}
+	if strings.Contains(base, "meter vs_") {
+		t.Error("a per-source meter is back in the base chain, where return means accept")
+	}
+	if !strings.Contains(base, "jump vs_web") {
+		t.Error("the base chain no longer hands new web connections to the limiter chain")
+	}
+}
+
+// TestNoGlobalSynLimiter — the removed rule rate-limited SYNs GLOBALLY and then
+// dropped the remainder, so anyone willing to emit more than the threshold put
+// the chain into its drop state and every NEW visitor was dropped in-kernel
+// while established connections carried on. That is an attacker-operated
+// site-wide outage for the price of a trivial packet rate, and it presents as
+// "works for me, nobody new can load it".
+func TestNoGlobalSynLimiter(t *testing.T) {
+	src := ruleSetHeredoc(t, readFirewallScript(t))
+	if strings.Contains(src, "syn limit rate") || strings.Contains(src, "SYN_RATE") {
+		t.Error("a global SYN rate limit is back in the ruleset — it throttles everyone's " +
+			"new connections, not the attacker's, and pre-empts tcp_syncookies")
+	}
+	// syncookies must still be the stateless defence that replaces it.
+	if !strings.Contains(readFirewallScript(t), "tcp_syncookies = 1") {
+		t.Error("tcp_syncookies is no longer enabled — nothing covers SYN floods")
 	}
 }
 
