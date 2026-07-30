@@ -249,8 +249,8 @@ This is what raises the cost of A5 (root) — it cannot close it.
 
 ## 6. How each phase is proven
 
-Per `CLAUDE.md` §1, the adversarial pass **gates** each phase and does not trail
-it. For this subsystem specifically:
+Per this project's release discipline, the adversarial pass **gates** each phase
+and does not trail it. For this subsystem specifically:
 
 - **A red-team capture suite**: a corpus of real capture techniques —
   screencopy, dmabuf export, `/dev/fb0`, XWayland root-window read, AT-SPI text
