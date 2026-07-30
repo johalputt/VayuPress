@@ -8,7 +8,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.17] — 2026-07-30
+
+An analytics-honesty release. Every item is a number or a label that was wrong
+on screen while the code underneath was doing what it was told.
+
 ### Fixed
+- **Bar percentages taken against the rows shown, not the real population.** The
+  analytics page computed each bar's share from the sum of the rows it rendered.
+  On a complete breakdown — countries, browsers, channels — those rows *are* the
+  population and the figure was right, which is why this survived review for so
+  long. On a top-N list it is not: an operator's homepage read **87%** of traffic
+  because it held 242 of the 278 views in the ten rows displayed, while the
+  window contained 31,643. The real share was **0.8%** — an overstatement of two
+  orders of magnitude.
+
+  The denominator is now a type with no valid zero value, declared at each of the
+  eleven call sites: `osShareOf(total)` for a truncated list whose population is
+  known, `osShareOfListed()` where the rows are the whole breakdown, and
+  `osShareHidden()` where the list is truncated and no honest denominator exists.
+  An unset denominator fails closed to no percentage. Top pages divide by total
+  views and referrers by total referrals, for which `Summary` gained
+  `TotalReferrals` — computed under the identical self-host exclusions as the
+  list it divides, because a denominator drawn from a different filter would be
+  its own quiet lie.
+
+- **Two different populations both labelled "views".** The page header rendered
+  the server-side counter and a stat card rendered the browser beacon, under the
+  same noun. An operator saw `31643 views · last 24 hours` immediately above a
+  Pageviews card reading `1327` — same word, same period, 24x apart. Neither
+  number was wrong: the server-side counter increments on every page request,
+  crawlers and non-JavaScript clients included, while the beacon counts only
+  visitors it can measure. The gap is real and useful — roughly how much of the
+  traffic is machines — but nothing said they were different things. The
+  server-side total is now **page requests** wherever it appears, each rendering
+  carrying a hint naming both sources.
+
 - **The site appearing in its own referrer list, via a port.** An operator's
   panel showed `johal.in:2052` and `www.johal.in:2052` as external referrers —
   their own site, counted as somebody else's traffic. 2052 is one of the
@@ -37,6 +72,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   found to be incapable of failing, each caught only by mutation-testing it; a
   test whose assertions never execute is not weak coverage, it is a false report
   of coverage.
+
+### Security
+- **Backup-target containment is now asserted at the filesystem call.** CodeQL
+  raised two High "uncontrolled data used in path expression" alerts on the
+  `MkdirAll` and `CreateTemp` in `validateKeepTargetWritable`. The code was safe:
+  `sanitizeKeepTarget` proves containment with `filepath.Rel` and rebuilds the
+  path from a constant root, with eighteen hostile cases already covering NUL,
+  newline, traversal and prefix confusion. What the tool could not see was that
+  proof — its taint tracker does not credit `Rel`-based containment.
+
+  Rather than dismiss the alerts, the invariant is re-established immediately
+  before the filesystem call. The redundancy earns its place independently: the
+  guarantee was established earlier in the call graph, and a future caller
+  arriving by another route would inherit nothing from it.
+
+### Note — the pre-release adversarial pass
+- Ran against everything above. **One finding, fixed before the bump:** the bar
+  percentage clamped its upper bound but not its lower, so a negative count
+  rendered `-5%`. Found by attacking the function rather than reading it — only
+  the upper end had an obvious way to go wrong. A non-positive denominator was
+  attacked in the same pass and correctly suppressed the percentage.
+- **Three tests were re-worked because they could not fail.** One skipped
+  whenever no domain was configured, which is always under `go test`. One
+  asserted on `">-"` anywhere in the markup and so matched the rendered *value*,
+  failing against fixed and broken code alike. One rejected the substring `..`,
+  which would have refused `/var/back..ups` — a legal folder an operator is
+  entitled to choose, and a check added to satisfy a scanner is not worth that.
+- Verified: `Channels()` still carries **no** self-host exclusion, since a
+  same-site referrer must reach it to be classified as Direct — the port fix
+  normalises hosts, it does not filter them. Race detector clean across
+  `cmd/vayupress` and `internal/analytics`; deadcode gate reports no new
+  unreachable code; golangci-lint 0 issues.
 
 ## [3.16.16] — 2026-07-30
 

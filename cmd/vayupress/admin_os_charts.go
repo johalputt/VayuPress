@@ -143,12 +143,18 @@ func osBarList(items []osChartBar, denom osBarDenom, emptyMsg string) string {
 		pct := it.Value * 100 / max
 		share := ""
 		if total > 0 {
-			// Clamp: a caller-supplied total that is smaller than the rows it is
-			// meant to contain would otherwise print above 100%, which reads as a
-			// rendering glitch rather than the data problem it actually is.
+			// Clamp both ends. A caller-supplied total smaller than the rows it is
+			// meant to contain would print above 100%, and a negative count would
+			// print a negative share — each reads as a rendering glitch rather than
+			// the data problem it actually is. The lower bound was missed on the
+			// first pass and found by attacking this function rather than reading
+			// it: only the upper end had an obvious way to go wrong.
 			s := it.Value * 100 / total
 			if s > 100 {
 				s = 100
+			}
+			if s < 0 {
+				s = 0
 			}
 			share = `<span class="vp-bar__pct">` + strconv.Itoa(s) + `%</span>`
 		}

@@ -61,6 +61,25 @@ func TestBarShareIsTakenAgainstTheRealPopulation(t *testing.T) {
 	if !strings.Contains(clamped, ">100%<") || strings.Contains(clamped, ">500%<") {
 		t.Errorf("share above 100%% was not clamped; got:\n%s", firstBar(clamped))
 	}
+
+	// Both ends. Found by attacking this function during the pre-release pass:
+	// the first clamp guarded only the upper bound, because that was the end with
+	// an obvious way to go wrong, and a negative count rendered "-5%".
+	// Asserted on the percentage span specifically. A first version checked for
+	// ">-" anywhere in the markup, which matched the rendered VALUE "-5" and so
+	// failed against the fixed code too — a test that fails for the wrong reason
+	// is no more use than one that passes for the wrong reason.
+	neg := osBarList([]osChartBar{{Label: "a", Value: -5}}, osShareOf(100), "")
+	if strings.Contains(neg, `vp-bar__pct">-`) {
+		t.Errorf("a negative count rendered a negative share; got:\n%s", firstBar(neg))
+	}
+
+	// A non-positive denominator must suppress the percentage, never divide by it.
+	for _, d := range []osBarDenom{osShareOf(0), osShareOf(-1)} {
+		if out := osBarList([]osChartBar{{Label: "a", Value: 5}}, d, ""); strings.Contains(out, "vp-bar__pct") {
+			t.Errorf("percentage printed against a non-positive denominator; got:\n%s", firstBar(out))
+		}
+	}
 }
 
 // TestEveryBarListDeclaresItsDenominator stops a new call site from being added
