@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.18] — 2026-07-30
+
+Fixes a regression shipped in 3.16.17 an hour earlier, so it goes out on its own
+rather than waiting.
+
+### Fixed
+- **Correct denominators, then thrown away by integer division.** 3.16.17 stopped
+  the analytics bars dividing by the rows displayed and made them divide by the
+  real population. On a site where most requests are crawlers hitting distinct
+  one-off URLs, that turned the entire Top-pages column into zeros: the homepage
+  at 260 of 32,608 page requests is 0.797%, which integer division renders as
+  `0%`, and so did every row beneath it.
+
+  A column of zeros is not a more honest number than 87% — it is no number at
+  all, and the two are the same failure seen from either end: a figure that does
+  not tell the reader what is true. Shares now keep the precision that survives
+  the division — `53%` above one percent, `0.8%` between 0.1 and 1, and `<0.1%`
+  below that, where an exact figure stops meaning anything but `0%` would claim
+  the row contributed nothing.
+
+  The clamping and the non-positive-denominator handling move into the same
+  helper, with its boundaries pinned directly rather than only through the bar
+  list — the earlier test exercised exactly one of them, which is how a whole
+  branch of the formatting went out unexamined.
+
 ## [3.16.17] — 2026-07-30
 
 An analytics-honesty release. Every item is a number or a label that was wrong

@@ -101,6 +101,44 @@ func osShareOfListed() osBarDenom { return osBarDenom{kind: osDenomListed} }
 // honest denominator is available. No number beats a wrong one.
 func osShareHidden() osBarDenom { return osBarDenom{kind: osDenomHidden} }
 
+// osShareLabel renders value's share of total at a precision that survives the
+// division.
+//
+// Integer percentages were fine while the denominator was the sum of the rows
+// shown, because every row was then a large fraction of it. Against the real
+// population they collapse: a site taking 32,608 page requests, most of them
+// crawlers on distinct one-off URLs, has a homepage at 260 — 0.797%, which
+// integer division renders as "0%". Every row in the list then reads 0%, and a
+// column of zeros is not a more honest number, it is no number at all. The
+// previous overstatement and this are the same failure viewed from either end:
+// a figure that does not tell the reader what is true.
+//
+// Clamped at both ends. A caller-supplied total smaller than the rows it is
+// meant to contain would print above 100%, and a negative count would print a
+// negative share; each reads as a rendering glitch rather than the data problem
+// it actually is.
+func osShareLabel(value, total int) string {
+	if total <= 0 || value <= 0 {
+		return "0%"
+	}
+	if value >= total {
+		return "100%"
+	}
+	pct := float64(value) * 100 / float64(total)
+	switch {
+	case pct >= 1:
+		return strconv.Itoa(int(pct)) + "%"
+	case pct >= 0.1:
+		// One decimal keeps the homepage distinguishable from the long tail of
+		// scanned URLs beneath it, which is the whole question this column answers.
+		return strconv.FormatFloat(pct, 'f', 1, 64) + "%"
+	default:
+		// Below a tenth of a percent the exact figure stops meaning anything, but
+		// "0%" would claim the row contributed nothing, which is not true either.
+		return "&lt;0.1%"
+	}
+}
+
 func osBarList(items []osChartBar, denom osBarDenom, emptyMsg string) string {
 	if len(items) == 0 {
 		if emptyMsg == "" {
@@ -143,20 +181,7 @@ func osBarList(items []osChartBar, denom osBarDenom, emptyMsg string) string {
 		pct := it.Value * 100 / max
 		share := ""
 		if total > 0 {
-			// Clamp both ends. A caller-supplied total smaller than the rows it is
-			// meant to contain would print above 100%, and a negative count would
-			// print a negative share — each reads as a rendering glitch rather than
-			// the data problem it actually is. The lower bound was missed on the
-			// first pass and found by attacking this function rather than reading
-			// it: only the upper end had an obvious way to go wrong.
-			s := it.Value * 100 / total
-			if s > 100 {
-				s = 100
-			}
-			if s < 0 {
-				s = 0
-			}
-			share = `<span class="vp-bar__pct">` + strconv.Itoa(s) + `%</span>`
+			share = `<span class="vp-bar__pct">` + osShareLabel(it.Value, total) + `</span>`
 		}
 		c := (i % 8) + 1
 		out += `<div class="vp-bar vp-bar--c` + strconv.Itoa(c) + `">` +

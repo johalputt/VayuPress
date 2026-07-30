@@ -31,8 +31,14 @@ func TestBarShareIsTakenAgainstTheRealPopulation(t *testing.T) {
 		t.Error("the homepage still reports 87% of traffic; that is its share of the ten rows " +
 			"shown, not of the 31,643 views in the window")
 	}
-	if !strings.Contains(got, ">0%<") {
-		t.Errorf("242 of 31,643 should render as 0%%; got:\n%s", firstBar(got))
+	// 242/31,643 is 0.765%. Rendered at one decimal, not as "0%": the first fix
+	// divided correctly and then threw the answer away, so every row in the list
+	// read 0% and the column carried no information at all.
+	if !strings.Contains(got, ">0.8%<") {
+		t.Errorf("242 of 31,643 is 0.765%%, which should render as 0.8%%; got:\n%s", firstBar(got))
+	}
+	if strings.Count(got, `vp-bar__pct">0%<`) > 0 {
+		t.Errorf("a row collapsed to a bare 0%%; sub-1%% shares must keep their precision:\n%s", got)
 	}
 
 	// A complete breakdown still takes its share of the rows, because there the
@@ -114,4 +120,30 @@ func firstBar(html string) string {
 		return html[i:]
 	}
 	return html
+}
+
+// TestShareLabelPrecision pins the boundaries of the label directly, since the
+// bar-list test only exercises one of them.
+func TestShareLabelPrecision(t *testing.T) {
+	for _, tc := range []struct {
+		v, total int
+		want     string
+	}{
+		{260, 32608, "0.8%"}, // the homepage on the install that reported this
+		{7, 32608, "&lt;0.1%"},
+		{436, 813, "53%"},
+		{1344, 1401, "95%"},
+		{1, 1000, "0.1%"},
+		{1, 1001, "&lt;0.1%"},
+		{1, 1, "100%"},
+		{500, 100, "100%"}, // total smaller than the row it contains
+		{-5, 100, "0%"},    // negative count
+		{5, 0, "0%"},       // no population
+		{5, -1, "0%"},      // negative population
+		{0, 100, "0%"},
+	} {
+		if got := osShareLabel(tc.v, tc.total); got != tc.want {
+			t.Errorf("osShareLabel(%d, %d) = %q, want %q", tc.v, tc.total, got, tc.want)
+		}
+	}
 }
