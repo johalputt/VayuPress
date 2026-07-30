@@ -8,6 +8,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+- **The site appearing in its own referrer list, via a port.** An operator's
+  panel showed `johal.in:2052` and `www.johal.in:2052` as external referrers —
+  their own site, counted as somebody else's traffic. 2052 is one of the
+  alternate HTTP ports a CDN can serve on, and `url.Parse().Host` keeps the port,
+  so the stored referrer host was `<domain>:2052`. That matched neither the
+  exact-host exclusion nor the `%.<domain>` subdomain pattern, and walked
+  straight past a filter that had just been consolidated specifically to stop
+  self-referrals.
+
+  Fixed at both ends. Ingest now uses `Hostname()` rather than `Host` (and the
+  second, hand-rolled extractor strips credentials and `:port` too, with IPv6
+  brackets handled), so no new row carries a port. The read path additionally
+  excludes `<domain>:%` and `%.<domain>:%`, so rows already recorded stop showing
+  without needing a data migration.
+
+  The lesson is narrower than "add a case". The consolidation that produced
+  `selfHostPatterns` was correct — one predicate, one place — but it encoded the
+  *spellings of the host that had been seen so far*. A port is not an exotic
+  input; it was simply absent from the sample the fix was written against.
+
+### Added
+- **A self-host pattern test that can actually fail.** Its first draft skipped
+  when `config.Cfg.Domain` was empty, which it always is under `go test` — so
+  every assertion was inert and it passed against a mutation that emptied both
+  port patterns. It now sets the domain itself. This is the third test this cycle
+  found to be incapable of failing, each caught only by mutation-testing it; a
+  test whose assertions never execute is not weak coverage, it is a false report
+  of coverage.
+
 ## [3.16.16] — 2026-07-30
 
 Shipped immediately rather than batched: the installed VayuOS app was unusable in

@@ -84,9 +84,16 @@ func (s *Store) Record(ctx context.Context, path, referrer string) error {
 // It exists because the same exclusion was written once, in one of the two
 // referrer queries, and the panel called the other one. A predicate duplicated
 // across two files is a predicate that will be fixed in one of them.
-func selfHostPatterns() (host, subdomainLike string) {
+// The port forms exist because a referrer host is not always bare. A CDN in
+// front of the site can serve on one of its alternate HTTP ports, and the
+// browser then sends "johal.in:2052" as the referrer — which is the site itself
+// but matches neither the exact host nor the subdomain pattern, so it climbed
+// into the operator's referrer list looking like an external site. Ingest now
+// strips the port (see referrerHost), but rows recorded before that still carry
+// it, so the read path excludes both spellings and needs no data migration.
+func selfHostPatterns() (host, subdomainLike, hostPortLike, subdomainPortLike string) {
 	host = strings.ToLower(strings.TrimSpace(config.Cfg.Domain))
-	return host, "%." + host
+	return host, "%." + host, host + ":%", "%." + host + ":%"
 }
 
 // PathCount is a path with its view total over the queried window.
@@ -273,11 +280,12 @@ func (s *Store) Since(ctx context.Context, days, limit int) (*Summary, error) {
 	// because fixing the function whose name matched is not the same as fixing the
 	// one the panel calls. Both now share selfHostPatterns so they cannot drift
 	// apart again.
-	site, sub := selfHostPatterns()
+	site, sub, sitePort, subPort := selfHostPatterns()
 	if rows, err := s.readDB().QueryContext(ctx,
 		`SELECT host,SUM(hits) h FROM analytics_referrers
 		 WHERE day>=? AND LOWER(host)<>? AND LOWER(host) NOT LIKE ?
-		 GROUP BY host ORDER BY h DESC LIMIT ?`, from, site, sub, limit); err == nil {
+		   AND LOWER(host) NOT LIKE ? AND LOWER(host) NOT LIKE ?
+		 GROUP BY host ORDER BY h DESC LIMIT ?`, from, site, sub, sitePort, subPort, limit); err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var h HostCount
@@ -360,5 +368,9 @@ func referrerHost(ref string) string {
 	if err != nil || u.Host == "" {
 		return ""
 	}
-	return strings.ToLower(u.Host)
+	// Hostname(), not Host: Host keeps ":port". A CDN serving the site on one of
+	// its alternate HTTP ports made the browser send "johal.in:2052", which is
+	// this site but matched no self-host pattern, so it was reported as an
+	// external referrer. A port never distinguishes one site from another here.
+	return strings.ToLower(u.Hostname())
 }

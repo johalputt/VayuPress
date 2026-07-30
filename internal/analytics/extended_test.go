@@ -374,6 +374,16 @@ func TestBothReferrerQueriesExcludeTheSiteItself(t *testing.T) {
 				t.Errorf("%s has a referrer query that does not exclude subdomains — mail.<domain> "+
 					"and mcp.<domain> were the two largest false entries:\n%s", name, q)
 			}
+			// Three NOT LIKE clauses: subdomain, host:port, subdomain:port. A CDN
+			// serving the site on one of its alternate HTTP ports makes the browser
+			// send "<domain>:2052" — this site, but matching neither the exact host
+			// nor "%.<domain>", so it surfaced in the operator's own referrer list
+			// as though it were someone else's traffic.
+			if got := strings.Count(q, "NOT LIKE ?"); got != 3 {
+				t.Errorf("%s: referrer query has %d NOT LIKE clauses, want 3 (subdomain, "+
+					"host:port, subdomain:port) — a host:port self-referral leaks in:\n%s",
+					name, got, q)
+			}
 		}
 	}
 	// One definition, not two. A predicate duplicated across two files is a
@@ -388,7 +398,7 @@ func TestBothReferrerQueriesExcludeTheSiteItself(t *testing.T) {
 // the two largest entries, so matching only the bare domain would have fixed
 // almost nothing.
 func TestTheSelfHostPredicateCoversSubdomains(t *testing.T) {
-	host, like := selfHostPatterns()
+	host, like, _, _ := selfHostPatterns()
 	if like != "%."+host {
 		t.Fatalf("subdomain pattern %q does not cover subdomains of %q", like, host)
 	}
