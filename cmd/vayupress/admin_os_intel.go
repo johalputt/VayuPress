@@ -628,7 +628,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 	// mon-stack groups of animated <details> accordions (pure CSS, no JS).
 	sections := `<div class="section-head"><span class="section-head__title">Traffic</span><span class="section-head__hint">How many people visit &amp; who is on your site right now</span></div>
 <div class="mon-stack">` +
-		monAcc("📈", "Traffic over time", "Pageviews &amp; unique visitors, day by day", `<span class="mon-chip">`+strconv.FormatInt(sum.TotalViews, 10)+` views</span>`, true, trafficBody) +
+		monAcc("📈", "Traffic over time", "Server-side page requests, day by day — crawlers included", `<span class="mon-chip" title="`+osRequestsVsPageviewsHint+`">`+strconv.FormatInt(sum.TotalViews, 10)+` requests</span>`, true, trafficBody) +
 		monAcc("🟢", "Live visitors", "Who is on your site right now — refreshes every 10s", `<span class="mon-chip mon-chip--on">● Live</span>`, false, osLiveCard()) +
 		`</div>
 
@@ -653,7 +653,9 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		`</div>`
 
 	body := `<div class="page-header"><h1>Analytics</h1>
-  <span class="muted text-sm">` + strconv.FormatInt(sum.TotalViews, 10) + ` views · ` + periodLabel + ` · updated ` + config.FormatSiteStamp(now) + `</span>
+  <span class="muted text-sm" title="` + osRequestsVsPageviewsHint + `">` +
+		strconv.FormatInt(sum.TotalViews, 10) + ` page requests · ` + periodLabel +
+		` · updated ` + config.FormatSiteStamp(now) + `</span>
 </div>
 <p class="page-sub">Privacy-first, cookieless analytics — audience, engagement, geography and campaigns, all computed on your own server. Tap a card to expand it.</p>` +
 		osPeriodSelector(days) + kpiHeader + sections + osPrivacyNote()
@@ -980,6 +982,23 @@ func osPrettyPath(p string) string {
 
 // osPrivacyNote renders the trust footer shown at the bottom of the analytics
 // page, reassuring operators that nothing leaves their server.
+// osRequestsVsPageviewsHint explains the one number on this page that is not
+// measured the way the rest are.
+//
+// The header total comes from the server-side counter, which increments on every
+// page request — crawlers, scanners and visitors without JavaScript included.
+// The Pageviews stat card comes from the browser beacon, so it counts only
+// visitors who ran JavaScript. Both are correct; they are different populations.
+//
+// Presented as bare numbers they read as a contradiction. An operator saw
+// "31643 views · last 24 hours" directly above a Pageviews card reading 1327 —
+// the same noun, the same period, a 24x gap. The gap is real and useful (it is
+// roughly how much of the traffic is machines), but nothing on the page said so.
+// Naming the two differently, and saying why, is the whole fix.
+const osRequestsVsPageviewsHint = "Server-side count of page requests, including crawlers and " +
+	"visitors without JavaScript. The Pageviews card counts only visitors measured by the " +
+	"browser beacon, so it is lower — the difference is roughly your machine traffic."
+
 func osPrivacyNote() string {
 	return `<p class="vm-privacy-note muted text-sm">🔒 All analytics are computed and stored locally on your own server. No cookies, no PII, no third-party requests — your data never leaves this instance.</p>`
 }
