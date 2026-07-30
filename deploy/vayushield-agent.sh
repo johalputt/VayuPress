@@ -567,10 +567,28 @@ DEFAULT_HOST_CONF="${VAYUSHIELD_DEFAULT_HOST_DST:-/etc/nginx/conf.d/vayushield-d
 
 # nginx_try_reload validates and reloads, restoring $2 over $1 if either fails.
 # Returns 0 only when the new config is live.
+# NGINX_TRY_WHY carries nginx's OWN words about a rejection, for the panel.
+#
+# The first version of this discarded them with >/dev/null and reported only
+# "nginx rejected the catch-all server". That is the same defect as the truncated
+# cosign log: a row that says something failed but not why sends the operator to
+# a terminal, which is the one thing this whole surface exists to avoid. nginx
+# gives a precise, line-numbered reason; there is no excuse for withholding it.
+NGINX_TRY_WHY=""
+
 nginx_try_reload() { # $1=file just written, $2=backup path or "" if newly created
-  if nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1; then
+  local log
+  log="$(mktemp)" || log=/dev/null
+  if nginx -t >"$log" 2>&1 && systemctl reload nginx >>"$log" 2>&1; then
+    [ "$log" = /dev/null ] || rm -f "$log"
+    NGINX_TRY_WHY=""
     return 0
   fi
+  # Capture BEFORE rolling back: once the file is restored, `nginx -t` passes and
+  # the reason is gone.
+  NGINX_TRY_WHY="$(grep -iE 'emerg|unknown directive|duplicate|not allowed|cannot|failed' "$log" 2>/dev/null | head -n 2 | tr '\n' ' ')"
+  [ -n "$NGINX_TRY_WHY" ] || NGINX_TRY_WHY="$(tail -n 2 "$log" 2>/dev/null | tr '\n' ' ')"
+  [ "$log" = /dev/null ] || rm -f "$log"
   if [ -n "$2" ] && [ -f "$2" ]; then
     cp -f "$2" "$1" 2>/dev/null || true
   else
@@ -578,6 +596,25 @@ nginx_try_reload() { # $1=file just written, $2=backup path or "" if newly creat
   fi
   nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
   return 1
+}
+
+# nginx_has_reject_handshake reports whether this nginx understands
+# ssl_reject_handshake (1.19.4+). The catch-all depends on it: it is what lets a
+# TLS server block exist with NO certificate, which is the whole reason the
+# catch-all needs no key material of its own. On an older nginx the directive is
+# an "unknown directive" hard error, so checking first turns a rejected config
+# into a sentence the operator can act on.
+nginx_has_reject_handshake() {
+  local v
+  v="$(nginx -v 2>&1 | sed -n 's#.*nginx/\([0-9][0-9.]*\).*#\1#p')"
+  [ -n "$v" ] || return 1
+  awk -v v="$v" 'BEGIN{
+    n=split(v,a,".");
+    maj=a[1]+0; min=(n>1?a[2]+0:0); pat=(n>2?a[3]+0:0);
+    if (maj>1) exit 0;
+    if (maj==1 && min>19) exit 0;
+    if (maj==1 && min==19 && pat>=4) exit 0;
+    exit 1}'
 }
 
 # reconcile_defaulthost installs a catch-all 443 server so a request carrying a
@@ -600,6 +637,13 @@ reconcile_defaulthost() {
   if nginx -T 2>/dev/null | grep -Eq 'listen[^;]*443[^;]*default_server'; then
     write_state defaulthost active
     clear_reason defaulthost
+    rm -f "${CONTROL_DIR}/defaulthost.want" 2>/dev/null || true
+    return 0
+  fi
+  if ! nginx_has_reject_handshake; then
+    write_state defaulthost error
+    printf '%s' "This nginx ($(nginx -v 2>&1 | sed -n 's#.*nginx/##p')) predates ssl_reject_handshake (1.19.4), which is what lets the catch-all exist without a certificate of its own. Nothing was changed. Upgrade nginx, or add a default_server to your own vhost by hand." \
+      >"${CONTROL_DIR}/defaulthost.reason" 2>/dev/null || true
     rm -f "${CONTROL_DIR}/defaulthost.want" 2>/dev/null || true
     return 0
   fi
@@ -637,7 +681,7 @@ NGINX_DEFAULT_HOST
     clear_reason defaulthost
   else
     write_state defaulthost error
-    printf '%s' "nginx rejected the catch-all server; the previous config was restored" \
+    printf '%s' "nginx rejected the catch-all server; the previous config was restored. ${NGINX_TRY_WHY:0:240}" \
       >"${CONTROL_DIR}/defaulthost.reason" 2>/dev/null || true
   fi
   rm -f "${CONTROL_DIR}/defaulthost.want" 2>/dev/null || true
@@ -698,7 +742,7 @@ reconcile_mcpsurface() {
     clear_reason mcpsurface
   else
     write_state mcpsurface error
-    printf '%s' "nginx rejected the narrowed MCP vhost; the previous config was restored" \
+    printf '%s' "nginx rejected the narrowed MCP vhost; the previous config was restored. ${NGINX_TRY_WHY:0:240}" \
       >"${CONTROL_DIR}/mcpsurface.reason" 2>/dev/null || true
   fi
   rm -f "${CONTROL_DIR}/mcpsurface.want" 2>/dev/null || true

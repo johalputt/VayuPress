@@ -8,6 +8,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.25] — 2026-07-30
+
+Ships on its own: a remediation button released hours earlier reported that it
+had failed without saying why, which is the state this whole surface exists to
+prevent.
+
+### Fixed
+- **"nginx rejected the catch-all server" — and nothing else.** True, and
+  useless. The rollback worked exactly as designed and the operator's previous
+  config was restored, but the helper discarded nginx's own explanation with
+  `>/dev/null`, leaving a row that reported a failure and delegated the diagnosis
+  to a terminal. Same defect as the 160-character cosign log: nginx emits a
+  precise, line-numbered reason, and there was no excuse for withholding it.
+
+  The reason is now captured **before** the rollback — once the file is restored
+  `nginx -t` passes and the explanation is gone — and shown on the row.
+
+- **The catch-all is refused up front on an nginx too old for it.**
+  `ssl_reject_handshake` arrived in 1.19.4, and it is what allows a TLS server
+  block to exist with no certificate — which is the entire reason the catch-all
+  needs no key material. On an older nginx it is an unknown-directive hard
+  error. The helper now checks the version first and says so plainly, naming the
+  version needed, instead of writing a config that cannot load and reporting a
+  rollback.
+
+  Boundary verified at 1.18.0 / 1.19.3 / 1.19.4 / 1.24.0 / 2.0.0, and the
+  captured-reason path executed against stubbed nginx output rather than
+  asserted about. Both mutation-tested.
+
 ## [3.16.24] — 2026-07-30
 
 Both halves of the bootstrap problem that cost an operator an afternoon of

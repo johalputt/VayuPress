@@ -110,3 +110,65 @@ func TestAgentAdvertisesWhatItCanDo(t *testing.T) {
 		}
 	}
 }
+
+// nginxReasonHarness runs the agent's own nginx helpers against stubbed nginx
+// output, so what the panel would show is produced rather than described.
+const nginxReasonHarness = `
+set -uo pipefail
+D=$(mktemp -d)
+sed -n '/^nginx_has_reject_handshake() {/,/^}/p' "$AGENT" > "$D/v.sh"
+sed -n '/^nginx_try_reload() {/,/^}/p'          "$AGENT" > "$D/r.sh"
+[ -s "$D/v.sh" ] && [ -s "$D/r.sh" ] || { echo "FAIL helpers not found in the agent script"; exit 1; }
+
+check_ver() { # $1=version $2=expect(yes|no)
+  r=$(V="$1" bash -c 'nginx() { echo "nginx version: nginx/$V" >&2; }; source "'"$D"'/v.sh"; if nginx_has_reject_handshake; then echo yes; else echo no; fi')
+  [ "$r" = "$2" ] || { echo "FAIL nginx $1 -> $r, want $2"; exit 1; }
+}
+# ssl_reject_handshake landed in 1.19.4 and the catch-all cannot exist without
+# it: that directive is what allows a TLS server block with no certificate.
+check_ver 1.18.0 no
+check_ver 1.19.3 no
+check_ver 1.19.4 yes
+check_ver 1.24.0 yes
+check_ver 2.0.0  yes
+
+# nginx's own words must reach the operator. Reporting only "nginx rejected it"
+# sends them to a terminal, which is the thing this surface exists to avoid.
+out=$(bash -c 'NGINX_TRY_WHY=""
+  nginx() { echo "nginx: [emerg] unknown directive \"ssl_reject_handshake\" in /etc/nginx/conf.d/x.conf:5"; return 1; }
+  systemctl() { return 0; }
+  source "'"$D"'/r.sh"
+  f=$(mktemp); nginx_try_reload "$f" "" || true
+  printf "%s" "$NGINX_TRY_WHY"')
+case "$out" in
+  *"unknown directive"*) ;;
+  *) echo "FAIL nginx's rejection reason was discarded: [$out]"; exit 1 ;;
+esac
+echo OK
+`
+
+// TestNginxFailuresExplainThemselves covers the half of a remediation that only
+// matters when it goes wrong.
+//
+// An operator pressed "Add the catch-all server" and got "nginx rejected the
+// catch-all server; the previous config was restored" — true, and useless. The
+// rollback worked; the explanation did not exist. nginx emits a precise,
+// line-numbered reason and the helper was throwing it away with >/dev/null,
+// which is the same defect as the 160-character cosign log: a panel that reports
+// failure without cause has delegated the diagnosis to a shell.
+func TestNginxFailuresExplainThemselves(t *testing.T) {
+	agent, err := filepath.Abs("../../deploy/vayushield-agent.sh")
+	if err != nil {
+		t.Skipf("cannot resolve the agent script: %v", err)
+	}
+	if _, err := os.Stat(agent); err != nil {
+		t.Skipf("agent script not present here: %v", err)
+	}
+	cmd := exec.Command("bash", "-c", nginxReasonHarness) //nolint:gosec // fixed literal harness
+	cmd.Env = append(os.Environ(), "AGENT="+agent)
+	out, err := cmd.CombinedOutput()
+	got := strings.TrimSpace(string(out))
+	if err != nil || !strings.HasSuffix(got, "OK") {
+		t.Fatalf("nginx reason handling: %s (err %v)", got, err)
+	}
+}
