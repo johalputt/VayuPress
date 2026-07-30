@@ -150,6 +150,44 @@ jobs:
           cp deploy/vayushield-firewall.sh   dist/agent/
           cp deploy/vayushield-agent.service dist/agent/
           cp deploy/nginx-vayushield.conf    dist/agent/
+          cp deploy/vayushield-rescue.path    dist/agent/
+          cp deploy/vayushield-rescue.service dist/agent/
+          # Pin cosign for the agent's bootstrap.
+          #
+          # The agent needs cosign to verify its next upgrade, and refusing to act
+          # without it left operators at a terminal for something the panel exists
+          # to replace. It can now fetch cosign itself — but only against a
+          # checksum recorded HERE, where the network is available and the build
+          # environment is trusted. The pin then travels inside this bundle, which
+          # is signed below, so a verified agent carries the fingerprint of the
+          # tool that verifies the next one.
+          #
+          # Best-effort by design: if this step cannot reach the cosign release,
+          # the bundle simply ships without a pin and the agent refuses to
+          # bootstrap, exactly as it did before. A release that quietly shipped an
+          # UNPINNED bootstrap would be worse than one that ships none.
+          # Resolve the tag FIRST, then read the checksums from THAT tag. Taking
+          # the version and the hashes from two independent "latest" lookups is a
+          # race: a cosign release landing between them pairs version N+1 with
+          # the hashes of N, and the agent then downloads a binary that can never
+          # match its pin. It fails closed, which is right — but it would ship a
+          # bootstrap that is silently incapable of working, and the operator
+          # would meet it as one more button that does nothing.
+          cver=$(curl -fsSL --max-time 60 https://api.github.com/repos/sigstore/cosign/releases/latest \
+                 | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
+          if [ -n "$cver" ] && csums=$(curl -fsSL --max-time 60 \
+                "https://github.com/sigstore/cosign/releases/download/${cver}/cosign_checksums.txt"); then
+            camd=$(printf '%s\n' "$csums" | awk '$2=="cosign-linux-amd64"{print $1}')
+            carm=$(printf '%s\n' "$csums" | awk '$2=="cosign-linux-arm64"{print $1}')
+            if [ -n "$cver" ] && [ -n "$camd" ] && [ -n "$carm" ]; then
+              printf 'version=%s\namd64=%s\narm64=%s\n' "$cver" "$camd" "$carm" > dist/agent/cosign.pin
+              echo "pinned cosign $cver"
+            else
+              echo "cosign pin incomplete — shipping without one; the agent will refuse to bootstrap"
+            fi
+          else
+            echo "could not reach the cosign release — shipping without a pin"
+          fi
           # Reproducible: fixed mtime, sorted order, no owner metadata. A bundle
           # whose digest changes when nothing changed teaches operators to ignore
           # a digest change, which is the one signal that must stay meaningful.

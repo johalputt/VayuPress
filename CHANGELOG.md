@@ -8,6 +8,66 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.24] — 2026-07-30
+
+Both halves of the bootstrap problem that cost an operator an afternoon of
+terminal commands, for a component whose entire purpose is to remove the
+terminal from these operations.
+
+### Added
+- **The helper bootstraps cosign itself, against a checksum pinned at release
+  build time.** Verification is the one thing the upgrade path will not skip —
+  what the bundle contains runs as root — but "correct and stuck" is how a
+  missing single static binary became an unrecoverable panel.
+
+  The agent now fetches cosign and accepts it only if it matches a checksum
+  recorded by the release workflow, which has network access and is a trusted
+  build environment. The pin travels **inside the agent bundle, which is itself
+  cosign-signed**, so a verified agent carries the fingerprint of the tool that
+  verifies the next one. Hand-maintaining that hash was rejected: a stale pin
+  stops working silently.
+
+  Two things it deliberately does not do. It will not fall back to an unverified
+  cosign, and it will not fall back to the agent bundle's own published SHA-256 —
+  a checksum shipped beside the artifact it describes catches corruption, not
+  substitution, and the panel would still have said "signature verified". If the
+  pin is absent, the agent refuses exactly as before.
+
+- **A rescue path that does not depend on the helper.** Until now the only thing
+  that could repair a broken agent was the agent. When its upgrade path was what
+  broke, the panel had no way out.
+
+  A systemd `.path` unit watches an empty flag and runs the on-disk script as a
+  fresh root process, so a wedged, crash-looping or half-upgraded daemon has no
+  bearing on whether the repair runs. It carries the same writable `HOME` as the
+  agent — a rescue that failed for the very reason it was invoked would be worse
+  than none — clears the request in `ExecStartPost` so a failure cannot become a
+  download loop, and declares no dependency on `vayushield-agent.service`, which
+  would reintroduce the deadlock it exists to break.
+
+  **Repair the helper** is on the VayuShield → Network hardening panel, and is
+  deliberately *not* capability-gated: an agent too old to advertise the feature
+  is the one most likely to need it, and the unit that acts is installed
+  independently.
+
+### Note — the pre-release adversarial pass
+- **One finding, fixed before the bump.** The CI pin read the cosign version from
+  one "latest" lookup and the checksums from another. A cosign release landing
+  between the two calls pairs version N+1 with the hashes of N, so the agent
+  downloads a binary that can never match its pin. It fails closed, which is
+  right — but it would ship a bootstrap silently incapable of working, and the
+  operator would meet it as one more button that does nothing. The tag is now
+  resolved first and the checksums read from that tag.
+- An existing guard, `TestTheAgentChoosesItsOwnSourceAndVerifiesBeforeExecuting`,
+  failed on the rename from `cosign verify-blob` to `"$COSIGN" verify-blob`. That
+  was the guard working. It was updated rather than loosened, and extended to
+  assert the bootstrap compares against its pin — the tool that verifies
+  everything else must not itself arrive unverified.
+- The checksum gate is executed, not asserted about: a harness extracts
+  `ensure_cosign` from the shipped script and runs it against a fake release
+  serving genuine and substituted bytes. Genuine installs; substituted is refused
+  and nothing is written. Mutation-tested by removing the comparison.
+
 ## [3.16.23] — 2026-07-30
 
 ### Fixed

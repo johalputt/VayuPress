@@ -162,6 +162,44 @@ func shieldAgentUpgradeDetail() string {
 	return strings.TrimSpace(string(b))
 }
 
+// shieldRescueFlag is the file the systemd path unit watches. Repairing the
+// helper must not go through the helper: when its upgrade path is what broke —
+// a missing cosign, an unwritable trust cache — the only thing that could fix
+// the agent was the agent, and the operator needed a shell for the one component
+// whose purpose is to remove the shell from these operations.
+//
+// systemd watches this instead and runs the on-disk script as a fresh root
+// process, so a wedged or crash-looping daemon is irrelevant. The file is empty
+// and its contents are never read: the request is its existence, which is what
+// keeps an unprivileged app from choosing what root runs.
+const shieldRescueFlag = "agent.rescue.request"
+
+// handleOSShieldRescue records a repair request for the root-side path unit.
+func (a *App) handleOSShieldRescue(w http.ResponseWriter, r *http.Request) {
+	f, err := os.OpenFile(filepath.Join(shieldControlDir(), shieldRescueFlag),
+		os.O_CREATE|os.O_WRONLY, 0o640)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "control-error",
+			"Could not record the repair request: "+err.Error(), "")
+		return
+	}
+	_ = f.Close()
+	writeOSFragment(w, a.shieldHardeningBody(r))
+}
+
+// shieldRescueRow offers the repair, and says plainly what makes it different
+// from the upgrade button above it.
+func shieldRescueRow() string {
+	return `<div class="vs-adv vs-adv--open"><strong class="text-sm">Repair the helper</strong> ` +
+		`<button type="button" class="btn btn--ghost btn--sm"` +
+		` hx-post="/os/api/shield/rescue" hx-target="#vs-body-hardening" hx-swap="innerHTML">` +
+		`Repair now</button> <span class="muted text-xs">Use this when the upgrade above reports a ` +
+		`refusal it cannot get past. A root-side watcher runs the upgrade as a fresh process, so a ` +
+		`helper that is stuck, crash-looping, or carrying the very fault being repaired does not have ` +
+		`to work for this to. The same signature check applies — nothing unverified is installed.` +
+		`</span></div>`
+}
+
 // shieldRequestAgentUpgrade asks the root agent to upgrade itself.
 //
 // Writes an EMPTY file. Nothing the web app produces is ever read as a command,
@@ -628,6 +666,7 @@ func (a *App) shieldHardeningBody(r *http.Request) string {
 		// sit here rather than on the posture report because this is where every
 		// other privileged action already lives, and one place to press a button is
 		// worth more than each finding carrying its own.
+		b.WriteString(shieldRescueRow())
 		b.WriteString(shieldFixRow("defaulthost"))
 		b.WriteString(shieldFixRow("mcpsurface"))
 		b.WriteString(a.shieldCDNAdvisory(r))

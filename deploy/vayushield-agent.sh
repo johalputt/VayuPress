@@ -541,7 +541,7 @@ write_digest() {
 # concludes the upgrade is slow, and eventually stops trusting the panel.
 #
 # Written on every start, so it also tracks correctly through a downgrade.
-AGENT_CAPS="selfupgrade=1 digest=1 defaulthost=1 mcpsurface=1"
+AGENT_CAPS="selfupgrade=1 digest=1 defaulthost=1 mcpsurface=1 cosignpin=1 rescue=1"
 
 write_caps() {
   [ -d "$CONTROL_DIR" ] || return 0
@@ -748,16 +748,84 @@ reconcile_upgrade() {
   self_upgrade
 }
 
+# ── cosign bootstrap ─────────────────────────────────────────────────────────
+#
+# Verification used to require an operator with a shell. cosign is a single
+# static binary, and refusing to act without it is correct — but "correct and
+# stuck" is how one permission bug turned into an afternoon of terminal
+# commands for something this panel exists to avoid.
+#
+# So the agent fetches cosign itself, and checks it against a checksum PINNED AT
+# RELEASE BUILD TIME. The pin travels inside this bundle, which is itself
+# cosign-signed, so the chain closes: a verified agent carries the fingerprint of
+# the tool that verifies the next one. CI does the pinning because CI has the
+# network and is a trusted build environment; hand-maintaining a hash means a
+# stale pin that silently stops working.
+#
+# What this deliberately does NOT do is fall back to an unverified cosign, or to
+# a plain checksum of the agent bundle. A checksum published beside the artifact
+# it describes catches corruption, not substitution — and the panel would still
+# say "signature verified", which would be a lie.
+COSIGN_PIN="${LIB_DIR}/cosign.pin"
+COSIGN="cosign"
+COSIGN_BOOTSTRAP_WHY=""
+
+ensure_cosign() {
+  if command -v cosign >/dev/null 2>&1; then COSIGN="cosign"; return 0; fi
+  if [ -x "${LIB_DIR}/cosign" ]; then COSIGN="${LIB_DIR}/cosign"; return 0; fi
+  if [ ! -r "$COSIGN_PIN" ]; then
+    COSIGN_BOOTSTRAP_WHY="This helper carries no pinned cosign checksum, so it will not download one unverified. Upgrade the helper from a release that pins it, or install cosign (https://github.com/sigstore/cosign/releases)."
+    return 1
+  fi
+  local arch pin_ver pin_sum asset
+  case "$(uname -m)" in
+    x86_64|amd64) arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    *) COSIGN_BOOTSTRAP_WHY="No cosign pin for this CPU architecture ($(uname -m))."; return 1 ;;
+  esac
+  # Format, one key=value per line: version=v2.x.y / amd64=<sha256> / arm64=<sha256>
+  pin_ver="$(awk -F= '$1=="version"{print $2}' "$COSIGN_PIN" 2>/dev/null | tr -d '[:space:]')"
+  pin_sum="$(awk -F= -v a="$arch" '$1==a{print $2}' "$COSIGN_PIN" 2>/dev/null | tr -d '[:space:]')"
+  if [ -z "$pin_ver" ] || [ -z "$pin_sum" ]; then
+    COSIGN_BOOTSTRAP_WHY="The pinned cosign checksum is unreadable, so nothing was downloaded."
+    return 1
+  fi
+  asset="cosign-linux-${arch}"
+  local tmp
+  tmp="$(mktemp -d)" || { COSIGN_BOOTSTRAP_WHY="Could not create a working directory."; return 1; }
+  if ! curl -fsSL --max-time 180 -o "${tmp}/cosign" \
+      "https://github.com/sigstore/cosign/releases/download/${pin_ver}/${asset}"; then
+    rm -rf "$tmp"
+    COSIGN_BOOTSTRAP_WHY="Could not download cosign ${pin_ver} for ${arch}; check egress to github.com."
+    return 1
+  fi
+  local got
+  got="$(sha256sum "${tmp}/cosign" 2>/dev/null | awk '{print $1}')"
+  if [ "$got" != "$pin_sum" ]; then
+    rm -rf "$tmp"
+    # Not a download hiccup. The bytes GitHub served do not match what this
+    # project's release workflow recorded, and installing them would defeat the
+    # verification they exist to perform.
+    COSIGN_BOOTSTRAP_WHY="The downloaded cosign does not match the pinned checksum — refusing to use it. Expected ${pin_sum:0:16}…, got ${got:0:16}…"
+    return 1
+  fi
+  install -m 0755 "${tmp}/cosign" "${LIB_DIR}/cosign" 2>/dev/null || {
+    rm -rf "$tmp"; COSIGN_BOOTSTRAP_WHY="Verified cosign, but could not install it into ${LIB_DIR}."; return 1; }
+  rm -rf "$tmp"
+  COSIGN="${LIB_DIR}/cosign"
+  return 0
+}
+
 self_upgrade() {
   if ! command -v curl >/dev/null 2>&1; then
     upgrade_status "error" "curl is not installed, so the helper cannot fetch its own upgrade."
     return 1
   fi
-  if ! command -v cosign >/dev/null 2>&1; then
-    # Named as a refusal with a fix, not as a failure. This is the one dependency
-    # the design genuinely needs, and it is a single static binary.
+  if ! ensure_cosign; then
+    # Named as a refusal with a fix, not as a failure. Verification is the one
+    # thing this path will not skip: what the bundle contains runs as root.
     upgrade_status "unverifiable" \
-      "cosign is not installed, so the bundle's signature cannot be checked — refusing to install unverified code as root. Install cosign (https://github.com/sigstore/cosign/releases) and press the button again."
+      "cosign is not available and could not be bootstrapped, so the bundle's signature cannot be checked — refusing to install unverified code as root. ${COSIGN_BOOTSTRAP_WHY}"
     return 1
   fi
 
@@ -797,7 +865,7 @@ self_upgrade() {
 
   # Verify BEFORE unpacking. Unpacking an unverified archive as root is already
   # the compromise, whatever is checked afterwards.
-  if ! cosign verify-blob "${tmp}/${UPGRADE_ASSET}" \
+  if ! "$COSIGN" verify-blob "${tmp}/${UPGRADE_ASSET}" \
         --bundle "${tmp}/bundle.json" \
         --certificate-identity-regexp "^https://github.com/${UPGRADE_REPO}/" \
         --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
@@ -927,7 +995,21 @@ install_agent() {
   if [ -f "${src}/nginx-vayushield.conf" ]; then
     install -m 0644 "${src}/nginx-vayushield.conf" "${LIB_DIR}/nginx-vayushield.conf"
   fi
+  # The cosign pin travels with the agent: without it the next self-upgrade has
+  # no verified way to obtain the tool that verifies it.
+  if [ -f "${src}/cosign.pin" ]; then
+    install -m 0644 "${src}/cosign.pin" "${LIB_DIR}/cosign.pin"
+  fi
   install -m 0644 "${src}/vayushield-agent.service" /etc/systemd/system/vayushield-agent.service
+  # The rescue path: a root-side watcher that can repair this agent WITHOUT this
+  # agent. Installed here rather than only by the updater, because the install
+  # that most needs it is one whose helper is already broken.
+  if [ -f "${src}/vayushield-rescue.path" ] && [ -f "${src}/vayushield-rescue.service" ]; then
+    install -m 0644 "${src}/vayushield-rescue.service" /etc/systemd/system/vayushield-rescue.service
+    install -m 0644 "${src}/vayushield-rescue.path"    /etc/systemd/system/vayushield-rescue.path
+    systemctl daemon-reload
+    systemctl enable --now vayushield-rescue.path 2>/dev/null || true
+  fi
   systemctl daemon-reload
   systemctl enable vayushield-agent
   # restart, NOT `enable --now`.

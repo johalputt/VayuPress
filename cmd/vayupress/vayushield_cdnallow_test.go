@@ -395,10 +395,24 @@ func TestTheAgentChoosesItsOwnSourceAndVerifiesBeforeExecuting(t *testing.T) {
 	}
 	// Verification must precede unpacking. Unpacking an unverified archive as
 	// root is already the compromise, whatever is checked afterwards.
-	verify := strings.Index(s, "cosign verify-blob")
+	//
+	// Matched on "verify-blob" rather than "cosign verify-blob": the binary is
+	// now reached through $COSIGN, which resolves to one on PATH or to the
+	// pinned copy the agent bootstrapped. This test failing on that rename was
+	// the guard working — it is the one that would also catch the verification
+	// being dropped, so it is deliberately kept literal rather than loosened to
+	// something that matches any mention of cosign anywhere in the file.
+	verify := strings.Index(s, "verify-blob")
 	untar := strings.Index(s, "tar -xzf")
 	if verify < 0 {
 		t.Fatal("the agent installs an upgrade without verifying a signature")
+	}
+	// And whatever $COSIGN resolves to must never be an unverified download: the
+	// bootstrap installs only bytes matching a checksum pinned at release build
+	// time, inside the signed bundle.
+	if strings.Contains(s, "ensure_cosign") && !strings.Contains(s, `"$got" != "$pin_sum"`) {
+		t.Error("the agent bootstraps cosign without comparing it to the pinned checksum — the " +
+			"tool that verifies everything else would itself be unverified")
 	}
 	if untar < 0 || untar < verify {
 		t.Error("the agent unpacks the bundle before verifying it — by then it has already " +

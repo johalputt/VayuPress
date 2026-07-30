@@ -1,0 +1,33 @@
+# Runs one helper self-upgrade, then clears the request.
+#
+# Type=oneshot and a fresh process: this is the whole point of the rescue path.
+# The long-running agent may be wedged, crash-looping, or carrying exactly the
+# bug being repaired — none of which affects a process systemd starts from the
+# script on disk.
+#
+# The flag is removed in ExecStartPost, which runs whether or not the upgrade
+# succeeded. Leaving it would make PathExists re-trigger continuously, turning a
+# failing upgrade into a download loop against a release server — a self-inflicted
+# hammering that the operator would see as "the panel did nothing", twice over.
+# One request means one attempt; the state file says how it went.
+
+[Unit]
+Description=Repair or upgrade the VayuShield helper (one-shot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+# Same writable HOME as the agent: cosign caches the Sigstore trust root under
+# $HOME, and /root is masked for the agent by ProtectHome. A rescue that failed
+# for the very reason it was invoked would be worse than no rescue at all.
+Environment=VAYUSHIELD_CONTROL_DIR=/var/lib/vayupress/vayushield-control
+Environment=VAYUSHIELD_LIB_DIR=/usr/local/lib/vayushield
+Environment=HOME=/var/lib/vayushield
+Environment=TUF_ROOT=/var/lib/vayushield/tuf
+ExecStart=/usr/local/lib/vayushield/vayushield-agent.sh selfupdate
+ExecStartPost=-/bin/rm -f /var/lib/vayupress/vayushield-control/agent.rescue.request
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vayushield-rescue

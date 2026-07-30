@@ -1,0 +1,23 @@
+# VayuShield helper rescue — the path that does not depend on the helper.
+#
+# Until this existed, the only thing that could repair a broken agent was the
+# agent. When its upgrade path failed — a missing cosign, an unwritable trust
+# cache — the panel had no way out and the operator needed a shell, for the one
+# component whose entire purpose is to remove the shell from these operations.
+#
+# systemd watches the flag instead. A wedged, crash-looping or half-upgraded
+# agent daemon has no bearing on whether this fires: the unit below runs the
+# on-disk script as a FRESH root process. The flag is empty and its contents are
+# never read, exactly like every other control file — the request is carried by
+# its existence, so the unprivileged app still cannot influence what runs.
+
+[Unit]
+Description=Watch for a VayuShield helper repair request
+After=network-online.target
+
+[Path]
+PathExists=/var/lib/vayupress/vayushield-control/agent.rescue.request
+Unit=vayushield-rescue.service
+
+[Install]
+WantedBy=multi-user.target

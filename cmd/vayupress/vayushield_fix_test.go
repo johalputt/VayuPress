@@ -191,3 +191,78 @@ func TestVsAdvOpenIsAlwaysVisible(t *testing.T) {
 			"still needed, and whether the Go side still matches")
 	}
 }
+
+// TestRescueRequestIsJustAFlag holds the repair path to the same one-bit
+// contract as every other privileged action here.
+//
+// The rescue exists because the helper was the only thing that could repair the
+// helper: when its upgrade path broke, the panel had no way out and the operator
+// needed a shell — for the one component whose purpose is to remove the shell
+// from these operations. A root-side systemd path unit watches this file, so a
+// wedged daemon is irrelevant. What must NOT change is who chooses: the file is
+// empty, and its existence is the whole request.
+func TestRescueRequestIsJustAFlag(t *testing.T) {
+	dir := withControlDir(t)
+	a := &App{}
+	req := httptest.NewRequest(http.MethodPost, "/os/api/shield/rescue", nil)
+	rr := httptest.NewRecorder()
+	a.handleOSShieldRescue(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200", rr.Code)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, shieldRescueFlag))
+	if err != nil {
+		t.Fatalf("no rescue flag written, so the path unit never fires: %v", err)
+	}
+	if len(b) != 0 {
+		t.Errorf("the rescue flag carries %d bytes; it must be empty, because anything a "+
+			"root process reads from an unprivileged app is a channel for choosing what runs", len(b))
+	}
+	// Deliberately NOT capability-gated. An agent too old to advertise "rescue"
+	// is exactly the agent most likely to need repairing, and the unit that acts
+	// on this is installed independently of it.
+	if strings.Contains(shieldRescueRow(), "predates this fix") {
+		t.Error("the rescue button hides itself from old helpers — the ones that need it most")
+	}
+}
+
+// TestRescueUnitsDoNotDependOnTheRunningAgent is the property the whole rescue
+// path exists for. Asserted on the unit files because that is where it lives.
+func TestRescueUnitsDoNotDependOnTheRunningAgent(t *testing.T) {
+	pathUnit, err := os.ReadFile("../../deploy/vayushield-rescue.path")
+	if err != nil {
+		t.Skipf("unit not readable here: %v", err)
+	}
+	svcUnit, err := os.ReadFile("../../deploy/vayushield-rescue.service")
+	if err != nil {
+		t.Skipf("unit not readable here: %v", err)
+	}
+	p, s := string(pathUnit), string(svcUnit)
+
+	if !strings.Contains(p, "PathExists=/var/lib/vayupress/vayushield-control/"+shieldRescueFlag) {
+		t.Errorf("the path unit does not watch the flag the panel writes (%s)", shieldRescueFlag)
+	}
+	// A dependency on vayushield-agent.service would reintroduce the deadlock:
+	// the repair would wait on the thing being repaired.
+	for _, bad := range []string{"Requires=vayushield-agent", "After=vayushield-agent", "BindsTo=vayushield-agent"} {
+		if strings.Contains(p, bad) || strings.Contains(s, bad) {
+			t.Errorf("the rescue units declare %q — a repair that depends on the broken component "+
+				"is the deadlock this path exists to break", bad)
+		}
+	}
+	if !strings.Contains(s, "Type=oneshot") {
+		t.Error("the rescue service is not oneshot; it must run once per request, not stay resident")
+	}
+	// Without removing the flag, PathExists re-triggers forever and a failing
+	// upgrade becomes a download loop against the release server.
+	if !strings.Contains(s, "ExecStartPost=-/bin/rm -f") {
+		t.Error("the rescue service never clears the request, so a failure would retrigger " +
+			"continuously — which an operator experiences as the panel doing nothing, loudly")
+	}
+	// Same writable HOME as the agent, or the rescue fails for the very reason it
+	// was invoked.
+	if !strings.Contains(s, "Environment=HOME=") || !strings.Contains(s, "Environment=TUF_ROOT=") {
+		t.Error("the rescue service has no writable HOME/TUF_ROOT; cosign would fail exactly as " +
+			"it did in the fault being repaired")
+	}
+}
