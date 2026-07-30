@@ -767,10 +767,17 @@ self_upgrade() {
   # root, then fails with an error that reads like a network fault. Setting it
   # here means the script is correct on its own, without depending on which
   # version of the unit happens to be installed.
-  if [ -z "${TUF_ROOT:-}" ] || [ ! -w "${HOME:-/root}" ]; then
-    export HOME="/var/lib/vayushield"
-    export TUF_ROOT="/var/lib/vayushield/tuf"
-  fi
+  # Written with := defaults rather than an if/else. The first version guarded
+  # with `[ -z "${TUF_ROOT:-}" ] || [ ! -w "${HOME:-/root}" ]` and then used
+  # "$HOME" unguarded — so a set TUF_ROOT plus an UNSET HOME skipped the branch
+  # and hit an unbound variable, which under `set -u` does not fail the upgrade,
+  # it kills the agent, and Restart=always then loops it. systemd always sets
+  # HOME for User=root, so it would not have fired here; a script that survives
+  # only because of its caller's environment is not one to leave in place.
+  : "${HOME:=/var/lib/vayushield}"
+  [ -w "$HOME" ] || HOME=/var/lib/vayushield
+  : "${TUF_ROOT:=${HOME}/tuf}"
+  export HOME TUF_ROOT
   mkdir -p "$HOME" "$TUF_ROOT" 2>/dev/null || true
 
   local tmp

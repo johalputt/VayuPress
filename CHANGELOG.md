@@ -8,6 +8,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.23] — 2026-07-30
+
 ### Fixed
 - **The helper could be unable to verify anything because it had nowhere to
   write.** The agent unit sets `ProtectHome=yes` and runs as root, so `HOME` is
@@ -20,6 +22,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   A writable `HOME` and `TUF_ROOT` are now set in the unit **and** defensively in
   the script itself, so an agent running under an older unit file is still
   correct rather than depending on which version happens to be installed.
+
+### Note — the pre-release adversarial pass
+- Ran against the change above. **One finding, fixed before the bump.** The first
+  version of the guard read
+  `[ -z "${TUF_ROOT:-}" ] || [ ! -w "${HOME:-/root}" ]` and then used `"$HOME"`
+  unguarded. A set `TUF_ROOT` with an **unset** `HOME` skips the branch and hits
+  an unbound variable — which under `set -u` does not fail the upgrade, it kills
+  the agent, and `Restart=always` then loops it.
+
+  systemd always sets `HOME` for `User=root`, so it would not have fired on a
+  normal install. A script that survives only because of its caller's environment
+  is not one to leave in place, and the shape recurs: the same reasoning that
+  said "the tier is validated to 2 or 3, so concatenating it is fine" is right
+  about today and silent about tomorrow. Rewritten with `:=` defaults and
+  verified across all five environment combinations; the old form was confirmed
+  to abort on the one that mattered.
+- Claim checked, not just the code: the agent's failure classifier greps for
+  `tuf` among its network patterns, so a permissions failure writing the TUF
+  cache really would have been reported as "could not reach the signature
+  infrastructure". The changelog entry above is describing something that
+  happens, not something that could in principle.
 
 ## [3.16.22] — 2026-07-30
 
