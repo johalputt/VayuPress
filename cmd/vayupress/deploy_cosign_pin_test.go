@@ -144,6 +144,35 @@ case "$out" in
   *"unknown directive"*) ;;
   *) echo "FAIL nginx's rejection reason was discarded: [$out]"; exit 1 ;;
 esac
+# The catch-all must work on nginx older than 1.19.4 by borrowing a certificate
+# the host already serves. Telling an operator on a healthy LTS release to
+# upgrade their web server is not an answer, it is the problem restated.
+sed -n '/^nginx_first_certificate() {/,/^}/p' "$AGENT" > "$D/c.sh"
+[ -s "$D/c.sh" ] || { echo "FAIL nginx_first_certificate not found"; exit 1; }
+mkdir -p "$D/certs"; : > "$D/certs/real.pem"; : > "$D/certs/real.key"
+cat > "$D/dump.txt" <<DUMP
+server {
+    ssl_certificate /nonexistent/missing.pem;
+    ssl_certificate_key /nonexistent/missing.key;
+}
+server {
+    ssl_certificate $D/certs/real.pem;
+    ssl_certificate_key $D/certs/real.key;
+}
+DUMP
+got=$(bash -c 'nginx() { cat "'"$D"'/dump.txt"; }; source "'"$D"'/c.sh"; nginx_first_certificate' || true)
+[ "$got" = "$D/certs/real.pem $D/certs/real.key" ] || { echo "FAIL cert pick: [$got]"; exit 1; }
+
+# ssl_certificate is a PREFIX of ssl_certificate_key. Matching without a
+# following space collects both into the cert list, shifting it out of alignment
+# with the key list and pairing a certificate with the wrong key.
+n=$(sed -n 's/^[[:space:]]*ssl_certificate[[:space:]]\{1,\}\([^;]*\);.*/\1/p' "$D/dump.txt" | wc -l)
+[ "$n" = "2" ] || { echo "FAIL ssl_certificate matched $n lines, want 2 — it is aliasing ssl_certificate_key"; exit 1; }
+
+printf 'server {\n ssl_certificate /nope/a.pem;\n ssl_certificate_key /nope/a.key;\n}\n' > "$D/dump2.txt"
+if bash -c 'nginx() { cat "'"$D"'/dump2.txt"; }; source "'"$D"'/c.sh"; nginx_first_certificate' >/dev/null 2>&1; then
+  echo "FAIL an unreadable certificate was offered for the catch-all"; exit 1
+fi
 echo OK
 `
 

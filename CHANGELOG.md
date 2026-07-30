@@ -8,6 +8,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.26] — 2026-07-30
+
+### Fixed
+- **The catch-all now works on nginx older than 1.19.4, instead of asking for an
+  upgrade.** 3.16.25 correctly identified why the button failed — an operator's
+  nginx 1.18.0 has no `ssl_reject_handshake` — and then told them to upgrade
+  their web server. That is not an answer, it is the problem restated: 1.18.0 is
+  what a supported LTS ships, and closing a scanning surface should not require
+  changing web server versions.
+
+  `ssl_reject_handshake` matters only because it lets a TLS server block exist
+  with **no certificate**. Where the directive is missing, the catch-all now
+  borrows a certificate the host already serves — the same file nginx already has
+  open for another vhost, so no new key material and no new exposure. A client
+  reaching it gets a name mismatch, which is precisely correct for a request
+  naming a host this install does not serve, and then 444 closes the connection.
+  It refuses only when no readable certificate exists at all, and says so.
+
+  Verified against real nginx in both shapes. Two details the tests pin, because
+  both are silent when wrong:
+
+  - `ssl_certificate` is a **prefix of** `ssl_certificate_key`. Matching it
+    without requiring a following space collects both directives into the
+    certificate list, which shifts it out of alignment with the key list and
+    pairs a certificate with somebody else's key. nginx then refuses the config,
+    and the reason would read like anything but an off-by-one in a regex.
+  - An unreadable path is skipped rather than written. The first pair in a config
+    is not necessarily one this process can open.
+
 ## [3.16.25] — 2026-07-30
 
 Ships on its own: a remediation button released hours earlier reported that it

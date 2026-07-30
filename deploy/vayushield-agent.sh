@@ -604,6 +604,39 @@ nginx_try_reload() { # $1=file just written, $2=backup path or "" if newly creat
 # catch-all needs no key material of its own. On an older nginx the directive is
 # an "unknown directive" hard error, so checking first turns a rejected config
 # into a sentence the operator can act on.
+# nginx_first_certificate echoes "<cert> <key>" for the first pair this nginx
+# already serves and can read, or nothing.
+#
+# It exists so the catch-all works on nginx older than 1.19.4. Without
+# ssl_reject_handshake a TLS server block must present SOME certificate, and the
+# alternative — telling an operator on a perfectly healthy LTS release to upgrade
+# their web server — is not an answer, it is the problem restated.
+#
+# Borrowing a certificate the host already serves adds no key material and no new
+# exposure: it is the same file nginx has open for another vhost. The client gets
+# a name mismatch, which is exactly right for a request naming a host this
+# install does not serve, and then 444 closes the connection.
+nginx_first_certificate() {
+  local dump certs keys i c k
+  dump="$(nginx -T 2>/dev/null)" || return 1
+  # The trailing space in the pattern matters: without it, ssl_certificate also
+  # matches ssl_certificate_key and the two lists shift out of alignment.
+  certs="$(printf '%s\n' "$dump" | sed -n 's/^[[:space:]]*ssl_certificate[[:space:]]\{1,\}\([^;]*\);.*/\1/p' | tr -d '"'"'"'')"
+  keys="$(printf '%s\n' "$dump" | sed -n 's/^[[:space:]]*ssl_certificate_key[[:space:]]\{1,\}\([^;]*\);.*/\1/p' | tr -d '"'"'"'')"
+  i=1
+  while [ "$i" -le 50 ]; do
+    c="$(printf '%s\n' "$certs" | sed -n "${i}p")"
+    k="$(printf '%s\n' "$keys" | sed -n "${i}p")"
+    [ -n "$c" ] && [ -n "$k" ] || return 1
+    if [ -r "$c" ] && [ -r "$k" ]; then
+      printf '%s %s' "$c" "$k"
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
 nginx_has_reject_handshake() {
   local v
   v="$(nginx -v 2>&1 | sed -n 's#.*nginx/\([0-9][0-9.]*\).*#\1#p')"
@@ -640,12 +673,27 @@ reconcile_defaulthost() {
     rm -f "${CONTROL_DIR}/defaulthost.want" 2>/dev/null || true
     return 0
   fi
-  if ! nginx_has_reject_handshake; then
-    write_state defaulthost error
-    printf '%s' "This nginx ($(nginx -v 2>&1 | sed -n 's#.*nginx/##p')) predates ssl_reject_handshake (1.19.4), which is what lets the catch-all exist without a certificate of its own. Nothing was changed. Upgrade nginx, or add a default_server to your own vhost by hand." \
-      >"${CONTROL_DIR}/defaulthost.reason" 2>/dev/null || true
-    rm -f "${CONTROL_DIR}/defaulthost.want" 2>/dev/null || true
-    return 0
+  # Two shapes of the same server block. ssl_reject_handshake (nginx 1.19.4+) is
+  # cleaner — no certificate at all — but an operator on an LTS nginx should not
+  # be told to upgrade their web server to close a scanning surface, so where the
+  # directive is missing the block borrows a certificate the host already serves.
+  local tls_stanza=""
+  if nginx_has_reject_handshake; then
+    tls_stanza="    ssl_reject_handshake on;"
+  else
+    local pair cert key
+    pair="$(nginx_first_certificate)" || pair=""
+    if [ -z "$pair" ]; then
+      write_state defaulthost error
+      printf '%s' "This nginx ($(nginx -v 2>&1 | sed -n 's#.*nginx/##p')) predates ssl_reject_handshake (1.19.4), so the catch-all needs a certificate — and no readable certificate was found in the running config to borrow. Nothing was changed." \
+        >"${CONTROL_DIR}/defaulthost.reason" 2>/dev/null || true
+      rm -f "${CONTROL_DIR}/defaulthost.want" 2>/dev/null || true
+      return 0
+    fi
+    cert="${pair%% *}"
+    key="${pair##* }"
+    tls_stanza="    ssl_certificate ${cert};
+    ssl_certificate_key ${key};"
   fi
   write_state defaulthost applying
   local bak=""
@@ -672,7 +720,7 @@ server {
     listen 443 ssl default_server;
 ${v6}
     server_name _;
-    ssl_reject_handshake on;
+${tls_stanza}
     return 444;
 }
 NGINX_DEFAULT_HOST
