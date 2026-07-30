@@ -287,10 +287,13 @@ func shieldAgentUpgradeRow() string {
 		`Check for a helper upgrade</button> <span class="muted text-xs">The helper fetches the signed bundle ` +
 		`from the release itself and verifies the signature before installing. This panel only records ` +
 		`that you asked &mdash; it never supplies the code, which is what keeps an unprivileged web app ` +
-		`from being able to choose what a root process runs.</span></div>`)
+		`from being able to choose what a root process runs.</span>`)
 
+	// Closed after the status, for the same reason as shieldFixRow: a verdict
+	// rendered outside its own card belongs, visually, to whatever follows it.
 	state, detail := shieldAgentUpgradeState(), shieldAgentUpgradeDetail()
 	if state == "" {
+		b.WriteString(`</div>`)
 		return b.String()
 	}
 	label := map[string]string{
@@ -314,7 +317,7 @@ func shieldAgentUpgradeRow() string {
 	if detail != "" {
 		b.WriteString(` <span class="muted">` + html.EscapeString(detail) + `</span>`)
 	}
-	b.WriteString(`</p>`)
+	b.WriteString(`</p></div>`)
 	return b.String()
 }
 
@@ -439,10 +442,18 @@ func shieldFixRow(key string) string {
 	b.WriteString(`<button type="button" class="btn btn--ghost btn--sm"` +
 		` hx-post="/os/api/shield/fix" hx-vals='{"fix":"` + html.EscapeString(key) + `"}'` +
 		` hx-target="#vs-body-hardening" hx-swap="innerHTML">` + html.EscapeString(fix.Button) + `</button> ` +
-		`<span class="muted text-xs">` + fix.Explain + `</span></div>`)
+		`<span class="muted text-xs">` + fix.Explain + `</span>`)
 
+	// The status closes the card, it does not follow it.
+	//
+	// This used to write </div> here and then append the state paragraph after
+	// it, so "● Applied" rendered OUTSIDE the bordered row it belonged to and
+	// sat loose against whatever came next — an operator reading down the page
+	// cannot tell which control a floating verdict refers to, and on this page
+	// the next thing along is a different remediation.
 	state := shieldControlRead(fix.State)
 	if state == "" {
+		b.WriteString(`</div>`)
 		return b.String()
 	}
 	label := map[string]string{
@@ -464,7 +475,7 @@ func shieldFixRow(key string) string {
 	if reason := shieldControlRead(fix.Reason); reason != "" {
 		b.WriteString(` <span class="muted">` + html.EscapeString(reason) + `</span>`)
 	}
-	b.WriteString(`</p>`)
+	b.WriteString(`</p></div>`)
 	return b.String()
 }
 

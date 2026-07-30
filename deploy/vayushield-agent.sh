@@ -727,6 +727,14 @@ NGINX_DEFAULT_HOST
   if nginx_try_reload "$DEFAULT_HOST_CONF" "$bak"; then
     write_state defaulthost active
     clear_reason defaulthost
+    # Refresh the enforcement digest NOW rather than waiting for the periodic
+    # rebuild. The posture report reads that digest, and it is rebuilt about once
+    # a minute because it shells out to nft and `nginx -T`. So an operator who
+    # pressed a fix, saw it report Applied, and then looked at the posture report
+    # was shown the PREVIOUS state for up to a minute — with nothing on the page
+    # saying the two panels disagreed because one of them was stale. The obvious
+    # reading is that the fix did not work.
+    write_digest
   else
     write_state defaulthost error
     printf '%s' "nginx rejected the catch-all server; the previous config was restored. ${NGINX_TRY_WHY:0:240}" \
@@ -788,6 +796,14 @@ reconcile_mcpsurface() {
   if nginx_try_reload "$found" "$bak"; then
     write_state mcpsurface active
     clear_reason mcpsurface
+    # Refresh the enforcement digest NOW rather than waiting for the periodic
+    # rebuild. The posture report reads that digest, and it is rebuilt about once
+    # a minute because it shells out to nft and `nginx -T`. So an operator who
+    # pressed a fix, saw it report Applied, and then looked at the posture report
+    # was shown the PREVIOUS state for up to a minute — with nothing on the page
+    # saying the two panels disagreed because one of them was stale. The obvious
+    # reading is that the fix did not work.
+    write_digest
   else
     write_state mcpsurface error
     printf '%s' "nginx rejected the narrowed MCP vhost; the previous config was restored. ${NGINX_TRY_WHY:0:240}" \

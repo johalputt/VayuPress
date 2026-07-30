@@ -8,6 +8,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.27] — 2026-07-30
+
+Both items reported by an operator who had just watched the remediations work.
+
+### Fixed
+- **The posture report kept showing the pre-fix state for up to a minute.** Both
+  remediations reported "Applied" and the posture report went on listing them as
+  warnings, with nothing on the page saying the two disagreed only because one
+  was stale. The obvious reading is that the fix did not take.
+
+  The report reads the enforcement digest, which the agent rebuilds roughly once
+  a minute because it shells out to `nft` and `nginx -T`. That cadence is right
+  for a poll loop and wrong immediately after something changed nginx, so a
+  successful remediation now refreshes the digest at once.
+
+- **A row's verdict rendered outside its own card.** "● Applied" was written
+  after the card's closing `</div>`, so it sat loose against whatever came next —
+  and on this page the next thing along is a different remediation, which makes a
+  floating "Applied" read as belonging to the wrong control. The markup was valid
+  and the wiring correct; what it communicated was not. The status now closes the
+  card rather than following it.
+
+### Note — the pre-release adversarial pass
+- Clean against both changes, having genuinely attacked them: the digest refresh
+  was removed from each reconciler in turn and the guard named the right one each
+  time; the card markup was reverted and the layout test caught it.
+- **Two test-authoring faults found and fixed on the way, neither in the code
+  under test.** A shell-function extractor terminated on a column-zero `}`, which
+  these functions contain inside heredocs of nginx config, so the body was
+  truncated mid-heredoc. Its replacement then searched from offset zero, where
+  Go's `(?m)^` also matches, so it matched the function's own declaration and
+  returned a one-character body. Both made a correct implementation look broken.
+  A test that fails for the wrong reason is worth no more than one that passes
+  for the wrong reason — it just costs its time later instead of sooner.
+
 ## [3.16.26] — 2026-07-30
 
 ### Fixed

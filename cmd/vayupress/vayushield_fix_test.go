@@ -266,3 +266,43 @@ func TestRescueUnitsDoNotDependOnTheRunningAgent(t *testing.T) {
 			"it did in the fault being repaired")
 	}
 }
+
+// TestStatusRendersInsideItsOwnCard guards a layout bug an operator reported.
+//
+// The row's verdict — "● Applied", "✕ Could not apply" — used to be written
+// AFTER the card's closing </div>, so it rendered outside the bordered block it
+// described and sat loose against whatever came next. On this page the next
+// thing along is a different remediation, so a floating "Applied" reads as
+// belonging to the wrong control. The markup was valid and the wiring correct;
+// what it communicated was not.
+func TestStatusRendersInsideItsOwnCard(t *testing.T) {
+	dir := withControlDir(t)
+	if err := os.WriteFile(filepath.Join(dir, "agent.caps"),
+		[]byte("defaulthost=1 mcpsurface=1"), 0o600); err != nil {
+		t.Fatalf("caps: %v", err)
+	}
+	for key, fix := range shieldFixes {
+		if err := os.WriteFile(filepath.Join(dir, fix.State), []byte("active"), 0o600); err != nil {
+			t.Fatalf("state: %v", err)
+		}
+		row := shieldFixRow(key)
+		if !strings.Contains(row, "Applied") {
+			t.Errorf("%s: no status rendered at all:\n%s", key, row)
+			continue
+		}
+		// Every div opened must be closed, and the status must fall before the
+		// final close rather than after it.
+		if opens, closes := strings.Count(row, "<div"), strings.Count(row, "</div>"); opens != closes {
+			t.Errorf("%s: %d <div> vs %d </div> — unbalanced markup", key, opens, closes)
+		}
+		lastClose := strings.LastIndex(row, "</div>")
+		status := strings.Index(row, "Applied")
+		if status > lastClose {
+			t.Errorf("%s: the verdict is rendered outside the card, where it reads as belonging "+
+				"to the next control down:\n%s", key, row)
+		}
+		if !strings.HasSuffix(row, "</div>") {
+			t.Errorf("%s: the row does not end by closing its card:\n%s", key, row)
+		}
+	}
+}

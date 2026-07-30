@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -201,3 +202,64 @@ func TestNginxFailuresExplainThemselves(t *testing.T) {
 		t.Fatalf("nginx reason handling: %s (err %v)", got, err)
 	}
 }
+
+// TestRemediationsRefreshTheDigestImmediately covers the gap between doing a
+// thing and the panel saying so.
+//
+// The posture report reads the enforcement digest, which the agent rebuilds
+// about once a minute because it shells out to nft and `nginx -T`. An operator
+// who applied both fixes, saw each report "Applied", and then looked at the
+// posture report was shown the PREVIOUS state for up to a minute — with nothing
+// on the page indicating the two panels disagreed only because one was stale.
+// The obvious reading is that the fix did not work, which is the same class of
+// defect as a number that is right and a sentence that is not.
+func TestRemediationsRefreshTheDigestImmediately(t *testing.T) {
+	src, err := os.ReadFile("../../deploy/vayushield-agent.sh")
+	if err != nil {
+		t.Skipf("agent script not readable here: %v", err)
+	}
+	s := string(src)
+	for _, fn := range []string{"reconcile_defaulthost", "reconcile_mcpsurface"} {
+		body := agentFuncBody(s, fn)
+		if body == "" {
+			t.Errorf("%s not found in the agent script", fn)
+			continue
+		}
+		if !strings.Contains(body, "write_digest") {
+			t.Errorf("%s changes nginx but never refreshes the enforcement digest, so the "+
+				"posture report keeps reporting the pre-fix state for up to a minute and the "+
+				"operator reads that as the fix having failed", fn)
+		}
+	}
+}
+
+// agentFuncBody returns the source of a shell function, ending at the next
+// top-level function definition.
+//
+// Terminating on a column-zero "}" was tried first and is wrong: these functions
+// embed heredocs of nginx config, whose own closing braces sit at column zero.
+// The body was silently truncated mid-heredoc and the test then failed on code
+// that was correct — a test failing for the wrong reason is worth no more than
+// one passing for the wrong reason.
+func agentFuncBody(src, name string) string {
+	i := strings.Index(src, "\n"+name+"() {")
+	if i < 0 {
+		return ""
+	}
+	rest := src[i+1:]
+	// Search from AFTER this function's own header line. Go's (?m)^ also matches
+	// at position 0, so scanning from the start matched the declaration itself
+	// and returned a one-character body — the test then failed on correct code,
+	// twice, for two different wrong reasons.
+	head := strings.Index(rest, "\n")
+	if head < 0 {
+		return rest
+	}
+	if loc := shellFuncStart.FindStringIndex(rest[head+1:]); loc != nil {
+		return rest[:head+1+loc[0]]
+	}
+	return rest
+}
+
+// shellFuncStart matches the start of a top-level shell function definition.
+var shellFuncStart = regexp.MustCompile(`(?m)^[a-z_][a-z0-9_]*\(\) \{`)
