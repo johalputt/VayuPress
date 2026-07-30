@@ -8,6 +8,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.22] — 2026-07-30
+
+Ships on its own: the controls added in 3.16.21 an hour ago were in the page and
+could not be seen.
+
+### Fixed
+- **Two action rows rendered invisibly, and so had the helper-upgrade button.**
+  `.vs-adv` is an *advanced disclosure* — `display: none` until a master toggle
+  above it is checked. The Network hardening section has no master toggle, so
+  every action row there using the bare class was correct HTML that never
+  appeared on screen.
+
+  That silently swallowed the two remediation buttons added in 3.16.21, and it
+  had already swallowed **"Check for a helper upgrade"** — whose own status line
+  reads *"press the button again"*, addressed to an operator who had never been
+  shown a button. A control that exists and cannot be seen is worse than one that
+  is absent: the absent one is at least honest.
+
+  Both now use `vs-adv--open`, the variant that exists for precisely this case —
+  a block with no master toggle above it.
+
+  Pinned from both ends, because the halves live in different files and nothing
+  else connected them: a Go-side check that no hardening action row uses the bare
+  class, and a stylesheet check that `vs-adv--open` still forces display. Either
+  one alone would have gone on passing while the buttons vanished.
+
 ## [3.16.21] — 2026-07-30
 
 ### Added

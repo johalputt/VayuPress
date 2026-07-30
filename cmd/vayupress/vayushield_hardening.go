@@ -238,7 +238,13 @@ func shieldAgentUpgradeRow() string {
 			`later upgrades are one click. There is no way around this: the code that would act on a ` +
 			`request from this panel is the code you do not have yet.</p>`
 	}
-	b.WriteString(`<div class="vs-adv"><button type="button" class="btn btn--ghost btn--sm"` +
+	// vs-adv--open, not bare vs-adv. The bare class is an ADVANCED DISCLOSURE:
+	// `display:none` until a master toggle above it is checked. The Network
+	// hardening section has no master toggle, so this button rendered into the
+	// DOM and was never once visible — which is why an operator could read
+	// "press the button again" in its own status line with no button to press.
+	// A control that exists and cannot be seen is worse than one that is absent.
+	b.WriteString(`<div class="vs-adv vs-adv--open"><button type="button" class="btn btn--ghost btn--sm"` +
 		` hx-post="/os/api/shield/agent-upgrade" hx-target="#vs-body-hardening" hx-swap="innerHTML">` +
 		`Check for a helper upgrade</button> <span class="muted text-xs">The helper fetches the signed bundle ` +
 		`from the release itself and verifies the signature before installing. This panel only records ` +
@@ -384,7 +390,9 @@ func shieldFixRow(key string) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString(`<div class="vs-adv"><strong class="text-sm">` + html.EscapeString(fix.Title) + `</strong> `)
+	// vs-adv--open — see shieldAgentUpgradeRow. This section has no master toggle
+	// to reveal a bare vs-adv, so the row would be invisible.
+	b.WriteString(`<div class="vs-adv vs-adv--open"><strong class="text-sm">` + html.EscapeString(fix.Title) + `</strong> `)
 	if !shieldAgentSupportsFix(fix.Cap) {
 		b.WriteString(`<span class="muted text-xs">Your running helper predates this fix. ` +
 			`Upgrade the helper above and it appears here.</span></div>`)

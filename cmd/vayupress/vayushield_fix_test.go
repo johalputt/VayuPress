@@ -138,3 +138,56 @@ func TestEveryFixFlagIsAConstant(t *testing.T) {
 		}
 	}
 }
+
+// TestHardeningActionsAreNotHiddenByCSS is the regression guard for a control
+// that rendered correctly and could not be seen.
+//
+// `.vs-adv` is an advanced disclosure: display:none until a master toggle above
+// it is checked. The Network hardening section has no master toggle, so every
+// action row there using the bare class was in the DOM and invisible — including
+// the helper-upgrade button, whose own status line reads "press the button
+// again". An operator was told to press something that was never on screen.
+//
+// The variant that is always visible is `vs-adv--open`, which exists for exactly
+// this case. Asserted on the source because the alternative is a browser.
+func TestHardeningActionsAreNotHiddenByCSS(t *testing.T) {
+	src, err := os.ReadFile("vayushield_hardening.go")
+	if err != nil {
+		t.Skipf("source not readable here: %v", err)
+	}
+	s := string(src)
+	if n := strings.Count(s, `class="vs-adv"`); n != 0 {
+		t.Errorf("%d action row(s) in the hardening section use the bare vs-adv class, which is "+
+			"display:none without a master toggle — this section has none, so they render "+
+			"invisibly. Use \"vs-adv vs-adv--open\".", n)
+	}
+	// And the two controls that must be reachable are still there.
+	for _, want := range []string{
+		`/os/api/shield/agent-upgrade`,
+		`/os/api/shield/fix`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("the hardening section no longer offers %s", want)
+		}
+	}
+}
+
+// TestVsAdvOpenIsAlwaysVisible pins the CSS contract the fix depends on. If the
+// stylesheet stops making vs-adv--open visible, the Go side above still passes
+// while the buttons vanish again — the two halves live in different files and
+// nothing else connects them.
+func TestVsAdvOpenIsAlwaysVisible(t *testing.T) {
+	css, err := os.ReadFile("../../static/css/admin-os.css")
+	if err != nil {
+		t.Skipf("stylesheet not readable here: %v", err)
+	}
+	c := string(css)
+	if !strings.Contains(c, `.vs-adv--open { display: flex; }`) {
+		t.Error("vs-adv--open no longer forces display; every always-on action row in the " +
+			"hardening section depends on it and would silently disappear")
+	}
+	if !strings.Contains(c, `.vp-os .vs-adv {`) || !strings.Contains(c, "display: none;") {
+		t.Error("the bare vs-adv rule changed shape; re-check whether the --open variant is " +
+			"still needed, and whether the Go side still matches")
+	}
+}
