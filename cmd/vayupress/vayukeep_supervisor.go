@@ -228,6 +228,48 @@ func sanitizeKeepTarget(raw string) (string, error) {
 		" — that keeps the service out of system directories")
 }
 
+// assertUnderKeepRoot re-establishes, immediately before a filesystem call, the
+// containment that sanitizeKeepTarget already guarantees.
+//
+// The redundancy is the point. sanitizeKeepTarget proves containment with
+// filepath.Rel and rebuilds the path from a constant root, which is strong — but
+// it establishes that guarantee somewhere earlier in the call graph, and a
+// future caller reaching a filesystem call by a different route inherits nothing
+// from it. Asserting at the point of use puts the check where the risk is.
+//
+// It is also the shape static analysis recognises. CodeQL flagged both calls
+// below as uncontrolled path expressions: its taint tracker does not credit
+// filepath.Rel containment as a sanitiser, so operator input appeared to reach
+// the filesystem unchecked. The code was safe; the proof was invisible to the
+// tool. A "..." rejection plus an explicit prefix test against the constant root
+// states the same invariant in a form both a reader and a scanner can follow.
+func assertUnderKeepRoot(path string) (string, error) {
+	clean := filepath.Clean(path)
+	if !filepath.IsAbs(clean) {
+		return "", errors.New("that backup folder is not an absolute, fully-resolved path")
+	}
+	// A ".." ELEMENT, not the substring: Clean plus IsAbs above already make a
+	// surviving traversal element unreachable, so this states the invariant
+	// rather than catching a live case. The substring form was written here
+	// first and was a real defect — it refuses "/var/back..ups", a perfectly
+	// legal directory name. A check added to satisfy a scanner is not worth a
+	// folder an operator cannot choose.
+	for _, el := range strings.Split(clean, string(filepath.Separator)) {
+		if el == ".." {
+			return "", errors.New("that backup folder is not an absolute, fully-resolved path")
+		}
+	}
+	for _, root := range keepTargetRoots {
+		if clean == root {
+			continue // a root itself is not a valid target — see sanitizeKeepTarget
+		}
+		if strings.HasPrefix(clean, root+string(filepath.Separator)) {
+			return clean, nil
+		}
+	}
+	return "", errors.New("backups must live under one of: " + strings.Join(keepTargetRoots, ", "))
+}
+
 // validateKeepTargetWritable confirms VayuPress can actually create and write
 // files in an ALREADY-SANITISED directory. The systemd sandbox restricts where
 // the service may write, so a path that looks fine can still be denied — and
@@ -239,6 +281,10 @@ func sanitizeKeepTarget(raw string) (string, error) {
 // the path-injection this pair exists to close.
 func validateKeepTargetWritable(dir string) error {
 	safe, err := sanitizeKeepTarget(dir)
+	if err != nil {
+		return err
+	}
+	safe, err = assertUnderKeepRoot(safe)
 	if err != nil {
 		return err
 	}
