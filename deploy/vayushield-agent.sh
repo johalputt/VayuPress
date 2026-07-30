@@ -456,6 +456,43 @@ DIGEST_SCHEMA=1
 # tri <command...> — echo yes when the command succeeds, no when it fails.
 tri() { if "$@" >/dev/null 2>&1; then printf 'yes'; else printf 'no'; fi; }
 
+# mcp_catchall_is_open reads an nginx config dump on stdin and succeeds when the
+# dedicated MCP host serves a catch-all that PROXIES to the app.
+#
+# It judges what the catch-all DOES, not that one exists. The earlier version
+# flagged the mere presence of a catch-all location, so once the remediation had
+# narrowed that block to "return 404" the panel went on reporting the host as
+# unrestricted: the hardening row said Applied and the posture report said it had
+# not been, leaving the operator to work out which panel was lying. A location
+# that refuses IS the desired end state; only one that proxies is a second front
+# door.
+#
+# It is a named function, not an inline pipeline, so the test suite runs THIS
+# code against its fixtures instead of a copy that can silently drift from it.
+#
+# The server-block tracking is deliberately IDENTICAL to reconcile_mcpsurface's:
+# inserver/ismcp opened on `server {`, closed on the matching brace. The two used
+# to differ — the detector left the MCP host on a bare `}` at column zero, so a
+# config that indents its server blocks kept ismcp set past the closing brace and
+# charged the APEX vhost's proxying catch-all to the MCP host. A detector and the
+# remediation it grades must not disagree about where the block ends.
+mcp_catchall_is_open() {
+  awk '
+    /^[[:space:]]*server[[:space:]]*\{/ { inserver=1; ismcp=0 }
+    inserver && /^[[:space:]]*server_name[[:space:]]+mcp\./ { ismcp=1 }
+    ismcp && /^[[:space:]]*location[[:space:]]+\/[[:space:]]*\{/ {
+      if ($0 ~ /\}/) { if ($0 ~ /proxy_pass/) { print "open"; exit } ; next }
+      depth=1
+      while (depth > 0 && (getline line) > 0) {
+        if (line ~ /proxy_pass/) { print "open"; exit }
+        n=gsub(/\{/,"{",line); m=gsub(/\}/,"}",line); depth += n - m
+      }
+      next
+    }
+    /^[[:space:]]*\}/ && inserver && !depth { inserver=0; ismcp=0 }
+  ' | grep -q open
+}
+
 write_digest() {
   [ -d "$CONTROL_DIR" ] || return 0
   local tmp
@@ -514,9 +551,9 @@ write_digest() {
         printf 'default_server_443=no\n'
       fi
       # The dedicated MCP host should expose only /mcp and /health. Anything
-      # serving a bare location / there is a second front door to the whole app.
-      if nginx -T 2>/dev/null | grep -q 'server_name[[:space:]]*mcp\.'; then
-        if nginx -T 2>/dev/null | awk '/server_name[[:space:]]*mcp\./,/^}/' | grep -Eq '^[[:space:]]*location[[:space:]]+/[[:space:]]*\{'; then
+      # PROXYING a bare location / there is a second front door to the whole app.
+      if nginx -T 2>/dev/null | grep -Eq '^[[:space:]]*server_name[[:space:]]+mcp\.'; then
+        if nginx -T 2>/dev/null | mcp_catchall_is_open; then
           printf 'mcp_vhost_restricted=no\n'
         else
           printf 'mcp_vhost_restricted=yes\n'

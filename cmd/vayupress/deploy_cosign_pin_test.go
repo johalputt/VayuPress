@@ -174,6 +174,82 @@ printf 'server {\n ssl_certificate /nope/a.pem;\n ssl_certificate_key /nope/a.ke
 if bash -c 'nginx() { cat "'"$D"'/dump2.txt"; }; source "'"$D"'/c.sh"; nginx_first_certificate' >/dev/null 2>&1; then
   echo "FAIL an unreadable certificate was offered for the catch-all"; exit 1
 fi
+# The MCP-surface DETECTOR and the remediation must agree on what "restricted"
+# means. The detector used to flag the mere presence of a catch-all location, so
+# after the fix narrowed that block to "return 404" the panel still reported it
+# as unrestricted — the hardening row said Applied and the posture report said
+# it had not been, leaving the operator to decide which panel was lying.
+#
+# The detector is read OUT OF THE AGENT, not restated here. A copy in the test
+# would go on passing after the real one was reverted, which is exactly the
+# failure this test exists to catch.
+sed -n '/^mcp_catchall_is_open() {/,/^}/p' "$AGENT" > "$D/m.sh"
+[ -s "$D/m.sh" ] || { echo "FAIL mcp_catchall_is_open not found in the agent script"; exit 1; }
+
+mcp_verdict() { # $1=config file -> prints the digest value for mcp_vhost_restricted
+  bash -c 'source "'"$D"'/m.sh"; if mcp_catchall_is_open <"'"$1"'"; then echo no; else echo yes; fi'
+}
+cat > "$D/mcp_open.txt" <<'MCPA'
+server {
+    server_name johal.in;
+    location / { proxy_pass http://127.0.0.1:8080; }
+}
+server {
+    server_name mcp.johal.in;
+    location ^~ /mcp { proxy_pass http://127.0.0.1:8080; }
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+    }
+}
+MCPA
+cat > "$D/mcp_narrowed.txt" <<'MCPB'
+server {
+    server_name johal.in;
+    location / { proxy_pass http://127.0.0.1:8080; }
+}
+server {
+    server_name mcp.johal.in;
+    location ^~ /mcp { proxy_pass http://127.0.0.1:8080; }
+    location / { return 404; }  # narrowed by vayushield-agent
+}
+MCPB
+[ "$(mcp_verdict "$D/mcp_open.txt")" = "no" ] || { echo "FAIL a proxying catch-all on the MCP host was reported as restricted"; exit 1; }
+[ "$(mcp_verdict "$D/mcp_narrowed.txt")" = "yes" ] || { echo "FAIL a narrowed MCP host is still reported unrestricted — the fix says Applied while the posture report disagrees"; exit 1; }
+
+# The MCP block must END where nginx says it ends. This config indents its server
+# blocks, so the closing brace is not at column zero, and it lists the narrowed
+# MCP host BEFORE the apex. A detector that leaves the MCP block only on a bare
+# column-zero "}" stays inside it for the rest of the dump and charges the apex
+# vhost's proxying catch-all to the MCP host — a permanent warning on a host that
+# was correctly narrowed, with no configuration change that could ever clear it.
+cat > "$D/mcp_indented.txt" <<'MCPC'
+  server {
+      server_name mcp.johal.in;
+      location ^~ /mcp { proxy_pass http://127.0.0.1:8080; }
+      location / { return 404; }  # narrowed by vayushield-agent
+  }
+  server {
+      server_name johal.in;
+      location / { proxy_pass http://127.0.0.1:8080; }
+  }
+MCPC
+[ "$(mcp_verdict "$D/mcp_indented.txt")" = "yes" ] || { echo "FAIL the apex vhost's catch-all was charged to the MCP host — the detector never left the MCP server block"; exit 1; }
+
+# ...and the same shape must still catch a genuinely open MCP host, so the rule
+# above is a boundary fix and not a blanket "always restricted".
+cat > "$D/mcp_indented_open.txt" <<'MCPD'
+  server {
+      server_name mcp.johal.in;
+      location ^~ /mcp { proxy_pass http://127.0.0.1:8080; }
+      location / { proxy_pass http://127.0.0.1:8080; }
+  }
+  server {
+      server_name johal.in;
+      location / { proxy_pass http://127.0.0.1:8080; }
+  }
+MCPD
+[ "$(mcp_verdict "$D/mcp_indented_open.txt")" = "no" ] || { echo "FAIL an open MCP host went unreported once the block boundaries were tightened"; exit 1; }
+
 echo OK
 `
 

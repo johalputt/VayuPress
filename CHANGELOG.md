@@ -8,6 +8,52 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.29] — 2026-07-30
+
+### Fixed
+- **"MCP host surface" stayed a warning on a host that had just been narrowed.**
+  An operator pressed *Restrict the MCP host*, the hardening row reported
+  **● Applied**, and the posture report went on flagging the same host. Both
+  halves were reading the same install and reaching opposite conclusions, which
+  leaves the operator to guess which panel is lying — and there was no
+  configuration change available to them that would have cleared it.
+
+  The detector asked the wrong question. It flagged the *presence* of a
+  catch-all `location /`, but the remediation does not delete that block, it
+  narrows it:
+
+  ```nginx
+  location / { return 404; }  # narrowed by vayushield-agent
+  ```
+
+  A location that refuses **is** the desired end state; only one that proxies to
+  the app is a second front door. The detector now judges what the catch-all
+  *does* — it reports the host as open only when the block contains a
+  `proxy_pass`.
+
+- **The detector and the remediation disagreed about where a server block ends.**
+  Found while attacking the fix above. The remediation tracks `server { … }`
+  properly; the detector left the MCP host only on a `}` in column zero. On a
+  config that indents its server blocks — legal, and what several generators
+  emit — the detector never left the MCP block and charged the *apex* vhost's
+  proxying catch-all to the MCP host. That is a permanent warning on a correctly
+  narrowed host, with nothing an operator could do to clear it. Both now use
+  identical block tracking, and the vhost-detection patterns were aligned too
+  (`server_name` anchored, one-or-more spaces).
+
+### Changed
+- The MCP catch-all detector is a named function (`mcp_catchall_is_open`) rather
+  than a pipeline inlined in the digest writer, so the test suite exercises the
+  shipped code against its fixtures instead of a restated copy. The copy was the
+  reason the first version of this test passed against the broken detector.
+
+### Upgrade Notes
+- The fix lives in the **root agent**, so it arrives with *Upgrade the helper* on
+  `/os/vayushield`, not with the binary. The digest refreshes about once a
+  minute after that, and the posture row clears on its own.
+- Shipped on its own under the live-breakage exception in the release rules: the
+  panel is contradicting itself on installs in the field right now.
+
 ## [3.16.28] — 2026-07-30
 
 ### Fixed
