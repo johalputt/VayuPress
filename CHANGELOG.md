@@ -8,6 +8,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.20] — 2026-07-30
+
+### Fixed
+- **The posture report contradicted itself in one line.** It rendered
+  `▲ 2 item(s) worth a look — nothing is failing.` directly above
+  `10 enforcing · 2 warning · 4 informational · 1 failing.`
+
+  Both numbers were right, computed by different rules. The tally counts raw
+  `Fail` rows; the headline counts failures *beyond* `BaselineFails` — the
+  volumetric-absorption row, which no configuration can turn green and which the
+  report is careful to describe as a permanent limit rather than a defect.
+  Summarising against zero instead would report a correct install as broken,
+  which is the mistake this deliberately avoids.
+
+  The bug was narrower than the logic: of the three summary branches, the two
+  either side carry the qualifier — "plus one permanent limit every install has"
+  and "within the permanent limit below" — and only the middle one dropped it.
+  That branch is reached by an install with warnings and no real failure: the
+  reassuring case, shown to the operator least likely to go digging.
+
+  The headline now carries the qualifier in every branch, and the tally names the
+  baseline instead of leaving a bare "1 failing" to be reconciled against a
+  headline counting something else. Two correct numbers with different
+  denominators, printed without saying so, is how a panel contradicts itself
+  while every function on it is right.
+
+  A posture panel exists to be believed. One sentence a reader can disprove by
+  looking two inches down costs more than the row it was papering over.
+
 ## [3.16.19] — 2026-07-30
 
 Ships on its own: the VayuShield panel was telling operators, in the plainest
