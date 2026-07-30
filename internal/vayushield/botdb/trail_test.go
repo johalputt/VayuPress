@@ -60,12 +60,23 @@ func TestTrailAggregatesTheWindow(t *testing.T) {
 	// Outside the window: must not be counted.
 	insertBlock(t, s, now.Add(-48*time.Hour), "ancient", "/old", "US")
 
+	// Seeded with the outcomes the manager ACTUALLY writes. The first version of
+	// this fixture used "solved" and "abandoned" against a one-row-per-challenge
+	// model where the outcome is later mutated — a schema that was designed and
+	// never built. recordChallenge only ever INSERTs, and only ever with
+	// "issued", "blocked" or "delayed". So this test passed for months while the
+	// live panel reported "0% of challenges passed" every hour of every day: it
+	// was asserting over data the production path cannot produce.
+	for i := 0; i < 15; i++ {
+		insertChallenge(t, s, now.Add(-time.Hour), "issued")
+	}
 	for i := 0; i < 10; i++ {
 		insertChallenge(t, s, now.Add(-time.Hour), "solved")
 	}
-	for i := 0; i < 5; i++ {
-		insertChallenge(t, s, now.Add(-time.Hour), "abandoned")
-	}
+	// Blocks and tarpit delays share this table and are NOT invitations, so they
+	// must not reach the denominator of a pass rate.
+	insertChallenge(t, s, now.Add(-time.Hour), "blocked")
+	insertChallenge(t, s, now.Add(-time.Hour), "delayed")
 
 	tr, err := s.ReadTrail(context.Background(), 24, 8, 30)
 	if err != nil {
@@ -127,7 +138,8 @@ func TestHourlySeriesIsChronological(t *testing.T) {
 	insertBlock(t, s, now.Add(-3*time.Hour+time.Minute), "r", "/p", "")
 	insertBlock(t, s, now.Add(-time.Hour+time.Minute), "r", "/p", "")
 	insertBlock(t, s, now.Add(-time.Hour+2*time.Minute), "r", "/p", "")
-	insertChallenge(t, s, now.Add(-time.Hour+time.Minute), "solved")
+	insertChallenge(t, s, now.Add(-time.Hour+time.Minute), "issued")
+	insertChallenge(t, s, now.Add(-time.Hour+2*time.Minute), "solved")
 
 	tr, err := s.ReadTrail(context.Background(), 6, 8, 30)
 	if err != nil {

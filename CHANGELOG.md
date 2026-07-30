@@ -8,6 +8,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.19] — 2026-07-30
+
+Ships on its own: the VayuShield panel was telling operators, in the plainest
+terms it has, that no real browser on their site could pass a challenge. It was
+not true, and an operator acting on it would have weakened their own defences.
+
+### Fixed
+- **"SOLVED 0% of challenges passed" was structurally incapable of reading
+  anything else.** An operator's recorded history showed 7,341 challenges over 24
+  hours with a 0% pass rate in *every single hour*. The obvious reading is that
+  the challenge is broken and readers are locked out.
+
+  Both halves of that fraction were wrong.
+
+  The numerator: nothing anywhere wrote `outcome='solved'`. A solved proof was
+  acknowledged only to the in-memory calibrator, and `recordChallenge` is
+  insert-only with exactly three outcomes — `issued`, `blocked`, `delayed`. The
+  query behind the tile summed `outcome='solved'`, so it could return zero and
+  nothing else, forever.
+
+  The denominator: challenges were counted as every row in
+  `vayushield_challenges`, which also holds one row per block and one per tarpit
+  delay. Those were never invitations and could not be accepted, so they inflated
+  the count that the impossible numerator was divided by.
+
+  A solve is now recorded to the trail as its own event, unconditionally and
+  before the calibration decision — the trail records what happened, calibration
+  is a policy about what to learn from it, and conflating the two is what caused
+  this. Challenges count invitations actually extended.
+
+### Added
+- **A test that pins the trail's outcome vocabulary to what the manager writes.**
+  The reader and the writer live in different packages and nothing forced them to
+  agree; they had drifted onto entirely different words. Both sides were
+  internally consistent and both were covered by passing tests, because the
+  fixtures were written from the same imagined vocabulary as the query — seeding
+  `solved` and `abandoned`, values the production path has never emitted. Those
+  fixtures now use the outcomes the code actually writes, and the new check
+  asserts the call inside `VerifyPoW` rather than the mere presence of the
+  string, since the writer's own definition satisfied the weaker form.
+
 ## [3.16.18] — 2026-07-30
 
 Fixes a regression shipped in 3.16.17 an hour earlier, so it goes out on its own

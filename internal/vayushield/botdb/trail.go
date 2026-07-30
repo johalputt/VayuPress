@@ -43,6 +43,14 @@ type Count struct {
 // HourBucket is one hour of activity. Blocks and challenges are counted
 // separately because they are different events: a block is a refusal, a
 // challenge is an invitation to prove otherwise.
+//
+// Challenges counts rows whose outcome is 'issued' — an invitation actually
+// extended. It used to count every row in the table, which also holds a row for
+// each block and each tarpit delay, so the denominator of the pass rate included
+// events that were never an invitation and could not be accepted. Combined with
+// a 'solved' outcome that nothing wrote, the panel reported a full day of
+// "7341 challenged, 0% solved" — a wrong numerator over a wrong denominator,
+// telling an operator their readers could not get in.
 type HourBucket struct {
 	Hour       string // "YYYY-MM-DD HH:00" in UTC
 	Blocks     int64
@@ -118,7 +126,8 @@ func (s *Store) ReadTrail(ctx context.Context, hours, topN, retentionDays int) (
 		return t, err
 	}
 	row = db.QueryRowContext(ctx,
-		`SELECT COUNT(1), COALESCE(SUM(CASE WHEN outcome='solved' THEN 1 ELSE 0 END),0)
+		`SELECT COALESCE(SUM(CASE WHEN outcome='issued' THEN 1 ELSE 0 END),0),
+		        COALESCE(SUM(CASE WHEN outcome='solved' THEN 1 ELSE 0 END),0)
 		 FROM vayushield_challenges WHERE created_at>=?`, cut)
 	if err := row.Scan(&t.TotalChallenges, &t.TotalSolved); err != nil && err != sql.ErrNoRows {
 		return t, err
@@ -217,7 +226,8 @@ func (s *Store) hourly(ctx context.Context, cut string) ([]HourBucket, error) {
 	_ = rows.Close()
 
 	rows, err = s.reader().QueryContext(ctx,
-		`SELECT strftime('%Y-%m-%d %H:00', created_at) AS h, COUNT(1),
+		`SELECT strftime('%Y-%m-%d %H:00', created_at) AS h,
+		        COALESCE(SUM(CASE WHEN outcome='issued' THEN 1 ELSE 0 END),0),
 		        COALESCE(SUM(CASE WHEN outcome='solved' THEN 1 ELSE 0 END),0)
 		 FROM vayushield_challenges WHERE created_at>=? GROUP BY h`, cut)
 	if err != nil {

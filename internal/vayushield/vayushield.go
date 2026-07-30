@@ -2309,6 +2309,18 @@ func (m *Manager) VerifyPoW(r *http.Request, pow challenge.PoW, nonce string) (t
 	// challenges EVERY unproven visitor regardless of score, so those outcomes
 	// are not informative about the score-based ladder and would wrongly loosen
 	// it for hours after an attack. Only score-driven ladder outcomes calibrate.
+	// Record the solve in the trail BEFORE the calibration decision below, and
+	// unconditionally.
+	//
+	// The trail is a record of what happened; calibration is a policy about what
+	// to learn from it. Conflating the two is what produced a panel reading
+	// "CHALLENGED 7341 · SOLVED 0%" over a full day — not one pass in any hour.
+	// Nothing ever wrote outcome='solved', because the only place a solve is
+	// acknowledged fed the in-memory calibrator and stopped there, so the query
+	// behind that tile could not return anything but zero. An operator reading it
+	// is being told every real browser on their site fails the challenge, which
+	// would mean the site is broken for readers. It was not; the counter was.
+	m.recordChallengeSolved(r)
 	if !m.underSurge(m.live()) {
 		// A solve proves a real BROWSER. A headless one is also a real browser, so
 		// this is the one calibrator input an attacker can manufacture — and the
@@ -2373,6 +2385,27 @@ func (m *Manager) recordChallenge(r *http.Request, v Verdict, ctype, outcome str
 (session_hash,challenge_type,bot_score,fingerprint_hash,outcome,time_to_solve_ms,ip_hash,country_code)
 VALUES('',?,?,?,?,?,?,?)`,
 		ctype, v.Result.BotScore, v.Composite.FingerprintHash, outcome, solveMS, m.hashIP(ip), country)
+}
+
+// recordChallengeSolved writes the one outcome the trail was missing.
+//
+// It takes no Verdict because there is not an honest one to take: by the time a
+// proof comes back the scoring that issued the challenge belongs to an earlier
+// request. Writing a zero-valued Verdict here would put a bot_score of 0 in the
+// row and invite exactly the reading it does not support. The columns that
+// cannot be filled truthfully are left empty rather than filled plausibly.
+func (m *Manager) recordChallengeSolved(r *http.Request) {
+	if m.cfg.DB == nil {
+		return
+	}
+	ip := m.cfg.ClientIP(r)
+	country := ""
+	if m.cfg.CountryFn != nil {
+		country = m.cfg.CountryFn(ip)
+	}
+	m.recordExec(r.Context(), `INSERT INTO vayushield_challenges
+(session_hash,challenge_type,bot_score,fingerprint_hash,outcome,time_to_solve_ms,ip_hash,country_code)
+VALUES('','pow',0,'','solved',0,?,?)`, m.hashIP(ip), country)
 }
 
 func (m *Manager) recordBlock(r *http.Request, v Verdict) {
