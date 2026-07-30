@@ -476,13 +476,13 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 	for _, p := range sum.TopPages {
 		pageBars = append(pageBars, osChartBar{Label: prettyPathText(p.Path), Value: int(p.Views), Href: p.Path})
 	}
-	pages := osBarList(pageBars, "No page views recorded yet. They'll appear here as visitors browse your site.")
+	pages := osBarList(pageBars, osShareOf(int(sum.TotalViews)), "No page views recorded yet. They'll appear here as visitors browse your site.")
 
 	refBars := make([]osChartBar, 0, len(sum.Referrers))
 	for _, h := range sum.Referrers {
 		refBars = append(refBars, osChartBar{Label: h.Host, Value: int(h.Hits)})
 	}
-	refs := osBarList(refBars, "No referrers recorded yet. Links from other sites will show up here.")
+	refs := osBarList(refBars, osShareOf(int(sum.TotalReferrals)), "No referrers recorded yet. Links from other sites will show up here.")
 
 	// ── VayuAnalytics extended insights (v1.8.0): audience, engagement, events ──
 	ov, _ := a.analytics.OverviewSince(ctx, days)
@@ -589,12 +589,12 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 </div>`
 
 	audiencePanel := `<div class="card mb-4"><div class="card-title">📈 Traffic channels</div>` +
-		osBarList(osBarsFromAudience(channels), "No traffic yet. Once visitors arrive, this groups them into Direct, Organic search, Social and Referral.") +
+		osBarList(osBarsFromAudience(channels), osShareOfListed(), "No traffic yet. Once visitors arrive, this groups them into Direct, Organic search, Social and Referral.") +
 		`<p class="muted text-xs mt-2">How visitors reached you — <strong>Direct</strong> (typed / bookmarked) · <strong>Organic search</strong> (Google, Bing, DuckDuckGo…) · <strong>Social</strong> (X, Reddit, LinkedIn…) · <strong>Referral</strong> (other sites). Derived from the referrer host only — cookieless, no-PII.</p></div>` +
 		`<div class="grid grid-3">
   <div class="card"><div class="card-title">Devices</div>` + osDonut(osSegsFromAudience(devices), "No device data yet.") + `</div>
-  <div class="card"><div class="card-title">Browsers</div>` + osBarList(osBarsFromAudience(browsers), "No browser data yet.") + `</div>
-  <div class="card"><div class="card-title">Operating systems</div>` + osBarList(osBarsFromAudience(oses), "No OS data yet.") + `</div>
+  <div class="card"><div class="card-title">Browsers</div>` + osBarList(osBarsFromAudience(browsers), osShareOfListed(), "No browser data yet.") + `</div>
+  <div class="card"><div class="card-title">Operating systems</div>` + osBarList(osBarsFromAudience(oses), osShareOfListed(), "No OS data yet.") + `</div>
 </div>`
 
 	utmSourceBars := make([]osChartBar, 0, len(utm))
@@ -606,14 +606,14 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		utmSourceBars = append(utmSourceBars, osChartBar{Label: src, Value: u.Count})
 	}
 	campaignsPanel := `<div class="grid grid-2">
-  <div class="card"><div class="card-title">Top sources</div>` + osBarList(utmSourceBars, "No campaign traffic yet.") + `</div>
+  <div class="card"><div class="card-title">Top sources</div>` + osBarList(utmSourceBars, osShareHidden(), "No campaign traffic yet.") + `</div>
   <div class="card"><div class="card-title">Campaigns (UTM)</div>` + utmRows + `</div>
 </div>`
 	eventBars := make([]osChartBar, 0, len(events))
 	for _, e := range events {
 		eventBars = append(eventBars, osChartBar{Label: e.Name, Value: e.Count})
 	}
-	eventsPanel := `<div class="card"><div class="card-title">Custom events</div>` + osBarList(eventBars, "No custom events yet. Track actions with the data-vp-event attribute or window.VayuPress.track().") + `</div>`
+	eventsPanel := `<div class="card"><div class="card-title">Custom events</div>` + osBarList(eventBars, osShareHidden(), "No custom events yet. Track actions with the data-vp-event attribute or window.VayuPress.track().") + `</div>`
 
 	// Small neutral count pill for an accordion summary (hidden on mobile, like
 	// the Monetization chips). Empty when there is nothing to count.
@@ -767,8 +767,8 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 	sort.SliceStable(continentBars, func(i, j int) bool { return continentBars[i].Value > continentBars[j].Value })
 
 	top := `<div class="grid grid-2">
-  <div class="card"><div class="card-title">🌍 Countries</div><div class="vp-geo-scroll">` + osBarList(countryBars, "No country data yet.") + `</div></div>
-  <div class="card"><div class="card-title">🗺️ Continents</div>` + osBarList(continentBars, "No continent data yet.") + `</div>
+  <div class="card"><div class="card-title">🌍 Countries</div><div class="vp-geo-scroll">` + osBarList(countryBars, osShareOfListed(), "No country data yet.") + `</div></div>
+  <div class="card"><div class="card-title">🗺️ Continents</div>` + osBarList(continentBars, osShareOfListed(), "No continent data yet.") + `</div>
 </div>`
 
 	// Regions & cities need proxy headers. When both are absent, show one setup
@@ -779,11 +779,11 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 	} else {
 		regionCard := osGeoSetupNote(false)
 		if len(regions) > 0 {
-			regionCard = `<div class="vp-geo-scroll">` + osBarList(osBarsFromAudience(regions), "") + `</div>`
+			regionCard = `<div class="vp-geo-scroll">` + osBarList(osBarsFromAudience(regions), osShareOfListed(), "") + `</div>`
 		}
 		cityCard := osGeoSetupNote(false)
 		if len(cities) > 0 {
-			cityCard = `<div class="vp-geo-scroll">` + osBarList(osBarsFromAudience(cities), "") + `</div>`
+			cityCard = `<div class="vp-geo-scroll">` + osBarList(osBarsFromAudience(cities), osShareOfListed(), "") + `</div>`
 		}
 		detail = `<div class="grid grid-2 mt-4">
   <div class="card"><div class="card-title">📍 Regions</div>` + regionCard + `</div>

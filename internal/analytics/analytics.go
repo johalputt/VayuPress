@@ -231,6 +231,13 @@ type Summary struct {
 	TopPages   []PathCount `json:"top_pages"`
 	Referrers  []HostCount `json:"referrers"`
 	Daily      []DayCount  `json:"daily"`
+
+	// TotalReferrals is the hit total across EVERY external referrer in the
+	// window, not just the ones in Referrers. It exists so a panel can express a
+	// referrer's share of referred traffic honestly: Referrers is a top-N list,
+	// and taking each row's share of the rows shown reports the largest entry as
+	// a far bigger slice than it is.
+	TotalReferrals int64 `json:"total_referrals"`
 }
 
 // Since returns an aggregate summary over the trailing `days` days (inclusive of
@@ -281,6 +288,15 @@ func (s *Store) Since(ctx context.Context, days, limit int) (*Summary, error) {
 	// one the panel calls. Both now share selfHostPatterns so they cannot drift
 	// apart again.
 	site, sub, sitePort, subPort := selfHostPatterns()
+	// The population behind the top-N list, under the identical exclusions — a
+	// denominator taken from a different filter would be its own quiet lie.
+	if err := s.readDB().QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(hits),0) FROM analytics_referrers
+		 WHERE day>=? AND LOWER(host)<>? AND LOWER(host) NOT LIKE ?
+		   AND LOWER(host) NOT LIKE ? AND LOWER(host) NOT LIKE ?`,
+		from, site, sub, sitePort, subPort).Scan(&sum.TotalReferrals); err != nil {
+		sum.TotalReferrals = 0
+	}
 	if rows, err := s.readDB().QueryContext(ctx,
 		`SELECT host,SUM(hits) h FROM analytics_referrers
 		 WHERE day>=? AND LOWER(host)<>? AND LOWER(host) NOT LIKE ?

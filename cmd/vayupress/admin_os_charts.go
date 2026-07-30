@@ -63,7 +63,45 @@ func barWidthClass(pct int) string {
 // osBarList renders a colour bar chart: each row is a label, a proportional
 // coloured bar (relative to the largest value) and the count. Rows cycle through
 // the 8-colour palette. Returns an empty-state when there is nothing to show.
-func osBarList(items []osChartBar, emptyMsg string) string {
+// osBarDenom is the population a bar list's percentages are taken against.
+//
+// It exists because the percentage used to be computed against the sum of the
+// LISTED rows, which is correct only when the list IS the whole population. On
+// a top-N list it overstates without bound: an operator's homepage read "87%"
+// of traffic because it was 242 of the 278 views in the ten rows shown, while
+// the window held 31,643 — the real share was 0.8%. Every complete breakdown on
+// the page (countries, browsers, channels) was right, and every truncated one
+// was wrong, which is why it survived review for so long.
+//
+// The zero value is deliberately NOT a valid answer. A denominator that
+// defaults is a denominator nobody chose, and defaulting is exactly what
+// produced the wrong number.
+type osBarDenom struct {
+	total int
+	kind  osDenomKind
+}
+
+type osDenomKind uint8
+
+const (
+	osDenomUnset  osDenomKind = iota // not an answer — see the type comment
+	osDenomTotal                     // an explicit population size
+	osDenomListed                    // the listed rows ARE the population
+	osDenomHidden                    // truncated, population unknown → show no %
+)
+
+// osShareOf declares the true population size for a truncated list.
+func osShareOf(total int) osBarDenom { return osBarDenom{total: total, kind: osDenomTotal} }
+
+// osShareOfListed declares that the rows passed are the complete breakdown, so
+// their sum is the population. Only correct for an un-truncated query.
+func osShareOfListed() osBarDenom { return osBarDenom{kind: osDenomListed} }
+
+// osShareHidden suppresses the percentage entirely: the list is truncated and no
+// honest denominator is available. No number beats a wrong one.
+func osShareHidden() osBarDenom { return osBarDenom{kind: osDenomHidden} }
+
+func osBarList(items []osChartBar, denom osBarDenom, emptyMsg string) string {
 	if len(items) == 0 {
 		if emptyMsg == "" {
 			emptyMsg = "No data yet."
@@ -71,12 +109,23 @@ func osBarList(items []osChartBar, emptyMsg string) string {
 		return `<div class="empty-state">` + emptyMsg + `</div>`
 	}
 	max := 1
-	total := 0
+	listed := 0
 	for _, it := range items {
 		if it.Value > max {
 			max = it.Value
 		}
-		total += it.Value
+		listed += it.Value
+	}
+	// An unset denominator is a programming error, not a display choice. Fail
+	// closed to no percentage rather than silently reinstating the old bug.
+	total := 0
+	switch denom.kind {
+	case osDenomTotal:
+		total = denom.total
+	case osDenomListed:
+		total = listed
+	case osDenomHidden, osDenomUnset:
+		total = 0
 	}
 	out := `<div class="vp-bars">`
 	for i, it := range items {
@@ -94,7 +143,14 @@ func osBarList(items []osChartBar, emptyMsg string) string {
 		pct := it.Value * 100 / max
 		share := ""
 		if total > 0 {
-			share = `<span class="vp-bar__pct">` + strconv.Itoa(it.Value*100/total) + `%</span>`
+			// Clamp: a caller-supplied total that is smaller than the rows it is
+			// meant to contain would otherwise print above 100%, which reads as a
+			// rendering glitch rather than the data problem it actually is.
+			s := it.Value * 100 / total
+			if s > 100 {
+				s = 100
+			}
+			share = `<span class="vp-bar__pct">` + strconv.Itoa(s) + `%</span>`
 		}
 		c := (i % 8) + 1
 		out += `<div class="vp-bar vp-bar--c` + strconv.Itoa(c) + `">` +
