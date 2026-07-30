@@ -86,7 +86,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.16.27"
+var Version = "3.16.28"
 var bootTime = time.Now()
 
 // onionSafeBindAddr picks the HTTP listen address (ADR-0141).
@@ -269,6 +269,39 @@ func generateSitemap() { writeSitemapScoped(config.Cfg.Domain, "", false, "sitem
 // reproduces the historic global sitemap exactly (no domain filter, primary host).
 // With scoped=true it lists only the given domain's articles (domain_id=scope)
 // under that domain's host — the artefact served on a secondary domain.
+// sitemapChunk is how many post URLs go in one sitemap file.
+//
+// The protocol caps a single sitemap at 50,000 URLs and 50 MB. Staying under
+// that with headroom is not fussiness: a file that breaches the cap can be
+// rejected WHOLE, so the failure is not "the last few are ignored" but "none of
+// them are seen".
+// A var, not a const, so a test can shrink it and exercise the chunk boundary
+// with a handful of rows instead of 45,000. The boundary is the whole point of
+// this code; a test that cannot reach it is testing the easy half.
+var sitemapChunk = 45000
+
+// sitemapChildRel derives a child filename from the index's own name, so a
+// scoped index (sitemap_d_<domain>.xml) gets matching children. The caller's
+// value never becomes a path component: n is an int and the base is our own
+// constant-derived string.
+func sitemapChildRel(indexRel string, n int) string {
+	return strings.TrimSuffix(indexRel, ".xml") + "-" + strconv.Itoa(n) + ".xml"
+}
+
+// sitemapTagsRel is the child holding the taxonomy.
+func sitemapTagsRel(indexRel string) string {
+	return strings.TrimSuffix(indexRel, ".xml") + "-tags.xml"
+}
+
+// writeSitemapScoped writes a sitemap INDEX plus its children.
+//
+// It used to write one file with `LIMIT 50000` and then append every tag page
+// after it. On a site of 234,000 posts that silently omitted four fifths of the
+// content — those URLs were never announced to anything — and the appended tag
+// pages pushed the file past the 50,000-URL cap, which invites a search engine
+// to discard the entire document rather than the overflow. A sitemap that is
+// both truncated and over the limit is worse than none: it looks authoritative
+// and describes a site that does not exist.
 func writeSitemapScoped(host, scope string, scoped bool, rel string) {
 	domClause := ""
 	var domArgs []any
@@ -276,25 +309,73 @@ func writeSitemapScoped(host, scope string, scoped bool, rel string) {
 		domClause = " AND domain_id=?"
 		domArgs = []any{scope}
 	}
-	rows, err := dbpkg.Reader().Query(`SELECT slug,updated_at FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0`+domClause+` ORDER BY updated_at DESC LIMIT 50000`, domArgs...)
+	rows, err := dbpkg.Reader().Query(`SELECT slug,updated_at FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0`+domClause+` ORDER BY updated_at DESC`, domArgs...)
 	if err != nil {
 		return
 	}
 	defer rows.Close()
+
+	var children []string
 	var sb strings.Builder
-	sb.WriteString(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
+	n, inChunk := 0, 0
+	openChunk := func() {
+		sb.Reset()
+		sb.WriteString(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
+		inChunk = 0
+	}
+	closeChunk := func() {
+		if inChunk == 0 {
+			return
+		}
+		sb.WriteString("</urlset>")
+		n++
+		child := sitemapChildRel(rel, n)
+		render.CacheWrite(child, sb.String()) //nolint:errcheck
+		children = append(children, child)
+	}
+	openChunk()
 	for rows.Next() {
 		var slug string
 		var updated time.Time
-		rows.Scan(&slug, &updated)
+		rows.Scan(&slug, &updated) //nolint:errcheck
 		var locBuf strings.Builder
 		xml.EscapeText(&locBuf, []byte(fmt.Sprintf("https://%s/%s", host, slug))) //nolint:errcheck
 		fmt.Fprintf(&sb, "<url><loc>%s</loc><lastmod>%s</lastmod></url>", locBuf.String(), updated.Format("2006-01-02"))
+		inChunk++
+		if inChunk >= sitemapChunk {
+			closeChunk()
+			openChunk()
+		}
 	}
 	_ = rows.Err() // best-effort sitemap; regenerated on the next change
+	closeChunk()
+
+	// Tags get their own child rather than riding on the last post chunk, so the
+	// taxonomy cannot be what tips a file over the cap.
+	sb.Reset()
+	sb.WriteString(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
+	before := sb.Len()
 	sitemapAppendTagPages(&sb, host, scope, scoped)
-	sb.WriteString("</urlset>")
-	render.CacheWrite(rel, sb.String()) //nolint:errcheck
+	if sb.Len() > before {
+		sb.WriteString("</urlset>")
+		tagsRel := sitemapTagsRel(rel)
+		render.CacheWrite(tagsRel, sb.String()) //nolint:errcheck
+		children = append(children, tagsRel)
+	}
+
+	// The index itself. Always an index, even for one child: one shape to serve,
+	// one shape to test, and room to grow without changing what robots.txt points
+	// at or what an operator has already submitted to a search console.
+	var idx strings.Builder
+	idx.WriteString(`<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
+	today := time.Now().UTC().Format("2006-01-02")
+	for _, c := range children {
+		var locBuf strings.Builder
+		xml.EscapeText(&locBuf, []byte(fmt.Sprintf("https://%s/%s", host, c))) //nolint:errcheck
+		fmt.Fprintf(&idx, "<sitemap><loc>%s</loc><lastmod>%s</lastmod></sitemap>", locBuf.String(), today)
+	}
+	idx.WriteString("</sitemapindex>")
+	render.CacheWrite(rel, idx.String()) //nolint:errcheck
 }
 
 // sitemapAppendTagPages adds the topic index (/tags) and every per-tag listing

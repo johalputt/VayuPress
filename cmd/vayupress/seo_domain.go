@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/config"
 )
 
@@ -59,6 +61,46 @@ func (a *App) handleSitemap(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	http.ServeFile(w, r, filepath.Join(config.Cfg.CacheDir, rel))
+}
+
+// handleSitemapChild serves one file of the sitemap index.
+//
+// The path segment is parsed as an INTEGER (or matched against the single
+// literal "tags") and the filename is then rebuilt from our own constant
+// pattern, so nothing a request supplies reaches the filesystem as a path. This
+// is the same discipline as the VayuShield fix flags, and for the same reason:
+// the guard being obviously correct today is not the property worth having.
+func (a *App) handleSitemapChild(w http.ResponseWriter, r *http.Request) {
+	part := chi.URLParam(r, "part")
+	rel := "sitemap.xml"
+	if a.multiDomain(r) {
+		scope := a.contentScope(r)
+		rel = "sitemap_d_" + domCacheDir(scope) + ".xml"
+		if domArtefactStale(rel) {
+			writeSitemapScoped(a.activeHost(r), scope, true, rel)
+		}
+	}
+	var child string
+	if part == "tags" {
+		child = sitemapTagsRel(rel)
+	} else {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 1 || n > 10000 {
+			a.handleNotFound(w, r)
+			return
+		}
+		child = sitemapChildRel(rel, n)
+	}
+	full := filepath.Join(config.Cfg.CacheDir, filepath.Base(child))
+	if _, err := os.Stat(full); err != nil {
+		// A child the index does not list, or one not yet generated. A 404 is the
+		// honest answer; serving an empty urlset would tell a crawler the section
+		// is genuinely empty.
+		a.handleNotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	http.ServeFile(w, r, full)
 }
 
 func (a *App) handleFeed(w http.ResponseWriter, r *http.Request) {

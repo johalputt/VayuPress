@@ -56,7 +56,10 @@ func TestWriteSitemapScoped(t *testing.T) {
 
 	// Global (single-domain / primary) artefact: every published slug, primary host.
 	writeSitemapScoped(config.Cfg.Domain, "", false, "sitemap_global.xml")
-	global := readFile(t, dir, "sitemap_global.xml")
+	// sitemap.xml is a sitemapindex now, so the URLs live in its children. The
+	// invariant under test is unchanged — every published slug is reachable from
+	// the entry point — only the number of hops to reach it.
+	global := readSitemapAll(t, dir, "sitemap_global.xml")
 	for _, want := range []string{"primary.example/primary-one", "primary.example/primary-two", "primary.example/secondary-one"} {
 		if !strings.Contains(global, want) {
 			t.Errorf("global sitemap missing %q\n%s", want, global)
@@ -65,7 +68,7 @@ func TestWriteSitemapScoped(t *testing.T) {
 
 	// Secondary-scoped artefact: only the secondary domain's slug, its own host.
 	writeSitemapScoped("shop.example", "sec", true, "sitemap_sec.xml")
-	sec := readFile(t, dir, "sitemap_sec.xml")
+	sec := readSitemapAll(t, dir, "sitemap_sec.xml")
 	if !strings.Contains(sec, "shop.example/secondary-one") {
 		t.Errorf("secondary sitemap missing its own post\n%s", sec)
 	}
@@ -173,4 +176,25 @@ func readFile(t *testing.T, dir, name string) string {
 		t.Fatalf("read %s: %v", name, err)
 	}
 	return string(b)
+}
+
+// readSitemapAll returns the index concatenated with every child it names, so a
+// test can assert on "what the sitemap says" without caring how many files that
+// is spread across.
+func readSitemapAll(t *testing.T, dir, indexRel string) string {
+	t.Helper()
+	var b strings.Builder
+	b.WriteString(readFile(t, dir, indexRel))
+	for n := 1; n <= 50; n++ {
+		child := sitemapChildRel(indexRel, n)
+		body, err := os.ReadFile(filepath.Join(dir, child))
+		if err != nil {
+			break
+		}
+		b.Write(body)
+	}
+	if body, err := os.ReadFile(filepath.Join(dir, sitemapTagsRel(indexRel))); err == nil {
+		b.Write(body)
+	}
+	return b.String()
 }

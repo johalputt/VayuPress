@@ -108,6 +108,8 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// registered (VayuDomains Stage 2c); byte-identical global artefacts
 	// otherwise.
 	r.Get("/sitemap.xml", a.handleSitemap)
+	// Children of the sitemap index: /sitemap-1.xml … /sitemap-N.xml, /sitemap-tags.xml
+	r.Get("/sitemap-{part}.xml", a.handleSitemapChild)
 	r.Get("/feed.xml", a.handleFeed)
 	r.Get("/robots.txt", a.handleRobots)
 	// Public documentation site: guides, operations runbooks, the security model

@@ -8,6 +8,55 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.28] — 2026-07-30
+
+### Fixed
+- **The sitemap described 50,000 posts on a site that has 234,480.** An operator
+  watching their search index fall from roughly 180,000 pages to 29,700 was
+  looking at the consequence of one clause:
+
+  ```sql
+  SELECT slug,updated_at FROM articles WHERE ... ORDER BY updated_at DESC LIMIT 50000
+  ```
+
+  Every tag page was then appended to that same file. Two failures compounded:
+
+  - **184,480 posts — 79% of the site — were never in the sitemap at all.** No
+    error, no warning, nothing in a log. Truncation is what `LIMIT` is for, so
+    the code did exactly what it said and the omission was invisible.
+  - The appended taxonomy pushed the document past the sitemap protocol's
+    **50,000-URL cap**, at which point a crawler is entitled to reject the *whole
+    file* rather than the overflow. So the failure mode is not "the tail is
+    ignored"; it is that a search engine may have been discarding the entire
+    document while the site looked, from the inside, perfectly healthy.
+
+  `/sitemap.xml` is now a **sitemap index** listing chunked children of at most
+  45,000 URLs each — 6 files for 234,480 posts — with the taxonomy in its own
+  child so it can never be what tips a post file over the cap. `robots.txt` and
+  any URL already submitted to a search console keep pointing at the same entry
+  point.
+
+  The child route parses its path segment as an integer (or the single literal
+  `tags`) and rebuilds the filename from a constant pattern, so nothing a request
+  supplies reaches the filesystem — the same discipline as the VayuShield fix
+  flags.
+
+  `sitemapChunk` is a var rather than a const purely so the test can shrink it
+  and drive the chunk boundary with seven rows instead of forty-five thousand. A
+  boundary that only exists at production scale is a boundary no test reaches.
+
+### Note — the pre-release adversarial pass
+- Mutation-tested against the exact bug: reinstating the truncation makes the
+  guard name the specific posts that vanish; moving the taxonomy back onto a post
+  chunk makes it fail on the missing tags child.
+- `TestWriteSitemapScoped` failed on this change and was **updated, not
+  loosened** — it now follows the index into its children and asserts the same
+  invariant it always did, that every published slug is reachable from the entry
+  point. Only the number of hops changed.
+- Stated plainly, because it bounds the fix: this repairs what the site
+  *publishes*. Whether a search engine re-crawls and re-indexes 200,000 pages,
+  and how long that takes, is not something any code here can promise.
+
 ## [3.16.27] — 2026-07-30
 
 Both items reported by an operator who had just watched the remediations work.
