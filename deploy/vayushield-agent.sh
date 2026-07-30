@@ -493,6 +493,45 @@ mcp_catchall_is_open() {
   ' | grep -q open
 }
 
+# mcp_narrow_config rewrites an MCP vhost on stdin and prints the result.
+#
+# It is the REMEDIATION half of the pair above, and it applies the same rule:
+# judge what a catch-all does. Kept beside the detector deliberately — the two
+# disagreeing is what produced a row that said Applied next to a report that said
+# it had not been. See reconcile_mcpsurface for why each branch exists.
+mcp_narrow_config() {
+  awk '
+    /^[[:space:]]*server[[:space:]]*\{/ { inserver=1; ismcp=0; is80=0; has443=0 }
+    inserver && /^[[:space:]]*server_name[[:space:]]+mcp\./ { ismcp=1 }
+    inserver && /^[[:space:]]*listen[[:space:]]/ {
+      if ($0 ~ /443/ || $0 ~ /ssl/) { has443=1 }
+      else if ($0 ~ /(^|[^0-9])80([^0-9]|$)/) { is80=1 }
+    }
+    ismcp && /^[[:space:]]*location[[:space:]]+\/[[:space:]]*\{/ {
+      buf=$0
+      if ($0 !~ /\}/) {
+        depth=1
+        while (depth > 0 && (getline line) > 0) {
+          buf=buf "\n" line
+          n=gsub(/\{/,"{",line); m=gsub(/\}/,"}",line); depth += n - m
+        }
+      }
+      if (is80 && !has443 && buf ~ /narrowed by vayushield-agent/ && buf ~ /return[[:space:]]+404/) {
+        print "    location / { return 301 https://$host$request_uri; }"
+        next
+      }
+      if (buf ~ /proxy_pass/) {
+        print "    location / { return 404; }  # narrowed by vayushield-agent"
+        next
+      }
+      print buf
+      next
+    }
+    /^[[:space:]]*\}/ && inserver && !depth { inserver=0; ismcp=0; is80=0; has443=0 }
+    { print }
+  '
+}
+
 write_digest() {
   [ -d "$CONTROL_DIR" ] || return 0
   local tmp
@@ -580,9 +619,34 @@ write_digest() {
 # Written on every start, so it also tracks correctly through a downgrade.
 AGENT_CAPS="selfupgrade=1 digest=1 defaulthost=1 mcpsurface=1 cosignpin=1 rescue=1"
 
+# AGENT_VERSION is READ from a file the release workflow stamps into the bundle,
+# never typed into this script.
+#
+# The reason is a real dead end reached in the field. An operator pressed
+# "Upgrade the helper", the page reported nothing new, and the posture report
+# went on showing the same warning — and there was no way, from the panel or
+# from the control dir, to tell whether the helper had upgraded and the finding
+# was genuine, or the upgrade had silently not happened. AGENT_CAPS could not
+# settle it: the capability string is identical across releases that change
+# behaviour. An upgrade button whose effect cannot be observed is the same
+# failure as a control that does nothing.
+#
+# Deriving it from the git tag at build time rather than adding a fourth file to
+# bump by hand is deliberate: a version someone must remember to edit is a
+# version that eventually lies, and a version that lies is worse than none. An
+# agent installed from a checkout honestly reports "unknown".
+agent_version() {
+  local v=""
+  v="$(cat "${LIB_DIR}/agent.version" 2>/dev/null)" || v=""
+  v="$(printf '%s' "$v" | tr -cd '0-9A-Za-z.+-' | head -c 32)"
+  [ -n "$v" ] || v="unknown"
+  printf '%s' "$v"
+}
+
 write_caps() {
   [ -d "$CONTROL_DIR" ] || return 0
   printf '%s' "$AGENT_CAPS" >"${CONTROL_DIR}/agent.caps" 2>/dev/null || true
+  printf '%s' "$(agent_version)" >"${CONTROL_DIR}/agent.version" 2>/dev/null || true
 }
 
 # ── Posture remediations ─────────────────────────────────────────────────────
@@ -815,21 +879,26 @@ reconcile_mcpsurface() {
   # only inside a server block whose server_name starts with mcp. — awk tracks
   # both so a `location /` belonging to the apex vhost in the same file is left
   # alone. That containment is the whole reason this is not a sed one-liner.
-  awk '
-    /^[[:space:]]*server[[:space:]]*\{/ { inserver=1; ismcp=0 }
-    inserver && /^[[:space:]]*server_name[[:space:]]+mcp\./ { ismcp=1 }
-    ismcp && /^[[:space:]]*location[[:space:]]+\/[[:space:]]*\{/ {
-      print "    location / { return 404; }  # narrowed by vayushield-agent"
-      if ($0 ~ /\}[[:space:]]*$/) { next }
-      depth=1
-      while (depth > 0 && (getline line) > 0) {
-        n=gsub(/\{/,"{",line); m=gsub(/\}/,"}",line); depth += n - m
-      }
-      next
-    }
-    /^[[:space:]]*\}/ && inserver && !depth { inserver=0; ismcp=0 }
-    { print }
-  ' "$bak" >"$found" 2>/dev/null || cp -f "$bak" "$found" 2>/dev/null
+  #
+  # It narrows a catch-all that PROXIES, and nothing else. The first version
+  # rewrote every catch-all it found on the host, which was wrong twice over:
+  #
+  #   • The :443 block written by setup-mcp-subdomain.sh already ends in
+  #     `location / { return 404; }`. Rewriting a refusal into the same refusal
+  #     is noise, and it made "Applied" mean nothing.
+  #   • The :80 block redirects to HTTPS — `location / { return 301 … }`. That
+  #     is not a front door to the app, it is how a plain-HTTP client reaches
+  #     the secure one, and replacing it with `return 404` broke the redirect on
+  #     every install that pressed this button. (Certificate renewal survived it:
+  #     the ACME location carries `^~`, which nginx prefers over a plain `/`.)
+  #
+  # So the same rule the detector uses applies here — judge what the block DOES.
+  # A catch-all with no proxy_pass is passed through untouched.
+  #
+  # The 301 branch REPAIRS that damage, and is deliberately narrow: it fires only
+  # on a line carrying this agent's own marker comment, only when it refuses, and
+  # only inside a plain-:80 block. It restores nothing it did not itself write.
+  mcp_narrow_config <"$bak" >"$found" 2>/dev/null || cp -f "$bak" "$found" 2>/dev/null
   if nginx_try_reload "$found" "$bak"; then
     write_state mcpsurface active
     clear_reason mcpsurface
@@ -1056,6 +1125,20 @@ self_upgrade() {
   install -m 0755 "${tmp}/x/vayushield-firewall.sh" "${LIB_DIR}/vayushield-firewall.sh"
   install -m 0644 "${tmp}/x/nginx-vayushield.conf"  "${LIB_DIR}/nginx-vayushield.conf"
   install -m 0644 "${tmp}/x/vayushield-agent.service" /etc/systemd/system/vayushield-agent.service
+  # Optional by design: absent from bundles older than the release that added
+  # them, and a missing extra must never fail an upgrade that is otherwise fine.
+  #
+  # The rescue units were being DROPPED here. install_agent laid them down, this
+  # path did not, so every helper that reached its current version by pressing
+  # "Upgrade the helper" — the path the panel steers everyone to — ended up
+  # without the watcher that repairs a broken agent. That is the deadlock the
+  # rescue path exists to break, quietly absent on exactly the installs most
+  # likely to need it.
+  [ -f "${tmp}/x/agent.version" ] && install -m 0644 "${tmp}/x/agent.version" "${LIB_DIR}/agent.version"
+  for f in vayushield-rescue.path vayushield-rescue.service; do
+    [ -f "${tmp}/x/${f}" ] && install -m 0644 "${tmp}/x/${f}" "/etc/systemd/system/${f}"
+  done
+  systemctl enable --now vayushield-rescue.path >/dev/null 2>&1 || true
   # The running script is replaced last. bash reads a script incrementally, so
   # overwriting it in place under a live interpreter can execute a spliced
   # half-old, half-new file; install(1) writes to a temp file and renames, which
@@ -1144,6 +1227,11 @@ install_agent() {
   # no verified way to obtain the tool that verifies it.
   if [ -f "${src}/cosign.pin" ]; then
     install -m 0644 "${src}/cosign.pin" "${LIB_DIR}/cosign.pin"
+  fi
+  # Stamped by the release workflow from the git tag; absent in a checkout, where
+  # the agent then reports its version as "unknown" rather than inventing one.
+  if [ -f "${src}/agent.version" ]; then
+    install -m 0644 "${src}/agent.version" "${LIB_DIR}/agent.version"
   fi
   install -m 0644 "${src}/vayushield-agent.service" /etc/systemd/system/vayushield-agent.service
   # The rescue path: a root-side watcher that can repair this agent WITHOUT this

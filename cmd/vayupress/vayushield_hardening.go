@@ -259,6 +259,36 @@ func shieldAgentSupportsSelfUpgrade() bool {
 	return strings.Contains(string(b), "selfupgrade=1")
 }
 
+// shieldAgentVersion reports the running helper's version, or "unknown".
+//
+// "unknown" is the honest answer for two different installs — a helper predating
+// the version stamp, and one installed from a checkout — and neither should be
+// dressed up as a number. The value is filtered to the characters a version can
+// contain and truncated, because it is read from a file on disk and rendered
+// into the panel; it is escaped at the call site as well.
+func shieldAgentVersion() string {
+	b, err := os.ReadFile(filepath.Join(shieldControlDir(), "agent.version"))
+	if err != nil {
+		return "unknown"
+	}
+	v := strings.Map(func(r rune) rune {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+			return r
+		case r == '.' || r == '-' || r == '+':
+			return r
+		}
+		return -1
+	}, string(b))
+	if len(v) > 32 {
+		v = v[:32]
+	}
+	if v == "" {
+		return "unknown"
+	}
+	return v
+}
+
 // shieldAgentUpgradeRow renders the button and whatever the agent last said.
 //
 // The state is reported in the agent's own words rather than as a spinner that
@@ -288,6 +318,20 @@ func shieldAgentUpgradeRow() string {
 		`from the release itself and verifies the signature before installing. This panel only records ` +
 		`that you asked &mdash; it never supplies the code, which is what keeps an unprivileged web app ` +
 		`from being able to choose what a root process runs.</span>`)
+
+	// Which helper is actually running. Without this the upgrade button could not
+	// be checked: an operator pressed it, the posture report did not change, and
+	// nothing anywhere distinguished "the helper upgraded and the finding is
+	// real" from "the upgrade silently did not happen". The capability string
+	// cannot settle it — it is identical across releases that change behaviour.
+	//
+	// Shown beside the app's own version on purpose. The two upgrade separately,
+	// so a helper older than the binary is the normal state after an app update
+	// and is exactly what an operator needs to see.
+	b.WriteString(`<p class="text-xs muted">Helper <strong>` + html.EscapeString(shieldAgentVersion()) +
+		`</strong> &middot; this app <strong>` + html.EscapeString(Version) + `</strong>. ` +
+		`They upgrade separately &mdash; server-level fixes ship in the helper, so a helper older than ` +
+		`the app has not picked them up yet.</p>`)
 
 	// Closed after the status, for the same reason as shieldFixRow: a verdict
 	// rendered outside its own card belongs, visually, to whatever follows it.

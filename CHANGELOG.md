@@ -8,6 +8,79 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.30] — 2026-07-30
+
+### Fixed
+- **"Restrict the MCP host" broke the HTTP-to-HTTPS redirect on a host that
+  needed no fixing.** The vhost written by `setup-mcp-subdomain.sh` has three
+  server blocks, and none of them ever proxied `/`:
+
+  | Block | catch-all |
+  | --- | --- |
+  | `:80` | `return 301 https://$host$request_uri` |
+  | `:80` (phase B) | `return 301 https://$host$request_uri` |
+  | `:443` | `return 404` — narrowed at creation |
+
+  The remediation rewrote **every** catch-all on the host to `return 404`
+  unconditionally. On the `:443` block that replaced a refusal with the same
+  refusal, which is why pressing the button reported "Applied" while changing
+  nothing meaningful. On the two `:80` blocks it replaced the redirect, so
+  `http://mcp.<domain>/` began answering 404 instead of sending the client to
+  HTTPS. Certificate renewal was not affected — the ACME location carries `^~`,
+  which nginx prefers over a plain `/` prefix.
+
+  The remediation now applies the same rule as the detector: it narrows a
+  catch-all that contains a `proxy_pass` and passes everything else through
+  untouched. v3.16.29 fixed one half of that; this fixes the other.
+
+- **The damage repairs itself.** Pressing the button again restores a `:80`
+  catch-all to `return 301 https://$host$request_uri` — but only on a line
+  carrying the agent's own marker comment, only where it currently refuses, and
+  only inside a plain `:80` block. An operator's own `return 404` is left alone.
+
+- **The self-upgrade path was dropping the rescue units.** `install_agent`
+  installed `vayushield-rescue.path`/`.service`; `self_upgrade` did not, though
+  both ship in the same signed bundle. Every helper that reached its version
+  through *Upgrade the helper* — the path the panel steers everyone to, and the
+  only one needing no terminal — therefore lacked the root-side watcher that
+  repairs a broken agent. The deadlock that watcher exists to break was unbroken
+  on precisely the installs most likely to meet it.
+
+### Added
+- **The panel shows which helper is running**, beside the app's own version:
+  `Helper 3.16.30 · this app 3.16.30`. The two upgrade independently, so a
+  helper older than the binary is normal after an app update — and it is the
+  reason a server-level fix has not landed yet.
+
+  This was not cosmetic. An operator pressed *Upgrade the helper*, the posture
+  report did not change, and nothing on the install distinguished "the helper
+  upgraded and the finding is real" from "the upgrade silently did not happen".
+  `agent.caps` cannot settle it: the capability string is byte-identical across
+  releases that change behaviour. An upgrade whose effect cannot be observed is
+  the same defect as a control that does nothing.
+
+  The version is stamped into the signed bundle by the release workflow from the
+  git tag, never typed into the script — a version somebody must remember to
+  bump is one that eventually lies, and a version that lies is worse than none.
+  A helper installed from a checkout honestly reports `unknown`.
+
+### Changed
+- The MCP detector and the MCP remediation are now named functions
+  (`mcp_catchall_is_open`, `mcp_narrow_config`) sitting next to each other, and
+  the tests run those functions against their fixtures rather than a restated
+  copy. The two disagreeing about what "restricted" means, and about where a
+  server block ends, produced every symptom in this release and the last one.
+
+### Upgrade Notes
+- Both fixes live in the **root agent**, so they arrive with *Upgrade the helper*
+  on `/os/vayushield`, not with the binary. After upgrading, the version on that
+  card should read `3.16.30`; if it does not, the upgrade did not happen and the
+  card now says so instead of leaving it to be guessed.
+- If you pressed *Restrict the MCP host* on an earlier version, check
+  `http://mcp.<your-domain>/` — it should answer a redirect, not 404. Pressing
+  the button once more on this version repairs it.
+- Shipped on its own under the live-breakage exception in the release rules.
+
 ## [3.16.29] — 2026-07-30
 
 ### Fixed

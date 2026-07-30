@@ -250,6 +250,83 @@ cat > "$D/mcp_indented_open.txt" <<'MCPD'
 MCPD
 [ "$(mcp_verdict "$D/mcp_indented_open.txt")" = "no" ] || { echo "FAIL an open MCP host went unreported once the block boundaries were tightened"; exit 1; }
 
+# ── The remediation must apply the SAME rule as the detector ──────────────────
+#
+# It did not. It rewrote every catch-all on the MCP host to "return 404", so
+# pressing "Restrict the MCP host" on a vhost written by setup-mcp-subdomain.sh
+# replaced the :80 block's "return 301 https://..." with a refusal and broke the
+# HTTP-to-HTTPS redirect — on a host whose :443 block ships narrowed already, so
+# there was nothing to fix in the first place.
+sed -n '/^mcp_narrow_config() {/,/^}/p' "$AGENT" > "$D/n.sh"
+[ -s "$D/n.sh" ] || { echo "FAIL mcp_narrow_config not found in the agent script"; exit 1; }
+narrow() { bash -c 'source "'"$D"'/n.sh"; mcp_narrow_config' < "$1"; }
+
+# Verbatim shape of scripts/setup-mcp-subdomain.sh: :80 redirects, :443 refuses.
+cat > "$D/tpl.conf" <<'TPL'
+server {
+    listen 80; listen [::]:80;
+    server_name mcp.johal.in;
+    location ^~ /.well-known/acme-challenge/ { root /var/cache; default_type text/plain; try_files $uri =404; }
+    location / { return 301 https://$host$request_uri; }
+}
+server {
+    listen 443 ssl http2; listen [::]:443 ssl http2;
+    server_name mcp.johal.in;
+    location ^~ /mcp   { proxy_pass http://127.0.0.1:8080; }
+    location = /health { proxy_pass http://127.0.0.1:8080; access_log off; }
+    location / { return 404; }
+}
+server {
+    listen 443 ssl http2;
+    server_name johal.in;
+    location / { proxy_pass http://127.0.0.1:8080; }
+}
+TPL
+narrow "$D/tpl.conf" > "$D/tpl.out"
+if ! diff -q "$D/tpl.conf" "$D/tpl.out" >/dev/null; then
+  echo "FAIL the remediation edited a host that was already correct:"; diff "$D/tpl.conf" "$D/tpl.out"; exit 1
+fi
+
+# A genuinely open MCP host still gets narrowed — and ONLY its catch-all.
+cat > "$D/open.conf" <<'OPN'
+server {
+    listen 443 ssl http2;
+    server_name mcp.johal.in;
+    location ^~ /mcp { proxy_pass http://127.0.0.1:8080; }
+    location / { proxy_pass http://127.0.0.1:8080; }
+}
+server {
+    listen 443 ssl http2;
+    server_name johal.in;
+    location / { proxy_pass http://127.0.0.1:8080; }
+}
+OPN
+narrow "$D/open.conf" > "$D/open.out"
+grep -q 'location / { return 404; }' "$D/open.out" || { echo "FAIL a proxying MCP catch-all was not narrowed"; exit 1; }
+# The apex must survive untouched: narrowing the whole site to 404 would take the
+# install off the internet, which is a worse outcome than the finding.
+n=$(grep -c 'location / { proxy_pass' "$D/open.out")
+[ "$n" = "1" ] || { echo "FAIL the apex catch-all was rewritten too ($n proxying catch-alls left, want 1)"; exit 1; }
+
+# Repair: an install that already pressed the button gets its :80 redirect back.
+sed 's|location / { return 301 https://$host$request_uri; }|location / { return 404; }  # narrowed by vayushield-agent|' \
+    "$D/tpl.conf" > "$D/dmg.conf"
+grep -q 'return 301' "$D/dmg.conf" && { echo "FAIL the damage fixture did not reproduce the damage"; exit 1; }
+narrow "$D/dmg.conf" > "$D/dmg.out"
+grep -q 'location / { return 301 https://\$host\$request_uri; }' "$D/dmg.out" || {
+  echo "FAIL the clobbered :80 redirect was not restored"; sed -n '1,8p' "$D/dmg.out"; exit 1; }
+# ...and the :443 refusal must NOT be turned into a redirect by the repair.
+grep -q 'location / { return 404; }' "$D/dmg.out" || { echo "FAIL the :443 refusal was lost during repair"; exit 1; }
+
+# The repair only touches lines this agent wrote. An operator who deliberately
+# returns 404 on their own :80 block keeps it.
+sed 's|location / { return 301 https://$host$request_uri; }|location / { return 404; }|' \
+    "$D/tpl.conf" > "$D/own.conf"
+narrow "$D/own.conf" > "$D/own.out"
+if ! diff -q "$D/own.conf" "$D/own.out" >/dev/null; then
+  echo "FAIL the repair rewrote an operator's own :80 refusal, which carries no agent marker"; exit 1
+fi
+
 echo OK
 `
 
@@ -306,6 +383,46 @@ func TestRemediationsRefreshTheDigestImmediately(t *testing.T) {
 				"posture report keeps reporting the pre-fix state for up to a minute and the "+
 				"operator reads that as the fix having failed", fn)
 		}
+	}
+}
+
+// TestSelfUpgradeInstallsEverythingTheBundleCarries covers a gap that only
+// exists on the installs least able to notice it.
+//
+// install_agent laid down the rescue units; self_upgrade did not. So every
+// helper that reached its current version through "Upgrade the helper" — the
+// path the panel steers everyone to, and the only one that does not need a
+// terminal — ended up WITHOUT the root-side watcher that repairs a broken agent.
+// The deadlock that path exists to break was therefore unbroken on exactly the
+// installs most likely to hit it, and nothing anywhere said so.
+func TestSelfUpgradeInstallsEverythingTheBundleCarries(t *testing.T) {
+	src, err := os.ReadFile("../../deploy/vayushield-agent.sh")
+	if err != nil {
+		t.Skipf("agent script not readable here: %v", err)
+	}
+	body := agentFuncBody(string(src), "self_upgrade")
+	if body == "" {
+		t.Fatal("self_upgrade not found in the agent script")
+	}
+	for _, want := range []string{
+		"vayushield-rescue.path",
+		"vayushield-rescue.service",
+		"agent.version",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("self_upgrade never installs %s, so a helper upgraded from the panel "+
+				"silently lacks it while one installed by hand has it", want)
+		}
+	}
+	// The release workflow has to put the stamp in the bundle, or the agent reads
+	// "unknown" forever and the version row answers nothing.
+	wf, err := os.ReadFile("../../.github/workflows/tag-release.yml")
+	if err != nil {
+		t.Skipf("release workflow not readable here: %v", err)
+	}
+	if !strings.Contains(string(wf), "dist/agent/agent.version") {
+		t.Error("the release workflow does not stamp dist/agent/agent.version, so every " +
+			"helper reports its version as unknown and the upgrade button stays uncheckable")
 	}
 }
 

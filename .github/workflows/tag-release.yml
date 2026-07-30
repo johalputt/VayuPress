@@ -152,6 +152,15 @@ jobs:
           cp deploy/nginx-vayushield.conf    dist/agent/
           cp deploy/vayushield-rescue.path    dist/agent/
           cp deploy/vayushield-rescue.service dist/agent/
+          # Stamp the helper's version from the tag being built, so the panel can
+          # show which helper is running. It is derived here, never typed into
+          # the script: an operator who pressed "Upgrade the helper" previously
+          # had no way to tell whether it had upgraded, because AGENT_CAPS is
+          # identical across releases that change behaviour. A hand-edited
+          # version is one someone eventually forgets to bump, and a version
+          # that lies is worse than none.
+          printf '%s' "${{ steps.ver.outputs.version }}" | sed 's/^v//' > dist/agent/agent.version
+          echo "agent version stamp: $(cat dist/agent/agent.version)"
           # Pin cosign for the agent's bootstrap.
           #
           # The agent needs cosign to verify its next upgrade, and refusing to act
