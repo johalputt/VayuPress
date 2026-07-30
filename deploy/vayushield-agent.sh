@@ -541,11 +541,167 @@ write_digest() {
 # concludes the upgrade is slow, and eventually stops trusting the panel.
 #
 # Written on every start, so it also tracks correctly through a downgrade.
-AGENT_CAPS="selfupgrade=1 digest=1"
+AGENT_CAPS="selfupgrade=1 digest=1 defaulthost=1 mcpsurface=1"
 
 write_caps() {
   [ -d "$CONTROL_DIR" ] || return 0
   printf '%s' "$AGENT_CAPS" >"${CONTROL_DIR}/agent.caps" 2>/dev/null || true
+}
+
+# ── Posture remediations ─────────────────────────────────────────────────────
+#
+# Two rows of the posture report used to be reported and not fixable: an
+# operator was told what was wrong and then had to open a terminal, which is the
+# thing this agent exists to make unnecessary.
+#
+# Both follow the same contract as every other action here. The app supplies ONE
+# BIT — an empty flag file it owns as an unprivileged user. The agent decides
+# what that means and writes the config itself, from text compiled into this
+# root-owned script. Nothing the app can write becomes part of an nginx file.
+#
+# And both are reversible by construction: back up, apply, `nginx -t`, reload —
+# and on ANY failure restore the backup and reload again, so a rejected config
+# can never leave the edge down. The state file says which of those happened.
+
+DEFAULT_HOST_CONF="${VAYUSHIELD_DEFAULT_HOST_DST:-/etc/nginx/conf.d/vayushield-default-server.conf}"
+
+# nginx_try_reload validates and reloads, restoring $2 over $1 if either fails.
+# Returns 0 only when the new config is live.
+nginx_try_reload() { # $1=file just written, $2=backup path or "" if newly created
+  if nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1; then
+    return 0
+  fi
+  if [ -n "$2" ] && [ -f "$2" ]; then
+    cp -f "$2" "$1" 2>/dev/null || true
+  else
+    rm -f "$1" 2>/dev/null || true
+  fi
+  nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+  return 1
+}
+
+# reconcile_defaulthost installs a catch-all 443 server so a request carrying a
+# Host this install does not serve is refused, instead of being handed to
+# whichever vhost happens to be listed first.
+#
+# 444 (nginx's "close without a response") rather than a redirect or an error
+# page: an unknown Host is either a direct-to-IP scan or a misconfiguration, and
+# neither deserves a reply that confirms something is listening.
+reconcile_defaulthost() {
+  [ -f "${CONTROL_DIR}/defaulthost.want" ] || return 0
+  command -v nginx >/dev/null 2>&1 || {
+    write_state defaulthost error
+    printf '%s' "nginx is not installed on this host" >"${CONTROL_DIR}/defaulthost.reason" 2>/dev/null || true
+    rm -f "${CONTROL_DIR}/defaulthost.want" 2>/dev/null || true
+    return 0
+  }
+  # Already satisfied — by us or by the operator's own config. Either way there
+  # is nothing to do, and adding a second default_server would be a hard error.
+  if nginx -T 2>/dev/null | grep -Eq 'listen[^;]*443[^;]*default_server'; then
+    write_state defaulthost active
+    clear_reason defaulthost
+    rm -f "${CONTROL_DIR}/defaulthost.want" 2>/dev/null || true
+    return 0
+  fi
+  write_state defaulthost applying
+  local bak=""
+  if [ -f "$DEFAULT_HOST_CONF" ]; then
+    bak="${DEFAULT_HOST_CONF}.vayushield.bak"
+    cp -f "$DEFAULT_HOST_CONF" "$bak" 2>/dev/null || true
+  fi
+  # The v6 listener is emitted only on a host that has IPv6. On a v4-only box
+  # `listen [::]:443` makes nginx -t fail outright with EAFNOSUPPORT, so writing
+  # it unconditionally would turn this button into a guaranteed rollback and an
+  # error the operator cannot act on. Where IPv6 exists it is required, not
+  # optional: a default_server bound only to v4 leaves an unknown-Host request
+  # over v6 landing on the first vhost, which is the whole problem.
+  local v6=""
+  if [ -f /proc/net/if_inet6 ]; then
+    v6="    listen [::]:443 ssl default_server;"
+  fi
+  cat >"$DEFAULT_HOST_CONF" <<NGINX_DEFAULT_HOST
+# Written by vayushield-agent. A request whose Host header names no vhost this
+# install serves lands here and is closed without a response (444). Without it,
+# nginx hands such a request to the first server block that happens to match,
+# which is rarely the one intended and leaks whichever site that is to a scan.
+server {
+    listen 443 ssl default_server;
+${v6}
+    server_name _;
+    ssl_reject_handshake on;
+    return 444;
+}
+NGINX_DEFAULT_HOST
+  if nginx_try_reload "$DEFAULT_HOST_CONF" "$bak"; then
+    write_state defaulthost active
+    clear_reason defaulthost
+  else
+    write_state defaulthost error
+    printf '%s' "nginx rejected the catch-all server; the previous config was restored" \
+      >"${CONTROL_DIR}/defaulthost.reason" 2>/dev/null || true
+  fi
+  rm -f "${CONTROL_DIR}/defaulthost.want" 2>/dev/null || true
+}
+
+# reconcile_mcpsurface narrows the dedicated MCP host to the endpoints it needs.
+#
+# A bare `location /` in that server block is a second front door to the whole
+# application on a hostname whose entire purpose is to expose one endpoint. The
+# fix rewrites that block to `return 404` rather than deleting it, because a
+# server block with no `location /` still falls through to nginx's default
+# handling — being explicit is what makes the posture row verifiable.
+reconcile_mcpsurface() {
+  [ -f "${CONTROL_DIR}/mcpsurface.want" ] || return 0
+  command -v nginx >/dev/null 2>&1 || {
+    write_state mcpsurface error
+    printf '%s' "nginx is not installed on this host" >"${CONTROL_DIR}/mcpsurface.reason" 2>/dev/null || true
+    rm -f "${CONTROL_DIR}/mcpsurface.want" 2>/dev/null || true
+    return 0
+  }
+  # Locate the file that declares the MCP vhost. -l on the real config tree, not
+  # nginx -T, because -T prints the merged config and gives no path to edit.
+  local f found=""
+  for f in /etc/nginx/conf.d/*.conf /etc/nginx/sites-enabled/*; do
+    [ -f "$f" ] || continue
+    if grep -Eq '^[[:space:]]*server_name[[:space:]]+mcp\.' "$f"; then found="$f"; break; fi
+  done
+  if [ -z "$found" ]; then
+    write_state mcpsurface error
+    printf '%s' "no MCP vhost found; nothing to narrow" >"${CONTROL_DIR}/mcpsurface.reason" 2>/dev/null || true
+    rm -f "${CONTROL_DIR}/mcpsurface.want" 2>/dev/null || true
+    return 0
+  fi
+  write_state mcpsurface applying
+  local bak="${found}.vayushield.bak"
+  cp -f "$found" "$bak" 2>/dev/null || true
+  # Rewrite only a bare `location / { ... }` on ONE line or spanning lines, and
+  # only inside a server block whose server_name starts with mcp. — awk tracks
+  # both so a `location /` belonging to the apex vhost in the same file is left
+  # alone. That containment is the whole reason this is not a sed one-liner.
+  awk '
+    /^[[:space:]]*server[[:space:]]*\{/ { inserver=1; ismcp=0 }
+    inserver && /^[[:space:]]*server_name[[:space:]]+mcp\./ { ismcp=1 }
+    ismcp && /^[[:space:]]*location[[:space:]]+\/[[:space:]]*\{/ {
+      print "    location / { return 404; }  # narrowed by vayushield-agent"
+      if ($0 ~ /\}[[:space:]]*$/) { next }
+      depth=1
+      while (depth > 0 && (getline line) > 0) {
+        n=gsub(/\{/,"{",line); m=gsub(/\}/,"}",line); depth += n - m
+      }
+      next
+    }
+    /^[[:space:]]*\}/ && inserver && !depth { inserver=0; ismcp=0 }
+    { print }
+  ' "$bak" >"$found" 2>/dev/null || cp -f "$bak" "$found" 2>/dev/null
+  if nginx_try_reload "$found" "$bak"; then
+    write_state mcpsurface active
+    clear_reason mcpsurface
+  else
+    write_state mcpsurface error
+    printf '%s' "nginx rejected the narrowed MCP vhost; the previous config was restored" \
+      >"${CONTROL_DIR}/mcpsurface.reason" 2>/dev/null || true
+  fi
+  rm -f "${CONTROL_DIR}/mcpsurface.want" 2>/dev/null || true
 }
 
 # ── Self-upgrade ─────────────────────────────────────────────────────────────
@@ -719,6 +875,8 @@ run_agent() {
       reconcile_cdnallow
       reconcile_tier2
       reconcile_tier3
+      reconcile_defaulthost
+      reconcile_mcpsurface
       reconcile_banlist
       # The digest shells out to nft and nginx -T, which is far too expensive for
       # a 5-second poll. Refresh it about once a minute and on the first tick, so

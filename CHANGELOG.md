@@ -8,6 +8,52 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.21] — 2026-07-30
+
+### Added
+- **The last two posture findings that ended in "open a terminal" are now
+  buttons.** The report named them and then handed the operator back to the
+  command line, which is a defect of the same kind as a wrong number: a finding a
+  product reports but cannot act on has been delegated to the person who came
+  here to avoid exactly that.
+
+  - **Unknown-Host requests** — installs a catch-all `443` server so a request
+    naming a hostname this install does not serve is closed without a response,
+    instead of being handed to whichever vhost happens to be listed first.
+  - **MCP host surface** — rewrites the catch-all location on the dedicated MCP
+    host to `return 404`, leaving only the MCP, OAuth and health endpoints. Other
+    vhosts are not touched; the transformation is contained to the server block
+    whose `server_name` starts with `mcp.`, which is why it is an awk pass over
+    the server blocks rather than a substitution over the file.
+
+  Both follow the tier toggles exactly: the panel writes **one bit** — an empty
+  file it owns as an unprivileged user — and the root agent decides what that
+  means and writes the config from text compiled into the root-owned script.
+  Nothing typed or derived in the web app reaches an nginx file, because an
+  unprivileged process able to choose what a root process writes is the
+  escalation ADR-0123 exists to prevent.
+
+  Both are reversible by construction: back up, apply, `nginx -t`, reload — and
+  on any failure restore the backup and reload again, so a rejected config can
+  never leave the edge down. The row reports which of those happened, in the
+  agent's words.
+
+  Two details that came out of testing rather than design:
+
+  - The IPv6 listener on the catch-all is emitted **only on hosts that have
+    IPv6**. On a v4-only box `listen [::]:443` fails `nginx -t` outright, so
+    writing it unconditionally would have made the button a guaranteed rollback
+    with an error the operator could not act on. Where IPv6 exists it is
+    required, not optional — a default server bound only to v4 leaves the
+    unknown-Host request over v6 landing exactly where it started.
+  - A helper that predates these fixes gets **no button**, only an explanation.
+    An older agent never reads a flag it does not know about, so the button would
+    have been a control that silently did nothing, which costs more than its
+    absence.
+
+  Both remediations were validated against real nginx, including the transformed
+  MCP vhost and the v4-only catch-all.
+
 ## [3.16.20] — 2026-07-30
 
 ### Fixed

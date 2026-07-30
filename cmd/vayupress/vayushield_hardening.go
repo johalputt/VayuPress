@@ -274,6 +274,154 @@ func shieldAgentUpgradeRow() string {
 	return b.String()
 }
 
+// ── Posture remediations ─────────────────────────────────────────────────────
+//
+// Two posture rows told an operator what was wrong and then left them to fix it
+// in a terminal. That is a defect of the same kind as a wrong number: the panel
+// is the product, and a finding it cannot act on is a finding it has delegated
+// back to the person who came here to avoid the command line.
+//
+// Both follow the tier toggles exactly. The panel writes ONE BIT — an empty
+// file it owns as an unprivileged user — and the root agent decides what that
+// means and writes the config itself. Nothing typed or derived here reaches an
+// nginx file.
+
+// shieldFix describes one remediation the agent can perform.
+// Every filename is spelled out rather than derived. Deriving the state file
+// from the flag ("defaulthost.want" minus ".want", plus ".state") would still be
+// a path built by concatenation, and the reason that shape keeps getting flagged
+// is that it is safe only for as long as its input stays constant — which is a
+// property of today's callers, not of the code.
+type shieldFix struct {
+	Flag    string // intent file the panel creates
+	State   string // status file the agent writes
+	Reason  string // failure detail the agent writes
+	Cap     string // capability token the agent must advertise
+	Title   string
+	Button  string
+	Explain string
+}
+
+// shieldFixes is keyed by the value the form sends. As with shieldCDNAllowFlags,
+// the caller's string is only ever a lookup KEY: the filename that reaches a
+// path is a constant from this table. Building it by concatenation would be safe
+// only for as long as the validation stayed exactly where it is, and code
+// scanning was right to flag that shape once already.
+var shieldFixes = map[string]shieldFix{
+	"defaulthost": {
+		Flag:   "defaulthost.want",
+		State:  "defaulthost.state",
+		Reason: "defaulthost.reason",
+		Cap:    "defaulthost=1",
+		Title:  "Unknown-Host requests",
+		Button: "Add the catch-all server",
+		Explain: "Installs a default server for 443 so a request naming a hostname this install does " +
+			"not serve is closed without a response, instead of being handed to whichever vhost is " +
+			"listed first. The helper validates the config and reloads; if nginx refuses it, the " +
+			"previous config is restored and this row says so.",
+	},
+	"mcpsurface": {
+		Flag:   "mcpsurface.want",
+		State:  "mcpsurface.state",
+		Reason: "mcpsurface.reason",
+		Cap:    "mcpsurface=1",
+		Title:  "MCP host surface",
+		Button: "Narrow the MCP host",
+		Explain: "Rewrites the catch-all location on the dedicated MCP host to return 404, leaving only " +
+			"the MCP, OAuth and health endpoints. Your other vhosts are not touched. The helper backs " +
+			"the file up first and restores it if nginx refuses the result.",
+	},
+}
+
+// shieldAgentSupportsFix reports whether the running helper advertises the
+// capability a fix needs. An older agent gets no button rather than a button
+// that writes a flag nothing will ever read.
+func shieldAgentSupportsFix(cap string) bool {
+	b, err := os.ReadFile(filepath.Join(shieldControlDir(), "agent.caps"))
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(b), cap)
+}
+
+// shieldControlRead reads one control file. The name is always a constant from
+// shieldFixes, never a value that arrived in a request.
+func shieldControlRead(name string) string {
+	b, err := os.ReadFile(filepath.Join(shieldControlDir(), name))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// handleOSShieldFix records the operator's request for one remediation.
+func (a *App) handleOSShieldFix(w http.ResponseWriter, r *http.Request) {
+	fix, ok := shieldFixes[strings.TrimSpace(r.PostFormValue("fix"))]
+	if !ok {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "unknown fix", "")
+		return
+	}
+	if !shieldAgentSupportsFix(fix.Cap) {
+		writeAPIError(w, r, http.StatusConflict, "agent-too-old",
+			"The running helper cannot perform this yet. Upgrade the helper above, then try again.", "")
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(shieldControlDir(), fix.Flag), os.O_CREATE|os.O_WRONLY, 0o640)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "control-error",
+			"Could not record the request: "+err.Error(), "")
+		return
+	}
+	_ = f.Close()
+	writeOSFragment(w, a.shieldHardeningBody(r))
+}
+
+// shieldFixRow renders one remediation: the button when it can work, and
+// whatever the agent last said about it.
+func shieldFixRow(key string) string {
+	fix, ok := shieldFixes[key]
+	if !ok {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(`<div class="vs-adv"><strong class="text-sm">` + html.EscapeString(fix.Title) + `</strong> `)
+	if !shieldAgentSupportsFix(fix.Cap) {
+		b.WriteString(`<span class="muted text-xs">Your running helper predates this fix. ` +
+			`Upgrade the helper above and it appears here.</span></div>`)
+		return b.String()
+	}
+	b.WriteString(`<button type="button" class="btn btn--ghost btn--sm"` +
+		` hx-post="/os/api/shield/fix" hx-vals='{"fix":"` + html.EscapeString(key) + `"}'` +
+		` hx-target="#vs-body-hardening" hx-swap="innerHTML">` + html.EscapeString(fix.Button) + `</button> ` +
+		`<span class="muted text-xs">` + fix.Explain + `</span></div>`)
+
+	state := shieldControlRead(fix.State)
+	if state == "" {
+		return b.String()
+	}
+	label := map[string]string{
+		"applying": "▲ Applying",
+		"active":   "● Applied",
+		"error":    "✕ Could not apply",
+	}[state]
+	if label == "" {
+		label = "○ " + html.EscapeString(state)
+	}
+	cls := "is-work"
+	switch state {
+	case "active":
+		cls = "is-on"
+	case "error":
+		cls = "is-err"
+	}
+	b.WriteString(`<p class="text-sm"><span class="vs-hard-state ` + cls + `">` + label + `</span>`)
+	if reason := shieldControlRead(fix.Reason); reason != "" {
+		b.WriteString(` <span class="muted">` + html.EscapeString(reason) + `</span>`)
+	}
+	b.WriteString(`</p>`)
+	return b.String()
+}
+
 // shieldCDNAllowFlags maps a proxy vendor to the EXACT flag filename the root
 // agent looks for. The value is a constant; a caller-supplied name is only ever
 // used as a lookup KEY and never becomes part of a path.
@@ -468,6 +616,12 @@ func (a *App) shieldHardeningBody(r *http.Request) string {
 		b.WriteString(shieldTierRow(2, "🛡️ Tier 2 · Kernel firewall (nftables)", "Per-IP connection/packet rate limits + SYN-flood cookies, enforced in the Linux kernel. Turning this on also activates the L1 live offload below."))
 		b.WriteString(shieldTierRow(3, "🌐 Tier 3 · Edge shaping (nginx)", "Per-IP request/connection shaping + slow-loris timeouts at the reverse proxy."))
 		b.WriteString(a.shieldOffloadRow())
+		// The two posture rows an operator could previously only fix by hand. They
+		// sit here rather than on the posture report because this is where every
+		// other privileged action already lives, and one place to press a button is
+		// worth more than each finding carrying its own.
+		b.WriteString(shieldFixRow("defaulthost"))
+		b.WriteString(shieldFixRow("mcpsurface"))
 		b.WriteString(a.shieldCDNAdvisory(r))
 		b.WriteString(`<p class="muted text-xs">Both tiers are fully reversible from here.</p>`)
 	} else {
