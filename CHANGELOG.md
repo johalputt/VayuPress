@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+- **The helper could be unable to verify anything because it had nowhere to
+  write.** The agent unit sets `ProtectHome=yes` and runs as root, so `HOME` is
+  `/root` and `/root` is masked — while cosign caches the Sigstore TUF trust root
+  under `$HOME/.sigstore` during keyless verification. With nowhere to write it,
+  cosign fails in a way that reads like a network fault, and the agent's own
+  classifier would then tell an operator "could not reach the signature
+  infrastructure" when their egress was perfectly fine.
+
+  A writable `HOME` and `TUF_ROOT` are now set in the unit **and** defensively in
+  the script itself, so an agent running under an older unit file is still
+  correct rather than depending on which version happens to be installed.
+
 ## [3.16.22] — 2026-07-30
 
 Ships on its own: the controls added in 3.16.21 an hour ago were in the page and

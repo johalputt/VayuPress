@@ -761,6 +761,18 @@ self_upgrade() {
     return 1
   fi
 
+  # Give cosign somewhere to write before it needs it. The unit sets these too,
+  # but an agent running under an older unit file inherits HOME=/root while
+  # ProtectHome=yes masks it — and cosign, unable to cache the Sigstore TUF trust
+  # root, then fails with an error that reads like a network fault. Setting it
+  # here means the script is correct on its own, without depending on which
+  # version of the unit happens to be installed.
+  if [ -z "${TUF_ROOT:-}" ] || [ ! -w "${HOME:-/root}" ]; then
+    export HOME="/var/lib/vayushield"
+    export TUF_ROOT="/var/lib/vayushield/tuf"
+  fi
+  mkdir -p "$HOME" "$TUF_ROOT" 2>/dev/null || true
+
   local tmp
   tmp="$(mktemp -d)" || { upgrade_status "error" "Could not create a working directory."; return 1; }
   # shellcheck disable=SC2064

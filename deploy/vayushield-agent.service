@@ -26,6 +26,13 @@ RestartSec=5
 User=root
 Environment=VAYUSHIELD_CONTROL_DIR=/var/lib/vayupress/vayushield-control
 Environment=VAYUSHIELD_LIB_DIR=/usr/local/lib/vayushield
+# A writable HOME, because ProtectHome below masks /root and cosign caches the
+# Sigstore TUF trust root under $HOME/.sigstore during keyless verification. With
+# nowhere to write it, cosign fails in a way that reads like a network fault —
+# and the agent would then report "could not reach the signature infrastructure"
+# to an operator whose egress is perfectly fine.
+Environment=HOME=/var/lib/vayushield
+Environment=TUF_ROOT=/var/lib/vayushield/tuf
 # Minimal, non-blocking hardening (must retain the ability to run nft + reload).
 NoNewPrivileges=no
 ProtectHome=yes
