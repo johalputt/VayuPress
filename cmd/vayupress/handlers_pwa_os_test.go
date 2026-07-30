@@ -109,10 +109,21 @@ func TestOSServiceWorker(t *testing.T) {
 	if !strings.Contains(body, "caches.keys()") || strings.Contains(body, "caches.open(") {
 		t.Error("service worker must stay zero-cache (purge caches, never open one)")
 	}
-	// Navigations must be fetched with redirect:'manual' so a server redirect (the
-	// Clearnet↔Tor world switch, logout, login) is not turned into a `redirected`
-	// response the browser refuses to use for a navigation.
-	if !strings.Contains(body, "redirect: 'manual'") {
-		t.Error("navigation fetch must use redirect:'manual' or server redirects break in the installed PWA")
+	// The worker must not proxy navigations at all. This assertion used to demand
+	// the opposite — redirect:'manual' — which was the fix for one symptom (a
+	// followed redirect comes back `redirected`, and the browser refuses it for a
+	// navigation) and the cause of a worse one: an opaqueredirect has to be
+	// resolved by the browser, which re-enters the fetch handler, which proxies
+	// again. The console signs in by redirect, so an installed app looped until it
+	// hit the redirect ceiling. Neither proxy variant is correct; not proxying is.
+	//
+	// TestOSServiceWorkerDoesNotProxyOnlineNavigations executes the worker and
+	// asserts the behaviour. This is the cheap source-level backstop for the two
+	// spellings that reintroduce the bug.
+	if strings.Contains(body, "redirect: 'manual'") || strings.Contains(body, "redirect:'manual'") {
+		t.Error("the worker must not proxy navigations: redirect:'manual' yields an opaqueredirect that re-enters this handler and loops the sign-in chain")
+	}
+	if !strings.Contains(body, "navigator.onLine") {
+		t.Error("the worker must hand online navigations back to the browser, intercepting only when navigator.onLine is false")
 	}
 }

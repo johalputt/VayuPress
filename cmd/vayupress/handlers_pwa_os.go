@@ -131,20 +131,43 @@ self.addEventListener('notificationclick', function (e) {
 
 self.addEventListener('fetch', function (e) {
   var req = e.request;
-  if (req.method !== 'GET') return;
-  // Only handle page navigations — always from the network, with a small built-in
-  // offline notice as the ONLY fallback. Every other request (CSS/JS/API/images)
-  // is left to the browser, which honours the server's cache headers (the console
-  // HTML is no-store and static assets are content-hash-versioned).
-  if (req.mode === 'navigate') {
-    // redirect:'manual' is essential: a server redirect (the Clearnet↔Tor world
-    // switch, logout, login) then comes back as an opaqueredirect the browser
-    // follows itself. A plain fetch(req) follows the redirect and returns a
-    // "redirected" response, which the browser REFUSES to let a service worker use
-    // for a navigation — that silently broke the world toggle in the installed
-    // app. A normal 200 still renders; only a real network failure hits the
-    // offline notice. Still zero-cache, still always live.
-    e.respondWith(fetch(req, { redirect: 'manual' }).catch(function () {
+  if (req.method !== 'GET' || req.mode !== 'navigate') return;
+  // Do NOT proxy a navigation the browser can perform itself.
+  //
+  // This handler used to fetch every navigation on the page's behalf. Two
+  // variants were tried and both broke the console, for the same underlying
+  // reason: a worker is a bad place to stand between a browser and a redirect.
+  //
+  //   fetch(req)                        -> a followed redirect comes back with
+  //                                        .redirected = true, and the browser
+  //                                        REFUSES that response for a
+  //                                        navigation. The world toggle died.
+  //   fetch with redirect set to manual -> comes back as an opaqueredirect:
+  //                                        status 0, Location not readable. The
+  //                                        browser has to resolve it, which
+  //                                        re-enters this handler, which proxies
+  //                                        again. The console's whole sign-in
+  //                                        path is redirects (/os/ -> /os/login
+  //                                        -> /os), so an installed app walked
+  //                                        that ladder until it hit the redirect
+  //                                        ceiling: ERR_TOO_MANY_REDIRECTS on
+  //                                        every launch, clearing site data the
+  //                                        only escape. A browser tab was fine,
+  //                                        because a tab has no worker.
+  //
+  // Native navigation handles redirects, cookies and auth correctly and needs no
+  // help. So the online path returns without calling respondWith at all, and the
+  // worker keeps doing the jobs only it can do (skipWaiting, the cache purge on
+  // activate, notification clicks). Still zero-cache, still always live.
+  //
+  // The one thing worth intercepting is a device with no connection, where the
+  // branded notice beats a generic error page. navigator.onLine is only
+  // trustworthy in the negative — false means no link at all — so that is the
+  // only case handled here. Online-but-unreachable (server down, captive portal)
+  // now falls through to the browser's own offline page, which is a fair trade
+  // for a console that can actually be signed into.
+  if (navigator.onLine !== false) return;
+  e.respondWith((function () {
       return new Response(
         '<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">' +
         '<title>VayuOS — offline</title>' +
@@ -153,7 +176,6 @@ self.addEventListener('fetch', function (e) {
         '<h1 style="font-size:20px;margin:.5em 0">You are offline</h1>' +
         '<p style="color:#b8c6dd;max-width:22rem">VayuOS needs a connection to load your console. Reconnect and try again.</p></div>',
         { headers: { 'Content-Type': 'text/html; charset=utf-8' }, status: 503 });
-    }));
-  }
+  })());
 });
 `

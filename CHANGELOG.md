@@ -8,7 +8,46 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.16] — 2026-07-30
+
+Shipped immediately rather than batched: the installed VayuOS app was unusable in
+the field on every launch, and a release-cadence rule is not worth a console
+nobody can open.
+
 ### Fixed
+- **The installed VayuOS app looped on `ERR_TOO_MANY_REDIRECTS` at every launch.**
+  The console service worker proxied page navigations instead of letting the
+  browser perform them. Two spellings of that proxy were tried and both broke the
+  app, for the same underlying reason — a worker is a bad place to stand between a
+  browser and a redirect:
+
+  - a plain `fetch(req)` follows the redirect and returns a response flagged
+    `redirected`, which the browser refuses to accept for a navigation. That
+    silently broke the Clearnet/Tor world switch, and was fixed by the second
+    spelling;
+  - fetching with redirect mode set to manual returns an *opaqueredirect* —
+    status 0, `Location` not readable — that the browser has to resolve itself.
+    Resolving it starts a fresh navigation, which re-enters the same handler,
+    which proxies again. The console signs in by redirect (`/os/` → `/os/login`
+    → `/os`), so the installed app walked that ladder until it hit the browser's
+    redirect ceiling. A normal browser tab was unaffected, because a tab has no
+    service worker — which is also why clearing site data appeared to fix it:
+    that unregisters the worker.
+
+  Online navigations are now handed back to the browser untouched, which resolves
+  redirects, cookies and auth natively. The worker keeps the jobs only it can do:
+  `skipWaiting`, the cache purge on activate, and notification clicks. It remains
+  zero-cache.
+
+  **Existing installs self-heal.** `/os/sw.js` is served `no-store`, and the new
+  worker calls `skipWaiting()` and claims open clients, so the next launch picks
+  it up with no reinstall and no cookie clearing.
+
+  Honest trade, stated plainly: the branded offline notice now appears only when
+  the device reports no connection at all (`navigator.onLine === false`). Online
+  but unreachable — server down, captive portal — falls through to the browser's
+  own offline page. That is worth it for a console that can be signed into.
+
 - **A second nil-collection reaching the wire.** Found by sweeping for the class
   of defect behind the tool-list outage rather than for the defect itself:
   `vayushield_settings` emitted `"network_intelligence": null` on any install with
@@ -31,6 +70,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     other tool with it";
   - every shield tool handler is invoked on a completely uninitialised install,
     since a panic there kills the connection and an MCP client retries.
+
+- **Two tests that execute the redirect bug instead of describing it.** The
+  service worker is now run against a fake worker scope and asserted on
+  behaviour: an online navigation must not be answered, an offline one must get
+  the 503 notice, and a subresource must never be intercepted in either state.
+  It was mutation-tested — restoring the proxy makes it fail. Alongside it, the
+  real router is walked from the app's start URL under several cookie states and
+  the chain must terminate; that test is what proved the loop was in the worker
+  and not in the console's own redirects, which settle in one hop.
 
 ### Note — post-release audit of the 3.16.7 → 3.16.15 work
 - Scope verified: nothing outside VayuShield, analytics, MCP and their deploy
