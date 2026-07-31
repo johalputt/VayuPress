@@ -87,7 +87,31 @@ func readShieldDigest() shieldaudit.Digest {
 	d.Tier3Enforcing = shieldaudit.ParseTri(kv["tier3_enforcing"])
 	d.DefaultServer = shieldaudit.ParseTri(kv["default_server_443"])
 	d.MCPVhostRestricted = shieldaudit.ParseTri(kv["mcp_vhost_restricted"])
+	d.MCPVhostOpenAt = sanitiseConfigRef(kv["mcp_vhost_open_at"])
 	return d
+}
+
+// sanitiseConfigRef narrows a "<path>:<line>" reference from the digest to the
+// characters such a reference can contain, and bounds its length.
+//
+// The agent already filters it, so this is the second of two layers rather than
+// the only one. It is worth having twice: the value crosses a privilege boundary
+// (written by root, rendered by the unprivileged app) and ends up in a sentence
+// on the posture report, and one filter is one mistake away from none.
+func sanitiseConfigRef(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) > 160 {
+		s = s[:160]
+	}
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+			return r
+		case r == '/' || r == '.' || r == '-' || r == '_' || r == ':':
+			return r
+		}
+		return -1
+	}, s)
 }
 
 // linkSpeedMbps reads the operator's measured ingress capacity from sysfs.

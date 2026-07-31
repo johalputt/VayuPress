@@ -470,27 +470,60 @@ tri() { if "$@" >/dev/null 2>&1; then printf 'yes'; else printf 'no'; fi; }
 # It is a named function, not an inline pipeline, so the test suite runs THIS
 # code against its fixtures instead of a copy that can silently drift from it.
 #
-# The server-block tracking is deliberately IDENTICAL to reconcile_mcpsurface's:
-# inserver/ismcp opened on `server {`, closed on the matching brace. The two used
-# to differ — the detector left the MCP host on a bare `}` at column zero, so a
-# config that indents its server blocks kept ismcp set past the closing brace and
-# charged the APEX vhost's proxying catch-all to the MCP host. A detector and the
-# remediation it grades must not disagree about where the block ends.
-mcp_catchall_is_open() {
+# mcp_catchall_probe prints NOTHING when the host is restricted, and otherwise
+# prints the file and line of the offending catch-all, taken from the
+# "# configuration file <path>:" markers `nginx -T` emits.
+#
+# Naming the evidence is the point. Two releases were spent guessing why a
+# posture row would not clear — first the detector, then the remediation — while
+# the operator re-pressed a button and re-read the same sentence. A verdict that
+# cannot say what produced it cannot be checked by the person who can see the
+# config, and that person is the only one who can settle it.
+#
+# Server blocks are tracked by BRACE DEPTH rather than by matching a closing
+# brace at the start of a line. The earlier version left the server block on the
+# first indented "}" it met, which in a real config is the end of the FIRST
+# location — so everything after it, including a proxying catch-all, fell outside
+# the block the detector thought it was in. It read clean on the template used to
+# test it and wrongly on configs with multi-line locations, which is every config
+# certbot has touched.
+mcp_catchall_probe() {
   awk '
-    /^[[:space:]]*server[[:space:]]*\{/ { inserver=1; ismcp=0 }
-    inserver && /^[[:space:]]*server_name[[:space:]]+mcp\./ { ismcp=1 }
-    ismcp && /^[[:space:]]*location[[:space:]]+\/[[:space:]]*\{/ {
-      if ($0 ~ /\}/) { if ($0 ~ /proxy_pass/) { print "open"; exit } ; next }
-      depth=1
-      while (depth > 0 && (getline line) > 0) {
-        if (line ~ /proxy_pass/) { print "open"; exit }
-        n=gsub(/\{/,"{",line); m=gsub(/\}/,"}",line); depth += n - m
-      }
+    /^# configuration file / {
+      fn=$0
+      sub(/^# configuration file /,"",fn)
+      sub(/:[[:space:]]*$/,"",fn)
+      ln=0
       next
     }
-    /^[[:space:]]*\}/ && inserver && !depth { inserver=0; ismcp=0 }
-  ' | grep -q open
+    {
+      ln++
+      line=$0
+      # Left the server block: depth has come back to where it opened.
+      if (insrv && depth <= srvd) { insrv=0; ismcp=0 }
+      if (!insrv && line ~ /^[[:space:]]*server[[:space:]]*\{/) { insrv=1; srvd=depth; ismcp=0 }
+      if (insrv && line ~ /^[[:space:]]*server_name[[:space:]]+mcp\./) { ismcp=1 }
+      if (ismcp && line ~ /^[[:space:]]*location[[:space:]]+\/[[:space:]]*\{/) {
+        at=ln
+        if (line ~ /\}/) {
+          if (line ~ /proxy_pass/) { print fn ":" at; exit }
+        } else {
+          d=1
+          while (d > 0 && (getline nx) > 0) {
+            ln++
+            if (nx ~ /proxy_pass/) { print fn ":" at; exit }
+            a=gsub(/\{/,"{",nx); b=gsub(/\}/,"}",nx); d += a - b
+          }
+        }
+        next
+      }
+      a=gsub(/\{/,"{",line); b=gsub(/\}/,"}",line); depth += a - b
+    }
+  '
+}
+
+mcp_catchall_is_open() {
+  [ -n "$(mcp_catchall_probe)" ]
 }
 
 # mcp_narrow_config rewrites an MCP vhost on stdin and prints the result.
@@ -592,8 +625,14 @@ write_digest() {
       # The dedicated MCP host should expose only /mcp and /health. Anything
       # PROXYING a bare location / there is a second front door to the whole app.
       if nginx -T 2>/dev/null | grep -Eq '^[[:space:]]*server_name[[:space:]]+mcp\.'; then
-        if nginx -T 2>/dev/null | mcp_catchall_is_open; then
+        local mcpat
+        mcpat="$(nginx -T 2>/dev/null | mcp_catchall_probe | head -1 | tr -cd 'A-Za-z0-9._/:-' | tail -c 160)"
+        if [ -n "$mcpat" ]; then
           printf 'mcp_vhost_restricted=no\n'
+          # WHERE, not just whether. The operator can open that file and see the
+          # same thing the agent did, which is the only way a disagreement
+          # between them gets settled instead of re-litigated.
+          printf 'mcp_vhost_open_at=%s\n' "$mcpat"
         else
           printf 'mcp_vhost_restricted=yes\n'
         fi
@@ -634,10 +673,27 @@ AGENT_CAPS="selfupgrade=1 digest=1 defaulthost=1 mcpsurface=1 cosignpin=1 rescue
 # Deriving it from the git tag at build time rather than adding a fourth file to
 # bump by hand is deliberate: a version someone must remember to edit is a
 # version that eventually lies, and a version that lies is worse than none. An
-# agent installed from a checkout honestly reports "unknown".
+# agent installed from a checkout honestly reports "dev".
+#
+# The stamp lives in THIS FILE, rewritten by the release workflow, and not in a
+# sidecar file. The first attempt used a sidecar and could never work on the
+# upgrade that introduced it: self_upgrade installs a fixed list of files, so the
+# code that copies the version file only arrives WITH the version-aware agent —
+# the old installer had already run by then, and the new agent came up reporting
+# "unknown". The panel then said "Upgraded and running" beside "Helper unknown",
+# which is precisely the ambiguity the version was added to remove.
+#
+# The script is the one file every install path replaces, so a stamp inside it
+# cannot be dropped by the installer that carried it.
+AGENT_VERSION_STAMP="dev"
+
 agent_version() {
-  local v=""
-  v="$(cat "${LIB_DIR}/agent.version" 2>/dev/null)" || v=""
+  local v="$AGENT_VERSION_STAMP"
+  # Sidecar fallback: bundles from the release that shipped the sidecar carry it,
+  # and a helper installed by hand from that tarball should still report a number.
+  if [ "$v" = "dev" ] || [ -z "$v" ]; then
+    v="$(cat "${LIB_DIR}/agent.version" 2>/dev/null)" || v=""
+  fi
   v="$(printf '%s' "$v" | tr -cd '0-9A-Za-z.+-' | head -c 32)"
   [ -n "$v" ] || v="unknown"
   printf '%s' "$v"

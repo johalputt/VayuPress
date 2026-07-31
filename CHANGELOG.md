@@ -8,6 +8,59 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.16.31] — 2026-07-30
+
+### Fixed
+- **The MCP detector left the server block at the first indented `}`.** This is
+  the reason the warning survived two releases of fixes aimed at it. Server
+  blocks were tracked by matching a closing brace at the start of a line, which
+  in a real config is the end of the **first location**, not the end of the
+  vhost. Everything after that — including the catch-all the row is about — was
+  judged as though it sat outside the block.
+
+  It read clean on the one-line-per-location template it was tested against, and
+  wrongly on any config with a multi-line location, which is every config
+  certbot has touched. Blocks are now tracked by brace depth, and the fixture
+  covering it is a multi-line location.
+
+- **The helper reported its version as `unknown` immediately after upgrading.**
+  The 3.16.30 stamp shipped as a sidecar file, which cannot work on the upgrade
+  that introduces it: `self_upgrade` installs a fixed list of files, so the code
+  that copies the sidecar arrives *with* the version-aware agent — by which time
+  the old installer has already run. The panel showed "Upgraded and running"
+  beside "Helper unknown", which is exactly the ambiguity the version was added
+  to remove. The stamp now lives **inside the script**, the one file every
+  install path replaces, and the release build fails if it is not applied.
+
+### Added
+- **The posture report says where.** When the MCP row warns, it now names the
+  file and line of the catch-all it objected to:
+
+  ```text
+  The catch-all objected to is at /etc/nginx/sites-enabled/mcp.example:8 —
+  open that line and you are looking at exactly what the agent read.
+  ```
+
+  A verdict that cannot say what produced it cannot be checked or refuted by the
+  one person who can see the config. Two releases were spent guessing at this
+  finding from the outside while the same unchanged sentence was re-read; the
+  reference ends that. The line number counts from the file's first line — nginx
+  emits its `# configuration file` marker immediately before line 1 — so it is
+  the number an editor shows, and that is pinned by a test running **real
+  `nginx -T` output**, not a fixture resembling it.
+
+### Changed
+- `mcp_catchall_is_open` is now a thin wrapper over `mcp_catchall_probe`, which
+  returns the location rather than a yes/no. Same rule, evidence attached.
+
+### Upgrade Notes
+- In the helper again, so: *Upgrade the helper* on `/os/vayushield`. Afterwards
+  the card should read **Helper 3.16.31** — if it still says `unknown`, the
+  upgrade did not take, which is now a distinguishable state rather than a guess.
+- If the MCP row still warns after that, it will name a file and line. That is
+  the finding being real, and the line is worth reading.
+- Shipped on its own under the live-breakage exception in the release rules.
+
 ## [3.16.30] — 2026-07-30
 
 ### Fixed

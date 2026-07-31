@@ -107,6 +107,14 @@ type Digest struct {
 	DefaultServer  Tri // a 443 default_server exists, so an unknown Host is not
 	// served by the first vhost that happens to match
 	MCPVhostRestricted Tri
+	// MCPVhostOpenAt is the file:line of the catch-all the agent objected to,
+	// empty when it objected to nothing.
+	//
+	// A verdict that cannot say what produced it cannot be checked by the one
+	// person who can see the config. Two releases went by with an operator
+	// re-pressing a button and re-reading the same sentence while the panel and
+	// the report disagreed, because neither could point at anything.
+	MCPVhostOpenAt string
 }
 
 // Tri is a three-valued flag: the agent said yes, the agent said no, or the
@@ -553,7 +561,16 @@ func tierChecks(in Inputs, stale bool) []Check {
 		case Yes:
 			add("MCP host surface", Pass, "The dedicated MCP host exposes only the endpoints it needs.")
 		case No:
-			add("MCP host surface", Warn, "The dedicated MCP host is serving more than the MCP and health endpoints.")
+			// Name the evidence. "It is serving more than it should" with nothing
+			// to check is not a finding an operator can act on or refute — and
+			// when the detector is the thing that is wrong, it is the sentence
+			// that keeps them pressing a button that was never going to help.
+			msg := "The dedicated MCP host is serving more than the MCP and health endpoints."
+			if in.Digest.MCPVhostOpenAt != "" {
+				msg += " The catch-all objected to is at " + in.Digest.MCPVhostOpenAt +
+					" — open that line and you are looking at exactly what the agent read."
+			}
+			add("MCP host surface", Warn, msg)
 		}
 	}
 

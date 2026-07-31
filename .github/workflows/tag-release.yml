@@ -159,8 +159,21 @@ jobs:
           # identical across releases that change behaviour. A hand-edited
           # version is one someone eventually forgets to bump, and a version
           # that lies is worse than none.
-          printf '%s' "${{ steps.ver.outputs.version }}" | sed 's/^v//' > dist/agent/agent.version
-          echo "agent version stamp: $(cat dist/agent/agent.version)"
+          #
+          # Stamped INTO the script, not only into a sidecar file. A sidecar
+          # cannot work on the upgrade that introduces it: self_upgrade installs
+          # a fixed list of files, so the code that copies the sidecar arrives
+          # WITH the version-aware agent, by which time the old installer has
+          # already run. That shipped once — the panel reported "Upgraded and
+          # running" beside "Helper unknown". The script is the one file every
+          # install path replaces.
+          AGENT_VER="$(printf '%s' "${{ steps.ver.outputs.version }}" | sed 's/^v//')"
+          printf '%s' "$AGENT_VER" > dist/agent/agent.version
+          sed -i "s/^AGENT_VERSION_STAMP=.*/AGENT_VERSION_STAMP=\"${AGENT_VER}\"/" dist/agent/vayushield-agent.sh
+          grep -q "^AGENT_VERSION_STAMP=\"${AGENT_VER}\"$" dist/agent/vayushield-agent.sh || {
+            echo "FAIL: the agent version stamp was not applied — the helper would report itself as dev"; exit 1; }
+          bash -n dist/agent/vayushield-agent.sh
+          echo "agent version stamp: $AGENT_VER"
           # Pin cosign for the agent's bootstrap.
           #
           # The agent needs cosign to verify its next upgrade, and refusing to act

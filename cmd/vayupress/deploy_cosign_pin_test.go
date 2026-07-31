@@ -183,12 +183,13 @@ fi
 # The detector is read OUT OF THE AGENT, not restated here. A copy in the test
 # would go on passing after the real one was reverted, which is exactly the
 # failure this test exists to catch.
-sed -n '/^mcp_catchall_is_open() {/,/^}/p' "$AGENT" > "$D/m.sh"
-[ -s "$D/m.sh" ] || { echo "FAIL mcp_catchall_is_open not found in the agent script"; exit 1; }
+sed -n '/^mcp_catchall_probe() {/,/^}/p' "$AGENT" > "$D/m.sh"
+[ -s "$D/m.sh" ] || { echo "FAIL mcp_catchall_probe not found in the agent script"; exit 1; }
 
 mcp_verdict() { # $1=config file -> prints the digest value for mcp_vhost_restricted
-  bash -c 'source "'"$D"'/m.sh"; if mcp_catchall_is_open <"'"$1"'"; then echo no; else echo yes; fi'
+  bash -c 'source "'"$D"'/m.sh"; if [ -n "$(mcp_catchall_probe <"'"$1"'")" ]; then echo no; else echo yes; fi'
 }
+mcp_where() { bash -c 'source "'"$D"'/m.sh"; mcp_catchall_probe <"'"$1"'"'; }
 cat > "$D/mcp_open.txt" <<'MCPA'
 server {
     server_name johal.in;
@@ -249,6 +250,83 @@ cat > "$D/mcp_indented_open.txt" <<'MCPD'
   }
 MCPD
 [ "$(mcp_verdict "$D/mcp_indented_open.txt")" = "no" ] || { echo "FAIL an open MCP host went unreported once the block boundaries were tightened"; exit 1; }
+
+# A server block ends where its BRACES say, not at the first indented "}".
+#
+# Matching a closing brace at the start of a line leaves the server block at the
+# end of the FIRST location, so everything after it — including the catch-all —
+# is judged as though it were outside the vhost. That reads clean on a template
+# whose locations are all one-liners and wrongly on any config with a multi-line
+# location, which is every config certbot has touched.
+cat > "$D/mcp_multiline.txt" <<'MCPE'
+# configuration file /etc/nginx/sites-enabled/mcp.johal.in:
+server {
+    listen 443 ssl http2;
+    server_name mcp.johal.in;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/cache;
+        try_files $uri =404;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+    }
+}
+MCPE
+[ "$(mcp_verdict "$D/mcp_multiline.txt")" = "no" ] || { echo "FAIL a proxying catch-all after a multi-line location was missed — the detector left the server block at the first indented brace"; exit 1; }
+
+# The verdict has to say WHERE. Two releases went by with an operator re-pressing
+# a remediation and re-reading an unchanged sentence, because neither they nor
+# anyone reading their screenshot could tell a stale detector from a real finding.
+#
+# The line number counts from the file's FIRST line, not from the marker: nginx
+# emits "# configuration file <path>:" immediately followed by line 1 of that
+# file, so the number the panel prints is the number the operator sees when they
+# open it. Verified against real nginx output below.
+where=$(mcp_where "$D/mcp_multiline.txt")
+case "$where" in
+  /etc/nginx/sites-enabled/mcp.johal.in:8) ;;
+  *) echo "FAIL the probe did not name the offending catch-all: [$where] want /etc/nginx/sites-enabled/mcp.johal.in:8"; exit 1 ;;
+esac
+# ...and it must stay silent on a host it does not object to, or the panel would
+# print a file and line beside a passing row.
+[ -z "$(mcp_where "$D/mcp_narrowed.txt")" ] || { echo "FAIL the probe named a location on a restricted host"; exit 1; }
+
+# Against REAL nginx -T, not a hand-written approximation of it. The whole value
+# of the reference is that an operator can open that file at that line and see
+# what the agent saw; a fixture that merely resembles nginx output cannot
+# establish that, and the marker/offset convention is exactly the sort of detail
+# a fixture gets subtly wrong.
+if command -v nginx >/dev/null 2>&1; then
+  mkdir -p "$D/live/inc"
+  cat > "$D/live/inc/mcp.conf" <<'LIVE'
+server {
+    listen 8099;
+    server_name mcp.example.test;
+    location ^~ /mcp {
+        return 204;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+    }
+}
+LIVE
+  printf 'events {}
+http {
+  include %s/live/inc/mcp.conf;
+}
+' "$D" > "$D/live/n.conf"
+  if nginx -T -c "$D/live/n.conf" -p "$D/live" >"$D/live/dump.txt" 2>/dev/null; then
+    live=$(bash -c 'source "'"$D"'/m.sh"; mcp_catchall_probe' < "$D/live/dump.txt")
+    want="$D/live/inc/mcp.conf:7"
+    [ "$live" = "$want" ] || { echo "FAIL against real nginx -T the probe said [$live], want [$want]"; exit 1; }
+    # And that line really is the catch-all in the file on disk.
+    got_line=$(sed -n '7p' "$D/live/inc/mcp.conf")
+    case "$got_line" in
+      *"location /"*) ;;
+      *) echo "FAIL line 7 of the real file is [$got_line], not the catch-all — the reference would send an operator to the wrong line"; exit 1 ;;
+    esac
+  fi
+fi
 
 # ── The remediation must apply the SAME rule as the detector ──────────────────
 #

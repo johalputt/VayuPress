@@ -124,9 +124,15 @@ golangci-lint run ./...                # v2: github.com/golangci/golangci-lint/v
 gosec -severity high -confidence high ./...
 govulncheck ./...
 bash scripts/deadcode-gate.sh          # no NEW unreachable code
+python3 scripts/spdx-headers.py --check  # every .go file carries Apache-2.0
 ```
 
 Go 1.25+ is required (govulncheck / x/tools need it).
+
+The SPDX check is in this list because it was missing from it: a new test file
+was pushed with every other gate green and CI failed on the one line nobody had
+run locally. `python3 scripts/spdx-headers.py` (no `--check`) writes the header
+into any file that lacks it.
 
 **These gates are necessary and not sufficient.** They prove the code compiles,
 passes its own tests and carries no known vulnerable dependency. They cannot tell
