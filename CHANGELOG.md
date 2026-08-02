@@ -6,6 +6,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **A 404 recorded itself as a pageview, so the reported total stopped meaning
+  audience.** The 404 template loaded the analytics beacon, and the beacon
+  reports `location.pathname` — whatever URL the browser is on. Every missing
+  URL therefore recorded a pageview **of a path the site does not serve**: every
+  scanner probe, every dead link, every missing image variant.
+
+  This is not a slightly-high number, it is a number that means something other
+  than what it says. On the site where it was found, the top fifty pages account
+  for about **1.2%** of the reported 30-day pageview total; the other ~99% sits
+  in a tail of near-unique paths, and two of the top ten "pages" were a
+  resized-image variant and a CDN-internal path. Anyone quoting that figure as
+  audience — in a report, on a pricing page, to an advertiser — would be quoting
+  mostly scanners.
+
+  Fixed at the source rather than filtered at read time. A reporting-side filter
+  leaves the rows in the table for trending, the public widget and the export to
+  each re-implement, and one of them would be missed.
+
+  **Historical figures are not retroactively corrected**, because rewriting
+  stored history to make a number look better is a worse habit than the bug. A
+  pageview total spanning any period before this release still contains the
+  inflated rows; totals from here on do not.
+
+  Two limits worth stating plainly. This stops 404s being *recorded*; it does not
+  make the collect endpoint authenticated, and that endpoint still accepts a
+  path from its caller by design — it is a public beacon, and any public beacon
+  can be posted to directly. And the attribution of the existing tail was not
+  proven: the mechanism above is confirmed by reading the template and the
+  beacon, but which share of those rows came from scanners versus dead links was
+  not measured, and is not claimed.
+
 ## [3.16.33] — 2026-08-02
 
 ### Fixed

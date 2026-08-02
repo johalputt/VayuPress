@@ -1847,7 +1847,16 @@ var notFoundTmpl = template.Must(template.New("404").Funcs(homeFuncs).Parse(`<!D
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
-<script defer src="/static/vp-analytics.js"></script>
+<!-- No analytics beacon here, deliberately. A page that does not exist is not a
+     page view. The beacon reports location.pathname, so loading it on a 404
+     recorded every missing URL as a pageview OF THAT PATH — and on a site being
+     probed, that is most of them. The pageview total then reads as audience while
+     being mostly scanners, and "Top pages" fills with URLs the site has never
+     served: a resized-image variant and a CDN-internal path outranked real
+     articles before this was found.
+     Fixed at the source rather than filtered at read time, because a
+     reporting-side filter leaves the rows in the table for trending, the public
+     widget and the export to each re-implement, and one of them would be missed. -->
 {{portalJS}}
 </head><body>
 <div class="container">
