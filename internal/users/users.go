@@ -126,7 +126,15 @@ func (s *Store) Create(ctx context.Context, email, name, password, role string) 
 		role = RoleAuthor
 	}
 	if !ValidRole(role) {
-		return nil, fmt.Errorf("invalid role %q (want admin, editor, or author)", role)
+		return nil, fmt.Errorf("invalid role %q (want admin, editor, author, or client)", role)
+	}
+	// A client is never minted here, because this function cannot take the one
+	// thing that makes a client account meaningful: the domain it is bound to.
+	// Creating one through this path produces an account that authenticates and
+	// then reaches nothing, which reads to everyone involved as a broken login
+	// rather than an invalid identity. CreateClient is the only way in.
+	if role == RoleClient {
+		return nil, fmt.Errorf("a client account must be created with its domain binding — use CreateClient")
 	}
 	hash, err := auth.HashSecretArgon2id(password)
 	if err != nil {
@@ -162,6 +170,86 @@ func (s *Store) CreateBootstrapAdmin(ctx context.Context, email, name, password 
 	}
 	u.MustChangePassword = true
 	return u, nil
+}
+
+// CreateClient creates an agency client account bound to one hosted domain
+// (ADR-0152). It is the ONLY way a RoleClient account comes into existence:
+// Create and SetRole both refuse the role outright, because neither can take the
+// binding, and a client without one is an identity that authenticates and then
+// reaches nothing.
+//
+// The binding is required rather than defaulted. ” is the PRIMARY domain's
+// sentinel everywhere in this codebase — articles.domain_id, members.domain_id,
+// analytics_daily.domain_id — so a client defaulted to ” would not be an
+// unconfigured client, it would be a paying customer of the studio holding a
+// login scoped to the studio's own install.
+//
+// The password is chosen by the operator and handed over out of band, then
+// changed by the client. must_change_password is set so the operator's choice
+// cannot remain the live credential: the account the studio hands over is the
+// one account whose password the studio should stop knowing.
+func (s *Store) CreateClient(ctx context.Context, email, name, password, domainID string) (*User, error) {
+	domainID = strings.TrimSpace(domainID)
+	if domainID == "" {
+		return nil, fmt.Errorf("a client account needs the domain it is bound to")
+	}
+	email = strings.TrimSpace(strings.ToLower(email))
+	if _, err := mail.ParseAddress(email); err != nil {
+		return nil, fmt.Errorf("invalid email: %w", err)
+	}
+	if len(password) < 8 {
+		return nil, fmt.Errorf("password must be at least 8 characters")
+	}
+	hash, err := auth.HashSecretArgon2id(password)
+	if err != nil {
+		return nil, fmt.Errorf("hash password: %w", err)
+	}
+	id := newID()
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO users(id,email,name,password_hash,role,client_domain_id,must_change_password) VALUES(?,?,?,?,?,?,1)`,
+		id, email, strings.TrimSpace(name), hash, RoleClient, domainID); err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			return nil, fmt.Errorf("a user with that email already exists")
+		}
+		return nil, fmt.Errorf("create client: %w", err)
+	}
+	return &User{
+		ID: id, Email: email, Name: strings.TrimSpace(name), Role: RoleClient,
+		ClientDomainID: domainID, MustChangePassword: true, CreatedAt: time.Now().UTC(),
+	}, nil
+}
+
+// ClientsForDomain returns the client accounts bound to one hosted domain, so
+// the operator can see who they have already given a login to before issuing
+// another.
+func (s *Store) ClientsForDomain(ctx context.Context, domainID string) ([]User, error) {
+	domainID = strings.TrimSpace(domainID)
+	if domainID == "" {
+		return nil, nil
+	}
+	rows, err := s.readDB().QueryContext(ctx,
+		`SELECT id,email,name,created_at,last_login FROM users WHERE role=? AND client_domain_id=? ORDER BY created_at`,
+		RoleClient, domainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []User
+	for rows.Next() {
+		var u User
+		var lastLogin sql.NullTime
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt, &lastLogin); err != nil {
+			return nil, err
+		}
+		if lastLogin.Valid {
+			t := lastLogin.Time
+			u.LastLogin = &t
+		}
+		u.Role, u.ClientDomainID = RoleClient, domainID
+		out = append(out, u)
+	}
+	_ = rows.Err()
+	return out, nil
 }
 
 // Authenticate verifies email + password and returns the user on success. The
@@ -363,10 +451,20 @@ func (s *Store) SetMailAddress(ctx context.Context, id, addr string) error {
 // SetRole changes a user's role by email. The role must be recognised.
 func (s *Store) SetRole(ctx context.Context, email, role string) error {
 	if !ValidRole(role) {
-		return fmt.Errorf("invalid role %q (want admin, editor, or author)", role)
+		return fmt.Errorf("invalid role %q (want admin, editor, author, or client)", role)
 	}
+	// Promoting an existing staff account to client through the ordinary role
+	// picker would leave the binding empty — see Create. It is also the wrong
+	// operation: a client is a different KIND of principal, not a rung further
+	// down the ladder, and converting a colleague into one silently strips every
+	// piece of content they own from their reach.
+	if role == RoleClient {
+		return fmt.Errorf("a client account is created against its domain, not converted from a staff account")
+	}
+	// Demoting a client to a staff role must clear the binding, or a stale
+	// domain id rides along on an account that is no longer confined by it.
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE users SET role=? WHERE email=?`, role, strings.TrimSpace(strings.ToLower(email)))
+		`UPDATE users SET role=?,client_domain_id='' WHERE email=?`, role, strings.TrimSpace(strings.ToLower(email)))
 	if err != nil {
 		return err
 	}

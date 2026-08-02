@@ -25,7 +25,7 @@ func TestDomainManagerBrandingEscapes(t *testing.T) {
 		Status: domain.StatusActive, ConfigJSON: cfg,
 	}
 
-	page := domainManagePage(d, 3, 2, 0, true)
+	page := domainManagePage(d, 3, 2, 0, true, nil)
 	assertCSPSafe(t, "domainManagePage", page)
 
 	// The hostile value must be escaped — the `">` breakout sequence must not
@@ -71,7 +71,7 @@ func TestDomainManageScriptReadsIDFromNode(t *testing.T) {
 // is a placeholder, not a real address, so no live-view link is offered).
 func TestDomainManagePendingTorSite(t *testing.T) {
 	d := domain.Domain{ID: "t1", Host: torSitePending + "abc.local", SiteType: domain.SiteBlog, Status: domain.StatusActive}
-	page := domainManagePage(d, 0, 0, 0, false)
+	page := domainManagePage(d, 0, 0, 0, false, nil)
 	assertCSPSafe(t, "domainManagePage/pending", page)
 	if strings.Contains(page, "View site") {
 		t.Error("a pending Tor site has no address yet — no live-view link")

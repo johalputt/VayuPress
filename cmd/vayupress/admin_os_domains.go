@@ -28,6 +28,7 @@ import (
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/seo"
+	"github.com/johalputt/vayupress/internal/users"
 )
 
 // isPendingTorSite reports whether a host is a just-added Tor site still waiting
@@ -353,7 +354,12 @@ func (a *App) handleOSDomainManage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	body := domainManagePage(*found, posts, members, mailboxes, mailOn) + domainManageScript(nonce)
+	var clients []users.User
+	if a.userStore != nil {
+		clients, _ = a.userStore.ClientsForDomain(r.Context(), found.ID)
+	}
+
+	body := domainManagePage(*found, posts, members, mailboxes, mailOn, clients) + domainManageScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Manage · "+found.Host, "optimize", cfg, htmpl.HTML(body)))
 }
 
@@ -361,7 +367,7 @@ func (a *App) handleOSDomainManage(w http.ResponseWriter, r *http.Request) {
 // hero with identity + live-view link, stat chips, lifecycle controls, a scoped
 // branding editor prefilled from the domain's current brand, a post-assignment
 // box and shortcuts into Theme Studio / Website / Analytics.
-func domainManagePage(d domain.Domain, posts, members, mailboxes int, mailOn bool) string {
+func domainManagePage(d domain.Domain, posts, members, mailboxes int, mailOn bool, clients []users.User) string {
 	esc := html.EscapeString
 	b, _ := d.Brand()
 	pending := isPendingTorSite(d.Host)
@@ -430,6 +436,7 @@ func domainManagePage(d domain.Domain, posts, members, mailboxes int, mailOn boo
 </div>`
 
 	allowance := domainAllowanceCard(d, mailboxes, mailOn)
+	clientAccess := domainClientAccessCard(d, clients)
 
 	shortcuts := `<div class="card">
   <h2 class="card-title">Design &amp; more</h2>
@@ -469,7 +476,60 @@ func domainManagePage(d domain.Domain, posts, members, mailboxes int, mailOn boo
   <span class="site-hero__actions">` + viewLink + `</span>
 </div>
 <div class="domain-card__stats mb-6">` + stats + `</div>
-` + branding + allowance + assign + shortcuts + lifecycle
+` + branding + allowance + clientAccess + assign + shortcuts + lifecycle
+}
+
+// domainClientAccessCard issues and lists the logins for this domain's owner.
+//
+// It exists because RoleClient shipped enforced and uncreatable. The role was
+// validated, the confinement was tested, the client's page was built — and the
+// team page's picker offered only admin/editor/author, with no writer for the
+// binding anywhere. There was no way to make one of these accounts from the
+// panel at all, which makes every other part of the client surface unreachable.
+func domainClientAccessCard(d domain.Domain, clients []users.User) string {
+	esc := html.EscapeString
+
+	existing := `<p class="text-sm muted">No client login yet. Until you issue one, nobody outside your
+    team can see this site's settings, mailboxes or traffic.</p>`
+	if len(clients) > 0 {
+		rows := ""
+		for _, c := range clients {
+			seen := "never signed in"
+			if c.LastLogin != nil {
+				seen = "last seen " + c.LastLogin.Format("2006-01-02")
+			}
+			name := c.Name
+			if strings.TrimSpace(name) == "" {
+				name = "—"
+			}
+			rows += `<tr><td class="mono text-sm">` + esc(c.Email) + `</td><td class="text-sm">` +
+				esc(name) + `</td><td class="text-sm muted">` + esc(seen) + `</td></tr>`
+		}
+		existing = `<table class="table"><thead><tr><th>Sign-in</th><th>Name</th><th>Activity</th></tr></thead><tbody>` +
+			rows + `</tbody></table>`
+	}
+
+	return `<div class="card">
+  <h2 class="card-title">Client access</h2>
+  <p class="text-sm muted">A login for the person who owns <b>` + esc(d.Host) + `</b>. It reaches their site
+    settings, their mailboxes and their own traffic — and nothing else on this install. It is not an
+    editor and cannot see another client, your posts, or any technical page.</p>
+  ` + existing + `
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Their email</span>
+      <input type="email" id="client-email" class="input" placeholder="owner@` + esc(d.Host) + `" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span class="field-label">Their name</span>
+      <input type="text" id="client-name" class="input" placeholder="Optional" autocomplete="off"></label>
+    <label class="field"><span class="field-label">Starting password</span>
+      <input type="text" id="client-password" class="input" placeholder="At least 8 characters" autocomplete="off" spellcheck="false">
+      <span class="field-hint">Hand this over in person or by phone, never in the same email as the link.
+        They are required to change it at first sign-in, so it stops being a password you know.</span></label>
+  </div>
+  <div class="vm-row">
+    <button type="button" class="btn btn--primary" data-client-create>Issue login</button>
+    <span id="client-status" class="text-sm muted" role="status" aria-live="polite"></span>
+  </div>
+</div>`
 }
 
 // domainAllowanceCard is the operator's control for how many branded mailboxes
@@ -562,6 +622,21 @@ if(aSave)aSave.addEventListener('click',function(){
       if(res.ok){set('site-allowance-status','Saved ✓ — reloading');window.location.reload();}
       else{set('site-allowance-status',(res.j&&res.j.message)||'Could not save the allowance');}})
     .catch(function(e){aSave.disabled=false;set('site-allowance-status','Error: '+e);});
+});
+// Client login. The password is echoed back to nobody: it is typed by the
+// operator, sent once, and the account is forced to change it at first sign-in.
+var cNew=document.querySelector('[data-client-create]');
+if(cNew)cNew.addEventListener('click',function(){
+  var email=val('client-email'),name=val('client-name'),pw=val('client-password');
+  if(!email){set('client-status','Enter the email they will sign in with');return;}
+  if(pw.length<8){set('client-status','The starting password must be at least 8 characters');return;}
+  cNew.disabled=true;set('client-status','Creating…');
+  fetch('/os/api/domains/'+encodeURIComponent(ID)+'/client',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({email:email,name:name,password:pw})})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){cNew.disabled=false;
+      if(res.ok){set('client-status','Created ✓ — reloading');window.location.reload();}
+      else{set('client-status',(res.j&&res.j.message)||'Could not create the login');}})
+    .catch(function(e){cNew.disabled=false;set('client-status','Error: '+e);});
 });
 // Branding reset
 var bClear=document.querySelector('[data-site-brand-clear]');
@@ -951,6 +1026,64 @@ func (a *App) handleOSDomainAllowance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "mailboxes": body.Mailboxes})
+}
+
+// handleOSDomainClient issues the login an agency client uses to reach their own
+// site, mail and traffic — and nothing else (ADR-0152 D2).
+//
+// It lives on the domain, not on the team page, because the binding is the whole
+// identity: a client account is meaningless without the domain it is scoped to,
+// and a role picker that offers "client" as a fourth option invites an operator
+// to create one from a screen that has no domain to bind it to. The store
+// refuses that path outright; this is the path that carries the binding.
+func (a *App) handleOSDomainClient(w http.ResponseWriter, r *http.Request) {
+	if a.domains == nil || a.userStore == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "not initialised", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	// The domain must exist and must NOT be the primary. Binding a client to the
+	// primary domain would hand a paying customer a login scoped to the agency's
+	// own install — the exact outcome the empty-binding refusal exists to prevent,
+	// arrived at from the other direction.
+	var target *domain.Domain
+	if list, err := a.domains.List(r.Context()); err == nil {
+		for i := range list {
+			if list[i].ID == id {
+				d := list[i]
+				target = &d
+				break
+			}
+		}
+	}
+	if target == nil {
+		writeAPIError(w, r, http.StatusNotFound, "no-domain", "no such domain", "")
+		return
+	}
+	if target.IsPrimary {
+		writeAPIError(w, r, http.StatusBadRequest, "primary-domain",
+			"the primary domain is your own install; a client cannot be bound to it", "")
+		return
+	}
+	var body struct {
+		Email    string `json:"email"`
+		Name     string `json:"name"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
+		return
+	}
+	u, err := a.userStore.CreateClient(r.Context(), body.Email, body.Name, body.Password, id)
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "client-failed", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "email": u.Email})
 }
 
 // handleOSDomainBrand stores a secondary domain's public branding overrides

@@ -32,7 +32,7 @@ func allowanceDomain(t *testing.T, granted int) domain.Domain {
 }
 
 func TestTheOperatorCanSetAMailboxAllowanceFromThePanel(t *testing.T) {
-	page := domainManagePage(allowanceDomain(t, 5), 0, 0, 2, true)
+	page := domainManagePage(allowanceDomain(t, 5), 0, 0, 2, true, nil)
 	assertCSPSafe(t, "domainManagePage", page)
 
 	if !strings.Contains(page, "data-site-allowance-save") {
@@ -64,7 +64,7 @@ func TestTheOperatorCanSetAMailboxAllowanceFromThePanel(t *testing.T) {
 // operator who reads 0 as "no limit configured, so unlimited" will not
 // understand why creation refuses. The card has to say it in words.
 func TestAZeroAllowanceReadsAsNoneNotUnlimited(t *testing.T) {
-	page := domainManagePage(allowanceDomain(t, 0), 0, 0, 0, true)
+	page := domainManagePage(allowanceDomain(t, 0), 0, 0, 0, true, nil)
 	if !strings.Contains(page, "No mailboxes granted") {
 		t.Error("a zero allowance does not announce itself as zero, so the operator reads the " +
 			"blank as 'unlimited' and files a bug when the next mailbox is refused")
@@ -90,7 +90,7 @@ func TestAZeroAllowanceReadsAsNoneNotUnlimited(t *testing.T) {
 
 // A full allowance must say so before the operator hits the refusal, not after.
 func TestAFullAllowanceSaysSoBeforeTheRefusal(t *testing.T) {
-	page := domainManagePage(allowanceDomain(t, 3), 0, 0, 3, true)
+	page := domainManagePage(allowanceDomain(t, 3), 0, 0, 3, true, nil)
 	if !strings.Contains(page, "the allowance is full") {
 		t.Errorf("a domain at its cap does not warn, so the operator discovers it by having "+
 			"mailbox creation fail in front of a client:\n%s", page)
@@ -100,7 +100,7 @@ func TestAFullAllowanceSaysSoBeforeTheRefusal(t *testing.T) {
 // Mail being switched off install-wide is a different situation from an
 // allowance of zero, and conflating them sends the operator to the wrong screen.
 func TestMailBeingOffIsNotTheSameAsNoAllowance(t *testing.T) {
-	page := domainManagePage(allowanceDomain(t, 4), 0, 0, 0, false)
+	page := domainManagePage(allowanceDomain(t, 4), 0, 0, 0, false, nil)
 	if !strings.Contains(page, "Mail is switched off") {
 		t.Error("with mail disabled the card still talks about the allowance, sending the " +
 			"operator to raise a number that is not what is stopping them")
