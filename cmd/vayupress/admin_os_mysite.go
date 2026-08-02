@@ -90,6 +90,7 @@ func (a *App) handleOSMySite(w http.ResponseWriter, r *http.Request) {
 		`<div class="section-head__hint">Leave a field empty to use the default</div></div>` +
 		mySiteBrandCard(d, b) +
 		mySiteMailboxCard(d, used, granted) +
+		a.mySiteAccessCard(r, mySiteOwnMailbox(r)) +
 		mySiteWhatsNotHere()
 
 	full := adminOSShellHead(nonce, "My site", "mysite", cfg) + body +
@@ -381,4 +382,61 @@ func mySiteTopPages(top []analytics.PathCount) string {
 			`<td>` + strconv.FormatInt(p.Views, 10) + `</td></tr>`
 	}
 	return out + `</tbody></table></div>`
+}
+
+// mySiteAccessCard shows the client every recorded administrative access to
+// their mailbox.
+//
+// AUDIT FINDING (pre-release pass). ADR-0152 D4's client-facing sentence
+// promises "a permanent entry into the access log YOU CAN SEE". The ledger was
+// written and verified but never rendered, so the client could not see it and
+// that half of the sentence was unbacked. A claim whose evidence exists only in
+// a database the client has no access to is a claim they are asked to take on
+// trust — which is the exact thing the ledger was built to avoid.
+func (a *App) mySiteAccessCard(r *http.Request, mailbox string) string {
+	head := `<div class="section-head"><div class="section-head__title">Who has opened your mailbox</div>` +
+		`<div class="section-head__hint">Every administrative access, permanently recorded</div></div>`
+	if a.vayuMail == nil || strings.TrimSpace(mailbox) == "" {
+		return ""
+	}
+	ents, err := a.vayuMail.Ledger(r.Context(), mailbox, 50)
+	if err != nil {
+		return head + `<div class="card"><p class="text-sm muted">The record could not be read just now.</p></div>`
+	}
+	if len(ents) == 0 {
+		return head + `<div class="card"><p class="text-sm muted">` +
+			`Nothing recorded. No administrator has used the emergency override on this mailbox.</p></div>`
+	}
+	out := head + `<div class="card"><table class="table"><thead><tr><th>When</th><th>What</th><th>Who</th></tr></thead><tbody>`
+	for _, e := range ents {
+		out += `<tr><td class="text-sm">` + html.EscapeString(e.TS.Format("2006-01-02 15:04")) + `</td>` +
+			`<td>` + html.EscapeString(mySiteLedgerLabel(e.Action)) + `</td>` +
+			`<td class="mono text-sm">` + html.EscapeString(e.Actor) + `</td></tr>`
+	}
+	return out + `</tbody></table>` +
+		`<p class="text-sm muted">This record cannot be edited or deleted through the panel. ` +
+		`It does not cover someone reading the message files directly on the server — ` +
+		`your mail is not encrypted, and only encryption under a password we do not hold ` +
+		`would prevent that.</p></div>`
+}
+
+// mySiteOwnMailbox is the mailbox the signed-in client holds, if any.
+func mySiteOwnMailbox(r *http.Request) string {
+	if u := currentUser(r); u != nil {
+		return u.MailAddress
+	}
+	return ""
+}
+
+// mySiteLedgerLabel turns a recorded action into words a non-technical owner
+// reads correctly, without overstating what was recorded.
+func mySiteLedgerLabel(action string) string {
+	switch action {
+	case "handover":
+		return "Your mailbox was handed over to you"
+	case "break-glass":
+		return "An administrator used the emergency override"
+	default:
+		return action
+	}
 }

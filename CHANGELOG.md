@@ -8,6 +8,54 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+- **Pre-release adversarial pass over ADR-0152 (the agency-hosting track).** Six
+  lenses were run against everything below, starting from "what would I do to
+  this if I wanted the promise to be false" rather than from the feature list.
+  Two findings, both fixed here so they ship in the release they were found in.
+  Four lenses came back clean; that is recorded below as a result rather than as
+  silence, because "nothing found after genuinely trying" and "nobody looked"
+  read identically in a changelog that only lists hits.
+
+- **An operator's own password still opened a handed-over mailbox.** Four
+  severances were built — panel reads, password reset, second-factor clearing,
+  credential minting — and a fifth was described as built without being built.
+  `verifyCredentialScoped` authenticates the CMS-user branch **by address**, so
+  an administrator who created an ordinary console user carrying the
+  handed-over mailbox's address authenticated IMAP, POP3 and submission for that
+  mailbox with a password they chose. No ledger entry, no notice, no
+  break-glass mark: quieter and cheaper than the loud path it was meant to
+  replace.
+
+  A claim that is four-fifths enforced is not four-fifths true, it is false, and
+  this one was about to ship in a sentence a client would rely on. The CMS-user
+  branch is now closed for a handed-over mailbox. The mailbox's **own** password
+  and its app passwords are untouched — refusing those would lock the client out
+  of their own mail, which is the opposite of what a handover is for.
+
+- **The access log the client was promised existed only in the database.**
+  The ledger was written, chained and verifiable, and rendered nowhere a client
+  could reach — while the claim says "a permanent entry into the access log
+  **you can see**". Evidence a client has no access to is evidence they are asked
+  to take on trust, which is exactly what the ledger was built to avoid.
+  `/os/mysite` now shows it, in words that name the action rather than the
+  database row, and states on the page what the record does **not** cover:
+  someone reading the message files directly on the server. A record that reads
+  as complete coverage would be worse than none.
+
+- **A related refinement, not a finding.** "Has this mailbox been handed over?"
+  fails closed — but a table that has **never existed** cannot have recorded a
+  handover, and that is certainty rather than optimism. An install mid-upgrade,
+  before migration 081 runs, now reads "not handed over" and keeps working; every
+  other failure (I/O, corruption, a locked database) still fails closed. Two
+  failures that look alike and are not.
+
+- **Clean lenses, recorded.** Mail filter rules carry no forward or redirect
+  action, so there is no rule-shaped exfiltration path around a handover. PGP
+  private-key export already requires the holder's own credentials, so an
+  operator cannot lift a client's key from the panel. Both were attacked with the
+  handover promise in hand and both held.
+
 ### Added
 - **Mailbox handover: witnessed access, honestly bounded** (ADR-0152 Phase 5).
   Once a mailbox is handed to its owner, the operator can no longer open it

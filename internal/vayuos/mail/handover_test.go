@@ -180,15 +180,30 @@ func TestTamperingWithTheRecordIsDetected(t *testing.T) {
 	}
 }
 
-// A database that cannot answer must not answer "no".
+// A database that cannot answer must not answer "no" — except in the one case
+// where the answer is knowable anyway.
 func TestAnUnanswerableHandoverQuestionFailsClosed(t *testing.T) {
-	s := handoverDB(t)
-	if _, err := s.db.Exec(`DROP TABLE mail_handover`); err != nil {
+	// A table that has NEVER existed cannot have recorded a handover. An install
+	// mid-upgrade must keep working, and this is certainty rather than optimism.
+	fresh := handoverDB(t)
+	if _, err := fresh.db.Exec(`DROP TABLE mail_handover`); err != nil {
 		t.Fatal(err)
 	}
-	if !s.IsHandedOver("frank@client.test") {
-		t.Error("with the handover table unreadable the mailbox reads as NOT handed over. " +
-			"That opens every client's mail on a query error, which nobody would notice")
+	if fresh.IsHandedOver("frank@client.test") {
+		t.Error("with no handover table at all every mailbox reads as handed over, which " +
+			"locks an operator out of their own install for the duration of an upgrade")
+	}
+
+	// Any OTHER failure leaves the question genuinely open, and an open question
+	// must not be answered "no": that opens a client's mail on a transient error
+	// nobody would ever notice.
+	broken := handoverDB(t)
+	if err := broken.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !broken.IsHandedOver("frank@client.test") {
+		t.Error("with the database unusable the mailbox reads as NOT handed over — a " +
+			"transient failure would open every handed-over mailbox to the operator")
 	}
 }
 

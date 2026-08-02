@@ -131,9 +131,27 @@ func (b *vayuMailBridge) verifyCredentialScoped(ctx context.Context, addr, passw
 	// can register (and a member can sign in) with just the password.
 	requireApproval := accts != nil && accts.RequireDeviceApproval(ctx, addr)
 
+	// SEVERANCE (ADR-0152 D4). Once a mailbox is handed to its owner, the CMS-user
+	// credential branch below is closed for it.
+	//
+	// That branch authenticates by ADDRESS, so an operator who creates a CMS user
+	// carrying the handed-over mailbox's address — which an administrator can do
+	// at any moment — authenticates IMAP, POP3 and submission for that mailbox
+	// with a password they chose. No ledger entry, no notice, no break-glass mark:
+	// quieter and cheaper than the loud path, and it made the sentence
+	// "our own admin password stops working on your account" false.
+	//
+	// The mailbox's OWN password (branch 2) and its app passwords are untouched —
+	// refusing those would lock the client out of their own mail, which is the
+	// opposite of what handover is for.
+	cmsBranchOpen := true
+	if b.app.vayuMail != nil && b.app.vayuMail.IsHandedOver(addr) {
+		cmsBranchOpen = false
+	}
+
 	if !enforce && (webBootstrap || !requireApproval) {
 		// 1) CMS users (full VayuPress accounts).
-		if b.app.userStore != nil {
+		if cmsBranchOpen && b.app.userStore != nil {
 			if _, err := b.app.userStore.Authenticate(ctx, addr, password); err == nil {
 				return true
 			}

@@ -96,11 +96,21 @@ func (s *AccountStore) IsHandedOver(key string) bool {
 	err := s.db.QueryRow(
 		`SELECT COUNT(1) FROM mail_handover WHERE mailbox=? AND handed_at IS NOT NULL`, mbox).Scan(&n)
 	if err != nil {
-		// FAIL CLOSED. A database that cannot answer "has this been handed over?"
-		// must not be read as "no". The operator loses panel access to a mailbox
-		// until the query works again; the alternative is reading a client's mail
-		// because a query failed, which is the outcome the feature exists to
-		// prevent and the one nobody would notice.
+		// Two failures that look alike and are not.
+		//
+		// The table DOES NOT EXIST — an install that has not yet run migration 081.
+		// Nothing can have been handed over, because nothing could have been
+		// recorded. That is certain rather than optimistic, so it reads as "not
+		// handed over" and the panel keeps working through an upgrade.
+		//
+		// ANY OTHER failure — I/O, corruption, a locked database — leaves the
+		// question genuinely unanswered, and an unanswered question must not be
+		// read as "no". FAIL CLOSED: the operator loses panel access to the
+		// mailbox until the query works again, where the alternative is opening a
+		// client's mail because a query failed, which nobody would notice.
+		if strings.Contains(err.Error(), "no such table") {
+			return false
+		}
 		return true
 	}
 	handed := n > 0
