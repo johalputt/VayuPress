@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **ADR-0152 — Agency hosting.** The design record for running a web studio on
+  one install: per-domain websites, a scoped client role, operator-only mailbox
+  provisioning, and an honest mail-privacy claim. Records four defects found in
+  shipped code while designing it (an unauthenticated health endpoint, a scoped
+  API key that can mint a console administrator, a forgeable analytics ingest,
+  and an outbound queue that retains sent mail in plaintext indefinitely), the
+  finding that websites are install-wide rather than per-domain, and the decision
+  **not** to ship cryptographic mailbox sealing — six critical findings against
+  it, none of them about the cryptography. No behaviour changes with this entry.
+
 ## [3.16.31] — 2026-07-30
 
 ### Fixed
