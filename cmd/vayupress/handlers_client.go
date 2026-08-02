@@ -69,13 +69,10 @@ type clientSurfaceEntry struct {
 // Keep it small and keep it explicit. Every addition is a decision about what a
 // customer of the studio can see, and the safe answer for anything not on this
 // list is already "no".
-//
-// It deliberately does NOT yet declare /os/mysite: that page does not exist
-// until the next commit, and a surface entry matching no registered route is a
-// dead entry — the client's page 404s, the feature looks broken, and the
-// cheapest repair anyone reaches for is widening a neighbouring prefix.
-// TestEveryClientSurfaceEntryMatchesARealRoute holds that line.
 var clientSurface = []clientSurfaceEntry{
+	// Their own site: brand, and the facts about what is live.
+	{Prefix: "/os/mysite", Audience: audienceClient},
+	{Prefix: "/os/api/mysite", Audience: audienceClient},
 	// Their own mailbox. NOT /os/vayumail, which carries accounts/create,
 	// accounts/delete, accounts/update, the DNS panel and the security page —
 	// widening this entry by those eight characters re-admits all of it.
@@ -167,5 +164,5 @@ const roleClientName = "client"
 // denyClient refuses a confined client. Browser navigation lands on the page
 // they do have; anything scripted gets a 403 so a stale tab cannot keep trying.
 func (a *App) denyClient(w http.ResponseWriter, r *http.Request) {
-	a.denyAccess(w, r, "/os/vayumail/inbox")
+	a.denyAccess(w, r, "/os/mysite")
 }

@@ -359,6 +359,15 @@ func (r *Registry) Resolve(ctx context.Context, host string) (Domain, error) {
 	return d, nil
 }
 
+// ByID returns one registered domain by its opaque id.
+//
+// Exported so a caller holding an identifier — a client account's binding, an
+// admin action on a single row — can resolve it without listing every domain
+// and filtering, which is both wasteful and easy to get subtly wrong.
+func (r *Registry) ByID(ctx context.Context, id string) (Domain, error) {
+	return r.get(ctx, id)
+}
+
 // Primary returns the primary domain (the original install). ok is false when
 // the registry has not been seeded yet.
 func (r *Registry) Primary(ctx context.Context) (Domain, bool) {

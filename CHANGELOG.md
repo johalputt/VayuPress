@@ -9,6 +9,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **"My site" — the console page an agency client owns** (`/os/mysite`). Their
+  address, whether the connection is secured, whether mail is set up, what the
+  site serves, and the one thing they can change: the name, tagline, description
+  and accent colours their site introduces itself with. Written for someone
+  non-technical, in words that need no glossary.
+
+  It is deliberately **not an editor**. A client cannot write posts, upload media
+  or reach the content model: `handleOSPostDelete` and `handleOSEditorSave` are
+  install-wide destructive primitives with no per-record ownership check, so
+  offering "edit your own pages" would be selling a control the code cannot
+  honour.
+
+  It shows **no traffic figure**, and says why in plain words on the page.
+  `analytics_daily` is keyed `(day, path)` with no domain dimension, so two
+  client domains sharing `/about` have merged counts — a number there would be
+  another client's visits presented as this client's. A page that explains a
+  missing control costs less than answering the same question thirty times.
+
+  The brand writer takes the domain from the **session**, and refuses a request
+  body naming a different one rather than silently substituting the caller's own
+  scope: silent substitution reports success for an attempt to write someone
+  else's site, hiding both the attempt and the bug.
+
 - **The agency client role, and a confinement whose default is refusal**
   (ADR-0152 Phase 2). Migration 079 adds `users.client_domain_id`, additive with
   a `''` default so every existing install is byte-identical, and a new `client`
