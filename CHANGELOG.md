@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.32] — 2026-08-02
 
 ### Security
 - **Pre-release adversarial pass over ADR-0152 (the agency-hosting track).** Six
