@@ -429,6 +429,8 @@ func domainManagePage(d domain.Domain, posts, members, mailboxes int, mailOn boo
   </div>
 </div>`
 
+	allowance := domainAllowanceCard(d, mailboxes, mailOn)
+
 	shortcuts := `<div class="card">
   <h2 class="card-title">Design &amp; more</h2>
   <p class="text-sm muted">Deeper editing lives in the shared tools — they apply per domain once this site is selected.</p>
@@ -467,7 +469,58 @@ func domainManagePage(d domain.Domain, posts, members, mailboxes int, mailOn boo
   <span class="site-hero__actions">` + viewLink + `</span>
 </div>
 <div class="domain-card__stats mb-6">` + stats + `</div>
-` + branding + assign + shortcuts + lifecycle
+` + branding + allowance + assign + shortcuts + lifecycle
+}
+
+// domainAllowanceCard is the operator's control for how many branded mailboxes
+// this hosted domain may have.
+//
+// It exists because the enforcement shipped without it. `POST
+// /os/api/domains/{id}/allowance` refused mailbox creation at the cap from the
+// day it landed, and nothing rendered an input for it — so the only way to grant
+// a client their mailboxes was a hand-written API call. An enforced limit no
+// operator can set is a limit that is always 0, which reads to the operator as
+// "mailbox creation is broken".
+//
+// The used/granted pair is shown together deliberately. An operator setting this
+// number is answering "how many more can they have?", and that question cannot
+// be answered by the allowance alone.
+func domainAllowanceCard(d domain.Domain, used int, mailOn bool) string {
+	granted := d.Limits().Mailboxes
+
+	// State in words before the input, because 0 is ambiguous on sight and the
+	// wrong reading of it is the expensive one: an operator who assumes 0 means
+	// "no limit set yet, so unlimited" will not understand why creation refuses.
+	var state string
+	switch {
+	case !mailOn:
+		state = `Mail is switched off for this install, so no mailbox can exist on this domain yet.`
+	case granted == 0:
+		state = `<b>No mailboxes granted.</b> Creation on this domain is refused until you grant some — ` +
+			`0 means none, never unlimited.`
+	case used >= granted:
+		state = `<b>` + strconv.Itoa(used) + ` of ` + strconv.Itoa(granted) + ` used — the allowance is full.</b> ` +
+			`The next mailbox on this domain will be refused until you raise it.`
+	default:
+		state = `<b>` + strconv.Itoa(used) + ` of ` + strconv.Itoa(granted) + ` used</b>, ` +
+			strconv.Itoa(granted-used) + ` still available.`
+	}
+
+	return `<div class="card">
+  <h2 class="card-title">Mailbox allowance</h2>
+  <p class="text-sm muted">` + state + `</p>
+  <p class="text-sm muted">Mailboxes are created by you, on request, from VayuMail — this only sets the ceiling.
+    Lowering it below what is already in use does not delete anything; it stops the next one being made.</p>
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Mailboxes granted</span>
+      <input type="number" id="site-allowance" class="input" min="0" step="1" value="` +
+		strconv.Itoa(granted) + `" autocomplete="off"></label>
+  </div>
+  <div class="vm-row">
+    <button type="button" class="btn btn--primary" data-site-allowance-save>Save allowance</button>
+    <span id="site-allowance-status" class="text-sm muted" role="status" aria-live="polite"></span>
+  </div>
+</div>`
 }
 
 // domainManageScript wires the per-site manager: a scoped branding save/reset, a
@@ -493,6 +546,22 @@ if(bSave)bSave.addEventListener('click',function(){
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
     .then(function(res){bSave.disabled=false;set('site-brand-status',res.ok?'Saved ✓':((res.j&&res.j.message)||'Could not save branding'));})
     .catch(function(e){bSave.disabled=false;set('site-brand-status','Error: '+e);});
+});
+// Mailbox allowance. The field is a number input, but a browser hands back a
+// string and an empty one parses to NaN — sending that would clear the
+// allowance to 0 and silently revoke every mailbox the operator granted.
+var aSave=document.querySelector('[data-site-allowance-save]');
+if(aSave)aSave.addEventListener('click',function(){
+  var raw=val('site-allowance');
+  var n=parseInt(raw,10);
+  if(raw===''||isNaN(n)||n<0){set('site-allowance-status','Enter a whole number, 0 or more');return;}
+  aSave.disabled=true;set('site-allowance-status','Saving…');
+  fetch('/os/api/domains/'+encodeURIComponent(ID)+'/allowance',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({mailboxes:n})})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){aSave.disabled=false;
+      if(res.ok){set('site-allowance-status','Saved ✓ — reloading');window.location.reload();}
+      else{set('site-allowance-status',(res.j&&res.j.message)||'Could not save the allowance');}})
+    .catch(function(e){aSave.disabled=false;set('site-allowance-status','Error: '+e);});
 });
 // Branding reset
 var bClear=document.querySelector('[data-site-brand-clear]');
