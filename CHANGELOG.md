@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.33] — 2026-08-02
 
 ### Fixed
 - **Three controls shipped enforced and unreachable.** ADR-0152 landed the
