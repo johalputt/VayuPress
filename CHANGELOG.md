@@ -8,6 +8,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **Mailbox handover: witnessed access, honestly bounded** (ADR-0152 Phase 5).
+  Once a mailbox is handed to its owner, the operator can no longer open it
+  **through the product**: not from the panel, not by resetting its password, not
+  by clearing its second factor, not by minting a credential for it, and not by
+  pointing its mail somewhere else. What remains is a command-line break-glass
+  that **cannot run without writing a permanent, client-visible record** — the
+  difference between an escape hatch and a back door is that both exist and only
+  one leaves a mark nobody can remove.
+
+  Handover is one-way and the break-glass record is permanent, enforced by
+  **database triggers** rather than application code: a promise the party running
+  the database can quietly undo with one `UPDATE` is not a promise. The access
+  ledger is append-only for the same reason, and hash-chained so that tampering
+  by someone with direct database access is *detectable*. Chaining does not make
+  it impossible — the operator owns the database — and the claim says so.
+
+  **This is not encryption, and the product says so in those words.** The
+  messages remain readable files on a server the operator runs; anyone with
+  direct access to that machine, its database or a backup can still read them.
+  ADR-0152 D4 records why the cryptographic version is deliberately not built —
+  six critical findings against it, none about the cryptography — and states
+  verbatim the only sentence an agency may put in front of a client.
+
+  Two decisions that are properties rather than details. An unreadable handover
+  table reads as **handed over**, not as "no": the operator loses panel access
+  until the query works again, where the alternative is opening a client's mail
+  because a query failed, which nobody would notice. And the same mailbox asked
+  for two ways — bare local part or full address — gives one verdict, because a
+  handover that can be bypassed by renaming the thing is not one.
+
 ### Changed
 - **Opening a mailbox now requires saying who is asking** (ADR-0152 Phase 5).
   Every VayuMail read — list, read, search, move, mark, pin, delete — takes a

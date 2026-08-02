@@ -20,6 +20,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -72,7 +73,23 @@ type mailResetDeps struct {
 	FileToMailbox      func(ctx context.Context, email, subject, body string) error
 	Audit              func(action, actor, target, detail string)
 	Now                func() time.Time
+	// handedOver reports whether this mailbox has been handed to its owner
+	// (ADR-0152 D4). Nil in tests and in installs where VayuMail is absent, which
+	// reads as "not handed over" — the historic behaviour.
+	handedOver func(email string) bool
+	// RecordAccess appends to the client-visible access ledger. Required for the
+	// break-glass path and unused otherwise.
+	RecordAccess func(ctx context.Context, mailbox, actor, action, detail string) error
 }
+
+// errMailHandedOver is returned when the operator's password-reset path is
+// refused because the mailbox belongs to its owner now.
+var errMailHandedOver = errors.New("this mailbox has been handed over; its password cannot be reset by an administrator")
+
+// errBreakGlassNeedsLedger refuses the emergency override when the access record
+// is unavailable. The record IS the control here, so an override that cannot be
+// recorded is simply an administrator reset under another name.
+var errBreakGlassNeedsLedger = errors.New("the emergency override cannot run without recording it")
 
 // minMailPasswordLen matches the admin update path so recovery cannot be used to
 // set a weaker password than the console would allow.
@@ -85,6 +102,35 @@ const minMailPasswordLen = 8
 // this whole function exists to prevent.
 func applyMailPasswordReset(ctx context.Context, d mailResetDeps, email, newPassword string,
 	reason mailResetReason, actor string) (mailResetOutcome, error) {
+	// SEVERANCE (ADR-0152 D4). Resetting a handed-over mailbox's password is the
+	// other half of "we cannot get into your account": reset the password, clear
+	// the second factor, sign in. Refused here because the console, the assisted
+	// recovery flow and the CLI all funnel through this one function — one
+	// refusal covers three doors.
+	//
+	// The OWNER's own recovery paths are untouched — a recovery code, a recovery
+	// link or a trusted device is the holder proving who they are, which is the
+	// whole point of handing them the mailbox. What is refused is the
+	// ADMINISTRATOR path.
+	//
+	// break-glass is permitted and is the one remaining way in, precisely because
+	// it cannot run without writing a permanent, client-visible record. That is
+	// the difference between an escape hatch and a back door: both exist, only one
+	// leaves a mark nobody can remove.
+	if d.handedOver != nil && reason == mailResetByAdmin && d.handedOver(email) {
+		return mailResetOutcome{}, errMailHandedOver
+	}
+	if d.handedOver != nil && reason == mailResetByBreakGlass && d.handedOver(email) {
+		if d.RecordAccess == nil {
+			// No ledger, no break-glass. A break-glass whose record is optional is
+			// an administrator reset with a louder name.
+			return mailResetOutcome{}, errBreakGlassNeedsLedger
+		}
+		if err := d.RecordAccess(ctx, email, actor, "break-glass",
+			"an administrator reset this mailbox's password using the emergency override"); err != nil {
+			return mailResetOutcome{}, err
+		}
+	}
 
 	var out mailResetOutcome
 	email = strings.ToLower(strings.TrimSpace(email))
@@ -243,6 +289,11 @@ func (a *App) mailResetDepsFor() (mailResetDeps, bool) {
 	}
 	d.HoldQueue = a.vayuMail.HoldOutboundFor
 	d.Notify = a.sendRecoveryNotice
+	// ADR-0152 D4: the operator's reset path is refused once a mailbox belongs to
+	// its owner. Wired here so the console, the assisted-recovery flow and the CLI
+	// all inherit it — they funnel through applyMailPasswordReset.
+	d.handedOver = a.vayuMail.IsHandedOver
+	d.RecordAccess = a.vayuMail.AppendLedger
 	d.FileToMailbox = a.fileRecoveryNotice
 	return d, true
 }

@@ -105,6 +105,17 @@ func (s *AccountStore) ResolveAlias(ctx context.Context, addr string) string {
 // SetForward sets (or clears, with "") an account's auto-forward address. The
 // caller validates the address shape; the store rejects self-forwarding.
 func (s *AccountStore) SetForward(ctx context.Context, email, forwardTo string) error {
+	// SEVERANCE (ADR-0152 D4). Forwarding copies every future message somewhere
+	// the operator chooses, which reads the mailbox without ever opening it. It is
+	// the cheapest way to defeat a handover, so it is refused at the STORE — there
+	// are two handlers and a CLI above this, and a refusal in one of them is one
+	// somebody routes around without meaning to.
+	//
+	// The holder can still set their own forwarding: this refuses the operator's
+	// path, and the holder's requests do not pass through an operator session.
+	if strings.TrimSpace(forwardTo) != "" && s.IsHandedOver(email) {
+		return errHandedOverAccount
+	}
 	if s.db == nil {
 		return errors.New("vayumail: no storage")
 	}

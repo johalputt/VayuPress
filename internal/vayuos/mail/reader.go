@@ -83,13 +83,20 @@ func (r Reader) valid() bool {
 
 // readAuthorised is the single gate every engine read passes through.
 //
-// It currently enforces only that an authority was supplied. The handover
-// refusal attaches HERE and nowhere else, which is the whole reason the
-// consolidation came first: one function to change, rather than a dozen call
-// sites to find and a suite that stays green when one is missed.
+// The handover refusal lives HERE and nowhere else, which is the whole reason
+// the authority consolidation came first: one function to change, rather than a
+// scatter of call sites to find and a suite that stays green when one is missed.
+//
+// Only OPERATOR reads are refused. The mailbox's own holder keeps reading their
+// mail — that is the point of handing it to them — and system reads (delivery,
+// quota, indexing) must keep working or the mailbox stops receiving, which would
+// be a privacy feature that breaks the product it protects.
 func (e *Engine) readAuthorised(rd Reader) error {
 	if !rd.valid() {
 		return ErrNoReadAuthority
+	}
+	if rd.IsOperator() && e.IsHandedOver(rd.Key()) {
+		return ErrHandedOver
 	}
 	return nil
 }

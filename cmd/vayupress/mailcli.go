@@ -63,6 +63,11 @@ func runMailCLI(ctx context.Context, args []string, out io.Writer, accts *mail.A
 			// No notification channels: the mailer and the queue belong to a running
 			// engine, and this command deliberately runs without starting one.
 		}
+		// The break-glass override must be recordable even here, where no engine is
+		// running — the ledger is a table, not a service. Without this the command
+		// refuses on a handed-over mailbox, which is the correct failure.
+		deps.handedOver = accts.IsHandedOver
+		deps.RecordAccess = accts.AppendLedger
 		res, err := applyMailPasswordReset(ctx, deps, addr, pass, mailResetByBreakGlass, "cli:break-glass")
 		if err != nil {
 			return err

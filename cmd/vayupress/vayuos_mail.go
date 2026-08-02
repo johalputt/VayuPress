@@ -1871,11 +1871,21 @@ func (a *App) canManageAppPassword(r *http.Request, email string) bool {
 	if strings.TrimSpace(email) == "" {
 		return false
 	}
-	if a.isAdminRequest(r) {
+	_, own := a.ownMailbox(r)
+	isOwner := own != "" && strings.EqualFold(own, email)
+	if isOwner {
 		return true
 	}
-	_, own := a.ownMailbox(r)
-	return own != "" && strings.EqualFold(own, email)
+	// SEVERANCE (ADR-0152 D4). An administrator may provision credentials for a
+	// mailbox the operator still administers — that is ordinary support. Once a
+	// mailbox is handed over they may not, because minting an app password is a
+	// way to read the whole mailbox over IMAP that leaves NO ledger entry, no
+	// notice and no break-glass mark. It is quieter and cheaper than the loud
+	// path, and while it existed the sentence in ADR-0152 D4 was false.
+	if a.vayuMail != nil && a.vayuMail.IsHandedOver(email) {
+		return false
+	}
+	return a.isAdminRequest(r)
 }
 
 // appPasswordMailboxes returns the mailboxes whose app passwords this session

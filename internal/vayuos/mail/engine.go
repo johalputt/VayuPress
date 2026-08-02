@@ -603,6 +603,10 @@ func (e *Engine) Start(ctx context.Context) error {
 
 	// Admin-managed mail accounts (email + password).
 	if as, aerr := NewAccountStore(e.db); aerr == nil {
+		// The account store refuses credential changes on a handed-over mailbox
+		// (ADR-0152 D4). Wired here rather than passed through NewAccountStore so
+		// the store keeps no knowledge of what a handover is beyond "this one is".
+		as.SetDefaultDomain(e.cfg.Domain)
 		e.accounts = as
 	} else {
 		return fmt.Errorf("vayumail: accounts init: %w", aerr)

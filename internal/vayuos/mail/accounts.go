@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -98,7 +99,21 @@ type Account struct {
 const maxSignatureBytes = 4096
 
 // AccountStore persists mail accounts in SQLite.
-type AccountStore struct{ db *sql.DB }
+type AccountStore struct {
+	db *sql.DB
+	// defaultDomain completes a bare local part into a full address so the same
+	// mailbox asked for two ways resolves to one handover verdict.
+	defaultDomain string
+	handover      *handoverCache
+	handoverOnce  sync.Once
+}
+
+// errHandedOverAccount is returned by the account mutations an operator may no
+// longer perform on a mailbox that has been handed to its owner.
+var errHandedOverAccount = errors.New("vayumail: this mailbox has been handed over; the operator cannot change its credentials")
+
+// SetDefaultDomain tells the store which domain a bare local part belongs to.
+func (s *AccountStore) SetDefaultDomain(d string) { s.defaultDomain = d }
 
 // NewAccountStore opens the store, creating its table if needed.
 func NewAccountStore(db *sql.DB) (*AccountStore, error) {
@@ -589,6 +604,15 @@ func (s *AccountStore) EnableTOTP(ctx context.Context, email string) error {
 
 // DisableTOTP turns 2FA off and clears the stored secret.
 func (s *AccountStore) DisableTOTP(ctx context.Context, email string) error {
+	// SEVERANCE (ADR-0152 D4). Clearing a handed-over mailbox's second factor is
+	// one of the two moves that made "we cannot get into your account" false: the
+	// operator resets the password, clears the code, and signs in. The store
+	// refuses it rather than the handler, because there are two handlers and a
+	// CLI, and a refusal that lives in one of them is a refusal somebody routes
+	// around without meaning to.
+	if s.IsHandedOver(email) {
+		return errHandedOverAccount
+	}
 	if s.db == nil {
 		return errors.New("vayumail: no storage")
 	}
