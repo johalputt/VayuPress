@@ -259,6 +259,28 @@ func (r *Registry) SetBrand(ctx context.Context, id string, b Brand) error {
 	return err
 }
 
+// SetLimits stores a secondary domain's operator-set allowances.
+//
+// Operator-only by construction: nothing a client can reach calls this, and the
+// value lives in the same blob as the brand they CAN edit — which is why every
+// writer here merges rather than replaces.
+func (r *Registry) SetLimits(ctx context.Context, id string, l Limits) error {
+	cur, err := r.get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if cur.IsPrimary {
+		return fmt.Errorf("domain: the primary domain has no allowance to set")
+	}
+	cfg, err := EncodeLimitsInto(cur.ConfigJSON, l)
+	if err != nil {
+		return err
+	}
+	defer r.invalidate()
+	_, err = r.db.ExecContext(ctx, `UPDATE domains SET config_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND is_primary=0`, cfg, id)
+	return err
+}
+
 // SetSite stores a secondary domain's website override — which mode its root
 // serves, and the business template and content that go with it.
 //

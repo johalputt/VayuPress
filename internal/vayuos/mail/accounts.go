@@ -386,6 +386,33 @@ func (s *AccountStore) List(ctx context.Context) ([]Account, error) {
 	return out, rows.Err()
 }
 
+// CountForDomain returns how many mailboxes exist on a host.
+//
+// It exists so a per-domain allowance can be enforced without listing every
+// account on the install and filtering in Go: on a box carrying forty clients
+// that is forty times the work on every mailbox creation, and it invites the
+// caller to compare the wrong thing.
+//
+// The host is matched on the address's domain part, case-insensitively, against
+// a bound parameter — never interpolated. An empty host counts nothing rather
+// than everything, because "count the mailboxes on no domain" has no sensible
+// answer and returning the whole install would make an allowance check pass or
+// fail for reasons unrelated to the domain being checked.
+func (s *AccountStore) CountForDomain(ctx context.Context, host string) (int, error) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if s.db == nil || host == "" {
+		return 0, nil
+	}
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM vayumail_accounts WHERE LOWER(SUBSTR(email, INSTR(email,'@')+1))=?`,
+		host).Scan(&n)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 // SetAvatar stores a mailbox's profile picture (raw bytes + validated MIME). The
 // caller enforces the size/type limits (see the cmd-layer upload handler).
 func (s *AccountStore) SetAvatar(ctx context.Context, email string, blob []byte, mime string) error {

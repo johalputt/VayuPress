@@ -25,7 +25,9 @@ package main
 // panel says so in those words rather than displaying a number with a footnote.
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"html"
 	"net/http"
 	"strings"
@@ -76,6 +78,8 @@ func (a *App) handleOSMySite(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	b, _ := d.Brand()
 
+	used, granted := a.mailboxAllowanceUsage(r.Context(), d.Host)
+
 	body := `<div class="page-header"><h1>My site</h1>` +
 		`<div class="page-actions"><span id="mysite-status" role="status" aria-live="polite" class="text-sm muted"></span></div></div>` +
 		`<p class="page-sub">Your website's name, description and colours. Changes go live immediately.</p>` +
@@ -83,6 +87,7 @@ func (a *App) handleOSMySite(w http.ResponseWriter, r *http.Request) {
 		`<div class="section-head"><div class="section-head__title">Your branding</div>` +
 		`<div class="section-head__hint">Leave a field empty to use the default</div></div>` +
 		mySiteBrandCard(d, b) +
+		mySiteMailboxCard(d, used, granted) +
 		mySiteWhatsNotHere()
 
 	full := adminOSShellHead(nonce, "My site", "mysite", cfg) + body +
@@ -155,6 +160,39 @@ func mySiteBrandCard(d domain.Domain, b domain.Brand) string {
 		f("Accent colour (dark)", "accent_dark", b.AccentDark, "") +
 		`<button type="button" class="btn btn--primary btn--sm" id="mysite-save">Save changes</button>` +
 		`</div>`
+}
+
+// mySiteMailboxCard shows the client how many branded mailboxes they have and
+// how many they were given, and tells them how to get another.
+//
+// There is no "create" button and no request FORM. A form would be a new
+// unauthenticated-ish write surface on the one page an untrusted principal can
+// reach, to save an email nobody minds sending. The studio creates mailboxes;
+// this says so and shows the number, which is what the client actually wants to
+// know before they ask.
+func mySiteMailboxCard(d domain.Domain, used, granted int) string {
+	if !d.MailEnabled {
+		return `<div class="section-head"><div class="section-head__title">Email</div></div>` +
+			`<div class="card"><p class="text-sm muted">Email on ` + html.EscapeString(d.Host) +
+			` is not set up yet. Ask us if you would like branded addresses.</p></div>`
+	}
+	state := fmt.Sprintf("%d of %d in use", used, granted)
+	cls := ""
+	if granted <= 0 {
+		state = "None allocated yet"
+		cls = " stat-card--warn"
+	} else if used >= granted {
+		state = fmt.Sprintf("All %d in use", granted)
+		cls = " stat-card--warn"
+	}
+	return `<div class="section-head"><div class="section-head__title">Your mailboxes</div>` +
+		`<div class="section-head__hint">Created for you on request</div></div>` +
+		`<div class="stat-grid"><div class="stat-card` + cls + `">` +
+		`<div class="stat-card__label">Branded addresses</div>` +
+		`<div class="stat-card__value">` + html.EscapeString(state) + `</div></div></div>` +
+		`<div class="card"><p class="text-sm muted">Mailboxes on ` + html.EscapeString(d.Host) +
+		` are created by us — just ask and we will add one. You can change your own ` +
+		`password and turn on a login code from your mailbox settings at any time.</p></div>`
 }
 
 // mySiteWhatsNotHere states plainly what this page does not do.
@@ -246,4 +284,47 @@ func (a *App) handleOSMySiteBrand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "saved"})
+}
+
+// mailboxAllowanceUsage reports how many mailboxes exist on a hosted domain and
+// how many the operator has granted it.
+//
+// granted of 0 means NONE have been granted, not "unlimited". A per-client
+// allowance that defaults to unlimited is one the operator never chose, and the
+// first client to notice would be the one filling the disk the other thirty
+// share.
+func (a *App) mailboxAllowanceUsage(ctx context.Context, host string) (used, granted int) {
+	if a.domains == nil {
+		return 0, 0
+	}
+	d, err := a.domains.Resolve(ctx, host)
+	if err != nil || d.IsPrimary {
+		return 0, 0
+	}
+	granted = d.Limits().Mailboxes
+	if a.vayuMail != nil && a.vayuMail.Accounts() != nil {
+		if n, err := a.vayuMail.Accounts().CountForDomain(ctx, host); err == nil {
+			used = n
+		}
+	}
+	return used, granted
+}
+
+// mailboxAllowanceExceeded reports whether another mailbox on host would exceed
+// the operator's grant, with the message the panel shows.
+//
+// It fails CLOSED on an unknown domain: a host the registry cannot resolve has
+// no allowance, so it gets none. The alternative — treating an unresolvable
+// domain as unmetered — would make the check depend on the registry being
+// reachable, which is the wrong thing for a limit to depend on.
+func (a *App) mailboxAllowanceExceeded(ctx context.Context, host string) (bool, string) {
+	used, granted := a.mailboxAllowanceUsage(ctx, host)
+	if granted <= 0 {
+		return true, "No mailboxes have been allocated to " + host +
+			" yet. Set an allowance for it under Domains first."
+	}
+	if used >= granted {
+		return true, fmt.Sprintf("%s has used all %d of its allocated mailboxes. Raise its allowance under Domains to add another.", host, granted)
+	}
+	return false, ""
 }

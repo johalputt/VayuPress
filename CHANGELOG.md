@@ -9,6 +9,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **Branded mailboxes are metered per domain** (ADR-0152 Phase 3). An operator
+  grants each hosted domain a number of mailboxes from
+  `POST /os/api/domains/{id}/allowance`, and mailbox creation on a secondary
+  domain refuses once it is reached.
+
+  This is the number that makes the published capacity claim true. Until now
+  `STORAGE_QUOTA_GB` was global and `MailQuotaMB` was per *membership tier* —
+  neither is a per-client limit, so nothing stopped one client's mail filling the
+  disk that thirty clients share.
+
+  **An allowance of 0 means none granted, never unlimited.** A per-client cap
+  that defaults to unlimited is one the operator never chose, and the first
+  client to notice would be the one filling the disk. An unresolvable domain
+  fails closed for the same reason: a limit must not depend on the registry
+  being reachable. A negative allowance is refused rather than clamped —
+  clamping `-1` to `0` silently revokes the grant while reporting success.
+
+  Enforcement sits on the one path that can create a mailbox on a secondary
+  domain. The member self-claim paths pass an empty mail domain and so only ever
+  touch the primary, which is the agency's own install and is not metered.
+
+  The client's page shows the count and says mailboxes are created on request.
+  There is deliberately **no request form**: it would be a new write surface on
+  the one page an untrusted principal can reach, to save an email nobody minds
+  sending.
+
 - **"My site" — the console page an agency client owns** (`/os/mysite`). Their
   address, whether the connection is secured, whether mail is set up, what the
   site serves, and the one thing they can change: the name, tagline, description

@@ -845,6 +845,45 @@ func (a *App) handleOSDomainStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// handleOSDomainAllowance sets how many branded mailboxes a hosted domain may
+// have. Operator-only: it is registered under /os/api/domains, which the client
+// surface does not declare, and the client console offers no path to it.
+//
+// This is the number that makes the studio's capacity claim true. Without it
+// STORAGE_QUOTA_GB is global and MailQuotaMB is per membership tier, so nothing
+// stops one client's mail filling the disk that thirty clients share.
+func (a *App) handleOSDomainAllowance(w http.ResponseWriter, r *http.Request) {
+	if a.domains == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "domain registry not initialised", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	var body struct {
+		Mailboxes int `json:"mailboxes"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 512)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
+		return
+	}
+	// A negative allowance is a typo, not an intent. Refuse rather than clamp: a
+	// clamped -1 becomes 0, which silently REVOKES every mailbox the operator
+	// meant to grant, and the operator sees a success message either way.
+	if body.Mailboxes < 0 {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request",
+			"an allowance cannot be negative", "")
+		return
+	}
+	if err := a.domains.SetLimits(r.Context(), id, domain.Limits{Mailboxes: body.Mailboxes}); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "allowance-failed", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "mailboxes": body.Mailboxes})
+}
+
 // handleOSDomainBrand stores a secondary domain's public branding overrides
 // (VayuDomains per-domain branding). Colour fields are hex-validated before they
 // can reach the domain's /theme.css or its <meta theme-color>, so no CSS or

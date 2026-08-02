@@ -118,6 +118,23 @@ func (s SiteConfig) Empty() bool {
 	return s.Mode == "" && s.Template == "" && s.Content == ""
 }
 
+// Limits are the operator-set allowances for a hosted domain.
+//
+// A studio grants a client a number of branded mailboxes "on request" — the
+// client never mints their own. The number lives here, beside the brand the
+// client CAN edit, which is exactly why every writer of this envelope merges:
+// a client saving their site colours must not be able to raise their own limit.
+type Limits struct {
+	// Mailboxes caps how many mail accounts may exist on this domain.
+	// 0 means none have been granted, which is the correct default for a domain
+	// nobody has provisioned yet — not "unlimited". An allowance that defaults to
+	// unlimited is an allowance the operator never actually chose.
+	Mailboxes int `json:"mailboxes,omitempty"`
+}
+
+// Empty reports whether no allowance has been set.
+func (l Limits) Empty() bool { return l.Mailboxes == 0 }
+
 // domainConfig is the shape of the domains.config_json blob. It is a small
 // envelope so stages can add sibling keys without disturbing each other.
 //
@@ -128,8 +145,9 @@ func (s SiteConfig) Empty() bool {
 // allowance). Every writer here is therefore read-modify-write, and there is no
 // whole-blob encoder left to reach for by mistake.
 type domainConfig struct {
-	Brand Brand      `json:"brand"`
-	Site  SiteConfig `json:"site,omitempty"`
+	Brand  Brand      `json:"brand"`
+	Site   SiteConfig `json:"site,omitempty"`
+	Limits Limits     `json:"limits,omitempty"`
 }
 
 // decodeConfig parses a config_json blob. Malformed JSON yields a zero envelope
@@ -150,7 +168,7 @@ func decodeConfig(raw string) domainConfig {
 // cleared override stores nothing rather than an empty object — which keeps the
 // short-circuits in Brand() and Site() intact.
 func encodeConfig(c domainConfig) (string, error) {
-	if c.Brand.Empty() && c.Site.Empty() {
+	if c.Brand.Empty() && c.Site.Empty() && c.Limits.Empty() {
 		return "", nil
 	}
 	out, err := json.Marshal(c)
@@ -169,6 +187,18 @@ func (d Domain) Site() (SiteConfig, bool) {
 		return SiteConfig{}, false
 	}
 	return s, true
+}
+
+// Limits returns this domain's operator-set allowances. The zero value means
+// nothing has been granted.
+func (d Domain) Limits() Limits { return decodeConfig(d.ConfigJSON).Limits }
+
+// EncodeLimitsInto merges operator allowances into an existing config_json,
+// preserving every sibling key — notably the brand, which the CLIENT may edit.
+func EncodeLimitsInto(existing string, l Limits) (string, error) {
+	c := decodeConfig(existing)
+	c.Limits = l
+	return encodeConfig(c)
 }
 
 // EncodeBrandConfigInto merges a Brand into an EXISTING config_json, preserving

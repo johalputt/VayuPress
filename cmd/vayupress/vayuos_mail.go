@@ -1534,6 +1534,15 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 		}
 		mailDomain = in.Domain
 		targetHost = in.Domain
+		// A hosted client's mailboxes are metered: the studio grants a number "on
+		// request" and the client never mints their own. Enforced HERE, at the one
+		// path that can create a mailbox on a secondary domain — the member
+		// self-claim paths pass an empty mailDomain and so only ever touch the
+		// primary, which is the agency's own install and is not metered.
+		if over, msg := a.mailboxAllowanceExceeded(r.Context(), in.Domain); over {
+			writeAPIError(w, r, http.StatusConflict, "allowance-reached", msg, "")
+			return
+		}
 	}
 	var quotaBytes int64
 	if in.QuotaMB != nil && *in.QuotaMB > 0 {
