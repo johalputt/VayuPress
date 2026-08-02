@@ -656,7 +656,7 @@ write_digest() {
 # concludes the upgrade is slow, and eventually stops trusting the panel.
 #
 # Written on every start, so it also tracks correctly through a downgrade.
-AGENT_CAPS="selfupgrade=1 digest=1 defaulthost=1 mcpsurface=1 cosignpin=1 rescue=1"
+AGENT_CAPS="selfupgrade=1 digest=1 defaulthost=1 mcpsurface=1 cosignpin=1 rescue=1 realip=1"
 
 # AGENT_VERSION is READ from a file the release workflow stamps into the bundle,
 # never typed into this script.
@@ -974,6 +974,99 @@ reconcile_mcpsurface() {
   rm -f "${CONTROL_DIR}/mcpsurface.want" 2>/dev/null || true
 }
 
+# reconcile_realip teaches nginx to resolve the real visitor address.
+#
+# Behind a proxy every request arrives from an edge node, so without this every
+# per-IP control in the product is metering the EDGE and not the reader. Two
+# things follow, and both are worse than they sound. A single abuser cannot be
+# isolated, because they share a bucket with the whole audience. And one
+# genuinely busy minute trips the limit for everybody at once — the failure
+# presents as "the site started challenging all my readers", which is the report
+# that makes an operator switch the shield off.
+#
+# The app deliberately will NOT solve this by trusting a header. Any visitor can
+# send CF-Connecting-IP, and on an ordinary install the peer is the local nginx,
+# which forwards unknown headers untouched — so trusting it there would let a
+# visitor choose their own identity for the rate limiter, the jail and the auth
+# lockout. nginx is the only party positioned to know the truth, because it sees
+# the real connection. That is why this writes nginx config rather than a
+# setting.
+#
+# The ranges come from the file the Tier 2 allowlist already fetched. Nothing
+# here fetches from the network and nothing here accepts a range from the panel:
+# the panel writes an empty flag, and every address written into nginx comes from
+# a root-owned file this agent's own firewall script populated.
+reconcile_realip() {
+  [ -f "${CONTROL_DIR}/realip.want" ] || return 0
+  command -v nginx >/dev/null 2>&1 || {
+    write_state realip error
+    printf '%s' "nginx is not installed on this host" >"${CONTROL_DIR}/realip.reason" 2>/dev/null || true
+    rm -f "${CONTROL_DIR}/realip.want" 2>/dev/null || true
+    return 0
+  }
+  local src="${CDN_ALLOW_FILE:-/etc/vayushield/cdn-allow.conf}"
+  if [ ! -r "$src" ]; then
+    write_state realip error
+    printf '%s' "no proxy range list yet — press \"Allowlist your proxy's edge ranges\" first, then this" \
+      >"${CONTROL_DIR}/realip.reason" 2>/dev/null || true
+    rm -f "${CONTROL_DIR}/realip.want" 2>/dev/null || true
+    return 0
+  fi
+
+  write_state realip applying
+  local out="/etc/nginx/conf.d/vayushield-realip.conf"
+  local bak="" n=0
+  [ -f "$out" ] && { bak="${out}.vayushield.bak"; cp -f "$out" "$bak" 2>/dev/null || true; }
+
+  {
+    printf '%s\n' "# Managed by vayushield-agent. Edits are overwritten."
+    printf '%s\n' "# Resolves the real visitor address so per-IP controls meter readers, not edge nodes."
+    # Only well-formed CIDRs are emitted. A malformed line reaching nginx is a
+    # config that fails to load, and this file sits in conf.d where that takes
+    # the WHOLE web server down rather than one vhost.
+    while IFS= read -r line; do
+      line="${line%%#*}"
+      line="$(printf '%s' "$line" | tr -d '[:space:]')"
+      [ -n "$line" ] || continue
+      case "$line" in
+        *[!0-9a-fA-F.:/]*) continue ;;
+      esac
+      case "$line" in
+        */*) ;;
+        *) continue ;;
+      esac
+      printf 'set_real_ip_from %s;\n' "$line"
+      n=$((n + 1))
+    done <"$src"
+    # CF-Connecting-IP carries exactly one address — the visitor the edge saw —
+    # so it cannot be confused by a chain, which is why it is preferred over
+    # X-Forwarded-For where it exists. real_ip_recursive is pointless with a
+    # single-value header and is deliberately left off.
+    printf '%s\n' "real_ip_header CF-Connecting-IP;"
+  } >"$out" 2>/dev/null
+
+  if [ "$n" -eq 0 ]; then
+    rm -f "$out" 2>/dev/null || true
+    [ -n "$bak" ] && cp -f "$bak" "$out" 2>/dev/null || true
+    write_state realip error
+    printf '%s' "the proxy range list held no usable ranges; nginx was not changed" \
+      >"${CONTROL_DIR}/realip.reason" 2>/dev/null || true
+    rm -f "${CONTROL_DIR}/realip.want" 2>/dev/null || true
+    return 0
+  fi
+
+  if nginx_try_reload "$out" "$bak"; then
+    write_state realip active
+    clear_reason realip
+    write_digest
+  else
+    write_state realip error
+    printf '%s' "nginx rejected the real-IP config; the previous state was restored. ${NGINX_TRY_WHY:0:240}" \
+      >"${CONTROL_DIR}/realip.reason" 2>/dev/null || true
+  fi
+  rm -f "${CONTROL_DIR}/realip.want" 2>/dev/null || true
+}
+
 # ── Self-upgrade ─────────────────────────────────────────────────────────────
 #
 # The one operation that had to be a terminal command, and no longer is.
@@ -1248,6 +1341,7 @@ run_agent() {
       reconcile_tier3
       reconcile_defaulthost
       reconcile_mcpsurface
+      reconcile_realip
       reconcile_banlist
       # The digest shells out to nft and nginx -T, which is far too expensive for
       # a 5-second poll. Refresh it about once a minute and on the first tick, so

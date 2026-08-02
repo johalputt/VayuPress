@@ -422,6 +422,23 @@ var shieldFixes = map[string]shieldFix{
 			"the MCP, OAuth and health endpoints. Your other vhosts are not touched. The helper backs " +
 			"the file up first and restores it if nginx refuses the result.",
 	},
+	// The posture row for this one had no button at all, which made it the
+	// longest-standing example of the thing this section exists to stop: a report
+	// that names a live fault and hands it back to the operator as homework.
+	"realip": {
+		Flag:   "realip.want",
+		State:  "realip.state",
+		Reason: "realip.reason",
+		Cap:    "realip=1",
+		Title:  "Real visitor IP",
+		Button: "Resolve the real visitor address",
+		Explain: "Writes set_real_ip_from for your proxy's published ranges, so nginx resolves the " +
+			"visitor before VayuPress sees the request. Until this is done every per-IP control here " +
+			"is metering your edge rather than your readers: one abuser cannot be isolated because " +
+			"they share a bucket with everyone, and one busy minute challenges the whole audience at " +
+			"once. Allowlist your proxy's ranges first — this uses that same list, and never takes an " +
+			"address from this page. The helper validates the config and restores it if nginx refuses.",
+	},
 }
 
 // shieldAgentSupportsFix reports whether the running helper advertises the
@@ -724,6 +741,7 @@ func (a *App) shieldHardeningBody(r *http.Request) string {
 		b.WriteString(shieldRescueRow())
 		b.WriteString(shieldFixRow("defaulthost"))
 		b.WriteString(shieldFixRow("mcpsurface"))
+		b.WriteString(shieldFixRow("realip"))
 		b.WriteString(a.shieldCDNAdvisory(r))
 		b.WriteString(`<p class="muted text-xs">Both tiers are fully reversible from here.</p>`)
 	} else {
