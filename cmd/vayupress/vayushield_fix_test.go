@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -32,7 +33,7 @@ func TestPostureFixesAreOneClickFromTheConsole(t *testing.T) {
 	a := &App{}
 	// A helper advertising both capabilities.
 	if err := os.WriteFile(filepath.Join(dir, "agent.caps"),
-		[]byte("selfupgrade=1 digest=1 defaulthost=1 mcpsurface=1"), 0o600); err != nil {
+		[]byte(allShieldCaps()), 0o600); err != nil {
 		t.Fatalf("caps: %v", err)
 	}
 
@@ -86,7 +87,7 @@ func TestFixRequestCannotChooseAPath(t *testing.T) {
 	dir := withControlDir(t)
 	a := &App{}
 	if err := os.WriteFile(filepath.Join(dir, "agent.caps"),
-		[]byte("defaulthost=1 mcpsurface=1"), 0o600); err != nil {
+		[]byte(allShieldCaps()), 0o600); err != nil {
 		t.Fatalf("caps: %v", err)
 	}
 	for _, hostile := range []string{
@@ -278,7 +279,7 @@ func TestRescueUnitsDoNotDependOnTheRunningAgent(t *testing.T) {
 func TestStatusRendersInsideItsOwnCard(t *testing.T) {
 	dir := withControlDir(t)
 	if err := os.WriteFile(filepath.Join(dir, "agent.caps"),
-		[]byte("defaulthost=1 mcpsurface=1"), 0o600); err != nil {
+		[]byte(allShieldCaps()), 0o600); err != nil {
 		t.Fatalf("caps: %v", err)
 	}
 	for key, fix := range shieldFixes {
@@ -305,4 +306,21 @@ func TestStatusRendersInsideItsOwnCard(t *testing.T) {
 			t.Errorf("%s: the row does not end by closing its card:\n%s", key, row)
 		}
 	}
+}
+
+// allShieldCaps is the capability string a fully-current helper advertises,
+// DERIVED from the fix table rather than restated.
+//
+// It was restated, in four places, and the next fix added to the table failed
+// two of these tests for a reason that had nothing to do with the fix: the
+// literals still described the previous release's helper. A test whose fixture
+// has to be hand-edited every time the thing it tests grows is a test that
+// eventually gets edited without being re-read.
+func allShieldCaps() string {
+	caps := []string{"selfupgrade=1", "digest=1"}
+	for _, fix := range shieldFixes {
+		caps = append(caps, fix.Cap)
+	}
+	sort.Strings(caps)
+	return strings.Join(caps, " ")
 }

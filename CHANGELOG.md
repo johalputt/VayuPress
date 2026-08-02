@@ -6,6 +6,116 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Three controls shipped enforced and unreachable.** ADR-0152 landed the
+  enforcement for per-domain mailbox allowances, the confined client role, and
+  mailbox handover — and shipped **no way to operate any of them from the panel**.
+  The pattern is the same each time and it is worth naming, because a green test
+  suite is exactly what it looks like: the rule was written, the refusal was
+  tested, the client-facing surface was built, and the operator's switch was
+  never added. Enforcement without a switch is not a control. It is dead code
+  that fails closed, and to the operator it is indistinguishable from a bug.
+
+- **The mailbox allowance had no input.** `POST /os/api/domains/{id}/allowance`
+  refused creation at the cap from the day it landed and nothing rendered a
+  field, so the only way to grant a client their mailboxes was a hand-written API
+  call. The card on `/os/domains/{id}` shows used against granted — the question
+  is "how many more can they have?", which the allowance alone cannot answer.
+  Zero says **"No mailboxes granted"** in words, because 0 is ambiguous on sight
+  and an operator who reads it as "unlimited" files a bug when the next mailbox
+  is refused. A full allowance warns *before* the refusal, mail being off
+  install-wide is reported as its own situation, and an emptied field is refused
+  rather than sent — a number input hands back `""` when cleared, which parses to
+  NaN and lands as 0, silently revoking the grant while reporting success.
+
+- **The client login could not be created at all.** `RoleClient` was validated
+  and confined, and the team page's picker offered only admin/editor/author with
+  no writer for the binding anywhere. Reading the code to fix it turned up worse:
+  **both** write paths would have minted a client with an *empty* binding, and
+  `''` is the primary domain's sentinel everywhere in this codebase — so that
+  account is not an unconfigured client, it is a customer holding a login scoped
+  to the agency's own install. Closed at the store rather than the handler,
+  because there are three ways to write a user row and only one of them is the
+  new card: `CreateClient` is the only way one comes into existence and requires
+  the binding, `Create` and `SetRole` refuse the role outright, demotion clears
+  the binding so no stale scope rides along, and the endpoint refuses the primary
+  domain. The operator's chosen password is a handover credential, not a
+  permanent one — the account is forced to change it, so the studio stops knowing
+  the password to the one account it promised was the client's.
+
+- **Handover had no trigger, so no severance could ever fire.** `HandOver()` had
+  zero callers outside its own definition — no button, no route, no CLI
+  subcommand. All six severances were real, tested, and permanently dormant, and
+  the capability was described in a shipped changelog and on the website. The
+  control now lives in the mailbox's own card, behind three gates: the address is
+  **retyped and compared on the server** (handover is one-way, so a mis-click is
+  permanent, and `hx-confirm` is a client-side courtesy a replayed request walks
+  through); a **confirmed recovery address is required**, because with none the
+  break-glass notice can only be filed into the mailbox itself where whoever used
+  the override can delete it; and a repeat is refused so the client's record
+  never carries a line for an event that did not happen.
+
+- **VayuShield: the "Real visitor IP" finding gets a button.** It was the last
+  posture row that named a live fault and left it to the operator. On a proxied
+  install every per-IP control is metering the edge rather than the reader: one
+  abuser cannot be isolated because they share a bucket with the whole audience,
+  and one busy minute challenges everybody at once — which is the report that
+  gets a shield switched off. The app deliberately does not fix this by trusting
+  a header (any visitor can send one, and the local nginx forwards it untouched),
+  so the remediation writes nginx config through the same one-bit flag as the
+  others: the panel creates an empty file and every address reaching nginx comes
+  from the root-owned range list. The written file lands in `conf.d`, where a
+  malformed line stops nginx loading entirely rather than breaking one vhost, so
+  non-CIDR input is dropped and an empty result leaves the existing config alone.
+
+### Changed
+- **The agency-hosting copy on the site now matches what ships**, including one
+  correction that was an *understatement*: the break-glass notice was described
+  as going to a recovery address "if they set one", when a confirmed address
+  outside the install is now required before a mailbox can be handed over at all.
+  Stating a guarantee as a maybe costs the reader the reason it is a guarantee.
+
+- **A mailbox control could never send its own field, and one shipped that way.**
+  Found by the pre-release adversarial pass. Several controls in the mailbox card
+  built a CSS selector by pasting an address after `#`:
+
+  ```
+  hx-include="#vm-q-dana@example.com"
+  ```
+
+  That is not a valid selector. An id *selector* must be a CSS identifier and
+  `@` is not an identifier character, so `querySelectorAll` throws `SyntaxError`
+  and htmx includes **nothing**. The id *attribute* is perfectly legal and
+  `getElementById` finds it — which is exactly why this survives review: the
+  markup is correct right up until something tries to select it. Verified
+  against a real DOM implementation rather than from the spec.
+
+  The **quota Save button has shipped in this state**: an operator sets a
+  mailbox quota, presses Save, watches the list refresh, and the value never
+  left the page. The handover confirmation added in this same batch would have
+  had the same fault, making a one-way control that could never succeed.
+
+  Both now derive a selector-safe id from a digest of the address. A digest
+  rather than character-sanitising, because sanitising *collides* —
+  `dana@example.com`, `dan.a@example.com` and `dan-a@example.com` all reduce to
+  one id, and two mailboxes sharing an id is a worse bug than the one being
+  fixed: one mailbox's Save button would send another mailbox's value. Case and
+  surrounding whitespace still map to the same id, because they are the same
+  mailbox.
+
+### Security
+- Two tests in this batch were rewritten because the first versions **passed
+  against re-broken code**. One compared string offsets inside a function's
+  source, which measures declaration order rather than what a page renders. The
+  other read for `RecoveryContact(` preceding `HandOver(` — both still true with
+  the guard replaced by `if false`, so it certified a build with the gate
+  removed. Both now exercise behaviour, and the mutation that slipped through
+  fails. Recorded here rather than quietly fixed, because "the test passed" is
+  the sentence that let the three unreachable controls above ship in the first
+  place.
+
 ## [3.16.32] — 2026-08-02
 
 ### Security

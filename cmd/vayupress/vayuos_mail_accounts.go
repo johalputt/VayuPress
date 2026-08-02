@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"html"
 	"net/http"
@@ -455,7 +457,7 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	retSel += `</select>`
 
 	// Quota input + Save (HTMX; the button includes the sibling input).
-	quotaID := "vm-q-" + esc(ac.Email)
+	quotaID := vmFieldID("vm-q-", ac.Email)
 	quotaField := `<input class="input input--sm vm-quota-input" id="` + quotaID + `" type="number" min="0" step="1" name="quota_mb" value="` +
 		strconv.FormatInt(quotaMB, 10) + `" aria-label="Quota in MB (0 = unlimited)">` +
 		`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/accounts/action"` +
@@ -628,6 +630,30 @@ func (a *App) handleVayuOSAccountsAction(w http.ResponseWriter, r *http.Request)
 	writeOSHTML(w, r, list)
 }
 
+// vmFieldID builds a per-mailbox element id that is safe to put after "#" in a
+// CSS selector.
+//
+// AUDIT FINDING. These ids used to be the prefix with the address pasted on:
+// "vm-q-dana@example.com". As an id ATTRIBUTE that is legal, and
+// getElementById finds it — which is why it reads as correct. As an id
+// SELECTOR it is not: an id selector must be a CSS identifier and "@" is not an
+// identifier character, so querySelectorAll("#vm-q-dana@example.com") throws
+// SyntaxError. htmx then includes NOTHING, and the field the button was meant
+// to send is dropped without a word.
+//
+// The quota control shipped in that state: an operator sets a mailbox quota,
+// presses Save, sees the list refresh, and the value never left the page.
+//
+// A digest is used rather than a sanitised address because sanitising collides.
+// Replacing every non-identifier character with "-" maps dana@example.com and
+// dana.example.com and dana-example-com to one id, and two mailboxes sharing an
+// id is a worse bug than the one being fixed: one mailbox's Save button would
+// send another mailbox's field.
+func vmFieldID(prefix, email string) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(email))))
+	return prefix + hex.EncodeToString(sum[:])[:16]
+}
+
 // vayuCardHandover renders the one-way handover control for a mailbox.
 //
 // The copy here is the client-facing promise from ADR-0152 D4, and it is written
@@ -667,11 +693,12 @@ func (a *App) vayuCardHandover(ctx context.Context, ac vmail.Account) string {
 	blocked := strings.TrimSpace(contact) == ""
 
 	warn := ""
+	hoID := vmFieldID("vm-ho-", ac.Email)
 	confirmField := `<label class="field vm-grow"><span class="field-label">Type ` + email + ` to confirm</span>
-    <input class="input input--sm" type="text" name="confirm" id="vm-ho-` + email + `"
+    <input class="input input--sm" type="text" name="confirm" id="` + hoID + `"
            autocomplete="off" spellcheck="false" aria-label="Confirm handover of ` + email + `"></label>`
 	button := `<button type="button" class="btn btn--sm btn--danger" hx-post="/os/vayumail/accounts/action"` +
-		hxVals("op", "handover", "email", ac.Email) + ` hx-include="#vm-ho-` + email + `"` + acctListHx +
+		hxVals("op", "handover", "email", ac.Email) + ` hx-include="#` + hoID + `"` + acctListHx +
 		` hx-confirm="Hand ` + email + ` to its holder? You will not be able to open this mailbox again, and this cannot be undone.">Hand over</button>`
 	if blocked {
 		warn = `<p class="muted text-xs">⚠ Set and verify a <b>recovery address</b> for this mailbox first
