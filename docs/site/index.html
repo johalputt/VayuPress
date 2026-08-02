@@ -847,12 +847,12 @@
         <div data-reveal style="--d:200ms" class="studio-card">
           <div class="studio-ic" aria-hidden="true">📮</div>
           <h3 class="font-display text-lg font-semibold text-white mb-2">Mailboxes you meter</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">Grant each domain a number of branded mailboxes; creation refuses at the cap. An allowance of <span class="text-gray-200">0 means none granted, never unlimited</span>, and a domain that cannot be resolved fails closed — a limit that depends on a lookup succeeding is not a limit. Creation stays <span class="text-gray-200">operator-only</span>: mailboxes are made on request, by you.</p>
+          <p class="text-sm text-gray-400 leading-relaxed">Grant each domain a number of branded mailboxes; creation refuses at the cap. An allowance of <span class="text-gray-200">0 means none granted, never unlimited</span>, and a domain that cannot be resolved fails closed — a limit that depends on a lookup succeeding is not a limit. Creation stays <span class="text-gray-200">operator-only</span>: mailboxes are made on request, by you. The allowance, the client's login and the handover are all set from the domain's own page — the only thing that needs a shell is the emergency override, deliberately.</p>
         </div>
         <div data-reveal style="--d:250ms" class="studio-card">
           <div class="studio-ic" aria-hidden="true">🤝</div>
           <h3 class="font-display text-lg font-semibold text-white mb-2">Mail you can hand over</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">Once a mailbox is handed to its owner, <span class="text-gray-200">six routes into it close</span> and one remains — a command-line override that cannot run without writing a permanent record the client reads on their own page. The difference between an escape hatch and a back door is that both exist, and only one leaves a mark nobody can remove.</p>
+          <p class="text-sm text-gray-400 leading-relaxed">Once a mailbox is handed to its owner, <span class="text-gray-200">six routes into it close</span> and one remains — a command-line override that cannot run without writing a permanent record the client reads on their own page. The difference between an escape hatch and a back door is that both exist, and only one leaves a mark nobody can remove. You hand a mailbox over from its own card in the panel, by <span class="text-gray-200">retyping the address</span>: it is one-way, and nothing reverses it.</p>
         </div>
       </div>
 
@@ -874,7 +874,8 @@
           <p class="text-sm text-gray-500 mb-4">A client locked out on a Friday still has to be helped. So the last door is not sealed — it is wired to an alarm that cannot be disconnected.</p>
           <div class="sever-row"><span class="sever-mark sever-mark--open" aria-hidden="true">⚑</span><p class="text-sm text-gray-400 leading-relaxed">A <span class="text-gray-200">command-line override</span> resets the mailbox password from the host. It <span class="text-gray-200">refuses to run</span> if the record cannot be written first — a break-glass whose log is optional is an administrator reset with a louder name.</p></div>
           <div class="sever-row"><span class="sever-mark sever-mark--open" aria-hidden="true">⚑</span><p class="text-sm text-gray-400 leading-relaxed">The entry is <span class="text-gray-200">append-only and hash-chained in the database</span>, the handover itself is one-way, and both are enforced by database triggers — a promise the party running the database can undo with one <code class="font-mono text-[0.78em] text-gray-300">UPDATE</code> is not a promise.</p></div>
-          <div class="sever-row"><span class="sever-mark sever-mark--open" aria-hidden="true">⚑</span><p class="text-sm text-gray-400 leading-relaxed">The client <span class="text-gray-200">sees it on their own page</span>, a notice goes to their recovery address if they set one, and a copy is filed into the mailbox itself. Every app password on the mailbox is revoked by the same reset.</p></div>
+          <div class="sever-row"><span class="sever-mark sever-mark--open" aria-hidden="true">⚑</span><p class="text-sm text-gray-400 leading-relaxed">The client <span class="text-gray-200">sees it on their own page</span>, a notice goes to <span class="text-gray-200">a recovery address outside this install</span>, and a copy is filed into the mailbox itself. Every app password on the mailbox is revoked by the same reset.</p></div>
+          <div class="sever-row"><span class="sever-mark sever-mark--open" aria-hidden="true">⚑</span><p class="text-sm text-gray-400 leading-relaxed">That outside address is <span class="text-gray-200">required before a mailbox can be handed over at all</span>. Without one the notice could only be filed into the mailbox — where whoever used the override can delete it, which is the opposite of a record.</p></div>
         </div>
       </div>
 
