@@ -57,9 +57,15 @@ type Config struct {
 	QueueBaseBackoff time.Duration
 
 	// QueueRetentionDays auto-clears DELIVERED outbound-queue rows older than this
-	// many days (0 = keep forever, the default). It prunes only the delivery-queue
-	// record shown in the Outbox — the Sent copy in the sender's Maildir is a
-	// separate store and is never touched. Operator-settable at runtime.
+	// many days. It prunes only the delivery-queue record shown in the Outbox —
+	// the Sent copy in the sender's Maildir is a separate store and is never
+	// touched. Operator-settable at runtime.
+	//
+	// 0 means keep forever and is NO LONGER the default (DefaultConfig sets 90).
+	// `raw` in that queue is the full RFC5322 message, so a zero window turned the
+	// delivery queue into a permanent plaintext archive of everything the install
+	// had ever sent, replicated into every database backup. An operator may still
+	// choose 0 deliberately; nothing arrives at it by omission.
 	QueueRetentionDays int
 
 	// DeliveryTimeout bounds a single SMTP delivery attempt.
@@ -194,27 +200,39 @@ func (c Config) RelayAddr() string {
 // DefaultConfig returns constitutional defaults.
 func DefaultConfig() Config {
 	return Config{
-		Enabled:           false, // enabled by the first-boot wizard once a domain is set
-		DKIMSelector:      "vayu",
-		StorageDir:        "./vayudata/mail",
-		QueueMaxAttempts:  20, // generous auto-retry ("keep trying until it sends"): 2m→4m→…→6h cap, ~4+ days before it's marked failed and offered for one-click Resend
-		QueueBaseBackoff:  2 * time.Minute,
-		DeliveryTimeout:   30 * time.Second,
-		DKIMEnabled:       true,
-		SPFEnabled:        true,
-		DMARCEnabled:      true,
-		InboundEnabled:    true, // on by default; disable with VAYUOS_MAIL_INBOUND=off
-		SMTPListen:        ":25",
-		IMAPListen:        ":143",
-		POP3Listen:        ":110",
-		POP3SListen:       ":995",
-		SubmissionListen:  ":587",
-		IMAPSListen:       ":993",
-		MaxMessageBytes:   25 * 1024 * 1024, // 25 MiB
-		JunkFilterEnabled: true,             // local heuristic, no external services
-		RelayPort:         587,              // standard authenticated submission port
-		RelayRequireTLS:   true,             // never AUTH over plaintext by default
-		ACMEEnabled:       false,            // opt-in; off by default to preserve the zero-config self-signed boot
-		ACMEHTTPAddr:      ":80",            // standard HTTP-01 challenge port
+		Enabled:          false, // enabled by the first-boot wizard once a domain is set
+		DKIMSelector:     "vayu",
+		StorageDir:       "./vayudata/mail",
+		QueueMaxAttempts: 20, // generous auto-retry ("keep trying until it sends"): 2m→4m→…→6h cap, ~4+ days before it's marked failed and offered for one-click Resend
+		QueueBaseBackoff: 2 * time.Minute,
+		// 90 days, not "keep forever". vayumail_queue.raw holds the FULL RFC5322
+		// bytes of every outbound message (queue.go: `raw BLOB NOT NULL`, the same
+		// bytes handed to DeliverFunc), so a zero window made the delivery queue a
+		// permanent plaintext archive of everything the install has ever sent —
+		// inside SQLite, and therefore inside every database backup, indefinitely.
+		// Nobody chose that; the field simply had no default.
+		//
+		// Pruning touches only the DELIVERED delivery-status rows shown in the
+		// Outbox. The Sent copy in the sender's Maildir is a separate store and is
+		// never touched, so no sent mail is lost — only the queue's record of
+		// having delivered it, which has no value 90 days on.
+		QueueRetentionDays: 90,
+		DeliveryTimeout:    30 * time.Second,
+		DKIMEnabled:        true,
+		SPFEnabled:         true,
+		DMARCEnabled:       true,
+		InboundEnabled:     true, // on by default; disable with VAYUOS_MAIL_INBOUND=off
+		SMTPListen:         ":25",
+		IMAPListen:         ":143",
+		POP3Listen:         ":110",
+		POP3SListen:        ":995",
+		SubmissionListen:   ":587",
+		IMAPSListen:        ":993",
+		MaxMessageBytes:    25 * 1024 * 1024, // 25 MiB
+		JunkFilterEnabled:  true,             // local heuristic, no external services
+		RelayPort:          587,              // standard authenticated submission port
+		RelayRequireTLS:    true,             // never AUTH over plaintext by default
+		ACMEEnabled:        false,            // opt-in; off by default to preserve the zero-config self-signed boot
+		ACMEHTTPAddr:       ":80",            // standard HTTP-01 challenge port
 	}
 }

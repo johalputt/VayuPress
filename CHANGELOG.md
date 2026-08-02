@@ -8,6 +8,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+- **A scoped API key could promote itself to install owner.** The prefix
+  `/os/vayumail` maps to `SectionMail`, so a key holding only `mail:write` passed
+  `keyMayCall` for `POST /os/vayumail/accounts/create`. `isAdminRequest` then
+  returned `auth.HasValidAPIKey(r)` — *any* valid key, not a superuser key — so
+  the handler's admin gate was satisfied. The key created a mailbox with
+  `role:"administrator"`, `mailConsoleAccess` mapped that to `users.RoleAdmin`
+  with console access, and signing in with the mailbox credential yielded full
+  console administration. `accounts/update` accepts a `Role` field and promoted
+  an existing mailbox by the same route.
+
+  Minting or promoting an identity that can sign in now requires an
+  administrator **session**; an API key of any scope is refused. Ordinary
+  (non-console) mailbox provisioning by a scoped key is unaffected, so unattended
+  automation keeps working. The rule lives in one place, `mailRoleGrantsConsole`,
+  so the create and update paths cannot drift apart — fixing one and missing the
+  other was how this survived review.
+
+- **The outbound queue kept every sent message forever.** `QueueRetentionDays`
+  had no entry in `DefaultConfig` and so took Go's zero value, which means keep
+  forever — and `vayumail_queue.raw` is the full RFC5322 message. The delivery
+  queue was therefore a permanent plaintext archive of everything an install had
+  ever sent, living in SQLite and replicated into every database backup. Nobody
+  chose that; the field was simply omitted. It now defaults to **90 days**.
+  Pruning removes only delivered delivery-status rows shown in the Outbox — the
+  Sent copy in the sender's Maildir is a separate store and is never touched — and
+  an operator may still set `0` deliberately.
+
+- **A mail-confined session could read operator infrastructure state.**
+  `mailOnlyPathAllowed` admitted the whole `/os/api/vayuos` prefix, which
+  includes the health snapshot (every component, its status and its detail
+  string) and the security check whose page is admin-only in the VayuMail nav. A
+  mail-confined principal is a reader who claimed a mailbox, not staff. The
+  allowance is narrowed to `/os/api/vayuos/mail/` — the recovery endpoints such a
+  session actually uses.
+
 ### Added
 - **ADR-0152 — Agency hosting.** The design record for running a web studio on
   one install: per-domain websites, a scoped client role, operator-only mailbox

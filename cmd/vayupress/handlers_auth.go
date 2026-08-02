@@ -456,7 +456,16 @@ func mailOnlyPathAllowed(path string) bool {
 		path == "/os/logout",
 		strings.HasPrefix(path, "/os/vayumail"),
 		strings.HasPrefix(path, "/os/static"),
-		strings.HasPrefix(path, "/os/api/vayuos"):
+		// Narrowed from the whole /os/api/vayuos prefix to the mail endpoints a
+		// confined mailbox session actually uses (the ADR-0144 recovery flow).
+		//
+		// The broad prefix also admitted /os/api/vayuos/health — the operator's
+		// component-by-component health snapshot, detail strings included — and
+		// /os/api/vayuos/security/check, whose page is admin-only in the VayuMail
+		// nav. A mail-confined principal is a READER who claimed a mailbox, not
+		// staff; infrastructure state is not theirs to read, and this is precisely
+		// what an untrusted agency client would have inherited.
+		strings.HasPrefix(path, "/os/api/vayuos/mail/"):
 		return true
 	}
 	return false
@@ -514,6 +523,40 @@ func (a *App) isAdminRequest(r *http.Request) bool {
 		return u.Role == users.RoleAdmin
 	}
 	return auth.HasValidAPIKey(r)
+}
+
+// isAdminSession reports whether the caller is an administrator by way of a real
+// SESSION. A valid API key — of any scope, superuser included — is never enough.
+//
+// isAdminRequest above accepts any valid key as admin, which is right for the
+// operations keyMayCall has already gated by capability. It is NOT right for
+// MINTING OR PROMOTING AN IDENTITY THAT CAN LOG IN, and that gap was a complete
+// privilege escalation:
+//
+//	/os/vayumail is mapped to SectionMail (api_capabilities.go), so a key holding
+//	only mail:write passes keyMayCall for POST /os/vayumail/accounts/create. It
+//	then satisfies isAdminRequest, creates a mailbox with role "administrator",
+//	and mailConsoleAccess maps that role to users.RoleAdmin with console=true.
+//	Signing in with that mailbox credential yields full console administration.
+//	The same applies to accounts/update, which accepts a Role field and can
+//	promote an existing mailbox the same way.
+//
+// A scoped key promoting itself to install owner is exactly the outcome the
+// capability system exists to prevent, so the rule is: a credential that grants
+// console access may only be created or promoted by a human session. This
+// mirrors keyLifecycleAuthorized below, which already refuses to let a scoped
+// key mint a superuser token.
+func (a *App) isAdminSession(r *http.Request) bool {
+	u := currentUser(r)
+	return u != nil && u.Role == users.RoleAdmin
+}
+
+// mailRoleGrantsConsole reports whether a VayuMail role, once assigned, produces
+// a credential that can sign in to the VayuOS console. It is the single place
+// that question is asked, so create and update cannot drift apart.
+func mailRoleGrantsConsole(role string) bool {
+	_, console := mailConsoleAccess(strings.TrimSpace(role))
+	return console
 }
 
 // keyLifecycleAuthorized reports whether the caller may perform API-key lifecycle

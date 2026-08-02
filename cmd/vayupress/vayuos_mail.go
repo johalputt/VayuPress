@@ -1498,6 +1498,15 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
 		return
 	}
+	// Minting a console-capable identity requires a human session — see
+	// isAdminSession. A mail:write key may provision an ordinary mailbox; it may
+	// not create one that can sign in to the console, because that would be a
+	// scoped key promoting itself to install owner.
+	if mailRoleGrantsConsole(in.Role) && !a.isAdminSession(r) {
+		writeAPIError(w, r, http.StatusForbidden, "session-admin-required",
+			"creating a mailbox whose role grants console access requires an administrator session; an API key cannot do it", "")
+		return
+	}
 	local := strings.ToLower(strings.TrimSpace(in.Local))
 	if local == "" || strings.ContainsAny(local, "@ \t") {
 		writeAPIError(w, r, 400, "validation_error", "invalid local part", "")
@@ -1621,6 +1630,15 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 			writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only edit your own signature", "")
 			return
 		}
+	}
+	// PROMOTING an existing mailbox to a console-capable role is the same act as
+	// creating one, and was reachable by the same scoped key — see isAdminSession.
+	// Gated after the block above so a mailbox holder's signature edit (which
+	// carries no Role) is unaffected.
+	if mailRoleGrantsConsole(in.Role) && !a.isAdminSession(r) {
+		writeAPIError(w, r, http.StatusForbidden, "session-admin-required",
+			"promoting a mailbox to a role that grants console access requires an administrator session; an API key cannot do it", "")
+		return
 	}
 	if in.Signature != nil {
 		if err := a.vayuMail.Accounts().SetSignature(r.Context(), in.Email, *in.Signature); err != nil {

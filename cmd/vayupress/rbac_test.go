@@ -148,14 +148,23 @@ func TestOSPathMinLevelFailClosed(t *testing.T) {
 func TestMailOnlyPathAllowed(t *testing.T) {
 	allowed := []string{
 		"/os/vayumail/inbox", "/os/vayumail/message", "/os/profile",
-		"/os/logout", "/os/static/css/admin-os.css", "/os/api/vayuos/health",
+		"/os/logout", "/os/static/css/admin-os.css",
+		// The ADR-0144 recovery endpoints a confined mailbox genuinely needs.
+		"/os/api/vayuos/mail/recovery/status", "/os/api/vayuos/mail/recovery/codes",
 	}
 	for _, p := range allowed {
 		if !mailOnlyPathAllowed(p) {
 			t.Errorf("mailOnlyPathAllowed(%q) = false, want true", p)
 		}
 	}
-	denied := []string{"/os", "/os/posts", "/os/settings", "/os/members", "/os/editor", "/os/comments"}
+	denied := []string{
+		"/os", "/os/posts", "/os/settings", "/os/members", "/os/editor", "/os/comments",
+		// Operator infrastructure state, previously admitted by a blanket
+		// /os/api/vayuos prefix. A mail-confined principal is a reader who claimed
+		// a mailbox, not staff: the health snapshot names every component and its
+		// detail string, and the security page is admin-only in the VayuMail nav.
+		"/os/api/vayuos/health", "/os/api/vayuos/security/check",
+	}
 	for _, p := range denied {
 		if mailOnlyPathAllowed(p) {
 			t.Errorf("mailOnlyPathAllowed(%q) = true, want false (mail-only must be confined)", p)

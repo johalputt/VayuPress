@@ -73,19 +73,39 @@ but the token is domain-agnostic server-side: `Validate()` takes no host and
 convention here, not a boundary. So today the only logins available to give a
 client are `author`/`editor` (unscoped) or `admin` (owns the server).
 
-**3. Four live authorization defects.** Found by an adversarial pass over the
-design, all present in shipped code:
+**3. Authorization defects.** An adversarial pass over the design raised four.
+Verifying each against the source before acting on it confirmed two as stated,
+found one overstated and one wrong — recorded here in corrected form, because an
+ADR that repeats an unverified finding is the same defect as a panel that
+overstates what is enforcing.
 
-- `/os/api/vayuos/health` returns the operator health snapshot with no
-  authorization at all.
-- A scoped `mail:write` API key can `POST /os/vayumail/accounts/create` with
-  `role:"administrator"`, producing a credential that logs into the console —
-  a full escalation from a limited key.
-- `POST /api/v1/analytics/collect` trusts the `Host` header, so any party can
-  forge rows into any domain's traffic report.
-- `QueueRetentionDays` has no default in `DefaultConfig`, so `vayumail_queue.raw`
-  retains the full plaintext of every message every client has ever sent,
-  indefinitely, replicated into every backup.
+- **Confirmed, and serious.** A scoped `mail:write` API key can `POST
+  /os/vayumail/accounts/create` with `role:"administrator"`. The prefix
+  `/os/vayumail` maps to `SectionMail`, so the key passes `keyMayCall`;
+  `isAdminRequest` then returns `auth.HasValidAPIKey(r)` — *any* valid key, not a
+  superuser key — so the handler's admin gate is satisfied;
+  `mailConsoleAccess(RoleAdministrator)` maps the new mailbox to
+  `users.RoleAdmin` with console access. Signing in with that credential yields
+  full console administration. `accounts/update` accepts a `Role` field and
+  promotes an existing mailbox the same way.
+- **Confirmed.** `QueueRetentionDays` has no entry in `DefaultConfig`, so it took
+  Go's zero value, which means keep forever. `vayumail_queue.raw` is the full
+  RFC5322 message, so the delivery queue was a permanent plaintext archive of
+  everything the install had ever sent, inside SQLite and therefore inside every
+  database backup.
+- **Overstated.** `/os/api/vayuos/health` was reported as having "no
+  authorization at all". It is in fact behind `requireSessionOrAPIKey`. The real
+  defect is narrower: it sits at author level *and* `mailOnlyPathAllowed`
+  admitted the whole `/os/api/vayuos` prefix, so a mail-confined principal — a
+  reader who claimed a mailbox, not staff — could read the operator's
+  component-by-component health snapshot including detail strings. An agency
+  client would have inherited exactly that.
+- **Wrong as reported.** `POST /api/v1/analytics/collect` was said to trust the
+  `Host` header. It never reads `r.Host`. The finding is a *design constraint for
+  the traffic phase* — when per-domain attribution is added, it must not be
+  derived from anything the client controls — plus a pre-existing integrity
+  weakness: the beacon is unauthenticated and rate-limited per IP, so arbitrary
+  paths can be submitted. Neither is a live cross-tenant leak.
 
 **4. Nothing makes stored mail unreadable by the operator.** Messages are
 plaintext RFC5322 files on disk. Every PGP private key is server-held and
@@ -317,7 +337,7 @@ everything accumulated.
 
 | Phase | Contents | Size | What it unlocks |
 |---|---|---|---|
-| **0 — Safety** | The four defects in finding 3, plus the post correction | ~450 lines | Nothing directly; closes live holes. Ship regardless |
+| **0 — Safety** (shipped) | The three real defects in finding 3: console-capable roles minted only by a session; a queue retention default; the mail-only prefix narrowed. The analytics item moves to Phase 4, where it is a design constraint rather than a live hole. Post correction outstanding | ~120 lines | Nothing directly; closes a full privilege escalation. Shipped independently of everything below |
 | **1 — Per-domain sites** | `customSiteDir(domainID)`, mode and content into `config_json`, per-domain cap | ~1–2 days | Selling any design the studio can build |
 | **2 — Client role** | Migration 079, `RoleClient`, the audience table, Mail and Website pages | ~700 lines | The client login. The sellable unit |
 | **3 — Provisioning** | Operator-only mint, allowance, request box | ~300 lines | Metered mailboxes |
