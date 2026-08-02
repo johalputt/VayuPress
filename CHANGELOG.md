@@ -8,6 +8,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **A continuity plan — `docs/CONTINUITY.md`** (ADR-0152 open decision 7). It
+  answers the question a non-technical client actually asks before they ask
+  about privacy: *if you disappear, what happens to my mail?* ADR-0152 said to
+  write it **before** Phase 5 because it is worth more to a client than the
+  privacy feature. It was written after. The ADR now records that rather than
+  quietly marking the decision closed, because the ordering was the thing got
+  wrong.
+
+  It is operational, not reassuring. The highest-value instruction is one hour
+  of work and no code: **register the domain in the client's own name**, because
+  it is the only asset in the whole arrangement that cannot be reconstructed.
+  Content is rebuildable, mail is restorable, a domain held by a company that no
+  longer answers email is not.
+
+  The client's self-rescue path is standard IMAP, and the document is precise
+  about a detail that would otherwise sink it: **device approval is on by
+  default, so the raw mailbox password does not work in a mail client.** The
+  holder mints an app password themselves. That this survives handover is not
+  incidental — `canManageAppPassword` answers ownership *before* the severance,
+  so the operator loses the ability to mint a credential while the holder keeps
+  it, and a mail-only session can still reach the Connect tab. Both were
+  verified rather than assumed, and both are now pinned by tests, because either
+  reversing turns the document into advice that fails on the one day it matters.
+
+  Section 6 states what it does not cover: it is procedural rather than enforced
+  (nothing checks the domain is in the client's name), there is still **no
+  self-service mail export**, it assumes backups someone must actually have
+  verified, one box still fails as one box — and **it has not been rehearsed**,
+  so the first real migration will find something wrong with it.
+
 ### Fixed
 - **A 404 recorded itself as a pageview, so the reported total stopped meaning
   audience.** The 404 template loaded the analytics beacon, and the beacon

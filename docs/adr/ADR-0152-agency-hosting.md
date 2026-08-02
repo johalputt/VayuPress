@@ -420,4 +420,4 @@ is offered.
 | 4 | Client post and page editing | **Not until** `articles` has a per-record ownership check on save and delete |
 | 5 | Media ownership | **Out of scope**, and therefore out of the client surface |
 | 6 | Per-domain DKIM keys | **Out of scope**, disclosed in §D5 |
-| 7 | Continuity plan | **Write it before Phase 5** and publish it. Worth more to a client than the privacy feature |
+| 7 | Continuity plan | **Written — `docs/CONTINUITY.md`.** It was supposed to precede Phase 5 and did not: the privacy feature this ADR judged less valuable shipped first, and the plan followed it. Recorded rather than tidied away, because the ordering was the decision being got wrong |
