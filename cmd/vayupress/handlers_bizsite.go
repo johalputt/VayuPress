@@ -33,19 +33,51 @@ import (
 
 // bizSettings returns the current mode, active template and content.
 func (a *App) bizSettings(r *http.Request) (mode string, tpl bizsite.Template, content bizsite.Content) {
+	rawMode, rawTpl, rawContent := a.siteSourceFor(r)
+	mode = strings.TrimSpace(rawMode)
+	tpl = bizsite.ByKey(strings.TrimSpace(rawTpl))
+	content = bizsite.ParseContent(rawContent)
+	if content.Name == "" && content.Tagline == "" {
+		content = tpl.Defaults
+	}
+	return mode, tpl, content
+}
+
+// siteSourceFor returns the raw website settings for the request's active
+// domain: mode, business template key and business content.
+//
+// Before this existed, all three came from install-wide settings keys and the
+// custom bundle lived at one path, so ONE website served every registered
+// domain. A studio hosting client sites could host exactly one of them; every
+// other domain served the same bundle. That is what this splits apart.
+//
+// Two rules, and the second is a deliberate behaviour change:
+//
+//   - The PRIMARY domain reads the install-wide Website settings, unchanged. A
+//     single-domain install never reaches the branch above it, so it is
+//     byte-identical.
+//   - A SECONDARY domain with no override of its own serves its own BLOG — it
+//     does not inherit the primary's mode. Inheriting is what produced the
+//     defect: with the install set to "custom", every client domain served the
+//     studio's own bundle. A secondary's own scoped content is the safe answer,
+//     and it is what ADR-0132 Stage 2b already gives it everywhere else.
+func (a *App) siteSourceFor(r *http.Request) (mode, tpl, content string) {
 	get := func(k string) string {
 		if a.siteSettings == nil {
 			return ""
 		}
 		return a.siteSettings.Get(r.Context(), k)
 	}
-	mode = strings.TrimSpace(get(settings.KeySiteMode))
-	tpl = bizsite.ByKey(strings.TrimSpace(get(settings.KeyBizTemplate)))
-	content = bizsite.ParseContent(get(settings.KeyBizContent))
-	if content.Name == "" && content.Tagline == "" {
-		content = tpl.Defaults
+	if a.multiDomain(r) {
+		if d, ok := activeDomain(r); ok && !d.IsPrimary {
+			if s, ok := d.Site(); ok {
+				return s.Mode, s.Template, s.Content
+			}
+			// No override: this domain's own blog, never the primary's website.
+			return "blog", "", ""
+		}
 	}
-	return mode, tpl, content
+	return get(settings.KeySiteMode), get(settings.KeyBizTemplate), get(settings.KeyBizContent)
 }
 
 // bizRootActive reports whether this request should serve the business site at
@@ -177,9 +209,9 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 
 	// Premium stat header (Monetization-console style): the four facts an
 	// operator wants confirmed at a glance before touching anything.
-	cmHead := customsite.ReadManifest(customSiteDir())
+	cmHead := customsite.ReadManifest(a.customSiteDir(r))
 	buildLabel := "None"
-	if customsite.Deployed(customSiteDir()) {
+	if customsite.Deployed(a.customSiteDir(r)) {
 		buildLabel = fmt.Sprintf("%d files", cmHead.Files)
 	}
 	b.WriteString(`<div class="stat-grid mb-6">` +
@@ -277,8 +309,8 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	// ── Custom build ──────────────────────────────────────────────────────────
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Custom build</span>` +
 		`<span class="section-head__hint">Bring your own static site instead of a ready-made design</span></div><div class="mon-stack">`)
-	cm := customsite.ReadManifest(customSiteDir())
-	customDeployed := customsite.Deployed(customSiteDir())
+	cm := customsite.ReadManifest(a.customSiteDir(r))
+	customDeployed := customsite.Deployed(a.customSiteDir(r))
 	var zipBody strings.Builder
 	zipBody.WriteString(`<p class="text-sm muted">Upload a complete static website as a <span class="mono">.zip</span> — it must contain <span class="mono">index.html</span> at its root and reference assets with relative paths. It goes live at <span class="mono">` + he(domain) + `</span> once you choose <strong>Custom uploaded website</strong> above and Save &amp; publish. Building with an AI assistant? <a href="/os/api/website/custom-guide">Download the build guide ↓</a></p>`)
 	if customDeployed {
@@ -333,7 +365,7 @@ func (a *App) handleOSWebsiteSave(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "mode must be blog, business, business_subpath or custom", "")
 		return
 	}
-	if body.Mode == "custom" && !customsite.Deployed(customSiteDir()) {
+	if body.Mode == "custom" && !customsite.Deployed(a.customSiteDir(r)) {
 		writeAPIError(w, r, http.StatusBadRequest, "no_custom_bundle", "Deploy a custom website .zip before switching to custom mode.", "")
 		return
 	}

@@ -41,14 +41,14 @@ func TestBrandAccessor(t *testing.T) {
 	}
 }
 
-// TestEncodeBrandConfig confirms an empty brand stores nothing (so Brand()'s
+// TestEncodeBrandConfigInto confirms an empty brand stores nothing (so Brand()'s
 // short-circuit holds) and a non-empty brand round-trips through config_json.
-func TestEncodeBrandConfig(t *testing.T) {
-	if s, err := EncodeBrandConfig(Brand{}); err != nil || s != "" {
+func TestEncodeBrandConfigInto(t *testing.T) {
+	if s, err := EncodeBrandConfigInto("", Brand{}); err != nil || s != "" {
 		t.Fatalf("empty brand: got (%q,%v), want (\"\",nil)", s, err)
 	}
 	in := Brand{SiteName: "Shop", Tagline: "Deals", ThemeColor: "#0f172a"}
-	cfg, err := EncodeBrandConfig(in)
+	cfg, err := EncodeBrandConfigInto("", in)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}

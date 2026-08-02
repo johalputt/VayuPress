@@ -245,7 +245,35 @@ func (r *Registry) SetBrand(ctx context.Context, id string, b Brand) error {
 	if cur.IsPrimary {
 		return fmt.Errorf("domain: the primary domain's branding is managed from Website settings")
 	}
-	cfg, err := EncodeBrandConfig(b)
+	// MERGE into the row's current config, never replace it. This writer used to
+	// marshal a fresh envelope, which silently dropped every sibling key — so a
+	// brand save would erase the domain's website override. Whoever edits branding
+	// is not always whoever set the site mode, and losing one by touching the
+	// other is invisible until the site stops serving.
+	cfg, err := EncodeBrandConfigInto(cur.ConfigJSON, b)
+	if err != nil {
+		return err
+	}
+	defer r.invalidate()
+	_, err = r.db.ExecContext(ctx, `UPDATE domains SET config_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND is_primary=0`, cfg, id)
+	return err
+}
+
+// SetSite stores a secondary domain's website override — which mode its root
+// serves, and the business template and content that go with it.
+//
+// The primary is refused for the same reason SetBrand refuses it: the primary's
+// website IS the install-wide Website settings, and a per-domain override there
+// would let a single-host install diverge from byte-identical.
+func (r *Registry) SetSite(ctx context.Context, id string, s SiteConfig) error {
+	cur, err := r.get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if cur.IsPrimary {
+		return fmt.Errorf("domain: the primary domain's website is managed from Website settings")
+	}
+	cfg, err := EncodeSiteConfigInto(cur.ConfigJSON, s)
 	if err != nil {
 		return err
 	}

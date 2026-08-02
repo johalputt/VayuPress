@@ -21,19 +21,62 @@ import (
 // bundle is separately capped in customsite.Deploy; this bounds the transfer.
 const maxCustomUploadBytes = int64(60) << 20 // 60 MiB
 
-// customSiteDir is the persistent directory holding the deployed bundle. It sits
+// customSiteRoot is the persistent directory holding deployed bundles. It sits
 // next to the media library (a sibling of MEDIA_DIR, i.e. under the data root),
 // NOT under CACHE_DIR — the render cache is purged on content changes and would
 // otherwise wipe the uploaded site.
-func customSiteDir() string {
+func customSiteRoot() string {
 	return filepath.Join(filepath.Dir(config.Cfg.MediaDir), "custom-site")
+}
+
+// customSiteDirFor returns the bundle directory owned by a domain scope, using
+// the same convention as articles.domain_id: "" is the primary domain, and a
+// 24-hex id is a secondary.
+//
+// The PRIMARY KEEPS THE HISTORIC PATH. A bundle deployed before this change is
+// still exactly where it was, so an existing install serves the same site after
+// upgrading without redeploying anything — the same additive shape as migration
+// 060's `domain_id TEXT NOT NULL DEFAULT empty-string`.
+//
+// The scope becomes a path component, so it is validated as one rather than
+// trusted. Ids are 24 hex characters from crypto/rand today (domain_write.go
+// newID), which is inherently safe — but a path built from a value because of
+// what that value happens to be right now is one bad refactor from traversal.
+// Anything that is not lowercase hex is refused and falls back to the primary
+// directory, which is a wrong site rather than an escape.
+func customSiteDirFor(scope string) string {
+	root := customSiteRoot()
+	if scope == "" || !isHexScope(scope) {
+		return root
+	}
+	return filepath.Join(root, scope)
+}
+
+// isHexScope reports whether s is a plausible domain id: non-empty, bounded, and
+// lowercase hex only. No separator, no dot, no traversal.
+func isHexScope(s string) bool {
+	if len(s) == 0 || len(s) > 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// customSiteDir returns the bundle directory for this request's active domain.
+func (a *App) customSiteDir(r *http.Request) string {
+	return customSiteDirFor(a.contentScope(r))
 }
 
 // customSiteActive reports whether the operator has selected the "custom" mode
 // AND a bundle is actually deployed, so the root should serve the custom site.
 func (a *App) customSiteActive(r *http.Request) bool {
 	mode, _, _ := a.bizSettings(r)
-	return mode == "custom" && customsite.Deployed(customSiteDir())
+	return mode == "custom" && customsite.Deployed(a.customSiteDir(r))
 }
 
 // serveCustomIfActive serves urlPath from the deployed custom bundle when the
@@ -44,7 +87,7 @@ func (a *App) serveCustomIfActive(w http.ResponseWriter, r *http.Request, urlPat
 	if !a.customSiteActive(r) {
 		return false
 	}
-	return customsite.Serve(w, r, customSiteDir(), urlPath)
+	return customsite.Serve(w, r, a.customSiteDir(r), urlPath)
 }
 
 // handleOSWebsiteCustomUpload accepts a multipart .zip upload, validates and
@@ -77,7 +120,7 @@ func (a *App) handleOSWebsiteCustomUpload(w http.ResponseWriter, r *http.Request
 		writeAPIError(w, r, http.StatusBadRequest, "read_failed", "Could not read the uploaded file.", "")
 		return
 	}
-	m, err := customsite.Deploy(customSiteDir(), data)
+	m, err := customsite.Deploy(a.customSiteDir(r), data)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid_bundle", err.Error(), "")
 		return
@@ -98,7 +141,7 @@ func (a *App) handleOSWebsiteCustomRollback(w http.ResponseWriter, r *http.Reque
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return
 	}
-	if err := customsite.Rollback(customSiteDir()); err != nil {
+	if err := customsite.Rollback(a.customSiteDir(r)); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "rollback_failed", err.Error(), "")
 		return
 	}

@@ -8,6 +8,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **Every domain gets its own website** (ADR-0152 Phase 1). The custom-bundle
+  directory and the site mode, business template and business content were all
+  install-wide: `customSiteDir()` took no domain and the three settings were
+  global keys, so **one uploaded website served every registered domain**. A
+  studio hosting client sites could host exactly one of them.
+
+  Bundles now live under `custom-site/<domain_id>/`, and mode/template/content
+  move into the per-domain `config_json` the registry has carried since migration
+  059. No migration is needed and no redeploy: **the primary domain keeps the
+  historic path**, so an install that already deployed a bundle serves the same
+  site after upgrading.
+
+  The domain id becomes a path component, so it is validated as one — lowercase
+  hex, bounded — rather than trusted because ids happen to be `crypto/rand` hex
+  today. Anything else falls back to the primary directory, which is a wrong site
+  rather than an escape.
+
+### Changed
+- **A secondary domain with no website of its own now serves its own blog**,
+  rather than inheriting the install's mode. This is a deliberate behaviour
+  change and it is the point of the work above: with the install set to
+  `custom`, every secondary domain previously served the *operator's* uploaded
+  bundle at the client's address. Its own scoped content is what ADR-0132 Stage
+  2b gives it everywhere else. A single-domain install is unaffected.
+
+### Fixed
+- **Saving a domain's branding erased its other per-domain settings.**
+  `SetBrand` marshalled a fresh `config_json` envelope, dropping every sibling
+  key. With branding the only key it was invisible; the moment a second one
+  existed, editing site colours would have wiped the domain's website override
+  (and, later, any operator-set allowance stored beside it). Both writers are now
+  read-modify-write, and the whole-blob encoder is gone so there is nothing left
+  to reach for by mistake.
+
 ### Security
 - **A scoped API key could promote itself to install owner.** The prefix
   `/os/vayumail` maps to `SectionMail`, so a key holding only `mail:write` passed

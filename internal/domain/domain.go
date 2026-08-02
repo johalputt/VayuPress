@@ -99,11 +99,93 @@ func (b Brand) Empty() bool {
 		b.AccentLight == "" && b.AccentDark == "" && b.ThemeColor == ""
 }
 
-// domainConfig is the shape of the domains.config_json blob. It is intentionally
-// a small envelope so later stages can add sibling keys without disturbing the
-// brand overlay.
+// SiteConfig is a domain's website override: which of the four site modes its
+// root serves, and the business-template selection and content that go with it.
+//
+// It exists because mode, template and content were install-wide settings keys,
+// so one custom bundle and one template served every registered domain — a
+// studio could host one hand-built site, never thirty. An empty Mode means
+// "inherit the install's own setting", which is what every existing row carries,
+// so a single-domain install is byte-identical.
+type SiteConfig struct {
+	Mode     string `json:"mode,omitempty"`     // "" = inherit; blog | business | business_subpath | custom
+	Template string `json:"template,omitempty"` // business template key
+	Content  string `json:"content,omitempty"`  // business content, as stored by bizsite
+}
+
+// Empty reports whether this carries no website override at all.
+func (s SiteConfig) Empty() bool {
+	return s.Mode == "" && s.Template == "" && s.Content == ""
+}
+
+// domainConfig is the shape of the domains.config_json blob. It is a small
+// envelope so stages can add sibling keys without disturbing each other.
+//
+// Sibling keys only stay undisturbed if writers MERGE. The first version of the
+// brand writer marshalled a fresh domainConfig{Brand: b}, which silently dropped
+// every other key in the blob — so the moment a second key existed, saving a
+// brand would erase the website override (and, later, an operator-set mailbox
+// allowance). Every writer here is therefore read-modify-write, and there is no
+// whole-blob encoder left to reach for by mistake.
 type domainConfig struct {
-	Brand Brand `json:"brand"`
+	Brand Brand      `json:"brand"`
+	Site  SiteConfig `json:"site,omitempty"`
+}
+
+// decodeConfig parses a config_json blob. Malformed JSON yields a zero envelope
+// rather than an error: this blob is presentational and operational overrides,
+// and must never break serving.
+func decodeConfig(raw string) domainConfig {
+	var c domainConfig
+	if strings.TrimSpace(raw) == "" {
+		return c
+	}
+	if err := json.Unmarshal([]byte(raw), &c); err != nil {
+		return domainConfig{}
+	}
+	return c
+}
+
+// encodeConfig serialises an envelope, collapsing a wholly-empty one to "" so a
+// cleared override stores nothing rather than an empty object — which keeps the
+// short-circuits in Brand() and Site() intact.
+func encodeConfig(c domainConfig) (string, error) {
+	if c.Brand.Empty() && c.Site.Empty() {
+		return "", nil
+	}
+	out, err := json.Marshal(c)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// Site decodes this domain's website override. ok is false when the domain
+// carries none, so the caller falls back to the install-wide setting exactly as
+// it did before per-domain sites existed.
+func (d Domain) Site() (SiteConfig, bool) {
+	s := decodeConfig(d.ConfigJSON).Site
+	if s.Empty() {
+		return SiteConfig{}, false
+	}
+	return s, true
+}
+
+// EncodeBrandConfigInto merges a Brand into an EXISTING config_json, preserving
+// every sibling key. Passing "" is the correct call for a domain that has no
+// config yet.
+func EncodeBrandConfigInto(existing string, b Brand) (string, error) {
+	c := decodeConfig(existing)
+	c.Brand = b
+	return encodeConfig(c)
+}
+
+// EncodeSiteConfigInto merges a SiteConfig into an existing config_json,
+// preserving every sibling key — notably the brand, which a client may edit.
+func EncodeSiteConfigInto(existing string, s SiteConfig) (string, error) {
+	c := decodeConfig(existing)
+	c.Site = s
+	return encodeConfig(c)
 }
 
 // Brand decodes this domain's stored branding overrides. ok is false when the
@@ -111,31 +193,11 @@ type domainConfig struct {
 // primary settings unchanged. Malformed JSON is treated as "no brand" rather
 // than an error: branding is presentational and must never break serving.
 func (d Domain) Brand() (Brand, bool) {
-	if strings.TrimSpace(d.ConfigJSON) == "" {
-		return Brand{}, false
-	}
-	var c domainConfig
-	if err := json.Unmarshal([]byte(d.ConfigJSON), &c); err != nil {
-		return Brand{}, false
-	}
-	if c.Brand.Empty() {
-		return Brand{}, false
-	}
-	return c.Brand, true
-}
-
-// EncodeBrandConfig serialises a Brand into the config_json envelope for
-// storage. An empty brand yields "" so a cleared brand stores nothing rather
-// than an empty object, keeping the resolve path's Brand() short-circuit intact.
-func EncodeBrandConfig(b Brand) (string, error) {
+	b := decodeConfig(d.ConfigJSON).Brand
 	if b.Empty() {
-		return "", nil
+		return Brand{}, false
 	}
-	out, err := json.Marshal(domainConfig{Brand: b})
-	if err != nil {
-		return "", err
-	}
-	return string(out), nil
+	return b, true
 }
 
 // EffectiveSyncState maps an empty sync_state to approved. Rows written before

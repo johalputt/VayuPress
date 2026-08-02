@@ -16,9 +16,9 @@ import (
 // data attribute; the per-site page is even simpler — direct, escaped values.
 func TestDomainManagerBrandingEscapes(t *testing.T) {
 	brand := domain.Brand{SiteName: `"><script>x`, Tagline: "Shop"}
-	cfg, err := domain.EncodeBrandConfig(brand)
+	cfg, err := domain.EncodeBrandConfigInto("", brand)
 	if err != nil {
-		t.Fatalf("EncodeBrandConfig: %v", err)
+		t.Fatalf("EncodeBrandConfigInto: %v", err)
 	}
 	d := domain.Domain{
 		ID: "s1", Host: "shop.example", SiteType: domain.SiteBlog,
