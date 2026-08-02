@@ -85,7 +85,7 @@ func TestInboundBindFailureIsNonFatal(t *testing.T) {
 			"Date: Mon, 02 Jan 2006 15:04:05 -0700\r\n\r\nbody\r\n")); err != nil {
 		t.Fatalf("local delivery should still work: %v", err)
 	}
-	msgs, err := e.ListFolder("bob", "Inbox")
+	msgs, err := e.ListFolder(ReadAsSystem("bob", "test"), "Inbox")
 	if err != nil || len(msgs) != 1 {
 		t.Fatalf("expected 1 inbox message, got %d (err=%v)", len(msgs), err)
 	}

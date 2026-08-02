@@ -253,18 +253,6 @@ func (a *App) handleAssignMailbox(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"email": email, "role": role})
 }
 
-// scopedMailUser resolves the mailbox identifier (engine key) a request may
-// operate on. Admins may target the requested mailbox; everyone else is locked
-// to their own assigned mailbox (empty when none). For a non-admin whose mailbox
-// is on a secondary domain the key is the full address (VayuDomains Stage 3d);
-// on the primary domain it collapses to the bare local part, byte-identical.
-func (a *App) scopedMailUser(r *http.Request, requested string) string {
-	if a.isAdminRequest(r) {
-		return strings.TrimSpace(requested)
-	}
-	return a.ownMailboxKey(r)
-}
-
 // ownMailboxKey returns the engine mailbox key for the signed-in user's assigned
 // mailbox — the bare local part when it is on the primary domain (so the primary
 // read path is byte-identical), or the full address when it is on a mail_enabled
@@ -753,4 +741,57 @@ func firstRuneUpper(s string) string {
 		return strings.ToUpper(string(r))
 	}
 	return ""
+}
+
+// mailReader mints the authority for one mailbox read (ADR-0152).
+//
+// This is the ONLY place in cmd/ that decides a read is being made as an
+// operator rather than as the mailbox's own holder. The decision used to live in
+// scopedMailUser and in a scatter of bare `if !a.isAdminRequest(r)` checks, which
+// meant "how can an operator reach a mailbox?" had no answer anyone could give —
+// and a promise about what happens after handover cannot be built on a question
+// nobody can enumerate.
+//
+// requested is the mailbox an administrator asked for. It is honoured ONLY for
+// an admin; for everyone else it is ignored entirely rather than validated,
+// because a non-admin has exactly one mailbox they may read and the parameter
+// has nothing to contribute to finding it.
+func (a *App) mailReader(r *http.Request, requested string) vmail.Reader {
+	return mailReaderFor(a.isAdminRequest(r), a.ownMailboxKey(r), requested, mailActorFor(r))
+}
+
+// mailReaderFor is the decision itself, free of the request so it can be
+// exercised directly. Everything that matters about who may open a mailbox is
+// here, in one pure function, rather than distributed across handlers.
+func mailReaderFor(isAdmin bool, own, requested, actor string) vmail.Reader {
+	if !isAdmin {
+		// A non-admin has exactly one mailbox they may read. `requested` is
+		// ignored entirely rather than validated: it has nothing to contribute to
+		// finding that mailbox, and a parameter that is merely validated is one a
+		// later change can start trusting.
+		return vmail.ReadAsOwner(own)
+	}
+	key := strings.TrimSpace(requested)
+	if key == "" {
+		key = own
+	}
+	// An admin reading their OWN mailbox is an owner read, not an operator one.
+	// Recording it as operator access would fill the client-visible record with
+	// entries about the operator's own inbox — noise that trains people to ignore
+	// the log, and the log is the whole product here.
+	if key == own && own != "" {
+		return vmail.ReadAsOwner(own)
+	}
+	return vmail.ReadAsOperator(key, actor)
+}
+
+// mailActorFor names who is making an operator read, for the access record.
+func mailActorFor(r *http.Request) string {
+	if u := currentUser(r); u != nil && u.Email != "" {
+		return u.Email
+	}
+	if auth.HasValidAPIKey(r) {
+		return "api-key"
+	}
+	return "unknown"
 }

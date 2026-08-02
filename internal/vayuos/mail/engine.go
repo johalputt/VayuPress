@@ -109,20 +109,26 @@ func (e *Engine) mailboxKey(username string) (domain, local string) {
 }
 
 // ListFolder returns the messages in a folder for a local account.
-func (e *Engine) ListFolder(username, folder string) ([]StoredMessage, error) {
+func (e *Engine) ListFolder(rd Reader, folder string) ([]StoredMessage, error) {
+	if err := e.readAuthorised(rd); err != nil {
+		return nil, err
+	}
 	if e.maildir == nil {
 		return nil, errors.New("vayumail: not started")
 	}
-	dom, local := e.mailboxKey(username)
+	dom, local := e.mailboxKey(rd.Key())
 	return e.maildir.ListFolder(dom, local, folder)
 }
 
 // ReadFolderMessage returns a message from a folder, PGP-decrypted if possible.
-func (e *Engine) ReadFolderMessage(username, folder, id string) ([]byte, error) {
+func (e *Engine) ReadFolderMessage(rd Reader, folder, id string) ([]byte, error) {
+	if err := e.readAuthorised(rd); err != nil {
+		return nil, err
+	}
 	if e.maildir == nil {
 		return nil, errors.New("vayumail: not started")
 	}
-	dom, local := e.mailboxKey(username)
+	dom, local := e.mailboxKey(rd.Key())
 	raw, err := e.maildir.ReadRawFolder(dom, local, folder, id)
 	if err != nil {
 		return nil, err
@@ -135,39 +141,51 @@ func (e *Engine) ReadFolderMessage(username, folder, id string) ([]byte, error) 
 
 // Search runs a bounded, fully-local full-text search across an account's
 // folders (no external index).
-func (e *Engine) Search(username, q string, limit int) ([]SearchResult, error) {
+func (e *Engine) Search(rd Reader, q string, limit int) ([]SearchResult, error) {
+	if err := e.readAuthorised(rd); err != nil {
+		return nil, err
+	}
 	if e.maildir == nil {
 		return nil, errors.New("vayumail: not started")
 	}
-	dom, local := e.mailboxKey(username)
+	dom, local := e.mailboxKey(rd.Key())
 	return e.maildir.Search(dom, local, q, limit)
 }
 
 // MoveMessage moves a message between folders (e.g. mark as Junk, or Trash).
-func (e *Engine) MoveMessage(username, id, from, to string) error {
+func (e *Engine) MoveMessage(rd Reader, id, from, to string) error {
+	if err := e.readAuthorised(rd); err != nil {
+		return err
+	}
 	if e.maildir == nil {
 		return errors.New("vayumail: not started")
 	}
-	dom, local := e.mailboxKey(username)
+	dom, local := e.mailboxKey(rd.Key())
 	return e.maildir.MoveBetween(dom, local, id, from, to)
 }
 
 // MarkRead flags a message as read (Maildir Seen) within a folder, returning
 // its new id.
-func (e *Engine) MarkRead(username, folder, id string) (string, error) {
+func (e *Engine) MarkRead(rd Reader, folder, id string) (string, error) {
+	if err := e.readAuthorised(rd); err != nil {
+		return id, err
+	}
 	if e.maildir == nil {
 		return id, errors.New("vayumail: not started")
 	}
-	dom, local := e.mailboxKey(username)
+	dom, local := e.mailboxKey(rd.Key())
 	return e.maildir.markSeenFolder(dom, local, folder, id)
 }
 
 // MarkUnread clears the read flag, returning the message's new id.
-func (e *Engine) MarkUnread(username, folder, id string) (string, error) {
+func (e *Engine) MarkUnread(rd Reader, folder, id string) (string, error) {
+	if err := e.readAuthorised(rd); err != nil {
+		return id, err
+	}
 	if e.maildir == nil {
 		return id, errors.New("vayumail: not started")
 	}
-	dom, local := e.mailboxKey(username)
+	dom, local := e.mailboxKey(rd.Key())
 	return e.maildir.markUnseenFolder(dom, local, folder, id)
 }
 
@@ -208,11 +226,14 @@ func (e *Engine) MailboxOverQuota(email string) bool {
 
 // SetPinned flags (or unflags) a message with the Maildir 'F' flag, surfaced in
 // the panel as "pinned", returning the message's new id.
-func (e *Engine) SetPinned(username, folder, id string, pinned bool) (string, error) {
+func (e *Engine) SetPinned(rd Reader, folder, id string, pinned bool) (string, error) {
+	if err := e.readAuthorised(rd); err != nil {
+		return id, err
+	}
 	if e.maildir == nil {
 		return id, errors.New("vayumail: not started")
 	}
-	dom, local := e.mailboxKey(username)
+	dom, local := e.mailboxKey(rd.Key())
 	return e.maildir.setFlagFolder(dom, local, folder, id, 'F', pinned)
 }
 
@@ -239,11 +260,14 @@ func (e *Engine) Deliverability(ctx context.Context) []RecordHealth {
 }
 
 // DeleteMessage permanently removes a message from a folder.
-func (e *Engine) DeleteMessage(username, folder, id string) error {
+func (e *Engine) DeleteMessage(rd Reader, folder, id string) error {
+	if err := e.readAuthorised(rd); err != nil {
+		return err
+	}
 	if e.maildir == nil {
 		return errors.New("vayumail: not started")
 	}
-	dom, local := e.mailboxKey(username)
+	dom, local := e.mailboxKey(rd.Key())
 	return e.maildir.deleteMessage(dom, local, folder, id)
 }
 

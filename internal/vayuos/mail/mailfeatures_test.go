@@ -16,21 +16,21 @@ func TestMarkReadAndUnread(t *testing.T) {
 	if _, err := e.DeliverInbound("bob@example.com", raw); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
-	msgs, _ := e.ListFolder("bob", "Inbox")
+	msgs, _ := e.ListFolder(ReadAsSystem("bob", "test"), "Inbox")
 	if len(msgs) != 1 || msgs[0].Seen {
 		t.Fatalf("expected 1 unseen message, got %+v", msgs)
 	}
-	if _, err := e.MarkRead("bob", "Inbox", msgs[0].ID); err != nil {
+	if _, err := e.MarkRead(ReadAsSystem("bob", "test"), "Inbox", msgs[0].ID); err != nil {
 		t.Fatalf("mark read: %v", err)
 	}
-	msgs, _ = e.ListFolder("bob", "Inbox")
+	msgs, _ = e.ListFolder(ReadAsSystem("bob", "test"), "Inbox")
 	if len(msgs) != 1 || !msgs[0].Seen {
 		t.Fatalf("expected message marked read, got %+v", msgs)
 	}
-	if _, err := e.MarkUnread("bob", "Inbox", msgs[0].ID); err != nil {
+	if _, err := e.MarkUnread(ReadAsSystem("bob", "test"), "Inbox", msgs[0].ID); err != nil {
 		t.Fatalf("mark unread: %v", err)
 	}
-	msgs, _ = e.ListFolder("bob", "Inbox")
+	msgs, _ = e.ListFolder(ReadAsSystem("bob", "test"), "Inbox")
 	if len(msgs) != 1 || msgs[0].Seen {
 		t.Fatalf("expected message marked unread, got %+v", msgs)
 	}
@@ -46,17 +46,17 @@ func TestMarkReadStaleID(t *testing.T) {
 	if _, err := e.DeliverInbound("bob@example.com", raw); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
-	msgs, _ := e.ListFolder("bob", "Inbox")
+	msgs, _ := e.ListFolder(ReadAsSystem("bob", "test"), "Inbox")
 	staleID := msgs[0].ID // e.g. new/<name>
-	if _, err := e.MarkRead("bob", "Inbox", staleID); err != nil {
+	if _, err := e.MarkRead(ReadAsSystem("bob", "test"), "Inbox", staleID); err != nil {
 		t.Fatalf("first mark read: %v", err)
 	}
 	// The file has now moved to cur/<name>:2,S, so staleID no longer maps to a
 	// real path. A second mark with the stale id must resolve it, not 500.
-	if _, err := e.MarkRead("bob", "Inbox", staleID); err != nil {
+	if _, err := e.MarkRead(ReadAsSystem("bob", "test"), "Inbox", staleID); err != nil {
 		t.Fatalf("mark read with stale id must not error: %v", err)
 	}
-	if _, err := e.MarkUnread("bob", "Inbox", staleID); err != nil {
+	if _, err := e.MarkUnread(ReadAsSystem("bob", "test"), "Inbox", staleID); err != nil {
 		t.Fatalf("mark unread with stale id must not error: %v", err)
 	}
 }
@@ -72,26 +72,26 @@ func TestPinPreservesSeen(t *testing.T) {
 		t.Fatalf("deliver: %v", err)
 	}
 	id := mustFirstID(t, e, "bob", "Inbox")
-	if _, err := e.SetPinned("bob", "Inbox", id, true); err != nil {
+	if _, err := e.SetPinned(ReadAsSystem("bob", "test"), "Inbox", id, true); err != nil {
 		t.Fatalf("pin: %v", err)
 	}
-	msgs, _ := e.ListFolder("bob", "Inbox")
+	msgs, _ := e.ListFolder(ReadAsSystem("bob", "test"), "Inbox")
 	if len(msgs) != 1 || !msgs[0].Flagged || msgs[0].Seen {
 		t.Fatalf("expected pinned+unseen, got %+v", msgs[0])
 	}
 	// Reading it keeps the pin.
-	if _, err := e.MarkRead("bob", "Inbox", msgs[0].ID); err != nil {
+	if _, err := e.MarkRead(ReadAsSystem("bob", "test"), "Inbox", msgs[0].ID); err != nil {
 		t.Fatalf("mark read: %v", err)
 	}
-	msgs, _ = e.ListFolder("bob", "Inbox")
+	msgs, _ = e.ListFolder(ReadAsSystem("bob", "test"), "Inbox")
 	if !msgs[0].Flagged || !msgs[0].Seen {
 		t.Fatalf("expected pinned+seen after read, got %+v", msgs[0])
 	}
 	// Unpinning leaves it read.
-	if _, err := e.SetPinned("bob", "Inbox", msgs[0].ID, false); err != nil {
+	if _, err := e.SetPinned(ReadAsSystem("bob", "test"), "Inbox", msgs[0].ID, false); err != nil {
 		t.Fatalf("unpin: %v", err)
 	}
-	msgs, _ = e.ListFolder("bob", "Inbox")
+	msgs, _ = e.ListFolder(ReadAsSystem("bob", "test"), "Inbox")
 	if msgs[0].Flagged || !msgs[0].Seen {
 		t.Fatalf("expected unpinned+seen, got %+v", msgs[0])
 	}
@@ -99,7 +99,7 @@ func TestPinPreservesSeen(t *testing.T) {
 
 func mustFirstID(t *testing.T, e *Engine, user, folder string) string {
 	t.Helper()
-	msgs, err := e.ListFolder(user, folder)
+	msgs, err := e.ListFolder(ReadAsSystem(user, "test"), folder)
 	if err != nil || len(msgs) == 0 {
 		t.Fatalf("list %s: err=%v len=%d", folder, err, len(msgs))
 	}
@@ -113,14 +113,14 @@ func TestSaveDraftFilesToDraftsFolder(t *testing.T) {
 	if err != nil || id == "" {
 		t.Fatalf("save draft: id=%q err=%v", id, err)
 	}
-	drafts, _ := e.ListFolder("alice", "Drafts")
+	drafts, _ := e.ListFolder(ReadAsSystem("alice", "test"), "Drafts")
 	if len(drafts) != 1 {
 		t.Fatalf("expected 1 draft, got %d", len(drafts))
 	}
 	if drafts[0].Subject != "Draft subject" || !strings.Contains(drafts[0].To, "bob@example.com") {
 		t.Errorf("unexpected draft headers: %+v", drafts[0])
 	}
-	raw, err := e.ReadFolderMessage("alice", "Drafts", drafts[0].ID)
+	raw, err := e.ReadFolderMessage(ReadAsSystem("alice", "test"), "Drafts", drafts[0].ID)
 	if err != nil || !strings.Contains(string(raw), "draft body") {
 		t.Errorf("draft body missing: %q (err %v)", raw, err)
 	}

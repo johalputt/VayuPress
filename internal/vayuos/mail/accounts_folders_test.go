@@ -199,8 +199,8 @@ func TestDeliverInboundFilesSpamToJunk(t *testing.T) {
 	if _, err := e.DeliverInbound("dave@example.com", spam); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
-	inbox, _ := e.ListFolder("dave", "Inbox")
-	junk, _ := e.ListFolder("dave", "Junk")
+	inbox, _ := e.ListFolder(ReadAsSystem("dave", "test"), "Inbox")
+	junk, _ := e.ListFolder(ReadAsSystem("dave", "test"), "Junk")
 	if len(inbox) != 0 {
 		t.Fatalf("spam should not land in inbox, got %d", len(inbox))
 	}
@@ -212,7 +212,7 @@ func TestDeliverInboundFilesSpamToJunk(t *testing.T) {
 	if _, err := e.DeliverInbound("dave@example.com", ham); err != nil {
 		t.Fatalf("deliver ham: %v", err)
 	}
-	inbox, _ = e.ListFolder("dave", "Inbox")
+	inbox, _ = e.ListFolder(ReadAsSystem("dave", "test"), "Inbox")
 	if len(inbox) != 1 {
 		t.Fatalf("ham should land in inbox, got %d", len(inbox))
 	}

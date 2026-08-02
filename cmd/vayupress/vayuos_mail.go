@@ -268,12 +268,12 @@ func (a *App) composePrefill(r *http.Request) (to, subject, bodyText string) {
 	q := r.URL.Query()
 	// Draft: reopen a saved draft verbatim (To/Subject/body) for editing.
 	if q.Get("draft") != "" {
-		user := a.scopedMailUser(r, q.Get("user"))
+		rd := a.mailReader(r, q.Get("user"))
 		id := strings.TrimSpace(q.Get("id"))
-		if a.vayuMail == nil || user == "" || id == "" {
+		if a.vayuMail == nil || rd.Key() == "" || id == "" {
 			return "", "", ""
 		}
-		raw, err := a.vayuMail.ReadFolderMessage(user, "Drafts", id)
+		raw, err := a.vayuMail.ReadFolderMessage(rd, "Drafts", id)
 		if err != nil {
 			return "", "", ""
 		}
@@ -288,7 +288,8 @@ func (a *App) composePrefill(r *http.Request) (to, subject, bodyText string) {
 	if !reply && !forward {
 		return q.Get("to"), q.Get("subject"), q.Get("body")
 	}
-	user := a.scopedMailUser(r, q.Get("user"))
+	rd := a.mailReader(r, q.Get("user"))
+	user := rd.Key()
 	folder := strings.TrimSpace(q.Get("folder"))
 	if folder == "" {
 		folder = "Inbox"
@@ -297,7 +298,7 @@ func (a *App) composePrefill(r *http.Request) (to, subject, bodyText string) {
 	if a.vayuMail == nil || user == "" || id == "" {
 		return "", "", ""
 	}
-	raw, err := a.vayuMail.ReadFolderMessage(user, folder, id)
+	raw, err := a.vayuMail.ReadFolderMessage(rd, folder, id)
 	if err != nil {
 		return "", "", ""
 	}
@@ -689,9 +690,10 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 	// locked to their own — resolved server-side (domain included for a secondary
 	// mailbox), so the client-supplied in.User can never target another mailbox
 	// (VayuDomains Stage 3d).
-	mbox := in.User
-	if !a.isAdminRequest(r) {
-		mbox = a.ownMailboxKey(r)
+	// One authority decision, minted in mailReader (ADR-0152).
+	rd := a.mailReader(r, in.User)
+	mbox := rd.Key()
+	{
 		if mbox == "" {
 			writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only manage your own mailbox", "")
 			return
@@ -709,15 +711,15 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 	apply := func(id string) error {
 		switch {
 		case in.Mark == "read":
-			nid, err := a.vayuMail.MarkRead(mbox, from, id)
+			nid, err := a.vayuMail.MarkRead(rd, from, id)
 			lastID, action = nid, "read"
 			return err
 		case in.Mark == "unread":
-			nid, err := a.vayuMail.MarkUnread(mbox, from, id)
+			nid, err := a.vayuMail.MarkUnread(rd, from, id)
 			lastID, action = nid, "unread"
 			return err
 		case in.Pin != nil:
-			nid, err := a.vayuMail.SetPinned(mbox, from, id, *in.Pin)
+			nid, err := a.vayuMail.SetPinned(rd, from, id, *in.Pin)
 			lastID = nid
 			if *in.Pin {
 				action = "pinned"
@@ -727,14 +729,14 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 			return err
 		case in.Delete:
 			action = "deleted"
-			return a.vayuMail.DeleteMessage(mbox, from, id)
+			return a.vayuMail.DeleteMessage(rd, from, id)
 		default:
 			target := in.To
 			if target == "" {
 				target = "Trash"
 			}
 			action = "moved"
-			return a.vayuMail.MoveMessage(mbox, id, from, target)
+			return a.vayuMail.MoveMessage(rd, id, from, target)
 		}
 	}
 	var firstErr string
@@ -789,28 +791,20 @@ func (a *App) handleVayuOSAttachment(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "VayuMail is not active", http.StatusServiceUnavailable)
 		return
 	}
-	user := mailUserParam(r)
+	// One authority decision, minted in mailReader (ADR-0152).
+	rd := a.mailReader(r, mailUserParam(r))
+	user := rd.Key()
 	folder := mailFolderParam(r)
 	if folder == "" {
 		folder = "Inbox"
 	}
 	id := mailIDParam(r)
 	idx, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("idx")))
-	// Non-admins may only download from their own assigned mailbox (server-derived
-	// engine key, domain included for a secondary mailbox).
-	if !a.isAdminRequest(r) {
-		own := a.ownMailboxKey(r)
-		if own == "" {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-		user = own
-	}
 	if user == "" || id == "" {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	raw, err := a.vayuMail.ReadFolderMessage(user, folder, id)
+	raw, err := a.vayuMail.ReadFolderMessage(rd, folder, id)
 	if err != nil {
 		http.Error(w, "message not found", http.StatusNotFound)
 		return

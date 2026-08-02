@@ -21,7 +21,7 @@ func TestSnoozeAndWake(t *testing.T) {
 		t.Fatalf("deliver: %v", err)
 	}
 	// Mark it read first, so the wake can prove it resurfaces unread.
-	if nid, merr := e.MarkRead("ankush", "Inbox", id); merr == nil {
+	if nid, merr := e.MarkRead(ReadAsSystem("ankush", "test"), "Inbox", id); merr == nil {
 		id = nid
 	}
 
@@ -29,22 +29,22 @@ func TestSnoozeAndWake(t *testing.T) {
 	if err := e.Snooze("ankush", "Inbox", id, until); err != nil {
 		t.Fatalf("snooze: %v", err)
 	}
-	inbox, _ := e.ListFolder("ankush", "Inbox")
-	snoozed, _ := e.ListFolder("ankush", "Snoozed")
+	inbox, _ := e.ListFolder(ReadAsSystem("ankush", "test"), "Inbox")
+	snoozed, _ := e.ListFolder(ReadAsSystem("ankush", "test"), "Snoozed")
 	if len(inbox) != 0 || len(snoozed) != 1 {
 		t.Fatalf("after snooze: inbox=%d snoozed=%d, want 0/1", len(inbox), len(snoozed))
 	}
 
 	// Sweeping BEFORE the wake time must not move it.
 	e.sweepSnoozes(time.Now())
-	if snoozed, _ = e.ListFolder("ankush", "Snoozed"); len(snoozed) != 1 {
+	if snoozed, _ = e.ListFolder(ReadAsSystem("ankush", "test"), "Snoozed"); len(snoozed) != 1 {
 		t.Fatal("swept early")
 	}
 
 	// Sweeping AFTER the wake time returns it to the Inbox, unread.
 	e.sweepSnoozes(until.Add(time.Minute))
-	inbox, _ = e.ListFolder("ankush", "Inbox")
-	snoozed, _ = e.ListFolder("ankush", "Snoozed")
+	inbox, _ = e.ListFolder(ReadAsSystem("ankush", "test"), "Inbox")
+	snoozed, _ = e.ListFolder(ReadAsSystem("ankush", "test"), "Snoozed")
 	if len(inbox) != 1 || len(snoozed) != 0 {
 		t.Fatalf("after wake: inbox=%d snoozed=%d, want 1/0", len(inbox), len(snoozed))
 	}
@@ -53,7 +53,7 @@ func TestSnoozeAndWake(t *testing.T) {
 	}
 	// The wake row is gone: a second sweep is a no-op.
 	e.sweepSnoozes(until.Add(time.Hour))
-	if inbox, _ = e.ListFolder("ankush", "Inbox"); len(inbox) != 1 {
+	if inbox, _ = e.ListFolder(ReadAsSystem("ankush", "test"), "Inbox"); len(inbox) != 1 {
 		t.Fatal("second sweep duplicated the message")
 	}
 
@@ -83,13 +83,13 @@ func TestSnoozeStaleRowDiscarded(t *testing.T) {
 		t.Fatalf("snooze: %v", err)
 	}
 	// Operator empties the Snoozed folder by hand.
-	snoozed, _ := e.ListFolder("ankush", "Snoozed")
-	if err := e.DeleteMessage("ankush", "Snoozed", snoozed[0].ID); err != nil {
+	snoozed, _ := e.ListFolder(ReadAsSystem("ankush", "test"), "Snoozed")
+	if err := e.DeleteMessage(ReadAsSystem("ankush", "test"), "Snoozed", snoozed[0].ID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	// The sweep discards the stale row without error or resurrection.
 	e.sweepSnoozes(until.Add(time.Minute))
-	if inbox, _ := e.ListFolder("ankush", "Inbox"); len(inbox) != 0 {
+	if inbox, _ := e.ListFolder(ReadAsSystem("ankush", "test"), "Inbox"); len(inbox) != 0 {
 		t.Fatal("stale row resurrected a deleted message")
 	}
 	if rows := s.dueSnoozes(context.Background(), until.Add(time.Hour)); len(rows) != 0 {
@@ -127,14 +127,14 @@ func TestSnoozeWakesASecondaryDomainMailbox(t *testing.T) {
 	if err := e.Snooze(mailbox, "Inbox", id, until); err != nil {
 		t.Fatalf("snooze: %v", err)
 	}
-	if snoozed, _ := e.ListFolder(mailbox, "Snoozed"); len(snoozed) != 1 {
+	if snoozed, _ := e.ListFolder(ReadAsSystem(mailbox, "test"), "Snoozed"); len(snoozed) != 1 {
 		t.Fatalf("after snooze: snoozed=%d, want 1", len(snoozed))
 	}
 
 	e.sweepSnoozes(until.Add(time.Minute))
 
-	inbox, _ := e.ListFolder(mailbox, "Inbox")
-	snoozed, _ := e.ListFolder(mailbox, "Snoozed")
+	inbox, _ := e.ListFolder(ReadAsSystem(mailbox, "test"), "Inbox")
+	snoozed, _ := e.ListFolder(ReadAsSystem(mailbox, "test"), "Snoozed")
 	if len(inbox) != 1 || len(snoozed) != 0 {
 		t.Fatalf("a secondary-domain mailbox's snoozed message did not wake: inbox=%d snoozed=%d, want 1/0 "+
 			"(it is stranded in Snoozed, and its wake row has been cleared so it will never be retried)",
@@ -143,7 +143,7 @@ func TestSnoozeWakesASecondaryDomainMailbox(t *testing.T) {
 
 	// The primary mailbox with the same localpart must be untouched — waking one
 	// domain's message into another's Maildir would be worse than not waking it.
-	if pi, _ := e.ListFolder("bob@example.com", "Inbox"); len(pi) != 0 {
+	if pi, _ := e.ListFolder(ReadAsSystem("bob@example.com", "test"), "Inbox"); len(pi) != 0 {
 		t.Errorf("the wake landed in the PRIMARY bob's inbox (%d messages)", len(pi))
 	}
 }

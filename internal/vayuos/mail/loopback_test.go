@@ -71,7 +71,7 @@ func TestSendMailLocalDeliveryLandsInInbox(t *testing.T) {
 	if id != 0 {
 		t.Fatalf("expected no queue id for local-only send, got %d", id)
 	}
-	inbox, _ := e.ListFolder("bob", "Inbox")
+	inbox, _ := e.ListFolder(ReadAsSystem("bob", "test"), "Inbox")
 	if len(inbox) != 1 {
 		t.Fatalf("expected 1 message in bob's Inbox, got %d", len(inbox))
 	}
@@ -124,7 +124,7 @@ func TestSendMailMixedLocalAndRemote(t *testing.T) {
 	if id == 0 {
 		t.Fatalf("expected a queue id because there is a remote recipient")
 	}
-	inbox, _ := e.ListFolder("carol", "Inbox")
+	inbox, _ := e.ListFolder(ReadAsSystem("carol", "test"), "Inbox")
 	if len(inbox) != 1 {
 		t.Fatalf("expected carol to receive 1 local message, got %d", len(inbox))
 	}
@@ -147,7 +147,7 @@ func TestSendMailPreservesDisplayName(t *testing.T) {
 		[]string{"bob@example.com"}, "Hi Bob", "", "body", ""); err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	msgs, _ := e.ListFolder("bob", "Inbox")
+	msgs, _ := e.ListFolder(ReadAsSystem("bob", "test"), "Inbox")
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}

@@ -171,11 +171,11 @@ func (e *Engine) DeliverInbound(recipientEmail string, raw []byte) (string, erro
 			id, err := e.maildir.Deliver(domain, local, raw)
 			if err == nil {
 				if rule.Action == "markread" {
-					if nid, merr := e.MarkRead(local, "Inbox", id); merr == nil && nid != "" {
+					if nid, merr := e.MarkRead(ReadAsSystem(local, "filter-rule:markread"), "Inbox", id); merr == nil && nid != "" {
 						id = nid
 					}
 				} else {
-					if nid, perr := e.SetPinned(local, "Inbox", id, true); perr == nil && nid != "" {
+					if nid, perr := e.SetPinned(ReadAsSystem(local, "filter-rule:pin"), "Inbox", id, true); perr == nil && nid != "" {
 						id = nid
 					}
 				}

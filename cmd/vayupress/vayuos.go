@@ -1696,13 +1696,13 @@ func hxVals(pairs ...string) string {
 // folderUnread returns the unseen-message count for the folders where "unread"
 // is meaningful (received mail), so the folder tabs can show live badges. Sent
 // and Drafts are authored, not received, so they are skipped.
-func (a *App) folderUnread(user string) map[string]int {
+func (a *App) folderUnread(rd vmail.Reader) map[string]int {
 	counts := map[string]int{}
 	if a.vayuMail == nil {
 		return counts
 	}
 	for _, f := range []string{"Inbox", "Junk"} {
-		msgs, err := a.vayuMail.ListFolder(user, f)
+		msgs, err := a.vayuMail.ListFolder(rd, f)
 		if err != nil {
 			continue
 		}
@@ -1758,21 +1758,21 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	domain := a.vayuMail.Config().Domain
-	user := mailUserParam(r)
+	// One authority decision, minted in mailReader (ADR-0152). The inline
+	// admin-or-own check this replaces existed in seven places; fixing one and
+	// missing another leaves a working operator read path with a green suite.
+	rd := a.mailReader(r, mailUserParam(r))
+	user := rd.Key()
 	folder := mailFolderParam(r)
 	if folder == "" {
 		folder = "Inbox"
 	}
-	// Non-admin staff may only operate their own assigned mailbox — never browse
-	// or target another mailbox via ?user=.
-	if !a.isAdminRequest(r) {
-		local := a.ownMailboxKey(r)
-		if local == "" {
+	{
+		if user == "" {
 			body.WriteString(`<div class="empty-state">No mailbox has been assigned to your account yet. Ask an administrator to assign you an email address under <strong>Members → Team &amp; roles</strong>.</div>`)
 			writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 			return
 		}
-		user = local
 	}
 
 	if user == "" {
@@ -1802,7 +1802,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	// the pane overlays the list (see admin-os.css .vm-split).
 	body.WriteString(`<div class="vm-split">`)
 	body.WriteString(`<div id="vm-inbox-list" class="vm-inbox-list">`)
-	body.WriteString(a.vayuInboxBody(user, folder))
+	body.WriteString(a.vayuInboxBody(rd, folder))
 	body.WriteString(`</div>`)
 	body.WriteString(`<div id="vm-readpane" class="vm-readpane">` + vayuReadpaneEmpty("") + `</div>`)
 	body.WriteString(`</div>`)
@@ -1926,7 +1926,8 @@ func (a *App) vayuMailboxDomainCard(dom, primaryDomain string, boxes []vmail.Mai
 // as an HTMX fragment. It is returned on page load and swapped into
 // #vm-inbox-list on the new-mail poll, after any row/bulk action, and on folder
 // switch — so the mailbox never does a jarring full-page reload.
-func (a *App) vayuInboxBody(user, folder string) string {
+func (a *App) vayuInboxBody(rd vmail.Reader, folder string) string {
+	user := rd.Key()
 	domain := a.vayuMail.Config().Domain
 	mbox := mailAddrOf(user, domain)
 	var b strings.Builder
@@ -1968,9 +1969,9 @@ func (a *App) vayuInboxBody(user, folder string) string {
 	}
 
 	// Folder tabs with live unread badges (HTMX folder switching).
-	b.WriteString(folderTabs(user, folder, a.folderUnread(user)))
+	b.WriteString(folderTabs(user, folder, a.folderUnread(rd)))
 
-	msgs, err := a.vayuMail.ListFolder(user, folder)
+	msgs, err := a.vayuMail.ListFolder(rd, folder)
 	if err != nil {
 		b.WriteString(`<div class="empty-state">Could not read folder: ` + html.EscapeString(err.Error()) + `</div>`)
 		return b.String()
@@ -2117,24 +2118,24 @@ func (a *App) handleVayuOSInboxFragment(w http.ResponseWriter, r *http.Request) 
 		writeOSFragment(w, `<div class="empty-state">VayuMail is inactive.</div>`)
 		return
 	}
-	user := mailUserParam(r)
+	// One authority decision, minted in mailReader (ADR-0152). The inline
+	// admin-or-own check this replaces existed in seven places; fixing one and
+	// missing another leaves a working operator read path with a green suite.
+	rd := a.mailReader(r, mailUserParam(r))
+	user := rd.Key()
 	folder := mailFolderParam(r)
 	if folder == "" {
 		folder = "Inbox"
 	}
-	if !a.isAdminRequest(r) {
-		local := a.ownMailboxKey(r)
-		if local == "" {
-			writeOSFragment(w, `<div class="empty-state">No mailbox has been assigned to your account.</div>`)
-			return
-		}
-		user = local
+	if user == "" {
+		writeOSFragment(w, `<div class="empty-state">No mailbox has been assigned to your account.</div>`)
+		return
 	}
 	if user == "" {
 		writeOSFragment(w, `<div class="empty-state">No mailbox selected.</div>`)
 		return
 	}
-	writeOSFragment(w, a.vayuInboxBody(user, folder))
+	writeOSFragment(w, a.vayuInboxBody(rd, folder))
 }
 
 // handleVayuOSInboxAction applies a mark / pin / move / delete to one message
@@ -2154,17 +2155,15 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 	// form value would be a reflected-XSS sink. sanitizeMailUser /
 	// sanitizeMailFolder are no-ops on valid input but route the value through
 	// html.EscapeString, clearing the taint for every downstream HTML sink.
-	user := sanitizeMailUser(strings.TrimSpace(r.PostFormValue("user")))
+	// One authority decision, minted in mailReader (ADR-0152). The inline
+	// admin-or-own check this replaces existed in seven places; fixing one and
+	// missing another leaves a working operator read path with a green suite.
+	rd := a.mailReader(r, sanitizeMailUser(strings.TrimSpace(r.PostFormValue("user"))))
+	user := rd.Key()
 	folder := sanitizeMailFolder(strings.TrimSpace(r.PostFormValue("folder")))
-	if !a.isAdminRequest(r) {
-		// Non-admins may only act on their own mailbox — force it from server
-		// state (the full local@domain key) rather than trusting the form.
-		own := a.ownMailboxKey(r)
-		if own == "" {
-			writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only manage your own mailbox", "")
-			return
-		}
-		user = own
+	if user == "" {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only manage your own mailbox", "")
+		return
 	}
 	if user == "" {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "user is required", "")
@@ -2189,22 +2188,22 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 		switch action {
 		case "mark":
 			if r.PostFormValue("mark") == "unread" {
-				_, err := a.vayuMail.MarkUnread(user, folder, id)
+				_, err := a.vayuMail.MarkUnread(rd, folder, id)
 				return err
 			}
-			_, err := a.vayuMail.MarkRead(user, folder, id)
+			_, err := a.vayuMail.MarkRead(rd, folder, id)
 			return err
 		case "pin":
-			_, err := a.vayuMail.SetPinned(user, folder, id, r.PostFormValue("pin") == "1")
+			_, err := a.vayuMail.SetPinned(rd, folder, id, r.PostFormValue("pin") == "1")
 			return err
 		case "delete":
-			return a.vayuMail.DeleteMessage(user, folder, id)
+			return a.vayuMail.DeleteMessage(rd, folder, id)
 		case "move":
 			to := strings.TrimSpace(r.PostFormValue("to"))
 			if to == "" {
 				return nil
 			}
-			return a.vayuMail.MoveMessage(user, id, folder, to)
+			return a.vayuMail.MoveMessage(rd, id, folder, to)
 		default:
 			return fmt.Errorf("unknown action")
 		}
@@ -2214,18 +2213,18 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 	for _, id := range ids {
 		_ = apply(id)
 	}
-	writeOSFragment(w, a.vayuInboxBody(user, folder))
+	writeOSFragment(w, a.vayuInboxBody(rd, folder))
 }
 
 // handleVayuOSSearch runs a bounded full-text search across a mailbox's folders.
 func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	user := mailUserParam(r)
-	if !a.isAdminRequest(r) {
-		// Non-admins may only search their own assigned mailbox.
-		user = a.ownMailboxKey(r)
-	}
+	// One authority decision, minted in mailReader (ADR-0152). The inline
+	// admin-or-own check this replaces existed in seven places; fixing one and
+	// missing another leaves a working operator read path with a green suite.
+	rd := a.mailReader(r, mailUserParam(r))
+	user := rd.Key()
 	sf := parseSearchFilters(r)
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Search mail</h1><span class="muted text-sm">` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + `</span></div>`)
@@ -2264,7 +2263,7 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
     <label class="vm-filter-check"><input type="checkbox" name="unread" value="1"` + unreadChecked + `> Unread only</label>
   </div>
 </form>`)
-	body.WriteString(`<div id="vm-search-results">` + a.vayuSearchResults(user, sf) + `</div>`)
+	body.WriteString(`<div id="vm-search-results">` + a.vayuSearchResults(rd, sf) + `</div>`)
 	body.WriteString(`</div>`)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
 }
@@ -2290,13 +2289,14 @@ func parseSearchFilters(r *http.Request) searchFilters {
 // vayuSearchResults runs the full-text search and applies the refinement
 // filters, returning the results table (or an empty/prompt state) as an HTMX
 // fragment. Matches in From/Subject are highlighted.
-func (a *App) vayuSearchResults(user string, sf searchFilters) string {
+func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
+	user := rd.Key()
 	var b strings.Builder
 	if sf.q == "" {
 		b.WriteString(`<div class="empty-state">Type a search above to find mail across every folder — refine with the folder, sender, date and unread filters.</div>`)
 		return b.String()
 	}
-	results, _ := a.vayuMail.Search(user, sf.q, 200)
+	results, _ := a.vayuMail.Search(rd, sf.q, 200)
 	afterT, hasAfter := parseDay(sf.after)
 	beforeT, hasBefore := parseDay(sf.before)
 	fromLower := strings.ToLower(sf.from)
@@ -2344,15 +2344,16 @@ func (a *App) handleVayuOSSearchFragment(w http.ResponseWriter, r *http.Request)
 		writeOSFragment(w, `<div class="empty-state">VayuMail is inactive.</div>`)
 		return
 	}
-	user := mailUserParam(r)
-	if !a.isAdminRequest(r) {
-		user = a.ownMailboxKey(r)
-	}
+	// One authority decision, minted in mailReader (ADR-0152). The inline
+	// admin-or-own check this replaces existed in seven places; fixing one and
+	// missing another leaves a working operator read path with a green suite.
+	rd := a.mailReader(r, mailUserParam(r))
+	user := rd.Key()
 	if user == "" {
 		writeOSFragment(w, `<div class="empty-state">No mailbox selected.</div>`)
 		return
 	}
-	writeOSFragment(w, a.vayuSearchResults(user, parseSearchFilters(r)))
+	writeOSFragment(w, a.vayuSearchResults(rd, parseSearchFilters(r)))
 }
 
 // parseDay parses a YYYY-MM-DD date-input value (UTC midnight). ok is false when
@@ -2479,11 +2480,11 @@ func mailPGPBadge(raw []byte) string {
 func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	user := mailUserParam(r)
-	if !a.isAdminRequest(r) {
-		// Non-admins may only read messages in their own assigned mailbox.
-		user = a.ownMailboxKey(r)
-	}
+	// One authority decision, minted in mailReader (ADR-0152). The inline
+	// admin-or-own check this replaces existed in seven places; fixing one and
+	// missing another leaves a working operator read path with a green suite.
+	rd := a.mailReader(r, mailUserParam(r))
+	user := rd.Key()
 	folder := mailFolderParam(r)
 	if folder == "" {
 		folder = "Inbox"
@@ -2506,7 +2507,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	card, ok := a.vayuReaderCard(user, folder, id, pane)
+	card, ok := a.vayuReaderCard(rd, folder, id, pane)
 	if !ok {
 		if pane {
 			writeOSHTML(w, r, vayuReadpaneEmpty("Could not read this message."))
@@ -2545,14 +2546,15 @@ func vayuReadpaneEmpty(msg string) string {
 // reading pane (pane=true: HTMX nav/actions targeting #vm-readpane, native
 // <details> for raw — nothing depends on JS bound at page load). It reads the
 // message and marks it read (received folders only). ok is false on error.
-func (a *App) vayuReaderCard(user, folder, id string, pane bool) (string, bool) {
-	raw, err := a.vayuMail.ReadFolderMessage(user, folder, id)
+func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane bool) (string, bool) {
+	user := rd.Key()
+	raw, err := a.vayuMail.ReadFolderMessage(rd, folder, id)
 	if err != nil {
 		return "", false
 	}
 	received := !strings.EqualFold(folder, "Drafts") && !strings.EqualFold(folder, "Sent")
 	if received {
-		if nid, merr := a.vayuMail.MarkRead(user, folder, id); merr == nil && nid != "" {
+		if nid, merr := a.vayuMail.MarkRead(rd, folder, id); merr == nil && nid != "" {
 			id = nid
 		}
 	}
@@ -2563,7 +2565,7 @@ func (a *App) vayuReaderCard(user, folder, id string, pane bool) (string, bool) 
 	paneURL := func(mid string) string { return msgURL(mid) + "&pane=1" }
 	pinned := false
 	var prevID, nextID string
-	if msgs, lerr := a.vayuMail.ListFolder(user, folder); lerr == nil {
+	if msgs, lerr := a.vayuMail.ListFolder(rd, folder); lerr == nil {
 		for i, mm := range msgs {
 			if mm.ID == id {
 				pinned = mm.Flagged
@@ -2775,17 +2777,17 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 	// Sanitise at read: user/folder/id are rendered back into the reader-pane
 	// card (writeOSHTML) below, so raw form values would be a reflected-XSS
 	// sink. The sanitisers are no-ops on valid input but apply html.EscapeString.
-	user := sanitizeMailUser(strings.TrimSpace(r.FormValue("user")))
+	// One authority decision, minted in mailReader (ADR-0152). The inline
+	// admin-or-own check this replaces existed in seven places; fixing one and
+	// missing another leaves a working operator read path with a green suite.
+	rd := a.mailReader(r, sanitizeMailUser(strings.TrimSpace(r.FormValue("user"))))
+	user := rd.Key()
 	folder := sanitizeMailFolder(strings.TrimSpace(r.FormValue("folder")))
 	id := sanitizeMailID(strings.TrimSpace(r.FormValue("id")))
-	if !a.isAdminRequest(r) {
-		own := a.ownMailboxKey(r)
-		if own == "" {
-			w.WriteHeader(http.StatusForbidden)
-			writeOSHTML(w, r, vayuReadpaneEmpty("You can only manage your own mailbox."))
-			return
-		}
-		user = own // non-admin: own mailbox engine key (domain included), server-derived
+	if user == "" {
+		w.WriteHeader(http.StatusForbidden)
+		writeOSHTML(w, r, vayuReadpaneEmpty("You can only manage your own mailbox."))
+		return
 	}
 	if user == "" || id == "" {
 		writeOSHTML(w, r, vayuReadpaneEmpty("Message not available."))
@@ -2803,27 +2805,27 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 		}
 		writeOSHTML(w, r, vayuReadpaneEmpty("Snoozed — wakes "+until.Local().Format("Mon 15:04")+"."))
 	case r.FormValue("delete") == "1":
-		_ = a.vayuMail.DeleteMessage(user, folder, id)
+		_ = a.vayuMail.DeleteMessage(rd, folder, id)
 		writeOSHTML(w, r, vayuReadpaneEmpty("Message deleted."))
 	case strings.TrimSpace(r.FormValue("to")) != "":
 		to := strings.TrimSpace(r.FormValue("to"))
-		_ = a.vayuMail.MoveMessage(user, id, folder, to)
+		_ = a.vayuMail.MoveMessage(rd, id, folder, to)
 		writeOSHTML(w, r, vayuReadpaneEmpty("Moved to "+html.EscapeString(to)+"."))
 	case r.FormValue("mark") == "unread":
-		_, _ = a.vayuMail.MarkUnread(user, folder, id)
+		_, _ = a.vayuMail.MarkUnread(rd, folder, id)
 		// Gmail-style: marking unread closes the reader so the bold row stands out.
 		writeOSHTML(w, r, vayuReadpaneEmpty("Marked unread."))
 	case r.FormValue("pin") == "1" || r.FormValue("pin") == "0":
-		if nid, err := a.vayuMail.SetPinned(user, folder, id, r.FormValue("pin") == "1"); err == nil && nid != "" {
+		if nid, err := a.vayuMail.SetPinned(rd, folder, id, r.FormValue("pin") == "1"); err == nil && nid != "" {
 			id = nid
 		}
-		if card, ok := a.vayuReaderCard(user, folder, id, true); ok {
+		if card, ok := a.vayuReaderCard(rd, folder, id, true); ok {
 			writeOSHTML(w, r, card)
 		} else {
 			writeOSHTML(w, r, vayuReadpaneEmpty(""))
 		}
 	default:
-		if card, ok := a.vayuReaderCard(user, folder, id, true); ok {
+		if card, ok := a.vayuReaderCard(rd, folder, id, true); ok {
 			writeOSHTML(w, r, card)
 		} else {
 			writeOSHTML(w, r, vayuReadpaneEmpty(""))

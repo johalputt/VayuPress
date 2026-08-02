@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+- **Opening a mailbox now requires saying who is asking** (ADR-0152 Phase 5).
+  Every VayuMail read — list, read, search, move, mark, pin, delete — takes a
+  `mail.Reader` carrying the authority for that read, and **the zero value is not
+  a valid answer**: an unset Reader is refused, so a caller that reaches the
+  engine without saying who they are does not compile and would not be served if
+  it did.
+
+  The question "may this caller open this mailbox?" was previously answered in
+  seven separate inline copies of `if !a.isAdminRequest(r)`, one helper, and at
+  least one handler that asked nobody at all. That shape fails in a specific
+  way: you fix one site, miss another, the suite stays green, and a working
+  operator read path survives. It also makes any promise about handover
+  impossible to state truthfully, because nobody can enumerate the ways in.
+
+  Operator authority is now minted in exactly **one** function, and a test fails
+  the build if a second appears. An administrator reading their *own* mailbox is
+  recorded as an owner read, not operator access — otherwise the client-visible
+  record fills with entries about the operator's own inbox, which trains people
+  to ignore the log, and the log is the whole product here.
+
+  No behaviour change for any existing user: the same people can read the same
+  mailboxes. What changed is that the decision is now in one place, typed, and
+  refusable — which is what the handover work in the next commit attaches to.
+
 ### Fixed
 - **Two hosted domains publishing the same path shared one view counter**
   (ADR-0152 Phase 4). `analytics_daily` was keyed `(day, path)`, so two clients

@@ -78,11 +78,11 @@ func TestEngineReadResolvesSecondaryMailbox(t *testing.T) {
 	if _, err := e.DeliverInbound("bob@shop.example", raw); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
-	full, err := e.ListFolder("bob@shop.example", "Inbox")
+	full, err := e.ListFolder(ReadAsSystem("bob@shop.example", "test"), "Inbox")
 	if err != nil || len(full) != 1 {
 		t.Fatalf("ListFolder(full) n=%d err=%v, want 1", len(full), err)
 	}
-	prim, err := e.ListFolder("bob", "Inbox") // primary "bob" — a different mailbox
+	prim, err := e.ListFolder(ReadAsSystem("bob", "test"), "Inbox") // primary "bob" — a different mailbox
 	if err != nil || len(prim) != 0 {
 		t.Fatalf("ListFolder(bare) n=%d, want 0 (primary bob is a separate mailbox)", len(prim))
 	}
