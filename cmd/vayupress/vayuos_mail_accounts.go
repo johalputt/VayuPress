@@ -514,6 +514,7 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	c.WriteString(a.vayuCardVacation(ctx, ac))
 	c.WriteString(a.vayuCardAliases(ctx, ac))
 	c.WriteString(a.vayuCardRecovery(ctx, ac.Email))
+	c.WriteString(a.vayuCardHandover(ctx, ac))
 	c.WriteString(a.vayuCardPGP(ac))
 	c.WriteString(a.vayuCardFilters(ctx, ac))
 	// Profile picture: direct upload (≤500 KB) + optional remove. HTMX multipart,
@@ -610,6 +611,8 @@ func (a *App) handleVayuOSAccountsAction(w http.ResponseWriter, r *http.Request)
 		if opErr = accts.SetRetentionDays(r.Context(), email, days); opErr == nil {
 			dbpkg.AuditLog("vayumail.retention.set", dbpkg.AuditActor(r), email, strconv.Itoa(days)+" days")
 		}
+	case "handover":
+		opErr = a.handOverMailbox(r, email)
 	case "delete":
 		if opErr = accts.Delete(r.Context(), email); opErr == nil {
 			dbpkg.AuditLog("vayumail.account.delete", dbpkg.AuditActor(r), email, "")
@@ -623,6 +626,126 @@ func (a *App) handleVayuOSAccountsAction(w http.ResponseWriter, r *http.Request)
 		list = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + list
 	}
 	writeOSHTML(w, r, list)
+}
+
+// vayuCardHandover renders the one-way handover control for a mailbox.
+//
+// The copy here is the client-facing promise from ADR-0152 D4, and it is written
+// to be read by the operator BEFORE they commit rather than discovered after. It
+// states what stops working for them, in the second person, because the thing
+// being given away is their own access and every sentence that softens that
+// makes the button easier to press by accident.
+func (a *App) vayuCardHandover(ctx context.Context, ac vmail.Account) string {
+	esc := html.EscapeString
+	email := esc(ac.Email)
+
+	if a.vayuMail.IsHandedOver(ac.Email) {
+		var when string
+		if ents, err := a.vayuMail.Ledger(ctx, ac.Email, 50); err == nil {
+			for _, e := range ents {
+				if e.Action == "handover" {
+					when = " on " + e.TS.Format("2 January 2006")
+					break
+				}
+			}
+		}
+		return `<details class="vm-ooo vm-acct__sub"><summary>` +
+			`<span class="field-label">Ownership</span> <span class="badge badge--ok">handed over</span></summary>` +
+			`<p class="muted text-xs">This mailbox belongs to its holder` + esc(when) + `. You cannot open it from
+      here, sign in to it with your own password, reset its password, clear its second factor, mint a
+      credential for it, or point its mail elsewhere. This cannot be reversed — the database refuses to
+      clear it, which is what makes it worth telling a client about.</p>` +
+			`<p class="muted text-xs">If they are locked out, the command-line emergency override is the way
+      back in. It writes a permanent entry the holder can read on their own page, and notifies their
+      recovery address.</p></details>`
+	}
+
+	contact := ""
+	if accts := a.vayuMail.Accounts(); accts != nil {
+		contact = accts.RecoveryContact(ctx, ac.Email)
+	}
+	blocked := strings.TrimSpace(contact) == ""
+
+	warn := ""
+	confirmField := `<label class="field vm-grow"><span class="field-label">Type ` + email + ` to confirm</span>
+    <input class="input input--sm" type="text" name="confirm" id="vm-ho-` + email + `"
+           autocomplete="off" spellcheck="false" aria-label="Confirm handover of ` + email + `"></label>`
+	button := `<button type="button" class="btn btn--sm btn--danger" hx-post="/os/vayumail/accounts/action"` +
+		hxVals("op", "handover", "email", ac.Email) + ` hx-include="#vm-ho-` + email + `"` + acctListHx +
+		` hx-confirm="Hand ` + email + ` to its holder? You will not be able to open this mailbox again, and this cannot be undone.">Hand over</button>`
+	if blocked {
+		warn = `<p class="muted text-xs">⚠ Set and verify a <b>recovery address</b> for this mailbox first
+      (the card above). Without one, the emergency-override notice can only be filed into the mailbox
+      itself — where whoever used the override can delete it, which is the opposite of a record.</p>`
+		confirmField, button = "", ""
+	}
+
+	return `<details class="vm-ooo vm-acct__sub"><summary>` +
+		`<span class="field-label">Ownership</span> <span class="badge badge--muted">you administer this</span></summary>` +
+		`<p class="muted text-xs">Handing this mailbox to its holder ends <b>your</b> access to it. You will no
+    longer be able to read it from the panel, sign in to it with your own console password over IMAP or
+    POP3, reset its password, turn off its second factor, create an app password for it, or set
+    forwarding on it. Its own password and app passwords keep working — that is the point.</p>` +
+		`<p class="muted text-xs">What remains is a command-line emergency override that cannot run without
+    first writing a permanent, tamper-evident entry into a record the holder reads on their own page.
+    <b>This is not encryption</b>: the messages stay readable files on this server, so anyone with direct
+    access to the machine, its database or a backup can still read them.</p>` +
+		`<p class="muted text-xs"><b>One way.</b> Nothing in this panel, and no UPDATE against the database,
+    reverses it.</p>` + warn +
+		`<div class="vm-row vm-row--end mt-2">` + confirmField + button + `</div></details>`
+}
+
+// handOverMailbox ends the operator's own access to one mailbox (ADR-0152 D4).
+//
+// This is the trigger the whole Phase 5 mechanism was missing. Every severance
+// shipped and was tested — panel reads, the operator's console password over
+// IMAP, password reset, second-factor clearing, credential minting, forwarding —
+// and nothing in the product could set the state they all key off, so none of
+// them could ever fire. A control that cannot be switched on is not a control.
+//
+// Three gates, in order of how easily each is got wrong:
+//
+//  1. TYPED CONFIRMATION, CHECKED ON THE SERVER. Handover is one-way by design:
+//     the database refuses to clear handed_at, so a mis-click is permanent and
+//     the operator cannot undo it for a client who calls back. An hx-confirm
+//     dialog is a client-side courtesy that a double-submit or a replayed
+//     request walks straight through, so the address is retyped and compared
+//     here.
+//
+//  2. A CONFIRMED RECOVERY CONTACT. The claim is that break-glass "cannot run
+//     without writing a permanent record AND a notice to a contact outside the
+//     install". With no confirmed contact the notice has nowhere to go but the
+//     mailbox itself — which the person holding the break-glass password can
+//     read and delete. Handing over without one ships the promise minus the half
+//     that makes it observable, so it is refused rather than warned about.
+//
+//  3. NOT ALREADY HANDED OVER. Repeating it would append a second "handover"
+//     line to the client's record for an event that did not happen, and a log
+//     that reports things that did not happen is one nobody reads.
+func (a *App) handOverMailbox(r *http.Request, email string) error {
+	if email == "" {
+		return errors.New("no mailbox given")
+	}
+	accts := a.vayuMail.Accounts()
+	if a.vayuMail.IsHandedOver(email) {
+		return errors.New("this mailbox has already been handed over")
+	}
+	if strings.ToLower(strings.TrimSpace(r.FormValue("confirm"))) != email {
+		return errors.New("type the mailbox address exactly to confirm — a handover cannot be undone, " +
+			"by you or by anyone with access to the database")
+	}
+	contact := accts.RecoveryContact(r.Context(), email)
+	if strings.TrimSpace(contact) == "" {
+		return errors.New("set and confirm a recovery address for this mailbox first — without one, " +
+			"the emergency-override notice can only be filed into the mailbox itself, where whoever " +
+			"used the override can delete it")
+	}
+	if err := a.vayuMail.HandOver(r.Context(), email, dbpkg.AuditActor(r), contact); err != nil {
+		return err
+	}
+	dbpkg.AuditLog("vayumail.account.handover", dbpkg.AuditActor(r), email,
+		"operator panel access to this mailbox ended")
+	return nil
 }
 
 // handleVayuOSDevicesFragment returns the Devices card fragment. It backs the

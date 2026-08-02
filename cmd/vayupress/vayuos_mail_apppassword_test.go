@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -51,7 +53,35 @@ func appWithMailAccounts(t *testing.T) *App {
 	if err := e.Accounts().Create(context.Background(), "dana@example.com", hash, "Dana", "mailbox"); err != nil {
 		t.Fatalf("create account: %v", err)
 	}
+	applyMailHandoverSchema(t, db)
 	return &App{vayuMail: e}
+}
+
+// applyMailHandoverSchema runs the SHIPPED migration 081 against a test database.
+//
+// The engine creates its own tables on Start, but mail_handover and
+// mail_access_ledger arrive through the migration runner, which does not run
+// here. Reading the real file rather than restating the DDL is deliberate: a
+// handover test that passes against a hand-written schema proves nothing about
+// the schema the product has, and the triggers in that file are what make the
+// one-way and append-only guarantees real rather than conventional.
+//
+// The runner executes ONE statement per physical line, so this mirrors it.
+func applyMailHandoverSchema(t *testing.T, db *sql.DB) {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "internal", "db", "migrations", "081-mail-handover.up.sql"))
+	if err != nil {
+		t.Fatalf("read migration 081: %v", err)
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "--") {
+			continue
+		}
+		if _, err := db.Exec(line); err != nil {
+			t.Fatalf("migration 081: %v (%s)", err, line)
+		}
+	}
 }
 
 // withUser attaches a session user to the request context, the same way
