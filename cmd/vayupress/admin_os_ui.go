@@ -550,6 +550,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// "My site" — the agency client's own page (ADR-0152). Declared in
 		// clientSurface; every other /os route is refused to a client by default.
 		pr.Get("/os/mysite", a.handleOSMySite)
+		pr.Get("/os/mysite/traffic", a.handleOSMySiteTraffic)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/mysite/brand", a.handleOSMySiteBrand)
 		pr.Get("/os/settings", a.handleOSSettings)
 		pr.Get("/os/settings/{group}", a.handleOSSettings)

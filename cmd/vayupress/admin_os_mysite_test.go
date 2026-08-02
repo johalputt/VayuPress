@@ -33,21 +33,12 @@ func TestMySitePageRendersTheClientsOwnFacts(t *testing.T) {
 	}
 }
 
-// The page must not claim to show traffic. analytics_daily is keyed (day,path)
-// with no domain dimension, so two clients sharing /about have MERGED counts —
-// a number here would be another client's visits presented as this client's.
-func TestMySiteDoesNotShowTrafficItCannotCountPerSite(t *testing.T) {
+// Traffic now exists and is scoped per domain (migration 080), so the page must
+// point a client at it rather than explain its absence.
+func TestMySitePointsAtTheTrafficPage(t *testing.T) {
 	out := mySiteWhatsNotHere()
-	if !strings.Contains(strings.ToLower(out), "visitor numbers") {
-		t.Error("the page does not tell the client why there are no visitor numbers; " +
-			"a missing control with no explanation is a support call")
-	}
-	body := mySiteFactsGrid(domain.Domain{Host: "x.test"}) + out
-	for _, forbidden := range []string{"views", "pageviews", "visits this month"} {
-		if strings.Contains(strings.ToLower(body), forbidden) {
-			t.Errorf("the page appears to present a traffic figure (%q) — analytics has no "+
-				"domain dimension, so any number shown here includes other clients", forbidden)
-		}
+	if !strings.Contains(out, "/os/mysite/traffic") {
+		t.Error("the client is not told where their visitor numbers are")
 	}
 }
 

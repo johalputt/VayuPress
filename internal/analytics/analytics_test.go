@@ -17,8 +17,8 @@ func newTestStore(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 	for _, stmt := range []string{
-		`CREATE TABLE analytics_daily(day TEXT NOT NULL,path TEXT NOT NULL,views INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,path))`,
-		`CREATE TABLE analytics_referrers(day TEXT NOT NULL,host TEXT NOT NULL,hits INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,host))`,
+		`CREATE TABLE analytics_daily(day TEXT NOT NULL,domain_id TEXT NOT NULL DEFAULT '',path TEXT NOT NULL,views INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,domain_id,path))`,
+		`CREATE TABLE analytics_referrers(day TEXT NOT NULL,domain_id TEXT NOT NULL DEFAULT '',host TEXT NOT NULL,hits INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(day,domain_id,host))`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			t.Fatal(err)
@@ -31,11 +31,11 @@ func TestRecordAndSummary(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	for i := 0; i < 3; i++ {
-		if err := s.Record(ctx, "/hello", "https://news.ycombinator.com/item?id=1"); err != nil {
+		if err := s.Record(ctx, "", "/hello", "https://news.ycombinator.com/item?id=1"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	s.Record(ctx, "/world", "")
+	s.Record(ctx, "", "/world", "")
 
 	sum, err := s.Since(ctx, 30, 10)
 	if err != nil {
@@ -75,7 +75,7 @@ func TestPurge(t *testing.T) {
 	ctx := context.Background()
 	// Insert an old row directly.
 	s.db.Exec(`INSERT INTO analytics_daily(day,path,views) VALUES('2000-01-01','/old',5)`)
-	s.Record(ctx, "/new", "")
+	s.Record(ctx, "", "/new", "")
 	n, err := s.Purge(ctx, 30)
 	if err != nil {
 		t.Fatal(err)
@@ -113,14 +113,14 @@ func TestTrendingArticles(t *testing.T) {
 
 	ctx := context.Background()
 	for i := 0; i < 5; i++ {
-		s.Record(ctx, "/alpha", "")
+		s.Record(ctx, "", "/alpha", "")
 	}
 	for i := 0; i < 2; i++ {
-		s.Record(ctx, "/bravo", "")
+		s.Record(ctx, "", "/bravo", "")
 	}
-	s.Record(ctx, "/draft", "") // draft — must not appear
-	s.Record(ctx, "/about", "") // page — must not appear
-	s.Record(ctx, "/ghost", "") // no matching article — must not appear
+	s.Record(ctx, "", "/draft", "") // draft — must not appear
+	s.Record(ctx, "", "/about", "") // page — must not appear
+	s.Record(ctx, "", "/ghost", "") // no matching article — must not appear
 
 	got, err := s.TrendingArticles(ctx, 7, 10)
 	if err != nil {

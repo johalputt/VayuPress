@@ -8,7 +8,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+- **Two hosted domains publishing the same path shared one view counter**
+  (ADR-0152 Phase 4). `analytics_daily` was keyed `(day, path)`, so two clients
+  who both published `/about` had their counts **added together**. That is not a
+  missing feature but a wrong number: showing a client that figure would be
+  showing them another client's visits and calling it theirs — a cross-tenant
+  leak with a chart around it. `analytics_referrers` had the same shape.
+
+  Migration 080 rebuilds both with the domain in the primary key. A primary key
+  cannot be altered in place in SQLite, so this is a genuine table rebuild — of
+  the three this codebase needs (`articles.slug`, `members.email`, and this) it
+  is by far the safest, because the data is a derived daily aggregate rather
+  than business records. **Existing rows backfill to the primary domain**, which
+  is precisely what they are: every view counted before the migration happened on
+  the one domain the install served. A single-domain install reads identically
+  before and after. Verified end to end against SQLite, one statement per line as
+  the runner requires.
+
+  Attribution is resolved **server-side, on the request goroutine**, from the
+  host this install actually served — never from anything a visitor sends. The
+  write is detached and cannot touch the request, so the scope is captured
+  before the goroutine starts.
+
 ### Added
+- **Visitors — a client's own traffic** at `/os/mysite/traffic`: page views over
+  30 days and their busiest pages, filtered by domain **in SQL** rather than
+  fetched broadly and narrowed afterwards. That is not a performance choice; a
+  filter applied after the fact is a filter somebody can forget, and what would
+  be forgotten is another client's traffic appearing in this one's report.
+
 - **Branded mailboxes are metered per domain** (ADR-0152 Phase 3). An operator
   grants each hosted domain a number of mailboxes from
   `POST /os/api/domains/{id}/allowance`, and mailbox creation on a secondary

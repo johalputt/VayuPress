@@ -339,8 +339,12 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 		isAdmin := r.Header.Get("X-API-Key") == config.Cfg.APIKey
 		if !isAdmin && !warm {
 			ref := r.Referer()
+			// Resolve the owning domain HERE, on the request goroutine. The write
+			// below runs detached with context.Background() and cannot touch r —
+			// and attribution must never come from anything the visitor sends.
+			scope := a.contentScope(r)
 			go func() {
-				if err := a.analytics.Record(context.Background(), "/", ref); err != nil {
+				if err := a.analytics.Record(context.Background(), scope, "/", ref); err != nil {
 					logging.LogError("analytics", "record home failed", err.Error())
 				}
 			}()
@@ -554,8 +558,11 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	// internal cache-warm probes are excluded. Recording is async and best-effort.
 	if !isAdmin && !warm && a.analytics != nil {
 		path, ref := "/"+slug, r.Referer()
+		// Same as the home path: the domain is resolved on the request goroutine,
+		// server-side, from the host this install actually served.
+		scope := a.contentScope(r)
 		go func() {
-			if err := a.analytics.Record(context.Background(), path, ref); err != nil {
+			if err := a.analytics.Record(context.Background(), scope, path, ref); err != nil {
 				logging.LogError("analytics", "record failed", err.Error())
 			}
 		}()

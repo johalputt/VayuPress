@@ -30,8 +30,10 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
 )
@@ -204,9 +206,7 @@ func mySiteWhatsNotHere() string {
 	return `<div class="section-head"><div class="section-head__title">Not on this page</div></div>` +
 		`<div class="card"><p class="text-sm muted">` +
 		`<strong>Website content and design</strong> are looked after for you — ask and it gets changed.<br>` +
-		`<strong>Visitor numbers</strong> are not shown yet. They are counted per page across the whole ` +
-		`server rather than per site, so a figure here could include another site's visits. ` +
-		`It will appear once it can be counted for your site alone.<br>` +
+		`<strong>Visitor numbers</strong> are on the <a href="/os/mysite/traffic">Visitors</a> page.<br>` +
 		`<strong>New mailboxes</strong> are created on request.` +
 		`</p></div>`
 }
@@ -327,4 +327,58 @@ func (a *App) mailboxAllowanceExceeded(ctx context.Context, host string) (bool, 
 		return true, fmt.Sprintf("%s has used all %d of its allocated mailboxes. Raise its allowance under Domains to add another.", host, granted)
 	}
 	return false, ""
+}
+
+// handleOSMySiteTraffic renders a client's own visitor numbers.
+//
+// The figures come from analytics.ViewsForScope, which filters by domain in SQL
+// rather than fetching everything and narrowing afterwards. That is not a
+// performance choice: a filter applied after the fact is a filter somebody can
+// forget, and the thing forgotten would be another client's traffic appearing in
+// this one's report.
+func (a *App) handleOSMySiteTraffic(w http.ResponseWriter, r *http.Request) {
+	d, ok := a.mySiteDomain(r)
+	if !ok {
+		http.Redirect(w, r, "/os/domains", http.StatusSeeOther)
+		return
+	}
+	cfg := a.getOSSettings(r.Context())
+	nonce := render.CSPNonce(r)
+
+	var total int64
+	var top []analytics.PathCount
+	if a.analytics != nil {
+		total, top, _ = a.analytics.ViewsForScope(r.Context(), d.ID, 30, 10)
+	}
+
+	body := `<div class="page-header"><h1>Visitors</h1></div>` +
+		`<p class="page-sub">Page views on ` + html.EscapeString(d.Host) +
+		` over the last 30 days. Counted without cookies, so nobody is tracked between visits.</p>` +
+		`<div class="stat-grid"><div class="stat-card">` +
+		`<div class="stat-card__label">Page views, last 30 days</div>` +
+		`<div class="stat-card__value">` + strconv.FormatInt(total, 10) + `</div></div></div>` +
+		mySiteTopPages(top) +
+		`<div class="card"><p class="text-sm muted">` +
+		`These are views of your pages only. Counting started when your site was added, ` +
+		`so a site added recently will show a short history.` +
+		`</p></div>`
+
+	full := adminOSShellHead(nonce, "Visitors", "mysite", cfg) + body +
+		adminOSShellFoot(nonce, "", pageUsesAlpine(body))
+	writeOSHTML(w, r, full)
+}
+
+// mySiteTopPages lists the busiest pages, or says plainly that there is nothing
+// yet rather than rendering an empty table that reads like a fault.
+func mySiteTopPages(top []analytics.PathCount) string {
+	if len(top) == 0 {
+		return `<div class="card"><p class="text-sm muted">No visits recorded yet.</p></div>`
+	}
+	out := `<div class="section-head"><div class="section-head__title">Most visited pages</div></div>` +
+		`<div class="card"><table class="table"><thead><tr><th>Page</th><th>Views</th></tr></thead><tbody>`
+	for _, p := range top {
+		out += `<tr><td class="mono text-sm">` + html.EscapeString(p.Path) + `</td>` +
+			`<td>` + strconv.FormatInt(p.Views, 10) + `</td></tr>`
+	}
+	return out + `</tbody></table></div>`
 }

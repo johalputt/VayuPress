@@ -55,27 +55,72 @@ func (s *Store) readDB() *sql.DB {
 
 // Record increments the view counter for path on today's date and, when a
 // same-site-external referrer is supplied, the counter for its host. Both writes
-// are UPSERT increments, so the table grows only with distinct (day, path) and
-// (day, host) pairs — never per visit.
-func (s *Store) Record(ctx context.Context, path, referrer string) error {
+// are UPSERT increments, so the table grows only with distinct
+// (day, domain, path) and (day, domain, host) pairs — never per visit.
+//
+// scope is the VayuDomains domain that served the view: "" for the primary, or a
+// secondary domain's id, matching the convention in articles.domain_id. It must
+// be resolved by the CALLER from the request it is recording, on the request
+// goroutine — see RecordFor. Nothing a visitor sends may choose it: attribution
+// derived from a client-controlled value is attribution a client can forge into
+// a competitor's report.
+func (s *Store) Record(ctx context.Context, scope, path, referrer string) error {
 	day := time.Now().UTC().Format("2006-01-02")
 	path = normalizePath(path)
 	if path == "" {
 		return nil
 	}
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO analytics_daily(day,path,views) VALUES(?,?,1)
-		 ON CONFLICT(day,path) DO UPDATE SET views=views+1`, day, path); err != nil {
+		`INSERT INTO analytics_daily(day,domain_id,path,views) VALUES(?,?,?,1)
+		 ON CONFLICT(day,domain_id,path) DO UPDATE SET views=views+1`, day, scope, path); err != nil {
 		return err
 	}
 	if host := referrerHost(referrer); host != "" {
 		if _, err := s.db.ExecContext(ctx,
-			`INSERT INTO analytics_referrers(day,host,hits) VALUES(?,?,1)
-			 ON CONFLICT(day,host) DO UPDATE SET hits=hits+1`, day, host); err != nil {
+			`INSERT INTO analytics_referrers(day,domain_id,host,hits) VALUES(?,?,?,1)
+			 ON CONFLICT(day,domain_id,host) DO UPDATE SET hits=hits+1`, day, scope, host); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// ViewsForScope returns the total views and the busiest paths for ONE domain
+// over the last `days` days.
+//
+// Separate from SummarySince, which aggregates across every domain for the
+// operator. A caller that wants one client's numbers must ask for that client's
+// numbers; there is no "and also filter it afterwards" path, because that is the
+// shape a forgotten WHERE clause hides in.
+func (s *Store) ViewsForScope(ctx context.Context, scope string, days, limit int) (total int64, top []PathCount, err error) {
+	if days <= 0 {
+		days = 30
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	from := time.Now().UTC().AddDate(0, 0, -days).Format("2006-01-02")
+	if err = s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(views),0) FROM analytics_daily WHERE day>=? AND domain_id=?`,
+		from, scope).Scan(&total); err != nil {
+		return 0, nil, err
+	}
+	rows, qerr := s.db.QueryContext(ctx,
+		`SELECT path,SUM(views) v FROM analytics_daily WHERE day>=? AND domain_id=? GROUP BY path ORDER BY v DESC LIMIT ?`,
+		from, scope, limit)
+	if qerr != nil {
+		return total, nil, qerr
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p PathCount
+		if err := rows.Scan(&p.Path, &p.Views); err != nil {
+			return total, nil, err
+		}
+		top = append(top, p)
+	}
+	_ = rows.Err()
+	return total, top, nil
 }
 
 // selfHostPatterns returns the site's own host and the LIKE pattern matching its
