@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.34] — 2026-08-02
 
 ### Added
 - **A continuity plan — `docs/CONTINUITY.md`** (ADR-0152 open decision 7). It
