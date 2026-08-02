@@ -33,10 +33,15 @@ import (
 //   - admin:  may manage other users, roles, and system settings.
 //   - editor: may write and publish/manage all content.
 //   - author: may write their own content.
+//   - client: an agency CLIENT (ADR-0152). Not a rung on the ladder above — the
+//     ladder is linear and cannot express "may see their own site and mail but
+//     no content authoring at all". A client reaches a fixed, enumerated surface
+//     scoped to the single domain in ClientDomainID and nothing else.
 const (
 	RoleAdmin  = "admin"
 	RoleEditor = "editor"
 	RoleAuthor = "author"
+	RoleClient = "client"
 )
 
 // MaxBioLen / MaxNameLen bound the free-text profile fields.
@@ -48,7 +53,7 @@ const (
 // ValidRole reports whether role is a recognised account role.
 func ValidRole(role string) bool {
 	switch role {
-	case RoleAdmin, RoleEditor, RoleAuthor:
+	case RoleAdmin, RoleEditor, RoleAuthor, RoleClient:
 		return true
 	}
 	return false
@@ -73,6 +78,10 @@ type User struct {
 	// MustChangePassword is set on a bootstrapped default admin; the console
 	// forces a password change before anything else until it is cleared.
 	MustChangePassword bool `json:"must_change_password,omitempty"`
+	// ClientDomainID binds a RoleClient account to the one hosted domain it may
+	// administer (ADR-0152). Empty on every non-client account. A client whose
+	// binding is empty is an invalid identity and is refused, never defaulted.
+	ClientDomainID string `json:"client_domain_id,omitempty"`
 }
 
 // Store manages user accounts in SQLite.
@@ -164,8 +173,8 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (*User
 	var hash string
 	var lastLogin sql.NullTime
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id,email,name,password_hash,role,created_at,last_login FROM users WHERE email=?`, email).
-		Scan(&u.ID, &u.Email, &u.Name, &hash, &u.Role, &u.CreatedAt, &lastLogin)
+		`SELECT id,email,name,password_hash,role,created_at,last_login,COALESCE(client_domain_id,'') FROM users WHERE email=?`, email).
+		Scan(&u.ID, &u.Email, &u.Name, &hash, &u.Role, &u.CreatedAt, &lastLogin, &u.ClientDomainID)
 	if err == sql.ErrNoRows {
 		// Constant-ish work to blunt user-enumeration timing.
 		auth.VerifySecretArgon2id(password, decoyHash)
@@ -184,7 +193,7 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (*User
 }
 
 // profileCols is the SELECT list for reads that include public profile fields.
-const profileCols = `id,email,name,role,avatar_url,bio,socials,mail_address,created_at,last_login,COALESCE(must_change_password,0),COALESCE(username,'')`
+const profileCols = `id,email,name,role,avatar_url,bio,socials,mail_address,created_at,last_login,COALESCE(must_change_password,0),COALESCE(username,''),COALESCE(client_domain_id,'')`
 
 // scanUserProfile reads a row selected with profileCols.
 func scanUserProfile(sc interface{ Scan(...interface{}) error }) (*User, error) {
@@ -192,8 +201,8 @@ func scanUserProfile(sc interface{ Scan(...interface{}) error }) (*User, error) 
 	var avatar, bio, socials, mailAddr string
 	var lastLogin sql.NullTime
 	var mustChange int
-	var username string
-	if err := sc.Scan(&u.ID, &u.Email, &u.Name, &u.Role, &avatar, &bio, &socials, &mailAddr, &u.CreatedAt, &lastLogin, &mustChange, &username); err != nil {
+	var username, clientDomain string
+	if err := sc.Scan(&u.ID, &u.Email, &u.Name, &u.Role, &avatar, &bio, &socials, &mailAddr, &u.CreatedAt, &lastLogin, &mustChange, &username, &clientDomain); err != nil {
 		return nil, err
 	}
 	u.AvatarURL = avatar
@@ -202,6 +211,7 @@ func scanUserProfile(sc interface{ Scan(...interface{}) error }) (*User, error) 
 	u.MailAddress = mailAddr
 	u.MustChangePassword = mustChange != 0
 	u.Username = username
+	u.ClientDomainID = clientDomain
 	if lastLogin.Valid {
 		u.LastLogin = &lastLogin.Time
 	}

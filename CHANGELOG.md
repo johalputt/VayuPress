@@ -9,6 +9,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **The agency client role, and a confinement whose default is refusal**
+  (ADR-0152 Phase 2). Migration 079 adds `users.client_domain_id`, additive with
+  a `''` default so every existing install is byte-identical, and a new `client`
+  role binds a paying customer of a studio to exactly one hosted domain.
+
+  The enforcement is the point. `osPathMinLevel` resolves an unenumerated
+  non-API `/os` page to the **permissive author default** — correct for staff,
+  lethal for a principal the operator does not employ, because a page added next
+  year would be reachable by every client on the install with no diff that looks
+  like a security change. Confinement inverts it: a client reaches only what is
+  explicitly declared, and **anything undeclared is refused**. Forgetting is
+  safe.
+
+  Three properties hold it up. `osAudience`'s zero value is not a valid answer,
+  so a surface entry that declares nothing **panics at process start** rather
+  than silently meaning something. A client is pinned to the floor of the access
+  ladder as well as behind the allowlist, so a bypass of one still meets the
+  other. And a client whose binding is empty or malformed is refused outright,
+  never resolved to the primary — `''` is the primary domain's sentinel
+  everywhere else in this codebase, and defaulting a customer there would hand
+  them the agency's own install.
+
+  A test walks the **real chi route table** and fails if a client-surface entry
+  matches no registered route. A dead entry makes the client's page 404, and the
+  cheapest repair anyone reaches for is widening a neighbouring prefix —
+  `/os/vayumail/inbox` to `/os/vayumail` re-admits `accounts/create`,
+  `accounts/delete`, `accounts/update`, the DNS panel and the security page in a
+  one-word diff. Three separate tests catch that specific mutation.
+
 - **Every domain gets its own website** (ADR-0152 Phase 1). The custom-bundle
   directory and the site mode, business template and business content were all
   install-wide: `customSiteDir()` took no domain and the three settings were

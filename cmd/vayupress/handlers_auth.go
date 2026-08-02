@@ -56,7 +56,12 @@ const (
 
 // accessLevelFor maps a (CMS) role + mail-only flag to a console access level.
 func accessLevelFor(role string, mailOnly bool) int {
-	if mailOnly {
+	// A client sits at the FLOOR of the ladder as well as behind its own
+	// allowlist. Belt and braces on purpose: if the confinement branch in
+	// serveWithAccess were ever bypassed, every `level < osPathMinLevel(path)`
+	// comparison in the tree still denies, so the failure mode is a client who
+	// can reach nothing rather than a client who can reach everything.
+	if mailOnly || role == users.RoleClient {
 		return accessMailOnly
 	}
 	switch role {
@@ -289,13 +294,35 @@ func (a *App) serveWithAccess(w http.ResponseWriter, r *http.Request, next http.
 		return
 	}
 	level := accessLevelFor(u.Role, mailOnly)
-	if mailOnly {
+	// Classify the session, then switch with an explicit default that DENIES. An
+	// unclassified session is refused rather than served — the same reason
+	// osAudience's zero value is not a valid answer.
+	switch classifySession(u, mailOnly) {
+	case confineClient:
+		// A client with no valid binding is an invalid identity, not a client
+		// bound to the primary. Refuse outright: '' is the primary's sentinel
+		// everywhere else, and defaulting there would hand a customer the
+		// agency's own install.
+		if _, ok := clientScopeFor(u.Role, u.ClientDomainID); !ok {
+			a.denyAccess(w, r, "/os/logout")
+			return
+		}
+		if !clientPathAllowed(r.URL.Path) {
+			a.denyClient(w, r)
+			return
+		}
+	case confineMailOnly:
 		if !mailOnlyPathAllowed(r.URL.Path) {
 			a.denyAccess(w, r, "/os/vayumail/inbox")
 			return
 		}
-	} else if level < osPathMinLevel(r.URL.Path) {
-		a.denyAccess(w, r, "/os")
+	case confineNone:
+		if level < osPathMinLevel(r.URL.Path) {
+			a.denyAccess(w, r, "/os")
+			return
+		}
+	default:
+		a.denyAccess(w, r, "/os/logout")
 		return
 	}
 	ctx := context.WithValue(r.Context(), ctxUserKey, u)
@@ -523,6 +550,22 @@ func (a *App) isAdminRequest(r *http.Request) bool {
 		return u.Role == users.RoleAdmin
 	}
 	return auth.HasValidAPIKey(r)
+}
+
+// classifySession maps a resolved session to its confinement. It never returns
+// confineUnset for a non-nil user, but the caller still handles that case with a
+// refusal — a classifier that cannot be wrong is a classifier nobody checks.
+func classifySession(u *users.User, mailOnly bool) confinement {
+	if u == nil {
+		return confineUnset
+	}
+	if u.Role == users.RoleClient {
+		return confineClient
+	}
+	if mailOnly {
+		return confineMailOnly
+	}
+	return confineNone
 }
 
 // isAdminSession reports whether the caller is an administrator by way of a real
