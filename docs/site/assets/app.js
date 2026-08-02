@@ -571,6 +571,7 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
       ]},
       { head:'Decisions', links:[
         { label:'ADR registry', href:'https://github.com/johalputt/VayuPress/tree/main/docs/adr' },
+        { label:'Agency hosting (ADR-0152)', href:'https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0152-agency-hosting.md' },
         { label:'Threat model', href:'https://github.com/johalputt/VayuPress/blob/main/docs/THREAT-MODEL.md' },
         { label:'Plugins',      href:'https://github.com/johalputt/VayuPress/tree/main/docs/plugins' },
       ]},

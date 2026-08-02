@@ -622,6 +622,94 @@ body[data-world="tor"] {
 }
 .money-ic { font-size: 1.6rem; margin-bottom: 0.75rem; filter: drop-shadow(0 6px 16px rgba(245,158,11,0.35)); }
 
+/* ── Studio: one install, many client domains ── */
+.studio-ambient {
+  position: absolute; pointer-events: none; z-index: 0;
+  width: 42rem; height: 42rem; border-radius: 9999px; top: -12rem; right: -10rem;
+  background: rgba(var(--w-accent),0.08); filter: blur(150px);
+  transition: background 0.6s ease;
+}
+.studio-card {
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.025);
+  border-radius: 1.1rem; padding: 1.4rem 1.5rem;
+  transition: border-color 0.3s ease, background 0.3s ease, transform 0.3s ease;
+}
+.studio-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(var(--w-accent),0.42);
+  background: rgba(var(--w-accent),0.03);
+}
+.studio-ic {
+  font-size: 1.5rem; margin-bottom: 0.7rem;
+  filter: drop-shadow(0 6px 16px rgba(var(--w-accent),0.35));
+}
+
+/* The tenancy rack — one binary, the studio's own domain, and the clients. */
+.studio-rack {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.02);
+  border-radius: 1.25rem; overflow: hidden;
+}
+.studio-rack-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem;
+  padding: 0.85rem 1.2rem;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.02);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem; letter-spacing: 0.06em; color: #9ca3af;
+}
+.studio-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem;
+  padding: 0.85rem 1.2rem;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.studio-row:first-of-type { border-top: 0; }
+.studio-row--self { background: rgba(var(--w-accent),0.045); }
+.studio-host {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem; color: #e5e7eb; min-width: 12rem;
+}
+.studio-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.62rem; letter-spacing: 0.05em;
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 999px;
+  padding: 0.15rem 0.55rem; color: #9ca3af; white-space: nowrap;
+}
+.studio-tag--own {
+  color: rgb(var(--w-accent)); border-color: rgba(var(--w-accent),0.35);
+  background: rgba(var(--w-accent),0.1);
+}
+
+/* Severance list — the doors that close, and the one that does not. */
+.sever-panel {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.02);
+  border-radius: 1.25rem; padding: 1.5rem 1.6rem;
+}
+.sever-row { display: flex; gap: 0.75rem; padding: 0.5rem 0; align-items: flex-start; }
+.sever-mark {
+  margin-top: 0.15rem; flex-shrink: 0;
+  width: 1.15rem; height: 1.15rem; border-radius: 999px;
+  display: inline-grid; place-items: center;
+  font-size: 0.62rem; font-weight: 700; line-height: 1;
+}
+.sever-mark--shut { color: #2dd4bf; background: rgba(45,212,191,0.14); }
+.sever-mark--open { color: #fbbf24; background: rgba(245,158,11,0.16); }
+.sever-panel--open {
+  background: linear-gradient(160deg, rgba(245,158,11,0.06), transparent 60%), rgba(255,255,255,0.02);
+  border-color: rgba(245,158,11,0.22);
+}
+
+/* The honest ceiling — stated as plainly as the capability. */
+.limit-card {
+  border: 1px solid rgba(255,255,255,0.07);
+  border-left: 2px solid rgba(248,113,113,0.4);
+  background: rgba(255,255,255,0.02);
+  border-radius: 0.9rem; padding: 1.1rem 1.3rem;
+}
+.limit-title { color: #fca5a5; font-weight: 600; }
+
 /* ══ Tor-world palette flip — recolour the fixed teal/saffron brand ══ */
 body[data-world="tor"] .text-gradient {
   background: linear-gradient(108deg, #d8b4fe 0%, #a78bfa 42%, #7c3aed 110%);

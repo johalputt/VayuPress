@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VayuPress — Your website, blog &amp; private mail. One sovereign binary.</title>
-  <meta name="description" content="VayuPress puts your whole online presence in one sovereign Go binary on a single VPS: a business website, a blog, and a private PGP mail server (VayuMail — SMTP/IMAP/POP3, DKIM, WKD) with an official mobile app, ephemeral E2E chat (VayuTalk), a self-learning bot shield, a scoped API, one-click Tor .onion, a built-in MCP server for Claude (VayuMCP), and one control panel (VayuOS) — installable as a PWA in one click. Run it as two switchable worlds — a public Clearnet Space and an anonymous, web-only Tor Space — and get paid with your own Stripe, PayPal, or self-hosted BTCPay (BTC/Monero/ETH/USDT, no KYC): memberships, paywalls, a premium mail-ID marketplace, member ads. SQLite-first, zero telemetry, Apache-2.0." />
+  <meta name="description" content="VayuPress puts your whole online presence in one sovereign Go binary on a single VPS: a business website, a blog, and a private PGP mail server (VayuMail — SMTP/IMAP/POP3, DKIM, WKD) with an official mobile app, ephemeral E2E chat (VayuTalk), a self-learning bot shield, a scoped API, one-click Tor .onion, a built-in MCP server for Claude (VayuMCP), and one control panel (VayuOS) — installable as a PWA in one click. Run it as two switchable worlds — a public Clearnet Space and an anonymous, web-only Tor Space — and get paid with your own Stripe, PayPal, or self-hosted BTCPay (BTC/Monero/ETH/USDT, no KYC): memberships, paywalls, a premium mail-ID marketplace, member ads. Studios can host many client domains on one install — each with its own website, certificate, branded mail and visitor figures, a confined client login, and a one-way mailbox handover. SQLite-first, zero telemetry, Apache-2.0." />
   <meta name="theme-color" content="#04060d" />
   <link rel="canonical" href="https://vayupress.com/" />
 
@@ -30,7 +30,7 @@
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"SoftwareApplication","name":"VayuPress",
    "applicationCategory":"DeveloperApplication","operatingSystem":"Linux",
-   "softwareVersion":"3.15.0","description":"A sovereign, single-VPS platform in one Go binary — ten products: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics), a fine-grained scoped API (VayuAPI), one-click Tor onion services for every domain (VayuTor), a one-click MCP connector for Claude and any MCP client (VayuMCP), and one control panel (VayuOS) — installable as a one-click PWA on desktop and mobile via a zero-cache service worker. Run it as two independently switchable worlds — a public Clearnet Space and a fully anonymous, web-only Tor Space (VayuOS Spaces) — and monetize with your own Stripe/PayPal keys or a self-hosted BTCPay Server (Bitcoin, Monero, Ethereum, stablecoins — no processor, no KYC): memberships, per-post paywalls, tier mailboxes, a premium mail-ID marketplace and member ads. Zero telemetry.",
+   "softwareVersion":"3.16.32","description":"A sovereign, single-VPS platform in one Go binary — ten products: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics), a fine-grained scoped API (VayuAPI), one-click Tor onion services for every domain (VayuTor), a one-click MCP connector for Claude and any MCP client (VayuMCP), and one control panel (VayuOS) — installable as a one-click PWA on desktop and mobile via a zero-cache service worker. Run it as two independently switchable worlds — a public Clearnet Space and a fully anonymous, web-only Tor Space (VayuOS Spaces) — and monetize with your own Stripe/PayPal keys or a self-hosted BTCPay Server (Bitcoin, Monero, Ethereum, stablecoins — no processor, no KYC): memberships, per-post paywalls, tier mailboxes, a premium mail-ID marketplace and member ads. Zero telemetry.",
    "url":"https://vayupress.com/","license":"https://www.apache.org/licenses/LICENSE-2.0",
    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
    "author":{"@type":"Organization","name":"VayuPress","email":"hello@vayupress.com"}}
@@ -92,11 +92,12 @@
       </a>
 
       <!-- desktop links -->
-      <div class="hidden md:flex items-center gap-7 text-sm text-gray-400">
+      <div class="hidden md:flex items-center gap-5 lg:gap-7 text-sm text-gray-400">
         <a href="#worlds"     class="nav-link hover:text-white transition-colors">Worlds</a>
         <a href="#products"   class="nav-link hover:text-white transition-colors">Products</a>
         <a href="#install"    class="nav-link hover:text-white transition-colors">Install</a>
         <a href="#monetize"   class="nav-link hover:text-white transition-colors">Monetize</a>
+        <a href="#studio"     class="nav-link hover:text-white transition-colors">Studio</a>
         <a href="#compare"    class="nav-link hover:text-white transition-colors">Compare</a>
         <a href="#gallery"    class="nav-link hover:text-white transition-colors">Gallery</a>
         <a href="#quickstart" class="nav-link hover:text-white transition-colors">Quick start</a>
@@ -764,6 +765,145 @@
           <h3 class="font-display text-lg font-semibold text-white mb-2">One Orders ledger</h3>
           <p class="text-sm text-gray-400 leading-relaxed">Every paid section — subscriptions, premium IDs, paid posts, member ads — flows through a single auditable <span class="text-gray-200">Orders</span> ledger you can see end to end.</p>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ STUDIO (agency hosting) ══════════════ -->
+  <section id="studio" class="relative py-24 sm:py-28 lg:py-36 overflow-hidden">
+    <div class="studio-ambient" aria-hidden="true"></div>
+    <div class="max-w-6xl mx-auto px-6 relative">
+      <header class="max-w-3xl mb-12 sm:mb-14" data-reveal>
+        <p class="font-mono text-xs mb-4 tracking-[0.25em] uppercase eyebrow-accent">For studios &amp; agencies</p>
+        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-[1.08]">
+          Host every client on one box —
+          <span class="text-gray-600 block mt-1">and hand each owner their own key.</span>
+        </h2>
+        <p class="mt-6 text-base sm:text-lg text-gray-400 leading-relaxed">
+          One binary already runs a website, mail, analytics and the admin. It now runs them
+          <span class="text-gray-100 font-medium">per domain</span>: every registered domain gets its own
+          website, its own certificate, its own branded mailboxes and its own visitor figures — and the
+          person who owns that domain gets a login that reaches
+          <span class="text-gray-100 font-medium">their site and nothing else</span>.
+          No second install, no per-client control panel, no new thing to operate.
+        </p>
+      </header>
+
+      <!-- the tenancy rack -->
+      <div class="studio-rack mb-10 sm:mb-12" data-reveal>
+        <div class="studio-rack-head">
+          <span>one binary</span><span aria-hidden="true">·</span>
+          <span>one modest VPS</span><span aria-hidden="true">·</span>
+          <span>one SQLite file</span>
+        </div>
+        <div class="studio-row studio-row--self">
+          <span class="studio-host">studio.example</span>
+          <span class="studio-tag studio-tag--own">your install · full VayuOS</span>
+        </div>
+        <div class="studio-row">
+          <span class="studio-host">client-one.com</span>
+          <span class="studio-tag">own website</span>
+          <span class="studio-tag">own certificate</span>
+          <span class="studio-tag">branded mail</span>
+          <span class="studio-tag">own visitors</span>
+        </div>
+        <div class="studio-row">
+          <span class="studio-host">client-two.co.uk</span>
+          <span class="studio-tag">own website</span>
+          <span class="studio-tag">own certificate</span>
+          <span class="studio-tag">branded mail</span>
+          <span class="studio-tag">own visitors</span>
+        </div>
+        <div class="studio-row">
+          <span class="studio-host">client-three.in</span>
+          <span class="studio-tag">own website</span>
+          <span class="studio-tag">own certificate</span>
+          <span class="studio-tag">branded mail</span>
+          <span class="studio-tag">own visitors</span>
+        </div>
+      </div>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+        <div data-reveal class="studio-card">
+          <div class="studio-ic" aria-hidden="true">🌐</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Every domain, its own website</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Uploaded bundles live <span class="text-gray-200">per domain</span>, and the site mode, template and content moved into each domain's own record. Before this, one uploaded website served every registered domain — a studio could host exactly one client. The primary domain keeps its historic path, so an install that already deployed a bundle serves the same site after upgrading.</p>
+        </div>
+        <div data-reveal style="--d:50ms" class="studio-card">
+          <div class="studio-ic" aria-hidden="true">🚪</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">A login confined by refusal</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">A client is bound to <span class="text-gray-200">exactly one domain</span> and reaches only the pages explicitly declared for them; anything undeclared is <span class="text-gray-200">refused</span>. The old default was permissive, so a page added next year would have been reachable by every client with no diff that looked like a security change. A surface entry that declares no audience <span class="text-gray-200">halts the process at start-up</span> rather than quietly meaning something.</p>
+        </div>
+        <div data-reveal style="--d:100ms" class="studio-card">
+          <div class="studio-ic" aria-hidden="true">🪟</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">“My site” — the page they own</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Their address, whether the connection is secured, whether mail is set up, what the site serves, and the one thing they can change: <span class="text-gray-200">name, tagline, description and accent colours</span>. Deliberately not an editor — the save and delete primitives are install-wide with no per-record ownership check, so “edit your own pages” would be selling a control the code cannot honour.</p>
+        </div>
+        <div data-reveal style="--d:150ms" class="studio-card">
+          <div class="studio-ic" aria-hidden="true">📈</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Their visitors, not everyone's</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Thirty days of page views and their busiest pages, filtered by domain <span class="text-gray-200">in SQL</span> rather than fetched broadly and narrowed afterwards. Two clients who both published <code class="font-mono text-[0.78em] text-gray-300">/about</code> previously had their counts <span class="text-gray-200">added together</span> — not a missing feature but a wrong number, and another client's traffic shown as this one's.</p>
+        </div>
+        <div data-reveal style="--d:200ms" class="studio-card">
+          <div class="studio-ic" aria-hidden="true">📮</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Mailboxes you meter</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Grant each domain a number of branded mailboxes; creation refuses at the cap. An allowance of <span class="text-gray-200">0 means none granted, never unlimited</span>, and a domain that cannot be resolved fails closed — a limit that depends on a lookup succeeding is not a limit. Creation stays <span class="text-gray-200">operator-only</span>: mailboxes are made on request, by you.</p>
+        </div>
+        <div data-reveal style="--d:250ms" class="studio-card">
+          <div class="studio-ic" aria-hidden="true">🤝</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Mail you can hand over</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Once a mailbox is handed to its owner, <span class="text-gray-200">six routes into it close</span> and one remains — a command-line override that cannot run without writing a permanent record the client reads on their own page. The difference between an escape hatch and a back door is that both exist, and only one leaves a mark nobody can remove.</p>
+        </div>
+      </div>
+
+      <!-- what handover actually severs -->
+      <div class="grid lg:grid-cols-2 gap-4 sm:gap-5 mt-4 sm:mt-5">
+        <div data-reveal class="sever-panel">
+          <h3 class="font-display text-lg font-semibold text-white mb-1">Six doors close</h3>
+          <p class="text-sm text-gray-500 mb-4">Each one is refused in the store or the engine, not in a handler — there are two handlers and a CLI above most of them, and a refusal in one is a refusal somebody routes around without meaning to.</p>
+          <div class="sever-row"><span class="sever-mark sever-mark--shut" aria-hidden="true">✕</span><p class="text-sm text-gray-400 leading-relaxed"><span class="text-gray-200">Reading it from the panel.</span> Every mailbox read now carries a typed authority, and an unset one is refused rather than assumed.</p></div>
+          <div class="sever-row"><span class="sever-mark sever-mark--shut" aria-hidden="true">✕</span><p class="text-sm text-gray-400 leading-relaxed"><span class="text-gray-200">Your own console password</span> over IMAP, POP3 and submission.</p></div>
+          <div class="sever-row"><span class="sever-mark sever-mark--shut" aria-hidden="true">✕</span><p class="text-sm text-gray-400 leading-relaxed"><span class="text-gray-200">Resetting its password</span> from the admin side. The holder's own recovery paths are untouched.</p></div>
+          <div class="sever-row"><span class="sever-mark sever-mark--shut" aria-hidden="true">✕</span><p class="text-sm text-gray-400 leading-relaxed"><span class="text-gray-200">Turning off its second factor</span> — reset, clear, sign in was the whole bypass.</p></div>
+          <div class="sever-row"><span class="sever-mark sever-mark--shut" aria-hidden="true">✕</span><p class="text-sm text-gray-400 leading-relaxed"><span class="text-gray-200">Minting an app password for it</span> — the quiet one. A credential reads the entire mailbox over IMAP with no record at all.</p></div>
+          <div class="sever-row"><span class="sever-mark sever-mark--shut" aria-hidden="true">✕</span><p class="text-sm text-gray-400 leading-relaxed"><span class="text-gray-200">Pointing its mail elsewhere.</span> Forwarding copies every future message without ever opening the box, and leaves the archive looking untouched.</p></div>
+        </div>
+
+        <div data-reveal style="--d:80ms" class="sever-panel sever-panel--open">
+          <h3 class="font-display text-lg font-semibold text-white mb-1">One stays open, and it leaves a mark</h3>
+          <p class="text-sm text-gray-500 mb-4">A client locked out on a Friday still has to be helped. So the last door is not sealed — it is wired to an alarm that cannot be disconnected.</p>
+          <div class="sever-row"><span class="sever-mark sever-mark--open" aria-hidden="true">⚑</span><p class="text-sm text-gray-400 leading-relaxed">A <span class="text-gray-200">command-line override</span> resets the mailbox password from the host. It <span class="text-gray-200">refuses to run</span> if the record cannot be written first — a break-glass whose log is optional is an administrator reset with a louder name.</p></div>
+          <div class="sever-row"><span class="sever-mark sever-mark--open" aria-hidden="true">⚑</span><p class="text-sm text-gray-400 leading-relaxed">The entry is <span class="text-gray-200">append-only and hash-chained in the database</span>, the handover itself is one-way, and both are enforced by database triggers — a promise the party running the database can undo with one <code class="font-mono text-[0.78em] text-gray-300">UPDATE</code> is not a promise.</p></div>
+          <div class="sever-row"><span class="sever-mark sever-mark--open" aria-hidden="true">⚑</span><p class="text-sm text-gray-400 leading-relaxed">The client <span class="text-gray-200">sees it on their own page</span>, a notice goes to their recovery address if they set one, and a copy is filed into the mailbox itself. Every app password on the mailbox is revoked by the same reset.</p></div>
+        </div>
+      </div>
+
+      <!-- the honest ceiling -->
+      <div class="mt-12 sm:mt-14" data-reveal>
+        <h3 class="font-display text-xl sm:text-2xl font-semibold text-white mb-2">And what it deliberately is not</h3>
+        <p class="text-sm text-gray-500 max-w-3xl mb-6">A business model built on a capability nobody has read the edges of is a business model that meets those edges in front of a client. These are the edges, in the same words the design record uses.</p>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div class="limit-card">
+            <p class="text-sm mb-1.5"><span class="limit-title">Not encryption.</span></p>
+            <p class="text-sm text-gray-400 leading-relaxed">The messages are readable files on a server you operate. Anyone with direct access to that machine, its database or a backup can still read them, and no ledger records that. Only encryption under a key the server does not hold would prevent it — that version is fully designed and deliberately unshipped, on business grounds rather than cryptographic ones: custody, key-loss rates over sixty clients, and no self-service export or import path yet.</p>
+          </div>
+          <div class="limit-card">
+            <p class="text-sm mb-1.5"><span class="limit-title">One process, one box.</span></p>
+            <p class="text-sm text-gray-400 leading-relaxed">Row scoping is not a sandbox. A remote-code-execution bug reaches every client at once, and a hardware failure takes them all down together. Off-box encrypted backups with rehearsed restores are mandatory here, not optional. The DKIM signing key is one key, shared — deliverability is per-domain and correct, the key is not.</p>
+          </div>
+          <div class="limit-card">
+            <p class="text-sm mb-1.5"><span class="limit-title">Metadata and routing stay yours.</span></p>
+            <p class="text-sm text-gray-400 leading-relaxed">Sender, recipient, subject, size and delivery logs remain visible regardless of handover. You own MX and address creation, so future mail can be redirected even where the existing archive cannot be opened. Handover is a bound on reading a mailbox, not on running the mail system.</p>
+          </div>
+          <div class="limit-card">
+            <p class="text-sm mb-1.5"><span class="limit-title">Tamper-evident, not tamper-proof.</span></p>
+            <p class="text-sm text-gray-400 leading-relaxed">You own the database. Chaining the access record makes an edit <em class="not-italic text-gray-200">show up</em>; it does not make one impossible, and the product says so rather than implying otherwise. A record that could be quietly rewritten would be worse than none, because it would be believed.</p>
+          </div>
+        </div>
+        <p class="mt-6 text-sm text-gray-500">
+          The full design record — thirty-eight findings from three adversarial lenses, and why cryptographic sealing lost on the business rather than the mathematics — is
+          <a href="https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0152-agency-hosting.md" target="_blank" rel="noopener" class="text-gray-300 underline decoration-white/20 underline-offset-4 hover:text-white transition-colors">ADR-0152</a>.
+        </p>
       </div>
     </div>
   </section>
