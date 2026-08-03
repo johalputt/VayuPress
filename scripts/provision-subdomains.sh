@@ -133,9 +133,28 @@ for helper in setup-openpgpkey-subdomain.sh setup-talk-subdomain.sh \
   before="$(wc -c <"${STATE_DIR}/provision.log" 2>/dev/null || echo 0)"
   if bash "$script" >>"${STATE_DIR}/provision.log" 2>&1; then
     # An exit status of 0 is not the same as work done: every helper exits 0
-    # when it skips, by design. Read back what this run appended and record a
-    # skip as a SKIP, so the result cannot claim success for a no-op.
-    if tail -c "+$((before + 1))" "${STATE_DIR}/provision.log" 2>/dev/null | grep -qi "skipping"; then
+    # when it skips, by design. Read back what this run appended and classify it,
+    # so the result cannot claim success for a no-op.
+    #
+    # There are THREE ways a helper exits 0 having done nothing, and matching
+    # only "skipping" caught one. The one that mattered most was missed: every
+    # helper aborts early when `nginx -t` was ALREADY failing — one stale vhost
+    # anywhere under sites-enabled does it — and that path prints no "skipping".
+    # All five helpers were therefore counted as having run, and the panel
+    # reported "5 provisioned, 0 skipped, 0 reported a problem" for an install
+    # where nothing was provisioned and nothing would be until someone found the
+    # bad file. A report that reads clean is worse than no report: it ends the
+    # investigation.
+    #
+    # The nginx abort is recorded as a PROBLEM rather than a skip. It needs the
+    # operator; a subdomain whose DNS is simply not pointed yet does not, and
+    # putting them in one column loses the difference.
+    appended="$(tail -c "+$((before + 1))" "${STATE_DIR}/provision.log" 2>/dev/null || true)"
+    if printf '%s' "$appended" | grep -qi "ALREADY invalid"; then
+      failed=$((failed + 1))
+      details+=("${helper}=nginx-config-broken")
+      log "${helper} aborted: nginx configuration was already invalid before it ran"
+    elif printf '%s' "$appended" | grep -qiE "skipping|nothing to do"; then
       skipped=$((skipped + 1))
       details+=("${helper}=skipped")
     else

@@ -6,6 +6,46 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Domains & DNS now says when a domain has no certificate.** An operator
+  pointed a subdomain at the server and read: 3 domains hosted, 12 resolving, 0
+  behind the proxy, 0 not pointed, the record itself badged **pointed here**.
+  Every number said finished. The site served
+  `ERR_CERT_COMMON_NAME_INVALID` — no certificate had ever been issued for that
+  host, so nginx fell through to the default vhost and presented the primary
+  domain's certificate.
+
+  The page held that fact the whole time. `dnsDomainView` carries `TLSState`,
+  loaded from the registry for every domain, and rendered it **nowhere**. This is
+  the page whose own header says these things "fail quietly when a record is
+  missing, so this page checks rather than assumes" — and on the half of the job
+  it does not own, it was assuming.
+
+  A domain that resolves here and has no certificate now carries a **no
+  certificate** badge, opens its own section, gets a sentence naming the symptom
+  and the button that fixes it, and is counted in a new **No certificate** tile.
+  Four states are deliberately not flagged, because each would be a fault we
+  cannot substantiate: DNS not pointed (the record's own row says so), a lookup
+  that did not finish, a domain on manual hold (not provisioning it is the point
+  of the hold), and a TLS state we do not recognise.
+
+- **A provisioning run that did nothing no longer reports as clean.** The driver
+  already knew this mattered — its own comment reads *"an exit status of 0 is not
+  the same as work done"* — and caught one of the three ways a helper exits 0
+  having done nothing. The one it missed was the worst: every helper aborts early
+  when `nginx -t` was **already** failing, and that path prints no "skipping". All
+  five were counted as having run, so the panel reported *"5 provisioned, 0
+  skipped, 0 reported a problem"* for an install where nothing was provisioned and
+  nothing would be until someone found the stale vhost. A report that reads clean
+  is worse than no report — it ends the investigation.
+
+  That abort is now recorded as a **problem**, not a skip, with the panel naming
+  nginx and the command that finds the bad file. "Nothing to do" counts as a skip.
+  And the summary line no longer reads as subdomains: those numbers count
+  **helpers**, which is now what it says.
+
 ## [3.16.36] — 2026-08-03
 
 Both fixes below ship immediately rather than waiting to be batched, under the

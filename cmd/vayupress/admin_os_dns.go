@@ -89,12 +89,57 @@ func (v dnsDomainView) NeedsAttention() bool {
 	if !v.IsPrimary && !v.SyncApproved {
 		return true
 	}
+	if v.NeedsCertificate() {
+		return true
+	}
 	for _, c := range v.Checks {
 		if c.State == dnsProxied || (c.Required && c.State == dnsNotPointed) {
 			return true
 		}
 	}
 	return false
+}
+
+// Resolves reports whether this domain's own apex answers a lookup at all.
+func (v dnsDomainView) Resolves() bool {
+	for _, c := range v.Checks {
+		if c.Host != v.Host {
+			continue
+		}
+		return c.State != dnsNotPointed && c.State != dnsUnknown
+	}
+	return false
+}
+
+// NeedsCertificate reports the one state that looks finished and is not: DNS
+// pointed here, and no certificate ever issued for it.
+//
+// That combination is what an operator hits after doing their half correctly.
+// The records go green, every tile reads clean, and the site serves a browser
+// security interstitial — because nginx has no vhost for the host, so the
+// request falls through to the default one and is answered with the primary's
+// certificate. This page already held the answer: dnsDomainView carries
+// TLSState for every domain and rendered it nowhere.
+//
+// Four states are deliberately NOT this, because complaining about them would
+// be inventing a fault:
+//   - DNS not pointed, or the lookup unfinished — the record's own row says so,
+//     and a certificate cannot be issued until it is pointed anyway.
+//   - a domain on manual hold — not provisioning it is the point of the hold,
+//     and the hold notice already explains it.
+//   - the primary — its certificate is managed outside the registry.
+//   - a TLS state we do not recognise. Only `pending` and `failed` positively
+//     mean no certificate; anything else is a state we cannot read, and this
+//     page does not assert faults it cannot substantiate — the same rule that
+//     keeps an unfinished lookup out of the "not pointed" column.
+func (v dnsDomainView) NeedsCertificate() bool {
+	if v.IsPrimary || !v.SyncApproved {
+		return false
+	}
+	if v.TLSState != domain.TLSPending && v.TLSState != domain.TLSFailed {
+		return false
+	}
+	return v.Resolves()
 }
 
 // localAddrSet returns the non-loopback addresses this machine holds.
@@ -387,6 +432,9 @@ func dnsDomainSection(v dnsDomainView) string {
 	if !v.IsPrimary && v.MailEnabled {
 		flags += ` <span class="badge badge--muted">mail</span>`
 	}
+	if v.NeedsCertificate() {
+		flags += ` <span class="badge badge--warn">no certificate</span>`
+	}
 
 	open := ""
 	if v.NeedsAttention() || v.IsPrimary {
@@ -400,6 +448,26 @@ func dnsDomainSection(v dnsDomainView) string {
 	// which is indistinguishable from having provisioned it.
 	if !v.IsPrimary && !v.SyncApproved {
 		b.WriteString(`<p class="text-sm muted">This domain is on <strong>manual hold</strong>, so no certificate or vhost is issued for it and its records below are informational only. Approve it under <a href="/os/domains">Domains</a> (“Sync now”), then run <strong>Provision subdomains</strong> below.</p>`)
+	}
+
+	// The state that reads as finished and is not. Pointing DNS is the operator's
+	// half; issuing the certificate is the privileged helper's, and until it runs
+	// nginx has no vhost for this host — so the request falls through to the
+	// default one and the browser is handed the primary's certificate. Every
+	// record above is green while the site shows a security warning, which is
+	// precisely the silent failure this page exists to catch.
+	if v.NeedsCertificate() {
+		reason := `no certificate has been issued for it yet`
+		if v.TLSState == domain.TLSFailed {
+			reason = `the last attempt to issue its certificate <strong>failed</strong>`
+		}
+		b.WriteString(`<p class="text-sm"><span class="badge badge--warn">no certificate</span> ` +
+			`<strong>` + html.EscapeString(v.Host) + ` resolves here, but ` + reason + `.</strong> ` +
+			`Until one exists there is no vhost for this host, so a visitor is served the primary ` +
+			`domain's certificate and the browser refuses the page ` +
+			`(<code>ERR_CERT_COMMON_NAME_INVALID</code>). Press <strong>Provision subdomains</strong> ` +
+			`at the bottom of this page — the DNS is pointed now, which is the condition the last ` +
+			`run was waiting for. It also runs daily on its own.</p>`)
 	}
 
 	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr>` +
@@ -444,10 +512,13 @@ func (a *App) handleOSDNS(w http.ResponseWriter, r *http.Request) {
 	views := a.hostedDomainViews(r.Context(), primary)
 	resolveAll(r.Context(), views, primary)
 
-	pointed, missing, proxied, unverified, held := 0, 0, 0, 0, 0
+	pointed, missing, proxied, unverified, held, uncertified := 0, 0, 0, 0, 0, 0
 	for _, v := range views {
 		if !v.IsPrimary && !v.SyncApproved {
 			held++
+		}
+		if v.NeedsCertificate() {
+			uncertified++
 		}
 		for _, c := range v.Checks {
 			switch c.State {
@@ -477,6 +548,14 @@ func (a *App) handleOSDNS(w http.ResponseWriter, r *http.Request) {
 	}
 	body.WriteString(vmStatTile(strconv.Itoa(proxied), "Behind the proxy", proxTone))
 	body.WriteString(vmStatTile(strconv.Itoa(missing), "Not pointed", ""))
+	// The tile that was missing. Records being pointed is half the job, and the
+	// half an operator can see; a hosted site with no certificate of its own
+	// serves a browser security warning while every other tile here reads clean.
+	certTone := ""
+	if uncertified > 0 {
+		certTone = "warn"
+	}
+	body.WriteString(vmStatTile(strconv.Itoa(uncertified), "No certificate", certTone))
 	body.WriteString(`</div>`)
 
 	if held > 0 {

@@ -184,10 +184,23 @@ func provisionCardHTML() string {
 
 	var detail string
 	if haveRun {
+		// "5 provisioned" counts HELPERS, not subdomains — the detail string right
+		// beside it lists them by filename. Reading it as five subdomains is the
+		// natural mistake, and it is how a run where one helper covered no domains
+		// at all read as five domains provisioned.
 		detail = `<p class="text-xs muted">Last run ` + html.EscapeString(res.FinishedAt) +
-			` — ` + strconv.Itoa(res.Ran) + ` provisioned, ` + strconv.Itoa(res.Skipped) + ` skipped, ` +
+			` — of ` + strconv.Itoa(res.Ran+res.Skipped+res.Failed) + ` helpers: ` +
+			strconv.Itoa(res.Ran) + ` did work, ` + strconv.Itoa(res.Skipped) + ` had nothing to do, ` +
 			strconv.Itoa(res.Failed) + ` reported a problem. ` +
 			`<span class="mono">` + html.EscapeString(res.Details) + `</span></p>`
+		if strings.Contains(res.Details, "nginx-config-broken") {
+			detail += `<p class="text-xs muted"><strong>nginx's configuration was already invalid ` +
+				`before provisioning ran</strong>, so every helper aborted without changing anything. ` +
+				`One stale vhost anywhere under <code>sites-enabled</code> does this — most often one ` +
+				`written while <code>DOMAIN</code> was still <code>localhost</code>, naming a certificate ` +
+				`that cannot exist. Find it with ` +
+				`<code>sudo nginx -t</code>, then remove the offending symlink and run this again.</p>`
+		}
 		if res.Ran == 0 {
 			detail += `<p class="text-xs muted">A helper skips when its DNS is not pointed — or when <code>DOMAIN</code> ` +
 				`cannot be read from <code>/etc/vayupress/env</code>, which skips every one of them at once. ` +
