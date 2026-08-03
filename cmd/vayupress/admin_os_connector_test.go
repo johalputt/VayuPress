@@ -225,7 +225,7 @@ func TestDedicatedMCPHostRefusesUnusableBases(t *testing.T) {
 		"localhost",       // no public subdomain
 		"localhost:8080",  // ditto, with a port
 		"127.0.0.1",       // IP literal
-		"5.189.133.235",   // ditto, public
+		"198.51.100.10",   // ditto, public
 		"mcp.example.com", // already the dedicated host
 		"single",          // not a domain at all
 	} {

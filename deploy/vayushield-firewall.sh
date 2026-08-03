@@ -177,11 +177,36 @@ cdn_allow_fetch() {
     echo "# Regenerate with: vayushield-firewall.sh cdn-allow ${vendor}"
     echo "# Re-apply afterwards so the kernel picks it up: vayushield-firewall.sh apply"
   } >"$tmp"
-  if ! curl -fsSL "$v4" >>"$tmp" || ! curl -fsSL "$v6" >>"$tmp"; then
+  # ROOT CAUSE OF A LIVE OUTAGE, fixed here rather than downstream.
+  #
+  # These two bodies used to be appended straight into the same file:
+  #
+  #   if ! curl -fsSL "$v4" >>"$tmp" || ! curl -fsSL "$v6" >>"$tmp"; then
+  #
+  # The published IPv4 list ends WITHOUT a trailing newline, so the first byte of
+  # the IPv6 list landed on the same physical line as the last IPv4 CIDR:
+  #
+  #   192.0.2.0/24  +  2001:db8::/32  ->  192.0.2.0/242001:db8::/32
+  #
+  # That token then reached nginx as `set_real_ip_from`, which refused the whole
+  # configuration — and because the file sits in conf.d, "the whole
+  # configuration" is every vhost on the machine, not one site.
+  #
+  # Each body is now captured separately and normalised: CR stripped, a trailing
+  # newline guaranteed, blank lines dropped. Concatenating two documents without
+  # asserting the boundary between them is the defect, and it does not stop being
+  # one because the far end usually happens to send a newline.
+  v4body="$(curl -fsSL "$v4")" || {
     rm -f "$tmp"
-    echo "error: could not fetch ${vendor} ranges; the existing allowlist is unchanged." >&2
+    echo "error: could not fetch ${vendor} IPv4 ranges; the existing allowlist is unchanged." >&2
     return 1
-  fi
+  }
+  v6body="$(curl -fsSL "$v6")" || {
+    rm -f "$tmp"
+    echo "error: could not fetch ${vendor} IPv6 ranges; the existing allowlist is unchanged." >&2
+    return 1
+  }
+  printf '%s\n%s\n' "$v4body" "$v6body" | tr -d '\r' | grep -v '^[[:space:]]*$' >>"$tmp"
   # Refuse to install an empty or obviously-wrong file. Truncating the allowlist
   # to nothing would silently restore the throttling of every edge node.
   if ! grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$' "$tmp"; then

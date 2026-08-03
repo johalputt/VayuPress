@@ -131,7 +131,7 @@ func (s *Store) ViewsForScope(ctx context.Context, scope string, days, limit int
 // across two files is a predicate that will be fixed in one of them.
 // The port forms exist because a referrer host is not always bare. A CDN in
 // front of the site can serve on one of its alternate HTTP ports, and the
-// browser then sends "johal.in:2052" as the referrer — which is the site itself
+// browser then sends "example.test:2052" as the referrer — which is the site itself
 // but matches neither the exact host nor the subdomain pattern, so it climbed
 // into the operator's referrer list looking like an external site. Ingest now
 // strips the port (see referrerHost), but rows recorded before that still carry
@@ -430,7 +430,7 @@ func referrerHost(ref string) string {
 		return ""
 	}
 	// Hostname(), not Host: Host keeps ":port". A CDN serving the site on one of
-	// its alternate HTTP ports made the browser send "johal.in:2052", which is
+	// its alternate HTTP ports made the browser send "example.test:2052", which is
 	// this site but matched no self-host pattern, so it was reported as an
 	// external referrer. A port never distinguishes one site from another here.
 	return strings.ToLower(u.Hostname())

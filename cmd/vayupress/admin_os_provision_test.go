@@ -177,7 +177,7 @@ func TestDNSPageIsAdminGated(t *testing.T) {
 // trains people to ignore it, so the one time it is right they scroll past.
 func TestProxiedApexDoesNotFlagCorrectSubdomains(t *testing.T) {
 	// The origin this machine holds.
-	local := map[string]bool{"5.189.133.235": true}
+	local := map[string]bool{"198.51.100.10": true}
 	// The apex resolves to a CDN, which this machine does not hold.
 	apexAddrs := map[string]bool{"188.114.96.3": true, "2a06:98c1:3121::3": true}
 
@@ -193,7 +193,7 @@ func TestProxiedApexDoesNotFlagCorrectSubdomains(t *testing.T) {
 	}
 
 	// A direct subdomain on the origin must read as pointed here, not as a fault.
-	direct := []string{"5.189.133.235"}
+	direct := []string{"198.51.100.10"}
 	state := classifyForTest(direct, local, apexAddrs, apexProxied, true)
 	if state != dnsPointedHere {
 		t.Errorf("a correctly configured direct subdomain was flagged (state=%v)", state)
@@ -255,8 +255,8 @@ func TestSecondaryDomainsDoNotDemandInstallWideHosts(t *testing.T) {
 	}
 }
 
-// TestASubdomainHostIsNotAskedForAWwwRecord — a site hosted at test.johal.in was
-// listed as REQUIRING www.test.johal.in. Nobody creates that record: www is a
+// TestASubdomainHostIsNotAskedForAWwwRecord — a site hosted at site.example.test was
+// listed as REQUIRING www.site.example.test. Nobody creates that record: www is a
 // convention of a registrable name, not of an arbitrary host.
 //
 // The consequence was not cosmetic. Required drives a warn badge, holds the
@@ -267,7 +267,7 @@ func TestSecondaryDomainsDoNotDemandInstallWideHosts(t *testing.T) {
 // mailboxes, and it is exactly what localAddrSet's comment warns about: a check
 // that cries wolf on the correct configuration trains people to ignore it.
 func TestASubdomainHostIsNotAskedForAWwwRecord(t *testing.T) {
-	for _, host := range []string{"test.johal.in", "shop.example.co.uk", "a.b.example.com"} {
+	for _, host := range []string{"site.example.test", "shop.example.co.uk", "a.b.example.com"} {
 		for _, mail := range []bool{true, false} {
 			for _, r := range subdomainRecords(host, false, mail) {
 				if r.Host == "www."+host {
@@ -284,7 +284,7 @@ func TestASubdomainHostIsNotAskedForAWwwRecord(t *testing.T) {
 // is a real hole that fails where the operator cannot see it: the visitor who
 // types www gets an error and never reports it.
 func TestARegistrableNameStillGetsItsWwwRecord(t *testing.T) {
-	for _, host := range []string{"johal.in", "example.com", "example.co.uk", "shop.example"} {
+	for _, host := range []string{"example.test", "example.com", "example.co.uk", "shop.example"} {
 		found := false
 		for _, r := range subdomainRecords(host, false, false) {
 			if r.Host == "www."+host {

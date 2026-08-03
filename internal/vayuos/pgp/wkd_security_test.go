@@ -8,7 +8,7 @@ import "testing"
 // are accepted; IP literals, localhost, numeric TLDs and junk are rejected.
 func TestValidExternalWKDDomain(t *testing.T) {
 	t.Parallel()
-	ok := []string{"example.com", "mail.johal.in", "sub.domain.co.uk"}
+	ok := []string{"example.com", "mail.example.test", "sub.domain.co.uk"}
 	bad := []string{
 		"", "localhost", "127.0.0.1", "169.254.169.254", "::1",
 		"10.0.0.5", "example", "evil.com/path", "host:8080",

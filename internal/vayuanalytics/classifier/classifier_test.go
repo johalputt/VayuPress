@@ -4,7 +4,7 @@ package classifier
 
 import "testing"
 
-func c(ref string) Result { return Classify(ref, "johal.in", UTM{}, false) }
+func c(ref string) Result { return Classify(ref, "example.test", UTM{}, false) }
 
 func TestOrganic(t *testing.T) {
 	if r := c("https://www.google.com/search?q=x"); r.Category != Organic || r.Detail != "Google" {
@@ -33,10 +33,10 @@ func TestDirect(t *testing.T) {
 	if r := c(""); r.Category != Direct || r.Detail != "typed" {
 		t.Fatalf("empty referrer -> %+v", r)
 	}
-	if r := c("https://johal.in/other-post"); r.Category != Direct || r.Detail != "internal" {
+	if r := c("https://example.test/other-post"); r.Category != Direct || r.Detail != "internal" {
 		t.Fatalf("same-site -> %+v", r)
 	}
-	if r := c("https://sub.johal.in/x"); r.Category != Direct {
+	if r := c("https://sub.example.test/x"); r.Category != Direct {
 		t.Fatalf("subdomain same-site -> %+v", r)
 	}
 }
@@ -63,18 +63,18 @@ func TestEmailAndReferral(t *testing.T) {
 }
 
 func TestUTMOverrides(t *testing.T) {
-	r := Classify("https://mail.google.com/", "johal.in", UTM{Medium: "newsletter", Campaign: "july"}, false)
+	r := Classify("https://mail.google.com/", "example.test", UTM{Medium: "newsletter", Campaign: "july"}, false)
 	if r.Category != Newsletter || r.Detail != "july" {
 		t.Fatalf("newsletter utm -> %+v", r)
 	}
-	r = Classify("", "johal.in", UTM{Source: "email"}, false)
+	r = Classify("", "example.test", UTM{Source: "email"}, false)
 	if r.Category != Email {
 		t.Fatalf("email utm -> %+v", r)
 	}
 }
 
 func TestBotShortCircuits(t *testing.T) {
-	r := Classify("https://www.google.com/", "johal.in", UTM{}, true)
+	r := Classify("https://www.google.com/", "example.test", UTM{}, true)
 	if r.Category != Bot {
 		t.Fatalf("bot should short-circuit even with search referrer, got %+v", r)
 	}

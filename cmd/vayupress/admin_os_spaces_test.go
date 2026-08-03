@@ -171,7 +171,7 @@ func TestOSSpacesCardsCSPSafe(t *testing.T) {
 	}
 
 	// Current-space card, both worlds.
-	clear := osSpacesCurrentCard(false, "johal.in")
+	clear := osSpacesCurrentCard(false, "example.test")
 	assertCSPSafe(t, "current/clearnet", clear)
 	if !strings.Contains(clear, "space-badge--clearnet") || strings.Contains(clear, "space-badge--tor") {
 		t.Error("clearnet current card must show only the clearnet badge")

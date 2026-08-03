@@ -35,8 +35,8 @@ var pngBlob = []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0}
 // Libravatar spec: lowercased, trimmed address.
 func TestEmailAvatarHashes(t *testing.T) {
 	md5hex, sha256hex := EmailAvatarHashes("  Ankush@Johal.IN ")
-	wantMD5 := md5.Sum([]byte("ankush@johal.in")) //nolint:gosec
-	wantSHA := sha256.Sum256([]byte("ankush@johal.in"))
+	wantMD5 := md5.Sum([]byte("ankush@example.test")) //nolint:gosec
+	wantSHA := sha256.Sum256([]byte("ankush@example.test"))
 	if md5hex != hex.EncodeToString(wantMD5[:]) {
 		t.Errorf("md5 = %s, want normalized-address md5", md5hex)
 	}
@@ -52,17 +52,17 @@ func TestAvatarByHash(t *testing.T) {
 	s := newAvatarStore(t)
 	ctx := context.Background()
 
-	if err := s.Create(ctx, "ankush@johal.in", "pw-1234567", "Ankush", RoleAdministrator); err != nil {
+	if err := s.Create(ctx, "ankush@example.test", "pw-1234567", "Ankush", RoleAdministrator); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := s.Create(ctx, "plain@johal.in", "pw-1234567", "Plain", RoleMailbox); err != nil {
+	if err := s.Create(ctx, "plain@example.test", "pw-1234567", "Plain", RoleMailbox); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := s.SetAvatar(ctx, "ankush@johal.in", pngBlob, "image/png"); err != nil {
+	if err := s.SetAvatar(ctx, "ankush@example.test", pngBlob, "image/png"); err != nil {
 		t.Fatalf("set avatar: %v", err)
 	}
 
-	md5hex, sha256hex := EmailAvatarHashes("ankush@johal.in")
+	md5hex, sha256hex := EmailAvatarHashes("ankush@example.test")
 
 	for _, h := range []string{md5hex, sha256hex} {
 		blob, mime, err := s.AvatarByHash(ctx, h)
@@ -75,7 +75,7 @@ func TestAvatarByHash(t *testing.T) {
 	}
 
 	// A mailbox with no picture must not resolve by its hash.
-	pmd5, _ := EmailAvatarHashes("plain@johal.in")
+	pmd5, _ := EmailAvatarHashes("plain@example.test")
 	if _, _, err := s.AvatarByHash(ctx, pmd5); err == nil {
 		t.Error("a mailbox without a picture must not resolve by hash")
 	}

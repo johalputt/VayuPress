@@ -38,12 +38,12 @@ func TestSanitizeMailUser(t *testing.T) {
 func TestEmailDomain(t *testing.T) {
 	cases := map[string]string{
 		"hello@vayupress.com": "vayupress.com",
-		"admin@JOHAL.IN":      "johal.in",
-		"postmaster":          "johal.in", // no domain → fallback
-		"weird@":              "johal.in", // trailing @ → fallback
+		"admin@EXAMPLE.TEST":  "example.test",
+		"postmaster":          "example.test", // no domain → fallback
+		"weird@":              "example.test", // trailing @ → fallback
 	}
 	for in, want := range cases {
-		if got := emailDomain(in, "johal.in"); got != want {
+		if got := emailDomain(in, "example.test"); got != want {
 			t.Errorf("emailDomain(%q) = %q, want %q", in, got, want)
 		}
 	}
@@ -55,15 +55,15 @@ func TestEmailDomain(t *testing.T) {
 // bare local-part link (byte-identical).
 func TestVayuMailboxDomainCard(t *testing.T) {
 	a := &App{}
-	sec := a.vayuMailboxDomainCard("vayupress.com", "johal.in",
+	sec := a.vayuMailboxDomainCard("vayupress.com", "example.test",
 		[]vmail.MailboxSummary{{Username: "hello", Domain: "vayupress.com", Total: 3, Unseen: 1}}, false)
 	for _, want := range []string{"vayupress.com", "secondary", "hello@vayupress.com", "user=hello%40vayupress.com", "1 unseen"} {
 		if !strings.Contains(sec, want) {
 			t.Errorf("secondary card missing %q\n%s", want, sec)
 		}
 	}
-	prim := a.vayuMailboxDomainCard("johal.in", "johal.in",
-		[]vmail.MailboxSummary{{Username: "admin", Domain: "johal.in", Total: 2}}, true)
+	prim := a.vayuMailboxDomainCard("example.test", "example.test",
+		[]vmail.MailboxSummary{{Username: "admin", Domain: "example.test", Total: 2}}, true)
 	if !strings.Contains(prim, `user=admin"`) {
 		t.Errorf("primary card should link the bare local part:\n%s", prim)
 	}

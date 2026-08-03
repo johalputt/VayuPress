@@ -1148,6 +1148,14 @@ reconcile_realip() {
   write_state realip applying
   local out="/etc/nginx/conf.d/vayushield-realip.conf"
   local bak="" n=0
+  # Rejected tokens are COUNTED, in a file, because the validation above is
+  # strict enough to drop a real range. The malformed token that caused this
+  # work — two CIDRs welded together — contains one genuine IPv4 range and one
+  # genuine IPv6 range, and refusing it loses BOTH. Dropping them without
+  # saying so converts a loud nginx failure into a silent gap in coverage,
+  # which is the same defect one layer quieter and the exact thing this whole
+  # track has been about.
+  : >"${CONTROL_DIR}/realip.skipped" 2>/dev/null || true
   [ -f "$out" ] && { bak="${out}.vayushield.bak"; cp -f "$out" "$bak" 2>/dev/null || true; }
 
   {
@@ -1166,8 +1174,8 @@ reconcile_realip() {
       #
       # `tr -d` was meant to trim, and it also removed whitespace BETWEEN values.
       # A source line carrying two ranges collapsed into one token —
-      # "131.0.72.0/22" plus "2400:cb00::/32" became
-      # "131.0.72.0/222400:cb00::/32" — which nginx rejects with
+      # "192.0.2.0/24" plus "2001:db8::/32" became
+      # "192.0.2.0/242001:db8::/32" — which nginx rejects with
       # "host not found in set_real_ip_from", taking the WHOLE web server's
       # configuration down with it, because this file lives in conf.d.
       #
@@ -1180,12 +1188,12 @@ reconcile_realip() {
       # shellcheck disable=SC2086
       for tok in $line; do
         case "$tok" in
-          *[!0-9a-fA-F.:/]*) continue ;;
+          *[!0-9a-fA-F.:/]*) printf '%s\n' "$tok" >>"${CONTROL_DIR}/realip.skipped" 2>/dev/null; continue ;;
         esac
         # EXACTLY one slash. The old check accepted any token containing one,
         # so the concatenated pair — which carries two — passed.
         case "$tok" in
-          */*/*) continue ;;
+          */*/*) printf '%s\n' "$tok" >>"${CONTROL_DIR}/realip.skipped" 2>/dev/null; continue ;;
           */*) ;;
           *) continue ;;
         esac
@@ -1193,13 +1201,13 @@ reconcile_realip() {
         addr="${tok%/*}"
         [ -n "$pfx" ] && [ -n "$addr" ] || continue
         case "$pfx" in
-          *[!0-9]*) continue ;;
+          *[!0-9]*) printf '%s\n' "$tok" >>"${CONTROL_DIR}/realip.skipped" 2>/dev/null; continue ;;
         esac
         # A prefix length outside its family's range is the other shape a bad
         # join produces, and nginx reports it just as fatally.
         case "$addr" in
-          *:*) [ "$pfx" -le 128 ] || continue ;;
-          *)   [ "$pfx" -le 32 ] || continue ;;
+          *:*) [ "$pfx" -le 128 ] || { printf '%s\n' "$tok" >>"${CONTROL_DIR}/realip.skipped" 2>/dev/null; continue; } ;;
+          *)   [ "$pfx" -le 32 ] || { printf '%s\n' "$tok" >>"${CONTROL_DIR}/realip.skipped" 2>/dev/null; continue; } ;;
         esac
         printf 'set_real_ip_from %s;\n' "$tok"
         n=$((n + 1))
@@ -1211,6 +1219,11 @@ reconcile_realip() {
     # single-value header and is deliberately left off.
     printf '%s\n' "real_ip_header CF-Connecting-IP;"
   } >"$out" 2>/dev/null
+
+  local skipped=0
+  [ -f "${CONTROL_DIR}/realip.skipped" ] && skipped="$(wc -l <"${CONTROL_DIR}/realip.skipped" 2>/dev/null || echo 0)"
+  skipped="$(printf '%s' "$skipped" | tr -d '[:space:]')"
+  [ -n "$skipped" ] || skipped=0
 
   if [ "$n" -eq 0 ]; then
     rm -f "$out" 2>/dev/null || true
@@ -1225,6 +1238,13 @@ reconcile_realip() {
   if nginx_try_reload "$out" "$bak"; then
     write_state realip active
     clear_reason realip
+    if [ "$skipped" -gt 0 ]; then
+      # Applied, and NOT silently. A range the strict shape check refused is a
+      # range this server will not resolve visitors behind, so the operator is
+      # told which ones and how many rather than discovering it in a rate limit.
+      printf '%s' "Applied ${n} range(s). ${skipped} line(s) were refused as malformed and are NOT in effect — most often two CIDRs welded together by a fetch that lost the newline between the IPv4 and IPv6 lists. Press \"Allowlist your proxy's edge ranges\" to re-fetch them cleanly, then apply this again." \
+        >"${CONTROL_DIR}/realip.reason" 2>/dev/null || true
+    fi
     write_digest
   else
     write_state realip error

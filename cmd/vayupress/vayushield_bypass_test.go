@@ -5,7 +5,7 @@ package main
 import "testing"
 
 // TestMachineProtocolPrefixesBypassShield locks in the fix for the Claude Desktop
-// "Couldn't register with johal.in's sign-in service" failure: VayuShield and the
+// "Couldn't register with example.test's sign-in service" failure: VayuShield and the
 // sovereignty lane must never challenge or shed the machine-protocol surfaces.
 // Their callers — MCP clients and Anthropic's OAuth backend — cannot solve a
 // browser proof-of-work/JS challenge, so a challenge on /oauth/register or /mcp is

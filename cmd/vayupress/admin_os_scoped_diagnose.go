@@ -1049,8 +1049,8 @@ func enabledVhostFor(host string) (st vhostState, readable bool) {
 // serverNameClaims reports whether a config's server_name directives list this
 // host as a WHOLE name.
 //
-// Whole-name matching, not substring: "johal.in" appears inside
-// "test.johal.in", so a substring test would report the apex's vhost as
+// Whole-name matching, not substring: "example.test" appears inside
+// "site.example.test", so a substring test would report the apex's vhost as
 // covering every subdomain of it and call a missing vhost present — turning the
 // one decisive check into a confident wrong answer.
 func serverNameClaims(cfg, host string) bool {

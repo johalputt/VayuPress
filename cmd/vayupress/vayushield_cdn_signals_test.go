@@ -12,7 +12,7 @@ import (
 )
 
 // These tests are written from a real incident. A Cloudflare-proxied site
-// (johal.in) showed "No proxy detected in front of this origin on your own
+// (example.test) showed "No proxy detected in front of this origin on your own
 // request" in the hardening panel while its kernel firewall was rate-limiting
 // Cloudflare's edge nodes. The detection was not buggy — the administrator
 // reached the console through a hosts entry pointing at the origin, so their
@@ -58,7 +58,7 @@ func TestAdvisoryNeverClaimsUnproxiedFromAbsence(t *testing.T) {
 	}
 }
 
-// TestObservedTrafficBeatsTheOperatorsOwnRequest reproduces johal.in exactly: the
+// TestObservedTrafficBeatsTheOperatorsOwnRequest reproduces example.test exactly: the
 // site IS proxied (visitor traffic proves it) while the admin's own request is
 // direct. This is the case the original design got wrong.
 func TestObservedTrafficBeatsTheOperatorsOwnRequest(t *testing.T) {

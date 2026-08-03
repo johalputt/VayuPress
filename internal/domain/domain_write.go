@@ -36,7 +36,7 @@ func validSiteType(t string) bool {
 //   - primary already on this host    → no-op.
 //
 // The seeded row carries site_type = the current global site.mode so the
-// primary domain is a faithful description of the existing install; johal.in is
+// primary domain is a faithful description of the existing install; example.test is
 // therefore byte-identical. tls_state is 'primary' (its certificate is managed
 // outside the registry — the existing certbot cert).
 func (r *Registry) EnsurePrimary(ctx context.Context, host, siteType string) error {

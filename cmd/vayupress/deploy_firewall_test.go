@@ -180,7 +180,7 @@ func TestAllowlistEntriesAreValidated(t *testing.T) {
 		"# a comment",
 		"173.245.48.0/20",
 		"",
-		"2400:cb00::/32",
+		"2001:db8::/32",
 		"1.2.3.4/24; drop",             // injection attempt
 		"$(touch /tmp/pwned)/24",       // command substitution attempt
 		"0.0.0.0/0 accept; ip saddr {", // rule-breakout attempt
@@ -198,7 +198,7 @@ func TestAllowlistEntriesAreValidated(t *testing.T) {
 	got := string(out)
 
 	// The good entries survive...
-	for _, want := range []string{"173.245.48.0/20", "2400:cb00::/32"} {
+	for _, want := range []string{"173.245.48.0/20", "2001:db8::/32"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("valid CIDR %q was dropped by the parser:\n%s", want, got)
 		}
@@ -727,7 +727,7 @@ func TestQUICIsModelled(t *testing.T) {
 func TestAllowlistCoversQUIC(t *testing.T) {
 	dir := t.TempDir()
 	allow := filepath.Join(dir, "cdn-allow.conf")
-	if err := os.WriteFile(allow, []byte("173.245.48.0/20\n2400:cb00::/32\n"), 0o600); err != nil {
+	if err := os.WriteFile(allow, []byte("173.245.48.0/20\n2001:db8::/32\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	rules := generateRuleset(t, "CDN_ALLOW_FILE="+allow)
@@ -735,8 +735,8 @@ func TestAllowlistCoversQUIC(t *testing.T) {
 	for _, want := range []string{
 		"ip saddr { 173.245.48.0/20 } tcp dport",
 		"ip saddr { 173.245.48.0/20 } udp dport",
-		"ip6 saddr { 2400:cb00::/32 } tcp dport",
-		"ip6 saddr { 2400:cb00::/32 } udp dport",
+		"ip6 saddr { 2001:db8::/32 } tcp dport",
+		"ip6 saddr { 2001:db8::/32 } udp dport",
 	} {
 		if !strings.Contains(rules, want) {
 			t.Errorf("allowlist is missing %q:\n%s", want, rules)

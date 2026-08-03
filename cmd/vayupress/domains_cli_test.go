@@ -17,10 +17,10 @@ import (
 // registered domain is on hold and invisible to `hosts` until the operator
 // approves it with `domains sync`.
 func TestDomainsCLI(t *testing.T) {
-	setupSEOTestDB(t) // config.Load + dbpkg.Init with DOMAIN=primary.example
+	setupSEOTestDB(t) // config.Load + dbpkg.Init with DOMAIN=example.test
 	ctx := context.Background()
 	reg := domain.New(dbpkg.DB, dbpkg.RDB)
-	if err := reg.EnsurePrimary(ctx, "primary.example", domain.SiteBlog); err != nil {
+	if err := reg.EnsurePrimary(ctx, "example.test", domain.SiteBlog); err != nil {
 		t.Fatalf("ensure primary: %v", err)
 	}
 	if _, err := reg.Create(ctx, "shop.example", domain.SiteBlog, true); err != nil {
@@ -127,7 +127,7 @@ func TestDomainsCLI(t *testing.T) {
 	}
 
 	// sync/hold refuse the primary and unknown hosts.
-	if err := runDomainsCLI([]string{"sync", "primary.example"}, &b); err == nil {
+	if err := runDomainsCLI([]string{"sync", "example.test"}, &b); err == nil {
 		t.Error("sync should refuse the primary domain")
 	}
 	if err := runDomainsCLI([]string{"hold", "nowhere.example"}, &b); err == nil {
@@ -140,7 +140,7 @@ func TestDomainsCLI(t *testing.T) {
 		t.Fatalf("list: %v", err)
 	}
 	out := b.String()
-	if !strings.Contains(out, "primary.example") || !strings.Contains(out, "shop.example") || !strings.Contains(out, "primary") {
+	if !strings.Contains(out, "example.test") || !strings.Contains(out, "shop.example") || !strings.Contains(out, "primary") {
 		t.Errorf("list output incomplete:\n%s", out)
 	}
 	if !strings.Contains(out, "SYNC") || !strings.Contains(out, "approved") {
@@ -159,7 +159,7 @@ func TestDomainsCLI(t *testing.T) {
 	if err := runDomainsCLI([]string{"set-tls", "shop.example", "bogus"}, &b); err == nil {
 		t.Error("set-tls accepted an invalid state")
 	}
-	if err := runDomainsCLI([]string{"set-tls", "primary.example", "active"}, &b); err == nil {
+	if err := runDomainsCLI([]string{"set-tls", "example.test", "active"}, &b); err == nil {
 		t.Error("set-tls should refuse the primary domain")
 	}
 }

@@ -207,7 +207,7 @@ func newIconApp(t *testing.T, logo []byte) *App {
 }
 
 // TestCustomLogoIsServedAtTheDeclaredSize is the test for the reported bug:
-// installing johal.in put the VayuPress mark on the home screen because the icon
+// installing example.test put the VayuPress mark on the home screen because the icon
 // routes never consulted the operator's uploaded logo.
 //
 // It asserts the size too, not just "different from the default". An upload is

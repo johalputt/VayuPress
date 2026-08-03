@@ -631,7 +631,7 @@ func TestADomainPointedElsewhereIsNotCalledReachable(t *testing.T) {
 	local := map[string]bool{"203.0.113.7": true, "2001:db8::7": true}
 	front := []string{"198.51.100.1"} // what the primary resolves to: a proxy
 
-	elsewhere := dnsPointsHereCheck("client.example", []string{"185.199.108.153"}, true, local, front)
+	elsewhere := dnsPointsHereCheck("client.example", []string{"203.0.113.10"}, true, local, front)
 	if elsewhere.OK {
 		t.Fatal("a domain resolving to a host unrelated to this install was reported as " +
 			"reachable — the exact verdict that hid a domain burning the account's validation " +
@@ -641,7 +641,7 @@ func TestADomainPointedElsewhereIsNotCalledReachable(t *testing.T) {
 		t.Error("it is reported as a detail rather than as blocking, so it reads as background " +
 			"noise beside the certificate that is not arriving")
 	}
-	for _, want := range []string{"185.199.108.153", "404", "Lifecycle"} {
+	for _, want := range []string{"203.0.113.10", "404", "Lifecycle"} {
 		if !strings.Contains(elsewhere.Detail, want) {
 			t.Errorf("the finding never mentions %q, so the operator cannot act on it", want)
 		}
@@ -671,8 +671,8 @@ func TestADomainPointedElsewhereIsNotCalledReachable(t *testing.T) {
 	// not resolve — must claim NOTHING rather than guess. Asserting a fault we
 	// cannot substantiate is the failure this page exists to correct.
 	for _, blind := range []diagCheck{
-		dnsPointsHereCheck("client.example", []string{"185.199.108.153"}, true, map[string]bool{}, front),
-		dnsPointsHereCheck("client.example", []string{"185.199.108.153"}, true, local, nil),
+		dnsPointsHereCheck("client.example", []string{"203.0.113.10"}, true, map[string]bool{}, front),
+		dnsPointsHereCheck("client.example", []string{"203.0.113.10"}, true, local, nil),
 	} {
 		if !blind.OK || blind.Fatal {
 			t.Error("with nothing trustworthy to compare against, the check still declared the " +
@@ -706,24 +706,24 @@ func TestADomainPointedElsewhereIsNotCalledReachable(t *testing.T) {
 // fails the issuance with a perfectly correct A record beside it, and nothing in
 // the error mentions IPv6.
 func TestAStaleAAAAIsNamedRatherThanBlamedOnSomebodyElse(t *testing.T) {
-	local := map[string]bool{"5.189.133.235": true}
-	front := []string{"104.21.11.39"}
+	local := map[string]bool{"198.51.100.10": true}
+	front := []string{"198.51.100.20"}
 
-	split := dnsPointsHereCheck("test.example", []string{"5.189.133.235", "2a02:c207::1"}, true, local, front)
+	split := dnsPointsHereCheck("test.example", []string{"198.51.100.10", "2001:db8::1"}, true, local, front)
 	if split.OK {
 		t.Fatal("a host whose A record is correct and whose AAAA points somewhere else was " +
 			"reported as pointing here — the issuance fails over IPv6 and the operator is " +
 			"looking at a green check")
 	}
-	for _, want := range []string{"2a02:c207::1", "IPv6", "IPv4"} {
+	for _, want := range []string{"2001:db8::1", "IPv6", "IPv4"} {
 		if !strings.Contains(split.Detail, want) {
 			t.Errorf("the finding never mentions %q, so it does not identify the record to fix", want)
 		}
 	}
 
 	// A host answering correctly on BOTH families must stay quiet.
-	both := map[string]bool{"5.189.133.235": true, "2a02:c207::1": true}
-	if c := dnsPointsHereCheck("test.example", []string{"5.189.133.235", "2a02:c207::1"}, true, both, front); !c.OK {
+	both := map[string]bool{"198.51.100.10": true, "2001:db8::1": true}
+	if c := dnsPointsHereCheck("test.example", []string{"198.51.100.10", "2001:db8::1"}, true, both, front); !c.OK {
 		t.Errorf("a dual-stack host answering on both families was flagged: %s", c.Detail)
 	}
 	// A family that is PARTLY accounted for stays quiet, and this is a deliberate
@@ -734,15 +734,15 @@ func TestAStaleAAAAIsNamedRatherThanBlamedOnSomebodyElse(t *testing.T) {
 	// wrong about every CDN. The residual risk is real and stated here rather than
 	// papered over: if the authority happens to pick the address this machine does
 	// not hold, issuance fails and this check will not have said so.
-	partial := map[string]bool{"5.189.133.235": true, "2a02:c207::1": true}
+	partial := map[string]bool{"198.51.100.10": true, "2001:db8::1": true}
 	if c := dnsPointsHereCheck("test.example",
-		[]string{"5.189.133.235", "2a02:c207::1", "2a02:c207::99"}, true, partial, front); !c.OK {
+		[]string{"198.51.100.10", "2001:db8::1", "2001:db8::99"}, true, partial, front); !c.OK {
 		t.Errorf("a host answering on IPv6 was flagged because it publishes a SECOND IPv6 "+
 			"address: %s. Only a family that is entirely unaccounted for is a finding", c.Detail)
 	}
 
 	// So must a single-family host — an absent AAAA is not a broken one.
-	if c := dnsPointsHereCheck("test.example", []string{"5.189.133.235"}, true, local, front); !c.OK {
+	if c := dnsPointsHereCheck("test.example", []string{"198.51.100.10"}, true, local, front); !c.OK {
 		t.Errorf("an IPv4-only host was flagged: %s", c.Detail)
 	}
 	// An address belonging to this install's OWN FRONT counts as reachable. The
@@ -750,15 +750,15 @@ func TestAStaleAAAAIsNamedRatherThanBlamedOnSomebodyElse(t *testing.T) {
 	// it is the one a same-family fixture cannot distinguish at all: a mutation
 	// dropping the front from the comparison survived a test written that way,
 	// because the good IPv4 address alone satisfied the IPv4 family.
-	frontDual := []string{"104.21.11.39", "2606:4700:3033::6815:b27"}
+	frontDual := []string{"198.51.100.20", "2001:db8::b27"}
 	if c := dnsPointsHereCheck("test.example",
-		[]string{"5.189.133.235", "2606:4700:3033::6815:b27"}, true, local, frontDual); !c.OK {
+		[]string{"198.51.100.10", "2001:db8::b27"}, true, local, frontDual); !c.OK {
 		t.Errorf("an IPv6 address belonging to this install's own front was called a stray: %s. "+
 			"That is every dual-stack site whose AAAA is on the proxy and whose A is direct", c.Detail)
 	}
 
 	// And the retired claim must not come back anywhere in the verdicts.
-	stray := dnsPointsHereCheck("other.example", []string{"185.199.108.153"}, true, local, front)
+	stray := dnsPointsHereCheck("other.example", []string{"203.0.113.10"}, true, local, front)
 	if strings.Contains(stray.Detail, "spends the budget") {
 		t.Error("the per-account rate-limit claim is back; it is not how this install issues " +
 			"certificates and it sends operators to fix an unrelated domain")
@@ -783,7 +783,7 @@ func TestTheCollapsedCertificatePanelsStillTellTheTruth(t *testing.T) {
 
 	blocked := scopedCertificateSection(d, []diagCheck{
 		{Label: "Root-side helper installed", OK: true, Detail: "present"},
-		{Label: "DNS points somewhere else", OK: false, Fatal: true, Detail: "185.199.108.153"},
+		{Label: "DNS points somewhere else", OK: false, Fatal: true, Detail: "203.0.113.10"},
 	}, []string{"a log line"})
 
 	// The chip must be in the summary, not the body: everything inside
@@ -842,7 +842,7 @@ func TestTheCertificateSummaryDoesNotPromiseWhatIsBlocked(t *testing.T) {
 	d.SyncState = domain.SyncApproved
 
 	blocked := scopedCertificateSection(d, []diagCheck{
-		{Label: "DNS points at a different host", OK: false, Fatal: true, Detail: "185.199.108.153"},
+		{Label: "DNS points at a different host", OK: false, Fatal: true, Detail: "203.0.113.10"},
 	}, nil)
 	sum, _, _ := strings.Cut(blocked, `<div class="mon-acc__body">`)
 	if strings.Contains(sum, "one root-side step away") {
@@ -879,7 +879,7 @@ func TestTheLogBoxShowsTHISHostsLinesNotTheTailOfSomebodyElses(t *testing.T) {
 		"VayuDomain live: https://first.example",
 		"Provisioning other.example…",
 		"Challenge failed for domain other.example",
-		"Detail: 185.199.108.153: Invalid response ...: 404",
+		"Detail: 203.0.113.10: Invalid response ...: 404",
 		"certbot could not issue a cert for other.example.",
 	}
 
@@ -888,14 +888,14 @@ func TestTheLogBoxShowsTHISHostsLinesNotTheTailOfSomebodyElses(t *testing.T) {
 		t.Fatal("this host has no section at all, so the page falls back to the tail — which is " +
 			"the other domain's failure")
 	}
-	for _, leak := range []string{"other.example", "185.199.108.153"} {
+	for _, leak := range []string{"other.example", "203.0.113.10"} {
 		if strings.Contains(strings.Join(seg, "\n"), leak) {
 			t.Errorf("another domain's line (%q) is inside this host's section", leak)
 		}
 	}
 
 	body := scopedDiagnosticBody(nil, log, "first.example")
-	if strings.Contains(body, "185.199.108.153") {
+	if strings.Contains(body, "203.0.113.10") {
 		t.Fatal("the page still prints another domain's certbot error under this domain's " +
 			"heading — the exact thing that sent an operator chasing the wrong host")
 	}
@@ -914,19 +914,19 @@ func TestTheLogBoxShowsTHISHostsLinesNotTheTailOfSomebodyElses(t *testing.T) {
 	// different host. A fixture with them the other way round passes against a
 	// broken end-condition and proves nothing — it did.
 	nested := []string{
-		"Provisioning johal.in…", "line a",
-		"Provisioning test.johal.in…", "line b", "line c",
+		"Provisioning example.test…", "line a",
+		"Provisioning site.example.test…", "line b", "line c",
 	}
-	got := hostLogSegment(nested, "johal.in")
+	got := hostLogSegment(nested, "example.test")
 	if len(got) != 2 {
-		t.Errorf("johal.in's section is %d lines (%v) — it swallowed test.johal.in's, so a "+
+		t.Errorf("example.test's section is %d lines (%v) — it swallowed site.example.test's, so a "+
 			"subdomain's failure prints under the apex's heading", len(got), got)
 	}
 	if strings.Contains(strings.Join(got, "\n"), "line b") {
-		t.Error("johal.in's section contains test.johal.in's output")
+		t.Error("example.test's section contains site.example.test's output")
 	}
-	if sub := hostLogSegment(nested, "test.johal.in"); len(sub) != 3 {
-		t.Errorf("test.johal.in's own section is %d lines (%v)", len(sub), sub)
+	if sub := hostLogSegment(nested, "site.example.test"); len(sub) != 3 {
+		t.Errorf("site.example.test's own section is %d lines (%v)", len(sub), sub)
 	}
 }
 
@@ -947,7 +947,7 @@ func TestARefusedCertificateIsReportedEvenWhenTheRunSaysItIsClean(t *testing.T) 
 	seg := []string{
 		"Provisioning other.example…",
 		"Type:   unauthorized",
-		"Detail: 185.199.108.153: Invalid response ...: 404",
+		"Detail: 203.0.113.10: Invalid response ...: 404",
 		"certbot could not issue a cert for other.example.",
 	}
 	v, ok := certbotHostVerdict(seg, "other.example")
@@ -1013,8 +1013,8 @@ func TestTerminalColourCodesDoNotReachThePage(t *testing.T) {
 // FINDING, and the most expensive one in this whole investigation: the console
 // ranked its own DEDUCTION above the authority's own MESSAGE.
 //
-// The certificate authority reported, for test.johal.in, "Type: connection" at
-// 5.189.133.235 — the IPv4 address, which is this server. The console's DNS
+// The certificate authority reported, for site.example.test, "Type: connection" at
+// 198.51.100.10 — the IPv4 address, which is this server. The console's DNS
 // check had separately deduced that the site's AAAA points elsewhere, and put
 // that deduction in a row ABOVE the authority's error. The deduction was read as
 // the cause for three releases while the actual message sat further down the
@@ -1040,7 +1040,7 @@ func TestTheAuthoritysOwnErrorOutranksTheConsolesDeduction(t *testing.T) {
 // path — nothing answered. The other is a webroot — something answered with the
 // wrong thing. Telling them apart is most of the work.
 func TestTheAuthoritysErrorTypeIsExplainedNotJustQuoted(t *testing.T) {
-	conn := certbotErrorKind([]string{"Type:   connection", "Detail: 5.189.133.235: Fetching"})
+	conn := certbotErrorKind([]string{"Type:   connection", "Detail: 198.51.100.10: Fetching"})
 	if !strings.Contains(conn, "CONNECTION") || !strings.Contains(conn, "nothing answered") {
 		t.Errorf("a connection error is not explained as a network path: %q", conn)
 	}
@@ -1048,7 +1048,7 @@ func TestTheAuthoritysErrorTypeIsExplainedNotJustQuoted(t *testing.T) {
 		t.Error("a connection error is being described as a content problem")
 	}
 
-	un := certbotErrorKind([]string{"Type:   unauthorized", "Detail: 185.199.108.153: 404"})
+	un := certbotErrorKind([]string{"Type:   unauthorized", "Detail: 203.0.113.10: 404"})
 	if !strings.Contains(un, "UNAUTHORIZED") || !strings.Contains(un, "wrong") {
 		t.Errorf("an unauthorized error is not explained as a content problem: %q", un)
 	}
@@ -1095,34 +1095,34 @@ func TestTheChallengeProbeAsksAsTheAuthorityWould(t *testing.T) {
 }
 
 // The vhost check is the one that ends the guessing, so its matcher must be
-// exact. "johal.in" is a substring of "test.johal.in": a substring test would
+// exact. "example.test" is a substring of "site.example.test": a substring test would
 // report the apex's server block as covering every subdomain of it, call a
 // MISSING vhost present, and turn the single decisive check on the page into a
 // confident wrong answer — which is worse than the silence it replaced.
 func TestAVhostIsMatchedByWholeNameNotSubstring(t *testing.T) {
-	apex := "server {\n  listen 80;\n  server_name johal.in www.johal.in;\n}\n"
+	apex := "server {\n  listen 80;\n  server_name example.test www.example.test;\n}\n"
 
-	if serverNameClaims(apex, "test.johal.in") {
-		t.Fatal("the apex's server block was reported as claiming test.johal.in — the console " +
+	if serverNameClaims(apex, "site.example.test") {
+		t.Fatal("the apex's server block was reported as claiming site.example.test — the console " +
 			"would say a vhost exists for a host that falls through to the default server, " +
 			"which is the exact failure it was written to find")
 	}
-	if !serverNameClaims(apex, "johal.in") {
+	if !serverNameClaims(apex, "example.test") {
 		t.Error("a host its own server block does name was not matched")
 	}
-	if !serverNameClaims(apex, "JOHAL.IN") {
+	if !serverNameClaims(apex, "EXAMPLE.TEST") {
 		t.Error("server_name matching is case-sensitive; DNS names are not")
 	}
 	// A trailing dot is the same name.
-	if !serverNameClaims("server_name test.johal.in.;", "test.johal.in") {
+	if !serverNameClaims("server_name site.example.test.;", "site.example.test") {
 		t.Error("a fully-qualified server_name with a trailing dot was not matched")
 	}
 	// And the reverse direction: a subdomain's block must not claim the apex.
-	if serverNameClaims("server_name test.johal.in;", "johal.in") {
+	if serverNameClaims("server_name site.example.test;", "example.test") {
 		t.Error("a subdomain's server block was reported as claiming the apex")
 	}
 	// A line that merely mentions the host is not a server_name directive.
-	if serverNameClaims("# johal.in is the primary\nlocation / { }", "johal.in") {
+	if serverNameClaims("# example.test is the primary\nlocation / { }", "example.test") {
 		t.Error("a comment mentioning the host counted as a server block claiming it")
 	}
 }
@@ -1352,7 +1352,7 @@ func TestAStalledRootSideIsReportedAsOneActionNotTwoSymptoms(t *testing.T) {
 // that exists only in the way it looked. A diagnostic that can manufacture a
 // false blocking row about the thing it is diagnosing is worse than none.
 func TestTheProbeDoesNotAssumeNginxListensOnLoopback(t *testing.T) {
-	if listensEverywhere([]string{"5.189.133.235"}) {
+	if listensEverywhere([]string{"198.51.100.10"}) {
 		t.Fatal("a listener bound to one public address was treated as a wildcard, so the probe " +
 			"would test only loopback and call a working server broken")
 	}

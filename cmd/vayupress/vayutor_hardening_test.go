@@ -23,7 +23,7 @@ func TestSecurityHeadersOnionAware(t *testing.T) {
 		wantHSTS   bool
 		wantRefPol string
 	}{
-		{"clearnet", "johal.in", true, "strict-origin-when-cross-origin"},
+		{"clearnet", "example.test", true, "strict-origin-when-cross-origin"},
 		{"onion", "f7ar4p3dbdezrdgj4zsaaolmxmvddq3rsmryf6zztltlgocliomn6qad.onion", false, "no-referrer"},
 		{"onion with port", "abc.onion:80", false, "no-referrer"},
 	}
@@ -54,8 +54,8 @@ func TestIsOnionHost(t *testing.T) {
 		"abc.onion":        true,
 		"ABC.ONION":        true,
 		"abc.onion:80":     true,
-		"johal.in":         false,
-		"sub.johal.in":     false,
+		"example.test":     false,
+		"sub.example.test": false,
 		"notonion.example": false,
 	}
 	for host, want := range cases {

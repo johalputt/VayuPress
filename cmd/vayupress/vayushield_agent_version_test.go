@@ -132,7 +132,7 @@ func TestTheMCPWarningNamesWhatItObjectedTo(t *testing.T) {
 		Digest: shieldaudit.Digest{
 			Present:            true,
 			MCPVhostRestricted: shieldaudit.No,
-			MCPVhostOpenAt:     "/etc/nginx/sites-enabled/mcp.johal.in:16",
+			MCPVhostOpenAt:     "/etc/nginx/sites-enabled/mcp.example.test:16",
 		},
 	})
 	var detail string
@@ -144,7 +144,7 @@ func TestTheMCPWarningNamesWhatItObjectedTo(t *testing.T) {
 	if detail == "" {
 		t.Fatal("no MCP host surface row was produced")
 	}
-	if !strings.Contains(detail, "/etc/nginx/sites-enabled/mcp.johal.in:16") {
+	if !strings.Contains(detail, "/etc/nginx/sites-enabled/mcp.example.test:16") {
 		t.Fatalf("the warning does not say WHERE, so it cannot be checked or refuted:\n%s", detail)
 	}
 }

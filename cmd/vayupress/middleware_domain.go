@@ -15,7 +15,7 @@ import (
 // middleware_domain.go — VayuDomains host resolution (Stage 1).
 //
 // This middleware annotates every request with the registered domain that owns
-// its Host header and does nothing else. It is a total pass-through: johal.in
+// its Host header and does nothing else. It is a total pass-through: example.test
 // (the primary domain) is served exactly as before, because the resolved domain
 // for the primary host is the primary record and no handler yet branches on it.
 // Later stages read the active domain from the context to scope content, mail
@@ -95,7 +95,7 @@ func (a *App) memberScope(r *http.Request) string {
 // own stored brand. In every other case — a single-domain install, the primary
 // domain, or a secondary domain with no brand set — it returns ok=false so the
 // caller takes its original render path (the global active settings) verbatim.
-// This keeps johal.in byte-identical: the primary hot path pays only one cached
+// This keeps example.test byte-identical: the primary hot path pays only one cached
 // HasSecondaries bool and then calls the exact same renderer it always did.
 func (a *App) brandForRequest(r *http.Request) (render.SiteSettings, bool) {
 	if !a.multiDomain(r) {

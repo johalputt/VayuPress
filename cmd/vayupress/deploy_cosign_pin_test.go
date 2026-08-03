@@ -192,11 +192,11 @@ mcp_verdict() { # $1=config file -> prints the digest value for mcp_vhost_restri
 mcp_where() { bash -c 'source "'"$D"'/m.sh"; mcp_catchall_probe <"'"$1"'"'; }
 cat > "$D/mcp_open.txt" <<'MCPA'
 server {
-    server_name johal.in;
+    server_name example.test;
     location / { proxy_pass http://127.0.0.1:8080; }
 }
 server {
-    server_name mcp.johal.in;
+    server_name mcp.example.test;
     location ^~ /mcp { proxy_pass http://127.0.0.1:8080; }
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -205,11 +205,11 @@ server {
 MCPA
 cat > "$D/mcp_narrowed.txt" <<'MCPB'
 server {
-    server_name johal.in;
+    server_name example.test;
     location / { proxy_pass http://127.0.0.1:8080; }
 }
 server {
-    server_name mcp.johal.in;
+    server_name mcp.example.test;
     location ^~ /mcp { proxy_pass http://127.0.0.1:8080; }
     location / { return 404; }  # narrowed by vayushield-agent
 }
@@ -225,12 +225,12 @@ MCPB
 # was correctly narrowed, with no configuration change that could ever clear it.
 cat > "$D/mcp_indented.txt" <<'MCPC'
   server {
-      server_name mcp.johal.in;
+      server_name mcp.example.test;
       location ^~ /mcp { proxy_pass http://127.0.0.1:8080; }
       location / { return 404; }  # narrowed by vayushield-agent
   }
   server {
-      server_name johal.in;
+      server_name example.test;
       location / { proxy_pass http://127.0.0.1:8080; }
   }
 MCPC
@@ -240,12 +240,12 @@ MCPC
 # above is a boundary fix and not a blanket "always restricted".
 cat > "$D/mcp_indented_open.txt" <<'MCPD'
   server {
-      server_name mcp.johal.in;
+      server_name mcp.example.test;
       location ^~ /mcp { proxy_pass http://127.0.0.1:8080; }
       location / { proxy_pass http://127.0.0.1:8080; }
   }
   server {
-      server_name johal.in;
+      server_name example.test;
       location / { proxy_pass http://127.0.0.1:8080; }
   }
 MCPD
@@ -259,10 +259,10 @@ MCPD
 # whose locations are all one-liners and wrongly on any config with a multi-line
 # location, which is every config certbot has touched.
 cat > "$D/mcp_multiline.txt" <<'MCPE'
-# configuration file /etc/nginx/sites-enabled/mcp.johal.in:
+# configuration file /etc/nginx/sites-enabled/mcp.example.test:
 server {
     listen 443 ssl http2;
-    server_name mcp.johal.in;
+    server_name mcp.example.test;
     location ^~ /.well-known/acme-challenge/ {
         root /var/cache;
         try_files $uri =404;
@@ -284,8 +284,8 @@ MCPE
 # open it. Verified against real nginx output below.
 where=$(mcp_where "$D/mcp_multiline.txt")
 case "$where" in
-  /etc/nginx/sites-enabled/mcp.johal.in:8) ;;
-  *) echo "FAIL the probe did not name the offending catch-all: [$where] want /etc/nginx/sites-enabled/mcp.johal.in:8"; exit 1 ;;
+  /etc/nginx/sites-enabled/mcp.example.test:8) ;;
+  *) echo "FAIL the probe did not name the offending catch-all: [$where] want /etc/nginx/sites-enabled/mcp.example.test:8"; exit 1 ;;
 esac
 # ...and it must stay silent on a host it does not object to, or the panel would
 # print a file and line beside a passing row.
@@ -343,20 +343,20 @@ narrow() { bash -c 'source "'"$D"'/n.sh"; mcp_narrow_config' < "$1"; }
 cat > "$D/tpl.conf" <<'TPL'
 server {
     listen 80; listen [::]:80;
-    server_name mcp.johal.in;
+    server_name mcp.example.test;
     location ^~ /.well-known/acme-challenge/ { root /var/cache; default_type text/plain; try_files $uri =404; }
     location / { return 301 https://$host$request_uri; }
 }
 server {
     listen 443 ssl http2; listen [::]:443 ssl http2;
-    server_name mcp.johal.in;
+    server_name mcp.example.test;
     location ^~ /mcp   { proxy_pass http://127.0.0.1:8080; }
     location = /health { proxy_pass http://127.0.0.1:8080; access_log off; }
     location / { return 404; }
 }
 server {
     listen 443 ssl http2;
-    server_name johal.in;
+    server_name example.test;
     location / { proxy_pass http://127.0.0.1:8080; }
 }
 TPL
@@ -369,13 +369,13 @@ fi
 cat > "$D/open.conf" <<'OPN'
 server {
     listen 443 ssl http2;
-    server_name mcp.johal.in;
+    server_name mcp.example.test;
     location ^~ /mcp { proxy_pass http://127.0.0.1:8080; }
     location / { proxy_pass http://127.0.0.1:8080; }
 }
 server {
     listen 443 ssl http2;
-    server_name johal.in;
+    server_name example.test;
     location / { proxy_pass http://127.0.0.1:8080; }
 }
 OPN

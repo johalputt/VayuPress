@@ -6,6 +6,56 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.70] — 2026-08-03
+
+**The origin of the malformed nginx directive, found by the audit that should
+have gated the previous release.**
+
+### Fixed
+- **Two published range lists were appended into one file with nothing between
+  them.** The IPv4 list ends **without a trailing newline**, so its last CIDR and
+  the first IPv6 CIDR landed on the same physical line and became one token. That
+  token reached nginx as `set_real_ip_from`, which refused the entire
+  configuration — and because the file lives in `conf.d`, "the entire
+  configuration" is every vhost on the machine.
+
+  Each body is now fetched separately and joined with an explicit newline,
+  carriage returns stripped, blank lines dropped. Concatenating two documents
+  without asserting the boundary between them is the defect; it does not stop
+  being one because the far end usually sends a newline.
+
+- **Refused ranges are now reported instead of dropped in silence.** The stricter
+  shape check added in the previous release refuses the welded token — and that
+  token contains one genuine IPv4 range and one genuine IPv6 range, so refusing
+  it loses **both**. Dropping them quietly converts a loud nginx failure into an
+  invisible gap in coverage, where per-IP controls meter the edge for those
+  ranges and nobody is told. The panel now says how many lines were refused, why,
+  and what to press to re-fetch them cleanly.
+
+### Changed
+- **No real infrastructure in any shipped document.** Release notes are rendered
+  in the in-app update notification, and they carried an operator's server
+  address, their hostnames and their proxy's ranges. Every example across the
+  changelog, the ADRs and the tests now uses reserved documentation values
+  (RFC 5737 / RFC 3849 / RFC 2606). A release note describes what changed in the
+  software; it is not a place to publish somebody's infrastructure.
+
+### Audit
+**This release exists because the previous one was cut while the audit was still
+running.** The rule in this repository is explicit — the audit gates the release,
+it does not trail it — and 3.16.69 shipped on three local mutations while a
+broader pass was mid-flight. That pass then found the actual origin, upstream of
+what had just been released, plus a defect in the fix itself. Both belonged in
+3.16.69 and are here instead, which is precisely the outcome the rule exists to
+prevent.
+
+The gate for the fetch join initially matched the retired code **inside the
+comment documenting it** — the third time today a check has read prose about the
+behaviour rather than the behaviour. It strips comments now. A harness fault was
+recorded the same way: the emit-loop extractor anchored on the first
+`while IFS= read` in the file, which belongs to another function, so it tested
+unrelated code and failed on an unbound variable.
+
 ## [3.16.69] — 2026-08-03
 
 **A trim that deleted whitespace instead of splitting on it wrote a malformed
@@ -13,8 +63,8 @@ directive into `conf.d` — which is the whole web server's configuration, not o
 vhost.**
 
 ### Fixed
-- **`set_real_ip_from "131.0.72.0/222400:cb00::/32"`.** That is
-  `131.0.72.0/22` and `2400:cb00::/32` concatenated with no separator. nginx
+- **`set_real_ip_from "192.0.2.0/242001:db8::/32"`.** That is
+  `192.0.2.0/24` and `2001:db8::/32` concatenated with no separator. nginx
   answered *"host not found in set_real_ip_from"* and refused to load the
   configuration.
 
@@ -524,8 +574,8 @@ spending validation attempts to learn what a loopback request already knows.**
   symptoms, and nothing was reading the directory that distinguishes them. It is
   world-readable, so this unprivileged process can check it directly.
 
-  Matching is by **whole name**, not substring: `johal.in` is inside
-  `test.johal.in`, and a substring test would report the apex's block as covering
+  Matching is by **whole name**, not substring: `example.test` is inside
+  `site.example.test`, and a substring test would report the apex's block as covering
   every subdomain of it — turning the one decisive check into a confident wrong
   answer.
 
@@ -559,7 +609,7 @@ shell rather than asserting against its text.
 
 ### Fixed
 - **The certificate authority's own error now leads the diagnosis.** For
-  `test.johal.in` the authority reported `Type: connection` at `5.189.133.235` —
+  `site.example.test` the authority reported `Type: connection` at `198.51.100.10` —
   the IPv4 address, which *is* this server. The console had separately deduced
   that the site's `AAAA` record points somewhere else, and put that deduction in
   a row **above** the authority's message. The deduction was read as the cause
@@ -2883,7 +2933,7 @@ on screen while the code underneath was doing what it was told.
   carrying a hint naming both sources.
 
 - **The site appearing in its own referrer list, via a port.** An operator's
-  panel showed `johal.in:2052` and `www.johal.in:2052` as external referrers —
+  panel showed `example.test:2052` and `www.example.test:2052` as external referrers —
   their own site, counted as somebody else's traffic. 2052 is one of the
   alternate HTTP ports a CDN can serve on, and `url.Parse().Host` keeps the port,
   so the stored referrer host was `<domain>:2052`. That matched neither the
@@ -12478,7 +12528,7 @@ it certifies against. Each ships with a regression test.
   overlay is reached only when a secondary domain is registered *and* it carries a
   brand; in every other case (single-domain install, the primary domain, or a
   secondary with no brand) the original renderers are called verbatim — same
-  bytes, same ETag — so johal.in pays only one cached `HasSecondaries` bool on the
+  bytes, same ETag — so example.test pays only one cached `HasSecondaries` bool on the
   hot path and nothing else. Accent/theme-colour inputs are hex-validated before
   they can reach `/theme.css` or `<meta theme-color>`, closing any CSS/attribute
   injection through the branding form. The primary domain's identity remains the

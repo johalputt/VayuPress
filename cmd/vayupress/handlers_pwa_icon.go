@@ -4,7 +4,7 @@ package main
 
 // handlers_pwa_icon.go — the installed public app wears the SITE's logo.
 //
-// Installing johal.in put the VayuPress mark on the home screen, because the
+// Installing example.test put the VayuPress mark on the home screen, because the
 // public manifest pointed at the embedded brand icons and nothing consulted the
 // operator's uploaded logo. That is the wrong identity: the app is the
 // operator's site, not the software it happens to run on. (The VayuOS console is

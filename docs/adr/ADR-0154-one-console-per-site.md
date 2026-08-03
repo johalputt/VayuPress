@@ -22,7 +22,7 @@ did not do is fix the surface an operator actually walks through, and the surfac
 still points the other way.
 
 `/os/domains/{id}` — the page titled **Manage site**, reached by clicking a
-domain — renders this, on a page about `test.johal.in`:
+domain — renders this, on a page about `site.example.test`:
 
 ```html
 <p class="text-sm muted">The links below are the <b>install-wide</b> tools.

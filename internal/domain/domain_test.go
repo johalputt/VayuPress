@@ -32,12 +32,12 @@ func newTestRegistry(t *testing.T) *Registry {
 
 func TestNormalizeHost(t *testing.T) {
 	cases := map[string]string{
-		"Example.com":       "example.com",
-		"example.com:8080":  "example.com",
-		"example.com.":      "example.com",
-		" JOHAL.IN ":        "johal.in",
-		"talk.johal.in:443": "talk.johal.in",
-		"":                  "",
+		"Example.com":           "example.com",
+		"example.com:8080":      "example.com",
+		"example.com.":          "example.com",
+		" JOHAL.IN ":            "example.test",
+		"talk.example.test:443": "talk.example.test",
+		"":                      "",
 	}
 	for in, want := range cases {
 		if got := NormalizeHost(in); got != want {
@@ -50,10 +50,10 @@ func TestEnsurePrimaryIdempotent(t *testing.T) {
 	r := newTestRegistry(t)
 	ctx := context.Background()
 
-	if err := r.EnsurePrimary(ctx, "johal.in", "blog"); err != nil {
+	if err := r.EnsurePrimary(ctx, "example.test", "blog"); err != nil {
 		t.Fatalf("seed 1: %v", err)
 	}
-	if err := r.EnsurePrimary(ctx, "johal.in", "blog"); err != nil {
+	if err := r.EnsurePrimary(ctx, "example.test", "blog"); err != nil {
 		t.Fatalf("seed 2: %v", err)
 	}
 	n, err := r.Count(ctx)
@@ -67,7 +67,7 @@ func TestEnsurePrimaryIdempotent(t *testing.T) {
 	if !ok {
 		t.Fatal("expected a primary domain")
 	}
-	if p.Host != "johal.in" || !p.IsPrimary || p.TLSState != TLSPrimary || p.Status != StatusActive {
+	if p.Host != "example.test" || !p.IsPrimary || p.TLSState != TLSPrimary || p.Status != StatusActive {
 		t.Fatalf("unexpected primary: %+v", p)
 	}
 }
@@ -75,11 +75,11 @@ func TestEnsurePrimaryIdempotent(t *testing.T) {
 func TestEnsurePrimaryTracksSiteMode(t *testing.T) {
 	r := newTestRegistry(t)
 	ctx := context.Background()
-	if err := r.EnsurePrimary(ctx, "johal.in", "blog"); err != nil {
+	if err := r.EnsurePrimary(ctx, "example.test", "blog"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	// Operator flips site.mode to business; the next boot re-seeds.
-	if err := r.EnsurePrimary(ctx, "johal.in", "business"); err != nil {
+	if err := r.EnsurePrimary(ctx, "example.test", "business"); err != nil {
 		t.Fatalf("reseed: %v", err)
 	}
 	p, _ := r.Primary(ctx)
@@ -87,7 +87,7 @@ func TestEnsurePrimaryTracksSiteMode(t *testing.T) {
 		t.Fatalf("expected site_type to track site.mode=business, got %q", p.SiteType)
 	}
 	// Empty/blank mode coerces to blog.
-	if err := r.EnsurePrimary(ctx, "johal.in", ""); err != nil {
+	if err := r.EnsurePrimary(ctx, "example.test", ""); err != nil {
 		t.Fatalf("reseed empty: %v", err)
 	}
 	p, _ = r.Primary(ctx)
@@ -124,7 +124,7 @@ func TestEnsurePrimaryMovesHostOnDomainChange(t *testing.T) {
 func TestResolveFallbackAndDisabled(t *testing.T) {
 	r := newTestRegistry(t)
 	ctx := context.Background()
-	if err := r.EnsurePrimary(ctx, "johal.in", "blog"); err != nil {
+	if err := r.EnsurePrimary(ctx, "example.test", "blog"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	sec, err := r.Create(ctx, "Second.Example", SiteBusiness, false)
@@ -169,7 +169,7 @@ func TestCreateRejectsDuplicateAndBadType(t *testing.T) {
 func TestPrimaryIsProtected(t *testing.T) {
 	r := newTestRegistry(t)
 	ctx := context.Background()
-	if err := r.EnsurePrimary(ctx, "johal.in", "blog"); err != nil {
+	if err := r.EnsurePrimary(ctx, "example.test", "blog"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	p, _ := r.Primary(ctx)
@@ -191,7 +191,7 @@ func TestPrimaryIsProtected(t *testing.T) {
 func TestManualSyncGate(t *testing.T) {
 	r := newTestRegistry(t)
 	ctx := context.Background()
-	if err := r.EnsurePrimary(ctx, "johal.in", "blog"); err != nil {
+	if err := r.EnsurePrimary(ctx, "example.test", "blog"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 

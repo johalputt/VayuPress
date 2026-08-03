@@ -25,7 +25,7 @@ func setupSEOTestDB(t *testing.T) string {
 	dir := t.TempDir()
 	os.Setenv("DB_PATH", filepath.Join(dir, "seo.db"))
 	os.Setenv("API_KEY", "test-key")
-	os.Setenv("DOMAIN", "primary.example")
+	os.Setenv("DOMAIN", "example.test")
 	os.Setenv("CACHE_DIR", dir)
 	os.Setenv("STORAGE_QUOTA_GB", "10")
 	config.Load()
@@ -60,7 +60,7 @@ func TestWriteSitemapScoped(t *testing.T) {
 	// invariant under test is unchanged — every published slug is reachable from
 	// the entry point — only the number of hops to reach it.
 	global := readSitemapAll(t, dir, "sitemap_global.xml")
-	for _, want := range []string{"primary.example/primary-one", "primary.example/primary-two", "primary.example/secondary-one"} {
+	for _, want := range []string{"example.test/primary-one", "example.test/primary-two", "example.test/secondary-one"} {
 		if !strings.Contains(global, want) {
 			t.Errorf("global sitemap missing %q\n%s", want, global)
 		}

@@ -90,11 +90,11 @@ func TestParseMessageGarbageNeverPanics(t *testing.T) {
 func TestEnvelopeAddress(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		`"Ankush" <a@b.com>`:                 "a@b.com",
-		`Ankush Choudhary <ankush@johal.in>`: "ankush@johal.in",
-		`a@b.com`:                            "a@b.com",
-		`  spaced@b.com  `:                   "spaced@b.com",
-		`<only@brackets.com>`:                "only@brackets.com",
+		`"Ankush" <a@b.com>`:                     "a@b.com",
+		`Ankush Choudhary <ankush@example.test>`: "ankush@example.test",
+		`a@b.com`:                                "a@b.com",
+		`  spaced@b.com  `:                       "spaced@b.com",
+		`<only@brackets.com>`:                    "only@brackets.com",
 	}
 	for in, want := range cases {
 		if got := envelopeAddress(in); got != want {

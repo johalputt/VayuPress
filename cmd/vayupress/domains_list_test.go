@@ -18,7 +18,7 @@ import (
 
 func listFixture() []domain.Domain {
 	return []domain.Domain{
-		{ID: "", Host: "primary.example", IsPrimary: true, Status: domain.StatusActive, TLSState: domain.TLSPrimary},
+		{ID: "", Host: "example.test", IsPrimary: true, Status: domain.StatusActive, TLSState: domain.TLSPrimary},
 		{ID: "s1", Host: "live.example", Status: domain.StatusActive, SyncState: domain.SyncApproved, TLSState: domain.TLSActive},
 		{ID: "s2", Host: "waiting.example", Status: domain.StatusActive, SyncState: domain.SyncApproved, TLSState: domain.TLSPending},
 		{ID: "s3", Host: "parked.example", Status: domain.StatusActive, SyncState: domain.SyncHold, TLSState: domain.TLSPending},
@@ -49,7 +49,7 @@ func TestTheSiteListCountsWhatAnOperatorCameToCheck(t *testing.T) {
 // always shows something amber is a page whose amber means nothing.
 func TestAHealthyInstallShowsNothingToWorryAbout(t *testing.T) {
 	head := domainsHeader([]domain.Domain{
-		{ID: "", Host: "primary.example", IsPrimary: true, Status: domain.StatusActive, TLSState: domain.TLSPrimary},
+		{ID: "", Host: "example.test", IsPrimary: true, Status: domain.StatusActive, TLSState: domain.TLSPrimary},
 		{ID: "s1", Host: "live.example", Status: domain.StatusActive, SyncState: domain.SyncApproved, TLSState: domain.TLSActive},
 	}, "")
 	if strings.Contains(head, "vm-stat--warn") {
