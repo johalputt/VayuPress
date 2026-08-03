@@ -242,21 +242,28 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 	if v, ok := certbotHostVerdict(seg, d.Host); ok {
 		out = append(out, v)
 	}
-	if strings.Contains(certbotErrorKind(seg), "CONNECTION") || len(seg) == 0 {
-		// The probe answers exactly the question a connection error raises, and
-		// nothing else can. It writes a token and reads it back, so it is only run
-		// when there is a reason to.
-		vh := vhostCheck(d.Host)
-		pr := challengeProbe(ctx, d.Host)
-		out = append(out, vh, port80ListenerCheck(), pr)
-		if st, ok := enabledVhostFor(d.Host); ok {
-			if c, have := reloadLagCheck(st.Path); have {
-				out = append(out, c)
-			}
-		}
-		if c, ok := staleConfigCheck(vh, pr); ok {
+	// FINDING: these four ran only when the PREVIOUS run's error mentioned a
+	// connection problem. The moment a new run started, its log segment held one
+	// line and no error yet — so the condition went false and the vhost check,
+	// the listener check, the challenge probe and the reload comparison all
+	// VANISHED from the page. The blocking count fell from seven to one and
+	// nothing said why.
+	//
+	// Diagnostics conditioned on a stale error disappear exactly when someone is
+	// watching a run and wants to know what it is doing. They are cheap — a
+	// directory read, /proc, one loopback request — and they are already behind
+	// the "this site has no certificate" gate. That is the only condition they
+	// ever needed.
+	vh := vhostCheck(d.Host)
+	pr := challengeProbe(ctx, d.Host)
+	out = append(out, vh, port80ListenerCheck(), pr)
+	if st, ok := enabledVhostFor(d.Host); ok {
+		if c, have := reloadLagCheck(st.Path); have {
 			out = append(out, c)
 		}
+	}
+	if c, ok := staleConfigCheck(vh, pr); ok {
+		out = append(out, c)
 	}
 
 	// 3. Would the helper's own registry read see this domain? This is the check

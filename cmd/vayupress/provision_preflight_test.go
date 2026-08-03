@@ -403,3 +403,31 @@ func TestEveryReloadPathHasASecondMechanism(t *testing.T) {
 		}
 	}
 }
+
+// FINDING, straight off a live console: the blocking count fell from seven to
+// one and four checks vanished, because they were gated on the PREVIOUS run's
+// error mentioning a connection problem.
+//
+// The moment a new run started, its log segment held one line and no error yet,
+// the condition went false, and the vhost check, the listener check, the
+// challenge probe and the reload comparison all disappeared — precisely when
+// somebody was watching a run and wanted to know what it was doing. A
+// diagnostic conditioned on a stale error is one that is absent whenever
+// something is actually happening.
+func TestTheStructuralChecksDoNotDependOnThePreviousError(t *testing.T) {
+	body := goFuncBody(readSourceFile(t, "admin_os_scoped_diagnose.go"), "diagnoseCertificate")
+	for _, call := range []string{"vhostCheck(d.Host)", "challengeProbe(ctx, d.Host)",
+		"port80ListenerCheck()", "reloadLagCheck("} {
+		i := strings.Index(body, call)
+		if i < 0 {
+			t.Fatalf("%s is no longer called at all", call)
+		}
+		// Nothing between the log-segment read and the call may branch on the
+		// previous error: that is what made them vanish mid-run.
+		seg := body[strings.Index(body, "seg := hostLogSegment"):i]
+		if strings.Contains(seg, "certbotErrorKind(seg)") && strings.Contains(seg, "if ") {
+			t.Errorf("%s is still gated on the previous run's error text, so it disappears the "+
+				"moment a new run starts", call)
+		}
+	}
+}

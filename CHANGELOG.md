@@ -6,6 +6,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.67] — 2026-08-03
+
+**Four checks vanished from the page the moment a run started — and the blocking
+count fell from seven to one with nothing saying why.**
+
+### Fixed
+- **The structural checks were gated on the PREVIOUS run's error.** The vhost
+  check, the port-80 listener check, the challenge probe and the reload
+  comparison only ran when the last recorded error mentioned a connection
+  problem. Start a new run and its log segment holds one line and no error yet —
+  the condition goes false and all four disappear.
+
+  So the page emptied out exactly when somebody was watching a run and wanted to
+  know what it was doing, and a falling blocking count read as progress rather
+  than as missing evidence. A diagnostic conditioned on a stale error is one that
+  is absent whenever something is actually happening.
+
+  They now run whenever the site has no certificate, which is the only condition
+  they ever needed. All four are cheap — a directory read, `/proc`, one loopback
+  request — and were already behind that gate.
+
+### Audit
+One mutation: re-gating the checks on the previous error. Caught.
+
+Worth recording plainly, because it is the honest read of the same screenshot:
+the rows that disappeared did so because the machine is no longer in the failed
+state that produced them. `nginx has NOT reloaded`, `the certificate authority
+refused`, `the root-side half needs reinstalling` — all gone, and the log for
+this host is a single in-progress line. The remaining blocking row is the `AAAA`
+record, which is a genuine risk and a different problem from the one that has
+occupied today.
+
 ## [3.16.66] — 2026-08-03
 
 **Every repair this product offered ended in the one command that was failing.**
