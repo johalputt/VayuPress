@@ -121,6 +121,40 @@ nginx_baseline_ok() {
 
 ENV_FILE=/etc/vayupress/env
 env_get() { # $1=KEY — read a value from /etc/vayupress/env if present
+
+# load_vayupress_env exports the service's configuration into this process.
+#
+# THIS IS WHY NOTHING WAS PROVISIONED. The systemd worker carried no
+# EnvironmentFile, and this script never loaded one, so every `vayupress …` call
+# it made ran with a bare environment and died immediately:
+#
+#     {"level":"fatal","component":"config","msg":"required env not set","key":"API_KEY"}
+#
+# vp() discarded stderr and nobody checked the exit status, so that fatal became
+# an empty host list and the run logged "No sync-approved secondary domains —
+# nothing to do". A configuration error read as a clean no-op, daily, for a week.
+#
+# Parsed rather than sourced: this file is a systemd EnvironmentFile (KEY=VALUE),
+# not a shell script, and sourcing it would execute whatever a stray backtick or
+# $(...) happened to be in a value. Exported into the environment rather than
+# passed on a command line, because API_KEY is a secret and `env KEY=… cmd` puts
+# it in /proc/<pid>/cmdline for every user on the box to read.
+load_vayupress_env() {
+  local f="${ENV_FILE:-/etc/vayupress/env}" line key val
+  [[ -r "$f" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#"${line%%[![:space:]]*}"}"          # ltrim
+    [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
+    line="${line#export }"
+    key="${line%%=*}"; val="${line#*=}"
+    [[ "$key" == "$line" ]] && continue              # no "=" on the line
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    val="${val%\"}"; val="${val#\"}"                 # strip one layer of quotes
+    val="${val%\'}"; val="${val#\'}"
+    export "$key=$val"
+  done < "$f"
+}
+load_vayupress_env
   # Deliberately tolerant of how the file is actually written. The original
   # matched only a line beginning exactly "KEY=", which silently returned empty
   # for `export KEY=`, for a leading space, and returned the quotes themselves

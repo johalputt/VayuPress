@@ -6,6 +6,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.42] — 2026-08-03
+
+The root cause, found by the diagnostic v3.16.41 added. Shipped immediately: it
+is broken in the field right now.
+
+### Fixed
+- **The provisioning worker ran with no configuration, so every CLI call inside
+  it died.** Running the helper's own command by hand produced it in one line:
+
+  ```
+  $ sudo -u www-data /usr/local/bin/vayupress domains list
+  {"level":"fatal","component":"config","msg":"required env not set","key":"API_KEY"}
+  ```
+
+  The systemd unit carried **no `EnvironmentFile`**, and the helpers loaded none
+  either, so the root worker started with a bare environment. Every
+  `vayupress domains …` call it made exited fatal before doing anything.
+
+  Two defects in series, each survivable alone. The environment was missing, and
+  the call that used it discarded stderr and ignored the exit status — so the
+  fatal became an empty host list and the run logged *"No sync-approved secondary
+  domains — nothing to do."* A configuration error reported as a clean no-op,
+  every day, for a week, while the operator's console showed the domain approved
+  and its certificate never appeared.
+
+  The unit now carries `EnvironmentFile=-/etc/vayupress/env`, and **both helpers
+  that call the CLI load it themselves as well** — a unit-only fix reaches nobody
+  who already has the bug, because an existing install keeps its old unit until
+  someone re-runs the installer, and the daily timer is already firing the old
+  one.
+
+  The env file is **parsed, not sourced**: it is a systemd `EnvironmentFile`
+  (`KEY=VALUE`), and sourcing it would execute any `$(…)` that happened to be in
+  a value. It is exported into the process rather than passed on a command line,
+  because `API_KEY` is a secret and `env KEY=… cmd` puts it in
+  `/proc/<pid>/cmdline` for every user on the box.
+
 ## [3.16.41] — 2026-08-03
 
 Diagnosed from an operator's log, which printed the same reassuring line five

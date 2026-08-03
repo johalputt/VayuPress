@@ -89,6 +89,16 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+# The service's own configuration, so the helpers can call the VayuPress CLI.
+#
+# Its absence is what stopped provisioning entirely on at least one install: the
+# worker ran with a bare environment, every `vayupress domains …` call inside it
+# died on `required env not set: API_KEY`, and the helper — which discarded
+# stderr and never checked the exit status — logged "No sync-approved secondary
+# domains, nothing to do". A fatal configuration error read as a clean no-op,
+# every day, for a week. The leading "-" keeps a box with no env file starting
+# rather than failing, which is the historic behaviour.
+EnvironmentFile=-/etc/vayupress/env
 # Root because certbot and `nginx -s reload` require it. A fixed, root-owned
 # path with no arguments — nothing the requesting service supplies reaches here.
 ExecStart=/usr/local/lib/vayupress/provision-subdomains.sh

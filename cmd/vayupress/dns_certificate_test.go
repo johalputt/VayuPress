@@ -235,3 +235,64 @@ func TestTheDriverRecognisesEveryNoOpPhraseTheHelpersActuallyPrint(t *testing.T)
 		}
 	}
 }
+
+// The provisioning worker must carry the service's configuration.
+//
+// It did not, and that is the whole reason an install provisioned nothing for a
+// week. The systemd unit had no EnvironmentFile, and the helpers loaded none, so
+// every `vayupress domains …` call inside the root worker ran with a bare
+// environment and died:
+//
+//	{"level":"fatal","component":"config","msg":"required env not set","key":"API_KEY"}
+//
+// Combined with a call that discarded stderr and ignored the exit status, that
+// fatal became an empty host list and the run reported "nothing to do". Two
+// defects in series, each survivable alone.
+func TestTheProvisioningWorkerCarriesTheServiceConfiguration(t *testing.T) {
+	inst, err := os.ReadFile(filepath.Clean("../../scripts/install-provisioning.sh"))
+	if err != nil {
+		t.Skipf("installer not readable from here: %v", err)
+	}
+	if !strings.Contains(string(inst), "EnvironmentFile=-/etc/vayupress/env") {
+		t.Error("the provisioning unit does not load the service's environment, so every CLI " +
+			"call it makes dies on a missing API_KEY and the run reports nothing to do")
+	}
+
+	// The helpers must ALSO load it. An existing install keeps its old unit file
+	// until someone re-runs the installer, and the daily timer is already firing
+	// the old one — so a unit-only fix reaches nobody who already has the bug.
+	for _, h := range []string{"setup-vayudomain.sh", "setup-openpgpkey-subdomain.sh"} {
+		b, err := os.ReadFile(filepath.Clean("../../scripts/" + h))
+		if err != nil {
+			continue
+		}
+		src := string(b)
+		// The CALL, on its own line — not merely the substring. The first
+		// version of this check matched the definition, so renaming the
+		// function to load_vayupress_env_unused passed while the env was never
+		// loaded. A test that a mutation survives is not a test.
+		called := false
+		for _, line := range strings.Split(src, "\n") {
+			if strings.TrimSpace(line) == "load_vayupress_env" {
+				called = true
+				break
+			}
+		}
+		if !called {
+			t.Errorf("%s defines or mentions the env loader but never CALLS it, so it "+
+				"depends on a unit file that an already-broken install will not have", h)
+		}
+		// Parsed, not sourced: the file is a systemd EnvironmentFile, and
+		// sourcing it would execute whatever $(...) happened to be in a value.
+		if strings.Contains(src, "source /etc/vayupress/env") ||
+			strings.Contains(src, ". /etc/vayupress/env") {
+			t.Errorf("%s SOURCES the env file, which executes any command substitution in a "+
+				"value; it must be parsed", h)
+		}
+		// And the secret must not reach a command line, where /proc exposes it.
+		if strings.Contains(src, "env API_KEY=") || strings.Contains(src, "--api-key=") {
+			t.Errorf("%s puts API_KEY on a command line, where every user on the box can read "+
+				"it from /proc/<pid>/cmdline", h)
+		}
+	}
+}
