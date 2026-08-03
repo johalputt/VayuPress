@@ -6,6 +6,61 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.58] — 2026-08-03
+
+**The console contradicted itself on screen, and the connector could not see the
+one page anybody needed.**
+
+### Fixed
+- **"an enabled config names this host" sat directly above "nothing answered".**
+  Both rows were on screen at once and they cannot both be true. The gap was the
+  **port**: the check asked only whether some enabled config NAMED the host, and
+  a config can name a host and listen only on **443** — which is exactly what the
+  provisioning helper writes once a certificate exists, and what it leaves behind
+  if one is later removed. HTTP-01 arrives on port 80, finds no block for that
+  name there, falls through to the default server, and that closes the connection
+  with no response. The name was present; the thing that mattered was not.
+
+  The check now parses nginx's own config per **server block** and reports which
+  of four states this host is in: no block at all, a block that does not listen
+  on 80, a port-80 block with no `/.well-known/acme-challenge/` location (so the
+  catch-all redirect answers the challenge — a redirect is not a token, and the
+  site looks perfectly healthy in a browser), or correct.
+
+  Ports are parsed, not substring-matched: `listen 8080` contains `80` and
+  `listen 443 ssl` must never count. Blocks are split properly, because one file
+  routinely holds an HTTP block and an HTTPS block and asking "does this FILE
+  mention port 80" credits one hostname with another's listener.
+
+- **"which is what nginx does for a Host it has no server block for"** was
+  removed from the probe's message. It asserted a cause the check beside it had
+  already disproved.
+
+### Added
+- **VayuMCP can now diagnose and provision certificates**: `diagnose_certificate`
+  returns the same checks the site console shows, plus that host's own section of
+  the provisioning log; `provision_certificates` requests a run.
+
+  This is a product finding rather than a feature request. Diagnosing one stuck
+  certificate ran for a dozen rounds of screenshots. Every fact needed was inside
+  the process the whole time, and the connector — which exists precisely so an
+  assistant can inspect an install — could read posts and settings but not the
+  one page the operator was stuck on. So the answer kept being inferred from an
+  image instead of read from the server, and two of those inferences were wrong.
+
+  The read and the action are deliberately **separate scopes**. Reading a
+  diagnosis is a read; asking a server to run certbot is not, because failed
+  validations are rate-limited per hostname and an unmetered trigger is a way to
+  burn somebody's issuance budget.
+
+### Audit
+Six mutations over the new surface, all caught — including exposing
+`provision_certificates` under the read scope, and dropping the stale-request
+delete that re-arms the systemd watcher. One earlier fixture defect was found and
+fixed on the way: a test config written as a bare `server_name` directive rather
+than a real `server { … }` block, which the new block-aware parser correctly
+refused to see.
+
 ## [3.16.57] — 2026-08-03
 
 **The console now reads the one directory that settles it, and the helper stops

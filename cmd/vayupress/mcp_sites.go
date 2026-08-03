@@ -18,6 +18,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/apikeys"
@@ -392,3 +394,102 @@ func hasIndexHTML(files map[string]string) bool {
 	}
 	return false
 }
+
+// registerCertificateTools exposes the certificate diagnosis and the
+// provisioning request through VayuMCP.
+//
+// WHY THESE EXIST, stated plainly because it is a product finding rather than a
+// feature request: diagnosing one stuck certificate ran for a dozen rounds of
+// screenshots. Every fact needed was inside the process the whole time, and the
+// connector — which exists precisely so an assistant can inspect an install —
+// could read posts and settings but not the one page the operator was stuck on.
+// So the answer kept being inferred from an image instead of read from the
+// server, and two of those inferences were wrong.
+//
+// Read-only diagnosis is separated from the action. Asking a server to run
+// certbot is not a read: failed validations are rate-limited per hostname, so an
+// unmetered trigger is a way to burn somebody's issuance budget. It carries the
+// domain-write scope for that reason.
+func (a *App) registerCertificateTools(srv *mcp.Server) {
+	srv.Register(mcp.Tool{
+		Name: "diagnose_certificate",
+		Description: "Explain why a hosted domain has no TLS certificate: what the certificate " +
+			"authority actually said, whether nginx routes this host's ACME challenge on port 80, " +
+			"whether this server answers its own challenge, and what the last provisioning run did. " +
+			"Returns the same checks the site console shows.",
+		InputSchema: objSchema([]string{"host"}, map[string]any{
+			"host": map[string]any{"type": "string", "description": "a host from list_sites"},
+		}),
+		Visible: a.mcpVisible(apikeys.SectionDomains, apikeys.ActionRead),
+		Handler: func(ctx context.Context, raw json.RawMessage) (string, error) {
+			var in struct {
+				Host string `json:"host"`
+			}
+			if err := json.Unmarshal(raw, &in); err != nil {
+				return "", err
+			}
+			d, err := a.mcpSiteByHost(ctx, in.Host)
+			if err != nil {
+				return "", err
+			}
+			logLines := provisionLogTail(provisionLogLines)
+			checks := a.diagnoseCertificate(ctx, d, logLines)
+			rows := make([]map[string]any, 0, len(checks))
+			blocking := 0
+			for _, c := range checks {
+				if !c.OK && c.Fatal {
+					blocking++
+				}
+				rows = append(rows, map[string]any{
+					"check": c.Label, "ok": c.OK, "blocking": c.Fatal, "detail": c.Detail,
+				})
+			}
+			return jsonStr(map[string]any{
+				"host":        d.Host,
+				"certificate": d.TLSState,
+				"blocking":    blocking,
+				"checks":      rows,
+				// The worker's own words for this host, so nothing is summarised at
+				// the reader — the same segment the console prints.
+				"provisioning_log": hostLogSegment(logLines, d.Host),
+			}), nil
+		},
+	})
+
+	srv.Register(mcp.Tool{
+		Name: "provision_certificates",
+		Description: "Ask this server's privileged helper to obtain certificates and write vhosts " +
+			"for every hosted domain whose DNS is pointed here. Runs in the background; call " +
+			"diagnose_certificate afterwards to see what happened.",
+		InputSchema: objSchema(nil, map[string]any{}),
+		Visible:     a.mcpVisible(apikeys.SectionDomains, apikeys.ActionWrite),
+		Handler: func(_ context.Context, _ json.RawMessage) (string, error) {
+			if !provisionUnitsInstalled() {
+				return "", errProvisionUnavailable
+			}
+			path := filepath.Join(provisionStateDir(), provisionRequestFile)
+			// Same delete-then-write as the console button, for the same systemd
+			// reason: the watcher is a .path unit with PathExists=, which fires when
+			// the file APPEARS. Rewriting a request that was never consumed produces
+			// no trigger at all.
+			rearmed := false
+			if _, err := os.Stat(path); err == nil {
+				rearmed = os.Remove(path) == nil
+			}
+			if err := os.WriteFile(path, nil, 0o644); err != nil { //nolint:gosec // an empty flag a root unit watches for
+				return "", err
+			}
+			return jsonStr(map[string]any{
+				"status": "requested", "rearmed": rearmed,
+				"note": "the request carries no arguments and its contents are never read, so this " +
+					"tool can ask for provisioning and cannot influence what the privileged step does",
+			}), nil
+		},
+	})
+}
+
+var errProvisionUnavailable = mcpError("one-click provisioning is not installed on this server")
+
+type mcpError string
+
+func (e mcpError) Error() string { return string(e) }

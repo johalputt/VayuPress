@@ -413,3 +413,51 @@ func TestBothAssistantWriteToolsCallTheWritabilityGuard(t *testing.T) {
 			"because of it")
 	}
 }
+
+// FINDING, and it is a product one rather than a code one: diagnosing a single
+// stuck certificate ran for a dozen rounds of screenshots.
+//
+// Every fact needed was inside the process the whole time, and VayuMCP — which
+// exists precisely so an assistant can inspect an install — could read posts and
+// settings but not the one page the operator was stuck on. So the answer kept
+// being inferred from an image rather than read from the server, and two of
+// those inferences were wrong.
+func TestTheConnectorCanDiagnoseAndProvisionCertificates(t *testing.T) {
+	src := readSourceFile(t, "mcp_sites.go")
+	body := goFuncBody(src, "registerCertificateTools")
+	for _, want := range []string{"diagnose_certificate", "provision_certificates"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the connector exposes no %q tool, so an assistant asked to check an "+
+				"install still has to be sent a screenshot", want)
+		}
+	}
+	// Registered, or the tools exist and nothing serves them.
+	if !strings.Contains(goFuncBody(readSourceFile(t, "mcp_server.go"), "registerAllTools"),
+		"registerCertificateTools") {
+		if !strings.Contains(readSourceFile(t, "mcp_server.go"), "registerCertificateTools(srv)") {
+			t.Fatal("the certificate tools are never registered on the MCP server")
+		}
+	}
+
+	// Reading a diagnosis is a read. ASKING A SERVER TO RUN CERTBOT IS NOT:
+	// failed validations are rate-limited per hostname, so an unmetered trigger
+	// is a way to burn somebody's issuance budget. The two must not share a scope.
+	di := strings.Index(body, "diagnose_certificate")
+	pi := strings.Index(body, "provision_certificates")
+	if di < 0 || pi < 0 || pi < di {
+		t.Fatal("cannot locate both tools in declaration order")
+	}
+	if !strings.Contains(body[di:pi], "apikeys.ActionRead") {
+		t.Error("the diagnosis is not scoped as a read")
+	}
+	if !strings.Contains(body[pi:], "apikeys.ActionWrite") {
+		t.Fatal("provisioning is exposed under a READ scope — a token issued to let an assistant " +
+			"look at this install could make it run certbot on demand and spend its rate limit")
+	}
+	// And it must re-arm the watcher the same way the button does, or the tool is
+	// a control that reports success and causes nothing.
+	if !strings.Contains(body[pi:], "os.Remove(path)") {
+		t.Error("the tool does not clear a stale request first, so a watcher stuck on an " +
+			"unconsumed flag can never be re-armed through the connector")
+	}
+}

@@ -1142,9 +1142,14 @@ func TestAnUnreadableNginxDirClaimsNothing(t *testing.T) {
 // finding — stated as blocking, with the consequence named.
 func TestAMissingVhostIsReportedAsTheCause(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "other"), []byte("server_name other.example;"), 0o600); err != nil {
-		t.Fatal(err)
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
+	write("other", "server {\n listen 80;\n server_name other.example;\n"+
+		" location ^~ /.well-known/acme-challenge/ { root /var/cache/vayupress; }\n}\n")
 	saved := nginxSitesEnabled
 	t.Cleanup(func() { nginxSitesEnabled = saved })
 	nginxSitesEnabled = dir
@@ -1156,8 +1161,108 @@ func TestAMissingVhostIsReportedAsTheCause(t *testing.T) {
 	if !strings.Contains(c.Detail, "default") {
 		t.Error("the finding does not explain that the default server answers instead")
 	}
-	// And a host that IS present must come back clean, or the check is just noise.
+	// And a host that IS fully configured must come back clean, or the check is
+	// just noise.
 	if ok := vhostCheck("other.example"); !ok.OK {
-		t.Errorf("a host with an enabled server block was flagged: %s", ok.Detail)
+		t.Errorf("a correctly configured host was flagged: %s", ok.Detail)
+	}
+}
+
+// FINDING — the console printed "an enabled config names this host, so a request
+// carrying it reaches this site" in a row DIRECTLY ABOVE a probe reporting that
+// nothing answered. Both were on screen at once and they cannot both be true.
+//
+// The gap was the PORT. A config can name a host and listen only on 443 — which
+// is exactly what this helper writes once a certificate exists, and what it
+// leaves behind if one is later removed. HTTP-01 arrives on port 80, finds no
+// block for that name there, and falls through to the default server, which
+// closes the connection. The name was present; the thing that mattered was not.
+func TestAHostServedOnlyOn443IsNotCalledRouted(t *testing.T) {
+	dir := t.TempDir()
+	saved := nginxSitesEnabled
+	t.Cleanup(func() { nginxSitesEnabled = saved })
+	nginxSitesEnabled = dir
+
+	// Names the host, listens only on 443.
+	if err := os.WriteFile(filepath.Join(dir, "https-only"),
+		[]byte("server {\n listen 443 ssl http2;\n listen [::]:443 ssl http2;\n"+
+			" server_name client.example www.client.example;\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := vhostCheck("client.example")
+	if c.OK || !c.Fatal {
+		t.Fatalf("a host whose only server block listens on 443 was reported as routed: %q — %s. "+
+			"That is the row that contradicted the probe directly beneath it", c.Label, c.Detail)
+	}
+	if !strings.Contains(c.Detail, "port 80") {
+		t.Error("the finding does not name the port, which is the entire difference")
+	}
+}
+
+// A port-80 block that redirects everything to https answers the challenge with
+// a 301. A redirect is not a token: validation fails while the site looks
+// entirely healthy in a browser, which is the hardest version of this to spot.
+func TestAPort80BlockWithoutTheChallengeLocationIsReported(t *testing.T) {
+	dir := t.TempDir()
+	saved := nginxSitesEnabled
+	t.Cleanup(func() { nginxSitesEnabled = saved })
+	nginxSitesEnabled = dir
+
+	if err := os.WriteFile(filepath.Join(dir, "redirect-only"),
+		[]byte("server {\n listen 80;\n server_name client.example;\n"+
+			" location / { return 301 https://$host$request_uri; }\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := vhostCheck("client.example")
+	if c.OK || !c.Fatal {
+		t.Fatalf("a port-80 block that only redirects was reported as serving the challenge: %s", c.Detail)
+	}
+	if !strings.Contains(c.Detail, "acme-challenge") {
+		t.Error("the finding does not name the missing location")
+	}
+}
+
+// The port is parsed, not substring-matched. "listen 8080" contains "80", and
+// "listen 443 ssl" must never count — either mistake turns this check into the
+// confident wrong answer it was written to replace.
+func TestPort80IsParsedNotSubstringMatched(t *testing.T) {
+	for _, tc := range []struct {
+		block string
+		want  bool
+	}{
+		{"listen 80;", true},
+		{"listen [::]:80;", true},
+		{"listen 0.0.0.0:80 default_server;", true},
+		{"listen 80 default_server;", true},
+		{"listen 8080;", false},
+		{"listen 443 ssl http2;", false},
+		{"listen [::]:443 ssl;", false},
+		{"server_name eighty.example;", false},
+	} {
+		if got := listensOnPort80(tc.block); got != tc.want {
+			t.Errorf("listensOnPort80(%q) = %v, want %v", tc.block, got, tc.want)
+		}
+	}
+}
+
+// One file routinely holds two blocks: an HTTP one carrying the challenge and an
+// HTTPS one that does not. Asking "does this FILE mention port 80" answers yes
+// for a file whose only port-80 block belongs to a DIFFERENT hostname.
+func TestServerBlocksAreSplitSoOneHostsPortsAreNotAnothers(t *testing.T) {
+	cfg := "server {\n listen 80;\n server_name a.example;\n}\n" +
+		"server {\n listen 443 ssl;\n server_name b.example;\n}\n"
+	blocks := serverBlocks(cfg)
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 server blocks, got %d: %q", len(blocks), blocks)
+	}
+	for _, b := range blocks {
+		if serverNameClaims(b, "b.example") && listensOnPort80(b) {
+			t.Fatal("b.example was credited with a.example's port-80 listener — the two blocks " +
+				"were not separated, so one host's config vouches for another's")
+		}
+	}
+	// server_name and server_tokens must not be mistaken for a block opener.
+	if got := serverBlocks("server_tokens off;\nserver_name x;\n"); len(got) != 0 {
+		t.Errorf("a directive starting with \"server\" was parsed as a block: %q", got)
 	}
 }

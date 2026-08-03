@@ -881,31 +881,121 @@ func certbotErrorKind(seg []string) string {
 // read it — which is the whole reason these checks can exist at all.
 var nginxSitesEnabled = "/etc/nginx/sites-enabled"
 
-// enabledVhostFor reports whether an ENABLED nginx server block claims this host.
+// serverBlocks splits an nginx config into its top-level `server { … }` bodies.
 //
-// This is the check that ends the guessing. A host with no enabled vhost falls
-// through to the default server, and this install's default server answers an
-// unrecognised Host by closing the connection without a response — which is
-// exactly `Type: connection` to the certificate authority and a bare EOF to the
-// probe. Same cause, two unrecognisable symptoms, and nothing was reading the
-// one directory that settles it.
-func enabledVhostFor(host string) (file string, found bool, readable bool) {
+// Block-level, not file-level, because one file routinely holds two: an HTTP
+// block that carries the ACME challenge and an HTTPS block that does not. Asking
+// "does this FILE mention port 80" answers yes for a file whose only port-80
+// block belongs to a different hostname — a check meant to end the guessing
+// starting a fresh round of it.
+func serverBlocks(cfg string) []string {
+	var out []string
+	for i := 0; i < len(cfg); {
+		j := strings.Index(cfg[i:], "server")
+		if j < 0 {
+			break
+		}
+		j += i
+		k := strings.IndexByte(cfg[j:], '{')
+		if k < 0 {
+			break
+		}
+		k += j
+		// Only a bare `server` directive opens a block; `server_name` and
+		// `server_tokens` must not be mistaken for one.
+		if strings.TrimSpace(cfg[j+len("server"):k]) != "" {
+			i = j + len("server")
+			continue
+		}
+		depth, end := 0, -1
+		for q := k; q < len(cfg) && end < 0; q++ {
+			switch cfg[q] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+				if depth == 0 {
+					end = q
+				}
+			}
+		}
+		if end < 0 {
+			break
+		}
+		out = append(out, cfg[k+1:end])
+		i = end + 1
+	}
+	return out
+}
+
+// listensOnPort80 reports whether a server block is reachable over plain HTTP.
+//
+// The port is PARSED, not substring-matched: "listen 8080" contains "80", and
+// "listen 443 ssl" must never count. The IPv6 form ("listen [::]:80") carries
+// the port after the last colon.
+func listensOnPort80(block string) bool {
+	for _, line := range strings.Split(block, "\n") {
+		t := strings.TrimSpace(line)
+		if !strings.HasPrefix(t, "listen") {
+			continue
+		}
+		rest := strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(t, "listen")), ";")
+		fields := strings.Fields(rest)
+		if len(fields) == 0 {
+			continue
+		}
+		spec := strings.TrimSuffix(fields[0], ";")
+		if i := strings.LastIndex(spec, ":"); i >= 0 {
+			spec = spec[i+1:]
+		}
+		if spec == "80" {
+			return true
+		}
+	}
+	return false
+}
+
+// vhostState is what the enabled configs actually provide for one host.
+type vhostState struct {
+	File            string
+	Found           bool
+	OnPort80        bool
+	ServesChallenge bool
+}
+
+// enabledVhostFor finds the enabled server blocks claiming this host and reports
+// what they can actually do for an HTTP-01 challenge.
+func enabledVhostFor(host string) (st vhostState, readable bool) {
 	entries, err := os.ReadDir(nginxSitesEnabled)
 	if err != nil {
-		return "", false, false
+		return st, false
 	}
 	want := strings.ToLower(strings.TrimSpace(host))
 	for _, e := range entries {
-		p := filepath.Join(nginxSitesEnabled, e.Name())
-		b, err := os.ReadFile(filepath.Clean(p)) //nolint:gosec // a fixed, world-readable config dir
+		b, err := os.ReadFile(filepath.Clean(filepath.Join(nginxSitesEnabled, e.Name()))) //nolint:gosec // a fixed, world-readable config dir
 		if err != nil {
 			continue
 		}
-		if serverNameClaims(string(b), want) {
-			return e.Name(), true, true
+		for _, blk := range serverBlocks(string(b)) {
+			if !serverNameClaims(blk, want) {
+				continue
+			}
+			// Any block naming this host counts as found; the port-80 and
+			// challenge facts are ORed across them, because two blocks in one
+			// file legitimately split the work between :80 and :443.
+			st.Found = true
+			if st.File == "" {
+				st.File = e.Name()
+			}
+			if listensOnPort80(blk) {
+				st.OnPort80 = true
+				if strings.Contains(blk, "acme-challenge") {
+					st.ServesChallenge = true
+				}
+			}
 		}
 	}
-	return "", false, true
+	return st, true
 }
 
 // serverNameClaims reports whether a config's server_name directives list this
@@ -931,23 +1021,30 @@ func serverNameClaims(cfg, host string) bool {
 	return false
 }
 
-// vhostCheck reports whether nginx will route this host anywhere at all.
+// vhostCheck reports whether nginx will route this host's CHALLENGE anywhere.
+//
+// FINDING, and the console produced it against itself: the first version checked
+// only whether some enabled config NAMED the host, and printed "an enabled
+// config names this host, so a request carrying it reaches this site" in a row
+// directly above a probe reporting that nothing answered. Both were on screen at
+// once and they cannot both be true.
+//
+// The gap was the PORT. A config can name a host and listen only on 443 — which
+// is exactly what this helper writes once a certificate exists, and what it
+// leaves behind if one is later removed. HTTP-01 arrives on port 80, finds no
+// block for that name there, and falls through to the default server, which
+// closes the connection. The name check said "present"; the thing that mattered
+// was absent.
 func vhostCheck(host string) diagCheck {
-	file, found, readable := enabledVhostFor(host)
+	st, readable := enabledVhostFor(host)
 	switch {
 	case !readable:
 		return diagCheck{
-			Label: "nginx has a server block for " + host, OK: true,
+			Label: "nginx routes this host on port 80", OK: true,
 			Detail: nginxSitesEnabled + " could not be read from this process, so nothing is " +
 				"claimed either way about which server block answers for this host",
 		}
-	case found:
-		return diagCheck{
-			Label: "nginx has a server block for " + host, OK: true,
-			Detail: "an enabled config (" + file + ") names this host, so a request carrying it " +
-				"reaches this site rather than the default server",
-		}
-	default:
+	case !st.Found:
 		return diagCheck{
 			Label: "nginx has NO server block for " + host, OK: false, Fatal: true,
 			Detail: "no enabled config under " + nginxSitesEnabled + " names this host, so every " +
@@ -956,6 +1053,29 @@ func vhostCheck(host string) diagCheck {
 				"That is precisely what the authority reports as a connection error and what the " +
 				"loopback probe sees as an EOF. Press Provision now: the root-side helper writes " +
 				"this site's vhost before it asks for a certificate.",
+		}
+	case !st.OnPort80:
+		return diagCheck{
+			Label: "This host's server block does NOT listen on port 80", OK: false, Fatal: true,
+			Detail: st.File + " names " + host + " but no block for it listens on port 80 — only " +
+				"443. The challenge arrives over plain HTTP on port 80, finds no block for this " +
+				"name there, and falls through to the default server, which closes the connection " +
+				"without a response. That is the EOF below and the authority's connection error, " +
+				"from a config that looks present because the NAME is there and the PORT is not.",
+		}
+	case !st.ServesChallenge:
+		return diagCheck{
+			Label: "This host's port-80 block does not serve the challenge", OK: false, Fatal: true,
+			Detail: st.File + " listens on port 80 for " + host + " but has no " +
+				"/.well-known/acme-challenge/ location, so the catch-all redirect to https answers " +
+				"the challenge instead. A redirect is not a token, and validation fails with the " +
+				"site looking entirely healthy in a browser.",
+		}
+	default:
+		return diagCheck{
+			Label: "nginx routes this host's challenge on port 80", OK: true,
+			Detail: "an enabled config (" + st.File + ") names this host, listens on port 80 and " +
+				"serves /.well-known/acme-challenge/ from the webroot",
 		}
 	}
 }
@@ -977,6 +1097,6 @@ func port80Kind() string {
 	}
 	_ = c.Close()
 	return "something IS listening on port 80 and accepted the connection before closing it " +
-		"without a response — which is what nginx does for a Host it has no server block for. " +
-		"This is not a stopped service"
+		"without a response. That is not a stopped service — it is a server block declining to " +
+		"answer, and the server-block check above says which one"
 }
