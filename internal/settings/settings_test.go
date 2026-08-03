@@ -5,6 +5,8 @@ package settings
 import (
 	"context"
 	"database/sql"
+	"os"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -16,10 +18,14 @@ func newTestStore(t *testing.T) *Store {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
+	// Pin the pool to ONE connection. ":memory:" gives every connection its own
+	// database, so a second concurrent query silently sees an EMPTY schema — a
+	// test can then pass against code that reads the wrong thing, because the
+	// wrong thing returned nothing. This was found by a mutation that should have
+	// failed and did not.
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
-	if _, err := db.Exec(`CREATE TABLE site_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '', updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`); err != nil {
-		t.Fatalf("schema: %v", err)
-	}
+	applyShippedSchema(t, db)
 	return New(db)
 }
 
@@ -121,5 +127,36 @@ func TestFeatureEnabledDefaultsOn(t *testing.T) {
 	}
 	if !s.FeatureEnabled(ctx, ForPrimary(), KeyFeatureComments) {
 		t.Error("comments should be re-enabled after setting on")
+	}
+}
+
+// applyShippedSchema builds the settings table from the SHIPPED migrations
+// rather than a hand-written CREATE TABLE.
+//
+// The harness used to restate the schema in Go, and a restated schema drifts:
+// it would have kept the pre-082 single-key primary key while the store queried
+// by scope, so every per-domain test would have exercised a table the product
+// does not have. Reading migration 082 means a test cannot pass against a
+// schema nobody ships.
+func applyShippedSchema(t *testing.T, db *sql.DB) {
+	t.Helper()
+	// 010 creates the original table; 082 rebuilds it with the scope in the key.
+	for _, f := range []string{
+		"../db/migrations/010-site-settings.up.sql",
+		"../db/migrations/082-settings-scope.up.sql",
+	} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "--") {
+				continue
+			}
+			if _, err := db.Exec(line); err != nil {
+				t.Fatalf("%s: %v (%s)", f, err, line)
+			}
+		}
 	}
 }

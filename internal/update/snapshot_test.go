@@ -24,7 +24,7 @@ func newTestDB(t *testing.T, path string) *sql.DB {
 	stmts := []string{
 		`CREATE TABLE schema_migrations(version TEXT PRIMARY KEY, checksum TEXT)`,
 		`CREATE TABLE articles(id TEXT PRIMARY KEY, title TEXT, slug TEXT, content TEXT)`,
-		`CREATE TABLE site_settings(key TEXT PRIMARY KEY, value TEXT, updated_at DATETIME)`,
+		`CREATE TABLE site_settings(scope TEXT NOT NULL DEFAULT '', key TEXT NOT NULL, value TEXT, updated_at DATETIME, PRIMARY KEY(scope,key))`,
 		`INSERT INTO schema_migrations(version,checksum) VALUES('001','abc')`,
 		`INSERT INTO articles(id,title,slug,content) VALUES('1','Hello','hello','hi')`,
 		`INSERT INTO site_settings(key,value) VALUES('site.name','My Site')`,

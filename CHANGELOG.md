@@ -63,6 +63,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `ForDomain` is deliberately unreachable until Phase 3 wires the per-domain
   routes, and is allowlisted with that reason rather than quietly baselined.
 
+- **Phase 2 — settings are stored per scope** (ADR-0153 D4). Migration 082
+  rebuilds `site_settings` with a `(scope, key)` primary key. Existing rows
+  backfill to `scope=''` — the primary — because that is exactly what they are:
+  everything written before this was written by the operator for the one site
+  the install served. `''` is the same sentinel already used by
+  `articles.domain_id`, `members.domain_id` and `analytics_daily.domain_id`, so
+  a single-domain install reads byte-identical before and after.
+
+  **A hosted domain's settings are now its own.** Two domains hold different
+  values for the same key, writing one leaves the others untouched, and a key
+  with no row for a scope resolves to the **compiled-in product default, never
+  to the primary's stored value** — the fallback direction the operator chose,
+  and the difference between a hosted domain being a site and being a skin.
+  There is deliberately no view, no `COALESCE` onto the primary and no foreign
+  key that would make inheritance easy to reintroduce by accident.
+
+  The down migration drops only the index and leaves the table alone, stated in
+  the file: reversing the rebuild would mean collapsing `(scope,key)` back to
+  `(key)`, whose only honest options are to discard every client's configuration
+  or to overwrite the operator's with whichever domain sorts last.
+
+### Security
+- **Two mutations passed against re-broken code and exposed a test harness that
+  could certify almost anything.** Changing the migration's backfill target from
+  the primary to a scope nothing reads, and adding primary-inheritance to the
+  read path, both left the suite green.
+
+  The first was a genuine missing test: nothing exercised the migration with
+  rows in the table, and that single `INSERT … SELECT` is what every existing
+  install depends on — if it drops or mis-files rows, the install comes back up
+  looking brand new and nothing reports an error. Four tests now run the shipped
+  migration over a seeded pre-082 table.
+
+  The second was worse, because the test was right and the harness lied. The
+  settings test store opened `:memory:` **without pinning the pool**, and
+  `:memory:` gives every connection its own database — so the inheritance
+  mutation's second query ran against an *empty* schema, returned nothing, and
+  the assertion passed. Any test in that harness that touched two connections
+  was checking an empty database. The pool is now pinned to one connection, and
+  the same mutation fails.
+
 ## [3.16.34] — 2026-08-02
 
 ### Added

@@ -596,13 +596,15 @@ var Defaults = map[string]string{
 // Store is a thread-safe settings store with an in-process read cache.
 // Store is the settings store. Every read and write takes a Scope (ADR-0153 D1).
 //
-// PHASE 1 NOTE. The scope is plumbed through the API and the cache, and the
-// site_settings table does not yet carry a scope column — that is ADR-0153
-// Phase 2. So today every scope resolves to the same rows, exactly as before,
-// and this phase changes no behaviour. The type comes first on purpose: adding
-// the column while reads were still unscoped would open a window in which
-// unscoped reads hit a scoped table, which is the leak the whole ADR exists to
-// close.
+// Settings are stored per scope: site_settings has a (scope,key) primary key
+// (migration 082), the primary's rows carry scope=” so nothing written before
+// ADR-0153 needed rewriting, and a hosted domain's rows are its own.
+//
+// A key with no row for a scope resolves to the compiled-in DEFAULT and never
+// to the primary's stored value. That direction is the product decision
+// (ADR-0153 D2) and it is the one that makes a hosted domain a site rather than
+// a skin: falling back to Defaults is falling back to the product, falling back
+// to the primary is falling back to another tenant's data.
 type Store struct {
 	db *sql.DB
 	mu sync.RWMutex
@@ -648,7 +650,8 @@ func (s *Store) GetAll(ctx context.Context, sc Scope) (map[string]string, error)
 	}
 	s.mu.RUnlock()
 
-	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM site_settings`)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT key, value FROM site_settings WHERE scope=?`, sk)
 	if err != nil {
 		return nil, err
 	}
@@ -742,11 +745,11 @@ func (s *Store) SetMany(ctx context.Context, sc Scope, kv map[string]string) err
 			continue
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO site_settings(key, value, updated_at)
-			 VALUES(?,?,CURRENT_TIMESTAMP)
-			 ON CONFLICT(key) DO UPDATE
+			`INSERT INTO site_settings(scope, key, value, updated_at)
+			 VALUES(?,?,?,CURRENT_TIMESTAMP)
+			 ON CONFLICT(scope,key) DO UPDATE
 			   SET value=excluded.value, updated_at=excluded.updated_at`,
-			k, v,
+			sc.key(), k, v,
 		); err != nil {
 			return err
 		}
