@@ -422,6 +422,35 @@ var shieldFixes = map[string]shieldFix{
 			"the MCP, OAuth and health endpoints. Your other vhosts are not touched. The helper backs " +
 			"the file up first and restores it if nginx refuses the result.",
 	},
+	// FINDING, and it is the reason this entry exists: the agent capability
+	// shipped WITHOUT a control that asks for it.
+	//
+	// A root-side action was added, verified, gated and released — and no button
+	// anywhere wrote its flag, so nothing could ever request it. That is the
+	// same defect as a button that does nothing, arrived at from the opposite
+	// direction, and it cost an operator another round of being told to press
+	// something that was not there.
+	//
+	// The failure it repairs: the provisioning helper's reload step discarded
+	// its exit status, so nginx had gone FOUR DAYS without reloading while vhosts
+	// were written minutes earlier. Every certificate on the install failed with
+	// an unexplained connection error, and the one-line fix could not reach a
+	// root-owned script through an updater that swaps the binary.
+	"provisionhelpers": {
+		Flag:   "provisionhelpers.want",
+		State:  "provisionhelpers.state",
+		Reason: "provisionhelpers.reason",
+		Cap:    "provisionhelpers=1",
+		Title:  "Certificate helpers",
+		Button: "Repair the certificate helpers",
+		Explain: "Installs the current, signature-verified provisioning helpers and performs the " +
+			"nginx reload they may have skipped. Use this when a site's console reports that nginx " +
+			"has not reloaded since its vhost was written: the config on disk is already correct and " +
+			"the running server has simply never read it. The helper verifies the bundle's signature " +
+			"before unpacking it, tests the configuration before reloading, and reports a failed " +
+			"reload instead of discarding it — which is the defect being repaired.",
+	},
+
 	// The posture row for this one had no button at all, which made it the
 	// longest-standing example of the thing this section exists to stop: a report
 	// that names a live fault and hands it back to the operator as homework.

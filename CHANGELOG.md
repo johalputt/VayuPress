@@ -6,6 +6,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.64] — 2026-08-03
+
+**The repair shipped with no button. That is my defect, and it is the same one
+this whole track is about, arrived at from the opposite direction.**
+
+### Fixed
+- **A root-side capability nobody could ask for.** v3.16.63 added a verified
+  agent action to reinstall the certificate helpers and reload nginx — gated,
+  mutation-tested, released — and **no control anywhere wrote its flag**. An
+  operator was told to press something that did not exist.
+
+  A button that does nothing and a capability with no button are the same dead
+  end. This track has now produced both.
+
+  The repair is registered as a VayuShield remediation, so it renders with the
+  others: **VayuShield → Certificate helpers → Repair the certificate helpers**.
+  It works on an install whose provisioning helpers are already too old to fix
+  themselves, because the shield agent upgrades itself first — which is the whole
+  reason the capability lives there.
+
+- **The console's reload finding now names that control.** It previously ended
+  with "refresh the helpers from Domains & DNS", which meant the copyable root
+  command. A precise diagnosis that hands the operator homework is the defect
+  this console was rebuilt to remove, and the finding was committing it.
+
+### Added
+- **A gate on capability↔control parity, in both directions.** Every
+  operator-facing capability the agent advertises must have a control that writes
+  its flag, and every control must name a capability the agent actually
+  advertises and has a handler for. Either half missing is a dead end that looks
+  like a feature — and both halves have now been shipped broken at least once.
+
+### Audit
+Two mutations, both caught, and both are the exact failures that occurred:
+removing the control while leaving the capability, and pointing a control at a
+capability the agent does not have. The second renders a button the helper
+silently ignores, which is indistinguishable from a working one until somebody
+waits for a result that never comes.
+
 ## [3.16.63] — 2026-08-03
 
 **The repair now reaches an install that is already broken — which is the only

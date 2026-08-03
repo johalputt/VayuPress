@@ -1430,7 +1430,10 @@ func reloadLagCheck(vhostPath string) (diagCheck, bool) {
 			"connection — which is exactly the unexplained connection error the authority " +
 			"reports. The provisioning helper discarded the reload's exit status (a `|| true` on " +
 			"the systemctl call) and reported success whenever the config TEST passed, so a " +
-			"reload that never happened looked like one that did. Refreshing the root-side " +
-			"helpers from Domains & DNS installs the version that reports this instead.",
+			"reload that never happened looked like one that did. Fix it without leaving the " +
+			"panel: VayuShield → Certificate helpers → Repair the certificate helpers. That " +
+			"installs the signature-verified helpers and performs the reload this machine has " +
+			"not had, and it works on an install whose helpers are already too old to fix " +
+			"themselves, because the shield agent upgrades itself first.",
 	}, true
 }

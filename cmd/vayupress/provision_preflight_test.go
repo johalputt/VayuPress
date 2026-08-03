@@ -257,3 +257,71 @@ func TestTheShieldAgentCanRepairTheProvisioningHelpers(t *testing.T) {
 		t.Error("the repair reloads without testing the configuration first")
 	}
 }
+
+// FINDING — the agent capability shipped WITHOUT a control that asks for it.
+//
+// A root-side action was added, verified, gated and released, and no button
+// anywhere wrote its flag. Nothing could ever request it. That is the same
+// defect as a button that does nothing, reached from the opposite direction,
+// and it cost an operator another round of being told to press something that
+// was not there.
+//
+// So the rule this gate encodes: every capability the agent advertises must have
+// a control, and every control must name a capability the agent has.
+func TestEveryAgentCapabilityHasAControlThatAsksForIt(t *testing.T) {
+	agent := readSourceFile(t, "../../deploy/vayushield-agent.sh")
+	i := strings.Index(agent, "AGENT_CAPS=\"")
+	if i < 0 {
+		t.Fatal("the agent advertises no capabilities")
+	}
+	caps := agent[i+len("AGENT_CAPS=\"") : i+len("AGENT_CAPS=\"")+strings.Index(agent[i+len("AGENT_CAPS=\""):], "\"")]
+
+	// Capabilities that are not operator-triggered remediations: they are
+	// mechanisms the agent uses internally, not buttons.
+	internal := map[string]bool{"selfupgrade": true, "digest": true, "cosignpin": true, "rescue": true}
+
+	for _, tok := range strings.Fields(caps) {
+		name := strings.SplitN(tok, "=", 2)[0]
+		if internal[name] {
+			continue
+		}
+		found := false
+		for _, f := range shieldFixes {
+			if f.Cap == name+"=1" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("the agent advertises %q and no control writes its flag — a root-side "+
+				"capability nobody can ask for is the same dead end as a button that does "+
+				"nothing", name)
+		}
+	}
+
+	// And the reverse: a control naming a capability the agent never advertises
+	// renders a button that the helper will silently ignore.
+	for key, f := range shieldFixes {
+		if !strings.Contains(caps, strings.TrimSuffix(f.Cap, "=1")+"=1") {
+			t.Errorf("the %q control requires capability %q, which the agent does not "+
+				"advertise", key, f.Cap)
+		}
+		if !strings.Contains(agent, "reconcile_"+strings.TrimSuffix(f.Cap, "=1")) {
+			t.Errorf("the %q control has no reconcile handler in the agent", key)
+		}
+	}
+}
+
+// The console must point at the control, not merely describe the problem.
+// Surfacing a fault without the action that resolves it is the defect this whole
+// console was rebuilt to remove.
+func TestTheReloadFindingNamesTheControlThatFixesIt(t *testing.T) {
+	body := goFuncBody(readSourceFile(t, "admin_os_scoped_diagnose.go"), "reloadLagCheck")
+	if !strings.Contains(body, "Repair the certificate helpers") {
+		t.Fatal("the reload finding does not name the control that fixes it, so an operator " +
+			"reads a precise diagnosis and still has nowhere to go")
+	}
+	if strings.Contains(body, "Re-run the provisioning installer") || strings.Contains(body, "sudo") {
+		t.Error("the finding still sends the operator to a terminal")
+	}
+}
