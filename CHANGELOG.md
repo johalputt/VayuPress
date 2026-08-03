@@ -6,6 +6,66 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.55] — 2026-08-03
+
+**The Dependency Freshness check was red for a real reason, and green for a
+reason that was not true.**
+
+### Fixed
+- **`github.com/phuslu/iploc` bumped** `v1.0.20260715` → `v1.0.20260802`, which
+  is what the weekly check went red for. It is the compiled-in IP-location
+  table, so this is a data refresh that VayuShield's geo verdicts read directly —
+  the freshness of that table is a correctness question, not housekeeping.
+
+- **The check could not see a newer MAJOR version, and said so as "up to
+  date".** `go list -u` only reports updates *within* the current major, because
+  in Go a new major is a different module path (`…/v2`). A dependency two majors
+  behind produced no row at all, so the script printed **"All Go modules are up
+  to date"** — a green badge on a workflow named Dependency Freshness, asserting
+  something it had never checked. It now probes the next major paths directly.
+
+  On its first run it found two the old check had never looked for:
+  `alecthomas/chroma/v2 → v3` and `yuin/goldmark → v2`.
+
+- **…and both of those turned out to be alphas, which is its own trap.**
+  `chroma v3.0.0-alpha.5` and `goldmark v2.0.0-beta.9`. Reporting them as
+  "available" tells an operator to migrate a production markdown renderer onto a
+  beta, and would hold the summary permanently non-clean for work nobody should
+  do. Nobody is behind on a major with no tagged stable release: pre-releases are
+  now listed separately, explicitly as *nothing to do yet*, and do not suppress
+  the all-clear. Newer **stable** majors are reported and still do not fail the
+  check — a major bump is a migration to schedule, and a check that stays red
+  until unrelated work is done is one people stop reading.
+
+- **A probe that cannot reach the proxy now claims nothing**, in either
+  direction. Reading a network failure as "this major does not exist" would turn
+  every probe into a silent pass and put the green badge back on a claim nothing
+  verified.
+
+### Changed
+- **The check no longer races the thing that fixes it.** It was scheduled at
+  Mondays 06:17 — seventeen minutes after Dependabot's own weekly run at 06:00.
+  Dependabot opens the bump PRs, CI gates them and auto-merge lands them minutes
+  later; the check fired in the middle of that and reported as unattended drift
+  the very updates being applied while it looked. Moved to 14:17, eight hours
+  clear.
+
+- **The summary now states what green means** where the result is read: every
+  direct dependency at the newest version within its current major, no newer
+  stable major, no vulnerability audit (that is `govulncheck`), indirect modules
+  informational.
+
+### Audit
+The script had never been tested. It is now driven end to end against a stubbed
+`go` on `PATH`, which found two bugs in the very fix being added: the all-clear
+`exit 0`-ed before the pre-release section could print (so the repo would have
+been told everything was current while the check silently knew about two betas),
+and `major_probe_failed` was assigned inside a `$( )` subshell, making the
+could-not-tell path unreachable — the false-green the section exists to prevent,
+reintroduced by the code preventing it. Six mutations across the script, all
+caught; one initially reported as surviving had simply failed to apply, and was
+re-run properly.
+
 ## [3.16.54] — 2026-08-03
 
 **Three things a live console got wrong, all found by reading the page rather

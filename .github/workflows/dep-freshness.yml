@@ -9,7 +9,16 @@ name: Dependency Freshness
 
 on:
   schedule:
-    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+    # Mondays 14:17 UTC — deliberately EIGHT HOURS after Dependabot's own weekly
+    # run at 06:00 (.github/dependabot.yml), not seventeen minutes after it.
+    #
+    # The two halves were scheduled to race. Dependabot opens the bump PRs at
+    # 06:00, CI gates them, and auto-merge lands them minutes later; this check
+    # fired at 06:17, in the middle of that, and reported as unattended drift
+    # the very updates that were being applied while it looked. A check that
+    # goes red every week for something already in flight is one people stop
+    # reading, and then it is red for a real reason and nobody notices.
+    - cron: "17 14 * * 1"
   workflow_dispatch: {}
 
 permissions:

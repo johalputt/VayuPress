@@ -14,7 +14,7 @@ require (
 	github.com/graphql-go/graphql v0.8.1
 	github.com/mattn/go-sqlite3 v1.14.49
 	github.com/microcosm-cc/bluemonday v1.0.27
-	github.com/phuslu/iploc v1.0.20260715
+	github.com/phuslu/iploc v1.0.20260802
 	github.com/rs/cors v1.11.1
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib v1.6.0
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20260312101154-fc105a03c0e0
