@@ -298,6 +298,7 @@ NGINX
 
 reload_ok() { nginx_ok && { systemctl reload nginx 2>/dev/null || true; return 0; }; return 1; }
 
+HOST_FAILURES=0
 for HOST in "${HOSTS[@]}"; do
   HOST="${HOST//[[:space:]]/}"
   [[ -z "$HOST" || "$HOST" == "$DOMAIN" ]] && continue
@@ -314,7 +315,7 @@ for HOST in "${HOSTS[@]}"; do
   # Phase A: HTTP-only vhost so certbot's HTTP-01 challenge validates.
   write_http_only "$HOST"
   ln -sf "${AVAIL_DIR}/vayupress-dom-${HOST}" "${ENABLED_DIR}/vayupress-dom-${HOST}"
-  if ! reload_ok; then warn "nginx test failed for ${HOST} — skipping."; rm -f "${ENABLED_DIR}/vayupress-dom-${HOST}"; set_tls "$HOST" failed; continue; fi
+  if ! reload_ok; then warn "nginx test failed for ${HOST} — skipping."; rm -f "${ENABLED_DIR}/vayupress-dom-${HOST}"; set_tls "$HOST" failed; HOST_FAILURES=$((HOST_FAILURES + 1)); continue; fi
 
   # Its OWN certificate lineage (--cert-name <host>): never expands the primary
   # cert, so the 100-SAN cap is structurally impossible to hit. Include www and,
@@ -326,7 +327,7 @@ for HOST in "${HOSTS[@]}"; do
     "${DARGS[@]}" --email "$EMAIL" --agree-tos --non-interactive || \
   certbot certonly --webroot -w "$CACHE_DIR" --cert-name "$HOST" \
     -d "$HOST" --email "$EMAIL" --agree-tos --non-interactive || \
-    { warn "certbot could not issue a cert for ${HOST}."; set_tls "$HOST" failed; continue; }
+    { warn "certbot could not issue a cert for ${HOST}."; set_tls "$HOST" failed; HOST_FAILURES=$((HOST_FAILURES + 1)); continue; }
 
   if cert_covers "$HOST" "$HOST"; then
     write_full "$HOST"
@@ -336,12 +337,28 @@ for HOST in "${HOSTS[@]}"; do
     else
       warn "nginx test failed after writing ${HOST} vhost — leaving it disabled."
       rm -f "${ENABLED_DIR}/vayupress-dom-${HOST}"; set_tls "$HOST" failed
+      HOST_FAILURES=$((HOST_FAILURES + 1))
     fi
   else
     warn "Certificate for ${HOST} did not materialise; leaving it on HTTP redirect."
     set_tls "$HOST" failed
+    HOST_FAILURES=$((HOST_FAILURES + 1))
   fi
 done
 
 systemctl try-restart vayupress 2>/dev/null || true
+
+# Exit non-zero when ANY host failed.
+#
+# This loop uses `continue` on failure by design -- one domain whose DNS is not
+# pointed must never stop the others -- and it then exited 0 regardless. The
+# driver classifies a helper by its exit status and its output, so a run that
+# could not issue a certificate for a host was recorded as `setup-vayudomain.sh=ok`
+# and the panel reported "0 reported a problem" beside a log that plainly said
+# certbot had been refused. Continuing past a failure and REPORTING success are
+# two different decisions, and only the first one was ever intended.
+if (( HOST_FAILURES > 0 )); then
+  warn "${HOST_FAILURES} host(s) could not be provisioned -- reporting this run as failed."
+  exit 1
+fi
 exit 0

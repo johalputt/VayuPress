@@ -248,7 +248,7 @@ func TestAPendingCertificateShowsWhatTheConsoleChecked(t *testing.T) {
 		{Label: "Listed for provisioning", OK: false, Fatal: true, Detail: "on manual hold"},
 		{Label: "DNS answers for client.example", OK: true, Detail: "resolves"},
 	}
-	body := scopedDiagnosticBody(checks, []string{"line one", "No sync-approved secondary domains"})
+	body := scopedDiagnosticBody(checks, []string{"line one", "No sync-approved secondary domains"}, "client.example")
 
 	// Each check, and its verdict, must be on the page.
 	for _, c := range checks {
@@ -274,7 +274,7 @@ func TestAPendingCertificateShowsWhatTheConsoleChecked(t *testing.T) {
 
 // The log is untrusted text from another process. It must be escaped.
 func TestTheProvisioningLogIsEscaped(t *testing.T) {
-	body := scopedDiagnosticBody(nil, []string{`<img src=x onerror="alert(1)">`})
+	body := scopedDiagnosticBody(nil, []string{`<img src=x onerror="alert(1)">`}, "client.example")
 	if strings.Contains(body, "<img src=x") {
 		t.Fatal("a log line rendered as live markup; a root-side process writes that file and " +
 			"its contents must never be trusted into the page")
@@ -860,5 +860,151 @@ func TestTheCertificateSummaryDoesNotPromiseWhatIsBlocked(t *testing.T) {
 	}, nil)
 	if !strings.Contains(waiting, "one root-side step away") {
 		t.Error("a site merely waiting on the sweep is now described as blocked")
+	}
+}
+
+// FINDING, straight off a live console — the log box on a site's page showed a
+// DIFFERENT site's failure, in full, with nothing saying so.
+//
+// A run covers five helpers across every hosted domain, and the box showed the
+// last 25 lines of it. On the install this was found on those 25 lines were
+// entirely one domain's certbot refusal, on the console page of a domain whose
+// own output had scrolled away. The artifact included so the operator need not
+// take a verdict on trust was itself misleading them.
+func TestTheLogBoxShowsTHISHostsLinesNotTheTailOfSomebodyElses(t *testing.T) {
+	log := []string{
+		"Provisioning first.example…",
+		"Waiting for verification...",
+		"VayuDomain live: https://first.example",
+		"Provisioning other.example…",
+		"Challenge failed for domain other.example",
+		"Detail: 185.199.108.153: Invalid response ...: 404",
+		"certbot could not issue a cert for other.example.",
+	}
+
+	seg := hostLogSegment(log, "first.example")
+	if len(seg) == 0 {
+		t.Fatal("this host has no section at all, so the page falls back to the tail — which is " +
+			"the other domain's failure")
+	}
+	for _, leak := range []string{"other.example", "185.199.108.153"} {
+		if strings.Contains(strings.Join(seg, "\n"), leak) {
+			t.Errorf("another domain's line (%q) is inside this host's section", leak)
+		}
+	}
+
+	body := scopedDiagnosticBody(nil, log, "first.example")
+	if strings.Contains(body, "185.199.108.153") {
+		t.Fatal("the page still prints another domain's certbot error under this domain's " +
+			"heading — the exact thing that sent an operator chasing the wrong host")
+	}
+
+	// When this host genuinely has no section, the fallback must SAY it is not
+	// about this host. Silence there is how the bug read as correct.
+	none := scopedDiagnosticBody(nil, log, "absent.example")
+	if !strings.Contains(none, "no section for") {
+		t.Error("with no lines for this host the page shows other output without saying it is " +
+			"other output")
+	}
+
+	// A host whose name is a SUFFIX of another must neither capture nor be
+	// captured by it. The ORDER matters: the shorter name has to come FIRST, so
+	// that ending its section depends on recognising the longer name as a
+	// different host. A fixture with them the other way round passes against a
+	// broken end-condition and proves nothing — it did.
+	nested := []string{
+		"Provisioning johal.in…", "line a",
+		"Provisioning test.johal.in…", "line b", "line c",
+	}
+	got := hostLogSegment(nested, "johal.in")
+	if len(got) != 2 {
+		t.Errorf("johal.in's section is %d lines (%v) — it swallowed test.johal.in's, so a "+
+			"subdomain's failure prints under the apex's heading", len(got), got)
+	}
+	if strings.Contains(strings.Join(got, "\n"), "line b") {
+		t.Error("johal.in's section contains test.johal.in's output")
+	}
+	if sub := hostLogSegment(nested, "test.johal.in"); len(sub) != 3 {
+		t.Errorf("test.johal.in's own section is %d lines (%v)", len(sub), sub)
+	}
+}
+
+// FINDING — the panel said "0 reported a problem" beside a log that read
+// "certbot could not issue a cert for …". Both from the same run.
+//
+// The summary counts HELPERS. setup-vayudomain.sh loops over hosts with
+// `continue` on failure and exited 0 regardless, so a helper that failed to
+// issue a certificate was indistinguishable from one that issued every
+// certificate asked of it. Continuing past a failure and REPORTING success are
+// two different decisions and only the first was intended.
+//
+// The driver now counts host failures — and that fix reaches nobody who already
+// has the bug, because the in-app updater swaps the binary and cannot write to
+// /usr/local/lib/vayupress. So the binary reads the log itself. That is the half
+// that arrives through Update & Backup, which is the whole point.
+func TestARefusedCertificateIsReportedEvenWhenTheRunSaysItIsClean(t *testing.T) {
+	seg := []string{
+		"Provisioning other.example…",
+		"Type:   unauthorized",
+		"Detail: 185.199.108.153: Invalid response ...: 404",
+		"certbot could not issue a cert for other.example.",
+	}
+	v, ok := certbotHostVerdict(seg, "other.example")
+	if !ok {
+		t.Fatal("a run that was refused a certificate for this host produces no finding, so the " +
+			"page keeps reporting the helper summary's '0 problems'")
+	}
+	if v.OK || !v.Fatal {
+		t.Error("the refusal is not reported as blocking")
+	}
+	for _, want := range []string{"unauthorized", "404", "counts HELPERS"} {
+		if !strings.Contains(v.Detail, want) {
+			t.Errorf("the finding never mentions %q", want)
+		}
+	}
+
+	// A host that succeeded must read as success, not as the absence of failure.
+	if s, ok := certbotHostVerdict([]string{"VayuDomain live: https://ok.example"}, "ok.example"); !ok || !s.OK {
+		t.Error("a host whose certificate was issued is not reported as issued")
+	}
+	// And a segment with no outcome yields no check at all, rather than a guess.
+	if _, ok := certbotHostVerdict([]string{"Provisioning x.example…"}, "x.example"); ok {
+		t.Error("a segment with no recorded outcome invented one")
+	}
+
+	// The shell half must be there too, or a fresh install keeps the old lie.
+	//
+	// Asserted on the GUARD's own body, not on the file containing "exit 1"
+	// somewhere. The script has other non-zero exits, so a whole-file substring
+	// check passes with this one deleted — which is exactly what it did.
+	src := readSourceFile(t, "../../scripts/setup-vayudomain.sh")
+	i := strings.Index(src, "HOST_FAILURES > 0")
+	if i < 0 {
+		t.Fatal("the provisioning helper does not count host failures, so a run that could not " +
+			"issue a certificate is recorded by the driver as clean")
+	}
+	j := strings.Index(src[i:], "\nfi")
+	if j < 0 || !strings.Contains(src[i:i+j], "exit 1") {
+		t.Error("the host-failure guard does not exit non-zero, so the driver still classifies " +
+			"the helper as ok and the panel still says 0 problems")
+	}
+	if !strings.Contains(src, "HOST_FAILURES=$((HOST_FAILURES + 1))") {
+		t.Error("nothing ever increments the counter, so the guard can never fire")
+	}
+}
+
+// Terminal colour escapes were being rendered on the page: an operator read
+// "[1;33m  certbot could not issue …  [0m". Escaped, so harmless — and noise in
+// the middle of the one artifact this page exists to show plainly.
+func TestTerminalColourCodesDoNotReachThePage(t *testing.T) {
+	got := stripANSI("\x1b[1;33m⚠  certbot could not issue a cert for x.example.\x1b[0m")
+	if strings.Contains(got, "[1;33m") || strings.Contains(got, "[0m") || strings.ContainsRune(got, 0x1b) {
+		t.Fatalf("colour escapes survived: %q", got)
+	}
+	if !strings.Contains(got, "certbot could not issue a cert for x.example.") {
+		t.Fatalf("stripping the escapes took the message with it: %q", got)
+	}
+	if plain := "no escapes here"; stripANSI(plain) != plain {
+		t.Error("a line with no escapes was altered")
 	}
 }

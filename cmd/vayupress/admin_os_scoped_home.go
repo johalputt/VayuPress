@@ -108,8 +108,8 @@ func (a *App) handleOSScopedHome(w http.ResponseWriter, r *http.Request) {
 	var checks []diagCheck
 	var logLines []string
 	if scopedNeedsCertificate(d) {
-		checks = a.diagnoseCertificate(r.Context(), d)
-		logLines = provisionLogTail(25)
+		logLines = provisionLogTail(provisionLogLines)
+		checks = a.diagnoseCertificate(r.Context(), d, logLines)
 	}
 
 	body := scopedConsolePage(d, posts, members, mailboxes, mailOn, clients, checks, logLines) +
@@ -321,7 +321,7 @@ func scopedCertificateSection(d domain.Domain, checks []diagCheck, logLines []st
 		b.WriteString(monAcc("🩺", "What this console checked",
 			"Run here, now, against this install — not a description of where to go and look",
 			chipFor(blocking == 0, "nothing blocking", strconv.Itoa(blocking)+" blocking"),
-			blocking > 0, scopedDiagnosticBody(checks, logLines)))
+			blocking > 0, scopedDiagnosticBody(checks, logLines, d.Host)))
 	}
 	b.WriteString(`</div>`)
 	return b.String()

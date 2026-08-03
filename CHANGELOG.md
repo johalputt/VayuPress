@@ -6,6 +6,56 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.54] — 2026-08-03
+
+**Three things a live console got wrong, all found by reading the page rather
+than the code.**
+
+### Fixed
+- **The log box showed a DIFFERENT site's failure, in full, with nothing saying
+  so.** A provisioning run covers five helpers across every hosted domain, and
+  the box showed the last 25 lines of it. On a real install those 25 lines were
+  entirely one domain's certbot refusal — printed under the heading of a
+  different domain whose own output had scrolled away hours earlier. The artifact
+  included so an operator need not take a verdict on trust was itself misleading
+  them, which is worse than showing nothing.
+
+  The console now segments the log by host and shows **this site's own section**.
+  Where a run has no section for this host, it says so in as many words rather
+  than showing other output silently.
+
+- **"0 reported a problem", beside a log reading "certbot could not issue a cert
+  for …".** Both from the same run. The summary counts **helpers**, and
+  `setup-vayudomain.sh` loops over hosts with `continue` on failure and exited 0
+  regardless — so a helper that failed to issue a certificate was
+  indistinguishable, in the result file, from one that issued every certificate
+  asked of it. Continuing past a failure and *reporting success* are two
+  different decisions, and only the first was ever intended.
+
+  Both halves are fixed, and only one of them reaches an existing install. The
+  helper now counts host failures and exits non-zero — which reaches nobody who
+  already has the bug, because the in-app updater swaps the **binary** and cannot
+  write to `/usr/local/lib/vayupress`. So the binary reads the log itself and
+  reports the per-host verdict, quoting the authority's own `Type:` and `Detail:`
+  lines. That is the half that arrives through **Update & Backup**.
+
+- **Terminal colour codes were rendered on the page.** Operators were reading
+  `[1;33m  certbot could not issue …  [0m`. Escaped, so harmless, and noise in
+  the middle of the one artifact this page exists to show plainly.
+
+### Audit
+Adversarial pass run before the bump. Twenty-two mutations across this release
+and the two before it; **two survived their first fixtures** and both were test
+defects rather than code ones — a suffix-confusion fixture with the two hostnames
+in the order that cannot distinguish the mutation, and a shell assertion matching
+`exit 1` anywhere in a file that has several. Both fixtures were rewritten until
+they killed it, which is the entire argument for mutation-testing: each of those
+gates would otherwise have been counted as coverage while proving nothing.
+
+`internal/vayuos/mail`'s `TestSMTPReceiveDelivers` fails in this sandbox on a
+socket timeout — it fails identically on a clean tree, and this release touches
+neither package.
+
 ## [3.16.53] — 2026-08-03
 
 **Correcting a mechanism v3.16.52 asserted and the install's own script

@@ -34,6 +34,16 @@ import (
 	"github.com/johalputt/vayupress/internal/domain"
 )
 
+// provisionLogLines is how much of the worker's log the console keeps.
+//
+// It was 25, which is the tail of whatever ran LAST — and a run covers five
+// helpers across every hosted domain. On a real install those 25 lines were
+// entirely one domain's certbot failure, while the console page they appeared on
+// was about a different domain whose own output had scrolled away hours earlier.
+// The log is kept long enough to segment by host and the segment is what gets
+// shown; the raw tail is only the fallback.
+const provisionLogLines = 400
+
 // provisionLogTail returns the last n lines of the root worker's log.
 //
 // Read-only, best effort, and bounded: the file is capped at 2000 lines by the
@@ -49,7 +59,7 @@ func provisionLogTail(n int) []string {
 	sc.Buffer(make([]byte, 0, 64*1024), 256*1024)
 	ring := make([]string, 0, n)
 	for sc.Scan() {
-		line := strings.TrimRight(sc.Text(), " \t\r")
+		line := strings.TrimRight(stripANSI(sc.Text()), " \t\r")
 		if line == "" {
 			continue
 		}
@@ -59,6 +69,127 @@ func provisionLogTail(n int) []string {
 		ring = append(ring, line)
 	}
 	return ring
+}
+
+// stripANSI removes terminal colour escapes from a log line.
+//
+// The helpers colour their output for a human at a terminal, and the console was
+// rendering those bytes literally — an operator read `[1;33m  certbot could not
+// issue a cert for …  [0m` on the page. Escaped, so harmless, and still noise in
+// the middle of the one artifact this page exists to show plainly.
+func stripANSI(s string) string {
+	if !strings.ContainsRune(s, 0x1b) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if s[i] != 0x1b {
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+		// Skip ESC, an optional '[', then parameter bytes, to the final letter.
+		i++
+		if i < len(s) && s[i] == '[' {
+			i++
+		}
+		for i < len(s) && (s[i] == ';' || (s[i] >= '0' && s[i] <= '9')) {
+			i++
+		}
+		if i < len(s) {
+			i++ // the final byte of the sequence
+		}
+	}
+	return b.String()
+}
+
+// hostLogSegment returns the lines the worker wrote about ONE host during its
+// most recent attempt at it.
+//
+// This is the difference between a log and an answer. The console showed the
+// tail of a multi-domain run, so the page for a site whose certificate was
+// failing displayed, verbatim and in full, a DIFFERENT site's certbot error —
+// with nothing saying it was a different site. An operator reading that is being
+// actively misled by the artifact included to stop them being misled.
+func hostLogSegment(lines []string, host string) []string {
+	marker := "Provisioning " + host
+	start := -1
+	for i, l := range lines {
+		if strings.Contains(l, marker) {
+			start = i // last attempt wins
+		}
+	}
+	if start < 0 {
+		return nil
+	}
+	end := len(lines)
+	for i := start + 1; i < len(lines); i++ {
+		// The next host's section, or the next helper's. A host whose name is a
+		// SUFFIX of another cannot be confused for it: the marker requires
+		// "Provisioning " immediately before the name.
+		if strings.Contains(lines[i], "Provisioning ") && !strings.Contains(lines[i], marker) {
+			end = i
+			break
+		}
+	}
+	return lines[start:end]
+}
+
+// certbotHostVerdict reads what the last run actually did for ONE host.
+//
+// FINDING, visible on a live install: the panel said "5 helper(s) did work, 0
+// reported a problem" beside a log that plainly read "certbot could not issue a
+// cert for …". Both came from the same run. The summary counts HELPERS, and
+// setup-vayudomain.sh loops over hosts with `continue` on failure and exits 0 —
+// so a helper that failed to issue a certificate is indistinguishable, in the
+// result file, from one that issued every certificate it was asked for.
+//
+// The driver could be taught to count host failures, and it has been. That fix
+// reaches nobody who already has the bug: the in-app updater swaps the BINARY
+// and cannot write to /usr/local/lib/vayupress — which this very console reports
+// as out of date on the install this was found on. So the binary reads the log
+// and reports the per-host truth itself, which is the half that arrives through
+// Update & Backup.
+func certbotHostVerdict(seg []string, host string) (diagCheck, bool) {
+	var out diagCheck
+	found := false
+	var reasons []string
+	for _, l := range seg {
+		t := strings.TrimSpace(l)
+		switch {
+		case strings.Contains(l, "VayuDomain live: https://"+host):
+			out, found = diagCheck{
+				Label: "The last run issued this site's certificate", OK: true,
+				Detail: "the worker recorded it as live",
+			}, true
+		case strings.Contains(l, "certbot could not issue a cert for "+host):
+			out, found = diagCheck{
+				Label: "The certificate authority refused " + host, OK: false, Fatal: true,
+			}, true
+		case strings.Contains(l, "nginx test failed for "+host):
+			out, found = diagCheck{
+				Label: "nginx rejected this site's vhost", OK: false, Fatal: true,
+				Detail: "the worker wrote the vhost, nginx refused to load it, and the site was " +
+					"skipped without a certificate being attempted",
+			}, true
+		}
+		// The authority's own words, which say more than any summary of them.
+		if strings.HasPrefix(t, "Detail:") || strings.HasPrefix(t, "Type:") {
+			reasons = append(reasons, t)
+		}
+	}
+	if !found {
+		return diagCheck{}, false
+	}
+	if out.Fatal && out.Detail == "" {
+		out.Detail = "the run reported a refusal for this host"
+		if len(reasons) > 0 {
+			out.Detail = strings.Join(reasons, " ")
+		}
+		out.Detail += ". The summary below counts HELPERS, not hosts, and a helper that fails one " +
+			"host still exits cleanly — so this is read from the log rather than from that summary."
+	}
+	return out, true
 }
 
 // diagCheck is one thing the console can determine for itself.
@@ -77,7 +208,7 @@ type diagCheck struct {
 // It reports what it CHECKED, not just a verdict. A diagnostic that says "looks
 // fine" without naming what it looked at is the kind an operator stops trusting
 // the first time it is wrong.
-func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain) []diagCheck {
+func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines []string) []diagCheck {
 	var out []diagCheck
 
 	// 1. The root-side half. Nothing below matters if this is missing, and it is
@@ -213,6 +344,13 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain) []diagCh
 			Label: "Last run", OK: false,
 			Detail: "no run has ever completed on this install",
 		})
+	}
+
+	// 8. What the run did for THIS HOST — read from the log, not from the summary
+	//    above it. The summary counts helpers; this counts the one site the page
+	//    is about, and the two disagreed on a live install.
+	if v, ok := certbotHostVerdict(hostLogSegment(logLines, d.Host), d.Host); ok {
+		out = append(out, v)
 	}
 	return out
 }
@@ -529,7 +667,7 @@ func driverCarriesReportingFixes(src string) (bool, string) {
 // The log is included because it is the artifact that actually answered this on
 // a real install, and because a diagnostic an operator cannot verify is one they
 // have to take on trust. It is shown verbatim and escaped.
-func scopedDiagnosticBody(checks []diagCheck, logLines []string) string {
+func scopedDiagnosticBody(checks []diagCheck, logLines []string, host string) string {
 	esc := html.EscapeString
 	var b strings.Builder
 	// No heading of its own: this body is the inside of an accordion whose summary
@@ -549,11 +687,23 @@ func scopedDiagnosticBody(checks []diagCheck, logLines []string) string {
 	}
 	b.WriteString(`</tbody></table></div>`)
 
-	if len(logLines) > 0 {
+	if seg := hostLogSegment(logLines, host); len(seg) > 0 {
+		b.WriteString(`<div class="settings-block-title">What the worker wrote about ` + esc(host) + `</div>`)
+		b.WriteString(`<p class="text-xs muted">` + strconv.Itoa(len(seg)) + ` lines, verbatim, from this ` +
+			`site's own section of the last run — not the tail of whatever ran last, which on a ` +
+			`multi-domain install is somebody else's failure printed under your domain's heading.</p>`)
+		b.WriteString(`<pre class="mono text-xs vm-logbox">` + esc(strings.Join(seg, "\n")) + `</pre>`)
+	} else if len(logLines) > 0 {
+		tail := logLines
+		if len(tail) > 25 {
+			tail = tail[len(tail)-25:]
+		}
 		b.WriteString(`<div class="settings-block-title">The provisioning log, as written</div>`)
-		b.WriteString(`<p class="text-xs muted">The last ` + strconv.Itoa(len(logLines)) +
-			` lines the root-side helper wrote. Shown verbatim so nothing is being summarised at you.</p>`)
-		b.WriteString(`<pre class="mono text-xs vm-logbox">` + esc(strings.Join(logLines, "\n")) + `</pre>`)
+		b.WriteString(`<p class="text-xs muted">The last ` + strconv.Itoa(len(tail)) +
+			` lines the root-side helper wrote. <b>This run has no section for ` + esc(host) + `</b>, so ` +
+			`these lines are about the install as a whole or about other sites — said plainly, because ` +
+			`reading another domain's error as your own is exactly the mistake this box caused.</p>`)
+		b.WriteString(`<pre class="mono text-xs vm-logbox">` + esc(strings.Join(tail, "\n")) + `</pre>`)
 	} else {
 		b.WriteString(`<p class="text-sm muted">The provisioning log is empty or unreadable from this ` +
 			`process, which usually means the helper has never run.</p>`)
