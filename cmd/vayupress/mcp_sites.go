@@ -152,6 +152,9 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 				return "", err
 			}
 
+			if err := mcpSiteWritable(d); err != nil {
+				return "", err
+			}
 			prev, _ := d.Site()
 			c := bizsite.ParseContent(prev.Content)
 			mode, template := scopedSiteMode(d), prev.Template
@@ -245,6 +248,25 @@ func (a *App) mcpSiteByHost(ctx context.Context, host string) (domain.Domain, er
 	return domain.Domain{}, siteLookupError("no hosted site named " + h + " — call list_sites for the hosts you can edit")
 }
 
+// mcpSiteWritable refuses a site an assistant must not publish to.
+//
+// mcpSiteByHost refuses only the primary, which is a question of ownership. This
+// is a question of intent: a DISABLED domain is one the operator deliberately
+// stopped serving, and a HELD one is deliberately unprovisioned. The console's
+// own controls refuse both, and a connector that did not would be a way around
+// the panel rather than another door into it.
+func mcpSiteWritable(d domain.Domain) error {
+	if d.Status != domain.StatusActive {
+		return siteLookupError(d.Host + " is disabled — enable it under Lifecycle on its console " +
+			"before publishing to it")
+	}
+	if !d.IsSyncApproved() {
+		return siteLookupError(d.Host + " is on manual hold, so it is not being provisioned and " +
+			"nothing published to it would be served — approve it under Lifecycle first")
+	}
+	return nil
+}
+
 type siteLookupError string
 
 func (e siteLookupError) Error() string { return string(e) }
@@ -297,6 +319,9 @@ func (a *App) registerSiteBuilderTools(srv *mcp.Server) {
 			// index.html is required rather than defaulted. A bundle without an
 			// entry point deploys cleanly and serves 404 at the root, which is a
 			// site that looks published and is not.
+			if err := mcpSiteWritable(d); err != nil {
+				return "", err
+			}
 			if !hasIndexHTML(in.Files) {
 				return "", bundleError("index.html is required — without it the domain serves nothing at /")
 			}
@@ -311,7 +336,10 @@ func (a *App) registerSiteBuilderTools(srv *mcp.Server) {
 			// Switch the domain to serve it. Deploying a site and leaving the
 			// domain on its blog would be the "control that did nothing" defect:
 			// the assistant reports success and the visitor sees the old site.
-			cfg, err := scopedWebsiteConfig(d, "custom", "", bizsite.ParseContent(""))
+			// Preserving, not replacing: publishing a hand-built site says what
+			// the domain SERVES, and must not erase the business details the
+			// operator typed into the template.
+			cfg, err := scopedWebsiteConfigPreserving(d, "custom", "")
 			if err != nil {
 				return "", err
 			}

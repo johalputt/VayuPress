@@ -364,6 +364,25 @@ func scopedWebsiteConfig(d domain.Domain, mode, template string, c bizsite.Conte
 	return domain.SiteConfig{Mode: mode, Template: template, Content: string(raw)}, nil
 }
 
+// scopedWebsiteConfigPreserving switches a domain's MODE while keeping every
+// content field exactly as stored.
+//
+// Publishing a hand-built site is a decision about what the domain SERVES, not
+// an instruction to forget the business details. The first version routed
+// through scopedWebsiteConfig with an empty Content, whose carry-forward only
+// rescues Services, Gallery and SectionA — so name, tagline, about, phone,
+// email, address, hours and both button fields were blanked. An operator who
+// later switched back to the template found them gone, with nothing having
+// warned them. Losing work nobody touched is the defect this whole file already
+// guards against on the form; it was reintroduced from the other side.
+func scopedWebsiteConfigPreserving(d domain.Domain, mode, template string) (domain.SiteConfig, error) {
+	prev, _ := d.Site()
+	if template == "" {
+		template = prev.Template
+	}
+	return scopedWebsiteConfig(d, mode, template, bizsite.ParseContent(prev.Content))
+}
+
 type siteModeError string
 
 func (e siteModeError) Error() string {

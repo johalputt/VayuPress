@@ -6,6 +6,55 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.46] — 2026-08-03
+
+**An adversarial pass over v3.16.45's new surface, which should have run before
+that version was cut and did not.** v3.16.45 was mutation-tested — four ways on
+the deploy path — but mutation-testing the fixes is not the same as attacking the
+feature, and this is the riskiest thing shipped today: a language model writing
+files served at a customer's domain. Two findings, both shipped immediately
+because both are live in v3.16.45.
+
+### Fixed
+- **Publishing a hand-built site erased every business detail.** `build_site`
+  switched the domain with an *empty* content object, and the carry-forward it
+  relied on only rescues Services, Gallery and the section heading. Name,
+  tagline, about, phone, email, address, hours and both button fields were
+  blanked. An operator who had a site built and later switched back to the
+  template found all of it gone, with nothing having warned them.
+
+  Publishing a hand-built site is a decision about what the domain **serves**,
+  not an instruction to forget who the business is. The switch now preserves the
+  stored content wholesale. Verified against the shipped behaviour: the test
+  fails on v3.16.45's code, naming each erased field.
+
+- **An assistant could publish to a site the operator had taken offline.**
+  `mcpSiteByHost` refuses only the primary — a question of ownership. Whether a
+  site should be *written to* is a question of intent: a **disabled** domain is
+  one the operator deliberately stopped serving, and a **held** one is
+  deliberately unprovisioned. The console refuses both; the connector did not, so
+  the tool was a way around the panel rather than another door into it. Both
+  write tools now refuse, naming which state and where to change it.
+
+  `restore_previous_site` deliberately does **not** refuse a disabled site —
+  otherwise an operator who disabled a domain *because* of a bad publish could
+  not undo it without first re-enabling the thing they were trying to stop
+  serving.
+
+- **A guard that is never called.** Mutation-testing the fix above deleted the
+  check's *call site* and nothing failed: `mcpSiteWritable` stayed correct,
+  stayed tested, and was never reached. Both write tools are now pinned to call
+  it.
+
+### Not fixed — reported for a decision
+- **`/os` appears to be reachable on every hosted host.** No host guard was found
+  on the admin console. Combined with a custom bundle, attacker-authored
+  JavaScript at `client.example/` would be same-origin with anything an operator
+  or client authenticated *at that host*. Session cookies are host-scoped, so
+  this needs a login to have happened on the hosted domain — which ADR-0152's
+  client login makes a normal thing to do. Narrowing it touches that feature, so
+  it is stated rather than changed unilaterally.
+
 ## [3.16.45] — 2026-08-03
 
 ### Added

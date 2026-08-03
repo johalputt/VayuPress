@@ -6,9 +6,12 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/config"
 
 	"github.com/johalputt/vayupress/internal/bizsite"
 	"github.com/johalputt/vayupress/internal/customsite"
@@ -274,5 +277,139 @@ func TestCustomModeIsRefusedUntilSomethingIsDeployed(t *testing.T) {
 	// empty upload slot are different situations with different next steps.
 	if !strings.Contains(err.Error(), "upload") {
 		t.Errorf("the refusal reads as an unknown mode rather than a missing upload: %v", err)
+	}
+}
+
+// ── Adversarial pass over the site-builder surface ──────────────────────────
+//
+// FINDING A — build_site DESTROYS the template content.
+//
+// It publishes with scopedWebsiteConfig(d, "custom", "", ParseContent("")), and
+// the carry-forward in that function only rescues Services, Gallery and
+// SectionA. Name, tagline, about, phone, email, address, hours and both button
+// fields are blanked. An operator who has an assistant build a custom site, then
+// later switches back to Website, finds every business detail they typed gone —
+// with nothing anywhere having warned them.
+func TestSwitchingToACustomSiteKeepsTheTemplateContent(t *testing.T) {
+	prev, err := json.Marshal(bizsite.Content{
+		Name: "Maison Olive", Tagline: "Seasonal plates", About: "A neighbourhood bistro",
+		Phone: "+33 1 23 45", Email: "hi@maisonolive.fr", Hours: "Tue–Sun 18:00–23:00",
+		CTA: "Reserve a table", Services: []bizsite.Service{{Title: "Menu"}},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	d := websiteDomain(t, "business", "bistro", string(prev))
+	deployBundleForTest(t, d)
+
+	// The switch a custom deploy performs.
+	cfg, cerr := scopedWebsiteConfigPreserving(d, "custom", "")
+	if cerr != nil {
+		t.Fatalf("scopedWebsiteConfigPreserving: %v", cerr)
+	}
+	got := bizsite.ParseContent(cfg.Content)
+	for _, c := range []struct{ field, want, have string }{
+		{"name", "Maison Olive", got.Name},
+		{"tagline", "Seasonal plates", got.Tagline},
+		{"about", "A neighbourhood bistro", got.About},
+		{"phone", "+33 1 23 45", got.Phone},
+		{"email", "hi@maisonolive.fr", got.Email},
+		{"hours", "Tue–Sun 18:00–23:00", got.Hours},
+		{"button label", "Reserve a table", got.CTA},
+	} {
+		if c.have != c.want {
+			t.Errorf("publishing a custom site erased the %s (%q → %q). Switching back to the "+
+				"template later finds it gone, and nothing warned anyone", c.field, c.want, c.have)
+		}
+	}
+	if len(got.Services) != 1 {
+		t.Error("the services grid was erased too")
+	}
+}
+
+// deployBundleForTest puts a real bundle in this domain's own directory, so the
+// test exercises the path a deploy actually takes rather than a stub.
+func deployBundleForTest(t *testing.T, d domain.Domain) {
+	t.Helper()
+	root := t.TempDir()
+	old := config.Cfg.MediaDir
+	config.Cfg.MediaDir = filepath.Join(root, "media")
+	t.Cleanup(func() { config.Cfg.MediaDir = old })
+
+	zipData, err := zipFromFiles(map[string]string{"index.html": "<!doctype html><h1>built</h1>"})
+	if err != nil {
+		t.Fatalf("zipFromFiles: %v", err)
+	}
+	if _, err := customsite.Deploy(scopedBundleDir(d), zipData); err != nil {
+		t.Fatalf("Deploy: %v", err)
+	}
+	if !customsite.Deployed(scopedBundleDir(d)) {
+		t.Fatal("the bundle did not deploy, so this test proves nothing about the switch")
+	}
+}
+
+// FINDING B — an assistant could publish to a site the operator had taken
+// OFFLINE or parked on hold.
+//
+// mcpSiteByHost refuses only the primary. A disabled domain is one the operator
+// deliberately stopped serving, and a held one is deliberately unprovisioned;
+// deploying to either overwrites a bundle and flips the mode on a site nobody
+// asked to touch. The console's own controls refuse both — the connector must
+// hold the same line, or the tool is a way around the panel.
+func TestTheAssistantWillNotPublishToAnOfflineOrHeldSite(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		d    domain.Domain
+		want string
+	}{
+		{"disabled", domain.Domain{ID: "s1", Host: "off.example",
+			Status: domain.StatusDisabled, SyncState: domain.SyncApproved}, "disabled"},
+		{"on manual hold", domain.Domain{ID: "s2", Host: "held.example",
+			Status: domain.StatusActive, SyncState: domain.SyncHold}, "hold"},
+	} {
+		err := mcpSiteWritable(c.d)
+		if err == nil {
+			t.Errorf("a %s site accepted a publish from an assistant — the console refuses "+
+				"both, so this is a way around the panel", c.name)
+			continue
+		}
+		if !strings.Contains(strings.ToLower(err.Error()), c.want) {
+			t.Errorf("the refusal for a %s site does not name the reason: %v", c.name, err)
+		}
+	}
+	// An ordinary approved, active site must still be writable, or the guard is
+	// a refusal of the feature rather than of the edge case.
+	ok := domain.Domain{ID: "s3", Host: "live.example",
+		Status: domain.StatusActive, SyncState: domain.SyncApproved}
+	if err := mcpSiteWritable(ok); err != nil {
+		t.Errorf("a live site was refused: %v", err)
+	}
+}
+
+// A guard that exists and is not called is not a guard.
+//
+// Mutation-testing finding B showed this: deleting the call from build_site left
+// mcpSiteWritable perfectly correct, perfectly tested, and never reached. The
+// unit test passed. Both WRITE tools must call it.
+func TestBothAssistantWriteToolsCallTheWritabilityGuard(t *testing.T) {
+	body := goFuncBody(readSourceFile(t, "mcp_sites.go"), "registerSiteTools")
+	builder := goFuncBody(readSourceFile(t, "mcp_sites.go"), "registerSiteBuilderTools")
+
+	// update_site lives in registerSiteTools; build_site in the builder set.
+	if !strings.Contains(body, "mcpSiteWritable(d)") {
+		t.Error("update_site does not check writability, so an assistant can retarget a site " +
+			"the operator disabled")
+	}
+	if !strings.Contains(builder, "mcpSiteWritable(d)") {
+		t.Error("build_site does not check writability, so an assistant can publish a whole " +
+			"website onto a site the operator took offline")
+	}
+	// And the read-only tools must NOT — refusing to READ a disabled site would
+	// hide it from the very listing an operator uses to find and re-enable it.
+	i := strings.Index(builder, `Name: "restore_previous_site"`)
+	if i >= 0 && strings.Contains(builder[i:], "mcpSiteWritable(d)") {
+		t.Error("restoring a previous bundle is refused on a disabled site, so an operator " +
+			"cannot undo a bad publish without first re-enabling the site they disabled " +
+			"because of it")
 	}
 }
