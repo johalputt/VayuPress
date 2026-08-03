@@ -3,6 +3,7 @@
 package main
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -296,5 +297,87 @@ func TestAHealthySiteRunsNoDiagnostic(t *testing.T) {
 	if !strings.Contains(guard, "TLSActive") {
 		t.Error("the diagnostic is not gated on the certificate state, so every console page " +
 			"does a DNS lookup and a file read for nothing")
+	}
+}
+
+// FINDING — a healthy run from YESTERDAY was reported as a pass while the
+// request made thirty seconds ago sat unconsumed.
+//
+// The check called a run ok on Failed==0 && Ran>0 and never looked at WHEN it
+// happened. An operator pressed Provision now, watched the page report four
+// green checks including "Last run … 0 reported a problem", and concluded the
+// fault was somewhere else. A stale success displayed as a current one is worse
+// than no check.
+func TestAStaleRunIsNotReportedAsAPass(t *testing.T) {
+	old := provisionResult{
+		FinishedAt: time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339),
+		Ran:        5, Failed: 0, Details: "setup-vayudomain.sh=ok",
+	}
+	if runFinishedAfter(old, time.Now().Add(-time.Minute)) {
+		t.Fatal("a run from two days ago was treated as having answered a request made a " +
+			"minute ago, so the console reports the operator's own click as successful")
+	}
+	// An unreadable timestamp must not be read as "yes". Guessing that a request
+	// was consumed, on the strength of a date we cannot parse, is the kind of
+	// assertion this page exists to stop making.
+	if runFinishedAfter(provisionResult{FinishedAt: "not-a-date"}, time.Now().Add(-time.Hour)) {
+		t.Error("an unparseable finish time was treated as a run that answered the request")
+	}
+	// And a genuinely fresh run must still pass, or the check is a refusal.
+	fresh := provisionResult{FinishedAt: time.Now().UTC().Format(time.RFC3339), Ran: 5}
+	if !runFinishedAfter(fresh, time.Now().Add(-time.Minute)) {
+		t.Error("a run that finished just now was not credited with answering the request")
+	}
+}
+
+// FINDING — the in-app updater swaps the BINARY ONLY.
+//
+// It runs unprivileged and cannot write to /usr/local/lib/vayupress, so an
+// install can be entirely up to date and still be running month-old shell
+// helpers. Every version number on every page says current. That is exactly what
+// happened: the binary carried the fix for the failure and the helper that trips
+// over it did not, and nothing anywhere said the two could differ.
+func TestTheConsoleNoticesStaleRootSideHelpers(t *testing.T) {
+	// A driver with the fixes.
+	if ok, _ := driverCarriesReportingFixes(
+		`grep -qi "ALREADY invalid"` + "\n" + `grep -qiE "skipping|nothing to do|nothing to provision"`,
+	); !ok {
+		t.Error("a current driver was reported as stale")
+	}
+	// A driver without them — the state an install is in after updating the
+	// binary alone, which is every install that has ever used the in-app updater.
+	// Each fix is checked SEPARATELY. A fixture missing both moves together with
+	// either check, so removing one of them changes no verdict — which is how a
+	// mutation on the nginx classification survived the first version of this
+	// test. One fixture per missing fix, or the checks are untested individually.
+	if only, _ := driverCarriesReportingFixes(
+		`grep -qiE "skipping|nothing to do|nothing to provision"`,
+	); only {
+		t.Error("a driver that cannot recognise a broken-nginx abort was reported as current; " +
+			"that run aborts having done nothing and is counted as a helper that did work")
+	}
+	if only, _ := driverCarriesReportingFixes(`grep -qi "ALREADY invalid"`); only {
+		t.Error("a driver that counts a no-op helper as one that did work was reported as current")
+	}
+
+	ok, why := driverCarriesReportingFixes(`grep -qi "skipping"`)
+	if ok {
+		t.Fatal("a driver that cannot tell a broken-nginx abort from a clean run was reported " +
+			"as up to date, so the numbers on this page come from a report that cannot " +
+			"distinguish success from silence and nothing says so")
+	}
+	if !strings.Contains(why, "unprivileged") {
+		t.Error("the stale-helper message does not explain WHY updating from the console " +
+			"cannot refresh them, so it reads as the updater being broken")
+	}
+
+	// UNREADABLE must be reported as not-current. A verdict of "up to date" for
+	// a file that could not be opened is asserted on the absence of evidence —
+	// the same unearned reassurance this whole diagnostic exists to remove.
+	old := provisionDriverPath
+	provisionDriverPath = filepath.Join(t.TempDir(), "does-not-exist.sh")
+	t.Cleanup(func() { provisionDriverPath = old })
+	if fresh, reason := provisionHelpersCurrent(); fresh {
+		t.Fatalf("an unreadable driver was reported as up to date: %q", reason)
 	}
 }

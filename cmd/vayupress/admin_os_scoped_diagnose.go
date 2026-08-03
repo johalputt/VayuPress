@@ -119,14 +119,54 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain) []diagCh
 		}[resolves],
 	})
 
-	// 4. What the last run actually did. Reported rather than summarised: the
+	// 4. Are the root-side helpers as new as this binary?
+	//
+	// The in-app updater swaps the BINARY ONLY — it runs unprivileged and cannot
+	// write to /usr/local/lib/vayupress. So an install can be fully up to date
+	// and still be running month-old shell helpers, which is invisible from
+	// every version number on every page. That is exactly what happened here:
+	// the binary carried the fix for the failure, the helper that trips over it
+	// did not, and nothing said the two could differ.
+	fresh, why := provisionHelpersCurrent()
+	out = append(out, diagCheck{
+		Label: "Root-side helpers up to date", OK: fresh, Fatal: !fresh, Detail: why,
+	})
+
+	// 5. Was the last run AFTER the most recent request?
+	//
+	// The first version of this check called a run "ok" on Failed==0 && Ran>0
+	// without looking at WHEN it happened — so a healthy run from yesterday was
+	// reported as a pass while the request made thirty seconds ago sat
+	// unconsumed. A stale success displayed as a current one is worse than no
+	// check: it sends the operator to look somewhere else.
+	res, have := readProvisionResult()
+	if reqAt, pending := provisionRequestAt(); pending {
+		consumed := have && runFinishedAfter(res, reqAt)
+		out = append(out, diagCheck{
+			Label: "Your provisioning request was picked up", OK: consumed, Fatal: !consumed,
+			Detail: map[bool]string{
+				true: "a run started after you asked for one",
+				false: "a request is waiting and no run has started since. The root-side watcher " +
+					"is not consuming it — most often because the helpers above are stale or the " +
+					"service failed its last start",
+			}[consumed],
+		})
+	}
+
+	// 6. What the last run actually did. Reported rather than summarised: the
 	//    per-helper detail string is the thing that names which one skipped.
-	if res, have := readProvisionResult(); have {
+	if have {
 		ok := res.Failed == 0 && res.Ran > 0
+		age := ""
+		if t, err := time.Parse(time.RFC3339, res.FinishedAt); err == nil && time.Since(t) > 24*time.Hour {
+			age = " (over a day ago — this is not a report on anything you just did)"
+			ok = false
+		}
 		out = append(out, diagCheck{
 			Label: "Last run " + res.FinishedAt, OK: ok,
 			Detail: strconv.Itoa(res.Ran) + " helper(s) did work, " + strconv.Itoa(res.Skipped) +
-				" had nothing to do, " + strconv.Itoa(res.Failed) + " reported a problem — " + res.Details,
+				" had nothing to do, " + strconv.Itoa(res.Failed) + " reported a problem — " +
+				res.Details + age,
 		})
 	} else {
 		out = append(out, diagCheck{
@@ -135,6 +175,69 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain) []diagCh
 		})
 	}
 	return out
+}
+
+// provisionRequestAt returns when the outstanding request was made.
+func provisionRequestAt() (time.Time, bool) {
+	fi, err := os.Stat(filepath.Clean(filepath.Join(provisionStateDir(), provisionRequestFile)))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return fi.ModTime(), true
+}
+
+// runFinishedAfter reports whether a recorded run finished after a given moment.
+// An unparseable timestamp is treated as NOT after: claiming a request was
+// consumed on the strength of a date we cannot read is the kind of guess this
+// page exists to stop making.
+func runFinishedAfter(res provisionResult, t time.Time) bool {
+	fin, err := time.Parse(time.RFC3339, res.FinishedAt)
+	if err != nil {
+		return false
+	}
+	return fin.After(t)
+}
+
+// provisionHelpersCurrent reports whether the root-side shell helpers carry the
+// fixes this binary expects.
+//
+// It checks for a marker string rather than a version, because the helpers carry
+// no version and adding one would not help an install that already has the old
+// copy. The marker is the classification the driver gained when it stopped
+// reporting a run that did nothing as a clean run — the single most useful
+// behaviour to know the presence of, since without it every number on this page
+// comes from a report that cannot distinguish success from silence.
+func provisionHelpersCurrent() (bool, string) {
+	b, err := os.ReadFile(filepath.Clean(provisionDriverPath))
+	if err != nil {
+		// UNKNOWN, reported as not-current. Reporting "up to date" for a file we
+		// could not open would be the same unearned reassurance the driver's own
+		// "nothing to do" was — a verdict asserted on the absence of evidence.
+		return false, "the root-side driver could not be read, so whether it carries the " +
+			"current fixes is unknown — this page will not call that up to date"
+	}
+	return driverCarriesReportingFixes(string(b))
+}
+
+// provisionDriverPath is a var rather than a const so a test can reach the
+// unreadable branch, which is the one that must never report "current".
+var provisionDriverPath = "/usr/local/lib/vayupress/provision-subdomains.sh"
+
+// driverCarriesReportingFixes is the check itself, over the driver's text.
+func driverCarriesReportingFixes(src string) (bool, string) {
+	missing := []string{}
+	if !strings.Contains(src, "ALREADY invalid") {
+		missing = append(missing, "it cannot tell a broken-nginx abort from a clean run")
+	}
+	if !strings.Contains(src, "nothing to provision") {
+		missing = append(missing, "it counts a helper that did nothing as one that did work")
+	}
+	if len(missing) == 0 {
+		return true, "the driver carries the current reporting fixes"
+	}
+	return false, "the shell helpers are OLDER than this binary — " + strings.Join(missing, ", ") +
+		". Updating from this console swaps the binary only; it runs unprivileged and cannot " +
+		"write to /usr/local/lib/vayupress. Re-run the provisioning installer once to refresh them."
 }
 
 // hostResolves is a bounded lookup used only for the diagnostic.

@@ -6,6 +6,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.47] — 2026-08-03
+
+Found by reading the diagnostic v3.16.44 added, on a live install where every
+check said **ok** and the certificate still would not issue. The checks were
+wrong, not the operator.
+
+### Fixed
+- **A run from YESTERDAY was reported as a pass for a request made seconds ago.**
+  The check called a run healthy on `Failed==0 && Ran>0` and never looked at
+  *when* it happened. An operator pressed **Provision now**, watched the page
+  report four green checks including *"Last run … 0 reported a problem"*, and
+  reasonably concluded the fault was elsewhere. A stale success displayed as a
+  current one is worse than no check — it ends the investigation.
+
+  The console now compares the last run against the outstanding request and says
+  plainly when a request has not been picked up. A run older than a day is no
+  longer green, and says it is not a report on anything you just did. An
+  unparseable timestamp counts as **not** consumed: claiming a request was
+  answered on the strength of a date we cannot read is the guess this page exists
+  to stop making.
+
+- **The in-app updater swaps the binary only, and nothing said so.** It runs
+  unprivileged and cannot write to `/usr/local/lib/vayupress`, so an install can
+  be entirely up to date — every version number on every page reading current —
+  while running month-old root-side shell helpers. That is exactly the state
+  behind this whole investigation: the binary carried the fix for the failure,
+  the helper that trips over it did not, and the two could differ with nothing
+  anywhere reporting it.
+
+  The console now checks the driver on disk for the reporting fixes this binary
+  expects, and when they are absent says so, explains that updating from the
+  panel cannot refresh them and why, and names the one step that can. A driver it
+  cannot read is reported as **unknown, not current** — a verdict of "up to date"
+  for a file that could not be opened is asserted on the absence of evidence,
+  which is the same unearned reassurance the driver's own "nothing to do" was.
+
 ## [3.16.46] — 2026-08-03
 
 **An adversarial pass over v3.16.45's new surface, which should have run before
