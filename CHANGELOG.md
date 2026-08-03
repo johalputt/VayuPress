@@ -116,6 +116,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   process, one machine, one database, one mail signing key, one bot shield — in
   the same view as the capability.
 
+- **Phase 4 — a hosted domain's theme is its own.** Theme Studio is the *same
+  handler* mounted a second time under `/os/d/{id}/theme`, reading its scope from
+  the request. One code path, two mounts: a parallel per-domain implementation
+  would be a second place for every future theme change to be forgotten, and the
+  forgotten one is always the client-facing one.
+
+  The public render path changed with it. A hosted domain used to be rendered
+  from `render.GetActiveSettings()` — the **operator's own live settings** — with
+  six brand fields painted on top, which is exactly what "the tools are all
+  linked" meant: the theme, the custom CSS, the head meta and 315 other keys were
+  never the domain's. It is now built from that domain's own scope, so a domain
+  that has chosen nothing looks like a **clean install** rather than like the
+  studio's blog.
+
+  Migration 083 moves each domain's six brand fields out of `domains.config_json`
+  and into its settings scope, because after Phase 2 the blob was a **second store
+  for the same thing** — and two stores for one concept is the defect this whole
+  ADR is correcting: a page that displays one value and saves another, with no
+  way to tell which is live. Only non-empty values move: a blank field meant
+  "inherit the primary" under the old overlay, and writing empty strings would
+  freeze today's inheritance into explicit blanks. `INSERT OR IGNORE`, so a value
+  already set through the scoped page is never overwritten by the older blob.
+
+  The settings→render mapping was copy-pasted in four handlers, which meant a key
+  added to one and not the others saved correctly and rendered empty. It is one
+  function now.
+
+### Security
+- **A cross-tenant write, caught while building Phase 4 rather than after.**
+  `render.SetActiveSettings` is a **process-wide singleton** holding the primary
+  site's live configuration. Mounting Theme Studio under a per-domain route made
+  its save path reachable with a hosted domain's scope — so saving a client's
+  theme would have repainted **the operator's own site** with that client's
+  colours, in memory, until the next restart. No database change, no error, and
+  nothing to point at afterwards. The global write is now guarded on the scope
+  being the primary, and a hosted domain needs no refresh at all because its
+  pages are built from its own scope on every request.
+
 ### Security
 - **Two mutations passed against re-broken code and exposed a test harness that
   could certify almost anything.** Changing the migration's backfill target from

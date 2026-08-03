@@ -9,6 +9,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/settings"
 )
 
 // middleware_domain.go — VayuDomains host resolution (Stage 1).
@@ -104,6 +105,28 @@ func (a *App) brandForRequest(r *http.Request) (render.SiteSettings, bool) {
 	if !ok || d.IsPrimary {
 		return render.SiteSettings{}, false
 	}
+
+	// ADR-0153 Phase 4. A hosted domain is rendered from ITS OWN settings scope,
+	// not from the primary's with six fields painted over the top.
+	//
+	// The old path started at render.GetActiveSettings() — the operator's own
+	// live settings — and overlaid whatever brand fields the domain had set. That
+	// is why a hosted domain was the operator's site wearing a different name:
+	// the other 321 keys, the whole theme among them, were never the domain's to
+	// begin with.
+	//
+	// Now the scope is the source. An unset key resolves to the PRODUCT DEFAULT
+	// (D2), so a domain that has chosen nothing looks like a clean install rather
+	// than like the studio's blog.
+	if sc := settings.ForDomain(d.ID); sc.Valid() && a.siteSettings != nil {
+		if vals, err := a.siteSettings.GetAll(r.Context(), sc); err == nil {
+			return siteSettingsFromValues(vals), true
+		}
+	}
+
+	// The store could not answer. Fall back to the brand overlay rather than to
+	// nothing: serving the primary's full settings under a client's hostname is
+	// the failure this phase removes, and half the old behaviour beats all of it.
 	b, ok := d.Brand()
 	if !ok {
 		return render.SiteSettings{}, false
@@ -111,6 +134,38 @@ func (a *App) brandForRequest(r *http.Request) (render.SiteSettings, bool) {
 	s := render.GetActiveSettings()
 	applyBrand(&s, b)
 	return s, true
+}
+
+// siteSettingsFromValues builds the render view of one scope's settings.
+//
+// This mapping existed four times, copy-pasted, in the theme and settings save
+// handlers — so a key added to one and not the others produced a value that
+// saved correctly and rendered as empty until someone noticed. One function
+// now, called by all of them.
+func siteSettingsFromValues(v map[string]string) render.SiteSettings {
+	return render.SiteSettings{
+		Name:            v[settings.KeySiteName],
+		Tagline:         v[settings.KeySiteTagline],
+		Description:     v[settings.KeySiteDescription],
+		Author:          v[settings.KeySiteAuthor],
+		AuthorBio:       v[settings.KeyAuthorBio],
+		ShowMembership:  v[settings.KeyMembershipButtons] == "true",
+		PrimaryLight:    v[settings.KeyThemePrimaryLight],
+		PrimaryDark:     v[settings.KeyThemePrimaryDark],
+		AccentLight:     v[settings.KeyThemeAccentLight],
+		AccentDark:      v[settings.KeyThemeAccentDark],
+		CustomCSS:       v[settings.KeyThemeCustomCSS],
+		Keywords:        v[settings.KeyHeadKeywords],
+		ThemeColor:      v[settings.KeyHeadThemeColor],
+		Robots:          v[settings.KeyHeadRobots],
+		VerifyGoogle:    v[settings.KeyHeadVerifyGoogle],
+		VerifyBing:      v[settings.KeyHeadVerifyBing],
+		NavJSON:         v[settings.KeyNavItems],
+		FooterJSON:      v[settings.KeyFooterConfig],
+		OGImage:         render.OGImagePath(v[settings.KeyThemeOGImage]),
+		ShowHero:        v[settings.KeyHomeHero] == "true",
+		CommentsEnabled: v[settings.KeyFeatureComments] != "off",
+	}
 }
 
 // applyBrand overlays a secondary domain's non-empty branding fields onto a copy

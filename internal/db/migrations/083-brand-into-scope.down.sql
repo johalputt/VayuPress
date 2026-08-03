@@ -1,0 +1,7 @@
+-- Down for 083. Nothing is removed.
+--
+-- The rows this migration created are indistinguishable from rows an operator
+-- typed into the scoped settings page afterwards, so deleting them would throw
+-- away deliberate edits alongside the copied values. The old blob is left in
+-- place by the up migration precisely so that rolling back needs no data
+-- movement at all.

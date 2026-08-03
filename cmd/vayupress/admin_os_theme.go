@@ -238,7 +238,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	// make the gallery appear to "not show" at all). A nil map reads safely.
 	var vals map[string]string
 	if a.siteSettings != nil {
-		vals, _ = a.siteSettings.GetAll(r.Context(), settings.ForPrimary())
+		vals, _ = a.siteSettings.GetAll(r.Context(), osScope(r))
 	}
 	val := func(k string) string {
 		if v, ok := vals[k]; ok {
@@ -642,14 +642,22 @@ func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 		settings.KeyHeadVerifyGoogle: verifyGoogle,
 		settings.KeyHeadVerifyBing:   verifyBing,
 	}
-	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), kv); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), osScope(r), kv); err != nil {
 		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "save failed: " + err.Error()})
 		return
 	}
 
 	// Re-read the full set so we refresh the render pipeline without clobbering
 	// the identity/palette values this endpoint doesn't touch.
-	if nv, err := a.siteSettings.GetAll(r.Context(), settings.ForPrimary()); err == nil {
+	// The render package's active settings are a PROCESS-WIDE singleton: they are
+	// the primary site's live configuration. Pushing a hosted domain's values into
+	// it would repaint the operator's own site with a client's theme until the next
+	// restart — a cross-tenant write with no database change behind it.
+	//
+	// A hosted domain needs no refresh here at all: its pages are rendered from its
+	// own scope on each request (brandForRequest), so the next request already sees
+	// the save.
+	if nv, err := a.siteSettings.GetAll(r.Context(), osScope(r)); err == nil && osScope(r).IsPrimary() {
 		render.SetActiveSettings(render.SiteSettings{
 			Name:            nv[settings.KeySiteName],
 			Tagline:         nv[settings.KeySiteTagline],
@@ -691,7 +699,7 @@ func (a *App) handleOSThemeExport(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "failed to load theme: " + err.Error()})
 		return
 	}
-	vals, _ := a.siteSettings.GetAll(r.Context(), settings.ForPrimary())
+	vals, _ := a.siteSettings.GetAll(r.Context(), osScope(r))
 	get := func(k string) string {
 		if v, ok := vals[k]; ok {
 			return v
@@ -790,11 +798,19 @@ func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 		settings.KeyHeadVerifyGoogle: verifyGoogle,
 		settings.KeyHeadVerifyBing:   verifyBing,
 	}
-	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), kv); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), osScope(r), kv); err != nil {
 		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "failed to persist settings: " + err.Error()})
 		return
 	}
-	if nv, err := a.siteSettings.GetAll(r.Context(), settings.ForPrimary()); err == nil {
+	// The render package's active settings are a PROCESS-WIDE singleton: they are
+	// the primary site's live configuration. Pushing a hosted domain's values into
+	// it would repaint the operator's own site with a client's theme until the next
+	// restart — a cross-tenant write with no database change behind it.
+	//
+	// A hosted domain needs no refresh here at all: its pages are rendered from its
+	// own scope on each request (brandForRequest), so the next request already sees
+	// the save.
+	if nv, err := a.siteSettings.GetAll(r.Context(), osScope(r)); err == nil && osScope(r).IsPrimary() {
 		render.SetActiveSettings(render.SiteSettings{
 			Name:            nv[settings.KeySiteName],
 			Tagline:         nv[settings.KeySiteTagline],

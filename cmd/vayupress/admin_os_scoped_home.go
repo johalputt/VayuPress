@@ -41,8 +41,7 @@ type scopedTool struct {
 var scopedTools = []scopedTool{
 	{Path: "/os/d/%s/settings", Icon: "⚙️", Title: "Site settings", Live: true,
 		Desc: "Name, tagline, description and the basics this site introduces itself with."},
-	{Path: "/os/d/%s/theme", Icon: "🎨", Title: "Theme Studio", Live: false,
-		Soon: "Phase 4",
+	{Path: "/os/d/%s/theme", Icon: "🎨", Title: "Theme Studio", Live: true,
 		Desc: "Colours, typography and custom CSS — this domain's own, not the primary's."},
 	{Path: "/os/d/%s/seo", Icon: "🔍", Title: "SEO", Live: false,
 		Soon: "Phase 5",
