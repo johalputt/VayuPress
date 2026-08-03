@@ -12,7 +12,7 @@ require (
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/graphql-go/graphql v0.8.1
-	github.com/mattn/go-sqlite3 v1.14.48
+	github.com/mattn/go-sqlite3 v1.14.49
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/phuslu/iploc v1.0.20260715
 	github.com/rs/cors v1.11.1
@@ -33,7 +33,7 @@ require (
 require (
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
-	github.com/yuin/goldmark v1.8.4
+	github.com/yuin/goldmark v1.8.5
 	golang.org/x/net v0.57.0
 	golang.org/x/sys v0.47.0
 )
