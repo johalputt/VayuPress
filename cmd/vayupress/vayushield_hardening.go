@@ -771,6 +771,7 @@ func (a *App) shieldHardeningBody(r *http.Request) string {
 		b.WriteString(shieldFixRow("defaulthost"))
 		b.WriteString(shieldFixRow("mcpsurface"))
 		b.WriteString(shieldFixRow("realip"))
+		b.WriteString(shieldFixRow("provisionhelpers"))
 		b.WriteString(a.shieldCDNAdvisory(r))
 		b.WriteString(`<p class="muted text-xs">Both tiers are fully reversible from here.</p>`)
 	} else {

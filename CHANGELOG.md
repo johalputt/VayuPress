@@ -6,6 +6,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.65] — 2026-08-03
+
+**The same defect, third layer — and the gate I wrote for it stopped one layer
+short of the screen.**
+
+### Fixed
+- **The repair was registered and never rendered.** v3.16.64 added the
+  `provisionhelpers` remediation to the registry and shipped a gate proving a
+  capability has an entry and an entry names a real capability. Both passed.
+  `shieldFixRow("provisionhelpers")` was never called, so **no button for it
+  existed on any page** — and the console was telling operators to press it.
+
+  A registry entry nobody draws is exactly as dead as a capability nobody asks
+  for. Three releases in a row have now shipped a different layer of the same
+  hole: the capability without a control, the control without a row, the row
+  without a call site.
+
+### Added
+- **The parity gate now reaches the screen.** Every registered remediation must
+  have a render call, and the row must render something usable rather than an
+  empty string. The previous version verified two links of a three-link chain and
+  reported the chain intact — which is the failure mode this entire track has
+  been about, committed by the check written to prevent it.
+
+### Audit
+One mutation: removing the render call again. Caught. The reason it is the only
+one worth recording is that it is the exact defect that shipped, twice, past a
+gate that was watching the wrong end.
+
 ## [3.16.64] — 2026-08-03
 
 **The repair shipped with no button. That is my defect, and it is the same one

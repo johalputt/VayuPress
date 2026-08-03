@@ -325,3 +325,24 @@ func TestTheReloadFindingNamesTheControlThatFixesIt(t *testing.T) {
 		t.Error("the finding still sends the operator to a terminal")
 	}
 }
+
+// THE SAME DEFECT, THIRD LAYER. The parity gate above checks that a capability
+// has a registry entry and that an entry names a real capability — and both
+// passed while the entry was never RENDERED, so the button still did not exist.
+//
+// A registry entry nobody draws is exactly as dead as a capability nobody asks
+// for, and a gate that stops one layer short of the screen is a gate that proves
+// the operator can reach something they cannot.
+func TestEveryRegisteredFixIsActuallyRendered(t *testing.T) {
+	src := readSourceFile(t, "vayushield_hardening.go")
+	for key := range shieldFixes {
+		if !strings.Contains(src, `shieldFixRow("`+key+`")`) {
+			t.Errorf("the %q remediation is registered and never rendered, so no button for it "+
+				"exists on any page — the operator is told to press something that is not there", key)
+		}
+	}
+	// And it must render something real for this key rather than an empty string.
+	if row := shieldFixRow("provisionhelpers"); !strings.Contains(row, "Certificate helpers") {
+		t.Errorf("the certificate-helper row renders nothing usable: %q", row)
+	}
+}
