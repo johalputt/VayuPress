@@ -91,7 +91,7 @@ func isolationDomain() domain.Domain {
 func TestTheSiteConsoleLinksNoInstallWideTool(t *testing.T) {
 	d := isolationDomain()
 	assertNoInstallWideLinks(t, "the site console", d.ID,
-		scopedConsolePage(d, 3, 2, 1, true, nil))
+		scopedConsolePage(d, 3, 2, 1, true, nil, ""))
 }
 
 func TestEveryPerSiteToolLinksNoInstallWideTool(t *testing.T) {
@@ -139,7 +139,7 @@ func TestEveryScopedToolPathCarriesTheSite(t *testing.T) {
 // must be named. Silence there is how an operator sells a client something the
 // product does not do, and finds out in front of them.
 func TestTheConsoleNamesWhatIsStillInstallWide(t *testing.T) {
-	page := scopedConsolePage(isolationDomain(), 0, 0, 0, true, nil)
+	page := scopedConsolePage(isolationDomain(), 0, 0, 0, true, nil, "")
 	for _, want := range sharedTools {
 		if !strings.Contains(page, want) {
 			t.Errorf("the console never mentions that %s is still install-wide", want)
@@ -173,7 +173,7 @@ func TestAPendingCertificateCarriesTheControlThatFixesIt(t *testing.T) {
 	d := isolationDomain()
 	d.SyncState = domain.SyncApproved
 	d.TLSState = domain.TLSPending
-	page := scopedConsolePage(d, 0, 0, 0, true, nil)
+	page := scopedConsolePage(d, 0, 0, 0, true, nil, "")
 
 	if !strings.Contains(page, "data-site-provision") {
 		t.Fatal("the console reports a pending certificate with no way to act on it — the " +
@@ -192,7 +192,7 @@ func TestAPendingCertificateCarriesTheControlThatFixesIt(t *testing.T) {
 	ok := isolationDomain()
 	ok.SyncState = domain.SyncApproved
 	ok.TLSState = domain.TLSActive
-	if strings.Contains(scopedConsolePage(ok, 0, 0, 0, true, nil), "data-site-provision") {
+	if strings.Contains(scopedConsolePage(ok, 0, 0, 0, true, nil, ""), "data-site-provision") {
 		t.Error("a site with a live certificate is offered a provisioning run anyway")
 	}
 
@@ -202,7 +202,7 @@ func TestAPendingCertificateCarriesTheControlThatFixesIt(t *testing.T) {
 	held := isolationDomain()
 	held.SyncState = domain.SyncHold
 	held.TLSState = domain.TLSPending
-	if strings.Contains(scopedConsolePage(held, 0, 0, 0, true, nil), "data-site-provision") {
+	if strings.Contains(scopedConsolePage(held, 0, 0, 0, true, nil, ""), "data-site-provision") {
 		t.Error("a site on manual hold is offered a provisioning run that would skip it")
 	}
 }
@@ -233,5 +233,68 @@ func TestTheProvisionButtonReportsTheOutcome(t *testing.T) {
 		if !strings.Contains(seg, want) {
 			t.Errorf("the button does not distinguish %s", why)
 		}
+	}
+}
+
+// ADR-0154 D11 — the console diagnoses itself.
+//
+// Diagnosing one stuck certificate took four rounds of "run this and paste the
+// output". Every fact involved is available to this process, so the page must
+// determine and print them rather than describe where to go and look.
+func TestAPendingCertificateShowsWhatTheConsoleChecked(t *testing.T) {
+	checks := []diagCheck{
+		{Label: "Root-side helper installed", OK: true, Detail: "present"},
+		{Label: "Listed for provisioning", OK: false, Fatal: true, Detail: "on manual hold"},
+		{Label: "DNS answers for client.example", OK: true, Detail: "resolves"},
+	}
+	body := scopedDiagnosticBody(checks, []string{"line one", "No sync-approved secondary domains"})
+
+	// Each check, and its verdict, must be on the page.
+	for _, c := range checks {
+		if !strings.Contains(body, c.Label) {
+			t.Errorf("the diagnostic never reports %q", c.Label)
+		}
+	}
+	// The one that blocks must be distinguishable from the ones that merely
+	// failed, or an operator reads six rows and learns nothing.
+	if !strings.Contains(body, "badge--warn") {
+		t.Error("a blocking check is not toned differently from a passing one")
+	}
+	// The log goes on the page verbatim. It is the artifact that actually
+	// answered this on a real install.
+	if !strings.Contains(body, "No sync-approved secondary domains") {
+		t.Fatal("the provisioning log is not shown, so the operator is still being asked to " +
+			"fetch it from a terminal — the thing this exists to stop")
+	}
+	if strings.Contains(body, "<script") {
+		t.Error("log content reached the page unescaped")
+	}
+}
+
+// The log is untrusted text from another process. It must be escaped.
+func TestTheProvisioningLogIsEscaped(t *testing.T) {
+	body := scopedDiagnosticBody(nil, []string{`<img src=x onerror="alert(1)">`})
+	if strings.Contains(body, "<img src=x") {
+		t.Fatal("a log line rendered as live markup; a root-side process writes that file and " +
+			"its contents must never be trusted into the page")
+	}
+	if !strings.Contains(body, "&lt;img") {
+		t.Error("the log line was neither escaped nor rendered — it vanished")
+	}
+}
+
+// A healthy site must not pay for the diagnostic. It does a DNS lookup and reads
+// a file; neither belongs on a page with nothing wrong.
+func TestAHealthySiteRunsNoDiagnostic(t *testing.T) {
+	src := readSourceFile(t, "admin_os_scoped_home.go")
+	body := goFuncBody(src, "handleOSScopedHome")
+	i := strings.Index(body, "diagnoseCertificate")
+	if i < 0 {
+		t.Fatal("the console never diagnoses a pending certificate")
+	}
+	guard := body[:i]
+	if !strings.Contains(guard, "TLSActive") {
+		t.Error("the diagnostic is not gated on the certificate state, so every console page " +
+			"does a DNS lookup and a file read for nothing")
 	}
 }

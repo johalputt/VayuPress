@@ -103,7 +103,15 @@ func (a *App) handleOSScopedHome(w http.ResponseWriter, r *http.Request) {
 		clients, _ = a.userStore.ClientsForDomain(r.Context(), d.ID)
 	}
 
-	body := scopedConsolePage(d, posts, members, mailboxes, mailOn, clients) + domainManageScript(nonce)
+	// The diagnostic runs only when there is something to diagnose — it does a
+	// DNS lookup and reads a file, and neither belongs on a healthy page.
+	diagnostics := ""
+	if !d.IsPrimary && d.IsSyncApproved() &&
+		d.TLSState != domain.TLSActive && d.TLSState != domain.TLSPrimary {
+		diagnostics = scopedDiagnosticBody(a.diagnoseCertificate(r.Context(), d), provisionLogTail(25))
+	}
+
+	body := scopedConsolePage(d, posts, members, mailboxes, mailOn, clients, diagnostics) + domainManageScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, d.Host, "optimize", cfg, htmpl.HTML(body)))
 }
 
@@ -111,7 +119,7 @@ func (a *App) handleOSScopedHome(w http.ResponseWriter, r *http.Request) {
 // header, four tiles answering "what is the state of this site", the site's own
 // tools, then administration folded into accordions so the page is scannable
 // rather than a wall of cards.
-func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bool, clients []users.User) string {
+func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bool, clients []users.User, diagnostics string) string {
 	esc := html.EscapeString
 	pending := isPendingTorSite(d.Host)
 	var b strings.Builder
@@ -156,6 +164,7 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 	if !d.IsPrimary && d.IsSyncApproved() &&
 		d.TLSState != domain.TLSActive && d.TLSState != domain.TLSPrimary {
 		b.WriteString(scopedCertificateBody(d))
+		b.WriteString(diagnostics)
 	}
 
 	// A site nobody can reach is the one fact that outranks everything below it.

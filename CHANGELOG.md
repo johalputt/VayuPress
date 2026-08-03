@@ -6,6 +6,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.44] — 2026-08-03
+
+### Added
+- **The site console diagnoses its own stuck certificate (ADR-0154 D11).**
+  Working out why one certificate would not issue took four rounds of "run this
+  and paste the output" — `nginx -t`, `tail provision.log`, `systemctl status`,
+  `vayupress domains list`. Every one of those facts is available to this
+  process. Asking a person to fetch something the console can already read is the
+  same defect as a control that does nothing: **the page knows and does not
+  say.**
+
+  A site whose certificate is pending now shows what the console *checked*, in
+  the order the root helper hits each condition — is the privileged half
+  installed, would the helper's own host list include this site, does the name
+  resolve, and what the last run actually reported, per helper. The check that
+  **blocks** is toned differently from one that merely failed, so six rows do not
+  read as six equal problems.
+
+  Underneath it, the provisioning log **verbatim**. A diagnostic an operator
+  cannot verify is one they have to take on trust, and that log is the artifact
+  that actually answered this on a real install. It is written by a root-side
+  process, so it is escaped on the way in and pinned by a test that feeds it an
+  `onerror` payload.
+
+  The whole block is gated on the certificate state: a healthy site pays for no
+  DNS lookup and no file read.
+
 ## [3.16.43] — 2026-08-03
 
 The same root cause as v3.16.42, moved into the binary so it can be fixed **from

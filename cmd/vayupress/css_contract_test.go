@@ -82,7 +82,7 @@ func assertClassesAreStyled(t *testing.T, label, css, markup string) {
 func TestTheSiteConsoleEmitsNoUnstyledClass(t *testing.T) {
 	css := loadAdminOSCSS(t)
 	d := isolationDomain()
-	assertClassesAreStyled(t, "the site console", css, scopedConsolePage(d, 3, 2, 1, true, nil))
+	assertClassesAreStyled(t, "the site console", css, scopedConsolePage(d, 3, 2, 1, true, nil, ""))
 }
 
 func TestTheSiteToolTilesMatchTheAdministrationRows(t *testing.T) {

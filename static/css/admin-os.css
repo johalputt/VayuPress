@@ -6656,3 +6656,13 @@
 @media (max-width: 640px) {
   .vp-os .form-grid { grid-template-columns: 1fr; gap: var(--sp-3); }
 }
+
+/* The provisioning log, shown verbatim on the site console. Scrolls in its own
+   box so a long log never widens the page — the rule every wide block here
+   follows. */
+.vp-os .vm-logbox {
+  max-height: 320px; overflow: auto; margin: 0;
+  padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--bg-surface-2); color: var(--text-2);
+  white-space: pre; tab-size: 2;
+}

@@ -188,3 +188,34 @@ server under the existing `domains` permission section, so an operator can say
 - **The primary is refused by name.** `Registry.SetSite` already refuses it;
   the lookup refuses it first, with the reason, so an assistant is not handed an
   opaque error it will retry. `list_sites` marks it `editable_here: false`.
+
+### D11 — The console diagnoses itself
+
+**A fix or a diagnosis an operator cannot reach from VayuOS has not shipped.**
+
+Stated after four consecutive replies ended in a shell command. Diagnosing one
+stuck certificate took `nginx -t`, `tail provision.log`, `systemctl status` and
+`vayupress domains list` — every one of which this process can determine for
+itself. Asking a person to fetch something the console can already read is the
+same defect as a control that does nothing: the page knows and does not say.
+
+So a site whose certificate is pending now shows what the console *checked*, in
+the order the root helper hits each condition: is the privileged half installed,
+would the helper's own host list include this site, does the name resolve, and
+what the last run actually reported. Underneath, the provisioning log verbatim —
+because a diagnostic an operator cannot verify is one they have to take on trust,
+and that log is the artifact that actually answered it on a real install.
+
+Three consequences that follow from the rule:
+
+- **The fix goes in the binary wherever it can**, because the binary is what the
+  in-app updater delivers. A root-side shell fix reaches only operators who
+  re-run an installer over SSH, which is the thing being ruled out. The API_KEY
+  failure is the worked example: the shell fix was correct and reached nobody,
+  and moving it into `config.LoadLocalCLI()` made the same repair arrive through
+  Update & Backup.
+- **Where a step genuinely needs root, the panel requests it and reports what
+  happened.** It never instructs.
+- **Where something truly cannot be done from the panel** — installing a systemd
+  unit on a first deploy — the panel shows the exact command with the reason.
+  That is the ceiling, and it belongs on the page rather than in a conversation.
