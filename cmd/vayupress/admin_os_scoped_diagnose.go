@@ -246,7 +246,12 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 		// The probe answers exactly the question a connection error raises, and
 		// nothing else can. It writes a token and reads it back, so it is only run
 		// when there is a reason to.
-		out = append(out, vhostCheck(d.Host), challengeProbe(ctx, d.Host))
+		vh := vhostCheck(d.Host)
+		pr := challengeProbe(ctx, d.Host)
+		out = append(out, vh, pr)
+		if c, ok := staleConfigCheck(vh, pr); ok {
+			out = append(out, c)
+		}
 	}
 
 	// 3. Would the helper's own registry read see this domain? This is the check
@@ -331,8 +336,10 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 	// unconsumed. A stale success displayed as a current one is worse than no
 	// check: it sends the operator to look somewhere else.
 	res, have := readProvisionResult()
+	requestStuck := false
 	if reqAt, pending := provisionRequestAt(); pending {
 		consumed := have && runFinishedAfter(res, reqAt)
+		requestStuck = !consumed
 		out = append(out, diagCheck{
 			Label: "Your provisioning request was picked up", OK: consumed, Fatal: !consumed,
 			Detail: map[bool]string{
@@ -373,6 +380,9 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 		})
 	}
 
+	if c, ok := rootSideStalledCheck(requestStuck, fresh); ok {
+		out = append(out, c)
+	}
 	return out
 }
 
@@ -1099,4 +1109,69 @@ func port80Kind() string {
 	return "something IS listening on port 80 and accepted the connection before closing it " +
 		"without a response. That is not a stopped service — it is a server block declining to " +
 		"answer, and the server-block check above says which one"
+}
+
+// staleConfigCheck names the one conclusion that follows from two checks
+// disagreeing, and from nothing else.
+//
+// If the config on disk NAMES this host, LISTENS on port 80 and SERVES the
+// challenge location — and a loopback request carrying that Host still gets
+// nothing — then the file is right and the process is not using it. nginx reads
+// its configuration at start and at reload; a vhost written after the last
+// reload is a file on disk that the running server has never seen.
+//
+// The console had both halves of this and printed them as unrelated rows, which
+// left the reader to notice that "the config is correct" and "nothing answered"
+// can only both be true for one reason. Making a person derive the conclusion
+// from two facts already on the page is the same failure as not showing them.
+func staleConfigCheck(vhost, probe diagCheck) (diagCheck, bool) {
+	if !vhost.OK || probe.OK {
+		return diagCheck{}, false
+	}
+	return diagCheck{
+		Label: "nginx is running configuration older than this site's vhost", OK: false, Fatal: true,
+		Detail: "the two checks above can only disagree for one reason. The config on disk names " +
+			"this host, listens on port 80 and serves the challenge location — and a request " +
+			"carrying that Host still gets nothing. nginx reads its configuration at start and at " +
+			"reload, so a vhost written after the last reload is a file the running server has " +
+			"never seen. Nothing about the file needs changing and no DNS record is involved. " +
+			"Press Provision now: the root-side helper reloads nginx as part of its run, which is " +
+			"the step this service is deliberately unable to perform for itself.",
+	}, true
+}
+
+// rootSideStalledCheck joins the two root-side facts into the one action that
+// resolves both.
+//
+// The console was reporting them as separate rows — "a request is waiting and no
+// run has started since" and "the shell helpers are OLDER than this binary" —
+// several rows apart, each true, neither saying what to do. Together they are
+// not two problems: they are one. The watcher that consumes the request and the
+// helpers that do the work are installed by the same step, and while that step
+// is stale nothing else on this page can proceed, because every repair the
+// console can offer runs through a worker that is not starting.
+//
+// This is the one place the product genuinely cannot fix itself, and the rule
+// for that case is explicit: show the exact command, copyable, with the reason,
+// on the page rather than in a conversation. The service runs unprivileged and
+// deliberately cannot install a systemd unit — which is the same property that
+// stops a bug in it taking over the machine.
+func rootSideStalledCheck(requestStuck, helpersFresh bool) (diagCheck, bool) {
+	if !requestStuck || helpersFresh {
+		return diagCheck{}, false
+	}
+	return diagCheck{
+		Label: "The root-side half needs reinstalling once", OK: false, Fatal: true,
+		Detail: "two rows above are one problem. A provisioning request is sitting unconsumed AND " +
+			"the shell helpers predate this binary — and the same step installs both the systemd " +
+			"watcher that consumes the request and the helpers that do the work. While that step " +
+			"is stale, every repair this console offers goes through a worker that never starts: " +
+			"the vhost is never rewritten, nginx is never reloaded, and no certificate can be " +
+			"issued no matter how correct the DNS is. Updating from this console swaps the BINARY " +
+			"only — it runs unprivileged and cannot write to /usr/local/lib/vayupress or install a " +
+			"systemd unit, which is the same property that stops a bug in it taking over the " +
+			"machine. Domains & DNS shows the single command that reinstalls the helper, re-arms " +
+			"the watcher and runs a pass immediately; it touches neither the binary nor the " +
+			"database.",
+	}, true
 }

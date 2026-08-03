@@ -6,6 +6,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.59] — 2026-08-03
+
+**Two pairs of rows that each said everything except what to do.**
+
+### Fixed
+- **"The config is correct" beside "nothing answered" now states its own
+  conclusion.** Those two can only both be true for one reason: nginx reads its
+  configuration at start and at reload, so a vhost written after the last reload
+  is a file on disk the running server has never seen. The console had both
+  halves and printed them as unrelated rows, leaving the reader to derive it —
+  which is the same failure as not showing them, and it is what the page did
+  while the operator was sent to look at DNS three times.
+
+  Guarded so it fires only on that contradiction: a **missing** vhost is not a
+  stale-reload problem, and saying so would send someone past the real cause.
+
+- **"A request is waiting and no run has started" and "the shell helpers are
+  older than this binary" are one problem, and are now reported as one.** The
+  same step installs the systemd watcher that consumes the request and the
+  helpers that do the work. While it is stale, every repair this console offers
+  runs through a worker that never starts — the vhost is never rewritten, nginx
+  is never reloaded, and no certificate can be issued however correct the DNS is.
+  Neither row said that; they were several apart and each was individually true.
+
+  This is the one place the product genuinely cannot repair itself, and the rule
+  for it is explicit: the exact command, copyable, with the reason, **on the
+  page**. The service runs unprivileged and cannot install a systemd unit — the
+  same property that stops a bug in it taking over the machine.
+
+  It fires only on the combination. Stale helpers with a healthy watcher degrade
+  reporting and block nothing; telling an operator to reinstall for that would be
+  the overstatement this page keeps having to correct.
+
+### Audit
+Three mutations, all caught, and every one of them a plausible wrong turn rather
+than a strawman: the combined finding never firing, firing on stale helpers
+alone, and the stale-config conclusion firing on a missing vhost. Two of the
+three would have produced confident, actionable, wrong advice — which is the
+failure mode this whole diagnostic exists to remove and has now committed, and
+had corrected, five times.
+
 ## [3.16.58] — 2026-08-03
 
 **The console contradicted itself on screen, and the connector could not see the

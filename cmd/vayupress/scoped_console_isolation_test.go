@@ -1266,3 +1266,75 @@ func TestServerBlocksAreSplitSoOneHostsPortsAreNotAnothers(t *testing.T) {
 		t.Errorf("a directive starting with \"server\" was parsed as a block: %q", got)
 	}
 }
+
+// FINDING — the console had both halves of the answer and printed them as
+// unrelated rows.
+//
+// "The config on disk is correct" and "nothing answered on port 80" can only
+// both be true for one reason: nginx is running configuration older than the
+// file. Leaving a reader to derive that from two rows is the same failure as not
+// showing them — and it is what the page did while the operator was told, three
+// times, to look at DNS.
+func TestTwoDisagreeingChecksProduceTheConclusionTheyImply(t *testing.T) {
+	goodVhost := diagCheck{Label: "nginx routes this host's challenge on port 80", OK: true}
+	failedProbe := diagCheck{Label: "This server can answer its own challenge", OK: false, Fatal: true}
+
+	c, ok := staleConfigCheck(goodVhost, failedProbe)
+	if !ok {
+		t.Fatal("a correct config beside a failed probe produced no conclusion, so the page " +
+			"still shows two rows and leaves the reader to join them")
+	}
+	if c.OK || !c.Fatal {
+		t.Error("the conclusion is not reported as blocking")
+	}
+	for _, want := range []string{"reload", "never seen"} {
+		if !strings.Contains(c.Detail, want) {
+			t.Errorf("the conclusion never mentions %q, so it does not say what to do", want)
+		}
+	}
+	// It must NOT fire when there is no contradiction — otherwise it is noise on
+	// every page and says nothing.
+	if _, ok := staleConfigCheck(goodVhost, diagCheck{OK: true}); ok {
+		t.Error("the conclusion fires when both checks agree that things are fine")
+	}
+	badVhost := diagCheck{Label: "nginx has NO server block", OK: false, Fatal: true}
+	if _, ok := staleConfigCheck(badVhost, failedProbe); ok {
+		t.Fatal("a MISSING vhost was reported as a stale-reload problem — the file is absent, " +
+			"reloading changes nothing, and this would send the operator past the real cause")
+	}
+}
+
+// FINDING — the two facts that together explain everything were printed as
+// separate rows, several apart, neither saying what to do.
+//
+// "A request is waiting and no run has started since" and "the shell helpers are
+// OLDER than this binary" are not two problems. The same step installs the
+// systemd watcher that consumes the request and the helpers that do the work, so
+// while it is stale every repair this console offers runs through a worker that
+// never starts — the vhost is never rewritten, nginx is never reloaded, and no
+// certificate can be issued however correct the DNS is.
+func TestAStalledRootSideIsReportedAsOneActionNotTwoSymptoms(t *testing.T) {
+	c, ok := rootSideStalledCheck(true, false)
+	if !ok {
+		t.Fatal("an unconsumed request beside stale helpers produced no combined finding, so the " +
+			"page still shows two rows and never names the single step that clears both")
+	}
+	if c.OK || !c.Fatal {
+		t.Error("the combined finding is not reported as blocking")
+	}
+	for _, want := range []string{"watcher", "never starts", "Domains & DNS"} {
+		if !strings.Contains(c.Detail, want) {
+			t.Errorf("the finding never mentions %q, so it does not say why or where to act", want)
+		}
+	}
+	// It must NOT fire on either fact alone. Stale helpers with a healthy watcher
+	// degrade reporting only — saying "reinstall the root side" for that would be
+	// the overstatement this page keeps having to correct.
+	if _, ok := rootSideStalledCheck(false, false); ok {
+		t.Error("stale helpers ALONE were reported as a stalled root side, which sends the " +
+			"operator to reinstall for something that is not blocking them")
+	}
+	if _, ok := rootSideStalledCheck(true, true); ok {
+		t.Error("an unconsumed request with CURRENT helpers was blamed on the helpers")
+	}
+}
