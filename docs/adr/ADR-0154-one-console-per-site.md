@@ -219,3 +219,46 @@ Three consequences that follow from the rule:
 - **Where something truly cannot be done from the panel** — installing a systemd
   unit on a first deploy — the panel shows the exact command with the reason.
   That is the ceiling, and it belongs on the page rather than in a conversation.
+
+### D12 — A whole authored site, per domain
+
+> "I just need a full-fledged built website like vayupress.com."
+
+A template fills eight fields on a design somebody else drew. vayupress.com is
+not that — it is an authored page. So a hosted domain can now serve a **custom
+bundle**: a complete static site, uploaded as a zip or written by an assistant,
+served exactly as authored.
+
+The storage layer needed nothing. `customsite.Deploy` already confines every
+write to an `os.Root`, refuses traversal in archive entries, caps decompressed
+size and file count, keeps the previous release for rollback, and is tested
+against hostile archives. `customSiteDirFor` already gives each domain its own
+directory with the scope validated as hex rather than trusted into a path.
+
+What was missing was, once again, the admin side resolving by **request host**:
+`a.customSiteDir(r)` goes through `contentScope(r)`, and an operator's admin
+request carries no secondary host, so the upload always landed on the primary.
+Here the directory comes from the domain in the path.
+
+Four rules, each pinned by a mutation-tested case:
+
+- **One deploy path.** The upload and `build_site` both go through
+  `customsite.Deploy`. A second implementation of the part that must never be
+  wrong is how one of them ends up without the confinement.
+- **`index.html` is required, not defaulted.** A bundle with no entry point
+  deploys cleanly and serves 404 at the root — a site that looks published and
+  is not.
+- **`custom` is selectable only once something is deployed.** It is absent from
+  the mode list on purpose and appears when a bundle exists. Selecting a mode
+  with nothing behind it publishes a domain serving 404 at its root, and the
+  refusal says *which* problem it is: an unsupported mode and an empty upload
+  slot are different situations with different next steps.
+- **`build_site` switches the domain to serve what it just built.** Deploying a
+  site and leaving the domain on its blog would be the control-that-did-nothing
+  defect: the assistant reports success and the visitor sees the old site.
+
+Deploys are deterministic — the same files produce the same archive — so "did
+anything change" stays answerable between two publishes.
+
+**Not claimed:** there is no visual page builder. This is authoring, by hand or
+by assistant, plus an upload. The template editor remains the no-authoring path.

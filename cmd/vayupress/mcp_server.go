@@ -529,6 +529,8 @@ func (a *App) buildMCPServer() *mcp.Server {
 	// Per-domain website tools (ADR-0154 D10): so an operator can build a hosted
 	// site by asking an assistant rather than filling one form field at a time.
 	a.registerSiteTools(srv)
+	// Authoring a whole site, rather than filling a template's fields.
+	a.registerSiteBuilderTools(srv)
 
 	return srv
 }

@@ -22,6 +22,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/bizsite"
+	"github.com/johalputt/vayupress/internal/customsite"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/mcp"
@@ -249,3 +250,117 @@ type siteLookupError string
 func (e siteLookupError) Error() string { return string(e) }
 
 var errDomainsUnavailable = siteLookupError("the domain registry is not available on this install")
+
+// registerSiteBuilderTools adds the tools that BUILD a site rather than fill in
+// a template's fields (ADR-0154 D12).
+//
+// The template tools configure a design somebody else drew — eight fields, one
+// of eight layouts. This is the other thing: an assistant authors the HTML, CSS
+// and assets itself and the result is served at the domain, which is what a site
+// of the kind vayupress.com is.
+//
+// Every deploy goes through customsite.Deploy — the same path an uploaded zip
+// takes, with the same os.Root confinement and traversal refusal. Writing files
+// straight to disk here would have been a second implementation of the part that
+// must never be wrong.
+func (a *App) registerSiteBuilderTools(srv *mcp.Server) {
+	srv.Register(mcp.Tool{
+		Name: "build_site",
+		Description: "Author a COMPLETE website for a hosted domain and publish it. Pass files as a map of " +
+			"path to contents — index.html is required, and you may add any CSS, JS, SVG or other static " +
+			"files alongside it. This REPLACES the site's current bundle atomically and switches the domain " +
+			"to serve it; the previous bundle is kept and can be restored with restore_previous_site. Use " +
+			"this when the site should be hand-built; use update_site when one of the templates is enough.",
+		InputSchema: objSchema([]string{"host", "files"}, map[string]any{
+			"host": strProp("The hosted domain to publish to. Call list_sites first."),
+			"files": map[string]any{
+				"type": "object",
+				"description": "Path to contents. Paths are relative and may not escape the site root. " +
+					"index.html is required. Example: {\"index.html\": \"<!doctype html>…\", " +
+					"\"assets/site.css\": \"body{…}\"}.",
+				"additionalProperties": map[string]any{"type": "string"},
+			},
+		}),
+		Visible: a.mcpVisible(apikeys.SectionDomains, apikeys.ActionWrite),
+		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+			var in struct {
+				Host  string            `json:"host"`
+				Files map[string]string `json:"files"`
+			}
+			if err := json.Unmarshal(args, &in); err != nil {
+				return "", errBadArgs(err)
+			}
+			d, err := a.mcpSiteByHost(ctx, in.Host)
+			if err != nil {
+				return "", err
+			}
+			// index.html is required rather than defaulted. A bundle without an
+			// entry point deploys cleanly and serves 404 at the root, which is a
+			// site that looks published and is not.
+			if !hasIndexHTML(in.Files) {
+				return "", bundleError("index.html is required — without it the domain serves nothing at /")
+			}
+			zipData, err := zipFromFiles(in.Files)
+			if err != nil {
+				return "", err
+			}
+			m, err := customsite.Deploy(scopedBundleDir(d), zipData)
+			if err != nil {
+				return "", err
+			}
+			// Switch the domain to serve it. Deploying a site and leaving the
+			// domain on its blog would be the "control that did nothing" defect:
+			// the assistant reports success and the visitor sees the old site.
+			cfg, err := scopedWebsiteConfig(d, "custom", "", bizsite.ParseContent(""))
+			if err != nil {
+				return "", err
+			}
+			if err := a.domains.SetSite(ctx, d.ID, cfg); err != nil {
+				return "", err
+			}
+			render.CachePurgeAll()
+			dbpkg.AuditLog("vayudomains.website.bundle", mcpActor(ctx), d.Host,
+				"built "+itoaSafe(m.Files)+" file(s) via=mcp")
+			return jsonStr(map[string]any{
+				"status": "published", "host": d.Host, "files": m.Files, "bytes": m.Bytes,
+				"url": "https://" + d.Host + "/", "serves": "the uploaded site",
+			}), nil
+		},
+	})
+
+	srv.Register(mcp.Tool{
+		Name:        "restore_previous_site",
+		Description: "Restore the bundle that was live before the last build_site or upload for a hosted domain.",
+		InputSchema: objSchema([]string{"host"}, map[string]any{
+			"host": strProp("The hosted domain to roll back."),
+		}),
+		Visible: a.mcpVisible(apikeys.SectionDomains, apikeys.ActionWrite),
+		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+			var in struct{ Host string }
+			if err := json.Unmarshal(args, &in); err != nil {
+				return "", errBadArgs(err)
+			}
+			d, err := a.mcpSiteByHost(ctx, in.Host)
+			if err != nil {
+				return "", err
+			}
+			if err := customsite.Rollback(scopedBundleDir(d)); err != nil {
+				return "", err
+			}
+			render.CachePurgeAll()
+			dbpkg.AuditLog("vayudomains.website.bundle", mcpActor(ctx), d.Host, "rolled back via=mcp")
+			return jsonStr(map[string]any{"status": "restored", "host": d.Host}), nil
+		},
+	})
+}
+
+// hasIndexHTML reports whether the authored file set has a root entry point.
+func hasIndexHTML(files map[string]string) bool {
+	for name := range files {
+		clean := strings.TrimPrefix(strings.ReplaceAll(name, "\\", "/"), "./")
+		if strings.EqualFold(clean, "index.html") || strings.EqualFold(clean, "index.htm") {
+			return true
+		}
+	}
+	return false
+}

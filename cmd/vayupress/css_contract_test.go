@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/johalputt/vayupress/internal/bizsite"
+	"github.com/johalputt/vayupress/internal/customsite"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
 )
@@ -116,6 +117,6 @@ func TestTheOtherPerSitePagesEmitNoUnstyledClass(t *testing.T) {
 		{Title: "One", Slug: "one", Status: "published"},
 		{Title: "Two", Slug: "two", Status: "draft"},
 	}))
-	assertClassesAreStyled(t, "the website page", css, scopedWebsitePage(d, "studio", bizsite.Content{Name: "X"}))
+	assertClassesAreStyled(t, "the website page", css, scopedWebsitePage(d, "studio", bizsite.Content{Name: "X"}, false, customsite.Manifest{}))
 	assertClassesAreStyled(t, "the site list", css, domainsHeader([]domain.Domain{d}, ""))
 }

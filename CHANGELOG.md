@@ -6,6 +6,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.45] — 2026-08-03
+
+### Added
+- **A whole authored website, per hosted domain (ADR-0154 D12).** A template
+  fills eight fields on a design somebody else drew. vayupress.com is not that —
+  it is an authored page. A hosted domain can now serve a **custom bundle**: a
+  complete static site, either uploaded as a `.zip` from its console or written
+  by an assistant through the connector, served exactly as authored.
+
+  The storage layer needed nothing built. `customsite.Deploy` already confines
+  every write to an `os.Root`, refuses traversal in archive entries, caps
+  decompressed size and file count, keeps the previous release for rollback, and
+  is tested against hostile archives. What was missing was the admin side — which
+  resolved by **request host**, so an operator's upload always landed on the
+  primary. It now comes from the domain in the path, like everything else here.
+
+  **`build_site`** and **`restore_previous_site`** put the same thing on VayuMCP.
+  Ask an assistant to build a site for a domain and it authors the HTML, CSS and
+  assets itself, publishes them, and switches the domain to serve them — because
+  deploying a site and leaving the domain on its blog would report success while
+  the visitor still sees the old one.
+
+  Four rules, each pinned by a mutation-tested case: one deploy path for both
+  routes; `index.html` required rather than defaulted (a bundle with no entry
+  point deploys cleanly and serves 404 at the root); `custom` selectable only
+  once something is deployed, with the refusal naming *which* problem it is; and
+  deterministic archives, so "did anything change" stays answerable between two
+  publishes.
+
+  **Not claimed:** there is no visual page builder. This is authoring — by hand
+  or by assistant — plus an upload.
+
 ## [3.16.44] — 2026-08-03
 
 ### Added

@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/bizsite"
+	"github.com/johalputt/vayupress/internal/customsite"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
@@ -72,11 +73,13 @@ func (a *App) handleOSScopedWebsite(w http.ResponseWriter, r *http.Request) {
 	if content.Name == "" && content.Tagline == "" {
 		content = tpl.Defaults
 	}
-	body := scopedWebsitePage(d, tpl.Key, content) + scopedWebsiteScript(nonce)
+	man := customsite.ReadManifest(scopedBundleDir(d))
+	body := scopedWebsitePage(d, tpl.Key, content, customsite.Deployed(scopedBundleDir(d)), man) +
+		scopedWebsiteScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Website · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
 }
 
-func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content) string {
+func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundled bool, man customsite.Manifest) string {
 	esc := html.EscapeString
 	mode := scopedSiteMode(d)
 	var b strings.Builder
@@ -105,7 +108,44 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content) string
 			`value="` + esc(m.Value) + `"` + checked + `> <span class="field-label">` + esc(m.Label) + `</span>` +
 			`<span class="field-hint">` + esc(m.Note) + `</span></label>`)
 	}
+	if bundled {
+		checked := ""
+		if mode == "custom" {
+			checked = " checked"
+		}
+		b.WriteString(`<label class="field field--check"><input type="radio" name="scoped-site-mode" ` +
+			`value="custom"` + checked + `> <span class="field-label">Uploaded website</span>` +
+			`<span class="field-hint">The site you uploaded or had built — served exactly as authored, at /. ` +
+			`` + esc(itoaSafe(man.Files)) + ` file(s), deployed ` + esc(man.DeployedAt.Format("2006-01-02 15:04")) +
+			`.</span></label>`)
+	}
 	b.WriteString(`</div></div>`)
+
+	// ── A whole site of your own ─────────────────────────────────────────────
+	b.WriteString(`<div class="section-head"><span class="section-head__title">A whole site of your own</span>` +
+		`<span class="section-head__hint">When a template is not what you want</span></div>`)
+	b.WriteString(`<div class="card">
+  <div class="settings-block-title">Upload a website</div>
+  <p class="text-sm muted">A <code>.zip</code> of a complete static site — <code>index.html</code> at its root,
+    with whatever CSS, JavaScript, images and fonts it needs beside it. It is served exactly as authored, so a
+    hand-built page looks like a hand-built page. Up to 50&nbsp;MiB unpacked, 3000 files.</p>
+  <p class="text-sm muted">Each deploy is atomic and keeps the one before it, so a bad publish is one click from
+    being undone.</p>
+  <div class="vm-row">
+    <input type="file" id="scoped-bundle-file" class="input" accept=".zip,application/zip">
+    <button type="button" class="btn btn--primary btn--sm" data-bundle-upload>Upload &amp; deploy</button>` +
+		func() string {
+			if !bundled || !man.HasPrev {
+				return ""
+			}
+			return `<button type="button" class="btn btn--ghost btn--sm" data-bundle-rollback>Restore previous</button>`
+		}() + `
+    <span id="scoped-bundle-status" class="text-sm muted" role="status" aria-live="polite"></span>
+  </div>
+  <p class="text-sm muted">Or have one written for you: ask an assistant through <a href="/os/vayumcp">VayuMCP</a>
+    to <em>build a site for ` + esc(d.Host) + `</em>. It authors the HTML and CSS itself and publishes it here —
+    the same deploy path as an upload, with the same limits.</p>
+</div>`)
 
 	// ── Design ────────────────────────────────────────────────────────────────
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Design</span>` +
@@ -188,6 +228,30 @@ btn.addEventListener('click',function(){
       if(st)st.textContent=res.ok?'Published ✓':((res.j&&res.j.message)||'Could not save');})
     .catch(function(e){btn.disabled=false; if(st)st.textContent='Error: '+e;});
 });
+var up=document.querySelector('[data-bundle-upload]');
+if(up)up.addEventListener('click',function(){
+  var f=document.getElementById('scoped-bundle-file');
+  if(!f||!f.files||!f.files.length){if(st)st.textContent='Choose a .zip first.';return;}
+  var fd=new FormData(); fd.append('bundle', f.files[0]);
+  up.disabled=true; if(st)st.textContent='Uploading\u2026';
+  fetch('/os/d/'+encodeURIComponent(ID)+'/api/website/bundle',{method:'POST',
+    headers:{'X-CSRF-Token':csrf()}, body:fd})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){up.disabled=false;
+      if(res.ok){if(st)st.textContent='Deployed \u2713 '+(res.j.files||0)+' file(s) \u2014 reloading';window.location.reload();return;}
+      if(st)st.textContent=(res.j&&res.j.message)||'Could not deploy that bundle';})
+    .catch(function(e){up.disabled=false; if(st)st.textContent='Error: '+e;});
+});
+var rb=document.querySelector('[data-bundle-rollback]');
+if(rb)rb.addEventListener('click',function(){
+  if(!window.confirm('Restore the previous uploaded website?'))return;
+  rb.disabled=true; if(st)st.textContent='Restoring\u2026';
+  fetch('/os/d/'+encodeURIComponent(ID)+'/api/website/bundle/rollback',{method:'POST',
+    headers:{'X-CSRF-Token':csrf()}})
+    .then(function(r){if(r.ok){window.location.reload();return;}
+      rb.disabled=false; if(st)st.textContent='Could not restore';})
+    .catch(function(e){rb.disabled=false; if(st)st.textContent='Error: '+e;});
+});
 })();
 </script>`
 }
@@ -258,7 +322,20 @@ func scopedWebsiteConfig(d domain.Domain, mode, template string, c bizsite.Conte
 			break
 		}
 	}
+	// "custom" is accepted only when a bundle is actually deployed for this site.
+	//
+	// Same rule the primary's Website settings enforce, and for the same reason:
+	// selecting a mode with nothing behind it publishes a domain that serves a
+	// 404 at its root, which looks like a broken site rather than an unfinished
+	// choice. It is absent from scopedSiteModes on purpose — a bundle is an
+	// upload, not a radio button — and appears there only once one exists.
+	if mode == "custom" && customsite.Deployed(scopedBundleDir(d)) {
+		valid = true
+	}
 	if !valid {
+		if mode == "custom" {
+			return domain.SiteConfig{}, errNoBundleDeployed
+		}
 		return domain.SiteConfig{}, errUnknownSiteMode(mode)
 	}
 	// An unknown template key resolves to the default rather than being stored:
@@ -294,3 +371,9 @@ func (e siteModeError) Error() string {
 }
 
 func errUnknownSiteMode(m string) error { return siteModeError(m) }
+
+// errNoBundleDeployed distinguishes "that mode does not exist" from "that mode
+// exists and you have not uploaded anything to serve in it". Collapsing the two
+// would tell an operator their upload feature is unsupported.
+var errNoBundleDeployed = bundleError(
+	"no uploaded website exists for this domain yet — upload one first, or ask an assistant to build one")

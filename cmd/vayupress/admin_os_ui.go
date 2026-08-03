@@ -221,6 +221,11 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			// content of that site when it serves a website.
 			dr.Get("/website", a.handleOSScopedWebsite)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/website", a.handleOSScopedWebsiteSave)
+			// A whole hand-built site for this domain (ADR-0154 D12). Both go
+			// through customsite.Deploy, which confines every write to an
+			// os.Root and refuses traversal in archive entries.
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle", a.handleOSScopedBundleUpload)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle/rollback", a.handleOSScopedBundleRollback)
 			// Theme Studio is the SAME handler as /os/theme, mounted a second
 			// time. It reads its scope from the request, so one code path serves
 			// both — a parallel per-domain implementation would be a second place
