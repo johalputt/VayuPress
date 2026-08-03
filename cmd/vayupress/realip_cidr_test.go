@@ -39,7 +39,7 @@ func realipEmitLoop(t *testing.T) string {
 	if fn < 0 {
 		t.Fatal("reconcile_realip is gone from vayushield-agent.sh")
 	}
-	i := strings.Index(src[fn:], "    while IFS= read -r line; do")
+	i := strings.Index(src[fn:], "while IFS= read -r line ")
 	if i < 0 {
 		t.Fatal("the real-IP emit loop is gone from vayushield-agent.sh")
 	}
@@ -278,5 +278,50 @@ func TestAnNginxThatNeverIncludesSitesEnabledIsNamed(t *testing.T) {
 	nginxMainConf = filepath.Join(dir, "does-not-exist")
 	if c := sitesEnabledIncludedCheck(); !c.OK || !strings.Contains(c.Detail, "nothing is claimed") {
 		t.Error("an unreadable nginx.conf produced a verdict instead of an abstention")
+	}
+}
+
+// SECOND SILENT DROP, from the same root cause and found by the same audit.
+//
+// `read` returns non-zero on a final line with no trailing newline, so the loop
+// body never runs for it and the LAST range in the file disappears — from the
+// nginx config and from the kernel set alike. The fetch now guarantees the
+// newline, but this file is explicitly documented as hand-writable, and an
+// editor that omits a final newline is entirely ordinary.
+//
+// The reported count made it worse: it uses grep, which DOES count an
+// unterminated final line, so the panel claimed one more range than either
+// consumer actually applied.
+func TestAFinalLineWithoutANewlineIsNotDropped(t *testing.T) {
+	// No trailing newline on the last entry — the exact shape of the published
+	// list, and of a hand-edited file.
+	out := runRealipLoop(t, "192.0.2.0/24\n198.51.100.0/24")
+
+	if !strings.Contains(out, "set_real_ip_from 198.51.100.0/24;") {
+		t.Fatalf("the last range was dropped because the file had no trailing newline — it "+
+			"disappears from nginx and from the kernel set, and the reported count still "+
+			"includes it:\n%s", out)
+	}
+	if !strings.Contains(out, "emitted=2") {
+		t.Errorf("expected both ranges:\n%s", out)
+	}
+}
+
+// Every consumer of the range file must do this, not just the one that was
+// reported. The same loop shape reads it for the kernel firewall.
+func TestEveryRangeFileConsumerReadsTheFinalLine(t *testing.T) {
+	for _, f := range []string{
+		"../../deploy/vayushield-agent.sh",
+		"../../deploy/vayushield-firewall.sh",
+	} {
+		src := shellCode(readSourceFile(t, f))
+		bare := strings.Count(src, "while IFS= read -r line; do")
+		if bare > 0 {
+			t.Errorf("%s has %d loop(s) that drop an unterminated final line; each one silently "+
+				"loses the last entry of a hand-written range file", f, bare)
+		}
+		if !strings.Contains(src, `read -r line || [ -n "$line" ]`) {
+			t.Errorf("%s never guards against the unterminated final line", f)
+		}
 	}
 }

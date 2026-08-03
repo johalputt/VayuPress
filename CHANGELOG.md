@@ -6,6 +6,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.72] — 2026-08-03
+
+**The audit's second finding, shipped before the version bump this time.**
+
+### Fixed
+- **A final line with no trailing newline was silently dropped by every consumer
+  of the range file.** `read` returns non-zero on an unterminated last line, so
+  the loop body never runs for it — and the last range disappears from the nginx
+  configuration and from the kernel firewall set alike.
+
+  The fetch now guarantees the newline, but this file is explicitly documented as
+  hand-writable ("for any other proxy, write its ranges here, one CIDR per
+  line"), and an editor that omits a final newline is entirely ordinary.
+
+  The reported count made it worse rather than revealing it: the count uses
+  `grep`, which **does** count an unterminated final line, so the panel claimed
+  one more range than either consumer actually applied. A number that disagrees
+  with the behaviour it describes is the same defect class as everything else in
+  this run — it reads as confirmation while being wrong.
+
+  All four loops across both root-side scripts now take the final line.
+
+### Audit
+This is the finding the previous release should have carried. The multi-agent
+pass identified it as a *secondary defect in the same code path*, and it landed
+after 3.16.70 had already been cut — the exact consequence of bumping a version
+while an audit is still running, which is what happened and what the rule
+forbids. It is fixed here, before the bump, which is where it belonged.
+
+Mutation-tested by removing the guard: the gate fails. The gate itself asserts
+across **both** scripts rather than the one that was reported, because the same
+loop shape reads the same file for the kernel firewall and would have kept the
+bug alive there.
+
 ## [3.16.71] — 2026-08-03
 
 **The last state that fits all the evidence — and a CI break I caused scrubbing

@@ -136,7 +136,21 @@ require_root() {
 read_cdn_allow() {
   local family="$1" line out=""
   [ -r "$CDN_ALLOW_FILE" ] || return 0
-  while IFS= read -r line; do
+  # ANOTHER SILENT DROP, from the same root cause. `read` returns non-zero
+  # on a final line with no trailing newline, so the loop body never runs for
+  # it and the LAST range in the file disappears — from the nginx config and
+  # from the kernel set alike. The fetch now guarantees the newline, but this
+  # file is explicitly documented as hand-writable ("For any other proxy,
+  # write its ranges to ${CDN_ALLOW_FILE}, one CIDR per line"), and an editor
+  # that does not add a final newline is ordinary.
+  #
+  # Worse, the count reported after a fetch uses grep, which DOES count an
+  # unterminated final line — so the panel reported one more range than
+  # either consumer actually applied.
+  #
+  # `|| [ -n "$line" ]` runs the body once more when read failed but left
+  # content in the variable, which is exactly that case.
+  while IFS= read -r line || [ -n "$line" ]; do
     line="${line%%#*}"
     line="$(printf '%s' "$line" | tr -d '[:space:]')"
     [ -n "$line" ] || continue
@@ -354,7 +368,21 @@ EOF
   local failed=""
   sysctl -p "$SYSCTL_CONF" >/dev/null 2>&1 || true
   local want got key
-  while IFS= read -r line; do
+  # ANOTHER SILENT DROP, from the same root cause. `read` returns non-zero
+  # on a final line with no trailing newline, so the loop body never runs for
+  # it and the LAST range in the file disappears — from the nginx config and
+  # from the kernel set alike. The fetch now guarantees the newline, but this
+  # file is explicitly documented as hand-writable ("For any other proxy,
+  # write its ranges to ${CDN_ALLOW_FILE}, one CIDR per line"), and an editor
+  # that does not add a final newline is ordinary.
+  #
+  # Worse, the count reported after a fetch uses grep, which DOES count an
+  # unterminated final line — so the panel reported one more range than
+  # either consumer actually applied.
+  #
+  # `|| [ -n "$line" ]` runs the body once more when read failed but left
+  # content in the variable, which is exactly that case.
+  while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|\#*) continue ;; esac
     key="${line%%=*}"; key="$(printf '%s' "$key" | tr -d '[:space:]')"
     want="${line#*=}"; want="$(printf '%s' "$want" | tr -d '[:space:]')"

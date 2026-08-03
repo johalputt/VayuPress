@@ -258,7 +258,21 @@ reconcile_banlist() {
       # individually. One bad line then costs one ban, and pardons always lift.
       local rejected=0 applied=0 line
       if nft -f "$flushonly" >>"${CONTROL_DIR}/offload.log" 2>&1; then
-        while IFS= read -r line; do
+        # ANOTHER SILENT DROP, from the same root cause. `read` returns non-zero
+        # on a final line with no trailing newline, so the loop body never runs for
+        # it and the LAST range in the file disappears — from the nginx config and
+        # from the kernel set alike. The fetch now guarantees the newline, but this
+        # file is explicitly documented as hand-writable ("For any other proxy,
+        # write its ranges to ${CDN_ALLOW_FILE}, one CIDR per line"), and an editor
+        # that does not add a final newline is ordinary.
+        #
+        # Worse, the count reported after a fetch uses grep, which DOES count an
+        # unterminated final line — so the panel reported one more range than
+        # either consumer actually applied.
+        #
+        # `|| [ -n "$line" ]` runs the body once more when read failed but left
+        # content in the variable, which is exactly that case.
+        while IFS= read -r line || [ -n "$line" ]; do
           case "$line" in "add element"*) ;; *) continue ;; esac
           if printf '%s\n' "$line" | nft -f - >>"${CONTROL_DIR}/offload.log" 2>&1; then
             applied=$((applied + 1))
@@ -1164,7 +1178,21 @@ reconcile_realip() {
     # Only well-formed CIDRs are emitted. A malformed line reaching nginx is a
     # config that fails to load, and this file sits in conf.d where that takes
     # the WHOLE web server down rather than one vhost.
-    while IFS= read -r line; do
+    # ANOTHER SILENT DROP, from the same root cause. `read` returns non-zero
+    # on a final line with no trailing newline, so the loop body never runs for
+    # it and the LAST range in the file disappears — from the nginx config and
+    # from the kernel set alike. The fetch now guarantees the newline, but this
+    # file is explicitly documented as hand-writable ("For any other proxy,
+    # write its ranges to ${CDN_ALLOW_FILE}, one CIDR per line"), and an editor
+    # that does not add a final newline is ordinary.
+    #
+    # Worse, the count reported after a fetch uses grep, which DOES count an
+    # unterminated final line — so the panel reported one more range than
+    # either consumer actually applied.
+    #
+    # `|| [ -n "$line" ]` runs the body once more when read failed but left
+    # content in the variable, which is exactly that case.
+    while IFS= read -r line || [ -n "$line" ]; do
       line="${line%%#*}"
       # SPLIT on whitespace, never DELETE it.
       #
