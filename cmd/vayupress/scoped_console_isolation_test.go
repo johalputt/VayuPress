@@ -612,10 +612,12 @@ func TestEveryTimestampCarriesHowLongAgoItWas(t *testing.T) {
 // perfectly, and every provisioning run asked for a certificate whose challenge
 // was answered by that provider with a 404. The check said the DNS was fine.
 //
-// It is fatal rather than a note because failed validations are rate-limited PER
-// ACCOUNT: one domain that can never validate spends the budget every other site
-// on the install needs, which is how a second, correctly-pointed domain ends up
-// stuck at "Failed" with nothing wrong with it.
+// It is fatal rather than a note because the failure is permanent and silent:
+// every run reports a problem for that domain forever, which buries a NEW fault
+// among the standing one. (An earlier version of this comment said it spent the
+// whole account's validation budget. It does not — see
+// TestAStaleAAAAIsNamedRatherThanBlamedOnSomebodyElse for why that was wrong and
+// what the real cross-domain mechanism is.)
 //
 // SECOND FINDING, from attacking the first fix: "not an address this machine
 // holds" is not the same statement as "not this install". On a CDN-fronted or
@@ -638,7 +640,7 @@ func TestADomainPointedElsewhereIsNotCalledReachable(t *testing.T) {
 		t.Error("it is reported as a detail rather than as blocking, so it reads as background " +
 			"noise beside the certificate that is not arriving")
 	}
-	for _, want := range []string{"185.199.108.153", "PER ACCOUNT", "404"} {
+	for _, want := range []string{"185.199.108.153", "404", "Lifecycle"} {
 		if !strings.Contains(elsewhere.Detail, want) {
 			t.Errorf("the finding never mentions %q, so the operator cannot act on it", want)
 		}
@@ -683,6 +685,85 @@ func TestADomainPointedElsewhereIsNotCalledReachable(t *testing.T) {
 	// A name that does not resolve at all is a different statement again.
 	if c := dnsPointsHereCheck("client.example", nil, false, local, front); c.OK || !c.Fatal {
 		t.Error("an unresolvable name is not reported as blocking")
+	}
+}
+
+// FINDING — this page claimed a mechanism that does not exist, and missed the
+// one that does.
+//
+// It said a domain that cannot validate "spends the budget every other site on
+// this install needs". The install's own provisioning script disproves it: every
+// host is issued in its own certbot run under its own --cert-name, in a loop
+// that continues past a failure, and the Failed Validation limit is scoped per
+// account PER HOSTNAME. A stuck domain is loud, not contagious — and telling an
+// operator otherwise sends them to remove a domain to unblock something that was
+// never blocked by it.
+//
+// The real mechanism is the address family. Validation goes over IPv6 first
+// whenever an AAAA exists. One that refuses the connection is retried over IPv4;
+// one that ACCEPTS and answers as a different site is not — so a stale AAAA
+// fails the issuance with a perfectly correct A record beside it, and nothing in
+// the error mentions IPv6.
+func TestAStaleAAAAIsNamedRatherThanBlamedOnSomebodyElse(t *testing.T) {
+	local := map[string]bool{"5.189.133.235": true}
+	front := []string{"104.21.11.39"}
+
+	split := dnsPointsHereCheck("test.example", []string{"5.189.133.235", "2a02:c207::1"}, true, local, front)
+	if split.OK {
+		t.Fatal("a host whose A record is correct and whose AAAA points somewhere else was " +
+			"reported as pointing here — the issuance fails over IPv6 and the operator is " +
+			"looking at a green check")
+	}
+	for _, want := range []string{"2a02:c207::1", "IPv6", "IPv4"} {
+		if !strings.Contains(split.Detail, want) {
+			t.Errorf("the finding never mentions %q, so it does not identify the record to fix", want)
+		}
+	}
+
+	// A host answering correctly on BOTH families must stay quiet.
+	both := map[string]bool{"5.189.133.235": true, "2a02:c207::1": true}
+	if c := dnsPointsHereCheck("test.example", []string{"5.189.133.235", "2a02:c207::1"}, true, both, front); !c.OK {
+		t.Errorf("a dual-stack host answering on both families was flagged: %s", c.Detail)
+	}
+	// A family that is PARTLY accounted for stays quiet, and this is a deliberate
+	// limit rather than an oversight. The machine demonstrably answers on IPv6; a
+	// second AAAA is as likely to be a legitimate second interface as a stale
+	// record, and only the authority knows which address it will pick. Flagging on
+	// a guess is the cry-wolf failure that made the previous version of this check
+	// wrong about every CDN. The residual risk is real and stated here rather than
+	// papered over: if the authority happens to pick the address this machine does
+	// not hold, issuance fails and this check will not have said so.
+	partial := map[string]bool{"5.189.133.235": true, "2a02:c207::1": true}
+	if c := dnsPointsHereCheck("test.example",
+		[]string{"5.189.133.235", "2a02:c207::1", "2a02:c207::99"}, true, partial, front); !c.OK {
+		t.Errorf("a host answering on IPv6 was flagged because it publishes a SECOND IPv6 "+
+			"address: %s. Only a family that is entirely unaccounted for is a finding", c.Detail)
+	}
+
+	// So must a single-family host — an absent AAAA is not a broken one.
+	if c := dnsPointsHereCheck("test.example", []string{"5.189.133.235"}, true, local, front); !c.OK {
+		t.Errorf("an IPv4-only host was flagged: %s", c.Detail)
+	}
+	// An address belonging to this install's OWN FRONT counts as reachable. The
+	// case that matters is cross-family — origin over IPv4, front over IPv6 — and
+	// it is the one a same-family fixture cannot distinguish at all: a mutation
+	// dropping the front from the comparison survived a test written that way,
+	// because the good IPv4 address alone satisfied the IPv4 family.
+	frontDual := []string{"104.21.11.39", "2606:4700:3033::6815:b27"}
+	if c := dnsPointsHereCheck("test.example",
+		[]string{"5.189.133.235", "2606:4700:3033::6815:b27"}, true, local, frontDual); !c.OK {
+		t.Errorf("an IPv6 address belonging to this install's own front was called a stray: %s. "+
+			"That is every dual-stack site whose AAAA is on the proxy and whose A is direct", c.Detail)
+	}
+
+	// And the retired claim must not come back anywhere in the verdicts.
+	stray := dnsPointsHereCheck("other.example", []string{"185.199.108.153"}, true, local, front)
+	if strings.Contains(stray.Detail, "spends the budget") {
+		t.Error("the per-account rate-limit claim is back; it is not how this install issues " +
+			"certificates and it sends operators to fix an unrelated domain")
+	}
+	if !strings.Contains(stray.Detail, "does not block the other sites") {
+		t.Error("the verdict does not say what it does NOT cause, which is the half that was wrong")
 	}
 }
 

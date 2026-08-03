@@ -293,6 +293,20 @@ func dnsPointsHereCheck(host string, addrs []string, looked bool, local map[stri
 			Detail: "the name does not resolve yet — point it at this server on Domains & DNS, then run again",
 		}
 	case holds(local):
+		// Held — but not necessarily on every family it publishes. See
+		// mismatchedFamily: an AAAA that answers as somebody else fails validation
+		// while the A record beside it is perfect, and that failure names neither.
+		if stray := mismatchedFamily(addrs, local, apex); stray != "" {
+			return diagCheck{
+				Label: "DNS points here on one family and elsewhere on the other", OK: false, Fatal: true,
+				Detail: host + " resolves to " + strings.Join(addrs, ", ") + ". This machine holds some " +
+					"of those but NOT " + stray + ", and the certificate authority validates over IPv6 " +
+					"first whenever an AAAA record exists. A connection it cannot open at all is retried " +
+					"over IPv4; one that opens and answers as somebody else is not — the failure stands, " +
+					"with a perfectly correct A record beside it. Remove or repoint the " + stray +
+					" record, or make this server answer on it.",
+			}
+		}
 		return diagCheck{
 			Label: "DNS points at this server", OK: true,
 			Detail: "it resolves to an address this machine holds, so the challenge reaches here",
@@ -321,11 +335,60 @@ func dnsPointsHereCheck(host string, addrs []string, looked bool, local map[stri
 			Detail: host + " resolves to " + strings.Join(addrs, ", ") + " — an address this machine " +
 				"does not hold AND one the primary domain does not use either, so it is not this " +
 				"install behind a proxy. Whatever is actually at that address answers the challenge, " +
-				"with a 404, and a certificate can never be issued from here. Failed validations are " +
-				"rate-limited PER ACCOUNT, so a domain that can never validate spends the budget every " +
-				"other site on this install needs — put it on hold under Lifecycle, or repoint it.",
+				"with a 404, and a certificate can never be issued from here. It does not block the " +
+				"other sites — each gets its own certificate in its own run — but every run reports a " +
+				"failure for it forever, which buries a NEW fault among the standing one. Put it on " +
+				"hold under Lifecycle, or repoint it.",
 		}
 	}
+}
+
+// mismatchedFamily returns the address family this host publishes that this
+// machine does NOT answer on, or "" when there is no such split.
+//
+// FINDING, and a correction to something this page said one release ago. It
+// claimed a domain that cannot validate "spends the budget every other site on
+// this install needs", on the strength of Let's Encrypt's per-account rate
+// limits. The install's own provisioning script disproves it: each host is
+// issued in its own certbot run under its own --cert-name, inside a loop that
+// continues past a failure, and the Failed Validation limit is scoped per
+// account PER HOSTNAME. A stuck domain is loud, not contagious. Stating a
+// mechanism that does not exist is the same defect as a panel row overstating
+// what is enforcing — committed, again, by the check written to find it.
+//
+// The mechanism that IS real is this one. Validation is attempted over IPv6
+// first whenever an AAAA exists. An address that refuses the connection outright
+// is retried over IPv4; one that ACCEPTS and answers as a different site is not,
+// so a stale or wrong AAAA fails the whole issuance while the A record beside it
+// is exactly right — and nothing in the resulting error says "IPv6".
+func mismatchedFamily(addrs []string, local, apex map[string]bool) string {
+	var v4Bad, v6Bad []string
+	v4OK, v6OK := false, false
+	for _, a := range addrs {
+		six := strings.Contains(a, ":")
+		switch {
+		case local[a] || apex[a]:
+			if six {
+				v6OK = true
+			} else {
+				v4OK = true
+			}
+		case six:
+			v6Bad = append(v6Bad, a)
+		default:
+			v4Bad = append(v4Bad, a)
+		}
+	}
+	// Only a family that is ENTIRELY unaccounted for is reported. One good
+	// address in a family is enough for that family to reach here, and naming it
+	// anyway would be the cry-wolf failure this check exists to avoid.
+	if len(v6Bad) > 0 && !v6OK {
+		return "the IPv6 address (" + strings.Join(v6Bad, ", ") + ")"
+	}
+	if len(v4Bad) > 0 && !v4OK {
+		return "the IPv4 address (" + strings.Join(v4Bad, ", ") + ")"
+	}
+	return ""
 }
 
 // provisionRunActiveFor is how recently the worker must have written to its log

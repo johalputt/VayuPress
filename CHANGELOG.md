@@ -6,6 +6,50 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.53] — 2026-08-03
+
+**Correcting a mechanism v3.16.52 asserted and the install's own script
+disproves** — shipped immediately rather than batched, because it is live copy
+telling operators to fix the wrong thing.
+
+### Fixed
+- **"A stuck domain spends the whole account's certificate budget" is not true
+  here.** v3.16.52 said so, on the strength of Let's Encrypt's per-account rate
+  limits. This install's own provisioning script disproves it: every host is
+  issued in **its own certbot run** under its own `--cert-name`, inside a loop
+  that continues past a failure — and the Failed Validation limit is scoped per
+  account **per hostname**. A domain that can never validate is *loud*, not
+  contagious. The verdict now says what it does cause (every run reports a
+  failure for it forever, which buries a new fault among the standing one) and,
+  explicitly, what it does not.
+
+  Stating a mechanism that does not exist is the same defect as a panel row
+  overstating what is enforcing — committed, twice now, by the checks written to
+  find exactly that.
+
+- **The real cross-record failure, which nothing was checking: the address
+  family.** Validation is attempted over **IPv6 first** whenever an `AAAA`
+  exists. An address that refuses the connection outright is retried over IPv4;
+  one that **accepts** and answers as a different site is not — so a stale or
+  wrong `AAAA` fails the whole issuance while the `A` record beside it is exactly
+  right, and nothing in the resulting error mentions IPv6. The console now names
+  the offending record and which family it belongs to.
+
+  Only a family that is **entirely** unaccounted for is reported. One good
+  address in a family is enough for that family to reach here, and flagging on a
+  guess about which address the authority will pick is the cry-wolf failure that
+  made the first version of this check wrong about every proxied install. The
+  residual risk is stated in the gate rather than papered over.
+
+### Audit
+Adversarial pass run before the bump, as the standing rule requires. Both fixes
+above **are** its findings — the first from checking the claim against
+`scripts/setup-vayudomain.sh` rather than against the code that prints it.
+Seventeen mutations across both releases' surfaces; the last two exposed real
+test defects rather than code ones (a same-family fixture that could not
+distinguish the mutation, and a fixture where the guarded branch never fired),
+and both fixtures were rewritten until they killed it.
+
 ## [3.16.52] — 2026-08-03
 
 **A domain pointed at somebody else's server was reported as reachable — and it
