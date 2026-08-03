@@ -497,6 +497,20 @@ if(!ID)return;
 function val(id){var e=document.getElementById(id);return e?e.value.trim():'';}
 function set(id,t){var e=document.getElementById(id);if(e)e.textContent=t;}
 });
+// Provision now — the certificate control, on the page that reports the
+// certificate. It asks the root-side helper to run immediately rather than
+// waiting for its daily timer; the button that lived only on Domains & DNS left
+// this console reporting a problem with nothing to do about it.
+var pv=document.querySelector('[data-site-provision]');
+if(pv)pv.addEventListener('click',function(){
+  pv.disabled=true;set('site-cert-status','Requesting…');
+  fetch('/os/api/provision/run',{method:'POST',headers:{'X-CSRF-Token':csrf()}})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){
+      if(res.ok){set('site-cert-status','Requested ✓ — issuing takes a minute or two; reload to see the result.');return;}
+      pv.disabled=false;set('site-cert-status',(res.j&&res.j.message)||'Could not request a run');})
+    .catch(function(e){pv.disabled=false;set('site-cert-status','Error: '+e);});
+});
 // Mailbox allowance. The field is a number input, but a browser hands back a
 // string and an empty one parses to NaN — sending that would clear the
 // allowance to 0 and silently revoke every mailbox the operator granted.

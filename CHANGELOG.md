@@ -6,6 +6,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **A pending certificate now carries the control that fixes it.** The site
+  console reported **Pending · CERTIFICATE** in amber and offered nothing to do
+  about it — the button that provisions lived on Domains & DNS, a page this
+  console did not even link. Surfacing a problem without the action that
+  resolves it is the same defect as not surfacing it: the operator learns the
+  tile means "wait", and then asks why the certificate is not automatic.
+
+  It also now answers that question, because "pending" alone reads as broken.
+  It **is** automatic — the root-side helper runs daily on its own — it is just
+  not instant, because obtaining a certificate and reloading nginx needs root
+  and this service deliberately cannot become root. That is the trade being
+  made, and an operator is owed the reason rather than left to infer a failure.
+  **Provision now** asks for the run immediately.
+
+  Not offered on a site whose certificate is live (a notice that always shows
+  stops meaning anything) or on one held for manual sync (not provisioning it is
+  what the hold does, and the hold notice already says so).
+
 ## [3.16.38] — 2026-08-03
 
 One release for the whole of ADR-0154, cut after the adversarial pass rather

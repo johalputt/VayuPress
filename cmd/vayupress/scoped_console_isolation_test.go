@@ -164,3 +164,45 @@ func TestTheOldManageURLIsNotSimplyDeleted(t *testing.T) {
 		t.Error("the redirect is not permanent, so the old URL stays in circulation")
 	}
 }
+
+// A pending certificate is the state that stops a site serving. Reporting it in
+// an amber tile and offering nothing to do about it is the same defect as not
+// reporting it: the operator learns the tile means "wait", and then asks why the
+// certificate is not automatic.
+func TestAPendingCertificateCarriesTheControlThatFixesIt(t *testing.T) {
+	d := isolationDomain()
+	d.SyncState = domain.SyncApproved
+	d.TLSState = domain.TLSPending
+	page := scopedConsolePage(d, 0, 0, 0, true, nil)
+
+	if !strings.Contains(page, "data-site-provision") {
+		t.Fatal("the console reports a pending certificate with no way to act on it — the " +
+			"control lived on another page this one did not even link")
+	}
+	// It must also say WHY it is not instant. "Pending" alone reads as broken.
+	for _, want := range []string{"root", "once a day"} {
+		if !strings.Contains(strings.ToLower(page), want) {
+			t.Errorf("the certificate notice never mentions %q, so an operator cannot tell "+
+				"whether this is a design or a failure", want)
+		}
+	}
+
+	// A live certificate must not carry the notice, or the page always shows a
+	// problem and the notice stops meaning anything.
+	ok := isolationDomain()
+	ok.SyncState = domain.SyncApproved
+	ok.TLSState = domain.TLSActive
+	if strings.Contains(scopedConsolePage(ok, 0, 0, 0, true, nil), "data-site-provision") {
+		t.Error("a site with a live certificate is offered a provisioning run anyway")
+	}
+
+	// Nor must a HELD site: not provisioning it is what the hold does, and the
+	// hold notice already explains that. Two competing explanations is worse
+	// than one.
+	held := isolationDomain()
+	held.SyncState = domain.SyncHold
+	held.TLSState = domain.TLSPending
+	if strings.Contains(scopedConsolePage(held, 0, 0, 0, true, nil), "data-site-provision") {
+		t.Error("a site on manual hold is offered a provisioning run that would skip it")
+	}
+}

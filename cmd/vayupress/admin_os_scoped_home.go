@@ -146,6 +146,16 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 	b.WriteString(vmStatTile(certLabel, "Certificate", certTone))
 	b.WriteString(`</div>`)
 
+	// A pending certificate is the state that stops a site serving, and the tile
+	// alone was a dead end: amber, correct, and offering nothing to do about it.
+	// The control that fixes it lived on another page this console did not even
+	// link. Surfacing a problem without the action that resolves it is the same
+	// defect as not surfacing it — the operator learns the tile means "wait".
+	if !d.IsPrimary && d.IsSyncApproved() &&
+		d.TLSState != domain.TLSActive && d.TLSState != domain.TLSPrimary {
+		b.WriteString(scopedCertificateBody(d))
+	}
+
 	// A site nobody can reach is the one fact that outranks everything below it.
 	if !d.IsPrimary && !d.IsSyncApproved() {
 		b.WriteString(`<div class="card"><p class="text-sm"><span class="badge badge--warn">on hold</span> ` +
@@ -219,6 +229,43 @@ func scopedCertTile(d domain.Domain) (label, tone string) {
 	default:
 		return "Pending", "warn"
 	}
+}
+
+// scopedCertificateBody explains why a certificate is not automatic and offers
+// the control that makes it happen now.
+//
+// "Why is the certificate not installed automatically?" is the question this
+// answers, and the honest answer is that it IS automatic on a daily cadence —
+// it is just not instant, because the thing that has to happen needs root and
+// this service deliberately cannot become root. Stating only "pending" left an
+// operator to conclude the feature was broken.
+func scopedCertificateBody(d domain.Domain) string {
+	esc := html.EscapeString
+	headline := `no certificate has been issued for <b>` + esc(d.Host) + `</b> yet`
+	if d.TLSState == domain.TLSFailed {
+		headline = `the last attempt to issue a certificate for <b>` + esc(d.Host) + `</b> <b>failed</b>`
+	}
+	return `<div class="card">
+  <div class="settings-block-title">Certificate pending</div>
+  <p class="text-sm"><span class="badge badge--warn">no certificate</span> ` + headline + `, so a visitor is
+    served the primary domain's certificate and the browser refuses the page
+    (<code>ERR_CERT_COMMON_NAME_INVALID</code>).</p>
+  <p class="text-sm muted">This is not instant by design. Obtaining a certificate and reloading nginx needs
+    <b>root</b>, and this service runs unprivileged and deliberately cannot become root — that is why a bug in
+    it cannot take over the machine. A small root-side helper does that step instead. It runs <b>once a day on
+    its own</b>, and immediately whenever you ask for it, so a DNS record you point today is picked up without
+    you touching a terminal.</p>
+  <p class="text-sm muted">Two things it needs before it can succeed: this site's DNS pointing at this server
+    (check on <a href="/os/dns">Domains &amp; DNS</a>), and the helper installed — if it never has been, that
+    page shows the one command that installs it.</p>
+  <div class="vm-row">
+    <button type="button" class="btn btn--primary btn--sm" data-site-provision>Provision now</button>
+    <span id="site-cert-status" class="text-sm muted" role="status" aria-live="polite"></span>
+  </div>
+  <p class="text-xs muted">Asking for a run creates an empty flag file a root-side service watches. No argument
+    is passed and its contents are never read, so this console can request provisioning and cannot influence
+    what the privileged step does.</p>
+</div>`
 }
 
 func scopedLifecycleBody(d domain.Domain) string {
