@@ -1757,6 +1757,20 @@ func folderTabs(user, active string, counts map[string]int) string {
 	return sb.String()
 }
 
+// mailboxDirectoryRequested reports whether a mailbox page carrying no ?user= is
+// the DIRECTORY rather than a mail read.
+//
+// It exists because "no mailbox named" means two different things depending on
+// who is asking, and a single condition that means two things is how the
+// directory came to be fenced off. For an administrator it means "show me every
+// mailbox" — the Mailbox tab links to /os/vayumail/inbox with no parameter, so
+// it is the ONLY way in. For anyone else it means their account has no mailbox,
+// which is a refusal. Reading the directory is not a mail read and mints no
+// Reader: there is no mailbox for an authority to be carried for.
+func mailboxDirectoryRequested(isAdmin bool, requested string) bool {
+	return isAdmin && strings.TrimSpace(requested) == ""
+}
+
 // handleVayuOSInbox lists mailboxes, or (with ?user=) the messages in a folder.
 // The folder view is an HTMX fragment (#vm-inbox-list) that swaps in place for
 // every action, folder switch, and the live new-mail poll — no full-page reload.
@@ -1776,29 +1790,20 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	domain := a.vayuMail.Config().Domain
-	// One authority decision, minted in mailReader (ADR-0152). The inline
-	// admin-or-own check this replaces existed in seven places; fixing one and
-	// missing another leaves a working operator read path with a green suite.
-	rd := a.mailReader(r, mailUserParam(r))
-	user := rd.Key()
-	folder := mailFolderParam(r)
-	if folder == "" {
-		folder = "Inbox"
-	}
-	{
-		if user == "" {
-			body.WriteString(`<div class="empty-state">No mailbox has been assigned to your account yet. Ask an administrator to assign you an email address under <strong>Members → Team &amp; roles</strong>.</div>`)
-			writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
-			return
-		}
-	}
+	requested := mailUserParam(r)
 
-	if user == "" {
-		// Mailbox directory. Each mail domain this install serves gets its OWN
-		// card — the primary first, then each mail_enabled secondary — so the
-		// domains are never mixed into one list (VayuDomains). A single-domain
-		// install renders exactly one card, byte-identical in content. The Maildir
-		// is domain-partitioned, so every domain's accounts come from its own tree.
+	// The directory comes FIRST, because it is what "no mailbox named" means for
+	// an administrator — the Mailbox tab links here with no parameter at all.
+	// Deciding it after minting a Reader put a refusal in front of the feature:
+	// an empty key is the directory condition for an operator and a refusal
+	// condition for everyone else, and one branch cannot be both.
+	//
+	// Each mail domain this install serves gets its OWN card — the primary first,
+	// then each mail_enabled secondary — so the domains are never mixed into one
+	// list (VayuDomains). A single-domain install renders exactly one card. The
+	// Maildir is domain-partitioned, so every domain's accounts come from its own
+	// tree.
+	if mailboxDirectoryRequested(a.isAdminRequest(r), requested) {
 		primary, err := a.vayuMail.Mailboxes()
 		if err != nil {
 			body.WriteString(`<div class="empty-state">Could not read mailboxes: ` + html.EscapeString(err.Error()) + `</div>`)
@@ -1806,6 +1811,21 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		body.WriteString(a.vayuMailboxTabs(domain, primary, a.mailSecondaryHosts(r.Context())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+		return
+	}
+
+	// One authority decision, minted in mailReader (ADR-0152). The inline
+	// admin-or-own check this replaces existed in seven places; fixing one and
+	// missing another leaves a working operator read path with a green suite.
+	rd := a.mailReader(r, requested)
+	user := rd.Key()
+	folder := mailFolderParam(r)
+	if folder == "" {
+		folder = "Inbox"
+	}
+	if user == "" {
+		body.WriteString(`<div class="empty-state">No mailbox has been assigned to your account yet. Ask an administrator to assign you an email address under <strong>Members → Team &amp; roles</strong>.</div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
@@ -2146,11 +2166,7 @@ func (a *App) handleVayuOSInboxFragment(w http.ResponseWriter, r *http.Request) 
 		folder = "Inbox"
 	}
 	if user == "" {
-		writeOSFragment(w, `<div class="empty-state">No mailbox has been assigned to your account.</div>`)
-		return
-	}
-	if user == "" {
-		writeOSFragment(w, `<div class="empty-state">No mailbox selected.</div>`)
+		writeOSFragment(w, `<div class="empty-state">No mailbox selected, and none is assigned to your account.</div>`)
 		return
 	}
 	writeOSFragment(w, a.vayuInboxBody(rd, folder))
@@ -2179,12 +2195,12 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 	rd := a.mailReader(r, sanitizeMailUser(strings.TrimSpace(r.PostFormValue("user"))))
 	user := rd.Key()
 	folder := sanitizeMailFolder(strings.TrimSpace(r.PostFormValue("folder")))
+	// No mailbox resolved. Not a permission verdict — nothing was forbidden: the
+	// request named no mailbox and the account has none assigned. Saying
+	// "forbidden" here sends the reader to check roles instead of assignments.
 	if user == "" {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only manage your own mailbox", "")
-		return
-	}
-	if user == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "user is required", "")
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error",
+			"no mailbox to act on — none was named, and none is assigned to your account", "")
 		return
 	}
 	// De-duplicate the selected ids (a per-row action carries one id in hx-vals;
@@ -2802,11 +2818,7 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 	user := rd.Key()
 	folder := sanitizeMailFolder(strings.TrimSpace(r.FormValue("folder")))
 	id := sanitizeMailID(strings.TrimSpace(r.FormValue("id")))
-	if user == "" {
-		w.WriteHeader(http.StatusForbidden)
-		writeOSHTML(w, r, vayuReadpaneEmpty("You can only manage your own mailbox."))
-		return
-	}
+	// As above: an unresolved mailbox is not a permission verdict.
 	if user == "" || id == "" {
 		writeOSHTML(w, r, vayuReadpaneEmpty("Message not available."))
 		return

@@ -9,6 +9,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Fixed
+- **The mailbox directory is reachable again.** Since v3.16.32 an administrator
+  clicking VayuMail → **Mailbox** was told *"No mailbox has been assigned to your
+  account yet. Ask an administrator to assign you an email address"* — advice
+  addressed to the person reading it. The directory of every mailbox on the
+  install, one card per mail domain, was unreachable for four versions.
+
+  The cause is worth writing down because the shape recurs. The read-authority
+  consolidation replaced `if !isAdmin { … }` with an unconditional
+  `if user == "" { refuse }`. That guard is correct for the reader it was written
+  for and wrong for the one sharing the branch: an empty mailbox key means *"my
+  account has none"* for staff and *"show me every mailbox"* for an operator —
+  and the Mailbox tab links to `/os/vayumail/inbox` with no parameter at all, so
+  the second reading was the only way in. One condition meaning two things put a
+  refusal in front of a feature, and every existing test exercised the staff
+  path, so the suite stayed green.
+
+  The decision is now named rather than implied: `mailboxDirectoryRequested`
+  answers it before any Reader is minted, because listing mailboxes is not a mail
+  read and has no mailbox for an authority to be carried for. An administrator
+  who names a mailbox still gets that mailbox; nobody else ever gets the
+  directory. Note the restored behaviour: an administrator with their own mailbox
+  now lands on the directory again rather than straight into their inbox — their
+  own mailbox is the first card in it.
+
+  Two smaller things the same rewrite left behind, fixed here: three mail
+  handlers guarded twice on the same condition, so the second message — the one
+  that described the situation accurately — was unreachable; and two of them
+  refused with *"you can only manage your own mailbox"*, a permission verdict for
+  a case where nothing was forbidden. No mailbox was named and none was assigned,
+  which is what they now say.
+
 - **Domains & DNS stopped demanding a `www` record that could never exist.** A
   site hosted on a subdomain — `test.example.com` — was listed as *requiring*
   `www.test.example.com`. Nobody creates that record: `www` is a convention of a
