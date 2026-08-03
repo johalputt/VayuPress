@@ -6,7 +6,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.36] — 2026-08-03
+
+Both fixes below ship immediately rather than waiting to be batched, under the
+live-breakage exception: one is a feature that has been unreachable since
+v3.16.32, and the other is a panel telling operators about a fault that does not
+exist. Neither was found by reading the feature list — the first from an
+operator's screenshot of a page refusing them, the second from asking why a
+correctly configured domain could never clear a warning.
+
+Adversarial pass, recorded because it ran: the restored directory gate was
+attacked four ways (ignore the requested mailbox, drop the administrator check so
+staff could list every mailbox on the install, drop whitespace trimming, and
+re-hoist the refusal in front of the directory) and the `www` rule three (always
+apex, never apex, suffix-match instead of equality). Every mutation fails its
+test. The whole of the commit that caused the mailbox regression was re-read for
+sibling instances: mail search, the message reader and the search fragment
+refuse on an empty mailbox both before and after that commit, so none of them
+hid a second lost feature.
 
 ### Fixed
 - **The mailbox directory is reachable again.** Since v3.16.32 an administrator
