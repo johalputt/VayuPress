@@ -6,6 +6,48 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.63] — 2026-08-03
+
+**The repair now reaches an install that is already broken — which is the only
+kind that needs it.**
+
+### Added
+- **The VayuShield agent can refresh the provisioning helpers and reload nginx.**
+
+  v3.16.62 gave the provisioning worker a verified self-upgrade, and that was
+  half an answer: the *old* worker has no self-upgrade, so the install that needs
+  the fix is precisely the one that cannot receive it. Chicken and egg, and the
+  operator was left holding a terminal command again.
+
+  The shield agent is the only root process on the box that **already upgrades
+  itself**, so it is the only place a new capability can arrive on a machine that
+  is already stuck. It now accepts one more empty flag and, on it: fetches the
+  signed helper bundle, verifies the signature before unpacking, installs, tests
+  the nginx configuration and reloads.
+
+  The install this was written for had nginx **four days** without a reload while
+  vhosts were being written minutes earlier — measured from the file's timestamp
+  against nginx's own worker processes. Every certificate failed with an
+  unexplained connection error, and the one-line fix could reach it by no route
+  except a shell.
+
+  Same contract as every other action there: the app writes one empty flag it
+  owns as an unprivileged user; this root-owned script decides what that means.
+  Nothing the app can write becomes part of any config.
+
+  Gated on the properties, not the feature — verified before unpacking, signer
+  pinned to this project, `nginx -t` before the reload, and the reload's failure
+  **reported**. That last one is the defect being repaired, and quietly repeating
+  it inside the repair would have been beyond ironic; a mutation restoring
+  `systemctl reload nginx 2>/dev/null || true` there fails the gate.
+
+### Audit
+Four mutations over the new surface, all caught: installing the helpers without
+reloading (leaving the machine exactly as it was found), discarding the reload's
+status, never wiring the handler into the reconcile loop, and dropping the
+signer-identity pin. Two of those are silent no-ops that would have reported
+success, which is the failure mode this entire track has been about.
+
 ## [3.16.62] — 2026-08-03
 
 **The root-side helpers now upgrade themselves. This is the last privileged

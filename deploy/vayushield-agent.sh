@@ -656,7 +656,7 @@ write_digest() {
 # concludes the upgrade is slow, and eventually stops trusting the panel.
 #
 # Written on every start, so it also tracks correctly through a downgrade.
-AGENT_CAPS="selfupgrade=1 digest=1 defaulthost=1 mcpsurface=1 cosignpin=1 rescue=1 realip=1"
+AGENT_CAPS="selfupgrade=1 digest=1 defaulthost=1 mcpsurface=1 cosignpin=1 rescue=1 realip=1 provisionhelpers=1"
 
 # AGENT_VERSION is READ from a file the release workflow stamps into the bundle,
 # never typed into this script.
@@ -805,6 +805,127 @@ nginx_has_reject_handshake() {
     if (maj==1 && min>19) exit 0;
     if (maj==1 && min==19 && pat>=4) exit 0;
     exit 1}'
+}
+
+# reconcile_provisionhelpers refreshes the certificate helpers and reloads nginx.
+#
+# WHY THIS LIVES IN THE SHIELD AGENT, which is not obviously where it belongs:
+# it is the only root process on the box that already upgrades ITSELF. That
+# makes it the one place a new capability can reach an install that is already
+# broken — and the install this was written for was broken in exactly the way
+# that needs it.
+#
+# The failure: the provisioning helper's reload step read
+#
+#   systemctl reload nginx 2>/dev/null || true
+#
+# so the reload's exit status was discarded and success reported regardless. On
+# one install nginx had not reloaded for FOUR DAYS while vhosts were written
+# minutes earlier — measured, in the end, from the file's timestamp against
+# nginx's own worker processes. Every certificate failed with an unexplained
+# connection error, because the running server had no block for those hosts.
+#
+# The fix was one line, and it could not reach that install: the in-app updater
+# swaps the binary, and the provisioning helpers are root-owned. The only
+# remaining delivery mechanism was an operator with a shell — which a beginner
+# does not have, and which is the thing this product exists to make unnecessary.
+#
+# So the capability goes where self-upgrade already works. Same contract as every
+# other action here: the app writes ONE EMPTY FLAG it owns as an unprivileged
+# user, and this root-owned script decides what that means. Nothing the app can
+# write becomes part of any config.
+reconcile_provisionhelpers() {
+  [ -f "${CONTROL_DIR}/provisionhelpers.want" ] || return 0
+  rm -f "${CONTROL_DIR}/provisionhelpers.want" 2>/dev/null || true
+  write_state provisionhelpers applying
+
+  local lib="/usr/local/lib/vayupress" tmp
+  local repo="${UPGRADE_REPO:-johalputt/VayuPress}"
+  local asset="vayuprovision-helpers.tar.gz"
+
+  if ! command -v curl >/dev/null 2>&1; then
+    write_state provisionhelpers error
+    printf '%s' "curl is not installed, so the helper bundle cannot be fetched." \
+      >"${CONTROL_DIR}/provisionhelpers.reason" 2>/dev/null || true
+    return 0
+  fi
+  if ! ensure_cosign; then
+    write_state provisionhelpers error
+    printf '%s' "cosign is unavailable, so the bundle's signature cannot be checked — refusing to install unverified code as root. ${COSIGN_BOOTSTRAP_WHY}" \
+      >"${CONTROL_DIR}/provisionhelpers.reason" 2>/dev/null || true
+    return 0
+  fi
+
+  tmp="$(mktemp -d)" || { write_state provisionhelpers error; return 0; }
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmp'" RETURN
+
+  local base="https://github.com/${repo}/releases/latest/download"
+  if ! curl -fsSL --max-time 120 -o "${tmp}/${asset}" "${base}/${asset}" 2>/dev/null ||
+     ! curl -fsSL --max-time 60 -o "${tmp}/bundle.json" "${base}/${asset}.cosign.bundle" 2>/dev/null; then
+    write_state provisionhelpers error
+    printf '%s' "Could not download the signed helper bundle from the release." \
+      >"${CONTROL_DIR}/provisionhelpers.reason" 2>/dev/null || true
+    return 0
+  fi
+
+  # Verified BEFORE unpacking: unpacking an unverified archive as root is
+  # already the compromise, whatever is checked afterwards. The signer is pinned
+  # to this project, because accepting any valid signature accepts an attacker's.
+  if ! "$COSIGN" verify-blob "${tmp}/${asset}" \
+        --bundle "${tmp}/bundle.json" \
+        --certificate-identity-regexp "^https://github.com/${repo}/" \
+        --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+        >"${tmp}/verify.log" 2>&1; then
+    write_state provisionhelpers error
+    printf '%s' "The bundle's signature could not be verified, so nothing was installed. If this host cannot reach sigstore.dev this proves NOTHING about the bundle — keyless verification needs Sigstore as well as GitHub. $(tail -n 2 "${tmp}/verify.log" 2>/dev/null | tr '\n' ' ')" \
+      >"${CONTROL_DIR}/provisionhelpers.reason" 2>/dev/null || true
+    return 0
+  fi
+
+  mkdir -p "${tmp}/x" && tar -C "${tmp}/x" -xzf "${tmp}/${asset}" 2>/dev/null || {
+    write_state provisionhelpers error; return 0; }
+  local f n=0
+  for f in "${tmp}"/x/*.sh; do
+    [ -f "$f" ] || continue
+    bash -n "$f" 2>/dev/null || {
+      write_state provisionhelpers error
+      printf '%s' "A script in the verified bundle does not parse; nothing was installed." \
+        >"${CONTROL_DIR}/provisionhelpers.reason" 2>/dev/null || true
+      return 0
+    }
+    n=$((n + 1))
+  done
+  [ "$n" -gt 0 ] || { write_state provisionhelpers error; return 0; }
+  mkdir -p "$lib" 2>/dev/null || true
+  install -m 0755 -o root -g root "${tmp}"/x/*.sh "$lib"/ 2>/dev/null || {
+    write_state provisionhelpers error
+    printf '%s' "Could not install into ${lib}." >"${CONTROL_DIR}/provisionhelpers.reason" 2>/dev/null || true
+    return 0
+  }
+  [ -f "${tmp}/x/helpers.version" ] && install -m 0644 "${tmp}/x/helpers.version" "$lib"/ 2>/dev/null
+
+  # And the reload the broken helper never performed. Tested first, and its
+  # failure REPORTED rather than discarded — discarding it is the entire defect
+  # this action exists to repair, and repeating it here would be beyond ironic.
+  local why=""
+  if command -v nginx >/dev/null 2>&1; then
+    if ! nginx -t >/dev/null 2>&1; then
+      why="the helpers were installed, but nginx's configuration does not currently pass its own test, so no reload was attempted"
+    elif ! out="$(systemctl reload nginx 2>&1)"; then
+      why="the helpers were installed, but reloading nginx failed: ${out:-no output}"
+    fi
+  fi
+  if [ -n "$why" ]; then
+    write_state provisionhelpers error
+    printf '%s' "$why" >"${CONTROL_DIR}/provisionhelpers.reason" 2>/dev/null || true
+    return 0
+  fi
+  write_state provisionhelpers active
+  clear_reason provisionhelpers
+  printf '%s' "$(cat "${lib}/helpers.version" 2>/dev/null || echo unknown)" \
+    >"${CONTROL_DIR}/provisionhelpers.version" 2>/dev/null || true
+  return 0
 }
 
 # reconcile_defaulthost installs a catch-all 443 server so a request carrying a
@@ -1340,6 +1461,7 @@ run_agent() {
       reconcile_tier2
       reconcile_tier3
       reconcile_defaulthost
+      reconcile_provisionhelpers
       reconcile_mcpsurface
       reconcile_realip
       reconcile_banlist

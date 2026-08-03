@@ -191,3 +191,69 @@ func TestTheSelfUpgradeNeverBlocksProvisioning(t *testing.T) {
 		t.Error("the skip paths do not each explain themselves")
 	}
 }
+
+// THE DELIVERY PROBLEM, solved where self-upgrade already works.
+//
+// The provisioning helpers are root-owned, so the in-app updater cannot replace
+// them — and on one install nginx had not reloaded for FOUR DAYS while vhosts
+// were written minutes earlier, because the helper's reload step discarded its
+// exit status. The one-line fix could not reach that install by any route except
+// an operator with a shell, which a beginner does not have.
+//
+// The VayuShield agent is the only root process on the box that already upgrades
+// ITSELF, so it is the only place a new capability can reach an install that is
+// already broken. These assertions are about what makes that safe as root.
+func TestTheShieldAgentCanRepairTheProvisioningHelpers(t *testing.T) {
+	src := readSourceFile(t, "../../deploy/vayushield-agent.sh")
+	i := strings.Index(src, "reconcile_provisionhelpers() {")
+	if i < 0 {
+		t.Fatal("the agent cannot repair the provisioning helpers, so an install whose helpers " +
+			"are broken has no route back except a terminal")
+	}
+	body := src[i:]
+	if j := strings.Index(body, "\nreconcile_defaulthost() {"); j > 0 {
+		body = body[:j]
+	}
+	// Wired into the reconcile loop, and advertised, or the panel cannot know it
+	// exists on the helper actually installed.
+	if !strings.Contains(src, "      reconcile_provisionhelpers\n") {
+		t.Error("the handler is never called from the reconcile loop")
+	}
+	if !strings.Contains(src, "provisionhelpers=1") {
+		t.Error("the capability is not advertised, so the panel cannot tell whether the " +
+			"installed helper supports it")
+	}
+	// Same supply-chain properties as every other root install path.
+	if !strings.Contains(body, "verify-blob") {
+		t.Fatal("the bundle is installed without verifying its signature — unverified code " +
+			"executed as root is a full compromise")
+	}
+	for _, want := range []string{"certificate-identity-regexp", "certificate-oidc-issuer"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("verification does not pin %s, so any valid Sigstore signature passes", want)
+		}
+	}
+	if v, x := strings.Index(body, "verify-blob"), strings.Index(body, "tar -C"); v < 0 || x < 0 || v > x {
+		t.Fatal("the archive is unpacked before its signature is checked")
+	}
+
+	// AND THE POINT OF THE WHOLE ACTION: it must reload nginx, and must report
+	// that reload's failure rather than discarding it. Discarding it is the exact
+	// defect being repaired, and repeating it here would be beyond ironic.
+	if !strings.Contains(body, "systemctl reload nginx") {
+		t.Fatal("the repair installs the helpers but never reloads nginx — leaving the machine " +
+			"in precisely the state it was called to fix")
+	}
+	if strings.Contains(body, "systemctl reload nginx 2>/dev/null || true") {
+		t.Fatal("the repair discards the reload's exit status, which is the defect it exists " +
+			"to correct")
+	}
+	if !strings.Contains(body, "reloading nginx failed") {
+		t.Error("a failed reload is not reported, so the operator is told the repair succeeded")
+	}
+	// nginx -t before reloading: reloading a config that does not pass its own
+	// test is how a working site is taken down by a repair.
+	if nt, rl := strings.Index(body, "nginx -t"), strings.Index(body, "systemctl reload nginx"); nt < 0 || nt > rl {
+		t.Error("the repair reloads without testing the configuration first")
+	}
+}
