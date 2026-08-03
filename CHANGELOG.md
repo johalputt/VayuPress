@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.35] — 2026-08-02
 
 ### Added
 - **ADR-0153 — every domain a whole install.** An operator set up a hosted
