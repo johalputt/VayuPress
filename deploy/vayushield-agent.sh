@@ -913,7 +913,18 @@ reconcile_provisionhelpers() {
     if ! nginx -t >/dev/null 2>&1; then
       why="the helpers were installed, but nginx's configuration does not currently pass its own test, so no reload was attempted"
     elif ! out="$(systemctl reload nginx 2>&1)"; then
-      why="the helpers were installed, but reloading nginx failed: ${out:-no output}"
+      # systemd is not always what supervises nginx — a master started by hand,
+      # a unit never installed, a unit in a failed state. `nginx -s reload`
+      # signals the master through its pid file and involves systemd not at all,
+      # so it is a different mechanism rather than a retry. Every repair this
+      # product offered ended in the systemctl call, which meant every repair
+      # inherited the single failure it existed to fix.
+      if out2="$(nginx -s reload 2>&1)"; then
+        printf '%s' "systemd could not reload nginx (${out:-no output}); the master was signalled directly instead, and the configuration is now live." \
+          >"${CONTROL_DIR}/provisionhelpers.reason" 2>/dev/null || true
+      else
+        why="the helpers were installed, but reloading nginx failed BOTH ways — systemctl: ${out:-no output}; nginx -s reload: ${out2:-no output}"
+      fi
     fi
   fi
   if [ -n "$why" ]; then

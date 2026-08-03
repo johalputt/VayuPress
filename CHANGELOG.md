@@ -6,6 +6,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.66] — 2026-08-03
+
+**Every repair this product offered ended in the one command that was failing.**
+
+### Fixed
+- **`systemctl reload nginx` is no longer the only way this product can reach
+  nginx.** That call fails whenever systemd is not what supervises nginx — a
+  master started by hand, a unit never installed, a unit in a failed state — and
+  on the install this was written for nginx went **five days** without reading a
+  new configuration while every run reported success.
+
+  Every fix layered on top inherited that single failure, because every one of
+  them finished with the same call: the provisioning helper, and then the agent
+  repair written to correct the provisioning helper. The repair would have
+  failed at its last step for exactly the reason it was built.
+
+  `nginx -s reload` reads the master's pid file and signals it directly,
+  involving systemd not at all. It is a **different mechanism**, not a retry of
+  something that failed a moment ago. It is tried only after systemd's — where
+  systemd IS supervising nginx, its reload is the correct one — and a failure of
+  **both** is reported distinctly, or the second mechanism would just move the
+  silence one step along.
+
+### Audit
+The gate for this survived its first mutation, and the reason is worth recording
+because it is the same defect as everything else here: it searched the whole
+file, so disabling the fallback while leaving the **comment** describing it
+passed. A check reading prose about the behaviour instead of the behaviour. It
+now strips comment lines and requires the invocation itself, and the mutation
+fails in both files.
+
 ## [3.16.65] — 2026-08-03
 
 **The same defect, third layer — and the gate I wrote for it stopped one layer

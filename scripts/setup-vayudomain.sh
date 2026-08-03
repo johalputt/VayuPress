@@ -316,10 +316,30 @@ NGINX
 # away, and it was thrown away deliberately by a `|| true` nobody revisited.
 reload_ok() {
   nginx_ok || return 1
-  local out
-  if ! out="$(systemctl reload nginx 2>&1)"; then
-    warn "nginx accepted the configuration but RELOADING it failed:"
-    warn "  ${out:-systemctl gave no output}"
+  local out out2
+  if out="$(systemctl reload nginx 2>&1)"; then
+    return 0
+  fi
+  # SECOND MECHANISM, and it is the point of this block rather than a nicety.
+  #
+  # `systemctl reload nginx` fails whenever systemd is not the thing supervising
+  # nginx — a master started by hand, a unit that was never installed, a unit in
+  # a failed state — and on an install where that was true, nginx went FIVE DAYS
+  # without reading a new configuration while every run reported success.
+  #
+  # `nginx -s reload` does not involve systemd at all: it reads the master's pid
+  # file and signals it directly. It is a genuinely different path to the same
+  # outcome, so trying it is not a retry of something that just failed. Every
+  # repair this product offers ended in the systemctl call, which meant every
+  # repair inherited the one failure it was meant to fix.
+  if out2="$(nginx -s reload 2>&1)"; then
+    info "systemd could not reload nginx (${out:-no output}); signalled the master directly instead."
+    return 0
+  fi
+  if true; then
+    warn "nginx accepted the configuration but RELOADING it failed BOTH ways:"
+    warn "  systemctl: ${out:-no output}"
+    warn "  nginx -s reload: ${out2:-no output}"
     warn "  The new vhost is on disk and the running nginx has never read it, so nothing"
     warn "  serves this host yet. Not proceeding to certbot: a challenge cannot be answered"
     warn "  by configuration that is not loaded, and the attempt would spend a rate-limited"

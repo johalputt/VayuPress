@@ -346,3 +346,60 @@ func TestEveryRegisteredFixIsActuallyRendered(t *testing.T) {
 		t.Errorf("the certificate-helper row renders nothing usable: %q", row)
 	}
 }
+
+// FINDING, and it invalidated every repair this product offered: they all ended
+// in `systemctl reload nginx` — the exact command that had been failing.
+//
+// On the install this was written for, nginx went FIVE DAYS without reading a
+// new configuration while every run reported success. Each fix added on top
+// inherited the single failure it existed to correct, because none of them had a
+// second way to reach nginx.
+//
+// `nginx -s reload` reads the master's pid file and signals it directly,
+// involving systemd not at all. It is a different mechanism, not a retry of
+// something that just failed a moment ago.
+func TestEveryReloadPathHasASecondMechanism(t *testing.T) {
+	// Comment lines are stripped before matching. The first version of this test
+	// searched the whole file, so a mutation that disabled the fallback while
+	// leaving the comment describing it PASSED — a check reading prose about the
+	// behaviour instead of the behaviour, which is the same defect as everything
+	// else this file gates.
+	code := func(src string) string {
+		var b strings.Builder
+		for _, line := range strings.Split(src, "\n") {
+			if t := strings.TrimSpace(line); t == "" || strings.HasPrefix(t, "#") {
+				continue
+			}
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+		return b.String()
+	}
+	for _, f := range []string{
+		"../../scripts/setup-vayudomain.sh",
+		"../../deploy/vayushield-agent.sh",
+	} {
+		src := code(readSourceFile(t, f))
+		sysIdx := strings.Index(src, "systemctl reload nginx")
+		if sysIdx < 0 {
+			continue
+		}
+		// The fallback must be INVOKED, in a condition that can succeed — not
+		// merely mentioned in an error string.
+		if !strings.Contains(src, `out2="$(nginx -s reload 2>&1)"`) {
+			t.Errorf("%s reloads nginx only through systemd. When systemd is not what "+
+				"supervises nginx — a master started by hand, a unit never installed, a unit in a "+
+				"failed state — that call fails and the repair silently inherits the failure it "+
+				"exists to fix", f)
+			continue
+		}
+		if strings.Index(src, `out2="$(nginx -s reload 2>&1)"`) < sysIdx {
+			t.Errorf("%s signals the master before trying systemd; where systemd IS supervising "+
+				"nginx, its reload is the correct one", f)
+		}
+		if !strings.Contains(src, "BOTH ways") {
+			t.Errorf("%s does not report a failure of both mechanisms distinctly, so the second "+
+				"mechanism just moves the silence one step along", f)
+		}
+	}
+}
