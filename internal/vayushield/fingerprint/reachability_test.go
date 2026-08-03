@@ -25,7 +25,7 @@ import (
 // extension order, no HTTP/2 SETTINGS, no TLS at all from crypto/tls's point of
 // view.
 func productionSignals(ua, accept, lang string, major, minor int) Signals {
-	r := httptest.NewRequest(http.MethodGet, "http://example.test/article", nil)
+	r := httptest.NewRequest(http.MethodGet, "http://johal.in/article", nil)
 	r.Header.Set("User-Agent", ua)
 	r.Header.Set("Accept", accept)
 	r.Header.Set("Accept-Language", lang)
@@ -147,7 +147,7 @@ func TestCaptureStoreIsTheOnlyWayToGetTransportSignals(t *testing.T) {
 			"the scorer branch that depends on it would stay dead even WITH capture wired")
 	}
 	// And with those present, the composite is genuinely distinguishing.
-	withTLS := got.ApplyRequest(httptest.NewRequest(http.MethodGet, "http://example.test/", nil)).Fingerprint()
+	withTLS := got.ApplyRequest(httptest.NewRequest(http.MethodGet, "http://johal.in/", nil)).Fingerprint()
 	without := productionSignals("", "", "", 1, 1).Fingerprint()
 	if withTLS.FingerprintHash == without.FingerprintHash {
 		t.Error("transport signals made no difference to the composite")

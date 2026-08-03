@@ -12,7 +12,7 @@ import (
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	return NewServer("https://example.test", "testuser", "Test User")
+	return NewServer("https://johal.in", "testuser", "Test User")
 }
 
 // TestInboxRejectsMalformedJSON verifies the inbox handler returns 400 on invalid JSON.
@@ -54,7 +54,7 @@ func TestInboxRejectsUnknownActivityType(t *testing.T) {
 // TestInboxRejectsMissingActor verifies activities without actor are rejected.
 func TestInboxRejectsMissingActor(t *testing.T) {
 	s := newTestServer(t)
-	payload := `{"@context":"https://www.w3.org/ns/activitystreams","type":"Create","id":"https://example.test/1"}`
+	payload := `{"@context":"https://www.w3.org/ns/activitystreams","type":"Create","id":"https://johal.in/1"}`
 	req := httptest.NewRequest(http.MethodPost, "/inbox", bytes.NewBufferString(payload))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
@@ -108,7 +108,7 @@ func TestOutboxReturnsValidJSON(t *testing.T) {
 func TestPublishCreatesOutboxEntry(t *testing.T) {
 	s := newTestServer(t)
 	before := s.OutboxCount()
-	s.Publish("https://example.test/articles/1", "Note", "Hello federation")
+	s.Publish("https://johal.in/articles/1", "Note", "Hello federation")
 	after := s.OutboxCount()
 	if after <= before {
 		t.Errorf("Publish did not add to outbox: before=%d after=%d", before, after)

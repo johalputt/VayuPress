@@ -256,7 +256,7 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 	// ever needed.
 	vh := vhostCheck(d.Host)
 	pr := challengeProbe(ctx, d.Host)
-	out = append(out, vh, port80ListenerCheck(), pr)
+	out = append(out, vh, sitesEnabledIncludedCheck(), port80ListenerCheck(), pr)
 	if st, ok := enabledVhostFor(d.Host); ok {
 		if c, have := reloadLagCheck(st.Path); have {
 			out = append(out, c)
@@ -1443,4 +1443,77 @@ func reloadLagCheck(vhostPath string) (diagCheck, bool) {
 			"not had, and it works on an install whose helpers are already too old to fix " +
 			"themselves, because the shield agent upgrades itself first.",
 	}, true
+}
+
+// nginxMainConf is the file nginx reads first. World-readable, like everything
+// else this page relies on.
+var nginxMainConf = "/etc/nginx/nginx.conf"
+
+// nginxIncludesSitesEnabled reports whether the RUNNING configuration actually
+// pulls in the directory the provisioning helper writes vhosts into.
+//
+// THE CASE THIS EXISTS FOR, and it is the only one left that fits the evidence:
+// the vhost file is present and enabled, `nginx -t` passes, the reload command
+// reports success — and the host is still unreachable, with nginx's workers
+// dating from days before the file was written.
+//
+// Every one of those is consistent if nginx never includes sites-enabled. The
+// config test passes because it tests the same configuration nginx runs, and
+// that configuration is valid; it simply does not contain the vhost. The reload
+// succeeds because there is nothing wrong with it. And the file on disk is
+// inert — a correct answer to a question nobody asked.
+//
+// Nothing else on this page can tell that apart from a reload that did not
+// happen, because from outside they look identical.
+func nginxIncludesSitesEnabled() (bool, bool) {
+	b, err := os.ReadFile(filepath.Clean(nginxMainConf))
+	if err != nil {
+		return false, false
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "#") || !strings.HasPrefix(t, "include") {
+			continue
+		}
+		if strings.Contains(t, "sites-enabled") {
+			return true, true
+		}
+	}
+	return false, true
+}
+
+// sitesEnabledIncludedCheck reports it, and says what it means when it is false.
+func sitesEnabledIncludedCheck() diagCheck {
+	included, readable := nginxIncludesSitesEnabled()
+	switch {
+	case !readable:
+		return diagCheck{
+			Label: "nginx's main configuration includes sites-enabled", OK: true,
+			Detail: nginxMainConf + " could not be read from this process, so nothing is claimed " +
+				"either way about whether the vhost directory is part of the running configuration",
+		}
+	case included:
+		return diagCheck{
+			Label: "nginx's main configuration includes sites-enabled", OK: true,
+			Detail: "an include directive in " + nginxMainConf + " pulls in the directory the " +
+				"provisioning helper writes vhosts into, so a file written there is part of the " +
+				"running configuration once nginx reloads",
+		}
+	default:
+		return diagCheck{
+			Label: "nginx does NOT include sites-enabled — every vhost written there is inert",
+			OK:    false, Fatal: true,
+			Detail: nginxMainConf + " has no include directive naming sites-enabled, so nothing " +
+				"the provisioning helper writes there is ever part of the running configuration. " +
+				"This explains every symptom at once and is the only thing that does: the vhost " +
+				"file is present and correct, `nginx -t` passes (it tests the configuration nginx " +
+				"actually runs, which is valid — it simply does not contain this site), the reload " +
+				"reports success (there is nothing wrong to fail on), and the host is still " +
+				"answered by the default server. A reload that never happened and a reload that " +
+				"happened but loaded a configuration without your vhost are indistinguishable " +
+				"from outside, which is why this had to be read rather than inferred. The include " +
+				"line belongs in the http block of " + nginxMainConf + "; it is standard on Debian " +
+				"and Ubuntu packages and is absent on several others.",
+		}
+	}
 }

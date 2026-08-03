@@ -271,23 +271,23 @@ func TestInternalNavigationIsNotAReferrer(t *testing.T) {
 	s := newExtStore(t)
 	ctx := context.Background()
 	prev := config.Cfg.Domain
-	config.Cfg.Domain = "example.test"
+	config.Cfg.Domain = "johal.in"
 	t.Cleanup(func() { config.Cfg.Domain = prev })
 
 	for _, ref := range []string{
-		"example.test",      // the site itself
-		"mail.example.test", // its own webmail
-		"mcp.example.test",  // its own MCP host
-		"JOHAL.IN",          // case must not smuggle it through
+		"johal.in",      // the site itself
+		"mail.johal.in", // its own webmail
+		"mcp.johal.in",  // its own MCP host
+		"JOHAL.IN",      // case must not smuggle it through
 	} {
 		for i := 0; i < 5; i++ {
-			if err := s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://" + ref + "/x", Hostname: "example.test", EventType: 1}, "203.0.113.1", "Mozilla/5.0 Chrome/120", ""); err != nil {
+			if err := s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://" + ref + "/x", Hostname: "johal.in", EventType: 1}, "203.0.113.1", "Mozilla/5.0 Chrome/120", ""); err != nil {
 				t.Fatalf("collect: %v", err)
 			}
 		}
 	}
 	// One genuine external referrer.
-	if err := s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://news.example.com/p", Hostname: "example.test", EventType: 1}, "203.0.113.2", "Mozilla/5.0 Chrome/120", ""); err != nil {
+	if err := s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://news.example.com/p", Hostname: "johal.in", EventType: 1}, "203.0.113.2", "Mozilla/5.0 Chrome/120", ""); err != nil {
 		t.Fatalf("collect: %v", err)
 	}
 
@@ -296,7 +296,7 @@ func TestInternalNavigationIsNotAReferrer(t *testing.T) {
 		t.Fatalf("top referrers: %v", err)
 	}
 	for _, r := range refs {
-		if strings.Contains(strings.ToLower(r.Referrer), "example.test") {
+		if strings.Contains(strings.ToLower(r.Referrer), "johal.in") {
 			t.Errorf("%q is listed as a referrer with %d hits — that is the site's own traffic, "+
 				"and counting it means the referrer table is topped by the operator's own "+
 				"subdomains instead of by where readers actually come from", r.Referrer, r.Count)
@@ -315,14 +315,14 @@ func TestAReferrerBreakdownNeverExceedsItsTotal(t *testing.T) {
 	s := newExtStore(t)
 	ctx := context.Background()
 	prev := config.Cfg.Domain
-	config.Cfg.Domain = "example.test"
+	config.Cfg.Domain = "johal.in"
 	t.Cleanup(func() { config.Cfg.Domain = prev })
 
 	for i := 0; i < 4; i++ {
-		_ = s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://news.example.com/p", Hostname: "example.test", EventType: 1}, "203.0.113.1", "Mozilla/5.0 Chrome/120", "")
+		_ = s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://news.example.com/p", Hostname: "johal.in", EventType: 1}, "203.0.113.1", "Mozilla/5.0 Chrome/120", "")
 	}
 	for i := 0; i < 30; i++ {
-		_ = s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://mail.example.test/x", Hostname: "example.test", EventType: 2, EventName: "scroll"}, "203.0.113.1", "Mozilla/5.0 Chrome/120", "")
+		_ = s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://mail.johal.in/x", Hostname: "johal.in", EventType: 2, EventName: "scroll"}, "203.0.113.1", "Mozilla/5.0 Chrome/120", "")
 	}
 
 	ov, _ := s.OverviewSince(ctx, 30)

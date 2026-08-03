@@ -11,7 +11,7 @@ import (
 // operator's.
 //
 // These are written from the position of the operator who reported it: they set
-// up site.example.test, opened Theme Studio, and were editing example.test.
+// up test.johal.in, opened Theme Studio, and were editing johal.in.
 
 // The headline property. Two scopes, one key, two values — and neither can see
 // the other's.

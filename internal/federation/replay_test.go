@@ -27,7 +27,7 @@ func TestReplayStoreNewIDNotSeen(t *testing.T) {
 	if err := rs.EnsureSchema(); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
-	seen, err := rs.Seen("https://example.test/activity/1")
+	seen, err := rs.Seen("https://johal.in/activity/1")
 	if err != nil {
 		t.Fatalf("Seen: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestReplayStoreMarkAndSeen(t *testing.T) {
 	if err := rs.EnsureSchema(); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
-	id := "https://example.test/activity/2"
+	id := "https://johal.in/activity/2"
 	if err := rs.Mark(id); err != nil {
 		t.Fatalf("Mark: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestReplayStoreMarkOrRejectDuplicate(t *testing.T) {
 	if err := rs.EnsureSchema(); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
-	id := "https://example.test/activity/3"
+	id := "https://johal.in/activity/3"
 	if err := rs.MarkOrReject(id); err != nil {
 		t.Fatalf("first MarkOrReject: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestReplayStoreCount(t *testing.T) {
 		t.Fatalf("schema: %v", err)
 	}
 	for i := 0; i < 5; i++ {
-		rs.Mark(fmt.Sprintf("https://example.test/activity/%d", i)) //nolint:errcheck
+		rs.Mark(fmt.Sprintf("https://johal.in/activity/%d", i)) //nolint:errcheck
 	}
 	n, err := rs.Count()
 	if err != nil {
@@ -114,7 +114,7 @@ func TestReplayStoreSurvivesReopen(t *testing.T) {
 		if err := rs.EnsureSchema(); err != nil {
 			t.Fatalf("schema: %v", err)
 		}
-		if err := rs.Mark("https://example.test/durable/1"); err != nil {
+		if err := rs.Mark("https://johal.in/durable/1"); err != nil {
 			t.Fatalf("Mark: %v", err)
 		}
 	}
@@ -129,7 +129,7 @@ func TestReplayStoreSurvivesReopen(t *testing.T) {
 		if err := rs.EnsureSchema(); err != nil {
 			t.Fatalf("schema: %v", err)
 		}
-		seen, err := rs.Seen("https://example.test/durable/1")
+		seen, err := rs.Seen("https://johal.in/durable/1")
 		if err != nil {
 			t.Fatalf("Seen: %v", err)
 		}

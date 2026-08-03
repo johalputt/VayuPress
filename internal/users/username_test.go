@@ -19,7 +19,7 @@ func TestNormalizeAndDeriveUsername(t *testing.T) {
 			t.Errorf("normalizeUsername(%q)=%q, want %q", in, got, want)
 		}
 	}
-	if got := deriveUsername("ankush@example.test", "Ankush Johal"); got != "ankush" {
+	if got := deriveUsername("ankush@johal.in", "Ankush Johal"); got != "ankush" {
 		t.Errorf("deriveUsername from email local part = %q, want ankush", got)
 	}
 }
@@ -27,7 +27,7 @@ func TestNormalizeAndDeriveUsername(t *testing.T) {
 func TestUsernameUniquenessAndLookup(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	u1, err := s.Create(ctx, "ankush@example.test", "Ankush", "password123", "admin")
+	u1, err := s.Create(ctx, "ankush@johal.in", "Ankush", "password123", "admin")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -20,8 +20,8 @@ func newPageStatsEngine(on *bool) (*Engine, *memStore) {
 func TestIncPageDisabledIsNoop(t *testing.T) {
 	off := false
 	e, _ := newPageStatsEngine(&off)
-	e.IncPage("example.test", "/best-vpn")
-	e.IncPage("example.test", "/best-vpn")
+	e.IncPage("johal.in", "/best-vpn")
+	e.IncPage("johal.in", "/best-vpn")
 	if got := e.topPages(10); len(got) != 0 {
 		t.Fatalf("disabled page stats recorded hits: %v", got)
 	}
@@ -35,9 +35,9 @@ func TestIncPageAggregatesAndRanks(t *testing.T) {
 	on := true
 	e, _ := newPageStatsEngine(&on)
 	for i := 0; i < 3; i++ {
-		e.IncPage("example.test", "/popular")
+		e.IncPage("johal.in", "/popular")
 	}
-	e.IncPage("example.test", "/rare")
+	e.IncPage("johal.in", "/rare")
 	e.IncPage("vayupress.com", "/docs")
 	e.IncPage("vayupress.com", "/docs")
 
@@ -45,8 +45,8 @@ func TestIncPageAggregatesAndRanks(t *testing.T) {
 	if len(top) != 3 {
 		t.Fatalf("want 3 tracked pages, got %d: %v", len(top), top)
 	}
-	if top[0].Host != "example.test" || top[0].Path != "/popular" || top[0].Count != 3 {
-		t.Errorf("top page = %+v, want example.test /popular x3", top[0])
+	if top[0].Host != "johal.in" || top[0].Path != "/popular" || top[0].Count != 3 {
+		t.Errorf("top page = %+v, want johal.in /popular x3", top[0])
 	}
 	if top[1].Count != 2 || top[1].Host != "vayupress.com" {
 		t.Errorf("second page = %+v, want vayupress.com /docs x2", top[1])
@@ -59,17 +59,17 @@ func TestIncPageAggregatesAndRanks(t *testing.T) {
 
 func TestPageKeyNormalisation(t *testing.T) {
 	// Host is lowercased; a blank path becomes "/"; embedded whitespace collapses.
-	if k := pageKey("Johal.IN", "/A B"); k != "example.test /A B" {
+	if k := pageKey("Johal.IN", "/A B"); k != "johal.in /A B" {
 		t.Errorf("pageKey host-lower/space = %q", k)
 	}
-	if k := pageKey("example.test", ""); k != "example.test /" {
-		t.Errorf("pageKey empty path = %q, want 'example.test /'", k)
+	if k := pageKey("johal.in", ""); k != "johal.in /" {
+		t.Errorf("pageKey empty path = %q, want 'johal.in /'", k)
 	}
 	if k := pageKey("", "/x"); k != "" {
 		t.Errorf("pageKey empty host should be dropped, got %q", k)
 	}
-	h, p := splitPageKey("example.test /best-vpn")
-	if h != "example.test" || p != "/best-vpn" {
+	h, p := splitPageKey("johal.in /best-vpn")
+	if h != "johal.in" || p != "/best-vpn" {
 		t.Errorf("splitPageKey = %q,%q", h, p)
 	}
 }
@@ -101,7 +101,7 @@ func TestPageHitsCardinalityBounded(t *testing.T) {
 func TestResetPageHits(t *testing.T) {
 	on := true
 	e, store := newPageStatsEngine(&on)
-	e.IncPage("example.test", "/x")
+	e.IncPage("johal.in", "/x")
 	e.flushVisits(context.Background()) // persist
 	if got := store.LoadPageHits(context.Background()); len(got) != 1 {
 		t.Fatalf("expected 1 persisted hit, got %v", got)

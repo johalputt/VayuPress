@@ -57,7 +57,7 @@ func TestAHandedOverMailboxRefusesTheOperatorEverywhereItCounts(t *testing.T) {
 	if s.IsHandedOver(mbox) {
 		t.Fatal("a mailbox is handed over before anyone handed it over")
 	}
-	if err := s.HandOver(ctx, mbox, "operator@studio.test", "bob-personal@example.test"); err != nil {
+	if err := s.HandOver(ctx, mbox, "operator@studio.test", "bob-personal@johal.in"); err != nil {
 		t.Fatal(err)
 	}
 	if !s.IsHandedOver(mbox) {

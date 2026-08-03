@@ -26,7 +26,7 @@ func signedRequest(t *testing.T, priv *rsa.PrivateKey, keyID string, body []byte
 	sum := sha256.Sum256(body)
 	digest := "SHA-256=" + base64.StdEncoding.EncodeToString(sum[:])
 	req := httptest.NewRequest(http.MethodPost, "/u/alice/inbox", bytes.NewReader(body))
-	req.Host = "example.test"
+	req.Host = "johal.in"
 	req.Header.Set("Date", date.UTC().Format(http.TimeFormat))
 	req.Header.Set("Digest", digest)
 
@@ -115,7 +115,7 @@ func TestParseRSAPublicKeyPEM_RoundTrip(t *testing.T) {
 
 func TestInboxHandler_EnforcesSignature(t *testing.T) {
 	priv, _ := rsa.GenerateKey(rand.Reader, 2048)
-	srv := NewServer("https://example.test", "alice", "Alice")
+	srv := NewServer("https://johal.in", "alice", "Alice")
 	srv.SetKeyResolver(func(keyID string) (string, error) {
 		if keyID == "https://peer.test/u/bob#key" {
 			return pubPEM(t, priv), nil
@@ -150,7 +150,7 @@ func TestInboxHandler_EnforcesSignature(t *testing.T) {
 
 func TestInboxHandler_NoResolverStaysOpen(t *testing.T) {
 	// Backward-compat: without a resolver, the inbox accepts unsigned requests.
-	srv := NewServer("https://example.test", "alice", "Alice")
+	srv := NewServer("https://johal.in", "alice", "Alice")
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/u/alice/inbox",
 		strings.NewReader(`{"type":"Create"}`))

@@ -213,3 +213,70 @@ func shellCode(src string) string {
 	}
 	return b.String()
 }
+
+// THE LAST STATE THAT FITS ALL THE EVIDENCE, and the only one nothing on the
+// page could previously tell apart from a failed reload.
+//
+// On a live install: the vhost file was present and enabled, `nginx -t` passed,
+// the reload command reported success, and the host was still answered by the
+// default server with nginx's workers dating from four days earlier.
+//
+// Every one of those is consistent if nginx never includes sites-enabled. The
+// config test passes because it tests the configuration nginx actually runs,
+// which is valid — it simply does not contain the vhost. The reload succeeds
+// because there is nothing wrong with it. And the file on disk is inert.
+//
+// From outside, "the reload did not happen" and "the reload happened and loaded
+// a configuration without your vhost" look identical. This had to be read.
+func TestAnNginxThatNeverIncludesSitesEnabledIsNamed(t *testing.T) {
+	dir := t.TempDir()
+	saved := nginxMainConf
+	t.Cleanup(func() { nginxMainConf = saved })
+
+	write := func(body string) {
+		t.Helper()
+		p := filepath.Join(dir, "nginx.conf")
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		nginxMainConf = p
+	}
+
+	// A config that does NOT include the vhost directory.
+	write("http {\n  include /etc/nginx/conf.d/*.conf;\n  server { listen 80; }\n}\n")
+	c := sitesEnabledIncludedCheck()
+	if c.OK || !c.Fatal {
+		t.Fatalf("an nginx that never includes sites-enabled was not reported as blocking: %q — %s",
+			c.Label, c.Detail)
+	}
+	if !strings.Contains(c.Label+c.Detail, "inert") {
+		t.Error("the finding does not say that vhosts written there have no effect")
+	}
+	// It must explain why nginx -t and the reload both look fine, or the operator
+	// reads it as contradicting the two green rows above it.
+	for _, want := range []string{"nginx -t", "reload"} {
+		if !strings.Contains(c.Detail, want) {
+			t.Errorf("the finding never reconciles itself with %q passing", want)
+		}
+	}
+
+	// The ordinary Debian/Ubuntu shape must come back clean.
+	write("http {\n  include /etc/nginx/conf.d/*.conf;\n  include /etc/nginx/sites-enabled/*;\n}\n")
+	if ok := sitesEnabledIncludedCheck(); !ok.OK || ok.Fatal {
+		t.Errorf("a standard config with the include was flagged: %s", ok.Detail)
+	}
+
+	// A COMMENTED-OUT include is not an include. Reading prose about the
+	// behaviour instead of the behaviour has caught this project out three times
+	// today, and it would be a confident wrong answer here too.
+	write("http {\n  # include /etc/nginx/sites-enabled/*;\n}\n")
+	if c := sitesEnabledIncludedCheck(); c.OK {
+		t.Error("a commented-out include counted as an include")
+	}
+
+	// Unreadable must claim nothing, in either direction.
+	nginxMainConf = filepath.Join(dir, "does-not-exist")
+	if c := sitesEnabledIncludedCheck(); !c.OK || !strings.Contains(c.Detail, "nothing is claimed") {
+		t.Error("an unreadable nginx.conf produced a verdict instead of an abstention")
+	}
+}

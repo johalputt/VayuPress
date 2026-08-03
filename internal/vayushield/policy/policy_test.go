@@ -175,13 +175,13 @@ func TestRouteCostAccountsForWorkNotArrivals(t *testing.T) {
 	if len(bad) != 0 {
 		t.Fatalf("route parse failures: %v", bad)
 	}
-	if got := r.CostOf("example.test", "/search", http.MethodGet); got != 8 {
+	if got := r.CostOf("johal.in", "/search", http.MethodGet); got != 8 {
 		t.Errorf("search cost = %d, want 8", got)
 	}
-	if got := r.CostOf("example.test", "/article/slug", http.MethodGet); got != 1 {
+	if got := r.CostOf("johal.in", "/article/slug", http.MethodGet); got != 1 {
 		t.Errorf("an unmatched route cost %d, want the default 1", got)
 	}
-	if got := r.RouteName("example.test", "/feed/atom", http.MethodGet); got != "feed" {
+	if got := r.RouteName("johal.in", "/feed/atom", http.MethodGet); got != "feed" {
 		t.Errorf("route name = %q, want feed", got)
 	}
 }
@@ -210,23 +210,23 @@ func TestPrefixMatchesOnSegmentBoundaries(t *testing.T) {
 // script on the right machine.
 func TestHostAndMethodScoping(t *testing.T) {
 	r, _ := Compile(Config{Routes: []Route{
-		{Name: "mcp", Host: "mcp.example.test", Cost: 2},
+		{Name: "mcp", Host: "mcp.johal.in", Cost: 2},
 		{Name: "writes", Prefix: "/api", Methods: []string{"POST", "DELETE"}, Cost: 6},
 	}})
 
-	if got := r.RouteName("mcp.example.test", "/anything", http.MethodGet); got != "mcp" {
+	if got := r.RouteName("mcp.johal.in", "/anything", http.MethodGet); got != "mcp" {
 		t.Errorf("the MCP host did not match: %q", got)
 	}
-	if got := r.RouteName("mcp.example.test:443", "/anything", http.MethodGet); got != "mcp" {
+	if got := r.RouteName("mcp.johal.in:443", "/anything", http.MethodGet); got != "mcp" {
 		t.Error("a host carrying a port did not match — Host headers routinely include one")
 	}
-	if got := r.RouteName("example.test", "/anything", http.MethodGet); got != "" {
+	if got := r.RouteName("johal.in", "/anything", http.MethodGet); got != "" {
 		t.Errorf("a host-scoped rule leaked to another host: %q", got)
 	}
-	if got := r.RouteName("example.test", "/api/posts", http.MethodPost); got != "writes" {
+	if got := r.RouteName("johal.in", "/api/posts", http.MethodPost); got != "writes" {
 		t.Errorf("a method-scoped rule did not match POST: %q", got)
 	}
-	if got := r.RouteName("example.test", "/api/posts", http.MethodGet); got != "" {
+	if got := r.RouteName("johal.in", "/api/posts", http.MethodGet); got != "" {
 		t.Errorf("a POST/DELETE rule matched a GET: %q", got)
 	}
 }

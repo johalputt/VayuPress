@@ -59,7 +59,7 @@ func TestCountsByHost(t *testing.T) {
 		t.Fatalf("store: %v", err)
 	}
 	ctx := context.Background()
-	for _, e := range []string{"a@example.test", "B@Johal.in", "shop@Shop.example", "hi@shop.example", "solo@third.example"} {
+	for _, e := range []string{"a@johal.in", "B@Johal.in", "shop@Shop.example", "hi@shop.example", "solo@third.example"} {
 		if err := s.Create(ctx, e, "h", "", "author"); err != nil {
 			t.Fatalf("create %s: %v", e, err)
 		}
@@ -68,8 +68,8 @@ func TestCountsByHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("counts: %v", err)
 	}
-	if counts["example.test"] != 2 {
-		t.Errorf("example.test = %d, want 2 (case-insensitive host grouping)", counts["example.test"])
+	if counts["johal.in"] != 2 {
+		t.Errorf("johal.in = %d, want 2 (case-insensitive host grouping)", counts["johal.in"])
 	}
 	if counts["shop.example"] != 2 {
 		t.Errorf("shop.example = %d, want 2", counts["shop.example"])

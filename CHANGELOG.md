@@ -6,6 +6,49 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.71] — 2026-08-03
+
+**The last state that fits all the evidence — and a CI break I caused scrubbing
+the docs.**
+
+### Added
+- **The console now reads whether nginx's running configuration includes the
+  vhost directory at all.**
+
+  A live install reached a state nothing on the page could explain: the vhost
+  file present and correct, `nginx -t` passing, the reload reporting success, the
+  helpers current — and the host still answered by the default server, with
+  nginx's workers older than the file by days.
+
+  Every one of those is consistent if nginx never includes `sites-enabled`. The
+  config test passes because it tests the configuration nginx actually runs,
+  which is valid — it simply does not contain the vhost. The reload succeeds
+  because there is nothing wrong with it. And the file on disk is inert: a
+  correct answer to a question nobody asked.
+
+  From outside, *"the reload did not happen"* and *"the reload happened and
+  loaded a configuration without your vhost"* are indistinguishable. This had to
+  be read rather than inferred, and the file is world-readable, so the console
+  reads it. A commented-out include does not count, and an unreadable file claims
+  nothing in either direction.
+
+### Fixed
+- **CI: three packages broke on the documentation scrub.** Replacing the example
+  hostname inside `internal/**` changed values that tests encode as expected
+  output — `NormalizeHost`, the analytics referrer classifier and the avatar
+  hashes all failed. The scrub's purpose was keeping **infrastructure** out of
+  shipped documents; a hostname in a test fixture is not that. The IP scrub
+  stands everywhere; the hostname rename is reverted inside `internal`.
+
+  The gates that would have caught it were run on two packages instead of all of
+  them. `go test ./...` means all of them.
+
+### Audit
+The include check is gated on four states: absent, present, commented out, and
+unreadable. The commented-out case is there because a gate reading prose about
+the behaviour instead of the behaviour has caught this project out three separate
+times today, and it would have been a confident wrong answer here too.
+
 ## [3.16.70] — 2026-08-03
 
 **The origin of the malformed nginx directive, found by the audit that should
