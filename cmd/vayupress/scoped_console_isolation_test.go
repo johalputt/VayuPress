@@ -1008,3 +1008,82 @@ func TestTerminalColourCodesDoNotReachThePage(t *testing.T) {
 		t.Error("a line with no escapes was altered")
 	}
 }
+
+// FINDING, and the most expensive one in this whole investigation: the console
+// ranked its own DEDUCTION above the authority's own MESSAGE.
+//
+// The certificate authority reported, for test.johal.in, "Type: connection" at
+// 5.189.133.235 — the IPv4 address, which is this server. The console's DNS
+// check had separately deduced that the site's AAAA points elsewhere, and put
+// that deduction in a row ABOVE the authority's error. The deduction was read as
+// the cause for three releases while the actual message sat further down the
+// same page, saying something different: nothing answered on port 80 at all.
+//
+// A page that has the answer and ranks a guess above it is not a diagnostic.
+func TestTheAuthoritysOwnErrorOutranksTheConsolesDeduction(t *testing.T) {
+	src := readSourceFile(t, "admin_os_scoped_diagnose.go")
+	body := goFuncBody(src, "diagnoseCertificate")
+	verdict := strings.Index(body, "certbotHostVerdict")
+	deduction := strings.Index(body, "dnsPointsHereCheck")
+	if verdict < 0 || deduction < 0 {
+		t.Fatal("one of the two checks is gone")
+	}
+	if verdict > deduction {
+		t.Fatal("the console still reports what it deduced about DNS ABOVE what the certificate " +
+			"authority actually said. Direct evidence must lead; the ordering is the finding")
+	}
+}
+
+// "Type: connection" and "Type: unauthorized" are entirely different faults with
+// the same visible outcome, and the console printed them raw. One is a network
+// path — nothing answered. The other is a webroot — something answered with the
+// wrong thing. Telling them apart is most of the work.
+func TestTheAuthoritysErrorTypeIsExplainedNotJustQuoted(t *testing.T) {
+	conn := certbotErrorKind([]string{"Type:   connection", "Detail: 5.189.133.235: Fetching"})
+	if !strings.Contains(conn, "CONNECTION") || !strings.Contains(conn, "nothing answered") {
+		t.Errorf("a connection error is not explained as a network path: %q", conn)
+	}
+	if strings.Contains(conn, "wrong thing") {
+		t.Error("a connection error is being described as a content problem")
+	}
+
+	un := certbotErrorKind([]string{"Type:   unauthorized", "Detail: 185.199.108.153: 404"})
+	if !strings.Contains(un, "UNAUTHORIZED") || !strings.Contains(un, "wrong") {
+		t.Errorf("an unauthorized error is not explained as a content problem: %q", un)
+	}
+	// The two must not read the same, or the distinction is decorative.
+	if conn == un {
+		t.Fatal("both error types produce identical prose")
+	}
+	if certbotErrorKind([]string{"no type line here"}) != "" {
+		t.Error("an unrecognised error invented an explanation")
+	}
+}
+
+// The probe is what actually splits a connection error in two, so it must be
+// wired in, must carry this site's Host header, and must not follow redirects.
+//
+// The Host header selects this site's vhost rather than the default one — which
+// is exactly what the authority's request does, and without it the probe tests
+// the wrong server block entirely. Following a redirect would hide the failure
+// it exists to catch: a 301 means the catch-all matched instead of the challenge
+// location, which no certificate can survive.
+func TestTheChallengeProbeAsksAsTheAuthorityWould(t *testing.T) {
+	src := readSourceFile(t, "admin_os_scoped_diagnose.go")
+	body := goFuncBody(src, "challengeProbe")
+	if !strings.Contains(body, "req.Host = host") {
+		t.Fatal("the probe does not set the Host header, so it exercises the default vhost " +
+			"rather than this site's — a pass would prove nothing about the site being diagnosed")
+	}
+	if !strings.Contains(body, "ErrUseLastResponse") {
+		t.Error("the probe follows redirects, so a catch-all 301 — the exact misconfiguration " +
+			"that breaks issuance — would be reported as success")
+	}
+	if !strings.Contains(body, "os.Remove") {
+		t.Error("the probe leaves its token in the public webroot")
+	}
+	// And it must be reached from the diagnosis, or none of the above matters.
+	if !strings.Contains(goFuncBody(src, "diagnoseCertificate"), "challengeProbe") {
+		t.Fatal("the probe is never called")
+	}
+}

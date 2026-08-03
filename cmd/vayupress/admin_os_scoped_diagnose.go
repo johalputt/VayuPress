@@ -22,8 +22,12 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"html"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -187,7 +191,8 @@ func certbotHostVerdict(seg []string, host string) (diagCheck, bool) {
 			out.Detail = strings.Join(reasons, " ")
 		}
 		out.Detail += ". The summary below counts HELPERS, not hosts, and a helper that fails one " +
-			"host still exits cleanly — so this is read from the log rather than from that summary."
+			"host still exits cleanly — so this is read from the log rather than from that summary." +
+			certbotErrorKind(seg)
 	}
 	return out, true
 }
@@ -222,7 +227,29 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 		}[installed],
 	})
 
-	// 2. Would the helper's own registry read see this domain? This is the check
+	// 2. WHAT THE AUTHORITY ITSELF SAID, and whether this server can answer its
+	//    own challenge.
+	//
+	// These lead because they are DIRECT EVIDENCE and everything below them is
+	// inference. That ordering was got wrong, at a cost: the console reported a
+	// DNS mismatch it had deduced, in a row above the authority's own error —
+	// which named a different address and a different failure mode — and the
+	// deduction was read as the cause for three releases while the actual
+	// message sat further down the same page.
+	//
+	// A page that has the answer and ranks a guess above it is not a diagnostic.
+	seg := hostLogSegment(logLines, d.Host)
+	if v, ok := certbotHostVerdict(seg, d.Host); ok {
+		out = append(out, v)
+	}
+	if strings.Contains(certbotErrorKind(seg), "CONNECTION") || len(seg) == 0 {
+		// The probe answers exactly the question a connection error raises, and
+		// nothing else can. It writes a token and reads it back, so it is only run
+		// when there is a reason to.
+		out = append(out, challengeProbe(ctx, d.Host))
+	}
+
+	// 3. Would the helper's own registry read see this domain? This is the check
 	//    that would have found the real fault in one glance: the helper runs
 	//    `vayupress domains hosts`, and on at least one install that command
 	//    exited fatal on a missing API_KEY and reported an empty list. Here the
@@ -239,7 +266,7 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 	}
 	out = append(out, diagCheck{Label: "Listed for provisioning", OK: approved, Fatal: !approved, Detail: reason})
 
-	// 3. Where does the name actually point?
+	// 4. Where does the name actually point?
 	//
 	// The first version asked only whether it RESOLVED, and reported "so the
 	// challenge can reach this server" — which does not follow. A domain pointed
@@ -256,7 +283,7 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 	apexAddrs, _ := boundedLookup(ctx, strings.TrimSpace(config.Cfg.Domain))
 	out = append(out, dnsPointsHereCheck(d.Host, addrs, looked, localAddrSet(), apexAddrs))
 
-	// 4. Are the root-side helpers as new as this binary?
+	// 5. Are the root-side helpers as new as this binary?
 	//
 	// The in-app updater swaps the BINARY ONLY — it runs unprivileged and cannot
 	// write to /usr/local/lib/vayupress. So an install can be fully up to date
@@ -279,7 +306,7 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 		}[fresh],
 	})
 
-	// 5. Did the worker RUN, and did it record what it did?
+	// 6. Did the worker RUN, and did it record what it did?
 	//
 	// The console has both files and was comparing neither. The worker appends to
 	// provision.log throughout and writes provision.result only at the very end,
@@ -296,7 +323,7 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 	resAt, haveRes := provisionFileTime(provisionResultFile)
 	out = append(out, workerTraceCheck(logAt, haveLog, resAt, haveRes))
 
-	// 6. Was the last run AFTER the most recent request?
+	// 7. Was the last run AFTER the most recent request?
 	//
 	// The first version of this check called a run "ok" on Failed==0 && Ran>0
 	// without looking at WHEN it happened — so a healthy run from yesterday was
@@ -317,7 +344,7 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 		})
 	}
 
-	// 7. What the last run actually did. Reported rather than summarised: the
+	// 8. What the last run actually did. Reported rather than summarised: the
 	//    per-helper detail string is the thing that names which one skipped.
 	if have {
 		ok := res.Failed == 0 && res.Ran > 0
@@ -346,12 +373,6 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 		})
 	}
 
-	// 8. What the run did for THIS HOST — read from the log, not from the summary
-	//    above it. The summary counts helpers; this counts the one site the page
-	//    is about, and the two disagreed on a live install.
-	if v, ok := certbotHostVerdict(hostLogSegment(logLines, d.Host), d.Host); ok {
-		out = append(out, v)
-	}
 	return out
 }
 
@@ -723,4 +744,134 @@ func boundedLookup(ctx context.Context, host string) ([]string, bool) {
 		return nil, false
 	}
 	return addrs, true
+}
+
+// acmeWebroot is where certbot's --webroot writes, and therefore where nginx
+// must serve /.well-known/acme-challenge/ from.
+func acmeWebroot() string {
+	if d := strings.TrimSpace(os.Getenv("CACHE_DIR")); d != "" {
+		return d
+	}
+	return "/var/cache/vayupress"
+}
+
+// challengeProbe serves a real token and fetches it back over LOOPBACK with this
+// site's Host header.
+//
+// This is the check that splits the problem in two, and it is the one that was
+// missing while three releases went by arguing about DNS. The authority reported
+// "Type: connection" for a host whose A record is correct, and from the outside
+// that has two completely different causes with the same symptom:
+//
+//   - nginx is not serving the challenge path for this host, or
+//   - nginx is serving it perfectly and nothing from the internet can reach
+//     port 80 on this machine.
+//
+// No amount of reasoning about DNS separates those. Asking the server to answer
+// its own challenge does, decisively, without leaving VayuOS and without asking
+// anybody to run a command.
+func challengeProbe(ctx context.Context, host string) diagCheck {
+	dir := filepath.Join(acmeWebroot(), ".well-known", "acme-challenge")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return diagCheck{
+			Label: "This server can answer its own challenge", OK: true,
+			Detail: "the challenge directory (" + dir + ") could not be created from this " +
+				"process, so this check was skipped — nothing is claimed either way",
+		}
+	}
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return diagCheck{Label: "This server can answer its own challenge", OK: true,
+			Detail: "the probe token could not be generated, so nothing is claimed either way"}
+	}
+	// Prefixed so anything that ever sees this file knows what it is. Random, so
+	// it cannot collide with a live challenge, and removed immediately below.
+	token := "vayupress-selftest-" + hex.EncodeToString(raw[:])
+	path := filepath.Join(dir, token)
+	if err := os.WriteFile(path, []byte(token), 0o644); err != nil { //nolint:gosec // must be world-readable: nginx serves it
+		return diagCheck{
+			Label: "This server can answer its own challenge", OK: true,
+			Detail: "could not write into " + dir + " (" + err.Error() + "), so this check was " +
+				"skipped — note that certbot writes there too, and if it cannot either, that is " +
+				"the fault",
+		}
+	}
+	defer func() { _ = os.Remove(path) }()
+
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"http://127.0.0.1/.well-known/acme-challenge/"+token, nil)
+	if err != nil {
+		return diagCheck{Label: "This server can answer its own challenge", OK: true,
+			Detail: "the probe request could not be built, so nothing is claimed either way"}
+	}
+	// The Host header is the whole point: it selects this site's vhost rather
+	// than the default one, which is exactly what the authority's request does.
+	req.Host = host
+	client := &http.Client{
+		Timeout: 4 * time.Second,
+		// A redirect means the challenge location did NOT match and the catch-all
+		// `return 301 https://…` did. Following it would hide that.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return diagCheck{
+			Label: "This server can answer its own challenge", OK: false, Fatal: true,
+			Detail: "nothing answered on port 80 over loopback for " + host + " (" + err.Error() +
+				"). nginx is not listening on port 80, or is not running — the authority cannot " +
+				"reach a challenge this machine will not serve to itself.",
+		}
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+
+	if resp.StatusCode == http.StatusOK && strings.TrimSpace(string(body)) == token {
+		return diagCheck{
+			Label: "This server can answer its own challenge", OK: true,
+			Detail: "a token written to " + dir + " was served back over loopback for " + host +
+				". nginx and the webroot are correct, so a failure the authority reports as a " +
+				"CONNECTION problem is between the internet and this machine — port 80 filtered " +
+				"upstream, or the address the name resolves to is not this server — and not " +
+				"something to fix in nginx.",
+		}
+	}
+	return diagCheck{
+		Label: "This server can answer its own challenge", OK: false, Fatal: true,
+		Detail: "the loopback request for " + host + " returned HTTP " + strconv.Itoa(resp.StatusCode) +
+			" instead of the token. nginx is up but this site's vhost does not serve " +
+			"/.well-known/acme-challenge/ from " + acmeWebroot() + " — a redirect here means the " +
+			"catch-all matched instead of the challenge location, which no certificate can survive.",
+	}
+}
+
+// certbotErrorKind explains the authority's own error TYPE.
+//
+// "Type: connection" and "Type: unauthorized" are entirely different faults with
+// the same visible outcome, and the console was printing them raw. Connection
+// means nobody answered; unauthorized means something answered with the wrong
+// thing. One is a network path, the other is a webroot — and telling them apart
+// is most of the work.
+func certbotErrorKind(seg []string) string {
+	for _, l := range seg {
+		t := strings.TrimSpace(l)
+		if !strings.HasPrefix(t, "Type:") {
+			continue
+		}
+		switch kind := strings.TrimSpace(strings.TrimPrefix(t, "Type:")); kind {
+		case "connection":
+			return " A CONNECTION error means the authority could not open port 80 to that " +
+				"address at all — nothing answered. That is a network path, not a webroot: the " +
+				"content it would have found is irrelevant because it never got that far."
+		case "unauthorized":
+			return " An UNAUTHORIZED error means something DID answer and served the wrong " +
+				"thing — so the network path works and the fault is which server, or which " +
+				"vhost, is answering for this name."
+		case "dns":
+			return " A DNS error means the authority could not resolve the name at the moment " +
+				"it looked, which is upstream of this server entirely."
+		}
+	}
+	return ""
 }

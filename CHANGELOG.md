@@ -6,6 +6,51 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.56] — 2026-08-03
+
+**The console had the answer on the page and ranked a guess above it.**
+
+### Fixed
+- **The certificate authority's own error now leads the diagnosis.** For
+  `test.johal.in` the authority reported `Type: connection` at `5.189.133.235` —
+  the IPv4 address, which *is* this server. The console had separately deduced
+  that the site's `AAAA` record points somewhere else, and put that deduction in
+  a row **above** the authority's message. The deduction was read as the cause
+  for three releases while the actual error sat further down the same page saying
+  something different: nothing answered on port 80 at all.
+
+  Direct evidence leads; inference follows. A page that has the answer and ranks
+  a guess above it is not a diagnostic.
+
+- **`Type: connection` and `Type: unauthorized` are now explained, not quoted.**
+  They are entirely different faults with the same visible outcome — one is a
+  network path where nothing answered, the other is something answering with the
+  wrong content — and telling them apart is most of the work. The console printed
+  them raw and left the reader to know.
+
+- **The console now serves its own challenge and reads it back.** A connection
+  error has exactly two causes and no amount of reasoning about DNS separates
+  them: either nginx is not serving `/.well-known/acme-challenge/` for this host,
+  or it is serving it perfectly and nothing from the internet can reach port 80.
+
+  So the page writes a real token into certbot's own webroot and fetches it back
+  over **loopback with this site's `Host` header** — the same request the
+  authority makes. Redirects are deliberately not followed: a 301 means the
+  catch-all matched instead of the challenge location, which no certificate can
+  survive, and following it would report that as success. The token is removed
+  immediately.
+
+  The verdict is decisive either way. Served → nginx and the webroot are correct
+  and the fault is between the internet and this machine. Not served → the vhost
+  is wrong, and the page says which way.
+
+### Audit
+Six mutations over the new surface, all caught — including the ordering itself,
+re-broken by moving the authority's verdict back below the DNS deduction, which
+is the defect this release exists to fix and would otherwise have had no gate at
+all. `TestSMTPReceiveDelivers` still fails in this sandbox on a socket timeout,
+identically on a clean tree, and this release touches neither package.
+
 ## [3.16.55] — 2026-08-03
 
 **The Dependency Freshness check was red for a real reason, and green for a
