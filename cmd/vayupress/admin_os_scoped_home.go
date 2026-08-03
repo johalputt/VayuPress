@@ -356,8 +356,14 @@ func scopedCertificateBody(d domain.Domain) string {
     page shows the one command that installs it.</p>
   <div class="vm-row">
     <button type="button" class="btn btn--primary btn--sm" data-site-provision>Provision now</button>
+    <button type="button" class="btn btn--sm" data-site-repair>Repair the certificate helpers</button>
     <span id="site-cert-status" class="text-sm muted" role="status" aria-live="polite"></span>
   </div>
+  <p class="text-xs muted">Use <b>Repair the certificate helpers</b> when the diagnosis below says nginx has
+    not reloaded since this site's vhost was written. It installs the current, signature-verified helpers and
+    performs that reload. It lives here as well as on VayuShield because an operator reading this diagnosis is
+    already on the page that needs it — sending them somewhere else to act on what they are looking at is the
+    same defect as reporting a problem with no way to fix it.</p>
   <p class="text-xs muted">Asking for a run creates an empty flag file a root-side service watches. No argument
     is passed and its contents are never read, so this console can request provisioning and cannot influence
     what the privileged step does.</p>

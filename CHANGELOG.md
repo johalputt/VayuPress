@@ -6,6 +6,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.68] — 2026-08-03
+
+**The repair button is now on the page that diagnoses the problem.**
+
+### Changed
+- **"Repair the certificate helpers" sits beside "Provision now"** on a site's
+  own console, not only on VayuShield.
+
+  The console had spent several releases producing an exact, measured diagnosis —
+  *the vhost was written 16 minutes ago, nginx last reloaded 4 days ago* — and
+  then ending with directions to a different page. An operator reading that
+  diagnosis is already on the page that needs the action. Sending them elsewhere
+  to act on what they are looking at is the same defect as reporting a problem
+  with no way to fix it, which is the thing this console exists to remove.
+
+  It posts to the **same endpoint** the VayuShield row uses rather than being a
+  second implementation: one control, one validation, one audit trail. The `409`
+  is handled specially and says what it means — the installed agent predates this
+  repair, so upgrade the helper first — because reporting that as a generic
+  failure sends someone looking for a fault that is not one.
+
+### Audit
+The inline-script gate is the one that matters here: this adds a click handler to
+a page whose script has broken silently before, and a JavaScript parse error
+binds **nothing**. It parses. Green gates, full package tests, lint clean.
+
+Recorded honestly: this release adds no new capability. It moves an existing
+control to where it is read, which the last several screenshots said plainly and
+I answered with directions instead of a button.
+
 ## [3.16.67] — 2026-08-03
 
 **Four checks vanished from the page the moment a run started — and the blocking

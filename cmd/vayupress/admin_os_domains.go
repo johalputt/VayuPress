@@ -584,6 +584,29 @@ function watch(n){
   },3000);
 }
 
+// Repair the certificate helpers, from the page that diagnosed the problem.
+//
+// It posts to the SAME endpoint the VayuShield row uses, rather than a second
+// implementation: one control, one validation, one audit trail. The 409 is the
+// one answer worth handling specially — it means the installed agent predates
+// this capability, and the operator needs to upgrade the helper first. Reporting
+// that as a generic failure would send them looking for a fault that is not one.
+var rBtn=document.querySelector('[data-site-repair]');
+if(rBtn)rBtn.addEventListener('click',function(){
+  rBtn.disabled=true;set('site-cert-status','Requesting the repair…');
+  fetch('/os/api/shield/fix',{method:'POST',
+    headers:{'X-CSRF-Token':csrf(),'Content-Type':'application/x-www-form-urlencoded'},
+    body:'fix=provisionhelpers'})
+    .then(function(res){
+      rBtn.disabled=false;
+      if(res.status===409){set('site-cert-status',
+        'The running helper is older than this repair. Open VayuShield, press Upgrade the helper, then try this again.');return;}
+      if(!res.ok){set('site-cert-status','The repair could not be requested (status '+res.status+').');return;}
+      set('site-cert-status','Repair requested. It installs the current helpers and reloads nginx; reload this page in a moment.');
+    })
+    .catch(function(e){rBtn.disabled=false;set('site-cert-status','Could not reach the panel: '+e.message);});
+});
+
 // Lifecycle: approve/pause provisioning, enable/disable, remove.
 var sBtn=document.querySelector('[data-site-sync]');
 if(sBtn)sBtn.addEventListener('click',function(){
