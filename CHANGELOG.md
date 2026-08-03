@@ -6,6 +6,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.43] — 2026-08-03
+
+The same root cause as v3.16.42, moved into the binary so it can be fixed **from
+VayuOS** instead of from a terminal. Shipped immediately: the shell-side fix was
+correct and reached nobody who already had the bug.
+
+### Fixed
+- **`vayupress domains` no longer demands an API key it never uses.** It is a
+  local SQLite read/write: no listener, no authentication, nothing for a key to
+  protect. Requiring `API_KEY` was not caution, it was breakage — the privileged
+  provisioning helper drives that command from a systemd unit that carried no
+  `EnvironmentFile`, so it exited
+
+  ```
+  {"level":"fatal","component":"config","msg":"required env not set","key":"API_KEY"}
+  ```
+
+  before reading a single row. A configuration check strict enough to break a
+  command that does not use the value it is checking protects nobody.
+
+  **Why this release exists separately from v3.16.42:** that fix was in the shell
+  helpers and the systemd unit, and an install only picks those up when somebody
+  re-runs the installer over SSH. This one is in the binary, which is what the
+  in-app updater delivers — so an affected install repairs itself through
+  **Update & Backup → Update now**, with no terminal at all. That is the point:
+  a fix an operator cannot apply from the panel is a fix that has not shipped.
+
+  The serving path is unchanged and still refuses to start without a key —
+  relaxing that would serve an unauthenticated admin API, a far worse bug than
+  the one being fixed, and a test fails the build if it is ever relaxed.
+
+  The local loader sets the key to a value containing a **NUL byte** rather than
+  leaving it empty. Empty compares equal to an absent header, so any
+  constant-time compare reached with an unset key would authenticate a request
+  carrying no key at all; a NUL can never appear in an HTTP header value, so this
+  matches nothing. Same "zero value is not a valid answer" rule as `mail.Reader`,
+  `settings.Scope` and `osAudience`.
+
 ## [3.16.42] — 2026-08-03
 
 The root cause, found by the diagnostic v3.16.41 added. Shipped immediately: it

@@ -86,7 +86,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.16.42"
+var Version = "3.16.43"
 var bootTime = time.Now()
 
 // onionSafeBindAddr picks the HTTP listen address (ADR-0141).
@@ -532,7 +532,12 @@ func main() {
 	// It is the read/notify surface the privileged TLS+nginx helper drives from
 	// (the server runs unprivileged and cannot certbot/reload nginx itself).
 	if len(os.Args) > 1 && os.Args[1] == "domains" {
-		config.Load()
+		// LoadLocalCLI, not Load: this subcommand reads and writes the local
+		// registry and serves nothing, so API_KEY is not its business. Requiring
+		// it made the privileged provisioning helper — which runs from a systemd
+		// unit that carried no EnvironmentFile — exit fatal before reading a
+		// single row, for a week, silently.
+		config.LoadLocalCLI()
 		if err := dbpkg.Init(); err != nil {
 			fmt.Fprintln(os.Stderr, "DB init failed:", err)
 			os.Exit(1)

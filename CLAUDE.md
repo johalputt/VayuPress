@@ -339,3 +339,29 @@ without being asked; it is not a per-post negotiation.
 - State the limits of any benchmark explicitly. A result that only flatters
   itself gets discounted; naming what it does *not* prove is what makes the rest
   credible.
+
+## 13. Fixes must be reachable from VayuOS — standing rule
+
+**Never hand the operator a terminal command as the solution.** The whole
+premise of VayuOS is that an install is operated from the panel; an answer that
+starts with `ssh` or `sudo` is a product failure being narrated rather than
+fixed.
+
+This was said after several replies in a row ended in a shell command, and it is
+correct. The rule:
+
+- The fix goes in the **binary** wherever it possibly can, because the binary is
+  what the in-app updater delivers. A root-side shell fix reaches only operators
+  who re-run an installer over SSH — which is exactly the thing being ruled out.
+  The API_KEY provisioning failure is the worked example: the shell fix was real
+  and reached nobody, and moving it into `config.LoadLocalCLI()` made the same
+  repair arrive through **Update & Backup**.
+- Where a step genuinely needs root, the panel **requests** it (the
+  provision.request flag → root-side watcher) and **reports what happened**.
+  It never instructs.
+- Where something truly cannot be done from the panel — installing a systemd
+  unit on a first deploy — the panel shows the exact command, copyable, with the
+  reason. That is the ceiling, and it is stated on the page rather than in a
+  chat reply.
+- Diagnostics belong on the page too. "Run `nginx -t` and paste it to me" is the
+  same failure in diagnostic clothing: the console should already be showing it.

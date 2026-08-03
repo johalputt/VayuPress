@@ -110,8 +110,41 @@ var Cfg struct {
 	TrustedProxies []*net.IPNet
 }
 
-func Load() {
-	Cfg.APIKey = MustEnv("API_KEY")
+// apiKeyUnset is the APIKey value for a subcommand that serves no HTTP.
+//
+// NOT the empty string. Empty compares equal to an absent header, so any
+// `subtle.ConstantTimeCompare(hdr, Cfg.APIKey)` reached with an unset key would
+// authenticate a request that carried no key at all. A NUL byte cannot appear in
+// an HTTP header value, so this can never match anything — the same
+// "zero value is not a valid answer" rule the rest of this codebase follows.
+const apiKeyUnset = "\x00cli-no-api-key\x00"
+
+// Load reads the configuration for the SERVING process. API_KEY is required:
+// the server authenticates with it, and starting without one would serve an
+// unauthenticated admin API.
+func Load() { load(true) }
+
+// LoadLocalCLI reads the configuration for a subcommand that only touches this
+// machine — no listener, no authentication, nothing to protect with a key.
+//
+// It exists because requiring API_KEY there was not caution, it was breakage.
+// `vayupress domains hosts` is a local SQLite read, and the privileged
+// provisioning helper drives it from a systemd unit that carried no
+// EnvironmentFile — so the command exited
+//
+//	{"level":"fatal","component":"config","msg":"required env not set","key":"API_KEY"}
+//
+// before reading anything, and an entire install provisioned no certificates for
+// a week. A configuration check strict enough to break a command that does not
+// use the value it is checking protects nobody.
+func LoadLocalCLI() { load(false) }
+
+func load(requireAPIKey bool) {
+	if requireAPIKey {
+		Cfg.APIKey = MustEnv("API_KEY")
+	} else {
+		Cfg.APIKey = apiKeyUnset
+	}
 	Cfg.DBPath = EnvOr("DB_PATH", "/var/lib/vayupress/vayupress.db")
 	Cfg.CacheDir = EnvOr("CACHE_DIR", "/var/cache/vayupress")
 	Cfg.MediaDir = EnvOr("MEDIA_DIR", "/var/lib/vayupress/media")
