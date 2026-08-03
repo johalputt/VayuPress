@@ -105,13 +105,15 @@ func (a *App) handleOSScopedHome(w http.ResponseWriter, r *http.Request) {
 
 	// The diagnostic runs only when there is something to diagnose — it does a
 	// DNS lookup and reads a file, and neither belongs on a healthy page.
-	diagnostics := ""
-	if !d.IsPrimary && d.IsSyncApproved() &&
-		d.TLSState != domain.TLSActive && d.TLSState != domain.TLSPrimary {
-		diagnostics = scopedDiagnosticBody(a.diagnoseCertificate(r.Context(), d), provisionLogTail(25))
+	var checks []diagCheck
+	var logLines []string
+	if scopedNeedsCertificate(d) {
+		checks = a.diagnoseCertificate(r.Context(), d)
+		logLines = provisionLogTail(25)
 	}
 
-	body := scopedConsolePage(d, posts, members, mailboxes, mailOn, clients, diagnostics) + domainManageScript(nonce)
+	body := scopedConsolePage(d, posts, members, mailboxes, mailOn, clients, checks, logLines) +
+		domainManageScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, d.Host, "optimize", cfg, htmpl.HTML(body)))
 }
 
@@ -119,7 +121,7 @@ func (a *App) handleOSScopedHome(w http.ResponseWriter, r *http.Request) {
 // header, four tiles answering "what is the state of this site", the site's own
 // tools, then administration folded into accordions so the page is scannable
 // rather than a wall of cards.
-func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bool, clients []users.User, diagnostics string) string {
+func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bool, clients []users.User, checks []diagCheck, logLines []string) string {
 	esc := html.EscapeString
 	pending := isPendingTorSite(d.Host)
 	var b strings.Builder
@@ -161,10 +163,8 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 	// The control that fixes it lived on another page this console did not even
 	// link. Surfacing a problem without the action that resolves it is the same
 	// defect as not surfacing it — the operator learns the tile means "wait".
-	if !d.IsPrimary && d.IsSyncApproved() &&
-		d.TLSState != domain.TLSActive && d.TLSState != domain.TLSPrimary {
-		b.WriteString(scopedCertificateBody(d))
-		b.WriteString(diagnostics)
+	if scopedNeedsCertificate(d) {
+		b.WriteString(scopedCertificateSection(d, checks, logLines))
 	}
 
 	// A site nobody can reach is the one fact that outranks everything below it.
@@ -229,9 +229,39 @@ func chipFor(on bool, onText, offText string) string {
 	return `<span class="mon-chip mon-chip--off">` + html.EscapeString(offText) + `</span>`
 }
 
+// scopedNeedsCertificate reports whether a CA certificate is something this site
+// is actually waiting for. It is the single predicate behind the tile, the
+// certificate section and the diagnostic, which previously repeated the same
+// four-clause condition in three places.
+//
+// The clause all three were missing is the onion one. A Tor site is registered
+// sync-approved, active and TLS-pending, and it stays TLS-pending forever
+// because an onion is served over http by design — Tor Browser treats a v3
+// address as a trustworthy origin and no CA could issue for it in any case. So
+// every Tor site's console announced "no certificate has been issued … the
+// browser refuses the page", and the diagnosis under it told the operator to
+// point DNS at this server for a name the DNS system does not resolve at all.
+// Two confident statements, both false, on a page whose whole purpose is to be
+// the thing an operator does not have to second-guess.
+func scopedNeedsCertificate(d domain.Domain) bool {
+	if d.IsPrimary || !d.IsSyncApproved() {
+		return false
+	}
+	if seo.IsOnion(d.Host) || isPendingTorSite(d.Host) {
+		return false
+	}
+	return d.TLSState != domain.TLSActive && d.TLSState != domain.TLSPrimary
+}
+
 // scopedCertTile renders the certificate tile. A site with no certificate serves
 // a browser security warning, so it is toned rather than stated flatly.
 func scopedCertTile(d domain.Domain) (label, tone string) {
+	// Not amber, and not "Pending": an onion has no certificate to wait for, and
+	// an amber tile on a site that is working exactly as designed is an alarm
+	// that trains the operator to ignore the tile.
+	if seo.IsOnion(d.Host) || isPendingTorSite(d.Host) {
+		return "Onion", ""
+	}
 	switch d.TLSState {
 	case domain.TLSActive, domain.TLSPrimary:
 		return "Live", ""
@@ -240,6 +270,61 @@ func scopedCertTile(d domain.Domain) (label, tone string) {
 	default:
 		return "Pending", "warn"
 	}
+}
+
+// scopedCertificateSection folds the certificate explanation and the console's
+// own diagnosis into accordions, in the house style.
+//
+// Both were flat, permanently-expanded cards, and between them they were most of
+// the page: a screen of prose, then a seven-row table, then twenty-five lines of
+// log — all above the tools the operator actually came for.
+//
+// Folding them cannot be allowed to HIDE anything, which is the whole design
+// constraint here. So each summary carries its verdict as a chip that reads
+// while collapsed, and the diagnosis opens BY ITSELF whenever a check is
+// blocking. A collapsed panel quietly holding the reason the button will not
+// work would be the same defect as the tile that said "pending" and offered
+// nothing to do about it.
+func scopedCertificateSection(d domain.Domain, checks []diagCheck, logLines []string) string {
+	var b strings.Builder
+	b.WriteString(`<div class="section-head"><span class="section-head__title">Certificate</span>` +
+		`<span class="section-head__hint">Why this site is not served over HTTPS yet, and what this ` +
+		`console can determine about it</span></div>`)
+	b.WriteString(`<div class="mon-stack">`)
+
+	blocking := 0
+	for _, c := range checks {
+		if !c.OK && c.Fatal {
+			blocking++
+		}
+	}
+
+	// The subtitle is derived from the checks rather than written once and left
+	// there. "One root-side step away" is true of a site waiting on the daily
+	// sweep and FALSE of one whose DNS points at somebody else's server — and the
+	// console knows which it is looking at, three lines further down the page.
+	// Telling an operator to wait for something that can never arrive is the same
+	// defect as the tile that said "pending" and offered nothing.
+	certChip, certSub := "pending", "Not issued yet — one root-side step away"
+	if d.TLSState == domain.TLSFailed {
+		certChip = "last attempt failed"
+		certSub = "The last attempt was refused; the diagnosis below says why"
+	}
+	if blocking > 0 {
+		certSub = "Blocked — the diagnosis below names what is stopping it, and waiting will not clear it"
+	}
+	b.WriteString(monAcc("🔒", "Certificate", certSub,
+		`<span class="mon-chip mon-chip--off">`+html.EscapeString(certChip)+`</span>`,
+		true, scopedCertificateBody(d)))
+
+	if len(checks) > 0 {
+		b.WriteString(monAcc("🩺", "What this console checked",
+			"Run here, now, against this install — not a description of where to go and look",
+			chipFor(blocking == 0, "nothing blocking", strconv.Itoa(blocking)+" blocking"),
+			blocking > 0, scopedDiagnosticBody(checks, logLines)))
+	}
+	b.WriteString(`</div>`)
+	return b.String()
 }
 
 // scopedCertificateBody explains why a certificate is not automatic and offers

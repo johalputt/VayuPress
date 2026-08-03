@@ -30,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/domain"
 )
 
@@ -107,17 +108,22 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain) []diagCh
 	}
 	out = append(out, diagCheck{Label: "Listed for provisioning", OK: approved, Fatal: !approved, Detail: reason})
 
-	// 3. Does the name resolve? certbot's HTTP-01 challenge cannot validate a
-	//    host that does not answer, and the helper skips it rather than burning
-	//    a rate limit.
-	resolves := hostResolves(ctx, d.Host)
-	out = append(out, diagCheck{
-		Label: "DNS answers for " + d.Host, OK: resolves, Fatal: !resolves,
-		Detail: map[bool]string{
-			true:  "the name resolves, so the challenge can reach this server",
-			false: "the name does not resolve yet — point it at this server on Domains & DNS, then run again",
-		}[resolves],
-	})
+	// 3. Where does the name actually point?
+	//
+	// The first version asked only whether it RESOLVED, and reported "so the
+	// challenge can reach this server" — which does not follow. A domain pointed
+	// at somebody else's server resolves perfectly, and its HTTP-01 challenge is
+	// answered by whatever is actually there, with a 404. That is not
+	// hypothetical: an install had a domain registered here pointing at a
+	// static-hosting provider, and every run asked Let's Encrypt for a
+	// certificate for a site this server does not serve.
+	//
+	// The primary's addresses come along because "not one of ours" is not the
+	// same statement as "not us" — see dnsPointsHereCheck for why that distinction
+	// is the whole check.
+	addrs, looked := boundedLookup(ctx, d.Host)
+	apexAddrs, _ := boundedLookup(ctx, strings.TrimSpace(config.Cfg.Domain))
+	out = append(out, dnsPointsHereCheck(d.Host, addrs, looked, localAddrSet(), apexAddrs))
 
 	// 4. Are the root-side helpers as new as this binary?
 	//
@@ -243,6 +249,93 @@ func stamp(t time.Time) string {
 	return t.UTC().Format(time.RFC3339) + " (" + humanAge(t) + ")"
 }
 
+// dnsPointsHereCheck is check #3, separated from the lookup so the verdict can
+// be tested against every combination of answer without a resolver.
+//
+// It is a pure function on purpose: the branch that matters most — a name
+// pointed at a DIFFERENT HOST — is the one a live DNS query in a test can never
+// be relied on to produce.
+//
+// FINDING, and the reason this takes the primary's addresses as well. The first
+// version asked only "is this address one of ours" and called everything else
+// blocking. That contradicted the DNS page of the same product, which had
+// already reasoned the case through and says, in as many words, that a name
+// resolving somewhere this machine cannot prove it holds is "normal behind NAT,
+// and not a fault". It is also wrong on any CDN-fronted install, where every
+// hosted name resolves to the front rather than the origin and HTTP-01 still
+// validates because the front passes the challenge path through. Two pages of
+// one product returning opposite verdicts on the same fact is worse than either
+// verdict alone.
+//
+// So the comparison the DNS page uses to RECOGNISE A PROXY is used here for the
+// same purpose: an address shared with the primary is this install's own front,
+// whether that front is a CDN or a NAT router. An address the primary never
+// uses is a different host altogether — which is the case worth being loud
+// about, because failed validations are rate-limited PER ACCOUNT and one domain
+// that can never validate spends the budget every other site here needs.
+func dnsPointsHereCheck(host string, addrs []string, looked bool, local map[string]bool, apexAddrs []string) diagCheck {
+	holds := func(set map[string]bool) bool {
+		for _, a := range addrs {
+			if set[a] {
+				return true
+			}
+		}
+		return false
+	}
+	apex := map[string]bool{}
+	for _, a := range apexAddrs {
+		apex[a] = true
+	}
+	switch {
+	case !looked || len(addrs) == 0:
+		return diagCheck{
+			Label: "DNS answers for " + host, OK: false, Fatal: true,
+			Detail: "the name does not resolve yet — point it at this server on Domains & DNS, then run again",
+		}
+	case holds(local):
+		return diagCheck{
+			Label: "DNS points at this server", OK: true,
+			Detail: "it resolves to an address this machine holds, so the challenge reaches here",
+		}
+	case len(local) == 0 || len(apex) == 0:
+		// Nothing is claimed, in either direction. A process that cannot enumerate
+		// its own interfaces — or could not resolve its own primary domain to
+		// compare against — has no basis for calling the record wrong, and saying
+		// it anyway is the failure this whole page is a correction for.
+		return diagCheck{
+			Label: "DNS answers for " + host, OK: true,
+			Detail: "it resolves to " + strings.Join(addrs, ", ") + "; this process has nothing " +
+				"trustworthy to compare that against, so nothing is claimed either way",
+		}
+	case holds(apex):
+		return diagCheck{
+			Label: "DNS points at the same front as this install", OK: true,
+			Detail: "it resolves to " + strings.Join(addrs, ", ") + ", the same address the primary " +
+				"domain uses — a proxy or a NAT router in front of this server, not a different host. " +
+				"The challenge reaches here provided that front passes /.well-known/acme-challenge/ " +
+				"through rather than answering it or presenting a bot check.",
+		}
+	default:
+		return diagCheck{
+			Label: "DNS points at a different host", OK: false, Fatal: true,
+			Detail: host + " resolves to " + strings.Join(addrs, ", ") + " — an address this machine " +
+				"does not hold AND one the primary domain does not use either, so it is not this " +
+				"install behind a proxy. Whatever is actually at that address answers the challenge, " +
+				"with a 404, and a certificate can never be issued from here. Failed validations are " +
+				"rate-limited PER ACCOUNT, so a domain that can never validate spends the budget every " +
+				"other site on this install needs — put it on hold under Lifecycle, or repoint it.",
+		}
+	}
+}
+
+// provisionRunActiveFor is how recently the worker must have written to its log
+// for a run to count as still underway rather than dead.
+//
+// The unit allows 900s before systemd kills it, and certbot across several new
+// domains genuinely takes minutes, so a short window here would call a working
+// run a failed one — which is the mistake this constant exists to stop repeating.
+const provisionRunActiveFor = 10 * time.Minute
+
 // workerTraceCheck compares the worker's log against its recorded result.
 //
 // A log newer than the result means a run STARTED and did not finish recording:
@@ -261,14 +354,31 @@ func workerTraceCheck(logAt time.Time, haveLog bool, resAt time.Time, haveRes bo
 			Label: "The worker has left a trace", OK: false, Fatal: true,
 			Detail: "there is no provisioning log at all, so the root-side worker has never run here",
 		}
+	// A log newer than the result has TWO explanations, and the first version of
+	// this check asserted the alarming one. A worker still executing writes its
+	// log throughout and records nothing until it finishes — which is exactly
+	// what a run in progress looks like, and certbot across several new domains
+	// takes minutes. Calling that "running and dying" tells an operator their
+	// working install is broken, on the strength of a timestamp that says the
+	// opposite.
+	//
+	// So the two are separated by whether the log is STILL MOVING.
+	case haveRes && logAt.Sub(resAt) > 2*time.Minute && time.Since(logAt) < provisionRunActiveFor:
+		return diagCheck{
+			Label: "A run is in progress", OK: true, Fatal: false,
+			Detail: "the worker wrote to its log " + humanAge(logAt) + " and has not recorded a " +
+				"result yet, which is what a run underway looks like — it records only when it " +
+				"finishes, and certbot across several new domains takes minutes. The numbers " +
+				"below are still from the previous run until this one lands. Reload shortly.",
+		}
 	case haveRes && logAt.Sub(resAt) > 2*time.Minute:
 		return diagCheck{
 			Label: "The last run recorded what it did", OK: false, Fatal: true,
 			Detail: "the worker WROTE TO ITS LOG at " + stamp(logAt) +
 				" but last recorded a result at " + stamp(resAt) +
-				". It is running and dying, or exiting, before it records anything — so every " +
-				"number below is from an older run and pressing the button changes nothing " +
-				"visible. The log above is the only account of what those runs did.",
+				", and has been quiet since. It started and stopped before recording anything — " +
+				"so every number below is from an older run. The log above is the only account " +
+				"of what that run did.",
 		}
 	default:
 		return diagCheck{
@@ -350,16 +460,6 @@ func driverCarriesReportingFixes(src string) (bool, string) {
 		"write to /usr/local/lib/vayupress. Re-run the provisioning installer once to refresh them."
 }
 
-// hostResolves is a bounded lookup used only for the diagnostic.
-func hostResolves(ctx context.Context, host string) bool {
-	h := strings.TrimSpace(strings.ToLower(host))
-	if h == "" || isPendingTorSite(h) {
-		return false
-	}
-	addrs, ok := boundedLookup(ctx, h)
-	return ok && len(addrs) > 0
-}
-
 // scopedDiagnosticBody renders the checks, and the worker's own log beneath
 // them.
 //
@@ -369,10 +469,9 @@ func hostResolves(ctx context.Context, host string) bool {
 func scopedDiagnosticBody(checks []diagCheck, logLines []string) string {
 	esc := html.EscapeString
 	var b strings.Builder
+	// No heading of its own: this body is the inside of an accordion whose summary
+	// already says what it is, and the summary stays visible when it is collapsed.
 	b.WriteString(`<div class="card">`)
-	b.WriteString(`<div class="settings-block-title">What this console checked</div>`)
-	b.WriteString(`<p class="text-sm muted">Run here, now, against this install — not a description of what ` +
-		`to go and look at.</p>`)
 	b.WriteString(`<div class="table-wrap"><table class="table"><tbody>`)
 	for _, c := range checks {
 		badge := `<span class="badge badge--ok">ok</span>`

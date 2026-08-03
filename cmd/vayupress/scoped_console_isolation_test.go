@@ -92,7 +92,7 @@ func isolationDomain() domain.Domain {
 func TestTheSiteConsoleLinksNoInstallWideTool(t *testing.T) {
 	d := isolationDomain()
 	assertNoInstallWideLinks(t, "the site console", d.ID,
-		scopedConsolePage(d, 3, 2, 1, true, nil, ""))
+		scopedConsolePage(d, 3, 2, 1, true, nil, nil, nil))
 }
 
 func TestEveryPerSiteToolLinksNoInstallWideTool(t *testing.T) {
@@ -140,7 +140,7 @@ func TestEveryScopedToolPathCarriesTheSite(t *testing.T) {
 // must be named. Silence there is how an operator sells a client something the
 // product does not do, and finds out in front of them.
 func TestTheConsoleNamesWhatIsStillInstallWide(t *testing.T) {
-	page := scopedConsolePage(isolationDomain(), 0, 0, 0, true, nil, "")
+	page := scopedConsolePage(isolationDomain(), 0, 0, 0, true, nil, nil, nil)
 	for _, want := range sharedTools {
 		if !strings.Contains(page, want) {
 			t.Errorf("the console never mentions that %s is still install-wide", want)
@@ -174,7 +174,7 @@ func TestAPendingCertificateCarriesTheControlThatFixesIt(t *testing.T) {
 	d := isolationDomain()
 	d.SyncState = domain.SyncApproved
 	d.TLSState = domain.TLSPending
-	page := scopedConsolePage(d, 0, 0, 0, true, nil, "")
+	page := scopedConsolePage(d, 0, 0, 0, true, nil, nil, nil)
 
 	if !strings.Contains(page, "data-site-provision") {
 		t.Fatal("the console reports a pending certificate with no way to act on it — the " +
@@ -193,7 +193,7 @@ func TestAPendingCertificateCarriesTheControlThatFixesIt(t *testing.T) {
 	ok := isolationDomain()
 	ok.SyncState = domain.SyncApproved
 	ok.TLSState = domain.TLSActive
-	if strings.Contains(scopedConsolePage(ok, 0, 0, 0, true, nil, ""), "data-site-provision") {
+	if strings.Contains(scopedConsolePage(ok, 0, 0, 0, true, nil, nil, nil), "data-site-provision") {
 		t.Error("a site with a live certificate is offered a provisioning run anyway")
 	}
 
@@ -203,7 +203,7 @@ func TestAPendingCertificateCarriesTheControlThatFixesIt(t *testing.T) {
 	held := isolationDomain()
 	held.SyncState = domain.SyncHold
 	held.TLSState = domain.TLSPending
-	if strings.Contains(scopedConsolePage(held, 0, 0, 0, true, nil, ""), "data-site-provision") {
+	if strings.Contains(scopedConsolePage(held, 0, 0, 0, true, nil, nil, nil), "data-site-provision") {
 		t.Error("a site on manual hold is offered a provisioning run that would skip it")
 	}
 }
@@ -294,9 +294,60 @@ func TestAHealthySiteRunsNoDiagnostic(t *testing.T) {
 		t.Fatal("the console never diagnoses a pending certificate")
 	}
 	guard := body[:i]
-	if !strings.Contains(guard, "TLSActive") {
-		t.Error("the diagnostic is not gated on the certificate state, so every console page " +
-			"does a DNS lookup and a file read for nothing")
+	if !strings.Contains(guard, "scopedNeedsCertificate") {
+		t.Error("the diagnostic is not gated on whether this site is waiting for a certificate, " +
+			"so every console page does a DNS lookup and a file read for nothing")
+	}
+	// The guard moved behind a name, so the condition itself is asserted where it
+	// now lives. A gate whose only test is "some function is called" passes just
+	// as happily when that function returns true unconditionally.
+	pred := goFuncBody(src, "scopedNeedsCertificate")
+	if !strings.Contains(pred, "TLSActive") {
+		t.Error("the predicate does not look at the certificate state at all")
+	}
+}
+
+// FINDING — every Tor site's console announced a certificate problem it does not
+// have, and told the operator to fix it with DNS.
+//
+// A .onion is registered sync-approved, active and TLS-pending, and it stays
+// TLS-pending for its whole life: an onion is served over http by design and no
+// CA could issue for it. The console read that state literally and printed "no
+// certificate has been issued … the browser refuses the page", with a diagnosis
+// beneath it saying the name "does not resolve yet — point it at this server",
+// for an address DNS does not resolve at all.
+//
+// Both statements are confident and false, which is the defect class this
+// console was built to remove rather than commit.
+func TestAnOnionSiteIsNotToldItsCertificateIsMissing(t *testing.T) {
+	onion := testDomain("tor01", strings.Repeat("a", 56)+".onion")
+	onion.TLSState = domain.TLSPending
+	onion.SyncState = domain.SyncApproved
+
+	if scopedNeedsCertificate(onion) {
+		t.Fatal("an onion is treated as waiting for a CA certificate, so its console runs the " +
+			"certificate diagnostic and tells the operator to point DNS at this server for a " +
+			"name the DNS system does not resolve")
+	}
+	page := scopedConsolePage(onion, 0, 0, 0, false, nil, nil, nil)
+	for _, claim := range []string{"no certificate has been issued", "data-site-provision"} {
+		if strings.Contains(page, claim) {
+			t.Errorf("an onion site's console still carries %q", claim)
+		}
+	}
+	// And the tile must not be amber either — an alarm on a site working exactly
+	// as designed teaches the operator to stop reading the tile.
+	if label, tone := scopedCertTile(onion); tone != "" || label == "Pending" {
+		t.Errorf("the certificate tile reads %q/%q for an onion; nothing is wrong with it", label, tone)
+	}
+
+	// The clearnet site beside it must still be diagnosed, or this "fix" is just
+	// the diagnostic switched off.
+	web := testDomain("web01", "client.example")
+	web.TLSState = domain.TLSPending
+	web.SyncState = domain.SyncApproved
+	if !scopedNeedsCertificate(web) {
+		t.Fatal("a pending clearnet site is no longer treated as waiting for a certificate")
 	}
 }
 
@@ -444,8 +495,11 @@ func TestRequestingAProvisionClearsAStaleRequestFirst(t *testing.T) {
 func TestARunThatNeverRecordedItsResultIsNamed(t *testing.T) {
 	now := time.Now()
 
-	// The reported state: worker writing its log, result stuck days back.
-	c := workerTraceCheck(now.Add(-time.Minute), true, now.Add(-72*time.Hour), true)
+	// The reported state: a run that wrote to its log, never recorded a result,
+	// and has been SILENT since. The silence is what makes it dead rather than
+	// underway — see the sibling assertion below, which is the same shape of
+	// evidence read the other way.
+	c := workerTraceCheck(now.Add(-30*time.Minute), true, now.Add(-72*time.Hour), true)
 	if c.OK {
 		t.Fatal("a worker that has been writing its log for days while its recorded result " +
 			"stands still was reported as healthy — this is the state an operator sees as " +
@@ -472,6 +526,38 @@ func TestARunThatNeverRecordedItsResultIsNamed(t *testing.T) {
 	none := workerTraceCheck(time.Time{}, false, time.Time{}, false)
 	if none.OK || !strings.Contains(none.Detail, "never run") {
 		t.Error("an install where the worker has never run does not say so distinctly")
+	}
+}
+
+// FINDING — the check above, written to stop the console overstating things,
+// overstated one itself.
+//
+// A worker still executing writes its log throughout and records a result only
+// when it finishes. That is indistinguishable, on timestamps alone, from a run
+// that died — except for one thing: whether the log is STILL MOVING. The first
+// version ignored that and called every log-newer-than-result "running and
+// dying", so an operator whose certbot was midway through several new domains —
+// which genuinely takes minutes — was told their working install was broken, on
+// the strength of a timestamp that said the opposite.
+func TestARunStillUnderwayIsNotCalledADeadOne(t *testing.T) {
+	now := time.Now()
+
+	live := workerTraceCheck(now.Add(-time.Minute), true, now.Add(-72*time.Hour), true)
+	if !live.OK || live.Fatal {
+		t.Fatalf("a worker that wrote to its log a minute ago is reported as a failure: %q — %s",
+			live.Label, live.Detail)
+	}
+	if !strings.Contains(live.Detail, "previous run") {
+		t.Error("the in-progress verdict does not warn that the numbers below it are still the " +
+			"previous run's, which is the one thing that could mislead while it finishes")
+	}
+
+	// The boundary is the point of the check: past the active window, silence
+	// means dead, and it must go back to being blocking.
+	dead := workerTraceCheck(now.Add(-provisionRunActiveFor-time.Minute), true, now.Add(-72*time.Hour), true)
+	if dead.OK || !dead.Fatal {
+		t.Error("a run that stopped writing its log long ago is no longer reported as dead, so " +
+			"the in-progress branch now swallows the failure it was carved out of")
 	}
 }
 
@@ -516,5 +602,182 @@ func TestEveryTimestampCarriesHowLongAgoItWas(t *testing.T) {
 	if !strings.Contains(sixteen, "16 hours ago") {
 		t.Fatalf("a 16-hour-old run does not say so: %q. This is the reading that made a "+
 			"healthy worker look days-stale", sixteen)
+	}
+}
+
+// FINDING — "the name resolves, so the challenge can reach this server" does not
+// follow, and the install this console was built on is the counterexample.
+//
+// A domain registered here pointed at a static-hosting provider. It resolved
+// perfectly, and every provisioning run asked for a certificate whose challenge
+// was answered by that provider with a 404. The check said the DNS was fine.
+//
+// It is fatal rather than a note because failed validations are rate-limited PER
+// ACCOUNT: one domain that can never validate spends the budget every other site
+// on the install needs, which is how a second, correctly-pointed domain ends up
+// stuck at "Failed" with nothing wrong with it.
+//
+// SECOND FINDING, from attacking the first fix: "not an address this machine
+// holds" is not the same statement as "not this install". On a CDN-fronted or
+// NAT-ed install EVERY hosted name resolves to the front, and the first version
+// called all of them blocking — contradicting this product's own DNS page, which
+// says in as many words that this is "normal behind NAT, and not a fault". So
+// the primary's addresses are the discriminator: shared with the primary means
+// this install's own front; shared with nothing means a different host.
+func TestADomainPointedElsewhereIsNotCalledReachable(t *testing.T) {
+	local := map[string]bool{"203.0.113.7": true, "2001:db8::7": true}
+	front := []string{"198.51.100.1"} // what the primary resolves to: a proxy
+
+	elsewhere := dnsPointsHereCheck("client.example", []string{"185.199.108.153"}, true, local, front)
+	if elsewhere.OK {
+		t.Fatal("a domain resolving to a host unrelated to this install was reported as " +
+			"reachable — the exact verdict that hid a domain burning the account's validation " +
+			"budget on every run")
+	}
+	if !elsewhere.Fatal {
+		t.Error("it is reported as a detail rather than as blocking, so it reads as background " +
+			"noise beside the certificate that is not arriving")
+	}
+	for _, want := range []string{"185.199.108.153", "PER ACCOUNT", "404"} {
+		if !strings.Contains(elsewhere.Detail, want) {
+			t.Errorf("the finding never mentions %q, so the operator cannot act on it", want)
+		}
+	}
+
+	// Pointed here: reported as such, and NOT as a blocker.
+	if c := dnsPointsHereCheck("client.example", []string{"203.0.113.7"}, true, local, front); !c.OK || c.Fatal {
+		t.Errorf("a correctly-pointed domain was flagged: %q — %s", c.Label, c.Detail)
+	}
+
+	// THE REGRESSION THIS GUARDS. Behind a CDN or a NAT router every hosted name
+	// resolves to the front, which is not a local address. Calling that blocking
+	// cries wolf on the correct configuration — and this product's own DNS page
+	// already tells the operator it is not a fault. One product must not return
+	// two opposite verdicts on one fact.
+	proxied := dnsPointsHereCheck("client.example", front, true, local, front)
+	if !proxied.OK || proxied.Fatal {
+		t.Errorf("a site behind the same front as the primary was called broken: %q — %s. "+
+			"That is every CDN-fronted and every NAT-ed install", proxied.Label, proxied.Detail)
+	}
+	if !strings.Contains(proxied.Detail, "acme-challenge") {
+		t.Error("the proxied verdict does not name the one thing that must be true of the front, " +
+			"so it reads as an unconditional pass")
+	}
+
+	// Nothing to compare against — no local addresses, or a primary that would
+	// not resolve — must claim NOTHING rather than guess. Asserting a fault we
+	// cannot substantiate is the failure this page exists to correct.
+	for _, blind := range []diagCheck{
+		dnsPointsHereCheck("client.example", []string{"185.199.108.153"}, true, map[string]bool{}, front),
+		dnsPointsHereCheck("client.example", []string{"185.199.108.153"}, true, local, nil),
+	} {
+		if !blind.OK || blind.Fatal {
+			t.Error("with nothing trustworthy to compare against, the check still declared the " +
+				"DNS wrong — a verdict asserted on the absence of evidence")
+		}
+		if !strings.Contains(blind.Detail, "nothing is claimed") {
+			t.Error("the blind case does not say it is not claiming anything, so it reads as a pass")
+		}
+	}
+
+	// A name that does not resolve at all is a different statement again.
+	if c := dnsPointsHereCheck("client.example", nil, false, local, front); c.OK || !c.Fatal {
+		t.Error("an unresolvable name is not reported as blocking")
+	}
+}
+
+// Folding the certificate panels into accordions must not HIDE anything.
+//
+// They were flat, permanently-expanded cards and between them most of the page,
+// so collapsing them is right. But a collapsed panel quietly holding the reason
+// the button will not work would be the same defect as the tile that said
+// "pending" and offered nothing to do about it. Two guarantees, therefore: the
+// verdict reads from the SUMMARY while collapsed, and a blocking check forces
+// the diagnosis open by itself.
+func TestTheCollapsedCertificatePanelsStillTellTheTruth(t *testing.T) {
+	d := testDomain("abc123", "client.example")
+	d.TLSState = domain.TLSPending
+	d.SyncState = domain.SyncApproved
+
+	blocked := scopedCertificateSection(d, []diagCheck{
+		{Label: "Root-side helper installed", OK: true, Detail: "present"},
+		{Label: "DNS points somewhere else", OK: false, Fatal: true, Detail: "185.199.108.153"},
+	}, []string{"a log line"})
+
+	// The chip must be in the summary, not the body: everything inside
+	// mon-acc__body is invisible until someone clicks.
+	sum, _, ok := strings.Cut(blocked, `<div class="mon-acc__body">`)
+	if !ok {
+		t.Fatal("the accordion has no body, so its markup is not what this asserts against")
+	}
+	if !strings.Contains(sum, "pending") {
+		t.Error("the certificate accordion's collapsed summary does not say the certificate is " +
+			"pending, so folding the panel hid the state it existed to show")
+	}
+	if !strings.Contains(blocked, "1 blocking") {
+		t.Error("the diagnosis chip does not carry the blocking count, so a collapsed panel " +
+			"reads as 'nothing to see' while holding the reason the button will not work")
+	}
+
+	// A blocking check must open the diagnosis without being clicked.
+	i := strings.Index(blocked, "What this console checked")
+	if i < 0 {
+		t.Fatal("the diagnosis accordion is gone")
+	}
+	if !strings.Contains(blocked[strings.LastIndex(blocked[:i], "<details"):i], "open") {
+		t.Error("a blocking check does not force the diagnosis open, so the operator has to " +
+			"guess that the collapsed panel is where the answer is")
+	}
+
+	// With nothing blocking it stays shut, and says so — otherwise "open" carries
+	// no information and the auto-open above is decoration.
+	clean := scopedCertificateSection(d, []diagCheck{
+		{Label: "Root-side helper installed", OK: true, Detail: "present"},
+	}, nil)
+	j := strings.Index(clean, "What this console checked")
+	if j < 0 {
+		t.Fatal("the diagnosis accordion is gone from the clean page")
+	}
+	if strings.Contains(clean[strings.LastIndex(clean[:j], "<details"):j], "open") {
+		t.Error("the diagnosis opens itself when nothing is blocking, so opening means nothing")
+	}
+	if !strings.Contains(clean, "nothing blocking") {
+		t.Error("a clean diagnosis does not say so from its summary")
+	}
+}
+
+// FINDING — the collapsed summary promised the certificate was "one root-side
+// step away" while the diagnosis three lines below it said the DNS points at
+// somebody else's server.
+//
+// Both were on the same page, at the same moment, and the reassuring one was the
+// one that stays visible when the panel is folded. Telling an operator to wait
+// for something that can never arrive is the defect this console exists to
+// remove, and folding the panels is what made a stale subtitle load-bearing.
+func TestTheCertificateSummaryDoesNotPromiseWhatIsBlocked(t *testing.T) {
+	d := testDomain("abc123", "client.example")
+	d.TLSState = domain.TLSPending
+	d.SyncState = domain.SyncApproved
+
+	blocked := scopedCertificateSection(d, []diagCheck{
+		{Label: "DNS points at a different host", OK: false, Fatal: true, Detail: "185.199.108.153"},
+	}, nil)
+	sum, _, _ := strings.Cut(blocked, `<div class="mon-acc__body">`)
+	if strings.Contains(sum, "one root-side step away") {
+		t.Fatal("the collapsed summary still says the certificate is one step away while a " +
+			"blocking check says it cannot be issued at all — the reassuring half is the half " +
+			"that stays on screen")
+	}
+	if !strings.Contains(sum, "Blocked") {
+		t.Error("a blocked certificate does not say so from its summary")
+	}
+
+	// And the ordinary waiting case must keep its reassurance, or the fix is just
+	// pessimism applied to every site.
+	waiting := scopedCertificateSection(d, []diagCheck{
+		{Label: "Root-side helper installed", OK: true, Detail: "present"},
+	}, nil)
+	if !strings.Contains(waiting, "one root-side step away") {
+		t.Error("a site merely waiting on the sweep is now described as blocked")
 	}
 }

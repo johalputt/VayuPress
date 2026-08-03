@@ -6,6 +6,96 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.52] — 2026-08-03
+
+**A domain pointed at somebody else's server was reported as reachable — and it
+was quietly spending the whole install's certificate budget.**
+
+### Fixed
+- **The console now says WHERE a domain points, not just that it resolves.** The
+  check asked whether the name answered and concluded "so the challenge can reach
+  this server". That does not follow. A domain pointed at a static-hosting
+  provider resolves perfectly; its HTTP-01 challenge is answered by that provider
+  with a **404**, and no certificate can ever be issued from here.
+
+  It matters far beyond the one domain, which is why it is now reported as
+  blocking: **failed validations are rate-limited per ACCOUNT**. One domain that
+  can never validate spends the budget every other site on the install needs —
+  which is how a second, correctly-pointed domain ends up stuck at *Failed* with
+  nothing whatsoever wrong with it. The verdict names the address, the
+  consequence, and the two ways out (hold it under Lifecycle, or repoint it).
+
+- **…and the first version of that fix would have cried wolf on every CDN and
+  every NAT.** Found by attacking it: *"not an address this machine holds"* is
+  not the same statement as *"not this install"*. On a proxied or NAT-ed install
+  **every** hosted name resolves to the front rather than the origin — and this
+  product's own Domains & DNS page already says, in as many words, that this is
+  "normal behind NAT, and not a fault". Two pages of one product returning
+  opposite verdicts on one fact is worse than either verdict alone.
+
+  So the primary's addresses are the discriminator, exactly as the DNS page uses
+  them to recognise a proxy: an address **shared with the primary** is this
+  install's own front (the challenge arrives, provided that front passes
+  `/.well-known/acme-challenge/` through); an address the primary never uses is a
+  different host altogether. Where there is nothing trustworthy to compare
+  against — no enumerable local addresses, or a primary that will not resolve —
+  the check claims **nothing**, in either direction.
+
+- **A run still underway was called a dead one.** A worker that is executing
+  writes its log throughout and records a result only when it finishes, which on
+  timestamps alone is indistinguishable from a run that died — except for whether
+  the log is still moving. The check ignored that and reported "it is running and
+  dying" for a certbot pass midway through several new domains, which genuinely
+  takes minutes. A working install was being described as broken on the strength
+  of a timestamp saying the opposite. Past a ten-minute silence it is dead again.
+
+- **Every Tor site's console announced a certificate problem it does not have.**
+  A `.onion` is registered sync-approved, active and TLS-pending, and stays
+  TLS-pending for life: an onion is served over http by design and no CA could
+  issue for one. The console read that literally and printed *"no certificate has
+  been issued … the browser refuses the page"*, with a diagnosis beneath it
+  telling the operator to point **DNS** at this server — for an address DNS does
+  not resolve at all. Two confident statements, both false. Onion sites now show
+  an untoned *Onion* tile and no certificate section.
+
+- **The collapsed summary promised what the diagnosis denied.** "One root-side
+  step away" is true of a site waiting on the daily sweep and false of one whose
+  DNS points elsewhere — and the console knew which, three lines further down the
+  same page. The subtitle is now derived from the checks.
+
+### Changed
+- **The certificate and diagnosis panels fold.** They were flat, permanently
+  expanded, and between them most of the console — a screen of prose, a
+  seven-row table and twenty-five lines of log, all above the tools you came for.
+  Folding them may not **hide** anything, so: each summary carries its verdict as
+  a chip that reads while collapsed (`pending` / `1 blocking` / `nothing
+  blocking`), and a blocking check forces the diagnosis open by itself. A
+  collapsed panel quietly holding the reason the button will not work would be
+  the same defect as the tile that said "pending" and offered nothing.
+
+### Internal
+- **A source-text test helper returned the PRECEDING function's body** for every
+  plain (non-method) function. The method form matches mid-declaration and has to
+  rewind to the line start; the plain form already matches there, so rewinding
+  stepped back one whole function. Roughly a dozen gates were therefore asserting
+  against their neighbour — and a *negative* assertion ("this body must not
+  contain X") passes vacuously when handed the wrong body. That is a test that
+  cannot fail, which is worse than no test, because it is counted as coverage.
+  All gates pass against the corrected helper.
+
+### Audit
+Adversarial pass run over everything above before the version was bumped. Three
+of the six fixes in this release **are** its findings: the CDN/NAT false alarm,
+the "one step away" subtitle, and the test helper. Thirteen mutations applied
+across the DNS verdict, the worker-trace window, the onion exclusion and the
+collapsible panels; all thirteen were caught. `gosec` and `staticcheck` were not
+run locally in this environment (staticcheck runs inside golangci-lint, which is
+clean; gosec runs in CI) — the diff adds no file, exec or crypto path.
+
+Known and unchanged: diagnosing a pending certificate now costs two bounded DNS
+lookups rather than one, so an admin console page can take up to six seconds when
+a resolver is unresponsive.
+
 ## [3.16.51] — 2026-08-03
 
 **Every button on a site's console was inert.** This is the bug, and it was mine.

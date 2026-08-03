@@ -109,16 +109,31 @@ func TestIsAdminSessionRejectsKeyOnlyCallers(t *testing.T) {
 // handlers contain struct literals and closures whose braces would truncate the
 // body early, and a body silently cut short makes a test fail on code that is
 // correct — worth no more than one that passes on code that is not.
+// FINDING — for a PLAIN function this returned the PRECEDING function's body.
+//
+// The method form matches mid-declaration at ") Name(", so it has to rewind to
+// the line start. The plain form already matches at the newline before "func",
+// and rewinding from there lands on the previous "\nfunc " in the file — one
+// whole function too early. Every plain-function gate here was therefore
+// asserting against its neighbour, and a NEGATIVE assertion ("the body must not
+// contain X") passes vacuously when it is handed the wrong body. That is a test
+// that cannot fail, which is worse than no test: it is counted as coverage.
+//
+// The two forms are now rewound separately, and the doc comment above each
+// declaration is deliberately excluded — a gate must read the code, not prose
+// that happens to quote the identifier it is looking for.
 func goFuncBody(src, name string) string {
 	i := strings.Index(src, ") "+name+"(")
-	if i < 0 {
+	if i >= 0 {
+		// Rewind to the start of the declaration line so the signature is included.
+		if j := strings.LastIndex(src[:i], "\nfunc "); j >= 0 {
+			i = j + 1
+		}
+	} else {
 		if i = strings.Index(src, "\nfunc "+name+"("); i < 0 {
 			return ""
 		}
-	}
-	// Rewind to the start of the declaration line so the signature is included.
-	if j := strings.LastIndex(src[:i], "\nfunc "); j >= 0 {
-		i = j + 1
+		i++ // step past the newline; this match already starts at the declaration
 	}
 	rest := src[i:]
 	// Search from after this declaration's own line; (?m)^ would otherwise match
