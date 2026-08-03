@@ -381,3 +381,54 @@ func TestTheConsoleNoticesStaleRootSideHelpers(t *testing.T) {
 		t.Fatalf("an unreadable driver was reported as up to date: %q", reason)
 	}
 }
+
+// A check must not claim to block something it does not block.
+//
+// The stale-helper check shipped as Fatal, so the console painted "blocking"
+// beside it and sent the operator to refresh shell scripts — while the thing
+// actually stopping their certificate was elsewhere. Stale helpers degrade the
+// run's REPORT; they do not stop certbot. Overstating that is the same defect as
+// a panel row overstating what is enforcing, committed by the check written to
+// find exactly that.
+func TestStaleHelpersAreNotClaimedToBlockACertificate(t *testing.T) {
+	src := readSourceFile(t, "admin_os_scoped_diagnose.go")
+	body := goFuncBody(src, "diagnoseCertificate")
+	i := strings.Index(body, `"Root-side helpers up to date"`)
+	if i < 0 {
+		t.Fatal("the stale-helper check is gone")
+	}
+	seg := body[i : i+400]
+	if strings.Contains(seg, "Fatal: !fresh") {
+		t.Fatal("stale helpers are marked as blocking the certificate. They make the run's " +
+			"report unreliable; they do not stop certbot, and saying so sends the operator to " +
+			"fix the thing that is not stopping them")
+	}
+	if !strings.Contains(seg, "does NOT stop a certificate") {
+		t.Error("the stale-helper detail does not say what it does and does not affect, so it " +
+			"reads as the cause")
+	}
+}
+
+// The request must RE-ARM a stuck watcher.
+//
+// The systemd unit is `.path` with `PathExists=`, which fires when the file
+// appears. A request never consumed — worker failed, start limit tripped —
+// leaves the file in place, the condition never goes false, and no rewrite of
+// the same path triggers anything again. The install reaches a state where the
+// button is enabled, reports success, and can never cause a run.
+func TestRequestingAProvisionClearsAStaleRequestFirst(t *testing.T) {
+	body := goFuncBody(readSourceFile(t, "admin_os_provision.go"), "handleOSProvisionRequest")
+	rm := strings.Index(body, "os.Remove(path)")
+	write := strings.Index(body, "os.WriteFile(path")
+	if rm < 0 {
+		t.Fatal("a stale request is never removed, so a watcher stuck on an unconsumed request " +
+			"can never be re-armed from the console — the button stays enabled and does nothing")
+	}
+	if write < 0 {
+		t.Fatal("the request is never written")
+	}
+	if rm > write {
+		t.Error("the stale request is removed AFTER the new one is written, which deletes the " +
+			"request that was just made")
+	}
+}

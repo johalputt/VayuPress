@@ -127,9 +127,19 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain) []diagCh
 	// every version number on every page. That is exactly what happened here:
 	// the binary carried the fix for the failure, the helper that trips over it
 	// did not, and nothing said the two could differ.
+	// NOT Fatal. Stale helpers degrade REPORTING — they cannot tell a
+	// broken-nginx abort from a clean run — but they do not stop a certificate
+	// being issued. Marking this "blocking" sent an operator to fix the thing
+	// that was not stopping them, which is the same defect as a panel row
+	// overstating what is enforcing, committed by the check written to find
+	// exactly that. Shown, and shown as secondary.
 	fresh, why := provisionHelpersCurrent()
 	out = append(out, diagCheck{
-		Label: "Root-side helpers up to date", OK: fresh, Fatal: !fresh, Detail: why,
+		Label: "Root-side helpers up to date", OK: fresh, Fatal: false,
+		Detail: why + map[bool]string{
+			true:  "",
+			false: " This does NOT stop a certificate being issued — it makes the run's own report unreliable.",
+		}[fresh],
 	})
 
 	// 5. Was the last run AFTER the most recent request?

@@ -6,6 +6,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.48] — 2026-08-03
+
+### Fixed
+- **Provision now can un-stick a watcher that stopped firing.** The root-side
+  trigger is a systemd `.path` unit with `PathExists=`, which fires when the
+  request file **appears**. If a request is ever left unconsumed — the worker
+  failed to start, or its start limit tripped — the file stays, the condition
+  never goes false, and rewriting the same path produces no further trigger. The
+  install reaches a state where the button is enabled, reports success, and can
+  never cause a run again. That is a live install with a stale
+  `Last run` timestamp and a certificate that will never issue.
+
+  The request now **clears any waiting one first**, forcing the disappear→appear
+  transition the unit needs. It costs nothing when there was no stale request,
+  it is the only thing an unprivileged process can do to re-arm a watcher it
+  cannot restart, and the response says when it happened.
+
+- **The stale-helper check stopped claiming to block a certificate.** It shipped
+  in v3.16.47 marked as blocking, so the console painted amber beside it and sent
+  the operator to refresh shell scripts — while whatever was actually stopping
+  their certificate went unexamined. Stale helpers degrade the run's **report**;
+  they do not stop certbot. It is still shown, now as secondary, and says
+  explicitly what it does and does not affect.
+
+  Worth naming: that is a panel row overstating what is enforcing — the exact
+  defect class the check was written to find — committed by the check itself, one
+  release after it was added.
+
 ## [3.16.47] — 2026-08-03
 
 Found by reading the diagnostic v3.16.44 added, on a live install where every

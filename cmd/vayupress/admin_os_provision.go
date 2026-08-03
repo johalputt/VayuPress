@@ -126,6 +126,27 @@ func (a *App) handleOSProvisionRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := filepath.Join(provisionStateDir(), provisionRequestFile)
+
+	// Remove any existing request BEFORE writing a fresh one.
+	//
+	// This is the difference between a button that works and one that silently
+	// does nothing, and it is a systemd detail: the watcher is a `.path` unit
+	// with `PathExists=`, which fires when the file APPEARS. If a previous
+	// request was never consumed — the worker failed to start, or its start
+	// limit tripped — the file stays, the condition never goes false, and no
+	// amount of rewriting the same path produces another trigger. The install
+	// enters a state where the button is enabled, reports success, and can never
+	// cause a run again.
+	//
+	// Deleting first forces the disappear→appear transition the unit needs. It
+	// costs nothing when there was no stale request, and it is the only thing
+	// the unprivileged side can do to unstick a watcher it cannot restart.
+	staleCleared := false
+	if _, err := os.Stat(path); err == nil {
+		if os.Remove(path) == nil {
+			staleCleared = true
+		}
+	}
 	// Empty on purpose. The worker never reads the contents, and writing
 	// anything here would start a channel from an unprivileged process into a
 	// root one — the thing this design exists to avoid.
@@ -134,9 +155,13 @@ func (a *App) handleOSProvisionRequest(w http.ResponseWriter, r *http.Request) {
 			"Could not create the provisioning request", err.Error())
 		return
 	}
+	note := "Provisioning runs in the background; it usually finishes within a minute."
+	if staleCleared {
+		note = "An earlier request was still waiting — it was cleared and a fresh one made, " +
+			"which is what re-arms the watcher."
+	}
 	writeJSON(w, r, http.StatusOK, map[string]any{
-		"status": "requested",
-		"note":   "Provisioning runs in the background; it usually finishes within a minute.",
+		"status": "requested", "rearmed": staleCleared, "note": note,
 	})
 }
 
