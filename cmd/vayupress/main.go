@@ -512,9 +512,16 @@ func main() {
 	// containers/VPS. No-op on bare hosts with no cgroup limit. (RAM audit 2026-07)
 	applyMemorySoftLimit()
 
-	// CLI subcommands run before the server boots. `vayupress update <check|apply|history>`
-	// is the ONLY path that can apply a binary update — it is gated, signature-verified,
-	// and CLI-only by design (ADR-0064). The web layer exposes a read-only check endpoint.
+	// CLI subcommands run before the server boots. `vayupress update
+	// <check|apply|history>` applies a signed binary update, gated and
+	// signature-verified (ADR-0064).
+	//
+	// This comment used to claim the CLI was the ONLY path and that the web layer
+	// was read-only. That stopped being true when /os/api/update/apply shipped,
+	// and the stale sentence was enough to make a reader doubt that an operator
+	// can update from the panel at all — which is the whole premise of the
+	// product. A comment that describes a constraint the code no longer has is
+	// the same defect as a panel row that overstates what is enforcing.
 	if len(os.Args) > 1 && os.Args[1] == "update" {
 		config.Load()
 		if err := dbpkg.Init(); err != nil {
