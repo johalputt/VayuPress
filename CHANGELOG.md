@@ -6,7 +6,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.37] — 2026-08-03
+
+Both fixes ship immediately under the live-breakage exception: a panel reporting
+an install as fully healthy while one of its sites serves a browser security
+warning is a wrong claim, and a wrong claim on the page an operator opens *to
+check* is the failure that costs the most time.
+
+Adversarial pass, recorded because it ran: the certificate rule was attacked five
+ways — drop the resolves guard so un-pointed domains are nagged, drop the hold
+guard so a deliberately unprovisioned domain is nagged, treat an active
+certificate as missing so a healthy domain warns forever, count an unfinished
+lookup as resolving so a fault is asserted on no evidence, and stop rendering the
+notice while keeping the data (the original bug). Every mutation fails its test.
+What was *not* attacked, and is stated rather than implied: none of this verifies
+a certificate on the wire. It reports what the registry recorded, which is one
+step removed from what nginx is actually serving.
 
 ### Fixed
 - **Domains & DNS now says when a domain has no certificate.** An operator
