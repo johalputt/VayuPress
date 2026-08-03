@@ -184,13 +184,20 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain) []diagCh
 	//    per-helper detail string is the thing that names which one skipped.
 	if have {
 		ok := res.Failed == 0 && res.Ran > 0
+		label := "Last run " + res.FinishedAt
 		age := ""
-		if t, err := time.Parse(time.RFC3339, res.FinishedAt); err == nil && time.Since(t) > 24*time.Hour {
-			age = " (over a day ago — this is not a report on anything you just did)"
-			ok = false
+		if t, err := time.Parse(time.RFC3339, res.FinishedAt); err == nil {
+			// The age, always — not only when it is old. A reader in any timezone
+			// can act on "16 hours ago"; a bare Z timestamp they have to convert
+			// is where this went wrong.
+			label = "Last run " + stamp(t)
+			if time.Since(t) > 24*time.Hour {
+				age = " This is not a report on anything you just did."
+				ok = false
+			}
 		}
 		out = append(out, diagCheck{
-			Label: "Last run " + res.FinishedAt, OK: ok,
+			Label: label, OK: ok,
 			Detail: strconv.Itoa(res.Ran) + " helper(s) did work, " + strconv.Itoa(res.Skipped) +
 				" had nothing to do, " + strconv.Itoa(res.Failed) + " reported a problem — " +
 				res.Details + age,
@@ -202,6 +209,38 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain) []diagCh
 		})
 	}
 	return out
+}
+
+// humanAge renders how long ago something happened, beside the timestamp.
+//
+// This page printed bare UTC with a Z, and on a server in IST that reads as
+// YESTERDAY for a run that happened after midnight TODAY — a 5½ hour offset that
+// crosses the date line. It cost a real misdiagnosis: a run eight milliseconds
+// from its own result, on a healthy worker, was read as days-stale by everyone
+// who looked at it. A timestamp nobody can convert in their head is a number the
+// reader has to trust, and this page exists to stop asking for trust.
+//
+// The absolute time stays — it is what matches the server's own files — with the
+// age beside it, because an age cannot be misread across a timezone.
+func humanAge(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < 0:
+		return "just now"
+	case d < time.Minute:
+		return "seconds ago"
+	case d < time.Hour:
+		return strconv.Itoa(int(d.Minutes())) + " minutes ago"
+	case d < 48*time.Hour:
+		return strconv.Itoa(int(d.Hours())) + " hours ago"
+	default:
+		return strconv.Itoa(int(d.Hours()/24)) + " days ago"
+	}
+}
+
+// stamp renders a moment as the server writes it, plus how long ago that was.
+func stamp(t time.Time) string {
+	return t.UTC().Format(time.RFC3339) + " (" + humanAge(t) + ")"
 }
 
 // workerTraceCheck compares the worker's log against its recorded result.
@@ -225,15 +264,15 @@ func workerTraceCheck(logAt time.Time, haveLog bool, resAt time.Time, haveRes bo
 	case haveRes && logAt.Sub(resAt) > 2*time.Minute:
 		return diagCheck{
 			Label: "The last run recorded what it did", OK: false, Fatal: true,
-			Detail: "the worker WROTE TO ITS LOG at " + logAt.UTC().Format(time.RFC3339) +
-				" but last recorded a result at " + resAt.UTC().Format(time.RFC3339) +
+			Detail: "the worker WROTE TO ITS LOG at " + stamp(logAt) +
+				" but last recorded a result at " + stamp(resAt) +
 				". It is running and dying, or exiting, before it records anything — so every " +
 				"number below is from an older run and pressing the button changes nothing " +
 				"visible. The log above is the only account of what those runs did.",
 		}
 	default:
 		return diagCheck{
-			Label: "The worker last wrote its log " + logAt.UTC().Format(time.RFC3339), OK: true,
+			Label: "The worker last wrote its log " + stamp(logAt), OK: true,
 			Detail: "the log and the recorded result agree, so the report below is that run's own",
 		}
 	}

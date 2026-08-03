@@ -474,3 +474,47 @@ func TestARunThatNeverRecordedItsResultIsNamed(t *testing.T) {
 		t.Error("an install where the worker has never run does not say so distinctly")
 	}
 }
+
+// FINDING — a bare UTC timestamp read as "yesterday" for a run that had just
+// happened, and it cost a real misdiagnosis.
+//
+// The page printed 2026-08-02T18:43:02Z. On the server, in IST, that same moment
+// is 2026-08-03 00:13:02 — after midnight, TODAY. The 5½ hour offset crosses the
+// date line, so a run eight milliseconds from its own result, on a completely
+// healthy worker, was read as days-stale by everyone who looked at it and sent
+// the investigation in the wrong direction twice.
+//
+// A timestamp the reader has to convert in their head is a number they have to
+// trust, and this page exists to stop asking for trust.
+func TestEveryTimestampCarriesHowLongAgoItWas(t *testing.T) {
+	now := time.Now()
+	for _, c := range []struct {
+		at   time.Time
+		want string
+	}{
+		{now.Add(-30 * time.Second), "seconds ago"},
+		{now.Add(-45 * time.Minute), "minutes ago"},
+		{now.Add(-16 * time.Hour), "hours ago"},
+		{now.Add(-72 * time.Hour), "days ago"},
+	} {
+		got := stamp(c.at)
+		if !strings.Contains(got, c.want) {
+			t.Errorf("stamp(%v) = %q, which never says %q — a reader in another timezone "+
+				"cannot tell how old it is", c.at, got, c.want)
+		}
+		// The absolute time must survive too: it is what matches the server's own
+		// files, and dropping it would trade one unverifiable number for another.
+		if !strings.Contains(got, c.at.UTC().Format("2006-01-02")) {
+			t.Errorf("stamp(%v) = %q dropped the absolute time, so it no longer matches what "+
+				"the server's files show", c.at, got)
+		}
+	}
+
+	// The exact case that misled everyone: a run 16 hours old, printed with a
+	// date that reads as the previous day in IST.
+	sixteen := stamp(now.Add(-16 * time.Hour))
+	if !strings.Contains(sixteen, "16 hours ago") {
+		t.Fatalf("a 16-hour-old run does not say so: %q. This is the reading that made a "+
+			"healthy worker look days-stale", sixteen)
+	}
+}

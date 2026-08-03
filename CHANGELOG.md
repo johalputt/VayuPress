@@ -6,6 +6,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.50] — 2026-08-03
+
+### Fixed
+- **Every timestamp now says how long ago it was.** The diagnostic printed bare
+  UTC — `2026-08-02T18:43:02Z`. On a server in IST that same moment is
+  `2026-08-03 00:13:02`: after midnight, **today**. The five-and-a-half hour
+  offset crosses the date line, so a run that finished **eight milliseconds**
+  before its own result, on a completely healthy worker, was read as days-stale
+  by everyone who looked at it — and sent the investigation in the wrong
+  direction twice, through two releases built on the wrong theory.
+
+  The absolute time stays, because it is what matches the server's own files.
+  Beside it now: *16 hours ago*. An age cannot be misread across a timezone.
+
+  This is the same defect class as every other one on this page, in its purest
+  form: the number was true and the reader could not act on it. A timestamp
+  somebody has to convert in their head is a number they have to trust, and this
+  page exists to stop asking for trust.
+
 ## [3.16.49] — 2026-08-03
 
 ### Fixed
