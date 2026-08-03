@@ -483,10 +483,26 @@ func domainAllowanceCard(d domain.Domain, used int, mailOn bool) string {
 </div>`
 }
 
-// domainManageScript wires the per-site manager: a scoped branding save/reset, a
-// post-assignment box and the lifecycle controls. It reads the domain id from a
-// hidden data node (CSP-safe) and mirrors the vp_csrf cookie into X-CSRF-Token,
-// exactly like the registry page's script.
+// domainManageScript wires every control on a site's console.
+//
+// REWRITTEN, because the previous version did not parse.
+//
+// Three handlers were removed from it by text surgery when their markup was
+// retired (ADR-0154 D3), and each deletion stopped at the first `});` after its
+// marker — which, in a handler containing `.then(function(res){…});`, is an
+// INNER closer. Every deletion therefore left its tail behind, and the script
+// ended with orphan `});` lines that made the whole IIFE a syntax error.
+//
+// The consequence is the worst kind: a parse error binds NOTHING. Provision now,
+// Issue login, Save allowance, sync, disable and remove were all inert on every
+// site console — buttons that looked live, reported nothing, and did nothing.
+// An operator pressing them saw exactly what they would see if the server were
+// ignoring them, which is what sent a certificate investigation through five
+// releases looking at systemd.
+//
+// A syntax gate now runs over every inline script in the codebase, because
+// nothing else here can catch it: Go compiles a broken script perfectly, every
+// test that asserted on this markup passed, and the CSP nonce was correct.
 func domainManageScript(nonce string) string {
 	return `<script nonce="` + nonce + `">
 (function(){'use strict';
@@ -496,48 +512,13 @@ var ID=node?node.getAttribute('data-id'):'';
 if(!ID)return;
 function val(id){var e=document.getElementById(id);return e?e.value.trim():'';}
 function set(id,t){var e=document.getElementById(id);if(e)e.textContent=t;}
-});
-// Provision now — the certificate control, on the page that reports the
-// certificate. It asks the root-side helper to run immediately rather than
-// waiting for its daily timer; the button that lived only on Domains & DNS left
-// this console reporting a problem with nothing to do about it.
-var pv=document.querySelector('[data-site-provision]');
-if(pv)pv.addEventListener('click',function(){
-  pv.disabled=true;set('site-cert-status','Requesting…');
-  fetch('/os/api/provision/run',{method:'POST',headers:{'X-CSRF-Token':csrf()}})
-    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-    .then(function(res){
-      if(!res.ok){pv.disabled=false;set('site-cert-status',(res.j&&res.j.message)||'Could not request a run');return;}
-      set('site-cert-status','Running\u2026');
-      watch(0);})
-    .catch(function(e){pv.disabled=false;set('site-cert-status','Error: '+e);});
-});
-// Report what the run DID, not just that it was asked for.
-//
-// The first version stopped at "Requested \u2713" and left the operator to
-// reload and guess. Asking for a privileged step and never saying whether it
-// worked is the same defect as an amber tile with no button: the page reports
-// an action instead of an outcome, and a helper that skipped this domain, or
-// aborted on a broken nginx config, looked identical to success.
-function watch(n){
-  if(n>20){set('site-cert-status','Still running \u2014 reload in a moment, or see Domains & DNS for the log.');return;}
-  setTimeout(function(){
-    fetch('/os/api/provision/status',{headers:{'Accept':'application/json'}})
-      .then(function(r){return r.json();})
-      .then(function(j){
-        if(j&&j.pending){set('site-cert-status','Running\u2026');watch(n+1);return;}
-        var res=(j&&j.result)||{},d=res.details||'';
-        if(d.indexOf('nginx-config-broken')>=0){
-          pv.disabled=false;
-          set('site-cert-status','nginx config was already invalid, so nothing ran. Run: sudo nginx -t');
-          return;}
-        if(res.failed>0){pv.disabled=false;set('site-cert-status','Finished with '+res.failed+' problem(s): '+d);return;}
-        if(res.ran===0){pv.disabled=false;set('site-cert-status','Finished, but provisioned nothing: '+d);return;}
-        set('site-cert-status','Provisioned \u2713 \u2014 reloading');
-        window.location.reload();})
-      .catch(function(){pv.disabled=false;set('site-cert-status','Requested; could not read the result.');});
-  },3000);
+function post(path,body,opts){
+  var h={'X-CSRF-Token':csrf()};
+  if(body!==null&&body!==undefined)h['Content-Type']='application/json';
+  return fetch('/os/api/domains/'+encodeURIComponent(ID)+path,
+    {method:'POST',headers:h,body:body===null||body===undefined?undefined:JSON.stringify(body)});
 }
+
 // Mailbox allowance. The field is a number input, but a browser hands back a
 // string and an empty one parses to NaN — sending that would clear the
 // allowance to 0 and silently revoke every mailbox the operator granted.
@@ -547,53 +528,82 @@ if(aSave)aSave.addEventListener('click',function(){
   var n=parseInt(raw,10);
   if(raw===''||isNaN(n)||n<0){set('site-allowance-status','Enter a whole number, 0 or more');return;}
   aSave.disabled=true;set('site-allowance-status','Saving…');
-  fetch('/os/api/domains/'+encodeURIComponent(ID)+'/allowance',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({mailboxes:n})})
+  post('/allowance',{mailboxes:n})
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
     .then(function(res){aSave.disabled=false;
       if(res.ok){set('site-allowance-status','Saved ✓ — reloading');window.location.reload();}
       else{set('site-allowance-status',(res.j&&res.j.message)||'Could not save the allowance');}})
     .catch(function(e){aSave.disabled=false;set('site-allowance-status','Error: '+e);});
 });
-// Client login. The password is echoed back to nobody: it is typed by the
-// operator, sent once, and the account is forced to change it at first sign-in.
+
+// Client login. The password is typed by the operator, sent once, and the
+// account is forced to change it at first sign-in.
 var cNew=document.querySelector('[data-client-create]');
 if(cNew)cNew.addEventListener('click',function(){
   var email=val('client-email'),name=val('client-name'),pw=val('client-password');
   if(!email){set('client-status','Enter the email they will sign in with');return;}
   if(pw.length<8){set('client-status','The starting password must be at least 8 characters');return;}
   cNew.disabled=true;set('client-status','Creating…');
-  fetch('/os/api/domains/'+encodeURIComponent(ID)+'/client',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({email:email,name:name,password:pw})})
+  post('/client',{email:email,name:name,password:pw})
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
     .then(function(res){cNew.disabled=false;
       if(res.ok){set('client-status','Created ✓ — reloading');window.location.reload();}
       else{set('client-status',(res.j&&res.j.message)||'Could not create the login');}})
     .catch(function(e){cNew.disabled=false;set('client-status','Error: '+e);});
 });
+
+// Provision now — the certificate control, on the page that reports the
+// certificate. It reports the OUTCOME, not merely that it was asked for.
+var pv=document.querySelector('[data-site-provision]');
+if(pv)pv.addEventListener('click',function(){
+  pv.disabled=true;set('site-cert-status','Requesting…');
+  fetch('/os/api/provision/run',{method:'POST',headers:{'X-CSRF-Token':csrf()}})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){
+      if(!res.ok){pv.disabled=false;set('site-cert-status',(res.j&&res.j.message)||'Could not request a run');return;}
+      set('site-cert-status','Running…');
+      watch(0);})
+    .catch(function(e){pv.disabled=false;set('site-cert-status','Error: '+e);});
 });
-});
-// Lifecycle: sync
+function watch(n){
+  if(n>20){set('site-cert-status','Still running — reload in a moment, or see Domains & DNS for the log.');return;}
+  setTimeout(function(){
+    fetch('/os/api/provision/status',{headers:{'Accept':'application/json'}})
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(j&&j.pending){set('site-cert-status','Running…');watch(n+1);return;}
+        var res=(j&&j.result)||{},d=res.details||'';
+        if(d.indexOf('nginx-config-broken')>=0){pv.disabled=false;
+          set('site-cert-status','nginx config was already invalid, so nothing ran.');return;}
+        if(res.failed>0){pv.disabled=false;set('site-cert-status','Finished with '+res.failed+' problem(s): '+d);return;}
+        if(res.ran===0){pv.disabled=false;set('site-cert-status','Finished, but provisioned nothing: '+d);return;}
+        set('site-cert-status','Provisioned ✓ — reloading');
+        window.location.reload();})
+      .catch(function(){pv.disabled=false;set('site-cert-status','Requested; could not read the result.');});
+  },3000);
+}
+
+// Lifecycle: approve/pause provisioning, enable/disable, remove.
 var sBtn=document.querySelector('[data-site-sync]');
 if(sBtn)sBtn.addEventListener('click',function(){
   sBtn.disabled=true;set('site-life-status','Saving…');
-  fetch('/os/api/domains/'+encodeURIComponent(ID)+'/sync',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({sync_state:sBtn.getAttribute('data-sync')})})
+  post('/sync',{sync_state:sBtn.getAttribute('data-sync')})
     .then(function(r){if(r.ok){location.reload();}else{sBtn.disabled=false;set('site-life-status','Could not update');}})
     .catch(function(e){sBtn.disabled=false;set('site-life-status','Error: '+e);});
 });
-// Lifecycle: enable/disable
 var tBtn=document.querySelector('[data-site-toggle]');
 if(tBtn)tBtn.addEventListener('click',function(){
   tBtn.disabled=true;set('site-life-status','Saving…');
-  fetch('/os/api/domains/'+encodeURIComponent(ID)+'/status',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({status:tBtn.getAttribute('data-status')})})
+  post('/status',{status:tBtn.getAttribute('data-status')})
     .then(function(r){if(r.ok){location.reload();}else{tBtn.disabled=false;set('site-life-status','Could not update');}})
     .catch(function(e){tBtn.disabled=false;set('site-life-status','Error: '+e);});
 });
-// Lifecycle: remove → back to the registry
 var dBtn=document.querySelector('[data-site-delete]');
 if(dBtn)dBtn.addEventListener('click',function(){
   if(!window.confirm('Remove '+dBtn.getAttribute('data-host')+' from the registry? This cannot be undone.'))return;
   dBtn.disabled=true;set('site-life-status','Removing…');
   fetch('/os/api/domains/'+encodeURIComponent(ID),{method:'DELETE',headers:{'X-CSRF-Token':csrf()}})
-    .then(function(r){if(r.ok){window.location.href='/os/domains';}else{dBtn.disabled=false;set('site-life-status','Could not remove');}})
+    .then(function(r){if(r.ok){location.href='/os/domains';}else{dBtn.disabled=false;set('site-life-status','Could not remove');}})
     .catch(function(e){dBtn.disabled=false;set('site-life-status','Error: '+e);});
 });
 })();

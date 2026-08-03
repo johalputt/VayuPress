@@ -6,6 +6,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.51] — 2026-08-03
+
+**Every button on a site's console was inert.** This is the bug, and it was mine.
+
+### Fixed
+- **The console's inline script did not parse, so nothing bound.** When the
+  duplicate Branding editor was retired in v3.16.38, its three handlers were
+  removed from the page script by text surgery. Each deletion stopped at the
+  first `});` after its marker — which, inside a handler containing
+  `.then(function(res){…});`, is an **inner** closer. Every deletion left its
+  tail behind, and the script ended with orphan `});` lines.
+
+  A JavaScript parse error binds **nothing**. **Provision now**, **Issue login**,
+  **Save allowance**, sync, disable and remove have all been dead on every site
+  console since v3.16.38 — buttons that render, look live, report nothing and do
+  nothing. Pressing them produced exactly what a server ignoring the request
+  would produce.
+
+  That is what sent a certificate investigation through five releases: the
+  request file was never written, because the click handler never existed. Every
+  diagnostic added along the way — the stale-run check, the un-consumed request
+  check, the log-versus-result comparison, the timezone fix — was written to
+  explain a silence whose cause was one stray brace.
+
+  The script is rewritten rather than patched, with its shared POST helper
+  factored out so the handlers are short enough to read.
+
+- **A gate over every inline script in the codebase.** 27 of them, each parsed.
+  Nothing else here could have caught this: Go compiles a broken script
+  perfectly, the CSP nonce was correct, `assertCSPSafe` passed, and every test
+  asserting on this page's markup passed — because the markup was fine. It was
+  the script that could not run.
+
+  Mutation-tested against the real defect (the exact orphan closers that shipped)
+  and against a subtler one (a single missing parenthesis). Both fail the gate.
+  `type="application/json"` payloads are excluded: they are hydration data, and
+  feeding them to a JavaScript parser reports failures that are not failures.
+
+  *"It compiled and the tests passed"* has never been evidence that a page works.
+  This is the sharpest example this repository has.
+
 ## [3.16.50] — 2026-08-03
 
 ### Fixed
