@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/publicsuffix"
+
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
@@ -145,17 +147,47 @@ const (
 	dnsLookupWorkers = 12
 )
 
+// hostIsRegistrableApex reports whether `www.<host>` is a record the operator
+// could plausibly own.
+//
+// www is a convention of a REGISTRABLE name — example.com, example.co.uk — not
+// of an arbitrary host. A site hosted at test.example.com has no
+// www.test.example.com and never will, so listing one as required painted a
+// permanent warn badge on a correctly configured domain, held its section open
+// on every visit, and put it in the "Not pointed" count. Label counting cannot
+// answer this (example.co.uk is an apex with three labels), so the public suffix
+// list does.
+//
+// A host that IS a public suffix, or is otherwise unplaceable, is treated as not
+// an apex: `www.<public suffix>` is not the operator's to create either, and
+// where we cannot substantiate the demand we do not make it.
+func hostIsRegistrableApex(host string) bool {
+	h := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	if h == "" {
+		return false
+	}
+	etld1, err := publicsuffix.EffectiveTLDPlusOne(h)
+	if err != nil {
+		return false
+	}
+	return etld1 == h
+}
+
 // subdomainRecords returns every record this install cares about for a domain.
 //
 // The primary carries the install-wide services; a secondary carries only what
 // is actually served for it. Listing talk./mcp./api. under every secondary would
 // be inventing work for the operator: those hosts exist once per install, on the
-// primary, and a second copy would have nothing behind it.
+// primary, and a second copy would have nothing behind it. The same reasoning
+// governs www: it is listed only where it could exist.
 func subdomainRecords(dom string, isPrimary, mailEnabled bool) []dnsRecord {
 	d := strings.TrimSpace(strings.ToLower(dom))
 	recs := []dnsRecord{
 		{Host: d, Label: "Website & blog", Why: "The site itself.", Required: true},
-		{Host: "www." + d, Label: "www redirect", Why: "Visitors typing www reach the site.", Required: true},
+	}
+	if hostIsRegistrableApex(d) {
+		recs = append(recs,
+			dnsRecord{Host: "www." + d, Label: "www redirect", Why: "Visitors typing www reach the site.", Required: true})
 	}
 	if isPrimary || mailEnabled {
 		recs = append(recs,

@@ -6,6 +6,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Domains & DNS stopped demanding a `www` record that could never exist.** A
+  site hosted on a subdomain — `test.example.com` — was listed as *requiring*
+  `www.test.example.com`. Nobody creates that record: `www` is a convention of a
+  registrable name, not of an arbitrary host.
+
+  The consequence was not cosmetic. `Required` drives the **warn** badge, holds
+  that domain's section open on every visit, and counts in the **"Not pointed"**
+  tile — so a correctly configured subdomain reported a permanent fault with no
+  action that could ever clear it. The operator's only options were to create a
+  meaningless record or to learn to ignore the page.
+
+  This is the third instance of one defect class on this page, and the file's own
+  comment already names it: *a check that cries wolf on the correct configuration
+  is worse than no check at all, because it trains people to ignore it.* The page
+  already refuses to invent `talk.`/`mcp.`/`api.` under a secondary domain, and
+  refuses to ask a mail-less domain for `mail.`/`openpgpkey.`, for exactly this
+  reason. `www` was the one that slipped through.
+
+  `www` is now listed only where it could exist — on a registrable name. Label
+  counting cannot decide this (`example.co.uk` is an apex with three labels), so
+  the public suffix list does. A host that *is* a public suffix, or is otherwise
+  unplaceable, is treated as not an apex: where the demand cannot be
+  substantiated, it is not made.
+
 ## [3.16.35] — 2026-08-02
 
 ### Added

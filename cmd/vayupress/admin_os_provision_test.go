@@ -255,6 +255,49 @@ func TestSecondaryDomainsDoNotDemandInstallWideHosts(t *testing.T) {
 	}
 }
 
+// TestASubdomainHostIsNotAskedForAWwwRecord — a site hosted at test.johal.in was
+// listed as REQUIRING www.test.johal.in. Nobody creates that record: www is a
+// convention of a registrable name, not of an arbitrary host.
+//
+// The consequence was not cosmetic. Required drives a warn badge, holds the
+// domain's section open on every visit, and counts in the "Not pointed" tile —
+// so a correctly configured subdomain reported a permanent fault with no action
+// that could ever clear it. That is the same defect this file already refuses to
+// invent for install-wide hosts and for mail records on a domain that serves no
+// mailboxes, and it is exactly what localAddrSet's comment warns about: a check
+// that cries wolf on the correct configuration trains people to ignore it.
+func TestASubdomainHostIsNotAskedForAWwwRecord(t *testing.T) {
+	for _, host := range []string{"test.johal.in", "shop.example.co.uk", "a.b.example.com"} {
+		for _, mail := range []bool{true, false} {
+			for _, r := range subdomainRecords(host, false, mail) {
+				if r.Host == "www."+host {
+					t.Errorf("a site hosted at %s is asked for www.%s — a record the operator "+
+						"will never create, reported as a fault forever", host, host)
+				}
+			}
+		}
+	}
+}
+
+// TestARegistrableNameStillGetsItsWwwRecord — the fix above must not throw away
+// the case it exists for. On a name someone actually registered, a missing www
+// is a real hole that fails where the operator cannot see it: the visitor who
+// types www gets an error and never reports it.
+func TestARegistrableNameStillGetsItsWwwRecord(t *testing.T) {
+	for _, host := range []string{"johal.in", "example.com", "example.co.uk", "shop.example"} {
+		found := false
+		for _, r := range subdomainRecords(host, false, false) {
+			if r.Host == "www."+host {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s is a registrable name and lists no www record, so a missing www "+
+				"redirect goes unreported", host)
+		}
+	}
+}
+
 // TestNonMailSecondaryIsNotAskedForMailRecords — pointing mail./openpgpkey. at a
 // domain that serves no mailboxes buys nothing, and the page would report the
 // absence as a gap that can never legitimately close.
