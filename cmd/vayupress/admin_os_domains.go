@@ -569,7 +569,7 @@ function watch(n){
   if(n>20){set('site-cert-status','Still running — reload in a moment, or see Domains & DNS for the log.');return;}
   setTimeout(function(){
     fetch('/os/api/provision/status',{headers:{'Accept':'application/json'}})
-      .then(function(r){return r.json();})
+      .then(function(r){if(!r.ok)throw new Error('status '+r.status);return r.json();})
       .then(function(j){
         if(j&&j.pending){set('site-cert-status','Running…');watch(n+1);return;}
         var res=(j&&j.result)||{},d=res.details||'';
@@ -579,7 +579,8 @@ function watch(n){
         if(res.ran===0){pv.disabled=false;set('site-cert-status','Finished, but provisioned nothing: '+d);return;}
         set('site-cert-status','Provisioned ✓ — reloading');
         window.location.reload();})
-      .catch(function(){pv.disabled=false;set('site-cert-status','Requested; could not read the result.');});
+      .catch(function(e){pv.disabled=false;
+        set('site-cert-status','Requested. Could not read the result ('+e.message+') — the run may still be going; reload the page for the log.');});
   },3000);
 }
 

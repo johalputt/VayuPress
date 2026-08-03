@@ -1072,11 +1072,16 @@ func TestTheAuthoritysErrorTypeIsExplainedNotJustQuoted(t *testing.T) {
 func TestTheChallengeProbeAsksAsTheAuthorityWould(t *testing.T) {
 	src := readSourceFile(t, "admin_os_scoped_diagnose.go")
 	body := goFuncBody(src, "challengeProbe")
-	if !strings.Contains(body, "req.Host = host") {
+	// The request itself is built one function down, since the probe now tries
+	// several addresses. The assertions follow the code rather than being
+	// loosened: a gate that stops looking where the logic moved is a gate that
+	// has quietly stopped gating.
+	attempt := goFuncBody(src, "probeChallengeAt")
+	if !strings.Contains(attempt, "req.Host = host") {
 		t.Fatal("the probe does not set the Host header, so it exercises the default vhost " +
 			"rather than this site's — a pass would prove nothing about the site being diagnosed")
 	}
-	if !strings.Contains(body, "ErrUseLastResponse") {
+	if !strings.Contains(attempt, "ErrUseLastResponse") {
 		t.Error("the probe follows redirects, so a catch-all 301 — the exact misconfiguration " +
 			"that breaks issuance — would be reported as success")
 	}
@@ -1336,5 +1341,55 @@ func TestAStalledRootSideIsReportedAsOneActionNotTwoSymptoms(t *testing.T) {
 	}
 	if _, ok := rootSideStalledCheck(true, true); ok {
 		t.Error("an unconsumed request with CURRENT helpers was blamed on the helpers")
+	}
+}
+
+// FINDING that indicts this page's own probe: it dialled 127.0.0.1 alone and
+// reported a BLOCKING row when nothing answered there.
+//
+// If nginx is bound to specific public addresses rather than a wildcard,
+// loopback is not where it listens — and the console would be reporting a fault
+// that exists only in the way it looked. A diagnostic that can manufacture a
+// false blocking row about the thing it is diagnosing is worse than none.
+func TestTheProbeDoesNotAssumeNginxListensOnLoopback(t *testing.T) {
+	if listensEverywhere([]string{"5.189.133.235"}) {
+		t.Fatal("a listener bound to one public address was treated as a wildcard, so the probe " +
+			"would test only loopback and call a working server broken")
+	}
+	for _, w := range [][]string{{"0.0.0.0"}, {"[::]"}, {"127.0.0.1", "0.0.0.0"}} {
+		if !listensEverywhere(w) {
+			t.Errorf("%v was not recognised as a wildcard bind", w)
+		}
+	}
+	// The probe must consult the listener table rather than hard-coding loopback.
+	body := goFuncBody(readSourceFile(t, "admin_os_scoped_diagnose.go"), "challengeProbe")
+	if !strings.Contains(body, "listensEverywhere(port80Listeners())") {
+		t.Fatal("the probe does not check where port 80 is actually bound before deciding that " +
+			"loopback is a valid test")
+	}
+	if !strings.Contains(body, "localAddrSet()") {
+		t.Error("the probe never tries this machine's own addresses, so a non-wildcard bind is " +
+			"still reported as a failure")
+	}
+}
+
+// /proc/net's addresses are little-endian hex. Decoding them wrongly would print
+// a plausible but incorrect address in a row an operator is meant to act on.
+func TestProcAddressesAreDecodedNotGuessed(t *testing.T) {
+	// 127.0.0.1 little-endian = 0100007F
+	if got := decodeProcAddr("0100007F"); got != "127.0.0.1" {
+		t.Errorf("decodeProcAddr(0100007F) = %q, want 127.0.0.1", got)
+	}
+	if got := decodeProcAddr("00000000"); got != "0.0.0.0" {
+		t.Errorf("decodeProcAddr(00000000) = %q, want 0.0.0.0", got)
+	}
+	if got := decodeProcAddr(strings.Repeat("0", 32)); got != "[::]" {
+		t.Errorf("the IPv6 wildcard decoded as %q", got)
+	}
+	// Anything unrecognised must yield nothing rather than a fabricated address.
+	for _, bad := range []string{"", "ZZ", "12345"} {
+		if got := decodeProcAddr(bad); got != "" {
+			t.Errorf("decodeProcAddr(%q) invented %q", bad, got)
+		}
 	}
 }

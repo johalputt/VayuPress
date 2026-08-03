@@ -248,7 +248,7 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 		// when there is a reason to.
 		vh := vhostCheck(d.Host)
 		pr := challengeProbe(ctx, d.Host)
-		out = append(out, vh, pr)
+		out = append(out, vh, port80ListenerCheck(), pr)
 		if c, ok := staleConfigCheck(vh, pr); ok {
 			out = append(out, c)
 		}
@@ -808,13 +808,47 @@ func challengeProbe(ctx context.Context, host string) diagCheck {
 	}
 	defer func() { _ = os.Remove(path) }()
 
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	// EVERY address this machine answers on, not just loopback.
+	//
+	// The first version dialled 127.0.0.1 alone and called a failure blocking. If
+	// nginx is bound to a specific public address rather than a wildcard, loopback
+	// is not where it listens, and the row would report a fault that exists only
+	// in the way the probe looked. One success anywhere proves the server serves
+	// its own challenge; that is the question being asked.
+	candidates := []string{"127.0.0.1"}
+	if !listensEverywhere(port80Listeners()) {
+		for a := range localAddrSet() {
+			if strings.Contains(a, ":") {
+				candidates = append(candidates, "["+a+"]")
+				continue
+			}
+			candidates = append(candidates, a)
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
+	var lastErr string
+	for _, addr := range candidates {
+		c, detail, ok := probeChallengeAt(ctx, addr, host, token, dir)
+		if ok {
+			return c
+		}
+		lastErr = detail
+		_ = c
+	}
+	return diagCheck{
+		Label: "This server can answer its own challenge", OK: false, Fatal: true,
+		Detail: "no address this machine holds served the token for " + host + " (" + lastErr +
+			"). " + port80Kind() + ". Tried " + strings.Join(candidates, ", ") + ".",
+	}
+}
+
+// probeChallengeAt performs one attempt against one address.
+func probeChallengeAt(ctx context.Context, addr, host, token, dir string) (diagCheck, string, bool) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		"http://127.0.0.1/.well-known/acme-challenge/"+token, nil)
+		"http://"+addr+"/.well-known/acme-challenge/"+token, nil)
 	if err != nil {
-		return diagCheck{Label: "This server can answer its own challenge", OK: true,
-			Detail: "the probe request could not be built, so nothing is claimed either way"}
+		return diagCheck{}, "the probe request could not be built", false
 	}
 	// The Host header is the whole point: it selects this site's vhost rather
 	// than the default one, which is exactly what the authority's request does.
@@ -827,12 +861,7 @@ func challengeProbe(ctx context.Context, host string) diagCheck {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return diagCheck{
-			Label: "This server can answer its own challenge", OK: false, Fatal: true,
-			Detail: "nothing answered on port 80 over loopback for " + host + " (" + err.Error() +
-				"). " + port80Kind() + ". The authority cannot reach a challenge this machine " +
-				"will not serve to itself — see the server-block check above for which it is.",
-		}
+		return diagCheck{}, addr + ": " + err.Error(), false
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
@@ -840,20 +869,15 @@ func challengeProbe(ctx context.Context, host string) diagCheck {
 	if resp.StatusCode == http.StatusOK && strings.TrimSpace(string(body)) == token {
 		return diagCheck{
 			Label: "This server can answer its own challenge", OK: true,
-			Detail: "a token written to " + dir + " was served back over loopback for " + host +
+			Detail: "a token written to " + dir + " was served back for " + host + " via " + addr +
 				". nginx and the webroot are correct, so a failure the authority reports as a " +
 				"CONNECTION problem is between the internet and this machine — port 80 filtered " +
 				"upstream, or the address the name resolves to is not this server — and not " +
 				"something to fix in nginx.",
-		}
+		}, "", true
 	}
-	return diagCheck{
-		Label: "This server can answer its own challenge", OK: false, Fatal: true,
-		Detail: "the loopback request for " + host + " returned HTTP " + strconv.Itoa(resp.StatusCode) +
-			" instead of the token. nginx is up but this site's vhost does not serve " +
-			"/.well-known/acme-challenge/ from " + acmeWebroot() + " — a redirect here means the " +
-			"catch-all matched instead of the challenge location, which no certificate can survive.",
-	}
+	return diagCheck{}, addr + ": HTTP " + strconv.Itoa(resp.StatusCode) + " instead of the token" +
+		" (a redirect here means the catch-all matched instead of the challenge location)", false
 }
 
 // certbotErrorKind explains the authority's own error TYPE.
@@ -1174,4 +1198,101 @@ func rootSideStalledCheck(requestStuck, helpersFresh bool) (diagCheck, bool) {
 			"the watcher and runs a pass immediately; it touches neither the binary nor the " +
 			"database.",
 	}, true
+}
+
+// port80Listeners reads the kernel's own socket table for listeners on port 80.
+//
+// FINDING, and it indicts this page's own probe: the probe dialled 127.0.0.1
+// and reported a blocking row when nothing answered. If nginx is bound to a
+// specific public address rather than 0.0.0.0, loopback is simply not where it
+// listens — and the console would be reporting a fault that exists only in the
+// way it looked. A check that can produce a false blocking row about the thing
+// it is diagnosing is worse than no check.
+//
+// /proc/net/tcp is world-readable, so this needs no privilege. State 0A is
+// LISTEN; the port is the hex field after the colon in local_address.
+func port80Listeners() []string {
+	var out []string
+	for _, f := range []string{"/proc/net/tcp", "/proc/net/tcp6"} {
+		b, err := os.ReadFile(filepath.Clean(f))
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(b), "\n")[1:] {
+			fields := strings.Fields(line)
+			if len(fields) < 4 || fields[3] != "0A" {
+				continue
+			}
+			local := fields[1]
+			i := strings.LastIndex(local, ":")
+			if i < 0 || local[i+1:] != "0050" { // 0x50 == 80
+				continue
+			}
+			if a := decodeProcAddr(local[:i]); a != "" {
+				out = append(out, a)
+			}
+		}
+	}
+	return out
+}
+
+// decodeProcAddr turns /proc/net's little-endian hex address into text.
+// Only the shapes that matter here are decoded: IPv4, and the IPv6 wildcard.
+func decodeProcAddr(hexAddr string) string {
+	switch len(hexAddr) {
+	case 8: // IPv4, little-endian
+		var b [4]byte
+		for i := 0; i < 4; i++ {
+			v, err := strconv.ParseUint(hexAddr[i*2:i*2+2], 16, 8)
+			if err != nil {
+				return ""
+			}
+			b[3-i] = byte(v)
+		}
+		return net.IPv4(b[0], b[1], b[2], b[3]).String()
+	case 32:
+		if hexAddr == strings.Repeat("0", 32) {
+			return "[::]"
+		}
+		return "[an IPv6 address]"
+	}
+	return ""
+}
+
+// listensEverywhere reports whether any port-80 listener is a wildcard, which is
+// what makes a loopback probe a valid test of the public path.
+func listensEverywhere(addrs []string) bool {
+	for _, a := range addrs {
+		if a == "0.0.0.0" || a == "[::]" {
+			return true
+		}
+	}
+	return false
+}
+
+// port80ListenerCheck reports what the kernel says is listening on port 80.
+func port80ListenerCheck() diagCheck {
+	addrs := port80Listeners()
+	switch {
+	case len(addrs) == 0:
+		return diagCheck{
+			Label: "Something is listening on port 80", OK: false, Fatal: true,
+			Detail: "the kernel's socket table shows NO listener on port 80 at all. nginx is not " +
+				"running, or is not bound there — and no challenge from anywhere can be answered.",
+		}
+	case listensEverywhere(addrs):
+		return diagCheck{
+			Label: "Port 80 is listening on every address", OK: true,
+			Detail: "bound to " + strings.Join(addrs, ", ") + ", so a loopback request tests the " +
+				"same server block a request from the internet reaches",
+		}
+	default:
+		return diagCheck{
+			Label: "Port 80 is bound to specific addresses only", OK: true,
+			Detail: "bound to " + strings.Join(addrs, ", ") + " rather than a wildcard. A request " +
+				"to 127.0.0.1 therefore does not reach it, so a loopback probe alone would report " +
+				"a fault that exists only in how it looked — the challenge probe tries these " +
+				"addresses too.",
+		}
+	}
 }

@@ -6,6 +6,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.60] — 2026-08-03
+
+**The probe that was diagnosing everything could manufacture its own failure.**
+
+### Fixed
+- **The challenge probe assumed nginx listens on loopback.** It dialled
+  `127.0.0.1` alone and printed a **blocking** row when nothing answered there.
+  If nginx is bound to specific public addresses rather than a wildcard, loopback
+  is simply not where it listens — and the console was reporting a fault that
+  existed only in the way it looked. A diagnostic that can manufacture a false
+  blocking row about the very thing it is diagnosing is worse than none, and this
+  one has been sitting at the top of an investigation for four releases.
+
+  The console now reads the **kernel's own socket table** (`/proc/net/tcp`,
+  world-readable, no privilege needed) to see where port 80 is actually bound,
+  says so in its own row, and — when the bind is not a wildcard — probes this
+  machine's real addresses as well as loopback. One success anywhere answers the
+  question being asked.
+
+  Addresses are decoded from `/proc`'s little-endian hex properly; an
+  unrecognised form yields nothing rather than a plausible wrong address in a row
+  somebody is meant to act on.
+
+- **"Requested; could not read the result." was a dead end.** The status poll
+  swallowed every failure into one sentence that named neither the cause nor a
+  next step. It now checks the HTTP status, reports what actually went wrong, and
+  says the run may still be in progress.
+
+### Audit
+Four mutations, all caught: the probe assuming loopback again, a single public
+bind counted as a wildcard, `/proc` addresses decoded big-endian, and an
+unrecognised address fabricated as `0.0.0.0`. One existing gate had to **follow
+the code** rather than be loosened — the request-building moved into a helper
+when the probe learned to try several addresses, and a gate that stops looking
+where the logic went is a gate that has quietly stopped gating.
+
 ## [3.16.59] — 2026-08-03
 
 **Two pairs of rows that each said everything except what to do.**
