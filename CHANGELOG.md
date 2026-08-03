@@ -6,6 +6,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.49] — 2026-08-03
+
+### Fixed
+- **The console had both timestamps and compared neither.** The worker appends to
+  `provision.log` throughout a run and writes `provision.result` only at the very
+  end. A log **newer than** the result therefore means a run started and never
+  finished recording — it died, was killed by its start timeout, or exited early.
+
+  Without that comparison the page shows *"Last run — two days ago, 0 problems"*
+  beside a worker that has been executing all along, and an operator pressing the
+  button cannot tell **"it never ran"** from **"it ran and told you nothing"**.
+  Those need completely different next steps and the page was making them look
+  identical.
+
+  The console now states which it is, names both timestamps, and says plainly
+  that every number beneath a non-recording run belongs to an older one. It is
+  marked blocking, because it invalidates the report it sits above; a healthy run
+  — log and result moments apart — stays quiet, so the check is silent on every
+  install where nothing is wrong.
+
 ## [3.16.48] — 2026-08-03
 
 ### Fixed

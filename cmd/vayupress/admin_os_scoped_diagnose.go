@@ -142,7 +142,24 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain) []diagCh
 		}[fresh],
 	})
 
-	// 5. Was the last run AFTER the most recent request?
+	// 5. Did the worker RUN, and did it record what it did?
+	//
+	// The console has both files and was comparing neither. The worker appends to
+	// provision.log throughout and writes provision.result only at the very end,
+	// so their timestamps answer a question nothing else can: a log newer than
+	// the result means a run STARTED and did not finish recording — the process
+	// died, was killed by its start timeout, or exited early — and every number
+	// below it is from an older run.
+	//
+	// Without this the page shows "Last run <days ago>" beside a worker that has
+	// been executing all along, and an operator pressing the button watches
+	// nothing change with no way to tell the difference between "it never ran"
+	// and "it ran and told you nothing".
+	logAt, haveLog := provisionFileTime("provision.log")
+	resAt, haveRes := provisionFileTime(provisionResultFile)
+	out = append(out, workerTraceCheck(logAt, haveLog, resAt, haveRes))
+
+	// 6. Was the last run AFTER the most recent request?
 	//
 	// The first version of this check called a run "ok" on Failed==0 && Ran>0
 	// without looking at WHEN it happened — so a healthy run from yesterday was
@@ -163,7 +180,7 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain) []diagCh
 		})
 	}
 
-	// 6. What the last run actually did. Reported rather than summarised: the
+	// 7. What the last run actually did. Reported rather than summarised: the
 	//    per-helper detail string is the thing that names which one skipped.
 	if have {
 		ok := res.Failed == 0 && res.Ran > 0
@@ -185,6 +202,50 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain) []diagCh
 		})
 	}
 	return out
+}
+
+// workerTraceCheck compares the worker's log against its recorded result.
+//
+// A log newer than the result means a run STARTED and did not finish recording:
+// the process died, was killed by its start timeout, or exited early. Every
+// number reported below it is then from an older run, and an operator pressing
+// the button watches nothing change with no way to tell "it never ran" from "it
+// ran and told you nothing".
+//
+// The two-minute margin is the ordinary gap between a worker's last log line and
+// the result it writes moments later; anything beyond that is a run that did not
+// come back.
+func workerTraceCheck(logAt time.Time, haveLog bool, resAt time.Time, haveRes bool) diagCheck {
+	switch {
+	case !haveLog:
+		return diagCheck{
+			Label: "The worker has left a trace", OK: false, Fatal: true,
+			Detail: "there is no provisioning log at all, so the root-side worker has never run here",
+		}
+	case haveRes && logAt.Sub(resAt) > 2*time.Minute:
+		return diagCheck{
+			Label: "The last run recorded what it did", OK: false, Fatal: true,
+			Detail: "the worker WROTE TO ITS LOG at " + logAt.UTC().Format(time.RFC3339) +
+				" but last recorded a result at " + resAt.UTC().Format(time.RFC3339) +
+				". It is running and dying, or exiting, before it records anything — so every " +
+				"number below is from an older run and pressing the button changes nothing " +
+				"visible. The log above is the only account of what those runs did.",
+		}
+	default:
+		return diagCheck{
+			Label: "The worker last wrote its log " + logAt.UTC().Format(time.RFC3339), OK: true,
+			Detail: "the log and the recorded result agree, so the report below is that run's own",
+		}
+	}
+}
+
+// provisionFileTime returns a provisioning state file's modification time.
+func provisionFileTime(name string) (time.Time, bool) {
+	fi, err := os.Stat(filepath.Clean(filepath.Join(provisionStateDir(), name)))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return fi.ModTime(), true
 }
 
 // provisionRequestAt returns when the outstanding request was made.

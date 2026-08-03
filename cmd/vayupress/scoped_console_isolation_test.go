@@ -432,3 +432,45 @@ func TestRequestingAProvisionClearsAStaleRequestFirst(t *testing.T) {
 			"request that was just made")
 	}
 }
+
+// FINDING — the console had both files and compared neither.
+//
+// The worker appends to provision.log throughout and writes provision.result
+// only at the very end. A log newer than the result therefore means a run
+// STARTED and did not finish recording: died, was killed by its start timeout,
+// or exited early. Without that comparison the page shows "Last run <days ago>"
+// beside a worker that has been executing all along, and an operator pressing
+// the button cannot tell "it never ran" from "it ran and told you nothing".
+func TestARunThatNeverRecordedItsResultIsNamed(t *testing.T) {
+	now := time.Now()
+
+	// The reported state: worker writing its log, result stuck days back.
+	c := workerTraceCheck(now.Add(-time.Minute), true, now.Add(-72*time.Hour), true)
+	if c.OK {
+		t.Fatal("a worker that has been writing its log for days while its recorded result " +
+			"stands still was reported as healthy — this is the state an operator sees as " +
+			"'nothing happens', and the page had both timestamps all along")
+	}
+	if !c.Fatal {
+		t.Error("a run that never records a result is not marked as blocking, so it reads as " +
+			"a detail beside the stale numbers it invalidates")
+	}
+	for _, want := range []string{"WROTE TO ITS LOG", "older run"} {
+		if !strings.Contains(c.Detail, want) {
+			t.Errorf("the finding never says %q, so it does not distinguish a dead run from "+
+				"an absent one", want)
+		}
+	}
+
+	// A worker that logged and recorded moments apart is the normal case and
+	// must stay quiet, or the check is noise on every healthy install.
+	if ok := workerTraceCheck(now.Add(-30*time.Second), true, now.Add(-25*time.Second), true); !ok.OK {
+		t.Errorf("a normal run was flagged: %s", ok.Detail)
+	}
+
+	// Never having run at all is a different statement from having run badly.
+	none := workerTraceCheck(time.Time{}, false, time.Time{}, false)
+	if none.OK || !strings.Contains(none.Detail, "never run") {
+		t.Error("an install where the worker has never run does not say so distinctly")
+	}
+}
