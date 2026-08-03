@@ -152,7 +152,10 @@ func (a *App) handleAnalyticsCollect(w http.ResponseWriter, r *http.Request) {
 	}
 	// Geo is set server-side from trusted proxy headers, never from the beacon.
 	req.Geo = geoFromHeaders(r)
-	if err := a.analytics.Collect(r.Context(), req, ip, r.UserAgent()); err != nil {
+	// The domain is resolved by THIS INSTALL from the host it served, never from
+	// the beacon body. This endpoint is public and unauthenticated: a domain a
+	// visitor could name is a domain a visitor could write traffic into.
+	if err := a.analytics.Collect(r.Context(), req, ip, r.UserAgent(), a.contentScope(r)); err != nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

@@ -23,7 +23,7 @@ func TestTrendingArticlesByViews(t *testing.T) {
 
 	for _, q := range []string{
 		`CREATE TABLE articles(id INTEGER PRIMARY KEY, slug TEXT, title TEXT, feature_image TEXT, status TEXT NOT NULL DEFAULT 'published', is_page INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
-		`CREATE TABLE analytics_pageviews(id TEXT PRIMARY KEY, session_id TEXT NOT NULL DEFAULT '', url_path TEXT NOT NULL, event_type INTEGER NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
+		`CREATE TABLE analytics_pageviews(id TEXT PRIMARY KEY, session_id TEXT NOT NULL DEFAULT '', url_path TEXT NOT NULL, event_type INTEGER NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,domain_id TEXT NOT NULL DEFAULT '');`,
 		`INSERT INTO articles(id,slug,title,feature_image,status,is_page) VALUES
 		 (1,'post-a','Post A','/media/a.jpg','published',0),
 		 (2,'post-b','Post B','','published',0),

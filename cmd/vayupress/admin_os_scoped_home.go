@@ -43,12 +43,10 @@ var scopedTools = []scopedTool{
 		Desc: "Name, tagline, description and the basics this site introduces itself with."},
 	{Path: "/os/d/%s/theme", Icon: "🎨", Title: "Theme Studio", Live: true,
 		Desc: "Colours, typography and custom CSS — this domain's own, not the primary's."},
-	{Path: "/os/d/%s/seo", Icon: "🔍", Title: "SEO", Live: false,
-		Soon: "Phase 5",
-		Desc: "Meta defaults, social cards and per-property verification tokens."},
-	{Path: "/os/d/%s/analytics", Icon: "📈", Title: "Analytics", Live: false,
-		Soon: "Phase 6",
-		Desc: "This domain's own traffic. The event log needs its domain column first."},
+	{Path: "/os/d/%s/seo", Icon: "🔍", Title: "SEO", Live: true,
+		Desc: "This site's head directives and verification tokens, and its own live sitemap and robots."},
+	{Path: "/os/d/%s/analytics", Icon: "📈", Title: "Visitors", Live: true,
+		Desc: "This domain's own traffic, attributed server-side from the host that served it."},
 }
 
 // handleOSScopedHome renders the console for one hosted domain.

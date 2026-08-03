@@ -176,7 +176,15 @@ const maxEventDataProps = 24
 // Collect stores a pageview or custom event. Visitor and session identity is
 // derived server-side from (ip, ua) which are NEVER persisted. It creates the
 // session row on first sight within the 30-minute window.
-func (s *Store) Collect(ctx context.Context, req CollectRequest, ip, ua string) error {
+// Collect records one beacon event.
+//
+// domainID is the domain THIS INSTALL RESOLVED for the request, passed by the
+// handler. It is never read from req: /api/v1/analytics/collect is public and
+// unauthenticated, so a field the body supplies is a field an attacker chooses,
+// and a visitor able to choose their own domain could write traffic into any
+// client's report on the install. req.Hostname exists for the session record and
+// is client-supplied by construction — it must not be used for attribution.
+func (s *Store) Collect(ctx context.Context, req CollectRequest, ip, ua, domainID string) error {
 	path := normalizePathExtended(req.URL)
 	query := ""
 	if i := strings.IndexAny(req.URL, "?#"); i >= 0 && i+1 < len(req.URL) {
@@ -219,10 +227,10 @@ func (s *Store) Collect(ctx context.Context, req CollectRequest, ip, ua string) 
 
 	eventID := fmt.Sprintf("e%d", time.Now().UnixNano())
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO analytics_pageviews(id,session_id,url_path,url_query,page_title,referrer,hostname,utm_source,utm_medium,utm_campaign,utm_content,utm_term,event_type,event_name,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO analytics_pageviews(id,session_id,url_path,url_query,page_title,referrer,hostname,utm_source,utm_medium,utm_campaign,utm_content,utm_term,event_type,event_name,created_at,domain_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		eventID, sid, path, query, trunc(req.PageTitle, 300), referrerHostExtended(req.Referrer), trunc(host, 200),
 		trunc(req.UTMSource, 100), trunc(req.UTMMedium, 100), trunc(req.UTMCampaign, 100), trunc(req.UTMContent, 100), trunc(req.UTMTerm, 100),
-		eventType, eventName, time.Now().UTC()); err != nil {
+		eventType, eventName, time.Now().UTC(), domainID); err != nil {
 		return err
 	}
 
@@ -1131,4 +1139,80 @@ func referrerHostExtended(ref string) string {
 		ref = ref[:200]
 	}
 	return ref
+}
+
+// ScopeAllDomains disables per-domain filtering, for the operator's own
+// install-wide view. It is a value no domain id can be, so it cannot be reached
+// by an id arriving in a request.
+const ScopeAllDomains = "\x00*all-domains*"
+
+// domainClause returns the WHERE fragment and argument for a domain scope.
+//
+// The empty string is the PRIMARY and filters on it — it does not mean "all".
+// That distinction is the whole point: "" meaning everything is how a client's
+// report would quietly include every other site on the install.
+func domainClause(scope string) (string, []any) {
+	if scope == ScopeAllDomains {
+		return "", nil
+	}
+	return " AND domain_id=?", []any{scope}
+}
+
+// OverviewSinceScoped is OverviewSince for one domain.
+func (s *Store) OverviewSinceScoped(ctx context.Context, scope string, days int) (*Overview, error) {
+	if days <= 0 {
+		days = 14
+	}
+	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	clause, arg := domainClause(scope)
+	o := &Overview{}
+
+	args := append([]any{from}, arg...)
+	_ = s.readDB().QueryRowContext(ctx,
+		`SELECT COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause,
+		args...).Scan(&o.TotalPageviews, &o.TotalVisits)
+	_ = s.readDB().QueryRowContext(ctx,
+		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause+` GROUP BY session_id) v`,
+		args...).Scan(&o.BounceRate)
+	_ = s.readDB().QueryRowContext(ctx,
+		`SELECT COALESCE(AVG(v.dur),0) FROM (SELECT `+avgSessionSecondsSQL+` dur FROM analytics_pageviews WHERE created_at>=?`+clause+` GROUP BY session_id) v`,
+		args...).Scan(&o.AvgDuration)
+	// Unique visitors come from the session table, which carries no domain, so
+	// the distinct-session count above is used instead of an unscoped figure. An
+	// unscoped visitor count beside scoped pageviews would be two different
+	// populations presented as one.
+	o.UniqueVisitors = o.TotalVisits
+	return o, nil
+}
+
+// TopPagesScoped is TopPages for one domain.
+func (s *Store) TopPagesScoped(ctx context.Context, scope string, days, limit int) ([]PageStat, error) {
+	if days <= 0 {
+		days = 14
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 20
+	}
+	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	clause, arg := domainClause(scope)
+	args := append([]any{from}, arg...)
+	args = append(args, limit)
+
+	rows, err := s.readDB().QueryContext(ctx,
+		`SELECT '/' || RTRIM(SUBSTR(url_path,2),'/') AS p,COUNT(1) as pv,COUNT(DISTINCT session_id) as uv
+		 FROM analytics_pageviews WHERE created_at>=? AND event_type=1`+clause+`
+		 GROUP BY '/' || RTRIM(SUBSTR(url_path,2),'/') ORDER BY pv DESC LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PageStat
+	for rows.Next() {
+		var ps PageStat
+		if err := rows.Scan(&ps.Path, &ps.Pageviews, &ps.UniqueVisitors); err != nil {
+			return nil, err
+		}
+		out = append(out, ps)
+	}
+	return out, rows.Err()
 }

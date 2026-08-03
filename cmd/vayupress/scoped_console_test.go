@@ -120,9 +120,19 @@ func TestUnscopedToolsAreListedButNotLinked(t *testing.T) {
 				"link edits the primary site from a URL naming a hosted domain", tool.Title)
 		}
 	}
-	// And the page must say why, rather than leaving a dead-looking card.
-	if !strings.Contains(page, "would edit the primary") {
-		t.Error("the page does not explain why a tool is unavailable, so it reads as broken")
+	// When something IS pending, the page must say why rather than leaving a
+	// dead-looking card. Once every tool is scoped there is nothing to explain,
+	// and asserting the sentence unconditionally would make finishing the work
+	// fail the test — a check that punishes completion is a check that gets
+	// deleted rather than fixed.
+	pending := false
+	for _, tool := range scopedTools {
+		if !tool.Live {
+			pending = true
+		}
+	}
+	if pending && !strings.Contains(page, "would edit the primary") {
+		t.Error("a tool is unavailable and the page does not say why, so it reads as broken")
 	}
 }
 

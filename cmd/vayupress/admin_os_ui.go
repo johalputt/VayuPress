@@ -217,6 +217,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			// for every future theme change to be forgotten.
 			dr.Get("/theme", a.handleOSTheme)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/theme/code", a.handleOSThemeCode)
+			dr.Get("/seo", a.handleOSScopedSEO)
+			dr.Get("/analytics", a.handleOSScopedAnalytics)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/copy-from-primary", a.handleOSScopedCopyFromPrimary)
 		})
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains", a.handleOSDomainCreate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/assign", a.handleOSDomainAssign)

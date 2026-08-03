@@ -33,3 +33,20 @@ INSERT OR IGNORE INTO site_settings(scope,key,value) SELECT id,'site.description
 INSERT OR IGNORE INTO site_settings(scope,key,value) SELECT id,'theme.accent_light',json_extract(config_json,'$.brand.accent_light') FROM domains WHERE is_primary=0 AND json_valid(config_json) AND COALESCE(json_extract(config_json,'$.brand.accent_light'),'')<>'';
 INSERT OR IGNORE INTO site_settings(scope,key,value) SELECT id,'theme.accent_dark',json_extract(config_json,'$.brand.accent_dark') FROM domains WHERE is_primary=0 AND json_valid(config_json) AND COALESCE(json_extract(config_json,'$.brand.accent_dark'),'')<>'';
 INSERT OR IGNORE INTO site_settings(scope,key,value) SELECT id,'head.theme_color',json_extract(config_json,'$.brand.theme_color') FROM domains WHERE is_primary=0 AND json_valid(config_json) AND COALESCE(json_extract(config_json,'$.brand.theme_color'),'')<>'';
+-- A secondary domain that never had a brand set is now NAMED AFTER ITSELF.
+--
+-- Found by the pre-release pass. Before ADR-0153 an unbranded secondary domain
+-- inherited the primary's name at render time; after it, an unset key resolves
+-- to the compiled-in default — which is the PRODUCT's name. So an existing
+-- install would have come back up with a client's live site titled "VayuPress",
+-- and the operator would have discovered it from the client.
+--
+-- Isolation is still the rule: the fix is not to reinstate inheritance, it is to
+-- pick a default that belongs to the domain. A site nobody has named is most
+-- truthfully named after its own hostname, and that value is the domain's own —
+-- it is not borrowed from the operator and it does not change when they rename
+-- their blog.
+--
+-- INSERT OR IGNORE, so this never overwrites a name the brand copy above moved
+-- in, nor one already set through the scoped settings page.
+INSERT OR IGNORE INTO site_settings(scope,key,value) SELECT id,'site.name',host FROM domains WHERE is_primary=0;

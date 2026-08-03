@@ -19,8 +19,10 @@ import (
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"strconv"
 	"strings"
 
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 )
@@ -150,4 +152,69 @@ func (a *App) handleOSScopedSettingsSave(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "host": d.Host})
+}
+
+// copyableFromPrimary is the key set the "start from my house style" action
+// copies. Deliberately presentational: theme, typography and head defaults.
+//
+// It is a COPY, not a link. ADR-0153 D2 chose isolation because inheritance is
+// what produced the original complaint — a client site that silently tracked the
+// operator's. Copying gives the operator their house style on a new client
+// without reintroducing the link: edit the primary tomorrow and the client's
+// site does not move.
+//
+// Identity is excluded on purpose. Copying the primary's site name, tagline,
+// description or author onto a client's domain would publish the studio's
+// identity on the client's site, which is worse than a wrong colour.
+var copyableFromPrimary = []string{
+	settings.KeyThemePrimaryLight, settings.KeyThemePrimaryDark,
+	settings.KeyThemeAccentLight, settings.KeyThemeAccentDark,
+	settings.KeyThemeCustomCSS,
+	settings.KeyHeadThemeColor, settings.KeyHeadRobots, settings.KeyHeadKeywords,
+	settings.KeyNavItems, settings.KeyFooterConfig,
+	settings.KeyHomeHero,
+}
+
+// handleOSScopedCopyFromPrimary copies the operator's presentational settings
+// into one hosted domain's scope, once.
+func (a *App) handleOSScopedCopyFromPrimary(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	d, ok := osScopedDomain(r)
+	if !ok {
+		writeAPIError(w, r, http.StatusNotFound, "unknown-domain", "no such site", "")
+		return
+	}
+	sc := osScope(r)
+	if sc.IsPrimary() || !sc.Valid() {
+		// Copying the primary onto itself is a no-op that would look like it did
+		// something. Refuse rather than silently succeed.
+		writeAPIError(w, r, http.StatusBadRequest, "bad-scope", "this action is for a hosted site", "")
+		return
+	}
+
+	primary, err := a.siteSettings.GetAll(r.Context(), settings.ForPrimary())
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "read-failed", err.Error(), "")
+		return
+	}
+	kv := map[string]string{}
+	for _, k := range copyableFromPrimary {
+		if v := primary[k]; v != "" {
+			kv[k] = v
+		}
+	}
+	if len(kv) == 0 {
+		writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "copied": 0})
+		return
+	}
+	if err := a.siteSettings.SetMany(r.Context(), sc, kv); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "save-failed", err.Error(), "")
+		return
+	}
+	dbpkg.AuditLog("vayudomains.settings.copy_from_primary", dbpkg.AuditActor(r), d.Host,
+		strconv.Itoa(len(kv))+" presentational setting(s) copied")
+	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "copied": len(kv), "host": d.Host})
 }

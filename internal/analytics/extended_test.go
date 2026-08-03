@@ -23,7 +23,7 @@ func newExtStore(t *testing.T) *Store {
 	t.Cleanup(func() { db.Close() })
 	ddl := []string{
 		`CREATE TABLE analytics_sessions(id TEXT PRIMARY KEY, visitor_id TEXT NOT NULL, browser TEXT NOT NULL DEFAULT '', os TEXT NOT NULL DEFAULT '', device TEXT NOT NULL DEFAULT '', screen TEXT NOT NULL DEFAULT '', language TEXT NOT NULL DEFAULT '', country TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '', city TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
-		`CREATE TABLE analytics_pageviews(id TEXT PRIMARY KEY, session_id TEXT NOT NULL, url_path TEXT NOT NULL, url_query TEXT NOT NULL DEFAULT '', page_title TEXT NOT NULL DEFAULT '', referrer TEXT NOT NULL DEFAULT '', hostname TEXT NOT NULL DEFAULT '', utm_source TEXT NOT NULL DEFAULT '', utm_medium TEXT NOT NULL DEFAULT '', utm_campaign TEXT NOT NULL DEFAULT '', utm_content TEXT NOT NULL DEFAULT '', utm_term TEXT NOT NULL DEFAULT '', event_type INTEGER NOT NULL DEFAULT 1, event_name TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
+		`CREATE TABLE analytics_pageviews(id TEXT PRIMARY KEY, session_id TEXT NOT NULL, url_path TEXT NOT NULL, url_query TEXT NOT NULL DEFAULT '', page_title TEXT NOT NULL DEFAULT '', referrer TEXT NOT NULL DEFAULT '', hostname TEXT NOT NULL DEFAULT '', utm_source TEXT NOT NULL DEFAULT '', utm_medium TEXT NOT NULL DEFAULT '', utm_campaign TEXT NOT NULL DEFAULT '', utm_content TEXT NOT NULL DEFAULT '', utm_term TEXT NOT NULL DEFAULT '', event_type INTEGER NOT NULL DEFAULT 1, event_name TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,domain_id TEXT NOT NULL DEFAULT '');`,
 		`CREATE TABLE analytics_event_data(id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, property_key TEXT NOT NULL, property_value TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
 	}
 	for _, q := range ddl {
@@ -40,7 +40,7 @@ func TestCollectStoresNoPII(t *testing.T) {
 	ctx := context.Background()
 	ip := "203.0.113.7"
 	ua := "Mozilla/5.0 (Windows NT 10.0) Chrome/120.0 Safari/537.36"
-	if err := s.Collect(ctx, CollectRequest{URL: "/about?utm_source=x", Referrer: "https://news.example.com/path", Hostname: "blog.test", EventType: 1}, ip, ua); err != nil {
+	if err := s.Collect(ctx, CollectRequest{URL: "/about?utm_source=x", Referrer: "https://news.example.com/path", Hostname: "blog.test", EventType: 1}, ip, ua, ""); err != nil {
 		t.Fatalf("collect: %v", err)
 	}
 
@@ -96,9 +96,9 @@ func TestOverviewAndTopPages(t *testing.T) {
 	s := newExtStore(t)
 	ctx := context.Background()
 	// Two pageviews from one visitor, one from another.
-	_ = s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome")
-	_ = s.Collect(ctx, CollectRequest{URL: "/post", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome")
-	_ = s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "2.2.2.2", "Firefox")
+	_ = s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome", "")
+	_ = s.Collect(ctx, CollectRequest{URL: "/post", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome", "")
+	_ = s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "2.2.2.2", "Firefox", "")
 
 	ov, err := s.OverviewSince(ctx, 14)
 	if err != nil {
@@ -123,7 +123,7 @@ func TestRetentionClampsWindow(t *testing.T) {
 	t.Parallel()
 	s := newExtStore(t)
 	ctx := context.Background()
-	_ = s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "9.9.9.9", "Chrome")
+	_ = s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "9.9.9.9", "Chrome", "")
 
 	// A hostile/oversized weeks value must be clamped (no excessive allocation,
 	// no panic) and cohort rows must never exceed maxRetentionWeeks columns.
@@ -156,10 +156,10 @@ func TestAverageVisitDurationIsActuallyMeasured(t *testing.T) {
 
 	// One visitor, two pageviews five minutes apart — the same session, because
 	// sessions bucket on a 30-minute window.
-	if err := s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome"); err != nil {
+	if err := s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome", ""); err != nil {
 		t.Fatalf("collect: %v", err)
 	}
-	if err := s.Collect(ctx, CollectRequest{URL: "/post", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome"); err != nil {
+	if err := s.Collect(ctx, CollectRequest{URL: "/post", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome", ""); err != nil {
 		t.Fatalf("collect: %v", err)
 	}
 	// Backdate the first pageview so the session spans a measurable stretch.
@@ -190,7 +190,7 @@ func TestSinglePageviewVisitScoresZeroDuration(t *testing.T) {
 	t.Parallel()
 	s := newExtStore(t)
 	ctx := context.Background()
-	if err := s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "9.9.9.9", "Chrome"); err != nil {
+	if err := s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "9.9.9.9", "Chrome", ""); err != nil {
 		t.Fatalf("collect: %v", err)
 	}
 	ov, err := s.OverviewSince(ctx, 14)
@@ -222,13 +222,13 @@ func TestTheOverviewCountsPageviewsNotEveryEvent(t *testing.T) {
 
 	// Three real pageviews...
 	for i := 0; i < 3; i++ {
-		if err := s.Collect(ctx, CollectRequest{URL: "/article", Hostname: "blog.test", EventType: 1}, "203.0.113.1", "Mozilla/5.0 Chrome/120"); err != nil {
+		if err := s.Collect(ctx, CollectRequest{URL: "/article", Hostname: "blog.test", EventType: 1}, "203.0.113.1", "Mozilla/5.0 Chrome/120", ""); err != nil {
 			t.Fatalf("collect: %v", err)
 		}
 	}
 	// ...and twenty custom events, which is what an engagement beacon produces.
 	for i := 0; i < 20; i++ {
-		if err := s.Collect(ctx, CollectRequest{URL: "/article", Hostname: "blog.test", EventType: 2, EventName: "scroll"}, "203.0.113.1", "Mozilla/5.0 Chrome/120"); err != nil {
+		if err := s.Collect(ctx, CollectRequest{URL: "/article", Hostname: "blog.test", EventType: 2, EventName: "scroll"}, "203.0.113.1", "Mozilla/5.0 Chrome/120", ""); err != nil {
 			t.Fatalf("collect: %v", err)
 		}
 	}
@@ -281,13 +281,13 @@ func TestInternalNavigationIsNotAReferrer(t *testing.T) {
 		"JOHAL.IN",      // case must not smuggle it through
 	} {
 		for i := 0; i < 5; i++ {
-			if err := s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://" + ref + "/x", Hostname: "johal.in", EventType: 1}, "203.0.113.1", "Mozilla/5.0 Chrome/120"); err != nil {
+			if err := s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://" + ref + "/x", Hostname: "johal.in", EventType: 1}, "203.0.113.1", "Mozilla/5.0 Chrome/120", ""); err != nil {
 				t.Fatalf("collect: %v", err)
 			}
 		}
 	}
 	// One genuine external referrer.
-	if err := s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://news.example.com/p", Hostname: "johal.in", EventType: 1}, "203.0.113.2", "Mozilla/5.0 Chrome/120"); err != nil {
+	if err := s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://news.example.com/p", Hostname: "johal.in", EventType: 1}, "203.0.113.2", "Mozilla/5.0 Chrome/120", ""); err != nil {
 		t.Fatalf("collect: %v", err)
 	}
 
@@ -319,10 +319,10 @@ func TestAReferrerBreakdownNeverExceedsItsTotal(t *testing.T) {
 	t.Cleanup(func() { config.Cfg.Domain = prev })
 
 	for i := 0; i < 4; i++ {
-		_ = s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://news.example.com/p", Hostname: "johal.in", EventType: 1}, "203.0.113.1", "Mozilla/5.0 Chrome/120")
+		_ = s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://news.example.com/p", Hostname: "johal.in", EventType: 1}, "203.0.113.1", "Mozilla/5.0 Chrome/120", "")
 	}
 	for i := 0; i < 30; i++ {
-		_ = s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://mail.johal.in/x", Hostname: "johal.in", EventType: 2, EventName: "scroll"}, "203.0.113.1", "Mozilla/5.0 Chrome/120")
+		_ = s.Collect(ctx, CollectRequest{URL: "/a", Referrer: "https://mail.johal.in/x", Hostname: "johal.in", EventType: 2, EventName: "scroll"}, "203.0.113.1", "Mozilla/5.0 Chrome/120", "")
 	}
 
 	ov, _ := s.OverviewSince(ctx, 30)
