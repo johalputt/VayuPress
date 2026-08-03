@@ -84,6 +84,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `(key)`, whose only honest options are to discard every client's configuration
   or to overwrite the operator's with whichever domain sorts last.
 
+- **Phase 3 — the per-domain console** (ADR-0153 D3). `/os/d/{id}` is where one
+  hosted domain is operated, and every tool under it carries the domain in its
+  own URL. **The scope is the address bar**, not session state: the alternative
+  — an "acting on: X" switcher — has one failure mode that cannot be defended
+  against, where the operator believes they are editing domain A, they are
+  editing B, and nothing in the request distinguishes the two, so no guard and
+  no test can catch it.
+
+  The middleware refuses **by not routing**: an id naming nothing, or naming the
+  primary, or resolving to a blank scope never reaches a handler at all, so
+  there is no path where a page renders against a domain nobody proved exists.
+  A write whose **body** names a different domain from its URL is **refused, not
+  rescoped** — silent substitution reports success for an attempt to edit
+  somebody else's site, hiding both the attempt and the bug behind it.
+
+  The first genuinely scoped tool is deliberately the smallest: site name,
+  tagline, description and author. If the mechanism is wrong it is wrong on four
+  fields rather than across a theme editor. Its save endpoint writes only the
+  keys that page owns — an allowlist, not a pass-through, so a surface built on
+  it later cannot reach any of the other 327 keys.
+
+  **Tools that are not scoped yet are listed and not linked**, with the reason on
+  the card. Linking one would send the operator to a page that edits the primary
+  from a URL naming a hosted domain, which is a worse version of the defect this
+  ADR exists to fix.
+
+  The `/os/domains/{id}` card that claimed the shared tools "apply per domain
+  once this site is selected" now says which tools are this site's and which are
+  install-wide, and the per-domain console carries the honest ceiling — one
+  process, one machine, one database, one mail signing key, one bot shield — in
+  the same view as the capability.
+
 ### Security
 - **Two mutations passed against re-broken code and exposed a test harness that
   could certify almost anything.** Changing the migration's backfill target from

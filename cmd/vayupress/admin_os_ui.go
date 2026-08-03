@@ -198,6 +198,20 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Per-site manager — the "control every part of this site" surface reached
 		// from a domain card and from the Optimize hub's "Your websites" row.
 		pr.Get("/os/domains/{id}", a.handleOSDomainManage)
+
+		// ── Per-domain console (ADR-0153 Phase 3) ──────────────────────────────
+		//
+		// The scope is the URL. /os/d/{id}/theme edits {id}; /os/theme edits the
+		// primary. The middleware resolves {id} to a settings.Scope and refuses by
+		// NOT ROUTING, so no handler downstream can run against a domain nobody
+		// proved exists — and a write cannot be addressed by a stale switcher,
+		// because there is no switcher.
+		pr.Route("/os/d/{id}", func(dr chi.Router) {
+			dr.Use(a.scopedDomainMiddleware)
+			dr.Get("/", a.handleOSScopedHome)
+			dr.Get("/settings", a.handleOSScopedSettings)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/settings", a.handleOSScopedSettingsSave)
+		})
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains", a.handleOSDomainCreate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/assign", a.handleOSDomainAssign)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/sync-all", a.handleOSDomainSyncAll)

@@ -438,9 +438,17 @@ func domainManagePage(d domain.Domain, posts, members, mailboxes int, mailOn boo
 	allowance := domainAllowanceCard(d, mailboxes, mailOn)
 	clientAccess := domainClientAccessCard(d, clients)
 
+	// The old copy here claimed these tools "apply per domain once this site is
+	// selected". They did not — they read and wrote one install-wide store, and
+	// an operator who followed that sentence found themselves editing their own
+	// blog. ADR-0153 is the correction; this card now says which is which.
 	shortcuts := `<div class="card">
-  <h2 class="card-title">Design &amp; more</h2>
-  <p class="text-sm muted">Deeper editing lives in the shared tools — they apply per domain once this site is selected.</p>
+  <h2 class="card-title">This site's own tools</h2>
+  <p class="text-sm muted">Everything under <a href="/os/d/` + esc(d.ID) + `">` + esc(d.Host) + `</a> applies to
+    this domain and nothing else — the address bar names the site being edited. ` + scopedToolCount() + ` tool(s)
+    are scoped so far; the rest are being moved one at a time and are listed there with their status.</p>
+  <div class="vm-row"><a class="btn btn--primary btn--sm" href="/os/d/` + esc(d.ID) + `">Open ` + esc(d.Host) + `</a></div>
+  <p class="text-sm muted">The links below are the <b>install-wide</b> tools. They edit the primary site.</p>
   <div class="vm-row">
     <a class="btn btn--ghost btn--sm" href="/os/theme">Theme Studio</a>
     <a class="btn btn--ghost btn--sm" href="/os/website">Website settings</a>
