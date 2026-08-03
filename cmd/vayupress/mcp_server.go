@@ -526,6 +526,9 @@ func (a *App) buildMCPServer() *mcp.Server {
 	// the operator ALLOW list is the one field where a prompt-injected write
 	// would hand a stranger a total bypass of every gate.
 	a.registerShieldTools(srv)
+	// Per-domain website tools (ADR-0154 D10): so an operator can build a hosted
+	// site by asking an assistant rather than filling one form field at a time.
+	a.registerSiteTools(srv)
 
 	return srv
 }

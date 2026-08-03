@@ -133,3 +133,58 @@ database, one mail signing key, one bot shield. Row scoping is not a sandbox.
 - Media, comments, newsletter and monetization remain install-wide. They are
   listed on the console with that status rather than linked, for the same reason
   D2 exists.
+
+## Addendum — D9 and D10 (2026-08-03)
+
+Two follow-ups from the same report: *"I need a per-domain website editor so I
+can choose whether to serve that domain as a blog or as a website, and there
+must be an option to install and edit websites with AI using the MCP
+connector."*
+
+### D9 — Website is a per-site tool
+
+`/os/d/{id}/website` sets what a domain serves at `/` — **Blog**, **Website**
+(blog moves to `blog.<host>`), or **Website + /blog** — and edits that site's
+content and template.
+
+The serving side already worked. `siteSourceFor` has resolved the active domain
+since ADR-0132 Stage 2b, with the deliberate rule that a secondary carrying no
+override serves its **own blog** rather than inheriting the primary's website —
+inheriting is what once made every client domain serve the studio's bundle. What
+was missing was the admin side: `/os/website` resolves by **request host**, and
+an operator's admin request carries no secondary host, so it always edited the
+primary. The same shape as the content gap — scoping underneath, nothing
+surfacing it.
+
+Three rules the implementation holds:
+
+- **A blank mode is displayed as what it actually serves.** To a visitor, blank
+  is the blog; a radio group with nothing selected would tell an operator their
+  site serves nothing.
+- **Fields this form does not render are carried forward, not wiped.** Services,
+  gallery and the section heading survive a save. Losing work nobody touched is
+  worse than any layout bug.
+- **An unknown template resolves to the default rather than being stored.** A
+  stored key nothing matches renders an unstyled page later, with nothing
+  connecting it to the save that caused it.
+
+`custom` is deliberately not offered: a custom bundle is an upload, not a
+choice, and a radio button that puts a domain into a mode serving a 404 is not a
+control.
+
+### D10 — The same operations, through the connector
+
+`list_sites`, `get_site`, `update_site` and `list_site_templates` are on the MCP
+server under the existing `domains` permission section, so an operator can say
+"build the website for client.example" instead of filling one field at a time.
+
+- **One validator, shared.** The tools go through `scopedWebsiteConfig`, the same
+  function the console uses. Two validators for one shape is how one of them
+  comes to accept a mode the renderer does not know.
+- **Omitted is not blank.** Every content field decodes to a pointer, so an
+  assistant sending only a new tagline does not wipe the name, about and phone
+  on somebody's live website. This is the single most likely way an AI edit
+  destroys a client site, and it is a decoding decision rather than a prompt.
+- **The primary is refused by name.** `Registry.SetSite` already refuses it;
+  the lookup refuses it first, with the reason, so an assistant is not handed an
+  opaque error it will retry. `list_sites` marks it `editable_here: false`.

@@ -6,7 +6,69 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.39] — 2026-08-03
+
+Adversarial pass over the website surface, run before the bump.
+
+**Held:** the primary is refused twice on the write path — `Registry.SetSite`
+already refused it, and the MCP lookup now refuses it first, by name, so an
+assistant gets the reason instead of an opaque failure it would retry. The
+console cannot reach it at all: `scopedDomainMiddleware` redirects the primary
+before any handler runs. The new MCP tools sit under the existing `domains`
+permission section, so a key without it cannot see them.
+
+**Attacked and fixed before the bump:** three ways to corrupt a live client
+site — a save wiping the fields the form does not render, an unknown template key
+stored verbatim to render unstyled later, and an arbitrary mode string accepted
+and served as a blank page. Each is now a mutation-tested case; re-breaking the
+code fails its test.
+
+**Not claimed:** the services grid and image gallery are preserved on save but
+are not editable from either surface yet. `custom` mode is not offered at all —
+a custom bundle is an upload, not a choice, and a radio button that puts a
+domain into a mode serving a 404 is not a control.
+
+### Added
+- **A website editor for every hosted domain, and the same thing through the
+  connector.** `/os/d/{id}/website` chooses what a domain serves at `/` — **Blog**,
+  **Website** (blog moves to `blog.<host>`) or **Website + /blog** — and edits
+  that site's template and content.
+
+  The serving side already worked and had since ADR-0132: `siteSourceFor`
+  resolves the active domain, and a secondary with no override serves its **own
+  blog** rather than inheriting the primary's website, because inheriting is what
+  once made every client domain serve the studio's bundle. The admin side was the
+  gap — `/os/website` resolves by **request host**, and an operator's admin
+  request carries no secondary host, so it always edited the primary. A hosted
+  domain's mode was reachable only from the CLI.
+
+  Three rules, each pinned by a mutation-tested case:
+  - A blank mode is shown as what it **actually serves**. To a visitor blank is
+    the blog; a radio group with nothing selected would say the site serves
+    nothing.
+  - Fields the form does not render — services, gallery, the section heading —
+    are **carried forward**, not wiped. Losing work nobody touched is worse than
+    any layout bug.
+  - An unknown template **resolves to the default** rather than being stored. A
+    stored key nothing matches renders unstyled later, with nothing connecting it
+    to the save that caused it.
+
+- **`list_sites`, `get_site`, `update_site`, `list_site_templates` on VayuMCP.**
+  So a whole client site can be built by asking an assistant instead of filling
+  one field at a time. Under the existing `domains` permission section, so a key
+  that cannot touch domains cannot see them.
+
+  The decision that matters most here is a decoding one: every content field
+  decodes to a **pointer**, so *omitted* and *set to empty* are different things.
+  Without that, an assistant told "change the tagline" sends one field and blanks
+  the name, about, phone and address on somebody's live website. That is the most
+  likely way an AI edit destroys a client site, and it is fixed in the type rather
+  than hoped for in a prompt.
+
+  The tools share the console's validator rather than carrying their own — two
+  validators for one shape is how one of them comes to accept a mode the renderer
+  does not know — and the primary is refused **by name**, with the reason, rather
+  than by letting the registry fail with something an assistant would retry.
 
 ### Fixed
 - **A pending certificate now carries the control that fixes it.** The site

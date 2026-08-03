@@ -49,6 +49,8 @@ type scopedTool struct {
 var scopedTools = []scopedTool{
 	{Path: "/os/d/%s/content", Icon: "📝", Title: "Posts & pages", Live: true,
 		Desc: "This site's own writing — list it, publish to it, move a post in or out."},
+	{Path: "/os/d/%s/website", Icon: "🌐", Title: "Website", Live: true,
+		Desc: "Serve this domain as a blog or as a website, and edit that site — on its own, or by asking an assistant through VayuMCP."},
 	{Path: "/os/d/%s/settings", Icon: "⚙️", Title: "Site settings", Live: true,
 		Desc: "Name, tagline, description and the basics this site introduces itself with."},
 	{Path: "/os/d/%s/theme", Icon: "🎨", Title: "Theme Studio", Live: true,
