@@ -119,6 +119,28 @@ vp() {
   "$VP_BIN" "$@" 2>/dev/null
 }
 
+# vp_checked runs the CLI like vp() but KEEPS stderr and the exit status.
+#
+# Written because the difference was invisible. `mapfile -t HOSTS < <(vp domains
+# hosts)` discarded stderr and never checked the status, so a registry that could
+# not be read produced the same empty array as a registry with nothing approved —
+# and the run then logged "No sync-approved secondary domains — nothing to do",
+# which is a reassuring sentence for a failure. An operator watching their
+# certificate never appear had no way to tell the two apart, and neither did this
+# script.
+vp_checked() {
+  [[ -x "$VP_BIN" ]] || return 127
+  if [[ $EUID -eq 0 ]] && id -u "$SERVICE_USER" >/dev/null 2>&1; then
+    if command -v runuser >/dev/null 2>&1; then
+      runuser -u "$SERVICE_USER" -- "$VP_BIN" "$@"
+      return
+    fi
+    su -s /bin/sh "$SERVICE_USER" -c "$(printf '%q ' "$VP_BIN" "$@")"
+    return
+  fi
+  "$VP_BIN" "$@"
+}
+
 if [[ $EUID -ne 0 ]]; then
   warn "Not root — skipping VayuDomains TLS/nginx setup (run with sudo to enable)."; exit 0
 fi
@@ -155,7 +177,17 @@ if [[ ${#HOSTS[@]} -gt 0 ]]; then
   done
 fi
 if [[ ${#HOSTS[@]} -eq 0 ]]; then
-  mapfile -t HOSTS < <(vp domains hosts)
+  if ! HOSTS_OUT="$(vp_checked domains hosts 2>&1)"; then
+    warn "Could not read the domain registry, so NOTHING was provisioned. This is not the same"
+    warn "as having no domains to provision, and it is why nothing appeared. The CLI said:"
+    printf '%s\n' "$HOSTS_OUT" | sed 's/^/      /' >&2
+    warn "Most often: DB_PATH missing from /etc/vayupress/env, so the CLI opens a different"
+    warn "database from the one the service writes to. Check with:"
+    warn "    grep -E '^(DB_PATH|DOMAIN)=' /etc/vayupress/env"
+    warn "    sudo -u ${SERVICE_USER} ${VP_BIN} domains list"
+    exit 1
+  fi
+  mapfile -t HOSTS < <(printf '%s\n' "$HOSTS_OUT" | grep -v '^[[:space:]]*$')
 fi
 
 # Surface (never act on) domains parked on manual hold, so an operator reading
@@ -168,7 +200,14 @@ if [[ -x "$VP_BIN" ]]; then
 fi
 
 if [[ ${#HOSTS[@]} -eq 0 ]]; then
-  info "No sync-approved secondary domains — nothing to do."; exit 0
+  # The registry READ SUCCEEDED and returned nothing. Say so, and say what to
+  # check — the previous wording was true and told an operator nothing they
+  # could act on, which is how this line got read past four times.
+  info "The registry was read successfully and lists no sync-approved secondary domain, so"
+  info "there is nothing to provision. If you expected one here, it is registered but not"
+  info "APPROVED: open it in VayuOS → Sites → Lifecycle, or run: vayupress domains sync <host>"
+  info "Registered but on hold:${HELD:- (none)}"
+  exit 0
 fi
 
 AVAIL_DIR=/etc/nginx/sites-available

@@ -154,7 +154,7 @@ for helper in setup-openpgpkey-subdomain.sh setup-talk-subdomain.sh \
       failed=$((failed + 1))
       details+=("${helper}=nginx-config-broken")
       log "${helper} aborted: nginx configuration was already invalid before it ran"
-    elif printf '%s' "$appended" | grep -qiE "skipping|nothing to do"; then
+    elif printf '%s' "$appended" | grep -qiE "skipping|nothing to do|nothing to provision"; then
       skipped=$((skipped + 1))
       details+=("${helper}=skipped")
     else

@@ -6,6 +6,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.41] — 2026-08-03
+
+Diagnosed from an operator's log, which printed the same reassuring line five
+times for a state it could not actually distinguish from failure.
+
+### Fixed
+- **The provisioning helper could not tell "registry unreadable" from "no
+  domains to provision".**
+
+  ```bash
+  mapfile -t HOSTS < <(vp domains hosts)
+  ```
+
+  `vp()` runs the CLI with `2>/dev/null` and nothing checks its exit status, so a
+  registry that could not be read produced exactly the same empty array as a
+  registry with nothing approved — and the script then chose the reassuring
+  sentence: *"No sync-approved secondary domains — nothing to do."* An operator
+  whose console showed a domain approved, watching a certificate never appear,
+  had no way to tell the two apart. Neither did the script.
+
+  A failed read now keeps stderr, prints what the CLI actually said, names the
+  likeliest cause (`DB_PATH` missing from `/etc/vayupress/env`, so the CLI opens
+  a different database from the one the service writes to) with the two commands
+  that confirm it, and **exits non-zero** so the console files it as a problem
+  rather than a clean run.
+
+  When the registry really is empty, the message now says what was checked and
+  what to do about it. The old wording was true and offered nothing actionable,
+  which is how it got read past four times.
+
+- **A cross-file contract nobody was checking.** The helpers and the driver agree
+  on what a no-op looks like through a **grep pattern in a different file**.
+  Rewording one helper's message without widening that pattern silently
+  reclassifies "did nothing" as "did work" — the defect the driver was fixed for,
+  reintroduced from the other side. It nearly happened in this very change: a
+  reworded *"nothing to do"* became *"nothing to provision"* while the classifier
+  still matched only the old phrase. Now every helper's no-op wording is checked
+  against the driver's pattern by a test.
+
 ## [3.16.40] — 2026-08-03
 
 A design audit, prompted by a screenshot: the per-site tool tiles rendered as

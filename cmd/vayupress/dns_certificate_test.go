@@ -156,3 +156,82 @@ func TestTheTileStripCountsDomainsWithoutACertificate(t *testing.T) {
 			"can read green while a hosted site serves a certificate error")
 	}
 }
+
+// The provisioning helper must not report a failed registry read as "nothing to
+// do". This one cost a real diagnosis: an operator's log printed
+//
+//	ℹ  No sync-approved secondary domains — nothing to do.
+//
+// five times while their console showed the domain approved. `mapfile -t HOSTS
+// < <(vp domains hosts)` discarded stderr and never checked the exit status, so
+// a registry that could not be read produced the same empty array as a registry
+// with nothing in it — and the script then chose the reassuring sentence.
+func TestAFailedRegistryReadIsNotReportedAsNothingToDo(t *testing.T) {
+	b, err := os.ReadFile(filepath.Clean("../../scripts/setup-vayudomain.sh"))
+	if err != nil {
+		t.Skipf("helper not readable from here: %v", err)
+	}
+	src := string(b)
+
+	if strings.Contains(src, "mapfile -t HOSTS < <(vp domains hosts)") {
+		t.Fatal("the host list is still read through a pipe whose exit status nobody checks, " +
+			"so a registry that cannot be read is indistinguishable from an empty one")
+	}
+	if !strings.Contains(src, "vp_checked") {
+		t.Error("there is no stderr-preserving CLI call, so the reason for a failed read is discarded")
+	}
+	// A failed read must exit non-zero: the driver classifies a helper by its
+	// status, and exiting 0 would file this under "clean run" all over again.
+	i := strings.Index(src, "Could not read the domain registry")
+	if i < 0 {
+		t.Fatal("a failed registry read has no distinct message")
+	}
+	if !strings.Contains(src[i:i+900], "exit 1") {
+		t.Error("a failed registry read still exits 0, so the console reports the run as clean")
+	}
+	// And the genuinely-empty case must say what to do, not just what happened.
+	j := strings.Index(src, "lists no sync-approved secondary domain")
+	if j < 0 {
+		t.Fatal("the empty-registry message was lost")
+	}
+	if !strings.Contains(src[j:j+700], "domains sync") {
+		t.Error("the empty-registry message names no action, which is how an operator reads " +
+			"past it four times while their certificate never appears")
+	}
+}
+
+// The helpers and the driver must agree on what a no-op LOOKS like.
+//
+// They are two files, and the contract between them is a grep pattern. Renaming
+// a helper's message without widening that pattern silently reclassifies a run
+// that did nothing as a run that did work — which is the defect the driver was
+// fixed for, reintroduced from the other side. It nearly happened here: a
+// reworded "nothing to do" became "nothing to provision" while the classifier
+// still matched only the old phrase.
+func TestTheDriverRecognisesEveryNoOpPhraseTheHelpersActuallyPrint(t *testing.T) {
+	driver, err := os.ReadFile(filepath.Clean("../../scripts/provision-subdomains.sh"))
+	if err != nil {
+		t.Skipf("driver not readable from here: %v", err)
+	}
+	// The classifier line, and every phrase a helper uses to say it did nothing.
+	pattern := string(driver)
+	for _, helper := range []string{
+		"setup-vayudomain.sh", "setup-openpgpkey-subdomain.sh",
+		"setup-talk-subdomain.sh", "setup-mcp-subdomain.sh", "setup-api-subdomain.sh",
+	} {
+		b, err := os.ReadFile(filepath.Clean("../../scripts/" + helper))
+		if err != nil {
+			continue
+		}
+		src := string(b)
+		for _, phrase := range []string{"skipping", "nothing to do", "nothing to provision"} {
+			if !strings.Contains(strings.ToLower(src), phrase) {
+				continue // this helper does not use that wording
+			}
+			if !strings.Contains(strings.ToLower(pattern), phrase) {
+				t.Errorf("%s reports a no-op with %q and the driver's classifier does not match "+
+					"it, so a run that did nothing is counted as a run that did work", helper, phrase)
+			}
+		}
+	}
+}
