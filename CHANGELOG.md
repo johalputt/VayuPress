@@ -6,7 +6,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.38] — 2026-08-03
+
+One release for the whole of ADR-0154, cut after the adversarial pass rather
+than before it.
+
+**Audit, recorded because a clean result is a result.** What was attacked and
+held: `/os/d/{id}` refusing the PRIMARY — the middleware redirects it to
+`/os/website` before any handler runs, which matters most on the new content
+surface, because the primary's articles carry `domain_id ""` while its registry
+row has a real id. Without that guard the console would have listed zero posts
+for the operator's own site and "move to this site" would have stamped posts
+with an id no article query uses, orphaning them. A blank registry id, likewise
+refused rather than resolved to the primary's sentinel. And the new route family
+does not widen the ADR-0152 client confinement gate — verified and now pinned by
+a test, because a new route family is exactly the kind of change that quietly
+reopens it.
+
+**What did not hold, fixed before the bump:** moving a post by a slug that
+matches nothing reported success. `SetDomain` had no `RowsAffected` check, so a
+typo returned nil, the page said *"Moved ✓ — reloading"*, and the operator saw
+the post missing with no way to tell whether the move had failed or the listing
+was wrong. A write that changed nothing must not report that it did. The older
+`/os/api/domains/assign` endpoint carried the same defect and is fixed by the
+same change.
+
+**Not claimed:** the fix's guard against a driver that cannot report
+`RowsAffected` is unexercised — go-sqlite3 always reports it, mutating that
+branch does not fail any test, and covering it would need a fake driver written
+solely to reach it. The guard stays; the coverage claim does not.
 
 ### Added
 - **ADR-0154 — one console per site.** An operator opened a subdomain's controls

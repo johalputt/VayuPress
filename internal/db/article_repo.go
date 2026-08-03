@@ -166,9 +166,24 @@ func (r *sqliteArticleRepo) ListOwnedBy(ctx context.Context, domainID string, li
 	return out, nil
 }
 
+// SetDomain reassigns an article to a domain ("" = the primary).
+//
+// A slug matching nothing is an ERROR, not a silent no-op. Without the
+// RowsAffected check a typo returned nil, the console reported "Moved ✓" and
+// reloaded, and the operator saw the post missing from the list with no way to
+// tell whether the move had failed or the listing was wrong. A write that
+// changed nothing must not report that it did.
 func (r *sqliteArticleRepo) SetDomain(ctx context.Context, slug, domainID string) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE articles SET domain_id=? WHERE slug=?`, domainID, slug)
-	return err
+	res, err := r.db.ExecContext(ctx, `UPDATE articles SET domain_id=? WHERE slug=?`, domainID, slug)
+	if err != nil {
+		return err
+	}
+	// A driver that cannot report the count is not evidence of failure, so a
+	// RowsAffected error is not treated as one — it just cannot confirm.
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // CountsByDomain returns the number of articles owned by each domain id
