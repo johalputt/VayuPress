@@ -6,6 +6,56 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.57] — 2026-08-03
+
+**The console now reads the one directory that settles it, and the helper stops
+spending validation attempts to learn what a loopback request already knows.**
+
+### Fixed
+- **"nginx is not listening on port 80, or is not running" was false.** It was
+  shipped one release ago, for an **EOF** — and an EOF means the opposite of not
+  listening: the connection was *accepted* and then closed. Something is there;
+  it declined to answer. The console now dials the port and says which of the two
+  it actually is, because sending an operator to start a running service is the
+  same overstatement as every other one this page exists to remove.
+
+- **The console reads `sites-enabled` and names the cause.** A host with no
+  enabled server block falls through to the **default server**, and this
+  install's default server answers an unrecognised `Host` by closing the
+  connection with no response. That is `Type: connection` to the certificate
+  authority and a bare `EOF` to the probe — one cause, two unrecognisable
+  symptoms, and nothing was reading the directory that distinguishes them. It is
+  world-readable, so this unprivileged process can check it directly.
+
+  Matching is by **whole name**, not substring: `johal.in` is inside
+  `test.johal.in`, and a substring test would report the apex's block as covering
+  every subdomain of it — turning the one decisive check into a confident wrong
+  answer.
+
+### Changed
+- **The provisioning helper pre-flights every host before calling certbot.** It
+  writes a token into the ACME webroot and fetches it back over loopback with
+  that host's `Host` header — the same request the authority makes. If the server
+  will not answer its own challenge, certbot is **not run**, and the log says
+  exactly why.
+
+  Failed validations are rate-limited per hostname, so spending one to discover
+  what a local request already showed is pure loss — and the resulting
+  `Type: connection` names an IP and nothing else, which is the error that cost
+  this project several releases of guessing at DNS while the cause was one server
+  block. This is what makes adding many domains and subdomains safe: each is
+  proven answerable before it is submitted.
+
+### Audit
+Six mutations over the new surface, all caught. One found a defect in the fix
+itself before it shipped: the pre-flight's first draft had no guard for a box
+**without curl**, where it would have skipped certbot for every host and issued
+no certificates at all — a check added to protect issuance becoming the thing
+that stopped it. A pre-flight that cannot RUN is not a pre-flight that FAILED; it
+now says so and stands aside. That was only visible by running the block with
+curl genuinely absent from `PATH`, which is why the gate executes the extracted
+shell rather than asserting against its text.
+
 ## [3.16.56] — 2026-08-03
 
 **The console had the answer on the page and ranked a guess above it.**

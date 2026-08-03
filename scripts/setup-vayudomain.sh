@@ -317,6 +317,42 @@ for HOST in "${HOSTS[@]}"; do
   ln -sf "${AVAIL_DIR}/vayupress-dom-${HOST}" "${ENABLED_DIR}/vayupress-dom-${HOST}"
   if ! reload_ok; then warn "nginx test failed for ${HOST} — skipping."; rm -f "${ENABLED_DIR}/vayupress-dom-${HOST}"; set_tls "$HOST" failed; HOST_FAILURES=$((HOST_FAILURES + 1)); continue; fi
 
+  # PRE-FLIGHT: prove this server answers its own challenge before spending a
+  # validation attempt on it.
+  #
+  # Without this, a host whose vhost is not actually being matched — because the
+  # symlink is missing, because the reload did not take, or because the default
+  # server is answering first — goes straight to certbot, which returns
+  # "Type: connection" naming an IP and nothing else. That error is
+  # indistinguishable from a firewall problem, and it cost this project several
+  # releases of guessing at DNS while the cause was one server block.
+  #
+  # Failed validations are also rate-limited per hostname, so burning attempts on
+  # a host that provably cannot answer locally is the worst of both: no
+  # certificate, and less budget to retry once it is fixed.
+  # A pre-flight that cannot RUN must never be read as a pre-flight that FAILED.
+  # Without this guard, a box without curl would skip certbot for every host and
+  # issue no certificates at all — a check added to protect issuance becoming the
+  # thing that stops it. No tool, no claim, no blocking.
+  if ! command -v curl >/dev/null 2>&1; then
+    info "curl is not installed; skipping the loopback pre-flight for ${HOST} (certbot still runs)."
+  else
+  PROBE="vayupress-preflight-$$-${RANDOM}"
+  printf '%s' "$PROBE" > "${CACHE_DIR}/.well-known/acme-challenge/${PROBE}" 2>/dev/null || true
+  PROBE_BODY="$(curl -fsS --max-time 5 -H "Host: ${HOST}" \
+    "http://127.0.0.1/.well-known/acme-challenge/${PROBE}" 2>/dev/null || true)"
+  rm -f "${CACHE_DIR}/.well-known/acme-challenge/${PROBE}"
+  if [ "$PROBE_BODY" != "$PROBE" ]; then
+    warn "pre-flight failed for ${HOST}: this server does not serve its own ACME challenge over loopback."
+    warn "  nginx accepted the vhost but a request carrying Host: ${HOST} is not reaching it —"
+    warn "  most often no enabled server block names this host, so the default server answers."
+    warn "  certbot was NOT run for ${HOST}: a validation that cannot succeed only spends the retry budget."
+    set_tls "$HOST" failed
+    HOST_FAILURES=$((HOST_FAILURES + 1))
+    continue
+  fi
+  fi
+
   # Its OWN certificate lineage (--cert-name <host>): never expands the primary
   # cert, so the 100-SAN cap is structurally impossible to hit. Include www and,
   # when this domain carries mail, mail.<host> so its clients get a valid cert.

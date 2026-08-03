@@ -3,6 +3,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -1085,5 +1086,78 @@ func TestTheChallengeProbeAsksAsTheAuthorityWould(t *testing.T) {
 	// And it must be reached from the diagnosis, or none of the above matters.
 	if !strings.Contains(goFuncBody(src, "diagnoseCertificate"), "challengeProbe") {
 		t.Fatal("the probe is never called")
+	}
+}
+
+// The vhost check is the one that ends the guessing, so its matcher must be
+// exact. "johal.in" is a substring of "test.johal.in": a substring test would
+// report the apex's server block as covering every subdomain of it, call a
+// MISSING vhost present, and turn the single decisive check on the page into a
+// confident wrong answer — which is worse than the silence it replaced.
+func TestAVhostIsMatchedByWholeNameNotSubstring(t *testing.T) {
+	apex := "server {\n  listen 80;\n  server_name johal.in www.johal.in;\n}\n"
+
+	if serverNameClaims(apex, "test.johal.in") {
+		t.Fatal("the apex's server block was reported as claiming test.johal.in — the console " +
+			"would say a vhost exists for a host that falls through to the default server, " +
+			"which is the exact failure it was written to find")
+	}
+	if !serverNameClaims(apex, "johal.in") {
+		t.Error("a host its own server block does name was not matched")
+	}
+	if !serverNameClaims(apex, "JOHAL.IN") {
+		t.Error("server_name matching is case-sensitive; DNS names are not")
+	}
+	// A trailing dot is the same name.
+	if !serverNameClaims("server_name test.johal.in.;", "test.johal.in") {
+		t.Error("a fully-qualified server_name with a trailing dot was not matched")
+	}
+	// And the reverse direction: a subdomain's block must not claim the apex.
+	if serverNameClaims("server_name test.johal.in;", "johal.in") {
+		t.Error("a subdomain's server block was reported as claiming the apex")
+	}
+	// A line that merely mentions the host is not a server_name directive.
+	if serverNameClaims("# johal.in is the primary\nlocation / { }", "johal.in") {
+		t.Error("a comment mentioning the host counted as a server block claiming it")
+	}
+}
+
+// The console must not claim anything when it cannot read nginx's config —
+// the same rule every other check on this page follows.
+func TestAnUnreadableNginxDirClaimsNothing(t *testing.T) {
+	saved := nginxSitesEnabled
+	t.Cleanup(func() { nginxSitesEnabled = saved })
+	nginxSitesEnabled = filepath.Join(t.TempDir(), "does-not-exist")
+
+	c := vhostCheck("client.example")
+	if !c.OK || c.Fatal {
+		t.Fatalf("with nginx's config unreadable the console declared the vhost missing: %s", c.Detail)
+	}
+	if !strings.Contains(c.Detail, "nothing is claimed") {
+		t.Error("the unreadable case does not say it is claiming nothing, so it reads as a pass")
+	}
+}
+
+// And when the directory IS readable and this host is absent, that is the
+// finding — stated as blocking, with the consequence named.
+func TestAMissingVhostIsReportedAsTheCause(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "other"), []byte("server_name other.example;"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	saved := nginxSitesEnabled
+	t.Cleanup(func() { nginxSitesEnabled = saved })
+	nginxSitesEnabled = dir
+
+	c := vhostCheck("client.example")
+	if c.OK || !c.Fatal {
+		t.Fatal("a host with no enabled server block was not reported as blocking")
+	}
+	if !strings.Contains(c.Detail, "default") {
+		t.Error("the finding does not explain that the default server answers instead")
+	}
+	// And a host that IS present must come back clean, or the check is just noise.
+	if ok := vhostCheck("other.example"); !ok.OK {
+		t.Errorf("a host with an enabled server block was flagged: %s", ok.Detail)
 	}
 }

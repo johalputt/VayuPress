@@ -246,7 +246,7 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 		// The probe answers exactly the question a connection error raises, and
 		// nothing else can. It writes a token and reads it back, so it is only run
 		// when there is a reason to.
-		out = append(out, challengeProbe(ctx, d.Host))
+		out = append(out, vhostCheck(d.Host), challengeProbe(ctx, d.Host))
 	}
 
 	// 3. Would the helper's own registry read see this domain? This is the check
@@ -820,8 +820,8 @@ func challengeProbe(ctx context.Context, host string) diagCheck {
 		return diagCheck{
 			Label: "This server can answer its own challenge", OK: false, Fatal: true,
 			Detail: "nothing answered on port 80 over loopback for " + host + " (" + err.Error() +
-				"). nginx is not listening on port 80, or is not running — the authority cannot " +
-				"reach a challenge this machine will not serve to itself.",
+				"). " + port80Kind() + ". The authority cannot reach a challenge this machine " +
+				"will not serve to itself — see the server-block check above for which it is.",
 		}
 	}
 	defer resp.Body.Close()
@@ -874,4 +874,109 @@ func certbotErrorKind(seg []string) string {
 		}
 	}
 	return ""
+}
+
+// nginxSitesEnabled is the directory whose contents decide which Host header
+// reaches which server block. World-readable, so this unprivileged process can
+// read it — which is the whole reason these checks can exist at all.
+var nginxSitesEnabled = "/etc/nginx/sites-enabled"
+
+// enabledVhostFor reports whether an ENABLED nginx server block claims this host.
+//
+// This is the check that ends the guessing. A host with no enabled vhost falls
+// through to the default server, and this install's default server answers an
+// unrecognised Host by closing the connection without a response — which is
+// exactly `Type: connection` to the certificate authority and a bare EOF to the
+// probe. Same cause, two unrecognisable symptoms, and nothing was reading the
+// one directory that settles it.
+func enabledVhostFor(host string) (file string, found bool, readable bool) {
+	entries, err := os.ReadDir(nginxSitesEnabled)
+	if err != nil {
+		return "", false, false
+	}
+	want := strings.ToLower(strings.TrimSpace(host))
+	for _, e := range entries {
+		p := filepath.Join(nginxSitesEnabled, e.Name())
+		b, err := os.ReadFile(filepath.Clean(p)) //nolint:gosec // a fixed, world-readable config dir
+		if err != nil {
+			continue
+		}
+		if serverNameClaims(string(b), want) {
+			return e.Name(), true, true
+		}
+	}
+	return "", false, true
+}
+
+// serverNameClaims reports whether a config's server_name directives list this
+// host as a WHOLE name.
+//
+// Whole-name matching, not substring: "johal.in" appears inside
+// "test.johal.in", so a substring test would report the apex's vhost as
+// covering every subdomain of it and call a missing vhost present — turning the
+// one decisive check into a confident wrong answer.
+func serverNameClaims(cfg, host string) bool {
+	for _, line := range strings.Split(cfg, "\n") {
+		t := strings.TrimSpace(line)
+		if !strings.HasPrefix(t, "server_name") {
+			continue
+		}
+		t = strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(t, "server_name")), ";")
+		for _, name := range strings.Fields(t) {
+			if strings.EqualFold(strings.TrimSuffix(name, "."), host) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// vhostCheck reports whether nginx will route this host anywhere at all.
+func vhostCheck(host string) diagCheck {
+	file, found, readable := enabledVhostFor(host)
+	switch {
+	case !readable:
+		return diagCheck{
+			Label: "nginx has a server block for " + host, OK: true,
+			Detail: nginxSitesEnabled + " could not be read from this process, so nothing is " +
+				"claimed either way about which server block answers for this host",
+		}
+	case found:
+		return diagCheck{
+			Label: "nginx has a server block for " + host, OK: true,
+			Detail: "an enabled config (" + file + ") names this host, so a request carrying it " +
+				"reaches this site rather than the default server",
+		}
+	default:
+		return diagCheck{
+			Label: "nginx has NO server block for " + host, OK: false, Fatal: true,
+			Detail: "no enabled config under " + nginxSitesEnabled + " names this host, so every " +
+				"request for it falls through to the DEFAULT server — and this install's default " +
+				"server answers an unrecognised Host by closing the connection with no response. " +
+				"That is precisely what the authority reports as a connection error and what the " +
+				"loopback probe sees as an EOF. Press Provision now: the root-side helper writes " +
+				"this site's vhost before it asks for a certificate.",
+		}
+	}
+}
+
+// port80Kind classifies what is actually on port 80, so the console stops
+// asserting "nginx is not listening" about a socket that accepted the
+// connection.
+//
+// FINDING, and it was in a message shipped one release ago: the probe reported
+// "nginx is not listening on port 80, or is not running" for an EOF. An EOF
+// means the opposite — the connection was ACCEPTED and then closed. Something is
+// listening; it declined to answer. Sending an operator to start a running
+// service is the same defect as every other overstatement on this page.
+func port80Kind() string {
+	c, err := net.DialTimeout("tcp", "127.0.0.1:80", 2*time.Second)
+	if err != nil {
+		return "nothing is listening on port 80 at all (" + err.Error() + "), so nginx is down " +
+			"or not bound there"
+	}
+	_ = c.Close()
+	return "something IS listening on port 80 and accepted the connection before closing it " +
+		"without a response — which is what nginx does for a Host it has no server block for. " +
+		"This is not a stopped service"
 }
