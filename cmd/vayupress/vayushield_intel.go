@@ -352,7 +352,7 @@ func (a *App) enabledIntelFeeds(ctx context.Context) []string {
 		known[def.ID] = true
 	}
 	var out []string
-	for _, id := range policyLines(a.siteSettings.Get(ctx, settings.KeyShieldIntelFeeds)) {
+	for _, id := range policyLines(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyShieldIntelFeeds)) {
 		if id = strings.ToLower(strings.TrimSpace(id)); known[id] {
 			out = append(out, id)
 		}

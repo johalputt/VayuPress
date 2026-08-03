@@ -99,7 +99,7 @@ func invalidateTrendingCache() {
 // cookieless and read-only (no CSRF). When the feature is disabled it returns an
 // empty, disabled payload so the widget removes itself.
 func (a *App) handleTrendingJSON(w http.ResponseWriter, r *http.Request) {
-	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), settings.KeyFeatureTrending) {
+	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), settings.ForPrimary(), settings.KeyFeatureTrending) {
 		writeJSON(w, r, http.StatusOK, trendingPayload{
 			Enabled: false,
 			Pinned:  []trendingItem{},

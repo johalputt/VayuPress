@@ -82,7 +82,7 @@ func (a *App) talkOnionFederationEnabled(ctx context.Context) bool {
 	if !config.Cfg.OnionMode || a.siteSettings == nil {
 		return false
 	}
-	return a.siteSettings.FeatureEnabled(ctx, settings.KeyTalkOnionFederation)
+	return a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), settings.KeyTalkOnionFederation)
 }
 
 // talkRecipientRemoteOnion reports whether recipient `to` is a chat code hosted
@@ -107,12 +107,12 @@ func (a *App) talkAnonAddress(ctx context.Context) string {
 	if onion == "" {
 		return ""
 	}
-	id := strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyTalkAnonID))
+	id := strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyTalkAnonID))
 	if id == "" {
 		if id = newTalkAnonID(); id == "" {
 			return ""
 		}
-		_ = a.siteSettings.SetMany(ctx, map[string]string{settings.KeyTalkAnonID: id})
+		_ = a.siteSettings.SetMany(ctx, settings.ForPrimary(), map[string]string{settings.KeyTalkAnonID: id})
 	}
 	return id + "@" + onion
 }
@@ -137,7 +137,7 @@ func (a *App) handleVayuOSTalkRotate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "rng", "could not generate a code", "")
 		return
 	}
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTalkAnonID: id}); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyTalkAnonID: id}); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "write_failed", "could not save the new code", "")
 		return
 	}
@@ -167,7 +167,7 @@ func (a *App) handleVayuOSTalkFederationToggle(w http.ResponseWriter, r *http.Re
 	if a.talkOnionFederationEnabled(r.Context()) {
 		next = "off"
 	}
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTalkOnionFederation: next}); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyTalkOnionFederation: next}); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "write_failed", "could not save the setting", "")
 		return
 	}

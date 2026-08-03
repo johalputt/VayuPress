@@ -772,7 +772,7 @@ func (a *App) injectArticleAds(ctx context.Context, nonce, htmlOut string) (stri
 	// Affiliate disclosure renders above the article body, before any above-post
 	// ad, when the module is enabled and disclosure text is set.
 	if affOn && a.siteSettings != nil {
-		if txt := strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyAffiliateDisclosure)); txt != "" {
+		if txt := strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAffiliateDisclosure)); txt != "" {
 			above = `<div class="vp-affiliate-disclosure" role="note">` + html.EscapeString(txt) + `</div>` + above
 		}
 	}

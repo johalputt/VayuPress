@@ -34,7 +34,7 @@ func newShieldApp(t *testing.T, behindCDN string) *App {
 	}
 	st := settings.New(db)
 	if behindCDN != "" {
-		if err := st.SetMany(t.Context(), map[string]string{settings.KeyShieldBehindCDN: behindCDN}); err != nil {
+		if err := st.SetMany(t.Context(), settings.ForPrimary(), map[string]string{settings.KeyShieldBehindCDN: behindCDN}); err != nil {
 			t.Fatalf("set behind_cdn: %v", err)
 		}
 	}

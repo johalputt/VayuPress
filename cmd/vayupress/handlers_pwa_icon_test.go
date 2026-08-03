@@ -196,7 +196,7 @@ func newIconApp(t *testing.T, logo []byte) *App {
 	}
 	st := settings.New(db)
 	if logo != nil {
-		if err := st.SetMany(t.Context(), map[string]string{
+		if err := st.SetMany(t.Context(), settings.ForPrimary(), map[string]string{
 			settings.KeyBrandFavicon:     base64.StdEncoding.EncodeToString(logo),
 			settings.KeyBrandFaviconType: "image/png",
 		}); err != nil {
@@ -272,7 +272,7 @@ func TestUploadingANewLogoInvalidatesEveryDerivedSize(t *testing.T) {
 	}
 
 	second := squarePNG(t, 64, 64, color.RGBA{B: 255, A: 255})
-	if err := a.siteSettings.SetMany(t.Context(), map[string]string{
+	if err := a.siteSettings.SetMany(t.Context(), settings.ForPrimary(), map[string]string{
 		settings.KeyBrandFavicon: base64.StdEncoding.EncodeToString(second),
 	}); err != nil {
 		t.Fatalf("replace logo: %v", err)

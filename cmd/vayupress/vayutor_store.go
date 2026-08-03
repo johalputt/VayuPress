@@ -61,7 +61,7 @@ func (s *torStore) LoadVisits(ctx context.Context) int64 {
 	if s.settings == nil {
 		return 0
 	}
-	n, _ := strconv.ParseInt(s.settings.Get(ctx, settings.KeyTorVisits), 10, 64)
+	n, _ := strconv.ParseInt(s.settings.Get(ctx, settings.ForPrimary(), settings.KeyTorVisits), 10, 64)
 	return n
 }
 
@@ -71,7 +71,7 @@ func (s *torStore) SaveVisits(ctx context.Context, n int64) error {
 	if s.settings == nil {
 		return nil
 	}
-	return s.settings.SetMany(ctx, map[string]string{settings.KeyTorVisits: strconv.FormatInt(n, 10)})
+	return s.settings.SetMany(ctx, settings.ForPrimary(), map[string]string{settings.KeyTorVisits: strconv.FormatInt(n, 10)})
 }
 
 // LoadPageHits reads the persisted per-page onion counts (aggregate; opt-in).
@@ -79,7 +79,7 @@ func (s *torStore) LoadPageHits(ctx context.Context) map[string]int64 {
 	if s.settings == nil {
 		return nil
 	}
-	raw := s.settings.Get(ctx, settings.KeyTorPageHits)
+	raw := s.settings.Get(ctx, settings.ForPrimary(), settings.KeyTorPageHits)
 	if raw == "" {
 		return nil
 	}
@@ -104,5 +104,5 @@ func (s *torStore) SavePageHits(ctx context.Context, hits map[string]int64) erro
 		}
 		val = string(b)
 	}
-	return s.settings.SetMany(ctx, map[string]string{settings.KeyTorPageHits: val})
+	return s.settings.SetMany(ctx, settings.ForPrimary(), map[string]string{settings.KeyTorPageHits: val})
 }

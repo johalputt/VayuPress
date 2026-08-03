@@ -190,7 +190,7 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 		IntelFeeds: a.shieldIntelAudit(),
 	}
 	if a.siteSettings != nil {
-		in.BehindCDN = a.siteSettings.Get(context.Background(), settings.KeyShieldBehindCDN) == "on"
+		in.BehindCDN = a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyShieldBehindCDN) == "on"
 	}
 	// Whether real-client-IP resolution actually produced a visitor address
 	// distinct from the peer, ON THIS REQUEST. This is the one signal that cannot

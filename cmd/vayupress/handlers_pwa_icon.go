@@ -72,7 +72,7 @@ func (a *App) customAppIcon(ctx context.Context, size int, maskable bool) []byte
 	if a.siteSettings == nil {
 		return nil
 	}
-	enc := a.siteSettings.Get(ctx, settings.KeyBrandFavicon)
+	enc := a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyBrandFavicon)
 	if enc == "" {
 		return nil
 	}

@@ -87,7 +87,7 @@ func (a *App) handleFaviconUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Removal path — clear the stored favicon so the embedded default returns.
 	if r.FormValue("remove") == "1" {
-		if err := a.siteSettings.SetMany(r.Context(), map[string]string{
+		if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
 			settings.KeyBrandFavicon:     "",
 			settings.KeyBrandFaviconType: "",
 		}); err != nil {
@@ -129,7 +129,7 @@ func (a *App) handleFaviconUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
 		settings.KeyBrandFavicon:     base64.StdEncoding.EncodeToString(raw),
 		settings.KeyBrandFaviconType: mime,
 	}); err != nil {
@@ -152,9 +152,9 @@ func (a *App) handleFaviconUpload(w http.ResponseWriter, r *http.Request) {
 func (a *App) serveFavicon(fallback []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if a.siteSettings != nil {
-			if enc := a.siteSettings.Get(r.Context(), settings.KeyBrandFavicon); enc != "" {
+			if enc := a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyBrandFavicon); enc != "" {
 				if b, err := base64.StdEncoding.DecodeString(enc); err == nil && len(b) > 0 {
-					ct := a.siteSettings.Get(r.Context(), settings.KeyBrandFaviconType)
+					ct := a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyBrandFaviconType)
 					if ct == "" {
 						ct = "image/png"
 					}

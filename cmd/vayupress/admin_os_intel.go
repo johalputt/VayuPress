@@ -128,7 +128,7 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 	}
 	headRobots := ""
 	if a.siteSettings != nil {
-		headRobots = a.siteSettings.Get(r.Context(), settings.KeyHeadRobots)
+		headRobots = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyHeadRobots)
 	}
 	checks := evaluateSEOHealth(smOK, sitemapAge, robotsOK, robotsBody, headRobots, config.Cfg.Domain)
 	checksRows := ""

@@ -57,7 +57,7 @@ func (a *App) premiumMailIDPriceCents(ctx context.Context) int {
 	if a.siteSettings == nil {
 		return premiumMailIDDefaultCents
 	}
-	n, err := strconv.Atoi(strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyPremiumMailIDPriceCents)))
+	n, err := strconv.Atoi(strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyPremiumMailIDPriceCents)))
 	if err != nil || n < 0 {
 		return premiumMailIDDefaultCents
 	}
@@ -70,7 +70,7 @@ func (a *App) mailIDTerms(ctx context.Context) string {
 	if a.siteSettings == nil {
 		return ""
 	}
-	return strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyMailIDTerms))
+	return strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyMailIDTerms))
 }
 
 // mailboxEntitlement returns the member's tier and quota (bytes) when it includes

@@ -63,7 +63,7 @@ func maintenancePathExempt(p string) bool {
 
 // maintenanceModeOn reports whether the operator has taken the public site down.
 func (a *App) maintenanceModeOn(r *http.Request) bool {
-	return a.siteSettings != nil && a.siteSettings.Get(r.Context(), settings.KeyMaintenanceMode) == "on"
+	return a.siteSettings != nil && a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyMaintenanceMode) == "on"
 }
 
 // maintenanceMiddleware serves the premium maintenance page for public requests
@@ -100,7 +100,7 @@ func (a *App) maintenanceMiddleware(next http.Handler) http.Handler {
 func (a *App) serveMaintenance(w http.ResponseWriter, r *http.Request) {
 	msg := ""
 	if a.siteSettings != nil {
-		msg = a.siteSettings.Get(r.Context(), settings.KeyMaintenanceMessage)
+		msg = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyMaintenanceMessage)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Retry-After", "120")
@@ -154,7 +154,7 @@ func (a *App) handleOSPower(w http.ResponseWriter, r *http.Request) {
 	on := a.maintenanceModeOn(r)
 	msg := ""
 	if a.siteSettings != nil {
-		msg = a.siteSettings.Get(r.Context(), settings.KeyMaintenanceMessage)
+		msg = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyMaintenanceMessage)
 	}
 	crawlersOff := a.crawlersBlocked(r.Context())
 	feedbackAddr := a.feedbackEmail(r.Context())
@@ -167,7 +167,7 @@ func (a *App) handleOSPower(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleOSPowerPreview(w http.ResponseWriter, r *http.Request) {
 	msg := ""
 	if a.siteSettings != nil {
-		msg = a.siteSettings.Get(r.Context(), settings.KeyMaintenanceMessage)
+		msg = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyMaintenanceMessage)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -372,7 +372,7 @@ func (a *App) handleOSPowerMaintenance(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, r, http.StatusOK, map[string]any{"ok": true})
 		return
 	}
-	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), kv); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "write_failed", "could not save the setting", "")
 		return
 	}
@@ -402,7 +402,7 @@ func (a *App) handleOSPowerShutdown(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.siteSettings != nil {
-		_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyMaintenanceMode: "on"})
+		_ = a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyMaintenanceMode: "on"})
 	}
 	logging.LogWarn("power", "app shutdown-to-maintenance requested by admin")
 	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "action": "shutdown"})

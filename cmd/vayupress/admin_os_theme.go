@@ -238,7 +238,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	// make the gallery appear to "not show" at all). A nil map reads safely.
 	var vals map[string]string
 	if a.siteSettings != nil {
-		vals, _ = a.siteSettings.GetAll(r.Context())
+		vals, _ = a.siteSettings.GetAll(r.Context(), settings.ForPrimary())
 	}
 	val := func(k string) string {
 		if v, ok := vals[k]; ok {
@@ -642,14 +642,14 @@ func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 		settings.KeyHeadVerifyGoogle: verifyGoogle,
 		settings.KeyHeadVerifyBing:   verifyBing,
 	}
-	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), kv); err != nil {
 		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "save failed: " + err.Error()})
 		return
 	}
 
 	// Re-read the full set so we refresh the render pipeline without clobbering
 	// the identity/palette values this endpoint doesn't touch.
-	if nv, err := a.siteSettings.GetAll(r.Context()); err == nil {
+	if nv, err := a.siteSettings.GetAll(r.Context(), settings.ForPrimary()); err == nil {
 		render.SetActiveSettings(render.SiteSettings{
 			Name:            nv[settings.KeySiteName],
 			Tagline:         nv[settings.KeySiteTagline],
@@ -691,7 +691,7 @@ func (a *App) handleOSThemeExport(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "failed to load theme: " + err.Error()})
 		return
 	}
-	vals, _ := a.siteSettings.GetAll(r.Context())
+	vals, _ := a.siteSettings.GetAll(r.Context(), settings.ForPrimary())
 	get := func(k string) string {
 		if v, ok := vals[k]; ok {
 			return v
@@ -790,11 +790,11 @@ func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 		settings.KeyHeadVerifyGoogle: verifyGoogle,
 		settings.KeyHeadVerifyBing:   verifyBing,
 	}
-	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), kv); err != nil {
 		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "failed to persist settings: " + err.Error()})
 		return
 	}
-	if nv, err := a.siteSettings.GetAll(r.Context()); err == nil {
+	if nv, err := a.siteSettings.GetAll(r.Context(), settings.ForPrimary()); err == nil {
 		render.SetActiveSettings(render.SiteSettings{
 			Name:            nv[settings.KeySiteName],
 			Tagline:         nv[settings.KeySiteTagline],

@@ -196,7 +196,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	// Summary chips reflect live state so the operator sees what's set at a glance.
 	bridgesConfigured := false
 	if a.siteSettings != nil {
-		bridgesConfigured = strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.KeyTorBridges)) != ""
+		bridgesConfigured = strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyTorBridges)) != ""
 	}
 	vanityChip := ""
 	if a.vayuTor != nil {
@@ -267,7 +267,7 @@ func osTorLogRemedy(log string) string {
 func (a *App) osTorBridgesCard(r *http.Request, esc func(string) string, st vtor.Status) string {
 	current := ""
 	if a.siteSettings != nil {
-		current = a.siteSettings.Get(r.Context(), settings.KeyTorBridges)
+		current = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyTorBridges)
 	}
 	needsObfs4 := strings.Contains(strings.ToLower(current), "obfs4")
 	card := `<div class="card mt-4 vt-bridges"><div class="card-title">🌉 Bridges — for networks that block Tor</div>`
@@ -320,7 +320,7 @@ func (a *App) handleOSTorBridges(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bridges := strings.TrimSpace(r.PostFormValue("bridges"))
-	_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTorBridges: bridges})
+	_ = a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyTorBridges: bridges})
 	a.vayuTor.Kick()
 	http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
 }
@@ -330,7 +330,7 @@ func (a *App) handleOSTorBridges(w http.ResponseWriter, r *http.Request) {
 func (a *App) osTorHardeningCard(r *http.Request) string {
 	advertise := true
 	if a.siteSettings != nil {
-		advertise = a.siteSettings.Get(r.Context(), settings.KeyTorOnionLocation) != "off"
+		advertise = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyTorOnionLocation) != "off"
 	}
 	next, label, cls := "off", "Stop advertising the onion", "btn--ghost"
 	state := `<span class="vt-bridges__on muted text-xs">✓ On — Tor Browser is told the onion via the <code>Onion-Location</code> header and can auto-switch to it.</span>`
@@ -390,7 +390,7 @@ func (a *App) handleOSTorHardening(w http.ResponseWriter, r *http.Request) {
 	if r.PostFormValue("onion_location") == "off" {
 		val = "off"
 	}
-	_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTorOnionLocation: val})
+	_ = a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyTorOnionLocation: val})
 	http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
 }
 
@@ -414,7 +414,7 @@ func (a *App) handleOSTorPageStats(w http.ResponseWriter, r *http.Request) {
 	if r.PostFormValue("on") == "1" {
 		state = "on"
 	}
-	_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTorPageStats: state})
+	_ = a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyTorPageStats: state})
 	http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
 }
 
@@ -665,7 +665,7 @@ func (a *App) handleOSTorToggle(w http.ResponseWriter, r *http.Request) {
 	if r.PostFormValue("state") == "on" {
 		state = "on"
 	}
-	_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTorEnabled: state})
+	_ = a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyTorEnabled: state})
 	a.vayuTor.Kick()
 	http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
 }

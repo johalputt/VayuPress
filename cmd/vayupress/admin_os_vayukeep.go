@@ -672,7 +672,7 @@ func (a *App) handleOSVayuKeepSetup(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
 		settings.KeyVayuKeepTarget:  target,
 		settings.KeyVayuKeepEnabled: "true",
 	}); err != nil {
@@ -705,7 +705,7 @@ func (a *App) handleOSVayuKeepDisable(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "settings storage is not ready", "")
 		return
 	}
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyVayuKeepEnabled: "false"}); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyVayuKeepEnabled: "false"}); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "settings-error", err.Error(), "")
 		return
 	}
@@ -842,7 +842,7 @@ func (a *App) handleOSVayuKeepRetention(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": "Both limits must be at least 1."})
 		return
 	}
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
 		settings.KeyVayuKeepRetainGen:  strconv.Itoa(body.Generations),
 		settings.KeyVayuKeepRetainDays: strconv.Itoa(body.Days),
 	}); err != nil {

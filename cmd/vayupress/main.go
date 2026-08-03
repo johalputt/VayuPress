@@ -695,7 +695,7 @@ func main() {
 	if err := a.apiKeys.EnsureInternal(context.Background()); err != nil {
 		logging.LogError("apikeys", "failed to provision internal system key", err.Error())
 	}
-	if sv, err := a.siteSettings.GetAll(context.Background()); err == nil {
+	if sv, err := a.siteSettings.GetAll(context.Background(), settings.ForPrimary()); err == nil {
 		render.SetActiveSettings(render.SiteSettings{
 			Name:            sv[settings.KeySiteName],
 			Tagline:         sv[settings.KeySiteTagline],
@@ -728,7 +728,7 @@ func main() {
 	if host := strings.TrimSpace(config.Cfg.Domain); host != "" && host != "localhost" {
 		// The raw site.mode string is the site_type vocabulary; EnsurePrimary
 		// coerces the empty/blog case to "blog" itself.
-		siteMode := strings.TrimSpace(a.siteSettings.Get(context.Background(), settings.KeySiteMode))
+		siteMode := strings.TrimSpace(a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeySiteMode))
 		if err := a.domains.EnsurePrimary(context.Background(), host, siteMode); err != nil {
 			logging.LogError("domains", "seed primary domain", err.Error())
 		} else {
@@ -1030,13 +1030,13 @@ func main() {
 	// Honour the operator's Search toggle (Tools & Plugins). Default ON; when
 	// off, search returns no results and the public box/modal are hidden.
 	if a.siteSettings != nil {
-		searchOn := a.siteSettings.FeatureEnabled(context.Background(), settings.KeyFeatureSearch)
+		searchOn := a.siteSettings.FeatureEnabled(context.Background(), settings.ForPrimary(), settings.KeyFeatureSearch)
 		search.SetEnabled(searchOn)
 		// The public search box/modal visibility tracks the same toggle.
 		render.SetSearchEnabled(searchOn)
 		// Blog base path: "/blog" in business_subpath mode (website at "/"),
 		// "/" otherwise. Governs blog canonical/pagination/nav URLs.
-		render.SetBlogBase(blogBaseForMode(strings.TrimSpace(a.siteSettings.Get(context.Background(), settings.KeySiteMode))))
+		render.SetBlogBase(blogBaseForMode(strings.TrimSpace(a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeySiteMode))))
 	}
 
 	// Tier 4 services: GraphQL, live collaboration stream, email templates, i18n.

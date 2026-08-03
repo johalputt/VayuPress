@@ -101,7 +101,7 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 	// the submission, not to accept it.
 	recipient := ""
 	if a.siteSettings != nil {
-		recipient = strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.KeyContactEmail))
+		recipient = strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyContactEmail))
 	}
 	mailReady := recipient != "" && a.mailer != nil && a.mailer.Enabled()
 
@@ -138,10 +138,10 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 
 		// Auto-reply to the visitor (best-effort; never fails their request).
 		// Enabled by default — only an explicit "off" suppresses it.
-		if a.siteSettings == nil || a.siteSettings.Get(r.Context(), settings.KeyContactAutoReply) != "off" {
+		if a.siteSettings == nil || a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyContactAutoReply) != "off" {
 			siteName := r.Host
 			if a.siteSettings != nil {
-				if n := strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.KeySiteName)); n != "" {
+				if n := strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeySiteName)); n != "" {
 					siteName = n
 				}
 			}

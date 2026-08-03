@@ -196,7 +196,7 @@ if(dcBtn)dcBtn.addEventListener('click',function(){
 // paypalStatus reports whether enabled PayPal creds are stored, a masked hint,
 // the (non-secret) client id, and the sandbox flag.
 func (a *App) paypalStatus(ctx context.Context) (connected bool, hint, clientID string, sandbox bool) {
-	sandbox = a.siteSettings != nil && a.siteSettings.Get(ctx, settings.KeyPayPalSandbox) == "on"
+	sandbox = a.siteSettings != nil && a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyPayPalSandbox) == "on"
 	if a.secrets == nil {
 		return false, "", "", sandbox
 	}
@@ -249,7 +249,7 @@ func (a *App) handlePayPalConnect(w http.ResponseWriter, r *http.Request) {
 		if in.Sandbox != nil && *in.Sandbox {
 			val = "on"
 		}
-		_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyPayPalSandbox: val})
+		_ = a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyPayPalSandbox: val})
 	}
 	logging.LogInfo("payments", "paypal gateway saved")
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"ok": true, "enabled": enabled})
@@ -372,8 +372,8 @@ if(dcBtn)dcBtn.addEventListener('click',function(){
 // enabled API key), plus the API-key hint and the configured coordinates.
 func (a *App) btcpayStatus(ctx context.Context) (connected bool, hint, url, storeID string) {
 	if a.siteSettings != nil {
-		url = strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyBTCPayURL))
-		storeID = strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyBTCPayStoreID))
+		url = strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyBTCPayURL))
+		storeID = strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyBTCPayStoreID))
 	}
 	if a.secrets == nil {
 		return false, "", url, storeID
@@ -430,7 +430,7 @@ func (a *App) handleBTCPayConnect(w http.ResponseWriter, r *http.Request) {
 		kv[settings.KeyBTCPayStoreID] = storeID
 	}
 	if len(kv) > 0 {
-		if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
+		if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), kv); err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "settings-error", err.Error(), "")
 			return
 		}

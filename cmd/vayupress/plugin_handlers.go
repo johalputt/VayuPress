@@ -161,7 +161,7 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "comments-disabled", "Comments not initialised", "")
 		return
 	}
-	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), settings.KeyFeatureComments) {
+	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), settings.ForPrimary(), settings.KeyFeatureComments) {
 		writeAPIError(w, r, http.StatusForbidden, "comments-off", "Comments are disabled by the operator", "")
 		return
 	}
@@ -546,7 +546,7 @@ func (a *App) handleNewsletterSubscribe(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, http.StatusServiceUnavailable, "newsletter-disabled", "Newsletter not initialised", "")
 		return
 	}
-	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), settings.KeyFeatureNewsletter) {
+	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), settings.ForPrimary(), settings.KeyFeatureNewsletter) {
 		writeAPIError(w, r, http.StatusForbidden, "newsletter-off", "Newsletter signup is disabled by the operator", "")
 		return
 	}
@@ -700,7 +700,7 @@ func (a *App) handleWebmentionReceive(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), settings.KeyFeatureWebmentions) {
+	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), settings.ForPrimary(), settings.KeyFeatureWebmentions) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}

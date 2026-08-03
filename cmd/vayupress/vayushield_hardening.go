@@ -783,7 +783,7 @@ func (a *App) shieldCDNAdvisory(r *http.Request) string {
 	seen := lastCDNObservation()
 	declared := false
 	if a.siteSettings != nil {
-		declared = a.siteSettings.Get(r.Context(), settings.KeyShieldBehindCDN) == "on"
+		declared = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyShieldBehindCDN) == "on"
 	}
 
 	vendor := hereVendor
@@ -914,7 +914,7 @@ func (a *App) shieldAutoBlockOn() bool {
 	if a.siteSettings == nil {
 		return false
 	}
-	return a.siteSettings.Get(context.Background(), settings.KeyShieldAutoBlock) == "on"
+	return a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyShieldAutoBlock) == "on"
 }
 
 func (a *App) shieldOffloadRow() string {

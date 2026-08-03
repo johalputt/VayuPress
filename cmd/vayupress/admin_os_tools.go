@@ -183,7 +183,7 @@ func (a *App) toolStates(ctx context.Context) []toolState {
 			Ready:      m.ready(a),
 		}
 		if m.FlagKey != "" && a.siteSettings != nil {
-			st.Enabled = a.siteSettings.FeatureEnabled(ctx, m.FlagKey)
+			st.Enabled = a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), m.FlagKey)
 		}
 		out = append(out, st)
 	}
@@ -358,7 +358,7 @@ func (a *App) handleOSToolToggle(w http.ResponseWriter, r *http.Request) {
 	if body.Enabled {
 		val = "on"
 	}
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{flag: val}); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{flag: val}); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "settings-error", err.Error(), "")
 		return
 	}

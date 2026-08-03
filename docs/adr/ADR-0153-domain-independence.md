@@ -1,6 +1,6 @@
 # ADR-0153 — Every domain a whole install
 
-**Status:** Proposed — awaiting decision on §Open decisions
+**Status:** Accepted — decisions 1 and 2 settled by the operator, 2026-08-02
 **Supersedes the scoping half of:** ADR-0152 (agency hosting), ADR-0132 (per-domain content)
 
 ## The claim this record retracts
@@ -253,8 +253,8 @@ Written before implementation, so the tests exist before the code:
 
 | # | Decision | Recommendation |
 |---|---|---|
-| 1 | Inheritance or isolation for unset keys | **Isolation** — fall back to product defaults, with an explicit copy action. Inheritance is what produced the complaint |
-| 2 | Ambient domain switcher or domain in the URL | **URL.** Ambient scope means an edit can land on the wrong site with nothing in the request to catch it |
+| 1 | Inheritance or isolation for unset keys | **DECIDED: isolation.** An unset key falls back to the compiled-in product default, never to the primary's stored value. A new domain is a clean install. An explicit one-time copy action covers the house-style case |
+| 2 | Ambient domain switcher or domain in the URL | **DECIDED: the URL.** `/os/d/{id}/…`. Ambient scope means an edit can land on the wrong site with nothing in the request able to distinguish the two, so no guard or test can catch it |
 | 3 | Per-domain media | **Out of scope here.** Needs an ownership check on delete first |
 | 4 | Per-domain users/logins | **No.** ADR-0152's audience gate is the boundary; a second identity system is a second thing to get wrong |
 | 5 | Per-domain VayuShield policy | **Later, and narrow.** Per-route policy could scope; rate limits and the kernel tier cannot |

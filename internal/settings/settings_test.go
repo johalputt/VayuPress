@@ -25,7 +25,7 @@ func newTestStore(t *testing.T) *Store {
 
 func TestGetAllReturnsDefaultsWhenEmpty(t *testing.T) {
 	s := newTestStore(t)
-	all, err := s.GetAll(context.Background())
+	all, err := s.GetAll(context.Background(), ForPrimary())
 	if err != nil {
 		t.Fatalf("GetAll: %v", err)
 	}
@@ -40,17 +40,17 @@ func TestGetAllReturnsDefaultsWhenEmpty(t *testing.T) {
 func TestSetManyOverridesDefaultsAndInvalidatesCache(t *testing.T) {
 	s := newTestStore(t)
 	// Warm the cache with defaults.
-	if _, err := s.GetAll(context.Background()); err != nil {
+	if _, err := s.GetAll(context.Background(), ForPrimary()); err != nil {
 		t.Fatalf("warm: %v", err)
 	}
-	if err := s.SetMany(context.Background(), map[string]string{
+	if err := s.SetMany(context.Background(), ForPrimary(), map[string]string{
 		KeySiteName:          "Custom Blog",
 		KeyThemePrimaryLight: "#123456",
 		"unknown.key":        "ignored", // must be dropped by allowlist
 	}); err != nil {
 		t.Fatalf("SetMany: %v", err)
 	}
-	all, err := s.GetAll(context.Background())
+	all, err := s.GetAll(context.Background(), ForPrimary())
 	if err != nil {
 		t.Fatalf("GetAll: %v", err)
 	}
@@ -80,23 +80,23 @@ func TestTorSpaceKeysPersist(t *testing.T) {
 		}
 	}
 	s := newTestStore(t)
-	if err := s.SetMany(context.Background(), map[string]string{
+	if err := s.SetMany(context.Background(), ForPrimary(), map[string]string{
 		KeyTorSpaceEnabled: "on",
 		KeyTorSpaceAPIKey:  "deadbeef",
 	}); err != nil {
 		t.Fatalf("SetMany: %v", err)
 	}
-	if got := s.Get(context.Background(), KeyTorSpaceEnabled); got != "on" {
+	if got := s.Get(context.Background(), ForPrimary(), KeyTorSpaceEnabled); got != "on" {
 		t.Errorf("KeyTorSpaceEnabled did not persist: got %q, want %q", got, "on")
 	}
-	if got := s.Get(context.Background(), KeyTorSpaceAPIKey); got != "deadbeef" {
+	if got := s.Get(context.Background(), ForPrimary(), KeyTorSpaceAPIKey); got != "deadbeef" {
 		t.Errorf("KeyTorSpaceAPIKey did not persist: got %q", got)
 	}
 }
 
 func TestGetSingleFallsBackToDefault(t *testing.T) {
 	s := newTestStore(t)
-	if got := s.Get(context.Background(), KeyThemeAccentLight); got != "#f59e0b" {
+	if got := s.Get(context.Background(), ForPrimary(), KeyThemeAccentLight); got != "#f59e0b" {
 		t.Errorf("expected default accent, got %q", got)
 	}
 }
@@ -105,21 +105,21 @@ func TestFeatureEnabledDefaultsOn(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	// Unset → defaults to "on" → enabled.
-	if !s.FeatureEnabled(ctx, KeyFeatureComments) {
+	if !s.FeatureEnabled(ctx, ForPrimary(), KeyFeatureComments) {
 		t.Error("comments should default to enabled")
 	}
 	// Explicit "off" disables.
-	if err := s.SetMany(ctx, map[string]string{KeyFeatureComments: "off"}); err != nil {
+	if err := s.SetMany(ctx, ForPrimary(), map[string]string{KeyFeatureComments: "off"}); err != nil {
 		t.Fatalf("SetMany: %v", err)
 	}
-	if s.FeatureEnabled(ctx, KeyFeatureComments) {
+	if s.FeatureEnabled(ctx, ForPrimary(), KeyFeatureComments) {
 		t.Error("comments should be disabled after setting off")
 	}
 	// Re-enable.
-	if err := s.SetMany(ctx, map[string]string{KeyFeatureComments: "on"}); err != nil {
+	if err := s.SetMany(ctx, ForPrimary(), map[string]string{KeyFeatureComments: "on"}); err != nil {
 		t.Fatalf("SetMany: %v", err)
 	}
-	if !s.FeatureEnabled(ctx, KeyFeatureComments) {
+	if !s.FeatureEnabled(ctx, ForPrimary(), KeyFeatureComments) {
 		t.Error("comments should be re-enabled after setting on")
 	}
 }

@@ -58,7 +58,7 @@ func (a *App) membershipEnabled(r *http.Request) bool {
 	if a.siteSettings == nil {
 		return false
 	}
-	return a.siteSettings.Get(r.Context(), settings.KeyMembershipButtons) == "true"
+	return a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyMembershipButtons) == "true"
 }
 
 // handleMemberMe returns a small JSON snapshot the portal uses to decide what to

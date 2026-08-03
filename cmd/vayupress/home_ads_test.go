@@ -64,7 +64,7 @@ func TestInjectHomeAdsOffIsNoOp(t *testing.T) {
 // AdSense path (so the page can still be disk-cached).
 func TestInjectHomeAdsPlacesHeaderAndFooter(t *testing.T) {
 	a, ctx := newHomeAdsApp(t)
-	if err := a.siteSettings.SetMany(ctx, map[string]string{settings.KeyFeatureAds: "on"}); err != nil {
+	if err := a.siteSettings.SetMany(ctx, settings.ForPrimary(), map[string]string{settings.KeyFeatureAds: "on"}); err != nil {
 		t.Fatalf("enable ads: %v", err)
 	}
 	if _, err := a.ads.Create(ctx, ads.SlotInput{Name: "Top", Placement: ads.PlacementHeader, Kind: ads.KindImage, ImageURL: "/media/top.png", AltText: "Top", Enabled: true}); err != nil {
@@ -101,7 +101,7 @@ func TestInjectHomeAdsPlacesHeaderAndFooter(t *testing.T) {
 // the loader script into <head>.
 func TestInjectHomeAdsAdSenseWidensAndLoads(t *testing.T) {
 	a, ctx := newHomeAdsApp(t)
-	if err := a.siteSettings.SetMany(ctx, map[string]string{
+	if err := a.siteSettings.SetMany(ctx, settings.ForPrimary(), map[string]string{
 		settings.KeyFeatureAds:       "on",
 		settings.KeyFeatureGoogleAds: "on",
 		settings.KeyAdsenseClient:    "ca-pub-9876543210",

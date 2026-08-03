@@ -1,43 +1,42 @@
-# deadcode baseline — see scripts/deadcode-gate.sh
 #
-# Each line below is a function currently unreachable from the program
-# entrypoints, as reported by golang.org/x/tools/cmd/deadcode (normalised to
+#
+#
+#
+#
+#
+#    active only when VayuPress terminates TLS in-process; today TLS is
+#    false-positive review, wired into VayuOS in a follow-up.
+#    reserved for public-render-path analytics attribution.
+#    simulating whole 10-minute windows; test-suite-only, like Solve above.
+#    terminated upstream (nginx), so the capture store is dormant infrastructure.
+#    the vayushield package's tests can exercise the Decide bias path without
+#    verifies) — kept as a public API and used by the test suite.
+#  - Solve: the reference proof-of-work solver (clients solve in JS; server only
+#  - TLS ClientHello capture (fingerprint.NewStore/Store.Put/FromClientHello):
+#  - VerdictFrom: reads the middleware's classification off the request context,
+#  - botdb Store.Import / Store.ReportFalsePositive: operator community-import and
+#  - calibrate.BiasedForTest: constructs a calibrator pre-loaded with a bias so
 # "<file>: unreachable func: <name>", line/col stripped so it survives edits).
-#
+# Each line below is a function currently unreachable from the program
+# The CI gate fails only on entries NOT listed here, so new dead code is
 # These are INTENTIONAL: VayuPress ships several forward-looking subsystems
+# VCB (Vayu Compatibility Bible, ADR-0135): manifest loaders + the capability
+# VayuAPI (fine-grained keys): Stage-1 permission vocabulary + resolved-key helpers, unit-tested and consumed by the Stage-2 enforcement middleware (ADR-0134).
+# VayuShield + VayuAnalytics — forward-looking / operator-reserved surface that
 # ahead of their wiring (federation/ActivityPub, the plugin registry, the
+# blocked while this known surface is accepted. When you wire one of these up
+# deadcode baseline — see scripts/deadcode-gate.sh
+# entrypoints, as reported by golang.org/x/tools/cmd/deadcode (normalised to
+# for the future host-side package-install flow. The rest of internal/vcb is
+# go.mod, invisible to the root ./... deadcode walk) and are the entry points
+# is compiled and unit-tested but not yet reachable from main:
+# or delete it, regenerate the baseline with:  scripts/deadcode-gate.sh --update
+# re-export are consumed by the NESTED tools/vayu-compat module (its own
+# reachable from main.
+# reachable via the /api/v1/vcb endpoints.
 # sandbox worker pool + seccomp/capability hardening, clustering, the Arweave
 # storage stub, profiling handlers, and assorted exported helpers reserved for
 # the documented roadmap). They compile and are unit-tested but are not yet
-# reachable from main.
-#
-# The CI gate fails only on entries NOT listed here, so new dead code is
-# blocked while this known surface is accepted. When you wire one of these up
-# or delete it, regenerate the baseline with:  scripts/deadcode-gate.sh --update
-#
-
-#
-# VayuShield + VayuAnalytics — forward-looking / operator-reserved surface that
-# is compiled and unit-tested but not yet reachable from main:
-#  - TLS ClientHello capture (fingerprint.NewStore/Store.Put/FromClientHello):
-#    active only when VayuPress terminates TLS in-process; today TLS is
-#    terminated upstream (nginx), so the capture store is dormant infrastructure.
-#  - Solve: the reference proof-of-work solver (clients solve in JS; server only
-#    verifies) — kept as a public API and used by the test suite.
-#  - VerdictFrom: reads the middleware's classification off the request context,
-#    reserved for public-render-path analytics attribution.
-#  - botdb Store.Import / Store.ReportFalsePositive: operator community-import and
-#    false-positive review, wired into VayuOS in a follow-up.
-#  - calibrate.BiasedForTest: constructs a calibrator pre-loaded with a bias so
-#    the vayushield package's tests can exercise the Decide bias path without
-#    simulating whole 10-minute windows; test-suite-only, like Solve above.
-# VayuAPI (fine-grained keys): Stage-1 permission vocabulary + resolved-key helpers, unit-tested and consumed by the Stage-2 enforcement middleware (ADR-0134).
-#
-# VCB (Vayu Compatibility Bible, ADR-0135): manifest loaders + the capability
-# re-export are consumed by the NESTED tools/vayu-compat module (its own
-# go.mod, invisible to the root ./... deadcode walk) and are the entry points
-# for the future host-side package-install flow. The rest of internal/vcb is
-# reachable via the /api/v1/vcb endpoints.
 internal/ai/agent.go: unreachable func: AgentRunner.Run
 internal/ai/agent.go: unreachable func: AgentRunner.execStep
 internal/ai/agent.go: unreachable func: NewAgentRunner
@@ -215,6 +214,7 @@ internal/search/sharded/sharded.go: unreachable func: ShardedIndex.Index
 internal/search/sharded/sharded.go: unreachable func: ShardedIndex.Search
 internal/search/sharded/sharded.go: unreachable func: ShardedIndex.shardFor
 internal/seo/sitemap.go: unreachable func: GenerateSitemap
+internal/settings/scope.go: unreachable func: ForDomain
 internal/signing/article.go: unreachable func: GenerateKeyPair
 internal/signing/article.go: unreachable func: Sign
 internal/signing/article.go: unreachable func: Verify

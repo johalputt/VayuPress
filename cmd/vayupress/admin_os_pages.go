@@ -43,10 +43,10 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 	navJSON, footerJSON, contactEmail := "", "", ""
 	autoReply := true
 	if a.siteSettings != nil {
-		navJSON = a.siteSettings.Get(r.Context(), settings.KeyNavItems)
-		footerJSON = a.siteSettings.Get(r.Context(), settings.KeyFooterConfig)
-		contactEmail = a.siteSettings.Get(r.Context(), settings.KeyContactEmail)
-		autoReply = a.siteSettings.Get(r.Context(), settings.KeyContactAutoReply) != "off"
+		navJSON = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyNavItems)
+		footerJSON = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyFooterConfig)
+		contactEmail = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyContactEmail)
+		autoReply = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyContactAutoReply) != "off"
 	}
 	autoReplyChecked := ""
 	if autoReply {

@@ -8,9 +8,13 @@ package settings
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"sync"
 	"time"
 )
+
+// errNoScope is returned when a write arrives without a scope.
+var errNoScope = errors.New("settings: write attempted without a scope")
 
 // Known setting keys — exhaustive list; unknown keys are rejected on write.
 const (
@@ -363,8 +367,8 @@ var FeatureKeys = map[string]bool{
 // FeatureEnabled reports whether an operator-toggleable feature is on. An unset
 // or any non-"off" value counts as enabled, so features default to available
 // and only an explicit "off" disables them.
-func (s *Store) FeatureEnabled(ctx context.Context, key string) bool {
-	return s.Get(ctx, key) != "off"
+func (s *Store) FeatureEnabled(ctx context.Context, sc Scope, key string) bool {
+	return s.Get(ctx, sc, key) != "off"
 }
 
 // RobotsOptions is the allowlist of accepted <meta name="robots"> directives.
@@ -590,24 +594,53 @@ var Defaults = map[string]string{
 }
 
 // Store is a thread-safe settings store with an in-process read cache.
+// Store is the settings store. Every read and write takes a Scope (ADR-0153 D1).
+//
+// PHASE 1 NOTE. The scope is plumbed through the API and the cache, and the
+// site_settings table does not yet carry a scope column — that is ADR-0153
+// Phase 2. So today every scope resolves to the same rows, exactly as before,
+// and this phase changes no behaviour. The type comes first on purpose: adding
+// the column while reads were still unscoped would open a window in which
+// unscoped reads hit a scoped table, which is the leak the whole ADR exists to
+// close.
 type Store struct {
-	db    *sql.DB
-	mu    sync.RWMutex
-	cache map[string]string
-	ttl   time.Time
+	db *sql.DB
+	mu sync.RWMutex
+	// cache and ttl are keyed by Scope.key(), so one domain's settings can never
+	// be served to another out of a shared map. Getting this wrong would be a
+	// cross-tenant leak with no schema change behind it, visible only under
+	// concurrency — the first domain to warm the cache would serve its theme to
+	// every other domain on the install.
+	cache map[string]map[string]string
+	ttl   map[string]time.Time
 }
 
 // New creates a Store backed by db.
 func New(db *sql.DB) *Store {
-	return &Store{db: db, cache: make(map[string]string)}
+	return &Store{
+		db:    db,
+		cache: make(map[string]map[string]string),
+		ttl:   make(map[string]time.Time),
+	}
 }
 
-// GetAll returns all known settings, merging DB values over Defaults.
-func (s *Store) GetAll(ctx context.Context) (map[string]string, error) {
+// GetAll returns all known settings for one scope, merging stored values over
+// Defaults.
+//
+// An unset scope resolves to Defaults alone and never touches the database. A
+// caller that did not say whose settings it wants does not get the primary's —
+// that silent inheritance is the defect this design removes, and answering it
+// with the product's own defaults is the one answer that belongs to nobody.
+func (s *Store) GetAll(ctx context.Context, sc Scope) (map[string]string, error) {
+	if !sc.Valid() {
+		return defaultsCopy(), nil
+	}
+	sk := sc.key()
+
 	s.mu.RLock()
-	if time.Now().Before(s.ttl) {
-		cp := make(map[string]string, len(s.cache))
-		for k, v := range s.cache {
+	if time.Now().Before(s.ttl[sk]) {
+		cp := make(map[string]string, len(s.cache[sk]))
+		for k, v := range s.cache[sk] {
 			cp[k] = v
 		}
 		s.mu.RUnlock()
@@ -621,10 +654,7 @@ func (s *Store) GetAll(ctx context.Context) (map[string]string, error) {
 	}
 	defer rows.Close()
 
-	m := make(map[string]string, len(Defaults))
-	for k, v := range Defaults {
-		m[k] = v
-	}
+	m := defaultsCopy()
 	for rows.Next() {
 		var k, v string
 		if rows.Scan(&k, &v) == nil {
@@ -636,10 +666,23 @@ func (s *Store) GetAll(ctx context.Context) (map[string]string, error) {
 	}
 
 	s.mu.Lock()
-	s.cache = m
-	s.ttl = time.Now().Add(30 * time.Second)
+	s.cache[sk] = m
+	s.ttl[sk] = time.Now().Add(30 * time.Second)
 	s.mu.Unlock()
 	return m, nil
+}
+
+// defaultsCopy returns a fresh copy of the compiled-in defaults.
+//
+// A copy, not the map itself: Defaults is package state, and handing a caller a
+// reference to it means any caller that writes into its result silently
+// redefines the product's defaults for every scope on the install.
+func defaultsCopy() map[string]string {
+	m := make(map[string]string, len(Defaults))
+	for k, v := range Defaults {
+		m[k] = v
+	}
+	return m
 }
 
 // Get returns a single setting value (falls back to default on any error).
@@ -651,10 +694,18 @@ func (s *Store) GetAll(ctx context.Context) (map[string]string, error) {
 // the whole ~85-entry map to read a single string was pure waste on every admin
 // page load and every public render. Only a cold/expired cache falls through to
 // GetAll (which does the query and refills).
-func (s *Store) Get(ctx context.Context, key string) string {
+func (s *Store) Get(ctx context.Context, sc Scope, key string) string {
+	// An unset scope reads the product default and nothing else. It must never
+	// fall through to the primary's stored value: that is the inheritance that
+	// made a hosted domain look like the operator's own site.
+	if !sc.Valid() {
+		return Defaults[key]
+	}
+	sk := sc.key()
+
 	s.mu.RLock()
-	if time.Now().Before(s.ttl) {
-		v, ok := s.cache[key]
+	if time.Now().Before(s.ttl[sk]) {
+		v, ok := s.cache[sk][key]
 		s.mu.RUnlock()
 		if ok {
 			return v
@@ -663,7 +714,7 @@ func (s *Store) Get(ctx context.Context, key string) string {
 	}
 	s.mu.RUnlock()
 
-	all, _ := s.GetAll(ctx)
+	all, _ := s.GetAll(ctx, sc)
 	if v, ok := all[key]; ok {
 		return v
 	}
@@ -672,7 +723,15 @@ func (s *Store) Get(ctx context.Context, key string) string {
 
 // SetMany upserts multiple settings in one transaction and invalidates the cache.
 // Unknown keys are silently ignored.
-func (s *Store) SetMany(ctx context.Context, kv map[string]string) error {
+func (s *Store) SetMany(ctx context.Context, sc Scope, kv map[string]string) error {
+	// A write with no scope is REFUSED, where a read merely gets defaults. The
+	// asymmetry is deliberate: an unscoped read serves one wrong page, an
+	// unscoped write silently edits the operator's own install on behalf of a
+	// caller who never named it, and nothing afterwards can tell it apart from
+	// an intentional change.
+	if !sc.Valid() {
+		return errNoScope
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -695,12 +754,16 @@ func (s *Store) SetMany(ctx context.Context, kv map[string]string) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	s.invalidate()
+	s.invalidate(sc)
 	return nil
 }
 
-func (s *Store) invalidate() {
+// invalidate expires one scope's cache. Only that scope: expiring the whole map
+// would make every domain on the install re-query on any single domain's save,
+// which on a thirty-client install is thirty cold caches for one edit.
+func (s *Store) invalidate(sc Scope) {
 	s.mu.Lock()
-	s.ttl = time.Time{}
+	delete(s.ttl, sc.key())
+	delete(s.cache, sc.key())
 	s.mu.Unlock()
 }

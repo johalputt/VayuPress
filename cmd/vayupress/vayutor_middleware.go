@@ -40,7 +40,7 @@ func (a *App) onionLocationEnabled(ctx context.Context) bool {
 	if a.siteSettings == nil {
 		return true
 	}
-	return a.siteSettings.Get(ctx, settings.KeyTorOnionLocation) != "off"
+	return a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyTorOnionLocation) != "off"
 }
 
 // torOnionMiddleware maps onion Hosts to their clearnet domain and advertises

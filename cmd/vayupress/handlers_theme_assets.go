@@ -64,7 +64,7 @@ func (a *App) handleHeroUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.FormValue("remove") == "1" {
-		if err := a.siteSettings.SetMany(r.Context(), map[string]string{
+		if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
 			settings.KeyThemeHeroImage:     "",
 			settings.KeyThemeHeroImageType: "",
 		}); err != nil {
@@ -102,7 +102,7 @@ func (a *App) handleHeroUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
 		settings.KeyThemeHeroImage:     base64.StdEncoding.EncodeToString(raw),
 		settings.KeyThemeHeroImageType: mime,
 	}); err != nil {
@@ -121,7 +121,7 @@ func (a *App) serveHeroImage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	enc := a.siteSettings.Get(r.Context(), settings.KeyThemeHeroImage)
+	enc := a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyThemeHeroImage)
 	if enc == "" {
 		http.NotFound(w, r)
 		return
@@ -131,7 +131,7 @@ func (a *App) serveHeroImage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	ct := a.siteSettings.Get(r.Context(), settings.KeyThemeHeroImageType)
+	ct := a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyThemeHeroImageType)
 	if ct == "" {
 		ct = "image/jpeg"
 	}
@@ -180,7 +180,7 @@ func (a *App) handleOGUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.FormValue("remove") == "1" {
-		if err := a.siteSettings.SetMany(r.Context(), map[string]string{
+		if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
 			settings.KeyThemeOGImage:     "",
 			settings.KeyThemeOGImageType: "",
 		}); err != nil {
@@ -218,7 +218,7 @@ func (a *App) handleOGUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
 		settings.KeyThemeOGImage:     base64.StdEncoding.EncodeToString(raw),
 		settings.KeyThemeOGImageType: mime,
 	}); err != nil {
@@ -236,7 +236,7 @@ func (a *App) serveOGImage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	enc := a.siteSettings.Get(r.Context(), settings.KeyThemeOGImage)
+	enc := a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyThemeOGImage)
 	if enc == "" {
 		http.NotFound(w, r)
 		return
@@ -246,7 +246,7 @@ func (a *App) serveOGImage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	ct := a.siteSettings.Get(r.Context(), settings.KeyThemeOGImageType)
+	ct := a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyThemeOGImageType)
 	if ct == "" {
 		ct = "image/jpeg"
 	}

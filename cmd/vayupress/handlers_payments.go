@@ -47,12 +47,12 @@ import (
 // on. The store is always wired; the public surface is dark until enabled.
 func (a *App) paymentsEnabled(ctx context.Context) bool {
 	return a.siteSettings != nil && a.payments != nil && a.members != nil &&
-		a.siteSettings.FeatureEnabled(ctx, settings.KeyFeaturePayments)
+		a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), settings.KeyFeaturePayments)
 }
 
 // adsEnabled reports whether the Advertising module is on.
 func (a *App) adsEnabled(ctx context.Context) bool {
-	return a.siteSettings != nil && a.ads != nil && a.siteSettings.FeatureEnabled(ctx, settings.KeyFeatureAds)
+	return a.siteSettings != nil && a.ads != nil && a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), settings.KeyFeatureAds)
 }
 
 // googleAdsEnabled reports whether the Google AdSense module is on AND a
@@ -67,12 +67,12 @@ func (a *App) googleAdsEnabled(ctx context.Context) bool {
 	if config.Cfg.OnionMode {
 		return false
 	}
-	return a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, settings.KeyFeatureGoogleAds) && a.adsenseClient(ctx) != ""
+	return a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), settings.KeyFeatureGoogleAds) && a.adsenseClient(ctx) != ""
 }
 
 // affiliateEnabled reports whether the affiliate-disclosure banner is on.
 func (a *App) affiliateEnabled(ctx context.Context) bool {
-	return a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, settings.KeyFeatureAffiliate)
+	return a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), settings.KeyFeatureAffiliate)
 }
 
 // adsenseClient returns the configured AdSense publisher id (may be "").
@@ -80,7 +80,7 @@ func (a *App) adsenseClient(ctx context.Context) string {
 	if a.siteSettings == nil {
 		return ""
 	}
-	return strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyAdsenseClient))
+	return strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAdsenseClient))
 }
 
 // adsenseConfigured is the no-context helper used by the Tools registry.
@@ -93,7 +93,7 @@ func (a *App) payCurrency(ctx context.Context) string {
 	if a.siteSettings == nil {
 		return "USD"
 	}
-	c := strings.ToUpper(strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyPayCurrency)))
+	c := strings.ToUpper(strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyPayCurrency)))
 	if c == "" {
 		return "USD"
 	}
@@ -105,7 +105,7 @@ func (a *App) directInstructions(ctx context.Context) string {
 	if a.siteSettings == nil {
 		return ""
 	}
-	return strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyPayDirectInstructions))
+	return strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyPayDirectInstructions))
 }
 
 // ── Public checkout (built-in direct gateway) ─────────────────────────────────
@@ -258,7 +258,7 @@ func (a *App) paypalCreds(ctx context.Context) (clientID, secret string, sandbox
 	if sec == "" || ep == "" {
 		return "", "", false, false
 	}
-	sb := a.siteSettings != nil && a.siteSettings.Get(ctx, settings.KeyPayPalSandbox) == "on"
+	sb := a.siteSettings != nil && a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyPayPalSandbox) == "on"
 	return ep, sec, sb, true
 }
 
@@ -429,8 +429,8 @@ func (a *App) btcpayCreds(ctx context.Context) (baseURL, storeID, apiKey string,
 	if a.siteSettings == nil || a.secrets == nil {
 		return "", "", "", false
 	}
-	baseURL = strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyBTCPayURL))
-	storeID = strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyBTCPayStoreID))
+	baseURL = strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyBTCPayURL))
+	storeID = strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyBTCPayStoreID))
 	key, _ := a.secrets.ProviderSecret(ctx, secrets.ProviderBTCPay)
 	apiKey = strings.TrimSpace(key)
 	ok = baseURL != "" && storeID != "" && apiKey != ""

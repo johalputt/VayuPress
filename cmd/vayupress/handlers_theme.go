@@ -255,7 +255,7 @@ func (a *App) handleStaticFont(w http.ResponseWriter, r *http.Request) {
 
 // handleThemeGet renders the admin theme-editor page.
 func (a *App) handleThemeGet(w http.ResponseWriter, r *http.Request) {
-	vals, err := a.siteSettings.GetAll(r.Context())
+	vals, err := a.siteSettings.GetAll(r.Context(), settings.ForPrimary())
 	if err != nil {
 		http.Error(w, "failed to load settings", 500)
 		return
@@ -283,7 +283,7 @@ const themeExportVersion = 1
 // secrets, no raw HTML, only the same keys the editor already round-trips — so a
 // bundle is safe to share and re-import on another instance.
 func (a *App) handleThemeExport(w http.ResponseWriter, r *http.Request) {
-	vals, err := a.siteSettings.GetAll(r.Context())
+	vals, err := a.siteSettings.GetAll(r.Context(), settings.ForPrimary())
 	if err != nil {
 		http.Error(w, "failed to load settings", 500)
 		return
@@ -322,14 +322,14 @@ func (a *App) handleThemeReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.siteSettings.SetMany(r.Context(), settings.Defaults); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), settings.Defaults); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(500)
 		json.NewEncoder(w).Encode(map[string]string{"error": "reset failed: " + err.Error()}) //nolint:errcheck
 		return
 	}
 
-	if newVals, err := a.siteSettings.GetAll(r.Context()); err == nil {
+	if newVals, err := a.siteSettings.GetAll(r.Context(), settings.ForPrimary()); err == nil {
 		render.SetActiveSettings(render.SiteSettings{
 			Name:            newVals[settings.KeySiteName],
 			Tagline:         newVals[settings.KeySiteTagline],
@@ -475,13 +475,13 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 		settings.KeyHeadVerifyBing:    verifyBing,
 	}
 
-	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), kv); err != nil {
 		fail(500, "save failed: "+err.Error())
 		return
 	}
 
 	// Push updated values into the render pipeline immediately.
-	if newVals, err := a.siteSettings.GetAll(r.Context()); err == nil {
+	if newVals, err := a.siteSettings.GetAll(r.Context(), settings.ForPrimary()); err == nil {
 		render.SetActiveSettings(render.SiteSettings{
 			Name:            newVals[settings.KeySiteName],
 			Tagline:         newVals[settings.KeySiteTagline],

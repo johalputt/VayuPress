@@ -36,7 +36,7 @@ func (a *App) adSlotPriceCents(ctx context.Context) int {
 	if a.siteSettings == nil {
 		return adSlotPriceDefaultCents
 	}
-	n, err := strconv.Atoi(strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyAdSlotPriceCents)))
+	n, err := strconv.Atoi(strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAdSlotPriceCents)))
 	if err != nil || n < 0 {
 		return adSlotPriceDefaultCents
 	}

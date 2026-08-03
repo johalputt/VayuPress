@@ -44,7 +44,7 @@ func (a *App) mediaAltMap(ctx context.Context) map[string]string {
 	if a.siteSettings == nil {
 		return out
 	}
-	raw := a.siteSettings.Get(ctx, settings.KeyMediaAlt)
+	raw := a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyMediaAlt)
 	if strings.TrimSpace(raw) != "" {
 		_ = json.Unmarshal([]byte(raw), &out)
 	}
@@ -146,7 +146,7 @@ func (a *App) handleOSMediaDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	if a.siteSettings != nil {
 		if b, err := json.Marshal(alts); err == nil {
-			_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyMediaAlt: string(b)})
+			_ = a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyMediaAlt: string(b)})
 		}
 	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"deleted": deleted})
@@ -185,7 +185,7 @@ func (a *App) handleOSMediaAlt(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "encode-error", err.Error(), "")
 		return
 	}
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyMediaAlt: string(b)}); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyMediaAlt: string(b)}); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "save-error", err.Error(), "")
 		return
 	}

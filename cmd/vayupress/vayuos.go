@@ -540,7 +540,7 @@ func (a *App) bootVayuOS() {
 			}
 		}
 		if a.siteSettings != nil {
-			if v := strings.TrimSpace(a.siteSettings.Get(context.Background(), settings.KeyMailQueueRetentionDays)); v != "" {
+			if v := strings.TrimSpace(a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyMailQueueRetentionDays)); v != "" {
 				if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 					days = n
 				}
@@ -658,10 +658,10 @@ func (a *App) bootVayuOS() {
 	spacePort := config.GetEnvAsInt("VAYUOS_TOR_SPACE_PORT", 8347)
 	if !torspace.IsSpaceChild() && a.siteSettings != nil {
 		ctxKey := context.Background()
-		childKey := a.siteSettings.Get(ctxKey, settings.KeyTorSpaceAPIKey)
+		childKey := a.siteSettings.Get(ctxKey, settings.ForPrimary(), settings.KeyTorSpaceAPIKey)
 		if strings.TrimSpace(childKey) == "" {
 			childKey = torspace.NewAPIKey()
-			_ = a.siteSettings.SetMany(ctxKey, map[string]string{settings.KeyTorSpaceAPIKey: childKey})
+			_ = a.siteSettings.SetMany(ctxKey, settings.ForPrimary(), map[string]string{settings.KeyTorSpaceAPIKey: childKey})
 		}
 		if exe, eerr := os.Executable(); eerr == nil {
 			a.torSpace = torspace.New(exe, config.Cfg.DBPath, childKey, spacePort)
@@ -708,7 +708,7 @@ func (a *App) bootVayuOS() {
 			if a.siteSettings == nil {
 				return nil
 			}
-			return parseTorBridges(a.siteSettings.Get(context.Background(), settings.KeyTorBridges))
+			return parseTorBridges(a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyTorBridges))
 		},
 		// Onion-to-onion VayuTalk (ADR-0142): open a loopback SOCKS port on the
 		// managed tor only while we are in the Tor world with federation enabled,
@@ -726,7 +726,7 @@ func (a *App) bootVayuOS() {
 			// only the Anonymous Tor Space is on, the engine still connects to tor
 			// (to mint the dedicated space onion) but publishes NO clearnet-domain
 			// onions — the anonymous world must not drag the public domains onto Tor.
-			if a.siteSettings == nil || a.siteSettings.Get(ctx, settings.KeyTorEnabled) != "on" {
+			if a.siteSettings == nil || a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyTorEnabled) != "on" {
 				return nil, nil
 			}
 			ds, err := a.domains.List(ctx)
@@ -747,12 +747,12 @@ func (a *App) bootVayuOS() {
 			if a.siteSettings == nil {
 				return false
 			}
-			return a.siteSettings.Get(context.Background(), settings.KeyTorEnabled) == "on" ||
-				a.siteSettings.Get(context.Background(), settings.KeyTorSpaceEnabled) == "on"
+			return a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyTorEnabled) == "on" ||
+				a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyTorSpaceEnabled) == "on"
 		},
 		PageStats: func() bool {
 			return a.siteSettings != nil &&
-				a.siteSettings.Get(context.Background(), settings.KeyTorPageStats) == "on"
+				a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyTorPageStats) == "on"
 		},
 		Notify: func(event string, payload map[string]any) {
 			// Onion health alerts ride the existing signed-webhook dispatcher, so
@@ -2982,7 +2982,7 @@ func (a *App) handleVayuOSOutboxRetention(w http.ResponseWriter, r *http.Request
 	}
 	a.vayuMail.SetQueueRetentionDays(days)
 	if a.siteSettings != nil {
-		_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyMailQueueRetentionDays: strconv.Itoa(days)})
+		_ = a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyMailQueueRetentionDays: strconv.Itoa(days)})
 	}
 	writeOSFragment(w, a.vayuOutboxBody(r.Context(), r.FormValue("domain")))
 }

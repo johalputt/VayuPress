@@ -98,7 +98,7 @@ window.VayuPress=window.VayuPress||{};window.VayuPress.track=function(n,d){send(
 	// VayuAnalytics Enterprise engagement beacon (time on page / scroll depth).
 	// Appended to the already-injected analytics script — cookieless, no PII —
 	// so it needs no extra <script> tag in the theme. Operator-toggleable.
-	if a.siteSettings != nil && a.siteSettings.Get(r.Context(), settings.KeyAnalyticsBeacon) != "off" {
+	if a.siteSettings != nil && a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyAnalyticsBeacon) != "off" {
 		fmt.Fprint(w, vaEngagementJS)
 	}
 }

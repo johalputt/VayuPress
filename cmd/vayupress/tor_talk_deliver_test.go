@@ -36,7 +36,7 @@ func appWithTalkOnion(t *testing.T, federationOn bool) (*App, string) {
 	if federationOn {
 		kv[settings.KeyTalkOnionFederation] = "on"
 	}
-	if err := st.SetMany(context.Background(), kv); err != nil {
+	if err := st.SetMany(context.Background(), settings.ForPrimary(), kv); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
 

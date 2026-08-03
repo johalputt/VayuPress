@@ -20,7 +20,7 @@ import (
 // torSpaceEnabled reports whether the operator toggled the Anonymous Tor Space on.
 func (a *App) torSpaceEnabled() bool {
 	return a.siteSettings != nil &&
-		a.siteSettings.Get(context.Background(), settings.KeyTorSpaceEnabled) == "on"
+		a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyTorSpaceEnabled) == "on"
 }
 
 // torSpaceLoop converges the child to the toggle every tick. No-op in a Tor-Space

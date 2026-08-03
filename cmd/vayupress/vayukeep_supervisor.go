@@ -56,7 +56,7 @@ func (a *App) resolveKeepTarget(ctx context.Context) string {
 	if a.siteSettings == nil {
 		return ""
 	}
-	return strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyVayuKeepTarget))
+	return strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyVayuKeepTarget))
 }
 
 // resolveKeepPassphrase returns the backup passphrase: the environment variable
@@ -83,7 +83,7 @@ func (a *App) keepEnabled(ctx context.Context) bool {
 	if a.siteSettings == nil {
 		return false
 	}
-	return a.siteSettings.Get(ctx, settings.KeyVayuKeepEnabled) == "true"
+	return a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyVayuKeepEnabled) == "true"
 }
 
 // keepInt reads a saved numeric setting, falling back to the configured default.
@@ -91,7 +91,7 @@ func (a *App) keepInt(ctx context.Context, key string, def int) int {
 	if a.siteSettings == nil {
 		return def
 	}
-	if n, err := strconv.Atoi(strings.TrimSpace(a.siteSettings.Get(ctx, key))); err == nil && n > 0 {
+	if n, err := strconv.Atoi(strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), key))); err == nil && n > 0 {
 		return n
 	}
 	return def

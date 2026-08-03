@@ -66,7 +66,7 @@ func (a *App) siteSourceFor(r *http.Request) (mode, tpl, content string) {
 		if a.siteSettings == nil {
 			return ""
 		}
-		return a.siteSettings.Get(r.Context(), k)
+		return a.siteSettings.Get(r.Context(), settings.ForPrimary(), k)
 	}
 	if a.multiDomain(r) {
 		if d, ok := activeDomain(r); ok && !d.IsPrimary {
@@ -379,7 +379,7 @@ func (a *App) handleOSWebsiteSave(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "settings-unavailable", "settings store not ready", "")
 		return
 	}
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
 		settings.KeySiteMode:    body.Mode,
 		settings.KeyBizTemplate: tpl.Key,
 		settings.KeyBizContent:  string(raw),

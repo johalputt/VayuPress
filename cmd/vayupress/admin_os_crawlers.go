@@ -95,7 +95,7 @@ Disallow: /
 // crawlersBlocked reports whether the operator has switched the public site dark
 // to search engines and AI crawlers.
 func (a *App) crawlersBlocked(ctx context.Context) bool {
-	return a.siteSettings != nil && a.siteSettings.Get(ctx, settings.KeyBlockCrawlers) == "on"
+	return a.siteSettings != nil && a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyBlockCrawlers) == "on"
 }
 
 // operatorToolBots are performance testers and uptime monitors — the operator's
@@ -183,7 +183,7 @@ func (a *App) handleOSPowerCrawlers(w http.ResponseWriter, r *http.Request) {
 	if *body.Block {
 		val = "on"
 	}
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyBlockCrawlers: val}); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyBlockCrawlers: val}); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "write_failed", "could not save the setting", "")
 		return
 	}

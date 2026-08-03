@@ -285,7 +285,7 @@ func (a *App) bootVayuShield() {
 	// (TRUST_CLOUDFLARE, applied in config.Init) OR the persisted panel toggle is
 	// on. Without it, a Cloudflare-fronted site pools its whole audience onto
 	// Cloudflare's IPs, tripping the rate limit and throttling everyone.
-	if a.siteSettings != nil && a.siteSettings.Get(context.Background(), settings.KeyShieldBehindCDN) == "on" {
+	if a.siteSettings != nil && a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyShieldBehindCDN) == "on" {
 		config.SetTrustCloudflare(true)
 	}
 
@@ -908,8 +908,8 @@ func vsLayer(tag, name, state, desc, stat1, stat2 string) string {
 // so it reflects the applied (and clamped) state.
 func (a *App) shieldProtectionBody(ctx context.Context) string {
 	cur := a.shieldCurrentSettings()
-	beaconOn := a.siteSettings == nil || a.siteSettings.Get(ctx, settings.KeyAnalyticsBeacon) != "off"
-	behindCDN := a.siteSettings != nil && a.siteSettings.Get(ctx, settings.KeyShieldBehindCDN) == "on"
+	beaconOn := a.siteSettings == nil || a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAnalyticsBeacon) != "off"
+	behindCDN := a.siteSettings != nil && a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyShieldBehindCDN) == "on"
 	var b strings.Builder
 	b.WriteString(`<p class="muted text-sm vs-lead">Everything applies instantly — no restart. Search engines and AI assistants (ChatGPT, Claude, Perplexity) are always allowed and counted separately; verified visitors are never throttled.</p>`)
 	b.WriteString(`<div class="vs-feat">`)
@@ -1020,7 +1020,7 @@ func (a *App) shieldPolicyBand(ctx context.Context) string {
 		if a.siteSettings == nil {
 			return ""
 		}
-		return a.siteSettings.Get(ctx, k)
+		return a.siteSettings.Get(ctx, settings.ForPrimary(), k)
 	}
 	var b strings.Builder
 	b.WriteString(`<div class="card-title vs-section">Your own rules</div>`)
@@ -1571,13 +1571,13 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 	// bury the one that matters, which is the same as not logging it.
 	changed := make([]string, 0, len(kv))
 	for k, v := range kv {
-		if prev := a.siteSettings.Get(r.Context(), k); prev != v {
+		if prev := a.siteSettings.Get(r.Context(), settings.ForPrimary(), k); prev != v {
 			changed = append(changed, k+": "+prev+" → "+v)
 		}
 	}
 	sort.Strings(changed) // map iteration order is random; a diff must be stable
 
-	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), kv); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
 	}
@@ -1757,7 +1757,7 @@ func shieldEnvBool(key string, def bool) bool {
 // legacy VAYUSHIELD / VAYUSHIELD_TARPIT env vars act as an OR-default so an
 // operator who set them before the panel existed stays enabled.
 func (a *App) shieldSettings(ctx context.Context) vayushield.Settings {
-	g := func(k string) string { return a.siteSettings.Get(ctx, k) }
+	g := func(k string) string { return a.siteSettings.Get(ctx, settings.ForPrimary(), k) }
 	on := func(k string) bool { return g(k) == "on" }
 	fnum := func(k string, def float64) float64 {
 		if v, err := strconv.ParseFloat(strings.TrimSpace(g(k)), 64); err == nil {
@@ -1914,11 +1914,11 @@ func (a *App) startShieldCluster(ctx context.Context) {
 	if a.vayuShield == nil || a.siteSettings == nil {
 		return
 	}
-	peers := policyLines(a.siteSettings.Get(ctx, settings.KeyShieldClusterPeers))
+	peers := policyLines(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyShieldClusterPeers))
 	if len(peers) == 0 {
 		return
 	}
-	node := strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyShieldClusterNode))
+	node := strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyShieldClusterNode))
 	if node == "" {
 		// A stable, non-identifying default. The name is only ever used for a
 		// peer's per-node rate accounting, so it needs to be distinct rather than

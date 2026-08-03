@@ -31,11 +31,11 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	adsOn := a.adsEnabled(ctx)
-	googleOn := a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, settings.KeyFeatureGoogleAds)
+	googleOn := a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, settings.ForPrimary(), settings.KeyFeatureGoogleAds)
 	adsenseClient := a.adsenseClient(ctx)
 	disclosure := ""
 	if a.siteSettings != nil {
-		disclosure = a.siteSettings.Get(ctx, settings.KeyAffiliateDisclosure)
+		disclosure = a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAffiliateDisclosure)
 	}
 
 	var slots []ads.Slot

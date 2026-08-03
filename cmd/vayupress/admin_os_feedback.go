@@ -31,7 +31,7 @@ const defaultFeedbackEmail = "feedback@vayupress.com"
 // operator-configured address if set, otherwise the VayuPress project inbox.
 func (a *App) feedbackEmail(ctx context.Context) string {
 	if a.siteSettings != nil {
-		if v := strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyFeedbackEmail)); v != "" {
+		if v := strings.TrimSpace(a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyFeedbackEmail)); v != "" {
 			return v
 		}
 	}

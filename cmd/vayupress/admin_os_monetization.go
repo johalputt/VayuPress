@@ -40,7 +40,7 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 	supportEmail := ""
 	webhookConfigured := false
 	if a.siteSettings != nil {
-		supportEmail = a.siteSettings.Get(ctx, settings.KeyPaySupportEmail)
+		supportEmail = a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyPaySupportEmail)
 	}
 	if a.secrets != nil {
 		if s, _ := a.secrets.ProviderSecret(ctx, secrets.ProviderPaymentGateway); s != "" {

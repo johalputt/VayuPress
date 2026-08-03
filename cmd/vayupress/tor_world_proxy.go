@@ -82,7 +82,7 @@ func (a *App) handleWorldSwitch(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("target") == "tor" {
 		// Make sure the Tor world exists / is running, then view it.
 		if a.siteSettings != nil {
-			_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTorSpaceEnabled: "on"})
+			_ = a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyTorSpaceEnabled: "on"})
 		}
 		if a.torSpace != nil {
 			go a.reconcileTorSpace()

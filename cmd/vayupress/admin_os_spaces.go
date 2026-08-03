@@ -113,7 +113,7 @@ func (a *App) handleOSSpaceToggle(w http.ResponseWriter, r *http.Request) {
 	if enable {
 		state = "on"
 	}
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTorSpaceEnabled: state}); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyTorSpaceEnabled: state}); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "write_failed", "could not save the setting", "")
 		return
 	}

@@ -6,6 +6,63 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Added
+- **ADR-0153 — every domain a whole install.** An operator set up a hosted
+  domain, opened Theme Studio, and found they were editing their own blog. They
+  were right, and the card on `/os/domains/{id}` that told them otherwise —
+  *"the shared tools apply per domain once this site is selected"* — was false.
+  It was written against tools whose scoping was assumed rather than checked.
+
+  Measured rather than recalled: `site_settings` is `(key PRIMARY KEY, value)`
+  with **no scope column**, holding 327 keys. Theme, SEO, newsletter, comments,
+  monetization and integrations are all install-wide. `analytics_pageviews` —
+  which powers the panel, top pages, trending and the overview — has **no domain
+  column at all**; migration 080 scoped the daily counter and left the event
+  log. The entire per-domain override surface is **six brand fields** overlaid
+  onto a copy of the global settings object, so a hosted domain is the primary
+  site wearing a different name and three colours.
+
+  Two decisions were the operator's and are recorded as theirs: an unset key
+  falls back to the **compiled-in product default, never to the primary's stored
+  value** (inheritance is what produced the complaint), and the console scope
+  lives **in the URL** rather than an ambient switcher (ambient scope lets an
+  edit land on the wrong site with nothing in the request able to tell the two
+  apart).
+
+### Changed
+- **Phase 1 — the settings scope is now a required argument** (ADR-0153 D1).
+  `Get`, `GetAll`, `SetMany` and `FeatureEnabled` all take a `settings.Scope`,
+  and **the zero value is not a valid answer**: an unscoped read returns the
+  product default and never reaches the database, an unscoped write is refused
+  outright. The asymmetry is deliberate — an unscoped read serves one wrong page
+  and is recoverable; an unscoped write silently edits the operator's own
+  install on behalf of a caller who never named it, and afterwards nothing can
+  distinguish it from a change somebody meant to make.
+
+  The ambient global read is **deleted, not deprecated**. A settings read that
+  cannot be wrong at the call site is one no new feature will ever think about,
+  which is precisely how ~60 call sites came to inherit the primary silently.
+  152 call sites were converted; the compiler named every one.
+
+  **The cache is now keyed by scope.** With one shared map the first domain to
+  warm it would serve its theme, SEO and newsletter settings to every other
+  domain on the install — a cross-tenant leak with no schema change behind it,
+  invisible in single-domain testing and appearing only under concurrency.
+  Invalidation is per-scope too, so one client's save does not cold-start thirty
+  others.
+
+  **This phase changes no behaviour.** `site_settings` has no scope column yet
+  (that is Phase 2), so every scope still resolves to the same rows and every
+  call site was converted to the primary — exactly today's semantics. The type
+  lands first on purpose: adding the column while reads were still unscoped
+  would open a window in which unscoped reads hit a scoped table, which is the
+  leak the whole ADR exists to close.
+
+  `ForDomain` is deliberately unreachable until Phase 3 wires the per-domain
+  routes, and is allowlisted with that reason rather than quietly baselined.
+
 ## [3.16.34] — 2026-08-02
 
 ### Added

@@ -341,7 +341,7 @@ func (a *App) buildMCPServer() *mcp.Server {
 			if a.siteSettings == nil {
 				return "", fmt.Errorf("site settings are unavailable")
 			}
-			all, err := a.siteSettings.GetAll(ctx)
+			all, err := a.siteSettings.GetAll(ctx, settings.ForPrimary())
 			if err != nil {
 				return "", err
 			}
@@ -387,7 +387,7 @@ func (a *App) buildMCPServer() *mcp.Server {
 			if len(apply) == 0 {
 				return "", fmt.Errorf("no updatable settings provided; allowed keys: %s", strings.Join(mcpPublicSettingKeys, ", "))
 			}
-			if err := a.siteSettings.SetMany(ctx, apply); err != nil {
+			if err := a.siteSettings.SetMany(ctx, settings.ForPrimary(), apply); err != nil {
 				return "", err
 			}
 			a.reloadRenderSettings(ctx)

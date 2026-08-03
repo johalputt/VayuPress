@@ -1566,10 +1566,10 @@ type osNotification struct {
 func (a *App) getOSSettings(ctx context.Context) *osSettings {
 	s := &osSettings{}
 	if a.siteSettings != nil {
-		s.SiteName = a.siteSettings.Get(ctx, settings.KeySiteName)
-		s.AdminTheme = a.siteSettings.Get(ctx, "admin.theme")
+		s.SiteName = a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeySiteName)
+		s.AdminTheme = a.siteSettings.Get(ctx, settings.ForPrimary(), "admin.theme")
 		// Anonymous Tor Space on ⇒ shift the whole VayuOS chrome to the Tor palette.
-		s.TorSpaceOn = a.siteSettings.Get(ctx, settings.KeyTorSpaceEnabled) == "on"
+		s.TorSpaceOn = a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyTorSpaceEnabled) == "on"
 	}
 	// Live Tor-Space status for the inline panel under the sidebar switch (nil-safe;
 	// zero values in a Tor-Space child, which has no supervisor).
@@ -3493,11 +3493,11 @@ if(footerInput){
 func osSettingsGeneral(ctx context.Context, ss *settings.Store) string {
 	var siteName, tagline, desc, author, tz string
 	if ss != nil {
-		siteName = ss.Get(ctx, settings.KeySiteName)
-		tagline = ss.Get(ctx, settings.KeySiteTagline)
-		desc = ss.Get(ctx, settings.KeySiteDescription)
-		author = ss.Get(ctx, settings.KeySiteAuthor)
-		tz = ss.Get(ctx, settings.KeySiteTimezone)
+		siteName = ss.Get(ctx, settings.ForPrimary(), settings.KeySiteName)
+		tagline = ss.Get(ctx, settings.ForPrimary(), settings.KeySiteTagline)
+		desc = ss.Get(ctx, settings.ForPrimary(), settings.KeySiteDescription)
+		author = ss.Get(ctx, settings.ForPrimary(), settings.KeySiteAuthor)
+		tz = ss.Get(ctx, settings.ForPrimary(), settings.KeySiteTimezone)
 	}
 
 	// Date & time. Timestamps are always STORED in UTC (unambiguous, survives a
@@ -3540,7 +3540,7 @@ func osSettingsGeneral(ctx context.Context, ss *settings.Store) string {
 func osSettingsNavigation(ctx context.Context, ss *settings.Store) string {
 	navJSON := ""
 	if ss != nil {
-		navJSON = ss.Get(ctx, settings.KeyNavItems)
+		navJSON = ss.Get(ctx, settings.ForPrimary(), settings.KeyNavItems)
 	}
 	if strings.TrimSpace(navJSON) == "" {
 		// Seed the editor with the built-in defaults so operators start from the
@@ -3565,7 +3565,7 @@ const defaultFooterSeed = `{"tagline":"","copyright":"© {year} {site}. All righ
 func osSettingsFooter(ctx context.Context, ss *settings.Store) string {
 	footerJSON := ""
 	if ss != nil {
-		footerJSON = ss.Get(ctx, settings.KeyFooterConfig)
+		footerJSON = ss.Get(ctx, settings.ForPrimary(), settings.KeyFooterConfig)
 	}
 	if strings.TrimSpace(footerJSON) == "" {
 		footerJSON = defaultFooterSeed
@@ -3604,14 +3604,14 @@ func osSettingsDesign(ctx context.Context, ss *settings.Store) string {
 	primaryLight, primaryDark, customCSS := "#0f766e", "#2dd4bf", ""
 	faviconState := "Using the default mark."
 	if ss != nil {
-		if v := ss.Get(ctx, settings.KeyThemePrimaryLight); v != "" {
+		if v := ss.Get(ctx, settings.ForPrimary(), settings.KeyThemePrimaryLight); v != "" {
 			primaryLight = v
 		}
-		if v := ss.Get(ctx, settings.KeyThemePrimaryDark); v != "" {
+		if v := ss.Get(ctx, settings.ForPrimary(), settings.KeyThemePrimaryDark); v != "" {
 			primaryDark = v
 		}
-		customCSS = ss.Get(ctx, settings.KeyThemeCustomCSS)
-		if ss.Get(ctx, settings.KeyBrandFavicon) != "" {
+		customCSS = ss.Get(ctx, settings.ForPrimary(), settings.KeyThemeCustomCSS)
+		if ss.Get(ctx, settings.ForPrimary(), settings.KeyBrandFavicon) != "" {
 			faviconState = "Custom favicon active — stored in the database."
 		}
 	}
@@ -3671,7 +3671,7 @@ func osSettingsDesign(ctx context.Context, ss *settings.Store) string {
 
 func osSettingsMembers(ctx context.Context, ss *settings.Store) string {
 	membershipBtns := ""
-	if ss != nil && ss.Get(ctx, settings.KeyMembershipButtons) == "true" {
+	if ss != nil && ss.Get(ctx, settings.ForPrimary(), settings.KeyMembershipButtons) == "true" {
 		membershipBtns = " checked"
 	}
 	return `<div class="settings-section">
@@ -3704,7 +3704,7 @@ func osSettingsMembers(ctx context.Context, ss *settings.Store) string {
 func osSettingsEmail(ctx context.Context, ss *settings.Store) string {
 	from := ""
 	if ss != nil {
-		from = ss.Get(ctx, "smtp.from")
+		from = ss.Get(ctx, settings.ForPrimary(), "smtp.from")
 	}
 	return `<div class="settings-section">
   <div class="settings-block-title">SMTP</div>
@@ -3853,7 +3853,7 @@ func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "settings-error", "settings not initialised", "")
 		return
 	}
-	if err := a.siteSettings.SetMany(r.Context(), map[string]string{body.Key: body.Value}); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{body.Key: body.Value}); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "settings-error", err.Error(), "")
 		return
 	}
@@ -3870,7 +3870,7 @@ func (a *App) reloadRenderSettings(ctx context.Context) {
 	if a.siteSettings == nil {
 		return
 	}
-	sv, err := a.siteSettings.GetAll(ctx)
+	sv, err := a.siteSettings.GetAll(ctx, settings.ForPrimary())
 	if err != nil {
 		return
 	}
