@@ -6,6 +6,60 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.69] — 2026-08-03
+
+**A trim that deleted whitespace instead of splitting on it wrote a malformed
+directive into `conf.d` — which is the whole web server's configuration, not one
+vhost.**
+
+### Fixed
+- **`set_real_ip_from "131.0.72.0/222400:cb00::/32"`.** That is
+  `131.0.72.0/22` and `2400:cb00::/32` concatenated with no separator. nginx
+  answered *"host not found in set_real_ip_from"* and refused to load the
+  configuration.
+
+  The cause, in the shield agent's real-IP writer:
+
+  ```sh
+  line="$(printf '%s' "$line" | tr -d '[:space:]')"
+  ```
+
+  `tr -d` was there to trim, and it also removed the whitespace **between**
+  values. A source line carrying two ranges collapsed into one token.
+
+  Both validations waved it through, and that is the more interesting half:
+  every character was still in the allowed set, and the token still contained a
+  slash. **A shape check that a mashed pair of valid values passes is not
+  checking the shape.**
+
+  The loop now splits on whitespace rather than deleting it, and each token must
+  carry **exactly one** slash, a numeric prefix, and a prefix within its family's
+  range (≤32 for IPv4, ≤128 for IPv6). The last two are defence in depth: they
+  refuse an already-joined token whatever produced it.
+
+### Added
+- **A gate that runs the real emit loop, extracted from the shipped script**,
+  against the exact input that failed: two ranges on one line must produce two
+  directives; an already-mashed token must produce none; an impossible prefix
+  must produce none; and ordinary ranges must still emit — or the fix would just
+  be a stricter way of emitting nothing, leaving every per-IP control metering
+  the edge instead of readers.
+
+### Audit
+Three mutations, all caught: restoring the `tr -d` deletion, accepting a
+two-slash token again, and dropping the prefix-range check.
+
+One defect in the gate itself, recorded rather than quietly fixed: its first
+draft anchored on the first `while IFS= read` in the file, which belongs to a
+different function — so it exercised unrelated code and failed on an unbound
+variable rather than on anything it was written to check. It now anchors inside
+`reconcile_realip`.
+
+Also recorded: this is a **separate** fault from the certificate work, found only
+because the operator's screenshot of the VayuShield page showed the real-IP row
+marked *"Could not apply"* with nginx's own error text beside it. The row was
+doing its job.
+
 ## [3.16.68] — 2026-08-03
 
 **The repair button is now on the page that diagnoses the problem.**

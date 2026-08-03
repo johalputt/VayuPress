@@ -1158,17 +1158,52 @@ reconcile_realip() {
     # the WHOLE web server down rather than one vhost.
     while IFS= read -r line; do
       line="${line%%#*}"
-      line="$(printf '%s' "$line" | tr -d '[:space:]')"
-      [ -n "$line" ] || continue
-      case "$line" in
-        *[!0-9a-fA-F.:/]*) continue ;;
-      esac
-      case "$line" in
-        */*) ;;
-        *) continue ;;
-      esac
-      printf 'set_real_ip_from %s;\n' "$line"
-      n=$((n + 1))
+      # SPLIT on whitespace, never DELETE it.
+      #
+      # THE BUG THIS REPLACES, seen on a live install:
+      #
+      #   line="$(printf '%s' "$line" | tr -d '[:space:]')"
+      #
+      # `tr -d` was meant to trim, and it also removed whitespace BETWEEN values.
+      # A source line carrying two ranges collapsed into one token —
+      # "131.0.72.0/22" plus "2400:cb00::/32" became
+      # "131.0.72.0/222400:cb00::/32" — which nginx rejects with
+      # "host not found in set_real_ip_from", taking the WHOLE web server's
+      # configuration down with it, because this file lives in conf.d.
+      #
+      # Both validations below waved it through: every character was still in the
+      # allowed set, and it still contained a slash. A shape check that a mashed
+      # pair of valid values passes is not checking the shape.
+      #
+      # Unquoted on purpose: word-splitting is exactly what is wanted here, and
+      # the loop body validates each token before anything is emitted.
+      # shellcheck disable=SC2086
+      for tok in $line; do
+        case "$tok" in
+          *[!0-9a-fA-F.:/]*) continue ;;
+        esac
+        # EXACTLY one slash. The old check accepted any token containing one,
+        # so the concatenated pair — which carries two — passed.
+        case "$tok" in
+          */*/*) continue ;;
+          */*) ;;
+          *) continue ;;
+        esac
+        pfx="${tok##*/}"
+        addr="${tok%/*}"
+        [ -n "$pfx" ] && [ -n "$addr" ] || continue
+        case "$pfx" in
+          *[!0-9]*) continue ;;
+        esac
+        # A prefix length outside its family's range is the other shape a bad
+        # join produces, and nginx reports it just as fatally.
+        case "$addr" in
+          *:*) [ "$pfx" -le 128 ] || continue ;;
+          *)   [ "$pfx" -le 32 ] || continue ;;
+        esac
+        printf 'set_real_ip_from %s;\n' "$tok"
+        n=$((n + 1))
+      done
     done <"$src"
     # CF-Connecting-IP carries exactly one address — the visitor the edge saw —
     # so it cannot be confused by a chain, which is why it is preferred over
