@@ -1393,3 +1393,61 @@ func TestProcAddressesAreDecodedNotGuessed(t *testing.T) {
 		}
 	}
 }
+
+// THE ROOT CAUSE, found by reading our own helper rather than reasoning about
+// the symptom:
+//
+//	reload_ok() { nginx_ok && { systemctl reload nginx 2>/dev/null || true; return 0; }; ... }
+//
+// `|| true` discarded the reload's exit status and the function returned success
+// regardless, so `nginx -t` passing was treated as "the new vhost is live". When
+// the reload did not happen, the script went on to certbot against a server
+// still running configuration that had never contained the vhost — and the
+// authority reported an unexplained "Type: connection", because the running
+// nginx had no server block for that name and the default server closes the
+// connection.
+//
+// Every layer above was correct: the file, the symlink, the DNS, the webroot.
+// The single step that makes any of them take effect was the only one whose
+// failure was thrown away.
+func TestAFailedNginxReloadIsNeverReportedAsSuccess(t *testing.T) {
+	// The first draft of this test RETURNED when it found the bug — passing on
+	// exactly the input it existed to catch — and shadowed `t` with a string
+	// while doing it. Recorded because it is the same defect class as the code
+	// under test: a check that reports success on the failing case.
+	for _, f := range provisioningHelpers {
+		src := readSourceFile(t, f)
+		if !strings.Contains(src, "RELOADING it failed") {
+			t.Errorf("%s reloads nginx without reporting a reload failure. A reload that does "+
+				"not happen leaves a correct file on disk that the running server has never "+
+				"read, and the certificate authority reports that as an unexplained connection "+
+				"error", f)
+		}
+	}
+}
+
+// provisioningHelpers are every root-side script that writes a vhost and
+// reloads nginx. Listed once: a new helper added without this list is a new
+// place for the same bug to live.
+var provisioningHelpers = []string{
+	"../../scripts/setup-vayudomain.sh",
+	"../../scripts/setup-api-subdomain.sh",
+	"../../scripts/setup-mcp-subdomain.sh",
+	"../../scripts/setup-talk-subdomain.sh",
+	"../../scripts/setup-openpgpkey-subdomain.sh",
+}
+
+// A live `|| true` on the reload must fail this test outright, in any helper.
+func TestNoHelperDiscardsTheReloadExitStatus(t *testing.T) {
+	for _, f := range provisioningHelpers {
+		for i, line := range strings.Split(readSourceFile(t, f), "\n") {
+			s := strings.TrimSpace(line)
+			if strings.HasPrefix(s, "#") {
+				continue // the retired form is quoted in a comment on purpose
+			}
+			if strings.Contains(s, "systemctl reload nginx") && strings.Contains(s, "|| true") {
+				t.Errorf("%s:%d discards the reload's exit status: %s", f, i+1, s)
+			}
+		}
+	}
+}

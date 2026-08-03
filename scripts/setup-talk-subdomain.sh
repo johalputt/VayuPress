@@ -212,7 +212,15 @@ if ! cert_covers "$TALK"; then
   write_talk_http_only
   ln -sf "$AVAIL" "$ENABLED"
   if ! nginx_ok; then warn "nginx config test failed — aborting talk setup."; rm -f "$ENABLED"; exit 0; fi
-  systemctl reload nginx 2>/dev/null || true
+  # The reload is the step that makes the vhost live, so its failure is
+  # REPORTED. `|| true` here discarded it: nginx -t passing was treated as
+  # "the new config is serving", and a reload that never happened left a
+  # correct file on disk that the running server had never read — which the
+  # certificate authority then reports as an unexplained connection error.
+  if ! _rl="$(systemctl reload nginx 2>&1)"; then
+    warn "nginx accepted the config but RELOADING it failed: ${_rl:-no output}."
+    warn "  The vhost is on disk and the running nginx has not read it."
+  fi
 
   # Re-issue the SAME lineage with its CURRENT SANs (so mail/site keep their
   # coverage) plus talk — but only those that still resolve, so a stale record
@@ -242,7 +250,15 @@ if cert_covers "$TALK"; then
   write_talk_full
   ln -sf "$AVAIL" "$ENABLED"
   if nginx_ok; then
-    systemctl reload nginx 2>/dev/null || true
+    # The reload is the step that makes the vhost live, so its failure is
+    # REPORTED. `|| true` here discarded it: nginx -t passing was treated as
+    # "the new config is serving", and a reload that never happened left a
+    # correct file on disk that the running server had never read — which the
+    # certificate authority then reports as an unexplained connection error.
+    if ! _rl="$(systemctl reload nginx 2>&1)"; then
+      warn "nginx accepted the config but RELOADING it failed: ${_rl:-no output}."
+      warn "  The vhost is on disk and the running nginx has not read it."
+    fi
     set_env_var VAYUOS_TALK_HOST "$TALK"
     # Apply the new advertisement without forcing a start on a fresh install
     # (try-restart is a no-op when the service isn't running yet).

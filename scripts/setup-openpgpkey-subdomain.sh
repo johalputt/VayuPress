@@ -379,7 +379,15 @@ provision_wkd() {
       rm -f "$enabled"
       return 0
     fi
-    systemctl reload nginx 2>/dev/null || true
+    # The reload is the step that makes the vhost live, so its failure is
+    # REPORTED. `|| true` here discarded it: nginx -t passing was treated as
+    # "the new config is serving", and a reload that never happened left a
+    # correct file on disk that the running server had never read — which the
+    # certificate authority then reports as an unexplained connection error.
+    if ! _rl="$(systemctl reload nginx 2>&1)"; then
+      warn "nginx accepted the config but RELOADING it failed: ${_rl:-no output}."
+      warn "  The vhost is on disk and the running nginx has not read it."
+    fi
 
     certbot certonly --webroot -w "$CACHE_DIR" --cert-name "$wkd" \
       -d "$wkd" --email "$EMAIL" --agree-tos --non-interactive || \
@@ -400,7 +408,15 @@ provision_wkd() {
     rm -f "$enabled"
     return 0
   fi
-  systemctl reload nginx 2>/dev/null || true
+  # The reload is the step that makes the vhost live, so its failure is
+  # REPORTED. `|| true` here discarded it: nginx -t passing was treated as
+  # "the new config is serving", and a reload that never happened left a
+  # correct file on disk that the running server had never read — which the
+  # certificate authority then reports as an unexplained connection error.
+  if ! _rl="$(systemctl reload nginx 2>&1)"; then
+    warn "nginx accepted the config but RELOADING it failed: ${_rl:-no output}."
+    warn "  The vhost is on disk and the running nginx has not read it."
+  fi
 
   # 3. Self-verify. The policy file's presence is what signals WKD support for a
   #    domain, so if it does not answer, discovery is broken however green the

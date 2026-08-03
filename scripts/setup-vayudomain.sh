@@ -296,7 +296,38 @@ server {
 NGINX
 }
 
-reload_ok() { nginx_ok && { systemctl reload nginx 2>/dev/null || true; return 0; }; return 1; }
+# reload_ok tests the config AND applies it, reporting either failure.
+#
+# THE BUG THIS REPLACES, in one line:
+#
+#   reload_ok() { nginx_ok && { systemctl reload nginx 2>/dev/null || true; return 0; }; ... }
+#
+# `|| true` discarded the reload's exit status and the function returned success
+# regardless. So `nginx -t` passing was treated as "the new vhost is live", and
+# when the reload did not actually happen — a failed unit, nginx not under
+# systemd's control, a refused signal — the script carried on to certbot against
+# a server still running configuration that had never contained the vhost.
+#
+# The visible result is a certificate that can never be issued, reported by the
+# authority as "Type: connection", because the running nginx has no server block
+# for that name and the default server closes the connection. Every layer above
+# was correct: the file on disk, the symlink, the DNS, the webroot. The one step
+# that makes any of it take effect was the only step whose failure was thrown
+# away, and it was thrown away deliberately by a `|| true` nobody revisited.
+reload_ok() {
+  nginx_ok || return 1
+  local out
+  if ! out="$(systemctl reload nginx 2>&1)"; then
+    warn "nginx accepted the configuration but RELOADING it failed:"
+    warn "  ${out:-systemctl gave no output}"
+    warn "  The new vhost is on disk and the running nginx has never read it, so nothing"
+    warn "  serves this host yet. Not proceeding to certbot: a challenge cannot be answered"
+    warn "  by configuration that is not loaded, and the attempt would spend a rate-limited"
+    warn "  validation to discover that."
+    return 1
+  fi
+  return 0
+}
 
 HOST_FAILURES=0
 for HOST in "${HOSTS[@]}"; do

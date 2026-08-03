@@ -6,6 +6,60 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.61] — 2026-08-03
+
+**The root cause, found by reading our own helper instead of reasoning about the
+symptom. It is one line, and it is ours.**
+
+```sh
+reload_ok() { nginx_ok && { systemctl reload nginx 2>/dev/null || true; return 0; }; return 1; }
+```
+
+### Fixed
+- **`|| true` discarded the nginx reload's exit status, and the function
+  reported success anyway.** So `nginx -t` passing was treated as "the new vhost
+  is live". When the reload did not actually happen — a failed unit, nginx not
+  under systemd's control, a refused signal — the script carried straight on to
+  certbot against a server still running configuration that had **never
+  contained the vhost**.
+
+  The authority then reports `Type: connection`, because the running nginx has no
+  server block for that name and the default server closes the connection with no
+  response. That is the unexplained error this investigation has been circling:
+  the file on disk, the symlink, the DNS record and the webroot were all correct
+  the entire time. The single step that makes any of them take effect was the
+  only one whose failure was thrown away — deliberately, by a `|| true` nobody
+  revisited.
+
+  The reload now reports what `systemctl` said, and a host whose reload failed is
+  **not** sent to certbot: a challenge cannot be answered by configuration that
+  is not loaded, and the attempt would spend a rate-limited validation to
+  discover that.
+
+- **The same `|| true` was in every other subdomain helper** — api, mcp, talk and
+  openpgpkey, eight more occurrences. All fixed, and a gate now fails on a live
+  one in any helper, with the list of helpers held in one place so a new script
+  cannot quietly become a new home for it.
+
+- **The console can now MEASURE this rather than deduce it.** It reads nginx's
+  own worker processes (workers are replaced on reload; the master is not) and
+  compares the last reload against the vhost file's timestamp. Where the file is
+  newer, the row says so with both times — no inference, and no asking anyone to
+  take a deduction on trust.
+
+### Audit
+The finding came from an adversarial read of the helper, not from the failing
+output — which had been examined for eight releases without anyone opening the
+one function that applies the configuration. Mutation-tested by restoring the
+exact `|| true` line: the gate fails.
+
+One test defect was found and recorded rather than quietly fixed: the first draft
+of the reload gate **returned early when it found the bug**, passing on exactly
+the input it existed to catch, and shadowed `t` with a string while doing it. It
+is the same defect class as the code under test — a check that reports success on
+the failing case — which is worth stating out loud given that is the whole
+subject of this release.
+
 ## [3.16.60] — 2026-08-03
 
 **The probe that was diagnosing everything could manufacture its own failure.**

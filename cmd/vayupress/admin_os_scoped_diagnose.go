@@ -249,6 +249,11 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 		vh := vhostCheck(d.Host)
 		pr := challengeProbe(ctx, d.Host)
 		out = append(out, vh, port80ListenerCheck(), pr)
+		if st, ok := enabledVhostFor(d.Host); ok {
+			if c, have := reloadLagCheck(st.Path); have {
+				out = append(out, c)
+			}
+		}
 		if c, ok := staleConfigCheck(vh, pr); ok {
 			out = append(out, c)
 		}
@@ -992,6 +997,7 @@ func listensOnPort80(block string) bool {
 // vhostState is what the enabled configs actually provide for one host.
 type vhostState struct {
 	File            string
+	Path            string
 	Found           bool
 	OnPort80        bool
 	ServesChallenge bool
@@ -1020,6 +1026,7 @@ func enabledVhostFor(host string) (st vhostState, readable bool) {
 			st.Found = true
 			if st.File == "" {
 				st.File = e.Name()
+				st.Path = filepath.Join(nginxSitesEnabled, e.Name())
 			}
 			if listensOnPort80(blk) {
 				st.OnPort80 = true
@@ -1295,4 +1302,135 @@ func port80ListenerCheck() diagCheck {
 				"addresses too.",
 		}
 	}
+}
+
+// nginxLastReload returns when nginx last (re)read its configuration.
+//
+// nginx replaces its WORKER processes on reload and keeps the master, so the
+// newest nginx process start time is the last reload. Workers run as the same
+// unprivileged user as this service, so /proc is readable without any privilege.
+//
+// This turns a deduction into a measurement. The console could already infer
+// "the config on disk is correct and nginx is not serving it" from two checks
+// disagreeing; with this it can name the two times and stop asking anyone to
+// take the inference on trust.
+func nginxLastReload() (time.Time, bool) {
+	boot, ok := machineBootTime()
+	if !ok {
+		return time.Time{}, false
+	}
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return time.Time{}, false
+	}
+	var newest time.Time
+	for _, e := range entries {
+		pid := e.Name()
+		if pid == "" || pid[0] < '0' || pid[0] > '9' {
+			continue
+		}
+		comm, err := os.ReadFile(filepath.Clean("/proc/" + pid + "/comm"))
+		if err != nil || strings.TrimSpace(string(comm)) != "nginx" {
+			continue
+		}
+		st, err := os.ReadFile(filepath.Clean("/proc/" + pid + "/stat"))
+		if err != nil {
+			continue
+		}
+		// comm can contain spaces and parentheses, so the fields after the LAST
+		// ')' are the reliable ones. In that slice index 0 is `state` (field 3),
+		// so starttime (field 22) is index 19.
+		i := strings.LastIndex(string(st), ")")
+		if i < 0 {
+			continue
+		}
+		f := strings.Fields(string(st)[i+1:])
+		if len(f) < 20 {
+			continue
+		}
+		ticks, err := strconv.ParseInt(f[19], 10, 64)
+		if err != nil {
+			continue
+		}
+		// USER_HZ is 100 on every Linux this ships to; it is a kernel ABI
+		// constant, not a tunable.
+		if t := boot.Add(time.Duration(ticks) * time.Second / 100); t.After(newest) {
+			newest = t
+		}
+	}
+	if newest.IsZero() {
+		return time.Time{}, false
+	}
+	return newest, true
+}
+
+// machineBootTime derives the moment this machine booted from /proc/uptime.
+// Named for the machine because the package already has a bootTime for the
+// process's own start.
+func machineBootTime() (time.Time, bool) {
+	b, err := os.ReadFile("/proc/uptime")
+	if err != nil {
+		return time.Time{}, false
+	}
+	f := strings.Fields(string(b))
+	if len(f) == 0 {
+		return time.Time{}, false
+	}
+	secs, err := strconv.ParseFloat(f[0], 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Now().Add(-time.Duration(secs * float64(time.Second))), true
+}
+
+// reloadLagCheck names, with both timestamps, a vhost written after the last
+// reload.
+//
+// FOUND BY READING OUR OWN HELPER, not by reasoning about the symptom. The
+// provisioning script's reload step was:
+//
+//	systemctl reload nginx 2>/dev/null || true
+//
+// The `|| true` discarded the reload's exit status and the function reported
+// success regardless, so `nginx -t` passing was treated as "the new vhost is
+// live". When the reload did not actually happen, the script went on to certbot
+// against a server still running configuration that had never contained the
+// vhost — and the authority reported an unexplained "Type: connection", because
+// the running nginx had no server block for that name and the default server
+// closes the connection.
+//
+// Every layer above it was correct: the file, the symlink, the DNS, the webroot.
+// The single step that makes any of them take effect was the only one whose
+// failure was thrown away.
+func reloadLagCheck(vhostPath string) (diagCheck, bool) {
+	if vhostPath == "" {
+		return diagCheck{}, false
+	}
+	fi, err := os.Stat(filepath.Clean(vhostPath))
+	if err != nil {
+		return diagCheck{}, false
+	}
+	reloaded, ok := nginxLastReload()
+	if !ok {
+		return diagCheck{}, false
+	}
+	if !fi.ModTime().After(reloaded) {
+		return diagCheck{
+			Label: "nginx has reloaded since this vhost was written", OK: true,
+			Detail: "the vhost was written " + stamp(fi.ModTime()) + " and nginx last reloaded " +
+				stamp(reloaded) + ", so the running server has read this file",
+		}, true
+	}
+	return diagCheck{
+		Label: "nginx has NOT reloaded since this vhost was written", OK: false, Fatal: true,
+		Detail: "the vhost was written " + stamp(fi.ModTime()) + " but nginx last reloaded " +
+			stamp(reloaded) + " — BEFORE it. This is measured from the file's timestamp and " +
+			"nginx's own worker processes, not inferred. The running server has never read this " +
+			"file, so it has no server block for this host and the default server closes the " +
+			"connection — which is exactly the unexplained connection error the authority " +
+			"reports. The provisioning helper discarded the reload's exit status (a `|| true` on " +
+			"the systemctl call) and reported success whenever the config TEST passed, so a " +
+			"reload that never happened looked like one that did. Refreshing the root-side " +
+			"helpers from Domains & DNS installs the version that reports this instead.",
+	}, true
 }
