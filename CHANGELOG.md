@@ -63,6 +63,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   handlers removed with it, because a listener that can never fire is how the
   next reader concludes a control exists somewhere on the page.
 
+- **The site list, rebuilt.** `/os/domains` opened with a single 150-word
+  paragraph about rollout stages, manual holds and provisioning helpers, sitting
+  permanently above the list. Every sentence in it was true and none of it
+  answered the question an operator opens the page with, which is *are my sites
+  up*. It now leads with four tiles — sites, enabled, on hold, no certificate —
+  and folds the how-it-works detail into an accordion, kept in full rather than
+  cut. A site on manual hold is deliberately **not** counted as missing a
+  certificate: not issuing one is what the hold does, and counting it in both
+  columns would make a deliberate state look like a fault.
+
 - **The console in the house style.** Four tiles answering "what is the state of
   this site" (posts, members, mailboxes, certificate), the site's own tools, then
   client access / mailbox allowance / lifecycle / what-is-shared as `monAcc`

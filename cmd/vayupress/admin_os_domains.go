@@ -145,7 +145,7 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 	// The list is a premium, animated card grid; per-domain branding/content
 	// editing moved to each site's own console (/os/d/{id}), surfaced from
 	// the Optimize hub, so this page stays a clean add / list / remove surface.
-	body := domainsHeader(len(domains), viewingHost) +
+	body := domainsHeader(domains, viewingHost) +
 		domainsCards(domains, counts, mailCounts, memberCounts, mailOn) +
 		addForm +
 		domainsScript(nonce) +
@@ -154,23 +154,70 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 	writeOSHTML(w, r, adminOSLayout(nonce, "Domains", "domains", cfg, htmpl.HTML(body)))
 }
 
-func domainsHeader(n int, viewingHost string) string {
-	sub := "One binary, one registry — every hostname this install answers on."
+// domainsHeader renders the list header in the Monetization house style
+// (ADR-0154 D5): four tiles answering "what is the state of my sites", one lede,
+// and the staging detail folded into an accordion.
+//
+// It replaced a header carrying a single 150-word `card--info` paragraph about
+// rollout stages, manual holds and provisioning helpers. Every sentence in it was
+// true and none of it answered the question an operator opens this page with,
+// which is "are my sites up". Reference material an operator reads once does not
+// belong permanently above the thing they came for.
+func domainsHeader(domains []domain.Domain, viewingHost string) string {
+	total, live, held, uncertified := len(domains), 0, 0, 0
+	for _, d := range domains {
+		if d.Status == domain.StatusActive {
+			live++
+		}
+		if !d.IsPrimary && !d.IsSyncApproved() {
+			held++
+		}
+		if !d.IsPrimary && d.IsSyncApproved() &&
+			d.TLSState != domain.TLSActive && d.TLSState != domain.TLSPrimary {
+			uncertified++
+		}
+	}
+
+	sub := "Every site this install serves. Open one to operate it — its content, settings, theme, SEO and visitors are its own."
 	if viewingHost != "" {
-		sub += ` You are viewing from <strong>` + html.EscapeString(viewingHost) + `</strong>.`
+		sub += ` You are reading this from <strong>` + html.EscapeString(viewingHost) + `</strong>.`
 	}
-	count := "domain"
-	if n != 1 {
-		count = "domains"
+
+	var b strings.Builder
+	b.WriteString(`<div class="page-header"><h1>Sites</h1>` +
+		`<div class="page-actions"><a class="btn btn--ghost btn--sm" href="/os/dns">Domains &amp; DNS</a>` +
+		`<span id="dom-status" class="text-sm muted" role="status" aria-live="polite"></span></div></div>`)
+	b.WriteString(`<p class="page-sub">` + sub + `</p>`)
+
+	b.WriteString(`<div class="vm-stats">`)
+	b.WriteString(vmStatTile(strconv.Itoa(total), "Sites", ""))
+	b.WriteString(vmStatTile(strconv.Itoa(live), "Enabled", ""))
+	heldTone := ""
+	if held > 0 {
+		heldTone = "warn"
 	}
-	return `<div class="page-head">
-  <div>
-    <h1 class="page-title">Domains</h1>
-    <p class="page-sub">` + sub + `</p>
-  </div>
-  <div class="page-head__meta"><span class="pill">` + strconv.Itoa(n) + ` ` + count + `</span></div>
-</div>
-<div class="card card--info"><p class="text-sm">VayuDomains is rolling out in stages. The registry drives <strong>host resolution</strong>, and <strong>per-domain content</strong> (homepage, articles, tags, feeds, sitemap and search) is live — each domain serves only its own posts. <strong>Per-domain mail</strong> is being staged: this page now shows each domain's mail status and mailbox count, with isolated per-domain delivery and branded mail arriving next. Adding a domain only <strong>registers</strong> it — nothing is provisioned automatically. When its DNS points here, press <strong>Sync now</strong> to approve it; the provisioning helper (run by deploy/update, or <code>sudo bash scripts/setup-vayudomain.sh</code>) then obtains its TLS certificate and nginx vhost. Domains on manual hold are never touched.</p></div>`
+	b.WriteString(vmStatTile(strconv.Itoa(held), "On hold", heldTone))
+	certTone := ""
+	if uncertified > 0 {
+		certTone = "warn"
+	}
+	b.WriteString(vmStatTile(strconv.Itoa(uncertified), "No certificate", certTone))
+	b.WriteString(`</div>`)
+
+	// The reference material, available and not shouting.
+	b.WriteString(`<div class="mon-stack">`)
+	b.WriteString(monAcc("📘", "How adding a site works", "Register, point DNS, approve, provision",
+		`<span class="mon-chip mon-chip--off">read once</span>`, false,
+		`<div class="card"><p class="text-sm muted">Adding a site only <strong>registers</strong> it — nothing is
+    provisioned automatically, and a registered site serves nothing until it has a certificate. The order is:
+    add it here, point its DNS at this server, approve it (<strong>Sync now</strong>, or the switch on the site's
+    own console), then run <strong>Provision subdomains</strong> on <a href="/os/dns">Domains &amp; DNS</a>. That
+    last step is a root-side helper — this service runs unprivileged and cannot obtain a certificate or reload
+    nginx itself. It also runs daily, so a record you point later is picked up without you doing anything.</p>
+  <p class="text-sm muted">A site on <strong>manual hold</strong> is skipped by every provisioning helper. That is
+    what the hold is for, and it is why a held site never gets a certificate.</p></div>`))
+	b.WriteString(`</div>`)
+	return b.String()
 }
 
 // domainsCards renders the registry as a premium, animated card grid (replacing
