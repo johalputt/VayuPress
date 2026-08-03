@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.35] — 2026-08-02
 
 ### Added
 - **ADR-0153 — every domain a whole install.** An operator set up a hosted
@@ -142,6 +142,67 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   The settings→render mapping was copy-pasted in four handlers, which meant a key
   added to one and not the others saved correctly and rendered empty. It is one
   function now.
+
+- **Phase 5 — SEO per domain.** The head directives and verification tokens are
+  a domain's own (they live in its scope, edited in its Theme Studio), and the
+  per-domain SEO page shows them alongside links to that host's own live
+  `sitemap.xml`, `robots.txt` and `feed.xml`. Verification tokens matter most
+  here: a search-console token identifies **one property**, so a token shared
+  across every hosted domain is correct for exactly one of them.
+
+  `/os/seo` was deliberately **not** mounted under the domain route. It reports
+  on cached artefacts and the install's canonical hostname — the primary's files
+  — so mounting it would have shown the operator their own sitemap's freshness
+  under a client's heading. That is the same defect class as the card that
+  started this ADR, and the page says which parts of SEO reporting stay
+  install-level rather than implying otherwise.
+
+- **Phase 6 — the analytics event log learns its domain.** Migration 080 scoped
+  the daily counters and left `analytics_pageviews` alone, and the event log is
+  what the panel, Top pages, trending and the overview all read — so per-domain
+  traffic was half-built. Migration 084 adds the column, and a per-domain
+  Visitors page reports that domain alone.
+
+  **Attribution is server-side, always.** The domain is the host *this install
+  resolved*, never a field from the beacon: `/api/v1/analytics/collect` is public
+  and unauthenticated, so a domain a visitor can name is a domain a visitor can
+  write traffic into — inflating a figure the operator bills against, or
+  poisoning a client's "busiest pages" with paths of their choosing. The
+  all-domains sentinel is a value no id can be, so no crafted id can disable
+  filtering. The page also states that its visit count and the install-wide
+  visitor figure are **different populations and not comparable**.
+
+- **Phase 7 — copy from primary.** One button that copies the operator's
+  presentational settings into a hosted domain's scope. A **copy, not a link**:
+  edit the primary tomorrow and the client's site does not move — inheritance is
+  what produced the original complaint. Identity is excluded on purpose, because
+  copying the studio's site name and author onto a client's domain publishes the
+  studio's identity on the client's site, which is worse than a wrong colour.
+
+### Security
+- **An upgrade would have retitled every unbranded client site "VayuPress".**
+  Found by the pre-release pass, not in the field. Phase 4 made a hosted domain
+  render from its own scope; an unbranded domain therefore resolved `site.name`
+  to the **compiled-in product default**, where before it had inherited the
+  primary's name. Any install with a secondary domain nobody had branded would
+  have come back up with a client's live site carrying the product's name — and
+  the operator would have learned it from the client.
+
+  The fix is not to reinstate inheritance, which is the defect the whole ADR
+  removes. Migration 083 seeds an unbranded domain's name from **its own
+  hostname**: a site nobody has named is most truthfully named after itself, and
+  that value belongs to the domain rather than being borrowed from the operator.
+  `INSERT OR IGNORE`, so it never overwrites a name that was set.
+
+- **Two more mutations passed against re-broken code and were fixed.** One test
+  asserted on a file's prose rather than its behaviour — the file comment
+  explaining *why* a primary-only source is avoided contained the banned string,
+  so the check would have failed on the sentence documenting the decision and
+  passed on the code doing the wrong thing. The other checked the wrong scope
+  key: removing the primary guard from migration 083 does not rename the primary,
+  it writes rows under the primary's **registry row id**, which no scope is ever
+  built from — invisible forever, and worse than a visible error because it looks
+  like nothing happened.
 
 ### Security
 - **A cross-tenant write, caught while building Phase 4 rather than after.**

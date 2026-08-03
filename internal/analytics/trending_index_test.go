@@ -30,7 +30,7 @@ func TestTrendingUsesCompositeIndex(t *testing.T) {
 	for _, q := range []string{
 		`CREATE TABLE articles(id INTEGER PRIMARY KEY, slug TEXT UNIQUE, title TEXT, feature_image TEXT, status TEXT NOT NULL DEFAULT 'published', is_page INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
 		`CREATE INDEX idx_articles_slug ON articles(slug);`,
-		`CREATE TABLE analytics_pageviews(id TEXT PRIMARY KEY, session_id TEXT NOT NULL DEFAULT '', url_path TEXT NOT NULL, event_type INTEGER NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
+		`CREATE TABLE analytics_pageviews(id TEXT PRIMARY KEY, session_id TEXT NOT NULL DEFAULT '', url_path TEXT NOT NULL, event_type INTEGER NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,domain_id TEXT NOT NULL DEFAULT '');`,
 		`CREATE INDEX idx_apv_trending ON analytics_pageviews(event_type, created_at, url_path);`,
 	} {
 		if _, err := db.Exec(q); err != nil {

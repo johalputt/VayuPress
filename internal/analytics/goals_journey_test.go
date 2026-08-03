@@ -23,11 +23,11 @@ func TestGoalsConversion(t *testing.T) {
 	ctx := context.Background()
 
 	// Visitor A: views "/" then "/pricing".
-	_ = s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome")
-	_ = s.Collect(ctx, CollectRequest{URL: "/pricing", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome")
+	_ = s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome", "")
+	_ = s.Collect(ctx, CollectRequest{URL: "/pricing", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome", "")
 	// Visitor B: views "/pricing" and fires a "signup" custom event.
-	_ = s.Collect(ctx, CollectRequest{URL: "/pricing", Hostname: "h", EventType: 1}, "2.2.2.2", "Firefox")
-	_ = s.Collect(ctx, CollectRequest{URL: "/welcome", Hostname: "h", EventType: 2, EventName: "signup"}, "2.2.2.2", "Firefox")
+	_ = s.Collect(ctx, CollectRequest{URL: "/pricing", Hostname: "h", EventType: 1}, "2.2.2.2", "Firefox", "")
+	_ = s.Collect(ctx, CollectRequest{URL: "/welcome", Hostname: "h", EventType: 2, EventName: "signup"}, "2.2.2.2", "Firefox", "")
 
 	pathGoal, err := s.CreateGoal(ctx, "Saw pricing", GoalKindPath, "/pricing")
 	if err != nil {
@@ -85,9 +85,9 @@ func TestGoalPathPrefixWildcard(t *testing.T) {
 	s := newExtStore(t)
 	addGoalsTable(t, s)
 	ctx := context.Background()
-	_ = s.Collect(ctx, CollectRequest{URL: "/blog/a", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome")
-	_ = s.Collect(ctx, CollectRequest{URL: "/blog/b", Hostname: "h", EventType: 1}, "2.2.2.2", "Firefox")
-	_ = s.Collect(ctx, CollectRequest{URL: "/about", Hostname: "h", EventType: 1}, "3.3.3.3", "Safari")
+	_ = s.Collect(ctx, CollectRequest{URL: "/blog/a", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome", "")
+	_ = s.Collect(ctx, CollectRequest{URL: "/blog/b", Hostname: "h", EventType: 1}, "2.2.2.2", "Firefox", "")
+	_ = s.Collect(ctx, CollectRequest{URL: "/about", Hostname: "h", EventType: 1}, "3.3.3.3", "Safari", "")
 
 	if _, err := s.CreateGoal(ctx, "Read blog", GoalKindPath, "/blog*"); err != nil {
 		t.Fatalf("create: %v", err)
@@ -107,9 +107,9 @@ func TestPathFlowsJourney(t *testing.T) {
 	ctx := context.Background()
 
 	// One visitor walks /, /pricing, /checkout in a single session.
-	_ = s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome")
-	_ = s.Collect(ctx, CollectRequest{URL: "/pricing", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome")
-	_ = s.Collect(ctx, CollectRequest{URL: "/checkout", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome")
+	_ = s.Collect(ctx, CollectRequest{URL: "/", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome", "")
+	_ = s.Collect(ctx, CollectRequest{URL: "/pricing", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome", "")
+	_ = s.Collect(ctx, CollectRequest{URL: "/checkout", Hostname: "h", EventType: 1}, "1.1.1.1", "Chrome", "")
 
 	flows, err := s.PathFlows(ctx, 14, 100)
 	if err != nil {
