@@ -132,6 +132,55 @@ jobs:
             --bundle "dist/vayupress-${{ steps.ver.outputs.version }}.sbom.cosign.bundle" \
             || echo "cosign SBOM signing skipped/failed — publishing SBOM without signature"
 
+      - name: Package the provisioning helpers
+        if: steps.exists.outputs.skip != 'true'
+        # The same reasoning as the VayuShield agent below, applied to the half of
+        # the product that obtains certificates.
+        #
+        # These scripts run as ROOT and live in /usr/local/lib/vayupress, which
+        # the unprivileged web app cannot write — correctly, since a process that
+        # can replace what root executes is a full privilege escalation. The
+        # consequence, unnoticed until an operator hit it: a fix to these helpers
+        # reached NOBODY through the in-app updater, which swaps the binary only.
+        # A defect in the certificate path could therefore be fixed in the repo
+        # and remain live on every install indefinitely, and the only remedy
+        # offered was a shell command — for a product whose premise is that you
+        # never need one.
+        #
+        # Publishing them signed is what lets the root worker upgrade itself, so
+        # the next such fix arrives by pressing a button.
+        run: |
+          set -euo pipefail
+          mkdir -p dist/provision
+          cp scripts/provision-subdomains.sh      dist/provision/
+          cp scripts/setup-vayudomain.sh          dist/provision/
+          cp scripts/setup-api-subdomain.sh       dist/provision/
+          cp scripts/setup-mcp-subdomain.sh       dist/provision/
+          cp scripts/setup-talk-subdomain.sh      dist/provision/
+          cp scripts/setup-openpgpkey-subdomain.sh dist/provision/
+          PROV_VER="$(printf '%s' "${{ steps.ver.outputs.version }}" | sed 's/^v//')"
+          printf '%s' "$PROV_VER" > dist/provision/helpers.version
+          # Stamped INTO the driver as well as beside it, for the reason the agent
+          # documents below: a sidecar cannot work on the upgrade that introduces
+          # it, because the old installer has already run by then.
+          sed -i "s/^HELPERS_VERSION_STAMP=.*/HELPERS_VERSION_STAMP=\"${PROV_VER}\"/" dist/provision/provision-subdomains.sh
+          grep -q "^HELPERS_VERSION_STAMP=\"${PROV_VER}\"$" dist/provision/provision-subdomains.sh || {
+            echo "FAIL: the helper version stamp was not applied"; exit 1; }
+          for f in dist/provision/*.sh; do bash -n "$f"; done
+          tar -C dist/provision -czf dist/vayuprovision-helpers.tar.gz .
+          sha256sum dist/vayuprovision-helpers.tar.gz | awk '{print $1}' > dist/vayuprovision-helpers.tar.gz.sha256
+
+      - name: Sign the provisioning helpers (keyless OIDC)
+        if: steps.exists.outputs.skip != 'true'
+        continue-on-error: true
+        # An unsigned bundle is not published as a fallback: the root worker
+        # refuses to install what it cannot verify, so an unsigned asset would
+        # only produce a confusing refusal at the far end.
+        run: |
+          cosign sign-blob --yes dist/vayuprovision-helpers.tar.gz \
+            --bundle dist/vayuprovision-helpers.tar.gz.cosign.bundle \
+            || echo "cosign signing skipped/failed — the root worker will refuse this bundle, which is the intended behaviour"
+
       - name: Package the VayuShield helper agent
         if: steps.exists.outputs.skip != 'true'
         # The Tier 2/3 reconcile agent runs as ROOT and therefore cannot take its
@@ -264,3 +313,6 @@ jobs:
             dist/vayushield-agent.tar.gz
             dist/vayushield-agent.tar.gz.sha256
             dist/vayushield-agent.tar.gz.cosign.bundle
+            dist/vayuprovision-helpers.tar.gz
+            dist/vayuprovision-helpers.tar.gz.sha256
+            dist/vayuprovision-helpers.tar.gz.cosign.bundle

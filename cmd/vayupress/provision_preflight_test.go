@@ -114,3 +114,80 @@ func TestThePreflightStopsCertbotWhenTheServerCannotAnswerItself(t *testing.T) {
 		}
 	}
 }
+
+// THE MISSING TECHNOLOGY, and the reason it was missing is worth stating: these
+// helpers run as ROOT out of /usr/local/lib/vayupress, which the unprivileged
+// web app cannot write. That boundary is correct — a process that can replace
+// what root executes is a full privilege escalation — but it had a consequence
+// nobody had written down: the in-app updater swaps the BINARY ONLY, so a fix to
+// these scripts reached NOBODY.
+//
+// A real defect proved it. `systemctl reload nginx 2>/dev/null || true`
+// discarded the reload's exit status and reported success regardless, so every
+// certificate on an install failed with an unexplained connection error. The fix
+// was one line and could not reach a single existing install, because the only
+// delivery mechanism was an operator with a shell.
+//
+// So the worker upgrades itself, by the mechanism the VayuShield agent already
+// uses (ADR-0123). These assertions are about the properties that make that safe
+// to run as root at all.
+func TestTheRootWorkerUpgradesItselfAndRefusesUnverifiedCode(t *testing.T) {
+	src := readSourceFile(t, "../../scripts/provision-subdomains.sh")
+	body := src[strings.Index(src, "self_upgrade_helpers() {"):]
+
+	if !strings.Contains(src, "self_upgrade_helpers\n") {
+		t.Fatal("the worker defines a self-upgrade and never calls it")
+	}
+	// Verification is not optional and has no fallback: what the bundle contains
+	// runs as root.
+	if !strings.Contains(body, "verify-blob") {
+		t.Fatal("the bundle is installed without verifying its signature — an unverified " +
+			"archive executed as root is a full compromise of the machine")
+	}
+	// The identity must be pinned to this project. Verifying "a valid signature"
+	// without pinning who signed it accepts anybody's.
+	for _, want := range []string{"certificate-identity-regexp", "certificate-oidc-issuer"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the verification does not pin %s, so any valid Sigstore signature would "+
+				"pass — including an attacker's own", want)
+		}
+	}
+	// Verify BEFORE unpacking. Unpacking an unverified archive as root is already
+	// the compromise, whatever is checked afterwards.
+	if v, x := strings.Index(body, "verify-blob"), strings.Index(body, "tar -C"); v < 0 || x < 0 || v > x {
+		t.Fatal("the archive is unpacked before its signature is checked")
+	}
+	// No cosign must mean NO INSTALL, never a silent unverified one.
+	i := strings.Index(body, "cosign is not installed")
+	if i < 0 {
+		t.Fatal("a missing cosign is not handled explicitly")
+	}
+	if !strings.Contains(body[i:i+200], "return 0") {
+		t.Error("a missing cosign does not stop the upgrade path")
+	}
+}
+
+// Every failure in the upgrade path must be a SKIP, never a stop.
+//
+// This runs before the provisioning work. A host that cannot reach GitHub must
+// still obtain certificates with the helpers it already has — an upgrade path
+// that can prevent the thing it exists to improve is worse than none, and that
+// is the same shape as the curl guard on the pre-flight above.
+func TestTheSelfUpgradeNeverBlocksProvisioning(t *testing.T) {
+	src := readSourceFile(t, "../../scripts/provision-subdomains.sh")
+	body := src[strings.Index(src, "self_upgrade_helpers() {"):]
+	end := strings.Index(body, "\nself_upgrade_helpers\n")
+	if end < 0 {
+		t.Fatal("cannot bound the self-upgrade function")
+	}
+	body = body[:end]
+	if strings.Contains(body, "exit 1") || strings.Contains(body, "return 1") {
+		t.Error("the self-upgrade can fail the run. A host that cannot reach the release must " +
+			"still provision with the helpers it has")
+	}
+	// And it must say why it skipped, or a silent no-op is indistinguishable from
+	// an upgrade that happened — the exact ambiguity this whole track is about.
+	if strings.Count(body, "self-upgrade skipped") < 4 {
+		t.Error("the skip paths do not each explain themselves")
+	}
+}

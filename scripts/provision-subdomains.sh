@@ -58,6 +58,94 @@ fi
 # by a run that had already read the world.
 rm -f "$REQUEST"
 
+# ── Self-upgrade ─────────────────────────────────────────────────────────────
+#
+# WHY THIS EXISTS, and it is the whole point: these helpers run as ROOT out of
+# /usr/local/lib/vayupress, which the unprivileged web app cannot write. That
+# boundary is correct — a process that can replace what root executes is a full
+# privilege escalation — but it had a consequence nobody had stated: the in-app
+# updater swaps the BINARY ONLY, so a fix to these scripts reached nobody.
+#
+# A real defect proved it. The nginx reload step read
+#
+#   systemctl reload nginx 2>/dev/null || true
+#
+# which discarded the reload's exit status and reported success regardless, so a
+# reload that never happened looked like one that did and every certificate on
+# the install failed with an unexplained connection error. The fix was one line
+# and it could not reach a single existing install, because the only delivery
+# mechanism was an operator with a shell — for a product whose premise is that
+# you never need one.
+#
+# So the worker upgrades itself, by exactly the mechanism the VayuShield agent
+# already uses (ADR-0123): fetch the signed bundle from the pinned repository,
+# verify it with cosign BEFORE unpacking, and install. Nothing the web app can
+# write becomes part of what root runs; the app's only power remains the single
+# empty flag file that asks for a run.
+UPGRADE_REPO="${UPGRADE_REPO:-johalputt/VayuPress}"
+UPGRADE_ASSET="vayuprovision-helpers.tar.gz"
+HELPERS_VERSION_STAMP="dev"
+
+self_upgrade_helpers() {
+  # Every failure here is a SKIP, never a stop. This runs before the work, and a
+  # host that cannot reach GitHub must still provision with the helpers it has —
+  # an upgrade path that can prevent the thing it exists to improve is worse than
+  # no upgrade path.
+  command -v curl >/dev/null 2>&1 || { log "self-upgrade skipped: curl is not installed"; return 0; }
+  local cosign_bin
+  cosign_bin="$(command -v cosign 2>/dev/null)" || {
+    log "self-upgrade skipped: cosign is not installed, and unverified code is never installed as root"
+    return 0
+  }
+
+  local tmp
+  tmp="$(mktemp -d)" || return 0
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmp'" RETURN
+
+  local base="https://github.com/${UPGRADE_REPO}/releases/latest/download"
+  curl -fsSL --max-time 120 -o "${tmp}/${UPGRADE_ASSET}" "${base}/${UPGRADE_ASSET}" 2>/dev/null || {
+    log "self-upgrade skipped: could not download the helper bundle"; return 0; }
+  curl -fsSL --max-time 60 -o "${tmp}/bundle.json" "${base}/${UPGRADE_ASSET}.cosign.bundle" 2>/dev/null || {
+    log "self-upgrade skipped: the release carries no signature for the helper bundle"; return 0; }
+
+  # Verified BEFORE unpacking. Unpacking an unverified archive as root is already
+  # the compromise, whatever is checked afterwards.
+  if ! "$cosign_bin" verify-blob "${tmp}/${UPGRADE_ASSET}" \
+        --bundle "${tmp}/bundle.json" \
+        --certificate-identity-regexp "^https://github.com/${UPGRADE_REPO}/" \
+        --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+        >"${tmp}/verify.log" 2>&1; then
+    # Not reported as "someone tampered with it". Keyless verification needs
+    # Sigstore as well as GitHub, so a host that cannot reach sigstore.dev fails
+    # here having established NOTHING — and telling an operator they are under
+    # attack when their egress is filtered is a false accusation of exactly the
+    # kind this project's posture report exists to avoid.
+    log "self-upgrade skipped: the bundle's signature could not be verified (this proves nothing about the bundle if this host cannot reach sigstore.dev): $(tail -n 2 "${tmp}/verify.log" | tr '\n' ' ')"
+    return 0
+  fi
+
+  mkdir -p "${tmp}/x" && tar -C "${tmp}/x" -xzf "${tmp}/${UPGRADE_ASSET}" 2>/dev/null || {
+    log "self-upgrade skipped: the verified bundle could not be unpacked"; return 0; }
+  local n=0 f
+  for f in "${tmp}"/x/*.sh; do
+    [ -f "$f" ] || continue
+    bash -n "$f" 2>/dev/null || { log "self-upgrade ABORTED: $(basename "$f") does not parse"; return 0; }
+    n=$((n + 1))
+  done
+  [ "$n" -gt 0 ] || { log "self-upgrade skipped: the bundle contained no helpers"; return 0; }
+
+  install -m 0755 -o root -g root "${tmp}"/x/*.sh "$LIB_DIR"/ 2>/dev/null || {
+    log "self-upgrade skipped: could not install into ${LIB_DIR}"; return 0; }
+  [ -f "${tmp}/x/helpers.version" ] && install -m 0644 "${tmp}/x/helpers.version" "$LIB_DIR"/ 2>/dev/null
+  log "helpers upgraded to $(cat "${LIB_DIR}/helpers.version" 2>/dev/null || echo unknown) (${n} script(s), signature verified)"
+  # The helpers this run is about to execute are the NEW ones — the driver reads
+  # them from disk per helper. This driver itself is replaced for the next run.
+  return 0
+}
+
+self_upgrade_helpers
+
 started="$(date -u +%FT%TZ)"
 log "starting subdomain provisioning at ${started}"
 

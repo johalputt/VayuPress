@@ -6,6 +6,60 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.62] — 2026-08-03
+
+**The root-side helpers now upgrade themselves. This is the last privileged
+action an operator ever takes.**
+
+### Added
+- **Verified self-upgrade for the provisioning helpers.** They run as root out
+  of `/usr/local/lib/vayupress`, which the unprivileged web app cannot write.
+  That boundary is correct — a process able to replace what root executes is a
+  full privilege escalation — but it had a consequence nobody had written down:
+  **the in-app updater swaps the binary only, so a fix to these scripts reached
+  nobody.**
+
+  v3.16.61 proved it at the worst possible moment. The nginx reload step read
+  `systemctl reload nginx 2>/dev/null || true` — the exit status discarded,
+  success reported regardless — so every certificate on an affected install
+  failed with an unexplained connection error. The fix was **one line**, and it
+  could not reach a single existing install. The only delivery mechanism was an
+  operator with a shell, in a product whose entire premise is that you never need
+  one. A beginner would simply have been stuck.
+
+  The worker now fetches the signed helper bundle from the pinned repository and
+  installs it before each run, by exactly the mechanism the VayuShield agent has
+  used since ADR-0123. Nothing the web app can write becomes part of what root
+  executes; the app's only power remains the single empty flag file that asks for
+  a run.
+
+  The properties that make that safe to run as root, each with a gate:
+  - **Verified before unpacking.** Unpacking an unverified archive as root is
+    already the compromise, whatever is checked afterwards.
+  - **The signer is pinned to this project.** Accepting "a valid Sigstore
+    signature" without pinning who signed it accepts anybody's.
+  - **No cosign means no install** — never a silent unverified one.
+  - **Every failure is a skip, never a stop.** A host that cannot reach the
+    release must still provision with the helpers it already has: an upgrade path
+    that can prevent the thing it exists to improve is worse than none.
+  - **A failure that cannot distinguish "unreachable" from "unsigned" says so.**
+    Keyless verification needs Sigstore as well as GitHub, and telling an
+    operator they are under attack when their egress is merely filtered is a
+    false accusation of the exact kind this project's posture report exists to
+    avoid.
+
+- **`vayuprovision-helpers.tar.gz`**, with its SHA-256 and cosign bundle, is now
+  published with every release. An unsigned bundle is deliberately not published
+  as a fallback: the worker refuses what it cannot verify, so an unsigned asset
+  would only produce a confusing refusal at the far end.
+
+### Audit
+Four mutations over the new surface, all caught, and every one a real
+supply-chain failure rather than a strawman: unpacking before verifying, dropping
+the signer-identity pin, installing when cosign is absent, and letting a failed
+upgrade block provisioning. The first two would each have turned a convenience
+feature into remote code execution as root.
+
 ## [3.16.61] — 2026-08-03
 
 **The root cause, found by reading our own helper instead of reasoning about the
