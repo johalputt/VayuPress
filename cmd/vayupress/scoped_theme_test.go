@@ -119,7 +119,7 @@ func TestThemeStudioIsLinkedFromTheScopedConsole(t *testing.T) {
 	if !found {
 		t.Fatal("Theme Studio is missing from the per-domain console")
 	}
-	page := scopedHomePage(testDomain("abc123", "client.example"))
+	page := scopedConsolePage(testDomain("abc123", "client.example"), 0, 0, 0, false, nil)
 	if !strings.Contains(page, `href="/os/d/abc123/theme"`) {
 		t.Error("the console does not link this domain's Theme Studio")
 	}

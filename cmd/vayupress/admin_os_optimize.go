@@ -90,7 +90,7 @@ func osOptimizeGrid(level int, sites []optimizeSite) string {
 	if len(sites) > 0 && level >= osPathMinLevel("/os/domains") {
 		var cards strings.Builder
 		for _, s := range sites {
-			cards.WriteString(osWorkCard("/os/domains/"+html.EscapeString(s.ID), s.Host, s.Label, iconDomains, 0, "", false))
+			cards.WriteString(osWorkCard("/os/d/"+html.EscapeString(s.ID), s.Host, s.Label, iconDomains, 0, "", false))
 		}
 		b.WriteString(`<div class="section-head"><span class="section-head__title">Your websites</span>` +
 			`<span class="section-head__hint">Edit branding, content &amp; theme per site</span></div>` +

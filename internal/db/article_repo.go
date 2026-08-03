@@ -126,6 +126,46 @@ func (r *sqliteArticleRepo) GetScoped(ctx context.Context, scope, slug string) (
 }
 
 // SetDomain reassigns an article to a domain (empty = the primary domain).
+// ListOwnedBy returns everything a domain owns, drafts and pages included,
+// newest first.
+//
+// ListScoped cannot serve this. It is the PUBLIC listing and excludes drafts by
+// design — and an operator opening a client's site to see what is on it needs
+// the drafts most of all, because an unpublished post is the one that needs
+// attention. Bodies are deliberately not selected: this is a listing.
+//
+// The domainID is used verbatim, including "" for the primary. There is no
+// "everything" mode here on purpose: this method exists to answer "what does
+// THIS site have", and a scope that could mean every site is how a per-site page
+// comes to show another site's rows.
+func (r *sqliteArticleRepo) ListOwnedBy(ctx context.Context, domainID string, limit int) ([]Article, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	rows, err := r.reader().QueryContext(ctx,
+		`SELECT id,title,slug,created_at,updated_at,COALESCE(status,'published'),COALESCE(is_page,0),domain_id
+		 FROM articles WHERE domain_id=? ORDER BY updated_at DESC, created_at DESC LIMIT ?`,
+		domainID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Article
+	for rows.Next() {
+		var a Article
+		var isPage int
+		if err := rows.Scan(&a.ID, &a.Title, &a.Slug, &a.CreatedAt, &a.UpdatedAt, &a.Status, &isPage, &a.DomainID); err != nil {
+			return nil, err
+		}
+		a.IsPage = isPage == 1
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (r *sqliteArticleRepo) SetDomain(ctx context.Context, slug, domainID string) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE articles SET domain_id=? WHERE slug=?`, domainID, slug)
 	return err

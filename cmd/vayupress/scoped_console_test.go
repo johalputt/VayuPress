@@ -106,8 +106,8 @@ func TestThePerDomainRoutesAreNotReachableByAConfinedClient(t *testing.T) {
 // operator to a page that edits the PRIMARY while its URL says a hosted domain —
 // a worse version of the defect this ADR exists to fix.
 func TestUnscopedToolsAreListedButNotLinked(t *testing.T) {
-	page := scopedHomePage(testDomain("abc123", "client.example"))
-	assertCSPSafe(t, "scopedHomePage", page)
+	page := scopedConsolePage(testDomain("abc123", "client.example"), 0, 0, 0, false, nil)
+	assertCSPSafe(t, "scopedConsolePage", page)
 
 	for _, tool := range scopedTools {
 		href := "/os/d/abc123" + tool.Path[len("/os/d/%s"):]
@@ -139,7 +139,7 @@ func TestUnscopedToolsAreListedButNotLinked(t *testing.T) {
 // The page must carry the honest ceiling. An operator selling this needs to see
 // what is shared in the same view as what is not.
 func TestTheScopedConsoleStatesWhatIsShared(t *testing.T) {
-	note := scopedIndependenceNote()
+	note := scopedSharedBody()
 	for _, want := range []string{"one process", "row scoping", "fail and recover together"} {
 		if !strings.Contains(strings.ToLower(note), strings.ToLower(want)) {
 			t.Errorf("the shared-infrastructure note never mentions %q", want)

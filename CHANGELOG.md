@@ -6,6 +6,71 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Added
+- **ADR-0154 — one console per site.** An operator opened a subdomain's controls
+  and got the main domain's. They were right, and the cause was not subtle. The
+  page titled **Manage site**, reached by clicking a hosted domain, rendered
+  this:
+
+  ```html
+  <p class="text-sm muted">The links below are the <b>install-wide</b> tools.
+     They edit the primary site.</p>
+  <a class="btn" href="/os/theme">Theme Studio</a>
+  <a class="btn" href="/os/website">Website settings</a>
+  <a class="btn" href="/os/analytics">Analytics</a>
+  <a class="btn" href="/os/seo">SEO</a>
+  ```
+
+  Four buttons carrying the names of the four tools an operator wants, on the
+  page about their client's site, opening the operator's own. The disclaimer is
+  true and is not enough: a caveat in grey type does not survive contact with a
+  button that looks like the thing you came for.
+
+  **`/os/d/{id}` is now the one address for a site.** `/os/domains/{id}`
+  redirects to it permanently. No install-wide link appears on a per-site page —
+  not demoted, not caveated, absent — and a test fails the build on any
+  `href="/os/<tool>"` in per-site markup. The general rule, which has now cost
+  two bugs: *a control that acts on something other than the page it is on does
+  not belong on that page.*
+
+- **Posts & pages, per site.** The feature the report was actually about.
+  `articles.domain_id` has existed since migration 060 and the public site has
+  routed on it the whole time, but the console's entire per-site content surface
+  was one box reading *"move a published post to this site by its slug"* — no
+  list, no drafts, no way to write one for it.
+
+  `/os/d/{id}/content` lists everything a site owns, **drafts included** (the
+  public listing excludes them by design, and the unpublished post is the one
+  waiting on somebody), with per-row edit, view and move-out, plus a move-in box.
+  **Write for this site** creates a draft server-side that is *born* on this
+  domain, then opens the one editor on it.
+
+  That last part was a caught defect rather than a design: the first version
+  linked `/os/editor?domain={id}`, a parameter the editor does not read — so it
+  would have created the post on the primary from a page titled with the
+  client's domain. The reported bug, in the code written to fix the reported bug.
+  The isolation test caught it, which is the entire reason that test exists.
+
+- **One editor per field.** The Manage-site page carried a second **Branding**
+  editor writing name / tagline / description / accents into the `config_json`
+  overlay, while `/os/d/{id}/settings` and Theme Studio wrote the same fields
+  into the scoped store. Migration 083 moved the overlay into the store; the card
+  was never retired, so which value won depended on which page an operator
+  happened to use last and nothing on either page said so. Retired, with the
+  console linking the scoped editors instead — and the script's now-unbindable
+  handlers removed with it, because a listener that can never fire is how the
+  next reader concludes a control exists somewhere on the page.
+
+- **The console in the house style.** Four tiles answering "what is the state of
+  this site" (posts, members, mailboxes, certificate), the site's own tools, then
+  client access / mailbox allowance / lifecycle / what-is-shared as `monAcc`
+  accordions. The isolation ceiling is stated on the page rather than implied:
+  one process, one machine, one database, one mail signing key — row scoping is
+  not a sandbox — and the tools a hosted site does *not* yet get its own copy of
+  are named rather than linked.
+
 ## [3.16.37] — 2026-08-03
 
 Both fixes ship immediately under the live-breakage exception: a panel reporting

@@ -28,6 +28,12 @@ type ArticleRepository interface {
 	// value is a secondary domain id). See ADR-0132, Stage 2.
 	GetScoped(ctx context.Context, scope, slug string) (dbpkg.Article, error)
 	ListScoped(ctx context.Context, scope string, page, limit int, tag string) (articles []dbpkg.Article, total int, err error)
+	// ListOwnedBy returns everything one domain owns — drafts and pages
+	// included — for that site's console (ADR-0154 D4). ListScoped cannot serve
+	// this: it is the PUBLIC listing and excludes drafts by design, and an
+	// operator opening a client's site to see what is on it needs the drafts
+	// most of all. Bodies are not loaded; this is a listing, not a read.
+	ListOwnedBy(ctx context.Context, domainID string, limit int) (articles []dbpkg.Article, err error)
 	// SetDomain reassigns an article to a domain ("" = primary).
 	SetDomain(ctx context.Context, slug, domainID string) error
 	// CountsByDomain returns the article count per owning domain id.

@@ -247,6 +247,12 @@ func (s *ArticleService) GetScoped(ctx context.Context, scope, slug string) (dbp
 	return art, mapRepoErr(err)
 }
 
+// ListOwnedBy returns everything one domain owns — drafts and pages included —
+// for that site's own console (ADR-0154 D4).
+func (s *ArticleService) ListOwnedBy(ctx context.Context, domainID string, limit int) ([]dbpkg.Article, error) {
+	return s.Repo.ListOwnedBy(ctx, domainID, limit)
+}
+
 // SetDomain reassigns an article to a domain ("" = the primary domain).
 func (s *ArticleService) SetDomain(ctx context.Context, slug, domainID string) error {
 	if !IsValidSlug(slug) {

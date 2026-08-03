@@ -211,6 +211,12 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			dr.Get("/", a.handleOSScopedHome)
 			dr.Get("/settings", a.handleOSScopedSettings)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/settings", a.handleOSScopedSettingsSave)
+			// Content (ADR-0154 D4). The move endpoint takes "site" or "primary"
+			// and resolves it against the domain in the PATH, so a caller cannot
+			// name a third site.
+			dr.Get("/content", a.handleOSScopedContent)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/content/move", a.handleOSScopedContentMove)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/content/new", a.handleOSScopedContentNew)
 			// Theme Studio is the SAME handler as /os/theme, mounted a second
 			// time. It reads its scope from the request, so one code path serves
 			// both — a parallel per-domain implementation would be a second place

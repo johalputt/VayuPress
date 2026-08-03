@@ -25,18 +25,32 @@ func TestDomainManagerBrandingEscapes(t *testing.T) {
 		Status: domain.StatusActive, ConfigJSON: cfg,
 	}
 
-	page := domainManagePage(d, 3, 2, 0, true, nil)
-	assertCSPSafe(t, "domainManagePage", page)
+	page := scopedConsolePage(d, 3, 2, 0, true, nil)
+	assertCSPSafe(t, "scopedConsolePage", page)
 
 	// The hostile value must be escaped — the `">` breakout sequence must not
 	// survive into the markup, and the raw <script> must never appear.
 	if strings.Contains(page, `"><script>`) {
 		t.Fatalf("hostile brand value broke out of the attribute:\n%s", page)
 	}
-	// The branding fields are prefilled and the save/reset controls are present.
-	for _, want := range []string{`value="Shop"`, "data-site-brand-save", "data-site-brand-clear", "data-site-assign"} {
+	// ADR-0154 D3 — one editor per field. The console used to carry a second
+	// Branding editor writing name/tagline/description/accents into the
+	// config_json overlay, while /os/d/{id}/settings and Theme Studio wrote the
+	// same fields into the scoped store. Two editors for one field means the
+	// value depends on which page an operator happened to use last, and nothing
+	// on either page said so.
+	for _, gone := range []string{"data-site-brand-save", "data-site-brand-clear", "data-site-assign"} {
+		if strings.Contains(page, gone) {
+			t.Errorf("the console still carries %q — a second editor for fields that already "+
+				"have a scoped one, so which value wins depends on which page was used last", gone)
+		}
+	}
+	// It must instead POINT AT the scoped editors, or the fields become
+	// unreachable and this is a removal rather than a consolidation.
+	for _, want := range []string{`href="/os/d/s1/settings"`, `href="/os/d/s1/theme"`} {
 		if !strings.Contains(page, want) {
-			t.Errorf("manager missing %q", want)
+			t.Errorf("the console does not link %s, so retiring the duplicate editor left "+
+				"those fields with no way in", want)
 		}
 	}
 	// The live-view link uses the site's own origin (https for a clearnet host).
@@ -57,11 +71,21 @@ func TestDomainManageScriptReadsIDFromNode(t *testing.T) {
 		t.Error("script should read the domain id from the data node")
 	}
 	for _, want := range []string{
-		"[data-site-brand-save]", "[data-site-brand-clear]", "[data-site-assign]",
 		"[data-site-sync]", "[data-site-toggle]", "[data-site-delete]",
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("script missing handler for %q", want)
+		}
+	}
+	// The handlers for the retired branding and assign controls go with the
+	// markup. A listener that can never bind is not harmless: it is the reason
+	// the next reader believes an editor exists somewhere on this page.
+	for _, gone := range []string{
+		"[data-site-brand-save]", "[data-site-brand-clear]", "[data-site-assign]",
+	} {
+		if strings.Contains(script, gone) {
+			t.Errorf("the script still wires %q, whose markup was removed — dead code that "+
+				"reads as evidence of a control that is not there", gone)
 		}
 	}
 }
@@ -71,8 +95,8 @@ func TestDomainManageScriptReadsIDFromNode(t *testing.T) {
 // is a placeholder, not a real address, so no live-view link is offered).
 func TestDomainManagePendingTorSite(t *testing.T) {
 	d := domain.Domain{ID: "t1", Host: torSitePending + "abc.local", SiteType: domain.SiteBlog, Status: domain.StatusActive}
-	page := domainManagePage(d, 0, 0, 0, false, nil)
-	assertCSPSafe(t, "domainManagePage/pending", page)
+	page := scopedConsolePage(d, 0, 0, 0, false, nil)
+	assertCSPSafe(t, "scopedConsolePage/pending", page)
 	if strings.Contains(page, "View site") {
 		t.Error("a pending Tor site has no address yet — no live-view link")
 	}
@@ -92,7 +116,7 @@ func TestOptimizeWebsitesCards(t *testing.T) {
 	grid := osOptimizeGrid(accessAdmin, sites)
 	assertCSPSafe(t, "osOptimizeGrid/sites", grid)
 	for _, want := range []string{
-		"Your websites", `href="/os/domains/s1"`, `href="/os/domains/s2"`,
+		"Your websites", `href="/os/d/s1"`, `href="/os/d/s2"`,
 		"shop.example", "docs.example",
 	} {
 		if !strings.Contains(grid, want) {

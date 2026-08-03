@@ -54,8 +54,8 @@ func clientDomain() domain.Domain {
 }
 
 func TestTheOperatorCanIssueAClientLoginFromTheDomainPage(t *testing.T) {
-	page := domainManagePage(clientDomain(), 0, 0, 0, true, nil)
-	assertCSPSafe(t, "domainManagePage", page)
+	page := scopedConsolePage(clientDomain(), 0, 0, 0, true, nil)
+	assertCSPSafe(t, "scopedConsolePage", page)
 
 	if !strings.Contains(page, "data-client-create") {
 		t.Fatal("the domain page cannot issue a client login. RoleClient is enforced everywhere " +
@@ -81,10 +81,10 @@ func TestTheOperatorCanIssueAClientLoginFromTheDomainPage(t *testing.T) {
 // one field on the card that comes from stored data rather than the operator's
 // own keystrokes in this request.
 func TestAHostileClientNameCannotBreakOutOfTheList(t *testing.T) {
-	page := domainManagePage(clientDomain(), 0, 0, 0, true, []users.User{
+	page := scopedConsolePage(clientDomain(), 0, 0, 0, true, []users.User{
 		{Email: `a@x.test`, Name: `"><script>alert(1)</script>`},
 	})
-	assertCSPSafe(t, "domainManagePage", page)
+	assertCSPSafe(t, "scopedConsolePage", page)
 	if strings.Contains(page, "<script>alert(1)</script>") {
 		t.Errorf("a stored client name reached the page as markup:\n%s", page)
 	}
