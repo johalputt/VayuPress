@@ -206,3 +206,32 @@ func TestAPendingCertificateCarriesTheControlThatFixesIt(t *testing.T) {
 		t.Error("a site on manual hold is offered a provisioning run that would skip it")
 	}
 }
+
+// A control that asks for a privileged step must report what the step DID, not
+// merely that it was asked for. The first version of this button stopped at
+// "Requested ✓" and left the operator to reload and guess — so a run that
+// skipped this domain, or aborted because nginx's config was already invalid,
+// looked exactly like success. That is the same defect as an amber tile with no
+// button, one layer along: the page reports an action instead of an outcome.
+func TestTheProvisionButtonReportsTheOutcome(t *testing.T) {
+	script := domainManageScript("n1")
+	i := strings.Index(script, "data-site-provision")
+	if i < 0 {
+		t.Fatal("the provisioning control is gone")
+	}
+	seg := script[i:]
+	if !strings.Contains(seg, "/os/api/provision/status") {
+		t.Fatal("the button never reads the run's result, so a run that provisioned nothing " +
+			"is indistinguishable from one that worked")
+	}
+	// The three outcomes an operator must be able to tell apart.
+	for want, why := range map[string]string{
+		"nginx-config-broken": "a run aborted by an already-invalid nginx config",
+		"res.failed":          "a run that reported problems",
+		"res.ran===0":         "a run that provisioned nothing",
+	} {
+		if !strings.Contains(seg, want) {
+			t.Errorf("the button does not distinguish %s", why)
+		}
+	}
+}

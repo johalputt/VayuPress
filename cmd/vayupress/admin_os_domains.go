@@ -507,10 +507,37 @@ if(pv)pv.addEventListener('click',function(){
   fetch('/os/api/provision/run',{method:'POST',headers:{'X-CSRF-Token':csrf()}})
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
     .then(function(res){
-      if(res.ok){set('site-cert-status','Requested ✓ — issuing takes a minute or two; reload to see the result.');return;}
-      pv.disabled=false;set('site-cert-status',(res.j&&res.j.message)||'Could not request a run');})
+      if(!res.ok){pv.disabled=false;set('site-cert-status',(res.j&&res.j.message)||'Could not request a run');return;}
+      set('site-cert-status','Running\u2026');
+      watch(0);})
     .catch(function(e){pv.disabled=false;set('site-cert-status','Error: '+e);});
 });
+// Report what the run DID, not just that it was asked for.
+//
+// The first version stopped at "Requested \u2713" and left the operator to
+// reload and guess. Asking for a privileged step and never saying whether it
+// worked is the same defect as an amber tile with no button: the page reports
+// an action instead of an outcome, and a helper that skipped this domain, or
+// aborted on a broken nginx config, looked identical to success.
+function watch(n){
+  if(n>20){set('site-cert-status','Still running \u2014 reload in a moment, or see Domains & DNS for the log.');return;}
+  setTimeout(function(){
+    fetch('/os/api/provision/status',{headers:{'Accept':'application/json'}})
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(j&&j.pending){set('site-cert-status','Running\u2026');watch(n+1);return;}
+        var res=(j&&j.result)||{},d=res.details||'';
+        if(d.indexOf('nginx-config-broken')>=0){
+          pv.disabled=false;
+          set('site-cert-status','nginx config was already invalid, so nothing ran. Run: sudo nginx -t');
+          return;}
+        if(res.failed>0){pv.disabled=false;set('site-cert-status','Finished with '+res.failed+' problem(s): '+d);return;}
+        if(res.ran===0){pv.disabled=false;set('site-cert-status','Finished, but provisioned nothing: '+d);return;}
+        set('site-cert-status','Provisioned \u2713 \u2014 reloading');
+        window.location.reload();})
+      .catch(function(){pv.disabled=false;set('site-cert-status','Requested; could not read the result.');});
+  },3000);
+}
 // Mailbox allowance. The field is a number input, but a browser hands back a
 // string and an empty one parses to NaN — sending that would clear the
 // allowance to 0 and silently revoke every mailbox the operator granted.

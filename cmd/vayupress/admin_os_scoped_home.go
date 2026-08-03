@@ -173,13 +173,13 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 	for _, t := range scopedTools {
 		href := "/os/d/" + esc(d.ID) + esc(t.Path[len("/os/d/%s"):])
 		if t.Live {
-			b.WriteString(`<a class="card scoped-tool" href="` + href + `">` +
+			b.WriteString(`<a class="scoped-tool" href="` + href + `">` +
 				`<span class="scoped-tool__icon" aria-hidden="true">` + t.Icon + `</span>` +
 				`<span class="scoped-tool__body"><span class="settings-block-title">` + esc(t.Title) + `</span>` +
 				`<span class="text-sm muted">` + esc(t.Desc) + `</span></span></a>`)
 			continue
 		}
-		b.WriteString(`<div class="card scoped-tool scoped-tool--soon">` +
+		b.WriteString(`<div class="scoped-tool scoped-tool--soon">` +
 			`<span class="scoped-tool__icon" aria-hidden="true">` + t.Icon + `</span>` +
 			`<span class="scoped-tool__body"><span class="settings-block-title">` + esc(t.Title) +
 			` <span class="pill pill--muted">` + esc(t.Soon) + `</span></span>` +

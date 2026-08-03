@@ -6,6 +6,52 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.40] — 2026-08-03
+
+A design audit, prompted by a screenshot: the per-site tool tiles rendered as
+run-on text with a hover underline instead of matching the administration
+accordions beside them. The cause was worse than the symptom, and finding it
+turned up two more.
+
+### Fixed
+- **The tool tiles had no CSS at all.** `scoped-tool`, `scoped-tool__icon` and
+  `scoped-tool__body` were emitted for two releases with **no rule anywhere
+  matching them**. Every tile therefore collapsed to inline text — the title
+  running straight into the description, underlined on hover by the browser
+  default — while the page passed every test it had: the link was present, the
+  markup was CSP-safe, the scope was correct. Nothing asserted it would look
+  like anything.
+
+  They now match the administration accordions they sit beside: same frame, same
+  icon chip, same title/subtitle rhythm. The difference is the affordance — a
+  tool is a link, so it gets a chevron that leans on hover, where a disclosure
+  rotates. The competing `card` class is gone from the markup, so the accent bar
+  and padding stop fighting the row.
+
+- **`form-grid` was defined nowhere.** Found by the gate written for the tiles,
+  which is the point of writing a gate rather than fixing the one instance in
+  front of you. It is used on nearly every VayuOS card with more than one input
+  and existed in neither stylesheet, so every one of those forms has been
+  rendering as a plain stack while its class name promised a grid. Now a real
+  responsive grid, with textareas spanning the full width — a paragraph field in
+  a 240px column is not somewhere anyone writes.
+
+- **A new gate: markup may not reference a class the stylesheet does not
+  define.** Every per-site page is rendered in a test and each emitted class
+  checked against `admin-os.css`. This is the visual half of a defect class this
+  codebase already names on the behavioural side — right mechanism, wrong
+  claim — and "it compiled and the tests passed" has never been evidence about
+  layout.
+
+- **Provision now reports the outcome, not the request.** It stopped at
+  "Requested ✓" and left the operator to reload and guess, so a run that skipped
+  this domain — or aborted because nginx's config was already invalid — looked
+  identical to success. It now polls the run and distinguishes the three
+  outcomes that matter: nothing provisioned, problems reported, and an
+  nginx-config abort, which names the `sudo nginx -t` that finds it. That was
+  the same defect as an amber tile with no button, one layer along: reporting an
+  action instead of an outcome.
+
 ## [3.16.39] — 2026-08-03
 
 Adversarial pass over the website surface, run before the bump.
