@@ -61,7 +61,7 @@ func TestApplyVerifiedDryRun(t *testing.T) {
 			"html_url":     base + "/rel",
 			"published_at": time.Now().Format(time.RFC3339),
 			"assets": []map[string]any{
-				{"name": "vayupress.tar.gz", "browser_download_url": base + "/bin", "size": len(binary)},
+				{"name": "vayupress", "browser_download_url": base + "/bin", "size": len(binary)},
 				{"name": "vayupress.sha256", "browser_download_url": base + "/sum", "size": len(sumHex)},
 				{"name": "vayupress.sig", "browser_download_url": base + "/sig", "size": len(sigHex)},
 			},
@@ -70,7 +70,7 @@ func TestApplyVerifiedDryRun(t *testing.T) {
 	})
 	mux.HandleFunc("/bin", func(w http.ResponseWriter, r *http.Request) { w.Write(binary) })
 	mux.HandleFunc("/sum", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(sumHex + "  vayupress.tar.gz\n"))
+		w.Write([]byte(sumHex + "  vayupress\n"))
 	})
 	mux.HandleFunc("/sig", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(sigHex)) })
 
@@ -109,7 +109,7 @@ func TestApplyVerifiedBadSignature(t *testing.T) {
 		rel := map[string]any{
 			"tag_name": "v2.0.0",
 			"assets": []map[string]any{
-				{"name": "b.tar.gz", "browser_download_url": base + "/bin"},
+				{"name": "b", "browser_download_url": base + "/bin"},
 				{"name": "b.sha256", "browser_download_url": base + "/sum"},
 				{"name": "b.sig", "browser_download_url": base + "/sig"},
 			},
@@ -157,14 +157,14 @@ func TestApplyVerifiedUnsignedAllowed(t *testing.T) {
 		rel := map[string]any{
 			"tag_name": "v3.0.0",
 			"assets": []map[string]any{
-				{"name": "b.tar.gz", "browser_download_url": base + "/bin"},
+				{"name": "b", "browser_download_url": base + "/bin"},
 				{"name": "b.sha256", "browser_download_url": base + "/sum"},
 			},
 		}
 		_ = json.NewEncoder(w).Encode(rel)
 	})
 	mux.HandleFunc("/bin", func(w http.ResponseWriter, r *http.Request) { w.Write(binary) })
-	mux.HandleFunc("/sum", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(sumHex + "  b.tar.gz\n")) })
+	mux.HandleFunc("/sum", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(sumHex + "  b\n")) })
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
@@ -188,7 +188,7 @@ func TestApplyVerifiedUnsignedRefusedWithoutOptIn(t *testing.T) {
 		rel := map[string]any{
 			"tag_name": "v3.0.0",
 			"assets": []map[string]any{
-				{"name": "b.tar.gz", "browser_download_url": base + "/bin"},
+				{"name": "b", "browser_download_url": base + "/bin"},
 				{"name": "b.sha256", "browser_download_url": base + "/sum"},
 			},
 		}

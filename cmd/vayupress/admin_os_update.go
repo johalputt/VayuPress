@@ -188,6 +188,14 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
   </div>`
 	}
 
+	// If the root agent had to repair this install after a failed update, say so
+	// here — this is the page the operator opens next, and an install that
+	// silently rolled itself back to an older binary while they were not looking
+	// is exactly the kind of thing they must not have to deduce from the version
+	// number. Empty for the overwhelming majority of installs, which have never
+	// needed it.
+	banner += binaryRepairNotice()
+
 	historyRows := a.updateHistoryRowsHTML(r)
 
 	// The in-app pre-update backup gzips the whole database inside the request,

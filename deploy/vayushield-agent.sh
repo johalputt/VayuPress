@@ -921,6 +921,91 @@ reconcile_provisionwatch() {
   arm_provisioning_watcher || true
 }
 
+# ── Binary health: recover an install whose binary is not a program ───────────
+#
+# WHY THIS EXISTS. On 2026-08-04 the in-app updater wrote a 500 KB ZIP archive
+# over /var/lib/vayupress/bin/vayupress. It had selected the wrong release asset,
+# and every verification it performed — SHA-256, size, download integrity —
+# PASSED, because the zip really was a file that release published. systemd could
+# not exec it, nothing bound the port, and the site served 502 from nginx.
+#
+# The updater's own bug is fixed in the binary. This is the other half: the
+# recovery took an operator with SSH, running cp and systemctl by hand, on a
+# panel-operated product. Whatever puts a non-program at the binary path — a bad
+# update, a truncated manual copy, a half-finished rsync — the machine can see it
+# and undo it, and it should, because the panel that would otherwise offer the
+# button is exactly what is not running.
+#
+# The rules that keep this from becoming its own outage:
+#   • It acts ONLY when the service is not active. A healthy install is untouched.
+#   • If the binary IS an executable, it does nothing. A service that fails for a
+#     config error, a locked database or a bound port must surface that error —
+#     silently reinstating an older binary would hide the fault and could
+#     downgrade the install behind the operator's back.
+#   • It restores only from <binary>.bak, and only if THAT is a real executable.
+#   • It cannot loop: after a restore the binary is an executable, so the trigger
+#     condition is false on the next pass whether or not the service recovered.
+vayupress_unit_binary() {
+  # Ask systemd where the unit's binary is, rather than assuming a path — an
+  # install may live under /usr/local/bin, /opt or a service-owned directory.
+  # systemd prints "{ path=/x/y ; argv[]=… ; ignore_errors=no ; … }". Split on
+  # spaces and take the first path= field rather than matching with a greedy
+  # regex, which would silently pick the LAST one on a unit with several
+  # ExecStart lines.
+  systemctl show -p ExecStart --value vayupress 2>/dev/null |
+    tr ' ' '\n' | sed -n 's/^path=//p' | head -n 1
+}
+
+is_executable_image() { # $1=file — true only for a Linux ELF.
+  [ -f "$1" ] || return 1
+  [ "$(head -c 4 "$1" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "7f454c46" ]
+}
+
+reconcile_binaryhealth() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  systemctl list-unit-files vayupress.service >/dev/null 2>&1 || return 0
+
+  if systemctl is-active --quiet vayupress 2>/dev/null; then
+    write_state binhealth ok
+    clear_reason binhealth
+    return 0
+  fi
+
+  local bin bak
+  bin="$(vayupress_unit_binary)"
+  [ -n "$bin" ] && [ -f "$bin" ] || return 0
+
+  if is_executable_image "$bin"; then
+    # Down, but the binary is a program. Not this function's problem, and saying
+    # so is the point: the panel should not imply the binary was at fault.
+    write_state binhealth ok
+    return 0
+  fi
+
+  bak="${bin}.bak"
+  if ! is_executable_image "$bak"; then
+    write_state binhealth unrecoverable
+    printf '%s' "${bin} is not an executable and ${bak} is not a usable backup" \
+      >"${CONTROL_DIR}/binhealth.reason" 2>/dev/null || true
+    echo "vayushield-agent: ${bin} is not an executable and there is no usable backup at ${bak}" >&2
+    return 0
+  fi
+
+  echo "vayushield-agent: ${bin} is not an executable — restoring ${bak} and restarting" >&2
+  if ! cp -f "$bak" "$bin" 2>/dev/null || ! chmod 0755 "$bin" 2>/dev/null; then
+    write_state binhealth error
+    printf '%s' "could not restore ${bak} over ${bin}" \
+      >"${CONTROL_DIR}/binhealth.reason" 2>/dev/null || true
+    return 0
+  fi
+  systemctl reset-failed vayupress >/dev/null 2>&1 || true
+  systemctl restart vayupress >/dev/null 2>&1 || true
+
+  write_state binhealth restored
+  printf '%s' "the binary was not an executable (a failed update); the previous binary was restored from ${bak}" \
+    >"${CONTROL_DIR}/binhealth.reason" 2>/dev/null || true
+}
+
 reconcile_provisionhelpers() {
   [ -f "${CONTROL_DIR}/provisionhelpers.want" ] || return 0
   rm -f "${CONTROL_DIR}/provisionhelpers.want" 2>/dev/null || true
@@ -1646,6 +1731,11 @@ run_agent() {
         # first tick as well, so an agent that has just been upgraded repairs the
         # watcher immediately rather than a minute later.
         reconcile_provisionwatch
+        # Same cadence and the same reasoning: this asks systemd whether the app
+        # is running, which is not a question worth asking every five seconds. A
+        # minute to self-heal a bricked binary is a minute; the alternative was an
+        # operator with an SSH session and no idea what had happened.
+        reconcile_binaryhealth
       fi
       ticks=$((ticks + 1))
     fi

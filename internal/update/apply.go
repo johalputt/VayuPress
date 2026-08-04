@@ -111,9 +111,18 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 		return "", errors.New("update: apply refused — pinned release public key (VAYU_RELEASE_PUBKEY) is empty")
 	}
 
-	binAsset := selectBinaryAsset(rel.Assets, runtime.GOOS, runtime.GOARCH)
+	// The name of the file about to be overwritten is the strongest evidence
+	// available about which asset is the binary; fall back to the repository name
+	// when the caller has not resolved an install path (dry runs).
+	wantName := strings.TrimSpace(filepath.Base(opt.BinaryPath))
+	if wantName == "" || wantName == "." || wantName == string(filepath.Separator) {
+		wantName = repo
+	}
+	binAsset := selectBinaryAsset(rel.Assets, runtime.GOOS, runtime.GOARCH, wantName)
 	if binAsset == nil {
-		return "", fmt.Errorf("update: release %s has no installable binary asset", rel.Version)
+		return "", fmt.Errorf("update: release %s has no installable binary asset for %s/%s — "+
+			"no attachment is named %q and none names this platform",
+			rel.Version, runtime.GOOS, runtime.GOARCH, wantName)
 	}
 	sumAsset := selectChecksumAsset(rel.Assets, binAsset.Name)
 	if sumAsset == nil {
@@ -170,6 +179,18 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 		logging.LogInfo("update", fmt.Sprintf("verified release %s (SHA-256 checksum OK; signature check skipped — no pinned release key)", rel.Version))
 	}
 
+	// Authenticity is settled; now the question authenticity cannot answer. These
+	// bytes are provably the ones the release published — that says nothing about
+	// whether they are a program this machine can exec, and in the v3.16.86 outage
+	// they were a ZIP archive that passed every check above.
+	//
+	// Deliberately after verification, so an attacker-supplied file is still
+	// rejected as unauthentic first, and deliberately before DryRun returns, so a
+	// dry run reports the problem instead of blessing it.
+	if err := verifyExecutableImage(binData, runtime.GOOS, binAsset.Name); err != nil {
+		return "", err
+	}
+
 	if opt.DryRun {
 		logging.LogInfo("update", "dry-run — verification passed, binary NOT replaced")
 		return rel.Version, nil
@@ -222,6 +243,12 @@ func ResolveInstallPath(execPath string) string {
 // keeps the old binary as <target>.bak, then os.Rename over the target. Falls
 // back to copy+chmod if rename fails (e.g. cross-device).
 func atomicReplace(target string, data []byte) error {
+	// Last line of defence, deliberately duplicated from the apply path: nothing
+	// in this package may write a non-executable over the running binary, whatever
+	// route it took to get here.
+	if err := verifyExecutableImage(data, runtime.GOOS, filepath.Base(target)); err != nil {
+		return err
+	}
 	dir := filepath.Dir(target)
 	tmp, err := os.CreateTemp(dir, ".vayupress-update-*")
 	if err != nil {
@@ -307,11 +334,38 @@ var metadataAssetSuffixes = []string{
 	".txt", ".md", ".sum",
 }
 
+// archiveAssetSuffixes lists container formats. A release may legitimately carry
+// several of these beside the binary — helper bundles, a packaged website, an
+// SBOM archive — and NONE of them is a thing the operating system can execute.
+//
+// This list exists because its absence took a production site down. v3.16.86
+// attached a packaged marketing site as `selfhosted-site.zip`; `.zip` was not a
+// recognised sidecar, so the zip entered the candidate pool as a possible
+// "binary", and see the note on selectBinaryAsset for what happened next.
+var archiveAssetSuffixes = []string{
+	".zip", ".tar", ".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2", ".tbz2",
+	".tar.zst", ".gz", ".xz", ".bz2", ".zst", ".7z", ".rar",
+	".deb", ".rpm", ".apk", ".aab", ".dmg", ".pkg", ".msi", ".msix", ".snap",
+	".html", ".htm", ".yml", ".yaml", ".toml", ".xml", ".csv", ".log", ".pdf",
+}
+
 // isMetadataAsset reports whether name is a release sidecar rather than the
 // executable itself.
 func isMetadataAsset(name string) bool {
 	n := strings.ToLower(name)
 	for _, s := range metadataAssetSuffixes {
+		if strings.HasSuffix(n, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// isArchiveAsset reports whether name is a container/document rather than an
+// executable image.
+func isArchiveAsset(name string) bool {
+	n := strings.ToLower(name)
+	for _, s := range archiveAssetSuffixes {
 		if strings.HasSuffix(n, s) {
 			return true
 		}
@@ -333,15 +387,37 @@ var archAliases = map[string][]string{
 }
 
 // selectBinaryAsset chooses the release asset that is the executable for the
-// running platform. It first discards every checksum/signature/SBOM sidecar,
-// then — when a release ships builds for several platforms — prefers the asset
-// whose name advertises the running GOOS and GOARCH so the correct build is
-// installed. When exactly one binary candidate remains it is returned as-is,
-// which keeps single-binary releases (VayuPress's own) working unchanged.
-func selectBinaryAsset(assets []Asset, goos, goarch string) *Asset {
+// running platform. It discards every checksum/signature/SBOM sidecar and every
+// archive or document, prefers an asset named exactly like the binary being
+// replaced, and only then — when a release ships builds for several platforms —
+// falls back to matching the running GOOS and GOARCH in the asset name.
+//
+// WHY THE EXACT-NAME RULE IS FIRST, from an outage this caused.
+//
+// The previous version of this function ended in `return cands[0]`: when no
+// candidate name carried a platform hint, it installed whichever asset the
+// GitHub API happened to list first. The GitHub API sorts release assets
+// ALPHABETICALLY BY NAME. VayuPress ships its binary as a bare `vayupress`, with
+// no OS or arch in the name, so nothing ever matched on platform and the choice
+// was always `cands[0]` — correct only because `vayupress` sorted ahead of
+// `vayuprovision-helpers.tar.gz` and `vayushield-agent.tar.gz`. That is luck, not
+// logic, and the whole selection rested on it.
+//
+// v3.16.86 attached `selfhosted-site.zip`. It sorts before every `vayu*` name,
+// `.zip` was not a recognised sidecar, and so it became cands[0] — and its
+// `.sha256` sibling was right there on the release, so the checksum verified
+// against the wrong file and reported success. A 500 KB zip was written over the
+// service binary, chmod 0755. The unit could not exec it, nothing bound the
+// port, and every request to the site returned 502 until the operator restored
+// the `.bak`. The update was reproducible: every retry installed the zip again.
+//
+// So: the name is matched, never assumed, and a candidate that cannot possibly
+// be an executable is not a candidate. `verifyExecutableImage` is the backstop
+// that catches this class of mistake even when selection goes wrong again.
+func selectBinaryAsset(assets []Asset, goos, goarch, wantName string) *Asset {
 	cands := make([]*Asset, 0, len(assets))
 	for i := range assets {
-		if isMetadataAsset(assets[i].Name) {
+		if isMetadataAsset(assets[i].Name) || isArchiveAsset(assets[i].Name) {
 			continue
 		}
 		cands = append(cands, &assets[i])
@@ -349,6 +425,19 @@ func selectBinaryAsset(assets []Asset, goos, goarch string) *Asset {
 	if len(cands) == 0 {
 		return nil
 	}
+
+	// The binary being replaced is called something. A release that ships an
+	// asset by exactly that name has answered the question, and no heuristic
+	// below should get a vote.
+	if want := strings.ToLower(strings.TrimSpace(wantName)); want != "" {
+		for _, a := range cands {
+			n := strings.ToLower(a.Name)
+			if n == want || n == want+".exe" {
+				return a
+			}
+		}
+	}
+
 	if len(cands) == 1 {
 		return cands[0]
 	}
@@ -375,7 +464,12 @@ func selectBinaryAsset(assets []Asset, goos, goarch string) *Asset {
 	if osOnlyMatch != nil {
 		return osOnlyMatch // right OS, arch not encoded in the name
 	}
-	return cands[0] // no platform hints in any name — best effort
+	// Several candidates, none named after this binary and none naming this
+	// platform. There is no evidence here, only an ordering — and taking the
+	// first one is precisely what installed a zip over a live service binary.
+	// Refuse and say so; a failed update the operator can read beats a
+	// successful one that replaces the binary with the wrong file.
+	return nil
 }
 
 // selectChecksumAsset finds the .sha256 file that verifies the chosen binary.
@@ -455,6 +549,86 @@ func binaryDownloadProblem(data []byte) string {
 		return fmt.Sprintf("the download returned a %d-byte HTML/JSON page, not a binary", len(data))
 	}
 	return ""
+}
+
+// executableMagic maps a GOOS to the leading bytes its loader requires. Anything
+// else, whatever its name and whatever its checksum says, is not a program this
+// machine can run.
+//
+// Mach-O carries four variants (32/64-bit, each in both byte orders) plus the
+// universal "fat" container, so darwin lists all five.
+var executableMagic = map[string][][]byte{
+	"linux":     {{0x7f, 'E', 'L', 'F'}},
+	"freebsd":   {{0x7f, 'E', 'L', 'F'}},
+	"openbsd":   {{0x7f, 'E', 'L', 'F'}},
+	"netbsd":    {{0x7f, 'E', 'L', 'F'}},
+	"dragonfly": {{0x7f, 'E', 'L', 'F'}},
+	"solaris":   {{0x7f, 'E', 'L', 'F'}},
+	"illumos":   {{0x7f, 'E', 'L', 'F'}},
+	"darwin": {
+		{0xfe, 0xed, 0xfa, 0xce}, {0xce, 0xfa, 0xed, 0xfe},
+		{0xfe, 0xed, 0xfa, 0xcf}, {0xcf, 0xfa, 0xed, 0xfe},
+		{0xca, 0xfe, 0xba, 0xbe}, // universal binary
+	},
+	"windows": {{'M', 'Z'}},
+}
+
+// verifyExecutableImage refuses to install bytes the operating system could not
+// possibly execute, and names what arrived instead.
+//
+// THIS IS THE GATE THAT WAS MISSING. The updater verified a SHA-256 and an
+// Ed25519 signature and then wrote the result over the service binary — proving
+// the file was intact and authentic, never that it was a program. When asset
+// selection picked a release's packaged website instead of the binary, both
+// checks passed on the zip (its own .sha256 was published beside it) and the
+// install "succeeded". The site returned 502 until the operator restored the
+// backup by hand, and every retry did the same thing again.
+//
+// Checksums answer "are these the bytes the release published". They cannot
+// answer "are these bytes the program", and nothing else was asking.
+//
+// An unknown GOOS returns nil rather than guessing: refusing to update on a
+// platform whose format is not listed here would be a worse failure than the one
+// being prevented.
+func verifyExecutableImage(data []byte, goos, assetName string) error {
+	magics, known := executableMagic[goos]
+	if !known {
+		return nil
+	}
+	for _, m := range magics {
+		if bytes.HasPrefix(data, m) {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"update: refusing to install %q — it is not an executable for %s (%s). "+
+			"The release attachment chosen for this platform is not the program; "+
+			"the running binary has been left untouched and this install is unchanged",
+		assetName, goos, describeNonExecutable(data))
+}
+
+// describeNonExecutable names the format that turned up, so the log says "a ZIP
+// archive" rather than "wrong magic bytes".
+func describeNonExecutable(data []byte) string {
+	switch {
+	case len(data) == 0:
+		return "it is empty"
+	case bytes.HasPrefix(data, []byte("PK\x03\x04")), bytes.HasPrefix(data, []byte("PK\x05\x06")):
+		return fmt.Sprintf("it is a %d-byte ZIP archive", len(data))
+	case bytes.HasPrefix(data, []byte{0x1f, 0x8b}):
+		return fmt.Sprintf("it is a %d-byte gzip archive", len(data))
+	case bytes.HasPrefix(data, []byte("ustar")), len(data) > 262 && bytes.HasPrefix(data[257:], []byte("ustar")):
+		return fmt.Sprintf("it is a %d-byte tar archive", len(data))
+	case bytes.HasPrefix(data, []byte("%PDF")):
+		return fmt.Sprintf("it is a %d-byte PDF", len(data))
+	case bytes.HasPrefix(bytes.TrimSpace(data), []byte("<")):
+		return fmt.Sprintf("it is a %d-byte HTML/XML document", len(data))
+	case bytes.HasPrefix(bytes.TrimSpace(data), []byte("{")), bytes.HasPrefix(bytes.TrimSpace(data), []byte("[")):
+		return fmt.Sprintf("it is a %d-byte JSON document", len(data))
+	case bytes.HasPrefix(data, []byte("#!")):
+		return fmt.Sprintf("it is a %d-byte shell script", len(data))
+	}
+	return fmt.Sprintf("it is %d bytes of some other format", len(data))
 }
 
 // RestartInstructions returns operator guidance after a successful apply.

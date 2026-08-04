@@ -196,7 +196,14 @@ jobs:
         run: |
           bash scripts/build-selfhosted-site.sh dist/selfhosted-site
           test -f dist/selfhosted-site.zip || { echo "FAIL: the site bundle was not produced"; exit 1; }
-          sha256sum dist/selfhosted-site.zip | awk '{print $1}' > dist/selfhosted-site.zip.sha256
+          # The NAME matters, not just the file. Every VayuPress binary already
+          # installed in the world picks its update by alphabetical order (see the
+          # asset-order gate below), so an attachment sorting before "vayupress"
+          # is installed INSTEAD of the binary. Shipping this as
+          # `selfhosted-site.zip` took a production site down; the vayupress-
+          # prefix keeps it behind the binary for every one of those installs.
+          mv dist/selfhosted-site.zip dist/vayupress-selfhosted-site.zip
+          sha256sum dist/vayupress-selfhosted-site.zip | awk '{print $1}' > dist/vayupress-selfhosted-site.zip.sha256
 
       - name: Package the VayuShield helper agent
         if: steps.exists.outputs.skip != 'true'
@@ -308,6 +315,54 @@ jobs:
           scripts/changelog-section.sh "${VERSION#v}" > dist/RELEASE_NOTES.md
           echo "--- release body ---"; cat dist/RELEASE_NOTES.md
 
+      - name: Gate — no attachment may outrank the binary for an already-installed updater
+        if: steps.exists.outputs.skip != 'true'
+        # WHY THIS GATE EXISTS. v3.16.86 attached `selfhosted-site.zip`. Every
+        # VayuPress binary in the field resolved its update by taking the FIRST
+        # asset the GitHub API returned that it did not recognise as a sidecar —
+        # and that API sorts assets alphabetically. `selfhosted-site.zip` sorted
+        # ahead of `vayupress`, so the updater downloaded the packaged website,
+        # verified it against its own published SHA-256, and wrote 500 KB of zip
+        # over the service binary. The unit could not exec it and the site
+        # returned 502 until the operator restored the backup by hand.
+        #
+        # The selector is fixed in the binary — but that fix only protects an
+        # install AFTER it has been installed, and the update that installs it is
+        # chosen by the OLD code. So this property has to hold on the release side
+        # for as long as any pre-fix install still exists, which is indefinitely.
+        #
+        # The rule: among the attachments an old updater treats as installable
+        # (everything that is not a checksum/signature/SBOM sidecar), `vayupress`
+        # must sort first. Prefixing new attachments with `vayupress-` satisfies
+        # it, because a prefix sorts after the shorter string it extends.
+        run: |
+          set -euo pipefail
+          # Sidecar suffixes exactly as the shipped updater knows them.
+          # Sidecar suffixes exactly as the shipped updater knows them.
+          sidecar='\.(sha256|sha512|sha1|md5|sig|asc|pem|pub|cert|crt|bundle|sbom|spdx|json|cdx|txt|md|sum)$'
+          # -type f, and this is not a detail: dist/ also holds the staging
+          # DIRECTORIES the bundles are built from (dist/agent, dist/provision,
+          # dist/selfhosted-site). None of them is uploaded, and `agent` and
+          # `provision` both sort before `vayupress` — a gate that listed them
+          # would fail every release forever, which is a worse outage than the one
+          # it guards against. The first draft of this gate did exactly that.
+          installable="$(find dist -maxdepth 1 -type f -printf '%f\n' | grep -Ev "$sidecar" | LC_ALL=C sort)"
+          echo "Assets an already-installed updater would consider installable:"
+          echo "$installable" | sed 's/^/  /'
+          first="$(echo "$installable" | head -n1)"
+          if [ "$first" != "vayupress" ]; then
+            echo
+            echo "FAIL: '$first' sorts before 'vayupress'."
+            echo "Every VayuPress install predating the asset-selection fix would download"
+            echo "'$first' and write it over its own binary, taking that site down until an"
+            echo "operator restored the backup by hand. This has happened once already."
+            echo
+            echo "Fix: rename the attachment so it sorts after the binary — the convention is"
+            echo "a 'vayupress-' prefix (e.g. vayupress-selfhosted-site.zip)."
+            exit 1
+          fi
+          echo "OK: 'vayupress' is first — no attachment can be mistaken for the binary."
+
       - name: Create tag + publish release
         if: steps.exists.outputs.skip != 'true'
         uses: softprops/action-gh-release@v3
@@ -333,5 +388,5 @@ jobs:
             dist/vayuprovision-helpers.tar.gz
             dist/vayuprovision-helpers.tar.gz.sha256
             dist/vayuprovision-helpers.tar.gz.cosign.bundle
-            dist/selfhosted-site.zip
-            dist/selfhosted-site.zip.sha256
+            dist/vayupress-selfhosted-site.zip
+            dist/vayupress-selfhosted-site.zip.sha256

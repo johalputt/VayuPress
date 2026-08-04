@@ -11,7 +11,7 @@ func TestSelectBinaryAssetSkipsSidecars(t *testing.T) {
 		{Name: "vayupress.sha256"},
 		{Name: "vayupress.cosign.bundle"},
 	}
-	got := selectBinaryAsset(assets, "linux", "amd64")
+	got := selectBinaryAsset(assets, "linux", "amd64", "vayupress")
 	if got == nil || got.Name != "vayupress" {
 		t.Fatalf("expected the bare binary, got %+v", got)
 	}
@@ -24,7 +24,7 @@ func TestSelectBinaryAssetCosignBundleNeverChosen(t *testing.T) {
 		{Name: "vayupress.sha256"},
 		{Name: "vayupress"},
 	}
-	got := selectBinaryAsset(assets, "linux", "amd64")
+	got := selectBinaryAsset(assets, "linux", "amd64", "vayupress")
 	if got == nil || got.Name != "vayupress" {
 		t.Fatalf("expected the bare binary, got %+v", got)
 	}
@@ -47,7 +47,9 @@ func TestSelectBinaryAssetMatchesPlatform(t *testing.T) {
 		{"windows", "amd64", "vayupress_windows_amd64.exe"},
 	}
 	for _, c := range cases {
-		got := selectBinaryAsset(assets, c.goos, c.goarch)
+		// Deliberately no wantName: this exercises the platform fallback for a
+		// release whose assets are named per-platform.
+		got := selectBinaryAsset(assets, c.goos, c.goarch, "")
 		if got == nil || got.Name != c.want {
 			t.Errorf("%s/%s: want %q, got %+v", c.goos, c.goarch, c.want, got)
 		}
@@ -56,13 +58,13 @@ func TestSelectBinaryAssetMatchesPlatform(t *testing.T) {
 
 func TestSelectBinaryAssetArchAliases(t *testing.T) {
 	assets := []Asset{
-		{Name: "app-linux-x86_64.tar.gz"},
-		{Name: "app-linux-aarch64.tar.gz"},
+		{Name: "app-linux-x86_64"},
+		{Name: "app-linux-aarch64"},
 	}
-	if got := selectBinaryAsset(assets, "linux", "amd64"); got == nil || got.Name != "app-linux-x86_64.tar.gz" {
+	if got := selectBinaryAsset(assets, "linux", "amd64", ""); got == nil || got.Name != "app-linux-x86_64" {
 		t.Errorf("amd64 should match x86_64, got %+v", got)
 	}
-	if got := selectBinaryAsset(assets, "linux", "arm64"); got == nil || got.Name != "app-linux-aarch64.tar.gz" {
+	if got := selectBinaryAsset(assets, "linux", "arm64", ""); got == nil || got.Name != "app-linux-aarch64" {
 		t.Errorf("arm64 should match aarch64, got %+v", got)
 	}
 }
@@ -72,7 +74,7 @@ func TestSelectBinaryAssetNoBinary(t *testing.T) {
 		{Name: "vayupress.sha256"},
 		{Name: "vayupress.sig"},
 	}
-	if got := selectBinaryAsset(assets, "linux", "amd64"); got != nil {
+	if got := selectBinaryAsset(assets, "linux", "amd64", "vayupress"); got != nil {
 		t.Fatalf("expected nil when only sidecars are present, got %+v", got)
 	}
 }

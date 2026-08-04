@@ -162,6 +162,51 @@ func shieldAgentUpgradeDetail() string {
 	return strings.TrimSpace(string(b))
 }
 
+// binaryRepairNotice renders what the root agent reports about the binary at the
+// install path, or "" when there is nothing to say — which is the case for every
+// install that has never had a bad one written over it.
+//
+// The agent (reconcile_binaryhealth) restores <binary>.bak when the file systemd
+// is meant to exec turns out not to be a program. That recovery happens while
+// the panel is down, by definition, so the only place it can be reported is
+// afterwards, here, on the page the operator opens to find out what went wrong.
+// An install that quietly reverted to an older binary and said nothing would
+// leave them reading a version number they did not choose.
+func binaryRepairNotice() string {
+	state, err := os.ReadFile(filepath.Join(shieldControlDir(), "binhealth.state"))
+	if err != nil {
+		return ""
+	}
+	detail := ""
+	if b, derr := os.ReadFile(filepath.Join(shieldControlDir(), "binhealth.reason")); derr == nil {
+		detail = strings.TrimSpace(string(b))
+	}
+	switch strings.TrimSpace(string(state)) {
+	case "restored":
+		msg := "An update left a file at the install path that this server could not run, so the " +
+			"previous binary was restored automatically and the service was restarted. " +
+			"The version shown above is the restored one — no data was affected."
+		if detail != "" {
+			msg += " Reported: " + html.EscapeString(detail) + "."
+		}
+		return `<div class="settings-callout">
+    <strong>This install repaired itself after a failed update.</strong>
+    <span class="text-sm muted">` + msg + `</span>
+  </div>`
+	case "unrecoverable", "error":
+		msg := "The file at the install path is not a program this server can run, and it could not " +
+			"be repaired automatically."
+		if detail != "" {
+			msg += " Reported: " + html.EscapeString(detail) + "."
+		}
+		return `<div class="settings-callout">
+    <strong>The installed binary is not usable.</strong>
+    <span class="text-sm muted">` + msg + `</span>
+  </div>`
+	}
+	return ""
+}
+
 // shieldRescueFlag is the file the systemd path unit watches. Repairing the
 // helper must not go through the helper: when its upgrade path is what broke —
 // a missing cosign, an unwritable trust cache — the only thing that could fix
