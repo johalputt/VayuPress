@@ -6,6 +6,59 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.90] — 2026-08-04
+
+**Two numbers on the self-hosted site were blank, and nothing said so.**
+
+Found by rendering the bundle in a real browser under the real policy, rather
+than by reading it — which is how the previous four faults were found too, and a
+reasonable argument for doing it first next time.
+
+### Fixed
+- **The bundle now carries `assets/stars.json` and `assets/version.json`.**
+  `deploy-site.yml` bakes both at publish time, so on GitHub Pages the page reads
+  them same-origin and shows the star count and current version instantly. The
+  self-hosted bundle shipped without them, so the page requested both, got two
+  404s, fell back to `api.github.com` — and `connect-src 'self'` refuses that
+  outright. The result was two blank spots in a design that has numbers there.
+  Nothing errored visibly, nothing was missing from the layout, and nobody would
+  report it as a bug.
+
+  They are baked at build time from the release version being cut and a star
+  count read at build, with a `generated_at` stamp so they read as a snapshot
+  rather than as live data. A build with no network writes the null form, which
+  the page already handles.
+
+### Verified, in a browser
+Chromium, all six pages, served under the exact production policy with the
+per-domain eval opt-in on:
+
+- Alpine initialises and reports **3.15.12** — the same version `alpinejs@3.x.x`
+  resolves to on the published site, so the reactive behaviour is not an
+  approximation.
+- **328 elements** carry a live transition or animation on the home page.
+- **All 10 typefaces load** from this origin; body copy computes to Inter.
+- Every `x-cloak` element resolves, so there is no flash of unstyled content.
+- **Zero 404s and zero failed requests** across all six pages.
+- The version renders as `v3.16.90` and the star count as a real number, from the
+  baked files rather than from a blocked network call.
+
+What is still not identical, stated rather than left to be discovered: after
+reading the baked files the page tries to refresh them live from
+`api.github.com`, and this server refuses that connection. The values on screen
+are already correct, so nothing is missing — but the browser console carries two
+refused-connection messages that the published site does not. Widening
+`connect-src` to fix a console message would relax a real control for no visible
+gain, so it stays refused.
+
+### Audit
+Attacked the bundle by running it, which is what found the defect above. The
+`webx.html` "error" seen in the first pass was a meta-refresh stub redirecting to
+`vayuweb.html` exactly as authored — checked rather than assumed, and not a
+fault.
+
+---
+
 ## [3.16.89] — 2026-08-04
 
 **The console can now tell you what a hosted domain actually serves.**
