@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.99] — 2026-08-04
 
 **VayuVeil, Phase 0 — the Observation Contract registry (ADR-0150).**
 
