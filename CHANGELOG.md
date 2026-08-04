@@ -6,6 +6,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.96] — 2026-08-04
+
+**Every band on a domain's Website page collapses.**
+
+### Changed
+- The page's six sections are now a `mon-stack` of pure-CSS `<details>` in the
+  house style — no JavaScript, keyboard-accessible, each summary carrying a chip
+  so its state reads while shut: what the domain serves, the uploaded file count,
+  whether runtime code is permitted, the template in use, the site's name.
+
+  It was ten flat sections an operator scrolled past to reach the one they
+  wanted. What serves and whether anything is uploaded open by default, since
+  those are the two an operator arrives for; the rest start closed.
+
+### Audit
+Five mutations, all killed — but only after two rounds.
+
+`W3`, removing a band's chip, survived the first pass. The assertion counted the
+substring `mon-chip`, and every chip carries both `mon-chip` and
+`mon-chip--on`, so the count was double the truth and a missing chip still
+cleared the threshold. It counts the attribute now.
+
+Two others failed to compile rather than fail the test, which is not a result
+either; both were re-run as valid mutations and both died.
+
+The div-balance assertion is deliberate. This conversion is string surgery, and
+the failure that compiles is an unclosed `<div>` — a page whose lower half
+silently becomes a child of something above it. An earlier attempt at exactly
+this conversion left an unclosed literal, did not compile, and was reverted
+rather than patched; this one was done a band at a time with a build and the
+id-net test after each.
+
+---
+
 ## [3.16.95] — 2026-08-04
 
 **A domain's Website page now opens with its own state, in the house style.**
