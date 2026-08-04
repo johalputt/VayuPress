@@ -23,8 +23,9 @@ customer on it".
   one function instead of two that drift. Two copies of that rule are exactly how
   a bundle got published that no install would accept.
 
-  I ran six gates before that release and not the seventh. The list in
-  `CLAUDE.md` §4 has nine entries for a reason.
+  Six of the nine required gates were run before that release and the deadcode
+  one was not. The contributor notes list all nine precisely so that cannot be a
+  judgement call.
 
 - **`.DS_Store` no longer rejects an entire upload.** macOS writes one into every
   folder Finder has opened, so right-click → Compress produces a zip this deploy
