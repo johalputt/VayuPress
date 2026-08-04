@@ -6,6 +6,80 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.88] — 2026-08-04
+
+**The self-hosted copy of the marketing site was one page out of six.**
+
+Ships on its own: an operator following the previous release's instructions gets
+a site whose home page is right and whose every other page is unstyled text.
+
+### Fixed
+- **Every page in the bundle is converted, not just `index.html`.** The build
+  script rewrote the home page and then "verified" its work by re-reading the
+  home page for surviving third-party subresources. It passed. `about.html`,
+  `vayuweb.html`, `sponsors/index.html` and `vayumail/privacy/index.html` shipped
+  still loading the CDN framework and the font host — which a hosted install
+  refuses — so four of six pages rendered as unstyled text on a site the operator
+  had been told was a faithful copy. A check that reads only the file you already
+  repaired can tell you nothing except that you repaired it.
+- **`<style>` blocks and inline `<script>` blocks are moved to real files.**
+  `style-src 'self'` drops a `<style>` element entirely: `vayuweb.html` carried
+  7,294 characters of layout CSS that never applied, plus two more pages with
+  smaller blocks. `script-src` needs a per-request nonce a static bundle cannot
+  carry, so that page's scroll-reveal script never ran either. Each block is now
+  externalised **in place**, so cascade order and execution order are unchanged.
+  JSON-LD is left alone — it is data, and the browser never executes it.
+- **The precompiled stylesheet is complete, and reproducible.** It had been
+  generated once by hand from the home page and left to rot: it was missing real
+  utilities that every page uses (`bg-saffron-600/15`, `bg-steel-100`,
+  `border-b`, `pt-12`, `hover:-translate-y-px`, and every arbitrary-value class
+  such as `bg-[#05070d]`). `scripts/build-tailwind-css.sh` now regenerates it
+  from all six pages plus `assets/app.js`, and refuses to overwrite with a file
+  less than half the previous size — the shape a broken content glob takes.
+- **Saving the Website page no longer turns the eval opt-in off.** The shared
+  `scopedWebsiteConfig` built a fresh site config and did not carry `AllowEval`.
+  The connector restored it afterwards, so that path looked fine; the console did
+  not, so an operator who enabled it and later pressed **Save & publish** for an
+  unrelated reason lost every animation on their site, with nothing on screen
+  changing to say so. It is now carried in the one function both surfaces go
+  through, rather than remembered at each call site.
+
+### Added
+- **A control for the eval opt-in, on the domain's Website page.** The setting
+  shipped three releases ago in the config and the connector with no control
+  anywhere, so the only way to turn it on was to ask an assistant to call a tool
+  — the exact failure this project keeps removing from everywhere else. It
+  appears only once an uploaded website is deployed, states its blast radius
+  (that domain alone, never the panel or the API), and says plainly what is lost
+  by leaving it off.
+- **`get_site` reports `allow_eval`.** It could be written and never read back:
+  `update_site` answered "published" whether or not the value was stored, and no
+  second call could tell the difference. A setting you can only write is one you
+  have to take on trust.
+
+### Upgrade notes
+- **Re-download `vayupress-selfhosted-site.zip` and upload it again** if you are
+  hosting the marketing site. The previously attached bundle has the four broken
+  pages.
+- Four classes on the home page (`bg-ink-950/94`, `decoration-saffron-500/40`,
+  `xs:text-5xl`, `prod-visual`) generate no CSS. They are not a difference
+  introduced by self-hosting — none is expressible in the framework as
+  configured, so they produce nothing on the published GitHub Pages site either.
+
+### Audit
+Attacked: the bundle build, the stylesheet compilation, the eval opt-in across
+both surfaces, and the claims each of them makes. Twelve mutations, all killed —
+two redone, because one failed to compile and one was a no-op edit, and neither
+of those is a result.
+
+The finding worth naming: mutating the build script to write a stylesheet link
+pointing at a file it never creates was first "killed" by a test that had merely
+failed to build. Re-run as a valid mutation, it was caught properly — by the
+check that every subresource a page asks for actually exists, which matters
+because a missing stylesheet and a blocked one look identical on screen.
+
+---
+
 ## [3.16.87] — 2026-08-04
 
 **The updater installed the wrong file and took a live site down. Fixed, and
