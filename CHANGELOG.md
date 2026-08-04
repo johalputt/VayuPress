@@ -6,6 +6,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.94] — 2026-08-04
+
+**A new customer domain cannot create a mailbox, and the console made that look
+like an empty one.**
+
+`Limits.Mailboxes` defaults to 0 on purpose — an allowance nobody chose is not an
+allowance — so EVERY newly hosted domain passes through a state where mail is on
+and no mailbox may exist. The console rendered that as `0` on a tile and a
+collapsed card. `0` reads as "nobody has made one yet", not "nobody can", and the
+card that explains the difference was shut.
+
+### Fixed
+- **The mailbox tile reads `0 granted` and is toned as a problem** when mail is
+  available to a domain and its allowance is zero.
+- **The allowance card opens by itself** in that state and its collapsed chip
+  says `none granted`, because the card's own text is the thing that resolves it
+  and it is useless closed.
+- **Mail being switched off is still reported as a different thing.** Telling an
+  operator to grant an allowance that would change nothing is its own kind of
+  wrong answer, and the existing copy already drew that distinction — the tile
+  now respects it too.
+
+### Audit
+Attacked from the position of somebody who has just sold hosting: what does the
+page tell me is broken before my customer does?
+
+Seven mutations, all killed — including "warn on every site", because a console
+that cries wolf is worse than one that says nothing.
+
+The first finding was in the test rather than the code: the assertion looked for
+the warning class anywhere on the page, and failed on a healthy site because the
+CERTIFICATE tile legitimately carries it. An assertion that cannot tell which
+tile it is reading cannot tell a regression from an unrelated amber in either
+direction. It now extracts the mailbox tile and reads only that.
+
+---
+
 ## [3.16.93] — 2026-08-04
 
 **This install's own DNS stopped answering, and nothing said so.**
