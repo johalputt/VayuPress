@@ -365,3 +365,106 @@ correct. The rule:
   chat reply.
 - Diagnostics belong on the page too. "Run `nginx -t` and paste it to me" is the
   same failure in diagnostic clothing: the console should already be showing it.
+
+## 14. How this repo is worked — the operator's standing instructions
+
+Everything below was said out loud during a working session and then repeated,
+which is the signal that it belongs here rather than in a chat log. None of it is
+a per-task negotiation.
+
+### The terminal is an instrument, never the answer
+
+§13 rules out a shell command **as the solution**. It does not rule out the shell
+as a way of *looking*. The operator has said plainly: hand them a command, they
+will run it and paste the result back. That is the fastest way to inspect a live
+box from here, and it is welcome.
+
+The line between the two, because they get confused:
+
+- **Diagnosis** — "run this, paste the output" — fine, and often the only way to
+  see the machine. Ask for exactly what is needed and say what it will show.
+- **The fix** — lands in the binary, or the panel requests it, or (the absolute
+  ceiling) the page shows a copyable command with its reason. Never a chat
+  instruction.
+
+A reply that ends in `sudo …` and stops has not fixed anything. It has described
+a repair the operator now performs by hand, which is precisely what the in-app
+updater exists to remove. §13's "the console should already be showing it" is
+about the *product's* diagnostics — it does not forbid asking for a command
+while building.
+
+### Verify against the live install; never infer its state
+
+The install at **johal.in** is reachable through its MCP connector and is the
+source of truth for anything about that install. Read the site config, the
+manifest, the posture — do not reason about what the state "must" be.
+
+This is not a stylistic preference. An investigation into why a published clone
+did not match its source ran for hours on a theory about styling, while the panel
+had been reading `4 file(s), deployed 06:06` the entire time: every upload had
+been refused for an unrelated reason, and one `get_site` call would have said so
+on the first attempt. When a tool can answer the question, call the tool.
+
+### English, professional register
+
+Replies to the operator are in English, in the register of a colleague reporting
+on work.
+
+### What an update notice may contain
+
+The in-app update notification says **what the next version changes**. It carries
+no infrastructure detail — no real IP addresses, no host paths, no internal
+endpoints. A release notice should teach a reader what is in the release and
+nothing whatsoever about the machine serving it.
+
+### An audit gates every release, without being asked
+
+The pre-release adversarial pass in §1 is not prompted per release. Do not ask
+whether to run it, do not report a version as ready before it has run, and record
+that it ran even when it finds nothing.
+
+## 15. Settled product decisions — do not re-open
+
+- **Publishing an uploaded site is admin-only.** Customers do not upload their
+  own bundles; the operator publishes on their behalf. This was asked and
+  answered — no self-service upload surface is wanted, so none should be built or
+  proposed.
+- **`vayupress.com` stays on GitHub Pages for the moment.** DNS therefore answers
+  the ACME challenge elsewhere and this install cannot issue a certificate for
+  that host. The standing `certificate: failed` line for it is expected, not a
+  fault to chase. The operator repoints it once the hosting side is proven; until
+  then the work is functionality.
+
+## 16. Habits this repo has already paid for
+
+Each of these was learned by getting it wrong here, and each cost real time.
+
+- **Read the state before theorising about it.** The panel, the manifest and the
+  connector all answer faster than a hypothesis does.
+- **An assertion that cannot say WHICH element it matched is not an assertion.**
+  Searching a whole page for a class passes on any page that uses it elsewhere;
+  counting a substring double-counts when a modifier shares its prefix; an
+  extractor keyed on an opening prefix will happily return the inner element.
+  Extract the one element, then assert on it.
+- **A build failure is not a killed mutation, and a no-op edit is not a
+  mutation.** Both were scored as kills and both had to be re-run. A mutation
+  must compile and must change behaviour, or it has proved nothing.
+- **A gate can match itself.** A check whose own source contains the pattern it
+  forbids reports a violation in the sentence describing the violation. Split the
+  literal (`scrip[t]`) so the rule cannot fire on its own text.
+- **One structural edit per build.** Converting two sections of markup in a
+  single pass left an unclosed literal and had to be reverted whole. Half a
+  conversion is worse than none.
+- **Do not assert on a handler's source text.** A test that reads source for a
+  phrase fails an honest refactor and passes a regression that deletes the line
+  from the output and leaves it in a comment. Render the page and read that.
+- **Check the exit code you think you are checking.** A command chained into
+  `tail` reports `tail`'s status; a commit was made on a red suite that way.
+- **Labels are HTML-escaped on the way out.** Asserting on `A & B` finds nothing
+  when the page renders `A &amp; B`.
+- **Release assets are listed alphabetically, not meaningfully.** Choosing "the
+  first asset" shipped an archive as though it were the binary and took a live
+  install to a 502. Match by name, then verify the bytes are an executable image.
+- **One rejected file rejects the whole upload.** A bundle containing a single
+  disallowed extension was refused in full, silently, repeatedly. Skip known
+  junk, report what was skipped, and make a refusal impossible to miss.
