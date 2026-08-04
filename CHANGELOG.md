@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.1] — 2026-08-04
 
 **VayuVeil: a second independent control, the posture in the boot log, and the
 findings written down.**
