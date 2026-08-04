@@ -42,6 +42,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **The baseline gate is now empty**, and the comment above it records why the
   43 split the way it did rather than the way it was first assumed to.
 
+### Audit
+One finding, and it came from a mistake rather than a defect.
+
+**The VayuVeil card was added to the Operations hub with `osWorkCard`'s last
+argument set to `true`, in the belief that it gated access. It does not — it
+accents the icon.** The placement is safe, but only because `/os/operations` is
+admin-gated in its own right and `/os/vayuveil` is gated independently of it.
+Nothing was holding either fact. Both are pinned now, so opening Operations to
+editors later fails a test rather than quietly showing every editor a link to a
+page that enumerates the host's device nodes.
+
+Everything else attacked came back clean, which is recorded rather than assumed:
+the stylesheet's braces balance (2446/2446) and the appended block balances on
+its own; every CSS variable used by the new rules is defined; the removed class
+names appear in no stylesheet anywhere, not only in the one the console loads,
+and no dynamically-constructed selector reaches them; the SVG tip-dot modifiers
+carry `fill` while geometry sits on the element's own attributes, so dropping the
+unstyled base changed nothing; and the new rules use the same colour tokens as
+the existing badge and chip components, so they inherit the light theme's
+behaviour rather than introducing a second answer to it.
+
 ---
 
 ## [3.17.1] — 2026-08-04

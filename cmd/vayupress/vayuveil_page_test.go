@@ -264,3 +264,25 @@ func TestVayuVeilIsReachedFromOperationsAndNotTheSidebar(t *testing.T) {
 			"recover things; it reports a posture and does neither")
 	}
 }
+
+// The hub that carries the VayuVeil card must itself be admin-only.
+//
+// Found during the pre-release pass, from a mistake rather than a defect: the
+// card was added with osWorkCard's last argument set to true in the belief that
+// it gated access. It does not — it accents the icon. The placement is safe only
+// because /os/operations is admin-gated in its own right, and nothing was
+// holding that. Now something is.
+//
+// If Operations were ever opened to editors, this fails rather than quietly
+// showing every editor a link to a page enumerating the host's device nodes.
+func TestTheHubCarryingTheVayuVeilCardIsAdminOnly(t *testing.T) {
+	if got := osPathMinLevel("/os/operations"); got != accessAdmin {
+		t.Errorf("/os/operations requires level %d, not admin (%d) — it renders a link to VayuVeil, "+
+			"which maps this host's device nodes and kernel tunables", got, accessAdmin)
+	}
+	// Belt and braces: the destination is gated on its own, so a card rendered
+	// somewhere unexpected still cannot open the page.
+	if got := osPathMinLevel("/os/vayuveil"); got != accessAdmin {
+		t.Errorf("/os/vayuveil requires level %d, not admin (%d)", got, accessAdmin)
+	}
+}
