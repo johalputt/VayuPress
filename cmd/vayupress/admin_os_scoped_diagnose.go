@@ -256,7 +256,7 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 	// ever needed.
 	vh := vhostCheck(d.Host)
 	pr := challengeProbe(ctx, d.Host)
-	out = append(out, vh, sitesEnabledIncludedCheck(), port80ListenerCheck(), pr)
+	out = append(out, vh, sitesEnabledIncludedCheck(d.Host), port80ListenerCheck(), pr)
 	if st, ok := enabledVhostFor(d.Host); ok {
 		if c, have := reloadLagCheck(st.Path); have {
 			out = append(out, c)
@@ -1454,13 +1454,16 @@ func reloadLagCheck(vhostPath string) (diagCheck, bool) {
 			"nginx's own worker processes, not inferred. The running server has never read this " +
 			"file, so it has no server block for this host and the default server closes the " +
 			"connection — which is exactly the unexplained connection error the authority " +
-			"reports. The provisioning helper discarded the reload's exit status (a `|| true` on " +
-			"the systemctl call) and reported success whenever the config TEST passed, so a " +
-			"reload that never happened looked like one that did. Fix it without leaving the " +
-			"panel: VayuShield → Certificate helpers → Repair the certificate helpers. That " +
-			"installs the signature-verified helpers and performs the reload this machine has " +
-			"not had, and it works on an install whose helpers are already too old to fix " +
-			"themselves, because the shield agent upgrades itself first.",
+			"reports. What makes this state persist is that the reload REPORTS SUCCESS: `nginx " +
+			"-t` passes, `systemctl reload nginx` exits 0, and systemd is signalling the right " +
+			"master — and the workers are still the old ones. Nothing that trusts an exit status " +
+			"can see it. The current helper does not trust it: after writing the vhost it asks " +
+			"the server whether it answers for this host, and on a no it signals the master " +
+			"directly and then restarts nginx, checking again after each. This row means those " +
+			"helpers are not on this machine yet. Fix it without leaving the panel: VayuShield → " +
+			"Certificate helpers → Repair the certificate helpers, then press Provision now. The " +
+			"repair works on an install whose helpers are already too old to fix themselves, " +
+			"because the shield agent upgrades itself first.",
 	}, true
 }
 
@@ -1468,71 +1471,97 @@ func reloadLagCheck(vhostPath string) (diagCheck, bool) {
 // else this page relies on.
 var nginxMainConf = "/etc/nginx/nginx.conf"
 
-// nginxIncludesSitesEnabled reports whether the RUNNING configuration actually
-// pulls in the directory the provisioning helper writes vhosts into.
+// sitesEnabledIncludePattern returns the include GLOB nginx uses for the vhost
+// directory, or "" when there is none.
 //
-// THE CASE THIS EXISTS FOR, and it is the only one left that fits the evidence:
-// the vhost file is present and enabled, `nginx -t` passes, the reload command
-// reports success — and the host is still unreachable, with nginx's workers
-// dating from days before the file was written.
+// FINDING, and it is the one that closes this out. The first version asked only
+// whether some include line mentioned "sites-enabled" and called that included.
+// It never checked what the glob MATCHES.
 //
-// Every one of those is consistent if nginx never includes sites-enabled. The
-// config test passes because it tests the same configuration nginx runs, and
-// that configuration is valid; it simply does not contain the vhost. The reload
-// succeeds because there is nothing wrong with it. And the file on disk is
-// inert — a correct answer to a question nobody asked.
+// The helper writes its vhost as `vayupress-dom-<host>` — no extension. A config
+// that says
 //
-// Nothing else on this page can tell that apart from a reload that did not
-// happen, because from outside they look identical.
-func nginxIncludesSitesEnabled() (bool, bool) {
+//	include /etc/nginx/sites-enabled/*.conf;
+//
+// therefore never loads it, and that produces every symptom at once: the file is
+// present and correct, `nginx -t` passes (the file is simply not read), the
+// reload genuinely happens and succeeds, systemd is signalling the right master,
+// and the host still falls through to the default server. The old check
+// contributed a green row to that picture, which is worse than contributing
+// nothing.
+func sitesEnabledIncludePattern() (string, bool) {
 	b, err := os.ReadFile(filepath.Clean(nginxMainConf))
 	if err != nil {
-		return false, false
+		return "", false
 	}
 	for _, line := range strings.Split(string(b), "\n") {
 		t := strings.TrimSpace(line)
 		if strings.HasPrefix(t, "#") || !strings.HasPrefix(t, "include") {
 			continue
 		}
+		t = strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(t, "include")), ";")
+		t = strings.Trim(strings.TrimSpace(t), `"'`)
 		if strings.Contains(t, "sites-enabled") {
-			return true, true
+			return t, true
 		}
 	}
-	return false, true
+	return "", true
+}
+
+// vhostFileNameFor is the name the provisioning helper gives this site's vhost.
+// Kept beside the matcher so the two cannot drift apart silently.
+func vhostFileNameFor(host string) string { return "vayupress-dom-" + host }
+
+// includeGlobMatchesVhost reports whether nginx's include actually picks up the
+// file the helper writes.
+func includeGlobMatchesVhost(pattern, host string) bool {
+	if pattern == "" {
+		return false
+	}
+	ok, err := filepath.Match(filepath.Base(pattern), vhostFileNameFor(host))
+	return err == nil && ok
 }
 
 // sitesEnabledIncludedCheck reports it, and says what it means when it is false.
-func sitesEnabledIncludedCheck() diagCheck {
-	included, readable := nginxIncludesSitesEnabled()
+func sitesEnabledIncludedCheck(host string) diagCheck {
+	pattern, readable := sitesEnabledIncludePattern()
 	switch {
 	case !readable:
 		return diagCheck{
-			Label: "nginx's main configuration includes sites-enabled", OK: true,
+			Label: "nginx's configuration loads this site's vhost", OK: true,
 			Detail: nginxMainConf + " could not be read from this process, so nothing is claimed " +
 				"either way about whether the vhost directory is part of the running configuration",
 		}
-	case included:
-		return diagCheck{
-			Label: "nginx's main configuration includes sites-enabled", OK: true,
-			Detail: "an include directive in " + nginxMainConf + " pulls in the directory the " +
-				"provisioning helper writes vhosts into, so a file written there is part of the " +
-				"running configuration once nginx reloads",
-		}
-	default:
+	case pattern == "":
 		return diagCheck{
 			Label: "nginx does NOT include sites-enabled — every vhost written there is inert",
 			OK:    false, Fatal: true,
 			Detail: nginxMainConf + " has no include directive naming sites-enabled, so nothing " +
 				"the provisioning helper writes there is ever part of the running configuration. " +
-				"This explains every symptom at once and is the only thing that does: the vhost " +
-				"file is present and correct, `nginx -t` passes (it tests the configuration nginx " +
-				"actually runs, which is valid — it simply does not contain this site), the reload " +
-				"reports success (there is nothing wrong to fail on), and the host is still " +
-				"answered by the default server. A reload that never happened and a reload that " +
-				"happened but loaded a configuration without your vhost are indistinguishable " +
-				"from outside, which is why this had to be read rather than inferred. The include " +
-				"line belongs in the http block of " + nginxMainConf + "; it is standard on Debian " +
-				"and Ubuntu packages and is absent on several others.",
+				"That is why the rows above it are green and this host is still unreachable: " +
+				"`nginx -t` passes because the configuration it tests is valid and simply does " +
+				"not contain the vhost, and the reload succeeds because there is nothing wrong " +
+				"with it. The file on disk is inert.",
+		}
+	case !includeGlobMatchesVhost(pattern, host):
+		return diagCheck{
+			Label: "nginx's include does not MATCH this site's vhost filename",
+			OK:    false, Fatal: true,
+			Detail: nginxMainConf + " includes `" + pattern + "`, and the provisioning helper " +
+				"writes this site's vhost as `" + vhostFileNameFor(host) + "` — which that pattern " +
+				"does not match. The file is therefore never read, and that produces every symptom " +
+				"at once: the vhost is present and correct, `nginx -t` passes because the file is " +
+				"simply not part of the configuration, the reload genuinely happens and succeeds, " +
+				"systemd is signalling the right master — and the host still falls through to the " +
+				"default server, which closes the connection. Nothing is broken; the two halves " +
+				"were never introduced. Either widen the include to `sites-enabled/*`, or the " +
+				"helper must name the file to match the pattern already in use.",
+		}
+	default:
+		return diagCheck{
+			Label: "nginx's configuration loads this site's vhost", OK: true,
+			Detail: "the include `" + pattern + "` matches `" + vhostFileNameFor(host) +
+				"`, so the file is part of the running configuration once nginx reloads",
 		}
 	}
 }

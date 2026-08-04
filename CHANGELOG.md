@@ -6,6 +6,84 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.75] — 2026-08-04
+
+**Stop believing the reload, and repair it.**
+
+Every link in this chain has now been confirmed good by direct measurement on a
+live install: the vhost names the host, listens on port 80 and serves the
+challenge from the webroot; `nginx.conf` includes the vhost directory; port 80 is
+bound on every address; `nginx -t` passes; `systemctl reload nginx` exits **0**;
+and systemd's `MainPID`, `/run/nginx.pid` and the running master all name the
+same process. And nginx's workers were still five days old, so the running server
+had never read the file.
+
+A reload that reports success and does not happen is invisible to everything that
+trusts an exit status — which was every check and every repair path here. The
+answer is not to test the exit status harder. It is to ask the server.
+
+### Fixed
+- **The provisioning helper now escalates instead of reporting.** After writing a
+  vhost it asks whether this server actually answers that host's challenge over
+  loopback. On a no, it does not stop at a diagnosis:
+  1. **Signal the master directly** (`nginx -s reload`), reading the pid file with
+     systemd out of the path entirely. This was previously reached only when
+     `systemctl` *failed* — so on an install where `systemctl` kept returning 0,
+     the one mechanism that did not share the failure was never tried. Free, and
+     no interruption.
+  2. **Restart nginx**, if the signal did not take. A reload is a request to a
+     process that may itself be the broken thing; a restart does not ask.
+
+  It re-asks the server after each rung and stops at the first that works. The
+  restart is gated on `nginx -t` passing — which is what makes it safe, since
+  nginx returns on a configuration already validated — and is limited to once per
+  run, because it interrupts every site on the machine and the condition belongs
+  to the server rather than to any one host.
+
+- **The same blind spot is closed after issuance.** A certificate can exist on
+  disk behind a server that never loaded the vhost referencing it. That is
+  indistinguishable from having no certificate, and worse, because the registry
+  would record the domain as active. The post-issuance step now confirms over
+  HTTPS and escalates the same way, and records `failed` when the server still
+  does not serve it.
+
+- **A row on the certificate page asserted a cause that had already been fixed.**
+  It named the discarded reload status (`|| true`) as the reason, which stopped
+  being true two releases ago. It now describes what is actually observed —
+  a reload that reports success while the workers stay old — and points at the
+  repair rather than a retired defect.
+
+### Added
+- **The vhost include is now checked for a MATCH, not a mention.** The check
+  asked only whether some `include` line named `sites-enabled` and called that
+  included. It never looked at what the glob matches. The helper writes
+  `vayupress-dom-<host>` with no extension, so a config globbing `*.conf` over
+  that directory loads nothing — and the old check contributed a green row to
+  exactly the picture it exists to break. Both halves are named when they
+  disagree.
+
+### Security
+- **Escalation refuses to run when it cannot verify anything.** Found by
+  attacking the ladder rather than reviewing it. Both probes deliberately return
+  success when `curl` is absent, because "the check could not run" must never be
+  read as "the server said no" — that guard exists because its absence once
+  skipped issuance for every host on a box without `curl`. Correct there, and
+  quietly wrong in the ladder: with no probe, every rung passes vacuously, so it
+  would announce the direct signal had taken effect, restart nothing, repair
+  nothing and hand back success. It now refuses, and says why.
+
+### Fixed (test integrity)
+- **A gate was passing on `command not found`.** The pre-flight harness did not
+  define the functions the block had grown, so bash returned 127, the `if !`
+  inverted it, and every assertion went green for a reason unrelated to the guard
+  under test. The harness now runs the real probe, and fails loudly if any
+  command is missing rather than drawing conclusions from a 127.
+
+Nine mutations were run against the new code; every one was killed by the gate
+that should have caught it.
+
+---
+
 ## [3.16.74] — 2026-08-03
 
 **An audit of the measurement everything now rests on — which found it both

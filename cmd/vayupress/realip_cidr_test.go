@@ -55,7 +55,12 @@ func realipEmitLoop(t *testing.T) string {
 	// CONTROL_DIR is where the loop records refused tokens. Without it the
 	// extracted code dies on an unbound variable, which is a harness fault
 	// reported as a code fault.
-	return "set -eu\nCONTROL_DIR=\"${CONTROL_DIR:-$PWD}\"\nn=0\n" + body +
+	//
+	// It must come from the CALLER's temp directory. Defaulting it to $PWD wrote
+	// realip.skipped into the package source tree on every run, and the file was
+	// committed — a test quietly producing a repo artifact that grows each time
+	// the suite is run.
+	return "set -eu\nCONTROL_DIR=\"${CONTROL_DIR:?the harness must supply a scratch directory}\"\nn=0\n" + body +
 		"\ndone\necho \"emitted=$n\"\n"
 }
 
@@ -67,6 +72,7 @@ func runRealipLoop(t *testing.T, input string) string {
 		t.Fatal(err)
 	}
 	cmd := exec.Command("bash", script)
+	cmd.Env = append(os.Environ(), "CONTROL_DIR="+dir)
 	cmd.Stdin = strings.NewReader(input)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -245,7 +251,7 @@ func TestAnNginxThatNeverIncludesSitesEnabledIsNamed(t *testing.T) {
 
 	// A config that does NOT include the vhost directory.
 	write("http {\n  include /etc/nginx/conf.d/*.conf;\n  server { listen 80; }\n}\n")
-	c := sitesEnabledIncludedCheck()
+	c := sitesEnabledIncludedCheck("shop.example")
 	if c.OK || !c.Fatal {
 		t.Fatalf("an nginx that never includes sites-enabled was not reported as blocking: %q — %s",
 			c.Label, c.Detail)
@@ -263,7 +269,7 @@ func TestAnNginxThatNeverIncludesSitesEnabledIsNamed(t *testing.T) {
 
 	// The ordinary Debian/Ubuntu shape must come back clean.
 	write("http {\n  include /etc/nginx/conf.d/*.conf;\n  include /etc/nginx/sites-enabled/*;\n}\n")
-	if ok := sitesEnabledIncludedCheck(); !ok.OK || ok.Fatal {
+	if ok := sitesEnabledIncludedCheck("shop.example"); !ok.OK || ok.Fatal {
 		t.Errorf("a standard config with the include was flagged: %s", ok.Detail)
 	}
 
@@ -271,14 +277,40 @@ func TestAnNginxThatNeverIncludesSitesEnabledIsNamed(t *testing.T) {
 	// behaviour instead of the behaviour has caught this project out three times
 	// today, and it would be a confident wrong answer here too.
 	write("http {\n  # include /etc/nginx/sites-enabled/*;\n}\n")
-	if c := sitesEnabledIncludedCheck(); c.OK {
+	if c := sitesEnabledIncludedCheck("shop.example"); c.OK {
 		t.Error("a commented-out include counted as an include")
 	}
 
 	// Unreadable must claim nothing, in either direction.
 	nginxMainConf = filepath.Join(dir, "does-not-exist")
-	if c := sitesEnabledIncludedCheck(); !c.OK || !strings.Contains(c.Detail, "nothing is claimed") {
+	if c := sitesEnabledIncludedCheck("shop.example"); !c.OK || !strings.Contains(c.Detail, "nothing is claimed") {
 		t.Error("an unreadable nginx.conf produced a verdict instead of an abstention")
+	}
+
+	// AN INCLUDE IS NOT A MATCH. The first version of this check asked only
+	// whether some include line MENTIONED sites-enabled and called that included,
+	// so a config globbing `*.conf` over a directory of extensionless vhosts got a
+	// green row — the check contributing confidence to the exact picture it exists
+	// to break. The helper writes `vayupress-dom-<host>`, with no extension.
+	write("http {\n  include /etc/nginx/sites-enabled/*.conf;\n}\n")
+	c = sitesEnabledIncludedCheck("shop.example")
+	if c.OK || !c.Fatal {
+		t.Fatalf("an include whose glob cannot match the vhost filename was reported as fine: "+
+			"%q — %s", c.Label, c.Detail)
+	}
+	// Naming both halves is the whole value: the operator can see the mismatch
+	// without going to look, and neither half is wrong on its own.
+	for _, want := range []string{"*.conf", "vayupress-dom-shop.example"} {
+		if !strings.Contains(c.Detail, want) {
+			t.Errorf("the finding never names %q, so the mismatch has to be guessed at", want)
+		}
+	}
+
+	// And the matching case must stay green, or the check is red on every healthy
+	// install and gets ignored on the one where it matters.
+	write("http {\n  include /etc/nginx/sites-enabled/*;\n}\n")
+	if c := sitesEnabledIncludedCheck("shop.example"); !c.OK || c.Fatal {
+		t.Errorf("a glob that DOES match the vhost filename was flagged: %s", c.Detail)
 	}
 }
 

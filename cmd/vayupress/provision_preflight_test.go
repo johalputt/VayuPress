@@ -44,7 +44,11 @@ func runPreflight(t *testing.T, withCurl bool) (out string, blocked bool) {
 	// Only the externals the block needs. curl is added or withheld — which is
 	// the variable under test, and it cannot be simulated by leaving the system
 	// PATH in place, because the system PATH has curl on it.
-	need := []string{"bash", "mkdir", "rm"}
+	// head and cat are used by the systemd-diagnostics dump. They were missing
+	// from this list, so the dump emitted "head: command not found" and the
+	// assertions below never noticed — which is the same class of defect as the
+	// one this file exists to catch, committed by the file itself.
+	need := []string{"bash", "mkdir", "rm", "head", "cat"}
 	if withCurl {
 		need = append(need, "curl")
 	}
@@ -57,9 +61,18 @@ func runPreflight(t *testing.T, withCurl bool) (out string, blocked bool) {
 			t.Fatal(err)
 		}
 	}
-	harness := "set -euo pipefail\n" +
+	harness := "set -uo pipefail\n" +
 		"HOST=x.example; CACHE_DIR=" + dir + "; HOST_FAILURES=0\n" +
-		"info(){ echo \"INFO $*\"; }; warn(){ echo \"WARN $*\"; }; set_tls(){ :; }\n" +
+		"ok(){ echo \"OK $*\"; }; info(){ echo \"INFO $*\"; }; warn(){ echo \"WARN $*\"; }\n" +
+		"set_tls(){ :; }; systemctl(){ echo stub; }; pgrep(){ return 1; }\n" +
+		// The REAL probe, so `withCurl` is exercised end to end rather than
+		// simulated. Every one of this file's findings came from running the
+		// thing; a stubbed probe would have hidden the curl-guard bug it was
+		// written for.
+		probeChallengeFn(t) +
+		// The ladder is stubbed — it has its own file — but it must be CALLED,
+		// and its absence must be loud rather than a silent 127.
+		"\nforce_apply(){ echo ESCALATED; return 1; }\n" +
 		"mkdir -p \"${CACHE_DIR}/.well-known/acme-challenge\"\n" +
 		"for _once in 1; do\n" +
 		strings.ReplaceAll(preflightBlock(t), "continue", "echo BLOCKED; exit 9") +
@@ -71,7 +84,28 @@ func runPreflight(t *testing.T, withCurl bool) (out string, blocked bool) {
 	cmd := exec.Command(filepath.Join(bin, "bash"), script)
 	cmd.Env = []string{"PATH=" + bin}
 	b, _ := cmd.CombinedOutput()
+	// A MISSING COMMAND MUST NEVER BE A PASS. This harness ran for a release with
+	// `probe_challenge: command not found`, and the assertions were all green:
+	// bash returns 127, the `if !` inverted it, and the block took its failure
+	// branch for a reason that had nothing to do with the guard under test. Every
+	// conclusion drawn from it was worthless and looked identical to a real one.
+	if strings.Contains(string(b), "command not found") {
+		t.Fatalf("the harness is missing a command, so these assertions are passing on a 127 "+
+			"and not on the guard:\n%s", b)
+	}
 	return string(b), strings.Contains(string(b), "BLOCKED")
+}
+
+// probeChallengeFn lifts the real loopback probe out of the helper.
+func probeChallengeFn(t *testing.T) string {
+	t.Helper()
+	src := readSourceFile(t, "../../scripts/setup-vayudomain.sh")
+	i := strings.Index(src, "probe_challenge() {")
+	j := strings.Index(src[i:], "\n}\n")
+	if i < 0 || j < 0 {
+		t.Fatal("probe_challenge is gone from setup-vayudomain.sh")
+	}
+	return src[i : i+j+3]
 }
 
 // FINDING, in the guard's own first draft: a pre-flight that cannot RUN was
@@ -112,6 +146,15 @@ func TestThePreflightStopsCertbotWhenTheServerCannotAnswerItself(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("the refusal never says %q, so the log does not explain itself:\n%s", want, out)
 		}
+	}
+	// AND IT MUST TRY TO REPAIR IT FIRST. Reporting this state was all the helper
+	// ever did, and reporting it is worth very little: the operator is told the
+	// server does not answer for the host, by the only process on the machine
+	// with the privileges to do something about it. Every repair the panel
+	// offered ended in the same reload that had already silently failed.
+	if !strings.Contains(out, "ESCALATED") {
+		t.Errorf("the pre-flight gave up without escalating, so a reload that reports success "+
+			"and does not take effect is diagnosed forever and never fixed:\n%s", out)
 	}
 }
 

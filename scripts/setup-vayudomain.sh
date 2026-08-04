@@ -296,6 +296,149 @@ server {
 NGINX
 }
 
+# probe_challenge <host> — does the RUNNING server answer this host's ACME
+# challenge over loopback? Writes a token, asks for it back with that Host
+# header, and compares.
+#
+# This is the only check in the script that tests the server rather than a file,
+# a symlink or an exit status. Everything else can be green while this fails,
+# and when it does, this is the one that is right.
+probe_challenge() {
+  local host="$1" probe body
+  command -v curl >/dev/null 2>&1 || return 0
+  probe="vayupress-preflight-$$-${RANDOM}"
+  printf '%s' "$probe" > "${CACHE_DIR}/.well-known/acme-challenge/${probe}" 2>/dev/null || true
+  body="$(curl -fsS --max-time 5 -H "Host: ${host}" \
+    "http://127.0.0.1/.well-known/acme-challenge/${probe}" 2>/dev/null || true)"
+  rm -f "${CACHE_DIR}/.well-known/acme-challenge/${probe}"
+  [ "$body" = "$probe" ]
+}
+
+# probe_https <host> — does the running server complete a TLS handshake for this
+# host and serve it? Used after the certificate exists, where the challenge path
+# is no longer the right question because it now redirects to HTTPS.
+#
+# --resolve pins the connection to this machine, so it tests THIS server rather
+# than whatever DNS currently points at. -k accepts the certificate: the question
+# here is whether nginx loaded the new server block at all, and a name or chain
+# complaint would be a different finding on a block that did load.
+probe_https() {
+  local host="$1"
+  command -v curl >/dev/null 2>&1 || return 0
+  curl -fsSk --max-time 8 --resolve "${host}:443:127.0.0.1" \
+    -o /dev/null "https://${host}/" 2>/dev/null
+}
+
+# probe_settles <verifier> <host> — run a verifier with a few seconds' grace, for
+# use straight after nginx has been restarted and may not have finished binding.
+probe_settles() {
+  local fn="$1" host="$2" _i
+  for _i in 1 2 3 4 5; do
+    "$fn" "$host" && return 0
+    sleep 1
+  done
+  return 1
+}
+
+# NGINX_RESTARTED gates the HEAVY rung to once per run. A restart interrupts
+# every site on the machine; doing it once per host would multiply that by the
+# number of domains, for a condition that is a property of the server and not of
+# any one host. The light rung — signalling the master — costs nothing and is
+# never gated.
+NGINX_RESTARTED=0
+
+# force_apply <verifier> <host> — the vhost is on disk, nginx accepts it, the reload
+# reported SUCCESS, and the server still does not answer for this host.
+#
+# THE CASE THIS EXISTS FOR, measured on a live install rather than reasoned
+# about: `nginx -t` passed, `systemctl reload nginx` exited 0, systemd's
+# MainPID, /run/nginx.pid and the running master all named the same process —
+# and nginx's workers were still five days old, so the running server had never
+# read the file. A reload that reports success and does not happen is invisible
+# to every check that trusts the exit status, which is every check there was.
+#
+# The answer is not to test the exit status harder. It is to stop believing it
+# and ask the server. probe_challenge is that question, and this function is
+# what to do when the answer is no: try mechanisms that do not share a failure
+# mode with the one that just lied, cheapest first, re-asking the server after
+# each.
+force_apply() {
+  local verify="$1" host="$2" out
+
+  # AUDIT FINDING against this function, and it is the one worth stating.
+  #
+  # Both probes return SUCCESS when curl is absent — deliberately, because "no
+  # tool" must never be read as "no", or a box without curl would be refused
+  # every certificate by a check meant to protect issuance. Correct there, and
+  # quietly wrong here: the ladder verifies by probing, so with no probe every
+  # rung "succeeds" and this function reports a server repaired that it never
+  # asked. It would restart nothing, fix nothing and say it worked.
+  #
+  # Escalation needs a verifier that can actually answer. Without one, refuse.
+  if ! command -v curl >/dev/null 2>&1; then
+    warn "  curl is not installed, so this server cannot be asked whether it answers."
+    warn "  Not escalating: every rung would report success on a check that never ran."
+    return 1
+  fi
+
+  # Never escalate onto a configuration nginx rejects. `nginx -t` passing is what
+  # makes the restart below safe: nginx comes back on a config it has already
+  # validated. Without this the heavy rung could take the whole machine down to
+  # fix one host.
+  nginx_ok || { warn "  not escalating: nginx rejects the configuration on disk."; return 1; }
+
+  # RUNG 1 — signal the master directly, via its pid file, with systemd out of
+  # the path entirely. reload_ok only reaches for this when systemctl FAILS, so
+  # on this install it had never been tried: systemctl kept returning 0. Same
+  # outcome, genuinely different mechanism, and no interruption.
+  if out="$(nginx -s reload 2>&1)"; then
+    info "  signalled the running master directly (nginx -s reload)."
+  else
+    warn "  nginx -s reload failed: ${out:-no output}"
+  fi
+  if probe_settles "$verify" "$host"; then
+    ok "  the direct signal took effect — ${host} is being served now."
+    return 0
+  fi
+
+  # RUNG 2 — replace the master instead of asking it to re-read. A reload is a
+  # request to a process that may itself be the broken thing: started before the
+  # current unit file, holding a config path that has since moved, or ignoring
+  # the signal. A restart does not ask.
+  if [ "$NGINX_RESTARTED" = "1" ]; then
+    warn "  nginx has already been restarted once in this run; not restarting again."
+    return 1
+  fi
+  NGINX_RESTARTED=1
+  warn "  the reload still has not taken effect; restarting nginx."
+  warn "  (brief interruption to every site on this machine, on a configuration"
+  warn "   nginx has already validated above.)"
+  if ! out="$(systemctl restart nginx 2>&1)"; then
+    warn "  systemctl restart nginx failed: ${out:-no output}"
+  fi
+
+  # A restart that leaves nginx DOWN is worse than the problem it was sent to
+  # fix — it takes every other site with it. Never leave this function without
+  # confirming the server came back, and try once to bring it up if not.
+  if ! systemctl is-active --quiet nginx 2>/dev/null; then
+    warn "  nginx is NOT running after the restart — starting it."
+    systemctl start nginx >/dev/null 2>&1 || nginx >/dev/null 2>&1 || true
+    sleep 1
+  fi
+  if ! systemctl is-active --quiet nginx 2>/dev/null && ! pgrep -o -x nginx >/dev/null 2>&1; then
+    warn "  nginx is still not running. This is now more serious than one missing"
+    warn "  certificate: no site on this machine is being served. The configuration"
+    warn "  passed its own test, so the cause is in the service rather than the file."
+    return 1
+  fi
+
+  if probe_settles "$verify" "$host"; then
+    ok "  the restart took effect — ${host} is being served now."
+    return 0
+  fi
+  return 1
+}
+
 # reload_ok tests the config AND applies it, reporting either failure.
 #
 # THE BUG THIS REPLACES, in one line:
@@ -388,12 +531,7 @@ for HOST in "${HOSTS[@]}"; do
   if ! command -v curl >/dev/null 2>&1; then
     info "curl is not installed; skipping the loopback pre-flight for ${HOST} (certbot still runs)."
   else
-  PROBE="vayupress-preflight-$$-${RANDOM}"
-  printf '%s' "$PROBE" > "${CACHE_DIR}/.well-known/acme-challenge/${PROBE}" 2>/dev/null || true
-  PROBE_BODY="$(curl -fsS --max-time 5 -H "Host: ${HOST}" \
-    "http://127.0.0.1/.well-known/acme-challenge/${PROBE}" 2>/dev/null || true)"
-  rm -f "${CACHE_DIR}/.well-known/acme-challenge/${PROBE}"
-  if [ "$PROBE_BODY" != "$PROBE" ]; then
+  if ! probe_challenge "$HOST"; then
     warn "pre-flight failed for ${HOST}: this server does not serve its own ACME challenge over loopback."
     # WHY THIS DUMP EXISTS. The reload immediately above reported SUCCESS and the
     # configuration still is not live — nginx's workers predate the vhost by
@@ -415,10 +553,22 @@ for HOST in "${HOSTS[@]}"; do
     warn "  a process that is not this nginx, and its success says nothing about the server."
     warn "  nginx accepted the vhost but a request carrying Host: ${HOST} is not reaching it —"
     warn "  most often no enabled server block names this host, so the default server answers."
-    warn "  certbot was NOT run for ${HOST}: a validation that cannot succeed only spends the retry budget."
-    set_tls "$HOST" failed
-    HOST_FAILURES=$((HOST_FAILURES + 1))
-    continue
+
+    # ESCALATE RATHER THAN REPORT. Every repair this product offered ended in a
+    # reload, so when the reload was the thing failing, every repair inherited
+    # the failure and the operator was handed the same diagnosis again. The
+    # helper is already root, already holds the evidence, and is the only thing
+    # positioned to act on it.
+    warn "  reload reported success and did not take effect — escalating."
+    if force_apply probe_challenge "$HOST"; then
+      ok "pre-flight passes for ${HOST} after escalation; continuing to certbot."
+    else
+      warn "  escalation did not make this server answer for ${HOST}."
+      warn "  certbot was NOT run: a validation that cannot succeed only spends the retry budget."
+      set_tls "$HOST" failed
+      HOST_FAILURES=$((HOST_FAILURES + 1))
+      continue
+    fi
   fi
   fi
 
@@ -437,8 +587,23 @@ for HOST in "${HOSTS[@]}"; do
   if cert_covers "$HOST" "$HOST"; then
     write_full "$HOST"
     if reload_ok; then
-      set_tls "$HOST" active
-      ok "VayuDomain live: https://${HOST}"
+      # The SAME blind spot closes here. reload_ok reports what the reload
+      # COMMAND said; on the install this was built for, that was 0 while nginx
+      # went on serving a five-day-old configuration. A certificate that exists
+      # on disk behind a server that never loaded the vhost referencing it is
+      # indistinguishable, from the panel, from no certificate at all — and it is
+      # worse, because the registry would say active.
+      if probe_https "$HOST" || force_apply probe_https "$HOST"; then
+        set_tls "$HOST" active
+        ok "VayuDomain live: https://${HOST}"
+      else
+        warn "certificate issued for ${HOST}, but this server does not serve it yet."
+        warn "  nginx accepted and reloaded the configuration and the HTTPS request still"
+        warn "  does not reach the new server block. The certificate is valid and kept;"
+        warn "  what has not taken effect is the vhost that uses it."
+        set_tls "$HOST" failed
+        HOST_FAILURES=$((HOST_FAILURES + 1))
+      fi
     else
       warn "nginx test failed after writing ${HOST} vhost — leaving it disabled."
       rm -f "${ENABLED_DIR}/vayupress-dom-${HOST}"; set_tls "$HOST" failed

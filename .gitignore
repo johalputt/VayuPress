@@ -66,3 +66,7 @@ mem.prof
 
 # npm workspace for the screenshot capture tooling (scripts/screenshot.mjs).
 node_modules/
+
+# Scratch file written by the VayuShield real-IP reconciler; never a repo artifact.
+cmd/vayupress/realip.skipped
+realip.skipped
