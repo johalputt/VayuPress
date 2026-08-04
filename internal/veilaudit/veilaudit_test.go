@@ -361,3 +361,37 @@ func TestASuiteThatNeverRanSaysSo(t *testing.T) {
 			"it ran and found nothing")
 	}
 }
+
+// A core limit that would write a dump is a finding, not a footnote. Written
+// because a mutation reporting it as Info survived: the dumpable-process row was
+// tested and its twin was not.
+func TestANonZeroCoreLimitIsAFailNotAnInfo(t *testing.T) {
+	in := on(allAbsent())
+	in.SelfHardening = vayuveil.SelfHardening{
+		Supported: true, Known: true, Undumpable: true,
+		CoreLimitKnown: true, CoreLimitZero: false,
+	}
+	var row *Check
+	for _, c := range Run(in) {
+		if strings.Contains(c.Title, "No core file is written") {
+			cc := c
+			row = &cc
+		}
+	}
+	if row == nil {
+		t.Fatal("the core-limit row is missing from the report")
+	}
+	if row.Status != Fail {
+		t.Errorf("a process that would write a core file reports %s", statusName(row.Status))
+	}
+	for _, must := range []string{"session token", "keystore"} {
+		if !strings.Contains(row.Detail, must) {
+			t.Errorf("the row does not say that %q is what a core file would expose", must)
+		}
+	}
+	// And the tile must not count it: one control holding is not two.
+	pass, _, _, _ := Summary(Run(in))
+	if pass != 1 {
+		t.Errorf("%d controls reported as verified while only one is holding", pass)
+	}
+}

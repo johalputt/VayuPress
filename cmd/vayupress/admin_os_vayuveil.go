@@ -44,6 +44,10 @@ func (a *App) handleOSVayuVeil(w http.ResponseWriter, r *http.Request) {
 		// and is judged on the bytes. Reads are non-blocking, so a machine with a
 		// keyboard does not hang this request waiting for a keypress.
 		red = vayuveil.RunRedTeam(host, vayuveil.LiveRead)
+		// L8, narrowed to what P0 can honestly record. Findings and gaps only —
+		// a trail filled with "nothing happened" on every page load buries the
+		// entries that matter.
+		recordVeilFindings(dbpkg.AuditActor(r), red)
 	}
 	// Read back from the kernel every time, never cached from boot. This is the
 	// one row permitted to be green and it earns that by being checked now.
@@ -186,6 +190,13 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 			`<span class="mono">/proc/&lt;pid&gt;/mem</span> could reach a session token, the keystore `+
 			`key, decrypted mail or PGP material. The state above is read back from the kernel each `+
 			`time this page loads — a control that reports itself is not evidence.</p>`+
+			`<p class="text-sm muted"><b>A second, independent control:</b> `+esc(self.DescribeCoreLimit())+
+			`</p>`+
+			`<p class="text-sm muted">Two mechanisms rather than one tidy one, deliberately. `+
+			`Dumpability can be turned back on by a later call inside this process; the resource `+
+			`limit cannot be raised again by an unprivileged process once it is lowered. Undoing `+
+			`either one does not silently undo the other, and each is read back separately so this `+
+			`page can say which is holding.</p>`+
 			`<p class="text-sm muted"><b>`+esc(vayuveil.SelfHardeningScope)+`</b> Set `+
 			`<span class="mono">VAYU_ALLOW_COREDUMP=1</span> if you are debugging a crash and need a `+
 			`core file; this page will then say so, because it reports what is true rather than which `+

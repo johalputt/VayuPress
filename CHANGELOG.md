@@ -6,6 +6,61 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+**VayuVeil: a second independent control, the posture in the boot log, and the
+findings written down.**
+
+### Added
+- **`RLIMIT_CORE` set to zero, alongside `PR_SET_DUMPABLE`.** Two independent
+  kernel mechanisms on the same channel, deliberately rather than one tidy one:
+  dumpability can be switched back on by a later call inside this process, and
+  an unprivileged process cannot raise the resource limit again once it is
+  lowered. Undoing either does not silently undo the other.
+
+  They are reported as **separate rows**, each read back from the kernel on its
+  own. Averaging two controls into one verdict hides either of them failing,
+  which is the entire reason there are two.
+
+- **The posture in the boot log**, following `anonaudit`'s precedent: an operator
+  can see it without opening a browser, which matters most on the day the panel
+  will not load. The line is computed from the kernel's answer rather than from
+  whether the call that sets it returned nil, states the host-scope boundary in
+  the log as well as on the page, and is logged at warning level when this
+  process is dumpable.
+
+- **Capture findings reach the audit trail** (ADR-0150 L8, narrowed to what P0
+  can honestly record). Findings and gaps only, never a clean run: an
+  append-only log filled with "nothing happened" on every page load is one
+  nobody reads, and the entries that matter would be buried in it. The reason is
+  the ADR's own — refusals are how you discover that something has been trying
+  for a month, and a finding that exists only in a page nobody reloaded has not
+  been discovered.
+
+### Audit
+Eight mutations, all killed. Two survived the first pass and one of those was
+the more useful failure of the two.
+
+**A test that passed for the wrong reason.** The test proving both hardening
+controls are applied asserted that `RLIMIT_CORE` is zero afterwards — and this
+environment already ships with that limit at zero, so the assertion was true
+before the code under test ran. It passed against a mutation that removed the
+second control entirely. The test now raises the limit first, fails loudly if
+the precondition cannot be established, and skips honestly where the hard limit
+forbids creating it. A test whose precondition already satisfies its conclusion
+measures nothing, and this one had been written to look thorough.
+
+**A non-zero core limit reported as unremarkable** also survived, because the
+dumpable-process row had a test and its twin did not. Both rows are pinned now,
+in both directions.
+
+The remaining six died on the first pass: crediting an unread limit as
+enforcing, hiding a dumpable process in the boot line, claiming verification the
+line does not have, dropping the host-scope boundary from it, and skipping
+either control in the apply path.
+
+---
+
 ## [3.17.0] — 2026-08-04
 
 **VayuVeil gets the two things Phase 0 shipped without: something it actually

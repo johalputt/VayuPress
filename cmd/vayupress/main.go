@@ -527,9 +527,13 @@ func main() {
 			// Not fatal. A platform that cannot do this still serves; the report
 			// tells the operator it is not enforcing rather than the binary
 			// refusing to start over a hardening step.
-			log.Printf("vayuveil: could not make this process undumpable: %v", err)
+			log.Printf("vayuveil: could not harden this process against being dumped: %v", err)
 		}
 	}
+	// Logged from the kernel's answer, not from whether the call above returned
+	// nil. An operator reading the log learns what is true rather than which
+	// branch ran, which is the same rule the panel page follows.
+	logVeilPosture(vayuveil.VerifyProcessHardening())
 
 	// Give the GC a memory ceiling to aim at (cgroup-aware; honours an explicit
 	// GOMEMLIMIT). Keeps steady RSS bounded and avoids OOM-kill overshoot on

@@ -52,6 +52,29 @@ func dumpableState() (undumpable bool, known bool) {
 	return v == 0, true
 }
 
+// setCoreLimitZero refuses a core file by resource limit as well.
+//
+// Deliberately a SECOND control on the same channel rather than a tidier
+// single one. PR_SET_DUMPABLE and RLIMIT_CORE are independent kernel
+// mechanisms: dumpability can be restored by a later prctl in this process,
+// and the rlimit cannot be raised again once lowered by an unprivileged
+// process. Either alone stops the ordinary case; together, undoing one does
+// not silently undo the other. Both are read back separately, so the report
+// can say which of them is actually holding rather than averaging them into
+// one comfortable row.
+func setCoreLimitZero() error {
+	return unix.Setrlimit(unix.RLIMIT_CORE, &unix.Rlimit{Cur: 0, Max: 0})
+}
+
+// coreLimitState reads the limit back from the kernel.
+func coreLimitState() (zero bool, known bool) {
+	var rl unix.Rlimit
+	if err := unix.Getrlimit(unix.RLIMIT_CORE, &rl); err != nil {
+		return false, false
+	}
+	return rl.Cur == 0, true
+}
+
 // nonblockFlag is O_NONBLOCK, and the capture suite depends on it.
 //
 // The red-team techniques do not merely open device nodes, they READ from them —

@@ -106,11 +106,20 @@ func TestThePhaseBoundaryIsStatedBeforeAnythingElse(t *testing.T) {
 // The tile counts VERIFIED controls, and the count has to move with reality in
 // both directions — a tile hardcoded either way is the thing to catch.
 func TestTheVerifiedEnforcingTileCountsWhatIsActuallyVerified(t *testing.T) {
-	// Kernel says undumpable: exactly one control is verified enforcing.
+	// Kernel says undumpable but the core limit could not be read: ONE control is
+	// verified, not two. Unverified must not be rounded up.
 	on := statCardIn(t, veilPageWith(t,
 		vayuveil.SelfHardening{Supported: true, Known: true, Undumpable: true}, nil), "Verified enforcing")
 	if !strings.Contains(on, ">1<") {
 		t.Errorf("one control is verified and the tile does not say so: %s", on)
+	}
+	// Both mechanisms verified: two.
+	both := statCardIn(t, veilPageWith(t, vayuveil.SelfHardening{
+		Supported: true, Known: true, Undumpable: true,
+		CoreLimitKnown: true, CoreLimitZero: true,
+	}, nil), "Verified enforcing")
+	if !strings.Contains(both, ">2<") {
+		t.Errorf("both controls are verified and the tile does not count both: %s", both)
 	}
 	if strings.Contains(on, "stat-card--warn") {
 		t.Errorf("a verified control is toned as a problem: %s", on)

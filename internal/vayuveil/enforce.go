@@ -25,6 +25,13 @@ type SelfHardening struct {
 	Known bool
 	// Undumpable is the kernel's answer, read back at report time.
 	Undumpable bool
+	// CoreLimitKnown is whether the resource limit could be read.
+	CoreLimitKnown bool
+	// CoreLimitZero is whether RLIMIT_CORE is zero — the second, independent
+	// control on the same channel. Kept separate from Undumpable rather than
+	// folded in: an operator needs to know WHICH mechanism is holding, and a
+	// single averaged row would hide one of them failing.
+	CoreLimitZero bool
 	// ApplyErr is what happened when it was applied, if anything.
 	ApplyErr string
 }
@@ -39,14 +46,39 @@ func ApplyProcessHardening() error {
 	if !hardeningSupported {
 		return nil
 	}
-	return setUndumpable()
+	if err := setUndumpable(); err != nil {
+		return err
+	}
+	// Applied even if the first succeeded. Two independent mechanisms is the
+	// point; stopping after one would make the second decorative.
+	return setCoreLimitZero()
 }
 
 // VerifyProcessHardening asks the kernel what is actually true now.
 func VerifyProcessHardening() SelfHardening {
 	s := SelfHardening{Supported: hardeningSupported}
 	s.Undumpable, s.Known = dumpableState()
+	s.CoreLimitZero, s.CoreLimitKnown = coreLimitState()
 	return s
+}
+
+// DescribeCoreLimit renders the resource-limit half for its own report row.
+func (s SelfHardening) DescribeCoreLimit() string {
+	switch {
+	case !s.Supported:
+		return "This platform does not expose a core-file resource limit this binary can set or read."
+	case !s.CoreLimitKnown:
+		return "The kernel did not answer getrlimit(RLIMIT_CORE), so nothing is known about whether a " +
+			"core file would be written. Reported as unverified rather than assumed."
+	case s.CoreLimitZero:
+		return "Verified with getrlimit: RLIMIT_CORE is zero, so the kernel writes no core file for " +
+			"this process even if something later made it dumpable again. An unprivileged process " +
+			"cannot raise this limit back. " + SelfHardeningScope
+	default:
+		return "RLIMIT_CORE is not zero, so the kernel would write a core file for this process if it " +
+			"crashed while dumpable — a file containing session tokens, the keystore key and any " +
+			"decrypted mail held in memory at the time."
+	}
 }
 
 // Describe renders the verified state for a report row.

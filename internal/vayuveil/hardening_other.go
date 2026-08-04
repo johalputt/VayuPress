@@ -17,6 +17,10 @@ func setUndumpable() error { return errUnsupported }
 
 func dumpableState() (undumpable bool, known bool) { return false, false }
 
+func setCoreLimitZero() error { return errUnsupported }
+
+func coreLimitState() (zero bool, known bool) { return false, false }
+
 var errUnsupported = unsupportedError{}
 
 type unsupportedError struct{}

@@ -98,7 +98,7 @@ func Run(in Inputs) []Check {
 	// binary both does and can verify. Placed above the channel rows so its
 	// SCOPE is read before its verdict: it protects the VayuPress process, and a
 	// reader who takes it for the machine has been misled by placement alone.
-	checks = append(checks, selfHardeningCheck(in.SelfHardening))
+	checks = append(checks, selfHardeningCheck(in.SelfHardening), coreLimitCheck(in.SelfHardening))
 
 	// The capture suite. Findings first, then the honest gap.
 	checks = append(checks, redTeamChecks(in.RedTeam)...)
@@ -127,6 +127,21 @@ func selfHardeningCheck(h vayuveil.SelfHardening) Check {
 		return Check{Title: title, Status: Pass, Detail: h.Describe()}
 	default:
 		return Check{Title: title, Status: Fail, Detail: h.Describe()}
+	}
+}
+
+// coreLimitCheck is the second control on the same channel, reported on its own
+// row so an operator can see WHICH mechanism is holding. Averaging two
+// independent controls into one verdict hides either of them failing.
+func coreLimitCheck(h vayuveil.SelfHardening) Check {
+	const title = "No core file is written for the VayuPress process"
+	switch {
+	case !h.Supported, !h.CoreLimitKnown:
+		return Check{Title: title, Status: Unverified, Detail: h.DescribeCoreLimit()}
+	case h.CoreLimitZero:
+		return Check{Title: title, Status: Pass, Detail: h.DescribeCoreLimit()}
+	default:
+		return Check{Title: title, Status: Fail, Detail: h.DescribeCoreLimit()}
 	}
 }
 
