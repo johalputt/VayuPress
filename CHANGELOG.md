@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.98] — 2026-08-04
 
 ### Changed
 - **A domain's own tools now read as the same component as the rows beneath
