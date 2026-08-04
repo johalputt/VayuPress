@@ -6,6 +6,66 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.89] — 2026-08-04
+
+**The console can now tell you what a hosted domain actually serves.**
+
+Everything that went wrong with the self-hosted marketing site went wrong
+silently. A stylesheet this server refuses and a stylesheet that is not there
+render identically: the page loads, nothing errors, the response log is clean,
+and the operator is left comparing two browser windows by eye. The best bug
+report this product made possible was "the design is about 80% right" — and the
+server could have answered the question exactly all along, because it holds the
+bundle and it writes the policy. It simply never offered to.
+
+### Added
+- **Check what this domain serves**, on the domain's Website page. Give it a
+  path, and it fetches that page from this server the way a visitor would, then
+  reports the status, the content-security policy actually sent, whether runtime
+  code generation is permitted, and **every stylesheet, script and image the page
+  asks for with a verdict on each**:
+  - `refused-by-policy` — loaded from another site, which this server will not
+    allow for scripts or stylesheets;
+  - `missing` — the path is not served, so the page loads without it;
+  - `wrong-type` — the request succeeded but answered with an HTML page rather
+    than the file. Common on sites that serve the home page for unknown paths:
+    every response is a 200, the browser discards the reply as the wrong type,
+    and the page renders unstyled with nothing at all in the log;
+  - `ok`.
+
+  It also counts inline `style` and `script` blocks, which this server drops
+  whole — they leave no trace of any kind otherwise.
+- **`preview_site` through the connector**, the same check with the same
+  verdicts, so an assistant can verify an uploaded site instead of guessing from
+  a description of how it looks. `include_html` returns the page source too.
+
+Both surfaces call one function, and that function replays the request through
+the **real router** — every middleware, the real policy header, the real bundle
+handler. A preview assembled from configuration would have agreed with itself
+while the server disagreed, which is the exact class of fault it exists to find.
+
+### Audit
+Attacked the diagnostic itself, on the principle that a checker which reports a
+broken page as healthy is worse than no checker: it ends the investigation and
+leaves the fault in place with a clean bill of health attached.
+
+Eight mutations, all killed — six of them redone, because the first attempt hit
+quoting errors and unused-variable build failures, and neither of those is a
+result.
+
+Two findings:
+
+- The `wrong-type` verdict above exists because a test fixture accidentally
+  created that exact server behaviour, and the preview scored a stylesheet
+  answered with an HTML page as working. The fixture was wrong; the behaviour it
+  produced was real and common, so it became its own test.
+- A gate in this package parses every inline script the codebase emits, and finds
+  them by matching the literal opening tag in the Go source — so a new file whose
+  job is to detect script tags tripped it by containing one. That is the third
+  time a gate here has been caught by the code describing the thing it looks for.
+
+---
+
 ## [3.16.88] — 2026-08-04
 
 **The self-hosted copy of the marketing site was one page out of six.**
