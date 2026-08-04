@@ -224,6 +224,56 @@ func TestACertificateIsNeverIssuedAndLeftUnserved(t *testing.T) {
 	}
 }
 
+// A WORKING SITE SCORED AS BROKEN, by the check that was added to stop
+// assuming. Observed on a live install after everything else was already right.
+//
+// probe_https used `curl -f`, which fails on any 4xx or 5xx. The host had no
+// posts yet, and the shield challenges an unrecognised client on its first
+// request, so the answer was a 404 or a 403 — both of them a perfectly working
+// HTTPS site. The helper read that as "this server does not serve it", recorded
+// the host as failed, and RESTARTED NGINX trying to repair a server block that
+// had been correct all along.
+//
+// The question worth asking is whether a server block ANSWERS for this host over
+// TLS, not whether the page is a 200. Only the absence of an HTTP response means
+// no vhost matched: the catch-all default closes without one.
+func TestAServingHostIsNotScoredOnItsStatusCode(t *testing.T) {
+	src := shellCode(readSourceFile(t, "../../scripts/setup-vayudomain.sh"))
+
+	fn := src[strings.Index(src, "probe_https() {"):]
+	if e := strings.Index(fn, "\n}\n"); e > 0 {
+		fn = fn[:e]
+	}
+	if fn == "" {
+		t.Fatal("probe_https is gone")
+	}
+
+	// `-f` is the defect. A site that answers 404 or 403 is serving.
+	if strings.Contains(fn, "curl -f") || strings.Contains(fn, "-fsSk") {
+		t.Fatalf("probe_https still fails the host on a 4xx/5xx, so an empty site or one whose "+
+			"first request is challenged is reported unserved — and nginx gets restarted to "+
+			"repair a vhost that was always correct:\n%s", fn)
+	}
+	if !strings.Contains(fn, "http_code") {
+		t.Fatalf("probe_https does not look at the status at all, so it cannot tell a server "+
+			"that answered from one that never did:\n%s", fn)
+	}
+	// 000 is curl's "no HTTP response", which is exactly the catch-all default
+	// server closing the connection — the one state that means no vhost matched.
+	if !strings.Contains(fn, "000") {
+		t.Error("nothing distinguishes 'no HTTP response at all' from a real status, which is " +
+			"the only distinction that matters here")
+	}
+
+	// And the failure must say what came back. "does not serve it" over a 403 is
+	// a true sentence about a false conclusion, and it cost a live install two
+	// runs and an nginx restart to find.
+	if !strings.Contains(src, "probe_https_code") {
+		t.Error("the failure message cannot report the status observed, so 'no response at all' " +
+			"and 'answered 403' are reported as the same problem again")
+	}
+}
+
 // AND IT MUST NOT BE A BUTTON. The repair was reachable only by pressing
 // "Repair the certificate helpers", and the operator who needs it is precisely
 // the one with no way to know they need it: from the panel, a watcher that is

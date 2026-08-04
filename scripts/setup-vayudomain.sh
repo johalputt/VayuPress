@@ -322,11 +322,42 @@ probe_challenge() {
 # than whatever DNS currently points at. -k accepts the certificate: the question
 # here is whether nginx loaded the new server block at all, and a name or chain
 # complaint would be a different finding on a block that did load.
+#
+# THE QUESTION THIS ASKS, and the first version asked a different one. It used
+# `curl -f`, which fails on any 4xx or 5xx — so a site with no posts yet (404) or
+# one whose first request VayuShield challenges (403) was scored as NOT SERVED.
+# Both are working HTTPS sites. The helper then reported "certificate issued but
+# this server does not serve it", marked the host failed, and restarted nginx
+# trying to fix a server block that had been correct the whole time.
+#
+# The question is whether a server block ANSWERS for this host over TLS, not
+# whether the page is a 200. So: any HTTP status counts, and only the absence of
+# one does not. `%{http_code}` is 000 when no HTTP response arrived at all —
+# connection refused, TLS failure, or the catch-all default server, which closes
+# without a response (444). That is precisely the state worth detecting, and it
+# is the state a missing vhost produces.
+#
+# What this deliberately does NOT prove: that the certificate served is the right
+# one. -k accepts any. A default server holding some other valid cert and
+# answering with a status would pass here. On this install the default closes
+# without answering, so the distinction holds; it is stated because a check is
+# only worth what it actually establishes.
 probe_https() {
-  local host="$1"
+  local host="$1" code
   command -v curl >/dev/null 2>&1 || return 0
-  curl -fsSk --max-time 8 --resolve "${host}:443:127.0.0.1" \
-    -o /dev/null "https://${host}/" 2>/dev/null
+  code="$(curl -sSk --max-time 8 --resolve "${host}:443:127.0.0.1" \
+    -o /dev/null -w '%{http_code}' "https://${host}/" 2>/dev/null || true)"
+  [ -n "$code" ] && [ "$code" != "000" ]
+}
+
+# probe_https_code reports what actually came back, for the message on failure.
+# "no HTTP response at all" and "answered 403" are different problems and were
+# being reported as the same one.
+probe_https_code() {
+  local host="$1"
+  command -v curl >/dev/null 2>&1 || { printf 'not checked'; return 0; }
+  printf '%s' "$(curl -sSk --max-time 8 --resolve "${host}:443:127.0.0.1" \
+    -o /dev/null -w '%{http_code}' "https://${host}/" 2>/dev/null || echo 000)"
 }
 
 # probe_settles <verifier> <host> — run a verifier with a few seconds' grace, for
@@ -750,8 +781,13 @@ settle_pending_hosts() {
       set_tls "$host" active
       ok "VayuDomain live: https://${host}"
     else
+      local code
+      code="$(probe_https_code "$host")"
       warn "certificate issued for ${host}, but this server still does not serve it."
-      warn "  The certificate is valid and kept; what has not taken effect is the vhost."
+      warn "  A request to https://${host}/ on this machine returned status ${code}."
+      warn "  000 means no HTTP response arrived at all, which is what the catch-all default"
+      warn "  server produces when no block names this host. The certificate is valid and"
+      warn "  kept; what has not taken effect is the vhost that uses it."
       set_tls "$host" failed
       HOST_FAILURES=$((HOST_FAILURES + 1))
     fi

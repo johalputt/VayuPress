@@ -6,6 +6,54 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.79] — 2026-08-04
+
+**A working site was being scored as broken by the check added to stop
+assuming.**
+
+Ships immediately: the previous helper marks a correctly served host as failed
+and restarts nginx trying to repair it.
+
+Everything else was already right. The certificate existed, nginx had restarted
+and read the vhost, and the console's own row confirmed it — *"the vhost was
+written 04:06:44 and nginx last reloaded 04:06:55, so the running server has read
+this file"*. The helper still reported *"certificate issued but this server does
+not serve it"*.
+
+The fault was one flag:
+
+```sh
+curl -fsSk --max-time 8 --resolve "${host}:443:127.0.0.1" ...
+```
+
+`-f` fails on any 4xx or 5xx. The host has no posts yet, and the shield
+challenges an unrecognised client on its first request — so the answer was a 404
+or a 403, and **both of those are a working HTTPS site**. The probe scored them
+as unserved, recorded the host failed, and restarted nginx to repair a server
+block that had been correct the whole time.
+
+### Fixed
+- **The HTTPS probe asks whether a server block ANSWERS, not whether the page is
+  a 200.** Any HTTP status now counts as served; only the absence of one does
+  not. `%{http_code}` is `000` when no HTTP response arrived at all — connection
+  refused, TLS failure, or the catch-all default server, which closes without
+  responding. That last case is precisely the state a missing vhost produces, and
+  the only one worth acting on.
+
+  Stated plainly, because a check is worth what it establishes and no more: this
+  does **not** prove the certificate served is the right one. `-k` accepts any.
+  A default server holding some other valid certificate and answering with a
+  status would pass. On this install the default closes without answering, so the
+  distinction holds.
+
+- **The failure now reports the status it observed.** "No HTTP response at all"
+  and "answered 403" are different problems and were being reported as the same
+  one, which is what made this cost two runs and an nginx restart to find.
+
+One mutation run — restoring `-f` — and it was killed.
+
+---
+
 ## [3.16.78] — 2026-08-04
 
 **A certificate was issued and left unserved, by the cap meant to protect the
