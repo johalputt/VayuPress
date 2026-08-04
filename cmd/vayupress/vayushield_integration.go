@@ -571,6 +571,9 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	var b strings.Builder
 	b.WriteString(`<div class="vs-page">`)
 	b.WriteString(shieldPageChrome())
+	// A broken host resolver silently staleifies every feed below it; say so here
+	// rather than let the page present stale protection as current.
+	b.WriteString(dnsResolverNotice())
 
 	// ── The four numbers that answer "what is the state of this?" at a glance.
 	// Auto-polls every 10s and on vs-refresh (fired after a settings save), so

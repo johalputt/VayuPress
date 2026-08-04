@@ -281,7 +281,7 @@ func SafeTransport(opts TransportOptions) *http.Transport {
 			noteBlockedClearnet()
 			return nil, fmt.Errorf("%w: clearnet egress is disabled in Tor mode", ErrBlockedAddress)
 		}
-		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		ips, err := resolveIPAddr(ctx, host)
 		if err != nil {
 			return nil, err
 		}
@@ -394,7 +394,7 @@ func validatePublicHost(ctx context.Context, host string) error {
 		}
 		return nil
 	}
-	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	ips, err := resolveIPAddr(ctx, host)
 	if err != nil {
 		return fmt.Errorf("%w: cannot resolve host %q: %v", ErrBlockedAddress, host, err)
 	}

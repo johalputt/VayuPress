@@ -33,6 +33,7 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -205,6 +206,29 @@ func binaryRepairNotice() string {
   </div>`
 	}
 	return ""
+}
+
+// dnsResolverNotice reports that this host's own DNS has stopped answering and
+// the binary is resolving through a public resolver instead, or "" when the
+// system resolver is fine — which is almost always.
+//
+// It exists because the failure is otherwise invisible in exactly the way that
+// matters. When the host resolver stops answering, every published-range feed
+// VayuShield relies on silently stops refreshing and the panel goes on
+// presenting the protection as current. A control running on stale data while
+// describing itself as live is the same defect class as a posture verdict that
+// overstates what is enforcing.
+func dnsResolverNotice() string {
+	if !safefetch.DNSFallbackActive() {
+		return ""
+	}
+	return `<div class="settings-callout">
+    <strong>This server's own DNS stopped answering.</strong>
+    <span class="text-sm muted">Name lookups are being served by a public resolver so that threat-intelligence
+      feeds, verified-bot lists and outbound requests keep working — but the cause is on this machine, not in
+      VayuPress, and it will affect anything else here that resolves a name. Set
+      <code>VAYU_DNS_FALLBACK=off</code> to refuse the fallback and fail instead.</span>
+  </div>`
 }
 
 // shieldRescueFlag is the file the systemd path unit watches. Repairing the
