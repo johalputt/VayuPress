@@ -226,10 +226,26 @@ func (a *App) handleHTMXJS(w http.ResponseWriter, r *http.Request) {
 // fontAllowlist is the set of self-hosted web fonts served at /static/fonts.
 // It is a strict allowlist (no arbitrary filenames) so the route can never read
 // anything but these vetted, OFL-licensed woff2 files from the embedded FS.
+// The set is deliberately wider than the built-in theme needs. A hosted domain
+// serving a hand-built bundle has exactly one way to use a web font under
+// `font-src 'self'`: request it from this origin. Vendoring only the three faces
+// the default theme happens to use meant every operator building their own site
+// either shipped no real typography or reached for a font host and got a silent
+// CSP refusal — the freedom was theoretical. These are the display, body and
+// mono families the product's own site uses, so a bundle can look finished
+// without leaving the origin. Every file is SIL OFL; the licences are vendored
+// beside them in static/fonts/.
 var fontAllowlist = map[string]bool{
-	"space-grotesk-latin-500.woff2": true,
-	"space-grotesk-latin-600.woff2": true,
-	"space-grotesk-latin-700.woff2": true,
+	"space-grotesk-latin-400.woff2":  true,
+	"space-grotesk-latin-500.woff2":  true,
+	"space-grotesk-latin-600.woff2":  true,
+	"space-grotesk-latin-700.woff2":  true,
+	"inter-latin-300.woff2":          true,
+	"inter-latin-400.woff2":          true,
+	"inter-latin-500.woff2":          true,
+	"inter-latin-600.woff2":          true,
+	"jetbrains-mono-latin-400.woff2": true,
+	"jetbrains-mono-latin-500.woff2": true,
 }
 
 // handleStaticFont serves an allowlisted, self-hosted woff2 web font from the
@@ -248,6 +264,54 @@ func (a *App) handleStaticFont(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "font/woff2")
+	w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(data)
+}
+
+// vayuWebAllowlist is the set of first-party web-building assets any hosted
+// domain's own bundle may load.
+//
+// WHY THIS EXISTS. A hand-built site on this install serves under
+//
+//	script-src 'self' 'nonce-…'; style-src 'self'; font-src 'self'
+//
+// which is correct and is not going to be relaxed. But it left operators with a
+// choice between a plain page and a broken one: every mainstream way to build a
+// site — a utility CSS framework, a small reactive library, a real typeface —
+// arrives from a third-party host, gets refused, and renders as unstyled text
+// with nothing saying why. The policy was doing its job and the product was
+// making creativity the thing you paid for it with.
+//
+// So the pieces are served from THIS origin instead. Same-origin means the CSP
+// admits them unchanged: no directive is widened, no exception is carved, and
+// the operator gets the tools rather than the trade-off.
+//
+// The Alpine build here is the CSP variant, which evaluates component objects
+// registered through Alpine.data instead of compiling inline expression strings.
+// That distinction is the whole point: the standard build needs 'unsafe-eval',
+// and shipping it would have meant weakening the policy for every page on the
+// install to make one page interactive.
+var vayuWebAllowlist = map[string]string{
+	"tailwind.css":      "text/css; charset=utf-8",
+	"alpine-csp.min.js": "application/javascript; charset=utf-8",
+}
+
+// handleVayuWebAsset serves an allowlisted first-party web-building asset at
+// /static/vayuweb/{file}, for use by hand-built site bundles.
+func (a *App) handleVayuWebAsset(w http.ResponseWriter, r *http.Request) {
+	file := chi.URLParam(r, "file")
+	ctype, ok := vayuWebAllowlist[file]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	data, err := fs.ReadFile(embeddedStaticFS, "vayuweb/"+file)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write(data)

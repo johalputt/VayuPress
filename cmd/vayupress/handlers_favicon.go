@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/johalputt/vayupress/internal/customsite"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/settings"
@@ -151,6 +152,28 @@ func (a *App) handleFaviconUpload(w http.ResponseWriter, r *http.Request) {
 // without touching a single template.
 func (a *App) serveFavicon(fallback []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// A HOSTED DOMAIN SERVING ITS OWN BUNDLE MUST NOT WEAR THE PRIMARY'S MARK.
+		//
+		// Reported from a live install: a client domain published a hand-built
+		// site and the browser tab showed the studio's logo. The bundle carried no
+		// favicon, the browser asked this origin for /favicon.ico, and the route
+		// answered with the primary's brand for every host on the box. Nothing was
+		// misconfigured — the isolation simply stopped one route short of the
+		// thing a visitor actually looks at.
+		//
+		// When a bundle is deployed the operator authored the whole site, so its
+		// icon — or its deliberate absence — is authoritative. A miss returns 404
+		// rather than falling through: an empty tab icon is a small cosmetic gap,
+		// and another business's logo on a client's domain is not.
+		if dir := a.customSiteDir(r); customsite.Deployed(dir) {
+			for _, p := range []string{"/favicon.ico", "/favicon.png", "/favicon.svg"} {
+				if customsite.Serve(w, r, dir, p) {
+					return
+				}
+			}
+			http.NotFound(w, r)
+			return
+		}
 		if a.siteSettings != nil {
 			if enc := a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyBrandFavicon); enc != "" {
 				if b, err := base64.StdEncoding.DecodeString(enc); err == nil && len(b) > 0 {

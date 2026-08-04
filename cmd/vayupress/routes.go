@@ -165,6 +165,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// Self-hosted web fonts (OFL Space Grotesk) for the Vayu theme — same-origin
 	// (CSP font-src 'self'), embedded in the binary, allowlisted filenames only.
 	r.Get("/static/fonts/{file}", a.handleStaticFont)
+	// First-party web-building assets for hand-built site bundles: same-origin, so
+	// the strict CSP admits them without widening a single directive.
+	r.Get("/static/vayuweb/{file}", a.handleVayuWebAsset)
 	r.Get("/favicon.ico", a.serveFavicon(faviconDarkPNG))
 	// Operator-uploaded hero/cover image (same-origin → img-src 'self'); 404s
 	// gracefully when none is set so the "Hero background: Image" option degrades.

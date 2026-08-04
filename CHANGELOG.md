@@ -6,6 +6,54 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.82] — 2026-08-04
+
+**Creativity inside the policy, instead of a choice between them.**
+
+The strict CSP is correct and is not being relaxed. But it left an operator
+building their own site with a choice between a plain page and a broken one:
+every mainstream way to build a site — a utility CSS framework, a small reactive
+library, a real typeface — arrives from a third-party host, gets refused, and
+renders as unstyled text. The policy was doing its job and the product was making
+creativity the thing you paid for it with.
+
+The pieces are now served from **this** origin, so `script-src 'self'`,
+`style-src 'self'` and `font-src 'self'` admit them unchanged. No directive is
+widened and no exception is carved.
+
+### Added
+- **`/static/vayuweb/tailwind.css`** — a compiled utility stylesheet, 28.8 KB
+  minified and ~6 KB over the wire. Worth stating plainly: the usual CDN script
+  is a ~400 KB *browser JIT compiler* that rebuilds the CSS on every page load.
+  A precompiled file is both smaller and faster, and it removes the inline
+  `<script>` config block that a static bundle could never nonce anyway.
+
+- **`/static/vayuweb/alpine-csp.min.js`** — the **CSP variant** of the reactive
+  library, which registers components through `Alpine.data` rather than compiling
+  inline expression strings. The distinction is the point: the standard build
+  needs `'unsafe-eval'`, and shipping that would force `script-src` open for every
+  page on the install so that one page could be interactive. A gate now fails the
+  build if the served file constructs functions from strings.
+
+- **Seven more self-hosted faces.** The font allowlist covered only the three
+  weights the built-in theme happened to use. It now carries the display, body
+  and mono families the product's own site uses — 192 KB total, every file SIL
+  OFL, licences vendored beside them.
+
+### Fixed
+- **A hosted domain no longer wears the primary's favicon.** Reported from a live
+  install: a client domain published a hand-built site and the browser tab showed
+  the studio's logo. The bundle carried no favicon, the browser asked this origin
+  for `/favicon.ico`, and the route answered with the primary's brand for every
+  host on the box. Nothing was misconfigured — the isolation simply stopped one
+  route short of the thing a visitor actually looks at.
+
+  A domain serving its own bundle now serves its own icon, and a miss returns 404
+  rather than falling through. An empty tab icon is a small cosmetic gap; another
+  business's logo on a client's domain is not.
+
+---
+
 ## [3.16.81] — 2026-08-04
 
 **A vanity onion could be announced before it was saved.**
