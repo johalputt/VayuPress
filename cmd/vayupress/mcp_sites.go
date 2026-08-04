@@ -98,7 +98,13 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 				"host":     d.Host,
 				"serves":   scopedSiteMode(d),
 				"template": site.Template,
-				"content":  content,
+				// Reported because it was settable and not readable, which makes it
+				// unverifiable: update_site returned "published" whether or not the
+				// value had been stored, and there was no second call that could
+				// tell the difference. A setting you can only write is a setting you
+				// have to take on trust.
+				"allow_eval": site.AllowEval,
+				"content":    content,
 			}), nil
 		},
 	})

@@ -22,6 +22,7 @@ import (
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/bizsite"
@@ -147,6 +148,38 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
     the same deploy path as an upload, with the same limits.</p>
 </div>`)
 
+	// ── The eval opt-in ───────────────────────────────────────────────────────
+	//
+	// This setting existed in the config and in the connector for three releases
+	// with no control anywhere on the panel, so the only way to turn it on was to
+	// ask an assistant to call a tool. That is the failure this project keeps
+	// removing from everywhere else, and it stayed here because the setting was
+	// added to serve one particular upload rather than to be operated.
+	//
+	// Shown only when a bundle is deployed: it changes nothing for a template
+	// site, and a control that does nothing is worse than an absent one.
+	if bundled {
+		checked := ""
+		if site, ok := d.Site(); ok && site.AllowEval {
+			checked = " checked"
+		}
+		b.WriteString(`<div class="card">
+  <div class="settings-block-title">Scripts that build their own code</div>
+  <p class="text-sm muted">Some page frameworks keep their behaviour in HTML attributes
+    (<code>x-show="open"</code> and the like) and turn those strings into functions in the browser. That needs
+    <code>eval</code>, which this server refuses by default because it is the single most useful thing for an
+    attacker who gets a script onto your page.</p>
+  <p class="text-sm muted">Turn it on only for a site whose code you control and trust. It applies to
+    <b>` + esc(d.Host) + `</b> alone — never to your panel, your API, or any other domain — and only while an
+    uploaded website is being served. Leave it off and such a page still lays out and reads correctly; what stops
+    is the animation and anything driven by those attributes.</p>
+  <label class="field field--check"><input type="checkbox" id="web-alloweval"` + checked + `>
+    <span class="field-label">Allow this site to build code at runtime</span>
+    <span class="field-hint">Applies on Save &amp; publish. Off is the safe default and the one to keep unless a
+      page you uploaded needs it.</span></label>
+</div>`)
+	}
+
 	// ── Design ────────────────────────────────────────────────────────────────
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Design</span>` +
 		`<span class="section-head__hint">Used when this domain serves a website</span></div>`)
@@ -214,7 +247,9 @@ if(!btn)return;
 btn.addEventListener('click',function(){
   var m=document.querySelector('input[name="scoped-site-mode"]:checked');
   var sb=document.getElementById('web-showblog');
-  var payload={mode:m?m.value:'blog',template:v('scoped-web-template'),content:{
+  var ae=document.getElementById('web-alloweval');
+  var payload={mode:m?m.value:'blog',template:v('scoped-web-template'),
+    allow_eval:!!(ae&&ae.checked),content:{
     name:v('web-name'),tagline:v('web-tagline'),about:v('web-about'),
     phone:v('web-phone'),email:v('web-email'),address:v('web-address'),hours:v('web-hours'),
     cta:v('web-cta'),ctaLink:v('web-ctalink'),heroImg:v('web-heroimg'),
@@ -282,6 +317,10 @@ func (a *App) handleOSScopedWebsiteSave(w http.ResponseWriter, r *http.Request) 
 		Content  bizsite.Content  `json:"content"`
 		DomainID string           `json:"domain_id"`
 		Raw      *json.RawMessage `json:"-"`
+		// Pointer, so a client that omits it keeps the stored value. A plain bool
+		// would read every save that did not mention the field as "turn it off",
+		// which is the failure this page's own carry-forward exists to prevent.
+		AllowEval *flexBool `json:"allow_eval"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256*1024)).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
@@ -298,12 +337,18 @@ func (a *App) handleOSScopedWebsiteSave(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", err.Error(), "")
 		return
 	}
+	// scopedWebsiteConfig has already carried the stored value forward; only an
+	// explicit value from the operator overrides it.
+	if body.AllowEval != nil {
+		cfg.AllowEval = body.AllowEval.Bool()
+	}
 	if err := a.domains.SetSite(r.Context(), d.ID, cfg); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "save-failed", err.Error(), "")
 		return
 	}
 	render.CachePurgeAll()
-	dbpkg.AuditLog("vayudomains.website.save", dbpkg.AuditActor(r), d.Host, "mode="+cfg.Mode+" template="+cfg.Template)
+	dbpkg.AuditLog("vayudomains.website.save", dbpkg.AuditActor(r), d.Host,
+		"mode="+cfg.Mode+" template="+cfg.Template+" allow_eval="+strconv.FormatBool(cfg.AllowEval))
 	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "host": d.Host, "mode": cfg.Mode})
 }
 
@@ -344,6 +389,7 @@ func scopedWebsiteConfig(d domain.Domain, mode, template string, c bizsite.Conte
 	template = bizsite.ByKey(strings.TrimSpace(template)).Key
 
 	// Carry forward what this surface does not edit.
+	allowEval := false
 	if prev, ok := d.Site(); ok {
 		old := bizsite.ParseContent(prev.Content)
 		if len(c.Services) == 0 {
@@ -355,13 +401,23 @@ func scopedWebsiteConfig(d domain.Domain, mode, template string, c bizsite.Conte
 		if c.SectionA == "" {
 			c.SectionA = old.SectionA
 		}
+		// The eval opt-in is a property of the SITE, not of the content, and it
+		// is carried HERE — in the one function both the console and the
+		// connector go through — rather than at each call site. The connector
+		// restored it after calling this; the console did not, so an operator who
+		// turned it on and then pressed "Save & publish" for an unrelated reason
+		// silently lost every animation on their site, with the setting still
+		// reading as something they had chosen. This file already carries a note
+		// about losing work nobody touched; that was the same defect wearing a
+		// different field's name.
+		allowEval = prev.AllowEval
 	}
 
 	raw, err := json.Marshal(c)
 	if err != nil {
 		return domain.SiteConfig{}, err
 	}
-	return domain.SiteConfig{Mode: mode, Template: template, Content: string(raw)}, nil
+	return domain.SiteConfig{Mode: mode, Template: template, Content: string(raw), AllowEval: allowEval}, nil
 }
 
 // scopedWebsiteConfigPreserving switches a domain's MODE while keeping every
