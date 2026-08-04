@@ -196,6 +196,10 @@
   opacity: .8;
 }
 
+/* The muted colour existed only as the --su-muted custom property, so markup
+   that reached for a `su-muted` CLASS rendered at full contrast. */
+.su-muted { color: var(--su-muted); }
+
 
 /* ── Member account portal (/members/account) ─────────────────────────────── */
 
@@ -505,6 +509,9 @@ html[data-theme="light"] {
 @media (max-width: 34rem) { .ma-compare { grid-template-columns: 1fr; } }
 .ma-plan-col { border: 1px solid var(--su-border); border-radius: 12px; padding: 1rem 1.1rem; background: var(--su-bg); }
 .ma-plan-col--paid { border-color: rgba(129,140,248,.45); background: linear-gradient(180deg, rgba(99,102,241,.08), var(--su-bg)); }
+/* The column the member is actually on. Its sibling --paid carried a treatment
+   and this one carried none, so "you are here" read only in the tag text. */
+.ma-plan-col--current { border-color: var(--su-muted); background: var(--su-surface); }
 .ma-plan-col-h { display: flex; align-items: center; gap: .5rem; font-weight: 700; margin-bottom: .5rem; }
 .ma-col-tag { font-size: .62rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: .12rem .45rem; border-radius: 999px; background: var(--su-surface-2); color: var(--su-muted); }
 .ma-col-tag--paid { background: linear-gradient(180deg, var(--su-accent-2), var(--su-accent)); color: #fff; }

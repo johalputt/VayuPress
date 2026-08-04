@@ -833,7 +833,7 @@ func checkoutFormPage(tier *members.Tier, cadence string, amountCents int, curre
 	esc := html.EscapeString
 	errHTML := ""
 	if errMsg != "" {
-		errHTML = `<div class="su-error" role="alert">` + esc(errMsg) + `</div>`
+		errHTML = `<div class="su-notice su-notice--err" role="alert">` + esc(errMsg) + `</div>`
 	}
 	per := "month"
 	if cadence == payments.CadenceYearly {
@@ -842,17 +842,21 @@ func checkoutFormPage(tier *members.Tier, cadence string, amountCents int, curre
 	price := priceLabel(currency, amountCents)
 	// One button per connected gateway (each submits its own method); the built-in
 	// direct/offline gateway is the fallback when none is connected.
-	buttons := `<button type="submit" class="btn btn--primary pr-cta pr-cta--primary" style="width:100%">Continue to payment</button>`
+	// Every class here must exist in signup.css — it is the only component
+	// stylesheet this page loads (/theme.css carries palette custom properties
+	// and operator CSS, no component rules). Console names like .btn are not
+	// available on the public surface.
+	buttons := `<button type="submit" class="pr-cta pr-cta--primary" style="width:100%">Continue to payment</button>`
 	if stripeOn || paypalOn || btcpayOn {
 		buttons = ""
 		if stripeOn {
-			buttons += `<button type="submit" name="method" value="stripe" class="btn btn--primary pr-cta pr-cta--primary" style="width:100%;margin-bottom:.5rem">Pay by card</button>`
+			buttons += `<button type="submit" name="method" value="stripe" class="pr-cta pr-cta--primary" style="width:100%;margin-bottom:.5rem">Pay by card</button>`
 		}
 		if paypalOn {
-			buttons += `<button type="submit" name="method" value="paypal" class="btn btn--ghost pr-cta" style="width:100%;margin-bottom:.5rem">Pay with PayPal</button>`
+			buttons += `<button type="submit" name="method" value="paypal" class="pr-cta" style="width:100%;margin-bottom:.5rem">Pay with PayPal</button>`
 		}
 		if btcpayOn {
-			buttons += `<button type="submit" name="method" value="crypto" class="btn btn--ghost pr-cta" style="width:100%">Pay with crypto <span class="text-xs muted">· BTC · XMR · ETH · USDT</span></button>`
+			buttons += `<button type="submit" name="method" value="crypto" class="pr-cta" style="width:100%">Pay with crypto <span class="su-legal">· BTC · XMR · ETH · USDT</span></button>`
 		}
 	}
 	return checkoutShell("Checkout · "+tier.Name, `
@@ -862,17 +866,13 @@ func checkoutFormPage(tier *members.Tier, cadence string, amountCents int, curre
     <p>`+esc(price)+` per `+esc(per)+` · secure, sovereign checkout</p>
   </div>
   `+errHTML+`
-  <form class="login-form" method="POST" action="/checkout" novalidate style="max-width:28rem;margin:0 auto">
+  <form class="su-form" method="POST" action="/checkout" novalidate style="max-width:28rem;margin:0 auto">
     <input type="hidden" name="tier" value="`+esc(tier.Slug)+`">
     <input type="hidden" name="cadence" value="`+esc(cadence)+`">
-    <div class="field">
-      <label class="field-label" for="co-name">Your name</label>
-      <input id="co-name" class="input" type="text" name="name" placeholder="Jane Doe" autocomplete="name">
-    </div>
-    <div class="field">
-      <label class="field-label" for="co-email">Email</label>
-      <input id="co-email" class="input" type="email" name="email" placeholder="you@example.com" autocomplete="email" required autofocus>
-    </div>
+    <label class="su-label" for="co-name">Your name</label>
+    <input id="co-name" class="su-input" type="text" name="name" placeholder="Jane Doe" autocomplete="name">
+    <label class="su-label" for="co-email">Email</label>
+    <input id="co-email" class="su-input" type="email" name="email" placeholder="you@example.com" autocomplete="email" required autofocus>
     `+buttons+`
   </form>
   <p class="pr-foot">Already a member? <a href="/members" class="su-link">Sign in</a></p>

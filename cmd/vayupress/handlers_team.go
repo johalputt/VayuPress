@@ -626,7 +626,7 @@ func (a *App) handlePublicAuthor(w http.ResponseWriter, r *http.Request) {
       ` + bio + socials + `
     </div>
   </header>
-  <section class="au-posts-section" aria-label="Posts by ` + name + `">
+  <section aria-label="Posts by ` + name + `">
     <div class="au-posts-head"><span class="au-posts-label">Posts</span></div>
     ` + postsHTML + `
   </section>

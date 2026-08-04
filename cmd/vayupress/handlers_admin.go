@@ -924,7 +924,7 @@ func (a *App) renderPaywall(r *http.Request, art dbpkg.Article, level string) st
 		`<title>` + esc(art.Title) + `</title>` +
 		`<link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/static/css/article.css?v=` + assetVer("css/article.css") + `">` +
 		`<link rel="stylesheet" href="/static/css/signup.css?v=` + assetVer("css/signup.css") + `">` +
-		`<meta name="robots" content="noindex"></head><body><main class="article pw-shell">` +
+		`<meta name="robots" content="noindex"></head><body><main class="pw-shell">` +
 		`<h1>` + esc(art.Title) + `</h1>` +
 		`<p class="pw-excerpt">` + esc(excerpt) + `</p>` +
 		`<div class="pw-gate">` +

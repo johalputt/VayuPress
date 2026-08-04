@@ -6,6 +6,48 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **The checkout form rendered unstyled — on the page where a customer types
+  their name and email to pay.** It reached for the console's form grammar
+  (`login-form`, `field`, `field-label`, `input`), which lives in the admin
+  stylesheet that no public page loads. The two inputs rendered as raw browser
+  controls, the form had no framing, and a payment error came out as bare text
+  instead of the red notice the sign-up page shows for the same condition. The
+  markup now uses the grammar its own stylesheet provides — the one the sign-up
+  page has been using correctly all along.
+
+- **A muted-text class that was only ever a colour token.** Markup on the
+  offline-payment instructions page asked for `su-muted`; only the `--su-muted`
+  custom property existed, so both paragraphs rendered at full contrast.
+
+- **The member's current plan column had no treatment.** `ma-plan-col--current`
+  matched no rule while its sibling `--paid` did, so "you are here" read only in
+  the tag text and not in the column itself.
+
+- Two dead class names removed from public markup (`au-posts-section` on the
+  author page, `article` on the paywall) and four from the checkout buttons
+  (`btn`, `btn--primary`, `btn--ghost`), none of which matched anything.
+
+### Added
+
+- **A gate over the public member/signup/checkout surface**, so this class of
+  defect cannot return. For every function that links the public stylesheet, it
+  checks each class the markup emits: an element whose names are *all* undefined
+  is reported as rendering unstyled, and a name that matches nothing on an
+  otherwise-styled element is reported as dead.
+
+  It scopes by **function, not by file**, which is the whole reason it is
+  trustworthy — one file can serve two surfaces (the same file renders both a
+  console page and a public page), and an earlier per-file pass reported 38
+  findings that were every one of them false. It also fails outright if it
+  matches no elements, so a scan that silently stops covering anything is a
+  failure rather than a pass.
+
+---
+
 ## [3.17.2] — 2026-08-04
 
 ### Changed
