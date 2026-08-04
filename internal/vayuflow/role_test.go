@@ -68,8 +68,8 @@ func TestAnUnknownOrAbsentRoleFailsClosed(t *testing.T) {
 func TestMinOwnerRoleTakesTheStrongestFloor(t *testing.T) {
 	f := goodFlow()
 	f.Steps = []Step{
-		{Action: "content.draft.create"},
-		{Action: "content.draft.update"},
+		{Action: "content.draft.create", Params: map[string]string{"title": "A", "slug": "a"}},
+		{Action: "content.draft.update", Params: map[string]string{"title": "A", "slug": "a"}},
 	}
 	if got := f.MinOwnerRole(); got != RoleEditor {
 		t.Errorf("MinOwnerRole = %q, want %q", got, RoleEditor)

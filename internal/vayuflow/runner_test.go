@@ -11,34 +11,51 @@ import (
 	"testing"
 )
 
-// The test actions register against real capabilities, so the registry rule —
-// no implementation without a declared blast radius — holds in the tests too.
-// Registering a fake against a fake capability would let these tests pass on an
-// engine that had lost the rule.
-var testActionCalls struct {
+// fakeContent records what the real content actions actually caused, so a test
+// can tell "the action ran" apart from "the effect happened" — the distinction a
+// dry run turns on.
+type fakeContent struct {
 	sync.Mutex
-	n int
+	created []Draft
+	updated []Draft
+	fail    error
 }
 
-func init() {
-	RegisterAction("content.draft.create", func(_ context.Context, p map[string]string, e *Effects) (string, error) {
-		testActionCalls.Lock()
-		testActionCalls.n++
-		testActionCalls.Unlock()
-		if err := e.Write(WriteDraft, "create draft "+p["title"]); err != nil {
-			if errors.Is(err, ErrDryRun) {
-				return "captured", err
-			}
-			return "", err
-		}
-		return "created", nil
-	})
-	RegisterAction("content.draft.update", func(_ context.Context, p map[string]string, e *Effects) (string, error) {
-		if err := e.Write(WriteDraft, "update draft "+p["slug"]); err != nil {
-			return "", err
-		}
-		return "updated", nil
-	})
+func (f *fakeContent) CreateDraft(_ context.Context, d Draft) error {
+	f.Lock()
+	defer f.Unlock()
+	if f.fail != nil {
+		return f.fail
+	}
+	f.created = append(f.created, d)
+	return nil
+}
+
+func (f *fakeContent) UpdateDraft(_ context.Context, d Draft) error {
+	f.Lock()
+	defer f.Unlock()
+	if f.fail != nil {
+		return f.fail
+	}
+	f.updated = append(f.updated, d)
+	return nil
+}
+
+func (f *fakeContent) counts() (int, int) {
+	f.Lock()
+	defer f.Unlock()
+	return len(f.created), len(f.updated)
+}
+
+// wireContent attaches a recorder for the duration of one test. The REAL
+// actions are used throughout — registering test doubles against the same names
+// would let these tests pass on an engine whose actual actions had drifted.
+func wireContent(t *testing.T) *fakeContent {
+	t.Helper()
+	fc := &fakeContent{}
+	SetContentWriter(fc)
+	t.Cleanup(func() { SetContentWriter(nil) })
+	return fc
 }
 
 func newTestRig(t *testing.T, role string) (*Store, *RunStore, *Runner) {
@@ -63,6 +80,7 @@ func armedFlow(t *testing.T, fs *Store, mode RunMode) Flow {
 // out twice; redelivery must not be able to produce a second run.
 func TestRedeliveringTheSameEventProducesExactlyOneRun(t *testing.T) {
 	fs, rs, rn := newTestRig(t, RoleAdmin)
+	wireContent(t)
 	ctx := context.Background()
 	f := armedFlow(t, fs, RunLive)
 
@@ -94,6 +112,7 @@ func TestRedeliveringTheSameEventProducesExactlyOneRun(t *testing.T) {
 // scheme too coarse to tell them apart would swallow legitimate work.
 func TestPressingRunTwiceProducesTwoRuns(t *testing.T) {
 	fs, rs, rn := newTestRig(t, RoleAdmin)
+	wireContent(t)
 	ctx := context.Background()
 	f := armedFlow(t, fs, RunLive)
 
@@ -113,6 +132,7 @@ func TestPressingRunTwiceProducesTwoRuns(t *testing.T) {
 // is the boundary the key derivation has to get right in both directions.
 func TestEditingAFlowMakesTheSameEventNewWork(t *testing.T) {
 	fs, rs, rn := newTestRig(t, RoleAdmin)
+	wireContent(t)
 	ctx := context.Background()
 	f := armedFlow(t, fs, RunLive)
 
@@ -180,6 +200,7 @@ func TestAFlowStopsWhenItsOwnerIsDemoted(t *testing.T) {
 	fs, rs := NewStore(db), NewRunStore(db)
 	role := RoleAdmin
 	rn := NewRunner(fs, rs, func(context.Context, string) (string, error) { return role, nil })
+	wireContent(t)
 	ctx := context.Background()
 	f := armedFlow(t, fs, RunLive)
 
@@ -259,23 +280,21 @@ func TestATriggerStormIsBoundedAndWritesNoRunawayRows(t *testing.T) {
 // nothing about the live run.
 func TestADryRunExecutesEverythingAndCapturesTheDiff(t *testing.T) {
 	fs, _, rn := newTestRig(t, RoleAdmin)
+	fc := wireContent(t)
 	ctx := context.Background()
 	f := armedFlow(t, fs, RunDryRun)
-
-	testActionCalls.Lock()
-	before := testActionCalls.n
-	testActionCalls.Unlock()
 
 	run, err := rn.Execute(ctx, f, "manual", "dry-1", Subject{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	testActionCalls.Lock()
-	after := testActionCalls.n
-	testActionCalls.Unlock()
 
-	if after != before+1 {
-		t.Error("a dry run must actually call the action; skipping it is the dry-run lie")
+	// The two halves of what a dry run means, asserted separately: the action
+	// DID run (it reached the effect path and captured a diff), and the effect
+	// did NOT happen (nothing was written).
+	created, updated := fc.counts()
+	if created != 0 || updated != 0 {
+		t.Errorf("a dry run wrote to storage: %d created, %d updated", created, updated)
 	}
 	if run.Status != StatusSucceeded {
 		t.Fatalf("a dry run that reached the end is a success, got %s (%s)", run.Status, run.Error)
@@ -295,6 +314,7 @@ func TestADryRunExecutesEverythingAndCapturesTheDiff(t *testing.T) {
 // A live run performs the effect and records the spend against its ceiling.
 func TestALiveRunPerformsTheEffectAndRecordsSpend(t *testing.T) {
 	fs, rs, rn := newTestRig(t, RoleAdmin)
+	fc := wireContent(t)
 	ctx := context.Background()
 	f := armedFlow(t, fs, RunLive)
 
@@ -305,8 +325,11 @@ func TestALiveRunPerformsTheEffectAndRecordsSpend(t *testing.T) {
 	if run.Steps[0].Refused != "" {
 		t.Errorf("a live run must not capture-and-refuse, got %q", run.Steps[0].Refused)
 	}
-	if run.Steps[0].Output != "created" {
+	if !strings.Contains(run.Steps[0].Output, "created draft") {
 		t.Errorf("the step's output should be recorded, got %q", run.Steps[0].Output)
+	}
+	if created, _ := fc.counts(); created != 1 {
+		t.Errorf("a live run must actually write, got %d drafts created", created)
 	}
 	if run.Spend.Writes != 1 || run.Spend.Steps != 1 {
 		t.Errorf("spend not recorded: %+v", run.Spend)
@@ -349,12 +372,13 @@ func TestAConditionThatDoesNotHoldRefusesRatherThanFails(t *testing.T) {
 // The step ceiling bounds expansion inside the runner, not only in the planner.
 func TestTheRunnerChargesTheStepCeiling(t *testing.T) {
 	fs, _, rn := newTestRig(t, RoleAdmin)
+	wireContent(t)
 	ctx := context.Background()
 	f := goodFlow()
 	f.Enabled, f.Mode = true, RunLive
 	f.Steps = []Step{
-		{Action: "content.draft.create"},
-		{Action: "content.draft.update"},
+		{Action: "content.draft.create", Params: map[string]string{"title": "A", "slug": "a"}},
+		{Action: "content.draft.update", Params: map[string]string{"title": "A", "slug": "a"}},
 	}
 	f.Budget.MaxStepsPerRun = 2
 	f.Budget.MaxWritesPerRun = 2

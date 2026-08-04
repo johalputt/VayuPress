@@ -76,7 +76,7 @@ func goodFlow() Flow {
 	return Flow{
 		Name:    "Draft a weekly digest",
 		Trigger: Trigger{Kind: TriggerSchedule, Cron: "0 9 * * 1"},
-		Steps:   []Step{{Action: "content.draft.create"}},
+		Steps:   []Step{{Action: "content.draft.create", Params: map[string]string{"title": "Digest", "slug": "digest"}}},
 		Budget: Budget{
 			MaxStepsPerRun: 4, MaxRunsPerHour: 2, MaxWritesPerRun: 1,
 			MaxEgressPerRun: 1, Timeout: 30 * time.Second,

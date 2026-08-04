@@ -98,6 +98,13 @@ func (t Trigger) Complete() error {
 		if strings.TrimSpace(t.Cron) == "" {
 			return fmt.Errorf("vayuflow: a schedule trigger needs a cron expression")
 		}
+		// Parsed at SAVE time, not at fire time. An expression that only fails
+		// when the ticker reaches it produces a flow the operator believes is
+		// armed and which silently never runs — and they would find out by the
+		// digest that did not arrive.
+		if _, err := ParseCron(t.Cron); err != nil {
+			return err
+		}
 		if t.Event != "" {
 			return fmt.Errorf("vayuflow: a schedule trigger must not also name an event (%q)", t.Event)
 		}

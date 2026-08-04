@@ -38,6 +38,9 @@
 # sandbox worker pool + seccomp/capability hardening, clustering, the Arweave
 # storage stub, profiling handlers, and assorted exported helpers reserved for
 # the documented roadmap). They compile and are unit-tested but are not yet
+cmd/vayupress/vayuflow_content.go: unreachable func: flowContent.CreateDraft
+cmd/vayupress/vayuflow_content.go: unreachable func: flowContent.UpdateDraft
+cmd/vayupress/vayuflow_content.go: unreachable func: newFlowArticleID
 internal/ai/agent.go: unreachable func: AgentRunner.Run
 internal/ai/agent.go: unreachable func: AgentRunner.execStep
 internal/ai/agent.go: unreachable func: NewAgentRunner
@@ -261,25 +264,26 @@ internal/trace/store.go: unreachable func: Store.ensureSchema
 internal/trace/store.go: unreachable func: attrsJSON
 internal/trace/store.go: unreachable func: parseStatus
 internal/trace/trace.go: unreachable func: CausationID
+internal/vayuflow/actions_content.go: unreachable func: SetContentWriter
 internal/vayuflow/budget.go: unreachable func: Budget.Complete
-internal/vayuflow/budget.go: unreachable func: ErrBudgetExceeded.Error
 internal/vayuflow/budget.go: unreachable func: Spend.chargeEgress
 internal/vayuflow/budget.go: unreachable func: Spend.chargeStep
-internal/vayuflow/budget.go: unreachable func: Spend.chargeWrite
 internal/vayuflow/capability.go: unreachable func: Capabilities
 internal/vayuflow/capability.go: unreachable func: CapabilitiesOfKind
 internal/vayuflow/capability.go: unreachable func: Capability.Complete
-internal/vayuflow/capability.go: unreachable func: CapabilityFor
 internal/vayuflow/capability.go: unreachable func: Kind.String
 internal/vayuflow/capability.go: unreachable func: OnionPolicy.String
 internal/vayuflow/capability.go: unreachable func: Reversible.String
-internal/vayuflow/capability.go: unreachable func: WritePolicy.String
-internal/vayuflow/capability.go: unreachable func: WritePolicy.atMost
 internal/vayuflow/condition.go: unreachable func: CondKind.String
 internal/vayuflow/condition.go: unreachable func: Condition.Complete
 internal/vayuflow/condition.go: unreachable func: Condition.Holds
 internal/vayuflow/condition.go: unreachable func: Condition.complete
 internal/vayuflow/condition.go: unreachable func: Condition.holds
+internal/vayuflow/cron.go: unreachable func: FireIdentity
+internal/vayuflow/cron.go: unreachable func: ParseCron
+internal/vayuflow/cron.go: unreachable func: Schedule.Matches
+internal/vayuflow/cron.go: unreachable func: Schedule.String
+internal/vayuflow/cron.go: unreachable func: parseField
 internal/vayuflow/flow.go: unreachable func: Flow.Complete
 internal/vayuflow/flow.go: unreachable func: Flow.HighestWrite
 internal/vayuflow/flow.go: unreachable func: Flow.MinOwnerRole
@@ -299,10 +303,8 @@ internal/vayuflow/run.go: unreachable func: RunStore.RecoverInterrupted
 internal/vayuflow/run.go: unreachable func: RunStore.scanRun
 internal/vayuflow/run.go: unreachable func: isUniqueViolation
 internal/vayuflow/runner.go: unreachable func: Effects.Fetch
-internal/vayuflow/runner.go: unreachable func: Effects.Write
 internal/vayuflow/runner.go: unreachable func: ImplementedActions
 internal/vayuflow/runner.go: unreachable func: NewRunner
-internal/vayuflow/runner.go: unreachable func: RegisterAction
 internal/vayuflow/runner.go: unreachable func: Runner.Execute
 internal/vayuflow/runner.go: unreachable func: actionFor
 internal/vayuflow/runner.go: unreachable func: joinRefusals
@@ -320,6 +322,9 @@ internal/vayuflow/store.go: unreachable func: describeMode
 internal/vayuflow/store.go: unreachable func: newID
 internal/vayuflow/store.go: unreachable func: parseRunMode
 internal/vayuflow/store.go: unreachable func: parseTriggerKind
+internal/vayuflow/ticker.go: unreachable func: NewTicker
+internal/vayuflow/ticker.go: unreachable func: Ticker.Run
+internal/vayuflow/ticker.go: unreachable func: Ticker.Tick
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanDelete
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanManageAccounts
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanSend
