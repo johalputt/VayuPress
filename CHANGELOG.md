@@ -6,6 +6,109 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.87] — 2026-08-04
+
+**The updater installed the wrong file and took a live site down. Fixed, and
+made impossible three different ways.**
+
+Ships immediately on its own. v3.16.86 is broken for anyone who installs it: the
+in-app updater writes a ZIP archive over the service binary, systemd cannot exec
+it, and the site returns 502 until the previous binary is restored by hand. That
+is a live breakage, so it does not wait to be batched with anything.
+
+**Install this release rather than v3.16.86.** If you are already on a broken
+install, updating from the panel now works — the fixed release no longer carries
+an attachment the old updater can mistake for the binary.
+
+### What happened
+
+v3.16.86 attached a packaged copy of the marketing website as
+`selfhosted-site.zip`. The updater lists a release's attachments, discards the
+ones it recognises as sidecars (`.sha256`, `.sig`, `.bundle`, `.json`) and takes
+the first of what is left. `.zip` was not a recognised sidecar — and the GitHub
+API returns attachments **sorted alphabetically**, so `selfhosted-site.zip` came
+before `vayupress`.
+
+VayuPress ships its binary under a bare name with no operating system or
+architecture in it, so the platform-matching step never matched anything and the
+choice had always come down to that ordering. It had worked for years by luck:
+`vayupress` happened to sort ahead of `vayuprovision-helpers.tar.gz` and
+`vayushield-agent.tar.gz`.
+
+Every verification then passed, which is the part worth sitting with. The zip's
+own `.sha256` was published beside it, so the checksum matched. The download was
+complete and uncorrupted. The bytes were provably exactly what the release
+published. **None of that says the file is a program**, and nothing was asking.
+500 KB of zip went to the install path with mode 0755 and the update was logged
+as a success.
+
+### Fixed
+- **The updater picks the binary by name, not by alphabet.** An attachment named
+  exactly like the file being replaced wins outright. Archives and documents
+  (`.zip`, `.tar.gz`, `.deb`, `.html`, and the rest) are no longer candidates at
+  all — there is no extraction step, so installing one could only ever produce a
+  file the loader rejects. Where several candidates remain and none names this
+  binary or this platform, the update is **refused with an explanation** instead
+  of guessing; guessing is what caused this.
+- **A downloaded update is now checked for being an executable** before it is
+  written, on both the apply path and the write path. ELF, Mach-O (including
+  universal binaries) and PE are recognised; anything else is refused by name and
+  format — "refusing to install `selfhosted-site.zip` — it is not an executable
+  for linux (it is a 500545-byte ZIP archive)". The running binary is left
+  untouched. An operating system whose format is not modelled is not blocked on a
+  guess.
+- **The release build refuses to publish an attachment that outranks the
+  binary.** The fix above only protects an install *after* it is installed, and
+  the update that delivers it is chosen by the old code — so the property has to
+  hold on the release side for as long as any older install exists. The site
+  bundle is now attached as **`vayupress-selfhosted-site.zip`**, and a gate fails
+  the release if anything an old updater would consider installable sorts ahead
+  of `vayupress`.
+
+### Added
+- **An install whose binary is not a program now repairs itself.** The root
+  agent restores `<binary>.bak` and restarts the service, and the Update & Backup
+  page reports that it happened and why. Recovering from this took an SSH session,
+  `cp` and `systemctl` on a product whose premise is that an install is operated
+  from the panel — and the panel is precisely what is not running when it matters.
+
+  It is deliberately narrow. It acts only on a service that is **down**; if the
+  binary is a real executable it does nothing, because a service failing on a
+  config error or a locked database must surface that error rather than be
+  quietly rolled back to an older version. It restores only from a backup that is
+  itself a real executable, and it will not restart a site that is still serving
+  traffic from an already-replaced file.
+
+### Upgrade notes
+- The self-hosted site bundle's download name has changed to
+  **`vayupress-selfhosted-site.zip`**. The previous name cannot be kept: it is
+  the name that caused the outage.
+
+### Audit
+Attacked: release-asset selection, the download verification chain, the release
+workflow's attachment set, the new self-repair in the root agent, and the panel
+notice that reports it. Thirteen mutations, all killed — two of them only after
+being redone, because the first attempt failed to compile and the second did not
+apply, and neither of those is a result.
+
+Four findings, all fixed before this version was bumped:
+
+- The new release gate listed `dist/` **staging directories** (`agent`,
+  `provision`) as if they were attachments. Both sort before `vayupress`, so the
+  gate meant to prevent an outage would have failed every release from now on.
+- The self-repair's "a healthy install is left alone" test could not tell a
+  version that checks whether the service is running from one that does not.
+  Replaced with the state that distinguishes them, which is also a real one: a
+  bad update leaves the process serving from the old inode while the path already
+  holds garbage, and restarting there would cause the outage rather than fix it.
+- The refusal message told the operator to look for an attachment named
+  `vayupress` regardless of what their install is actually called.
+- The agent read the binary's path with a greedy expression that takes the *last*
+  `path=` field, so a unit with several `ExecStart` lines would resolve the wrong
+  one.
+
+---
+
 ## [3.16.86] — 2026-08-04
 
 **The self-hosted site bundle is now a release download.**
