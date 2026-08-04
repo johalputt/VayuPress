@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -141,7 +142,12 @@ func TestOmittedFieldsAreNotTreatedAsBlanking(t *testing.T) {
 		t.Fatal("update_site is gone")
 	}
 	seg := body[i:]
-	if !strings.Contains(seg, "Tagline  *string") {
+	// Matched with the whitespace collapsed. The first version asserted the
+	// literal "Tagline  *string" — two spaces — which is gofmt's alignment for
+	// the field list as it stood, so adding any longer field name later
+	// re-aligned the struct and failed this test over formatting while the
+	// property it exists to protect was untouched.
+	if !regexp.MustCompile(`Tagline\s+\*string`).MatchString(seg) {
 		t.Fatal("update_site decodes its content fields as plain strings, so an assistant that " +
 			"sends only a new tagline blanks the name, about, phone and every other field on " +
 			"somebody's live website")

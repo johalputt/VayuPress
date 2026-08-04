@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/apikeys"
@@ -126,6 +127,15 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 				"type":        "boolean",
 				"description": "Link the blog from the website's navigation and footer.",
 			},
+			"allow_eval": map[string]any{
+				"type": "boolean",
+				"description": "Let THIS domain's uploaded site run a front-end library that " +
+					"compiles its markup expressions at runtime. Off by default. It relaxes one " +
+					"directive of the Content-Security-Policy for this domain's public pages only " +
+					"— never the panel, the API or any path carrying a session, and never the " +
+					"primary domain. Turn it on only for a static site you control; leave it off " +
+					"for anything with a login or user-supplied content.",
+			},
 		}),
 		Visible: a.mcpVisible(apikeys.SectionDomains, apikeys.ActionWrite),
 		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
@@ -133,20 +143,21 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 			// empty". Without that an assistant editing one line would blank
 			// every other field on somebody's live website.
 			var in struct {
-				Host     string  `json:"host"`
-				Serves   *string `json:"serves"`
-				Template *string `json:"template"`
-				Name     *string `json:"name"`
-				Tagline  *string `json:"tagline"`
-				About    *string `json:"about"`
-				Phone    *string `json:"phone"`
-				Email    *string `json:"email"`
-				Address  *string `json:"address"`
-				Hours    *string `json:"hours"`
-				CTA      *string `json:"cta"`
-				CTALink  *string `json:"cta_link"`
-				HeroImg  *string `json:"hero_img"`
-				ShowBlog *bool   `json:"show_blog"`
+				Host      string  `json:"host"`
+				Serves    *string `json:"serves"`
+				Template  *string `json:"template"`
+				Name      *string `json:"name"`
+				Tagline   *string `json:"tagline"`
+				About     *string `json:"about"`
+				Phone     *string `json:"phone"`
+				Email     *string `json:"email"`
+				Address   *string `json:"address"`
+				Hours     *string `json:"hours"`
+				CTA       *string `json:"cta"`
+				CTALink   *string `json:"cta_link"`
+				HeroImg   *string `json:"hero_img"`
+				ShowBlog  *bool   `json:"show_blog"`
+				AllowEval *bool   `json:"allow_eval"`
 			}
 			if err := json.Unmarshal(args, &in); err != nil {
 				return "", errBadArgs(err)
@@ -191,8 +202,20 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 			if err != nil {
 				return "", err
 			}
+			// Carried forward unless this call explicitly changes it. Rebuilding
+			// the config from the form fields would otherwise silently re-tighten
+			// the policy on a domain that had opted out, on the next unrelated
+			// edit — a setting that turns itself off is worse than no setting.
+			cfg.AllowEval = prev.AllowEval
+			if in.AllowEval != nil {
+				cfg.AllowEval = *in.AllowEval
+			}
 			if err := a.domains.SetSite(ctx, d.ID, cfg); err != nil {
 				return "", err
+			}
+			if in.AllowEval != nil {
+				dbpkg.AuditLog("vayudomains.website.alloweval", mcpActor(ctx), d.Host,
+					"allow_eval="+strconv.FormatBool(cfg.AllowEval)+" via=mcp")
 			}
 			render.CachePurgeAll()
 			dbpkg.AuditLog("vayudomains.website.save", mcpActor(ctx), d.Host,

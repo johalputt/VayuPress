@@ -6,6 +6,49 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.84] — 2026-08-04
+
+**The eval opt-in becomes reachable, and the site bundle becomes reproducible.**
+
+v3.16.83 added the per-domain opt-out of the no-eval rule but left it settable
+from nowhere, and gave an operator no way to produce a bundle that uses it. Both
+are closed here.
+
+### Added
+- **`update_site` takes `allow_eval`.** The setting existed and no surface could
+  reach it — a control nobody can operate is the same as no control. It carries
+  forward unless a call explicitly changes it: rebuilding the site config from
+  the form fields would otherwise silently re-tighten the policy on the next
+  unrelated edit, and a setting that turns itself off is worse than no setting.
+  A change is written to the audit log.
+
+- **`/static/vayuweb/alpine.min.js`** — the standard build, MIT, vendored. It is
+  useless without the opt-in, and it is served anyway: the alternative is telling
+  an operator who has taken that decision to fetch the file from a third-party
+  host, trading a policy they chose to relax for a supply chain they cannot see.
+
+- **`scripts/build-selfhosted-site.sh`** — turns `docs/site/` into a bundle a
+  VayuPress install can serve, plus the `.zip` the panel's website upload takes.
+  It repoints exactly three third-party subresources at the first-party copies
+  the binary already serves and touches no markup or application code. It
+  **fails** if any off-origin subresource survives the rewrite, because shipping
+  one produces a blank page whose cause is invisible.
+
+### Fixed
+- **A gate was pinned to gofmt's whitespace.** `TestOmittedFieldsAreNotTreatedAsBlanking`
+  asserted the literal `Tagline  *string` — two spaces, the alignment of the
+  struct as it happened to stand. Adding a longer field name re-aligned the
+  struct and failed the test over formatting while the property it protects was
+  untouched. It now matches the pointer type irrespective of spacing.
+
+### Known limit, stated plainly
+The upstream page drives its behaviour through roughly 300 Alpine expression
+strings in attributes. Those compile via `new Function()`, so the bundle this
+script produces needs the per-domain opt-in to animate. Without it the layout and
+typography are correct and the interactions are inert. There is no third state.
+
+---
+
 ## [3.16.83] — 2026-08-04
 
 **A hosted site can now opt out of the no-eval rule — and only that site.**

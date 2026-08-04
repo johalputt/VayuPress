@@ -292,9 +292,17 @@ func (a *App) handleStaticFont(w http.ResponseWriter, r *http.Request) {
 // That distinction is the whole point: the standard build needs 'unsafe-eval',
 // and shipping it would have meant weakening the policy for every page on the
 // install to make one page interactive.
+// alpine.min.js is the STANDARD build and is useless without the per-domain
+// eval opt-in (SiteConfig.AllowEval) — it compiles the expression strings in
+// markup at runtime, which the baseline policy refuses. It is served anyway,
+// because the alternative is an operator who has taken that decision being told
+// to fetch the file from a third-party host, which trades a policy they chose to
+// relax for a supply chain they cannot see. Serving it here keeps the code
+// first-party, versioned with the binary, and reviewable.
 var vayuWebAllowlist = map[string]string{
 	"tailwind.css":      "text/css; charset=utf-8",
 	"alpine-csp.min.js": "application/javascript; charset=utf-8",
+	"alpine.min.js":     "application/javascript; charset=utf-8",
 }
 
 // handleVayuWebAsset serves an allowlisted first-party web-building asset at
