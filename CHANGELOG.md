@@ -6,6 +6,46 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.80] — 2026-08-04
+
+**A slow start was being reported as an outage.**
+
+Ships immediately: the previous helper records a healthy run as failed and prints
+a false outage alarm above the real results.
+
+`test.johal.in` reached `active` in this release's predecessor — the end-of-run
+apply worked exactly as designed. The run still reported `setup-vayudomain.sh=
+failed`, and that was this.
+
+`restart_app_verified` waited 10 seconds, then another 10, then printed *"Nothing
+on this install is being served"*. On an install serving a large blog the app
+takes longer than that to come back after a restart, so the alarm fired over a
+service that was merely still starting — the service log for exactly that window
+shows it answering 200s continuously to search crawlers and real readers. The
+run was then counted as failed, with every certificate in it having succeeded.
+
+### Fixed
+- **The startup window is 60 seconds, not 10.** An alarm that fires on a slow
+  start is worse than no alarm: it is loud, it is false, and it prints directly
+  above the run's real results, which is where an operator stops reading.
+
+- **"Running but slow" and "will not start" are now different outcomes.** They
+  were reported identically and they need opposite responses. If systemd reports
+  the unit active, the helper says so and does **not** count a run failure —
+  nothing is declared broken on the strength of a slow start. Only a unit that is
+  genuinely not running, and will not start, raises the outage alarm and dumps
+  systemd's reasoning.
+
+### Fixed (test integrity)
+- **The gate for the above passed against its own mutation.** It searched the
+  function for `is-active` and found a *later* occurrence, so removing the branch
+  it was written to protect left it green. It now anchors on the first branch
+  after the wait and checks the ordering against the outage alarm. Two mutations
+  run — a 10-second window, and treating running-but-slow as a failure — both now
+  killed.
+
+---
+
 ## [3.16.79] — 2026-08-04
 
 **A working site was being scored as broken by the check added to stop

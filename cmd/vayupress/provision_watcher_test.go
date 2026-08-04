@@ -317,3 +317,73 @@ func TestTheAgentArmsTheWatcherWithoutBeingAsked(t *testing.T) {
 		t.Error("the reconcile never actually arms anything")
 	}
 }
+
+// A SLOW START IS NOT AN OUTAGE. The first version of restart_app_verified
+// waited 10 seconds, then another 10, and then printed "Nothing on this install
+// is being served" — over an app that was simply still starting. The service log
+// for that period shows it answering 200s continuously to bingbot, Applebot and
+// real readers throughout.
+//
+// The run was recorded as FAILED because of it, while every certificate in it had
+// succeeded. An alarm that fires on a slow start is worse than no alarm: loud,
+// false, and printed directly above the real results, which is where an operator
+// stops reading.
+func TestASlowStartIsNotReportedAsAnOutage(t *testing.T) {
+	src := shellCode(readSourceFile(t, "../../scripts/setup-vayudomain.sh"))
+	fn := src[strings.Index(src, "restart_app_verified() {"):]
+	if e := strings.Index(fn, "\n}\n"); e > 0 {
+		fn = fn[:e]
+	}
+	if fn == "" {
+		t.Fatal("restart_app_verified is gone")
+	}
+
+	// The window has to be long enough for a real install to finish starting.
+	if strings.Contains(fn, "for _i in 1 2 3 4 5 6 7 8 9 10; do") {
+		t.Fatal("the startup window is still ten seconds, so a busy install is declared dark " +
+			"while it is starting normally")
+	}
+	if !strings.Contains(fn, "seq 1 60") {
+		t.Error("the startup window is not the documented 60s")
+	}
+
+	// And "running but slow" must be separated from "will not start". They were
+	// reported identically and they need opposite responses.
+	//
+	// Anchored on the FIRST branch after the wait, not on any occurrence of
+	// is-active: the function mentions it again later, so a loose search finds the
+	// second one and passes against a mutation that removed the first. That
+	// happened, and only mutation-testing showed it.
+	wait := strings.Index(fn, "seq 1 60")
+	if wait < 0 {
+		t.Fatal("no startup wait to anchor on")
+	}
+	after := fn[wait:]
+	slowBranch := strings.Index(after, "if systemctl is-active --quiet vayupress")
+	deadBranch := strings.Index(after, `warn "VayuPress is NOT running`)
+	if slowBranch < 0 {
+		t.Fatal("after waiting, nothing asks systemd whether the app is merely still starting, " +
+			"so a slow start and a dead service get the same alarm — and the run is recorded " +
+			"failed with every certificate in it fine")
+	}
+	if deadBranch >= 0 && slowBranch > deadBranch {
+		t.Error("the outage alarm is raised before checking whether the service is simply still " +
+			"starting")
+	}
+	// A running-but-slow app must NOT count as a run failure.
+	seg := after[slowBranch:]
+	if d := strings.Index(seg, `warn "VayuPress is NOT running`); d > 0 {
+		seg = seg[:d]
+	}
+	if !strings.Contains(seg, "return 0") {
+		t.Error("an app that systemd reports running is still counted as a failure, so every " +
+			"run on a slow install is recorded failed with all its certificates fine")
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

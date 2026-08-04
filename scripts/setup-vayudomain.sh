@@ -681,24 +681,48 @@ restart_app_verified() {
   command -v systemctl >/dev/null 2>&1 || return 0
   systemctl try-restart vayupress 2>/dev/null || true
 
+  # SIXTY seconds, not ten.
+  #
+  # The first version waited 10s, then another 10, and then printed "Nothing on
+  # this install is being served". On a live install serving a large blog the app
+  # simply takes longer than that to come back, so the alarm fired over a healthy
+  # service that was still starting -- and the run was recorded as FAILED because
+  # of it, while every certificate in it had succeeded.
+  #
+  # An alarm that fires on a slow start is worse than no alarm: it is loud,
+  # false, and it appears in the log directly above the real results, which is
+  # where an operator stops reading.
   local _i
-  for _i in 1 2 3 4 5 6 7 8 9 10; do
+  for _i in $(seq 1 60); do
     app_answers && return 0
     sleep 1
   done
 
-  warn "VayuPress did not answer after the restart at the end of this run."
+  # STILL not answering after a minute. Now distinguish the two cases that were
+  # being reported as one, because they need opposite responses.
+  if systemctl is-active --quiet vayupress 2>/dev/null; then
+    info "VayuPress is running but has not answered /health within 60s of the restart."
+    info "  A busy install can take longer to finish starting; nothing is being declared"
+    info "  broken on the strength of a slow start. If the site is genuinely down, the"
+    info "  service log is the place that says why."
+    return 0
+  fi
+
+  warn "VayuPress is NOT running after the restart at the end of this run."
   warn "  nginx is still up, so from outside this reads as a site that accepts connections"
   warn "  and never replies rather than an outage. Starting the service."
   systemctl start vayupress >/dev/null 2>&1 || true
-  for _i in 1 2 3 4 5 6 7 8 9 10; do
+  for _i in $(seq 1 60); do
     app_answers && { ok "VayuPress is answering again."; return 0; }
     sleep 1
   done
 
-  warn "VayuPress is STILL not answering on 127.0.0.1:8080. Nothing on this install is"
-  warn "  being served, which is now more serious than any certificate. systemd's last"
-  warn "  words on the unit:"
+  if systemctl is-active --quiet vayupress 2>/dev/null; then
+    info "VayuPress is running but still not answering; leaving it to finish starting."
+    return 0
+  fi
+  warn "VayuPress is not running and would not start. Nothing on this install is being"
+  warn "  served, which is now more serious than any certificate. systemd's last words:"
   systemctl status vayupress --no-pager -n 20 2>&1 | sed 's/^/      /' >&2 || true
   return 1
 }
