@@ -24,6 +24,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/bizsite"
 	"github.com/johalputt/vayupress/internal/customsite"
 )
@@ -157,4 +158,32 @@ func TestWebsitePageMeetsTheHouseStyle(t *testing.T) {
 func bizsiteContentForTest(name string) bizsite.Content { return bizsite.Content{Name: name} }
 func customsiteManifestForTest(files int) customsite.Manifest {
 	return customsite.Manifest{Files: files, HasPrev: true}
+}
+
+// Phase 1 — Visitors. The smallest per-domain page, and the one that proves the
+// helper works on something it was not written against.
+func TestAnalyticsPageMeetsTheHouseStyle(t *testing.T) {
+	withPages := scopedAnalyticsBody(1200, 340, 41.5, 62, []analytics.PageStat{
+		{Path: "/", Pageviews: 900, UniqueVisitors: 260},
+		{Path: "/about", Pageviews: 300, UniqueVisitors: 80},
+	})
+	assertHouseStyle(t, withPages, houseStyle{Name: "Visitors", MinTiles: 4, MinBands: 2})
+
+	// The numbers must be the ones passed in, not a shape that happens to render.
+	for _, want := range []string{"1200", "340", "42%", "62s", "/about"} {
+		if !strings.Contains(withPages, want) {
+			t.Errorf("the page does not show %q", want)
+		}
+	}
+
+	// An empty site must still be a valid page, and must say why it is empty
+	// rather than showing a bare zero.
+	empty := scopedAnalyticsBody(0, 0, 0, 0, nil)
+	assertHouseStyle(t, empty, houseStyle{Name: "Visitors (no traffic)", MinTiles: 4, MinBands: 2})
+	if !strings.Contains(empty, "No visits recorded") {
+		t.Error("a site with no traffic shows no explanation, only zeroes")
+	}
+	if !strings.Contains(empty, "nothing yet") {
+		t.Error("the collapsed band does not say it is empty, so it reads as a closed door")
+	}
 }

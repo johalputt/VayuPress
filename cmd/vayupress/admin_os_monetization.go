@@ -382,6 +382,24 @@ func monChip(on bool, onLabel, offLabel string) string {
 // summary carries an icon, title, one-line subtitle and a status chip; the body
 // (an existing card) reveals with a smooth fade/slide and the chevron rotates.
 // It is pure CSS (native <details>) — no JS, CSP-safe, keyboard-accessible.
+// osStatTile renders one house-style stat tile.
+//
+// It exists because three idioms for the same thing had grown up: the literal
+// `stat-card` markup here, `vmStatTile` emitting `vm-stat`, and
+// `osStatCardDelta` emitting a `card` with a `card-title` — so "the four numbers
+// at the top of a page" looked different depending on which page you were on.
+// §11 names stat-card as the house style; this is that markup, once.
+//
+// tone is "" or a modifier such as "warn".
+func osStatTile(label, value, tone string) string {
+	cls := "stat-card"
+	if tone != "" {
+		cls += " stat-card--" + tone
+	}
+	return `<div class="` + cls + `"><div class="stat-card__label">` + html.EscapeString(label) +
+		`</div><div class="stat-card__value">` + html.EscapeString(value) + `</div></div>`
+}
+
 func monAcc(icon, title, subtitle, chip string, open bool, body string) string {
 	openAttr := ""
 	if open {

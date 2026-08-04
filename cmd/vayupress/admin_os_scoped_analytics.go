@@ -21,7 +21,9 @@ import (
 	htmpl "html/template"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -52,36 +54,63 @@ func (a *App) handleOSScopedAnalytics(w http.ResponseWriter, r *http.Request) {
 	ov, _ := a.analytics.OverviewSinceScoped(r.Context(), d.ID, 30)
 	top, _ := a.analytics.TopPagesScoped(r.Context(), d.ID, 30, 10)
 
-	body += `<div class="stat-grid">` +
-		osStatCardDelta("Page views", strconv.Itoa(ov.TotalPageviews), "") +
-		osStatCardDelta("Visits", strconv.Itoa(ov.TotalVisits), "") +
-		osStatCardDelta("Bounce rate", strconv.FormatFloat(ov.BounceRate, 'f', 0, 64)+"%", "") +
-		osStatCardDelta("Avg. visit", strconv.FormatFloat(ov.AvgDuration, 'f', 0, 64)+"s", "") +
-		`</div>`
+	body += scopedAnalyticsBody(ov.TotalPageviews, ov.TotalVisits, ov.BounceRate, ov.AvgDuration, top)
+	writeOSHTML(w, r, adminOSLayout(nonce, "Visitors · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
+}
 
-	body += `<div class="section-head"><div class="section-head__title">Busiest pages</div>` +
-		`<div class="section-head__hint">This site's own pages only</div></div><div class="card">`
+// scopedAnalyticsBody renders the numbers and the busiest-pages table.
+//
+// Extracted from the handler because the markup was built inline against a
+// request, a database and a live analytics service — so nothing could render
+// this page without all three, and it therefore had no test at all. A page that
+// cannot be rendered in a test is a page whose restyling cannot be checked.
+func scopedAnalyticsBody(views, visits int, bounce, avgDur float64, top []analytics.PageStat) string {
+	esc := html.EscapeString
+	var b strings.Builder
+
+	b.WriteString(`<div class="stat-grid">` +
+		osStatTile("Page views", strconv.Itoa(views), "") +
+		osStatTile("Visits", strconv.Itoa(visits), "") +
+		osStatTile("Bounce rate", strconv.FormatFloat(bounce, 'f', 0, 64)+"%", "") +
+		osStatTile("Avg. visit", strconv.FormatFloat(avgDur, 'f', 0, 64)+"s", "") +
+		`</div>`)
+
+	// ── The bands, as collapsible details (house style §11) ──────────────────
+	b.WriteString(`<div class="section-head"><span class="section-head__title">This site's traffic</span>` +
+		`<span class="section-head__hint">This site's own pages only</span></div>`)
+	b.WriteString(`<div class="mon-stack">`)
+
+	var pages strings.Builder
+	pages.WriteString(`<div class="card">`)
 	if len(top) == 0 {
-		body += `<p class="text-sm muted">No visits recorded for this site yet. Traffic recorded before ` +
+		pages.WriteString(`<p class="text-sm muted">No visits recorded for this site yet. Traffic recorded before ` +
 			`this install was upgraded is attributed to the primary domain, because that is the only ` +
-			`domain it could have been — it is not moved retroactively.</p>`
+			`domain it could have been — it is not moved retroactively.</p>`)
 	} else {
-		body += `<table class="table"><thead><tr><th>Page</th><th>Views</th><th>Visits</th></tr></thead><tbody>`
+		pages.WriteString(`<table class="table"><thead><tr><th>Page</th><th>Views</th><th>Visits</th></tr></thead><tbody>`)
 		for _, p := range top {
-			body += `<tr><td class="mono text-sm">` + esc(p.Path) + `</td><td>` +
-				strconv.Itoa(p.Pageviews) + `</td><td>` + strconv.Itoa(p.UniqueVisitors) + `</td></tr>`
+			pages.WriteString(`<tr><td class="mono text-sm">` + esc(p.Path) + `</td><td>` +
+				strconv.Itoa(p.Pageviews) + `</td><td>` + strconv.Itoa(p.UniqueVisitors) + `</td></tr>`)
 		}
-		body += `</tbody></table>`
+		pages.WriteString(`</tbody></table>`)
 	}
-	body += `</div>`
+	pages.WriteString(`</div>`)
+	pagesChip := `<span class="mon-chip mon-chip--off">nothing yet</span>`
+	if len(top) > 0 {
+		pagesChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(len(top)) + ` pages</span>`
+	}
+	b.WriteString(monAcc("📈", "Busiest pages", "Where this site's visits landed", pagesChip, true, pages.String()))
 
 	// What these numbers are and are not. The visitor count is deliberately the
 	// distinct-session count, and saying so is cheaper than being asked why it
 	// differs from the install-wide page.
-	body += `<div class="card"><p class="text-sm muted">"Visits" counts distinct sessions on this ` +
-		`hostname. The install-wide Analytics page counts unique visitors from a session table that ` +
-		`carries no domain, so its visitor figure spans every site here — the two are different ` +
-		`populations and are not comparable. A 404 is not counted as a page view.</p></div>`
+	b.WriteString(monAcc("📐", "What these numbers mean", "And what they cannot be compared with",
+		`<span class="mon-chip mon-chip--on">read this once</span>`, false,
+		`<div class="card"><p class="text-sm muted">"Visits" counts distinct sessions on this `+
+			`hostname. The install-wide Analytics page counts unique visitors from a session table that `+
+			`carries no domain, so its visitor figure spans every site here — the two are different `+
+			`populations and are not comparable. A 404 is not counted as a page view.</p></div>`))
 
-	writeOSHTML(w, r, adminOSLayout(nonce, "Visitors · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
+	b.WriteString(`</div>`) // mon-stack
+	return b.String()
 }
