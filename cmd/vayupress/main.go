@@ -75,6 +75,7 @@ import (
 	"github.com/johalputt/vayupress/internal/trace"
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
+	"github.com/johalputt/vayupress/internal/vayuflow"
 	mailpkg "github.com/johalputt/vayupress/internal/vayuos/mail"
 	"github.com/johalputt/vayupress/internal/vayuveil"
 	"github.com/johalputt/vayupress/internal/versions"
@@ -1016,6 +1017,31 @@ func main() {
 			return dbpkg.StorageUsedBytes(), dbpkg.StorageQuotaBytes()
 		},
 	}
+
+	// Wire VayuFlow — the deterministic automation engine (ADR-0151).
+	//
+	// The content writer is VayuFlow's OWN adapter, not ArticleService: that
+	// service creates articles without setting a status, and an empty status is
+	// read as published. An automation capped at draft must never travel that
+	// path.
+	a.flowStore = vayuflow.NewStore(dbpkg.DB)
+	a.flowRuns = vayuflow.NewRunStore(dbpkg.DB)
+	a.flowRunner = vayuflow.NewRunner(a.flowStore, a.flowRuns, a.flowRoleResolver())
+	a.flowTicker = vayuflow.NewTicker(a.flowStore, a.flowRunner, time.UTC)
+	vayuflow.SetContentWriter(flowContent{repo: dbpkg.NewArticleRepo(dbpkg.DB)})
+	// Runs left mid-flight by a previous process become "interrupted" — never
+	// retried, because a step that already sent mail must not be replayed.
+	if n, err := a.flowRuns.RecoverInterrupted(context.Background()); err != nil {
+		log.Printf("vayuflow: could not recover in-flight runs: %v", err)
+	} else if n > 0 {
+		log.Printf("vayuflow: %d run(s) were in flight at shutdown and are marked interrupted; "+
+			"retry is an operator decision", n)
+	}
+	// The ticker stops with the rest of the background workers, on the same
+	// shutdown signal, so a draining process does not start new automations.
+	flowCtx, stopFlow := context.WithCancel(context.Background())
+	go func() { <-queue.DoneCh; stopFlow() }()
+	go a.flowTicker.Run(flowCtx, nil)
 
 	// Wire search service — VayuFind, the built-in dependency-free engine
 	// (ADR-0050/0101). Load the index in the BACKGROUND: on a large article store

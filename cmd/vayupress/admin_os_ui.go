@@ -581,7 +581,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// tunables on the host, which is operator information rather than author
 		// information.
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuveil", a.handleOSVayuVeil)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuflow", a.handleOSVayuFlow)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuveil/toggle", a.handleOSVayuVeilToggle)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuflow/arm", a.handleOSVayuFlowArm)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuflow/run", a.handleOSVayuFlowRun)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/tor", a.handleOSTor)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/tor/toggle", a.handleOSTorToggle)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/tor/bridges", a.handleOSTorBridges)

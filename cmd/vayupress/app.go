@@ -59,6 +59,7 @@ import (
 	"github.com/johalputt/vayupress/internal/users"
 	vasession "github.com/johalputt/vayupress/internal/vayuanalytics/session"
 	vastore "github.com/johalputt/vayupress/internal/vayuanalytics/store"
+	"github.com/johalputt/vayupress/internal/vayuflow"
 	"github.com/johalputt/vayupress/internal/vayukeep"
 	vkernel "github.com/johalputt/vayupress/internal/vayuos/kernel"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
@@ -171,7 +172,15 @@ type App struct {
 
 	// Multi-author accounts + login sessions (Tier 1).
 	userStore *users.Store
-	sessions  *auth.SessionStore
+
+	// VayuFlow — the deterministic automation engine (ADR-0151). Nil when the
+	// engine could not be constructed; the panel says so rather than pretending
+	// flows are armed.
+	flowStore  *vayuflow.Store
+	flowRuns   *vayuflow.RunStore
+	flowRunner *vayuflow.Runner
+	flowTicker *vayuflow.Ticker
+	sessions   *auth.SessionStore
 
 	// Privacy-first analytics (Tier 2).
 	analytics *analytics.Store

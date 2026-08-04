@@ -59,6 +59,7 @@ func osOperationsGrid(current mode.Mode, storagePct int, maintenanceOn bool, kee
 	b.WriteString(osWorkCard("/os/vayukeep", "Backup &amp; Recovery", "Automatic encrypted copies, proven restorable", iconKeep, 0, keepBadge, true))
 	b.WriteString(osWorkCard("/os/modes", "System Modes", "Normal · read-only · quarantine", iconModes, 0, modeBadge, true))
 	b.WriteString(osWorkCard("/os/policy", "Policy Inspector", "Effective policy & guardrails", iconPolicy, 0, "", false))
+	b.WriteString(osWorkCard("/os/vayuflow", "VayuFlow", "Automations, their ceilings &amp; what they did", iconModes, 0, "", true))
 	b.WriteString(osWorkCard("/os/topology", "Topology", "Services & connections map", iconTopology, 0, "", false))
 	// Sits beside Topology because it answers the same class of question — what
 	// this install is wired to, and whether the wiring is actually live.

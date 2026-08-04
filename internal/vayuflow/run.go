@@ -234,6 +234,59 @@ func (rs *RunStore) Recent(ctx context.Context, flowID string, limit int) ([]Run
 	return out, nil
 }
 
+// Stats is the window summary the panel's tiles read.
+type Stats struct {
+	Runs int
+	// Refused counts runs the engine declined — a condition that did not hold,
+	// an owner who no longer holds the authority, a step that could not run.
+	Refused int
+	// BudgetCapped counts runs that reached a ceiling. A ceiling reached is a
+	// ceiling doing its job OR a ceiling set wrong, and either wants a human —
+	// which is why this tile is toned for attention rather than reported as a
+	// success.
+	BudgetCapped int
+	Interrupted  int
+	Failed       int
+}
+
+// StatsSince summarises the run trail over a window.
+func (rs *RunStore) StatsSince(ctx context.Context, since time.Time) (Stats, error) {
+	var st Stats
+	rows, err := rs.db.QueryContext(ctx,
+		`SELECT status, error, spend_steps, spend_writes, spend_egress, budget_max_steps, budget_max_writes, budget_max_egress FROM vayuflow_runs WHERE started_at>=?`,
+		since.UTC().Format(tsLayout))
+	if err != nil {
+		return st, fmt.Errorf("vayuflow: run stats: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var (
+			status, errText        string
+			ss, sw, se, bs, bw, be int
+		)
+		if err := rows.Scan(&status, &errText, &ss, &sw, &se, &bs, &bw, &be); err != nil {
+			return st, err
+		}
+		st.Runs++
+		switch RunStatus(status) {
+		case StatusRefused:
+			st.Refused++
+		case StatusInterrupted:
+			st.Interrupted++
+		case StatusFailed:
+			st.Failed++
+		}
+		// A run that reached ANY ceiling counts, whether it failed on it or
+		// merely finished level with it — the point of the tile is "this flow is
+		// operating at its limit", which is true either way.
+		if ss >= bs || sw >= bw || se >= be {
+			st.BudgetCapped++
+		}
+	}
+	_ = rows.Err()
+	return st, nil
+}
+
 // CountSince returns how many runs a flow started since t, which is what the
 // MaxRunsPerHour ceiling is checked against.
 //

@@ -112,6 +112,11 @@ func osPathMinLevel(path string) int {
 		// on disk, lists every restore point, and offers controls that read those
 		// archives back. Same class as "backup" and "power" — admin-only.
 		"domains", "dns", "backup", "vayukeep", "power", "users",
+		// "vayuflow" arms automations that execute with the OWNER's authority.
+		// An author who could reach the flow editor could arm work that runs as
+		// themselves on a schedule — a privilege-escalation bug wearing a routing
+		// mistake's clothes, which is why the ADR calls this out by name.
+		"vayuflow",
 		// Growth is the hub that fronts Members / Newsletter / Monetization /
 		// Advertising; Operations fronts Modes / Policy / Topology / Replay / Faults
 		// / ADR — both inherit their fronted pages' admin gate.

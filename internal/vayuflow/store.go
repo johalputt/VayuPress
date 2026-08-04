@@ -235,10 +235,10 @@ func (s *Store) LoadableFlows(ctx context.Context) (ok []Flow, rejected map[stri
 	return ok, rejected, nil
 }
 
-// describeMode is used by the panel and the audit trail so both name the modes
+// DescribeMode is used by the panel and the audit trail so both name the modes
 // identically; a panel that says "test mode" while the trail says "dry-run"
 // makes an operator reconcile two vocabularies for one state.
-func describeMode(m RunMode) string {
+func DescribeMode(m RunMode) string {
 	switch m {
 	case RunDryRun:
 		return "dry-run — effects are captured and refused at the capability boundary"
@@ -247,8 +247,6 @@ func describeMode(m RunMode) string {
 	}
 	return "unset — this flow cannot run"
 }
-
-var _ = describeMode // used by the panel in P4
 
 // TriggerSummary renders a trigger for display in one short phrase.
 func TriggerSummary(t Trigger) string {
