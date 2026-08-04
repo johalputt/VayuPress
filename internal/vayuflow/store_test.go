@@ -22,7 +22,15 @@ import (
 // stylesheet — a checked-in artifact 6 KB behind the constant the binary
 // served — so the schema under test is the schema that ships, read from disk.
 // It also means a malformed migration fails here rather than at first boot.
-func newTestStore(t *testing.T) *Store {
+// vayuflowMigrations are every migration this subsystem owns, applied in order.
+// Adding one here is part of adding it to the repo — a migration the tests do
+// not apply is a schema nothing proves works.
+var vayuflowMigrations = []string{
+	"085-vayuflow.up.sql",
+	"086-vayuflow-runs.up.sql",
+}
+
+func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
@@ -30,29 +38,35 @@ func newTestStore(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	path := filepath.Join("..", "db", "migrations", "085-vayuflow.up.sql")
-	b, err := os.ReadFile(path) // #nosec G304 -- fixed path inside this repository
-	if err != nil {
-		t.Fatalf("read migration: %v", err)
-	}
-	// The runner executes ONE statement per physical line, so the test does the
-	// same. Doing anything smarter here (splitting on semicolons, say) would
-	// let a migration pass the test and fail the runner.
 	var executed int
-	for _, line := range strings.Split(string(b), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "--") {
-			continue
+	for _, name := range vayuflowMigrations {
+		b, err := os.ReadFile(filepath.Join("..", "db", "migrations", name)) // #nosec G304 -- fixed path inside this repository
+		if err != nil {
+			t.Fatalf("read migration %s: %v", name, err)
 		}
-		if _, err := db.Exec(line); err != nil {
-			t.Fatalf("migration line failed: %v\n  %s", err, line)
+		// The runner executes ONE statement per physical line, so the test does
+		// the same. Doing anything smarter here (splitting on semicolons, say)
+		// would let a migration pass the test and fail the runner.
+		for _, line := range strings.Split(string(b), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "--") {
+				continue
+			}
+			if _, err := db.Exec(line); err != nil {
+				t.Fatalf("%s: migration line failed: %v\n  %s", name, err, line)
+			}
+			executed++
 		}
-		executed++
 	}
 	if executed == 0 {
-		t.Fatal("the migration file produced no statements; this test is proving nothing")
+		t.Fatal("the migration files produced no statements; this test is proving nothing")
 	}
-	return NewStore(db)
+	return db
+}
+
+func newTestStore(t *testing.T) *Store {
+	t.Helper()
+	return NewStore(newTestDB(t))
 }
 
 // goodFlow is a minimal flow that satisfies every contract. Tests mutate one

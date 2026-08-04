@@ -16,7 +16,7 @@
 #  - VerdictFrom: reads the middleware's classification off the request context,
 #  - botdb Store.Import / Store.ReportFalsePositive: operator community-import and
 #  - calibrate.BiasedForTest: constructs a calibrator pre-loaded with a bias so
-#  - internal/vayuflow/*: ADR-0151 P1 lands the type system, capability registry and store ahead of their wiring. These 42 entries are TEMPORARY and must shrink to zero as P3 wires the triggers and P4 the panel; a VayuFlow release that still carries them is a subsystem that ships without being reachable.
+#  - internal/vayuflow/*: ADR-0151 lands the engine ahead of its wiring. EVERY vayuflow entry here is TEMPORARY and must reach zero before the ADR-0151 release: P3 wires the triggers, P4 the panel. A count is deliberately not quoted, because it grows with each phase and a stale number reads as a target. A VayuFlow release still carrying any of these is a subsystem shipping without being reachable, which is the 'partially wired' state the ADR's own appendix names as the bad one.
 # "<file>: unreachable func: <name>", line/col stripped so it survives edits).
 # Each line below is a function currently unreachable from the program
 # The CI gate fails only on entries NOT listed here, so new dead code is
@@ -289,6 +289,23 @@ internal/vayuflow/flow.go: unreachable func: Trigger.Complete
 internal/vayuflow/flow.go: unreachable func: TriggerKind.String
 internal/vayuflow/role.go: unreachable func: ownerAtLeast
 internal/vayuflow/role.go: unreachable func: validOwnerRole
+internal/vayuflow/run.go: unreachable func: IdempotencyKey
+internal/vayuflow/run.go: unreachable func: NewRunStore
+internal/vayuflow/run.go: unreachable func: RunStore.Begin
+internal/vayuflow/run.go: unreachable func: RunStore.CountSince
+internal/vayuflow/run.go: unreachable func: RunStore.Finish
+internal/vayuflow/run.go: unreachable func: RunStore.Recent
+internal/vayuflow/run.go: unreachable func: RunStore.RecoverInterrupted
+internal/vayuflow/run.go: unreachable func: RunStore.scanRun
+internal/vayuflow/run.go: unreachable func: isUniqueViolation
+internal/vayuflow/runner.go: unreachable func: Effects.Fetch
+internal/vayuflow/runner.go: unreachable func: Effects.Write
+internal/vayuflow/runner.go: unreachable func: ImplementedActions
+internal/vayuflow/runner.go: unreachable func: NewRunner
+internal/vayuflow/runner.go: unreachable func: RegisterAction
+internal/vayuflow/runner.go: unreachable func: Runner.Execute
+internal/vayuflow/runner.go: unreachable func: actionFor
+internal/vayuflow/runner.go: unreachable func: joinRefusals
 internal/vayuflow/store.go: unreachable func: ActionSummary
 internal/vayuflow/store.go: unreachable func: NewStore
 internal/vayuflow/store.go: unreachable func: Store.Delete
