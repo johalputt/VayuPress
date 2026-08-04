@@ -229,3 +229,50 @@ func statCardNamed(t *testing.T, page, label string) string {
 	}
 	return page[i : j+end+len(`</div></div>`)]
 }
+
+// Every band on the page is collapsible, and the markup they sit in balances.
+//
+// The house style is a mon-stack of pure-CSS <details>: no JavaScript, keyboard
+// accessible, and each summary carries a chip so its state reads while shut. The
+// page was ten flat sections an operator scrolled past to reach the one they
+// wanted.
+//
+// Tag balance is asserted because this conversion is string surgery. A first
+// attempt left an unclosed literal and would not compile; the failure mode that
+// DOES compile is an unbalanced div, which renders as a page whose lower half
+// has quietly become a child of something above it.
+func TestEveryBandOnTheWebsitePageCollapses(t *testing.T) {
+	page := scopedWebsitePage(siteWithEval(t, true), "bistro",
+		bizsite.Content{Name: "Test"}, true, customsite.Manifest{Files: 30, HasPrev: true})
+
+	if !strings.Contains(page, `class="mon-stack"`) {
+		t.Fatal("the bands are not in a mon-stack, so the page is still a flat scroll")
+	}
+	opens := strings.Count(page, `<details class="mon-acc"`)
+	closes := strings.Count(page, "</details>")
+	if opens < 6 {
+		t.Errorf("only %d collapsible bands; every section on this page should collapse", opens)
+	}
+	if opens != closes {
+		t.Errorf("%d <details> opened and %d closed — the page structure is broken", opens, closes)
+	}
+
+	// Each band must say what it holds while shut, or collapsing them costs the
+	// operator the overview the tiles were added to give.
+	// class="mon-chip — counted on the ATTRIBUTE, because each chip carries both
+	// `mon-chip` and `mon-chip--on`, so a bare substring count is double and a
+	// missing chip still clears the threshold. That let a mutation removing one
+	// survive.
+	if chips := strings.Count(page, `class="mon-chip`); chips < opens {
+		t.Errorf("%d bands but only %d chips; a collapsed band with no chip is a closed door "+
+			"with no label", opens, chips)
+	}
+
+	// Balance across the whole fragment. Void elements are excluded; this page
+	// emits input, img, br and svg path.
+	od := strings.Count(page, "<div") - strings.Count(page, "</div>")
+	if od != 0 {
+		t.Errorf("div tags are unbalanced by %d — sections below the break become children of "+
+			"whatever was left open", od)
+	}
+}

@@ -141,16 +141,22 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 		esc(certLabel) + `</div></div>
 </div>`)
 
-	// ── What this domain serves ──────────────────────────────────────────────
-	b.WriteString(`<div class="section-head"><span class="section-head__title">What this domain serves</span>` +
+	// ── The bands, as accordions (house style §11) ───────────────────────────
+	//
+	// A mon-stack of pure-CSS <details>, each with a chip so its state reads
+	// while collapsed. This page was ten flat sections to scroll past.
+	b.WriteString(`<div class="section-head"><span class="section-head__title">This site</span>` +
 		`<span class="section-head__hint">Changes take effect within seconds</span></div>`)
-	b.WriteString(`<div class="card"><div class="form-grid">`)
+	b.WriteString(`<div class="mon-stack">`)
+
+	var srv strings.Builder
+	srv.WriteString(`<div class="card"><div class="form-grid">`)
 	for _, m := range scopedSiteModes {
 		checked := ""
 		if m.Value == mode {
 			checked = " checked"
 		}
-		b.WriteString(`<label class="field field--check"><input type="radio" name="scoped-site-mode" ` +
+		srv.WriteString(`<label class="field field--check"><input type="radio" name="scoped-site-mode" ` +
 			`value="` + esc(m.Value) + `"` + checked + `> <span class="field-label">` + esc(m.Label) + `</span>` +
 			`<span class="field-hint">` + esc(m.Note) + `</span></label>`)
 	}
@@ -159,18 +165,18 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 		if mode == "custom" {
 			checked = " checked"
 		}
-		b.WriteString(`<label class="field field--check"><input type="radio" name="scoped-site-mode" ` +
+		srv.WriteString(`<label class="field field--check"><input type="radio" name="scoped-site-mode" ` +
 			`value="custom"` + checked + `> <span class="field-label">Uploaded website</span>` +
 			`<span class="field-hint">The site you uploaded or had built — served exactly as authored, at /. ` +
 			`` + esc(itoaSafe(man.Files)) + ` file(s), deployed ` + esc(man.DeployedAt.Format("2006-01-02 15:04")) +
 			`.</span></label>`)
 	}
-	b.WriteString(`</div></div>`)
+	srv.WriteString(`</div></div>`)
+	b.WriteString(monAcc("🌐", "What this domain serves", "Blog, website, or the site you uploaded",
+		`<span class="mon-chip mon-chip--on">`+esc(servesLabel)+`</span>`, true, srv.String()))
 
 	// ── A whole site of your own ─────────────────────────────────────────────
-	b.WriteString(`<div class="section-head"><span class="section-head__title">A whole site of your own</span>` +
-		`<span class="section-head__hint">When a template is not what you want</span></div>`)
-	b.WriteString(`<div class="card">
+	uploadBody := `<div class="card">
   <div class="settings-block-title">Upload a website</div>
   <p class="text-sm muted">A <code>.zip</code> of a complete static site — <code>index.html</code> at its root,
     with whatever CSS, JavaScript, images and fonts it needs beside it. It is served exactly as authored, so a
@@ -192,7 +198,13 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
   <p class="text-sm muted">Or have one written for you: ask an assistant through <a href="/os/vayumcp">VayuMCP</a>
     to <em>build a site for ` + esc(d.Host) + `</em>. It authors the HTML and CSS itself and publishes it here —
     the same deploy path as an upload, with the same limits.</p>
-</div>`)
+</div>`
+	uploadChip := `<span class="mon-chip mon-chip--off">nothing uploaded</span>`
+	if bundled {
+		uploadChip = `<span class="mon-chip mon-chip--on">` + esc(itoaSafe(man.Files)) + ` files</span>`
+	}
+	b.WriteString(monAcc("📦", "A whole site of your own", "Upload a .zip, or have one built for you",
+		uploadChip, !bundled, uploadBody))
 
 	// ── What this domain actually serves ─────────────────────────────────────
 	//
@@ -202,9 +214,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 	// operator is left comparing two browser windows by eye. The server can
 	// simply answer the question — it holds the bundle and it writes the policy —
 	// and until now it never offered to.
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Check what this domain serves</span>` +
-		`<span class="section-head__hint">Asks this server, not your browser</span></div>`)
-	b.WriteString(`<div class="card">
+	checkBody := `<div class="card">
   <div class="settings-block-title">Fetch a page and check it</div>
   <p class="text-sm muted">Fetches the page from this server the way a visitor would, then reports every
     stylesheet, script and image it asks for — and what happens to each one. A file that is missing and a file
@@ -215,7 +225,9 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
     <span id="preview-status" class="text-sm muted" role="status" aria-live="polite"></span>
   </div>
   <div id="preview-out" class="text-sm"></div>
-</div>`)
+</div>`
+	b.WriteString(monAcc("🔎", "Check what this domain serves", "Asks this server, not your browser",
+		`<span class="mon-chip mon-chip--on">on demand</span>`, false, checkBody))
 
 	// ── The eval opt-in ───────────────────────────────────────────────────────
 	//
@@ -232,7 +244,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 		if site, ok := d.Site(); ok && site.AllowEval {
 			checked = " checked"
 		}
-		b.WriteString(`<div class="card">
+		evalBody := `<div class="card">
   <div class="settings-block-title">Scripts that build their own code</div>
   <p class="text-sm muted">Some page frameworks keep their behaviour in HTML attributes
     (<code>x-show="open"</code> and the like) and turn those strings into functions in the browser. That needs
@@ -246,59 +258,73 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
     <span class="field-label">Allow this site to build code at runtime</span>
     <span class="field-hint">Applies on Save &amp; publish. Off is the safe default and the one to keep unless a
       page you uploaded needs it.</span></label>
-</div>`)
+</div>`
+		evalChip := `<span class="mon-chip mon-chip--off">off</span>`
+		if checked != "" {
+			evalChip = `<span class="mon-chip mon-chip--on">on</span>`
+		}
+		b.WriteString(monAcc("⚡", "Scripts that build their own code",
+			"Needed by some page frameworks; off by default", evalChip, false, evalBody))
 	}
 
 	// ── Design ────────────────────────────────────────────────────────────────
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Design</span>` +
-		`<span class="section-head__hint">Used when this domain serves a website</span></div>`)
-	b.WriteString(`<div class="card"><label class="field"><span class="field-label">Template</span>` +
+	var dsn strings.Builder
+	dsn.WriteString(`<div class="card"><label class="field"><span class="field-label">Template</span>` +
 		`<select class="input" id="scoped-web-template">`)
 	for _, t := range bizsite.All() {
 		sel := ""
 		if t.Key == tplKey {
 			sel = " selected"
 		}
-		b.WriteString(`<option value="` + esc(t.Key) + `"` + sel + `>` + esc(t.Name) + ` — ` + esc(t.Category) + `</option>`)
+		dsn.WriteString(`<option value="` + esc(t.Key) + `"` + sel + `>` + esc(t.Name) + ` — ` + esc(t.Category) + `</option>`)
 	}
-	b.WriteString(`</select><span class="field-hint">Each template is a complete design. Switching one keeps ` +
+	dsn.WriteString(`</select><span class="field-hint">Each template is a complete design. Switching one keeps ` +
 		`your content.</span></label></div>`)
+	b.WriteString(monAcc("🎨", "Design", "Used when this domain serves a website",
+		`<span class="mon-chip mon-chip--on">`+esc(bizsite.ByKey(tplKey).Name)+`</span>`, false, dsn.String()))
 
 	// ── Content ───────────────────────────────────────────────────────────────
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Content</span>` +
-		`<span class="section-head__hint">What the website says</span></div>`)
+	var con strings.Builder
 	field := func(id, label, hint, val string) string {
 		return `<label class="field"><span class="field-label">` + esc(label) + `</span>` +
 			`<input type="text" class="input" id="` + id + `" value="` + esc(val) + `" autocomplete="off">` +
 			`<span class="field-hint">` + esc(hint) + `</span></label>`
 	}
-	b.WriteString(`<div class="card"><div class="form-grid">`)
-	b.WriteString(field("web-name", "Business name", "The name across the top of the site.", c.Name))
-	b.WriteString(field("web-tagline", "Tagline", "One line under the name.", c.Tagline))
-	b.WriteString(`<label class="field"><span class="field-label">About</span>` +
+	con.WriteString(`<div class="card"><div class="form-grid">`)
+	con.WriteString(field("web-name", "Business name", "The name across the top of the site.", c.Name))
+	con.WriteString(field("web-tagline", "Tagline", "One line under the name.", c.Tagline))
+	con.WriteString(`<label class="field"><span class="field-label">About</span>` +
 		`<textarea class="input" id="web-about" rows="4">` + esc(c.About) + `</textarea>` +
 		`<span class="field-hint">A paragraph or two. Plain text.</span></label>`)
-	b.WriteString(field("web-phone", "Phone", "Optional.", c.Phone))
-	b.WriteString(field("web-email", "Email", "Optional.", c.Email))
-	b.WriteString(field("web-address", "Address", "Optional.", c.Address))
-	b.WriteString(field("web-hours", "Opening hours", "Optional.", c.Hours))
-	b.WriteString(field("web-cta", "Button label", "The hero button, e.g. “Book a table”.", c.CTA))
-	b.WriteString(field("web-ctalink", "Button link", "Where the hero button goes.", c.CTALink))
-	b.WriteString(field("web-heroimg", "Hero image URL", "Optional. Left blank, the template's own art is used.", c.HeroImg))
+	con.WriteString(field("web-phone", "Phone", "Optional.", c.Phone))
+	con.WriteString(field("web-email", "Email", "Optional.", c.Email))
+	con.WriteString(field("web-address", "Address", "Optional.", c.Address))
+	con.WriteString(field("web-hours", "Opening hours", "Optional.", c.Hours))
+	con.WriteString(field("web-cta", "Button label", "The hero button, e.g. “Book a table”.", c.CTA))
+	con.WriteString(field("web-ctalink", "Button link", "Where the hero button goes.", c.CTALink))
+	con.WriteString(field("web-heroimg", "Hero image URL", "Optional. Left blank, the template's own art is used.", c.HeroImg))
 	blogChecked := ""
 	if c.ShowBlog {
 		blogChecked = " checked"
 	}
-	b.WriteString(`<label class="field field--check"><input type="checkbox" id="web-showblog"` + blogChecked + `> ` +
+	con.WriteString(`<label class="field field--check"><input type="checkbox" id="web-showblog"` + blogChecked + `> ` +
 		`<span class="field-label">Link the blog from this website</span>` +
 		`<span class="field-hint">Adds the blog to the navigation and footer.</span></label>`)
-	b.WriteString(`</div></div>`)
+	con.WriteString(`</div></div>`)
 
 	// The honest note about what this page does not edit.
-	b.WriteString(`<div class="card"><p class="text-sm muted">Services and gallery are not edited here yet — ` +
+	con.WriteString(`<div class="card"><p class="text-sm muted">Services and gallery are not edited here yet — ` +
 		`they are preserved exactly as they are when you save, so nothing you set elsewhere is lost. The ` +
 		`fastest way to build a whole site is to ask an AI assistant through <a href="/os/vayumcp">VayuMCP</a>: ` +
 		`it can read and write every field on this page for any site you host.</p></div>`)
+	contentChip := `<span class="mon-chip mon-chip--off">not set</span>`
+	if strings.TrimSpace(c.Name) != "" {
+		contentChip = `<span class="mon-chip mon-chip--on">` + esc(c.Name) + `</span>`
+	}
+	b.WriteString(monAcc("✍️", "Content", "What the website says",
+		contentChip, false, con.String()))
+
+	b.WriteString(`</div>`) // mon-stack
 	return b.String()
 }
 
