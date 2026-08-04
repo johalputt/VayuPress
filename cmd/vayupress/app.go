@@ -84,6 +84,13 @@ type App struct {
 	// HTTP
 	outboundClient *http.Client
 
+	// router is the fully-assembled request handler, kept so the console and the
+	// connector can replay a request for a hosted domain and report what a
+	// visitor actually gets (site_preview.go). Nothing serves traffic from here —
+	// it is the same handler the listener uses, stored so a diagnostic can ask
+	// the real chain instead of reimplementing it and agreeing with itself.
+	routerHandler atomic.Value // http.Handler
+
 	// Sanitization
 	policy *bluemonday.Policy
 

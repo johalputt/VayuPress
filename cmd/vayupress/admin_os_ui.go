@@ -225,6 +225,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			// through customsite.Deploy, which confines every write to an
 			// os.Root and refuses traversal in archive entries.
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle", a.handleOSScopedBundleUpload)
+			dr.Get("/api/website/preview", a.handleOSScopedWebsitePreview)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle/rollback", a.handleOSScopedBundleRollback)
 			// Theme Studio is the SAME handler as /os/theme, mounted a second
 			// time. It reads its scope from the request, so one code path serves

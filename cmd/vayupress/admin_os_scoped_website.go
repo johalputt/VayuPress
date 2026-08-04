@@ -148,6 +148,29 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
     the same deploy path as an upload, with the same limits.</p>
 </div>`)
 
+	// ── What this domain actually serves ─────────────────────────────────────
+	//
+	// Everything that goes wrong with an uploaded site goes wrong silently: a
+	// stylesheet the policy refuses and a stylesheet that is not there both
+	// render as a page with no styling, no error and a clean server log. The
+	// operator is left comparing two browser windows by eye. The server can
+	// simply answer the question — it holds the bundle and it writes the policy —
+	// and until now it never offered to.
+	b.WriteString(`<div class="section-head"><span class="section-head__title">Check what this domain serves</span>` +
+		`<span class="section-head__hint">Asks this server, not your browser</span></div>`)
+	b.WriteString(`<div class="card">
+  <div class="settings-block-title">Fetch a page and check it</div>
+  <p class="text-sm muted">Fetches the page from this server the way a visitor would, then reports every
+    stylesheet, script and image it asks for — and what happens to each one. A file that is missing and a file
+    this site refuses to load look identical on screen; this tells them apart.</p>
+  <div class="vm-row">
+    <input type="text" id="preview-path" class="input" value="/" placeholder="/" aria-label="Page to check">
+    <button type="button" class="btn btn--primary btn--sm" data-site-preview>Check this page</button>
+    <span id="preview-status" class="text-sm muted" role="status" aria-live="polite"></span>
+  </div>
+  <div id="preview-out" class="text-sm"></div>
+</div>`)
+
 	// ── The eval opt-in ───────────────────────────────────────────────────────
 	//
 	// This setting existed in the config and in the connector for three releases
@@ -262,6 +285,36 @@ btn.addEventListener('click',function(){
     .then(function(res){btn.disabled=false;
       if(st)st.textContent=res.ok?'Published ✓':((res.j&&res.j.message)||'Could not save');})
     .catch(function(e){btn.disabled=false; if(st)st.textContent='Error: '+e;});
+});
+var pv=document.querySelector('[data-site-preview]');
+if(pv)pv.addEventListener('click',function(){
+  var ps=document.getElementById('preview-status'), out=document.getElementById('preview-out');
+  var pth=(document.getElementById('preview-path')||{}).value||'/';
+  pv.disabled=true; if(ps)ps.textContent='Checking\u2026'; if(out)out.textContent='';
+  fetch('/os/d/'+encodeURIComponent(ID)+'/api/website/preview?path='+encodeURIComponent(pth))
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){pv.disabled=false;
+      var j=res.j;
+      if(!res.ok){if(ps)ps.textContent=(j&&j.message)||'Could not check';return;}
+      if(ps)ps.textContent='HTTP '+j.status+(j.eval_allowed?' \u00b7 runtime code allowed':'');
+      if(!out)return;
+      out.textContent='';
+      function row(cls,txt){var d=document.createElement('div');d.className=cls;d.textContent=txt;out.appendChild(d);}
+      if(j.title)row('text-sm muted','Title: '+j.title);
+      row('text-sm muted','Sent '+j.bytes+' bytes'+(j.content_type?' as '+j.content_type:''));
+      var probs=j.problems||[];
+      if(!probs.length){row('text-sm','Nothing on this page is refused or missing.');}
+      else{probs.forEach(function(p){row('text-sm','\u2022 '+p);});}
+      var subs=j.subresources||[];
+      if(subs.length){
+        row('text-sm muted','\u2014');
+        subs.forEach(function(s){
+          var mark=s.verdict==='ok'?'\u2713':'\u2717';
+          row('text-sm',mark+' '+s.tag+' '+s.url+' \u2014 '+s.verdict+(s.why?' ('+s.why+')':''));
+        });
+      }
+    })
+    .catch(function(e){pv.disabled=false; if(ps)ps.textContent='Error: '+e;});
 });
 var up=document.querySelector('[data-bundle-upload]');
 if(up)up.addEventListener('click',function(){

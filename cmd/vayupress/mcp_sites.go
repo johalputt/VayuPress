@@ -76,6 +76,51 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 	})
 
 	srv.Register(mcp.Tool{
+		Name: "preview_site",
+		Description: "Fetch a page of a hosted domain FROM THIS SERVER and report exactly what a visitor " +
+			"gets: the status, the content-security policy actually sent, whether eval is permitted, the HTML, " +
+			"and every stylesheet, script and image the page asks for with a verdict on each — served, missing, " +
+			"or refused by the policy. Use it to check an uploaded website really works instead of guessing " +
+			"from how it looks.",
+		InputSchema: objSchema([]string{"host"}, map[string]any{
+			"host": strProp("The hosted domain, exactly as list_sites reports it."),
+			"path": strProp("Page to fetch, e.g. \"/\" or \"/about.html\". Defaults to \"/\"."),
+			"include_html": map[string]any{
+				"type": "boolean",
+				"description": "Return the page HTML as well as the verdicts. Off by default — the verdicts " +
+					"are usually the answer and the HTML is large.",
+			},
+		}),
+		Visible: a.mcpVisible(apikeys.SectionDomains, apikeys.ActionRead),
+		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+			var in struct {
+				Host        string    `json:"host"`
+				Path        string    `json:"path"`
+				IncludeHTML *flexBool `json:"include_html"`
+			}
+			if err := json.Unmarshal(args, &in); err != nil {
+				return "", errBadArgs(err)
+			}
+			d, err := a.mcpSiteByHost(ctx, in.Host)
+			if err != nil {
+				return "", err
+			}
+			path := strings.TrimSpace(in.Path)
+			if path == "" {
+				path = "/"
+			}
+			p, err := a.previewSite(ctx, d, path)
+			if err != nil {
+				return "", err
+			}
+			if !in.IncludeHTML.Bool() {
+				p.HTML, p.HTMLTruncate = "", false
+			}
+			return jsonStr(p), nil
+		},
+	})
+
+	srv.Register(mcp.Tool{
 		Name: "get_site",
 		Description: "Read one hosted site's full website configuration: what it serves, its template and " +
 			"every content field. Call this before update_site so you edit from what is actually stored.",
