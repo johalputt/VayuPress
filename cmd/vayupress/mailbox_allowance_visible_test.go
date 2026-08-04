@@ -34,7 +34,7 @@ func domainWithAllowance(t *testing.T, mailEnabled bool, granted int) domain.Dom
 }
 
 func renderScoped(d domain.Domain, mailOn bool) string {
-	return scopedConsolePage(d, 0, 0, 0, mailOn, nil, nil, nil)
+	return scopedConsolePage(d, 0, 0, 0, mailOn, nil, nil, nil, nil)
 }
 
 // The state that costs a customer their first hour.

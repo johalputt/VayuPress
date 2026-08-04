@@ -83,16 +83,41 @@ func assertClassesAreStyled(t *testing.T, label, css, markup string) {
 func TestTheSiteConsoleEmitsNoUnstyledClass(t *testing.T) {
 	css := loadAdminOSCSS(t)
 	d := isolationDomain()
-	assertClassesAreStyled(t, "the site console", css, scopedConsolePage(d, 3, 2, 1, true, nil, nil, nil))
+	assertClassesAreStyled(t, "the site console", css, scopedConsolePage(d, 3, 2, 1, true, nil, nil, nil, nil))
 }
 
 func TestTheSiteToolTilesMatchTheAdministrationRows(t *testing.T) {
 	css := loadAdminOSCSS(t)
-	// The tiles sit next to the administration accordions and must read as the
-	// same family: same frame, same icon chip, same title/subtitle rhythm.
-	for _, want := range []string{".scoped-tool", ".scoped-tool__icon", ".scoped-tool__body"} {
+	page := scopedConsolePage(isolationDomain(), 3, 2, 1, true, nil, nil, nil,
+		map[string]scopedToolChip{"content": {On: true, Text: "3 items"}})
+
+	// The PROPERTY, not the implementation. These rows and the administration
+	// summaries are two bands on one page, one directly under the other, and they
+	// read as one family only while they share the inner grammar. The first
+	// version of this test pinned a second set of class names that happened to
+	// carry matching rules — and the two drifted anyway: the tool rows ended up
+	// with no chip, longer subtitles and their own title weight, which is what the
+	// page was reported for. Asserting the rows USE the summary's classes is what
+	// makes drift impossible rather than merely unlikely.
+	band := betweenMarkers(t, page, "This site's tools", "Site administration")
+	for _, cls := range []string{"mon-acc__ic", "mon-acc__head", "mon-acc__title", "mon-acc__sub"} {
+		if !strings.Contains(band, `class="`+cls+`"`) {
+			t.Errorf("the tool rows do not use %q, so they are a second component that has to be "+
+				"kept in step with the accordions by hand", cls)
+		}
+	}
+
+	// Every row reports its state while shut. This is the reported defect: four
+	// administration rows carried a chip and six tool rows carried none, on the
+	// same page, in the same stack.
+	if chips := strings.Count(band, `class="mon-chip`); chips < len(scopedTools) {
+		t.Errorf("%d tool rows but %d chips — a row that states nothing about its own state is "+
+			"the break in the house style this page was reported for", len(scopedTools), chips)
+	}
+
+	for _, want := range []string{".scoped-tool", ".mon-acc__ic", ".mon-acc__head", ".mon-chip"} {
 		if !strings.Contains(css, want) {
-			t.Fatalf("%s has no rule at all, so the tile renders as inline text", want)
+			t.Fatalf("%s has no rule at all, so the row renders as inline text", want)
 		}
 	}
 	// The underline was the reported symptom. It must be removed explicitly —
@@ -119,4 +144,21 @@ func TestTheOtherPerSitePagesEmitNoUnstyledClass(t *testing.T) {
 	}))
 	assertClassesAreStyled(t, "the website page", css, scopedWebsitePage(d, "studio", bizsite.Content{Name: "X"}, false, customsite.Manifest{}))
 	assertClassesAreStyled(t, "the site list", css, domainsHeader([]domain.Domain{d}, ""))
+}
+
+// betweenMarkers returns the markup between two landmarks, so an assertion about
+// one band cannot be satisfied by an element in another. Whole-page searches for
+// a class have passed against three separate mutations in this console already.
+func betweenMarkers(t *testing.T, page, from, to string) string {
+	t.Helper()
+	i := strings.Index(page, from)
+	if i < 0 {
+		t.Fatalf("landmark %q is not on the page", from)
+	}
+	rest := page[i+len(from):]
+	j := strings.Index(rest, to)
+	if j < 0 {
+		t.Fatalf("landmark %q does not follow %q", to, from)
+	}
+	return rest[:j]
 }

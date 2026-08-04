@@ -21,6 +21,7 @@ package main
 // leaves a control that looks present and does nothing.
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -195,7 +196,7 @@ func TestAnalyticsPageMeetsTheHouseStyle(t *testing.T) {
 // deviation was the tiles, which used a third markup idiom.
 func TestScopedHomePageMeetsTheHouseStyle(t *testing.T) {
 	d := domainWithAllowance(t, true, 0)
-	page := scopedConsolePage(d, 12, 3, 0, true, nil, nil, nil)
+	page := scopedConsolePage(d, 12, 3, 0, true, nil, nil, nil, nil)
 	// Five, not six: one band renders only for an install with the mail product
 	// switched on, and a test that demanded six would be asserting a fixture
 	// rather than the page.
@@ -475,7 +476,7 @@ func TestEveryConvertedPageIsCSPSafe(t *testing.T) {
 			bizsiteContentForTest("Test"), true, customsiteManifestForTest(30))},
 		{"Visitors", scopedAnalyticsBody(1200, 340, 41.5, 62, []analytics.PageStat{
 			{Path: "/", Pageviews: 900, UniqueVisitors: 260}})},
-		{"Domain home", scopedConsolePage(d, 12, 3, 0, true, nil, nil, nil)},
+		{"Domain home", scopedConsolePage(d, 12, 3, 0, true, nil, nil, nil, nil)},
 		{"SEO", scopedSEOBody("d1", "https://customer.example", map[string]string{})},
 		{"Content", scopedContentPage(d, []dbpkg.Article{
 			{Title: "Hello", Slug: "hello", Status: "published", UpdatedAt: time.Now()}})},
@@ -528,5 +529,103 @@ func TestHostileCustomerContentReachesThePanelEscaped(t *testing.T) {
 			t.Errorf("%s: the value is not rendered at all, so the page hides what the site "+
 				"actually holds", c.name)
 		}
+	}
+}
+
+// A navigation row whose state could not be read says so.
+//
+// The Settings page shipped the opposite of this — a failed settings read
+// rendered as "product default", stated as fact — and the same shape is
+// available on every one of these six rows the moment a store is down. The
+// cheerful branch is always the tempting one, because it is the branch you get
+// for free from a zero value.
+func TestAToolRowWithNoReadableStateSaysSoRatherThanGuessing(t *testing.T) {
+	page := scopedConsolePage(isolationDomain(), 0, 0, 0, true, nil, nil, nil,
+		map[string]scopedToolChip{}) // every store unreachable
+	band := betweenMarkers(t, page, "This site's tools", "Site administration")
+
+	// Read the CHIPS, not the band. Searching the whole band for a word finds it
+	// in a subtitle — "Serve this domain as a blog or as a website" contains
+	// "blog" — and an assertion that cannot tell which element it matched is the
+	// mistake this file already documents three times. It caught this one too.
+	chips := chipTextsIn(band)
+	if len(chips) != len(scopedTools) {
+		t.Fatalf("%d chips for %d rows", len(chips), len(scopedTools))
+	}
+	for i, got := range chips {
+		if got != "—" {
+			t.Errorf("row %d reports %q for a store nobody could read; the em dash is the only "+
+				"honest answer there", i, got)
+		}
+	}
+}
+
+// chipTextsIn returns the text of every mon-chip in a fragment, in order.
+var chipTextRe = regexp.MustCompile(`class="mon-chip[^"]*">([^<]*)<`)
+
+func chipTextsIn(fragment string) []string {
+	var out []string
+	for _, m := range chipTextRe.FindAllStringSubmatch(fragment, -1) {
+		out = append(out, m[1])
+	}
+	return out
+}
+
+// toolRowIn returns the one navigation row carrying the given title, so an
+// assertion about that row's chip cannot be satisfied by another row's.
+func toolRowIn(t *testing.T, band, title string) string {
+	t.Helper()
+	j := strings.Index(band, `>`+title+`</span>`)
+	if j < 0 {
+		t.Fatalf("there is no %q row in this band", title)
+	}
+	i := strings.LastIndex(band[:j], `class="scoped-tool`)
+	if i < 0 {
+		t.Fatalf("the %q row is malformed", title)
+	}
+	end := strings.Index(band[j:], `</a>`)
+	if d := strings.Index(band[j:], `</div>`); d >= 0 && (end < 0 || d < end) {
+		end = d
+	}
+	if end < 0 {
+		t.Fatalf("the %q row is unterminated", title)
+	}
+	return band[i : j+end]
+}
+
+// The chip's TONE, not just its text.
+//
+// Forcing every chip to the "on" style survived a first mutation pass: a site
+// with no name, no tagline and no description would have shown "nothing set" in
+// the green that means good news, on the same page where four administration
+// rows use that green honestly. A chip whose colour contradicts its words is
+// worse than no chip, because the colour is what gets read at a glance.
+func TestAToolRowsChipToneMatchesItsState(t *testing.T) {
+	page := scopedConsolePage(isolationDomain(), 0, 0, 0, true, nil, nil, nil,
+		map[string]scopedToolChip{
+			"content":  {On: true, Text: "12 items"},
+			"settings": {Text: "nothing set"},
+		})
+	band := betweenMarkers(t, page, "This site's tools", "Site administration")
+
+	on := toolRowIn(t, band, "Posts &amp; pages")
+	if !strings.Contains(on, "mon-chip--on") {
+		t.Errorf("a site with twelve items reads as empty: %s", on)
+	}
+	// Tone and text are separate mutations. Dropping the words while keeping the
+	// colour survived a pass that checked only the tone, and an empty pill tells
+	// an operator nothing at all.
+	if !strings.Contains(on, ">12 items<") {
+		t.Errorf("the row does not show the count it was given: %s", on)
+	}
+	off := toolRowIn(t, band, "Site settings")
+	if !strings.Contains(off, "mon-chip--off") {
+		t.Errorf("a site with nothing set is chipped in the colour that means it is fine: %s", off)
+	}
+	if !strings.Contains(off, ">nothing set<") {
+		t.Errorf("the row renders an empty pill instead of its state: %s", off)
+	}
+	if strings.Contains(off, "mon-chip--on") {
+		t.Errorf("the empty state carries the positive tone: %s", off)
 	}
 }

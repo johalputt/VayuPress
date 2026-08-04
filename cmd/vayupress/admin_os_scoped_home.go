@@ -37,6 +37,7 @@ import (
 // fix — so an unscoped tool is listed and disabled with the reason, not linked
 // and hoped for.
 type scopedTool struct {
+	Key   string // chip lookup, and the last segment of Path
 	Path  string
 	Icon  string
 	Title string
@@ -46,19 +47,38 @@ type scopedTool struct {
 }
 
 // scopedTools is the per-site surface.
+//
+// The descriptions are one short line each, deliberately. They are subtitles in
+// the same grammar as the accordions below ("Who can sign in and see only this
+// site"), not paragraphs: a row whose subtitle wraps to three lines does not
+// read as the same component as one whose subtitle is six words, and that was
+// half of why this band looked foreign on its own page.
 var scopedTools = []scopedTool{
-	{Path: "/os/d/%s/content", Icon: "📝", Title: "Posts & pages", Live: true,
-		Desc: "This site's own writing — list it, publish to it, move a post in or out."},
-	{Path: "/os/d/%s/website", Icon: "🌐", Title: "Website", Live: true,
-		Desc: "Serve this domain as a blog or as a website, and edit that site — on its own, or by asking an assistant through VayuMCP."},
-	{Path: "/os/d/%s/settings", Icon: "⚙️", Title: "Site settings", Live: true,
-		Desc: "Name, tagline, description and the basics this site introduces itself with."},
-	{Path: "/os/d/%s/theme", Icon: "🎨", Title: "Theme Studio", Live: true,
-		Desc: "Colours, typography and custom CSS — this site's own, not the primary's."},
-	{Path: "/os/d/%s/seo", Icon: "🔍", Title: "SEO", Live: true,
-		Desc: "This site's head directives and verification tokens, and its own live sitemap and robots."},
-	{Path: "/os/d/%s/analytics", Icon: "📈", Title: "Visitors", Live: true,
-		Desc: "This site's own traffic, attributed server-side from the host that served it."},
+	{Key: "content", Path: "/os/d/%s/content", Icon: "📝", Title: "Posts & pages", Live: true,
+		Desc: "This site's own writing, listed and published"},
+	{Key: "website", Path: "/os/d/%s/website", Icon: "🌐", Title: "Website", Live: true,
+		Desc: "Serve this domain as a blog or as a website"},
+	{Key: "settings", Path: "/os/d/%s/settings", Icon: "⚙️", Title: "Site settings", Live: true,
+		Desc: "Name, tagline and description for this site"},
+	{Key: "theme", Path: "/os/d/%s/theme", Icon: "🎨", Title: "Theme Studio", Live: true,
+		Desc: "Colours, typography and custom CSS — this site's own"},
+	{Key: "seo", Path: "/os/d/%s/seo", Icon: "🔍", Title: "SEO", Live: true,
+		Desc: "Head directives, tokens, sitemap and robots"},
+	{Key: "analytics", Path: "/os/d/%s/analytics", Icon: "📈", Title: "Visitors", Live: true,
+		Desc: "This site's own traffic, counted server-side"},
+}
+
+// scopedToolChip is one navigation row's state, in the grammar every other row
+// on this page already used.
+//
+// These six rows carried no chip at all while the four administration rows below
+// them each reported their state while shut. That is what made the band read as
+// a different component: same page, same stack, one half labelled and the other
+// half not. A chip here is not decoration — it is the difference between "open
+// Site settings to find out whether anything is set" and knowing at a glance.
+type scopedToolChip struct {
+	On   bool
+	Text string
 }
 
 // sharedTools are install-wide and are NOT linked from here, by ADR-0154 D2.
@@ -112,8 +132,8 @@ func (a *App) handleOSScopedHome(w http.ResponseWriter, r *http.Request) {
 		checks = a.diagnoseCertificate(r.Context(), d, logLines)
 	}
 
-	body := scopedConsolePage(d, posts, members, mailboxes, mailOn, clients, checks, logLines) +
-		domainManageScript(nonce)
+	body := scopedConsolePage(d, posts, members, mailboxes, mailOn, clients, checks, logLines,
+		a.scopedToolChips(r, d, posts)) + domainManageScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, d.Host, "optimize", cfg, htmpl.HTML(body)))
 }
 
@@ -121,7 +141,7 @@ func (a *App) handleOSScopedHome(w http.ResponseWriter, r *http.Request) {
 // header, four tiles answering "what is the state of this site", the site's own
 // tools, then administration folded into accordions so the page is scannable
 // rather than a wall of cards.
-func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bool, clients []users.User, checks []diagCheck, logLines []string) string {
+func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bool, clients []users.User, checks []diagCheck, logLines []string, tools map[string]scopedToolChip) string {
 	esc := html.EscapeString
 	pending := isPendingTorSite(d.Host)
 	var b strings.Builder
@@ -191,20 +211,25 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 	b.WriteString(`<div class="mon-stack">`)
 	for _, t := range scopedTools {
 		href := "/os/d/" + esc(d.ID) + esc(t.Path[len("/os/d/%s"):])
+		// The inner grammar is the accordion summary's, class for class, so the two
+		// bands on this page cannot drift apart again. Only the frame and the
+		// affordance differ: a link leans, a disclosure rotates.
+		head := `<span class="mon-acc__ic" aria-hidden="true">` + t.Icon + `</span>` +
+			`<span class="mon-acc__head"><span class="mon-acc__title">` + esc(t.Title) + `</span>` +
+			`<span class="mon-acc__sub">` + esc(t.Desc) + `</span></span>`
 		if t.Live {
-			b.WriteString(`<a class="scoped-tool" href="` + href + `">` +
-				`<span class="scoped-tool__icon" aria-hidden="true">` + t.Icon + `</span>` +
-				`<span class="scoped-tool__body"><span class="settings-block-title">` + esc(t.Title) + `</span>` +
-				`<span class="text-sm muted">` + esc(t.Desc) + `</span></span></a>`)
+			b.WriteString(`<a class="scoped-tool" href="` + href + `">` + head +
+				scopedToolChipHTML(tools[t.Key]) + `</a>`)
 			continue
 		}
+		// The reason stays on the row. A tool listed without one reads as broken
+		// rather than as deliberately not linked yet.
 		b.WriteString(`<div class="scoped-tool scoped-tool--soon">` +
-			`<span class="scoped-tool__icon" aria-hidden="true">` + t.Icon + `</span>` +
-			`<span class="scoped-tool__body"><span class="settings-block-title">` + esc(t.Title) +
-			` <span class="pill pill--muted">` + esc(t.Soon) + `</span></span>` +
-			`<span class="text-sm muted">` + esc(t.Desc) + `</span>` +
-			`<span class="text-sm muted">Not scoped yet — until it is, it would edit the primary ` +
-			`site, so it is not linked from here.</span></span></div>`)
+			`<span class="mon-acc__ic" aria-hidden="true">` + t.Icon + `</span>` +
+			`<span class="mon-acc__head"><span class="mon-acc__title">` + esc(t.Title) + `</span>` +
+			`<span class="mon-acc__sub">Not scoped yet — it would edit the primary site, so it is ` +
+			`not linked from here</span></span>` +
+			`<span class="mon-chip mon-chip--off">` + esc(t.Soon) + `</span></div>`)
 	}
 	b.WriteString(`</div>`)
 
@@ -234,6 +259,103 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 		`<span class="mon-chip mon-chip--off">by construction</span>`, false, scopedSharedBody()))
 	b.WriteString(`</div>`)
 	return b.String()
+}
+
+// scopedToolChips reads the state behind each navigation row.
+//
+// Two extra reads for six chips: one settings fetch covering identity, theme and
+// SEO, and one traffic overview. Both are guarded, and a store that is absent or
+// failing yields NO chip for the rows it feeds rather than a confident one — the
+// zero scopedToolChip renders as "—".
+func (a *App) scopedToolChips(r *http.Request, d domain.Domain, posts int) map[string]scopedToolChip {
+	ctx := r.Context()
+	sc := osScope(r)
+	c := map[string]scopedToolChip{}
+
+	if posts > 0 {
+		c["content"] = scopedToolChip{On: true, Text: strconv.Itoa(posts) + " items"}
+	} else {
+		c["content"] = scopedToolChip{Text: "nothing yet"}
+	}
+
+	// What this domain serves, straight off the config already decoded in memory.
+	// An empty mode means "inherit", which serves the blog — so it reports blog
+	// rather than "not set up", because "not set up" would be untrue of a domain
+	// that is serving perfectly well.
+	switch s, ok := d.Site(); {
+	case ok && s.Mode == "custom":
+		c["website"] = scopedToolChip{On: true, Text: "uploaded site"}
+	case ok && strings.HasPrefix(s.Mode, "business"):
+		c["website"] = scopedToolChip{On: true, Text: "website"}
+	default:
+		c["website"] = scopedToolChip{Text: "blog"}
+	}
+
+	if a.siteSettings != nil && sc.Valid() {
+		if all, err := a.siteSettings.GetAll(ctx, sc); err == nil {
+			set := 0
+			for _, f := range scopedSettingKeys {
+				if strings.TrimSpace(all[f.Key]) != "" {
+					set++
+				}
+			}
+			if set > 0 {
+				c["settings"] = scopedToolChip{On: true,
+					Text: strconv.Itoa(set) + " of " + strconv.Itoa(len(scopedSettingKeys))}
+			} else {
+				c["settings"] = scopedToolChip{Text: "nothing set"}
+			}
+
+			themed := false
+			for _, k := range copyableFromPrimary {
+				if strings.TrimSpace(all[k]) != "" {
+					themed = true
+					break
+				}
+			}
+			c["theme"] = scopedToolChip{On: themed, Text: map[bool]string{true: "custom", false: "default"}[themed]}
+
+			seo := 0
+			for _, f := range scopedSEOFields {
+				if strings.TrimSpace(all[f.Key]) != "" {
+					seo++
+				}
+			}
+			if seo > 0 {
+				c["seo"] = scopedToolChip{On: true, Text: strconv.Itoa(seo) + " set"}
+			} else {
+				c["seo"] = scopedToolChip{Text: "all default"}
+			}
+		}
+	}
+
+	if a.analytics != nil {
+		if ov, err := a.analytics.OverviewSinceScoped(ctx, d.ID, 30); err == nil {
+			if ov.TotalPageviews > 0 {
+				c["analytics"] = scopedToolChip{On: true, Text: strconv.Itoa(ov.TotalPageviews) + " views"}
+			} else {
+				c["analytics"] = scopedToolChip{Text: "no visits yet"}
+			}
+		}
+	}
+	return c
+}
+
+// scopedToolChipHTML renders a tool row's state chip.
+//
+// A row whose state could not be read gets "—" rather than a cheerful default.
+// The Settings page learned this the expensive way: collapsing a failed read
+// into the "nothing set" branch tells an operator something definite about a
+// site nobody managed to look at.
+func scopedToolChipHTML(c scopedToolChip) string {
+	if strings.TrimSpace(c.Text) == "" {
+		return `<span class="mon-chip mon-chip--off">—</span>`
+	}
+	cls := "mon-chip mon-chip--off"
+	if c.On {
+		cls = "mon-chip mon-chip--on"
+	}
+	return `<span class="` + cls + `">` + html.EscapeString(c.Text) + `</span>`
 }
 
 // chipFor renders a monAcc summary chip in the on/off styles.

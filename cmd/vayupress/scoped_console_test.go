@@ -106,7 +106,7 @@ func TestThePerDomainRoutesAreNotReachableByAConfinedClient(t *testing.T) {
 // operator to a page that edits the PRIMARY while its URL says a hosted domain —
 // a worse version of the defect this ADR exists to fix.
 func TestUnscopedToolsAreListedButNotLinked(t *testing.T) {
-	page := scopedConsolePage(testDomain("abc123", "client.example"), 0, 0, 0, false, nil, nil, nil)
+	page := scopedConsolePage(testDomain("abc123", "client.example"), 0, 0, 0, false, nil, nil, nil, nil)
 	assertCSPSafe(t, "scopedConsolePage", page)
 
 	for _, tool := range scopedTools {

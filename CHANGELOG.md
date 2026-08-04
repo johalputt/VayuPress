@@ -6,6 +6,54 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **A domain's own tools now read as the same component as the rows beneath
+  them.** The six navigation rows on a per-domain home page and the four
+  administration accordions under them sat in the same stack, one band under the
+  other, as two different components: the tools carried no state chip, longer
+  subtitles and their own title weight, so the page read as two designs stacked
+  rather than one.
+
+  The rows use the accordion summary's classes now — icon, head, title, subtitle
+  and chip — rather than a parallel set kept in step by hand. Only the frame and
+  the affordance differ, which is correct: a link leans, a disclosure rotates.
+
+- **Every tool row states what it is you would be opening.** Items owned, what
+  the domain serves, how much of its identity is filled in, whether it carries
+  its own theme, how many search directives are set, and its traffic. Two extra
+  reads cover all six, and a row whose store could not be read shows an em dash
+  rather than the cheerful branch — the one a zero value gives you for free, and
+  the one the Settings page shipped before it was caught.
+
+### Audit
+Seven mutations against the row rendering, all killed, three only after the
+assertions were strengthened.
+
+**Forcing every chip to the positive tone survived the first pass.** A site with
+no name, no tagline and no description would have shown "nothing set" in the
+green that means good news, on the same page where four rows below it use that
+green honestly. **Dropping the chip text while keeping the tone survived the
+second** — an empty pill, correctly coloured, saying nothing. Tone and text are
+separate mutations and are pinned separately now.
+
+The third is worth recording because the test was wrong rather than the code: an
+assertion that the rows invent nothing searched the whole band for the word
+"blog" and found it in a subtitle — "Serve this domain as a blog or as a
+website". That is the same defect this console has now produced four times, an
+assertion that cannot tell which element it matched, and it was caught here by
+the test failing against correct code rather than by anyone noticing.
+
+The stylesheet gate was rewritten rather than updated. It had pinned the tool
+rows' own class names, which is how the two bands drifted while a test named
+"the site tool tiles match the administration rows" passed throughout: it was
+checking that a second set of rules existed, not that the two bands shared one.
+It now asserts the rows use the summary's classes, which makes drift impossible
+rather than merely unlikely.
+
+---
+
 ## [3.16.97] — 2026-08-04
 
 **Every per-domain page now opens with its own state, and every section

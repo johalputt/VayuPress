@@ -54,7 +54,7 @@ func clientDomain() domain.Domain {
 }
 
 func TestTheOperatorCanIssueAClientLoginFromTheDomainPage(t *testing.T) {
-	page := scopedConsolePage(clientDomain(), 0, 0, 0, true, nil, nil, nil)
+	page := scopedConsolePage(clientDomain(), 0, 0, 0, true, nil, nil, nil, nil)
 	assertCSPSafe(t, "scopedConsolePage", page)
 
 	if !strings.Contains(page, "data-client-create") {
@@ -83,7 +83,7 @@ func TestTheOperatorCanIssueAClientLoginFromTheDomainPage(t *testing.T) {
 func TestAHostileClientNameCannotBreakOutOfTheList(t *testing.T) {
 	page := scopedConsolePage(clientDomain(), 0, 0, 0, true, []users.User{
 		{Email: `a@x.test`, Name: `"><script>alert(1)</script>`},
-	}, nil, nil)
+	}, nil, nil, nil)
 	assertCSPSafe(t, "scopedConsolePage", page)
 	if strings.Contains(page, "<script>alert(1)</script>") {
 		t.Errorf("a stored client name reached the page as markup:\n%s", page)
