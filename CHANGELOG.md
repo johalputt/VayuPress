@@ -6,6 +6,57 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.92] — 2026-08-04
+
+**Uploading a site made the way people actually make one now works, and a
+refused upload can no longer look like a button doing nothing.**
+
+Both of these are what stands between "this works for me" and "I can put a
+customer on it".
+
+### Fixed
+- **CI was red on v3.16.91.** The deadcode gate rejected `customsite.ExtAllowed`
+  as unreachable: it was exported for the build-side check and called only from
+  a test, so nothing in the shipped binary used it. Fixed properly rather than
+  by an allowlist entry — `Deploy` now calls `ExtAllowed` itself, so the rule a
+  bundle is checked against at build time and the rule the deploy enforces are
+  one function instead of two that drift. Two copies of that rule are exactly how
+  a bundle got published that no install would accept.
+
+  I ran six gates before that release and not the seventh. The list in
+  `CLAUDE.md` §4 has nine entries for a reason.
+
+- **`.DS_Store` no longer rejects an entire upload.** macOS writes one into every
+  folder Finder has opened, so right-click → Compress produces a zip this deploy
+  refused outright — the single most common way a person makes a zip. Windows
+  does the same with `Thumbs.db`. Operating-system metadata is now **dropped**,
+  and the count and names of what was dropped are reported, so the deploy never
+  quietly differs from what somebody zipped.
+
+  Dropped, not allowed: nothing is written to disk, which is strictly narrower
+  than putting those names on the allowlist, where they would then be served. A
+  `.psd`, a `.zip`, a `.mov` is somebody's real content in the wrong place, and
+  that is still refused loudly — they need to know it will not be served.
+
+- **A refused upload is reported beside the button that caused it.** The upload's
+  outcome was being written to the status span in the **page header** — off
+  screen from the upload card on a page this long. So a refusal read as nothing
+  happening, the previously deployed site stayed live, and the operator had no
+  way to tell. The outcome now appears under the Upload button, says plainly
+  that the site above is unchanged, and carries the server's own reason.
+
+### Audit
+Attacked the upload path from the position of somebody who has never seen this
+software: what is in the zip they will actually produce? That is what surfaced
+`.DS_Store`, and it is not a rare edge — it is the default on one of the two
+common desktop platforms.
+
+Five mutations, all killed, including the one that matters most: junk written to
+disk rather than dropped is caught by a test that asks the real `Serve` whether
+`.DS_Store` can be fetched from the deployed site.
+
+---
+
 ## [3.16.91] — 2026-08-04
 
 **The site bundle could not be uploaded at all, and the panel made that look
