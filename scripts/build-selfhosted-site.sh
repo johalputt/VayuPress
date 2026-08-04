@@ -62,6 +62,15 @@ mkdir -p "$OUT"
 cp -R "${SRC}/." "$OUT/"
 rm -f "${OUT}/CNAME"   # the GitHub Pages custom domain must not travel with the bundle
 
+# Repository housekeeping that is not part of the site, and MUST NOT travel with
+# it. README.md is the worked example and the reason this line exists: a
+# VayuPress deploy accepts a fixed list of static-web extensions, `.md` is not on
+# it, and ONE disallowed file rejects the entire upload. So a bundle carrying a
+# readme could not be deployed at all — and from the operator's side that looked
+# like pressing Upload and having nothing change, with the previous site still
+# live. Two days of "the clone does not match" was this.
+rm -f "${OUT}/README.md" "${OUT}/readme.md" "${OUT}/.gitignore" "${OUT}/.nojekyll"
+
 python3 - "$OUT" <<'PY'
 import re, sys, pathlib
 
@@ -198,6 +207,24 @@ for page in sorted(out.rglob("*.html")):
         if m.group(2).strip():
             problems.append("%s: an inline <script> survived; it can never run "
                             "without a nonce this bundle cannot carry" % rel)
+
+# Every file must carry an extension the deploy accepts, or the upload is
+# refused in full and the operator is left with their previous site and no idea
+# why. Checked here, at build time, where it is a one-line fix rather than a
+# mystery on someone's server.
+ALLOWED = {
+    ".html", ".htm", ".css", ".js", ".mjs", ".json", ".txt", ".xml", ".map",
+    ".webmanifest", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif",
+    ".ico", ".bmp", ".woff", ".woff2", ".ttf", ".otf", ".eot", ".pdf", ".mp4",
+    ".webm", ".mp3", ".ogg", ".csv",
+}
+for f in sorted(out.rglob("*")):
+    if not f.is_file():
+        continue
+    if f.suffix.lower() not in ALLOWED:
+        problems.append("%s: extension %r is not one a VayuPress deploy accepts — "
+                        "ONE such file rejects the whole upload"
+                        % (f.relative_to(out).as_posix(), f.suffix or "(none)"))
 
 if problems:
     print("error: the bundle would not render correctly under the install's policy:", file=sys.stderr)

@@ -56,6 +56,19 @@ var allowedExt = map[string]bool{
 	".csv": true,
 }
 
+// ExtAllowed reports whether a file name carries an extension this package will
+// accept in a bundle.
+//
+// Exported so a BUILD-side gate can ask the deploy what it accepts rather than
+// keeping a second copy of the list. The second copy is what went wrong: the
+// site bundle shipped a README.md, `.md` is not on this list, and a single
+// disallowed file rejects the WHOLE deploy — so every upload of that bundle was
+// refused and the previously deployed site stayed live. From the operator's
+// side that looked like "I uploaded it and nothing changed".
+func ExtAllowed(name string) bool {
+	return allowedExt[strings.ToLower(filepath.Ext(name))]
+}
+
 // Manifest is metadata about the currently deployed bundle, persisted next to it
 // so the console can show what is live.
 type Manifest struct {

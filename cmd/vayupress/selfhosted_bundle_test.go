@@ -27,6 +27,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/customsite"
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -236,4 +237,42 @@ func TestTheBundleCarriesTheFilesThePageReadsBeforeItAsksTheNetwork(t *testing.T
 			t.Errorf("%s does not carry %q, which is the field the page reads", f, key)
 		}
 	}
+}
+
+// Every file in the bundle must be one a VayuPress deploy will accept.
+//
+// THIS IS THE ONE THAT COST TWO DAYS. The bundle carried docs/site/README.md.
+// `.md` is not on customsite's extension allowlist, and a single disallowed file
+// makes Deploy reject the ENTIRE upload — so the operator pressed Upload &
+// deploy, the request failed, and their previously deployed site stayed live.
+// From their side that reads as "I uploaded it and nothing changed", which is
+// indistinguishable from "the clone does not match the original". Every
+// investigation that followed was aimed at the wrong thing.
+//
+// The membership test comes from customsite.ExtAllowed — the deploy's own list —
+// rather than a copy here, because a copy is how the build side and the deploy
+// side come to disagree in the first place.
+func TestEveryFileInTheBundleIsOneTheDeployWillAccept(t *testing.T) {
+	root := buildSelfhostedBundle(t)
+	checked := 0
+	err := filepath.Walk(root, func(p string, fi os.FileInfo, err error) error {
+		if err != nil || fi.IsDir() {
+			return err
+		}
+		checked++
+		if !customsite.ExtAllowed(p) {
+			rel, _ := filepath.Rel(root, p)
+			t.Errorf("%s carries an extension the deploy refuses. One such file rejects the whole "+
+				"upload, so the operator cannot publish this bundle at all — and the failure looks "+
+				"like the site simply not changing.", filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checked < 20 {
+		t.Fatalf("only %d files walked; the bundle is not being produced properly", checked)
+	}
+	t.Logf("%d files, every one deployable", checked)
 }
