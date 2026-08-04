@@ -943,7 +943,7 @@ func osWorldCard(onion, torOn, running bool, addr string) string {
     <span class="world-card__addr">` + esc + `</span>
   </span>
   <span class="world-card__actions">
-    <button type="button" class="btn btn--ghost btn--sm world-card__copy" data-copy="http://` + esc + `">Copy .onion</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-copy="http://` + esc + `">Copy .onion</button>
     <a class="btn btn--ghost btn--sm" href="/os/world?target=clearnet">Back to Clearnet →</a>
   </span>
 </div>`
@@ -960,7 +960,7 @@ func osWorldCard(onion, torOn, running bool, addr string) string {
     <span class="world-card__addr">` + esc + `</span>
   </span>
   <span class="world-card__actions">
-    <button type="button" class="btn btn--ghost btn--sm world-card__copy" data-copy="http://` + esc + `">Copy .onion</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-copy="http://` + esc + `">Copy .onion</button>
     <a class="btn btn--ghost btn--sm" href="/os/world?target=tor">Enter Tor world →</a>
   </span>
 </div>`
@@ -2609,7 +2609,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 			cards += `<div class="post-row" data-post-row>
   <input type="checkbox" class="post-acc__check" data-post-select value="` + esc + `" aria-label="Select ` + html.EscapeString(p.Title) + `">
   <details class="mon-acc post-acc">
-    <summary class="mon-acc__sum post-acc__sum">
+    <summary class="mon-acc__sum">
       <span class="mon-acc__head">
         <span class="mon-acc__title">` + html.EscapeString(p.Title) + osPostPinBadge(esc, p.Featured, false) + `</span>
         <span class="mon-acc__sub">/` + esc + ` · Updated ` + config.FormatSite(p.Updated, "2 Jan 2006") + `</span>
@@ -2625,7 +2625,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
         ` + osPostPinButton(esc, p.Featured) + `
         ` + osPostStatusButton(esc, p.Status) + `
         ` + osIndexNowButton(esc, inSt, inOK, isDraft) + `
-        <button type="button" class="btn btn--ghost btn--sm post-acc__del" data-post-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button>
+        <button type="button" class="btn btn--ghost btn--sm" data-post-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button>
       </div>
     </div>
   </details>

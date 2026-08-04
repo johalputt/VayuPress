@@ -224,7 +224,7 @@ func (a *App) handleOSMedia(w http.ResponseWriter, r *http.Request) {
   </div>
   <button type="button" class="btn btn--ghost btn--sm" data-media-delete-selected disabled>Delete selected (<span data-media-sel-count>0</span>)</button>
 </div>
-<div class="media-empty text-sm muted" data-media-empty hidden>No media match your search.</div>
+<div class="text-sm muted" data-media-empty hidden>No media match your search.</div>
 
 <div class="media-grid" data-media-grid aria-live="polite">
   <div class="skeleton skeleton--media"></div>

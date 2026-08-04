@@ -29,13 +29,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   also why they had no rule: the styling had been put somewhere `assertCSPSafe`
   forbids.
 
-- **The baseline gate had been counting two different defects as one.** It
-  listed 43 classes with no rule, which read as 43 things to fix. Twenty-two
-  were genuinely unstyled elements. The other twenty-one are tokens on elements a
-  base class already styles — `btn`, `card`, `mon-acc__sum` — so they are
-  JavaScript hooks and identifiers, and writing CSS for them would have invented
-  a look for things not meant to have one. The distinction is now in the gate and
-  in its comment, and the baseline is down to those hooks.
+- **Twenty-one dead class names removed from the markup.** They were first
+  assumed to be JavaScript hooks and left alone. Checking that assumption — which
+  should have come before stating it — found no CSS rule, no JS selector, no Go
+  selector and no reference of any kind for a single one of them. They were class
+  names emitted into markup that matched nothing anywhere.
+
+  A class that matches nothing is worse than a missing rule. A missing rule looks
+  wrong on screen and gets fixed; a dead name reads as intent, and the next person
+  to touch that markup styles around something that was never there.
+
+- **The baseline gate is now empty**, and the comment above it records why the
+  43 split the way it did rather than the way it was first assumed to.
 
 ---
 

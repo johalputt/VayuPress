@@ -66,7 +66,7 @@ func (a *App) vayuContactsPanel(ctx context.Context, owner, userKey string) stri
 	b.WriteString(`</form>`)
 
 	if len(contacts) == 0 {
-		b.WriteString(`<p class="muted text-sm vm-contacts-empty">No saved contacts yet. Add one above, or use “Save contact” on any message.</p>`)
+		b.WriteString(`<p class="muted text-sm">No saved contacts yet. Add one above, or use “Save contact” on any message.</p>`)
 	} else {
 		b.WriteString(`<ul class="vm-contacts-list">`)
 		for _, c := range contacts {
@@ -162,7 +162,7 @@ func contactSaveButton(userKey, rawFrom string) string {
 	if addr == "" {
 		addr = rawFrom
 	}
-	return `<button class="btn btn--xs vm-contact-add" type="button" hx-post="/os/vayumail/contacts/save" ` +
+	return `<button class="btn btn--xs" type="button" hx-post="/os/vayumail/contacts/save" ` +
 		hxVals("user", userKey, "email", addr, "name", name) +
 		` hx-target="this" hx-swap="outerHTML" title="Save ` + html.EscapeString(addr) + ` to this mailbox's contacts">＋ Save contact</button>`
 }

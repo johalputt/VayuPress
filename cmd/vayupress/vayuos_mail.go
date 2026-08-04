@@ -185,7 +185,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
   <div class="field vm-editor">
     <div class="vm-ed-head">
       <span class="field-label">Message</span>
-      <span class="vm-ed-count muted text-xs" data-c-count aria-live="polite"></span>
+      <span class="muted text-xs" data-c-count aria-live="polite"></span>
     </div>
     <!-- Formatting inserts plain-text conventions, because a message body IS
          plain text end to end (mail.ComposeMessage.Body). A contenteditable
@@ -234,11 +234,11 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
     <pre class="vm-sig-preview" data-c-sig-preview></pre>
   </div>
 
-  <div class="vm-row vm-row--tight vm-encrypt-row">
+  <div class="vm-row vm-row--tight">
     <label class="vm-filter-check"><input type="checkbox" data-c-rich> &#127912; Also send an HTML version</label>
     <span class="vm-pgp-hint">Off &mdash; the message goes as plain text, which is what a young sending domain delivers best. Turn on to add an HTML rendering of the same words alongside it; clients that prefer HTML show that one, the rest see your text unchanged.</span>
   </div>
-  <div class="vm-row vm-row--tight vm-encrypt-row">
+  <div class="vm-row vm-row--tight">
     <label class="vm-filter-check"><input type="checkbox" data-c-encrypt` + encAttr + `> 🔒 Encrypt with PGP</label>
     <span class="vm-pgp-hint" data-c-encrypt-hint aria-live="polite">Off — the message is sent as readable text. Turn on to PGP-encrypt the message and attachments (RFC 3156) for recipients whose keys are known.</span>
   </div>

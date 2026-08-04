@@ -565,7 +565,7 @@ func osAPIKeysCustomRow(c secrets.Credential) string {
 		checked = ""
 	}
 	id := html.EscapeString(c.ID)
-	return `<div class="settings-section ak-cred-card ak-cred-card--custom" data-cred-card data-provider="custom" data-id="` + id + `" data-label="` + html.EscapeString(c.Label) + `">
+	return `<div class="settings-section ak-cred-card" data-cred-card data-provider="custom" data-id="` + id + `" data-label="` + html.EscapeString(c.Label) + `">
   <div class="ak-cred-head">
     <div class="settings-row-label">` + html.EscapeString(c.Label) + `</div>
     <label class="settings-row ak-cred-toggle"><span class="text-xs muted">Enabled</span>

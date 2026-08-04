@@ -270,7 +270,7 @@ func (a *App) osTorBridgesCard(r *http.Request, esc func(string) string, st vtor
 		current = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyTorBridges)
 	}
 	needsObfs4 := strings.Contains(strings.ToLower(current), "obfs4")
-	card := `<div class="card mt-4 vt-bridges"><div class="card-title">🌉 Bridges — for networks that block Tor</div>`
+	card := `<div class="card mt-4"><div class="card-title">🌉 Bridges — for networks that block Tor</div>`
 	// The obfs4 transport binary is required to USE obfs4 bridges. If it's missing,
 	// the bridges are configured but inert (tor falls back to a direct, blocked
 	// connection) — say so loudly, since it's the #1 "I pasted bridges but nothing
@@ -338,7 +338,7 @@ func (a *App) osTorHardeningCard(r *http.Request) string {
 		next, label, cls = "on", "Advertise the onion to Tor Browser", "btn--primary"
 		state = `<span class="muted text-xs">Off — clearnet responses don't announce the onion. Visitors can still use the <code>.onion</code> directly.</span>`
 	}
-	card := `<div class="card mt-4 vt-hardening"><div class="card-title">🛡 Hardening</div>`
+	card := `<div class="card mt-4"><div class="card-title">🛡 Hardening</div>`
 	card += `<p class="muted text-sm mb-3"><strong>Onion-Location.</strong> When on, every clearnet page advertises its <code>.onion</code> so Tor Browser can offer or automatically switch to it. Turn it off to keep onions live without announcing them.</p>`
 	card += `<form method="post" action="/os/tor/hardening" data-tor-form>
   <input type="hidden" name="onion_location" value="` + next + `">
@@ -426,7 +426,7 @@ func osTorPrivacyNote(st vtor.Status) string {
 	if st.PageStatsOn {
 		tracked = `<li><strong>Aggregate counts only.</strong> You've opted into per-page counts. VayuTor keeps a running total per page and a single overall visit count — and still <strong>no IP</strong> (Tor provides none), <strong>no time</strong>, no session, no ordering, no user agent, no cookie. Individual visits can't be correlated, and a visitor can't be identified or located.</li>`
 	}
-	return `<div class="card mt-4 vt-note"><div class="card-title">Privacy posture</div>
+	return `<div class="card mt-4"><div class="card-title">Privacy posture</div>
 <ul class="vt-note__list text-sm">
   ` + tracked + `
   <li><strong>Onion keys are yours.</strong> Each address is pinned by a key stored only in your own database, so a restore brings the same <code>.onion</code> back.</li>
@@ -440,7 +440,7 @@ func osTorPrivacyNote(st vtor.Status) string {
 // over an onion service (the server never sees the client IP), so it is stated
 // as absent rather than offered.
 func (a *App) osTorPageStatsCard(esc func(string) string, st vtor.Status) string {
-	card := `<div class="card mt-4 vt-pages"><div class="card-title">📄 Popular pages — private, opt-in</div>`
+	card := `<div class="card mt-4"><div class="card-title">📄 Popular pages — private, opt-in</div>`
 	if !st.PageStatsOn {
 		card += `<p class="muted text-sm mb-3">Off by default. When enabled, VayuTor keeps an <strong>aggregate count per page</strong> (a running total of views) so you can see which posts are popular over Tor. It stays privacy-safe: <strong>no IP</strong> (Tor provides none), no time, no session, no ordering — so it can never identify, locate, or correlate a visitor. <strong>Visitor country isn't shown because it's impossible</strong>: an onion service never sees the visitor's IP.</p>`
 		card += `<form method="post" action="/os/tor/pagestats" data-tor-form>
@@ -484,7 +484,7 @@ func (a *App) osTorVanityCard(esc func(string) string, st vtor.Status, startErr 
 		return ""
 	}
 	vs := a.vayuTor.VanityStatus()
-	card := `<div class="card mt-4 vt-vanity" data-vanity` + boolAttr(" data-vanity-active", vs.Active) + `><div class="card-title">✨ Custom (vanity) address</div>`
+	card := `<div class="card mt-4" data-vanity` + boolAttr(" data-vanity-active", vs.Active) + `><div class="card-title">✨ Custom (vanity) address</div>`
 	card += `<p class="muted text-sm mb-3">Give a domain a recognisable <code>.onion</code> that starts with letters you choose, instead of a random one. VayuTor searches for a matching key in the background on this server — nothing leaves the box. Each extra character is ~32× more work: <strong>1–4</strong> is seconds, <strong>5</strong> a few minutes, <strong>6–7</strong> can take hours. Allowed characters: <code>a–z</code> and <code>2–7</code>.</p>`
 
 	if vs.Active {
@@ -580,7 +580,7 @@ func pow32(n int) string {
 // and how outage alerts are delivered (via subscribed webhooks).
 func osTorHealthCard(esc func(string) string, st vtor.Status) string {
 	cls, label, icon := torHealthBadge(st.Health)
-	card := `<div class="card mt-4 vt-health"><div class="card-title">🩺 Health &amp; alerts</div>`
+	card := `<div class="card mt-4"><div class="card-title">🩺 Health &amp; alerts</div>`
 	card += `<div class="vt-health__now"><span class="vt-health__badge ` + cls + `">` + icon + ` ` + label + `</span>`
 	if st.Health != vtor.HealthOff {
 		if d := torRelDur(st.HealthSince); d != "" {

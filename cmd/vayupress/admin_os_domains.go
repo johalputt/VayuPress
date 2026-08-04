@@ -229,7 +229,7 @@ func domainsHeader(domains []domain.Domain, viewingHost string) string {
 // .onion addresses and the same cards render unchanged.
 func domainsCards(domains []domain.Domain, counts, mailCounts, memberCounts map[string]int, mailOn bool) string {
 	if len(domains) == 0 {
-		return `<div class="card empty"><div class="empty-title">No domains registered yet</div>
+		return `<div class="card"><div class="empty-title">No domains registered yet</div>
 <div class="empty-sub">The primary domain is seeded automatically once DOMAIN is configured. Add a secondary domain below.</div></div>`
 	}
 	var cards strings.Builder

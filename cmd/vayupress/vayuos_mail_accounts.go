@@ -420,9 +420,9 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	if quotaMB > 0 {
 		storageSummary = `<meter class="vm-meter" min="0" max="` + strconv.FormatInt(quotaMB, 10) + `" value="` +
 			usedStr + `" title="` + usedStr + ` of ` + strconv.FormatInt(quotaMB, 10) + ` MB"></meter>` +
-			`<span class="vm-acct__usage muted text-sm">` + usedStr + `/` + strconv.FormatInt(quotaMB, 10) + ` MB</span>`
+			`<span class="muted text-sm">` + usedStr + `/` + strconv.FormatInt(quotaMB, 10) + ` MB</span>`
 	} else {
-		storageSummary = `<span class="vm-acct__usage muted text-sm">` + usedStr + ` MB · no limit</span>`
+		storageSummary = `<span class="muted text-sm">` + usedStr + ` MB · no limit</span>`
 	}
 
 	// Role select (HTMX on change).

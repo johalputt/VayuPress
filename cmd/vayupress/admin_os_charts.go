@@ -382,10 +382,10 @@ func osTrendChart(series []analytics.DayPageviews, title string) string {
 		tip := fmt.Sprintf(`<g class="%s" transform="translate(%.1f,%.1f)">`, tipCls, tx, ty) +
 			fmt.Sprintf(`<rect class="vp-pt__tip-bg" x="0" y="0" width="%.0f" height="%.0f" rx="8"></rect>`, tipW, tipH) +
 			`<text class="vp-pt__tip-date" x="12" y="18">` + html.EscapeString(prettyChartDate(d.Date)) + `</text>` +
-			`<circle class="vp-pt__tip-dot vp-pt__tip-dot--pv" cx="16" cy="34" r="3.5"></circle>` +
+			`<circle class="vp-pt__tip-dot--pv" cx="16" cy="34" r="3.5"></circle>` +
 			`<text class="vp-pt__tip-lbl" x="26" y="38">Pageviews</text>` +
 			`<text class="vp-pt__tip-val" x="120" y="38">` + humanCount(d.Count) + `</text>` +
-			`<circle class="vp-pt__tip-dot vp-pt__tip-dot--vis" cx="16" cy="50" r="3.5"></circle>` +
+			`<circle class="vp-pt__tip-dot--vis" cx="16" cy="50" r="3.5"></circle>` +
 			`<text class="vp-pt__tip-lbl" x="26" y="54">Visitors</text>` +
 			`<text class="vp-pt__tip-val" x="120" y="54">` + humanCount(d.Visitors) + `</text>` +
 			`</g>`

@@ -27,30 +27,25 @@ import (
 	"testing"
 )
 
-// consoleUnstyledBaseline is what already renders unstyled in the console.
-// Shrink it by adding rules; never add to it.
-// consoleUnstyledBaseline is what carries no rule of its own in the console.
+// consoleUnstyledBaseline is EMPTY, and the point is to keep it that way.
 //
-// It was 43. Twenty-two of those were elements with NO styled class at all,
-// which rendered as bare inline text; each now has a rule. What is left are
-// tokens on elements a base class already styles — a `btn`, a `card`, a
-// `mon-acc__sum` — so they are JavaScript hooks and identifiers rather than
-// missing styling, and inventing a look for them would be worse than leaving
-// them.
+// It held 43 entries. Splitting them turned out to be the whole job, and the
+// split was not the one first assumed:
 //
-// That distinction is the whole lesson of this pass. The first version of this
-// gate counted all 43 as the same defect, which would have meant writing
-// twenty-one CSS rules for things that are not meant to look like anything.
+//   - 22 were elements carrying NO styled class at all, rendering as bare inline
+//     text. Each was given a rule.
+//   - The other 21 were assumed to be JavaScript hooks and left alone — a claim
+//     made without checking. Checking found no CSS rule, no JS selector, no Go
+//     selector and no test reference for any of them: they were class names
+//     emitted into markup that matched nothing anywhere. They are removed.
 //
-// Shrink it by giving a class a rule; never add to it.
-var consoleUnstyledBaseline = map[string]bool{
-	"ak-cred-card--custom": true, "editor-hint": true, "editor-html-hint": true, "editor-md": true,
-	"empty": true, "media-empty": true, "post-acc__del": true, "post-acc__sum": true,
-	"vm-acct__usage": true, "vm-contact-add": true, "vm-contacts-empty": true, "vm-ed-count": true,
-	"vm-encrypt-row": true, "vp-pt__tip-dot": true, "vt-bridges": true, "vt-hardening": true,
-	"vt-health": true, "vt-note": true, "vt-pages": true, "vt-vanity": true,
-	"world-card__copy": true,
-}
+// A class that matches nothing is worse than a missing rule. A missing rule
+// looks wrong on screen and gets fixed; a dead class name reads as intent, and
+// the next person to touch that markup styles around something that was never
+// there.
+//
+// Shrink it by giving a class a rule or by deleting the class. Never add to it.
+var consoleUnstyledBaseline = map[string]bool{}
 
 // consoleUtilityClasses are spacing/typography tokens carried by the shell's own
 // base rules rather than by a named component.
