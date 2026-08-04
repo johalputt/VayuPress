@@ -6,6 +6,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.77] — 2026-08-04
+
+**The repair stops being a button.**
+
+v3.16.76 gave the panel a way to re-arm the provisioning watcher. That was the
+wrong shape and it is worth saying why, because the reasoning applies to every
+repair on that page: the operator who needs it is precisely the one with no way
+to know they need it. From the panel a watcher that is off is indistinguishable
+from a fix that did not work — you press Provision, nothing happens, so you press
+it again. Nothing on the page said which button was the one to press, so having a
+button for it would not have saved a single one of those presses.
+
+### Fixed
+- **The shield agent now arms the watcher on its own**, without being asked. On
+  its first tick after starting and about once a minute thereafter, it checks
+  whether the watcher unit is active and arms it if not. While healthy that is
+  one `is-active` call, and it is gated on that check rather than re-enabling
+  every pass — a failing enable retried every five seconds is how a repair turns
+  into the load it was meant to remove.
+
+  This also closes the last hand-off in the chain: the arming code lives in the
+  agent, and the agent is replaced by its own self-upgrade, so a single
+  **Upgrade the helper** now recovers the whole path. Nothing after that needs
+  pressing.
+
+### Verified against the live install
+- The `AAAA` record that pointed `test.johal.in` at an address this machine does
+  not answer on has been removed, and the DNS row went from blocking to
+  *"resolves to an address this machine holds, so the challenge reaches here"*.
+  That was one of five blockers; it is gone, measured rather than assumed.
+
+Two mutations run against the new gate — a reconcile defined but never reached
+from the poll loop, and one that re-enables without checking health. Both killed.
+
+---
+
 ## [3.16.76] — 2026-08-04
 
 **Why none of yesterday's fixes reached the machine they were written for.**

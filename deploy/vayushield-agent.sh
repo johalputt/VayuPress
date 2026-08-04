@@ -898,6 +898,29 @@ arm_provisioning_watcher() {
   return 0
 }
 
+# reconcile_provisionwatch keeps the provisioning watcher armed, unconditionally
+# and without anybody asking.
+#
+# The repair existed only behind a button, and the operator who needs it is
+# exactly the one with no way to know they need it. From the panel, a watcher
+# that is off is indistinguishable from a fix that did not work: you press
+# Provision, nothing happens, you press it again. That was a day of somebody's
+# life, and "there is a button for it" would not have saved any of it, because
+# nothing on the page said the button was the one to press.
+#
+# So it stops being a button. If the watcher is not active, arm it. Cheap while
+# healthy — one is-active — and self-healing when not.
+reconcile_provisionwatch() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  [ -f /etc/systemd/system/vayupress-provision.path ] || return 0
+  if systemctl is-active --quiet vayupress-provision.path 2>/dev/null; then
+    write_state provisionwatch active
+    clear_reason provisionwatch
+    return 0
+  fi
+  arm_provisioning_watcher || true
+}
+
 reconcile_provisionhelpers() {
   [ -f "${CONTROL_DIR}/provisionhelpers.want" ] || return 0
   rm -f "${CONTROL_DIR}/provisionhelpers.want" 2>/dev/null || true
@@ -1617,6 +1640,12 @@ run_agent() {
       # a freshly-started agent does not leave the panel unverified for a minute.
       if [ "$ticks" = 0 ] || [ $((ticks % DIGEST_EVERY)) = 0 ]; then
         write_digest
+        # Same cadence, and for the same reason: shelling out to systemctl every
+        # five seconds to re-check a thing that is almost always fine is waste,
+        # and retrying a failing enable that often is worse than waste. On the
+        # first tick as well, so an agent that has just been upgraded repairs the
+        # watcher immediately rather than a minute later.
+        reconcile_provisionwatch
       fi
       ticks=$((ticks + 1))
     fi

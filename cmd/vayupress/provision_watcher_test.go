@@ -114,3 +114,47 @@ func TestTheShieldAgentReArmsTheWatcher(t *testing.T) {
 			"Repair, the watcher comes up, and their pending request still never runs")
 	}
 }
+
+// AND IT MUST NOT BE A BUTTON. The repair was reachable only by pressing
+// "Repair the certificate helpers", and the operator who needs it is precisely
+// the one with no way to know they need it: from the panel, a watcher that is
+// off looks exactly like a fix that did not work. You press Provision, nothing
+// happens, you press it again.
+//
+// A self-healing agent that waits to be asked is not self-healing.
+func TestTheAgentArmsTheWatcherWithoutBeingAsked(t *testing.T) {
+	src := shellCode(readSourceFile(t, "../../deploy/vayushield-agent.sh"))
+
+	if !strings.Contains(src, "reconcile_provisionwatch()") {
+		t.Fatal("there is no unconditional watcher reconcile, so a stalled watcher is only ever " +
+			"repaired by an operator who already knows which button to press — and nothing on " +
+			"the page tells them that")
+	}
+
+	// It has to be in the poll loop. Defined-and-never-called is the exact shape
+	// of the three consecutive layers shipped earlier in this incident, each one
+	// missing the next.
+	loop := src[strings.Index(src, "run_agent()"):]
+	if e := strings.Index(loop, "\ninstall_agent()"); e > 0 {
+		loop = loop[:e]
+	}
+	if !strings.Contains(loop, "reconcile_provisionwatch") {
+		t.Fatal("reconcile_provisionwatch is defined and never reached from the agent's poll " +
+			"loop, so it repairs nothing")
+	}
+
+	// And it must be gated by the health check rather than re-enabling every
+	// tick: a failing enable retried every five seconds is how a repair becomes
+	// the load.
+	fn := src[strings.Index(src, "reconcile_provisionwatch()"):]
+	if e := strings.Index(fn, "\n}\n"); e > 0 {
+		fn = fn[:e]
+	}
+	if !strings.Contains(fn, "is-active") {
+		t.Error("the reconcile does not check whether the watcher is already up, so it re-enables " +
+			"a healthy unit on every pass")
+	}
+	if !strings.Contains(fn, "arm_provisioning_watcher") {
+		t.Error("the reconcile never actually arms anything")
+	}
+}
