@@ -181,6 +181,23 @@ jobs:
             --bundle dist/vayuprovision-helpers.tar.gz.cosign.bundle \
             || echo "cosign signing skipped/failed — the root worker will refuse this bundle, which is the intended behaviour"
 
+      - name: Package the self-hosted marketing site
+        if: steps.exists.outputs.skip != 'true'
+        # docs/site/ is published to GitHub Pages, where a page may load whatever
+        # it likes from wherever it likes. A VayuPress install serves every
+        # response under script-src/style-src/font-src 'self', so those same files
+        # uploaded unchanged render as unstyled text with every control dead.
+        #
+        # The build script repoints the three third-party subresources at the
+        # first-party copies the binary already serves, and refuses to produce a
+        # bundle if any off-origin subresource survives. Attaching the result
+        # here means an operator downloads one file instead of running a
+        # toolchain, which is the whole point of shipping it.
+        run: |
+          bash scripts/build-selfhosted-site.sh dist/selfhosted-site
+          test -f dist/selfhosted-site.zip || { echo "FAIL: the site bundle was not produced"; exit 1; }
+          sha256sum dist/selfhosted-site.zip | awk '{print $1}' > dist/selfhosted-site.zip.sha256
+
       - name: Package the VayuShield helper agent
         if: steps.exists.outputs.skip != 'true'
         # The Tier 2/3 reconcile agent runs as ROOT and therefore cannot take its
@@ -316,3 +333,5 @@ jobs:
             dist/vayuprovision-helpers.tar.gz
             dist/vayuprovision-helpers.tar.gz.sha256
             dist/vayuprovision-helpers.tar.gz.cosign.bundle
+            dist/selfhosted-site.zip
+            dist/selfhosted-site.zip.sha256

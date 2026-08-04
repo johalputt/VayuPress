@@ -6,6 +6,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.86] — 2026-08-04
+
+**The self-hosted site bundle is now a release download.**
+
+The previous release shipped the build script but left the output untracked —
+`dist/` is in `.gitignore`, so there was no file to fetch and any URL guessed for
+one was dead. Telling an operator to run a toolchain to obtain an artifact the
+release could simply carry is the same "run this yourself" failure this project
+keeps removing from everywhere else.
+
+### Added
+- **`selfhosted-site.zip` is attached to every release**, beside the helper
+  bundles, with its SHA-256. It is produced by `scripts/build-selfhosted-site.sh`
+  during the release build, and the step **fails the release** if the zip is not
+  produced — an asset that silently goes missing is worse than one that was never
+  promised.
+
+  Download it and upload it at **VayuOS → the domain → Website → Uploaded
+  website**. It still needs the per-domain eval opt-in to animate; the layout and
+  typography are correct without it.
+
+---
+
 ## [3.16.85] — 2026-08-04
 
 **A boolean tool argument could not be set at all.**
