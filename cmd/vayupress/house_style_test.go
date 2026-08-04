@@ -187,3 +187,27 @@ func TestAnalyticsPageMeetsTheHouseStyle(t *testing.T) {
 		t.Error("the collapsed band does not say it is empty, so it reads as a closed door")
 	}
 }
+
+// Phase 2 — the domain Home page. Its six bands were already collapsible; the
+// deviation was the tiles, which used a third markup idiom.
+func TestScopedHomePageMeetsTheHouseStyle(t *testing.T) {
+	d := domainWithAllowance(t, true, 0)
+	page := scopedConsolePage(d, 12, 3, 0, true, nil, nil, nil)
+	// Five, not six: one band renders only for an install with the mail product
+	// switched on, and a test that demanded six would be asserting a fixture
+	// rather than the page.
+	assertHouseStyle(t, page, houseStyle{Name: "Domain home", MinTiles: 4, MinBands: 5})
+
+	// Labels are HTML-escaped on the way out — "Posts & pages" renders as
+	// "Posts &amp; pages", and searching for the raw ampersand finds nothing. The
+	// first version of this assertion did exactly that and reported a tile that
+	// was plainly there as missing.
+	for _, want := range []string{"Posts &amp; pages", "Members", "Mailboxes", "Certificate"} {
+		if !strings.Contains(page, ">"+want+"</div>") {
+			t.Errorf("no %q tile", want)
+		}
+	}
+	if v := statCardIn(t, page, "Members"); !strings.Contains(v, ">3<") {
+		t.Errorf("the members tile does not show the count it was given: %s", v)
+	}
+}

@@ -37,37 +37,16 @@ func renderScoped(d domain.Domain, mailOn bool) string {
 	return scopedConsolePage(d, 0, 0, 0, mailOn, nil, nil, nil)
 }
 
-// mailboxTile returns just the Mailboxes stat tile.
-//
-// Scoped deliberately: the first version of these assertions searched the WHOLE
-// page for the warning class and failed on a healthy site, because the
-// CERTIFICATE tile legitimately carries it too. An assertion that cannot tell
-// which tile it is looking at cannot tell a real regression from an unrelated
-// amber, in either direction.
-func mailboxTile(t *testing.T, page string) string {
-	t.Helper()
-	const label = `<span class="vm-stat__l">Mailboxes</span>`
-	j := strings.Index(page, label)
-	if j < 0 {
-		t.Fatal("there is no Mailboxes tile on the page at all")
-	}
-	i := strings.LastIndex(page[:j], `<div class="vm-stat`)
-	if i < 0 {
-		t.Fatal("the Mailboxes tile is malformed")
-	}
-	return page[i : j+len(label)]
-}
-
 // The state that costs a customer their first hour.
 func TestASiteWithMailOnAndNoAllowanceSaysSoWithoutBeingOpened(t *testing.T) {
 	page := renderScoped(domainWithAllowance(t, true, 0), true)
 
-	tile := mailboxTile(t, page)
+	tile := statCardIn(t, page, "Mailboxes")
 	if !strings.Contains(tile, "0 granted") {
 		t.Errorf("the mailbox tile does not say the allowance is zero; \"0\" alone reads as "+
 			"\"nobody has made a mailbox yet\", not \"nobody can\". Tile: %s", tile)
 	}
-	if !strings.Contains(tile, "vm-stat--warn") {
+	if !strings.Contains(tile, "stat-card--warn") {
 		t.Errorf("the mailbox tile is not toned as a problem, so nothing draws the eye to it: %s", tile)
 	}
 	if !strings.Contains(page, "none granted") {
@@ -90,7 +69,7 @@ func TestASiteWithAnAllowanceIsNotFlagged(t *testing.T) {
 	if strings.Contains(page, "0 granted") || strings.Contains(page, "none granted") {
 		t.Fatal("a site with mailboxes granted was flagged as having none")
 	}
-	if strings.Contains(mailboxTile(t, page), "vm-stat--warn") {
+	if strings.Contains(statCardIn(t, page, "Mailboxes"), "stat-card--warn") {
 		t.Error("a site with mailboxes granted has a warning on its mailbox tile")
 	}
 }

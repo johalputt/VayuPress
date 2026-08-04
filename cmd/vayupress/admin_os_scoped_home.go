@@ -146,27 +146,26 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 		`navigation; nothing here will open them.</p>`)
 
 	// ── Four tiles ────────────────────────────────────────────────────────────
-	b.WriteString(`<div class="vm-stats">`)
-	b.WriteString(vmStatTile(strconv.Itoa(posts), "Posts & pages", ""))
-	b.WriteString(vmStatTile(strconv.Itoa(members), "Members", ""))
+	b.WriteString(`<div class="stat-grid">`)
+	b.WriteString(osStatTile("Posts & pages", strconv.Itoa(posts), ""))
+	b.WriteString(osStatTile("Members", strconv.Itoa(members), ""))
 	// A site with mail switched on and an allowance of nothing cannot create a
-	// single mailbox, and until now that read as "0 in use" — which looks like a
-	// new site nobody has set up yet rather than one that will refuse its owner.
-	// The allowance defaults to 0 deliberately (an allowance nobody chose is not
-	// an allowance), so every new customer domain passes through this state, and
-	// it has to be visible at a glance rather than inside a collapsed card.
+	// single mailbox, and that read as "0 in use" — which looks like a new site
+	// nobody has set up rather than one that will refuse its owner. The allowance
+	// defaults to 0 deliberately, so every new customer domain passes through
+	// this state and it has to be visible at a glance.
 	mailReady := mailOn && d.MailEnabled
 	noAllowance := mailReady && d.Limits().Mailboxes == 0
 	switch {
 	case noAllowance:
-		b.WriteString(vmStatTile("0 granted", "Mailboxes", "warn"))
+		b.WriteString(osStatTile("Mailboxes", "0 granted", "warn"))
 	case mailReady:
-		b.WriteString(vmStatTile(strconv.Itoa(mailboxes), "Mailboxes", ""))
+		b.WriteString(osStatTile("Mailboxes", strconv.Itoa(mailboxes), ""))
 	default:
-		b.WriteString(vmStatTile("—", "Mailboxes", ""))
+		b.WriteString(osStatTile("Mailboxes", "—", ""))
 	}
 	certLabel, certTone := scopedCertTile(d)
-	b.WriteString(vmStatTile(certLabel, "Certificate", certTone))
+	b.WriteString(osStatTile("Certificate", certLabel, certTone))
 	b.WriteString(`</div>`)
 
 	// A pending certificate is the state that stops a site serving, and the tile
