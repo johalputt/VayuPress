@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.0] — 2026-08-04
 
 **VayuVeil gets the two things Phase 0 shipped without: something it actually
 enforces, and the capture suite that judges it (ADR-0150 §6).**
