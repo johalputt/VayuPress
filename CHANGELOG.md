@@ -6,6 +6,48 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.74] — 2026-08-03
+
+**An audit of the measurement everything now rests on — which found it both
+overflow-prone and unverifiable.**
+
+Every other link in the certificate chain is now confirmed good by direct
+measurement: the vhost names the host, listens on port 80 and serves the
+challenge; `nginx.conf` includes the vhost directory; port 80 is bound on every
+address; the run completes and the request is consumed. The single remaining
+claim is *"nginx last reloaded five days ago"* — so that claim was attacked
+rather than trusted.
+
+### Fixed
+- **The reload clock could overflow.** It computed
+
+  ```go
+  time.Duration(ticks) * time.Second / 100
+  ```
+
+  which multiplies **first**, by 10⁹. `ticks` counts USER_HZ units since boot, so
+  a machine with long uptime overflows `int64` and the function returns a
+  nonsense moment — rendered on the page as *"nginx last reloaded <date>"* with
+  an instruction attached. A diagnostic that can be confidently wrong about its
+  own headline number is worse than one that abstains. The unit is scaled before
+  multiplying, which cannot overflow for any uptime a machine will have.
+
+- **An empty search now reports "not known" rather than a verdict.** `/proc` can
+  be mounted so a process sees only its own PIDs, and this service is
+  deliberately unprivileged. Finding no nginx processes means the measurement
+  could not be **made** — not that nginx never reloaded — and the row is now
+  omitted rather than asserted from an empty search.
+
+### Audit
+Mutation-tested by restoring the overflowing expression: the gate fails.
+
+And the gate needed fixing before it worked, for the **fourth time today**: it
+matched the retired expression inside the comment documenting it. Four separate
+checks in one session have now been fooled by quoting the defect they exist to
+prevent, which is frequent enough to be a habit rather than an accident — so
+comment-stripping is a named helper now instead of something remembered each
+time.
+
 ## [3.16.73] — 2026-08-03
 
 **A reload that reports success while nginx does not reload. The helper now

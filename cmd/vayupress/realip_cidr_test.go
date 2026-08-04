@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // realipEmitLoop lifts the emitting loop out of the agent and wraps it so it can
@@ -324,4 +325,58 @@ func TestEveryRangeFileConsumerReadsTheFinalLine(t *testing.T) {
 			t.Errorf("%s never guards against the unterminated final line", f)
 		}
 	}
+}
+
+// AUDIT FINDING against the measurement the whole certificate diagnosis rests
+// on. It read:
+//
+//	time.Duration(ticks) * time.Second / 100
+//
+// which multiplies FIRST, by 10^9. `ticks` counts USER_HZ units since boot, so
+// on a machine with long uptime the product overflows int64 and the function
+// returns a nonsense moment.
+//
+// That is not a harmless glitch here: the output is rendered as "nginx last
+// reloaded <date>" with an instruction attached, and an operator is asked to act
+// on it. A diagnostic that can be confidently wrong about its own headline
+// number is worse than one that abstains.
+func TestTheReloadClockCannotOverflow(t *testing.T) {
+	src := readSourceFile(t, "admin_os_scoped_diagnose.go")
+	// Comments stripped. The retired expression is quoted in the comment that
+	// documents it, and this is the FOURTH gate today to match prose about the
+	// behaviour instead of the behaviour. It is a reliable enough mistake to be
+	// worth a helper rather than a habit.
+	body := goCode(goFuncBody(src, "nginxLastReload"))
+
+	if strings.Contains(body, "time.Duration(ticks) * time.Second / 100") {
+		t.Fatal("the tick conversion multiplies by 10^9 before dividing, so a long-uptime " +
+			"machine overflows int64 and the reported reload time is nonsense — presented as " +
+			"fact, with an instruction attached")
+	}
+	if !strings.Contains(body, "(time.Second / 100)") {
+		t.Error("the unit is not scaled before multiplying")
+	}
+
+	// Arithmetic, checked rather than asserted about. Three years of uptime.
+	const ticks int64 = 3 * 365 * 24 * 60 * 60 * 100
+	if got := time.Duration(ticks) * (time.Second / 100); got <= 0 {
+		t.Fatalf("three years of uptime still overflows: %v", got)
+	} else if want := 3 * 365 * 24 * time.Hour; got != want {
+		t.Errorf("tick conversion is wrong: got %v, want %v", got, want)
+	}
+}
+
+// goCode drops // comment lines so a gate matches what COMPILES, not what a
+// comment says about what used to compile. Four separate checks in one day have
+// been fooled by quoting the defect they exist to prevent.
+func goCode(src string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(src, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "//") {
+			continue
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	return b.String()
 }

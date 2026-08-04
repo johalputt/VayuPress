@@ -1331,6 +1331,7 @@ func nginxLastReload() (time.Time, bool) {
 		return time.Time{}, false
 	}
 	var newest time.Time
+	seen := 0
 	for _, e := range entries {
 		pid := e.Name()
 		if pid == "" || pid[0] < '0' || pid[0] > '9' {
@@ -1361,11 +1362,29 @@ func nginxLastReload() (time.Time, bool) {
 		}
 		// USER_HZ is 100 on every Linux this ships to; it is a kernel ABI
 		// constant, not a tunable.
-		if t := boot.Add(time.Duration(ticks) * time.Second / 100); t.After(newest) {
+		//
+		// AUDIT FINDING against this function, which is the measurement the whole
+		// certificate diagnosis now rests on:
+		//
+		//   time.Duration(ticks) * time.Second / 100
+		//
+		// multiplies FIRST, by 10^9. On a machine with long uptime that overflows
+		// int64 and yields a nonsense moment — and a nonsense moment here is not a
+		// harmless glitch, it is a confident "nginx last reloaded <date>" that the
+		// operator is asked to act on. Scaling the unit first keeps the product
+		// four orders of magnitude smaller and cannot overflow for any uptime a
+		// machine will ever have.
+		if t := boot.Add(time.Duration(ticks) * (time.Second / 100)); t.After(newest) {
 			newest = t
+			seen++
 		}
 	}
-	if newest.IsZero() {
+	// Nothing found means the measurement could not be MADE, not that nginx never
+	// reloaded — /proc can be mounted so a process sees only its own PIDs, and
+	// this service is deliberately unprivileged. Returning "not known" is the
+	// only honest answer, and the caller renders no row at all rather than a
+	// verdict built on an empty search.
+	if newest.IsZero() || seen == 0 {
 		return time.Time{}, false
 	}
 	return newest, true
