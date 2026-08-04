@@ -84,35 +84,38 @@ func scopedContentPage(d domain.Domain, items []dbpkg.Article) string {
 	b.WriteString(`<p class="page-sub">Everything owned by <b>` + esc(d.Host) + `</b>. Drafts are included — an ` +
 		`unpublished post is the one that needs attention, and the public listing hides them by design.</p>`)
 
-	b.WriteString(`<div class="vm-stats">`)
-	b.WriteString(vmStatTile(strconv.Itoa(posts), "Posts", ""))
-	b.WriteString(vmStatTile(strconv.Itoa(pages), "Pages", ""))
+	b.WriteString(`<div class="stat-grid">`)
+	b.WriteString(osStatTile("Posts", strconv.Itoa(posts), ""))
+	b.WriteString(osStatTile("Pages", strconv.Itoa(pages), ""))
 	draftTone := ""
 	if drafts > 0 {
 		draftTone = "warn"
 	}
-	b.WriteString(vmStatTile(strconv.Itoa(drafts), "Drafts", draftTone))
-	b.WriteString(vmStatTile(strconv.Itoa(len(items)), "Total", ""))
+	b.WriteString(osStatTile("Drafts", strconv.Itoa(drafts), draftTone))
+	b.WriteString(osStatTile("Total", strconv.Itoa(len(items)), ""))
 	b.WriteString(`</div>`)
 
+	// ── The bands, as collapsible details (house style §11) ──────────────────
+	b.WriteString(`<div class="section-head"><span class="section-head__title">This site's content</span>` +
+		`<span class="section-head__hint">Ownership decides which site serves a post</span></div>`)
+	b.WriteString(`<div class="mon-stack">`)
+
+	var owned strings.Builder
 	if len(items) >= scopedContentLimit {
 		// Never truncate in silence. A list that stops at 200 and says nothing
 		// reads as "this site has 200 items", which is a number the page made up.
-		b.WriteString(`<div class="card"><p class="text-sm muted">Showing the ` +
+		owned.WriteString(`<div class="card"><p class="text-sm muted">Showing the ` +
 			strconv.Itoa(scopedContentLimit) + ` most recently updated items. This site has more; the ` +
 			`full archive is on the site itself.</p></div>`)
 	}
 
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Owned by this site</span>` +
-		`<span class="section-head__hint">Newest first</span></div>`)
-
 	if len(items) == 0 {
-		b.WriteString(`<div class="card"><p class="text-sm muted">Nothing is published on this site yet. ` +
+		owned.WriteString(`<div class="card"><p class="text-sm muted">Nothing is published on this site yet. ` +
 			`<b>Write for this site</b> opens the editor with ` + esc(d.Host) + ` already selected, so what you ` +
 			`write is born here rather than being moved afterwards. You can also move an existing post across ` +
 			`with the box below.</p></div>`)
 	} else {
-		b.WriteString(`<div class="card"><div class="table-wrap"><table class="table"><thead><tr>` +
+		owned.WriteString(`<div class="card"><div class="table-wrap"><table class="table"><thead><tr>` +
 			`<th>Title</th><th>Kind</th><th>Status</th><th>Updated</th><th>Actions</th></tr></thead><tbody>`)
 		for _, it := range items {
 			kind := "Post"
@@ -128,7 +131,7 @@ func scopedContentPage(d domain.Domain, items []dbpkg.Article) string {
 				live = ` · <a href="` + esc(seo.Origin(d.Host)) + `/blog/` + esc(url.PathEscape(it.Slug)) +
 					`" target="_blank" rel="noopener noreferrer">View ↗</a>`
 			}
-			b.WriteString(`<tr><td><a href="/os/editor/` + esc(url.PathEscape(it.Slug)) + `">` +
+			owned.WriteString(`<tr><td><a href="/os/editor/` + esc(url.PathEscape(it.Slug)) + `">` +
 				esc(it.Title) + `</a><div class="text-xs muted mono">` + esc(it.Slug) + `</div></td>` +
 				`<td>` + kind + `</td><td>` + state + `</td>` +
 				`<td class="text-xs muted">` + esc(it.UpdatedAt.Format("2006-01-02")) + `</td>` +
@@ -136,13 +139,17 @@ func scopedContentPage(d domain.Domain, items []dbpkg.Article) string {
 				` · <button type="button" class="btn btn--ghost btn--sm" data-scoped-release data-slug="` +
 				esc(it.Slug) + `">Move to primary</button></td></tr>`)
 		}
-		b.WriteString(`</tbody></table></div></div>`)
+		owned.WriteString(`</tbody></table></div></div>`)
 	}
 
+	ownedChip := `<span class="mon-chip mon-chip--off">nothing yet</span>`
+	if len(items) > 0 {
+		ownedChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(len(items)) + ` items</span>`
+	}
+	b.WriteString(monAcc("📚", "Owned by this site", "Newest first", ownedChip, true, owned.String()))
+
 	// Moving a post IN. The counterpart ("move to primary") is per-row above.
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Move a post to this site</span>` +
-		`<span class="section-head__hint">Ownership decides which site serves it</span></div>`)
-	b.WriteString(`<div class="card">
+	moveBody := `<div class="card">
   <p class="text-sm muted">A post belongs to exactly one site. Moving it here removes it from wherever it was —
     its old site stops serving it the moment this saves, and its address changes to this domain's.</p>
   <div class="form-grid">
@@ -151,7 +158,11 @@ func scopedContentPage(d domain.Domain, items []dbpkg.Article) string {
       <span class="field-hint">The slug as it appears in the post's address, not its title.</span></label>
   </div>
   <div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-scoped-assign>Move to ` + esc(d.Host) + `</button></div>
-</div>`)
+</div>`
+	b.WriteString(monAcc("↔️", "Move a post to this site", "Ownership decides which site serves it",
+		`<span class="mon-chip mon-chip--on">by slug</span>`, false, moveBody))
+
+	b.WriteString(`</div>`) // mon-stack
 	return b.String()
 }
 

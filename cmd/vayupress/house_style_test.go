@@ -23,10 +23,12 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/bizsite"
 	"github.com/johalputt/vayupress/internal/customsite"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 )
 
 // houseStyle describes what a page claims about itself, so the helper can hold
@@ -244,5 +246,41 @@ func TestScopedSEOPageMeetsTheHouseStyle(t *testing.T) {
 	}
 	if strings.Contains(statCardIn(t, onion, "Scheme"), "stat-card--warn") {
 		t.Error("an onion served over http is toned as a problem; it is how onions work")
+	}
+}
+
+// Phase 4 — Content. Its controls are addressed by id and by data-attribute, so
+// the id-net matters more here than the structure does.
+func TestScopedContentPageMeetsTheHouseStyle(t *testing.T) {
+	d := domainWithAllowance(t, true, 2)
+
+	withItems := scopedContentPage(d, []dbpkg.Article{
+		{Title: "Hello", Slug: "hello", Status: "published", UpdatedAt: time.Now()},
+		{Title: "Draft one", Slug: "draft-one", Status: "draft", UpdatedAt: time.Now()},
+	})
+	assertHouseStyle(t, withItems, houseStyle{
+		Name: "Content", MinTiles: 4, MinBands: 2,
+		IDs:   []string{"scoped-assign-slug"},
+		Hooks: []string{"data-scoped-assign", "data-scoped-release"},
+	})
+	if !strings.Contains(withItems, "2 items") {
+		t.Error("the collapsed band does not say how much this site owns")
+	}
+	if tile := statCardIn(t, withItems, "Drafts"); !strings.Contains(tile, ">1<") {
+		t.Errorf("the drafts tile does not count the draft it was given: %s", tile)
+	}
+
+	// An empty site is the state a new customer domain starts in: it must still
+	// be a valid page, and must explain itself rather than show four zeroes.
+	empty := scopedContentPage(d, nil)
+	assertHouseStyle(t, empty, houseStyle{
+		Name: "Content (empty)", MinTiles: 4, MinBands: 2,
+		IDs: []string{"scoped-assign-slug"}, Hooks: []string{"data-scoped-assign"},
+	})
+	if !strings.Contains(empty, "Nothing is published on this site yet") {
+		t.Error("an empty site shows zeroes with no explanation")
+	}
+	if !strings.Contains(empty, "nothing yet") {
+		t.Error("the collapsed band reads as a closed door with no label")
 	}
 }
