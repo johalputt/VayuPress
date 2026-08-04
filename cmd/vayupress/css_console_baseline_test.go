@@ -57,6 +57,21 @@ var consoleUtilityClasses = map[string]bool{
 
 var goClassLiteralRe = regexp.MustCompile(`class="([a-zA-Z0-9_\- ]+)"`)
 
+// consoleShellCall marks a file as rendering into the VayuOS shell. Selecting
+// console files by NAME alone missed four that render into the shell without the
+// admin_os_/vayuos prefix — handlers_bizsite.go among them, which is how a bare
+// `biz-deploy` div survived on the .zip deploy control while every sibling
+// biz-* class had a rule. Membership is now decided by what a file calls, not by
+// what it is called.
+var consoleShellCall = regexp.MustCompile(`adminOSShellHead|writeOSHTML`)
+
+// ownStylesheetRe marks a chunk that links its OWN stylesheet, so it belongs to
+// some other surface and admin-os.css says nothing about it. handlers_team.go
+// renders BOTH a console page and a public author page; judging the whole file
+// against the console's sheet would report the public page's entire grammar as
+// unstyled.
+var ownStylesheetRe = regexp.MustCompile(`/static/css/`)
+
 // consoleSourceFiles are the files that render into the VayuOS shell, and so are
 // styled by admin-os.css and nothing else. The theme store renders a PUBLIC page
 // with the site's own stylesheet, so it is not one of them.
@@ -74,10 +89,33 @@ func consoleSourceFiles(t *testing.T) []string {
 		}
 		if strings.HasPrefix(b, "admin_os_") || strings.HasPrefix(b, "vayuos") {
 			out = append(out, f)
+			continue
+		}
+		src, err := os.ReadFile(f) // #nosec G304 -- walking this repository
+		if err == nil && consoleShellCall.Match(src) {
+			out = append(out, f)
 		}
 	}
 	if len(out) < 20 {
 		t.Fatalf("only %d console files found; the glob is wrong and this gate is checking nothing", len(out))
+	}
+	return out
+}
+
+// consoleChunks splits a source file at top-level func boundaries and drops the
+// chunks that link their own stylesheet. What remains is markup the VayuOS shell
+// styles.
+func consoleChunks(src string) []string {
+	cuts := []int{0}
+	for _, loc := range regexp.MustCompile(`(?m)^func\b`).FindAllStringIndex(src, -1) {
+		cuts = append(cuts, loc[0])
+	}
+	cuts = append(cuts, len(src))
+	var out []string
+	for i := 0; i < len(cuts)-1; i++ {
+		if chunk := src[cuts[i]:cuts[i+1]]; !ownStylesheetRe.MatchString(chunk) {
+			out = append(out, chunk)
+		}
 	}
 	return out
 }
@@ -90,13 +128,15 @@ func TestNoNewUnstyledClassInTheVayuOSConsole(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		for _, m := range goClassLiteralRe.FindAllStringSubmatch(string(src), -1) {
-			for _, cls := range strings.Fields(m[1]) {
-				if consoleUtilityClasses[cls] || consoleUnstyledBaseline[cls] || cssDefines(css, cls) {
-					continue
-				}
-				if _, dup := seen[cls]; !dup {
-					seen[cls] = filepath.Base(f)
+		for _, chunk := range consoleChunks(string(src)) {
+			for _, m := range goClassLiteralRe.FindAllStringSubmatch(chunk, -1) {
+				for _, cls := range strings.Fields(m[1]) {
+					if consoleUtilityClasses[cls] || consoleUnstyledBaseline[cls] || cssDefines(css, cls) {
+						continue
+					}
+					if _, dup := seen[cls]; !dup {
+						seen[cls] = filepath.Base(f)
+					}
 				}
 			}
 		}

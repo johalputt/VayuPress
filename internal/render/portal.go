@@ -272,7 +272,7 @@ const PortalJS = `(function () {
   function viewAdvertise() {
     return '<button type="button" class="vp-portal-link vp-portal-back" data-vp-go="account">&larr; Back</button>' +
       '<h2 class="vp-portal-title">Advertise here</h2>' +
-      '<div class="vp-portal-mailbox" data-vp-advertise><div class="vp-portal-activity-loading">Loading…</div></div>';
+      '<div data-vp-advertise><div class="vp-portal-activity-loading">Loading…</div></div>';
   }
 
   function adPlacementOptions() {
@@ -375,7 +375,7 @@ const PortalJS = `(function () {
   function viewMailbox() {
     return '<button type="button" class="vp-portal-link vp-portal-back" data-vp-go="account">&larr; Back</button>' +
       '<h2 class="vp-portal-title">Your mailbox</h2>' +
-      '<div class="vp-portal-mailbox" data-vp-mailbox><div class="vp-portal-activity-loading">Loading…</div></div>';
+      '<div data-vp-mailbox><div class="vp-portal-activity-loading">Loading…</div></div>';
   }
 
   function loadMailbox() {

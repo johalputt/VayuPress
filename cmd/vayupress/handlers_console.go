@@ -200,7 +200,7 @@ func (a *App) handleFaultPage(w http.ResponseWriter, r *http.Request) {
 
 	// Escalation chain visualization for the canonical WAL-write path.
 	fmt.Fprint(w, `<div class="section-title">Escalation Chain — Example</div>
-<div class="trace-panel"><div class="esc-chain">
+<div class="card"><div class="esc-chain">
   <span class="esc-step">fault: db.wal.write</span><span class="esc-arrow">→</span>
   <span class="esc-step">counter ×3 / 5min</span><span class="esc-arrow">→</span>
   <span class="esc-step">threshold exceeded</span><span class="esc-arrow">→</span>
@@ -472,7 +472,7 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
   <div class="q-stat"><div class="q-stat-val" style="color:var(--red)">%d</div><div class="q-stat-label">Quarantined</div></div>
 </div>
 <div class="section-title">Job Lifecycle</div>
-<div class="trace-panel"><div class="esc-chain">
+<div class="card"><div class="esc-chain">
   <span class="esc-step">pending</span><span class="esc-arrow">→</span>
   <span class="esc-step">processing</span><span class="esc-arrow">→</span>
   <span class="esc-step" style="border-color:rgba(16,185,129,.4);color:var(--green)">completed</span>
@@ -489,7 +489,7 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 	// Dead-letter table.
 	fmt.Fprintf(w, `<div class="section-title">Dead-Letter Queue (%d)</div>`, deadLetter)
 	if deadLetter > 0 {
-		fmt.Fprintf(w, `<div class="action-row"><button class="btn btn-primary" onclick="vpReplayAll()">⟲ Replay all dead-letter (≤%d)</button></div>`, config.Cfg.ReplayBatchLimit)
+		fmt.Fprintf(w, `<div class="action-row"><button class="btn btn--primary" onclick="vpReplayAll()">⟲ Replay all dead-letter (≤%d)</button></div>`, config.Cfg.ReplayBatchLimit)
 	}
 	if len(deadJobs) == 0 {
 		fmt.Fprint(w, `<div class="console-note">Dead-letter queue is empty — no jobs have exhausted their retries.</div>`)

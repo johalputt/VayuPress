@@ -11,7 +11,22 @@ import (
 	"testing"
 )
 
-// The public member/signup/checkout surface loads exactly two stylesheets:
+// resolvedDynamicClasses lists the class attributes on this surface that are
+// assembled at runtime, so the scan below cannot judge them by reading source.
+// Each was resolved by hand — every value the expression can take was checked
+// against signup.css — and the result is recorded here so the hole stays
+// closed. A new dynamic attribute fails the gate until someone does the same
+// work for it.
+//
+//	ma-plan-badge  + optional " ma-plan-badge--paid"   both defined
+//	pr-card        + optional " pr-card--featured"     both defined
+var resolvedDynamicClasses = map[string]bool{
+	"` + planClass + `":       true,
+	"pr-card` + featured + `": true,
+}
+
+// TestPublicSurfaceClassesAreStyled:
+// the public member/signup/checkout surface loads exactly two stylesheets:
 // /theme.css and one static sheet (signup.css, sometimes alongside article.css).
 // /theme.css is NOT a component stylesheet — render.ThemeCSSFor emits only
 // custom properties (--pico-primary, --vayu-accent), the installed theme's
@@ -38,6 +53,7 @@ import (
 // handlePublicAuthor (public, signup.css) — and mapping stylesheets per-file
 // reports the console's grammar as broken on the public page. An earlier pass
 // did exactly that and produced 38 findings, every one of them false.
+
 func TestPublicSurfaceClassesAreStyled(t *testing.T) {
 	const surfaceSheet = "signup.css"
 
@@ -117,7 +133,15 @@ func TestPublicSurfaceClassesAreStyled(t *testing.T) {
 			for _, m := range classAttr.FindAllStringSubmatch(chunk, -1) {
 				raw := m[1]
 				// Concatenated or templated values cannot be judged statically.
+				// Each one is a hole in the coverage, so they are named rather
+				// than skipped quietly: a scan that silently stops covering
+				// part of its surface reads exactly like a clean pass.
 				if strings.ContainsAny(raw, "`+") || strings.Contains(raw, "{{") {
+					if !resolvedDynamicClasses[strings.TrimSpace(raw)] {
+						t.Errorf("%s: class=%q is built dynamically and is not in resolvedDynamicClasses — "+
+							"resolve every value it can take, check each against the sheet, then record it there",
+							where, raw)
+					}
 					continue
 				}
 				var styled, missing []string

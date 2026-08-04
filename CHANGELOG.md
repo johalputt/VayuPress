@@ -10,6 +10,57 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **The contact form's honeypot was visible, and it silently ate real messages.**
+  The widget's own comment describes the `website` input as "hidden from humans",
+  and the handler discards any submission where it is non-empty — answering
+  `200 {"status":"ok"}` so a bot learns nothing. The only thing that hid it was a
+  CSS rule that existed in no stylesheet at all: not the shipped defaults, not
+  any of the eleven themes. `tabindex="-1"` takes it out of the tab order and
+  `aria-hidden` takes it out of the accessibility tree, but neither hides
+  anything visually.
+
+  So a visitor saw an unlabelled empty text box between the message field and
+  Send. Anyone who typed in it was told **"Thanks! Your message has been sent."**
+  and their message was thrown away. A missing style rule was causing silent data
+  loss on the contact form.
+
+  The field is now positioned off-screen rather than `display:none` — a
+  `display:none` field is skipped by many bots, which would defeat the trap.
+
+- **The rest of the contact form was unstyled too.** All eight of its classes
+  were defined nowhere, so the heading, both inputs, the message box, the submit
+  button and the status line rendered as raw browser controls on every theme.
+
+- **Two console pages carried the legacy admin stylesheet's grammar.** The Fault
+  Engine and Replay Explorer render through the VayuOS shell, which loads only
+  `admin-os.css`, but asked for `trace-panel` (a name that exists solely in the
+  legacy sheet) and `btn-primary` — the single-hyphen slip for the house's
+  `btn--primary`. The panels lost their frame and the "Replay all dead-letter"
+  button lost its emphasis. Both now use the house grammar.
+
+- **The .zip deploy row on the Website page had no rule**, so its file picker,
+  Deploy button and status text ran together with no spacing while every sibling
+  `biz-*` class was styled.
+
+- **The VayuShield layer rows could push their card sideways** — `vs-layer-body`
+  was the one member of its family without a rule, so the flexible column kept
+  its content's intrinsic width instead of absorbing the row.
+
+- **On the legacy theme editor**, the favicon preview had no rule (image and
+  caption stacked instead of sitting side by side) and two destructive buttons —
+  "Reset to Defaults" and "Remove (use default)" — asked for a `btn-danger`
+  variant the sheet never defined, so they read as ordinary buttons.
+
+- **`static/css/article.css` had drifted 6 KB behind the stylesheet the binary
+  actually serves.** Four files under `static/css/` are not source: the binary
+  rewrites them from Go constants at every boot. Anyone reading the checked-in
+  copy — or adding a rule to it — was working against bytes that never reach a
+  browser. The file is regenerated and a test now holds the two in step.
+
+- Three more dead class names removed from public markup (`vayu-comment-edit-btn`,
+  and `vp-portal-mailbox` twice), each matching no rule, no script selector and
+  no reference of any kind.
+
 - **The checkout form rendered unstyled — on the page where a customer types
   their name and email to pay.** It reached for the console's form grammar
   (`login-form`, `field`, `field-label`, `input`), which lives in the admin
@@ -45,6 +96,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   findings that were every one of them false. It also fails outright if it
   matches no elements, so a scan that silently stops covering anything is a
   failure rather than a pass.
+
+- **The console's gate now selects files by what they call, not what they are
+  named.** It scanned only files prefixed `admin_os_` or `vayuos`, so four files
+  that render into the same shell under other names were never checked — which is
+  how a bare deploy row survived on the Website page. Membership is now decided by
+  whether a file renders through the shell. Files that serve two surfaces are
+  handled by skipping the parts that link their own stylesheet; without that, the
+  public author page alone contributes 24 false findings.
+
+- **A test that the four generated stylesheets match the constants they are
+  written from.** They can drift silently, and the drift only shows as a rule that
+  works locally and is missing in production.
+
+- **A regression test for the contact honeypot**, asserting on the declarations of
+  that one rule rather than searching the sheet, and requiring the field be moved
+  off-screen — an opacity-only rule still occupies layout and can be clicked into.
 
 ---
 

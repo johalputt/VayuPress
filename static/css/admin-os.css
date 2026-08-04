@@ -5148,6 +5148,10 @@
 .vp-os .biz-form-col { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .vp-os .biz-form .pm-label { margin-top: var(--sp-2); }
 @media (max-width: 800px) { .vp-os .biz-form { grid-template-columns: 1fr; } }
+/* The .zip deploy row: file picker, Deploy, optional Roll back, status. It was
+   the div's only class and had no rule, so the controls ran together with no
+   spacing and the status text sat flush against the last button. */
+.vp-os .biz-deploy { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
 
 
 /* ============================================================
@@ -5194,6 +5198,10 @@
 .vp-os .vs-aegis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-3); }
 .vp-os .vs-layer { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-surface-2); }
 .vp-os .vs-layer-tag { font-family: var(--font-head); font-weight: 700; font-size: var(--text-sm); color: var(--text-2); border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 2px 6px; flex: none; }
+/* The flexible column beside the fixed-width layer tag. Every sibling in this
+   family had a rule and this one did not, so the column kept its content's
+   intrinsic width and a long stats row pushed the card sideways. */
+.vp-os .vs-layer-body { flex: 1; min-width: 0; }
 .vp-os .vs-layer-name { font-weight: 600; color: var(--text); font-size: var(--text-sm); }
 .vp-os .vs-layer-desc { color: var(--text-2); font-size: var(--text-xs); margin-top: 2px; }
 .vp-os .vs-layer-stats { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }

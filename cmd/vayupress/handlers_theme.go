@@ -801,7 +801,7 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
     <div>
       <input type="file" id="favicon-file" accept="image/png,image/x-icon,.png,.ico" class="field-input">
       <div class="field-hint">PNG or ICO only, ≤ 256 KB. Recommended square sizes: <strong>32×32</strong> (browser tab), <strong>180×180</strong> (Apple touch icon), or <strong>512×512</strong> (PWA/install). A single square source scales down cleanly.</div>
-      <div class="theme-actions favicon-actions">
+      <div class="theme-actions">
         <button type="button" id="favicon-upload-btn" class="btn">⭱ Upload favicon</button>
         <button type="button" id="favicon-remove-btn" class="btn btn-danger">↺ Remove (use default)</button>
         <span id="favicon-status" class="save-status"></span>
