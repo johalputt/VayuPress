@@ -130,3 +130,102 @@ func TestTheEvalControlRendersUncheckedWhenTheSettingIsOff(t *testing.T) {
 		t.Fatal("the control reads as ON for a site that has the setting OFF")
 	}
 }
+
+// The Website page in the house style — and, more importantly, a net under any
+// future restyling of it.
+//
+// §11 opens every VayuOS page with the numbers that answer "what is the state of
+// this?" before any control. This page had none, so an operator had to open
+// sections to learn what the domain was even serving — which is exactly how a
+// site sat on a stale uploaded bundle for a day with the file count visible only
+// inside a collapsed radio hint.
+//
+// The ID assertions matter more than the tiles. Restyling a page is string
+// surgery on markup that inline JavaScript addresses by id; drop one and a
+// button goes quiet in the way this console has already proved it can.
+func TestTheWebsitePageOpensWithItsStateAndKeepsEveryControl(t *testing.T) {
+	d := siteWithEval(t, true)
+	page := scopedWebsitePage(d, "bistro", bizsite.Content{Name: "Test"}, true,
+		customsite.Manifest{Files: 30, HasPrev: true})
+
+	for _, want := range []string{
+		`class="stat-grid"`,
+		"Serving at /", "Uploaded site", "Runtime code", "Certificate",
+		"30 files", // the number that would have ended the stale-bundle hunt on sight
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page does not show %q, so its state cannot be read without opening things", want)
+		}
+	}
+
+	// Every element the page's own script addresses. A restyle that loses one of
+	// these leaves a control that looks present and does nothing.
+	for _, id := range []string{
+		"scoped-ctx", "scoped-bundle-file", "scoped-bundle-status", "scoped-bundle-outcome",
+		"scoped-web-status", "scoped-web-template", "preview-path", "preview-status", "preview-out",
+		"web-alloweval", "web-name", "web-tagline", "web-about", "web-showblog",
+	} {
+		if !strings.Contains(page, `id="`+id+`"`) {
+			t.Errorf("id %q is gone from the page; the script that drives it will silently do nothing", id)
+		}
+	}
+	for _, hook := range []string{"data-site-web-save", "data-bundle-upload", "data-site-preview"} {
+		if !strings.Contains(page, hook) {
+			t.Errorf("the %q control is missing", hook)
+		}
+	}
+}
+
+// The runtime-code tile must not report a relaxed policy as unremarkable, and
+// must say nothing at all when there is no uploaded site for it to apply to.
+func TestTheRuntimeCodeTileTellsTheTruthAboutThePolicy(t *testing.T) {
+	onTile := statCardNamed(t, scopedWebsitePage(siteWithEval(t, true), "bistro",
+		bizsite.Content{Name: "T"}, true, customsite.Manifest{Files: 3}), "Runtime code")
+	if !strings.Contains(onTile, ">On<") {
+		t.Errorf("a site running with eval permitted does not say so: %s", onTile)
+	}
+	if !strings.Contains(onTile, "stat-card--warn") {
+		t.Errorf("a widened policy reads as ordinary: %s", onTile)
+	}
+
+	offTile := statCardNamed(t, scopedWebsitePage(siteWithEval(t, false), "bistro",
+		bizsite.Content{Name: "T"}, true, customsite.Manifest{Files: 3}), "Runtime code")
+	if !strings.Contains(offTile, ">Off<") {
+		t.Errorf("a site with eval off does not say so: %s", offTile)
+	}
+	if strings.Contains(offTile, "stat-card--warn") {
+		t.Errorf("a site with eval OFF is flagged as if the policy were widened: %s", offTile)
+	}
+}
+
+// statCardNamed returns just the stat tile carrying the given label.
+//
+// Scoped deliberately, and for the second time in this codebase: an assertion
+// that searches the WHOLE page for the warning class cannot tell which tile it
+// found. Both the earlier mailbox test and the first version of this one passed
+// against a mutation that reported a widened policy as ordinary, because the
+// CERTIFICATE tile happened to carry the same class.
+func statCardNamed(t *testing.T, page, label string) string {
+	t.Helper()
+	j := strings.Index(page, `>`+label+`</div>`)
+	if j < 0 {
+		t.Fatalf("there is no %q tile on the page", label)
+	}
+	// The OUTER tile, not the inner label div — both begin `<div class="stat-card`,
+	// and matching the wrong one returns a slice with no class attribute in it,
+	// so every assertion about the tone silently looks at nothing.
+	i := -1
+	for _, open := range []string{`<div class="stat-card"`, `<div class="stat-card `} {
+		if k := strings.LastIndex(page[:j], open); k > i {
+			i = k
+		}
+	}
+	if i < 0 {
+		t.Fatalf("the %q tile is malformed", label)
+	}
+	end := strings.Index(page[j:], `</div></div>`)
+	if end < 0 {
+		t.Fatalf("the %q tile is unterminated", label)
+	}
+	return page[i : j+end+len(`</div></div>`)]
+}

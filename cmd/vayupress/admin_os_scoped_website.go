@@ -96,6 +96,51 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 	b.WriteString(`<p class="page-sub">What <b>` + esc(d.Host) + `</b> serves at its root, and the content of ` +
 		`that site. This domain only — the primary's website is edited from your own Website settings.</p>`)
 
+	// ── Four tiles ────────────────────────────────────────────────────────────
+	//
+	// The house style opens a page with the numbers that answer "what is the
+	// state of this?" before any control. This page had none, so an operator had
+	// to open sections to learn what the domain was even serving — which is how a
+	// site sat on a stale uploaded bundle for a day with the file count visible
+	// only inside a collapsed radio hint.
+	servesLabel := "Blog"
+	for _, m := range scopedSiteModes {
+		if m.Value == mode {
+			servesLabel = m.Label
+		}
+	}
+	if mode == "custom" {
+		servesLabel = "Uploaded"
+	}
+	filesLabel, filesTone := "—", ""
+	if bundled {
+		filesLabel = itoaSafe(man.Files) + " files"
+	} else if mode == "custom" {
+		filesLabel, filesTone = "none", " stat-card--warn"
+	}
+	evalLabel, evalTone := "—", ""
+	if bundled {
+		evalLabel = "Off"
+		if site, ok := d.Site(); ok && site.AllowEval {
+			evalLabel, evalTone = "On", " stat-card--warn"
+		}
+	}
+	certLabel, certTone := scopedCertTile(d)
+	certCls := ""
+	if certTone != "" {
+		certCls = " stat-card--" + certTone
+	}
+	b.WriteString(`<div class="stat-grid">
+  <div class="stat-card"><div class="stat-card__label">Serving at /</div><div class="stat-card__value">` +
+		esc(servesLabel) + `</div></div>
+  <div class="stat-card` + filesTone + `"><div class="stat-card__label">Uploaded site</div><div class="stat-card__value">` +
+		esc(filesLabel) + `</div></div>
+  <div class="stat-card` + evalTone + `"><div class="stat-card__label">Runtime code</div><div class="stat-card__value">` +
+		esc(evalLabel) + `</div></div>
+  <div class="stat-card` + certCls + `"><div class="stat-card__label">Certificate</div><div class="stat-card__value">` +
+		esc(certLabel) + `</div></div>
+</div>`)
+
 	// ── What this domain serves ──────────────────────────────────────────────
 	b.WriteString(`<div class="section-head"><span class="section-head__title">What this domain serves</span>` +
 		`<span class="section-head__hint">Changes take effect within seconds</span></div>`)
