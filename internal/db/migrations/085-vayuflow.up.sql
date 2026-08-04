@@ -1,0 +1,34 @@
+-- Migration 085: VayuFlow, the deterministic automation engine (ADR-0151).
+--
+-- The migration runner executes ONE statement per physical LINE. Every
+-- statement below is therefore on a single line, however long that makes it.
+--
+-- WHAT THIS TABLE IS FOR. A flow is a persisted, versioned document: when X
+-- happens, if Y holds, do Z. Nothing in this codebase could express that before
+-- — the scheduler stages articles and nothing else, the event bus is in-process
+-- and lossy, the outbox is delivery machinery rather than decision machinery.
+--
+-- WHY THE CONTRACT FIELDS ARE NOT NULLABLE. mode, owner and the five budget
+-- ceilings are the flow's declared blast radius. A NULL in any of them would be
+-- a flow that never said what it was allowed to do, which is exactly the state
+-- the Go types refuse to construct. Making the column nullable would reintroduce
+-- at the storage layer the hole the type system was written to close, and a row
+-- inserted by hand would then be readable as a valid flow.
+--
+-- WHY THERE IS NO DEFAULT ON mode. A DEFAULT would let an INSERT that omits the
+-- column produce a runnable flow, which is the same defect as a zero value that
+-- is a valid answer: the schema answering, on the author's behalf, the one
+-- question the operator is supposed to answer. An omitted mode must fail.
+--
+-- OWNER IS AN ACCOUNT ID, NOT A ROLE. The owner's role is resolved against the
+-- live account at RUN time, never stored here. Storing it would freeze an
+-- authority answer that is supposed to be able to change underneath the flow: a
+-- flow armed by an admin who is later demoted has to stop working, and it cannot
+-- if the flow carries its own copy of "admin".
+--
+-- VERSION EXISTS SO A RUN CAN BE READ AGAINST THE FLOW AS IT WAS. Runs record
+-- the version they executed. Without it, an operator reading a six-week-old run
+-- in the trail sees it against today's step list and draws a false conclusion.
+CREATE TABLE IF NOT EXISTS vayuflow_flows (id TEXT PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, trigger_kind TEXT NOT NULL, trigger_cron TEXT NOT NULL DEFAULT '', trigger_event TEXT NOT NULL DEFAULT '', condition_json TEXT NOT NULL DEFAULT '', steps_json TEXT NOT NULL, budget_max_steps INTEGER NOT NULL, budget_max_runs_hour INTEGER NOT NULL, budget_max_writes INTEGER NOT NULL, budget_max_egress INTEGER NOT NULL, budget_timeout_ms INTEGER NOT NULL, owner TEXT NOT NULL, mode TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_vayuflow_enabled ON vayuflow_flows(enabled, trigger_kind);
+CREATE INDEX IF NOT EXISTS idx_vayuflow_owner ON vayuflow_flows(owner);

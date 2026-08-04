@@ -16,6 +16,7 @@
 #  - VerdictFrom: reads the middleware's classification off the request context,
 #  - botdb Store.Import / Store.ReportFalsePositive: operator community-import and
 #  - calibrate.BiasedForTest: constructs a calibrator pre-loaded with a bias so
+#  - internal/vayuflow/*: ADR-0151 P1 lands the type system, capability registry and store ahead of their wiring. These 42 entries are TEMPORARY and must shrink to zero as P3 wires the triggers and P4 the panel; a VayuFlow release that still carries them is a subsystem that ships without being reachable.
 # "<file>: unreachable func: <name>", line/col stripped so it survives edits).
 # Each line below is a function currently unreachable from the program
 # The CI gate fails only on entries NOT listed here, so new dead code is
@@ -214,7 +215,6 @@ internal/search/sharded/sharded.go: unreachable func: ShardedIndex.Index
 internal/search/sharded/sharded.go: unreachable func: ShardedIndex.Search
 internal/search/sharded/sharded.go: unreachable func: ShardedIndex.shardFor
 internal/seo/sitemap.go: unreachable func: GenerateSitemap
-internal/settings/scope.go: unreachable func: ForDomain
 internal/signing/article.go: unreachable func: GenerateKeyPair
 internal/signing/article.go: unreachable func: Sign
 internal/signing/article.go: unreachable func: Verify
@@ -261,6 +261,48 @@ internal/trace/store.go: unreachable func: Store.ensureSchema
 internal/trace/store.go: unreachable func: attrsJSON
 internal/trace/store.go: unreachable func: parseStatus
 internal/trace/trace.go: unreachable func: CausationID
+internal/vayuflow/budget.go: unreachable func: Budget.Complete
+internal/vayuflow/budget.go: unreachable func: ErrBudgetExceeded.Error
+internal/vayuflow/budget.go: unreachable func: Spend.chargeEgress
+internal/vayuflow/budget.go: unreachable func: Spend.chargeStep
+internal/vayuflow/budget.go: unreachable func: Spend.chargeWrite
+internal/vayuflow/capability.go: unreachable func: Capabilities
+internal/vayuflow/capability.go: unreachable func: CapabilitiesOfKind
+internal/vayuflow/capability.go: unreachable func: Capability.Complete
+internal/vayuflow/capability.go: unreachable func: CapabilityFor
+internal/vayuflow/capability.go: unreachable func: Kind.String
+internal/vayuflow/capability.go: unreachable func: OnionPolicy.String
+internal/vayuflow/capability.go: unreachable func: Reversible.String
+internal/vayuflow/capability.go: unreachable func: WritePolicy.String
+internal/vayuflow/capability.go: unreachable func: WritePolicy.atMost
+internal/vayuflow/condition.go: unreachable func: CondKind.String
+internal/vayuflow/condition.go: unreachable func: Condition.Complete
+internal/vayuflow/condition.go: unreachable func: Condition.Holds
+internal/vayuflow/condition.go: unreachable func: Condition.complete
+internal/vayuflow/condition.go: unreachable func: Condition.holds
+internal/vayuflow/flow.go: unreachable func: Flow.Complete
+internal/vayuflow/flow.go: unreachable func: Flow.HighestWrite
+internal/vayuflow/flow.go: unreachable func: Flow.MinOwnerRole
+internal/vayuflow/flow.go: unreachable func: Flow.NeedsEgress
+internal/vayuflow/flow.go: unreachable func: RunMode.String
+internal/vayuflow/flow.go: unreachable func: Trigger.Complete
+internal/vayuflow/flow.go: unreachable func: TriggerKind.String
+internal/vayuflow/role.go: unreachable func: ownerAtLeast
+internal/vayuflow/role.go: unreachable func: validOwnerRole
+internal/vayuflow/store.go: unreachable func: ActionSummary
+internal/vayuflow/store.go: unreachable func: NewStore
+internal/vayuflow/store.go: unreachable func: Store.Delete
+internal/vayuflow/store.go: unreachable func: Store.Get
+internal/vayuflow/store.go: unreachable func: Store.List
+internal/vayuflow/store.go: unreachable func: Store.LoadableFlows
+internal/vayuflow/store.go: unreachable func: Store.Save
+internal/vayuflow/store.go: unreachable func: Store.SetMode
+internal/vayuflow/store.go: unreachable func: Store.scan
+internal/vayuflow/store.go: unreachable func: TriggerSummary
+internal/vayuflow/store.go: unreachable func: describeMode
+internal/vayuflow/store.go: unreachable func: newID
+internal/vayuflow/store.go: unreachable func: parseRunMode
+internal/vayuflow/store.go: unreachable func: parseTriggerKind
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanDelete
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanManageAccounts
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanSend
