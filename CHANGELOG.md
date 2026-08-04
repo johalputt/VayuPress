@@ -44,6 +44,35 @@ collapses.**
   changed — so it failed an honest refactor and would have passed a regression
   that deleted the sentence from the page and left it in a comment.
 
+### Security
+- **The per-domain console was author-level, and mounting a page under it
+  lowered that page's gate.** `/os/settings` requires admin; `/os/d/{id}/settings`
+  required author. `/os/api/theme/code` requires editor; the same handler at
+  `/os/d/{id}/api/theme/code` required author and carries no role check of its
+  own — so a console user with the lowest staff role could write site-wide custom
+  CSS onto any hosted customer's live domain. Reads were wider and quieter: every
+  hosted site's identity, content list, visitor figures, certificate state and
+  uploaded bundle manifest were author-readable.
+
+  The namespace fell between both existing gates. `osPathInArea` matches
+  `/os/<area>` and `/os/api/<area>`, so `/os/d/x/settings` matched no area at all
+  and took the permissive author default; and the fail-closed rule that exists to
+  catch exactly that only fires on paths beginning `/os/api/`, which no
+  per-domain endpoint does.
+
+  The whole `/os/d/**` namespace is admin-only now, matched on the path segment
+  rather than the bare prefix so `/os/dashboard` is not swallowed with it. The
+  rule is stated over the prefix rather than page by page, because per-page is
+  what failed — each per-domain route inherited the author default silently and
+  nothing anywhere reported it. A test pins an endpoint nobody has written yet,
+  so the next one cannot inherit it either.
+
+- **A confident answer on a failed read.** The Settings page collapsed a
+  settings-store error into "this site is on the product default" and printed it
+  as fact. The tile is tri-state now and shows "—" when nobody could read the
+  value; the chip beside it says "not known" rather than claiming the default
+  while the band is shut.
+
 ### Changed
 - The repository's contributor notes gained three sections recording how this
   install is worked: that a shell command is an instrument for looking and never
@@ -73,7 +102,25 @@ satisfies any assertion that only ever sees the state matching it.
 
 Two further mutations were discarded rather than counted: one changed nothing in
 the file and one failed to compile. Neither is a kill, and both have been scored
-as one here before.
+as one here before. A third was re-run rather than discarded — dropping the
+escaping on a visitor path left its `esc` binding unused, so the compiler
+refused it; removing the binding too made it a valid mutation, and it died.
+
+**The finding that mattered came from attacking the namespace, not the diff.**
+The conversion itself was sound: every value a customer controls already reached
+the panel escaped, and attacking that produced nothing, which is a real result
+and is recorded as one. What did not survive was the question of who may open
+these pages at all. Five of them had just been rewritten without anyone asking
+what role reaches them, and the answer was the lowest staff role in the product.
+
+Three further mutations against that fix, all killed: deleting the rule, gating
+the namespace at editor instead of admin, and matching `/os/d` as a bare string
+prefix — which quietly locks `/os/dashboard` to admin as well, a denial of
+service dressed as a hardening.
+
+Escaping is now pinned with a hostile payload on four surfaces, and every
+converted page is held to `assertCSPSafe`. Before this only one of the five was,
+and a restyling is precisely the edit that introduces an inline `style` attribute.
 
 ---
 

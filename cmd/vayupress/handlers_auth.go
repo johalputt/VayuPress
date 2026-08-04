@@ -134,6 +134,27 @@ func osPathMinLevel(path string) int {
 		"posts", "editor", "media", "embed", "diagram", "profile",
 		"vayumail", "talk", "activity", "cmd-index", "feed", "search", "totp", "vayuos",
 	}
+	// The per-domain console (/os/d/{id}/…) administers a HOSTED CUSTOMER'S site:
+	// its identity, its content, what it serves at "/", its theme code and its
+	// uploaded bundle. It is reached from the Domains registry, which is admin-
+	// only, and every page in it is admin-only at its own primary address.
+	//
+	// Stated here explicitly because this namespace fell between both gates below.
+	// osPathInArea matches `/os/<area>` and `/os/api/<area>`, so `/os/d/x/settings`
+	// matched no area and took the permissive author default; and the fail-closed
+	// API rule that exists to catch precisely that only fires on paths beginning
+	// `/os/api/`, which no per-domain endpoint does. The effect was that mounting a
+	// page under a domain LOWERED its gate — `/os/api/theme/code` required editor
+	// while `/os/d/{id}/api/theme/code` required author, and that handler carries
+	// no role check of its own, so an author could write site-wide custom CSS onto
+	// any hosted customer's live domain.
+	//
+	// Matched on the path SEGMENT, not the bare prefix: "/os/d" as a string prefix
+	// would also swallow /os/dashboard, /os/domains and /os/dns.
+	if path == "/os/d" || strings.HasPrefix(path, "/os/d/") {
+		return accessAdmin
+	}
+
 	for _, a := range adminAreas {
 		if osPathInArea(path, a) {
 			return accessAdmin

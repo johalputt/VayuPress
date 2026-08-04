@@ -292,7 +292,7 @@ func TestScopedContentPageMeetsTheHouseStyle(t *testing.T) {
 // the other four could establish the pattern first.
 func TestScopedSettingsPageMeetsTheHouseStyle(t *testing.T) {
 	// The state a customer's domain is in on the day it is handed over.
-	empty := scopedSettingsBody("d1", "customer.example", map[string]string{}, false)
+	empty := scopedSettingsBody("d1", "customer.example", map[string]string{}, presDefault)
 	assertHouseStyle(t, empty, houseStyle{
 		Name: "Settings (nothing set)", MinTiles: 4, MinBands: 2,
 		IDs:   []string{"scoped-ctx", "scoped-status", "scoped-style-status"},
@@ -332,7 +332,7 @@ func TestScopedSettingsPageMeetsTheHouseStyle(t *testing.T) {
 		settings.KeySiteTagline:     "We do the thing",
 		settings.KeySiteDescription: "A sentence for search engines.",
 		settings.KeySiteAuthor:      "A Person",
-	}, true)
+	}, presCustom)
 	assertHouseStyle(t, full, houseStyle{Name: "Settings (filled in)", MinTiles: 4, MinBands: 2})
 	for _, label := range []string{"Identity", "Search description"} {
 		if v := statCardIn(t, full, label); strings.Contains(v, "stat-card--warn") {
@@ -363,7 +363,7 @@ func TestScopedSettingsPageMeetsTheHouseStyle(t *testing.T) {
 // defect exactly, and a capability an operator cannot find is one the product
 // does not have.
 func TestTheCopyFromPrimaryActionIsReachableFromThePage(t *testing.T) {
-	page := scopedSettingsBody("d1", "customer.example", map[string]string{}, false)
+	page := scopedSettingsBody("d1", "customer.example", map[string]string{}, presDefault)
 	if !strings.Contains(page, "data-scoped-copy-style") {
 		t.Fatal("no control for copy-from-primary on any page; the endpoint is reachable only by " +
 			"hand-crafting a request")
@@ -396,7 +396,7 @@ func TestTheCopyFromPrimaryActionIsReachableFromThePage(t *testing.T) {
 // the copy list says, so the two are pinned together: an edit that adds the site
 // name to the copy list fails here rather than on a customer's live domain.
 func TestTheHouseStyleBandDoesNotPromiseMoreThanTheCopyListDelivers(t *testing.T) {
-	page := scopedSettingsBody("d1", "customer.example", map[string]string{}, false)
+	page := scopedSettingsBody("d1", "customer.example", map[string]string{}, presDefault)
 	if !strings.Contains(page, "not</b> copied") {
 		t.Fatal("the band no longer tells the operator that identity is excluded")
 	}
@@ -415,5 +415,118 @@ func TestTheHouseStyleBandDoesNotPromiseMoreThanTheCopyListDelivers(t *testing.T
 	// cannot quietly drift away from the list.
 	if len(copyableFromPrimary) == 0 {
 		t.Fatal("the copy list is empty while the page advertises the action")
+	}
+}
+
+// ─── Phase 6: the adversarial pass over the conversion ──────────────────────
+//
+// Started from "what would I do to this if I wanted it to fail", not from the
+// list of what changed. Three things came out of it.
+
+// FINDING 1 — the presentation tile stated a fact about a read that failed.
+//
+// The handler collapsed a settings-read error into `false`, which the page then
+// rendered as "Default". An operator looking at a site with a custom theme, at
+// the moment the settings store was unreachable, would have been told in plain
+// words that it was on the product default. The error path is exactly where a
+// confident wrong answer does the most damage, because nothing else on screen
+// is contradicting it.
+func TestThePresentationTileDoesNotInventAnAnswerWhenTheReadFailed(t *testing.T) {
+	unknown := scopedSettingsBody("d1", "customer.example", map[string]string{}, presUnknown)
+	tile := statCardIn(t, unknown, "Presentation")
+	if strings.Contains(tile, ">Default<") || strings.Contains(tile, ">Custom<") {
+		t.Errorf("a settings read that failed is reported as a definite state: %s", tile)
+	}
+	if !strings.Contains(tile, ">—<") {
+		t.Errorf("the tile does not mark the value as unavailable: %s", tile)
+	}
+	// The chip must not claim it either — it is the half an operator reads while
+	// the band is shut, so a confident chip over an honest tile is still a lie.
+	if strings.Contains(unknown, `mon-chip--off">product default`) {
+		t.Error("the collapsed band claims the product default for a state nobody could read")
+	}
+	if !strings.Contains(unknown, "not known") {
+		t.Error("the band's chip does not say the state is unknown")
+	}
+	// And the honest states must still be distinguishable, or "unknown" has just
+	// been made the answer to everything.
+	if !strings.Contains(statCardIn(t, scopedSettingsBody("d", "h", nil, presDefault), "Presentation"), ">Default<") {
+		t.Error("a site genuinely on the product default no longer says so")
+	}
+	if !strings.Contains(statCardIn(t, scopedSettingsBody("d", "h", nil, presCustom), "Presentation"), ">Custom<") {
+		t.Error("a site genuinely carrying its own presentation no longer says so")
+	}
+}
+
+// FINDING 2 — four of the five converted pages had no CSP assertion.
+//
+// Only the domain home page was covered. The house-style rule names
+// assertCSPSafe as the thing standing between a page and an inline `style="…"`
+// attribute, and a restyling is precisely the edit that introduces one. Every
+// converted page is held to it now, not just the one that happened to have a
+// test already.
+func TestEveryConvertedPageIsCSPSafe(t *testing.T) {
+	d := domainWithAllowance(t, true, 2)
+	for _, c := range []struct {
+		name string
+		page string
+	}{
+		{"Website", scopedWebsitePage(siteWithEval(t, true), "bistro",
+			bizsiteContentForTest("Test"), true, customsiteManifestForTest(30))},
+		{"Visitors", scopedAnalyticsBody(1200, 340, 41.5, 62, []analytics.PageStat{
+			{Path: "/", Pageviews: 900, UniqueVisitors: 260}})},
+		{"Domain home", scopedConsolePage(d, 12, 3, 0, true, nil, nil, nil)},
+		{"SEO", scopedSEOBody("d1", "https://customer.example", map[string]string{})},
+		{"Content", scopedContentPage(d, []dbpkg.Article{
+			{Title: "Hello", Slug: "hello", Status: "published", UpdatedAt: time.Now()}})},
+		{"Settings", scopedSettingsBody("d1", "customer.example",
+			map[string]string{settings.KeySiteName: "Customer Ltd"}, presCustom)},
+	} {
+		assertCSPSafe(t, c.name, c.page)
+	}
+}
+
+// FINDING 3 — the escaping was correct and nothing held it there.
+//
+// Every value a customer controls did reach the panel escaped, which is a real
+// result rather than a skipped step. But no test said so, so swapping one
+// `esc(…)` for a bare value would have passed every gate in the repository and
+// put stored script into the operator's own console — an admin page is the worst
+// possible place to land it, because the reader is the person with every
+// permission.
+//
+// These pages are string concatenation, not templates, so the escaping is a
+// convention rather than a property of the renderer. Conventions need tests.
+func TestHostileCustomerContentReachesThePanelEscaped(t *testing.T) {
+	const payload = `"><img src=x onerror=alert(1)>`
+
+	d := domainWithAllowance(t, true, 2)
+	for _, c := range []struct {
+		name  string
+		page  string
+		field string
+	}{
+		{"the site name an operator typed into Settings",
+			scopedSettingsBody("d1", "customer.example",
+				map[string]string{settings.KeySiteName: payload}, presDefault), "site name"},
+		{"a page path recorded by the analytics collector",
+			scopedAnalyticsBody(10, 5, 0, 0, []analytics.PageStat{{Path: payload, Pageviews: 3}}), "path"},
+		{"an article title",
+			scopedContentPage(d, []dbpkg.Article{
+				{Title: payload, Slug: "x", Status: "published", UpdatedAt: time.Now()}}), "title"},
+		{"an SEO directive declared for the domain",
+			scopedSEOBody("d1", "https://customer.example",
+				map[string]string{scopedSEOFields[0].Key: payload}), "directive"},
+	} {
+		if strings.Contains(c.page, payload) {
+			t.Errorf("%s reaches the panel unescaped — the %s is stored script running in the "+
+				"console of the one reader who holds every permission", c.name, c.field)
+		}
+		// The value must still be VISIBLE, escaped. Dropping it entirely would
+		// pass the check above while hiding what a site actually contains.
+		if !strings.Contains(c.page, "&lt;img src=x") {
+			t.Errorf("%s: the value is not rendered at all, so the page hides what the site "+
+				"actually holds", c.name)
+		}
 	}
 }

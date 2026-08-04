@@ -61,17 +61,22 @@ func (a *App) handleOSScopedSettings(w http.ResponseWriter, r *http.Request) {
 	// rather than assumed: the copy action below is one way to arrive here and the
 	// Theme Studio is another, and a chip saying "product default" over a site with
 	// a custom theme would be a claim defect.
-	presentationCustom := false
+	//
+	// A FAILED read is its own answer. Collapsing the error into `false` would put
+	// "Default" on the tile as a statement of fact about a site nobody managed to
+	// look at — the error path is exactly where confident wrong answers come from.
+	pres := presUnknown
 	if all, err := a.siteSettings.GetAll(r.Context(), sc); err == nil {
+		pres = presDefault
 		for _, k := range copyableFromPrimary {
 			if strings.TrimSpace(all[k]) != "" {
-				presentationCustom = true
+				pres = presCustom
 				break
 			}
 		}
 	}
 
-	body := scopedSettingsBody(d.ID, d.Host, values, presentationCustom) + scopedSettingsScript(nonce)
+	body := scopedSettingsBody(d.ID, d.Host, values, pres) + scopedSettingsScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Settings · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
 }
 
@@ -86,7 +91,18 @@ func (a *App) handleOSScopedSettings(w http.ResponseWriter, r *http.Request) {
 // to reach it was to craft a POST by hand — the same defect as the eval opt-in,
 // which shipped in the config and in the connector with no control on any page.
 // A capability an operator cannot find is a capability the product does not have.
-func scopedSettingsBody(domainID, host string, values map[string]string, presentationCustom bool) string {
+// presentationState is tri-state on purpose. "This site is on the product
+// default" and "nobody could read what this site is on" are different facts, and
+// a bool has nowhere to put the second one.
+type presentationState int
+
+const (
+	presUnknown presentationState = iota
+	presDefault
+	presCustom
+)
+
+func scopedSettingsBody(domainID, host string, values map[string]string, pres presentationState) string {
 	esc := html.EscapeString
 	var b strings.Builder
 
@@ -121,8 +137,13 @@ func scopedSettingsBody(domainID, host string, values map[string]string, present
 	if strings.TrimSpace(values[settings.KeySiteAuthor]) != "" {
 		authorValue = "Set"
 	}
-	presentationValue := "Default"
-	if presentationCustom {
+	// "—" rather than a guess, matching the mailbox tile's existing idiom for a
+	// number this console cannot currently state.
+	presentationValue := "—"
+	switch pres {
+	case presDefault:
+		presentationValue = "Default"
+	case presCustom:
 		presentationValue = "Custom"
 	}
 
@@ -155,8 +176,11 @@ func scopedSettingsBody(domainID, host string, values map[string]string, present
 	b.WriteString(monAcc("🪪", "Identity", "Name, tagline, description and by-line for this site alone",
 		identChip, true, ident.String()))
 
-	styleChip := `<span class="mon-chip mon-chip--off">product default</span>`
-	if presentationCustom {
+	styleChip := `<span class="mon-chip mon-chip--off">not known</span>`
+	switch pres {
+	case presDefault:
+		styleChip = `<span class="mon-chip mon-chip--off">product default</span>`
+	case presCustom:
 		styleChip = `<span class="mon-chip mon-chip--on">custom</span>`
 	}
 	b.WriteString(monAcc("🎨", "Start from your house style",
