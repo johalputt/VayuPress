@@ -211,3 +211,38 @@ func TestScopedHomePageMeetsTheHouseStyle(t *testing.T) {
 		t.Errorf("the members tile does not show the count it was given: %s", v)
 	}
 }
+
+// Phase 3 — SEO. Built inline in its handler until now, so it had no test.
+func TestScopedSEOPageMeetsTheHouseStyle(t *testing.T) {
+	// A site that has set nothing: the state every new customer domain starts in.
+	none := scopedSEOBody("d1", "https://customer.example", map[string]string{})
+	assertHouseStyle(t, none, houseStyle{Name: "SEO (nothing set)", MinTiles: 4, MinBands: 3})
+	if tile := statCardIn(t, none, "Directives set"); !strings.Contains(tile, "stat-card--warn") {
+		t.Errorf("a site declaring nothing to crawlers is not flagged: %s", tile)
+	}
+	if !strings.Contains(none, "all default") {
+		t.Error("the collapsed band does not say everything is still the product default")
+	}
+
+	// And one that has set something: the warning must clear, or it cries wolf.
+	some := scopedSEOBody("d1", "https://customer.example", map[string]string{
+		scopedSEOFields[0].Key: "A real title",
+	})
+	if tile := statCardIn(t, some, "Directives set"); strings.Contains(tile, "stat-card--warn") {
+		t.Errorf("a site that has set a directive is still flagged: %s", tile)
+	}
+	if !strings.Contains(some, "A real title") {
+		t.Error("the declared value is not shown, so the page cannot be checked against reality")
+	}
+
+	// An onion is served over http BY DESIGN. Reporting that as a fault would be
+	// a claim defect: the page would be telling an operator to fix something
+	// that is correct.
+	onion := scopedSEOBody("d1", "http://abc.onion", map[string]string{})
+	if tile := statCardIn(t, onion, "Scheme"); !strings.Contains(tile, ">http<") {
+		t.Errorf("the scheme tile does not report what the origin actually uses: %s", tile)
+	}
+	if strings.Contains(statCardIn(t, onion, "Scheme"), "stat-card--warn") {
+		t.Error("an onion served over http is toned as a problem; it is how onions work")
+	}
+}

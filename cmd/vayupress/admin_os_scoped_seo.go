@@ -23,6 +23,8 @@ import (
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/seo"
@@ -61,38 +63,102 @@ func (a *App) handleOSScopedSEO(w http.ResponseWriter, r *http.Request) {
 		`<p class="page-sub"><a href="/os/d/` + esc(d.ID) + `">← ` + esc(d.Host) + `</a></p></div></div>` +
 		`<p class="page-sub">What search engines are told about <b>` + esc(d.Host) + `</b>.</p>`
 
-	// What this domain currently declares, read from its own scope.
-	body += `<div class="section-head"><div class="section-head__title">This site's head directives</div>` +
-		`<div class="section-head__hint">Edited in this site's Theme Studio</div></div><div class="card">`
+	// Read this domain's own declared values first, so both the tiles and the
+	// bands describe the same state rather than one being computed twice.
+	declared := map[string]string{}
 	for _, f := range scopedSEOFields {
-		v := a.siteSettings.Get(r.Context(), sc, f.Key)
+		declared[f.Key] = a.siteSettings.Get(r.Context(), sc, f.Key)
+	}
+	body += scopedSEOBody(d.ID, origin, declared)
+
+	writeOSHTML(w, r, adminOSLayout(nonce, "SEO · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
+}
+
+// scopedSEOBody renders one domain's SEO state.
+//
+// Extracted from the handler, which built its markup inline against a request
+// and a settings store — so the page could not be rendered in a test, and its
+// restyling could not be checked. Same reason as the traffic page.
+func scopedSEOBody(domainID, origin string, declared map[string]string) string {
+	esc := html.EscapeString
+	var b strings.Builder
+
+	// ── Four tiles ────────────────────────────────────────────────────────────
+	//
+	// The question this page answers at a glance is "how much of this site's SEO
+	// is actually set, and how much is still the product default?" — a count, not
+	// a list, because the list is one band down.
+	set := 0
+	for _, f := range scopedSEOFields {
+		if strings.TrimSpace(declared[f.Key]) != "" {
+			set++
+		}
+	}
+	total := len(scopedSEOFields)
+	setTone := ""
+	if set == 0 {
+		setTone = "warn"
+	}
+	b.WriteString(`<div class="stat-grid">` +
+		osStatTile("Directives set", strconv.Itoa(set)+" of "+strconv.Itoa(total), setTone) +
+		osStatTile("Using defaults", strconv.Itoa(total-set), "") +
+		osStatTile("Origin", strings.TrimPrefix(strings.TrimPrefix(origin, "https://"), "http://"), "") +
+		osStatTile("Scheme", schemeOf(origin), "") +
+		`</div>`)
+
+	// ── The bands, as collapsible details (house style §11) ──────────────────
+	b.WriteString(`<div class="section-head"><span class="section-head__title">What crawlers are told</span>` +
+		`<span class="section-head__hint">This domain only</span></div>`)
+	b.WriteString(`<div class="mon-stack">`)
+
+	var head strings.Builder
+	head.WriteString(`<div class="card">`)
+	for _, f := range scopedSEOFields {
 		shown := `<span class="muted">not set — using the product default</span>`
-		if v != "" {
+		if v := declared[f.Key]; v != "" {
 			shown = `<code class="mono">` + esc(v) + `</code>`
 		}
-		body += `<p class="text-sm"><b>` + esc(f.Label) + `</b> — ` + shown +
-			`<br><span class="text-sm muted">` + esc(f.Hint) + `</span></p>`
+		head.WriteString(`<p class="text-sm"><b>` + esc(f.Label) + `</b> — ` + shown +
+			`<br><span class="text-sm muted">` + esc(f.Hint) + `</span></p>`)
 	}
-	body += `<div class="vm-row"><a class="btn btn--primary btn--sm" href="/os/d/` + esc(d.ID) +
-		`/theme">Edit in Theme Studio</a></div></div>`
+	head.WriteString(`<div class="vm-row"><a class="btn btn--primary btn--sm" href="/os/d/` + esc(domainID) +
+		`/theme">Edit in Theme Studio</a></div></div>`)
+	headChip := `<span class="mon-chip mon-chip--off">all default</span>`
+	if set > 0 {
+		headChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(set) + ` set</span>`
+	}
+	b.WriteString(monAcc("🏷", "This site's head directives", "Edited in this site's Theme Studio",
+		headChip, true, head.String()))
 
 	// This domain's own live artefacts, linked so they can be checked rather
 	// than asserted.
-	body += `<div class="section-head"><div class="section-head__title">This site's live files</div>` +
-		`<div class="section-head__hint">Served per host — open them to see what a crawler sees</div></div>` +
-		`<div class="card"><div class="vm-row">` +
-		`<a class="btn btn--ghost btn--sm" href="` + esc(origin) + `/sitemap.xml" target="_blank" rel="noopener noreferrer">sitemap.xml ↗</a>` +
-		`<a class="btn btn--ghost btn--sm" href="` + esc(origin) + `/robots.txt" target="_blank" rel="noopener noreferrer">robots.txt ↗</a>` +
-		`<a class="btn btn--ghost btn--sm" href="` + esc(origin) + `/feed.xml" target="_blank" rel="noopener noreferrer">feed.xml ↗</a>` +
-		`</div><p class="text-sm muted">These are generated for this hostname from this domain's own posts.</p></div>`
+	b.WriteString(monAcc("📄", "This site's live files",
+		"Served per host — open them to see what a crawler sees",
+		`<span class="mon-chip mon-chip--on">3 files</span>`, false,
+		`<div class="card"><div class="vm-row">`+
+			`<a class="btn btn--ghost btn--sm" href="`+esc(origin)+`/sitemap.xml" target="_blank" rel="noopener noreferrer">sitemap.xml ↗</a>`+
+			`<a class="btn btn--ghost btn--sm" href="`+esc(origin)+`/robots.txt" target="_blank" rel="noopener noreferrer">robots.txt ↗</a>`+
+			`<a class="btn btn--ghost btn--sm" href="`+esc(origin)+`/feed.xml" target="_blank" rel="noopener noreferrer">feed.xml ↗</a>`+
+			`</div><p class="text-sm muted">These are generated for this hostname from this domain's own posts.</p></div>`))
 
 	// The honest limit, on the page rather than in a commit message.
-	body += `<div class="section-head"><div class="section-head__title">What is still install-level</div>` +
-		`<div class="section-head__hint">Not per-domain, and not claimed to be</div></div>` +
-		`<div class="card"><p class="text-sm muted">The <a href="/os/seo">SEO health report</a> checks cached ` +
-		`artefacts and the install's canonical hostname, so it describes the primary site. It is not shown ` +
-		`here rather than shown here mislabelled: a freshness check reported under this domain's name, ` +
-		`measuring another site's files, would be worse than no check at all.</p></div>`
+	b.WriteString(monAcc("🏛", "What is still install-level", "Not per-domain, and not claimed to be",
+		`<span class="mon-chip mon-chip--off">by construction</span>`, false,
+		`<div class="card"><p class="text-sm muted">The <a href="/os/seo">SEO health report</a> checks cached `+
+			`artefacts and the install's canonical hostname, so it describes the primary site. It is not shown `+
+			`here rather than shown here mislabelled: a freshness check reported under this domain's name, `+
+			`measuring another site's files, would be worse than no check at all.</p></div>`))
 
-	writeOSHTML(w, r, adminOSLayout(nonce, "SEO · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
+	b.WriteString(`</div>`) // mon-stack
+	return b.String()
+}
+
+// schemeOf names the scheme an origin uses, so the tile states it rather than
+// leaving an operator to read it out of a URL. An onion is served over http by
+// design and that is not a fault to be toned as one.
+func schemeOf(origin string) string {
+	if strings.HasPrefix(origin, "http://") {
+		return "http"
+	}
+	return "https"
 }
