@@ -115,6 +115,115 @@ func TestTheShieldAgentReArmsTheWatcher(t *testing.T) {
 	}
 }
 
+// THE THIRD INSTANCE of the discarded exit status in one incident, and the
+// worst-placed of the three. The line that restarts the APPLICATION was:
+//
+//	systemctl try-restart vayupress 2>/dev/null || true
+//
+// so if the app did not come back, the helper exited 0 having taken the whole
+// install down and recorded a successful provisioning run.
+//
+// What makes it worse than the other two is the shape of the failure. nginx
+// stays up either way, so from outside there is no outage to see: the site
+// accepts connections and never answers, and the panel that would explain it is
+// the thing that is down. It cost a live install ten minutes of being dark with
+// nothing anywhere saying why.
+func TestTheAppRestartIsVerifiedRatherThanAssumed(t *testing.T) {
+	src := shellCode(readSourceFile(t, "../../scripts/setup-vayudomain.sh"))
+
+	i := strings.Index(src, "try-restart vayupress")
+	if i < 0 {
+		t.Skip("the helper no longer restarts the app at the end of a run")
+	}
+	if !strings.Contains(src, "restart_app_verified") {
+		t.Fatal("the app restart is fired and never confirmed, so a run that leaves VayuPress " +
+			"down reports success — and nginx stays up, so it does not even look like an outage")
+	}
+
+	fn := src[strings.Index(src, "restart_app_verified() {"):]
+	if e := strings.Index(fn, "\n}\n"); e > 0 {
+		fn = fn[:e]
+	}
+	// `is-active` is NOT the check. systemd calls a hung process active, and a
+	// process that is alive and not answering is precisely this failure.
+	if strings.Contains(fn, "is-active") && !strings.Contains(src, "app_answers") {
+		t.Error("liveness is judged by systemd's view of the process rather than by asking the " +
+			"app, so a hung process passes the check that exists to catch it")
+	}
+	if !strings.Contains(src, "127.0.0.1:8080") {
+		t.Error("nothing asks the app over loopback, so 'it came back' is an assumption again")
+	}
+	// And the failure has to reach the run's result, or the panel reports a clean
+	// provisioning pass over an install that is serving nothing.
+	if !strings.Contains(src, "restart_app_verified || HOST_FAILURES") {
+		t.Error("a failed app restart does not count toward the run's failures, so the run still " +
+			"exits 0 and the panel calls it a success")
+	}
+}
+
+// A CERTIFICATE THAT NOTHING SERVES, caused by the restart cap meant to protect
+// the machine. Observed on a live install, in the run's own log:
+//
+//	Congratulations! Your certificate and chain have been saved at: ...
+//	nginx has already been restarted once in this run; not restarting again.
+//	certificate issued for test.johal.in, but this server does not serve it yet.
+//
+// The pre-flight escalation spent the run's single restart allowance, certbot
+// then succeeded, and the post-issuance step was refused the restart that would
+// have made the certificate usable. The run ended with a valid certificate on
+// disk, the host recorded as failed, and the next run set to repeat it exactly.
+//
+// That is worse than the interruption the cap existed to prevent. The cap was
+// the right instinct at the wrong granularity: per-host it multiplies with the
+// host count, per-phase it does not.
+func TestACertificateIsNeverIssuedAndLeftUnserved(t *testing.T) {
+	src := shellCode(readSourceFile(t, "../../scripts/setup-vayudomain.sh"))
+
+	if !strings.Contains(src, "settle_pending_hosts") {
+		t.Fatal("there is no end-of-run apply, so a host whose vhost was not picked up after " +
+			"issuance is left with a certificate nothing serves")
+	}
+	if !strings.Contains(src, "settle_pending_hosts\n") {
+		t.Error("settle_pending_hosts is defined and never called")
+	}
+
+	// The post-issuance step must DEFER rather than restart per host, or the
+	// bound this exists to keep is gone again.
+	i := strings.Index(src, "PENDING_SERVE+=(")
+	if i < 0 {
+		t.Fatal("nothing is ever deferred, so the end-of-run apply has no work and the stranding " +
+			"is unchanged")
+	}
+
+	fn := src[strings.Index(src, "settle_pending_hosts() {"):]
+	if e := strings.Index(fn, "\n}\n"); e > 0 {
+		fn = fn[:e]
+	}
+	// One restart for the whole set, not one per host.
+	//
+	// Counted by the INVOCATION form, not the bare string: the failure message
+	// beside it names the same command, so a plain count is 2 against correct
+	// code. Asserting on prose rather than behaviour is the defect this whole
+	// file exists to catch, and it was committed here first.
+	if strings.Count(fn, `$(systemctl restart nginx`) != 1 {
+		t.Errorf("the end-of-run apply does not restart exactly once for all pending hosts, so "+
+			"the per-host multiplication is back:\n%s", fn)
+	}
+	// It must try the free mechanism first, and it must re-check per host after,
+	// or "settled" is an assumption rather than a measurement.
+	if !strings.Contains(fn, "nginx -s reload") {
+		t.Error("the end-of-run apply restarts without first trying the signal, so a machine " +
+			"where reload works is interrupted for nothing")
+	}
+	if !strings.Contains(fn, "probe_settles probe_https") {
+		t.Error("hosts are marked active without confirming the server actually serves them — " +
+			"the exact assumption this whole helper was rewritten to stop making")
+	}
+	if !strings.Contains(fn, "nginx_ok") {
+		t.Error("the end-of-run apply can restart onto a configuration nginx rejects")
+	}
+}
+
 // AND IT MUST NOT BE A BUTTON. The repair was reachable only by pressing
 // "Repair the certificate helpers", and the operator who needs it is precisely
 // the one with no way to know they need it: from the panel, a watcher that is

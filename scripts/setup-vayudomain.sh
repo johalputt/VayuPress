@@ -493,6 +493,10 @@ reload_ok() {
 }
 
 HOST_FAILURES=0
+
+# PENDING_SERVE collects hosts whose certificate was issued in this run but whose
+# vhost the running server has not picked up. Settled once, at the end.
+PENDING_SERVE=()
 for HOST in "${HOSTS[@]}"; do
   HOST="${HOST//[[:space:]]/}"
   [[ -z "$HOST" || "$HOST" == "$DOMAIN" ]] && continue
@@ -593,16 +597,16 @@ for HOST in "${HOSTS[@]}"; do
       # on disk behind a server that never loaded the vhost referencing it is
       # indistinguishable, from the panel, from no certificate at all — and it is
       # worse, because the registry would say active.
-      if probe_https "$HOST" || force_apply probe_https "$HOST"; then
+      if probe_https "$HOST"; then
         set_tls "$HOST" active
         ok "VayuDomain live: https://${HOST}"
       else
-        warn "certificate issued for ${HOST}, but this server does not serve it yet."
-        warn "  nginx accepted and reloaded the configuration and the HTTPS request still"
-        warn "  does not reach the new server block. The certificate is valid and kept;"
-        warn "  what has not taken effect is the vhost that uses it."
-        set_tls "$HOST" failed
-        HOST_FAILURES=$((HOST_FAILURES + 1))
+        # DEFERRED, not restarted here. See settle_pending_hosts: a restart per
+        # host multiplies with the host count, and refusing one strands a
+        # certificate that was just paid for. One apply at the end does both jobs.
+        PENDING_SERVE+=("$HOST")
+        info "certificate issued for ${HOST}; the running server has not loaded its vhost yet."
+        info "  Deferred to a single apply at the end of this run."
       fi
     else
       warn "nginx test failed after writing ${HOST} vhost — leaving it disabled."
@@ -616,7 +620,148 @@ for HOST in "${HOSTS[@]}"; do
   fi
 done
 
-systemctl try-restart vayupress 2>/dev/null || true
+# restart_app_verified restarts VayuPress and CONFIRMS it came back.
+#
+# THE THIRD INSTANCE of this defect in one incident, and the worst-placed of the
+# three. It was:
+#
+#	systemctl try-restart vayupress 2>/dev/null || true
+#
+# — the status of the command that restarts the application itself, discarded.
+# If the app did not come back, this helper exited 0 having taken the whole
+# install down, and recorded a successful provisioning run while nothing was
+# being served.
+#
+# What makes it the worst one is the SHAPE of the failure. nginx stays up either
+# way, so from outside there is no outage to see: the site accepts connections
+# and never answers. That is the hardest state to diagnose remotely, and the
+# panel that would explain it is the thing that is down.
+#
+# `is-active` is not the check. systemd calls a hung process active, and a
+# process that is alive and not answering is precisely this failure. So ask the
+# app over loopback, the same way everything else here now asks rather than
+# assumes.
+app_answers() {
+  command -v curl >/dev/null 2>&1 || return 0
+  curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:8080/health" 2>/dev/null
+}
+
+restart_app_verified() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  systemctl try-restart vayupress 2>/dev/null || true
+
+  local _i
+  for _i in 1 2 3 4 5 6 7 8 9 10; do
+    app_answers && return 0
+    sleep 1
+  done
+
+  warn "VayuPress did not answer after the restart at the end of this run."
+  warn "  nginx is still up, so from outside this reads as a site that accepts connections"
+  warn "  and never replies rather than an outage. Starting the service."
+  systemctl start vayupress >/dev/null 2>&1 || true
+  for _i in 1 2 3 4 5 6 7 8 9 10; do
+    app_answers && { ok "VayuPress is answering again."; return 0; }
+    sleep 1
+  done
+
+  warn "VayuPress is STILL not answering on 127.0.0.1:8080. Nothing on this install is"
+  warn "  being served, which is now more serious than any certificate. systemd's last"
+  warn "  words on the unit:"
+  systemctl status vayupress --no-pager -n 20 2>&1 | sed 's/^/      /' >&2 || true
+  return 1
+}
+
+
+# settle_pending_hosts makes every certificate issued in this run actually serve.
+#
+# THE DEFECT THIS REPLACES, measured on a live install rather than imagined. The
+# escalation ladder restarted nginx during the pre-flight, which spent the run's
+# single restart allowance. certbot then issued the certificate successfully --
+# and the post-issuance step found the reload had once again not taken effect,
+# asked for a restart, and was REFUSED because one had already happened:
+#
+#   Congratulations! Your certificate and chain have been saved at: ...
+#   nginx has already been restarted once in this run; not restarting again.
+#   certificate issued for test.johal.in, but this server does not serve it yet.
+#
+# So the run ended with a valid certificate on disk that nothing served, and
+# recorded the host as failed. That is a worse outcome than the brief
+# interruption the allowance existed to prevent: the operator sat through the
+# whole issuance and got nothing for it, and the next run would do the same.
+#
+# The allowance was the right instinct at the wrong granularity. A restart PER
+# HOST multiplies with the number of hosts; a restart per PHASE does not. Every
+# host still waiting is settled here with ONE apply for the whole run, however
+# many there are -- so the cost is bounded at two restarts per run regardless of
+# how many domains this install carries.
+settle_pending_hosts() {
+  [ "${#PENDING_SERVE[@]}" -gt 0 ] || return 0
+  local host out
+  info "${#PENDING_SERVE[@]} host(s) hold a certificate the running server has not loaded."
+
+  if ! nginx_ok; then
+    warn "  not applying: nginx rejects the configuration on disk."
+    for host in "${PENDING_SERVE[@]}"; do
+      set_tls "$host" failed
+      HOST_FAILURES=$((HOST_FAILURES + 1))
+    done
+    return 1
+  fi
+
+  # Cheapest first, exactly as in force_apply. On the install this was written
+  # for the signal never worked -- not on the original master and not on the
+  # fresh one after a restart -- but a box where it does work should not be
+  # interrupted for nothing.
+  if out="$(nginx -s reload 2>&1)"; then
+    info "  signalled the running master directly (nginx -s reload)."
+  else
+    warn "  nginx -s reload failed: ${out:-no output}"
+  fi
+
+  local still=()
+  for host in "${PENDING_SERVE[@]}"; do
+    probe_https "$host" || still+=("$host")
+  done
+  if [ "${#still[@]}" -eq 0 ]; then
+    for host in "${PENDING_SERVE[@]}"; do
+      set_tls "$host" active
+      ok "VayuDomain live: https://${host}"
+    done
+    return 0
+  fi
+
+  warn "  the reload did not take effect; restarting nginx once for all of them."
+  if ! out="$(systemctl restart nginx 2>&1)"; then
+    warn "  systemctl restart nginx failed: ${out:-no output}"
+  fi
+  if ! systemctl is-active --quiet nginx 2>/dev/null; then
+    warn "  nginx is NOT running after the restart -- starting it."
+    systemctl start nginx >/dev/null 2>&1 || nginx >/dev/null 2>&1 || true
+    sleep 1
+  fi
+  if ! systemctl is-active --quiet nginx 2>/dev/null && ! pgrep -o -x nginx >/dev/null 2>&1; then
+    warn "  nginx is still not running. No site on this machine is being served, which is"
+    warn "  now more serious than any certificate."
+  fi
+
+  for host in "${PENDING_SERVE[@]}"; do
+    if probe_settles probe_https "$host"; then
+      set_tls "$host" active
+      ok "VayuDomain live: https://${host}"
+    else
+      warn "certificate issued for ${host}, but this server still does not serve it."
+      warn "  The certificate is valid and kept; what has not taken effect is the vhost."
+      set_tls "$host" failed
+      HOST_FAILURES=$((HOST_FAILURES + 1))
+    fi
+  done
+  return 0
+}
+
+settle_pending_hosts
+
+restart_app_verified || HOST_FAILURES=$((HOST_FAILURES + 1))
 
 # Exit non-zero when ANY host failed.
 #

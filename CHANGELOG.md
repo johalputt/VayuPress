@@ -6,6 +6,69 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.78] — 2026-08-04
+
+**A certificate was issued and left unserved, by the cap meant to protect the
+machine.**
+
+Ships immediately rather than batching: v3.16.77's helper can leave a live
+install dark, and did.
+
+The escalation ladder worked. On a live install it restarted nginx, got the host
+serving, and certbot issued the certificate. Then, from the run's own log:
+
+```text
+ - Congratulations! Your certificate and chain have been saved at: ...
+   nginx has already been restarted once in this run; not restarting again.
+   certificate issued for test.johal.in, but this server does not serve it yet.
+```
+
+The pre-flight escalation had spent the run's single restart allowance, so the
+step that makes the certificate usable was refused. The run ended with a valid
+certificate on disk that nothing served, the host recorded as failed, and the
+next run set to repeat it exactly.
+
+### Fixed
+- **The restart allowance moved from per-run to per-phase.** It was the right
+  instinct at the wrong granularity: a restart per host multiplies with the host
+  count, which is what the cap was for, but refusing one strands a certificate
+  that has just been issued. Hosts whose vhost the running server has not picked
+  up are now collected and settled with **one apply at the end of the run**,
+  however many there are — signal first, restart only if that does not take,
+  then each host re-probed over HTTPS before it is recorded as active. Two
+  restarts per run maximum, independent of how many domains an install carries.
+
+- **The app restart at the end of a run is verified.** It was
+
+  ```sh
+  systemctl try-restart vayupress 2>/dev/null || true
+  ```
+
+  the third instance of the discarded exit status in this incident and the
+  worst-placed. `try-restart` is documented to do **nothing at all** when the
+  unit is not running, so any moment the app was stopped, the helper left it
+  stopped and recorded a successful run. nginx stays up, so there is no outage to
+  see from outside — the site accepts connections and never answers, and the
+  panel that would explain it is the thing that is down. That took a live install
+  dark for ten minutes with nothing anywhere saying why.
+
+  The helper now asks the app on `127.0.0.1:8080/health` — `is-active` is not the
+  check, because systemd calls a hung process active and a hung process is
+  precisely this failure — starts the service if it did not come back, and counts
+  a failure toward the run's result instead of exiting 0 over a dark install.
+
+### Fixed (test integrity)
+- **A new assertion counted a string inside a `warn` message.** It required
+  exactly one `systemctl restart nginx` in the end-of-run apply and found two,
+  because the failure message beside the command names the same command. It now
+  counts the invocation form. Asserting on prose rather than behaviour is the
+  defect these gates exist to catch, and it was committed inside one of them.
+
+Three mutations run: never calling the end-of-run apply, marking hosts active
+without probing, and reverting the app restart to its discarded form. All killed.
+
+---
+
 ## [3.16.77] — 2026-08-04
 
 **The repair stops being a button.**
