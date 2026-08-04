@@ -143,21 +143,21 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 			// empty". Without that an assistant editing one line would blank
 			// every other field on somebody's live website.
 			var in struct {
-				Host      string  `json:"host"`
-				Serves    *string `json:"serves"`
-				Template  *string `json:"template"`
-				Name      *string `json:"name"`
-				Tagline   *string `json:"tagline"`
-				About     *string `json:"about"`
-				Phone     *string `json:"phone"`
-				Email     *string `json:"email"`
-				Address   *string `json:"address"`
-				Hours     *string `json:"hours"`
-				CTA       *string `json:"cta"`
-				CTALink   *string `json:"cta_link"`
-				HeroImg   *string `json:"hero_img"`
-				ShowBlog  *bool   `json:"show_blog"`
-				AllowEval *bool   `json:"allow_eval"`
+				Host      string    `json:"host"`
+				Serves    *string   `json:"serves"`
+				Template  *string   `json:"template"`
+				Name      *string   `json:"name"`
+				Tagline   *string   `json:"tagline"`
+				About     *string   `json:"about"`
+				Phone     *string   `json:"phone"`
+				Email     *string   `json:"email"`
+				Address   *string   `json:"address"`
+				Hours     *string   `json:"hours"`
+				CTA       *string   `json:"cta"`
+				CTALink   *string   `json:"cta_link"`
+				HeroImg   *string   `json:"hero_img"`
+				ShowBlog  *flexBool `json:"show_blog"`
+				AllowEval *flexBool `json:"allow_eval"`
 			}
 			if err := json.Unmarshal(args, &in); err != nil {
 				return "", errBadArgs(err)
@@ -195,7 +195,7 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 			set(&c.CTALink, in.CTALink)
 			set(&c.HeroImg, in.HeroImg)
 			if in.ShowBlog != nil {
-				c.ShowBlog = *in.ShowBlog
+				c.ShowBlog = in.ShowBlog.Bool()
 			}
 
 			cfg, err := scopedWebsiteConfig(d, mode, template, c)
@@ -208,7 +208,7 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 			// edit — a setting that turns itself off is worse than no setting.
 			cfg.AllowEval = prev.AllowEval
 			if in.AllowEval != nil {
-				cfg.AllowEval = *in.AllowEval
+				cfg.AllowEval = in.AllowEval.Bool()
 			}
 			if err := a.domains.SetSite(ctx, d.ID, cfg); err != nil {
 				return "", err

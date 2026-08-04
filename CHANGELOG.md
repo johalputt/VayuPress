@@ -6,6 +6,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.85] — 2026-08-04
+
+**A boolean tool argument could not be set at all.**
+
+Ships immediately: the setting added two releases ago was unreachable in
+practice.
+
+Turning on the eval opt-in through the connector failed on the first attempt:
+
+```text
+invalid arguments: json: cannot unmarshal string into Go struct field
+.allow_eval of type bool
+```
+
+The tool schema declares `{"type": "boolean"}` and the caller passed `true`; what
+arrived on the wire was the **string** `"true"`. The schema was right and the
+client was wrong — which is exactly why the server cannot depend on it. An MCP
+server talks to whatever client is pointed at it, and a strict decode turns
+somebody else's type coercion into a setting the operator simply cannot use,
+reported as an error about Go structs.
+
+### Fixed
+- **Boolean tool arguments now decode from a real boolean or from the strings a
+  coercing client produces** (`"true"`, `"False"`, `"1"`, `"0"`, with surrounding
+  space). `show_blog` carried the identical latent fault and would have failed
+  the same way the first time anyone set it.
+
+  Deliberately narrow: `"yes"`, `"no"`, `"on"`, `"off"` and empty are **refused**.
+  Silently reading `"no"` as true would enable something the operator was trying
+  to switch off, which is a worse failure than declining the value. Omitted stays
+  distinct from `false`, so a call that changes one field does not rewrite every
+  other boolean on the site.
+
+### Audit
+Two mutations. Refusing strings again — the original bug — is killed by the
+decode test. Treating any non-empty string as true is killed by the refusal test.
+Both were re-run after an initial pair that broke the build rather than failing a
+test, which proves nothing and was not counted.
+
+---
+
 ## [3.16.84] — 2026-08-04
 
 **The eval opt-in becomes reachable, and the site bundle becomes reproducible.**
