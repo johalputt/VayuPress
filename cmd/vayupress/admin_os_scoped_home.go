@@ -149,9 +149,20 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 	b.WriteString(`<div class="vm-stats">`)
 	b.WriteString(vmStatTile(strconv.Itoa(posts), "Posts & pages", ""))
 	b.WriteString(vmStatTile(strconv.Itoa(members), "Members", ""))
-	if mailOn && d.MailEnabled {
+	// A site with mail switched on and an allowance of nothing cannot create a
+	// single mailbox, and until now that read as "0 in use" — which looks like a
+	// new site nobody has set up yet rather than one that will refuse its owner.
+	// The allowance defaults to 0 deliberately (an allowance nobody chose is not
+	// an allowance), so every new customer domain passes through this state, and
+	// it has to be visible at a glance rather than inside a collapsed card.
+	mailReady := mailOn && d.MailEnabled
+	noAllowance := mailReady && d.Limits().Mailboxes == 0
+	switch {
+	case noAllowance:
+		b.WriteString(vmStatTile("0 granted", "Mailboxes", "warn"))
+	case mailReady:
 		b.WriteString(vmStatTile(strconv.Itoa(mailboxes), "Mailboxes", ""))
-	} else {
+	default:
 		b.WriteString(vmStatTile("—", "Mailboxes", ""))
 	}
 	certLabel, certTone := scopedCertTile(d)
@@ -209,9 +220,14 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 	// would leave the "—" on the mailbox tile unexplained; the card itself says
 	// "Mail is switched off", which is the different situation an operator needs
 	// distinguished from an allowance of zero.
+	// Opened, and chipped as a problem, in the one state where the card's advice
+	// is the difference between a working customer and a confused one.
+	allowanceChip := chipFor(mailReady, strconv.Itoa(mailboxes)+" in use", "mail off")
+	if noAllowance {
+		allowanceChip = `<span class="mon-chip mon-chip--off">none granted</span>`
+	}
 	b.WriteString(monAcc("✉️", "Mailbox allowance", "How many mailboxes this site may create",
-		chipFor(mailOn && d.MailEnabled, strconv.Itoa(mailboxes)+" in use", "mail off"),
-		false, domainAllowanceCard(d, mailboxes, mailOn)))
+		allowanceChip, noAllowance, domainAllowanceCard(d, mailboxes, mailOn)))
 	b.WriteString(monAcc("🔧", "Lifecycle", "Provisioning, availability and removal",
 		chipFor(d.Status == domain.StatusActive, "active", "disabled"), false, scopedLifecycleBody(d)))
 	b.WriteString(monAcc("🏛", "What is shared, and always will be",
