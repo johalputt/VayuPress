@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/db"
 )
 
 // articleConstCSS returns the stylesheet the public article page actually
@@ -95,5 +97,30 @@ func TestTheContactHoneypotIsActuallyHidden(t *testing.T) {
 	// layout and can be clicked into.
 	if !strings.Contains(flat, "left:-") && !strings.Contains(flat, "display:none") {
 		t.Errorf(".vayu-contact-hp is positioned but not moved off-screen, so it still occupies layout: %q", decls)
+	}
+}
+
+// Having the rule in the const proves nothing unless the page that shows the
+// form actually links the stylesheet that carries it. This renders a real page
+// carrying the contact marker and reads the output, rather than trusting the
+// template.
+func TestAPageWithAContactFormLinksTheSheetThatHidesTheHoneypot(t *testing.T) {
+	Init(t.TempDir()) // the article path needs the sanitiser and settings initialised
+	SetActiveSettings(SiteSettings{Name: "Acme", Description: "A description"})
+	t.Cleanup(func() { SetActiveSettings(SiteSettings{}) })
+
+	out, err := RenderArticle(db.Article{
+		Slug: "contact", Title: "Contact", Status: "published",
+		Content: "Say hello.\n\n[[contact-form]]\n",
+	})
+	if err != nil {
+		t.Fatalf("RenderArticle: %v", err)
+	}
+	if !strings.Contains(out, `id="vayu-contact"`) {
+		t.Fatal("the contact marker did not produce a #vayu-contact section; this test is checking the wrong page")
+	}
+	if !strings.Contains(out, "/static/css/article.css") {
+		t.Error("a page carrying the contact form does not link article.css — the sheet holding " +
+			".vayu-contact-hp — so the honeypot is visible on it regardless of the rule")
 	}
 }
