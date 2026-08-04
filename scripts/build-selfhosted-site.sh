@@ -211,6 +211,49 @@ print("checked all %d page(s): no off-origin subresource, no <style> block, no i
       % len(list(out.rglob("*.html"))))
 PY
 
+# ── The two files the GitHub Pages deploy bakes, which the bundle did not ─────
+#
+# The page shows a live star count and the current version. It reads
+# assets/stars.json and assets/version.json first (instant, same-origin) and only
+# then refreshes from the GitHub API. deploy-site.yml writes both at publish
+# time, so on GitHub Pages they are always there.
+#
+# The bundle shipped without them, and the result was invisible in exactly the
+# way everything else here has been: two 404s, then a fallback fetch to
+# api.github.com that `connect-src 'self'` refuses outright. No error on screen —
+# the star count and the version simply never appeared, on a page where they are
+# part of the design.
+#
+# Baked at BUILD time, because a bundle is static: these are a snapshot, and the
+# `generated_at` stamp says so rather than implying they are live. The null form
+# is a shape the page already handles, so a build with no network still produces
+# a bundle that works — it just has nothing to show in those two spots.
+mkdir -p "${OUT}/assets"
+STARS_JSON='{"stargazers_count":null}'
+VERSION_JSON='{"tag_name":null}'
+NOW="$(date -u +%FT%TZ)"
+
+if [ -n "${VAYU_SITE_STARS:-}" ]; then
+  STARS_JSON="$(printf '{"stargazers_count":%s,"generated_at":"%s"}' "$VAYU_SITE_STARS" "$NOW")"
+elif command -v curl >/dev/null 2>&1; then
+  COUNT="$(curl -sS --max-time 10 -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/johalputt/VayuPress" 2>/dev/null \
+            | grep -o '"stargazers_count"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$' || true)"
+  [ -n "${COUNT:-}" ] && STARS_JSON="$(printf '{"stargazers_count":%s,"generated_at":"%s"}' "$COUNT" "$NOW")"
+fi
+
+if [ -n "${VAYU_SITE_VERSION:-}" ]; then
+  VERSION_JSON="$(printf '{"tag_name":"%s","generated_at":"%s"}' "$VAYU_SITE_VERSION" "$NOW")"
+elif [ -f .release-version ]; then
+  # The version this very build is cutting is a better answer than a network
+  # call that may not be reachable, and it cannot be stale by construction.
+  VERSION_JSON="$(printf '{"tag_name":"%s","generated_at":"%s"}' "$(cat .release-version)" "$NOW")"
+fi
+
+printf '%s\n' "$STARS_JSON"   > "${OUT}/assets/stars.json"
+printf '%s\n' "$VERSION_JSON" > "${OUT}/assets/version.json"
+echo "baked assets/stars.json and assets/version.json"
+
 if command -v zip >/dev/null 2>&1; then
   (cd "$OUT" && zip -qr ../"$(basename "$OUT").zip" .)
   echo "✓ bundle: ${OUT}    zip: $(dirname "$OUT")/$(basename "$OUT").zip"

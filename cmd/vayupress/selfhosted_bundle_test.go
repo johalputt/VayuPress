@@ -19,6 +19,7 @@ package main
 // from internal/render. Nothing here is asserted from the script's source text.
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -200,4 +201,39 @@ func TestEveryFontTheBundleAsksForIsOneTheBinaryServes(t *testing.T) {
 		}
 	}
 	t.Logf("verified %d faces against the allowlist", len(want))
+}
+
+// The two files the GitHub Pages deploy bakes and the bundle did not.
+//
+// The page reads assets/stars.json and assets/version.json first — same-origin,
+// instant — and only then refreshes from the GitHub API. Without them the bundle
+// produced two 404s and a fallback fetch to api.github.com that `connect-src
+// 'self'` refuses outright, so the star count and the version simply never
+// appeared. No error on screen, no missing layout: two numbers that are part of
+// the design were blank, which is not something anyone reports as a bug.
+func TestTheBundleCarriesTheFilesThePageReadsBeforeItAsksTheNetwork(t *testing.T) {
+	root := buildSelfhostedBundle(t)
+	for _, f := range []string{"assets/stars.json", "assets/version.json"} {
+		b, err := os.ReadFile(filepath.Join(root, f))
+		if err != nil {
+			t.Errorf("%s is missing: the page requests it, gets a 404, falls back to an external "+
+				"API this policy refuses, and shows nothing where a number belongs (%v)", f, err)
+			continue
+		}
+		var v map[string]any
+		if err := json.Unmarshal(b, &v); err != nil {
+			t.Errorf("%s is not valid JSON, so the page's parse throws and the fallback runs anyway: %v", f, err)
+			continue
+		}
+		// The null form is legitimate — a build with no network still has to produce
+		// a working bundle — but the KEY must be present, because that is what the
+		// page reads.
+		key := "stargazers_count"
+		if strings.Contains(f, "version") {
+			key = "tag_name"
+		}
+		if _, ok := v[key]; !ok {
+			t.Errorf("%s does not carry %q, which is the field the page reads", f, key)
+		}
+	}
 }
