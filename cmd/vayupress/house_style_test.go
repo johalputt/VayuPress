@@ -29,6 +29,7 @@ import (
 	"github.com/johalputt/vayupress/internal/bizsite"
 	"github.com/johalputt/vayupress/internal/customsite"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/settings"
 )
 
 // houseStyle describes what a page claims about itself, so the helper can hold
@@ -282,5 +283,137 @@ func TestScopedContentPageMeetsTheHouseStyle(t *testing.T) {
 	}
 	if !strings.Contains(empty, "nothing yet") {
 		t.Error("the collapsed band reads as a closed door with no label")
+	}
+}
+
+// Phase 5 — Settings. The only page in the set whose bands did not exist to be
+// converted. It had no tiles, no section-heads and no accordions, so its
+// structure had to be chosen rather than moved, and it was left until last so
+// the other four could establish the pattern first.
+func TestScopedSettingsPageMeetsTheHouseStyle(t *testing.T) {
+	// The state a customer's domain is in on the day it is handed over.
+	empty := scopedSettingsBody("d1", "customer.example", map[string]string{}, false)
+	assertHouseStyle(t, empty, houseStyle{
+		Name: "Settings (nothing set)", MinTiles: 4, MinBands: 2,
+		IDs:   []string{"scoped-ctx", "scoped-status", "scoped-style-status"},
+		Hooks: []string{"data-scoped-save", "data-scoped-copy-style", "data-scoped-key"},
+	})
+	if tile := statCardIn(t, empty, "Identity"); !strings.Contains(tile, "stat-card--warn") {
+		t.Errorf("a site with no name, tagline, description or by-line is not flagged: %s", tile)
+	}
+	descTile := statCardIn(t, empty, "Search description")
+	if !strings.Contains(descTile, ">Missing<") {
+		t.Errorf("a site with no meta description does not say so, and that is the one gap "+
+			"with a cost: the engine writes its own sentence instead. %s", descTile)
+	}
+	// The word and the tone are separate mutations. Reporting "Missing" in the
+	// unremarkable tone survived a pass that only checked the word.
+	if !strings.Contains(descTile, "stat-card--warn") {
+		t.Errorf("the missing description reads as ordinary state, so nothing on the page draws "+
+			"an eye to it: %s", descTile)
+	}
+	// Each tile pinned in BOTH states. Asserting only the configured case lets a
+	// tile that returns a constant pass — three of these four would survive a
+	// hardcoded value if the empty page went unchecked.
+	if tile := statCardIn(t, empty, "Identity"); !strings.Contains(tile, ">0 of 4<") {
+		t.Errorf("the identity tile does not count zero as zero: %s", tile)
+	}
+	if tile := statCardIn(t, empty, "Author by-line"); !strings.Contains(tile, ">Default<") {
+		t.Errorf("a site with no author claims one is set: %s", tile)
+	}
+	if tile := statCardIn(t, empty, "Presentation"); !strings.Contains(tile, ">Default<") {
+		t.Errorf("a site still on the product theme is reported as carrying its own: %s", tile)
+	}
+
+	// A domain that has been filled in. Every warning must clear, or the page
+	// cries wolf and an operator stops reading the tones at all.
+	full := scopedSettingsBody("d1", "customer.example", map[string]string{
+		settings.KeySiteName:        "Customer Ltd",
+		settings.KeySiteTagline:     "We do the thing",
+		settings.KeySiteDescription: "A sentence for search engines.",
+		settings.KeySiteAuthor:      "A Person",
+	}, true)
+	assertHouseStyle(t, full, houseStyle{Name: "Settings (filled in)", MinTiles: 4, MinBands: 2})
+	for _, label := range []string{"Identity", "Search description"} {
+		if v := statCardIn(t, full, label); strings.Contains(v, "stat-card--warn") {
+			t.Errorf("the %q tile is still flagged on a fully configured site: %s", label, v)
+		}
+	}
+	if v := statCardIn(t, full, "Identity"); !strings.Contains(v, ">4 of 4<") {
+		t.Errorf("the identity tile miscounts what is set: %s", v)
+	}
+	if v := statCardIn(t, full, "Presentation"); !strings.Contains(v, ">Custom<") {
+		t.Errorf("a domain carrying its own theme is reported as running the product default: %s", v)
+	}
+	if v := statCardIn(t, full, "Author by-line"); !strings.Contains(v, ">Set<") {
+		t.Errorf("the by-line tile does not reflect the stored author: %s", v)
+	}
+
+	// The stored values must reach the inputs. A form that renders blanks over a
+	// configured site saves those blanks the moment anyone presses Save.
+	if !strings.Contains(full, `value="Customer Ltd"`) {
+		t.Error("the stored site name never reaches its input, so opening the page and saving " +
+			"would erase it")
+	}
+}
+
+// Reachability, as its own statement. The copy-from-primary endpoint was routed
+// and unit-tested from the day it was written, and no page anywhere offered it:
+// the only way to run it was to craft a POST by hand. That is the eval opt-in's
+// defect exactly, and a capability an operator cannot find is one the product
+// does not have.
+func TestTheCopyFromPrimaryActionIsReachableFromThePage(t *testing.T) {
+	page := scopedSettingsBody("d1", "customer.example", map[string]string{}, false)
+	if !strings.Contains(page, "data-scoped-copy-style") {
+		t.Fatal("no control for copy-from-primary on any page; the endpoint is reachable only by " +
+			"hand-crafting a request")
+	}
+	script := scopedSettingsScript("n0nce")
+	if !strings.Contains(script, "data-scoped-copy-style") {
+		t.Fatal("the control is rendered but the script never looks for it, so pressing it does " +
+			"nothing at all")
+	}
+	// Naming the selector is not binding it. Guarding the listener behind a
+	// falsy condition leaves the selector in the source and the button dead, and
+	// that mutation survived a pass that only searched for the attribute — so
+	// pin the live binding itself.
+	if !strings.Contains(script, "if(cpy)cpy.addEventListener('click',") {
+		t.Error("the copy button is looked up but no click listener is attached to it; the control " +
+			"renders, enables and does nothing when pressed")
+	}
+	if !strings.Contains(script, "/api/copy-from-primary") {
+		t.Error("the handler is bound to no endpoint")
+	}
+	// The save button going missing must not take the copy button with it. The
+	// original script returned early when [data-scoped-save] was absent.
+	if strings.Contains(script, "if(!btn)return;") {
+		t.Error("the copy handler is chained behind an early return on the save button, so one " +
+			"missing control silently disables the other")
+	}
+}
+
+// The band promises identity is not copied. That promise is worth exactly what
+// the copy list says, so the two are pinned together: an edit that adds the site
+// name to the copy list fails here rather than on a customer's live domain.
+func TestTheHouseStyleBandDoesNotPromiseMoreThanTheCopyListDelivers(t *testing.T) {
+	page := scopedSettingsBody("d1", "customer.example", map[string]string{}, false)
+	if !strings.Contains(page, "not</b> copied") {
+		t.Fatal("the band no longer tells the operator that identity is excluded")
+	}
+	for _, identity := range []string{
+		settings.KeySiteName, settings.KeySiteTagline,
+		settings.KeySiteDescription, settings.KeySiteAuthor,
+	} {
+		for _, k := range copyableFromPrimary {
+			if k == identity {
+				t.Errorf("the page tells the operator %q is not copied onto a client's site, and it is",
+					identity)
+			}
+		}
+	}
+	// And the converse: the band names what it does copy, so the description
+	// cannot quietly drift away from the list.
+	if len(copyableFromPrimary) == 0 {
+		t.Fatal("the copy list is empty while the page advertises the action")
 	}
 }

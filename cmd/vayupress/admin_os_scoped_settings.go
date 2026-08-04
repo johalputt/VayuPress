@@ -51,25 +51,128 @@ func (a *App) handleOSScopedSettings(w http.ResponseWriter, r *http.Request) {
 	csrfTokenFor(w, r)
 
 	sc := osScope(r)
-	esc := html.EscapeString
-	body := `<div id="scoped-ctx" data-id="` + esc(d.ID) + `" hidden></div>` +
-		`<div class="page-head"><div><h1 class="page-title">Site settings</h1>` +
-		`<p class="page-sub"><a href="/os/d/` + esc(d.ID) + `">← ` + esc(d.Host) + `</a></p></div>` +
-		`<div class="page-actions"><span id="scoped-status" class="text-sm muted" role="status" aria-live="polite"></span></div></div>` +
-		`<p class="page-sub">These belong to <b>` + esc(d.Host) + `</b>. A blank field is blank — this site ` +
-		`falls back to the product default, never to the primary site's value.</p>` +
-		`<div class="card"><div class="form-grid">`
-
+	values := map[string]string{}
 	for _, f := range scopedSettingKeys {
-		val := a.siteSettings.Get(r.Context(), sc, f.Key)
-		body += `<label class="field"><span class="field-label">` + esc(f.Label) + `</span>` +
-			`<input type="text" class="input" data-scoped-key="` + esc(f.Key) + `" value="` + esc(val) + `" autocomplete="off">` +
-			`<span class="field-hint">` + esc(f.Hint) + `</span></label>`
+		values[f.Key] = a.siteSettings.Get(r.Context(), sc, f.Key)
 	}
 
-	body += `</div><div class="vm-row"><button type="button" class="btn btn--primary" data-scoped-save>Save</button></div></div>` +
-		scopedSettingsScript(nonce)
+	// Whether this domain already carries presentation of its own, so the tile and
+	// the band chip describe one state rather than each computing its own. Read
+	// rather than assumed: the copy action below is one way to arrive here and the
+	// Theme Studio is another, and a chip saying "product default" over a site with
+	// a custom theme would be a claim defect.
+	presentationCustom := false
+	if all, err := a.siteSettings.GetAll(r.Context(), sc); err == nil {
+		for _, k := range copyableFromPrimary {
+			if strings.TrimSpace(all[k]) != "" {
+				presentationCustom = true
+				break
+			}
+		}
+	}
+
+	body := scopedSettingsBody(d.ID, d.Host, values, presentationCustom) + scopedSettingsScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Settings · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
+}
+
+// scopedSettingsBody renders one domain's settings page.
+//
+// Extracted from the handler for the reason the SEO and traffic pages were:
+// markup built inline against a request and a live settings store cannot be
+// rendered in a test, so a restyling of it cannot be checked.
+//
+// The copy-from-primary control lives here because until now it lived nowhere.
+// The endpoint has been routed and unit-tested since ADR-0153 and the only way
+// to reach it was to craft a POST by hand — the same defect as the eval opt-in,
+// which shipped in the config and in the connector with no control on any page.
+// A capability an operator cannot find is a capability the product does not have.
+func scopedSettingsBody(domainID, host string, values map[string]string, presentationCustom bool) string {
+	esc := html.EscapeString
+	var b strings.Builder
+
+	b.WriteString(`<div id="scoped-ctx" data-id="` + esc(domainID) + `" hidden></div>` +
+		`<div class="page-head"><div><h1 class="page-title">Site settings</h1>` +
+		`<p class="page-sub"><a href="/os/d/` + esc(domainID) + `">← ` + esc(host) + `</a></p></div>` +
+		`<div class="page-actions"><span id="scoped-status" class="text-sm muted" role="status" aria-live="polite"></span></div></div>` +
+		`<p class="page-sub">These belong to <b>` + esc(host) + `</b>. A blank field is blank — this site ` +
+		`falls back to the product default, never to the primary site's value.</p>`)
+
+	// ── Four tiles ────────────────────────────────────────────────────────────
+	set := 0
+	for _, f := range scopedSettingKeys {
+		if strings.TrimSpace(values[f.Key]) != "" {
+			set++
+		}
+	}
+	total := len(scopedSettingKeys)
+
+	identityTone := ""
+	if set == 0 {
+		identityTone = "warn"
+	}
+	// Of the four gaps this page can have, the meta description is the one with a
+	// cost attached: it is the sentence shown beneath the link, and with nothing
+	// set a search engine writes its own out of whatever it finds on the page.
+	descValue, descTone := "Set", ""
+	if strings.TrimSpace(values[settings.KeySiteDescription]) == "" {
+		descValue, descTone = "Missing", "warn"
+	}
+	authorValue := "Default"
+	if strings.TrimSpace(values[settings.KeySiteAuthor]) != "" {
+		authorValue = "Set"
+	}
+	presentationValue := "Default"
+	if presentationCustom {
+		presentationValue = "Custom"
+	}
+
+	b.WriteString(`<div class="stat-grid">` +
+		osStatTile("Identity", strconv.Itoa(set)+" of "+strconv.Itoa(total), identityTone) +
+		osStatTile("Search description", descValue, descTone) +
+		osStatTile("Author by-line", authorValue, "") +
+		osStatTile("Presentation", presentationValue, "") +
+		`</div>`)
+
+	// ── The bands (house style §11) ───────────────────────────────────────────
+	b.WriteString(`<div class="section-head"><span class="section-head__title">What this site says it is</span>` +
+		`<span class="section-head__hint">` + esc(host) + ` only</span></div>`)
+	b.WriteString(`<div class="mon-stack">`)
+
+	var ident strings.Builder
+	ident.WriteString(`<div class="card"><div class="form-grid">`)
+	for _, f := range scopedSettingKeys {
+		ident.WriteString(`<label class="field"><span class="field-label">` + esc(f.Label) + `</span>` +
+			`<input type="text" class="input" data-scoped-key="` + esc(f.Key) + `" value="` + esc(values[f.Key]) +
+			`" autocomplete="off"><span class="field-hint">` + esc(f.Hint) + `</span></label>`)
+	}
+	ident.WriteString(`</div><div class="vm-row">` +
+		`<button type="button" class="btn btn--primary btn--sm" data-scoped-save>Save</button></div></div>`)
+
+	identChip := `<span class="mon-chip mon-chip--off">nothing set</span>`
+	if set > 0 {
+		identChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(set) + ` of ` + strconv.Itoa(total) + `</span>`
+	}
+	b.WriteString(monAcc("🪪", "Identity", "Name, tagline, description and by-line for this site alone",
+		identChip, true, ident.String()))
+
+	styleChip := `<span class="mon-chip mon-chip--off">product default</span>`
+	if presentationCustom {
+		styleChip = `<span class="mon-chip mon-chip--on">custom</span>`
+	}
+	b.WriteString(monAcc("🎨", "Start from your house style",
+		"Copies theme, navigation and footer across — once", styleChip, false,
+		`<div class="card"><div class="settings-block-title">Copy presentation from your own site</div>`+
+			`<p class="text-sm muted">Theme colours, custom CSS, head defaults, navigation, footer and the home `+
+			`hero are copied from your primary site onto <b>`+esc(host)+`</b>. It is a <b>copy, not a link</b>: `+
+			`editing your own site tomorrow leaves this one exactly where it is.</p>`+
+			`<p class="text-sm muted">Name, tagline, description and by-line are <b>not</b> copied. Publishing `+
+			`your own identity on somebody else's domain is a worse outcome than a wrong colour.</p>`+
+			`<div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-scoped-copy-style>`+
+			`Copy presentation</button><span id="scoped-style-status" class="text-sm muted" role="status" `+
+			`aria-live="polite"></span></div></div>`))
+
+	b.WriteString(`</div>`) // mon-stack
+	return b.String()
 }
 
 func scopedSettingsScript(nonce string) string {
@@ -81,8 +184,7 @@ var ID=node?node.getAttribute('data-id'):'';
 if(!ID)return;
 var st=document.getElementById('scoped-status');
 var btn=document.querySelector('[data-scoped-save]');
-if(!btn)return;
-btn.addEventListener('click',function(){
+if(btn)btn.addEventListener('click',function(){
   var payload={};
   document.querySelectorAll('[data-scoped-key]').forEach(function(el){
     payload[el.getAttribute('data-scoped-key')]=el.value;
@@ -95,6 +197,23 @@ btn.addEventListener('click',function(){
     .then(function(res){btn.disabled=false;
       if(st)st.textContent=res.ok?'Saved ✓':((res.j&&res.j.message)||'Could not save');})
     .catch(function(e){btn.disabled=false; if(st)st.textContent='Error: '+e;});
+});
+// The copy action is wired independently of the save button. Chaining it behind
+// an early return on [data-scoped-save] is how one missing control silently
+// takes the other one with it.
+var cpy=document.querySelector('[data-scoped-copy-style]');
+var cst=document.getElementById('scoped-style-status');
+if(cpy)cpy.addEventListener('click',function(){
+  cpy.disabled=true; if(cst)cst.textContent='Copying…';
+  fetch('/os/d/'+encodeURIComponent(ID)+'/api/copy-from-primary',{method:'POST',
+    headers:{'X-CSRF-Token':csrf()}})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){cpy.disabled=false;
+      if(!cst)return;
+      if(!res.ok){cst.textContent=(res.j&&res.j.message)||'Could not copy';return;}
+      var n=(res.j&&typeof res.j.copied==='number')?res.j.copied:0;
+      cst.textContent=n?(n+' setting(s) copied — reload to see them'):'Nothing to copy: your own site is still on the defaults';})
+    .catch(function(e){cpy.disabled=false; if(cst)cst.textContent='Error: '+e;});
 });
 })();
 </script>`

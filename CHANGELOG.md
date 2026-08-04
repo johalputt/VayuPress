@@ -6,6 +6,77 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+**Every per-domain page now opens with its own state, and every section
+collapses.**
+
+### Added
+- **One statement of the per-domain page contract**, `assertHouseStyle`, called
+  by each page that claims to follow it. Five pages converted with five
+  hand-written checks is how the five checks drift, and two had already drifted
+  into assertions that could not tell WHICH element they had found: a whole-page
+  search for `stat-card--warn` passed against a mutation reporting a widened
+  policy as ordinary, because the certificate tile carries that class too.
+- **Stat tiles and collapsible bands on Visitors, the domain home, SEO, Content
+  and Settings.** Each page opens with the four numbers that answer "what is the
+  state of this?" before any control, then a stack of pure-CSS `<details>` — no
+  JavaScript, keyboard-accessible, each summary chipped so its state reads while
+  shut.
+- **A control for "start from your house style"** on a domain's Settings page,
+  with what it copies and what it deliberately does not stated on the page.
+
+### Fixed
+- **The copy-from-primary action was unreachable.** It had been routed and
+  unit-tested since ADR-0153, and no page anywhere offered it: the only way to
+  run it was to craft a POST by hand. That is the eval opt-in's defect exactly,
+  and a capability an operator cannot find is one the product does not have.
+- **Settings, SEO and Visitors built their markup inline against a live request**,
+  so none could be rendered in a test and none of their restyling could be
+  checked. Each now has a pure render function taking the values it displays.
+- **Four different functions rendered the same four numbers.** The literal markup
+  on the Monetization page, `vmStatTile`, `osStatCardDelta` and a fourth copy
+  inside the Website page all now call `osStatTile`. That drift is the exact
+  thing the house-style rule exists to prevent, and the shared helper found it on
+  its first run against a page it was not written for.
+- **A claim test read the traffic handler's source rather than its output.**
+  Moving the copy into a render function broke it while nothing a visitor sees
+  changed — so it failed an honest refactor and would have passed a regression
+  that deleted the sentence from the page and left it in a comment.
+
+### Changed
+- The repository's contributor notes gained three sections recording how this
+  install is worked: that a shell command is an instrument for looking and never
+  the fix, that the live install is read through its connector rather than
+  reasoned about, that an update notice carries no infrastructure detail, which
+  product decisions are settled, and the habits this repository has already paid
+  for. They were being restated each session and lost with it.
+
+### Audit
+Ten mutations against the Settings conversion, all killed — two only after the
+assertions were strengthened.
+
+**Reporting "Missing" in the unremarkable tone survived the first pass.** The
+assertion checked the word and not the tone, so a missing meta description —
+the one gap on that page with a cost attached, because the engine writes its own
+sentence instead — could read as ordinary state with nothing drawing an eye to
+it. The word and the tone are separate mutations and are now separately pinned.
+
+**A control bound behind a falsy condition survived too.** The test searched the
+script for the button's selector, which a dead `if(false)` binding still
+contains: the button would render, enable, and do nothing when pressed. Naming a
+selector is not binding it, so the live listener is pinned instead.
+
+Each tile is now asserted in **both** states. Three of the four would have
+survived a hardcoded value against the configured case alone, since a constant
+satisfies any assertion that only ever sees the state matching it.
+
+Two further mutations were discarded rather than counted: one changed nothing in
+the file and one failed to compile. Neither is a kill, and both have been scored
+as one here before.
+
+---
+
 ## [3.16.96] — 2026-08-04
 
 **Every band on a domain's Website page collapses.**
