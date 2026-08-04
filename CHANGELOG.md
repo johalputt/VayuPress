@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.2] — 2026-08-04
 
 ### Changed
 - **VayuVeil moved out of the sidebar and into the Operations hub**, under
