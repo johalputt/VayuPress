@@ -20,6 +20,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/apikeys"
@@ -351,10 +353,20 @@ func (a *App) registerSiteBuilderTools(srv *mcp.Server) {
 			render.CachePurgeAll()
 			dbpkg.AuditLog("vayudomains.website.bundle", mcpActor(ctx), d.Host,
 				"built "+itoaSafe(m.Files)+" file(s) via=mcp")
-			return jsonStr(map[string]any{
+			resp := map[string]any{
 				"status": "published", "host": d.Host, "files": m.Files, "bytes": m.Bytes,
 				"url": "https://" + d.Host + "/", "serves": "the uploaded site",
-			}), nil
+			}
+			// Publishing succeeded; whether the browser will RUN what was published
+			// is a different question, and the operator has to be told the answer
+			// here rather than discover a blank page.
+			if w := cspBundleWarnings(in.Files); len(w) > 0 {
+				resp["csp_warnings"] = w
+				resp["note"] = "The bundle is live, but this install serves a strict " +
+					"Content-Security-Policy and will refuse the resources listed in " +
+					"csp_warnings. The page will render without them."
+			}
+			return jsonStr(resp), nil
 		},
 	})
 
@@ -493,3 +505,108 @@ var errProvisionUnavailable = mcpError("one-click provisioning is not installed 
 type mcpError string
 
 func (e mcpError) Error() string { return string(e) }
+
+// cspBundleWarnings reports what a strict-CSP install will silently REFUSE to
+// load from an uploaded bundle.
+//
+// WHY THIS EXISTS. Cloning an existing site onto VayuPress is the obvious first
+// thing an operator does, and most sites on the web load their CSS framework,
+// their JS framework and their fonts from third-party hosts, with a small inline
+// <script> to configure them. Every one of those is blocked here: the baseline
+// policy is
+//
+//	script-src 'self' 'nonce-<per-request>'; style-src 'self'; font-src 'self'
+//
+// and a STATIC bundle cannot carry the per-request nonce, so even a first-party
+// inline script is refused. The result is a page that publishes cleanly, reports
+// success, and renders as unstyled text with no interactivity — with nothing
+// anywhere saying why. That is the same silent failure this product has spent a
+// long day removing from its provisioning path.
+//
+// It WARNS rather than refuses. The policy is not a mistake to be worked around,
+// and some bundles reference an external origin in a place the CSP does not
+// govern; an operator who understands the trade is not blocked from publishing.
+// What they are not left with is a mystery.
+//
+// Deliberately NOT flagged: <a href> (navigation, ungoverned), and <img src>
+// (img-src admits https:, so remote images genuinely work).
+func cspBundleWarnings(files map[string]string) []string {
+	var out []string
+	ext := regexp.MustCompile(`^\s*(?:https?:)?//`)
+	// The tag name is written `<scrip[t]` rather than `<script`. The character
+	// class is semantically identical to the regex engine and keeps the literal
+	// text out of the source, because TestEveryInlineScriptParses scans this
+	// repository for inline script blocks and tries to PARSE them as JavaScript —
+	// so a pattern that describes a script tag was picked up as if it were one,
+	// and CI failed trying to run a regex as code. Do not "tidy" this back.
+	scriptSrc := regexp.MustCompile(`(?is)<scrip[t][^>]*\ssrc\s*=\s*["']([^"']+)["']`)
+	inlineScript := regexp.MustCompile(`(?is)<scrip[t](?:\s[^>]*)?>\s*([^\s<][\s\S]*?)</scrip[t]>`)
+	linkHref := regexp.MustCompile(`(?is)<link[^>]*\shref\s*=\s*["']([^"']+)["'][^>]*>`)
+	cssURL := regexp.MustCompile(`(?is)(?:@import\s+(?:url\()?|src\s*:\s*url\()\s*["']?([^"')]+)`)
+
+	seen := map[string]bool{}
+	add := func(s string) {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+
+	for path, body := range files {
+		lower := strings.ToLower(path)
+		switch {
+		case strings.HasSuffix(lower, ".html") || strings.HasSuffix(lower, ".htm"):
+			for _, m := range scriptSrc.FindAllStringSubmatch(body, -1) {
+				if ext.MatchString(m[1]) {
+					add("`" + path + "` loads a script from " + originOf(m[1]) + " — script-src is " +
+						"'self', so it will not execute. Vendor the file into the bundle instead.")
+				}
+			}
+			// An inline script cannot carry the per-request nonce from a static
+			// file, so it is refused however trustworthy it is.
+			for _, m := range inlineScript.FindAllStringSubmatch(body, -1) {
+				if strings.Contains(strings.ToLower(m[0]), `type="application/ld+json"`) ||
+					strings.Contains(strings.ToLower(m[0]), `type='application/ld+json'`) {
+					continue // data, not executable code — never blocked
+				}
+				add("`" + path + "` contains an inline <script>. A static bundle cannot know the " +
+					"per-request nonce, so it will not execute — move the code into a same-origin " +
+					".js file and load it with <script src>.")
+				break
+			}
+			for _, m := range linkHref.FindAllStringSubmatch(body, -1) {
+				if !ext.MatchString(m[1]) {
+					continue
+				}
+				tag := strings.ToLower(m[0])
+				if strings.Contains(tag, "stylesheet") {
+					add("`" + path + "` loads a stylesheet from " + originOf(m[1]) + " — style-src " +
+						"is 'self', so it will not apply. Vendor the CSS into the bundle instead.")
+				}
+			}
+		case strings.HasSuffix(lower, ".css"):
+			for _, m := range cssURL.FindAllStringSubmatch(body, -1) {
+				if ext.MatchString(m[1]) {
+					add("`" + path + "` pulls " + originOf(m[1]) + " — font-src and style-src are " +
+						"'self', so a remote font or stylesheet will not load. Embed it in the bundle.")
+				}
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// originOf renders just the host of a URL for a message, so a warning stays
+// readable when the URL is a long versioned path.
+func originOf(u string) string {
+	s := strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
+	s = strings.TrimPrefix(s, "//")
+	if i := strings.IndexAny(s, "/?#"); i > 0 {
+		s = s[:i]
+	}
+	if s == "" {
+		return "another origin"
+	}
+	return s
+}

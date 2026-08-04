@@ -48,7 +48,18 @@ type vanityState struct {
 	startedAt time.Time
 	cancel    context.CancelFunc
 
-	done    atomic.Bool
+	done atomic.Bool
+	// won elects the single worker that gets to apply the result. It is an
+	// INTERNAL race guard and is deliberately not what the status reports.
+	won atomic.Bool
+	// found is the ANNOUNCEMENT, published only once the identity is durable.
+	// Splitting the two is the fix for a real ordering bug: the winner used to
+	// set found, and only then persist. Every consumer reads found as "the
+	// address exists and will survive a restart", so a status read landing in
+	// that window saw a found search with nothing saved — and a cancel or a
+	// crash there discarded a key that had cost a long search. The comment on
+	// CancelVanity even asserted it was "persisted the moment it was found",
+	// which was the one thing that was not true.
 	found   atomic.Bool
 	addr    atomic.Value // string
 	failMsg atomic.Value // string
@@ -177,7 +188,7 @@ func (e *Engine) vanityWorker(ctx context.Context, vs *vanityState) {
 			return
 		default:
 		}
-		if vs.found.Load() {
+		if vs.won.Load() {
 			return
 		}
 		if _, err := rand.Read(seed); err != nil {
@@ -186,12 +197,17 @@ func (e *Engine) vanityWorker(ctx context.Context, vs *vanityState) {
 		addr, blob := deriveOnion(seed)
 		atomic.AddInt64(&vs.tries, 1)
 		if addr != "" && strings.HasPrefix(addr, vs.prefix) {
-			// First worker to set found() wins; the rest observe it and exit.
-			if vs.found.CompareAndSwap(false, true) {
+			// First worker to win the CAS applies the result; the rest exit.
+			if vs.won.CompareAndSwap(false, true) {
 				vs.addr.Store(addr)
-				vs.done.Store(true)
 				vs.cancel()
+				// PERSIST BEFORE ANNOUNCING. found is what the panel, the status
+				// endpoint and CancelVanity all read as "this identity exists and
+				// is safe"; publishing it first made that a promise the code had
+				// not yet kept.
 				e.applyVanity(vs.host, addr, blob)
+				vs.found.Store(true)
+				vs.done.Store(true)
 			}
 			return
 		}

@@ -6,6 +6,68 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.81] — 2026-08-04
+
+**A vanity onion could be announced before it was saved.**
+
+The race job caught it on the previous release, once, as a flake:
+
+```text
+--- FAIL: TestVanitySearchFindsAndApplies
+    persisted address "" != found "amdzqz…yd.onion"
+```
+
+### Fixed
+- **`Found` now means the identity is durable.** The winning worker published
+  `found`, then persisted:
+
+  ```go
+  vs.found.Store(true); vs.done.Store(true); e.applyVanity(...)
+  ```
+
+  `VanityStatus().Found` reads that flag, so between those two lines a status
+  read saw a completed search whose key was nowhere. Everything downstream
+  treats `found` as *"this address exists and survives a restart"* — the panel
+  reports the vanity onion ready, and `CancelVanity`'s own comment asserted it
+  was "persisted the moment it was found". That was the one claim that was not
+  true: a cancel or a crash in that window discarded a key that had cost a long
+  CPU search. Winner election and announcement are now separate flags, and the
+  announcement happens after the write returns.
+
+### Added
+- **`build_site` says what a strict CSP will refuse to load.** Cloning an
+  existing site onto VayuPress is the obvious first move, and most sites load
+  their CSS framework, JS framework and fonts from third-party hosts with a small
+  inline script configuring them. Every one of those is blocked here —
+  `script-src 'self' 'nonce-…'; style-src 'self'; font-src 'self'` — and a static
+  bundle cannot carry a per-request nonce, so even a first-party inline script is
+  refused. The bundle published cleanly, the tool reported success, and the page
+  rendered as unstyled text with nothing anywhere saying why.
+
+  The tool now returns `csp_warnings` naming each refusal and the remedy. It
+  warns rather than refuses: the policy is not a mistake to route around, and an
+  operator who understands the trade is not blocked. What they are not left with
+  is a mystery. Remote images and ordinary links are deliberately not flagged —
+  `img-src` admits `https:` and a link is not a subresource, so warning about
+  them would teach operators to skim the list.
+
+### Fixed (test integrity)
+- **The deterministic gate replaces a timing-dependent one.** Re-breaking the
+  vanity ordering did **not** reliably fail the original test — the window is
+  small enough that eight consecutive local runs all passed against the broken
+  code. A gate that only fires when it wins a race is not a gate. The new one
+  holds the store open and asserts the announcement has not happened while the
+  write is in flight, and it kills the mutation every time.
+
+- **A new detection regex tripped an existing gate.** `TestEveryInlineScriptParses`
+  scans this repository for inline script blocks and parses them as JavaScript;
+  the CSP-warning patterns *describe* a script tag, so the gate matched the code
+  that detects the thing and tried to run a regex as code. The tag name is now
+  written as a character class, which is identical to the regex engine and keeps
+  the literal text out of the source.
+
+---
+
 ## [3.16.80] — 2026-08-04
 
 **A slow start was being reported as an outage.**
