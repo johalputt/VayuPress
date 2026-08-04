@@ -6,6 +6,48 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.95] — 2026-08-04
+
+**A domain's Website page now opens with its own state, in the house style.**
+
+### Added
+- **Four stat tiles on the per-domain Website page**: what the domain serves at
+  `/`, how many files the uploaded site has, whether runtime code generation is
+  permitted, and the certificate. The page had none, so an operator had to open
+  sections to learn what the domain was even serving.
+
+  The file-count tile is not decoration. A domain served a stale uploaded bundle
+  for a day while the only place that number appeared was inside a collapsed
+  radio hint. It is now the second thing on the page.
+
+  The runtime-code tile is toned as a warning when the policy is relaxed, blank
+  when there is no uploaded site for it to apply to, and says `Off` otherwise —
+  a widened policy should never read as ordinary.
+
+### Audit
+Five mutations. **Two survived the first pass**, both the same defect as the
+mailbox tile earlier today: the assertion searched the whole page for the
+warning class, which the CERTIFICATE tile also carries, so "report a widened
+policy as ordinary" and "report eval as off while it is on" both passed.
+
+Fixing that exposed a third: the helper written to scope the assertion matched
+`<div class="stat-card__label">` rather than the outer tile, because both begin
+with the same characters — returning a slice with no class attribute in it, so
+every assertion about tone was looking at nothing while appearing to pass. All
+five die now against a helper that reads the tile it claims to read.
+
+Twice in one day the same shape: an assertion that cannot tell *which* element
+it found cannot tell a regression from an unrelated amber.
+
+### Not done
+The rest of the per-domain pages still open flat rather than as accordions. The
+conversion was started and reverted — it is string surgery on markup that inline
+scripts address by id, and half of it is worse than none. The Website page now
+carries a test pinning all fourteen of those ids, which is the net that
+conversion needs before it is attempted again.
+
+---
+
 ## [3.16.94] — 2026-08-04
 
 **A new customer domain cannot create a mailbox, and the console made that look
