@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.16.97] — 2026-08-04
 
 **Every per-domain page now opens with its own state, and every section
 collapses.**
