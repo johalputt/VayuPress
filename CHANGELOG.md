@@ -6,6 +6,57 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.91] — 2026-08-04
+
+**The site bundle could not be uploaded at all, and the panel made that look
+like nothing happening.**
+
+Ships immediately. Every operator who downloaded the bundle and pressed **Upload
+& deploy** had the upload refused and kept whatever site was already live. From
+their side the button did nothing, the file count did not change, and the
+obvious conclusion was that the copied site simply did not look right — which
+sent the investigation somewhere else entirely, for two days.
+
+### Fixed
+- **The bundle no longer ships `README.md`.** `docs/site/README.md` is repository
+  housekeeping, not part of the site, and it travelled in the zip. A VayuPress
+  deploy accepts a fixed list of static-web extensions; `.md` is not on it, and
+  **one disallowed file rejects the whole upload**:
+
+  ```
+  rejected file "README.md": extension not allowed
+  ```
+
+  That refusal is correct — silently dropping files would be worse — but it made
+  the shipped bundle undeployable by anyone.
+- **The build now refuses to produce a bundle containing a file the deploy would
+  reject**, and names the file and its extension. Deleting one known filename
+  only fixes the filenames already known about.
+- **`customsite.ExtAllowed` is exported**, so the build-side gate asks the
+  deploy's own allowlist instead of keeping a second copy. A second copy is how
+  the two sides came to disagree in the first place.
+
+### Upgrade notes
+- **Re-download `vayupress-selfhosted-site.zip` and upload it again.** Every
+  previous bundle is undeployable. After a successful upload the Website page
+  must read **30 file(s)** with today's timestamp; if it still shows an older
+  count, the upload did not land.
+
+### Audit
+Attacked the upload path rather than the bundle's contents, which is where the
+fault turned out to be. Two mutations, both killed: restoring the readme is
+caught by the build script's own gate and, independently, by a Go test that
+walks the produced bundle and asks `customsite.ExtAllowed` about every file.
+
+The lesson worth recording is not about extensions. The panel had been
+displaying `4 file(s), deployed 06:06` throughout — the deployed bundle was a
+stale one, and the number saying so was on screen the whole time. Several rounds
+of investigation went into the bundle's CSS and animations without once checking
+what was actually deployed. **When a report is "it does not look right", read
+what is live before reading what was built.**
+
+---
+
 ## [3.16.90] — 2026-08-04
 
 **Two numbers on the self-hosted site were blank, and nothing said so.**
