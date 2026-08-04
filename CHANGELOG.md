@@ -6,6 +6,60 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.93] — 2026-08-04
+
+**This install's own DNS stopped answering, and nothing said so.**
+
+Every lookup on the host was failing with `lookup … on 127.0.0.53:53: read udp
+…: i/o timeout`. Nothing in VayuPress was broken and nothing in VayuPress could
+fix it, so the published-range feeds VayuShield depends on silently stopped
+refreshing and ran on whatever they had cached — while the panel went on
+presenting that protection as current. Verified-bot lists, remote image fetches
+and outbound requests degraded the same way.
+
+A host-side repair reaches only an operator with a shell, which is the answer
+this project rules out. So the binary carries it.
+
+### Added
+- **A DNS fallback, with narrow limits.** When the system resolver cannot be
+  reached, lookups are retried against a public resolver so feeds and outbound
+  requests keep working. The limits are the design, not a caveat:
+  - a fallback, never a preference — a working system resolver is always used,
+    so split-horizon and internal DNS keep working;
+  - only on a **transport** failure. An NXDOMAIN is an answer, and asking a
+    second resolver until a name resolves is how a mistyped host becomes a
+    connection to a stranger;
+  - **refused outright in Tor mode** — a direct DNS query is a clearnet callback
+    announcing the onion server exists, and no feed refresh is worth that;
+  - over TCP, because the failure being worked around is a dropped UDP path and
+    a fallback using the transport that broke is not one;
+  - validation is unchanged — every address still goes through the same
+    private/reserved checks, so no policy is widened;
+  - `VAYU_DNS_FALLBACK=off` refuses it, for an operator who would rather fail
+    than send a query off-box.
+- **The VayuShield page says when this is happening.** A control running on
+  stale data while describing itself as live is the same defect as a posture
+  verdict that overstates what is enforcing, so the page states that the host's
+  resolver has failed, that the cause is on the machine rather than in
+  VayuPress, and how to refuse the fallback.
+
+### Audit
+Six mutations. **Three survived the first pass**, and all three were tests that
+could not observe the guarantee they claimed to check: removing the Tor-mode
+guard and removing the operator's off switch both left the tests passing,
+because they exercised the decision only through a lookup of a nonexistent name,
+which fails either way.
+
+The decision was extracted into a pure function and tested directly, after which
+all six died. The NXDOMAIN case needed the same treatment — the original case
+set `IsNotFound` alone, where the other conditions were already false, so the
+guard could be deleted without the test noticing. It now pins `IsNotFound`
+alongside a timeout, which is the combination that makes the guard load-bearing.
+
+A guard that cannot be observed failing is not a tested guard.
+
+---
+
 ## [3.16.92] — 2026-08-04
 
 **Uploading a site made the way people actually make one now works, and a
