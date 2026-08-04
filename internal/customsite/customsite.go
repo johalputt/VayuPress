@@ -56,6 +56,45 @@ var allowedExt = map[string]bool{
 	".csv": true,
 }
 
+// ignorableJunk reports whether a zip entry is operating-system metadata that a
+// person never meant to include and that no site ever needs.
+//
+// WHY THIS EXISTS, and it is the difference between a product a stranger can use
+// and one they cannot. The extension allowlist below refuses anything it does
+// not recognise, and ONE refused entry rejects the whole upload. `.DS_Store` is
+// not on the allowlist — and macOS writes a `.DS_Store` into every folder a
+// person has ever opened in Finder, so right-click → Compress produces a zip
+// that this deploy refuses. Windows does the same with `Thumbs.db`. That is the
+// single most common way a human makes a zip, which made "upload your site"
+// fail for most people on their first attempt.
+//
+// These entries are DROPPED, not accepted: nothing is written to disk, so this
+// widens no surface. It is strictly narrower than the alternative of putting
+// their extensions on the allowlist, which would let them be served.
+//
+// Deliberately a short, exact list. A `.psd`, a `.zip`, a `.mov` is somebody's
+// real content in the wrong place, and refusing THAT loudly is correct — they
+// need to know it will not be served.
+func ignorableJunk(rel string) bool {
+	base := filepath.Base(rel)
+	switch base {
+	case ".DS_Store", "Thumbs.db", "thumbs.db", "desktop.ini", "Desktop.ini",
+		".gitignore", ".gitattributes", ".gitkeep", ".nojekyll", ".editorconfig":
+		return true
+	}
+	// AppleDouble sidecars ("._index.html") and the __MACOSX tree that macOS
+	// Archive Utility adds beside every real file.
+	if strings.HasPrefix(base, "._") {
+		return true
+	}
+	for _, seg := range strings.Split(filepath.ToSlash(rel), "/") {
+		if seg == "__MACOSX" {
+			return true
+		}
+	}
+	return false
+}
+
 // ExtAllowed reports whether a file name carries an extension this package will
 // accept in a bundle.
 //
@@ -77,6 +116,13 @@ type Manifest struct {
 	Bytes      int64     `json:"bytes"`
 	Entry      string    `json:"entry"`
 	HasPrev    bool      `json:"has_prev"`
+
+	// Skipped counts operating-system metadata dropped from the upload, and
+	// SkippedNames lists the first few. Reported rather than swallowed: a deploy
+	// that quietly differs from what somebody zipped is the kind of gap that only
+	// shows up much later, as a file they were sure they included.
+	Skipped      int      `json:"skipped,omitempty"`
+	SkippedNames []string `json:"skipped_names,omitempty"`
 }
 
 // dirs returns the three managed directories under base.
@@ -124,6 +170,8 @@ func Deploy(base string, zipData []byte) (Manifest, error) {
 	var total int64
 	var fileCount int
 	var sawIndex bool
+	var skipped []string
+	var skippedCount int
 
 	for _, f := range zr.File {
 		name := f.Name
@@ -139,8 +187,24 @@ func Deploy(base string, zipData []byte) (Manifest, error) {
 		if err != nil {
 			return Manifest{}, err
 		}
-		if !allowedExt[strings.ToLower(filepath.Ext(rel))] {
-			return Manifest{}, fmt.Errorf("rejected file %q: extension not allowed", rel)
+		// Operating-system metadata is dropped rather than allowed to reject the
+		// whole upload. Recorded, so the panel can say what it ignored instead of
+		// quietly differing from what the person zipped.
+		if ignorableJunk(rel) {
+			if len(skipped) < 20 {
+				skipped = append(skipped, rel)
+			}
+			skippedCount++
+			continue
+		}
+		// ExtAllowed, not the map directly: the build-side gate calls the same
+		// function, so what a bundle is checked against and what the deploy
+		// enforces are one implementation rather than two that can drift. Two
+		// copies of this rule is precisely how a bundle came to be published that
+		// no install would accept.
+		if !ExtAllowed(rel) {
+			return Manifest{}, fmt.Errorf("rejected file %q: extension not allowed — "+
+				"a site bundle may contain only static web files, and this one entry stops the whole upload", rel)
 		}
 		if int64(f.UncompressedSize64) > MaxFileBytes {
 			return Manifest{}, fmt.Errorf("file %q exceeds the %d MiB per-file limit", rel, MaxFileBytes>>20)
@@ -200,6 +264,9 @@ func Deploy(base string, zipData []byte) (Manifest, error) {
 		Bytes:      total,
 		Entry:      "index.html",
 		HasPrev:    hadCurrent,
+
+		Skipped:      skippedCount,
+		SkippedNames: skipped,
 	}
 	writeManifest(base, m)
 	return m, nil

@@ -79,6 +79,8 @@ func (a *App) handleOSScopedBundleUpload(w http.ResponseWriter, r *http.Request)
 		"deployed "+itoaSafe(m.Files)+" file(s)")
 	writeJSON(w, r, http.StatusOK, map[string]any{
 		"status": "deployed", "files": m.Files, "bytes": m.Bytes, "entry": m.Entry,
+		// What was dropped, so the deploy never quietly differs from the zip.
+		"skipped": m.Skipped, "skipped_names": m.SkippedNames,
 		"note": "Choose “Uploaded website” above and Save & publish to serve it.",
 	})
 }

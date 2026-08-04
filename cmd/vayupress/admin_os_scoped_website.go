@@ -143,6 +143,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 		}() + `
     <span id="scoped-bundle-status" class="text-sm muted" role="status" aria-live="polite"></span>
   </div>
+  <p id="scoped-bundle-outcome" class="text-sm" role="alert"></p>
   <p class="text-sm muted">Or have one written for you: ask an assistant through <a href="/os/vayumcp">VayuMCP</a>
     to <em>build a site for ` + esc(d.Host) + `</em>. It authors the HTML and CSS itself and publishes it here —
     the same deploy path as an upload, with the same limits.</p>
@@ -318,17 +319,35 @@ if(pv)pv.addEventListener('click',function(){
 });
 var up=document.querySelector('[data-bundle-upload]');
 if(up)up.addEventListener('click',function(){
+  // The outcome belongs BESIDE THIS BUTTON. It used to be written to the status
+  // span in the page header, which on a long page is off-screen from the upload
+  // card entirely — so a refused upload looked exactly like the button doing
+  // nothing, and the previously deployed site stayed live with no explanation.
+  var bs=document.getElementById('scoped-bundle-status');
+  var bo=document.getElementById('scoped-bundle-outcome');
+  function say(msg,bad){ if(bs)bs.textContent=bad?'Not deployed':'';
+    if(bo){bo.textContent=msg||''; bo.className='text-sm'+(bad?' upd-bad':' muted');} }
   var f=document.getElementById('scoped-bundle-file');
-  if(!f||!f.files||!f.files.length){if(st)st.textContent='Choose a .zip first.';return;}
+  if(!f||!f.files||!f.files.length){say('Choose a .zip first, then press Upload & deploy.',true);return;}
+  up.disabled=true; if(bs)bs.textContent='Uploading\u2026'; if(bo)bo.textContent='';
   var fd=new FormData(); fd.append('bundle', f.files[0]);
-  up.disabled=true; if(st)st.textContent='Uploading\u2026';
   fetch('/os/d/'+encodeURIComponent(ID)+'/api/website/bundle',{method:'POST',
     headers:{'X-CSRF-Token':csrf()}, body:fd})
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
     .then(function(res){up.disabled=false;
-      if(res.ok){if(st)st.textContent='Deployed \u2713 '+(res.j.files||0)+' file(s) \u2014 reloading';window.location.reload();return;}
-      if(st)st.textContent=(res.j&&res.j.message)||'Could not deploy that bundle';})
-    .catch(function(e){up.disabled=false; if(st)st.textContent='Error: '+e;});
+      if(res.ok){
+        var n=res.j.files||0, sk=res.j.skipped||0;
+        var msg='Deployed '+n+' file(s).';
+        if(sk)msg+=' '+sk+' system file(s) ignored'+(res.j.skipped_names?' ('+res.j.skipped_names.join(', ')+')':'')+'.';
+        if(bs)bs.textContent='Deployed \u2713';
+        if(bo){bo.textContent=msg+' Reloading so the count above is current\u2026'; bo.className='text-sm muted';}
+        window.setTimeout(function(){window.location.reload();},900);
+        return;
+      }
+      say('This bundle was NOT deployed, and the site above is unchanged. '+
+          ((res.j&&res.j.message)||'The server refused it without giving a reason.'),true);})
+    .catch(function(e){up.disabled=false;
+      say('This bundle was NOT deployed, and the site above is unchanged. '+e,true);});
 });
 var rb=document.querySelector('[data-bundle-rollback]');
 if(rb)rb.addEventListener('click',function(){
