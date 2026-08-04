@@ -36,9 +36,18 @@ func (a *App) handleOSVayuVeil(w http.ResponseWriter, r *http.Request) {
 
 	enabled := a.veilEnabled(r)
 	var obs map[vayuveil.ChannelID]vayuveil.Observation
+	var red []vayuveil.AttackResult
 	if enabled {
-		obs = vayuveil.Inventory(vayuveil.LiveHost())
+		host := vayuveil.LiveHost()
+		obs = vayuveil.Inventory(host)
+		// The capture suite runs for real: it tries to come away holding content
+		// and is judged on the bytes. Reads are non-blocking, so a machine with a
+		// keyboard does not hang this request waiting for a keypress.
+		red = vayuveil.RunRedTeam(host, vayuveil.LiveRead)
 	}
+	// Read back from the kernel every time, never cached from boot. This is the
+	// one row permitted to be green and it earns that by being checked now.
+	self := vayuveil.VerifyProcessHardening()
 	checks := veilaudit.Run(veilaudit.Inputs{
 		Enabled:      enabled,
 		Channels:     vayuveil.Channels(),
@@ -48,9 +57,11 @@ func (a *App) handleOSVayuVeil(w http.ResponseWriter, r *http.Request) {
 		// report changes because the world changed, not because the page was
 		// re-worded.
 		EnforcingPhases: map[vayuveil.Phase]bool{},
+		SelfHardening:   self,
+		RedTeam:         red,
 	})
 
-	body := vayuVeilPage(enabled, vayuveil.Channels(), obs, checks)
+	body := vayuVeilPage(enabled, vayuveil.Channels(), obs, checks, self, red)
 	full := adminOSShellHead(nonce, "VayuVeil", "vayuveil", cfg) + body +
 		adminOSShellFoot(nonce, vayuVeilScript, pageUsesAlpine(body))
 	writeOSHTML(w, r, full)
@@ -107,7 +118,8 @@ func veilStatusChip(s veilaudit.Status) string {
 // vayuVeilPage builds the console body. Pure, so the page can be rendered and
 // asserted on without a request, a settings store or a host to probe.
 func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
-	obs map[vayuveil.ChannelID]vayuveil.Observation, checks []veilaudit.Check) string {
+	obs map[vayuveil.ChannelID]vayuveil.Observation, checks []veilaudit.Check,
+	self vayuveil.SelfHardening, red []vayuveil.AttackResult) string {
 	esc := html.EscapeString
 	var b strings.Builder
 
@@ -117,7 +129,9 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 		`</div></div>`)
 	b.WriteString(`<p class="page-sub">Which interfaces on this machine can observe a screen, a ` +
 		`keyboard, a clipboard or the text inside a window — and what this install has decided about ` +
-		`each of them. <b>Phase 0 registers those decisions and enforces none of them.</b></p>`)
+		`each of them. <b>Phase 0 registers those decisions and enforces none of them on this host</b>, ` +
+		`with one exception it can prove: the VayuPress process itself refuses to be dumped, which is ` +
+		`checked against the kernel below rather than asserted.</p>`)
 
 	// ── Tiles ─────────────────────────────────────────────────────────────────
 	pass, warn, fail, unver := veilaudit.Summary(checks)
@@ -129,7 +143,7 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 		osStatTile("Observation control", activeLabel, activeTone) +
 		osStatTile("Channels registered", strconv.Itoa(len(chans)), "") +
 		osStatTile("Open on this host", strconv.Itoa(fail), tone(fail > 0)) +
-		osStatTile("Enforcing", strconv.Itoa(pass), "warn") +
+		osStatTile("Verified enforcing", strconv.Itoa(pass), tone(pass == 0)) +
 		`</div>`)
 
 	// ── The switch, and the boundary it does NOT cross ────────────────────────
@@ -147,14 +161,77 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 			`<p class="text-sm muted">Activating VayuVeil makes this install <b>look at itself</b>: it `+
 			`probes which observation interfaces exist on this machine, which of them this process can `+
 			`open, and reports both against the policy registered for each one.</p>`+
-			`<p class="text-sm muted"><b>It does not protect anything, and turning it off does not `+
-			`expose anything.</b> ADR-0150 Phase 0 registers every channel's policy, grant model, `+
+			`<p class="text-sm muted"><b>Activating it protects nothing, and turning it off exposes `+
+			`nothing.</b> ADR-0150 Phase 0 registers every channel's policy, grant model, `+
 			`indicator and audit level, and enforces none of it. Enforcement is Phase 1 and later, and `+
 			`it lives in a compositor, a sandbox and a mandatory-access-control policy — not in this `+
 			`binary. A switch here that read as a shield would be the exact claim this ADR was `+
 			`written to prevent.</p>`+
 			`<div class="vm-row"><button type="button" class="btn btn--primary btn--sm" `+
 			`data-veil-toggle="`+btnAction+`">`+btnLabel+`</button></div></div>`))
+
+	// ── What is actually enforced, and how big it is ──────────────────────────
+	selfChip := `<span class="mon-chip mon-chip--off">unverified</span>`
+	switch {
+	case self.Known && self.Undumpable:
+		selfChip = `<span class="mon-chip mon-chip--on">verified</span>`
+	case self.Known:
+		selfChip = `<span class="mon-chip mon-chip--off">dumpable</span>`
+	}
+	b.WriteString(monAcc("🔐", "This process refuses to be dumped",
+		"The one control VayuVeil enforces, and its exact size", selfChip, true,
+		`<div class="card"><p class="text-sm muted">`+esc(self.Describe())+`</p>`+
+			`<p class="text-sm muted">It is applied before the configuration is read and before the `+
+			`database is opened, so there is no moment at which a core file or a same-user read of `+
+			`<span class="mono">/proc/&lt;pid&gt;/mem</span> could reach a session token, the keystore `+
+			`key, decrypted mail or PGP material. The state above is read back from the kernel each `+
+			`time this page loads — a control that reports itself is not evidence.</p>`+
+			`<p class="text-sm muted"><b>`+esc(vayuveil.SelfHardeningScope)+`</b> Set `+
+			`<span class="mono">VAYU_ALLOW_COREDUMP=1</span> if you are debugging a crash and need a `+
+			`core file; this page will then say so, because it reports what is true rather than which `+
+			`branch ran.</p></div>`))
+
+	// ── The capture suite ─────────────────────────────────────────────────────
+	captured, refused, notPresent, notAttempted := vayuveil.RedTeamSummary(red)
+	suiteChip := `<span class="mon-chip mon-chip--off">not run</span>`
+	if len(red) > 0 {
+		if captured > 0 {
+			suiteChip = `<span class="mon-chip mon-chip--off">` + strconv.Itoa(captured) + ` captured</span>`
+		} else {
+			suiteChip = `<span class="mon-chip mon-chip--off">` + strconv.Itoa(notAttempted) + ` not attempted</span>`
+		}
+	}
+	var suite strings.Builder
+	suite.WriteString(`<div class="card"><p class="text-sm muted">Real capture techniques, run against ` +
+		`this host, judged on <b>whether they came away holding content</b> — never on whether a call ` +
+		`returned an error. A subsystem that reports the right status while producing the wrong bytes ` +
+		`passes every check written the other way.</p>`)
+	if len(red) == 0 {
+		suite.WriteString(`<p class="text-sm muted">The suite has not run. Activate VayuVeil above to ` +
+			`run it.</p></div>`)
+	} else {
+		suite.WriteString(`<p class="text-sm"><b>` + strconv.Itoa(captured) + `</b> captured content · <b>` +
+			strconv.Itoa(refused) + `</b> came away empty · <b>` + strconv.Itoa(notPresent) +
+			`</b> had no target here · <b>` + strconv.Itoa(notAttempted) + `</b> not attempted</p>`)
+		suite.WriteString(`<p class="text-sm muted">The techniques marked <i>not attempted</i> are not ` +
+			`defended and not tested — they need a Wayland or AT-SPI client this binary does not link. ` +
+			`They are named rather than counted, because a suite that silently skips what it cannot ` +
+			`do reports a clean sweep it never performed:</p><ul class="text-sm muted">`)
+		for _, name := range vayuveil.TechniquesNotAttempted(red) {
+			suite.WriteString(`<li>` + esc(name) + `</li>`)
+		}
+		suite.WriteString(`</ul>`)
+		suite.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Technique</th>` +
+			`<th>Outcome</th><th>Bytes</th></tr></thead><tbody>`)
+		for _, r := range red {
+			suite.WriteString(`<tr><td class="text-xs">` + esc(r.Technique) + `</td><td class="text-xs">` +
+				esc(attackOutcomeLabel(r.Outcome)) + `</td><td class="text-xs">` +
+				strconv.Itoa(r.Bytes) + `</td></tr>`)
+		}
+		suite.WriteString(`</tbody></table></div></div>`)
+	}
+	b.WriteString(monAcc("🗡", "Capture suite", "Techniques actually run against this host, judged on bytes",
+		suiteChip, false, suite.String()))
 
 	// ── The registry ──────────────────────────────────────────────────────────
 	regChip := `<span class="mon-chip mon-chip--on">` + strconv.Itoa(len(chans)) + ` declared</span>`
@@ -278,6 +355,20 @@ func auditLabel(a vayuveil.AuditLevel) string {
 		return "grants only"
 	case vayuveil.AuditNone:
 		return "none"
+	}
+	return "—"
+}
+
+func attackOutcomeLabel(o vayuveil.AttackOutcome) string {
+	switch o {
+	case vayuveil.AttackCapturedContent:
+		return "CAPTURED CONTENT"
+	case vayuveil.AttackRefused:
+		return "came away empty"
+	case vayuveil.AttackNothingPresent:
+		return "no target on this host"
+	case vayuveil.AttackNotAttempted:
+		return "not attempted — undefended"
 	}
 	return "—"
 }

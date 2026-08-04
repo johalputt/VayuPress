@@ -27,7 +27,23 @@ func veilPageFor(t *testing.T, enabled bool, presence vayuveil.Presence) string 
 		Enabled: enabled, Channels: vayuveil.Channels(), Observations: obs,
 		EnforcingPhases: map[vayuveil.Phase]bool{},
 	})
-	return vayuVeilPage(enabled, vayuveil.Channels(), obs, checks)
+	return vayuVeilPage(enabled, vayuveil.Channels(), obs, checks,
+		vayuveil.SelfHardening{Supported: true, Known: true, Undumpable: true}, nil)
+}
+
+// veilPageWith renders the page with a given hardening state and suite run, for
+// the assertions that are about exactly those.
+func veilPageWith(t *testing.T, self vayuveil.SelfHardening, red []vayuveil.AttackResult) string {
+	t.Helper()
+	obs := map[vayuveil.ChannelID]vayuveil.Observation{}
+	for _, c := range vayuveil.Channels() {
+		obs[c.ID] = vayuveil.Observation{Presence: vayuveil.PresenceAbsent, Detail: "probe detail"}
+	}
+	checks := veilaudit.Run(veilaudit.Inputs{
+		Enabled: true, Channels: vayuveil.Channels(), Observations: obs,
+		EnforcingPhases: map[vayuveil.Phase]bool{}, SelfHardening: self, RedTeam: red,
+	})
+	return vayuVeilPage(true, vayuveil.Channels(), obs, checks, self, red)
 }
 
 // THE test for this page. No wording anywhere may tell a reader that anything is
@@ -87,15 +103,32 @@ func TestThePhaseBoundaryIsStatedBeforeAnythingElse(t *testing.T) {
 	}
 }
 
-// The "Enforcing" tile is the one a person's eye goes to. It must read zero and
-// it must not read as good news.
-func TestTheEnforcingTileReadsZeroAndIsNotToneGreen(t *testing.T) {
-	tile := statCardIn(t, veilPageFor(t, true, vayuveil.PresenceAbsent), "Enforcing")
-	if !strings.Contains(tile, ">0<") {
-		t.Errorf("the enforcing tile does not read zero while nothing is enforcing: %s", tile)
+// The tile counts VERIFIED controls, and the count has to move with reality in
+// both directions — a tile hardcoded either way is the thing to catch.
+func TestTheVerifiedEnforcingTileCountsWhatIsActuallyVerified(t *testing.T) {
+	// Kernel says undumpable: exactly one control is verified enforcing.
+	on := statCardIn(t, veilPageWith(t,
+		vayuveil.SelfHardening{Supported: true, Known: true, Undumpable: true}, nil), "Verified enforcing")
+	if !strings.Contains(on, ">1<") {
+		t.Errorf("one control is verified and the tile does not say so: %s", on)
 	}
-	if !strings.Contains(tile, "stat-card--warn") {
-		t.Errorf("zero controls enforcing is rendered as unremarkable state: %s", tile)
+	if strings.Contains(on, "stat-card--warn") {
+		t.Errorf("a verified control is toned as a problem: %s", on)
+	}
+	// Kernel says dumpable: nothing is enforcing, and that IS a problem.
+	off := statCardIn(t, veilPageWith(t,
+		vayuveil.SelfHardening{Supported: true, Known: true, Undumpable: false}, nil), "Verified enforcing")
+	if !strings.Contains(off, ">0<") {
+		t.Errorf("nothing is enforcing and the tile does not read zero: %s", off)
+	}
+	if !strings.Contains(off, "stat-card--warn") {
+		t.Errorf("zero verified controls is rendered as unremarkable: %s", off)
+	}
+	// Kernel could not be asked: unverified is NOT a pass.
+	unk := statCardIn(t, veilPageWith(t,
+		vayuveil.SelfHardening{Supported: false}, nil), "Verified enforcing")
+	if !strings.Contains(unk, ">0<") {
+		t.Errorf("an unverifiable platform is counted as enforcing: %s", unk)
 	}
 }
 
@@ -121,10 +154,17 @@ func TestTheActivateControlExistsIsBoundAndStatesItsLimits(t *testing.T) {
 	if !strings.Contains(vayuVeilScript, "/os/api/vayuveil/toggle") {
 		t.Error("the toggle posts to no endpoint")
 	}
-	// And the copy beside it must refuse the obvious misreading.
-	if !strings.Contains(off, "does not protect anything") {
+	// And the copy beside it must refuse the obvious misreading. The wording is
+	// scoped to the SWITCH — "activating it protects nothing" — rather than to
+	// VayuVeil as a whole, because the process hardening below genuinely does
+	// protect something and a blanket denial would be false in the other
+	// direction. Under-claiming is a claim defect too.
+	if !strings.Contains(off, "Activating it protects nothing") {
 		t.Error("the switch does not tell the operator that activating it protects nothing, which " +
 			"is the single most likely thing for them to assume")
+	}
+	if !strings.Contains(off, "turning it off exposes") {
+		t.Error("the switch does not say that deactivating it exposes nothing either")
 	}
 }
 
@@ -158,7 +198,7 @@ func TestAnOpenChannelIsVisibleOnThePage(t *testing.T) {
 func TestTheVayuVeilPageMeetsTheHouseStyle(t *testing.T) {
 	page := veilPageFor(t, true, vayuveil.PresenceAbsent)
 	assertHouseStyle(t, page, houseStyle{
-		Name: "VayuVeil", MinTiles: 4, MinBands: 4,
+		Name: "VayuVeil", MinTiles: 4, MinBands: 6,
 		IDs:   []string{"veil-status"},
 		Hooks: []string{"data-veil-toggle"},
 	})

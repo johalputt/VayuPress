@@ -6,6 +6,77 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+**VayuVeil gets the two things Phase 0 shipped without: something it actually
+enforces, and the capture suite that judges it (ADR-0150 §6).**
+
+### Added
+- **This process refuses to be dumped.** `prctl(PR_SET_DUMPABLE, 0)` is applied
+  before the configuration is read and before the database is opened, so there is
+  no window in which a core file or a same-user read of `/proc/<pid>/mem` could
+  reach a session token, the keystore key, decrypted mail or PGP material. It
+  also refuses `PTRACE_ATTACH` from a process running as the same user.
+
+  **The scope is this process and nothing else on the machine**, and every
+  surface that reports it says exactly that. It is the first row in this
+  subsystem allowed to be green, and it earns that by being read back from the
+  kernel with `PR_GET_DUMPABLE` each time the report runs — a control that
+  reports itself is not evidence. `VAYU_ALLOW_COREDUMP=1` keeps the process
+  dumpable for anyone debugging a crash, and the page then says so, because it
+  reports what is true rather than which branch ran.
+
+- **The red-team capture suite.** Real techniques run against the host —
+  framebuffer, evdev, DRM card nodes, another process's memory — judged on
+  **whether they came away holding content**, never on whether a call returned an
+  error. A subsystem that reports the right status while producing the wrong
+  bytes passes every check written the other way, which is a lesson this project
+  has already paid for once.
+
+  Techniques this binary cannot run are reported as **NOT ATTEMPTED**, named
+  individually on the page, and counted as neither a pass nor a defence. §6 is
+  explicit that a technique not in the suite is not defended and the report must
+  not imply otherwise; a suite that silently skips what it cannot do reports a
+  clean sweep it never performed.
+
+- An attack that came away empty is **not** credited to VayuVeil. Nothing in
+  Phase 0 refused it — the host's own permissions did — and the row says so.
+
+### Audit
+Seven mutations, all killed, one only after the gap it exposed was closed.
+
+**Judging a capture on the error rather than on the byte count survived the
+first pass.** The mutation let the search stop at the first device node that
+opened cleanly and returned nothing, so a machine with `/dev/fb0` empty and
+`/dev/fb1` handing over pixels would have been reported clean. There is now a
+test with a capture on the second node.
+
+**A blocking read would have hung the console.** The suite does not merely open
+device nodes, it reads from them — and a read from an evdev node with nothing
+queued blocks until somebody presses a key. Opening this page on a machine with
+a keyboard would have hung the request until the operator happened to type.
+Reads are `O_NONBLOCK` now, which the suite scores exactly as it should: the
+attacker came away holding nothing.
+
+**The lede had started under-claiming**, which is a claim defect in the other
+direction. It said Phase 0 enforces nothing, which stopped being true the moment
+the process hardening landed. It now says what is enforced, how small it is, and
+that the state is checked against the kernel rather than asserted.
+
+One assertion was wrong rather than the code, for the sixth time in this
+console's history: a check that a not-attempted technique reads *unverified*
+matched the **channel** row named `wlr-screencopy protocol` instead of the
+**attack** row, and failed against correct code. It matches on the `Attack:`
+prefix now.
+
+### Removed
+- Two more functions the deadcode gate refused. One was wired up instead —
+  naming the not-attempted techniques on the page is what §6 asks for and beats
+  counting them — and the other, a test-only invariant guard, moved into the test
+  file rather than the package carrying unreachable code for the suite's benefit.
+
+---
+
 ## [3.16.99] — 2026-08-04
 
 **VayuVeil, Phase 0 — the Observation Contract registry (ADR-0150).**

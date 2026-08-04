@@ -76,6 +76,7 @@ import (
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
 	mailpkg "github.com/johalputt/vayupress/internal/vayuos/mail"
+	"github.com/johalputt/vayupress/internal/vayuveil"
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
@@ -505,6 +506,29 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == obfs4Subcommand {
 		runEmbeddedObfs4()
 		os.Exit(0)
+	}
+
+	// VayuVeil (ADR-0150): refuse to be dumped, BEFORE anything sensitive is
+	// loaded.
+	//
+	// The ordering is the point. This runs before config.Load, before the
+	// database opens and before the keystore is unsealed, so there is no window
+	// in which a core file or a same-user /proc/<pid>/mem read could reach a
+	// session token, the keystore key, decrypted mail or PGP material. Gating it
+	// on a stored setting would mean reading the database first, which is exactly
+	// the window it exists to close — so it is unconditional, and the escape
+	// hatch is an environment variable rather than a row in a table.
+	//
+	// VAYU_ALLOW_COREDUMP=1 keeps the process dumpable for an operator who is
+	// genuinely debugging a crash. The posture report reads the kernel back
+	// either way, so it says what is actually true rather than which branch ran.
+	if os.Getenv("VAYU_ALLOW_COREDUMP") != "1" {
+		if err := vayuveil.ApplyProcessHardening(); err != nil {
+			// Not fatal. A platform that cannot do this still serves; the report
+			// tells the operator it is not enforcing rather than the binary
+			// refusing to start over a hardening step.
+			log.Printf("vayuveil: could not make this process undumpable: %v", err)
+		}
 	}
 
 	// Give the GC a memory ceiling to aim at (cgroup-aware; honours an explicit

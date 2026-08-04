@@ -64,6 +64,11 @@ type Inputs struct {
 	// verified. At P0 this is empty, and the report is built to say so plainly
 	// rather than to look busy.
 	EnforcingPhases map[vayuveil.Phase]bool
+	// SelfHardening is the one control this binary genuinely enforces, read back
+	// from the kernel rather than remembered from the call that set it.
+	SelfHardening vayuveil.SelfHardening
+	// RedTeam is the capture suite's last run (ADR-0150 §6).
+	RedTeam []vayuveil.AttackResult
 }
 
 // Run computes the report.
@@ -89,6 +94,15 @@ func Run(in Inputs) []Check {
 			"the thing it describes has been verified enforcing.",
 	}}
 
+	// The one row that is allowed to be green, because it is the one thing this
+	// binary both does and can verify. Placed above the channel rows so its
+	// SCOPE is read before its verdict: it protects the VayuPress process, and a
+	// reader who takes it for the machine has been misled by placement alone.
+	checks = append(checks, selfHardeningCheck(in.SelfHardening))
+
+	// The capture suite. Findings first, then the honest gap.
+	checks = append(checks, redTeamChecks(in.RedTeam)...)
+
 	// Per-channel rows, computed from what was observed.
 	chans := append([]vayuveil.Channel(nil), in.Channels...)
 	sort.Slice(chans, func(i, j int) bool { return chans[i].ID < chans[j].ID })
@@ -100,6 +114,55 @@ func Run(in Inputs) []Check {
 	// cleared by nothing.
 	checks = append(checks, permanentLimits()...)
 	return checks
+}
+
+// selfHardeningCheck is the only row in this report that may be a Pass, and it
+// earns it by being read back from the kernel at the moment the report runs.
+func selfHardeningCheck(h vayuveil.SelfHardening) Check {
+	const title = "The VayuPress process refuses to be dumped"
+	switch {
+	case !h.Supported, !h.Known:
+		return Check{Title: title, Status: Unverified, Detail: h.Describe()}
+	case h.Undumpable:
+		return Check{Title: title, Status: Pass, Detail: h.Describe()}
+	default:
+		return Check{Title: title, Status: Fail, Detail: h.Describe()}
+	}
+}
+
+// redTeamChecks renders the capture suite.
+//
+// A technique that was NOT ATTEMPTED is Unverified, never Info and never a pass.
+// §6 is explicit: a technique that is not in the suite is not defended, and the
+// report must not imply otherwise. Folding those into a comfortable-looking
+// bucket is exactly the implication it forbids.
+func redTeamChecks(rs []vayuveil.AttackResult) []Check {
+	if len(rs) == 0 {
+		return []Check{{Title: "Capture suite", Status: Unverified,
+			Detail: "The red-team capture suite has not run, so no technique has been tried against " +
+				"this host. Nothing here has been demonstrated either way."}}
+	}
+	out := make([]Check, 0, len(rs))
+	for _, r := range rs {
+		title := "Attack: " + r.Technique
+		switch r.Outcome {
+		case vayuveil.AttackCapturedContent:
+			out = append(out, Check{Title: title, Status: Fail, Detail: r.Detail})
+		case vayuveil.AttackRefused:
+			// NOT a pass. The technique came away empty on THIS host, from THIS
+			// process, and nothing in P0 is what stopped it — the host's own
+			// permissions were. Calling that a VayuVeil pass would credit this
+			// subsystem with somebody else's work.
+			out = append(out, Check{Title: title, Status: Warn,
+				Detail: r.Detail + " Nothing in Phase 0 is what refused it; the host's own " +
+					"permissions did, and they hold for this process rather than for every process."})
+		case vayuveil.AttackNothingPresent:
+			out = append(out, Check{Title: title, Status: Info, Detail: r.Detail})
+		default:
+			out = append(out, Check{Title: title, Status: Unverified, Detail: r.Detail})
+		}
+	}
+	return out
 }
 
 // channelCheck turns one channel and its observation into a row.
