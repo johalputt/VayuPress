@@ -55,6 +55,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// adds context, so the primary domain is served byte-identically.
 	if a.domains != nil {
 		r.Use(a.domainMiddleware)
+		// Must follow domainMiddleware: the strict baseline is set before the
+		// domain is known, so the one hosted site that opted out of the no-eval
+		// rule can only be honoured once activeDomain exists.
+		r.Use(a.siteCSPMiddleware)
 	}
 	// Redirect middleware — runs after core middleware, serves 301/302 before routing.
 	if a.redirectMgr != nil {

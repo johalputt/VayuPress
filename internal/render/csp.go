@@ -232,3 +232,32 @@ func FrameOriginsInHTML(html string) []string {
 	sort.Strings(out)
 	return out
 }
+
+// BuildCSPAllowingEval is the baseline policy with 'unsafe-eval' added to
+// script-src, and NOTHING else changed.
+//
+// WHY THIS EXISTS AT ALL, stated plainly because the trade is real. Most
+// mainstream front-end libraries compile the expression strings written in
+// markup — `x-show="open && ready"`, `v-if=…`, and their equivalents — into
+// functions at runtime. That is eval, and the strict baseline refuses it. The
+// consequence is not a degraded page but an inert one: the markup renders and
+// every interaction is dead.
+//
+// An operator publishing a STATIC page on a hosted domain — no login, no form,
+// no user-supplied content — is running a materially different risk from the
+// panel. 'unsafe-eval' matters when an attacker can get a string into the page;
+// on a brochure site with no injection surface, the practical exposure is small
+// and the operator may reasonably want their own site to work.
+//
+// So this exists as a per-domain, opt-in choice, and it is deliberately narrow:
+//   - script-src gains 'unsafe-eval' and nothing else. Sources stay 'self'.
+//   - Every other directive is byte-identical to the baseline.
+//   - The caller is responsible for refusing it on the panel, the API, the
+//     primary domain, and any path that carries a session.
+//
+// It is NOT a general relaxation and must never become the default. A site that
+// can live inside the baseline should.
+func BuildCSPAllowingEval(nonce string) string {
+	base := BuildCSP(nonce, nil)
+	return strings.Replace(base, "script-src 'self' ", "script-src 'self' 'unsafe-eval' ", 1)
+}

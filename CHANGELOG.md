@@ -6,6 +6,48 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.83] — 2026-08-04
+
+**A hosted site can now opt out of the no-eval rule — and only that site.**
+
+The strict policy made a whole class of site impossible rather than merely
+awkward. Mainstream front-end libraries compile the expression strings written in
+markup into functions at runtime; `script-src` refuses that, and the page renders
+**inert** — every animation and control dead, with nothing on screen explaining
+why. Self-hosting the library does not help: the refusal is about `eval`, not
+about where the file came from.
+
+An operator publishing a static page on their own hosted domain — no login, no
+form, no user-supplied content — is running a materially different risk from the
+panel. So the choice is now theirs, per domain.
+
+### Added
+- **`SiteConfig.AllowEval`**, off by default. When set, that domain's pages are
+  served a policy identical to the baseline except that `script-src` gains
+  `'unsafe-eval'`. Sources stay `'self'`; every other directive is byte-identical.
+
+- **`siteCSPMiddleware`**, which honours it and refuses everything else. It runs
+  after `domainMiddleware` because the strict baseline is set before the domain
+  is even known. All four conditions must hold: a **non-primary** domain,
+  **serving a deployed custom bundle**, with **AllowEval set**, on a path that
+  **carries no session** — `/os`, `/api`, `/admin`, `/oauth`, `/mcp` and the two
+  internal endpoints are refused by prefix, so a new admin route added later
+  inherits the refusal without anyone remembering.
+
+### Audit
+Two mutations were run against the guards. The first **survived**: the check for
+an off-origin source looked for `https://`, and widening the directive with the
+bare scheme source `https:` slipped past it one character short — a policy
+admitting every host on the web would have been reported as unchanged. The
+assertion is now a whitelist of permitted tokens (`'self'`, `'unsafe-eval'`,
+nonce and hash forms) rather than a search for suspicious ones, and it kills that
+mutation. Removing `/os` from the refused prefixes was killed on the first pass.
+
+Worth stating in the open: this is a real loosening and must never become the
+default. A site that can live inside the baseline should.
+
+---
+
 ## [3.16.82] — 2026-08-04
 
 **Creativity inside the policy, instead of a choice between them.**

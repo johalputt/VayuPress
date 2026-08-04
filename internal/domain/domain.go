@@ -111,6 +111,17 @@ type SiteConfig struct {
 	Mode     string `json:"mode,omitempty"`     // "" = inherit; blog | business | business_subpath | custom
 	Template string `json:"template,omitempty"` // business template key
 	Content  string `json:"content,omitempty"`  // business content, as stored by bizsite
+
+	// AllowEval opts THIS domain's hand-built bundle out of the no-eval rule in
+	// the Content-Security-Policy, so a front-end library that compiles its
+	// markup expressions at runtime can work.
+	//
+	// Off by default and deliberately per-domain. It is a real loosening, and an
+	// operator who wants it for a static brochure page should not have to take it
+	// on the panel, the API, or every other client sharing the box. The
+	// middleware that honours this refuses it for the primary domain, for any
+	// mode other than a deployed custom bundle, and for every authenticated path.
+	AllowEval bool `json:"allow_eval,omitempty"`
 }
 
 // Empty reports whether this carries no website override at all.
