@@ -37,7 +37,7 @@ func osSystemGrid(level int) string {
 		return osWorkCard(href, title, desc, icon, 0, "", accent)
 	}
 	var b strings.Builder
-	b.WriteString(`<div class="page-head"><div><h1 class="page-title">System</h1><p class="page-sub">Storage, settings and your account — in one place.</p></div></div>`)
+	b.WriteString(`<div class="page-header"><h1>System</h1></div><p class="page-sub">Storage, settings and your account — in one place.</p>`)
 	b.WriteString(`<div class="work-grid">`)
 	b.WriteString(card("/os/storage", "Storage & System", "Disk, backups & runtime", iconStorage, true))
 	b.WriteString(card("/os/settings", "Settings", "Site & install settings", iconSettings, false))

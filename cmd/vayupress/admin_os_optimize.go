@@ -82,7 +82,7 @@ func osOptimizeGrid(level int, sites []optimizeSite) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(`<div class="page-head"><div><h1 class="page-title">Optimize</h1><p class="page-sub">Reach, protect and polish your site — plus everything to configure it.</p></div></div>`)
+	b.WriteString(`<div class="page-header"><h1>Optimize</h1></div><p class="page-sub">Reach, protect and polish your site — plus everything to configure it.</p>`)
 
 	// Your websites — one card per secondary domain, each opening that site's own
 	// manager where its branding, content and lifecycle are controlled. Shown only

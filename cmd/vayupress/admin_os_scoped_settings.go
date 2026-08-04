@@ -107,9 +107,9 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 	var b strings.Builder
 
 	b.WriteString(`<div id="scoped-ctx" data-id="` + esc(domainID) + `" hidden></div>` +
-		`<div class="page-head"><div><h1 class="page-title">Site settings</h1>` +
-		`<p class="page-sub"><a href="/os/d/` + esc(domainID) + `">← ` + esc(host) + `</a></p></div>` +
+		`<div class="page-header"><h1>Site settings</h1>` +
 		`<div class="page-actions"><span id="scoped-status" class="text-sm muted" role="status" aria-live="polite"></span></div></div>` +
+		`<p class="page-sub"><a href="/os/d/` + esc(domainID) + `">← ` + esc(host) + `</a></p>` +
 		`<p class="page-sub">These belong to <b>` + esc(host) + `</b>. A blank field is blank — this site ` +
 		`falls back to the product default, never to the primary site's value.</p>`)
 

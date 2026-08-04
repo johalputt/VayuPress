@@ -59,8 +59,8 @@ func (a *App) handleOSScopedSEO(w http.ResponseWriter, r *http.Request) {
 	esc := html.EscapeString
 	origin := seo.Origin(d.Host)
 
-	body := `<div class="page-head"><div><h1 class="page-title">SEO</h1>` +
-		`<p class="page-sub"><a href="/os/d/` + esc(d.ID) + `">← ` + esc(d.Host) + `</a></p></div></div>` +
+	body := `<div class="page-header"><h1>SEO</h1></div>` +
+		`<p class="page-sub"><a href="/os/d/` + esc(d.ID) + `">← ` + esc(d.Host) + `</a></p>` +
 		`<p class="page-sub">What search engines are told about <b>` + esc(d.Host) + `</b>.</p>`
 
 	// Read this domain's own declared values first, so both the tiles and the

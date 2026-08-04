@@ -39,7 +39,7 @@ func (a *App) handleOSOperations(w http.ResponseWriter, r *http.Request) {
 // attention is impossible to miss from the hub.
 func osOperationsGrid(current mode.Mode, storagePct int, maintenanceOn bool, keepBadge string) string {
 	var b strings.Builder
-	b.WriteString(`<div class="page-head"><div><h1 class="page-title">Operations</h1><p class="page-sub">Advanced controls, diagnostics and governance for your install.</p></div></div>`)
+	b.WriteString(`<div class="page-header"><h1>Operations</h1></div><p class="page-sub">Advanced controls, diagnostics and governance for your install.</p>`)
 
 	// Controls & diagnostics.
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Controls &amp; diagnostics</span><span class="section-head__hint">Run, inspect &amp; recover</span></div>`)

@@ -38,7 +38,7 @@ func (a *App) handleOSGrowth(w http.ResponseWriter, r *http.Request) {
 // launcher card grid — each links to its detail page.
 func osGrowthGrid(memberCount, subscribers, paid int) string {
 	var b strings.Builder
-	b.WriteString(`<div class="page-head"><div><h1 class="page-title">Growth</h1><p class="page-sub">Your audience and subscribers. Revenue, products and payouts live in Monetization.</p></div></div>`)
+	b.WriteString(`<div class="page-header"><h1>Growth</h1></div><p class="page-sub">Your audience and subscribers. Revenue, products and payouts live in Monetization.</p>`)
 
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Audience</span><span class="section-head__hint">Grow and reach your readers</span></div>`)
 	b.WriteString(`<div class="work-grid">`)

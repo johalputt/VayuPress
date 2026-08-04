@@ -10,10 +10,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/bizsite"
 	"github.com/johalputt/vayupress/internal/customsite"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
+	"github.com/johalputt/vayupress/internal/settings"
 )
 
 // Markup must not reference a class the stylesheet does not define.
@@ -64,9 +66,18 @@ func assertClassesAreStyled(t *testing.T, label, css, markup string) {
 				continue
 			}
 			seen[cls] = true
-			// A rule may be `.x {`, `.x:hover`, `.x::after`, `.x--mod`, or
-			// `.a .x`. Matching the bare selector token covers all of them.
-			if !strings.Contains(css, "."+cls) {
+			// A rule may be `.x {`, `.x:hover`, `.x::after`, `.x--mod` or `.a .x`,
+			// so the selector token is matched rather than a whole rule — but it
+			// must END where the class ends.
+			//
+			// A plain substring test says `.page-head` is styled because
+			// `.page-header` exists. That is not a hypothetical: `page-head` and
+			// `page-title` were emitted by seven pages with no rule anywhere in the
+			// stylesheet the console actually loads, and this gate — written after
+			// `scoped-tool` shipped unstyled for two releases — passed them the
+			// whole time. The same defect the gate exists to catch, hidden inside
+			// the gate.
+			if !cssDefines(css, cls) {
 				missing = append(missing, cls)
 			}
 		}
@@ -144,6 +155,18 @@ func TestTheOtherPerSitePagesEmitNoUnstyledClass(t *testing.T) {
 	}))
 	assertClassesAreStyled(t, "the website page", css, scopedWebsitePage(d, "studio", bizsite.Content{Name: "X"}, false, customsite.Manifest{}))
 	assertClassesAreStyled(t, "the site list", css, domainsHeader([]domain.Domain{d}, ""))
+
+	// The three that were never passed to this gate — which is the other half of
+	// why an unstyled header survived on them. A gate covering four of seven pages
+	// reports on four of seven pages, and reads like a clean bill of health for
+	// all seven.
+	assertClassesAreStyled(t, "the settings page", css,
+		scopedSettingsBody("d1", "customer.example",
+			map[string]string{settings.KeySiteName: "Customer Ltd"}, presCustom))
+	assertClassesAreStyled(t, "the SEO page", css,
+		scopedSEOBody("d1", "https://customer.example", map[string]string{}))
+	assertClassesAreStyled(t, "the visitors page", css,
+		scopedAnalyticsBody(1200, 340, 41.5, 62, []analytics.PageStat{{Path: "/", Pageviews: 900}}))
 }
 
 // betweenMarkers returns the markup between two landmarks, so an assertion about
@@ -161,4 +184,28 @@ func betweenMarkers(t *testing.T, page, from, to string) string {
 		t.Fatalf("landmark %q does not follow %q", to, from)
 	}
 	return rest[:j]
+}
+
+// cssDefines reports whether the stylesheet carries a rule for exactly this
+// class — `.cls` not followed by another identifier character, so `.page-header`
+// does not answer for `.page-head`.
+func cssDefines(css, cls string) bool {
+	re := regexp.MustCompile(`\.` + regexp.QuoteMeta(cls) + `([^A-Za-z0-9_-]|$)`)
+	return re.MatchString(css)
+}
+
+// The gate's own matcher, held to the case that defeated it.
+func TestTheClassMatcherDoesNotAcceptAPrefixMatch(t *testing.T) {
+	const css = `.page-header { display:flex } .stat-card--warn { color:red } .mon-chip{}`
+	for _, defined := range []string{"page-header", "stat-card--warn", "mon-chip"} {
+		if !cssDefines(css, defined) {
+			t.Errorf("%q has a rule and the matcher says it does not", defined)
+		}
+	}
+	for _, undefined := range []string{"page-head", "page", "stat-card", "mon", "mon-chi"} {
+		if cssDefines(css, undefined) {
+			t.Errorf("%q has NO rule, but a longer class name answered for it — this is exactly "+
+				"how seven pages shipped an unstyled header past this gate", undefined)
+		}
+	}
 }

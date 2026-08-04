@@ -38,8 +38,8 @@ func (a *App) handleOSScopedAnalytics(w http.ResponseWriter, r *http.Request) {
 	}
 	esc := html.EscapeString
 
-	body := `<div class="page-head"><div><h1 class="page-title">Visitors</h1>` +
-		`<p class="page-sub"><a href="/os/d/` + esc(d.ID) + `">← ` + esc(d.Host) + `</a></p></div></div>` +
+	body := `<div class="page-header"><h1>Visitors</h1></div>` +
+		`<p class="page-sub"><a href="/os/d/` + esc(d.ID) + `">← ` + esc(d.Host) + `</a></p>` +
 		`<p class="page-sub">Traffic to <b>` + esc(d.Host) + `</b> over the last 30 days. ` +
 		`Counted without cookies, so nobody is tracked between visits.</p>`
 

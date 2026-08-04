@@ -27,6 +27,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   rather than the cheerful branch — the one a zero value gives you for free, and
   the one the Settings page shipped before it was caught.
 
+### Fixed
+- **Seven console pages rendered an unstyled header.** `page-head` and
+  `page-title` have no rule in `admin-os.css` — the only stylesheet the console
+  shell loads — so Site settings, SEO, Visitors, System, Growth, Optimize and
+  Operations each opened with a bare `<h1>` in an unstyled box: no flex row, no
+  title size, no alignment for the actions beside it. All seven use the house
+  `page-header` now, so every VayuOS page opens the same way.
+
+- **The gate that exists to catch exactly this had two holes**, and both were
+  load-bearing. It tested `strings.Contains(css, ".page-head")`, which is
+  satisfied by `.page-header` — a longer class answering for a shorter one — and
+  it was only ever handed four of the seven pages. It matches on a class
+  boundary now, and covers the three per-domain pages it had never seen.
+
+- **A claim in the v3.16.97 notes overstated what had been consolidated.** It
+  said two further tile helpers had been folded into `osStatTile`; they had not.
+  The entry is corrected in place with a note rather than quietly edited.
+
 ### Audit
 Seven mutations against the row rendering, all killed, three only after the
 assertions were strengthened.
@@ -51,6 +69,24 @@ rows' own class names, which is how the two bands drifted while a test named
 checking that a second set of rules existed, not that the two bands shared one.
 It now asserts the rows use the summary's classes, which makes drift impossible
 rather than merely unlikely.
+
+**Attacking the gate itself is what found the unstyled headers.** The question
+was "what would this check happily pass?", and the answer was any class that is a
+prefix of a longer one — which `page-head` is of `page-header`. Seven pages had
+been shipping a bare header behind it. The gate was written after `scoped-tool`
+shipped unstyled for two releases, so this is the second time the same defect got
+through, once past nothing and once past the thing built to stop it.
+
+**What was NOT fixed, stated plainly.** A source-wide sweep of every file that
+renders into the console shell finds **43 further classes with no rule** — pills
+on the site list, trend arrows on the security page, six VayuTor panels, the
+security-update warning box. Each needs a design decision rather than a
+mechanical fix, so none is guessed at here. They are frozen in a named baseline
+with a gate that fails on anything **new**, in the deadcode gate's shape: the
+list is expected to shrink and refuses to grow, and a second test removes an
+entry the moment it acquires a rule so the list cannot rot into a permanent
+allowlist. Two mutations against it, both killed — a novel unstyled class, and a
+baseline entry that had since been styled.
 
 ---
 
@@ -82,11 +118,16 @@ collapses.**
 - **Settings, SEO and Visitors built their markup inline against a live request**,
   so none could be rendered in a test and none of their restyling could be
   checked. Each now has a pure render function taking the values it displays.
-- **Four different functions rendered the same four numbers.** The literal markup
-  on the Monetization page, `vmStatTile`, `osStatCardDelta` and a fourth copy
-  inside the Website page all now call `osStatTile`. That drift is the exact
-  thing the house-style rule exists to prevent, and the shared helper found it on
-  its first run against a page it was not written for.
+- **Several functions rendered the same four numbers.** Every per-domain page and
+  the Monetization page now call one helper, `osStatTile`. That drift is the
+  exact thing the house-style rule exists to prevent, and the shared conformance
+  helper found it on its first run against a page it was not written for.
+
+  *(Corrected after release: this entry first said `vmStatTile` and
+  `osStatCardDelta` had been folded into `osStatTile` as well. They had not, and
+  still have not — they render their own markup for the mail and intelligence
+  pages, which are different surfaces with their own tile shapes. The line
+  claimed more consolidation than the commit delivered.)*
 - **A claim test read the traffic handler's source rather than its output.**
   Moving the copy into a render function broke it while nothing a visitor sees
   changed — so it failed an honest refactor and would have passed a regression
