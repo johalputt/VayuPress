@@ -185,6 +185,12 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// The VayuAnalytics engagement beacon is toggled in Tools & Plugins /
 		// the Analytics console, not the theme editor.
 		settings.KeyAnalyticsBeacon: true,
+		// VayuVeil's activate/deactivate switch (ADR-0150) lives on its own
+		// console. It is emphatically not presentation, and a theme bundle that
+		// carried it would switch a privacy subsystem's reporting on or off on
+		// another install as a side effect of importing a look — the same class of
+		// mistake as carrying somebody's network deny list in a theme.
+		settings.KeyVeilEnabled: true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {

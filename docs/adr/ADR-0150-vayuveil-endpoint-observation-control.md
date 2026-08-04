@@ -1,7 +1,7 @@
 # ADR-0150 — VayuVeil: endpoint observation control
 
-- **Status:** Proposed
-- **Date:** 2026-07-29
+- **Status:** Accepted — **P0 shipped**, P1–P6 not started
+- **Date:** 2026-07-29 (P0 shipped 2026-08-04)
 - **Relates to:** ADR-0141 (VayuOS Spaces), ADR-0143 (Tor Space anonymity model),
   ADR-0123 (privileged agent / privilege separation)
 
@@ -220,10 +220,25 @@ what is **observed**, never from what is configured.
 Each phase is independently shippable and independently useful. No phase claims
 more than it has verified.
 
-**P0 — Threat model and the registry (weeks).**
+**P0 — Threat model and the registry (weeks). SHIPPED.**
 The `ObservationChannel` type, the exhaustiveness test, the generated system
 inventory, and the ADR. **Ship the registry before the enforcement**, so every
 later phase has a declared home and nothing lands undeclared.
+
+> **What P0 actually is, in the tree:** `internal/vayuveil` holds the registry —
+> twenty channels, each answering disposition, grant model, indicator, audit
+> level and enforcing phase, with the zero value of every one of those invalid
+> — plus the host probes. `internal/veilaudit` computes the posture report.
+> `/os/vayuveil` shows both and carries the activate/deactivate control.
+>
+> **P0 enforces nothing, and every surface says so.** The switch governs
+> *reporting*: activating it makes the install inventory itself, and turning it
+> off exposes nothing that was not already exposed. `veilaudit` cannot emit a
+> passing row while no phase is enforcing — `Pass` means *verified enforcing*,
+> so at P0 the report is green nowhere, by construction and by test. An
+> interface absent from the host is reported as absent rather than as defended:
+> a headless server has no framebuffer, and calling that protection would be the
+> §8 lie in a different costume.
 
 **P1 — Screen, honestly (months).**
 Hardened compositor with no capture protocol, portal-only path, compositor-drawn

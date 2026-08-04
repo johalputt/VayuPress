@@ -305,6 +305,18 @@ const (
 	// every hosted domain is published as a v3 onion service alongside its
 	// clearnet URL. Default OFF — Tor onions are opt-in.
 	KeyTorEnabled = "tor.enabled"
+
+	// KeyVeilEnabled is the VayuVeil activate/deactivate switch (ADR-0150).
+	//
+	// It governs REPORTING, not protection: when "on", this install inventories
+	// the observation channels present on its host and computes the posture
+	// report. Turning it on does not defend a screen and turning it off does not
+	// expose anything that was not already exposed — ADR-0150 is at P0, which
+	// registers channels and enforces none of them. The panel says so in those
+	// words, because a privacy switch that reads as a shield is worse than no
+	// switch. Default OFF: the probes read device nodes and kernel tunables, and
+	// an install should not start doing that without being asked.
+	KeyVeilEnabled = "veil.enabled"
 	// KeyTorVisits is the persisted aggregate count of onion pageviews — the
 	// ENTIRE VayuTor analytic. No identifier, time, path, or any other datum is
 	// ever stored (privacy by construction).
@@ -472,6 +484,7 @@ var AllKeys = map[string]bool{
 	KeyShieldIntelFeeds:         true,
 	KeyAnalyticsBeacon:          true,
 	KeyTorEnabled:               true,
+	KeyVeilEnabled:              true,
 	KeyTorVisits:                true,
 	KeyTorBridges:               true,
 	KeyTorPageStats:             true,
@@ -582,6 +595,7 @@ var Defaults = map[string]string{
 	KeyShieldIntelFeeds:         "",
 	KeyAnalyticsBeacon:          "on",
 	KeyTorEnabled:               "off",
+	KeyVeilEnabled:              "off",
 	KeyTorVisits:                "0",
 	KeyTorBridges:               "",
 	KeyTorPageStats:             "off",

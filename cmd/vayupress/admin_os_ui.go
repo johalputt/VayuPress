@@ -576,6 +576,12 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/talk/read", a.handleVayuOSTalkRead)
 
 		// VayuTor — onion services control page + one-click toggle + count JSON.
+		// VayuVeil (ADR-0150) — the endpoint observation-control console. Admin-only
+		// via osPathMinLevel: it enumerates device nodes, display sockets and kernel
+		// tunables on the host, which is operator information rather than author
+		// information.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuveil", a.handleOSVayuVeil)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuveil/toggle", a.handleOSVayuVeilToggle)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/tor", a.handleOSTor)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/tor/toggle", a.handleOSTorToggle)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/tor/bridges", a.handleOSTorBridges)
@@ -1177,6 +1183,7 @@ func osSidebarNav(active string, s *osSettings) string {
 	b.WriteString(navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity))
 	b.WriteString(navItem("/os/talk", "VayuTalk", "talk", active, iconTalk))
 	b.WriteString(gate(navItem("/os/tor", "VayuTor", "tor", active, iconTor), "/os/tor"))
+	b.WriteString(gate(navItem("/os/vayuveil", "VayuVeil", "vayuveil", active, iconSecurity), "/os/vayuveil"))
 	b.WriteString(gate(navItem("/os/update", "Update & Backup", "update", active, iconUpdate), "/os/update"))
 	return b.String()
 }

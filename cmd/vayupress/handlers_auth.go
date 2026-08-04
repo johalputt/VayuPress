@@ -120,6 +120,10 @@ func osPathMinLevel(path string) int {
 		// toggle, and the Tor-world site registry each supervise network-facing
 		// services / a second server process — admin-only (ADR-0141 review).
 		"tor", "spaces", "torworld",
+		// VayuVeil enumerates this host's device nodes, display sockets and kernel
+		// tunables. That is a map of the machine, so it sits with the other
+		// infrastructure surfaces rather than being readable by an author.
+		"vayuveil",
 	}
 	// "optimize" is the hub that fronts SEO / Analytics / VayuShield / Theme Studio
 	// / Theme Store; it opens at editor level (its editor-safe cards) and hides the

@@ -6,6 +6,92 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+**VayuVeil, Phase 0 — the Observation Contract registry (ADR-0150).**
+
+### Added
+- **`/os/vayuveil`, with an activate/deactivate control.** Twenty registered
+  observation channels — everything through which a screen, a keyboard, a
+  clipboard or the text inside a window can be read — each answering four
+  obligations: what happens by default, how a person says yes, what they see
+  while it is in use, and what gets written down.
+
+  The obligations are **types whose zero values are invalid**, the same
+  construction as VayuShield's `rule.go` and for the same reason at higher
+  stakes. A channel added without deciding its policy does not pass the tests.
+  That is the only honest meaning of "no loophole": not that everything was
+  thought of, but that anything missed cannot be introduced silently.
+
+- **A host inventory.** What is actually present on this machine and which of it
+  this process can open: framebuffer and DRM nodes, evdev, the Wayland and X11
+  sockets, the accessibility bus, `yama ptrace_scope`, `core_pattern`, the
+  hibernate target. Probes read an injected view of the host rather than the
+  filesystem, so the inventory is a pure function of an observation instead of
+  an assertion about whichever machine the tests happen to run on.
+
+- **`internal/veilaudit`, the posture report.** Computed from what is observed,
+  never from what is configured.
+
+### The claim, and what it is not
+**Phase 0 registers policy and enforces none of it**, and every surface says so
+in those words. The switch governs *reporting*: activating it makes the install
+look at itself; turning it off exposes nothing that was not already exposed.
+Enforcement is P1 and later, and it lives in a compositor, a sandbox and a
+mandatory-access-control policy — not in this binary.
+
+The report **cannot emit a passing row while nothing is enforcing.** `Pass` means
+*verified enforcing*, so at P0 nothing is green, by construction and by test. An
+interface absent from the host reads as absent, not as defended — a headless
+server has no framebuffer, and calling that protection would be the same lie in a
+different costume. A probe that could not determine an answer reads *unverified*;
+absent evidence is never a pass.
+
+Seven permanent rows that no setting clears state what VayuVeil will never claim:
+an attacker with root, a kernel or driver-level attacker, DMA-capable hardware
+and firmware, a camera pointed at the screen, a person who grants capture to
+malware, a compromised compositor — and the constitutional one, that there will
+be no Recall-equivalent, ever, not even opt-in. A report where everything
+eventually goes green teaches the reader to stop reading it.
+
+### Audit
+Two findings, both from attacking the subsystem rather than reviewing it, and
+neither a case of the code failing to do what it said.
+
+- **The probes printed raw environment values onto the console.** A session-bus
+  or AT-SPI address carries the runtime directory and the numeric UID, and that
+  string was rendered straight onto a page that gets screenshotted into support
+  threads. The variables are reported as *set* now; the operator needs to know a
+  session is addressable, and the socket path told a reader over their shoulder
+  rather more than it told them.
+- **The activate control silently deactivated on any value it did not
+  recognise.** `on=1` enabled and *everything else* — a typo, a stale client, a
+  proxy that mangled the query — disabled it and answered success. A control that
+  does the opposite of what was asked and reports that it worked is worse than
+  one that refuses; an unrecognised instruction is not an instruction, and is now
+  a 400 that changes nothing.
+
+Five mutations against the fixes and the honesty invariants, all killed:
+re-printing the environment values, restoring the toggle's silent fallback,
+reporting an absent interface as a pass, reporting an unknown probe as a pass,
+and dropping the permanent limits from the report.
+
+One test was wrong rather than the code, again in the way this repository keeps
+producing: an assertion that the page never claims "screenshot-proof" searched
+the whole page and found the phrase inside the band whose entire job is to print
+it with "Not" in front. It is scoped to the region above that band now, with a
+second assertion that the band still refuses the claim by name — so the scoping
+cannot be satisfied by moving a claim into it.
+
+### Removed
+- Two functions written during this work and never wired — a `strconv.Itoa`
+  wrapper and a `String()` method whose only caller was a test message. The
+  deadcode gate refused them and was right to; the message helper moved into the
+  test file rather than the package carrying unreachable code for the suite's
+  benefit.
+
+---
+
 ## [3.16.98] — 2026-08-04
 
 ### Changed
