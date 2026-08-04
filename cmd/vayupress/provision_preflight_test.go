@@ -431,3 +431,37 @@ func TestTheStructuralChecksDoNotDependOnThePreviousError(t *testing.T) {
 		}
 	}
 }
+
+// FINDING THAT COULD NOT BE DIAGNOSED REMOTELY, so the helper records it.
+//
+// On a live install `systemctl reload nginx` returned SUCCESS and nginx did not
+// reload — its workers predated the vhost by five days. Every remote guess at
+// why has been wrong, and the three facts that settle it are only available on
+// the machine: whether the unit is active, which PID systemd believes is the
+// master, and which PID the running nginx actually is.
+//
+// If those disagree, systemd is reloading something that is not the running
+// nginx, and its success is true for the unit and meaningless for the server.
+func TestAFailedPreflightRecordsSystemdsViewOfNginx(t *testing.T) {
+	src := readSourceFile(t, "../../scripts/setup-vayudomain.sh")
+	i := strings.Index(src, "pre-flight failed for ${HOST}")
+	if i < 0 {
+		t.Fatal("the pre-flight failure path is gone")
+	}
+	seg := src[i:]
+	if j := strings.Index(seg, "certbot was NOT run"); j > 0 {
+		seg = seg[:j+400]
+	}
+	for _, want := range []string{"is-active", "MainPID", "/run/nginx.pid", "pgrep"} {
+		if !strings.Contains(seg, want) {
+			t.Errorf("a failed pre-flight does not record %q, so the one state that cannot be "+
+				"diagnosed from outside — a reload reporting success while nginx does not "+
+				"reload — stays undiagnosable", want)
+		}
+	}
+	// And it must say what a disagreement MEANS, or the operator is handed four
+	// numbers and no reading of them.
+	if !strings.Contains(seg, "disagree") {
+		t.Error("the dump does not explain what the numbers mean when they differ")
+	}
+}

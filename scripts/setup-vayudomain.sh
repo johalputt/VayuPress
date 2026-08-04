@@ -395,6 +395,24 @@ for HOST in "${HOSTS[@]}"; do
   rm -f "${CACHE_DIR}/.well-known/acme-challenge/${PROBE}"
   if [ "$PROBE_BODY" != "$PROBE" ]; then
     warn "pre-flight failed for ${HOST}: this server does not serve its own ACME challenge over loopback."
+    # WHY THIS DUMP EXISTS. The reload immediately above reported SUCCESS and the
+    # configuration still is not live — nginx's workers predate the vhost by
+    # days. `systemctl reload nginx` returning 0 while nginx does not reload is
+    # the state that cannot be diagnosed from outside, and every remote guess at
+    # it so far has been wrong.
+    #
+    # So the helper records what systemd actually thinks it is managing. Whether
+    # the unit is active, which PID it believes is the master, and which PID the
+    # pid file names, together answer it: if they disagree, systemd is reloading
+    # something that is not the running nginx, and its success is true for the unit
+    # and meaningless for the server.
+    warn "  reload diagnostics — systemd's view of nginx:"
+    warn "    is-active: $(systemctl is-active nginx 2>&1 | head -n1)"
+    warn "    unit MainPID: $(systemctl show nginx -p MainPID --value 2>&1 | head -n1)"
+    warn "    pid file: $(cat /run/nginx.pid 2>/dev/null || echo 'unreadable')"
+    warn "    master process: $(pgrep -o -x nginx 2>/dev/null || echo 'none found')"
+    warn "  If the unit's MainPID and the running master disagree, systemd is reloading"
+    warn "  a process that is not this nginx, and its success says nothing about the server."
     warn "  nginx accepted the vhost but a request carrying Host: ${HOST} is not reaching it —"
     warn "  most often no enabled server block names this host, so the default server answers."
     warn "  certbot was NOT run for ${HOST}: a validation that cannot succeed only spends the retry budget."

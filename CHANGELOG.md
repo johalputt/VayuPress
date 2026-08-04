@@ -6,6 +6,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.73] — 2026-08-03
+
+**A reload that reports success while nginx does not reload. The helper now
+records the three facts that settle it.**
+
+### Added
+- **When the pre-flight fails, the helper writes systemd's own view of nginx**:
+  whether the unit is active, which PID systemd believes is the master, which PID
+  the pid file names, and which process is actually the running master.
+
+  This exists because of a state that cannot be diagnosed from off the machine.
+  `systemctl reload nginx` returned **success**, and nginx did not reload — its
+  workers predated the vhost by five days, measured from the file's timestamp
+  against nginx's own processes. The vhost is present and correct, `nginx -t`
+  passes, `sites-enabled` is included, port 80 is bound everywhere. Every one of
+  those was verified from inside the process, and every remote guess at the
+  remaining gap has been wrong.
+
+  If the unit's `MainPID` and the running master disagree, systemd is reloading a
+  process that is not this nginx — and its success is true for the unit and
+  meaningless for the server. The dump says that, rather than printing four
+  numbers and leaving the reading to whoever sees them.
+
+### Audit
+Gated on the four facts being recorded **and** on the explanation being present,
+because a diagnostic that emits numbers without their meaning is the same dead
+end as one that emits nothing.
+
+Recorded honestly: this release does not fix the certificate. It makes the one
+remaining unknown observable. Everything else in the chain is now verified good
+by direct measurement rather than inference — which is why what is left is a
+single question rather than a list of candidates.
+
 ## [3.16.72] — 2026-08-03
 
 **The audit's second finding, shipped before the version bump this time.**
