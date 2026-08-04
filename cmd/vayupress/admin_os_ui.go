@@ -1183,7 +1183,6 @@ func osSidebarNav(active string, s *osSettings) string {
 	b.WriteString(navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity))
 	b.WriteString(navItem("/os/talk", "VayuTalk", "talk", active, iconTalk))
 	b.WriteString(gate(navItem("/os/tor", "VayuTor", "tor", active, iconTor), "/os/tor"))
-	b.WriteString(gate(navItem("/os/vayuveil", "VayuVeil", "vayuveil", active, iconSecurity), "/os/vayuveil"))
 	b.WriteString(gate(navItem("/os/update", "Update & Backup", "update", active, iconUpdate), "/os/update"))
 	return b.String()
 }

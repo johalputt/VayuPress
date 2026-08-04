@@ -49,6 +49,30 @@ that too — it holds the release-versioning rule).
     testing question, not a release-cadence one.
   - When in doubt, do not bump. Ask.
 
+### The worked example, because the abstract rule was not enough
+
+VayuVeil (ADR-0150) was **one** plan: "make a proper plan for this ADR, build
+step by step, do the hacker audit, then release." It shipped as **three**
+releases in one afternoon — P0, then the enforcement and capture suite, then the
+second control and the boot log. That is the failure mode this section names, at
+exactly the count it names.
+
+The rationalisation was that each follow-up instruction ("do it", "I need
+perfect VayuVeil") started a fresh plan. It did not. They were continuations of
+the same request, and the paragraph above already says so: *a plan means the
+whole thing the user asked for — every phase, every follow-up item, every task
+on the list — not the increment that happens to be finished.*
+
+The tell is simple and worth checking before every bump: **if the operator would
+describe all of it as one piece of work, it is one release.** "Build VayuVeil"
+is one piece of work whether it takes one turn or six. Cutting a version because
+an increment feels finished, or because a tag makes the progress visible, is the
+same mistake wearing a reason.
+
+What should have happened: every commit lands on `main`, the notes accumulate
+under `## [Unreleased]`, and ONE version is cut when the operator's request is
+actually satisfied.
+
 ### Before every release cut: a hacker audit, then improve
 
 **No version is bumped until an adversarial pass has run over everything going
@@ -465,6 +489,12 @@ Each of these was learned by getting it wrong here, and each cost real time.
 - **Release assets are listed alphabetically, not meaningfully.** Choosing "the
   first asset" shipped an archive as though it were the binary and took a live
   install to a 502. Match by name, then verify the bytes are an executable image.
+- **One plan is one release, and "it feels finished" is not the test.** VayuVeil
+  went out as three versions in an afternoon because each increment looked
+  complete on its own. The rule was written down, in detail, and was still broken
+  three times in a row — so the check is now mechanical: before bumping, ask
+  whether the operator would call the whole thing one piece of work. If yes, it
+  waits.
 - **One rejected file rejects the whole upload.** A bundle containing a single
   disallowed extension was refused in full, silently, repeatedly. Skip known
   junk, report what was skipped, and make a refusal impossible to miss.

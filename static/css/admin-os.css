@@ -6492,7 +6492,7 @@
   border-radius: 8px;
   border: 1px solid var(--border, #2a2a2a);
   background: var(--surface, rgba(127, 127, 127, .08));
-  font-family: var(--mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: .9rem;
   letter-spacing: .04em;
   text-align: center;
@@ -6665,3 +6665,117 @@
   background: var(--bg-surface-2); color: var(--text-2);
   white-space: pre; tab-size: 2;
 }
+
+/* ── Classes that were emitted with no rule behind them ──────────────────────
+   Each element below carried NO styled class at all, so it rendered as bare
+   inline text: a status pill as a run-on word, a form input as an unstyled
+   browser box, a warning banner as a plain paragraph. This is the `scoped-tool`
+   defect — markup shipped with nothing matching it — found twenty-one more times
+   by a source-wide sweep after the per-page gate was fixed to stop letting a
+   longer class name answer for a shorter one.
+
+   The distinction that decided what got a rule: an element that also carries a
+   styled base class (a `btn`, a `card`, a `mon-acc__sum`) is already styled, and
+   its extra token is a JavaScript hook rather than a missing rule. Those are
+   left alone. Only elements with nothing at all are given a look here. */
+
+/* Status pills on the site list. Same grammar as .badge, which they should
+   probably have used — kept as their own class because the markup is shipped
+   and renaming it is a separate change from making it visible. */
+.vp-os .pill {
+  display: inline-flex; align-items: center; gap: var(--sp-1);
+  padding: 0.2em 0.6em; border-radius: var(--r-full);
+  font-size: var(--text-xs); font-weight: 600; white-space: nowrap;
+  border: 1px solid var(--border); background: var(--bg-surface-2); color: var(--text-2);
+}
+.vp-os .pill--ok     { background: var(--ok-dim);   color: var(--ok);   border-color: transparent; }
+.vp-os .pill--accent { background: var(--brand-dim); color: var(--brand); border-color: transparent; }
+.vp-os .pill--muted  { color: var(--text-3); }
+
+/* Trend indicator beside a security figure. Direction is carried by colour AND
+   by the glyph the markup already supplies, so it survives a colour-blind
+   reader and a monochrome print. */
+.vp-os .trend { font-size: var(--text-xs); font-weight: 650; white-space: nowrap; color: var(--text-3); }
+.vp-os .trend--up   { color: var(--ok); }
+.vp-os .trend--down { color: var(--danger); }
+
+/* The line under a stat tile's number. Muted and small: it qualifies the figure
+   above it and must never compete with it. */
+.vp-os .stat-card__sub { margin-top: 2px; font-size: var(--text-xs); color: var(--text-3); line-height: 1.4; }
+
+/* Warning notice. This one carried the security-update banner and the favicon
+   upload rules, both of which had been rendering as unstyled paragraphs. */
+.vp-os .warn-box {
+  border: 1px solid var(--warn); background: var(--warn-dim); color: var(--text);
+  border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4);
+  font-size: var(--text-sm); line-height: 1.55; margin-bottom: var(--sp-4);
+}
+
+/* A row with its ends pushed apart. Replaces an inline style attribute that was
+   doing this by hand — which is also why the class had no rule: the styling had
+   been put somewhere assertCSPSafe forbids. */
+.vp-os .flex-between { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+
+/* Preformatted output: a restore command, a manifest, a key. Scrolls inside its
+   own box rather than widening the page. */
+.vp-os .code-block {
+  font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5;
+  background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: var(--sp-3); overflow-x: auto; white-space: pre; color: var(--text-2);
+}
+
+/* A list that is structure rather than prose — no bullets, no indent. */
+.vp-os .reset-list { list-style: none; margin: 0; padding: 0; }
+
+/* Inline result of an SEO or IndexNow action. */
+.vp-os .seo-status {
+  font-size: var(--text-sm); color: var(--text-2);
+  border-left: 2px solid var(--border-strong); padding-left: var(--sp-3);
+}
+
+/* A text input that had been rendering as the raw browser control on a page
+   sitting beside inputs that did not. Matched to the console's own field look. */
+.vp-os .field-input {
+  width: 100%; padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  font-size: var(--text-sm); font-family: inherit;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.vp-os .field-input:focus-visible {
+  outline: none; border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-dim);
+}
+
+/* The add-an-ad-slot form. Also replaces an inline style attribute. */
+.vp-os .ads-form { display: grid; gap: var(--sp-3); max-width: 42rem; }
+
+/* Text beside the site mark in Theme Studio. */
+.vp-os .cz-logo__meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+/* The anonymous VayuTalk code — an identity to read aloud and copy, so it is
+   given the weight of one rather than of a sentence. */
+.vp-os .vtalk-anon {
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--bg-surface); padding: var(--sp-4); margin-bottom: var(--sp-4);
+}
+
+/* Live intelligence view container. */
+.vp-os .vm-liveview { display: block; }
+
+/* Subject line in a mail list: the primary thing to click on that row. */
+.vp-os .vm-subj-link { color: var(--text); text-decoration: none; font-weight: 600; }
+.vp-os .vm-subj-link:hover { color: var(--brand); text-decoration: underline; }
+
+/* The summary of a collapsible group in the editor's block picker. */
+.vp-os .pm-group-title {
+  cursor: pointer; list-style: none; padding: var(--sp-2) var(--sp-3);
+  font-size: var(--text-xs); font-weight: 650; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.vp-os .pm-group-title::-webkit-details-marker { display: none; }
+.vp-os .pm-group-title:hover { color: var(--text); background: var(--bg-surface-2); }
+
+/* Permission checkboxes in the API-key console. Sized so a row of them is
+   clickable rather than pixel-hunting. */
+.vp-os .ak-perm,
+.vp-os .ak-perm-all { width: 15px; height: 15px; accent-color: var(--brand); cursor: pointer; flex: none; }

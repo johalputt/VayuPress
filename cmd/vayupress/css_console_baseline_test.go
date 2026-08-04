@@ -29,18 +29,27 @@ import (
 
 // consoleUnstyledBaseline is what already renders unstyled in the console.
 // Shrink it by adding rules; never add to it.
+// consoleUnstyledBaseline is what carries no rule of its own in the console.
+//
+// It was 43. Twenty-two of those were elements with NO styled class at all,
+// which rendered as bare inline text; each now has a rule. What is left are
+// tokens on elements a base class already styles — a `btn`, a `card`, a
+// `mon-acc__sum` — so they are JavaScript hooks and identifiers rather than
+// missing styling, and inventing a look for them would be worse than leaving
+// them.
+//
+// That distinction is the whole lesson of this pass. The first version of this
+// gate counted all 43 as the same defect, which would have meant writing
+// twenty-one CSS rules for things that are not meant to look like anything.
+//
+// Shrink it by giving a class a rule; never add to it.
 var consoleUnstyledBaseline = map[string]bool{
-	"ads-form": true, "ak-cred-card--custom": true, "ak-perm": true, "ak-perm-all": true,
-	"code-block": true, "cz-logo__meta": true, "editor-hint": true, "editor-html-hint": true,
-	"editor-md": true, "empty": true, "field-input": true, "flex-between": true,
-	"media-empty": true, "pill": true, "pill--accent": true, "pill--muted": true,
-	"pill--ok": true, "pm-group-title": true, "post-acc__del": true, "post-acc__sum": true,
-	"reset-list": true, "seo-status": true, "stat-card__sub": true, "trend": true,
-	"trend--down": true, "trend--up": true, "vm-acct__usage": true, "vm-contact-add": true,
-	"vm-contacts-empty": true, "vm-ed-count": true, "vm-encrypt-row": true, "vm-liveview": true,
-	"vm-subj-link": true, "vp-pt__tip-dot": true, "vt-bridges": true, "vt-hardening": true,
+	"ak-cred-card--custom": true, "editor-hint": true, "editor-html-hint": true, "editor-md": true,
+	"empty": true, "media-empty": true, "post-acc__del": true, "post-acc__sum": true,
+	"vm-acct__usage": true, "vm-contact-add": true, "vm-contacts-empty": true, "vm-ed-count": true,
+	"vm-encrypt-row": true, "vp-pt__tip-dot": true, "vt-bridges": true, "vt-hardening": true,
 	"vt-health": true, "vt-note": true, "vt-pages": true, "vt-vanity": true,
-	"vtalk-anon": true, "warn-box": true, "world-card__copy": true,
+	"world-card__copy": true,
 }
 
 // consoleUtilityClasses are spacing/typography tokens carried by the shell's own

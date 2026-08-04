@@ -73,6 +73,13 @@ func osOperationsGrid(current mode.Mode, storagePct int, maintenanceOn bool, kee
 	b.WriteString(`<div class="work-grid">`)
 	b.WriteString(osWorkCard("/os/monitoring", "Monitoring", "Live metrics & health", iconMonitoring, 0, "", false))
 	b.WriteString(osWorkCard("/os/governance", "Governance", "Policies & audit trail", iconGovernance, 0, "", false))
+	// VayuVeil (ADR-0150) sits in Health & governance rather than in Optimize
+	// because it is install-scoped, not site-scoped: it reports on this HOST's
+	// observation channels — device nodes, display sockets, kernel tunables — and
+	// on what this process enforces about its own memory. Optimize is where a
+	// site's reach and protection live, and filing it there would have implied it
+	// protects a site, which is the one thing this subsystem must never imply.
+	b.WriteString(osWorkCard("/os/vayuveil", "VayuVeil", "Endpoint observation control & posture", iconSecurity, 0, "", true))
 	storBadge := ""
 	if storagePct >= 75 {
 		storBadge = strconv.Itoa(storagePct) + "%"

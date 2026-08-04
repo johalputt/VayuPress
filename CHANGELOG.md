@@ -6,6 +6,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **VayuVeil moved out of the sidebar and into the Operations hub**, under
+  Health & governance. It is install-scoped — this host's device nodes, display
+  sockets and kernel tunables, plus what this process enforces about its own
+  memory — so it sits with the other install-level diagnostics rather than in
+  Optimize, where a *site's* reach and protection live. Filing it there would
+  have implied it protects a site, which is the one thing this subsystem must
+  never imply.
+
+### Fixed
+- **Twenty-two console elements rendered as bare inline text.** Each carried no
+  styled class at all: status pills on the site list ran together as words, the
+  security-update warning box was a plain paragraph, a text input was the raw
+  browser control on a page full of styled ones, a `<pre>` had no frame and
+  widened the page instead of scrolling. All twenty-two now have rules in the
+  house grammar.
+
+  Two of them had been styled by an inline `style` attribute instead — which is
+  also why they had no rule: the styling had been put somewhere `assertCSPSafe`
+  forbids.
+
+- **The baseline gate had been counting two different defects as one.** It
+  listed 43 classes with no rule, which read as 43 things to fix. Twenty-two
+  were genuinely unstyled elements. The other twenty-one are tokens on elements a
+  base class already styles — `btn`, `card`, `mon-acc__sum` — so they are
+  JavaScript hooks and identifiers, and writing CSS for them would have invented
+  a look for things not meant to have one. The distinction is now in the gate and
+  in its comment, and the baseline is down to those hooks.
+
+---
+
 ## [3.17.1] — 2026-08-04
 
 **VayuVeil: a second independent control, the posture in the boot log, and the

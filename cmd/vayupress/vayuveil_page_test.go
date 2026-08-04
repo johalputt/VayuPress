@@ -231,3 +231,36 @@ func TestTheRegistryTableShowsEveryChannelsObligations(t *testing.T) {
 		}
 	}
 }
+
+// VayuVeil is reached from the Operations hub, not from the sidebar.
+//
+// It is install-scoped — this host's device nodes, display sockets and kernel
+// tunables, plus what this process enforces about its own memory — so it belongs
+// with the other install-level diagnostics under Health & governance. Optimize
+// is where a SITE's reach and protection live, and filing it there would have
+// implied it protects a site, which is the one thing this subsystem must never
+// imply.
+func TestVayuVeilIsReachedFromOperationsAndNotTheSidebar(t *testing.T) {
+	nav := osSidebarNav("operations", &osSettings{AccessLevel: accessAdmin})
+	if strings.Contains(nav, `/os/vayuveil`) {
+		t.Error("VayuVeil is still pinned in the sidebar; it was asked to live under a hub instead")
+	}
+	ops := osOperationsGrid("", 0, false, "")
+	if !strings.Contains(ops, `href="/os/vayuveil"`) {
+		t.Fatal("the Operations hub does not link to VayuVeil, so it is now unreachable from any " +
+			"navigation at all — a page with a route and no way in")
+	}
+	// Under Health & governance rather than Controls & diagnostics: it reports a
+	// posture, it does not run or recover anything.
+	i := strings.Index(ops, "Health &amp; governance")
+	if i < 0 {
+		i = strings.Index(ops, "Health & governance")
+	}
+	if i < 0 {
+		t.Fatal("the Health & governance band is gone from the Operations hub")
+	}
+	if strings.Index(ops, `href="/os/vayuveil"`) < i {
+		t.Error("VayuVeil sits above the Health & governance band, among the controls that run and " +
+			"recover things; it reports a posture and does neither")
+	}
+}
