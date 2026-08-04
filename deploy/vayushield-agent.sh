@@ -848,6 +848,56 @@ nginx_has_reject_handshake() {
 # other action here: the app writes ONE EMPTY FLAG it owns as an unprivileged
 # user, and this root-owned script decides what that means. Nothing the app can
 # write becomes part of any config.
+# arm_provisioning_watcher makes sure the root-side watcher that consumes a
+# panel provisioning request is actually running.
+#
+# THE FAILURE THIS REPAIRS, and it is why a day of fixes never reached the
+# machine they were written for. The installer enabled the units like this:
+#
+#   systemctl enable --now vayupress-provision.path … >/dev/null 2>&1 || true
+#
+# — the same discarded exit status, in the same shape, as the reload bug that
+# started all of this. If enabling ever failed, nobody was told. Requests then
+# queue forever: the panel writes provision.request, nothing consumes it, and
+# the daily timer is the only pass that ever runs. Since the helper self-upgrade
+# only happens when the worker runs, every repair shipped through it is
+# undeliverable, and the panel reports the same diagnosis indefinitely while
+# looking like it is being acted on.
+#
+# Two runs 40 minutes apart, both unconsumed, is what this looks like from
+# outside. It is indistinguishable from a fix that did not work.
+arm_provisioning_watcher() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  [ -f /etc/systemd/system/vayupress-provision.service ] || return 0
+
+  # A unit that tripped systemd's start rate limiter stays failed and refuses
+  # every later trigger — including the one that would repair it. Clearing that
+  # first is what makes this function able to fix a machine rather than confirm
+  # its state.
+  systemctl reset-failed vayupress-provision.service vayupress-provision.path \
+    vayupress-provision.timer >/dev/null 2>&1 || true
+  systemctl daemon-reload >/dev/null 2>&1 || true
+
+  local out
+  if ! out="$(systemctl enable --now vayupress-provision.path vayupress-provision.timer 2>&1)"; then
+    write_state provisionwatch error
+    printf '%s' "the provisioning watcher could not be enabled (${out:-no output}); requests from the panel will queue until the daily sweep runs" \
+      >"${CONTROL_DIR}/provisionwatch.reason" 2>/dev/null || true
+    return 1
+  fi
+  write_state provisionwatch active
+  clear_reason provisionwatch
+
+  # A request queued BEFORE the watcher existed will never produce an edge for
+  # the path unit to see, so it would sit there behind a watcher that is now
+  # working. Run one pass for it. The worker takes a lock, so an extra start is
+  # harmless if something is already running.
+  if [ -f /var/lib/vayupress/provision.request ]; then
+    systemctl start --no-block vayupress-provision.service >/dev/null 2>&1 || true
+  fi
+  return 0
+}
+
 reconcile_provisionhelpers() {
   [ -f "${CONTROL_DIR}/provisionhelpers.want" ] || return 0
   rm -f "${CONTROL_DIR}/provisionhelpers.want" 2>/dev/null || true
@@ -941,6 +991,9 @@ reconcile_provisionhelpers() {
       fi
     fi
   fi
+  # And the watcher, without which none of the above is ever reached again.
+  arm_provisioning_watcher || why="the helpers were installed, but the root-side watcher that consumes a provisioning request could not be enabled, so requests from the panel will queue until the daily sweep"
+
   if [ -n "$why" ]; then
     write_state provisionhelpers error
     printf '%s' "$why" >"${CONTROL_DIR}/provisionhelpers.reason" 2>/dev/null || true

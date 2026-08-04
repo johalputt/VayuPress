@@ -6,6 +6,56 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.16.76] — 2026-08-04
+
+**Why none of yesterday's fixes reached the machine they were written for.**
+
+A day of work was written, tested, audited, released and signed, and not one of
+it arrived. Provisioning requests from the panel were sitting unconsumed — two of
+them, forty minutes apart. The root-side watcher that turns a request into a run
+was not running, and since the helper self-upgrade only happens *when the worker
+runs*, the fix and its delivery mechanism were the same component. From the panel
+that is indistinguishable from a repair that did not work, which is exactly how
+it was read.
+
+The cause was one line in the installer:
+
+```sh
+systemctl enable --now vayupress-provision.path … >/dev/null 2>&1 || true
+```
+
+The same discarded exit status, in the same shape, as the nginx reload bug that
+started the whole incident. If enabling the watcher ever failed, nobody was told;
+requests queued forever and the daily sweep became the only pass that ever ran.
+
+### Fixed
+- **The installer reports whether the watcher actually came up.** The exit status
+  is checked and systemd's own explanation is printed instead of being sent to
+  `/dev/null`, along with what it means: until it is resolved, a Provision press
+  does nothing and only the daily sweep runs.
+
+- **The panel can re-arm the watcher, so this is recoverable without a shell.**
+  The operator whose watcher is off is precisely the operator who cannot be sent
+  a fix, so the repair had to live on a root channel that still works. The
+  VayuShield agent now clears any unit systemd latched into a failed state
+  (a unit that tripped the start rate limiter refuses every later trigger,
+  *including* the one meant to repair it), enables the `.path` and `.timer`
+  units, reports the failure with a reason if it cannot, and runs one pass for a
+  request that was queued before the watcher existed — a `PathExists` unit sees
+  no edge for a file that was already there, so that request would otherwise sit
+  behind a watcher that is now working.
+
+### Fixed (test integrity)
+- **The new gate passed against the exact regression it was written for.** It
+  anchored on the first occurrence of the unit name, which is the `cat >` that
+  writes the unit file — a heredoc opener that can never contain `|| true`.
+  Mutation-testing it is the only reason it is not still green and worthless. It
+  now anchors on the enable itself and asserts the enable covers the watcher.
+
+The whole mechanism had no gate before this release. It has one now.
+
+---
+
 ## [3.16.75] — 2026-08-04
 
 **Stop believing the reload, and repair it.**

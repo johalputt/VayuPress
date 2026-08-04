@@ -136,8 +136,23 @@ WantedBy=timers.target
 SYSTEMD
 
 systemctl daemon-reload
-systemctl enable --now vayupress-provision.path vayupress-provision.timer >/dev/null 2>&1 || true
-ok "Provisioning units installed and enabled"
+# REPORTED, NOT DISCARDED. This line used to end in `|| true` with its output
+# sent to /dev/null — the same shape as the reload bug that cost this project a
+# day, and with a worse consequence. The .path unit is what consumes a
+# provisioning request from the panel. If enabling it fails and nobody is told,
+# every request the operator makes queues forever, the daily timer becomes the
+# only pass that ever runs, and because the helper self-upgrade only happens
+# when the worker runs, no fix shipped afterwards can reach this machine. From
+# the panel that is indistinguishable from a repair that did not work.
+if enable_out="$(systemctl enable --now vayupress-provision.path vayupress-provision.timer 2>&1)"; then
+  ok "Provisioning units installed and enabled"
+else
+  warn "The provisioning units were written but could NOT be enabled. systemd said:"
+  printf '%s\n' "${enable_out:-no output}" | sed 's/^/      /' >&2
+  warn "Until this is resolved, a Provision request from the panel will not be picked up,"
+  warn "and only the daily sweep will run. VayuShield → Certificate helpers → Repair the"
+  warn "certificate helpers re-arms these units without needing a shell."
+fi
 
 # ── 3. Run one pass now ──────────────────────────────────────────────────────
 # Immediately, rather than waiting for the daily timer: the operator ran this
