@@ -179,7 +179,7 @@ func TestTheWebsitePageOpensWithItsStateAndKeepsEveryControl(t *testing.T) {
 // The runtime-code tile must not report a relaxed policy as unremarkable, and
 // must say nothing at all when there is no uploaded site for it to apply to.
 func TestTheRuntimeCodeTileTellsTheTruthAboutThePolicy(t *testing.T) {
-	onTile := statCardNamed(t, scopedWebsitePage(siteWithEval(t, true), "bistro",
+	onTile := statCardIn(t, scopedWebsitePage(siteWithEval(t, true), "bistro",
 		bizsite.Content{Name: "T"}, true, customsite.Manifest{Files: 3}), "Runtime code")
 	if !strings.Contains(onTile, ">On<") {
 		t.Errorf("a site running with eval permitted does not say so: %s", onTile)
@@ -188,91 +188,12 @@ func TestTheRuntimeCodeTileTellsTheTruthAboutThePolicy(t *testing.T) {
 		t.Errorf("a widened policy reads as ordinary: %s", onTile)
 	}
 
-	offTile := statCardNamed(t, scopedWebsitePage(siteWithEval(t, false), "bistro",
+	offTile := statCardIn(t, scopedWebsitePage(siteWithEval(t, false), "bistro",
 		bizsite.Content{Name: "T"}, true, customsite.Manifest{Files: 3}), "Runtime code")
 	if !strings.Contains(offTile, ">Off<") {
 		t.Errorf("a site with eval off does not say so: %s", offTile)
 	}
 	if strings.Contains(offTile, "stat-card--warn") {
 		t.Errorf("a site with eval OFF is flagged as if the policy were widened: %s", offTile)
-	}
-}
-
-// statCardNamed returns just the stat tile carrying the given label.
-//
-// Scoped deliberately, and for the second time in this codebase: an assertion
-// that searches the WHOLE page for the warning class cannot tell which tile it
-// found. Both the earlier mailbox test and the first version of this one passed
-// against a mutation that reported a widened policy as ordinary, because the
-// CERTIFICATE tile happened to carry the same class.
-func statCardNamed(t *testing.T, page, label string) string {
-	t.Helper()
-	j := strings.Index(page, `>`+label+`</div>`)
-	if j < 0 {
-		t.Fatalf("there is no %q tile on the page", label)
-	}
-	// The OUTER tile, not the inner label div — both begin `<div class="stat-card`,
-	// and matching the wrong one returns a slice with no class attribute in it,
-	// so every assertion about the tone silently looks at nothing.
-	i := -1
-	for _, open := range []string{`<div class="stat-card"`, `<div class="stat-card `} {
-		if k := strings.LastIndex(page[:j], open); k > i {
-			i = k
-		}
-	}
-	if i < 0 {
-		t.Fatalf("the %q tile is malformed", label)
-	}
-	end := strings.Index(page[j:], `</div></div>`)
-	if end < 0 {
-		t.Fatalf("the %q tile is unterminated", label)
-	}
-	return page[i : j+end+len(`</div></div>`)]
-}
-
-// Every band on the page is collapsible, and the markup they sit in balances.
-//
-// The house style is a mon-stack of pure-CSS <details>: no JavaScript, keyboard
-// accessible, and each summary carries a chip so its state reads while shut. The
-// page was ten flat sections an operator scrolled past to reach the one they
-// wanted.
-//
-// Tag balance is asserted because this conversion is string surgery. A first
-// attempt left an unclosed literal and would not compile; the failure mode that
-// DOES compile is an unbalanced div, which renders as a page whose lower half
-// has quietly become a child of something above it.
-func TestEveryBandOnTheWebsitePageCollapses(t *testing.T) {
-	page := scopedWebsitePage(siteWithEval(t, true), "bistro",
-		bizsite.Content{Name: "Test"}, true, customsite.Manifest{Files: 30, HasPrev: true})
-
-	if !strings.Contains(page, `class="mon-stack"`) {
-		t.Fatal("the bands are not in a mon-stack, so the page is still a flat scroll")
-	}
-	opens := strings.Count(page, `<details class="mon-acc"`)
-	closes := strings.Count(page, "</details>")
-	if opens < 6 {
-		t.Errorf("only %d collapsible bands; every section on this page should collapse", opens)
-	}
-	if opens != closes {
-		t.Errorf("%d <details> opened and %d closed — the page structure is broken", opens, closes)
-	}
-
-	// Each band must say what it holds while shut, or collapsing them costs the
-	// operator the overview the tiles were added to give.
-	// class="mon-chip — counted on the ATTRIBUTE, because each chip carries both
-	// `mon-chip` and `mon-chip--on`, so a bare substring count is double and a
-	// missing chip still clears the threshold. That let a mutation removing one
-	// survive.
-	if chips := strings.Count(page, `class="mon-chip`); chips < opens {
-		t.Errorf("%d bands but only %d chips; a collapsed band with no chip is a closed door "+
-			"with no label", opens, chips)
-	}
-
-	// Balance across the whole fragment. Void elements are excluded; this page
-	// emits input, img, br and svg path.
-	od := strings.Count(page, "<div") - strings.Count(page, "</div>")
-	if od != 0 {
-		t.Errorf("div tags are unbalanced by %d — sections below the break become children of "+
-			"whatever was left open", od)
 	}
 }

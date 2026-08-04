@@ -79,8 +79,13 @@ func TestTheScopedTrafficPageUsesTheScopedQueries(t *testing.T) {
 // were the same population. This is the "check the claims" rule: the figures are
 // right and the label would be wrong.
 func TestTheTrafficPageSaysWhatItsNumbersAreNot(t *testing.T) {
-	body := goFuncBody(readSourceFile(t, "admin_os_scoped_analytics.go"), "handleOSScopedAnalytics")
-	if !strings.Contains(body, "not comparable") {
+	// Asserted on the RENDERED page, not on the handler's source text. The
+	// original read the handler's body for the phrase, so moving the copy into a
+	// render function broke a test about what a visitor sees — while what a
+	// visitor sees had not changed at all. A test that reads source cannot tell a
+	// refactor from a regression.
+	page := scopedAnalyticsBody(10, 5, 0, 0, nil)
+	if !strings.Contains(page, "not comparable") {
 		t.Error("the per-domain traffic page does not warn that its visit count and the " +
 			"install-wide visitor count are different populations")
 	}
