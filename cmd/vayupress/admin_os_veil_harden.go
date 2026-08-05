@@ -26,10 +26,15 @@ package main
 // hardening drop-in has a third state that matters more than either: written,
 // and not in force, because systemd applies unit directives at exec and this
 // process started before the file existed. Reporting that as success would be
-// true about the file and false about the machine. So the result file is never
-// the verdict here — the kernel is, read back on every page load, and the result
-// file only supplies the timestamp that tells "not restarted yet" apart from
-// "written and did not take".
+// true about the file and false about the machine. So the worker's report is
+// never the verdict here — the kernel is, read back on every page load.
+//
+// The timestamp that separates "not restarted yet" from "written and did not
+// take" comes from the DROP-IN, not from that report, and the difference is not
+// academic: the worker writes the drop-in, restarts the service, watches for
+// twenty seconds, and only then reports. On every successful run the restarted
+// process therefore predates the report, so keying on it excused a directive
+// that had not taken as one waiting for a restart that had already happened.
 
 import (
 	"encoding/json"
@@ -275,8 +280,12 @@ func veilHardenCard(st vayuveil.HardenState, sb vayuveil.SandboxState, processSt
 		// failure this project has a standing rule about, in its politest form.
 		b.WriteString(`<p class="text-sm muted">The root-side worker is not installed here <b>yet</b>. ` +
 			`If subdomain provisioning is set up on this server, the daily sweep installs it on its ` +
-			`own within a day, from the signed release bundle, with no terminal use at all — this ` +
-			`page will then show the button instead of this paragraph.</p>` +
+			`own from the signed release bundle, with no terminal use at all — this page will then ` +
+			`show the button instead of this paragraph.</p>` +
+			`<p class="text-sm muted"><b>Allow up to two daily sweeps</b>, and the reason is worth ` +
+			`knowing rather than rounding off: the sweep upgrades its own driver, and the upgraded ` +
+			`driver only takes effect on the following run. So the first sweep delivers the worker ` +
+			`and the second one installs its watcher.</p>` +
 			`<p class="text-sm muted">Installing a <code>systemd</code> unit needs root and this ` +
 			`service deliberately cannot become root, which is itself one of the controls above. So if ` +
 			`provisioning is not set up, or you would rather not wait for the sweep, this one command ` +

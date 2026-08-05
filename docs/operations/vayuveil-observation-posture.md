@@ -152,10 +152,16 @@ exists that does not.
 ### If the card shows a command instead of a button
 
 The root-side worker is not on this host **yet**. If subdomain provisioning is
-set up here, the daily sweep installs it within a day from the signed release
-bundle, with no terminal use — the card will then show the button instead. The
-copyable command is there for a host without provisioning, or for an operator
-who would rather not wait.
+set up here, the daily sweep installs it from the signed release bundle with no
+terminal use — the card will then show the button instead. The copyable command
+is there for a host without provisioning, or for an operator who would rather
+not wait.
+
+**Allow up to two daily sweeps.** The sweep upgrades its own driver, and the
+upgraded driver only takes effect on the following run, so the first sweep
+delivers the worker and the second installs its watcher. That is worth stating
+rather than rounding down to "within a day": a page that promises one day and
+takes two teaches an operator that the page guesses.
 
 That the sweep does this at all is a fix in its own right. The self-upgrade path
 delivers root-side **scripts** to every install and does not write systemd

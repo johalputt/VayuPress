@@ -170,3 +170,27 @@ func TestTheMissingWorkerCardLeadsWithTheAutomaticPathNotTheCommand(t *testing.T
 		t.Error("the card offers the terminal command before mentioning that it arrives on its own")
 	}
 }
+
+// The card must not promise a delivery window it cannot meet.
+//
+// The daily sweep upgrades its own driver, and the upgraded driver only takes
+// effect on the FOLLOWING run — so the first sweep delivers the worker and the
+// second installs its watcher. A card that says "within a day" is wrong roughly
+// half the time, and a page that promises one day and takes two teaches an
+// operator that it guesses. That is the same defect as an overstated posture
+// row, wearing friendlier clothes.
+func TestTheCardDoesNotPromiseADeliveryWindowItCannotMeet(t *testing.T) {
+	card := veilHardenCard(vayuveil.HardenState{}, veilHardenBare(), time.Now())
+
+	if strings.Contains(card, "within a day") {
+		t.Error("the card promises delivery within a day; the driver self-upgrade takes up to two sweeps")
+	}
+	if !strings.Contains(card, "up to two daily sweeps") {
+		t.Error("the card does not state the real window")
+	}
+	// And it must say WHY, because an unexplained "up to two" reads as vagueness
+	// rather than as a mechanism the operator can check against their own logs.
+	if !strings.Contains(card, "only takes effect on the following run") {
+		t.Error("the card states the window without the reason for it")
+	}
+}

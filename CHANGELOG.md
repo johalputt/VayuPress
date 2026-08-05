@@ -6,6 +6,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **The VayuVeil card promised a delivery window it could not meet.** It said
+  the root-side worker arrives "within a day". Verifying the published v3.17.9
+  bundle showed why that is wrong roughly half the time: the daily sweep upgrades
+  its own driver, and the upgraded driver only takes effect on the *following*
+  run, so the first sweep delivers the worker and the second installs its
+  watcher. The card now says **up to two daily sweeps** and states the mechanism,
+  because an unexplained "up to two" reads as vagueness rather than as something
+  an operator can check against their own logs.
+
+  This is deliberately not a release of its own. Nothing is broken in the field —
+  a page that over-promises by a day is a wording defect, and cutting a third
+  version inside an hour for it is the batching failure this project has a
+  worked example of.
+
 ## [3.17.9] — 2026-08-05
 
 ### Fixed
