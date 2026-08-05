@@ -322,3 +322,44 @@ func TestRowsWithNoEnvelopeIdDoNotCollide(t *testing.T) {
 		t.Fatalf("three id-less events collapsed to %d rows; the unique index is not partial", n)
 	}
 }
+
+// VayuFlow subscribes to every domain event worth subscribing to.
+//
+// A review recorded "only three events are subscribable" as a gap in this
+// engine. It is not one: the install defines four domain events in total and the
+// fourth is cache invalidation, which is internal plumbing and meaningless as an
+// automation trigger. The three a flow can name are the whole meaningful
+// catalogue.
+//
+// This test exists so the claim in ADR-0151 §2 cannot rot. If somebody adds a
+// real domain event and does not expose it, the count moves and this fails —
+// which is the moment to decide, rather than discovering months later that the
+// engine quietly stopped covering the install.
+func TestTheSubscribableSetIsTheWholeMeaningfulCatalogue(t *testing.T) {
+	known := KnownEvents()
+	if len(known) != 3 {
+		t.Fatalf("the subscribable set is %d events: %v.\n"+
+			"If a domain event was ADDED to the install, expose it here and update ADR-0151 §2.\n"+
+			"If one was removed, the same. Either way this is a decision, not a drift.", len(known), known)
+	}
+	for _, want := range []string{EventArticleCreated, EventArticleUpdated, EventArticleDeleted} {
+		if !knownEvent(want) {
+			t.Errorf("%q is not subscribable", want)
+		}
+	}
+	// Cache invalidation is deliberately NOT here. It fires on internal plumbing
+	// with no subject an operator could write a condition against, and exposing
+	// it would give flows a trigger that means nothing.
+	if knownEvent("cache.invalidated") {
+		t.Error("cache invalidation is subscribable; it is internal plumbing with no subject, " +
+			"and a trigger an operator cannot reason about is worse than no trigger")
+	}
+	// Every subscribable name must be storable, or the panel offers a trigger
+	// the store refuses.
+	for _, e := range known {
+		trig := Trigger{Kind: TriggerEvent, Event: e}
+		if err := trig.Complete(); err != nil {
+			t.Errorf("%q is offered and refused at save: %v", e, err)
+		}
+	}
+}

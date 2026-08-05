@@ -119,6 +119,27 @@ originating change where one exists, and the runner drains it. That is the
 `outbox` pattern pointed inward, and it is what makes "did this flow run?" a
 question with an answer.
 
+**Which events a flow may subscribe to is not VayuFlow's decision, and the
+ceiling is lower than it looks.** This install defines four domain events in
+total — `article.created`, `article.updated`, `article.deleted` and
+`cache.invalidated` — and the last is internal plumbing that would be
+meaningless as an automation trigger. So the three a flow can name are *every*
+event worth naming, not a subset somebody stopped short of exposing.
+
+That distinction is worth writing down because it was got wrong once: a review
+recorded "only three events are subscribable" as a VayuFlow gap. It is not one.
+The engine already reaches everything the install emits, and the sentence
+describes the **event catalogue**, not the automation engine.
+
+Widening it is a change to a different subsystem, and it is not free. "When a
+comment arrives, draft a reply" is the automation operators ask for first, and it
+needs a durable `comment.created` — which means the comment write path joining
+the transactional outbox, because an inbox row written outside the originating
+transaction is exactly the lossiness this section exists to avoid. Comments
+currently write straight to SQLite. That work belongs to `internal/queue` and
+`internal/events`, gets its own ADR, and touches the public submission path,
+which is why it is named here rather than done quietly as an automation feature.
+
 ### 3. Budget — the declared blast radius
 
 This is the part that makes the headline claim true, and it has no equivalent

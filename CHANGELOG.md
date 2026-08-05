@@ -10,6 +10,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **"Only three events are subscribable" was recorded as a VayuFlow gap. It is
+  not one.** This install defines four domain events in total —
+  `article.created`, `article.updated`, `article.deleted` and
+  `cache.invalidated` — and the last is internal plumbing with no subject an
+  operator could write a condition against. The three a flow can name are every
+  event worth naming, so the engine already reaches everything the install emits.
+  The sentence described the *event catalogue*, not the automation engine.
+
+  ADR-0151 §2 now says so, and a test pins the count: if a real domain event is
+  added and not exposed, it fails, which is the moment to decide rather than
+  discovering months later that the engine quietly stopped covering the install.
+
+  What widening it would actually take is written down rather than left as a
+  wish. "When a comment arrives, draft a reply" needs a durable
+  `comment.created`, which means the comment write path joining the transactional
+  outbox — an inbox row written outside the originating transaction is exactly
+  the lossiness the event trigger exists to avoid. Comments currently write
+  straight to SQLite. That is work on `internal/queue` and `internal/events`, it
+  touches the public submission path, and it earns its own ADR rather than being
+  slipped in as an automation feature.
+
 - **ADR-0150 is now a VayuPress document rather than a desktop one with a
   correction bolted on top.** The previous pass added a scope note at the front
   and rewrote the build order, and left the body describing a machine this
