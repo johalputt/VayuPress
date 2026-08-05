@@ -86,7 +86,7 @@ func (a *App) handleOSVayuFlow(w http.ResponseWriter, r *http.Request) {
 		ModelLocal:      flowModel{c: a.aiAssist}.Local(),
 	})
 
-	body := vayuFlowPage(flows, rejected, stats, runs, checks, a.flowStore != nil)
+	body := vayuFlowPage(flows, rejected, stats, runs, checks, a.flowStore != nil, flowModel{c: a.aiAssist}.Local())
 	full := adminOSShellHead(nonce, "VayuFlow", "vayuflow", cfg) + body +
 		adminOSShellFoot(nonce, vayuFlowScript, pageUsesAlpine(body))
 	writeOSHTML(w, r, full)
@@ -231,8 +231,13 @@ func runStatusChip(s vayuflow.RunStatus) string {
 
 // vayuFlowPage builds the console body. Pure, so it can be rendered and
 // asserted on without a request or a database.
+// modelLocal is passed rather than inferred because the flow document cannot
+// know it: a model step is outbound only when the configured provider is
+// remote, and only the install can say which it has. The banner below used to
+// answer without asking, and got it wrong for every local provider.
 func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
-	stats vayuflow.Stats, runs []vayuflow.Run, checks []flowaudit.Check, wired bool) string {
+	stats vayuflow.Stats, runs []vayuflow.Run, checks []flowaudit.Check,
+	wired, modelLocal bool) string {
 	esc := html.EscapeString
 	var b strings.Builder
 
@@ -326,6 +331,21 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 		if f.NeedsEgress() {
 			body.WriteString(`<div class="warn-box">This flow reaches a remote host. It is inert while ` +
 				`the install runs as a Tor Space.</div>`)
+		}
+		// Said separately, and only about what is true. A model step reaches out
+		// when the provider is remote and does not when it runs here, so the
+		// banner names which of the two this install has rather than assuming the
+		// dangerous one and calling every local generation an outbound call.
+		if f.NeedsModel() {
+			if modelLocal {
+				body.WriteString(`<div class="text-sm muted">This flow calls a model. The configured ` +
+					`provider runs on this host, so the step is not an outbound call and stays ` +
+					`active in a Tor Space.</div>`)
+			} else {
+				body.WriteString(`<div class="warn-box">This flow calls a model, and the configured ` +
+					`provider is remote — that makes the step an outbound call, so it is inert ` +
+					`while the install runs as a Tor Space.</div>`)
+			}
 		}
 		body.WriteString(`<div class="flex-between">` +
 			`<button type="button" class="btn btn--primary btn--sm" data-flow-run="` + esc(f.ID) + `">Run once now</button>` +

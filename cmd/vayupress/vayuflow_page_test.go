@@ -31,7 +31,19 @@ func samplePageFlow() vayuflow.Flow {
 func renderPage(t *testing.T, flows []vayuflow.Flow, rejected map[string]error,
 	stats vayuflow.Stats, runs []vayuflow.Run, wired bool) string {
 	t.Helper()
-	return vayuFlowPage(flows, rejected, stats, runs, flowaudit.Run(flowaudit.Inputs{Wired: wired, Flows: flows, Rejected: rejected}), wired)
+	return renderPageWithModel(t, flows, rejected, stats, runs, wired, false)
+}
+
+// renderPageWithModel is renderPage with the install's model locality stated.
+// It is a separate helper rather than an extra argument everywhere because only
+// the banner tests care, and threading a bool through twenty call sites to make
+// two of them readable is the wrong trade.
+func renderPageWithModel(t *testing.T, flows []vayuflow.Flow, rejected map[string]error,
+	stats vayuflow.Stats, runs []vayuflow.Run, wired, modelLocal bool) string {
+	t.Helper()
+	return vayuFlowPage(flows, rejected, stats, runs,
+		flowaudit.Run(flowaudit.Inputs{Wired: wired, Flows: flows, Rejected: rejected}),
+		wired, modelLocal)
 }
 
 // The blast radius must read while an accordion is COLLAPSED, because the
@@ -305,5 +317,90 @@ func TestOnlyAPassIsTonedAsSuccess(t *testing.T) {
 		if strings.Contains(flowCheckChip(s), "mon-chip--on") {
 			t.Errorf("%s is toned as a success", s)
 		}
+	}
+}
+
+// flowAccordion returns the ONE accordion belonging to the named flow.
+//
+// It exists because the first version of the test below searched the whole page
+// for "reaches a remote host" and matched the posture report's sentence "No
+// armed flow reaches a remote host." — a passing regression and a failing fix,
+// from the same substring. An assertion that cannot say which element it
+// matched is not an assertion, so this fails loudly on none and on more than
+// one rather than quietly picking.
+func flowAccordion(t *testing.T, page, flowName string) string {
+	t.Helper()
+	const open = `<details class="mon-acc"`
+	var found []string
+	for _, chunk := range strings.Split(page, open)[1:] {
+		if end := strings.Index(chunk, "</details>"); end >= 0 {
+			chunk = chunk[:end]
+		}
+		if strings.Contains(chunk, `<span class="mon-acc__title">`+flowName+`</span>`) {
+			found = append(found, chunk)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("expected exactly one accordion titled %q, found %d", flowName, len(found))
+	}
+	return found[0]
+}
+
+// ── ADR-0151 adversarial pass, attack 5 as it reached the operator. ──────────
+//
+// The banner was rendered from a question the flow document cannot answer. A
+// model step is registered inert — correctly, because a hosted provider makes
+// it an outbound call — and the page read "declares itself inert" as "reaches a
+// remote host". So an operator whose model runs on the same machine was told,
+// in a warning box, that their automation reached out. Meanwhile the posture
+// report on the same page asked CapabilitiesOfKind(KindEgress) and said it did
+// not.
+//
+// Two answers to one question on one screen, and the alarming one was wrong.
+// The page is rendered and read here — never the handler's source — because a
+// source test would pass a regression that deleted the line and left it in a
+// comment.
+func TestALocalModelFlowIsNotDescribedAsReachingARemoteHost(t *testing.T) {
+	f := samplePageFlow()
+	f.Steps = []vayuflow.Step{{Action: "model.draft.generate",
+		Params: map[string]string{"prompt": "summarise"}}}
+
+	local := flowAccordion(t,
+		renderPageWithModel(t, []vayuflow.Flow{f}, nil, vayuflow.Stats{}, nil, true, true),
+		"Weekly digest")
+	if strings.Contains(local, "reaches a remote host") {
+		t.Error("a flow whose model provider runs on this host is described in its own " +
+			"card as reaching a remote host")
+	}
+	if !strings.Contains(local, "runs on this host") {
+		t.Error("the card says nothing about the model step at all; it must describe what " +
+			"the flow does rather than fall silent")
+	}
+
+	// Remote provider: the warning is correct and must still appear, or the fix
+	// has traded a false alarm for a missing one.
+	remote := flowAccordion(t,
+		renderPageWithModel(t, []vayuflow.Flow{f}, nil, vayuflow.Stats{}, nil, true, false),
+		"Weekly digest")
+	if !strings.Contains(remote, "the configured provider is remote") {
+		t.Error("a flow calling a REMOTE model is not warned about")
+	}
+	if !strings.Contains(remote, "inert") {
+		t.Error("the remote-model warning does not say the step is inert in a Tor Space")
+	}
+
+	// And a genuine fetch step keeps the original banner either way.
+	g := samplePageFlow()
+	g.Name = "Fetch and file"
+	g.Steps = []vayuflow.Step{{Action: "egress.fetch",
+		Params: map[string]string{"url": "https://example.com"}}}
+	fetchCard := flowAccordion(t,
+		renderPageWithModel(t, []vayuflow.Flow{g}, nil, vayuflow.Stats{}, nil, true, true),
+		"Fetch and file")
+	if !strings.Contains(fetchCard, "reaches a remote host") {
+		t.Error("a fetch step lost its outbound-reach warning")
+	}
+	if strings.Contains(fetchCard, "runs on this host") {
+		t.Error("a fetch-only flow is described as having a model step")
 	}
 }

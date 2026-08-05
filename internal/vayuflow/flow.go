@@ -242,11 +242,33 @@ func (f Flow) HighestWrite() WritePolicy {
 	return highest
 }
 
-// NeedsEgress reports whether any step reaches a remote host, which is what
-// makes a flow inert in a Tor Space.
+// NeedsEgress reports whether any step reaches a remote host.
+//
+// It keys on the KIND, not on the Onion policy, and the difference is a claim
+// the panel was getting wrong. model.draft.generate is registered OnionInert —
+// correctly, because a hosted provider makes it an outbound call — so an
+// Onion-keyed answer told an operator whose only step generated a draft against
+// a model on this very machine that their flow "reaches a remote host". The
+// posture report asks CapabilitiesOfKind(KindEgress) and got the other answer:
+// two implementations of one question, disagreeing on the same flow.
 func (f Flow) NeedsEgress() bool {
 	for _, s := range f.Steps {
-		if c, err := CapabilityFor(s.Action); err == nil && c.Onion == OnionInert {
+		if c, err := CapabilityFor(s.Action); err == nil && c.Kind == KindEgress {
+			return true
+		}
+	}
+	return false
+}
+
+// NeedsModel reports whether any step calls a model provider.
+//
+// It is separate from NeedsEgress because the two are different questions with
+// different answers: a model step is outbound only when the configured provider
+// is remote, and the flow document cannot know which. The panel has to ask the
+// install that, so it needs to be able to ask this first.
+func (f Flow) NeedsModel() bool {
+	for _, s := range f.Steps {
+		if c, err := CapabilityFor(s.Action); err == nil && c.Kind == KindModel {
 			return true
 		}
 	}

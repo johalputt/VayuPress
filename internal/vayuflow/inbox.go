@@ -183,6 +183,11 @@ type DrainResult struct {
 // even if it were, the run's idempotency key is derived from the row id.
 func (dr *Drainer) Drain(ctx context.Context, limit int) (DrainResult, error) {
 	res := DrainResult{Broken: map[string]error{}}
+	// Forget before draining, and unconditionally — including on a pass that
+	// finds nothing pending, which is exactly the pass an install with a quiet
+	// inbox spends all its time on. Putting this after the early return below
+	// would mean the table is only ever pruned while it is busy.
+	dr.pruneIfDue(ctx)
 	rows, err := dr.inbox.Pending(ctx, limit)
 	if err != nil {
 		return res, err
@@ -231,16 +236,52 @@ func (dr *Drainer) Drain(ctx context.Context, limit int) (DrainResult, error) {
 	return res, nil
 }
 
+// inboxRetention is how long a drained row is kept. It is a trail of what this
+// install was asked to consider, which is worth having when a flow did
+// something surprising a fortnight ago and nobody can remember what triggered
+// it — and worth nothing at all a year later.
+const inboxRetention = 30 * 24 * time.Hour
+
+// inboxPruneEvery is how often a drain pass also forgets. Pruning on every pass
+// would put a DELETE across the whole table every five seconds for the life of
+// the process, which is an unbounded scan replacing an unbounded table.
+const inboxPruneEvery = time.Hour
+
+// pruneIfDue drops drained rows past the retention window, at most once per
+// inboxPruneEvery.
+//
+// A prune failure is deliberately not returned. The drainer's job is to turn
+// events into runs, and a housekeeping DELETE that could not complete is not a
+// reason to stop doing that — the next pass tries again. What it must not do is
+// mark itself done on a failure, or one bad prune would silence the next hour
+// of them.
+func (dr *Drainer) pruneIfDue(ctx context.Context) {
+	now := dr.now()
+	if !dr.lastPrune.IsZero() && now.Sub(dr.lastPrune) < inboxPruneEvery {
+		return
+	}
+	if _, err := dr.inbox.PruneDrained(ctx, inboxRetention); err != nil {
+		return
+	}
+	dr.lastPrune = now
+}
+
 // Drainer turns inbox rows into runs.
 type Drainer struct {
 	inbox  *Inbox
 	flows  *Store
 	runner *Runner
+	now    func() time.Time
+	// lastPrune is zero on a fresh process, so the first pass after a restart
+	// prunes. That is deliberate: a process that restarts more often than the
+	// interval is a process with worse problems than one extra DELETE.
+	lastPrune time.Time
 }
 
 // NewDrainer creates a Drainer.
 func NewDrainer(inbox *Inbox, flows *Store, runner *Runner) *Drainer {
-	return &Drainer{inbox: inbox, flows: flows, runner: runner}
+	return &Drainer{inbox: inbox, flows: flows, runner: runner,
+		now: func() time.Time { return time.Now().UTC() }}
 }
 
 // Run drains on an interval until ctx is cancelled.

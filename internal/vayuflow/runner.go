@@ -63,20 +63,33 @@ func (e *Effects) Write(level WritePolicy, desc string) error {
 	return nil
 }
 
-// Fetch asks permission to reach a remote host. Every egress action is inert in
-// a Tor Space; this refuses there regardless of what the call site does, so the
-// guarantee does not depend on a caller remembering.
+// Fetch asks permission to reach a remote host.
+//
+// The refusal is NOT conditioned on the calling capability's Onion policy, and
+// that is a correction rather than an omission. It used to be, and the effect
+// was an opt-out: the registry test that keeps egress actions inert covers
+// KindEgress and nothing else, so an action of any other kind that reached for
+// the network — a content action fetching an image, a future action doing it
+// incidentally — was handed the clearnet from a Tor Space, with only safefetch
+// downstream still standing. This method is called Fetch. Being outbound is not
+// a property it needs to be told about, and a guarantee that holds only while
+// every future author remembers a field is not a guarantee.
+//
+// It is also NOT gated on dry-run, for the reason Model is not. A fetch is a
+// read that produces the value the next step consumes: skipping it in a dry run
+// left `$prev` empty while the model step beside it genuinely ran, so the
+// operator was shown a real generation produced from nothing and told it was
+// what the live run would write. Under-reporting the read and over-reporting the
+// generation, on the same screen, in the same run. The read happens, the capture
+// says so, and the ceiling is charged either way.
 func (e *Effects) Fetch(desc string) error {
-	if e.cap.Onion == OnionInert && clearnetBlocked() {
-		return fmt.Errorf("vayuflow: action %q is inert in a Tor Space; refusing outbound fetch", e.cap.Action)
+	if clearnetBlocked() {
+		return fmt.Errorf("vayuflow: action %q attempted an outbound fetch from a Tor Space", e.cap.Action)
 	}
 	if err := e.spend.chargeEgress(e.budget); err != nil {
 		return err
 	}
-	if e.mode != RunLive {
-		e.refusals = append(e.refusals, "would fetch: "+desc)
-		return ErrDryRun
-	}
+	e.notes = append(e.notes, "fetched: "+desc)
 	return nil
 }
 
