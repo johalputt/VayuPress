@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **The adversarial pass over this release found a false claim in the ADR the
+  release exists to correct.** §0 stated the VayuVeil server track was
+  "Complete". Two of its seven steps are not built — reading the host's Secure
+  Boot and TPM state, and the root-requested unit hardening — and neither exists
+  anywhere in the binary. The ADR tree is compiled into the binary and served at
+  `/os/adr`, so this was a false claim on the way to operators, in a document
+  whose whole subject is not making false claims.
+
+  Each step now carries SHIPPED or NOT BUILT on its own line, and the summary
+  says five of seven rather than a word that covers a mixed state. That is how
+  "planned" became "coming" the first time, and a summary word is exactly what
+  did it.
+
+  Three further stale lines fell out of the same pass. §4 promised a live-grant
+  view; there are no grants without the compositor §3.2 records as out of scope,
+  so the section now says the page does not pretend to have a list. §4's
+  permanent-fail row list did not match what the code emits and now does. And the
+  threat model's actors had been relabelled S1–S8 while the build steps are
+  S1–S7, so "S5" meant two different things in one document — the actors are A-
+  prefixed again.
+
 ### Changed
 
 - **"Only three events are subscribable" was recorded as a VayuFlow gap. It is

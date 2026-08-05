@@ -2,7 +2,7 @@
 
 - **Status:** Accepted — scope corrected 2026-08-05 (see §0)
 - **Date:** 2026-07-29 (registry and posture report shipped 2026-08-04; scope
-  corrected and server track completed 2026-08-05)
+  corrected 2026-08-05, server track at five of its seven steps — §5 marks each)
 - **Relates to:** ADR-0141 (VayuOS Spaces), ADR-0143 (Tor Space anonymity model),
   ADR-0123 (privileged agent / privilege separation)
 
@@ -33,14 +33,18 @@ So the work splits in two, and only one half belongs to this repository:
 
 | Track | What it covers | Home |
 | --- | --- | --- |
-| **Server track (S)** | What this process can verifiably do to protect *itself*, and what it can honestly *report* about the host it runs on | **This ADR. Complete.** |
+| **Server track (S)** | What this process can verifiably do to protect *itself*, and what it can honestly *report* about the host it runs on | **This ADR. Five of seven steps shipped; §5 marks each.** |
 | **Endpoint track (E)** | The compositor, grants, sandboxing, MAC, accessibility mediation, input/clipboard policy, egress correlation | A desktop operating system. **Not this binary, and not on its roadmap.** |
 
 What this document is now: §1 states the question a VayuPress host actually
-poses, §2 is a threat model whose actors are the ones on a server — a process
+poses. §2 is a threat model whose actors are the ones on a server — a process
 under the same account, an artifact this process left behind, another local
-account — and §5 is a build order every step of which this binary can run. The
-desktop channels remain enumerated in §3.1 and remain probed, because "absent
+account. §5 is a build order every step of which this binary CAN run, which is
+the property the old one lacked; five of the seven are built and the other two
+carry NOT BUILT on their own line, because a summary word covering a mixed state
+is how "planned" became "coming" the first time.
+
+The desktop channels remain enumerated in §3.1 and remain probed, because "absent
 from this host" is a fact worth proving, and because an install sharing a machine
 with a desktop session is a real configuration in which they are not absent.
 
@@ -115,17 +119,17 @@ configuration, and on that machine those channels stop being absent.
 
 | # | Actor | Capability | In scope |
 | --- | --- | --- | --- |
-| S1 | Another process under the same account | Reads this process's memory via `/proc/<pid>/mem`, attaches with ptrace, opens any file this user can | **Yes — fully** |
-| S2 | An artifact this process left behind | A core dump, a swap page, a backup archive, a temp file. Holds the same secrets and outlives the process | **Yes — fully** |
-| S3 | A different unprivileged account on the host | Whatever file modes and namespaces permit | **Yes — fully** |
-| S4 | An operator at a console or SSH session | Legitimately privileged, but what they type stays in console screen memory afterwards | **Partially — the residue is in scope, the session is not** |
-| S5 | Attacker with root | Reads `/dev/mem`, loads modules, reads any file | **Partially — cost raised, not closed** |
-| S6 | The hypervisor, or another tenant escaping it | Reads guest memory from outside | **No** |
-| S7 | Firmware / SMM / management engine | Below the OS entirely | **No** |
-| S8 | Physical access to the disk | Carries the volume away | **No — that is disk encryption's job, not this subsystem's** |
+| A1 | Another process under the same account | Reads this process's memory via `/proc/<pid>/mem`, attaches with ptrace, opens any file this user can | **Yes — fully** |
+| A2 | An artifact this process left behind | A core dump, a swap page, a backup archive, a temp file. Holds the same secrets and outlives the process | **Yes — fully** |
+| A3 | A different unprivileged account on the host | Whatever file modes and namespaces permit | **Yes — fully** |
+| A4 | An operator at a console or SSH session | Legitimately privileged, but what they type stays in console screen memory afterwards | **Partially — the residue is in scope, the session is not** |
+| A5 | Attacker with root | Reads `/dev/mem`, loads modules, reads any file | **Partially — cost raised, not closed** |
+| A6 | The hypervisor, or another tenant escaping it | Reads guest memory from outside | **No** |
+| A7 | Firmware / SMM / management engine | Below the OS entirely | **No** |
+| A8 | Physical access to the disk | Carries the volume away | **No — that is disk encryption's job, not this subsystem's** |
 
-**S1 and S2 are where a server install actually loses data**, and they are the
-two this binary can do something about. S2 in particular is the one operators
+**A1 and A2 are where a server install actually loses data**, and they are the
+two this binary can do something about. A2 in particular is the one operators
 underestimate: an encrypted data directory does not cover the swap file, the core
 dump or the backup, and each of those holds exactly what the directory was
 encrypted to protect.
@@ -272,11 +276,20 @@ what is **observed**, never from what is configured.
   last attempt.
 - Green means **verified enforcing**, not "switched on". If a channel cannot be
   verified, it reads *unverified* — absent evidence is never a pass.
-- **Permanent Fail rows** that no configuration clears, one per out-of-scope
-  actor: kernel-level attacker, DMA-capable hardware, firmware, physical/optical.
-  A report where everything eventually goes green teaches the user to stop
-  reading it.
-- Live grants and their remaining time, always reachable in one action.
+- **Permanent Fail rows** that no configuration clears, one for each actor the
+  report will never defend against: root on this machine, a kernel or
+  driver-level attacker, DMA-capable hardware and firmware, a camera pointed at a
+  screen, a person who grants capture to malware, and a compromised compositor.
+  The last two describe an endpoint and stay in the report anyway — on a server
+  they are permanently failing, which is accurate, and removing a row because it
+  is unreachable here is how a report starts flattering itself.
+
+  A report where everything eventually goes green teaches the reader to stop
+  reading it, so the rows that can never clear are what make the rows that can
+  worth believing.
+- **No live-grant view**, because there are no grants. Mediating a grant needs
+  the compositor §3.2 records as out of scope, so there is nothing to list and
+  the page does not pretend to have a list.
 
 ## 5. Build order — the server track
 
@@ -313,7 +326,7 @@ not already exposed.
 > costume. An interface the platform would not answer about is *unverified*,
 > never clean.
 
-**S3 — Process self-protection, each control read back from the kernel.**
+**S3 — Process self-protection, each control read back from the kernel. SHIPPED.**
 Shipped: `PR_SET_DUMPABLE=0` verified with `PR_GET_DUMPABLE`, and
 `RLIMIT_CORE=0` verified with `getrlimit`. Two independent mechanisms on one
 channel, reported as two rows rather than averaged into one — an operator needs
@@ -331,7 +344,7 @@ the data directory and keystore file modes read back with `stat`.
 > channel for a process-scoped control is right mechanism, wrong subject, with no
 > way for a reader to tell — which is precisely the defect §8 exists to prevent.
 
-**S4 — The capture suite, and the honest arithmetic of it.**
+**S4 — The capture suite, and the honest arithmetic of it. SHIPPED.**
 Eleven techniques are named. This binary can attempt four — framebuffer read,
 evdev read, DRM card-node read, and another process's memory via
 `/proc/1/mem` — and reports the other seven as NOT ATTEMPTED with the reason,
@@ -339,14 +352,14 @@ which is never counted as a defence. Widening the attempted set is worth doing
 only where a real capture can be tried without a client library this binary does
 not link; anything less is a probe wearing a test's clothes.
 
-**S5 — Reading host posture, which is not the same as providing it.**
+**S5 — Reading host posture, which is not the same as providing it. NOT BUILT.**
 Whether the host has Secure Boot enabled or a TPM present is a fact a server
 process can read and an operator benefits from seeing. It must be rendered as
 *what this host already has*, never as something VayuVeil provides, and it is
 **not** attestation: nothing here measures the boot chain or proves the
 configuration to a remote party.
 
-**S6 — Root-requested hardening, requested by the panel and verified after.**
+**S6 — Root-requested hardening, requested by the panel and verified after. NOT BUILT.**
 Unit-level directives (`NoNewPrivileges=`, `ProtectSystem=`, `ProtectHome=`,
 `PrivateTmp=`) need root and therefore go through the existing
 provision-request path: the panel **requests** and **reports what happened**, per
@@ -355,7 +368,7 @@ through a command in a chat reply. Whatever the root side does is then verified
 the same way as everything else — read back from `/proc/self/status` — because a
 directive in a unit file that did not take is a configuration, not a control.
 
-**S7 — Audit trail and operator documentation.**
+**S7 — Audit trail and operator documentation. SHIPPED.**
 L8 narrowed to what this track can honestly record: what the capture suite found
 and what the enforcement verification said, written down rather than living only
 on a page nobody reloaded. Refusals matter as much as grants — they are how you
