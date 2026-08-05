@@ -25,7 +25,7 @@ func allAbsent() map[vayuveil.ChannelID]vayuveil.Observation {
 
 func on(obs map[vayuveil.ChannelID]vayuveil.Observation) Inputs {
 	return Inputs{Enabled: true, Channels: vayuveil.Channels(), Observations: obs,
-		EnforcingPhases: map[vayuveil.Phase]bool{}}
+		Enforced: map[vayuveil.Needs]bool{}}
 }
 
 // THE test. P0 registers channels and enforces none of them, so there is no
@@ -124,10 +124,9 @@ func TestThePermanentLimitsAppearInEveryReportAndNothingClearsThem(t *testing.T)
 		"nothing present": on(allAbsent()),
 		"everything enforcing": func() Inputs {
 			i := on(allAbsent())
-			i.EnforcingPhases = map[vayuveil.Phase]bool{
-				vayuveil.PhaseP1Screen: true, vayuveil.PhaseP2Input: true,
-				vayuveil.PhaseP3Accessibility: true, vayuveil.PhaseP4Sandbox: true,
-				vayuveil.PhaseP5Hygiene: true,
+			i.Enforced = map[vayuveil.Needs]bool{
+				vayuveil.NeedsCompositor: true, vayuveil.NeedsAccessibilityMediation: true,
+				vayuveil.NeedsSandboxPolicy: true, vayuveil.NeedsHostConfiguration: true,
 			}
 			return i
 		}(),

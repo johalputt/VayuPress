@@ -32,6 +32,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   have produced the exact claim ADR-0150 §8 exists to prevent — "no swap" on a
   machine that has some — on the asset where being wrong costs most.
 
+- **The product told an operator, on twenty rows, that enforcement was coming in
+  a numbered phase.** Each registered observation channel declared the ADR-0150
+  *phase* that would enforce it, and both the panel's registry table and the
+  posture report rendered that. None of those phases is coming: §0 records that
+  every one needs a desktop operating system.
+
+  This is the same defect as the phase table which led a published article to
+  announce six forthcoming phases — and it survived that correction, because the
+  table was in a document while the mechanism generating the expectation was in
+  the code. A channel now declares what enforcing it would **require** — a
+  capture-mediating compositor, a mediator on the accessibility bus, a sandbox
+  and mandatory-access-control policy, or host configuration outside this
+  process. That is a true statement about the world instead of a promise about a
+  roadmap, it still separates declared from defended, and it cannot be read as
+  "soon". A test refuses any requirement label that names a phase or reads as
+  forthcoming.
+
+- **ADR-0150 §3.2 no longer carries seventy lines of design for software that
+  does not exist.** The layer-by-layer enforcement stack — compositor, grants,
+  sandbox, MAC policy set, accessibility mediation, egress correlation — is cut,
+  and the section now records why. The justification for keeping it had been
+  "so a desktop project starts from a finished threat model", but the threat
+  model is §2 and stays; §3.2 was an implementation design, and the durable
+  value of the first was being used to justify the second.
+
 ### Added
 
 - **Operator documentation for VayuVeil** —

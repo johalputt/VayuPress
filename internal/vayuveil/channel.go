@@ -141,11 +141,11 @@ type Channel struct {
 	Audit     AuditLevel
 	Rationale string
 
-	// Phase is the ADR-0150 build phase that ENFORCES this channel. P0 registers
-	// every channel and enforces none, so this is how the posture report tells an
-	// operator "declared" from "defended" without either of us having to remember
-	// the difference.
-	Phase Phase
+	// Needs is what enforcing this channel would REQUIRE. It is how the posture
+	// report tells an operator "declared" from "defended" — and, since it is
+	// rendered on every row, it is worded as a requirement rather than as a
+	// forthcoming phase, so the product cannot imply work that is not coming.
+	Needs Needs
 
 	// Probe reports whether the interface is present on the running host, and
 	// whether this process can reach it. nil means presence cannot be determined
@@ -154,23 +154,55 @@ type Channel struct {
 	Probe func(Host) Observation
 }
 
-// Phase is which ADR-0150 phase enforces a channel.
-type Phase uint8
+// Needs is WHAT ENFORCING a channel would require.
+//
+// It used to be a build phase — P1 Screen, P4 Sandbox — and that was a mistake
+// worth recording, because it did not stay in the document. Every channel row on
+// the panel and in the posture report rendered its phase, so the product told an
+// operator, twenty times over, that enforcement was coming in a numbered phase.
+// No such phase is coming: ADR-0150 §0 records that the compositor, the sandbox
+// policy and the mandatory-access-control set need a desktop operating system,
+// and this is a web server.
+//
+// Naming the REQUIREMENT instead says a true thing about the world rather than a
+// promise about a roadmap. It still separates declared from defended, which is
+// what the field was for, and it cannot be read as "soon".
+type Needs uint8
 
 const (
-	// phaseUnset is the zero value and not a valid answer.
-	phaseUnset Phase = iota
-	// PhaseP1Screen — hardened compositor, portal-only capture, no-capture flag.
-	PhaseP1Screen
-	// PhaseP2Input — input and clipboard.
-	PhaseP2Input
-	// PhaseP3Accessibility — AT-SPI, with real screen-reader users testing it.
-	PhaseP3Accessibility
-	// PhaseP4Sandbox — namespaces, per-sandbox XWayland, SELinux/AppArmor.
-	PhaseP4Sandbox
-	// PhaseP5Hygiene — egress correlation and memory hygiene.
-	PhaseP5Hygiene
+	// needsUnset is the zero value and not a valid answer.
+	needsUnset Needs = iota
+	// NeedsCompositor — a display server that mediates capture, draws its own
+	// consent and honours a per-surface no-capture flag. Screen, window pixels,
+	// input, clipboard and window metadata all sit behind it.
+	NeedsCompositor
+	// NeedsAccessibilityMediation — a mediator on the accessibility bus, which
+	// reads window text without touching a pixel. Distinct from the compositor
+	// because a screen reader is a legitimate grant, not an exemption.
+	NeedsAccessibilityMediation
+	// NeedsSandboxPolicy — per-application namespaces and a mandatory
+	// access-control policy set, installed host-wide and enforced by the kernel.
+	NeedsSandboxPolicy
+	// NeedsHostConfiguration — a decision made outside this process and outside
+	// any application: encrypted swap, hibernation off, a core-dump policy. The
+	// server track enforces the process-scoped subset and says so; the rest is
+	// the host's.
+	NeedsHostConfiguration
 )
+
+func (n Needs) String() string {
+	switch n {
+	case NeedsCompositor:
+		return "a capture-mediating compositor"
+	case NeedsAccessibilityMediation:
+		return "a mediator on the accessibility bus"
+	case NeedsSandboxPolicy:
+		return "a sandbox and mandatory-access-control policy"
+	case NeedsHostConfiguration:
+		return "host configuration outside this process"
+	}
+	return "unset"
+}
 
 // Complete reports whether every obligation has been answered, and whether the
 // answers are consistent with each other.
@@ -181,7 +213,7 @@ const (
 // incoherent declaration is how a loophole gets written down as policy.
 func (c Channel) Complete() bool {
 	if c.Asset == assetUnset || c.Default == dispositionUnset || c.Grant == grantUnset ||
-		c.Indicator == indicatorUnset || c.Audit == auditUnset || c.Phase == phaseUnset {
+		c.Indicator == indicatorUnset || c.Audit == auditUnset || c.Needs == needsUnset {
 		return false
 	}
 	if strings.TrimSpace(string(c.ID)) == "" || strings.TrimSpace(c.Name) == "" ||

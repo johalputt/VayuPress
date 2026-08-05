@@ -24,7 +24,7 @@ var channels = []Channel{
 		ID: "wlr-screencopy", Name: "wlr-screencopy protocol",
 		Asset: AssetFramebuffer, Default: DispositionAbsent,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditNone,
-		Phase: PhaseP1Screen,
+		Needs: NeedsCompositor,
 		Rationale: "A Wayland client cannot read the screen unless the compositor hands it over, and " +
 			"this is the protocol that hands it over with no prompt at all. P1 does not gate it — it " +
 			"is not compiled into the compositor. An absent protocol has no bypass, which is the only " +
@@ -38,7 +38,7 @@ var channels = []Channel{
 		ID: "wlr-export-dmabuf", Name: "zwlr_export_dmabuf protocol",
 		Asset: AssetFramebuffer, Default: DispositionAbsent,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditNone,
-		Phase: PhaseP1Screen,
+		Needs: NeedsCompositor,
 		Rationale: "The zero-copy sibling of screencopy: it hands a client a GPU buffer handle for the " +
 			"composited output. Same disposition and the same reason — absent from the compositor " +
 			"rather than gated in it. Listed separately because closing screencopy and leaving this " +
@@ -51,7 +51,7 @@ var channels = []Channel{
 		ID: "xdg-portal-screencast", Name: "xdg-desktop-portal ScreenCast",
 		Asset: AssetFramebuffer, Default: DispositionGrant,
 		Grant: GrantScopedTimed, Indicator: IndicatorCompositor, Audit: AuditAll,
-		Phase: PhaseP1Screen,
+		Needs: NeedsCompositor,
 		Rationale: "The one path capture is allowed to take, because it is the one that asks. The " +
 			"grant is scoped to a window or an output rather than to everything, time-boxed with a " +
 			"visible countdown, and revocable mid-stream from a control the client cannot draw over. " +
@@ -64,7 +64,7 @@ var channels = []Channel{
 		ID: "dev-fb", Name: "/dev/fb* framebuffer devices",
 		Asset: AssetFramebuffer, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditAll,
-		Phase: PhaseP4Sandbox,
+		Needs: NeedsSandboxPolicy,
 		Rationale: "A raw framebuffer node is the whole screen with no compositor in the way, so no " +
 			"grant model can make it safe and none is offered. Denied by sandbox and MAC policy " +
 			"rather than by absence, because the node legitimately exists for the console. Audited: " +
@@ -75,7 +75,7 @@ var channels = []Channel{
 		ID: "dev-vcs", Name: "/dev/vcs*, /dev/vcsa*, /dev/vcsu* console screen memory",
 		Asset: AssetFramebuffer, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditAll,
-		Phase: PhaseP4Sandbox,
+		Needs: NeedsSandboxPolicy,
 		Rationale: "The virtual console's screen memory, readable as plain text. It is the one " +
 			"capture channel in this registry that is MORE relevant on a server than on a desktop: " +
 			"a headless host has no framebuffer and no Wayland socket, but it does have virtual " +
@@ -89,7 +89,7 @@ var channels = []Channel{
 		ID: "dev-dri", Name: "/dev/dri render and card nodes",
 		Asset: AssetWindowPixels, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditAll,
-		Phase: PhaseP4Sandbox,
+		Needs: NeedsSandboxPolicy,
 		Rationale: "A card node can scan out and read back other clients' buffers. Each sandbox gets " +
 			"its own render node and nothing else; the card nodes are denied outright. This is also " +
 			"where GPU buffer zeroing on release belongs, since uninitialised VRAM has historically " +
@@ -100,7 +100,7 @@ var channels = []Channel{
 		ID: "x11-root-read", Name: "X11 root window read",
 		Asset: AssetFramebuffer, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditAll,
-		Phase: PhaseP4Sandbox,
+		Needs: NeedsSandboxPolicy,
 		Rationale: "On X11 any process running as you reads the entire screen — every window, every " +
 			"password field — with no permission, no indicator and no log. That is not a bug to fix; " +
 			"X11 predates the threat and will never have an equivalent chokepoint. The disposition is " +
@@ -114,7 +114,7 @@ var channels = []Channel{
 		ID: "xwayland-shared", Name: "shared XWayland instance",
 		Asset: AssetWindowPixels, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditAll,
-		Phase: PhaseP4Sandbox,
+		Needs: NeedsSandboxPolicy,
 		Rationale: "This matters more than it looks. A single XWayland shared between sandboxes " +
 			"reintroduces X11's flaw wholesale, because the X11 clients inside it can see each other " +
 			"however well the Wayland side is isolated. One rootless instance per sandbox restores " +
@@ -129,7 +129,7 @@ var channels = []Channel{
 		ID: "at-spi", Name: "AT-SPI accessibility bus",
 		Asset: AssetWindowText, Default: DispositionGrant,
 		Grant: GrantPinned, Indicator: IndicatorPanel, Audit: AuditAll,
-		Phase: PhaseP3Accessibility,
+		Needs: NeedsAccessibilityMediation,
 		Rationale: "A complete capture channel that reads no pixels, and it is almost always left " +
 			"wide open. AT-SPI can dump the full text of every window, which defeats a screenshot " +
 			"policy entirely while looking like nothing. It is grantable rather than denied because a " +
@@ -148,7 +148,7 @@ var channels = []Channel{
 		ID: "dev-input", Name: "/dev/input event devices",
 		Asset: AssetKeyboard, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditAll,
-		Phase: PhaseP4Sandbox,
+		Needs: NeedsSandboxPolicy,
 		Rationale: "Raw evdev is a keylogger with no compositor between it and every keystroke, " +
 			"including the ones typed into another application's password field. There is no grant " +
 			"model for this because there is no scoped version of it: a process reading evdev reads " +
@@ -159,7 +159,7 @@ var channels = []Channel{
 		ID: "virtual-keyboard", Name: "zwp_virtual_keyboard protocol",
 		Asset: AssetKeyboard, Default: DispositionGrant,
 		Grant: GrantPerUse, Indicator: IndicatorCompositor, Audit: AuditAll,
-		Phase: PhaseP2Input,
+		Needs: NeedsCompositor,
 		Rationale: "Injection rather than capture, and it belongs here because a process that can " +
 			"type can drive another application into revealing what capture would have shown. " +
 			"Granted per use, never remembered, and the prompt is worded bluntly: a keyboard grant is " +
@@ -172,7 +172,7 @@ var channels = []Channel{
 		ID: "input-method", Name: "input-method protocol",
 		Asset: AssetKeyboard, Default: DispositionGrant,
 		Grant: GrantPinned, Indicator: IndicatorPanel, Audit: AuditAll,
-		Phase: PhaseP2Input,
+		Needs: NeedsCompositor,
 		Rationale: "An input method sees every keystroke by construction — that is its job, and it is " +
 			"indispensable for anyone typing a language that needs one. Pinned rather than per-use " +
 			"for the same reason as the screen reader, and listed permanently so the person knows " +
@@ -185,7 +185,7 @@ var channels = []Channel{
 		ID: "pointer-position", Name: "global pointer position",
 		Asset: AssetPointer, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditGrantsOnly,
-		Phase: PhaseP2Input,
+		Needs: NeedsCompositor,
 		Rationale: "A client learns the pointer only while it is over that client's own surface. " +
 			"Global position is denied with no grant path: it reveals what a person is reading and " +
 			"where they are about to click across every other window, and no application needs it " +
@@ -201,7 +201,7 @@ var channels = []Channel{
 		ID: "data-control", Name: "zwlr_data_control clipboard read",
 		Asset: AssetClipboard, Default: DispositionGrant,
 		Grant: GrantPerUse, Indicator: IndicatorCompositor, Audit: AuditAll,
-		Phase: PhaseP2Input,
+		Needs: NeedsCompositor,
 		Rationale: "Ambient clipboard reading is how a password manager's output leaves the machine. " +
 			"Reads are per-paste rather than continuous: a clipboard manager that watches every copy " +
 			"is a keylogger for the subset of text people are most careful about.",
@@ -215,7 +215,7 @@ var channels = []Channel{
 		ID: "notification-bodies", Name: "notification body text",
 		Asset: AssetNotifications, Default: DispositionGrant,
 		Grant: GrantPinned, Indicator: IndicatorPanel, Audit: AuditAll,
-		Phase: PhaseP3Accessibility,
+		Needs: NeedsAccessibilityMediation,
 		Rationale: "Notification bodies carry one-time codes and message previews, so a process " +
 			"subscribed to them reads the contents of a second factor. Pinned because a notification " +
 			"daemon needs standing access, and listed permanently because that is a large amount of " +
@@ -228,7 +228,7 @@ var channels = []Channel{
 		ID: "window-metadata", Name: "window titles and application list",
 		Asset: AssetWindowMetadata, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditAll,
-		Phase: PhaseP1Screen,
+		Needs: NeedsCompositor,
 		Rationale: "Metadata leaks intent without leaking a single pixel: a list of window titles " +
 			"says which bank, which patient, which lawyer. Denied rather than granted because the " +
 			"legitimate consumers — a taskbar, a switcher — are compositor components rather than " +
@@ -241,7 +241,7 @@ var channels = []Channel{
 		ID: "thumbnailer", Name: "file thumbnailer previews",
 		Asset: AssetThumbnails, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditAll,
-		Phase: PhaseP4Sandbox,
+		Needs: NeedsSandboxPolicy,
 		Rationale: "A thumbnailer renders other people's documents and writes the result to a cache " +
 			"directory that is usually world-readable within the account. It is capture by proxy: no " +
 			"screen is read, and the contents end up on disk anyway. Denied outside the sandbox that " +
@@ -258,7 +258,7 @@ var channels = []Channel{
 		ID: "proc-pid-mem", Name: "/proc/<pid>/mem and ptrace",
 		Asset: AssetMemoryImage, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditAll,
-		Phase: PhaseP4Sandbox,
+		Needs: NeedsSandboxPolicy,
 		Rationale: "Reading another process's memory reaches the decoded framebuffer, the decrypted " +
 			"message and the typed passphrase in one step, so it subsumes most of the channels above. " +
 			"Denied by namespace and by yama ptrace_scope. The probe reports the kernel's scope value " +
@@ -280,7 +280,7 @@ var channels = []Channel{
 		ID: "core-dumps", Name: "core dumps of capture-capable processes",
 		Asset: AssetMemoryImage, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditGrantsOnly,
-		Phase: PhaseP5Hygiene,
+		Needs: NeedsHostConfiguration,
 		Rationale: "A core dump of a compositor or a browser is a framebuffer and a session on disk, " +
 			"written by the kernel to a path the person never chose. Disabled for capture-capable " +
 			"processes. Audit is GrantsOnly because the kernel does not report refusals to us — " +
@@ -300,7 +300,7 @@ var channels = []Channel{
 		ID: "hibernate-image", Name: "suspend and hibernate images",
 		Asset: AssetMemoryImage, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditGrantsOnly,
-		Phase: PhaseP5Hygiene,
+		Needs: NeedsHostConfiguration,
 		Rationale: "A hibernate image contains the framebuffer, so an encrypted disk with an " +
 			"unencrypted swap defeats itself the first time the lid closes. Either swap is encrypted " +
 			"or hibernation is off; there is no third answer. Audit is GrantsOnly for the same reason " +
@@ -321,7 +321,7 @@ var channels = []Channel{
 		ID: "swap-anon", Name: "swap: anonymous memory written to disk",
 		Asset: AssetMemoryImage, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditGrantsOnly,
-		Phase: PhaseP5Hygiene,
+		Needs: NeedsHostConfiguration,
 		Rationale: "Separate from the hibernate image, because hibernation being unavailable does " +
 			"NOT mean anonymous memory stays in RAM. Ordinary swap writes it out continuously, under " +
 			"memory pressure, with no lid closing and nothing to notice — and a host reporting " +
@@ -365,7 +365,7 @@ var channels = []Channel{
 		ID: "vayuos-own-capture", Name: "VayuOS's own screenshot path",
 		Asset: AssetFramebuffer, Default: DispositionGrant,
 		Grant: GrantPerUse, Indicator: IndicatorCompositor, Audit: AuditAll,
-		Phase: PhaseP1Screen,
+		Needs: NeedsCompositor,
 		Rationale: "Registered because the product is the thing best placed to violate this. VayuOS " +
 			"gets no exemption from its own policy: its capture path is a channel like any other, " +
 			"asks like any other, and appears in the same audit log. ADR-0150 §3.3 also forbids a " +

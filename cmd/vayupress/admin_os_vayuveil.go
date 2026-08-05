@@ -56,13 +56,14 @@ func (a *App) handleOSVayuVeil(w http.ResponseWriter, r *http.Request) {
 		Enabled:      enabled,
 		Channels:     vayuveil.Channels(),
 		Observations: obs,
-		// Empty on purpose, and it is the honest value: no ADR-0150 phase is
-		// shipped, so no phase is enforcing. When P1 lands it goes in here and the
-		// report changes because the world changed, not because the page was
-		// re-worded.
-		EnforcingPhases: map[vayuveil.Phase]bool{},
-		SelfHardening:   self,
-		RedTeam:         red,
+		// Empty, and it is the honest value rather than a placeholder: enforcing
+		// an observation channel needs a compositor, an accessibility mediator or
+		// a kernel policy set, and a web server has none of them. A build that
+		// DID have one puts it here and the report changes because the world
+		// changed, not because the page was re-worded.
+		Enforced:      map[vayuveil.Needs]bool{},
+		SelfHardening: self,
+		RedTeam:       red,
 		// Read at report time, not cached at boot. A unit can be edited and the
 		// service restarted underneath a long-running process's memory of it,
 		// and a remembered answer is configuration rather than evidence.
@@ -265,7 +266,7 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 			`</td><td class="text-xs">` + esc(grantLabel(c.Grant)) +
 			`</td><td class="text-xs">` + esc(indicatorLabel(c.Indicator)) +
 			`</td><td class="text-xs">` + esc(auditLabel(c.Audit)) +
-			`</td><td class="text-xs muted">` + esc(veilPhaseLabel(c.Phase)) + `</td></tr>`)
+			`</td><td class="text-xs muted">` + esc(veilNeedsLabel(c.Needs)) + `</td></tr>`)
 	}
 	reg.WriteString(`</tbody></table></div></div>`)
 	b.WriteString(monAcc("📋", "The Observation Contract", "Every channel, and the four questions it must answer",
@@ -388,18 +389,20 @@ func attackOutcomeLabel(o vayuveil.AttackOutcome) string {
 	return "—"
 }
 
-func veilPhaseLabel(p vayuveil.Phase) string {
-	switch p {
-	case vayuveil.PhaseP1Screen:
-		return "P1 — compositor"
-	case vayuveil.PhaseP2Input:
-		return "P2 — input & clipboard"
-	case vayuveil.PhaseP3Accessibility:
-		return "P3 — accessibility"
-	case vayuveil.PhaseP4Sandbox:
-		return "P4 — sandbox & MAC"
-	case vayuveil.PhaseP5Hygiene:
-		return "P5 — egress & memory"
+func veilNeedsLabel(n vayuveil.Needs) string {
+	// Rendered on every row of the registry table, which is exactly why it names
+	// a REQUIREMENT and not a build phase. The column used to read "P1", "P4" and
+	// so on, so the page told an operator twenty times that enforcement was
+	// coming in a numbered phase. None of those phases is coming here.
+	switch n {
+	case vayuveil.NeedsCompositor:
+		return "needs a compositor"
+	case vayuveil.NeedsAccessibilityMediation:
+		return "needs an accessibility mediator"
+	case vayuveil.NeedsSandboxPolicy:
+		return "needs a sandbox / MAC policy"
+	case vayuveil.NeedsHostConfiguration:
+		return "needs host configuration"
 	}
 	return "—"
 }

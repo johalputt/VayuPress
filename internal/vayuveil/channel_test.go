@@ -133,7 +133,7 @@ func TestCompleteRejectsEachMissingObligationOnItsOwn(t *testing.T) {
 	valid := Channel{
 		ID: "x", Name: "x", Asset: AssetFramebuffer, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditAll,
-		Phase: PhaseP1Screen, Rationale: "because",
+		Needs: NeedsCompositor, Rationale: "because",
 	}
 	if !valid.Complete() {
 		t.Fatal("the fixture is not valid, so every case below proves nothing")
@@ -144,7 +144,7 @@ func TestCompleteRejectsEachMissingObligationOnItsOwn(t *testing.T) {
 		"no grant model": func(c Channel) Channel { c.Grant = grantUnset; return c },
 		"no indicator":   func(c Channel) Channel { c.Indicator = indicatorUnset; return c },
 		"no audit level": func(c Channel) Channel { c.Audit = auditUnset; return c },
-		"no phase":       func(c Channel) Channel { c.Phase = phaseUnset; return c },
+		"no requirement": func(c Channel) Channel { c.Needs = needsUnset; return c },
 		"no name":        func(c Channel) Channel { c.Name = "  "; return c },
 		"no id":          func(c Channel) Channel { c.ID = " "; return c },
 		"no rationale":   func(c Channel) Channel { c.Rationale = ""; return c },
@@ -248,5 +248,53 @@ func TestTheSwapProbeNeverReadsSilenceAsSafety(t *testing.T) {
 	}
 	if !strings.Contains(live.Detail, "encrypted") {
 		t.Errorf("the observation does not say that encryption is not visible from here: %q", live.Detail)
+	}
+}
+
+// No channel may declare its enforcement as a forthcoming PHASE.
+//
+// This is a regression gate on a specific defect, not a style rule. The field
+// used to name a build phase — P1 Screen, P4 Sandbox — and both the panel and
+// the posture report rendered it, so the product told an operator on twenty
+// rows that enforcement was arriving in a numbered phase. None is arriving:
+// ADR-0150 §0 records that every one of them needs a desktop operating system.
+//
+// The field now names a REQUIREMENT. What this test defends is that the wording
+// stays a fact about the world rather than a promise about a roadmap, because
+// the promise is what a reader acts on.
+func TestNoChannelDescribesItsEnforcementAsAForthcomingPhase(t *testing.T) {
+	// Split so this test's own source cannot trip the rule it enforces.
+	forbidden := []string{"P" + "1", "P" + "2", "P" + "3", "P" + "4", "P" + "5", "P" + "6",
+		"pha" + "se", "for" + "thcoming", "com" + "ing soon", "will be enfor" + "ced"}
+
+	for _, c := range Channels() {
+		label := c.Needs.String()
+		if strings.TrimSpace(label) == "" || label == "unset" {
+			t.Errorf("%s: its requirement renders as %q", c.ID, label)
+		}
+		for _, bad := range forbidden {
+			if strings.Contains(strings.ToLower(label), strings.ToLower(bad)) {
+				t.Errorf("%s: the requirement label %q contains %q — an operator reads that as "+
+					"work that is on its way", c.ID, label, bad)
+			}
+		}
+		// It must say what is NEEDED, so the row is actionable rather than a
+		// bare refusal.
+		if !strings.HasPrefix(label, "a ") && !strings.HasPrefix(label, "host ") {
+			t.Errorf("%s: %q does not read as a requirement", c.ID, label)
+		}
+	}
+
+	// And every requirement in the enum renders, or a channel could carry one
+	// that shows as "unset" on the page.
+	for _, n := range []Needs{NeedsCompositor, NeedsAccessibilityMediation,
+		NeedsSandboxPolicy, NeedsHostConfiguration} {
+		if n.String() == "unset" {
+			t.Errorf("requirement %d has no rendering", n)
+		}
+	}
+	if needsUnset.String() != "unset" {
+		t.Error("the zero value renders as something other than unset, so an unanswered channel " +
+			"would read as a real requirement")
 	}
 }

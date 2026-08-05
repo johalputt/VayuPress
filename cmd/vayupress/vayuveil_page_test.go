@@ -25,7 +25,7 @@ func veilPageFor(t *testing.T, enabled bool, presence vayuveil.Presence) string 
 	}
 	checks := veilaudit.Run(veilaudit.Inputs{
 		Enabled: enabled, Channels: vayuveil.Channels(), Observations: obs,
-		EnforcingPhases: map[vayuveil.Phase]bool{},
+		Enforced: map[vayuveil.Needs]bool{},
 	})
 	return vayuVeilPage(enabled, vayuveil.Channels(), obs, checks,
 		vayuveil.SelfHardening{Supported: true, Known: true, Undumpable: true}, nil)
@@ -41,7 +41,7 @@ func veilPageWith(t *testing.T, self vayuveil.SelfHardening, red []vayuveil.Atta
 	}
 	checks := veilaudit.Run(veilaudit.Inputs{
 		Enabled: true, Channels: vayuveil.Channels(), Observations: obs,
-		EnforcingPhases: map[vayuveil.Phase]bool{}, SelfHardening: self, RedTeam: red,
+		Enforced: map[vayuveil.Needs]bool{}, SelfHardening: self, RedTeam: red,
 	})
 	return vayuVeilPage(true, vayuveil.Channels(), obs, checks, self, red)
 }

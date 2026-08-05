@@ -28,12 +28,13 @@ So the work splits in two, and only one half belongs to this repository:
 | **Server track (S)** | What this process can verifiably do to protect *itself*, and what it can honestly *report* about the host it runs on | **This ADR. Complete.** |
 | **Endpoint track (E)** | The compositor, grants, sandboxing, MAC, accessibility mediation, input/clipboard policy, egress correlation | A desktop operating system. **Not this binary, and not on its roadmap.** |
 
-The endpoint track is not cancelled and it is not wrong — §3.2 remains the right
-design for the machine a person actually types on. It is simply not something a
-web server can implement, and saying so is more useful than a table of
-aspirations. It is preserved below as design of record, explicitly marked out of
-scope, so that if a VayuOS desktop is ever built it starts from a finished
-threat model rather than a blank page.
+What survives of the endpoint track is the **threat model** — §2's actors and its
+ten assets — because the shipped registry enumerates exactly those, and every one
+of its channels draws its rationale from that list. What does not survive is the
+layer-by-layer enforcement design that used to fill §3.2; §3.2 now records why it
+was cut. The short version: a threat model and an implementation design are
+different things, and the durable value of the first was being used to justify
+keeping the second.
 
 ## The claim, worded to be defensible
 
@@ -162,97 +163,43 @@ introduced.** VayuShield's `rule.go` exists because a convention re-implemented
 by hand at eight sites gets forgotten at the ninth. Same reasoning, higher
 stakes.
 
-### 3.2 The enforcement stack — ENDPOINT TRACK, out of scope for this binary
+### 3.2 What enforcing a channel would require — ENDPOINT TRACK
 
-**Everything in this subsection except L7 and L8 requires a desktop operating
-system.** It is design of record for a machine a person types on, retained so the
-endpoint track would not start from nothing. A Go server process cannot ship a
-compositor, cannot mediate a grant for a screen that does not exist, and cannot
-install a MAC policy. Read L0–L6 as a specification for software that does not
-exist yet, not as work this repository is going to do.
+An earlier draft of this section carried a full layer-by-layer design for the
+enforcement stack: the compositor and its consent surface, the grant model, the
+sandbox and its per-sandbox XWayland, the mandatory-access-control policy set,
+the accessibility mediator, the input and clipboard rules, and egress
+correlation. Roughly seventy lines of implementation design for software that
+does not exist.
 
-The two layers that *do* have a server-side meaning are marked where they appear:
-**L7 memory hygiene** has a process-scoped subset this binary implements and
-verifies, and **L8 audit** has a subset covering what the posture report and the
-capture suite found. Both are delivered in the server track (§5).
+**It has been cut, and the reasoning is worth keeping.** The justification for
+holding it was "so a desktop project would start from a finished threat model" —
+but the threat model is §2, which stays, and §3.2 was an implementation *design*.
+Those are different things, and the value of the first was being used to justify
+the second. A speculative design also ages badly: the protocol names in it would
+be stale before anyone built against them.
 
-**L0 — Compositor (the new TCB).**
-- No `wlr-screencopy`, no `zwlr_export_dmabuf`, no compositor-specific capture
-  protocol compiled in. Not "gated" — **absent**. An absent protocol has no
-  bypass.
-- Capture exists only via `xdg-desktop-portal` ScreenCast/Screenshot.
-- The consent dialog is **drawn by the compositor**, on its own layer, above
-  everything, unfocusable and unreachable by clients. A client-drawn dialog can
-  be spoofed; this is the difference between a permission and a suggestion.
-- Per-surface `no-capture` flag, honoured in every capture path — password
-  managers, VayuMail, wallet UIs render black in every screenshot, the way
-  `FLAG_SECURE` works on Android.
-- Compositor written in a memory-safe language and kept small. It is now the
-  thing everything else trusts.
+The cost was not hypothetical. Each registered channel declared the *phase* that
+would enforce it, and the panel and the posture report both rendered that — so
+the product told an operator, on every row, that enforcement was coming in a
+numbered phase. None is coming here. That is the same defect as the phase table
+which led a published article to announce six forthcoming phases, and it
+survived the correction of the table because the mechanism generating the
+expectation was in the code, not the document.
 
-**L1 — Grants.**
-- Scope: one window, or one output, never "everything" by default.
-- Time-boxed with a visible countdown; expiry is automatic, not a reminder.
-- Revocable mid-stream from a compositor-drawn control, not from the app.
-- **Not persistent across restarts** unless the user explicitly pins it, and a
-  pinned grant is listed permanently in the panel.
-- A grant names the process, its binary hash, and its sandbox — not just "an app
-  wants to share your screen".
+So a channel now declares what enforcing it would **require**, which is a true
+statement about the world rather than a promise about a roadmap:
 
-**L2 — Sandbox.**
-- Every app in its own namespace: no `/dev/dri` render node beyond its own, no
-  `/dev/fb*`, no `/dev/input*`, no `/proc/<other>/mem`, no ptrace.
-- **A rootless XWayland instance per sandbox.** This matters more than it looks:
-  a *shared* XWayland reintroduces X11's flaw wholesale, because X11 clients
-  inside it can see each other. One per sandbox restores the isolation.
-- seccomp filters on the syscalls that reach framebuffer and input paths.
+| Requirement | Covers |
+| --- | --- |
+| A capture-mediating compositor | Screen, window pixels, input, clipboard, window metadata |
+| A mediator on the accessibility bus | Window text read without touching a pixel |
+| A sandbox and mandatory-access-control policy | Device nodes, cross-process memory, per-application confinement |
+| Host configuration outside this process | Swap, hibernation, core-dump policy |
 
-**L3 — Mandatory access control.**
-- SELinux/AppArmor policy denying the device nodes and D-Bus interfaces above to
-  everything not explicitly allowlisted. Defence in depth: this is what still
-  holds if the sandbox is escaped but root is not obtained.
-
-**L4 — Accessibility, the forgotten bypass.**
-- AT-SPI can read the full text of every window. It is a complete capture channel
-  that reads no pixels, and it is almost always left wide open.
-- Treated as a first-class channel in the registry: default-deny, same
-  confirmation, same indicator, same audit. A screen reader is a legitimate and
-  important grant — it is not an exemption from being asked for.
-
-**L5 — Input and clipboard.**
-- `zwp_virtual_keyboard`, `zwlr_data_control` (clipboard reading),
-  `input-method`: default-deny, explicit grant.
-- Clipboard reads are per-paste by default, not ambient.
-- A keylogger grant is presented with different, blunter language than a
-  screenshot grant, because it is worse.
-
-**L6 — Egress correlation.**
-- A process holding an active capture grant is placed in a network namespace
-  whose egress is **default-deny with an allowlist**. Conferencing needs one
-  endpoint, not the internet.
-- The panel shows capture and egress together: *"this app is recording your screen
-  and talking to these hosts."* Neither fact alone is the story.
-
-**L7 — Memory hygiene.** *(Partly server track — see S3.)*
-- Hibernate and swap encrypted, or hibernate disabled. A suspend image contains
-  the framebuffer. *(Endpoint.)*
-- Core dumps disabled for capture-capable processes. **This is the part the
-  server track delivers**, narrowed to one process: `PR_SET_DUMPABLE=0` and
-  `RLIMIT_CORE=0`, each read back from the kernel before being reported, and
-  scoped in the report to the VayuPress process rather than credited to the
-  host-wide channel.
-- GPU buffers zeroed on release — uninitialised VRAM has historically leaked one
-  process's framebuffer to the next. *(Endpoint.)*
-
-**L8 — Audit.** *(Partly server track — see S7.)*
-- Append-only, kernel-backed record of **every attempt, allowed or refused**, with
-  process, binary hash, channel, asset, and the user's answer. *(Endpoint: there
-  are no grants to record without a compositor to mediate them.)*
-- **What the server track can honestly record** is narrower and still worth
-  having: what the capture suite found on this host, and what each enforcement
-  verification read back.
-- Refusals matter as much as grants: they are how you discover that something has
-  been trying for a month.
+The server track (§5) enforces the process-scoped subset of the last row and
+says so on each of its rows. Everything above it needs a desktop operating
+system, which is the correction §0 records.
 
 ### 3.3 What VayuOS itself must never do
 

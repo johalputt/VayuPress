@@ -70,10 +70,15 @@ type Inputs struct {
 	// Observations is what the probes found, keyed by channel. A channel with no
 	// entry is reported Unverified, not clean.
 	Observations map[vayuveil.ChannelID]vayuveil.Observation
-	// EnforcingPhases names the ADR-0150 phases that are actually shipped and
-	// verified. At P0 this is empty, and the report is built to say so plainly
-	// rather than to look busy.
-	EnforcingPhases map[vayuveil.Phase]bool
+	// Enforced names the requirements this install actually satisfies. It is
+	// empty on a server and the report says so plainly rather than looking busy:
+	// none of these can be satisfied by a web server, which is the point ADR-0150
+	// §0 records.
+	//
+	// It stays an input rather than a constant so a host that DID satisfy one —
+	// a future desktop build linking the same registry — reports differently
+	// because the world changed, not because the page was re-worded.
+	Enforced map[vayuveil.Needs]bool
 	// SelfHardening is the one control this binary genuinely enforces, read back
 	// from the kernel rather than remembered from the call that set it.
 	SelfHardening vayuveil.SelfHardening
@@ -308,7 +313,7 @@ func channelCheck(c vayuveil.Channel, in Inputs) Check {
 				"Reported as unverified rather than clean."}
 	}
 
-	enforcing := in.EnforcingPhases[c.Phase]
+	enforcing := in.Enforced[c.Needs]
 
 	switch obs.Presence {
 	case vayuveil.PresenceUnknown:
@@ -338,26 +343,11 @@ func channelCheck(c vayuveil.Channel, in Inputs) Check {
 					"which means the control that should be stopping it is not."}
 		}
 		return Check{Title: title, Status: Fail,
-			Detail: obs.Detail + ". Policy for this channel is Deny, and nothing enforces that yet " +
-				"(ADR-0150 " + phaseName(c.Phase) + "). It is open on this host right now."}
+			Detail: obs.Detail + ". Policy for this channel is Deny and nothing here enforces it: " +
+				"doing so needs " + c.Needs.String() + ", which this install does not have. It is " +
+				"open on this host right now."}
 	}
 	return Check{Title: title, Status: Unverified, Detail: obs.Detail}
-}
-
-func phaseName(p vayuveil.Phase) string {
-	switch p {
-	case vayuveil.PhaseP1Screen:
-		return "P1"
-	case vayuveil.PhaseP2Input:
-		return "P2"
-	case vayuveil.PhaseP3Accessibility:
-		return "P3"
-	case vayuveil.PhaseP4Sandbox:
-		return "P4"
-	case vayuveil.PhaseP5Hygiene:
-		return "P5"
-	}
-	return "an unshipped phase"
 }
 
 // permanentLimits is ADR-0150 §8, verbatim in intent: the things this subsystem
