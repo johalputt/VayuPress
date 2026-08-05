@@ -43,6 +43,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   still marked running are never touched — an interrupted run is the oldest row
   in the table by definition, and it is the one carrying the evidence.
 
+- **The dangerous operation was easier than the safe one.** Deleting a flow that
+  is switched on and armed live is refused until it is disarmed, so that turning
+  off something which can write to the world is its own decision. Editing that
+  same flow was not refused at all — and editing is the more dangerous of the
+  two. Deleting a live automation stops its effects; editing one changes them,
+  with no re-confirmation: the flow keeps its owner so the run-time authority
+  check still passes, and keeps its live mode so nothing asks again. A
+  draft-writing automation could become a mail-sending one while still armed,
+  and the next trigger would send. Both operations now carry the same guard.
+  Found by the adversarial pass over this release, on the surface that pass
+  existed to attack.
+
 - **The VayuVeil capture suite had no technique that could fire on a server.**
   Every screen-capture attempt targeted something a headless host does not have:
   a framebuffer, a DRM card node, a Wayland socket, an X display. So on a real

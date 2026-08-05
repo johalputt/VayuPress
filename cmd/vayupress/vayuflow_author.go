@@ -163,6 +163,19 @@ func (a *App) flowFromInput(r *http.Request, in flowSaveInput) (vayuflow.Flow, e
 		if err != nil {
 			return vayuflow.Flow{}, err
 		}
+		// An armed, live flow is disarmed before it is edited — the same guard
+		// the delete path carries, and it belongs here MORE than there.
+		//
+		// Deleting a live automation stops its effects. Editing one changes
+		// them, with no re-confirmation and no second look: the flow keeps its
+		// owner so the run-time authority check still passes, and keeps its live
+		// mode so nothing asks again. Guarding only the delete left the more
+		// dangerous operation as the easier one.
+		if prior.Enabled && prior.Mode == vayuflow.RunLive {
+			return vayuflow.Flow{}, fmt.Errorf("this flow is switched on and armed live, so it can " +
+				"write to the world on its next trigger. Return it to dry-run or switch it off " +
+				"before changing what it does, then arm it again once you have looked at the diff")
+		}
 		f.ID, f.Mode, f.Enabled, f.Owner = prior.ID, prior.Mode, prior.Enabled, prior.Owner
 	} else {
 		// A new flow starts in dry-run and switched off. Both are the safe

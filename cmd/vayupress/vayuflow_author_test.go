@@ -81,7 +81,10 @@ func TestAnEditNeverRePointsTheOwnerOrArmsTheFlow(t *testing.T) {
 	db := newFlowTestDB(t)
 	a := &App{flowStore: vayuflow.NewStore(db)}
 
-	// A flow owned by someone else, already armed and switched on.
+	// A flow owned by someone else, switched on. It stays in dry-run: an armed
+	// LIVE flow cannot be edited at all — see
+	// TestEditingAnArmedLiveFlowIsRefusedTheWayDeletingOneIs — so enabled plus
+	// dry-run is the state that exercises the carry-across.
 	stored, err := a.flowFromInput(signedIn(t, "original-owner"), minimalInput())
 	if err != nil {
 		t.Fatal(err)
@@ -92,10 +95,6 @@ func TestAnEditNeverRePointsTheOwnerOrArmsTheFlow(t *testing.T) {
 	if _, err := a.flowStore.SetEnabled(context.Background(), stored.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.flowStore.SetMode(context.Background(), stored.ID, vayuflow.RunLive); err != nil {
-		t.Fatal(err)
-	}
-
 	// A DIFFERENT operator edits it.
 	edit := minimalInput()
 	edit.ID = stored.ID
@@ -112,7 +111,7 @@ func TestAnEditNeverRePointsTheOwnerOrArmsTheFlow(t *testing.T) {
 	if !got.Enabled {
 		t.Error("editing switched the flow off")
 	}
-	if got.Mode != vayuflow.RunLive {
+	if got.Mode != vayuflow.RunDryRun {
 		t.Errorf("editing changed the mode to %s; arming is its own decision with its own "+
 			"audit entry", got.Mode)
 	}
