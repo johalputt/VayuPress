@@ -3,10 +3,15 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"database/sql"
 	"io"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/johalputt/vayupress/internal/vayuflow"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -155,5 +160,88 @@ func TestBundleChecksumTamper(t *testing.T) {
 	bad.Format = "nope/9"
 	if err := verifyBundle(bad); err == nil {
 		t.Fatal("verifyBundle must reject an unknown format")
+	}
+}
+
+// ── What a bundle leaves behind, said out loud ──────────────────────────────
+//
+// The omission is correct and settled — a content bundle is content-only, and a
+// flow carries an owner account id that would not resolve on the target, so
+// importing one would store a flow that saves cleanly and refuses on every fire.
+//
+// What was wrong was the silence. "Exported 412 content item(s)" reads as "the
+// install is in this file", and the operator finds out otherwise when the
+// automation they relied on does not fire on the new host. A correct omission
+// nobody is told about is indistinguishable from data loss at the moment it
+// matters.
+func TestTheExportSaysWhatItIsLeavingBehind(t *testing.T) {
+	var buf bytes.Buffer
+	printBundleOmissions(&buf, bundleOmissions(nil))
+	got := buf.String()
+
+	for _, must := range []string{
+		"NOT in this bundle",
+		"accounts, mailboxes, PGP private keys",
+		"media",
+		"encrypted backup",
+	} {
+		if !strings.Contains(got, must) {
+			t.Errorf("the notice does not mention %q:\n%s", must, got)
+		}
+	}
+}
+
+// Automations are counted from the install, not recited from a fixed list, so
+// the line appears only when there is something real to lose and says how much.
+func TestAutomationsAreCountedRatherThanAssumed(t *testing.T) {
+	db := newFlowTestDB(t)
+
+	// No flows: the line must NOT appear. A warning that fires on every install
+	// regardless of state is one an operator learns to skip, and then misses the
+	// time it mattered.
+	if joined := strings.Join(bundleOmissions(db), " | "); strings.Contains(joined, "automation(s)") {
+		t.Errorf("an install with no automations is warned about losing them: %s", joined)
+	}
+
+	// Two flows: counted, and the reason given.
+	store := vayuflow.NewStore(db)
+	for _, name := range []string{"first", "second"} {
+		f := vayuflow.Flow{
+			Name: name, Mode: vayuflow.RunDryRun, Owner: "user-1",
+			Trigger: vayuflow.Trigger{Kind: vayuflow.TriggerManual},
+			Steps: []vayuflow.Step{{Action: "content.draft.create",
+				Params: map[string]string{"title": "t", "slug": "s"}}},
+			Budget: vayuflow.Budget{MaxStepsPerRun: 1, MaxRunsPerHour: 1, MaxWritesPerRun: 1,
+				MaxEgressPerRun: 1, Timeout: 30 * time.Second},
+		}
+		if err := store.Save(context.Background(), &f); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	joined := strings.Join(bundleOmissions(db), " | ")
+	if !strings.Contains(joined, "2 automation(s)") {
+		t.Errorf("two flows are not counted in the notice: %s", joined)
+	}
+	if !strings.Contains(joined, "borrows an account's authority") {
+		t.Errorf("the notice does not say WHY a flow cannot travel: %s", joined)
+	}
+}
+
+// An install predating the automation tables must still export. A missing count
+// cannot fail an export that is otherwise fine.
+func TestAnInstallWithoutTheAutomationTablesStillExports(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	got := bundleOmissions(db) // no vayuflow_flows table at all
+	if len(got) == 0 {
+		t.Fatal("an install with no automation tables produced no notice at all")
+	}
+	if strings.Contains(strings.Join(got, " "), "automation(s)") {
+		t.Error("an install with no automation table is told it is losing automations")
 	}
 }

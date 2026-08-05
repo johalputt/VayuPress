@@ -260,6 +260,7 @@ func runExportBundle(args []string) error {
 		return fmt.Errorf("write bundle: %w", err)
 	}
 	fmt.Printf("Exported %d content item(s) to %s\n  %s\n", b.Count, file, b.Checksum)
+	printBundleOmissions(os.Stderr, bundleOmissions(dbpkg.DB))
 	return nil
 }
 
@@ -292,6 +293,11 @@ func runImportBundle(args []string) error {
 		return nil
 	}
 	fmt.Printf("\nDone. Inserted: %d  Updated: %d  Skipped: %d\n", ins, upd, skip)
+	// Stated on arrival as well as on departure. An operator who did not run the
+	// export — a bundle handed to them, or one made months ago — reads this line
+	// on the install that will be missing the automations, which is the moment it
+	// is worth knowing.
+	printBundleOmissions(os.Stderr, bundleOmissions(nil))
 	return nil
 }
 
@@ -300,4 +306,58 @@ func dryRunLabelText(dryRun bool) string {
 		return "  (dry run)"
 	}
 	return ""
+}
+
+// bundleOmissions names what exists on THIS install and is deliberately not
+// travelling in the bundle.
+//
+// The omission itself is correct and settled: a content bundle is content-only
+// (ADR-0141), and a flow in particular carries an owner account id that would
+// not resolve on the target — importing one would store a flow that saves
+// cleanly and then refuses on every single fire, for a reason nothing on the
+// target's panel could explain. Accounts, mailboxes, PGP keys and Talk IDs never
+// cross for the same family of reasons.
+//
+// What was wrong was the SILENCE. "Exported 412 content item(s)" is a sentence
+// an operator reads as "the install is in this file", and they find out
+// otherwise when the automation they relied on does not fire on the new host.
+// A correct omission that nobody is told about is indistinguishable from data
+// loss at the moment it matters.
+//
+// It COUNTS rather than reciting a fixed list, so the line only appears when
+// there is something real to lose and names how much.
+func bundleOmissions(db *sql.DB) []string {
+	var out []string
+	if db != nil {
+		var flows int
+		// Best effort: an install predating the automation tables has no such
+		// table, and a missing count must not fail an export that is otherwise
+		// fine. Silence here is safe because zero flows is the same message as
+		// no table — there is nothing of that kind to leave behind.
+		if err := db.QueryRow(`SELECT COUNT(*) FROM vayuflow_flows`).Scan(&flows); err == nil && flows > 0 {
+			out = append(out, fmt.Sprintf(
+				"%d automation(s) — a flow borrows an account's authority, and that account does not "+
+					"exist on the target, so it cannot travel in a content bundle", flows))
+		}
+	}
+	// Stated whether or not this install has any, because an operator planning a
+	// move needs to know the shape of what is missing before they discover it.
+	out = append(out,
+		"accounts, mailboxes, PGP private keys and Talk identities — these never cross between "+
+			"installs by design",
+		"uploaded media files — the bundle carries content rows, not the files they reference")
+	return out
+}
+
+// printBundleOmissions writes the omissions under a heading an operator will
+// read. Written to stderr so a piped export still shows it.
+func printBundleOmissions(w io.Writer, omissions []string) {
+	if len(omissions) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "\nNOT in this bundle:")
+	for _, o := range omissions {
+		fmt.Fprintln(w, "  - "+o)
+	}
+	fmt.Fprintln(w, "A full-install move is the encrypted backup, not a content bundle.")
 }

@@ -57,6 +57,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   model is §2 and stays; §3.2 was an implementation design, and the durable
   value of the first was being used to justify the second.
 
+- **A content bundle said what it carried and never what it left behind.**
+  `Exported 412 content item(s)` reads as "the install is in this file", and an
+  operator finds out otherwise when the automation they relied on does not fire
+  on the new host.
+
+  The omission itself is correct and stays: a bundle is content-only, and a flow
+  borrows an account's authority — that account does not exist on the target, so
+  importing one would store a flow that saves cleanly and then refuses on every
+  single fire, for a reason nothing on the target's panel could explain. What was
+  wrong was the silence. A correct omission nobody is told about is
+  indistinguishable from data loss at the moment it matters.
+
+  Export and import now both state what is not travelling: the automations
+  **counted from this install** rather than recited from a fixed list, so the
+  line appears only when there is something real to lose; accounts, mailboxes,
+  PGP private keys and Talk identities; and uploaded media files. It ends by
+  naming the thing that *does* move a whole install — the encrypted backup.
+
+  Worth stating plainly, because an earlier note in this session had it wrong:
+  flows **are** in the encrypted backup. That archive walks the directory holding
+  the SQLite database, so every automation is inside it. The gap was never the
+  backup; it was the bundle being quiet about being a bundle.
+
 ### Added
 
 - **Operator documentation for VayuVeil** —
