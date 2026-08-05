@@ -1028,6 +1028,8 @@ func main() {
 	a.flowRuns = vayuflow.NewRunStore(dbpkg.DB)
 	a.flowRunner = vayuflow.NewRunner(a.flowStore, a.flowRuns, a.flowRoleResolver())
 	a.flowTicker = vayuflow.NewTicker(a.flowStore, a.flowRunner, time.UTC)
+	a.flowInbox = vayuflow.NewInbox(dbpkg.DB)
+	a.flowDrainer = vayuflow.NewDrainer(a.flowInbox, a.flowStore, a.flowRunner)
 	vayuflow.SetContentWriter(flowContent{repo: dbpkg.NewArticleRepo(dbpkg.DB)})
 	// Runs left mid-flight by a previous process become "interrupted" — never
 	// retried, because a step that already sent mail must not be replayed.
@@ -1042,6 +1044,7 @@ func main() {
 	flowCtx, stopFlow := context.WithCancel(context.Background())
 	go func() { <-queue.DoneCh; stopFlow() }()
 	go a.flowTicker.Run(flowCtx, nil)
+	go a.flowDrainer.Run(flowCtx, 5*time.Second, nil)
 
 	// Wire search service — VayuFind, the built-in dependency-free engine
 	// (ADR-0050/0101). Load the index in the BACKGROUND: on a large article store
@@ -1224,18 +1227,36 @@ func main() {
 				return err
 			}
 			a.eventBus.Publish(ctx, ev)
+			// Durably record the trigger for VayuFlow. This is deliberately NOT
+			// a bus subscription: Publish recovers handler panics and returns
+			// nothing, so a subscriber that failed would be invisible and the
+			// outbox would mark this row delivered anyway — durable up to the
+			// last link and lossy at it. Returning the error here keeps the row
+			// pending so it is retried.
+			if err := a.flowInboxAppend(ctx, vayuflow.EventArticleCreated, env.EventID,
+				vayuflow.Subject{Slug: ev.Slug, Tags: ev.Tags}); err != nil {
+				return err
+			}
 		case "article.updated.v1":
 			var ev events.ArticleUpdated
 			if err := json.Unmarshal(env.Payload, &ev); err != nil {
 				return err
 			}
 			a.eventBus.Publish(ctx, ev)
+			if err := a.flowInboxAppend(ctx, vayuflow.EventArticleUpdated, env.EventID,
+				vayuflow.Subject{Slug: ev.Slug, Tags: ev.Tags}); err != nil {
+				return err
+			}
 		case "article.deleted.v1":
 			var ev events.ArticleDeleted
 			if err := json.Unmarshal(env.Payload, &ev); err != nil {
 				return err
 			}
 			a.eventBus.Publish(ctx, ev)
+			if err := a.flowInboxAppend(ctx, vayuflow.EventArticleDeleted, env.EventID,
+				vayuflow.Subject{Slug: ev.Slug}); err != nil {
+				return err
+			}
 		case "cache.invalidated.v1":
 			var ev events.CacheInvalidated
 			if err := json.Unmarshal(env.Payload, &ev); err != nil {

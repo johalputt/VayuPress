@@ -112,6 +112,13 @@ func (t Trigger) Complete() error {
 		if strings.TrimSpace(t.Event) == "" {
 			return fmt.Errorf("vayuflow: an event trigger needs an event type")
 		}
+		// An event nothing publishes will never arrive, so the flow would sit
+		// armed and silent. Refusing it here is the same reasoning as parsing
+		// the cron at save time.
+		if !knownEvent(t.Event) {
+			return fmt.Errorf("vayuflow: %q is not an event this install publishes (known: %v)",
+				t.Event, KnownEvents())
+		}
 		if t.Cron != "" {
 			return fmt.Errorf("vayuflow: an event trigger must not also carry a cron expression (%q)", t.Cron)
 		}

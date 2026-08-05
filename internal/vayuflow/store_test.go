@@ -28,6 +28,7 @@ import (
 var vayuflowMigrations = []string{
 	"085-vayuflow.up.sql",
 	"086-vayuflow-runs.up.sql",
+	"087-vayuflow-inbox.up.sql",
 }
 
 func newTestDB(t *testing.T) *sql.DB {

@@ -39,6 +39,10 @@ const (
 	// CondTitleContains — the subject's title contains Value, compared
 	// case-insensitively.
 	CondTitleContains
+	// CondSlugIs — the subject's slug equals Value. Added with the event
+	// trigger: the article events carry a slug, and without a predicate for it
+	// a flow could not say "only for this page".
+	CondSlugIs
 	// CondAll — every Sub must hold. An empty Sub holds, matching the ordinary
 	// reading of "all of nothing".
 	CondAll
@@ -60,6 +64,8 @@ func (k CondKind) String() string {
 		return "status-is"
 	case CondTitleContains:
 		return "title-contains"
+	case CondSlugIs:
+		return "slug-is"
 	case CondAll:
 		return "all"
 	case CondAny:
@@ -100,7 +106,7 @@ func (c Condition) complete(depth int) error {
 		if c.Value != "" || len(c.Sub) > 0 {
 			return fmt.Errorf("vayuflow: an 'always' condition takes no value and no children")
 		}
-	case CondTagEquals, CondAuthorIs, CondStatusIs, CondTitleContains:
+	case CondTagEquals, CondAuthorIs, CondStatusIs, CondTitleContains, CondSlugIs:
 		if strings.TrimSpace(c.Value) == "" {
 			return fmt.Errorf("vayuflow: condition %s needs a value", c.Kind)
 		}
@@ -143,6 +149,10 @@ type Subject struct {
 	Author string
 	Status string
 	Title  string
+	// Slug identifies the article an event was about. It is carried through to
+	// the run trail as well as the condition, so an operator reading a run can
+	// see WHICH article caused it rather than only that something did.
+	Slug string
 }
 
 // Holds evaluates the condition against a subject. It is total for any
@@ -172,6 +182,8 @@ func (c Condition) holds(s Subject, depth int) bool {
 		return strings.EqualFold(strings.TrimSpace(s.Status), strings.TrimSpace(c.Value))
 	case CondTitleContains:
 		return strings.Contains(strings.ToLower(s.Title), strings.ToLower(strings.TrimSpace(c.Value)))
+	case CondSlugIs:
+		return strings.EqualFold(strings.TrimSpace(s.Slug), strings.TrimSpace(c.Value))
 	case CondAll:
 		for _, sub := range c.Sub {
 			if !sub.holds(s, depth+1) {

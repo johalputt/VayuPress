@@ -176,11 +176,13 @@ type App struct {
 	// VayuFlow — the deterministic automation engine (ADR-0151). Nil when the
 	// engine could not be constructed; the panel says so rather than pretending
 	// flows are armed.
-	flowStore  *vayuflow.Store
-	flowRuns   *vayuflow.RunStore
-	flowRunner *vayuflow.Runner
-	flowTicker *vayuflow.Ticker
-	sessions   *auth.SessionStore
+	flowStore   *vayuflow.Store
+	flowRuns    *vayuflow.RunStore
+	flowRunner  *vayuflow.Runner
+	flowTicker  *vayuflow.Ticker
+	flowInbox   *vayuflow.Inbox
+	flowDrainer *vayuflow.Drainer
+	sessions    *auth.SessionStore
 
 	// Privacy-first analytics (Tier 2).
 	analytics *analytics.Store

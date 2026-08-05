@@ -87,3 +87,19 @@ func newFlowArticleID() string {
 	}
 	return hex.EncodeToString(b[:])
 }
+
+// flowInboxAppend records a domain event for VayuFlow, returning nil when the
+// engine is not running.
+//
+// The nil check is here rather than at each call site so the outbox bridge
+// stays readable, and it is a genuine no-op rather than an error: an install
+// whose automation engine failed to start should still deliver its events to
+// every other subscriber, and the outbox row should still be marked delivered.
+// What must NOT be silent is a FAILED write while the engine IS running — that
+// error is returned so the outbox keeps the row pending and retries.
+func (a *App) flowInboxAppend(ctx context.Context, event, eventID string, subj vayuflow.Subject) error {
+	if a.flowInbox == nil {
+		return nil
+	}
+	return a.flowInbox.Append(ctx, event, eventID, subj)
+}

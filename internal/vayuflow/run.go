@@ -72,6 +72,10 @@ type Run struct {
 // mechanism working, and callers treat it as "already handled".
 var ErrDuplicateRun = errors.New("vayuflow: a run with this idempotency key already exists")
 
+// isDuplicate reports whether err is the idempotency collision. It exists so
+// callers do not each reach for errors.Is and get it subtly wrong.
+func isDuplicate(err error) bool { return errors.Is(err, ErrDuplicateRun) }
+
 // RunStore persists the run trail.
 type RunStore struct{ db *sql.DB }
 
@@ -214,7 +218,12 @@ func (rs *RunStore) Recent(ctx context.Context, flowID string, limit int) ([]Run
 		q += ` WHERE flow_id=?`
 		args = append(args, flowID)
 	}
-	q += ` ORDER BY started_at DESC, id DESC LIMIT ?`
+	// rowid, not id, as the tiebreaker. Run IDs are random hex, so ordering by
+	// them within a second is arbitrary — two runs started in the same second
+	// would appear in the trail in a shuffled order, which is exactly when an
+	// operator is trying to work out which happened first. rowid is SQLite's
+	// insertion order and is monotonic.
+	q += ` ORDER BY started_at DESC, rowid DESC LIMIT ?`
 	args = append(args, limit)
 
 	rows, err := rs.db.QueryContext(ctx, q, args...)

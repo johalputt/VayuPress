@@ -1,0 +1,47 @@
+-- Migration 087: the VayuFlow event inbox (ADR-0151 P5).
+--
+-- The migration runner executes ONE statement per physical LINE.
+--
+-- WHY AN INBOX AND NOT JUST A BUS SUBSCRIPTION. internal/events is an
+-- in-process, synchronous bus with no persistence: Publish fans out to handlers
+-- and returns. A handler that has not finished when the process dies leaves no
+-- trace, so "did this flow run?" would be a question with no answer.
+--
+-- WHY THIS IS NOT A SECOND OUTBOX. The durable half already exists and is
+-- reused rather than duplicated. An article write and its event_outbox row
+-- commit in ONE transaction (queue.writeOutboxEvent), and the relay marks that
+-- row delivered only AFTER dispatch returns without error. So the chain is:
+--
+--   article + outbox row   -> one transaction, durable
+--   outbox -> dispatch     -> writes the row below; if THAT write fails the
+--                             dispatch returns an error, the outbox row stays
+--                             pending, and it is retried with backoff
+--   inbox  -> run          -> the run table's UNIQUE idempotency key makes a
+--                             redelivery produce one run, not two
+--
+-- Every link is durable and the only new thing is this table. A redelivery is
+-- safe by the same mechanism that makes a schedule firing twice in one minute
+-- safe, rather than by a second mechanism that could disagree with the first.
+--
+-- DRAINED_AT IS NULLABLE AND IS THE WHOLE STATE MACHINE. A row with a NULL
+-- drained_at is work not yet considered. It is set once the row has been
+-- offered to every flow that cares, whatever those flows decided — a row that
+-- stayed pending because no flow matched would be an inbox that grows forever
+-- on an install with no event flows, which is the trigger-storm failure wearing
+-- a different hat.
+--
+-- EVENT_ID IS UNIQUE WHERE PRESENT, and that is load-bearing rather than
+-- tidiness. The outbox retries a FAILED dispatch by re-running the whole
+-- dispatch, so an event whose inbox write failed once — or whose process died
+-- after appending but before the outbox marked the row delivered — arrives a
+-- second time. Without this index that would be two inbox rows, two
+-- identities, and two runs for one article. With it the second append
+-- collides and is treated as already-recorded, so the retry is safe.
+--
+-- The index is PARTIAL because a row may legitimately have no envelope id
+-- (a legacy payload, or an event appended by something other than the outbox
+-- bridge); those must not all collide with each other on the empty string.
+CREATE TABLE IF NOT EXISTS vayuflow_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT, event_name TEXT NOT NULL, event_id TEXT NOT NULL DEFAULT '', subject_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, drained_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_vayuflow_inbox_pending ON vayuflow_inbox(drained_at, id);
+CREATE INDEX IF NOT EXISTS idx_vayuflow_inbox_event ON vayuflow_inbox(event_name, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vayuflow_inbox_eventid ON vayuflow_inbox(event_id) WHERE event_id != '';
