@@ -156,6 +156,14 @@ func (c *Client) Enabled() bool { return c.enabled }
 // Model returns the configured model name.
 func (c *Client) Model() string { return c.cfg.Model }
 
+// Endpoint returns the configured provider base URL.
+//
+// Exposed so a caller can tell a LOCAL provider from a remote one. That is not
+// cosmetic: a remote provider makes a generation an outbound call, which a Tor
+// Space forbids and which spends an egress budget, and no caller can answer
+// that question without seeing where the provider lives.
+func (c *Client) Endpoint() string { return c.cfg.URL }
+
 // SupportedOps lists the operation identifiers the assistant accepts.
 func SupportedOps() []string {
 	return []string{OpSummarize, OpImprove, OpTitles, OpSEO, OpContinue, OpDraft}

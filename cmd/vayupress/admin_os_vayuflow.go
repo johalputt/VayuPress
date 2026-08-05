@@ -301,6 +301,12 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 		}
 		for _, st := range run.Steps {
 			body.WriteString(`<div class="settings-block-title"><span class="mono">` + esc(st.Action) + `</span></div>`)
+			if st.Did != "" {
+				// What the step actually performed. A model call belongs here
+				// even in a dry run: §8 requires the generation to be real, and
+				// a reader must be able to tell that it was.
+				body.WriteString(`<p class="text-sm muted">` + esc(st.Did) + `</p>`)
+			}
 			if st.Refused != "" {
 				// The dry-run diff: what this step WOULD have done.
 				body.WriteString(`<pre class="code-block">` + esc(st.Refused) + `</pre>`)

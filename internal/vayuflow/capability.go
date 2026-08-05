@@ -233,6 +233,31 @@ var capabilities = []Capability{
 			"Active in a Tor Space: writing a local draft touches no network.",
 	},
 	{
+		Action: "model.draft.generate", Kind: KindModel,
+		// WriteNone is the whole point: a model step produces a VALUE and
+		// touches nothing. Whatever it returns can only become a draft because
+		// the step that WRITES is capped at draft — so "a bad generation cannot
+		// publish itself" is a property of two registrations rather than a
+		// promise about prompt quality.
+		Writes: WriteNone,
+		// Inert names the REMOTE case, which is the dangerous one: a hosted
+		// provider makes this an outbound call, and a Tor Space forbids that.
+		// A LOCAL provider is not egress, and Effects.Model allows it there —
+		// so the posture report must say which of the two an install has rather
+		// than reporting "AI: enabled". Registering Active instead would claim
+		// a remote model is safe in a Tor Space, which is the exact overstated
+		// claim this project treats as a defect.
+		Onion: OnionInert,
+		// A generation cannot be un-generated, but it also changes nothing on
+		// its own — the reversibility that matters belongs to the step that
+		// consumes the value.
+		Undo:    ReversibleByOperator,
+		MinRole: RoleEditor,
+		Rationale: "Calls the configured model and hands the result to the next step as a value. " +
+			"It writes nothing itself; the step that writes carries its own ceiling. Inert in a Tor " +
+			"Space when the provider is remote, permitted when it runs on this host.",
+	},
+	{
 		Action: "content.draft.update", Kind: KindContent,
 		Writes: WriteDraft, Onion: OnionActive, Undo: ReversibleByOperator,
 		MinRole: RoleEditor,

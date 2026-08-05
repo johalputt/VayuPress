@@ -261,7 +261,6 @@ internal/trace/store.go: unreachable func: Store.ensureSchema
 internal/trace/store.go: unreachable func: attrsJSON
 internal/trace/store.go: unreachable func: parseStatus
 internal/trace/trace.go: unreachable func: CausationID
-internal/vayuflow/budget.go: unreachable func: Spend.chargeEgress
 internal/vayuflow/capability.go: unreachable func: CapabilitiesOfKind
 internal/vayuflow/cron.go: unreachable func: Schedule.String
 internal/vayuflow/runner.go: unreachable func: Effects.Fetch

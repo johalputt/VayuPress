@@ -29,6 +29,10 @@ type Effects struct {
 	// the diff the panel renders; a dry run that captured nothing would be the
 	// "dry-run lie" the ADR names as an attack.
 	refusals []string
+	// notes collects what the step actually DID that is worth showing but is
+	// not a refused effect — a model call is the case that matters, because a
+	// reader of a dry run needs to know the generation really happened.
+	notes []string
 }
 
 // ErrDryRun is what the effect path returns instead of performing an effect
@@ -71,6 +75,41 @@ func (e *Effects) Fetch(desc string) error {
 		e.refusals = append(e.refusals, "would fetch: "+desc)
 		return ErrDryRun
 	}
+	return nil
+}
+
+// Model asks permission to call a model provider.
+//
+// A REMOTE provider is an outbound call: it is refused in a Tor Space and it
+// spends the egress ceiling, because it is egress. A LOCAL provider is neither,
+// and charging it against a fetch budget would make an operator raise a ceiling
+// that has nothing to do with what they are limiting.
+func (e *Effects) Model(local bool, desc string) error {
+	if !local {
+		if clearnetBlocked() {
+			return fmt.Errorf("vayuflow: action %q uses a remote model provider, which is an "+
+				"outbound call; refusing in a Tor Space", e.cap.Action)
+		}
+		if err := e.spend.chargeEgress(e.budget); err != nil {
+			return err
+		}
+	}
+	// NOT gated on dry-run, and that is deliberate. ADR §8 requires a dry run to
+	// execute the whole flow with model steps GENUINELY CALLED: one that stubbed
+	// the generation would tell the operator nothing about what the live run
+	// produces, which is the dry-run lie the ADR names as an attack.
+	//
+	// A model call is how the value is produced, not an effect on the world. The
+	// effect a dry run refuses is the WRITE that consumes the value — so the
+	// operator sees the real generated text in the captured diff.
+	//
+	// The Tor refusal above is NOT relaxed for a dry run, because a remote call
+	// from a Tor Space is a leak whether or not anything is written afterwards.
+	where := "local"
+	if !local {
+		where = "remote"
+	}
+	e.notes = append(e.notes, "called the "+where+" model: "+desc)
 	return nil
 }
 
@@ -211,6 +250,11 @@ func (r *Runner) Execute(ctx context.Context, f Flow, cause, identity string, su
 		defer cancel()
 	}
 
+	// prev carries one step's output to the next. It is deliberately a single
+	// value rather than a map of every prior step: a flow that can reach back
+	// arbitrarily is a dataflow graph, and a dataflow graph is the thing whose
+	// edges model output must never be able to choose.
+	var prev string
 	for _, step := range f.Steps {
 		rec := StepRecord{Action: step.Action, Params: step.Params}
 		start := r.now()
@@ -242,11 +286,20 @@ func (r *Runner) Execute(ctx context.Context, f Flow, cause, identity string, su
 		}
 
 		eff := &Effects{mode: f.Mode, cap: capab, budget: f.Budget, spend: &run.Spend}
-		out, err := fn(runCtx, step.Params, eff)
+		// The ONLY channel between steps. prev holds the previous step's
+		// validated output; a param whose whole value is the placeholder gets
+		// it. Substituting into a COPY matters: mutating the stored params
+		// would make a flow's second run differ from its first.
+		params := substitutePrev(step.Params, prev)
+		rec.Params = params
+		out, err := fn(runCtx, params, eff)
 		rec.Duration = r.now().Sub(start).String()
 		rec.Output = out
 		if len(eff.refusals) > 0 {
 			rec.Refused = joinRefusals(eff.refusals)
+		}
+		if len(eff.notes) > 0 {
+			rec.Did = joinRefusals(eff.notes)
 		}
 		if err != nil && !errors.Is(err, ErrDryRun) {
 			rec.Error = err.Error()
@@ -255,6 +308,7 @@ func (r *Runner) Execute(ctx context.Context, f Flow, cause, identity string, su
 			return run, r.runs.Finish(ctx, run)
 		}
 		run.Steps = append(run.Steps, rec)
+		prev = out
 	}
 
 	run.Status = StatusSucceeded

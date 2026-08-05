@@ -46,6 +46,10 @@ type StepRecord struct {
 	// Refused records an effect the capability boundary declined — in a dry run
 	// this is the normal case, and it is what the diff view renders.
 	Refused string `json:"refused,omitempty"`
+	// Did records what the step actually performed that was not refused. A model
+	// call is the case this exists for: a dry run really does generate, and a
+	// reader needs to see that rather than assume it was stubbed.
+	Did string `json:"did,omitempty"`
 }
 
 // Run is one execution of one flow, at one version, with one cause.
