@@ -534,7 +534,7 @@ func main() {
 	// Logged from the kernel's answer, not from whether the call above returned
 	// nil. An operator reading the log learns what is true rather than which
 	// branch ran, which is the same rule the panel page follows.
-	logVeilPosture(vayuveil.VerifyProcessHardening())
+	logVeilPosture(vayuveil.VerifyProcessHardening(), vayuveil.ReadSandbox())
 
 	// Give the GC a memory ceiling to aim at (cgroup-aware; honours an explicit
 	// GOMEMLIMIT). Keeps steady RSS bounded and avoids OOM-kill overshoot on

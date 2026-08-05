@@ -55,6 +55,20 @@ type AttackResult struct {
 	Bytes int
 	// Detail says what was tried and what came back.
 	Detail string
+	// ViaDeviceNode marks a technique that reaches its asset through a device
+	// node under /dev.
+	//
+	// It exists so the report can tell two very different causes of "nothing
+	// present" apart. On a service with PrivateDevices=yes the device nodes are
+	// not missing from the machine — they are REFUSED to this process by a
+	// control that is verifiably in force. Without this flag both cases render
+	// as "the absence of a device, not the presence of a control", which
+	// understates real protection on every correctly deployed install.
+	//
+	// A bool on the result rather than a string match on the technique name: a
+	// report that decides policy by matching prose breaks the first time
+	// somebody rewords the prose.
+	ViaDeviceNode bool
 }
 
 // RunRedTeam runs every technique this binary can run against the given host and
@@ -109,7 +123,7 @@ func captureFromDeviceFamily(h Host, read func(string, int) ([]byte, error),
 	pattern, technique string, asset Asset) AttackResult {
 	matches := h.Glob(pattern)
 	if len(matches) == 0 {
-		return AttackResult{Technique: technique, Asset: asset, Outcome: AttackNothingPresent,
+		return AttackResult{Technique: technique, Asset: asset, ViaDeviceNode: true, Outcome: AttackNothingPresent,
 			Detail: "nothing matches " + pattern + " on this host, so there was no target. That is " +
 				"the absence of a device, not the presence of a control."}
 	}
@@ -123,12 +137,12 @@ func captureFromDeviceFamily(h Host, read func(string, int) ([]byte, error),
 		}
 	}
 	if got > 0 {
-		return AttackResult{Technique: technique, Asset: asset, Outcome: AttackCapturedContent,
+		return AttackResult{Technique: technique, Asset: asset, ViaDeviceNode: true, Outcome: AttackCapturedContent,
 			Bytes: got,
 			Detail: "CAPTURED " + strconv.Itoa(got) + " bytes from " + from + ". This is content in " +
 				"the attacker's hands, not an error code."}
 	}
-	return AttackResult{Technique: technique, Asset: asset, Outcome: AttackRefused,
+	return AttackResult{Technique: technique, Asset: asset, ViaDeviceNode: true, Outcome: AttackRefused,
 		Detail: strconv.Itoa(len(matches)) + " node(s) match " + pattern + " and none yielded any " +
 			"bytes to this process."}
 }

@@ -63,6 +63,10 @@ func (a *App) handleOSVayuVeil(w http.ResponseWriter, r *http.Request) {
 		EnforcingPhases: map[vayuveil.Phase]bool{},
 		SelfHardening:   self,
 		RedTeam:         red,
+		// Read at report time, not cached at boot. A unit can be edited and the
+		// service restarted underneath a long-running process's memory of it,
+		// and a remembered answer is configuration rather than evidence.
+		Sandbox: vayuveil.ReadSandbox(),
 	})
 
 	body := vayuVeilPage(enabled, vayuveil.Channels(), obs, checks, self, red)

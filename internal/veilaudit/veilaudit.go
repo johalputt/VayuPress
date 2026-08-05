@@ -69,6 +69,11 @@ type Inputs struct {
 	SelfHardening vayuveil.SelfHardening
 	// RedTeam is the capture suite's last run (ADR-0150 §6).
 	RedTeam []vayuveil.AttackResult
+	// Sandbox is the service-unit state read back from the kernel (§5 S6). It is
+	// what lets the capture rows tell "this host has no framebuffer" apart from
+	// "a control is refusing the framebuffer to this process" — two facts that
+	// produce identical glob results and mean opposite things.
+	Sandbox vayuveil.SandboxState
 }
 
 // Run computes the report.
@@ -100,8 +105,14 @@ func Run(in Inputs) []Check {
 	// reader who takes it for the machine has been misled by placement alone.
 	checks = append(checks, selfHardeningCheck(in.SelfHardening), coreLimitCheck(in.SelfHardening))
 
+	// The service sandbox, read back from the kernel. These rows are about
+	// controls the INIT SYSTEM applied and this binary only verifies, which each
+	// one says — crediting VayuVeil for systemd's work would be the same
+	// misattribution §8 forbids, pointed inward.
+	checks = append(checks, sandboxChecks(in.Sandbox)...)
+
 	// The capture suite. Findings first, then the honest gap.
-	checks = append(checks, redTeamChecks(in.RedTeam)...)
+	checks = append(checks, redTeamChecks(in.RedTeam, in.Sandbox)...)
 
 	// Per-channel rows, computed from what was observed.
 	chans := append([]vayuveil.Channel(nil), in.Channels...)
@@ -151,7 +162,7 @@ func coreLimitCheck(h vayuveil.SelfHardening) Check {
 // §6 is explicit: a technique that is not in the suite is not defended, and the
 // report must not imply otherwise. Folding those into a comfortable-looking
 // bucket is exactly the implication it forbids.
-func redTeamChecks(rs []vayuveil.AttackResult) []Check {
+func redTeamChecks(rs []vayuveil.AttackResult, sb vayuveil.SandboxState) []Check {
 	if len(rs) == 0 {
 		return []Check{{Title: "Capture suite", Status: Unverified,
 			Detail: "The red-team capture suite has not run, so no technique has been tried against " +
@@ -172,12 +183,86 @@ func redTeamChecks(rs []vayuveil.AttackResult) []Check {
 				Detail: r.Detail + " Nothing in Phase 0 is what refused it; the host's own " +
 					"permissions did, and they hold for this process rather than for every process."})
 		case vayuveil.AttackNothingPresent:
+			// The row that used to understate. A device-node technique finding
+			// nothing on a service with a VERIFIED private /dev has not found an
+			// empty machine — it has run into a control that is in force. Saying
+			// "the absence of a device, not the presence of a control" there is
+			// wrong in the direction of hiding real protection, which is a milder
+			// defect than the §8 lie but a defect all the same.
+			//
+			// It is a Pass because the CONTROL is what was verified: this process
+			// cannot reach a capture device node. Whether the host has one is
+			// unknowable from inside the namespace, and does not need to be known
+			// — the guarantee is about what this process can reach.
+			if r.ViaDeviceNode && sb.DeniedDeviceCapture() {
+				out = append(out, Check{Title: title, Status: Pass,
+					Detail: "No device node was reachable to attack, and the reason is a control " +
+						"rather than an empty machine: this service has a verified private /dev, so " +
+						"the node is unreachable from this process whether or not the host has one. " +
+						vayuveil.SandboxScope})
+				continue
+			}
 			out = append(out, Check{Title: title, Status: Info, Detail: r.Detail})
 		default:
 			out = append(out, Check{Title: title, Status: Unverified, Detail: r.Detail})
 		}
 	}
 	return out
+}
+
+// sandboxChecks renders the service-unit state.
+//
+// Every row here is Unverified unless it was actually read. The unit file on
+// disk is deliberately never consulted: it records what somebody intended, and
+// this report is built on what the process got.
+func sandboxChecks(s vayuveil.SandboxState) []Check {
+	if !s.Supported {
+		return []Check{{Title: "Service sandbox", Status: Unverified,
+			Detail: "This platform does not expose the service's sandbox state to the process itself, " +
+				"so nothing is known about what confinement it is running under."}}
+	}
+
+	devices := Check{Title: "Capture device nodes are unreachable from this process",
+		Detail: s.DescribeDevices()}
+	switch {
+	case !s.PrivateDevKnown:
+		devices.Status = Unverified
+	case s.PrivateDev:
+		devices.Status = Pass
+	default:
+		devices.Status = Warn
+	}
+
+	caps := Check{Title: "Privileges this process actually holds", Detail: s.DescribeCaps()}
+	switch {
+	case !s.CapEffKnown:
+		caps.Status = Unverified
+	case s.CapEff == 0 || s.CapEff == 1<<vayuveil.CapNetBindService:
+		caps.Status = Pass
+	default:
+		caps.Status = Warn
+	}
+
+	nnp := Check{Title: "This process cannot gain privileges by running another program"}
+	switch {
+	case !s.NoNewPrivsKnown:
+		nnp.Status = Unverified
+		nnp.Detail = "The kernel did not answer PR_GET_NO_NEW_PRIVS, so it is not known whether a " +
+			"setuid binary could raise this process's privileges. Reported as unverified."
+	case s.NoNewPrivs:
+		nnp.Status = Pass
+		nnp.Detail = "Verified with PR_GET_NO_NEW_PRIVS: no execve from this process can gain " +
+			"privileges through a setuid binary or a file capability. It is inherited, so the " +
+			"in-app updater's re-exec and the Tor Space child keep it too. " + vayuveil.SandboxScope
+	default:
+		nnp.Status = Warn
+		nnp.Detail = "This process CAN gain privileges by executing a setuid binary or one carrying " +
+			"file capabilities, which is one of the routes a compromise uses to become a bigger " +
+			"one. The shipped unit sets NoNewPrivileges=yes; an install reporting this row is " +
+			"running from a unit that does not."
+	}
+
+	return []Check{devices, caps, nnp}
 }
 
 // channelCheck turns one channel and its observation into a row.

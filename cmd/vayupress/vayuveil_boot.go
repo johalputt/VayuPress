@@ -32,10 +32,10 @@ import (
 // Pure, so the sentence itself can be asserted on. The wording is the whole
 // deliverable here — a boot line that overstates is a claim defect that reaches
 // every operator's log rather than only the ones who open a page.
-func veilBootLine(self vayuveil.SelfHardening) string {
+func veilBootLine(self vayuveil.SelfHardening, sb vayuveil.SandboxState) string {
 	var b strings.Builder
-	b.WriteString("VayuVeil (ADR-0150 P0): observation channels registered=" +
-		strconv.Itoa(len(vayuveil.Channels())) + ", enforced on this host=0")
+	b.WriteString("VayuVeil (ADR-0150 server track): observation channels registered=" +
+		strconv.Itoa(len(vayuveil.Channels())) + ", enforced host-wide=0")
 
 	switch {
 	case !self.Supported:
@@ -54,17 +54,60 @@ func veilBootLine(self vayuveil.SelfHardening) string {
 	case self.Supported && self.CoreLimitKnown:
 		b.WriteString(", CORE LIMIT NOT ZERO")
 	}
+	// The service sandbox. Worth a place in the boot line because it is the one
+	// control here that denies a CAPTURE channel rather than a memory one, and
+	// because an install running from a unit that predates the hardening block
+	// gets no other warning — the operator would have to open the page to find
+	// out, and the whole reason this line exists is the operator who does not.
+	switch {
+	case !sb.Supported, !sb.PrivateDevKnown:
+		b.WriteString("; service sandbox: unverified")
+	case sb.PrivateDev:
+		b.WriteString("; service sandbox: private /dev (verified) — framebuffer, input and DRM " +
+			"nodes unreachable from this process")
+	default:
+		b.WriteString("; service sandbox: SHARED /dev — if this host has a framebuffer, input " +
+			"devices or DRM nodes, this process can reach them (unit is missing PrivateDevices=yes)")
+	}
+	if sb.Supported && sb.NoNewPrivsKnown && !sb.NoNewPrivs {
+		b.WriteString(", NoNewPrivileges NOT set")
+	}
+
 	// The boundary, in the log as well as on the page. An operator reading only
 	// this line must not come away thinking a screen is defended.
-	b.WriteString(". Phase 0 registers policy and enforces none of it on this host; " +
-		"the process controls above cover this process only.")
+	//
+	// Worded to stay true in BOTH sandbox states, which the previous version was
+	// not: "enforces none of it" became an understatement the moment a verified
+	// private /dev started denying the capture nodes. The invariant that does
+	// hold either way is the scope — nothing here reaches past this process.
+	b.WriteString(". No observation channel is enforced host-wide; every control above covers " +
+		"this process only, and the rest of the machine is unaffected.")
 	return b.String()
 }
 
+// veilPostureIsWarning decides whether the boot line is worth waking someone
+// for. Two states qualify, and both are quiet misconfigurations that an info
+// line lets scroll past: a process that can be dumped, and a unit that never
+// applied the service sandbox.
+//
+// Split out from logVeilPosture so it can be asserted on directly. The first
+// version of that test compared a fixture against its own branch condition,
+// which would have passed against any implementation at all — a tautology
+// wearing a test's name.
+//
+// UNKNOWN IS NOT A WARNING, deliberately. A platform that cannot answer is not
+// a misconfiguration, and warning on it would train an operator to ignore the
+// level on exactly the machines where a real warning still means something.
+func veilPostureIsWarning(self vayuveil.SelfHardening, sb vayuveil.SandboxState) bool {
+	dumpable := self.Supported && self.Known && !self.Undumpable
+	sharedDev := sb.Supported && sb.PrivateDevKnown && !sb.PrivateDev
+	return dumpable || sharedDev
+}
+
 // logVeilPosture writes the boot line.
-func logVeilPosture(self vayuveil.SelfHardening) {
-	line := veilBootLine(self)
-	if self.Supported && self.Known && !self.Undumpable {
+func logVeilPosture(self vayuveil.SelfHardening, sb vayuveil.SandboxState) {
+	line := veilBootLine(self, sb)
+	if veilPostureIsWarning(self, sb) {
 		logging.LogWarn("vayuveil", line)
 		return
 	}
