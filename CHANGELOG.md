@@ -8,6 +8,109 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **VayuFlow — automations your install runs on its own, at `/os/vayuflow`
+  (ADR-0151).** A durable trigger → condition → action engine, built to make one
+  claim true: every automated action this install takes was authorised in advance
+  by a named operator, is reproducible from its recorded inputs, and could not
+  have exceeded the blast radius declared when it was armed — including when a
+  model chose its content. That is a claim about authority, not about quality. It
+  does not say the automation is clever; it says you can always answer who
+  authorised it, what it was allowed to touch, and what it actually spent.
+
+  A flow fires on a **schedule**, on a **domain event**, or on your press.
+  Event triggers land in a durable inbox rather than riding the in-process bus,
+  because that bus is lossy by design and a crash between the event and the
+  action would lose the run in silence. There is deliberately no inbound-webhook
+  trigger: that is an unauthenticated remote party choosing when your install
+  does work, which is a denial-of-service surface before it is a feature.
+
+- **A budget in which "unlimited" cannot be written.** Every ceiling — steps per
+  run, runs per hour, writes per run, outbound fetches per run, wall clock — must
+  be a positive number, is capped so a very large figure cannot stand in for
+  "off", and is charged **before** the effect rather than counted after it. The
+  run trail shows `writes: 3 / 20` rather than a bare count, because a number
+  without its ceiling means nothing; a flow sitting near its ceiling every time
+  is the one to look at.
+
+- **A capability registry, so "what can this install do to itself without me?"
+  is an enumerable question.** Each action declares what family of effect it has,
+  the strongest write it may perform, what it does in a Tor Space, whether an
+  operator can undo it, and the authority its owner must hold. An action missing
+  any of those answers fails a test rather than a review. Two consequences worth
+  stating: `model.draft.generate` writes **nothing** — it produces a value, and
+  the only step that can write that value down is capped at *draft*, so a bad
+  generation cannot publish itself as a property of two registrations rather than
+  as a promise about prompt quality. And `mail.send` is the one irreversible
+  action, admin-only, one recipient per step — a recipient list would spend a
+  single write from the budget and deliver many messages.
+
+  Administrative actions — settings, users, keys, domains, shield tiers, payment
+  configuration — are not automatable. That is a decision on record, pinned by a
+  test, rather than something nobody got round to.
+
+- **Authority is resolved when a flow runs, never stored on it.** Arm a flow as
+  an admin, demote that account, and the next run refuses — with the role that
+  was actually resolved written into the trail, so the page says why. A role that
+  cannot be resolved reads as *no authority*, never as *the last one we saw*.
+  Without this an armed flow would be a permanent capability grant that outlives
+  the grant.
+
+- **Dry-run that is worth reading.** A new flow is in dry-run until you arm it,
+  and dry-run is not a stubbed rehearsal: conditions evaluate against live state,
+  model steps are genuinely called, fetch steps genuinely fetch, and every ceiling
+  is charged exactly as a live run would charge it. What the effect path refuses
+  is the **writes**, captured as a diff line each. Stated plainly because it costs
+  you something: a dry run of a flow with a fetch step does make that request, and
+  one with a remote model step does spend whatever that provider charges. Arming
+  is its own logged action recording who did it and what the mode was before —
+  "armed" without a from-state cannot tell a first arming from a re-arming.
+
+- **An honest posture report on the same page.** A row that states a fact is toned
+  as a fact rather than as a success: a green tick beside "no armed flow reaches a
+  remote host" on an install with no flows would be reading emptiness as safety.
+
+- **Operator documentation** — `docs/operations/vayuflow-automations.md`.
+
+### Fixed
+
+- **Four findings from the pre-release adversarial pass, fixed before the
+  version was cut rather than in the one after it.** ADR-0151 pre-declared seven
+  attacks so the pass would start from "what would I do to this" instead of from
+  the feature list. Four landed; each was written as a failing test in the
+  attacker's voice before anything changed, and each fix was re-broken afterwards
+  to confirm the test caught it.
+
+  - **The Tor kill-switch had an opt-out.** An outbound fetch was refused only
+    when the *calling* action had declared itself inert, and the registry rule
+    that keeps egress actions inert covers egress-kind actions and nothing else.
+    An action of any other kind that reached for the network was handed the
+    clearnet from a Tor Space. Outbound is not a property a fetch needs to be
+    told about; it is now refused whenever clearnet egress is blocked, whatever
+    the action declared.
+  - **The panel and the posture report disagreed about the same flow.** A model
+    step is registered inert — correctly, because a hosted provider makes it an
+    outbound call — and the flow card read that as "reaches a remote host". So an
+    operator whose model runs on the same machine was shown a warning box saying
+    their automation reached out, while the report beside it said it did not. The
+    card now names which provider the install actually has.
+  - **The event inbox grew forever.** The prune existed, described itself as
+    bounded by policy rather than by hope, and was called by nothing. A drain
+    pass now also forgets — 30-day window, hourly interval, so the fix for an
+    unbounded table is not an unbounded scan every five seconds.
+  - **The dry run told a quiet lie.** Model steps ran for real and fetch steps
+    did not, so a fetch → generate → draft flow dry-ran with an empty body into a
+    model that genuinely ran: under-reporting the read and over-reporting the
+    generation, on one screen, in one run. A fetch is a read that produces a
+    value, already metered and already refused in a Tor Space, so it happens and
+    the capture says *fetched* rather than *would fetch*.
+
+  The other three attacks — budget bypass through step expansion, authority
+  outliving its grant, and injection through content steering the step graph —
+  found nothing, and the tests that went looking are kept. A clean result is only
+  evidence if it says what was tried.
+
 ### Changed
 
 - **The race-detector job stopped being able to finish, and the cause was a

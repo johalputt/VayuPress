@@ -1,7 +1,7 @@
 # ADR-0151 — VayuFlow: the deterministic automation engine
 
-- **Status:** Proposed
-- **Date:** 2026-07-30
+- **Status:** Accepted
+- **Date:** 2026-07-30 (accepted 2026-08-05, after the adversarial pass below)
 - **Relates to:** ADR-0139 (VayuMCP), ADR-0141 (VayuOS Spaces), ADR-0146 (Buzz
   connector), ADR-0149 (network intelligence), ADR-0150 (VayuVeil)
 
@@ -317,6 +317,31 @@ Written now, so the pre-release audit starts from attacks rather than features:
 Each becomes a failing test first, in the attacker's voice, and every fix is
 mutation-tested — a test that passes against the broken version proves nothing,
 which this project has learned twice already.
+
+## What the adversarial pass actually found
+
+Run before the release rather than after it, over everything the seven phases
+accumulated. Four of the seven pre-declared attacks landed. Each was written as
+a failing test in the attacker's voice before any code changed, and each fix was
+mutation-tested — the fix was re-broken and the test confirmed to go red again.
+Six mutations, six kills.
+
+| Attack | Verdict | What it cost |
+| --- | --- | --- |
+| 1 — trigger storm | **Half found.** The rate ceiling held and wrote no row, as designed. The inbox did not: `PruneDrained` existed, said it was "bounded by policy rather than by hope", and was called by nothing in the binary. | A drain pass now also forgets — 30-day window, hourly interval. Pruning every pass would have swapped an unbounded table for an unbounded scan every five seconds. |
+| 2 — budget bypass via step expansion | Nothing found. There is no expansion: `Steps` is a fixed ordered list settled at save time, `chargeStep` runs before every step, `Complete()` refuses a flow whose step count exceeds its own `MaxStepsPerRun`, and a model returning a list returns a *string* that nothing iterates. An action calling `Write` in a loop is stopped by the ledger, not by its own restraint. | Pinned by `TestAnActionCannotOutspendTheWriteCeilingByLooping`. |
+| 3 — authority outliving the grant | Nothing found. The owner's role is not stored on the flow at all, and a resolver that errors reads as no role rather than as the last known one. Re-attacked from the demotion side. | Pinned by `TestADemotedOwnerStopsTheFlowEvenThoughItWasArmedByAnAdmin`. |
+| 4 — injection through content | Nothing found. There is no edge to take: `Step` has no branch target, `prev` is one value, and substitution replaces only a parameter whose *whole* value is the placeholder — so content cannot append to an operator-written URL, and the fan-out a whole-value substitution would buy is refused by `mail.send` itself. | Pinned by `TestInjectedContentCannotSpliceASecondRecipientOrRedirectAFetch`. |
+| 5 — Tor leak | **Found, twice.** `Effects.Fetch` refused only when the *calling* action declared itself inert, and the registry test that keeps egress actions inert covers `KindEgress` and nothing else — so an action of any other kind that reached for the network got the clearnet, with only `safefetch` left downstream. Separately, `Flow.NeedsEgress` keyed on the Onion policy, so the panel told an operator whose model runs on this very host that their flow "reaches a remote host" while the posture report on the same page said it did not. | `Fetch` now refuses whenever clearnet egress is blocked, whatever the action declared — it is called Fetch; being outbound is not something it needs to be told. `NeedsEgress` keys on the kind, and a model step gets its own line naming which provider this install actually has. |
+| 6 — idempotency under redelivery | Nothing found. The key is claimed in `Begin`, before any step runs, and derives from the inbox row id. Covered by the P2 and P5 suites. | No change needed. |
+| 7 — the dry-run lie | **Found.** `Effects.Model` is deliberately ungated so a dry run calls the model for real. `Effects.Fetch` *was* gated — so a fetch → model → draft flow dry-ran with an empty body into a model that genuinely ran. Under-reporting the read and over-reporting the generation, on the same screen, in the same run. | A fetch is a read that produces a value, already charged and already refused in a Tor Space. It happens, and the capture says `fetched` rather than `would fetch`. |
+
+One of the new assertions was itself wrong on the first attempt, and it is worth
+recording because it is the repository's own named failure mode: searching the
+whole rendered page for `reaches a remote host` matched the posture report's
+sentence *"No armed flow reaches a remote host."* — a substring that passes a
+regression and fails a correct fix. The test now extracts the one accordion and
+fails loudly if it cannot say which element it read.
 
 ## Consequences
 
