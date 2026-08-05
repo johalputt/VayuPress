@@ -12,8 +12,8 @@
 | [ADR-0147](ADR-0147-per-client-connector-pages.md) | One page per client; VayuMCP keeps the protocol | Accepted | Core | 2026-07-28 |
 | [ADR-0148](ADR-0148-multi-node-verdict-sharing.md) | Nodes share VayuShield verdicts under a derived key; the ingress ceiling is linear | Accepted | Core | 2026-07-29 |
 | [ADR-0149](ADR-0149-third-party-network-intelligence.md) | Published network lists may add suspicion or refuse, and can never grant access | Accepted | Core | 2026-07-29 |
-| [ADR-0150](ADR-0150-vayuveil-endpoint-observation-control.md) | VayuVeil: no software may observe screen, input or window text without a visible, revocable grant | Proposed | Core | 2026-07-29 |
-| [ADR-0151](ADR-0151-vayuflow-automation-engine.md) | VayuFlow: automation is a rules engine with declared blast radius, never an agent | Proposed | Core | 2026-07-30 |
+| [ADR-0150](ADR-0150-vayuveil-endpoint-observation-control.md) | VayuVeil: enumerate every observation channel and report only what has been read back from the kernel — never absence as protection | Accepted | Core | 2026-07-29 |
+| [ADR-0151](ADR-0151-vayuflow-automation-engine.md) | VayuFlow: automation is a rules engine with declared blast radius, never an agent | Accepted | Core | 2026-07-30 |
 | [ADR-0146](ADR-0146-buzz-connector.md) | Buzz connector: agents in, over the MCP surface we already serve | Accepted | Core | 2026-07-28 |
 | [ADR-0145](ADR-0145-vayukeep-continuous-encrypted-replication.md) | VayuKeep: continuous, encrypted, self-verifying replication | Accepted | Core | 2026-07-27 |
 | [ADR-0144](ADR-0144-vayumail-account-recovery.md) | VayuMail Account Recovery | Accepted | Core | 2026-07-26 |
