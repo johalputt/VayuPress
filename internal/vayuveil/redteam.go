@@ -82,6 +82,13 @@ func RunRedTeam(h Host, read func(path string, max int) ([]byte, error)) []Attac
 		captureFromDeviceFamily(h, read, "/dev/fb*", "read the framebuffer directly", AssetFramebuffer),
 		captureFromDeviceFamily(h, read, "/dev/input/event*", "read keystrokes from evdev", AssetKeyboard),
 		captureFromDeviceFamily(h, read, "/dev/dri/card*", "read back another client's buffer via a DRM card node", AssetWindowPixels),
+		// The technique that matters most on the machines this binary actually
+		// runs on. A headless server has no framebuffer and no Wayland socket,
+		// so the first entry above is nothing-present on nearly every install —
+		// but virtual consoles exist, and /dev/vcs* is whatever was last on one,
+		// in plain text. A suite whose only screen technique cannot fire on a
+		// server was testing somebody else's threat model.
+		captureFromDeviceFamily(h, read, "/dev/vcs*", "read the console's screen memory", AssetFramebuffer),
 		captureOtherProcessMemory(h, read),
 	}
 

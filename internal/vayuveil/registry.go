@@ -67,6 +67,20 @@ var channels = []Channel{
 		Probe: func(h Host) Observation { return probeGlob(h, "/dev/fb*", "framebuffer device") },
 	},
 	{
+		ID: "dev-vcs", Name: "/dev/vcs*, /dev/vcsa*, /dev/vcsu* console screen memory",
+		Asset: AssetFramebuffer, Default: DispositionDeny,
+		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditAll,
+		Phase: PhaseP4Sandbox,
+		Rationale: "The virtual console's screen memory, readable as plain text. It is the one " +
+			"capture channel in this registry that is MORE relevant on a server than on a desktop: " +
+			"a headless host has no framebuffer and no Wayland socket, but it does have virtual " +
+			"consoles, and whatever a root login typed at one is sitting in these nodes. No grant " +
+			"model can make an arbitrary process reading another session's console safe, so none " +
+			"is offered. Denied by sandbox policy rather than by absence — the nodes legitimately " +
+			"exist for the console subsystem.",
+		Probe: func(h Host) Observation { return probeGlob(h, "/dev/vcs*", "console screen memory") },
+	},
+	{
 		ID: "dev-dri", Name: "/dev/dri render and card nodes",
 		Asset: AssetWindowPixels, Default: DispositionDeny,
 		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditAll,

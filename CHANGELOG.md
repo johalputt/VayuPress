@@ -6,6 +6,75 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **VayuFlow shipped in 3.17.4 without a way to create a flow, and this release
+  is that correction.** The engine, registry, budgets, runner, ticker, durable
+  inbox, posture report and panel were all built, wired and correct. Nothing
+  could write to the table they operated on: `Store.Save` and `Store.Delete` had
+  no non-test caller anywhere in the binary, and renaming both left it linking
+  cleanly. Three routes existed — view, arm, run. The 3.17.4 notes below describe
+  a capability an operator could not reach, and they are left standing rather
+  than quietly edited, because a changelog that revises its own history is worth
+  less than one that records a correction.
+
+  Why the pre-release audit missed it is the more useful half. That pass asked
+  the seven questions ADR-0151 pre-declared — trigger storms, budget bypass,
+  authority outliving its grant, injection through content, Tor leaks,
+  idempotency under redelivery, the dry-run lie — and each was the right
+  question. Each was also about what the engine would do to an operator who
+  *had* a flow. None asked whether one could exist. An audit scoped to a threat
+  model cannot find a missing feature, and a missing feature fails no test
+  written on the assumption it was there.
+
+- **A disabled flow ran anyway on the manual path.** The ticker and the drainer
+  reach flows through a loader that filters on enabled; the panel's "Run once
+  now" button used a direct read that does not. An operator could switch a flow
+  off, watch the panel render its disabled chip, press Run, and have it execute.
+  The runner now decides it, so every caller gets the same answer.
+
+- **The run trail was never pruned.** ADR-0151 §7 promises it is bounded. The
+  runs-per-hour ceiling bounds the *rate*, which is what stops a trigger storm,
+  and that was mistaken for a bound on the total: ten runs an hour is
+  eighty-seven thousand rows a year, per flow, kept forever. Finished runs are
+  now dropped after ninety days on the same pass that prunes the inbox. Runs
+  still marked running are never touched — an interrupted run is the oldest row
+  in the table by definition, and it is the one carrying the evidence.
+
+- **The VayuVeil capture suite had no technique that could fire on a server.**
+  Every screen-capture attempt targeted something a headless host does not have:
+  a framebuffer, a DRM card node, a Wayland socket, an X display. So on a real
+  install the entire screen half of the suite reported "nothing present" and
+  demonstrated nothing. `/dev/vcs*` — the virtual console's screen memory,
+  readable as plain text and holding whatever was last typed at a console
+  login — is now both a registered channel and an attempted technique.
+
+### Added
+
+- **Creating, editing, switching on and deleting a flow, from `/os/vayuflow`.**
+  The form reads every choice it offers from the engine: actions from the
+  capability registry, conditions from the predicate set, events from the
+  subscribable list. A form carrying its own copy of any of those is a list that
+  drifts from the engine's, and an operator finds out by saving something the
+  store then refuses for a reason the page never mentioned.
+
+  Three rules it holds to. **Editing is not arming** — a save never changes the
+  mode or the enabled state; the document has no field for either and unknown
+  fields are refused rather than ignored, so a form that sends `mode` is told
+  where arming lives instead of being quietly obeyed-and-ignored. **An edit never
+  re-points the owner** — a flow borrows its owner's authority and that is
+  re-read on every run, so adopting whoever pressed Save would let a demoted
+  owner restore their flow's reach by renaming it. **Validation stays in the
+  store** — the handlers parse and map, and the store refuses; a second validator
+  is a second thing that can disagree, and the one that wins is the one nobody is
+  looking at.
+
+  A new flow is stored switched off and in dry-run. Deleting a flow keeps its
+  runs: a run row records something the install actually did, and removing the
+  description of the work would leave effects in the trail with no cause.
+
 ## [3.17.4] — 2026-08-05
 
 ### Added

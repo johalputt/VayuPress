@@ -215,3 +215,68 @@ func validResult(r AttackResult) bool {
 	return r.Outcome != outcomeUnset && strings.TrimSpace(r.Technique) != "" &&
 		strings.TrimSpace(r.Detail) != ""
 }
+
+// ── The channel that matters on the machines this binary actually runs on ────
+//
+// Every other screen-capture technique in the suite targets something a
+// headless server does not have: no framebuffer, no DRM card node, no Wayland
+// socket, no X display. So on a real VayuPress host the entire screen half of
+// the suite reported "nothing present" and proved nothing.
+//
+// /dev/vcs*, /dev/vcsa* and /dev/vcsu* are the virtual console's screen memory,
+// readable as plain text. They exist on a server, and whatever was last typed
+// at a console login is sitting in them. A capture suite whose only screen
+// technique cannot fire on the deployment target was testing somebody else's
+// threat model.
+func TestConsoleScreenMemoryIsBothRegisteredAndAttacked(t *testing.T) {
+	var chans []Channel
+	for _, c := range Channels() {
+		if c.ID == "dev-vcs" {
+			chans = append(chans, c)
+		}
+	}
+	if len(chans) != 1 {
+		t.Fatalf("expected exactly one console-memory channel, found %d", len(chans))
+	}
+	c := chans[0]
+	if c.Default != DispositionDeny {
+		t.Errorf("console screen memory is not default-deny (%v)", c.Default)
+	}
+	if !c.Complete() {
+		t.Error("the channel leaves one of its obligations unanswered")
+	}
+
+	// And the suite ACTUALLY TRIES it — a registry entry with no technique is
+	// a channel declared and never tested, which §6 says must not be implied
+	// to be defended.
+	h := Host{
+		Glob:   func(pat string) []string { return map[string][]string{"/dev/vcs*": {"/dev/vcs1"}}[pat] },
+		Exists: func(string) bool { return false },
+	}
+	var tried []string
+	read := func(path string, _ int) ([]byte, error) {
+		tried = append(tried, path)
+		return []byte("root@host:~# "), nil
+	}
+	results := RunRedTeam(h, read)
+
+	var found *AttackResult
+	for i := range results {
+		if strings.Contains(results[i].Technique, "console") {
+			found = &results[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("no technique in the suite reaches console screen memory")
+	}
+	if found.Outcome != AttackCapturedContent {
+		t.Errorf("the console node yielded bytes and the suite reported %v", found.Outcome)
+	}
+	if !found.ViaDeviceNode {
+		t.Error("the console technique is not marked as reaching a device node, so a verified " +
+			"private /dev will not be credited for denying it")
+	}
+	if len(tried) == 0 || tried[0] != "/dev/vcs1" {
+		t.Errorf("the suite did not read the console node; it read %v", tried)
+	}
+}
