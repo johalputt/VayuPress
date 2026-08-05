@@ -207,3 +207,71 @@ func TestExtraCapabilitiesAreFlagged(t *testing.T) {
 		t.Errorf("a process holding CAP_SYS_ADMIN reports %v", row.Status)
 	}
 }
+
+// ── Swap. The channel the hibernate probe was reading as clean. ─────────────
+//
+// /sys/power/state saying "no hibernate target" was making a headless server
+// read as fine on the memory-image asset, while ordinary swap wrote its
+// anonymous pages to disk continuously under memory pressure. Hibernation being
+// unavailable says nothing about that.
+func TestSwapIsReportedFromWhatHappenedAndFromWhatIsForbidden(t *testing.T) {
+	base := func() vayuveil.SandboxState { s := sandboxed(); return s }
+
+	t.Run("bytes already on disk is a finding, not a warning", func(t *testing.T) {
+		in := on(allAbsent())
+		s := base()
+		s.SwapKiB, s.SwapKiBKnown = 4096, true
+		s.SwapMaxZero, s.SwapMaxKnown = false, true
+		in.Sandbox = s
+		row := rowFor(t, Run(in), "memory has not been written to disk")
+		if row.Status != Fail {
+			t.Errorf("4 MB of this process is on disk and the row reads %v; that is an event, "+
+				"not a risk", row.Status)
+		}
+		if !strings.Contains(row.Detail, "keystore key") {
+			t.Errorf("the row does not say what is in the swap file: %q", row.Detail)
+		}
+	})
+
+	t.Run("zero without a control is luck, and luck is not a pass", func(t *testing.T) {
+		in := on(allAbsent())
+		s := base()
+		s.SwapKiB, s.SwapKiBKnown = 0, true
+		s.SwapMaxZero, s.SwapMaxKnown = false, true // permitted to swap
+		in.Sandbox = s
+		row := rowFor(t, Run(in), "memory has not been written to disk")
+		if row.Status == Pass {
+			t.Error("a process that simply has not swapped YET is reported as protected; the " +
+				"kernel may page it out on the next memory-pressure event")
+		}
+		if !strings.Contains(row.Detail, "MemorySwapMax=0") {
+			t.Errorf("the row does not name the control that would make it true: %q", row.Detail)
+		}
+	})
+
+	t.Run("zero WITH the control is the one green case", func(t *testing.T) {
+		in := on(allAbsent())
+		s := base()
+		s.SwapKiB, s.SwapKiBKnown = 0, true
+		s.SwapMaxZero, s.SwapMaxKnown = true, true
+		in.Sandbox = s
+		row := rowFor(t, Run(in), "memory has not been written to disk")
+		if row.Status != Pass {
+			t.Errorf("nothing swapped and the cgroup forbids swapping, and the row reads %v", row.Status)
+		}
+		if !strings.Contains(row.Detail, "rest of the machine is unaffected") {
+			t.Errorf("the green row does not carry its scope: %q", row.Detail)
+		}
+	})
+
+	t.Run("unread is unverified, never fine", func(t *testing.T) {
+		in := on(allAbsent())
+		s := base()
+		s.SwapKiBKnown, s.SwapMaxKnown = false, false
+		in.Sandbox = s
+		row := rowFor(t, Run(in), "memory has not been written to disk")
+		if row.Status != Unverified {
+			t.Errorf("an unreadable VmSwap reads as %v", row.Status)
+		}
+	})
+}

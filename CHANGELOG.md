@@ -6,6 +6,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **A host with no hibernate target was reading as clean on the memory-image
+  asset, while its swap file held whatever the kernel had paged out.** VayuVeil
+  probed `/sys/power/state` and reported the channel absent when hibernation was
+  unavailable — which is the usual state of a headless server. Ordinary swap
+  writes anonymous memory to disk continuously, under memory pressure, with no
+  lid closing and nothing to notice, and none of that involves hibernation.
+
+  Swap is now its own channel, and the process's own exposure is reported from
+  two facts that are deliberately not combined. `VmSwap` is an **outcome** — how
+  much of this process is on disk already — and a non-zero reading is a finding
+  rather than a warning, because it has happened rather than being a risk: the
+  decrypted mail, session tokens and keystore key that were in those pages are
+  in that file, and an encrypted data directory does not cover swap.
+  `memory.swap.max` is a **control**. Zero bytes swapped without that control is
+  luck, and luck is not a pass — the row goes green only when nothing has
+  swapped *and* the cgroup forbids it.
+
+  An unreadable `/proc/swaps` reports unknown, never absent. That branch was
+  found untested by a mutation that flipped it and broke nothing, which would
+  have produced the exact claim ADR-0150 §8 exists to prevent — "no swap" on a
+  machine that has some — on the asset where being wrong costs most.
+
+### Added
+
+- **Operator documentation for VayuVeil** —
+  `docs/operations/vayuveil-observation-posture.md`. What green means and why so
+  little of the report can earn it, what the server track actually verifies,
+  why the capture suite attempts four of its eleven named techniques and reports
+  the rest as untested, and what is never claimed.
+
 ## [3.17.5] — 2026-08-05
 
 ### Fixed

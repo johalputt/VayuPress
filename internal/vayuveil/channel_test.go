@@ -178,3 +178,75 @@ func TestEveryRationaleIsAnActualExplanation(t *testing.T) {
 		}
 	}
 }
+
+// ── The swap probe, and the branch a mutation caught uncovered ──────────────
+//
+// Ordinary swap writes anonymous memory to disk continuously, under memory
+// pressure, with nothing to notice. The hibernate probe reads /sys/power/state
+// and a headless server usually offers no 'disk' target — so that channel said
+// Absent while the machine's swap file held whatever had been paged out.
+//
+// The unreadable case is the one that matters and the one a mutation found
+// untested: reading an unreadable /proc/swaps as "no swap" produces exactly the
+// claim ADR-0150 §8 exists to prevent, on the asset where being wrong is worst.
+func TestTheSwapProbeNeverReadsSilenceAsSafety(t *testing.T) {
+	probe := func(t *testing.T) func(Host) Observation {
+		t.Helper()
+		for _, c := range Channels() {
+			if c.ID == "swap-anon" {
+				return c.Probe
+			}
+		}
+		t.Fatal("no swap channel is registered")
+		return nil
+	}(t)
+
+	host := func(body string) Host {
+		return Host{
+			ReadFile: func(p string) string {
+				if p == "/proc/swaps" {
+					return body
+				}
+				return ""
+			},
+			Glob:   func(string) []string { return nil },
+			Exists: func(string) bool { return false },
+		}
+	}
+
+	// THE branch. Unreadable must be Unknown — never Absent.
+	for name, body := range map[string]string{
+		"file missing entirely": "",
+		"file empty":            "   \n",
+	} {
+		got := probe(host(body))
+		if got.Presence == PresenceAbsent {
+			t.Errorf("%s: an unreadable /proc/swaps is reported as NO SWAP. On a machine that has "+
+				"some, that is the report claiming memory stays in RAM when it does not", name)
+		}
+		if got.Presence != PresenceUnknown {
+			t.Errorf("%s: expected unknown, got %v", name, got.Presence)
+		}
+	}
+
+	// A real header with no areas IS absence, and must not be confused with the
+	// above — otherwise the fix for one wrong answer is a second wrong answer.
+	noAreas := probe(host("Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n"))
+	if noAreas.Presence != PresenceAbsent {
+		t.Errorf("a kernel with no swap area reports %v, not absent", noAreas.Presence)
+	}
+
+	// And a configured swap area is reachable, with the device named so an
+	// operator can go and check whether it is encrypted.
+	live := probe(host("Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n" +
+		"/dev/dm-1                               partition\t8388604\t\t1024\t\t-2\n"))
+	if live.Presence != PresentReachable {
+		t.Errorf("a configured swap area reports %v", live.Presence)
+	}
+	if !strings.Contains(live.Detail, "/dev/dm-1") {
+		t.Errorf("the observation does not name the swap device: %q", live.Detail)
+	}
+	if !strings.Contains(live.Detail, "encrypted") {
+		t.Errorf("the observation does not say that encryption is not visible from here: %q", live.Detail)
+	}
+}

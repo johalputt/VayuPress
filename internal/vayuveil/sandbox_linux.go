@@ -36,6 +36,14 @@ func readSandbox(procRead func(path string) (string, error)) SandboxState {
 				s.SeccompMode, s.SeccompModeKnown = n, true
 			}
 		}
+		// VmSwap is how much of THIS process is on disk right now. An outcome
+		// rather than a control, and the only direct evidence available that
+		// decrypted mail or the keystore key has left RAM.
+		if v, ok := parseStatusField(status, "VmSwap"); ok {
+			if n, err := strconv.Atoi(strings.Fields(strings.TrimSpace(v))[0]); err == nil {
+				s.SwapKiB, s.SwapKiBKnown = n, true
+			}
+		}
 		s.CapEff, s.CapEffKnown = parseCapMask(status, "CapEff")
 		s.CapBnd, s.CapBndKnown = parseCapMask(status, "CapBnd")
 		// NoNewPrivs also appears here. Used only as a fallback: the prctl is the
@@ -56,6 +64,20 @@ func readSandbox(procRead func(path string) (string, error)) SandboxState {
 		s.PrivateDev, s.PrivateDevKnown = mountedOn(mi, "/dev"), true
 		s.PrivateTmp, s.PrivateTmpKnown = mountedOn(mi, "/tmp"), true
 		s.ProtectedHome, s.ProtectedHomeKnown = mountedOn(mi, "/home"), true
+	}
+
+	// cgroup v2 delegates this file into the service's own namespace, so an
+	// unprivileged read of the relative path is the service's OWN limit rather
+	// than the machine's. A unit carrying MemorySwapMax=0 shows up here as 0,
+	// which is the one control on this channel a unit can actually assert.
+	if v, err := procRead("/sys/fs/cgroup/memory.swap.max"); err == nil {
+		t := strings.TrimSpace(v)
+		// "max" means unlimited. Anything else is a byte count.
+		if t == "max" {
+			s.SwapMaxZero, s.SwapMaxKnown = false, true
+		} else if n, err := strconv.ParseInt(t, 10, 64); err == nil {
+			s.SwapMaxZero, s.SwapMaxKnown = n == 0, true
+		}
 	}
 
 	if v, err := procRead("/proc/sys/kernel/yama/ptrace_scope"); err == nil {

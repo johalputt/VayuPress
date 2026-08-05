@@ -2,6 +2,11 @@
 
 package vayuveil
 
+import (
+	"strconv"
+	"strings"
+)
+
 // registry.go — every interface through which observation is possible.
 //
 // Adding a channel here means answering four questions. Adding one WITHOUT
@@ -309,6 +314,49 @@ var channels = []Channel{
 				return Observation{PresentReachable, "/sys/power/state offers 'disk' — hibernation is available"}
 			}
 			return Observation{PresenceAbsent, "/sys/power/state = " + v + " — no hibernate target"}
+		},
+	},
+
+	{
+		ID: "swap-anon", Name: "swap: anonymous memory written to disk",
+		Asset: AssetMemoryImage, Default: DispositionDeny,
+		Grant: GrantNone, Indicator: IndicatorNone, Audit: AuditGrantsOnly,
+		Phase: PhaseP5Hygiene,
+		Rationale: "Separate from the hibernate image, because hibernation being unavailable does " +
+			"NOT mean anonymous memory stays in RAM. Ordinary swap writes it out continuously, under " +
+			"memory pressure, with no lid closing and nothing to notice — and a host reporting " +
+			"'no hibernate target' was reading as clean on this asset while its swap file held " +
+			"decrypted mail. An encrypted data directory does not cover swap. There is no grant " +
+			"model because the kernel does not ask: either swap is absent, encrypted, or forbidden " +
+			"to the service by its cgroup.",
+		Probe: func(h Host) Observation {
+			raw := h.ReadFile("/proc/swaps")
+			if trimmed(raw) == "" {
+				// NEVER Absent. An unreadable /proc/swaps is the one case where
+				// guessing would produce the exact claim this subsystem exists
+				// to prevent: "no swap" on a machine that has some.
+				return Observation{PresenceUnknown,
+					"/proc/swaps could not be read, so whether this kernel pages anonymous memory " +
+						"to disk is not known"}
+			}
+			var areas []string
+			for i, line := range strings.Split(raw, "\n") {
+				if i == 0 || trimmed(line) == "" {
+					continue // the header
+				}
+				if f := strings.Fields(line); len(f) > 0 {
+					areas = append(areas, f[0])
+				}
+			}
+			if len(areas) == 0 {
+				return Observation{PresenceAbsent,
+					"/proc/swaps lists no swap area, so the kernel has nowhere to page anonymous " +
+						"memory to"}
+			}
+			return Observation{PresentReachable,
+				"the kernel has " + strconv.Itoa(len(areas)) + " swap area(s) (" +
+					strings.Join(areas, ", ") + "); anonymous memory can be written there, and " +
+					"whether that device is encrypted is not visible from here"}
 		},
 	},
 

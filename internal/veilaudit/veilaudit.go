@@ -254,6 +254,23 @@ func sandboxChecks(s vayuveil.SandboxState) []Check {
 		caps.Status = Warn
 	}
 
+	swap := Check{Title: "This process's memory has not been written to disk", Detail: s.DescribeSwap()}
+	switch {
+	case !s.SwapKiBKnown:
+		swap.Status = Unverified
+	case s.SwapKiB > 0:
+		// A Fail, not a warning. Bytes of decrypted mail and the keystore key
+		// are on a disk this report cannot tell you is encrypted, and that has
+		// already happened — it is not a risk, it is an event.
+		swap.Status = Fail
+	case s.SwapMaxKnown && s.SwapMaxZero:
+		// The only green case: nothing swapped AND the cgroup forbids it. Zero
+		// bytes without that control is luck, and luck is not a pass.
+		swap.Status = Pass
+	default:
+		swap.Status = Warn
+	}
+
 	nnp := Check{Title: "This process cannot gain privileges by running another program"}
 	switch {
 	case !s.NoNewPrivsKnown:
@@ -273,7 +290,7 @@ func sandboxChecks(s vayuveil.SandboxState) []Check {
 			"running from a unit that does not."
 	}
 
-	return []Check{devices, caps, nnp}
+	return []Check{devices, caps, nnp, swap}
 }
 
 // channelCheck turns one channel and its observation into a row.

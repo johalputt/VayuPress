@@ -72,6 +72,22 @@ type SandboxState struct {
 	// rather than as something this install enforces.
 	PtraceScope      int
 	PtraceScopeKnown bool
+
+	// SwapKiB is how much of THIS process's anonymous memory the kernel has
+	// written to disk, read from VmSwap in /proc/self/status.
+	//
+	// It is the one number here that is neither a control nor a configuration —
+	// it is an outcome, and it is the only evidence available that decrypted
+	// mail, session tokens or the keystore key have left RAM. Zero is a real and
+	// good answer, which is why Known is separate: a process with no VmSwap line
+	// and a process genuinely holding nothing on disk are different facts.
+	SwapKiB      int
+	SwapKiBKnown bool
+
+	// SwapMaxZero is whether this service's cgroup forbids swapping at all
+	// (memory.swap.max = 0). Unlike VmSwap it is a CONTROL, and it is the only
+	// one on this channel a service unit can actually assert.
+	SwapMaxZero, SwapMaxKnown bool
 }
 
 // DeniedDeviceCapture reports whether the service sandbox — not the absence of
@@ -188,4 +204,43 @@ func (s SandboxState) DescribeDevices() string {
 			"so can anything that compromises it. The shipped unit sets PrivateDevices=yes; an " +
 			"install reporting this row is running from a unit that does not."
 	}
+}
+
+// DescribeSwap renders what is known about this process's anonymous memory
+// reaching disk.
+//
+// Two facts, deliberately not averaged. VmSwap is an OUTCOME — bytes already
+// written — and memory.swap.max is a CONTROL. A row that folded them together
+// would let "nothing swapped yet" read as "cannot swap", which is the difference
+// between luck and a guarantee.
+func (s SandboxState) DescribeSwap() string {
+	if !s.Supported {
+		return "This platform does not report whether this process's memory has been written to disk."
+	}
+	var b strings.Builder
+	switch {
+	case !s.SwapKiBKnown:
+		b.WriteString("The kernel did not report VmSwap for this process, so whether any of its " +
+			"memory has been written to disk is not known. Reported as unverified rather than as none.")
+	case s.SwapKiB == 0:
+		b.WriteString("VmSwap is 0: none of this process's anonymous memory is currently on disk.")
+	default:
+		b.WriteString("VmSwap is " + strconv.Itoa(s.SwapKiB) + " kB — that much of this process's " +
+			"anonymous memory has been written to swap, and anything that was in it when the kernel " +
+			"paged it out is in that file: decrypted mail, session tokens, the keystore key. " +
+			"An encrypted data directory does not cover swap.")
+	}
+	switch {
+	case !s.SwapMaxKnown:
+		b.WriteString(" Whether this service is permitted to swap at all could not be read, so the " +
+			"zero above is an observation and not a guarantee.")
+	case s.SwapMaxZero:
+		b.WriteString(" This service's cgroup sets memory.swap.max=0, so the kernel cannot page it " +
+			"out at all — the reading above is a consequence of a control rather than of luck. " +
+			SandboxScope)
+	default:
+		b.WriteString(" This service's cgroup permits swapping, so a memory-pressure event can put " +
+			"its anonymous pages on disk at any time. A unit setting MemorySwapMax=0 forbids it.")
+	}
+	return b.String()
 }
