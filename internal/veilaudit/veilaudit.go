@@ -4,9 +4,19 @@
 // observation posture (ADR-0150 §4), modelled on internal/anonaudit.
 //
 // The single rule this package exists to enforce on itself: GREEN MEANS VERIFIED
-// ENFORCING, not "switched on". ADR-0150 is at P0 — the registry and the
-// inventory — and P0 enforces nothing. So this report emits NO passing row, by
-// construction, and says why on the page.
+// ENFORCING, not "switched on".
+//
+// A green row therefore requires two things, and the second is what most reports
+// skip: something has to be doing the work, AND this process has to have read
+// back from the kernel that it is still doing it at the moment the report ran.
+// Everything that clears that bar is process-scoped — the dumpability controls
+// and the service sandbox — and every one of those rows carries its scope in its
+// own text, because a reader who takes a process-scoped pass for a host-wide one
+// has been misled by the report whatever the words said elsewhere.
+//
+// Nothing about the OBSERVATION CHANNELS themselves can go green here. Enforcing
+// those needs a compositor, a sandbox policy and mandatory access control, which
+// ADR-0150 §0 records as the endpoint track and not this binary's work.
 //
 // That is not a limitation to be worked around. A posture report where
 // everything eventually goes green teaches the person to stop reading it, and a
@@ -90,13 +100,14 @@ func Run(in Inputs) []Check {
 	}
 
 	checks := []Check{{
-		Title:  "Phase 0 — declared, not enforced",
+		Title:  "Observation channels — declared here, enforced elsewhere",
 		Status: Info,
 		Detail: "Every observation channel below is REGISTERED: its policy, grant model, indicator " +
-			"and audit level are decided and pinned by test. None of it is ENFORCED by this install. " +
-			"Enforcement is ADR-0150 P1 and later, and lives in a compositor, a sandbox and a " +
-			"mandatory-access-control policy — not in this binary. No row here can go green until " +
-			"the thing it describes has been verified enforcing.",
+			"and audit level are decided and pinned by test. No channel is ENFORCED host-wide by " +
+			"this install, and none can be — enforcing an observation channel needs a compositor, a " +
+			"sandbox policy and mandatory access control, which ADR-0150 §0 records as the endpoint " +
+			"track and not this binary's work. The green rows above and below are process-scoped " +
+			"controls, each read back from the kernel, and each says so in its own text.",
 	}}
 
 	// The one row that is allowed to be green, because it is the one thing this
