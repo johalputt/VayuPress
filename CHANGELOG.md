@@ -6,6 +6,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **The race-detector job stopped being able to finish, and the cause was a
+  number nobody had revisited.** `go test -race` runs with `-timeout` applied to
+  each package binary, and that cap had been 120s since the suite was small
+  enough for it to be generous. It is not any more: race instrumentation costs
+  this suite roughly 5x, and the two heaviest packages measured at 110s and 148s
+  against the 120s cap. Nothing had regressed — the job had simply grown into a
+  limit that was set once and never looked at, and the failure it produced
+  (`panic: test timed out`) reads exactly like a deadlock, which is the one
+  thing the timeout is actually there to catch. The cap is now 600s.
+
+- **The backup suite no longer spends two minutes re-proving Argon2id.** The
+  sealed-stream tests flip every byte of the archive header and re-open it once
+  per flip, so a few hundred passphrase stretches at 64 MiB × 3 passes were
+  being run to prove things about the *format*. The cost is now a value the
+  package's own tests may lower, and only they may: the shipped profile
+  (Argon2id, 3 passes, 64 MiB, 2 lanes, 32-byte key) is unchanged and is pinned
+  by a test, a second test derives a key at the real cost to prove those
+  parameters work, and a third parses every non-test file in the package and
+  fails if any of them assigns to the cost — including through a field selector
+  or a pointer, because `activeKDF.memory = 8` is the easy edit and the hard one
+  to spot in review. A work factor a shipped code path can turn down is a
+  downgrade attack with a variable name. The package now runs in 42s under
+  `-race`, from 148s.
+
+---
+
 ## [3.17.3] — 2026-08-04
 
 ### Fixed

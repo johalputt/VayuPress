@@ -22,6 +22,14 @@ jobs:
           go-version: 'stable'
           cache: true
       - name: Run tests with race detector
+        # -timeout is PER PACKAGE BINARY, and 120s was set when the suite was
+        # small enough for that to be generous. It is not any more: race
+        # instrumentation costs this suite roughly 5x, and the two heaviest
+        # packages were measured at 110s and 148s against that cap. The job did
+        # not start failing because something regressed — it started failing
+        # because a knob nobody had revisited finally bound. 600s restores the
+        # headroom the number was meant to carry; a genuine deadlock still trips
+        # it, which is the only thing the timeout is here to catch.
         run: |
-          go test -race -timeout=120s -count=1 ./...
+          go test -race -timeout=600s -count=1 ./...
           echo "✅ no data races detected"

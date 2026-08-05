@@ -90,9 +90,41 @@ var (
 	ErrTruncated = errors.New("backup: archive ends without its final marker — it is incomplete or was truncated")
 )
 
+// kdfCost is the Argon2id work factor for the passphrase → KEK stretch. keyLen
+// is part of the struct so the whole contract travels together, but it is not a
+// cost knob: AES-256 needs 32 bytes and nothing may hand back fewer.
+type kdfCost struct {
+	time    uint32
+	memory  uint32
+	threads uint8
+	keyLen  uint32
+}
+
+// shippedKDF is the cost every real archive is sealed and opened with. Its
+// value is pinned by a test rather than left to whoever edits this line next.
+var shippedKDF = kdfCost{time: 3, memory: 64 * 1024, threads: 2, keyLen: 32}
+
+// activeKDF is what deriveKey actually uses. It exists because 64 MiB × 3
+// passes, run once per Seal and once per Open, is roughly a quarter of a second
+// — and the format suite deliberately opens the same archive a few hundred
+// times, once per byte it flips. Under the race detector that is two and a half
+// minutes of proving the same KDF over and over while proving nothing about the
+// format, which is what the suite is for.
+//
+// So the format tests lower it and this package's own tests are the ONLY thing
+// that may. Two tests hold that line: one pins shippedKDF's numbers, the other
+// parses every non-test file in the package and fails if any of them assigns
+// here. A cost knob a shipped code path can turn is a downgrade attack with a
+// variable name.
+var activeKDF = shippedKDF
+
 // deriveKey stretches the passphrase into the AES-256 key-encryption key.
 func deriveKey(passphrase string, salt []byte) []byte {
-	return argon2.IDKey([]byte(passphrase), salt, 3, 64*1024, 2, 32)
+	return deriveKeyWith(activeKDF, passphrase, salt)
+}
+
+func deriveKeyWith(c kdfCost, passphrase string, salt []byte) []byte {
+	return argon2.IDKey([]byte(passphrase), salt, c.time, c.memory, c.threads, c.keyLen)
 }
 
 // frameNonce builds the v1 positional nonce (counter only).
