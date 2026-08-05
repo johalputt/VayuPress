@@ -146,6 +146,78 @@ self_upgrade_helpers() {
 
 self_upgrade_helpers
 
+# ensure_veilharden_units writes the VayuVeil hardening watcher if it is absent.
+#
+# WHY THIS LIVES HERE, in a script about certificates.
+#
+# self_upgrade_helpers delivers new root-side SCRIPTS to every install on the
+# daily sweep, with no terminal. It does not write systemd UNITS — and a helper
+# with no unit watching for its request is a helper nothing can ever run. The
+# VayuVeil hardening worker shipped that way: the script would arrive on every
+# install and the panel would go on showing a copyable curl-to-root command
+# forever, because the watcher it also needs is only written by the one-time
+# installer. That is the shape this project has a standing rule about: a repair
+# that reaches only the operators willing to open a shell has reached nobody.
+#
+# So the daily sweep closes it. Fixed content, root-owned, no input from the web
+# app — the privilege boundary is exactly the one already in force here.
+#
+# It touches ONLY the veilharden units. Rewriting the provisioning units while
+# running from them is a different and much worse idea.
+ensure_veilharden_units() {
+  [[ -x "${LIB_DIR}/vayuveil-harden.sh" ]] || return 0
+  command -v systemctl >/dev/null 2>&1 || return 0
+  # Idempotent: present and enabled is the common case, and rewriting the files
+  # on every daily run would churn systemd for nothing.
+  if [[ -f /etc/systemd/system/vayupress-veilharden.path ]] &&
+     [[ -f /etc/systemd/system/vayupress-veilharden.service ]] &&
+     systemctl is-enabled --quiet vayupress-veilharden.path 2>/dev/null; then
+    return 0
+  fi
+  log "installing the VayuVeil hardening watcher (absent or not enabled)"
+
+  cat > /etc/systemd/system/vayupress-veilharden.service <<'SYSTEMD'
+[Unit]
+Description=VayuPress — apply the VayuVeil hardening drop-in and verify the service came back
+Documentation=https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0150-vayuveil-endpoint-observation-control.md
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/vayupress/env
+ExecStart=/usr/local/lib/vayupress/vayuveil-harden.sh
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vayupress-veilharden
+SYSTEMD
+
+  cat > /etc/systemd/system/vayupress-veilharden.path <<'SYSTEMD'
+[Unit]
+Description=VayuPress — watch for a VayuVeil hardening request
+
+[Path]
+# The unprivileged service creates this file to request a run. Its CONTENTS are
+# never read: the request is the file's existence and nothing more.
+PathExists=/var/lib/vayupress/veilharden.request
+Unit=vayupress-veilharden.service
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD
+
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  # REPORTED, not discarded. A watcher written and not enabled is the dead-button
+  # state: the panel's request is created, nothing consumes it, and the card says
+  # "requested" until it times out.
+  if enable_out="$(systemctl enable --now vayupress-veilharden.path 2>&1)"; then
+    log "VayuVeil hardening watcher installed and enabled"
+  else
+    log "WARNING: the VayuVeil hardening watcher was written but could NOT be enabled: ${enable_out:-no output}"
+  fi
+}
+
+ensure_veilharden_units
+
 started="$(date -u +%FT%TZ)"
 log "starting subdomain provisioning at ${started}"
 

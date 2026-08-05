@@ -158,6 +158,7 @@ jobs:
           cp scripts/setup-mcp-subdomain.sh       dist/provision/
           cp scripts/setup-talk-subdomain.sh      dist/provision/
           cp scripts/setup-openpgpkey-subdomain.sh dist/provision/
+          cp scripts/vayuveil-harden.sh           dist/provision/
           PROV_VER="$(printf '%s' "${{ steps.ver.outputs.version }}" | sed 's/^v//')"
           printf '%s' "$PROV_VER" > dist/provision/helpers.version
           # Stamped INTO the driver as well as beside it, for the reason the agent

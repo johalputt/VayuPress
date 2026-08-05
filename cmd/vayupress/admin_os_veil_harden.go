@@ -267,15 +267,23 @@ func veilHardenCard(st vayuveil.HardenState, sb vayuveil.SandboxState, processSt
 	// The action, or the one command that genuinely needs root.
 	switch {
 	case !st.Installed:
-		b.WriteString(`<p class="text-sm muted">Installing a <code>systemd</code> unit needs root, and ` +
-			`this service deliberately cannot become root — which is itself one of the controls above. ` +
-			`This one command installs the root-side worker and its watcher, and touches neither the ` +
-			`binary nor the database:</p>` +
+		// The daily sweep is named FIRST, and deliberately. It is how this
+		// arrives on an install that is already running: the provisioning worker
+		// upgrades its own helpers from the signed release bundle every day and
+		// now writes this watcher too. Leading with the command would send an
+		// operator to a terminal for something already on its way — the exact
+		// failure this project has a standing rule about, in its politest form.
+		b.WriteString(`<p class="text-sm muted">The root-side worker is not installed here <b>yet</b>. ` +
+			`If subdomain provisioning is set up on this server, the daily sweep installs it on its ` +
+			`own within a day, from the signed release bundle, with no terminal use at all — this ` +
+			`page will then show the button instead of this paragraph.</p>` +
+			`<p class="text-sm muted">Installing a <code>systemd</code> unit needs root and this ` +
+			`service deliberately cannot become root, which is itself one of the controls above. So if ` +
+			`provisioning is not set up, or you would rather not wait for the sweep, this one command ` +
+			`does it now and touches neither the binary nor the database:</p>` +
 			`<div class="vm-row"><code class="mono text-xs vm-pgp__wkd" data-veilharden-cmd>` +
 			esc(veilHardenInstallCommand) + `</code>` +
-			`<button type="button" class="btn btn--sm" data-veilharden-copy>Copy</button></div>` +
-			`<p class="text-xs muted">After it finishes, this page requests hardening on its own and ` +
-			`there is no further terminal use.</p>`)
+			`<button type="button" class="btn btn--sm" data-veilharden-copy>Copy</button></div>`)
 	case len(missing) == 0:
 		b.WriteString(`<p class="text-sm muted">Every directive in the baseline is already in force for ` +
 			`this process, so there is nothing to request. The button is not shown rather than shown ` +

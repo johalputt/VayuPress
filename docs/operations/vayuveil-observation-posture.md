@@ -149,9 +149,18 @@ reporting on.
 and it is a `Fail` because it is the state in which you have been told a control
 exists that does not.
 
-If the card offers a copyable command instead of a button, the root-side worker
-is not installed on this host — one command installs it, and after that this
-page requests hardening on its own.
+### If the card shows a command instead of a button
+
+The root-side worker is not on this host **yet**. If subdomain provisioning is
+set up here, the daily sweep installs it within a day from the signed release
+bundle, with no terminal use — the card will then show the button instead. The
+copyable command is there for a host without provisioning, or for an operator
+who would rather not wait.
+
+That the sweep does this at all is a fix in its own right. The self-upgrade path
+delivers root-side **scripts** to every install and does not write systemd
+**units**, so the hardening worker arrived on machines with nothing watching for
+its request. The sweep now writes and enables the watcher too.
 
 ### Swap — the one that catches people out
 

@@ -150,3 +150,23 @@ func TestTheHardeningCardIsCSPSafe(t *testing.T) {
 	assertCSPSafe(t, "veil hardening card",
 		veilHardenCard(vayuveil.HardenState{Installed: true}, veilHardenBare(), time.Now()))
 }
+
+// When the worker is absent, the page must lead with the fact that it ARRIVES ON
+// ITS OWN, not with a command. The daily provisioning sweep installs it from the
+// signed release bundle; sending an operator to a terminal for something already
+// on its way is the standing failure in its politest form.
+func TestTheMissingWorkerCardLeadsWithTheAutomaticPathNotTheCommand(t *testing.T) {
+	card := veilHardenCard(vayuveil.HardenState{}, veilHardenBare(), time.Now())
+
+	sweepAt := strings.Index(card, "daily sweep installs it on its own")
+	cmdAt := strings.Index(card, "data-veilharden-cmd")
+	if sweepAt < 0 {
+		t.Fatal("the card never says the worker arrives on its own")
+	}
+	if cmdAt < 0 {
+		t.Fatal("the copyable command is gone; an install without provisioning would have no path at all")
+	}
+	if sweepAt > cmdAt {
+		t.Error("the card offers the terminal command before mentioning that it arrives on its own")
+	}
+}

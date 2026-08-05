@@ -6,6 +6,51 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.9] — 2026-08-05
+
+### Fixed
+
+- **The VayuVeil hardening worker shipped where no existing install could reach
+  it.** Ships on its own, immediately, under the standing exception for something
+  already released and not working: v3.17.8 put the panel button, the report and
+  seventeen killed mutations in front of a root-side script that no deployed
+  machine was ever going to receive. Every gate was green. The feature was in the
+  release notes and on nobody's server.
+
+  Two links of the delivery chain were broken, and the second is the one worth
+  reading. `vayuveil-harden.sh` was added to the one-time installer's helper list
+  but not to the `cp` block that packs the signed `vayuprovision-helpers.tar.gz`
+  — the bundle the provisioning worker self-upgrades from daily, and the **only**
+  path by which a root-side helper reaches an install that is already running. So
+  it would have arrived on fresh deployments and never on existing ones.
+
+  And that self-upgrade installs **scripts**, not systemd **units**. A helper
+  whose request nothing watches for is a helper that can never run, so even with
+  the bundle fixed the panel would have gone on printing a copyable
+  curl-to-root command indefinitely. The daily sweep now writes and enables the
+  watcher itself — idempotently, touching only the VayuVeil units and never the
+  provisioning units it is running from.
+
+  This was found by downloading the published artifact and listing it, which is
+  the only reason it was found at all: no test in the repository was looking at
+  whether a root-side fix could physically arrive. Four now are, and they assert
+  the chain rather than the instance — every helper the installer knows about is
+  packed into the release bundle, the worker path the binary checks for is one
+  something delivers, the watcher is written **to its real path** by the daily
+  sweep and enabled rather than merely written, and the sweep never rewrites the
+  unit it is itself running under.
+
+  Twenty-one mutations across this work, all killed. One of them survived its
+  first run and is the reason the third assertion pins a destination: redirecting
+  the unit body to `/dev/null` left the unit's *name* in the script — in the
+  `PathExists=` line and in the enable check — so a contains-check on the name
+  passed comfortably while the file was written nowhere.
+
+- The VayuVeil card now leads with the fact that the worker **arrives on its
+  own**, and offers the command second, for a host without provisioning or an
+  operator who would rather not wait. Sending someone to a terminal for something
+  already on its way is the standing failure in its politest form.
+
 ## [3.17.8] — 2026-08-05
 
 ### Added
