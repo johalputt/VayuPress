@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
@@ -52,6 +53,12 @@ func (a *App) handleOSVayuVeil(w http.ResponseWriter, r *http.Request) {
 	// Read back from the kernel every time, never cached from boot. This is the
 	// one row permitted to be green and it earns that by being checked now.
 	self := vayuveil.VerifyProcessHardening()
+	// Read at report time. Both of these feed the one row that distinguishes a
+	// directive that was written from a directive that is in force, and that
+	// distinction is only computable by comparing when the drop-in appeared with
+	// when this process started.
+	sandbox := vayuveil.ReadSandbox()
+	harden := readVeilHardenState()
 	checks := veilaudit.Run(veilaudit.Inputs{
 		Enabled:      enabled,
 		Channels:     vayuveil.Channels(),
@@ -67,11 +74,14 @@ func (a *App) handleOSVayuVeil(w http.ResponseWriter, r *http.Request) {
 		// Read at report time, not cached at boot. A unit can be edited and the
 		// service restarted underneath a long-running process's memory of it,
 		// and a remembered answer is configuration rather than evidence.
-		Sandbox: vayuveil.ReadSandbox(),
-		Host:    vayuveil.ReadHostPosture(),
+		Sandbox:      sandbox,
+		Host:         vayuveil.ReadHostPosture(),
+		Harden:       harden,
+		ProcessStart: bootTime,
 	})
 
-	body := vayuVeilPage(enabled, vayuveil.Channels(), obs, checks, self, red)
+	body := vayuVeilPage(enabled, vayuveil.Channels(), obs, checks, self, red,
+		harden, sandbox, bootTime)
 	full := adminOSShellHead(nonce, "VayuVeil", "vayuveil", cfg) + body +
 		adminOSShellFoot(nonce, vayuVeilScript, pageUsesAlpine(body))
 	writeOSHTML(w, r, full)
@@ -129,7 +139,8 @@ func veilStatusChip(s veilaudit.Status) string {
 // asserted on without a request, a settings store or a host to probe.
 func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 	obs map[vayuveil.ChannelID]vayuveil.Observation, checks []veilaudit.Check,
-	self vayuveil.SelfHardening, red []vayuveil.AttackResult) string {
+	self vayuveil.SelfHardening, red []vayuveil.AttackResult,
+	harden vayuveil.HardenState, sandbox vayuveil.SandboxState, processStart time.Time) string {
 	esc := html.EscapeString
 	var b strings.Builder
 
@@ -207,6 +218,12 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 			`<span class="mono">VAYU_ALLOW_COREDUMP=1</span> if you are debugging a crash and need a `+
 			`core file; this page will then say so, because it reports what is true rather than which `+
 			`branch ran.</p></div>`))
+
+	// ── Asking root for what this process cannot apply itself ─────────────────
+	// Directly after the row that says what IS enforced, because the two are the
+	// same conversation: here is what holds, and here is the only honest way to
+	// close what does not.
+	b.WriteString(veilHardenCard(harden, sandbox, processStart))
 
 	// ── The capture suite ─────────────────────────────────────────────────────
 	captured, refused, notPresent, notAttempted := vayuveil.RedTeamSummary(red)
@@ -423,6 +440,27 @@ if(btn)btn.addEventListener('click',function(){
       if(!res.ok){if(st)st.textContent=(res.j&&res.j.message)||'Could not save';return;}
       location.reload();})
     .catch(function(e){btn.disabled=false; if(st)st.textContent='Error: '+e;});
+});
+var cp=document.querySelector('[data-veilharden-copy]');
+if(cp)cp.addEventListener('click',function(){
+  var el=document.querySelector('[data-veilharden-cmd]'); if(!el)return;
+  navigator.clipboard.writeText(el.textContent||'').then(function(){cp.textContent='Copied';});
+});
+var hb=document.querySelector('[data-veilharden-run]');
+var hs=document.querySelector('[data-veilharden-status]');
+if(hb)hb.addEventListener('click',function(){
+  hb.disabled=true; if(hs)hs.textContent='Requesting…';
+  fetch('/os/api/vayuveil/harden',{method:'POST',headers:{'X-CSRF-Token':csrf()}})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){
+      if(!res.ok){hb.disabled=false; if(hs)hs.textContent=(res.j&&res.j.message)||'Could not request';return;}
+      /* Deliberately NOT reloading. The worker restarts the service, so an
+         immediate reload races the shutdown and shows a connection error that
+         looks like the request failed. Say what is happening instead and let the
+         operator reload when the service is back — the verdict comes from the
+         kernel either way, never from this response. */
+      if(hs)hs.textContent='Requested. The service restarts to apply it — reload this page in a moment.';})
+    .catch(function(e){hb.disabled=false; if(hs)hs.textContent='Error: '+e;});
 });
 })();`
 

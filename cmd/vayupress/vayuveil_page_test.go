@@ -12,6 +12,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/vayuveil"
 	"github.com/johalputt/vayupress/internal/veilaudit"
@@ -28,7 +29,8 @@ func veilPageFor(t *testing.T, enabled bool, presence vayuveil.Presence) string 
 		Enforced: map[vayuveil.Needs]bool{},
 	})
 	return vayuVeilPage(enabled, vayuveil.Channels(), obs, checks,
-		vayuveil.SelfHardening{Supported: true, Known: true, Undumpable: true}, nil)
+		vayuveil.SelfHardening{Supported: true, Known: true, Undumpable: true}, nil,
+		vayuveil.HardenState{}, vayuveil.SandboxState{}, time.Time{})
 }
 
 // veilPageWith renders the page with a given hardening state and suite run, for
@@ -43,7 +45,8 @@ func veilPageWith(t *testing.T, self vayuveil.SelfHardening, red []vayuveil.Atta
 		Enabled: true, Channels: vayuveil.Channels(), Observations: obs,
 		Enforced: map[vayuveil.Needs]bool{}, SelfHardening: self, RedTeam: red,
 	})
-	return vayuVeilPage(true, vayuveil.Channels(), obs, checks, self, red)
+	return vayuVeilPage(true, vayuveil.Channels(), obs, checks, self, red,
+		vayuveil.HardenState{}, vayuveil.SandboxState{}, time.Time{})
 }
 
 // THE test for this page. No wording anywhere may tell a reader that anything is

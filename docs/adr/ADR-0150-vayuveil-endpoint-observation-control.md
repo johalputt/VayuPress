@@ -2,7 +2,8 @@
 
 - **Status:** Accepted — scope corrected 2026-08-05 (see §0)
 - **Date:** 2026-07-29 (registry and posture report shipped 2026-08-04; scope
-  corrected 2026-08-05, server track at six of its seven steps — §5 marks each)
+  corrected 2026-08-05, server track complete at all seven steps 2026-08-05 —
+  §5 marks each)
 - **Relates to:** ADR-0141 (VayuOS Spaces), ADR-0143 (Tor Space anonymity model),
   ADR-0123 (privileged agent / privilege separation)
 
@@ -33,16 +34,19 @@ So the work splits in two, and only one half belongs to this repository:
 
 | Track | What it covers | Home |
 | --- | --- | --- |
-| **Server track (S)** | What this process can verifiably do to protect *itself*, and what it can honestly *report* about the host it runs on | **This ADR. Six of seven steps shipped; §5 marks each.** |
+| **Server track (S)** | What this process can verifiably do to protect *itself*, and what it can honestly *report* about the host it runs on | **This ADR. All seven steps shipped; §5 marks each.** |
 | **Endpoint track (E)** | The compositor, grants, sandboxing, MAC, accessibility mediation, input/clipboard policy, egress correlation | A desktop operating system. **Not this binary, and not on its roadmap.** |
 
 What this document is now: §1 states the question a VayuPress host actually
 poses. §2 is a threat model whose actors are the ones on a server — a process
 under the same account, an artifact this process left behind, another local
 account. §5 is a build order every step of which this binary CAN run, which is
-the property the old one lacked; six of the seven are built and the last one
-carries NOT BUILT on its own line, because a summary word covering a mixed state
-is how "planned" became "coming" the first time.
+the property the old one lacked, and all seven are now built. That is stated
+here as a count rather than as a word, because a summary word covering a mixed
+state is how "planned" became "coming" the first time — and because "complete"
+here means *the seven steps in §5 are done*, not that the observation channels in
+§3.1 are enforced. They are not, they cannot be from a server, and §8 says so
+permanently.
 
 The desktop channels remain enumerated in §3.1 and remain probed, because "absent
 from this host" is a fact worth proving, and because an install sharing a machine
@@ -359,14 +363,42 @@ process can read and an operator benefits from seeing. It must be rendered as
 **not** attestation: nothing here measures the boot chain or proves the
 configuration to a remote party.
 
-**S6 — Root-requested hardening, requested by the panel and verified after. NOT BUILT.**
-Unit-level directives (`NoNewPrivileges=`, `ProtectSystem=`, `ProtectHome=`,
-`PrivateTmp=`) need root and therefore go through the existing
-provision-request path: the panel **requests** and **reports what happened**, per
-the standing rule that a fix reaches the operator through the binary rather than
-through a command in a chat reply. Whatever the root side does is then verified
-the same way as everything else — read back from `/proc/self/status` — because a
-directive in a unit file that did not take is a configuration, not a control.
+**S6 — Root-requested hardening, requested by the panel and verified after. SHIPPED.**
+Unit-level directives need root, so they go through the same request path as
+subdomain provisioning: the panel writes an empty flag file, a root-side `.path`
+unit runs a fixed root-owned worker, and the panel then **reports what
+happened**. Nothing an unprivileged process can express reaches root except
+"go" — the directive list lives in the worker and in `HardenBaseline`, both
+root-owned.
+
+Two decisions did the real work here, and both narrowed the step rather than
+widening it.
+
+*What may be written.* Only directives whose effect this process can read back
+afterwards: `NoNewPrivileges=`, `PrivateDevices=`, `PrivateTmp=`, `ProtectHome=`
+and `MemorySwapMax=0`. Five. Everything else systemd offers is refused **on the
+page, with its reason**, because a directive that cannot be re-read would be
+written, reported as applied, and never checked again — a configuration reported
+as a control, arriving through a button labelled "harden". `ProtectSystem=strict`
+is the sharpest case: it is in the shipped unit and correct there, and it is
+correct there *only* because that unit also carries a `ReadWritePaths=` list
+matched to the install's data directory. A drop-in written from a panel cannot
+know that list, and a wrong one means the service returns from its next restart
+unable to write its own database.
+
+*What "applied" is allowed to mean.* Systemd applies unit directives at exec, so
+a drop-in written under a running process changes nothing about that process.
+The panel therefore never treats the result file as the verdict — the kernel is,
+read on every page load — and the result file supplies only the timestamp that
+tells **awaiting restart** apart from **written and did not take**. The second is
+the only `Fail` this row can produce, and it is a `Fail` precisely because it is
+the state in which an operator has been told a control exists that does not.
+
+The worker restarts the service so the directives take effect, samples the unit
+repeatedly rather than once (a crash loop with a five-second retry is *active*
+if you look at the wrong moment), and if it does not stay up it **removes the
+drop-in and restarts without it**. A hardening button that can lock an operator
+out of their own panel is worse than the exposure it closes.
 
 **S7 — Audit trail and operator documentation. SHIPPED.**
 L8 narrowed to what this track can honestly record: what the capture suite found

@@ -583,6 +583,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuveil", a.handleOSVayuVeil)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuflow", a.handleOSVayuFlow)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuveil/toggle", a.handleOSVayuVeilToggle)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuveil/harden", a.handleOSVeilHardenRequest)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuflow/arm", a.handleOSVayuFlowArm)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuflow/run", a.handleOSVayuFlowRun)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuflow/save", a.handleOSVayuFlowSave)

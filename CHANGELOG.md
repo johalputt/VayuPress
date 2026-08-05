@@ -10,6 +10,65 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **S6 — unit hardening you can request from the panel, and a report that
+  refuses to call it applied until the kernel agrees.** VayuVeil could already
+  tell an operator that `NoNewPrivileges` was not in force for this process. The
+  only thing it could do about it was describe the problem, which is a repair
+  narrated rather than performed. Editing a systemd unit needs root and this
+  service deliberately cannot become root — so the panel **requests** and
+  **reports what happened**: an empty flag file, a root-side `.path` unit, a
+  fixed root-owned worker. Nothing an unprivileged process can express reaches
+  root except "go"; the directive list lives in the worker, not in the request.
+
+  **Five directives are written and no more**, and the rule that picks them is
+  the one this whole subsystem runs on: a directive earns its place only if this
+  process can read its effect back afterwards. `NoNewPrivileges=`,
+  `PrivateDevices=`, `PrivateTmp=`, `ProtectHome=` and `MemorySwapMax=0` — read
+  back from `PR_GET_NO_NEW_PRIVS`, the mount table and the service's own cgroup.
+  Everything else systemd offers is **refused on the page, with its reason**,
+  because a directive that cannot be re-read would be written, reported as
+  applied, and never checked again. That is a configuration reported as a
+  control, arriving through a button labelled "harden".
+
+  `ProtectSystem=strict` is the refusal worth naming. It is in the shipped unit
+  and correct there, and correct there *only* because that unit also carries a
+  `ReadWritePaths=` list matched to the install's data directory. A drop-in
+  written from a panel cannot know that list, and a wrong one returns the service
+  from its next restart unable to write its own database.
+
+  **A drop-in is not a control until the process restarts into it**, and the card
+  says so rather than rounding up. Systemd applies unit directives at exec, so
+  the result file is never the verdict — the kernel is, read on every page load,
+  and the result file supplies only the timestamp that separates *awaiting
+  restart* from *written and did not take*. The second is the sole `Fail` this
+  row can produce, because it is the state in which an operator has been told a
+  control exists that does not. The row itself is never green: the controls have
+  their own rows already, and a summary row going green would inflate the
+  verified-enforcing count with a control that does not separately exist.
+
+  The worker restarts the service, then **samples the unit repeatedly rather than
+  once** — a crash loop with a five-second retry reads as *active* if you look at
+  the wrong moment — and if it does not stay up it removes the drop-in and
+  restarts without it. A hardening button that can lock an operator out of their
+  own panel is worse than the exposure it closes. `ProtectHome` is skipped, with
+  the reason shown, on an install whose data directory lives under `/home` or
+  `/root`; hardening that stops the service opening its own database is an
+  outage, not a control.
+
+  Twelve mutations, all killed, two re-run after the first attempt failed to
+  compile or turned out to be weaker than intended. Two findings came out of
+  writing the tests rather than the code: `InForce` was passing a stale `true`
+  through beside a false *known* bit, which is a value nothing verified handed to
+  any caller that read only the first return; and the "unhardened" fixture was
+  `SandboxState{Supported: true}`, which is the weaker state *nothing could be
+  read* — a directive answering identically to both would have been verifying the
+  read rather than the control.
+
+  This completes the ADR-0150 server track: seven steps of seven. That means the
+  seven steps in §5 are done, **not** that the observation channels in §3.1 are
+  enforced — they are not, they cannot be from a server, and §8 records that
+  permanently.
+
 - **S5 — the host posture read-out. VayuVeil now reports whether the firmware
   checked a signature on what this host booted, and whether a TPM is present.**
   Both are facts about the machine, read from `/sys` and repeated; neither is

@@ -33,7 +33,8 @@ die()  { echo -e "${RED}❌ $*${NC}" >&2; exit 1; }
 LIB_DIR=/usr/local/lib/vayupress
 RAW="https://raw.githubusercontent.com/johalputt/VayuPress/main/scripts"
 HELPERS=(provision-subdomains.sh setup-openpgpkey-subdomain.sh setup-talk-subdomain.sh
-         setup-mcp-subdomain.sh setup-api-subdomain.sh setup-vayudomain.sh)
+         setup-mcp-subdomain.sh setup-api-subdomain.sh setup-vayudomain.sh
+         vayuveil-harden.sh)
 
 # ── 1. Find the helpers locally, or fetch them ───────────────────────────────
 # Prefer a local checkout so an air-gapped or pinned install is not silently
@@ -135,6 +136,43 @@ Persistent=true
 WantedBy=timers.target
 SYSTEMD
 
+# ── VayuVeil unit hardening (ADR-0150 S6) ────────────────────────────────────
+# Requested from VayuOS → VayuVeil, never scheduled. There is deliberately NO
+# .timer beside this one: the worker restarts the service so the directives take
+# effect, and a daily sweep that bounces a live install to re-apply hardening it
+# already has would be a self-inflicted outage on a schedule.
+cat > /etc/systemd/system/vayupress-veilharden.service <<'SYSTEMD'
+[Unit]
+Description=VayuPress — apply the VayuVeil hardening drop-in and verify the service came back
+Documentation=https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0150-vayuveil-endpoint-observation-control.md
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/vayupress/env
+# Root because editing a unit and reloading systemd require it. A fixed,
+# root-owned path with no arguments — the requesting service supplies nothing
+# that reaches here, and the directive list is inside the script.
+ExecStart=/usr/local/lib/vayupress/vayuveil-harden.sh
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vayupress-veilharden
+SYSTEMD
+
+cat > /etc/systemd/system/vayupress-veilharden.path <<'SYSTEMD'
+[Unit]
+Description=VayuPress — watch for a VayuVeil hardening request
+
+[Path]
+# The unprivileged service creates this file to request a run. Its CONTENTS are
+# never read: the request is the file's existence and nothing more.
+PathExists=/var/lib/vayupress/veilharden.request
+Unit=vayupress-veilharden.service
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD
+
 systemctl daemon-reload
 # REPORTED, NOT DISCARDED. This line used to end in `|| true` with its output
 # sent to /dev/null — the same shape as the reload bug that cost this project a
@@ -144,7 +182,8 @@ systemctl daemon-reload
 # only pass that ever runs, and because the helper self-upgrade only happens
 # when the worker runs, no fix shipped afterwards can reach this machine. From
 # the panel that is indistinguishable from a repair that did not work.
-if enable_out="$(systemctl enable --now vayupress-provision.path vayupress-provision.timer 2>&1)"; then
+if enable_out="$(systemctl enable --now vayupress-provision.path vayupress-provision.timer \
+                                       vayupress-veilharden.path 2>&1)"; then
   ok "Provisioning units installed and enabled"
 else
   warn "The provisioning units were written but could NOT be enabled. systemd said:"
@@ -154,9 +193,21 @@ else
   warn "certificate helpers re-arms these units without needing a shell."
 fi
 
+if [[ -x "${LIB_DIR}/vayuveil-harden.sh" ]]; then
+  ok "VayuVeil hardening worker installed — request it from VayuOS → VayuVeil"
+else
+  warn "The VayuVeil hardening worker is not present; VayuOS → VayuVeil will say so rather than"
+  warn "offering a button that does nothing."
+fi
+
 # ── 3. Run one pass now ──────────────────────────────────────────────────────
 # Immediately, rather than waiting for the daily timer: the operator ran this
 # because a certificate is missing right now.
+#
+# The hardening worker is NOT run here. It restarts the VayuPress service, and a
+# script installed to fix a missing certificate must not take a live site down as
+# a side effect of something the operator did not ask for. It runs when the panel
+# requests it, which is the point at which the operator has read what it does.
 info "Provisioning subdomains…"
 if bash "${LIB_DIR}/provision-subdomains.sh"; then
   ok "Provisioning finished."

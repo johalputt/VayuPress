@@ -27,6 +27,7 @@ package veilaudit
 
 import (
 	"sort"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/vayuveil"
 )
@@ -94,6 +95,17 @@ type Inputs struct {
 	// so, because "Secure Boot: enabled" on a security page reads as a guarantee
 	// this subsystem has not earned.
 	Host vayuveil.HostPosture
+	// Harden is what the root-side worker last did (§5 S6), and ProcessStart is
+	// when this process began.
+	//
+	// The second is not decoration. systemd applies unit directives at exec, so
+	// a drop-in written after this process started cannot affect it — and the
+	// only way to tell "hardening was requested a moment ago and needs a
+	// restart" from "hardening was written and did not take" is to compare those
+	// two times. Without ProcessStart the report would have to guess, and both
+	// guesses are wrong in a way the operator cannot check.
+	Harden       vayuveil.HardenState
+	ProcessStart time.Time
 }
 
 // Run computes the report.
@@ -131,6 +143,11 @@ func Run(in Inputs) []Check {
 	// one says — crediting VayuVeil for systemd's work would be the same
 	// misattribution §8 forbids, pointed inward.
 	checks = append(checks, sandboxChecks(in.Sandbox)...)
+
+	// The request-and-verify chain, placed immediately after the rows it is about
+	// so a reader meets "this is not in force" and "here is what was asked for"
+	// together rather than three screens apart.
+	checks = append(checks, hardenCheck(in.Harden, in.Sandbox, in.ProcessStart))
 
 	// What the host already has. Placed after the process rows so a reader meets
 	// what this binary DID before what the machine happens to offer, and never
@@ -234,6 +251,48 @@ func redTeamChecks(rs []vayuveil.AttackResult, sb vayuveil.SandboxState) []Check
 		}
 	}
 	return out
+}
+
+// hardenCheck reports the gap between a unit directive being WRITTEN and being
+// IN FORCE (§5 S6).
+//
+// It is never a Pass, and the reason is worth stating because it looks like a
+// missed opportunity. Each directive in the baseline already has its own row
+// above, computed from the kernel — devices, capabilities, no-new-privs, swap.
+// A second green row summarising those would inflate the "verified enforcing"
+// count with a control that does not exist separately from the ones already
+// counted, which is the double-counting this repository has a standing note
+// about. This row's job is the *relationship*: whether something was written,
+// whether it took, and whether the difference is being reported honestly.
+func hardenCheck(h vayuveil.HardenState, s vayuveil.SandboxState, processStart time.Time) Check {
+	const title = "Requested unit hardening has actually taken effect"
+	v := vayuveil.ReconcileHardening(h, s, processStart)
+	detail := vayuveil.DescribeHardenVerdict(v, vayuveil.UnverifiedHardening(s))
+	if h.Detail != "" {
+		detail += " The worker reported: " + h.Detail
+	}
+	c := Check{Title: title, Detail: detail}
+	switch v {
+	case vayuveil.HardenInForce, vayuveil.HardenPending:
+		// Info, not Pass. Nothing on this row is a control; the controls are the
+		// rows above, and this one says only that there is nothing left to ask for.
+		c.Status = Info
+	case vayuveil.HardenDidNotTake:
+		// The one Fail. A drop-in that predates this process and still is not in
+		// force means an operator has been told hardening was applied while the
+		// process runs without it — a claim the page made and the kernel denies.
+		c.Status = Fail
+	case vayuveil.HardenUnknown:
+		c.Status = Unverified
+	default:
+		// Reverted, Failed, AwaitingRestart, NotRequested. Each is a real
+		// residual exposure the operator should understand, which is Warn's job.
+		// AwaitingRestart in particular is NOT Info: the exposure is live until
+		// the service restarts, and toning it down to context would let a page
+		// that has changed nothing yet read as a page that has fixed something.
+		c.Status = Warn
+	}
+	return c
 }
 
 // hostChecks renders the two host facts.

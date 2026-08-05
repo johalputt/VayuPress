@@ -78,7 +78,76 @@ and this report is built on what the process got.
   the in-app updater's re-exec and the Tor Space child keep it.
 
 If a row here warns, it names the missing directive. A warning you cannot act on
-is a warning wasted.
+is a warning wasted — and the **Unit hardening** card below is how you act on it
+without opening a terminal.
+
+## Unit hardening — asking root, then checking it took
+
+The service runs unprivileged and cannot edit its own systemd unit; that is one
+of the controls, not a limitation to work around. So the panel **requests** and
+**reports what happened**.
+
+Press **Request hardening and restart** on the VayuVeil page. The panel writes an
+empty flag file, a root-side `.path` unit runs a fixed root-owned worker, and the
+worker writes a drop-in at
+`/etc/systemd/system/vayupress.service.d/20-vayuveil-hardening.conf`. Nothing
+you can do from the console influences which directives root writes — the list
+lives in the worker.
+
+**Only five directives are ever written**, and the rule that picks them is the
+rule the whole subsystem runs on: a directive earns its place only if this
+process can read its effect back afterwards.
+
+| Directive | What it denies | Read back from |
+| --- | --- | --- |
+| `NoNewPrivileges=yes` | privilege gain through a setuid binary or file capability | `PR_GET_NO_NEW_PRIVS` |
+| `PrivateDevices=yes` | the framebuffer, input event devices and DRM card nodes | `/proc/self/mountinfo` |
+| `PrivateTmp=yes` | `/tmp/.X11-unix` and anything else left in a shared `/tmp` | `/proc/self/mountinfo` |
+| `ProtectHome=yes` | home directories, including thumbnail caches | `/proc/self/mountinfo` |
+| `MemorySwapMax=0` | the kernel paging this service's memory to disk at all | the service's own cgroup |
+
+Everything else systemd offers is refused, and the page prints each refusal with
+its reason. `ProtectSystem=strict` is the one worth understanding: it is in the
+shipped unit and correct there, because that unit also carries a
+`ReadWritePaths=` list matched to the data directory. A drop-in written from a
+button cannot know that list, and a wrong one leaves the service unable to write
+its own database at the next restart.
+
+### Three things to know before pressing it
+
+- **The service restarts.** Systemd applies unit directives at exec, so a
+  drop-in written under a running process does nothing until it starts again.
+  The page will disconnect for a moment; reload it.
+- **It reverts itself if the service does not come back.** The worker samples the
+  unit repeatedly rather than once — a crash loop with a five-second retry looks
+  *active* if you check at the wrong moment — and on failure it removes the
+  drop-in and restarts without it. Nothing hardened, nothing broken, and the card
+  says so.
+- **`MemorySwapMax=0` has a cost.** It is what keeps decrypted mail and the
+  keystore key off the disk, and it means that under real memory pressure the
+  service is killed rather than swapped.
+
+### The verdict is the kernel, never the result file
+
+This is the distinction the card exists to hold, and it decides what each chip
+means:
+
+| Chip | What it means |
+| --- | --- |
+| **in force** | every directive verified present, read back from the kernel |
+| **requested** | a request is waiting for the worker; nothing has changed |
+| **awaiting restart** | the drop-in was written *after* this process started, so this process does not have it — a configuration, not yet a control |
+| **did not take** | the drop-in predates this process and the directive is *still* absent — written somewhere this service does not read from, or overridden |
+| **reverted** | the service did not come back, so the drop-in was removed |
+| **failed** | the worker reported a problem; its own sentence is on the card |
+
+**did not take** is the only one of these that is a `Fail` in the posture report,
+and it is a `Fail` because it is the state in which you have been told a control
+exists that does not.
+
+If the card offers a copyable command instead of a button, the root-side worker
+is not installed on this host — one command installs it, and after that this
+page requests hardening on its own.
 
 ### Swap — the one that catches people out
 
