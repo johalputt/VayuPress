@@ -275,3 +275,61 @@ func TestSwapIsReportedFromWhatHappenedAndFromWhatIsForbidden(t *testing.T) {
 		}
 	})
 }
+
+// ── The host rows: true, useful, and never ours ─────────────────────────────
+//
+// Secure Boot enabled is worth telling an operator and is NOT a VayuVeil pass.
+// Pass means VERIFIED ENFORCING, and what enforced this was firmware, before
+// this process existed. A green row here would credit this subsystem for the
+// motherboard's work — the same misattribution as crediting it for systemd's
+// sandbox, one layer further out, and far more tempting because "Secure Boot:
+// enabled" looks like unambiguous good news.
+func TestHostFactsAreReportedWithoutBeingClaimed(t *testing.T) {
+	row := func(t *testing.T, h vayuveil.HostPosture, part string) Check {
+		t.Helper()
+		in := on(allAbsent())
+		in.Host = h
+		return rowFor(t, Run(in), part)
+	}
+
+	const sbTitle = "firmware checked a signature"
+	enabled := row(t, vayuveil.HostPosture{Supported: true, SecureBoot: true, SecureBootKnown: true}, sbTitle)
+	if enabled.Status == Pass {
+		t.Error("Secure Boot being on is reported as a VayuVeil pass; firmware enforced it, " +
+			"this subsystem did not, and a green row here credits the motherboard's work")
+	}
+	if enabled.Status != Info {
+		t.Errorf("Secure Boot on reads as %v, not context", enabled.Status)
+	}
+
+	// Off is a real residual exposure an operator should understand.
+	off := row(t, vayuveil.HostPosture{Supported: true, SecureBoot: false, SecureBootKnown: true}, sbTitle)
+	if off.Status != Warn {
+		t.Errorf("Secure Boot disabled reads as %v; nothing checked the bootloader and the "+
+			"operator should know", off.Status)
+	}
+
+	// Unreadable is unverified, never "off". A machine that boots without EFI is
+	// not a machine with Secure Boot turned off, and reporting it as one would be
+	// a finding invented out of silence.
+	unknown := row(t, vayuveil.HostPosture{Supported: true}, sbTitle)
+	if unknown.Status != Unverified {
+		t.Errorf("an unreadable Secure Boot variable reads as %v", unknown.Status)
+	}
+
+	// The TPM row is context in BOTH directions. Having none is not a fault —
+	// nothing here requires one — and having one is not protection while nothing
+	// is sealed to it.
+	const tpmTitle = "A TPM is available"
+	for name, h := range map[string]vayuveil.HostPosture{
+		"present": {Supported: true, TPMPresent: true, TPMKnown: true},
+		"absent":  {Supported: true, TPMPresent: false, TPMKnown: true},
+	} {
+		if got := row(t, h, tpmTitle); got.Status != Info {
+			t.Errorf("TPM %s reads as %v, not context", name, got.Status)
+		}
+	}
+	if got := row(t, vayuveil.HostPosture{Supported: true}, tpmTitle); got.Status != Unverified {
+		t.Errorf("an unknown TPM state reads as %v", got.Status)
+	}
+}

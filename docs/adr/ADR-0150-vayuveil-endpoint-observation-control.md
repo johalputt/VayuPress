@@ -2,7 +2,7 @@
 
 - **Status:** Accepted — scope corrected 2026-08-05 (see §0)
 - **Date:** 2026-07-29 (registry and posture report shipped 2026-08-04; scope
-  corrected 2026-08-05, server track at five of its seven steps — §5 marks each)
+  corrected 2026-08-05, server track at six of its seven steps — §5 marks each)
 - **Relates to:** ADR-0141 (VayuOS Spaces), ADR-0143 (Tor Space anonymity model),
   ADR-0123 (privileged agent / privilege separation)
 
@@ -33,15 +33,15 @@ So the work splits in two, and only one half belongs to this repository:
 
 | Track | What it covers | Home |
 | --- | --- | --- |
-| **Server track (S)** | What this process can verifiably do to protect *itself*, and what it can honestly *report* about the host it runs on | **This ADR. Five of seven steps shipped; §5 marks each.** |
+| **Server track (S)** | What this process can verifiably do to protect *itself*, and what it can honestly *report* about the host it runs on | **This ADR. Six of seven steps shipped; §5 marks each.** |
 | **Endpoint track (E)** | The compositor, grants, sandboxing, MAC, accessibility mediation, input/clipboard policy, egress correlation | A desktop operating system. **Not this binary, and not on its roadmap.** |
 
 What this document is now: §1 states the question a VayuPress host actually
 poses. §2 is a threat model whose actors are the ones on a server — a process
 under the same account, an artifact this process left behind, another local
 account. §5 is a build order every step of which this binary CAN run, which is
-the property the old one lacked; five of the seven are built and the other two
-carry NOT BUILT on their own line, because a summary word covering a mixed state
+the property the old one lacked; six of the seven are built and the last one
+carries NOT BUILT on its own line, because a summary word covering a mixed state
 is how "planned" became "coming" the first time.
 
 The desktop channels remain enumerated in §3.1 and remain probed, because "absent
@@ -352,7 +352,7 @@ which is never counted as a defence. Widening the attempted set is worth doing
 only where a real capture can be tried without a client library this binary does
 not link; anything less is a probe wearing a test's clothes.
 
-**S5 — Reading host posture, which is not the same as providing it. NOT BUILT.**
+**S5 — Reading host posture, which is not the same as providing it. SHIPPED.**
 Whether the host has Secure Boot enabled or a TPM present is a fact a server
 process can read and an operator benefits from seeing. It must be rendered as
 *what this host already has*, never as something VayuVeil provides, and it is

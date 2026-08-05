@@ -89,6 +89,11 @@ type Inputs struct {
 	// "a control is refusing the framebuffer to this process" — two facts that
 	// produce identical glob results and mean opposite things.
 	Sandbox vayuveil.SandboxState
+	// Host is what the machine itself offers (§5 S5). Reported, never claimed:
+	// VayuVeil neither provides Secure Boot nor uses the TPM, and both rows say
+	// so, because "Secure Boot: enabled" on a security page reads as a guarantee
+	// this subsystem has not earned.
+	Host vayuveil.HostPosture
 }
 
 // Run computes the report.
@@ -126,6 +131,11 @@ func Run(in Inputs) []Check {
 	// one says — crediting VayuVeil for systemd's work would be the same
 	// misattribution §8 forbids, pointed inward.
 	checks = append(checks, sandboxChecks(in.Sandbox)...)
+
+	// What the host already has. Placed after the process rows so a reader meets
+	// what this binary DID before what the machine happens to offer, and never
+	// green — a fact about the firmware is not this subsystem enforcing anything.
+	checks = append(checks, hostChecks(in.Host)...)
 
 	// The capture suite. Findings first, then the honest gap.
 	checks = append(checks, redTeamChecks(in.RedTeam, in.Sandbox)...)
@@ -224,6 +234,39 @@ func redTeamChecks(rs []vayuveil.AttackResult, sb vayuveil.SandboxState) []Check
 		}
 	}
 	return out
+}
+
+// hostChecks renders the two host facts.
+//
+// Neither can ever be Pass. Pass means VERIFIED ENFORCING, and what is verified
+// here was enforced by firmware or by a chip — crediting this subsystem for it
+// is the same misattribution as crediting it for systemd's sandbox, one layer
+// further out.
+func hostChecks(h vayuveil.HostPosture) []Check {
+	sb := Check{Title: "The firmware checked a signature on what this host booted",
+		Detail: h.DescribeSecureBoot()}
+	switch {
+	case !h.Supported, !h.SecureBootKnown:
+		sb.Status = Unverified
+	case h.SecureBoot:
+		// Info, not Pass. It is true and it is worth knowing and it is not ours.
+		sb.Status = Info
+	default:
+		// A real residual exposure an operator should understand, which is what
+		// Warn is for. Not a Fail: nothing is reachable right now because of it.
+		sb.Status = Warn
+	}
+
+	tpm := Check{Title: "A TPM is available on this host", Detail: h.DescribeTPM()}
+	if !h.Supported || !h.TPMKnown {
+		tpm.Status = Unverified
+	} else {
+		// Info either way. Having no TPM is not a fault — nothing in this install
+		// requires one — and having one is not protection while nothing is sealed
+		// to it.
+		tpm.Status = Info
+	}
+	return []Check{sb, tpm}
 }
 
 // sandboxChecks renders the service-unit state.

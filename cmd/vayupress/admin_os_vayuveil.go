@@ -68,6 +68,7 @@ func (a *App) handleOSVayuVeil(w http.ResponseWriter, r *http.Request) {
 		// service restarted underneath a long-running process's memory of it,
 		// and a remembered answer is configuration rather than evidence.
 		Sandbox: vayuveil.ReadSandbox(),
+		Host:    vayuveil.ReadHostPosture(),
 	})
 
 	body := vayuVeilPage(enabled, vayuveil.Channels(), obs, checks, self, red)

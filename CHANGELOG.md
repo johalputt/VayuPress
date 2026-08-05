@@ -6,6 +6,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **S5 — the host posture read-out. VayuVeil now reports whether the firmware
+  checked a signature on what this host booted, and whether a TPM is present.**
+  Both are facts about the machine, read from `/sys` and repeated; neither is
+  something this binary arranges or could arrange.
+
+  Every word of that framing is load-bearing, and the rows carry it. **This is
+  not attestation** — attestation measures the boot sequence and proves the
+  result to a remote party, and nothing here measures or proves anything.
+  ADR-0150 lists measured boot as permanently out of reach, and "Secure Boot:
+  enabled" on a security page is the sentence most likely to be quoted back as a
+  guarantee it never was. The enabled row says explicitly that it tells you
+  nothing about whether the running kernel has been modified since.
+
+  Neither row can ever be green. `Pass` means *verified enforcing*, and what
+  enforced this was firmware before the process existed — a green row would
+  credit the motherboard's work to this subsystem, which is the same
+  misattribution as crediting it for systemd's sandbox, one layer further out.
+  Secure Boot on reads as context; **off reads as a warning**, because nothing
+  checked the bootloader and an operator should know; unreadable reads as
+  unverified, never as off — a machine that boots without EFI is not a machine
+  with Secure Boot disabled, and reporting it as one invents a finding out of
+  silence. A present TPM is context in both directions: nothing here seals
+  anything to it, so having one is not protection and lacking one is not a fault.
+
+  Two mutations are worth recording. An EFI variable's payload is four attribute
+  bytes then the value, so reading byte **zero** returns a bitmask that is
+  non-zero on essentially every machine — the naive version reports Secure Boot
+  as enabled everywhere, including on the hosts where saying so is most wrong.
+  And the TPM check survived its first mutation: replacing the `tpm` prefix with
+  a match-anything empty string passed a test that only ever offered it empty
+  lists, because an empty-list assertion tests a length rather than a prefix. A
+  sysfs class directory can hold `uevent` and `power` with no device present.
+  Test widened, mutation re-run, killed — along with a substring variant.
+
 ## [3.17.7] — 2026-08-05
 
 ### Fixed
