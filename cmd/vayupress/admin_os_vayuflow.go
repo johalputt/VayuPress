@@ -307,10 +307,15 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 
 	// ── Flows ────────────────────────────────────────────────────────────────
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Flows</span>` +
-		`<span class="section-head__hint">Arm, inspect &amp; run</span></div>`)
+		`<span class="section-head__hint">Create, arm, inspect &amp; run</span></div>`)
 	if len(flows) == 0 {
-		b.WriteString(`<div class="card"><p class="text-sm muted">No automations are defined yet.</p></div>`)
+		b.WriteString(`<div class="card"><p class="text-sm muted">No automations are defined yet. ` +
+			`Build one below — it starts switched off and in dry-run, and stays that way until ` +
+			`you decide otherwise.</p></div>`)
 	}
+	b.WriteString(`<div class="mon-stack">` +
+		monAcc("✚", "Create a flow", "Starts switched off, in dry-run", "", len(flows) == 0,
+			flowEditorCard()) + `</div>`)
 	b.WriteString(`<div class="mon-stack">`)
 	for i, f := range flows {
 		var body strings.Builder
@@ -347,10 +352,16 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 					`while the install runs as a Tor Space.</div>`)
 			}
 		}
+		enableLabel, enableTo := "Switch on", "true"
+		if f.Enabled {
+			enableLabel, enableTo = "Switch off", "false"
+		}
 		body.WriteString(`<div class="flex-between">` +
 			`<button type="button" class="btn btn--primary btn--sm" data-flow-run="` + esc(f.ID) + `">Run once now</button>` +
+			`<button type="button" class="btn btn--sm" data-flow-enable="` + esc(f.ID) + `" data-flow-on="` + enableTo + `">` + enableLabel + `</button>` +
 			`<button type="button" class="btn btn--sm" data-flow-arm="` + esc(f.ID) + `" data-flow-mode="live">Arm live</button>` +
 			`<button type="button" class="btn btn--ghost btn--sm" data-flow-arm="` + esc(f.ID) + `" data-flow-mode="dry">Return to dry-run</button>` +
+			`<button type="button" class="btn btn--ghost btn--sm" data-flow-delete="` + esc(f.ID) + `" data-flow-name="` + esc(f.Name) + `">Delete</button>` +
 			`</div>`)
 		body.WriteString(`</div>`)
 
@@ -451,8 +462,93 @@ document.addEventListener('click',function(ev){
       if(res.ok){ say('Run '+res.d.outcome+' — writes '+res.d.writes+'. Reload to see the trail.'); }
       else { say((res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Run failed.'); }
     });
+    return;
+  }
+  var en=ev.target.closest('[data-flow-enable]');
+  if(en){
+    var eid=en.getAttribute('data-flow-enable'), on=en.getAttribute('data-flow-on');
+    say('Working…');
+    post('/os/api/vayuflow/enable?id='+encodeURIComponent(eid)+'&on='+encodeURIComponent(on),function(res){
+      if(res.ok){ say(res.d.enabled?'Switched on. Reload to refresh.':'Switched off. Reload to refresh.'); }
+      else { say((res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Could not change it.'); }
+    });
+    return;
+  }
+  var del=ev.target.closest('[data-flow-delete]');
+  if(del){
+    var did=del.getAttribute('data-flow-delete');
+    // Confirmed by NAME, not by id. An operator asked to confirm an opaque hex
+    // string is being asked to agree to something they cannot read.
+    if(!window.confirm('Delete "'+del.getAttribute('data-flow-name')+'"? Its runs stay in the trail.')){ return; }
+    say('Deleting…');
+    post('/os/api/vayuflow/delete?id='+encodeURIComponent(did),function(res){
+      if(res.ok){ say('Deleted. Reload to refresh.'); }
+      else { say((res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Could not delete it.'); }
+    });
   }
 });
+
+function val(id){ var el=document.getElementById(id); return el?el.value.trim():''; }
+function num(id){ var n=parseInt(val(id),10); return isNaN(n)?0:n; }
+// Parameters are key=value per line. Split on the FIRST '=' only, so a value
+// containing one — a URL with a query string, a prompt with an equation —
+// survives intact.
+function params(id){
+  var out={}, lines=val(id).split('\n');
+  for(var i=0;i<lines.length;i++){
+    var line=lines[i].trim(); if(!line){ continue; }
+    var at=line.indexOf('='); if(at<1){ continue; }
+    out[line.slice(0,at).trim()]=line.slice(at+1).trim();
+  }
+  return out;
+}
+var saveBtn=document.getElementById('ff-save');
+if(saveBtn){ saveBtn.addEventListener('click',function(){
+  var steps=[];
+  for(var i=1;i<=4;i++){
+    var a=val('ff-act'+i); if(!a){ continue; }
+    steps.push({action:a,params:params('ff-par'+i)});
+  }
+  var doc={
+    id:val('ff-id'), name:val('ff-name'),
+    trigger:{kind:val('ff-trigger'),cron:val('ff-cron'),event:val('ff-event')},
+    condition:{kind:val('ff-cond'),value:val('ff-condval')},
+    steps:steps,
+    budget:{max_steps_per_run:num('ff-bsteps'),max_runs_per_hour:num('ff-bruns'),
+      max_writes_per_run:num('ff-bwrites'),max_egress_per_run:num('ff-begress'),
+      timeout_seconds:num('ff-btimeout')}
+  };
+  say('Saving…');
+  fetch('/os/api/vayuflow/save',{method:'POST',
+    headers:{'Content-Type':'application/json','X-CSRF-Token':(document.cookie.match(/(?:^|; )vayu_csrf=([^;]*)/)||[])[1]||''},
+    body:JSON.stringify(doc)})
+   .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+   .then(function(res){
+     if(res.ok){
+       // The store is the authority on what was accepted, so the confirmation
+       // quotes what came BACK rather than what was sent.
+       say((res.d.created?'Created':'Saved')+' — v'+res.d.version+', writes at most '+res.d.highest_write+
+           ', owner must hold '+res.d.min_owner+'. It is '+(res.d.enabled?'on':'off')+
+           ' and in '+res.d.mode+'. Reload to see it listed.');
+     } else {
+       // The store's refusal is shown verbatim. It is written to be read by the
+       // person who filled the form, and paraphrasing it here would lose the
+       // one sentence that says which field is wrong.
+       say((res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Could not save it.');
+     }
+   })
+   .catch(function(){ say('Request failed.'); });
+}); }
+var resetBtn=document.getElementById('ff-reset');
+if(resetBtn){ resetBtn.addEventListener('click',function(){
+  ['ff-id','ff-name','ff-cron','ff-condval','ff-par1','ff-par2','ff-par3','ff-par4'].forEach(function(id){
+    var el=document.getElementById(id); if(el){ el.value=''; }
+  });
+  ['ff-act1','ff-act2','ff-act3','ff-act4','ff-event'].forEach(function(id){
+    var el=document.getElementById(id); if(el){ el.selectedIndex=0; }
+  });
+  say('Form cleared.');
+}); }
 })();
 `
 
@@ -470,4 +566,95 @@ func (a *App) flowRoleResolver() vayuflow.RoleResolver {
 		}
 		return u.Role, nil
 	}
+}
+
+// flowEditorCard renders the create/edit form.
+//
+// Every choice it offers is read from the ENGINE — the action list from the
+// capability registry, the condition list from LeafConditionKinds, the events
+// from KnownEvents. A form carrying its own copy of any of those is a second
+// list that drifts from the first, and the operator finds out by saving
+// something the store then refuses for a reason the page never mentioned.
+//
+// The budget fields have no "unlimited" and no blank default. ADR-0151 §3 makes
+// unlimited inexpressible on purpose; a form that let the field stay empty would
+// reintroduce it as a shrug.
+func flowEditorCard() string {
+	esc := html.EscapeString
+	var b strings.Builder
+	b.WriteString(`<div class="card">`)
+	b.WriteString(`<div class="settings-block-title">What it is</div>`)
+	b.WriteString(`<div class="field"><label class="field-label" for="ff-name">Name</label>` +
+		`<input class="input" id="ff-name" type="text" placeholder="Monday digest"></div>`)
+	b.WriteString(`<input id="ff-id" type="hidden" value="">`)
+
+	b.WriteString(`<div class="settings-block-title">What starts it</div>`)
+	b.WriteString(`<div class="field"><label class="field-label" for="ff-trigger">Trigger</label>` +
+		`<select class="input" id="ff-trigger">` +
+		`<option value="manual">manual — only when you press Run</option>` +
+		`<option value="schedule">schedule — on a cron expression</option>` +
+		`<option value="event">event — when something happens here</option>` +
+		`</select></div>`)
+	b.WriteString(`<div class="field"><label class="field-label" for="ff-cron">Cron (schedule only)</label>` +
+		`<input class="input" id="ff-cron" type="text" placeholder="0 9 * * 1">` +
+		`<div class="field-hint">Five fields, install timezone. Parsed when you save, not when it ` +
+		`first fires — an expression that only fails at 9am on Monday is one you find out about on Tuesday.</div></div>`)
+	b.WriteString(`<div class="field"><label class="field-label" for="ff-event">Event (event only)</label>` +
+		`<select class="input" id="ff-event"><option value="">—</option>`)
+	for _, e := range vayuflow.KnownEvents() {
+		b.WriteString(`<option value="` + esc(e) + `">` + esc(e) + `</option>`)
+	}
+	b.WriteString(`</select></div>`)
+
+	b.WriteString(`<div class="settings-block-title">Which subjects</div>`)
+	b.WriteString(`<div class="field"><label class="field-label" for="ff-cond">Condition</label>` +
+		`<select class="input" id="ff-cond">`)
+	for _, n := range vayuflow.LeafConditionNames() {
+		b.WriteString(`<option value="` + esc(n) + `">` + esc(n) + `</option>`)
+	}
+	b.WriteString(`</select><div class="field-hint">"always" is a real answer, not a missing one. ` +
+		`Combining conditions with all/any/not is not expressible here yet.</div></div>`)
+	b.WriteString(`<div class="field"><label class="field-label" for="ff-condval">Compare against</label>` +
+		`<input class="input" id="ff-condval" type="text" placeholder="release-notes"></div>`)
+
+	b.WriteString(`<div class="settings-block-title">What it does</div>`)
+	b.WriteString(`<p class="text-sm muted">Up to four steps, in order. Each one names an action from ` +
+		`the registry above; leave a row blank to stop there. Parameters are ` +
+		`<span class="mono">key=value</span>, one per line. A parameter whose whole value is ` +
+		`<span class="mono">$prev</span> receives the previous step's output.</p>`)
+	for i := 1; i <= 4; i++ {
+		n := strconv.Itoa(i)
+		b.WriteString(`<div class="field"><label class="field-label" for="ff-act` + n + `">Step ` + n + `</label>` +
+			`<select class="input" id="ff-act` + n + `"><option value="">—</option>`)
+		for _, c := range vayuflow.Capabilities() {
+			b.WriteString(`<option value="` + esc(c.Action) + `">` + esc(c.Action) +
+				` — writes ` + esc(c.Writes.String()) + `, needs ` + esc(c.MinRole) + `</option>`)
+		}
+		b.WriteString(`</select>` +
+			`<textarea class="input" id="ff-par` + n + `" rows="2" placeholder="title=Weekly digest"></textarea></div>`)
+	}
+
+	b.WriteString(`<div class="settings-block-title">What it may spend</div>`)
+	b.WriteString(`<p class="text-sm muted">Every ceiling is required and there is no way to write ` +
+		`"unlimited". The run trail shows what was spent against what was allowed.</p>`)
+	for _, f := range []struct{ id, label, def string }{
+		{"ff-bsteps", "Steps per run", "4"},
+		{"ff-bruns", "Runs per hour", "2"},
+		{"ff-bwrites", "Writes per run", "1"},
+		{"ff-begress", "Fetches per run", "1"},
+		{"ff-btimeout", "Wall clock (seconds)", "60"},
+	} {
+		b.WriteString(`<div class="field"><label class="field-label" for="` + f.id + `">` + f.label + `</label>` +
+			`<input class="input" id="` + f.id + `" type="number" min="1" value="` + f.def + `"></div>`)
+	}
+
+	b.WriteString(`<div class="flex-between">` +
+		`<button type="button" class="btn btn--primary btn--sm" id="ff-save">Save flow</button>` +
+		`<button type="button" class="btn btn--ghost btn--sm" id="ff-reset">Clear the form</button>` +
+		`</div>`)
+	b.WriteString(`<p class="text-sm muted">A new flow is stored switched off and in dry-run. ` +
+		`Neither this form nor an edit ever changes those — arming is its own button, with its own ` +
+		`entry in the audit trail.</p>`)
+	b.WriteString(`</div>`)
+	return b.String()
 }

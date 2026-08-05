@@ -290,3 +290,33 @@ func (f Flow) MinOwnerRole() string {
 	}
 	return need
 }
+
+// TriggerKindFor maps the wire name to a kind. It returns ok=false for anything
+// unrecognised rather than choosing one — the same reasoning as armModeFor: a
+// handler that picks a trigger on the operator's behalf produces a flow that
+// fires on something they did not ask for.
+func TriggerKindFor(v string) (TriggerKind, bool) {
+	switch strings.TrimSpace(strings.ToLower(v)) {
+	case "schedule":
+		return TriggerSchedule, true
+	case "event":
+		return TriggerEvent, true
+	case "manual":
+		return TriggerManual, true
+	}
+	return triggerUnset, false
+}
+
+// DescribeTrigger renders a trigger for the audit trail and the panel, so both
+// name it the same way.
+func DescribeTrigger(t Trigger) string {
+	switch t.Kind {
+	case TriggerSchedule:
+		return "schedule · " + t.Cron
+	case TriggerEvent:
+		return "event · " + t.Event
+	case TriggerManual:
+		return "manual"
+	}
+	return "unset"
+}

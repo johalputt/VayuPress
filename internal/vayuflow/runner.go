@@ -196,6 +196,11 @@ type RoleResolver func(ctx context.Context, owner string) (string, error)
 // runs in the last hour. No run row is written for it — see Execute.
 var ErrRateCeiling = errors.New("vayuflow: flow has reached its runs-per-hour ceiling")
 
+// ErrDisabled is returned when a flow is switched off. Like the rate ceiling it
+// writes no run row: a disabled flow did not run, and a trail full of rows
+// saying so would bury the runs that did.
+var ErrDisabled = errors.New("vayuflow: flow is disabled")
+
 // Runner executes flows.
 type Runner struct {
 	flows *Store
@@ -226,6 +231,18 @@ func NewRunner(flows *Store, runs *RunStore, roles RoleResolver) *Runner {
 func (r *Runner) Execute(ctx context.Context, f Flow, cause, identity string, subj Subject) (*Run, error) {
 	if err := f.Complete(); err != nil {
 		return nil, err
+	}
+	// A disabled flow does not run, on ANY path.
+	//
+	// The ticker and the drainer both reach flows through LoadableFlows, which
+	// filters on Enabled — but the manual "Run once now" button loads with Get,
+	// which does not. So "disabled" meant two different things depending on who
+	// asked, and the panel rendered a disabled chip on a flow the operator could
+	// still fire. Deciding it here rather than at each call site is the same
+	// reasoning as putting the ceilings in the effect path: one answer, in the
+	// place every caller has to go through.
+	if !f.Enabled {
+		return nil, ErrDisabled
 	}
 	started, err := r.runs.CountSince(ctx, f.ID, r.now().Add(-time.Hour))
 	if err != nil {

@@ -316,3 +316,37 @@ func (rs *RunStore) CountSince(ctx context.Context, flowID string, since time.Ti
 	}
 	return n, nil
 }
+
+// runRetention is how long a run stays in the trail.
+//
+// ADR-0151 §7 promises the trail is bounded. The runs-per-hour ceiling bounds
+// the RATE — at most MaxRunsPerHour rows per flow per hour — which is what stops
+// a trigger storm growing the table, and it was mistaken for a bound on the
+// total. It is not one: ten runs an hour is eighty-seven thousand rows a year,
+// per flow, kept forever.
+//
+// Ninety days rather than the inbox's thirty. The two tables answer different
+// questions: the inbox is a queue whose rows stop mattering once drained, and
+// the run trail is the record of what this install did on its own, which is
+// exactly what someone goes looking for months later when they notice something
+// odd.
+const runRetention = 90 * 24 * time.Hour
+
+// Prune deletes finished runs older than the retention window.
+//
+// Only FINISHED runs. A row still marked running is either a live run or one
+// interrupted by a crash that RecoverInterrupted has not reconciled yet, and
+// deleting either would lose the very evidence the trail exists for.
+func (rs *RunStore) Prune(ctx context.Context, olderThan time.Duration) (int, error) {
+	res, err := rs.db.ExecContext(ctx,
+		`DELETE FROM vayuflow_runs WHERE status != ? AND started_at < ?`,
+		string(StatusRunning), time.Now().UTC().Add(-olderThan).Format(tsLayout))
+	if err != nil {
+		return 0, fmt.Errorf("vayuflow: prune runs: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return int(n), nil
+}

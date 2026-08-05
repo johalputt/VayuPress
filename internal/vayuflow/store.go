@@ -211,6 +211,28 @@ func (s *Store) SetMode(ctx context.Context, id string, mode RunMode) (prior Run
 	return f.Mode, nil
 }
 
+// SetEnabled turns a flow on or off, returning what it was.
+//
+// Separate from Save for the reason SetMode is: it is a distinct operator
+// decision with its own audit entry, and returning the prior value is what lets
+// that entry distinguish a first enable from a re-enable. Editing a flow must
+// not silently change whether it is running.
+func (s *Store) SetEnabled(ctx context.Context, id string, on bool) (prior bool, err error) {
+	f, err := s.Get(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	v := 0
+	if on {
+		v = 1
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE vayuflow_flows SET enabled=?,updated_at=? WHERE id=?`,
+		v, time.Now().UTC().Format(tsLayout), id); err != nil {
+		return false, fmt.Errorf("vayuflow: set enabled: %w", err)
+	}
+	return f.Enabled, nil
+}
+
 // LoadableFlows returns the enabled flows whose stored document still satisfies
 // Complete(). A row that no longer validates — because it was edited by hand,
 // or because an action was removed from the registry by an upgrade — is

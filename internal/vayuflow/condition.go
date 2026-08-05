@@ -209,3 +209,46 @@ func (c Condition) holds(s Subject, depth int) bool {
 	// that fires on everything.
 	return false
 }
+
+// ConditionFor builds a leaf condition from the wire form.
+//
+// Only the leaf predicates are constructible here. all/any/not take children,
+// which a flat form cannot express, and inventing a nesting syntax for a text
+// input would be a small expression language arriving through the back door —
+// exactly what ADR-0151 §5 declines to build. A flow needing them is a flow
+// whose editor has to grow first.
+func ConditionFor(kind, value string) (Condition, error) {
+	k := strings.TrimSpace(strings.ToLower(kind))
+	if k == "" || k == "always" {
+		if value != "" {
+			return Condition{}, fmt.Errorf("vayuflow: an 'always' condition takes no value")
+		}
+		return Condition{Kind: CondAlways}, nil
+	}
+	for _, c := range LeafConditionKinds() {
+		if c.String() != k {
+			continue
+		}
+		if value == "" {
+			return Condition{}, fmt.Errorf("vayuflow: a %q condition needs a value to compare against", k)
+		}
+		return Condition{Kind: c, Value: value}, nil
+	}
+	return Condition{}, fmt.Errorf("vayuflow: %q is not a condition this install has (%s)",
+		kind, strings.Join(LeafConditionNames(), ", "))
+}
+
+// LeafConditionKinds is the set a form may offer. It is derived here rather than
+// written out at the call site so the panel cannot drift from the engine.
+func LeafConditionKinds() []CondKind {
+	return []CondKind{CondTagEquals, CondAuthorIs, CondStatusIs, CondTitleContains, CondSlugIs}
+}
+
+// LeafConditionNames is LeafConditionKinds as the wire names, plus "always".
+func LeafConditionNames() []string {
+	out := []string{CondAlways.String()}
+	for _, k := range LeafConditionKinds() {
+		out = append(out, k.String())
+	}
+	return out
+}

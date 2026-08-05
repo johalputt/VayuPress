@@ -263,6 +263,15 @@ func (dr *Drainer) pruneIfDue(ctx context.Context) {
 	if _, err := dr.inbox.PruneDrained(ctx, inboxRetention); err != nil {
 		return
 	}
+	// The run trail is pruned on the same pass. Two housekeeping timers for two
+	// tables in one subsystem would be two things to get wrong, and the second
+	// one is always the one nobody wires up — which is precisely how the runs
+	// table came to have a retention constant and no caller.
+	if dr.runner != nil {
+		if _, err := dr.runner.runs.Prune(ctx, runRetention); err != nil {
+			return
+		}
+	}
 	dr.lastPrune = now
 }
 
