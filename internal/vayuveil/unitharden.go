@@ -198,17 +198,26 @@ type HardenState struct {
 	Pending bool
 	// HaveResult is whether the worker has ever reported.
 	HaveResult bool
-	// AppliedAt is when it last finished.
+	// DropInPresent and DropInAt are the drop-in FILE itself: whether it exists
+	// and when it was last written.
 	//
-	// Taken from the result FILE's modification time rather than from a
-	// timestamp inside it. Both are written by the same machine, but only the
-	// mtime is on the same clock as this process's own start time — and the
-	// entire verdict below is a comparison between those two moments, so they
-	// have to be commensurable. A parsed string that arrived in an unexpected
-	// format would also silently become the zero time, which compares as "before
-	// this process started" and turns "not restarted yet" into "written and did
-	// not take".
-	AppliedAt time.Time
+	// This is the hinge of the whole verdict, and an earlier version got it
+	// wrong in a way worth recording. It used the RESULT file's timestamp — but
+	// the worker writes the drop-in, restarts the service, watches for twenty
+	// seconds to see whether the unit stayed up, and only then writes its
+	// result. So on every SUCCESSFUL run the restarted process starts before the
+	// result exists, and a verdict keyed on the result said "awaiting restart"
+	// about a process that had already restarted into the drop-in. That turns the
+	// one serious finding this row exists to surface into a reassuring "wait a
+	// moment", on precisely the path an operator takes.
+	//
+	// The drop-in's own mtime does not have that problem: it is the file systemd
+	// read at exec, so a process that started after it either got the directive
+	// or the directive did not take. The mtime rather than any timestamp inside
+	// a document, because it shares a clock with this process's start time and
+	// the verdict is a comparison between the two.
+	DropInPresent bool
+	DropInAt      time.Time
 	// Wrote and Skipped are what the worker put in the drop-in and what it left
 	// out, each skip carrying its reason.
 	Wrote   []string
@@ -248,18 +257,53 @@ const (
 	// writing to a unit this service does not run from, or a later drop-in is
 	// overriding it. A configuration exists and a control does not.
 	HardenDidNotTake
+	// HardenSkipped — everything still missing is something the worker
+	// deliberately refused to write, with a reason. Distinct from both verdicts
+	// above because it is neither: a restart will not change it, and nothing
+	// failed to take. Telling an operator to wait for a restart here would be
+	// wrong twice — the restart already happened, and another would do nothing.
+	HardenSkipped
 	// HardenNotRequested — controls are missing and nobody has asked for them.
 	HardenNotRequested
 )
 
+// allDeliberatelySkipped reports whether every directive still missing is one
+// the worker explicitly refused to write.
+//
+// Matching is by directive NAME against the start of each skip line, because the
+// worker writes its skips as "Directive=value — reason" and the reason is prose
+// meant for a person. A skip line that does not begin with the directive it is
+// about matches nothing, which fails towards the more serious verdict — the safe
+// direction, since the alternative is excusing a control that really did not take.
+func allDeliberatelySkipped(missing []UnitDirective, skipped []string) bool {
+	if len(missing) == 0 || len(skipped) == 0 {
+		return false
+	}
+	for _, d := range missing {
+		name := strings.SplitN(d.Directive, "=", 2)[0]
+		found := false
+		for _, s := range skipped {
+			if strings.HasPrefix(strings.TrimSpace(s), name) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
 // ReconcileHardening compares what was written with what the kernel says.
 //
-// processStart is when THIS process began. It is the whole hinge: systemd
-// applies these directives at exec, so a drop-in written one second after the
-// service started has no effect on the running process and will not until it
-// restarts. Reporting that as "applied" would be true about the file and false
-// about the machine, and an operator reading the page would believe a control
-// was holding that was not.
+// processStart is when THIS process began, and the comparison is against the
+// DROP-IN's timestamp — never the worker's report. Systemd applies these
+// directives at exec: a drop-in written one second after the service started has
+// no effect on the running process and will not until it restarts, and a
+// drop-in that was in place at exec and is still not in force did not take.
+// Those are opposite findings and the only thing separating them is which file's
+// clock you read. See HardenState.DropInAt for the version that got it wrong.
 func ReconcileHardening(h HardenState, s SandboxState, processStart time.Time) HardenVerdict {
 	if !s.Supported {
 		return HardenUnknown
@@ -278,10 +322,18 @@ func ReconcileHardening(h HardenState, s SandboxState, processStart time.Time) H
 		return HardenInForce
 	case h.Failed:
 		return HardenFailed
-	case !h.HaveResult:
+	case !h.DropInPresent:
+		// No drop-in on disk. Whether the worker ever ran is beside the point:
+		// there is nothing in the unit asking for these directives, so nobody has
+		// effectively asked.
 		return HardenNotRequested
-	case h.AppliedAt.After(processStart):
+	case h.DropInAt.After(processStart):
 		return HardenAwaitingRestart
+	case allDeliberatelySkipped(missing, h.Skipped):
+		// Checked AFTER the restart question and BEFORE the failure one, so a
+		// directive that genuinely did not take always outranks a directive that
+		// was refused on purpose. A run with one of each is a failure, not a skip.
+		return HardenSkipped
 	default:
 		return HardenDidNotTake
 	}
@@ -317,10 +369,16 @@ func DescribeHardenVerdict(v HardenVerdict, missing []UnitDirective) string {
 			"restart, and this page will say so only once it has read it back from the kernel. Until " +
 			"then it is a configuration."
 	case HardenDidNotTake:
-		return "A drop-in was written before this process started and " + list + " is STILL not in " +
-			"force. That means it was written somewhere this service does not read from, or a later " +
-			"drop-in overrides it. This is a configuration that looks like a control, which is the one " +
-			"outcome this page exists to make impossible to miss."
+		return "The drop-in was already in place when this process started and " + list + " is STILL " +
+			"not in force. That means it was written somewhere this service does not read from, or a " +
+			"later drop-in overrides it, or the host refused the directive. This is a configuration " +
+			"that looks like a control, which is the one outcome this page exists to make impossible " +
+			"to miss."
+	case HardenSkipped:
+		return list + " is not in force because the worker deliberately declined to write it, and " +
+			"the reason is listed beside it below. This will not change at a restart — the directive " +
+			"is not in the drop-in at all, so there is nothing waiting to take effect. Everything the " +
+			"worker did write is verified in force."
 	case HardenNotRequested:
 		return list + " is not in force for this process. The panel can ask the root-side worker to " +
 			"write a drop-in containing it; it cannot write one itself, and it does not instruct you " +

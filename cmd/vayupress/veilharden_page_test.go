@@ -42,7 +42,7 @@ func veilHardenBare() vayuveil.SandboxState {
 func TestTheCardNeverSaysAppliedBeforeTheKernelSaysSo(t *testing.T) {
 	start := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 	card := veilHardenCard(vayuveil.HardenState{
-		Installed: true, HaveResult: true, AppliedAt: start.Add(time.Minute),
+		Installed: true, HaveResult: true, DropInPresent: true, DropInAt: start.Add(time.Minute),
 		Wrote: []string{"NoNewPrivileges=yes"},
 	}, veilHardenBare(), start)
 
@@ -129,7 +129,7 @@ func TestTheCardPublishesWhatItRefusesToWrite(t *testing.T) {
 func TestASkippedDirectiveIsShownWithItsReason(t *testing.T) {
 	const reason = "ProtectHome=yes — this install's data directory is /home/vayu, which ProtectHome would make unreadable."
 	card := veilHardenCard(vayuveil.HardenState{
-		Installed: true, HaveResult: true, AppliedAt: time.Now(),
+		Installed: true, HaveResult: true, DropInPresent: true, DropInAt: time.Now(),
 		Wrote: []string{"NoNewPrivileges=yes"}, Skipped: []string{reason},
 	}, veilHardenBare(), time.Now())
 

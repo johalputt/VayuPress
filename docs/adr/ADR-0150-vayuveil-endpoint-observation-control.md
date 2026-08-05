@@ -388,11 +388,29 @@ unable to write its own database.
 
 *What "applied" is allowed to mean.* Systemd applies unit directives at exec, so
 a drop-in written under a running process changes nothing about that process.
-The panel therefore never treats the result file as the verdict — the kernel is,
-read on every page load — and the result file supplies only the timestamp that
-tells **awaiting restart** apart from **written and did not take**. The second is
-the only `Fail` this row can produce, and it is a `Fail` precisely because it is
-the state in which an operator has been told a control exists that does not.
+The panel therefore never treats the worker's report as the verdict — the kernel
+is, read on every page load — and the comparison that separates **awaiting
+restart** from **written and did not take** is against the **drop-in file's own
+timestamp**. The second is the only `Fail` this row can produce, and it is a
+`Fail` precisely because it is the state in which an operator has been told a
+control exists that does not.
+
+> The pre-release pass found that comparison keyed on the wrong file, and it is
+> recorded here because the bug was invisible from the feature side. The worker
+> writes the drop-in, restarts the service, watches for twenty seconds to see
+> whether the unit stayed up, and only then writes its result — so on every
+> **successful** run the restarted process starts before the result exists. A
+> verdict keyed on the result therefore said *awaiting restart* about a process
+> that had already restarted into the drop-in, converting the one serious finding
+> this row exists to surface into a reassuring "wait a moment", on precisely the
+> path an operator takes. The drop-in's mtime does not have that problem: it is
+> the file systemd read at exec, so a process that started after it either got
+> the directive or the directive did not take.
+
+A directive the worker deliberately **skipped** gets its own verdict rather than
+either of those two, because it is neither: a restart will not change it and
+nothing failed to take. One skip beside one genuine failure is still a failure —
+the more serious verdict always wins.
 
 The worker restarts the service so the directives take effect, samples the unit
 repeatedly rather than once (a crash loop with a five-second retry is *active*

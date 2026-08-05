@@ -127,17 +127,21 @@ its own database at the next restart.
   keystore key off the disk, and it means that under real memory pressure the
   service is killed rather than swapped.
 
-### The verdict is the kernel, never the result file
+### The verdict is the kernel, never the worker's report
 
 This is the distinction the card exists to hold, and it decides what each chip
-means:
+means. The comparison that separates *awaiting restart* from *did not take* is
+against the **drop-in file's own timestamp** — the file systemd read at exec —
+and never against the worker's report, which is written after the restart it is
+reporting on.
 
 | Chip | What it means |
 | --- | --- |
 | **in force** | every directive verified present, read back from the kernel |
 | **requested** | a request is waiting for the worker; nothing has changed |
 | **awaiting restart** | the drop-in was written *after* this process started, so this process does not have it — a configuration, not yet a control |
-| **did not take** | the drop-in predates this process and the directive is *still* absent — written somewhere this service does not read from, or overridden |
+| **did not take** | the drop-in was already in place when this process started and the directive is *still* absent — written somewhere this service does not read from, overridden, or refused by the host |
+| **partly skipped** | everything still missing is something the worker declined to write, with its reason shown; a restart will not change it |
 | **reverted** | the service did not come back, so the drop-in was removed |
 | **failed** | the worker reported a problem; its own sentence is on the card |
 

@@ -57,6 +57,12 @@ const (
 	veilHardenUnitPath   = "/etc/systemd/system/vayupress-veilharden.path"
 )
 
+// veilHardenDropInPath is the file the worker writes and systemd reads at exec.
+// A var rather than a const so a test can point it at a temp file — the verdict
+// turns on this file's timestamp, and a path no test can reach is a comparison
+// no test can check.
+var veilHardenDropInPath = "/etc/systemd/system/vayupress.service.d/20-vayuveil-hardening.conf"
+
 // veilHardenResult mirrors the JSON the root worker writes.
 type veilHardenResult struct {
 	StartedAt  string   `json:"started_at"`
@@ -90,11 +96,15 @@ func readVeilHardenState() vayuveil.HardenState {
 		st.Pending = time.Since(fi.ModTime()) < veilHardenRequestTTL
 	}
 
-	path := filepath.Join(provisionStateDir(), veilHardenResultFile)
-	fi, err := os.Stat(path)
-	if err != nil {
-		return st
+	// The drop-in itself, which is what the verdict turns on. Read separately
+	// from the worker's report and BEFORE it, because a missing report does not
+	// mean a missing drop-in — a result file lost to a disk wipe would otherwise
+	// hide a unit that is still carrying directives.
+	if fi, err := os.Stat(veilHardenDropInPath); err == nil {
+		st.DropInPresent, st.DropInAt = true, fi.ModTime()
 	}
+
+	path := filepath.Join(provisionStateDir(), veilHardenResultFile)
 	b, err := os.ReadFile(path) //nolint:gosec // fixed state-dir path, not operator input
 	if err != nil {
 		return st
@@ -104,12 +114,6 @@ func readVeilHardenState() vayuveil.HardenState {
 		return st
 	}
 	st.HaveResult = true
-	// The FILE's mtime, not the timestamp inside it. See HardenState.AppliedAt:
-	// the verdict is a comparison against this process's start time, so the two
-	// have to come from the same clock, and an unparseable string silently
-	// becoming the zero time would turn "not restarted yet" into the far more
-	// serious "written and did not take".
-	st.AppliedAt = fi.ModTime()
 	st.Wrote, st.Skipped = res.Wrote, res.Skipped
 	st.Reverted, st.Failed, st.Detail = res.Reverted, res.Failed, res.Detail
 	return st
@@ -172,6 +176,8 @@ func veilHardenChip(v vayuveil.HardenVerdict) string {
 		return `<span class="mon-chip mon-chip--off">awaiting restart</span>`
 	case vayuveil.HardenDidNotTake:
 		return `<span class="mon-chip mon-chip--off">did not take</span>`
+	case vayuveil.HardenSkipped:
+		return `<span class="mon-chip mon-chip--off">partly skipped</span>`
 	case vayuveil.HardenReverted:
 		return `<span class="mon-chip mon-chip--off">reverted</span>`
 	case vayuveil.HardenFailed:

@@ -55,11 +55,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `/root`; hardening that stops the service opening its own database is an
   outage, not a control.
 
-  Twelve mutations, all killed, two re-run after the first attempt failed to
-  compile or turned out to be weaker than intended. Two findings came out of
-  writing the tests rather than the code: `InForce` was passing a stale `true`
-  through beside a false *known* bit, which is a value nothing verified handed to
-  any caller that read only the first return; and the "unhardened" fixture was
+  **The pre-release adversarial pass found three things, and one of them was
+  serious.** The verdict compared the *worker's report* against this process's
+  start time — but the worker writes the drop-in, restarts the service, watches
+  for twenty seconds to see whether the unit stayed up, and only then writes its
+  result. On every **successful** run the restarted process therefore starts
+  before the result exists, so the comparison said *awaiting restart* about a
+  process that had already restarted into the drop-in. That converted the one
+  serious finding this row exists to surface into a reassuring "wait a moment",
+  on precisely the path an operator takes. The comparison is now against the
+  **drop-in file's own timestamp** — the file systemd read at exec — and a
+  directive the worker deliberately skipped gets its own verdict rather than
+  being told to wait for a restart that will not change it. One skip beside one
+  genuine failure is still a failure.
+
+  The other two were in the root worker. Its state directory was derived from
+  `VAYU_DATA_DIR`, which reaches it through the unit's `EnvironmentFile` — a
+  configuration value choosing where **root** writes; it is hardcoded now, as the
+  sibling provisioning worker already does. And `systemctl status` output was
+  embedded in the result without being reduced to printable characters: one
+  control byte makes the document unparseable, the panel reads no report at all,
+  and a **revert** — the outcome that must never be silent — goes unreported.
+
+  Seventeen mutations, all killed, three re-run after the first attempt failed to
+  build or proved weaker than intended. Two further findings came out of writing
+  the tests rather than the code: `InForce` was passing a stale `true` through
+  beside a false *known* bit, which is a value nothing verified handed to any
+  caller that read only the first return; and the "unhardened" fixture was
   `SandboxState{Supported: true}`, which is the weaker state *nothing could be
   read* — a directive answering identically to both would have been verifying the
   read rather than the control.

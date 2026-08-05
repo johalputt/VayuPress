@@ -31,7 +31,7 @@ func hardened() SandboxState {
 // control is holding that is not.
 func TestADropInWrittenAfterTheProcessStartedIsNotReportedAsApplied(t *testing.T) {
 	start := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
-	st := HardenState{Installed: true, HaveResult: true, AppliedAt: start.Add(time.Second)}
+	st := HardenState{Installed: true, HaveResult: true, DropInPresent: true, DropInAt: start.Add(time.Second)}
 
 	// Nothing in force: the drop-in has been written and the process predates it.
 	got := ReconcileHardening(st, SandboxState{Supported: true}, start)
@@ -54,7 +54,7 @@ func TestADropInWrittenAfterTheProcessStartedIsNotReportedAsApplied(t *testing.T
 // means the file went somewhere this service does not read from.
 func TestADropInThatPredatesTheProcessAndDidNotTakeIsReportedAsSuch(t *testing.T) {
 	start := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
-	st := HardenState{Installed: true, HaveResult: true, AppliedAt: start.Add(-time.Hour)}
+	st := HardenState{Installed: true, HaveResult: true, DropInPresent: true, DropInAt: start.Add(-time.Hour)}
 
 	got := ReconcileHardening(st, SandboxState{Supported: true}, start)
 	if got != HardenDidNotTake {
@@ -74,7 +74,7 @@ func TestADropInThatPredatesTheProcessAndDidNotTakeIsReportedAsSuch(t *testing.T
 // that landed in the same second permanently excuse itself.
 func TestATieBetweenApplyTimeAndProcessStartCountsAsDidNotTake(t *testing.T) {
 	start := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
-	st := HardenState{Installed: true, HaveResult: true, AppliedAt: start}
+	st := HardenState{Installed: true, HaveResult: true, DropInPresent: true, DropInAt: start}
 	if got := ReconcileHardening(st, SandboxState{Supported: true}, start); got != HardenDidNotTake {
 		t.Fatalf("equal timestamps must read as did-not-take, got %v", got)
 	}
@@ -115,7 +115,7 @@ func TestEveryVerdictIsReachableAndDistinct(t *testing.T) {
 // starting, and that survives the current posture being fine.
 func TestARevertIsReportedEvenWhenEverythingIsAlreadyInForce(t *testing.T) {
 	start := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
-	st := HardenState{Installed: true, HaveResult: true, Reverted: true, AppliedAt: start.Add(-time.Minute)}
+	st := HardenState{Installed: true, HaveResult: true, Reverted: true, DropInPresent: true, DropInAt: start.Add(-time.Minute)}
 	if got := ReconcileHardening(st, hardened(), start); got != HardenReverted {
 		t.Fatalf("a revert must not be hidden by a healthy posture, got %v", got)
 	}
@@ -212,5 +212,87 @@ func TestTheRefusalsNameTheDangerousDirectivesExplicitly(t *testing.T) {
 		if strings.HasPrefix(d.Directive, "ProtectSystem") {
 			t.Fatal("ProtectSystem=strict must never be written from a panel button")
 		}
+	}
+}
+
+// AUDIT FINDING — the primary success path reported the excuse, not the truth.
+//
+// The worker writes the drop-in, restarts the service, waits to see whether the
+// unit stayed up, and only THEN writes its result. So on every successful run the
+// new process starts BEFORE the result file exists. A verdict computed by
+// comparing the result file's timestamp against this process's start therefore
+// says "awaiting restart" about a process that already restarted with the drop-in
+// in place — turning the one serious finding this row exists to surface into a
+// reassuring "wait a moment", on exactly the path an operator takes.
+//
+// The drop-in's own timestamp is the honest hinge: it is the file systemd read at
+// exec, so a process that started after it either got the directive or the
+// directive did not take.
+func TestTheVerdictComesFromTheDropInNotFromTheWorkersReport(t *testing.T) {
+	dropIn := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	processStart := dropIn.Add(2 * time.Second)   // systemd restarted us into it
+	resultWritten := dropIn.Add(30 * time.Second) // the worker finished watching
+
+	st := HardenState{
+		Installed: true, HaveResult: true,
+		DropInPresent: true, DropInAt: dropIn,
+		Wrote: []string{"NoNewPrivileges=yes"},
+	}
+	_ = resultWritten
+
+	if got := ReconcileHardening(st, SandboxState{Supported: true}, processStart); got != HardenDidNotTake {
+		t.Fatalf("a process that started AFTER the drop-in and still lacks the directive "+
+			"must read as did-not-take, got %v", got)
+	}
+}
+
+// A directive the worker deliberately SKIPPED is never coming, so telling the
+// operator to wait for a restart is wrong twice over: the restart already
+// happened, and another one would change nothing.
+func TestADeliberatelySkippedDirectiveIsNotReportedAsAwaitingAnything(t *testing.T) {
+	dropIn := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	start := dropIn.Add(time.Second)
+
+	sb := hardened()
+	sb.ProtectedHome = false // the one the worker refused to write
+
+	st := HardenState{
+		Installed: true, HaveResult: true,
+		DropInPresent: true, DropInAt: dropIn,
+		Wrote:   []string{"NoNewPrivileges=yes"},
+		Skipped: []string{"ProtectHome=yes — the data directory is under /home"},
+	}
+	got := ReconcileHardening(st, sb, start)
+	if got == HardenAwaitingRestart {
+		t.Fatal("a skipped directive was reported as awaiting a restart that will not change it")
+	}
+	if got == HardenDidNotTake {
+		t.Fatal("a directive the worker refused to write is not one that failed to take")
+	}
+	if got != HardenSkipped {
+		t.Fatalf("want HardenSkipped, got %v", got)
+	}
+	d := DescribeHardenVerdict(got, UnverifiedHardening(sb))
+	if !strings.Contains(d, "will not change at a restart") {
+		t.Fatalf("the copy must say a restart will not help; got %q", d)
+	}
+}
+
+// And the serious verdict still wins when something skipped sits beside
+// something that genuinely did not take.
+func TestOneDirectiveThatDidNotTakeOutranksAnotherThatWasSkipped(t *testing.T) {
+	dropIn := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	sb := hardened()
+	sb.ProtectedHome = false // skipped
+	sb.NoNewPrivs = false    // written, and did not take
+
+	st := HardenState{
+		Installed: true, HaveResult: true,
+		DropInPresent: true, DropInAt: dropIn,
+		Wrote:   []string{"NoNewPrivileges=yes"},
+		Skipped: []string{"ProtectHome=yes — the data directory is under /home"},
+	}
+	if got := ReconcileHardening(st, sb, dropIn.Add(time.Second)); got != HardenDidNotTake {
+		t.Fatalf("want HardenDidNotTake, got %v", got)
 	}
 }

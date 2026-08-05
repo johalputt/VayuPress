@@ -285,7 +285,7 @@ func hardenCheck(h vayuveil.HardenState, s vayuveil.SandboxState, processStart t
 	case vayuveil.HardenUnknown:
 		c.Status = Unverified
 	default:
-		// Reverted, Failed, AwaitingRestart, NotRequested. Each is a real
+		// Reverted, Failed, AwaitingRestart, Skipped, NotRequested. Each is a real
 		// residual exposure the operator should understand, which is Warn's job.
 		// AwaitingRestart in particular is NOT Info: the exposure is live until
 		// the service restarts, and toning it down to context would let a page

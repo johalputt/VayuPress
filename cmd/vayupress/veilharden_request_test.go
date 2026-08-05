@@ -135,32 +135,128 @@ func TestAnUnreadableResultIsNotAReport(t *testing.T) {
 	}
 }
 
-// The applied-at timestamp comes from the file's mtime, not from a string inside
-// it. Both are written by the same machine, but only the mtime shares a clock
-// with this process's start time — and the verdict is a comparison between them.
-func TestAppliedAtComesFromTheFileNotFromItsContents(t *testing.T) {
+// The verdict's timestamp comes from the DROP-IN, not from the worker's report.
+//
+// This is the audit finding that changed the design. The worker writes the
+// drop-in, restarts the service, then watches for twenty seconds before writing
+// its result — so on every successful run the restarted process starts BEFORE
+// the result file exists. Keying the verdict on the result therefore said
+// "awaiting restart" about a process that had already restarted into the
+// drop-in, turning the one serious finding this row exists to surface into a
+// reassuring wait-a-moment, on exactly the path an operator takes.
+func TestTheVerdictIsKeyedOnTheDropInFileNotTheWorkersReport(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("VAYU_DATA_DIR", dir)
 
-	path := filepath.Join(dir, veilHardenResultFile)
-	// A finished_at from the distant past. If it were trusted, an install that
-	// hardened a second ago would report the far more serious "written and did
-	// not take" instead of "awaiting restart".
-	body := `{"started_at":"2001-01-01T00:00:00Z","finished_at":"2001-01-01T00:00:00Z",` +
+	dropIn := filepath.Join(dir, "20-vayuveil-hardening.conf")
+	if err := os.WriteFile(dropIn, []byte("[Service]\nNoNewPrivileges=yes\n"), 0o644); err != nil {
+		t.Fatalf("write drop-in: %v", err)
+	}
+	orig := veilHardenDropInPath
+	veilHardenDropInPath = dropIn
+	t.Cleanup(func() { veilHardenDropInPath = orig })
+
+	// The worker's report lands AFTER the restart, which is the whole point.
+	body := `{"started_at":"2026-08-05T12:00:00Z","finished_at":"2026-08-05T12:00:30Z",` +
 		`"wrote":["NoNewPrivileges=yes"],"skipped":[],"reverted":false,"failed":false,"detail":"ok"}`
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
+	if err := os.WriteFile(filepath.Join(dir, veilHardenResultFile), []byte(body), 0o644); err != nil {
+		t.Fatalf("write result: %v", err)
 	}
+
 	st := readVeilHardenState()
-	if !st.HaveResult {
-		t.Fatal("a valid result was not read")
+	if !st.DropInPresent {
+		t.Fatal("the drop-in was not read")
 	}
-	if st.AppliedAt.Year() == 2001 {
-		t.Fatal("AppliedAt was taken from the document's own timestamp rather than the file's mtime")
+
+	// A process started two seconds AFTER the drop-in — the one systemd restarted
+	// into. The directive is not in force, so it did not take. Saying "awaiting
+	// restart" here would be excusing the failure with a restart that happened.
+	after := st.DropInAt.Add(2 * time.Second)
+	if got := vayuveil.ReconcileHardening(st, veilHardenBare(), after); got != vayuveil.HardenDidNotTake {
+		t.Fatalf("a process started after the drop-in must read as did-not-take, got %v", got)
 	}
-	// Written now, so a process that started a minute ago is awaiting a restart.
-	start := time.Now().Add(-time.Minute)
-	if got := vayuveil.ReconcileHardening(st, veilHardenBare(), start); got != vayuveil.HardenAwaitingRestart {
-		t.Fatalf("want HardenAwaitingRestart, got %v", got)
+
+	// And a process that predates the drop-in genuinely is awaiting a restart.
+	before := st.DropInAt.Add(-time.Minute)
+	if got := vayuveil.ReconcileHardening(st, veilHardenBare(), before); got != vayuveil.HardenAwaitingRestart {
+		t.Fatalf("a process started before the drop-in must read as awaiting restart, got %v", got)
+	}
+}
+
+// A drop-in with no report beside it is still a drop-in. A result file lost to a
+// disk wipe must not make a unit that is still carrying directives read as one
+// that never had any.
+func TestADropInIsReadEvenWithNoWorkerReport(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("VAYU_DATA_DIR", dir)
+
+	dropIn := filepath.Join(dir, "20-vayuveil-hardening.conf")
+	if err := os.WriteFile(dropIn, []byte("[Service]\n"), 0o644); err != nil {
+		t.Fatalf("write drop-in: %v", err)
+	}
+	orig := veilHardenDropInPath
+	veilHardenDropInPath = dropIn
+	t.Cleanup(func() { veilHardenDropInPath = orig })
+
+	st := readVeilHardenState()
+	if st.HaveResult {
+		t.Fatal("a report was invented from nothing")
+	}
+	if !st.DropInPresent {
+		t.Fatal("the drop-in was ignored because no report sat beside it")
+	}
+	if got := vayuveil.ReconcileHardening(st, veilHardenBare(), st.DropInAt.Add(time.Second)); got == vayuveil.HardenNotRequested {
+		t.Fatal("a unit carrying a drop-in was reported as never having been asked")
+	}
+}
+
+// AUDIT FINDING — the worker's write paths must not come from configuration.
+//
+// It runs as root from a unit carrying EnvironmentFile=-/etc/vayupress/env.
+// Deriving the directory root writes its result and log into from an environment
+// variable would let a configuration value choose where root writes. The sibling
+// provisioning worker hardcodes it for exactly this reason, and this one drifted
+// from that before the pre-release pass caught it.
+func TestTheWorkerDoesNotTakeItsWritePathsFromTheEnvironment(t *testing.T) {
+	b, err := os.ReadFile(filepath.Clean("../../scripts/vayuveil-harden.sh"))
+	if err != nil {
+		t.Skipf("worker script not readable from here: %v", err)
+	}
+	for i, line := range strings.Split(string(b), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") || !strings.HasPrefix(trimmed, "STATE_DIR=") {
+			continue
+		}
+		if strings.Contains(trimmed, "$") {
+			t.Errorf("line %d derives the root-written state directory from a variable: %s", i+1, trimmed)
+		}
+	}
+}
+
+// AUDIT FINDING — a result file that will not parse reads as "never run", so
+// anything embedded in it must be sanitised before it gets there.
+//
+// The detail string carries `systemctl status` output, which can hold control
+// characters. A raw one makes the JSON invalid, the panel reads no report at
+// all, and a revert — the outcome that must never be silent — goes unreported.
+func TestTheWorkerSanitisesWhatItEmbedsInItsResult(t *testing.T) {
+	b, err := os.ReadFile(filepath.Clean("../../scripts/vayuveil-harden.sh"))
+	if err != nil {
+		t.Skipf("worker script not readable from here: %v", err)
+	}
+	src := string(b)
+	if !strings.Contains(src, "systemctl status") {
+		return // nothing external is embedded; nothing to sanitise
+	}
+	for _, line := range strings.Split(src, "\n") {
+		if !strings.Contains(line, "systemctl status") || strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		// Printable-only is the one that matters: a stray control byte is what
+		// makes the document unparseable, and quotes only make it wrong.
+		if !strings.Contains(line, "[:print:]") {
+			t.Errorf("systemctl output is embedded without being reduced to printable characters: %s",
+				strings.TrimSpace(line)[:min(120, len(strings.TrimSpace(line)))])
+		}
 	}
 }

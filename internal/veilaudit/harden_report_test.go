@@ -35,7 +35,7 @@ func hardenInputs(h vayuveil.HardenState, sb vayuveil.SandboxState, start time.T
 func TestHardeningWrittenButNotYetInForceIsAWarningNotContext(t *testing.T) {
 	start := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 	row := rowFor(t, Run(hardenInputs(
-		vayuveil.HardenState{Installed: true, HaveResult: true, AppliedAt: start.Add(time.Minute)},
+		vayuveil.HardenState{Installed: true, HaveResult: true, DropInPresent: true, DropInAt: start.Add(time.Minute)},
 		unsandboxed(), start)), hardenRow)
 
 	if row.Status != Warn {
@@ -55,7 +55,7 @@ func TestHardeningWrittenButNotYetInForceIsAWarningNotContext(t *testing.T) {
 func TestAStaleDropInThatNeverTookIsAFailure(t *testing.T) {
 	start := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 	row := rowFor(t, Run(hardenInputs(
-		vayuveil.HardenState{Installed: true, HaveResult: true, AppliedAt: start.Add(-time.Hour)},
+		vayuveil.HardenState{Installed: true, HaveResult: true, DropInPresent: true, DropInAt: start.Add(-time.Hour)},
 		unsandboxed(), start)), hardenRow)
 
 	if row.Status != Fail {
@@ -108,6 +108,7 @@ func TestARevertSurvivesAHealthyPosture(t *testing.T) {
 
 	row := rowFor(t, Run(hardenInputs(
 		vayuveil.HardenState{Installed: true, HaveResult: true, Reverted: true,
+			DropInPresent: true, DropInAt: start.Add(-time.Hour),
 			Detail: "the service did not come back"},
 		full, start)), hardenRow)
 

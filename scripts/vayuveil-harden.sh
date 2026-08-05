@@ -27,7 +27,13 @@
 
 set -uo pipefail
 
-STATE_DIR="${VAYU_DATA_DIR:-/var/lib/vayupress}"
+# HARDCODED, deliberately. This script runs as root from a unit carrying
+# EnvironmentFile=-/etc/vayupress/env, so deriving the paths root writes to from
+# an environment variable would make a configuration value choose where root
+# writes. The sibling provisioning worker hardcodes it for the same reason.
+# VAYU_DATA_DIR still decides which data directory ProtectHome is judged
+# against below — that is a read, not a write target.
+STATE_DIR=/var/lib/vayupress
 REQUEST="${STATE_DIR}/veilharden.request"
 RESULT="${STATE_DIR}/veilharden.result"
 LOG="${STATE_DIR}/veilharden.log"
@@ -194,7 +200,7 @@ for _ in $(seq 1 15); do
 done
 
 if [[ "$DIPS" -ne 0 ]]; then
-  DETAIL="The service did not come back with the drop-in in place, so it was removed and the service restarted without it. Nothing is hardened and nothing is broken. systemd's own reason: $(systemctl status "${UNIT_NAME}.service" --no-pager -n 3 2>&1 | tr '\n' ' ' | tr -d '"' | cut -c1-400)"
+  DETAIL="The service did not come back with the drop-in in place, so it was removed and the service restarted without it. Nothing is hardened and nothing is broken. systemd's own reason: $(systemctl status "${UNIT_NAME}.service" --no-pager -n 3 2>&1 | tr '\n' ' ' | tr -cd '[:print:]' | tr -d '"\\' | cut -c1-400)"
   revert
   log "$DETAIL"
   write_result
