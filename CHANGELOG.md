@@ -6,6 +6,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **ADR-0150 is now a VayuPress document rather than a desktop one with a
+  correction bolted on top.** The previous pass added a scope note at the front
+  and rewrote the build order, and left the body describing a machine this
+  binary does not run on: the premise section argued about Windows Recall and
+  X11 window reads, the threat model's actors were browser extensions and
+  conferencing apps, and the architecture opened by explaining that a Wayland
+  compositor is the chokepoint policy hangs off.
+
+  Rewritten to what a VayuPress host actually poses. §1 asks the server
+  question — what on this host can read what this process holds, what has it
+  verifiably done about it, and where is it still exposed. §2's actors are a
+  process under the same account, an artifact this process left behind, another
+  local account, an operator's console residue, root, and the layers below it;
+  its assets lead with decrypted mail in memory, the keystore key, session
+  tokens, PGP material, the database, backups, swap and core dumps, and console
+  screen memory. The desktop channels are kept, ranked below those and marked as
+  present only when the host also runs a desktop session — which is a real
+  configuration, and the reason the registry still probes them.
+
+  §3 no longer claims a chokepoint. A server has none: this process cannot
+  mediate what another process does, and that is a constraint rather than a phase
+  that has not landed. What is available instead is the enumeration and the
+  honest report, and the section says so.
+
+  The authoring failure behind the original is recorded in the active voice,
+  because the passive one was the first instinct: the ADR was written by
+  designing from the *threat* rather than from the *product*, and filed as a
+  roadmap without being checked against what this binary can execute. The check
+  that was missing is one sentence, and it now sits at the top of the document
+  for the next ADR to copy.
+
 ## [3.17.6] — 2026-08-05
 
 ### Fixed

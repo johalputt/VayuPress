@@ -16,10 +16,18 @@ correlation for capture-holding processes (P5) and measured boot with remote
 attestation (P6). None of those can be delivered by a Go process that serves
 HTTP, and listing them as "planned" told every reader they were coming.
 
-That was the more interesting failure, because it is the same one §8 exists to
-prevent, pointed at the roadmap instead of at the panel. A phase table promising
-six phases that will never ship here is a claim about the future that nobody
-checked, and it was published on a public page about a *privacy* subsystem.
+**That was an authoring failure, and it is recorded here in the active voice
+because the passive one was the first instinct.** The author of this ADR designed
+from the THREAT rather than from the PRODUCT: screen capture on X11 is a real and
+interesting problem, a serious plan was written for it, and that plan was then
+filed here as a roadmap without being checked against what this binary can
+execute. It is the same failure §8 exists to prevent, aimed at the roadmap
+instead of at the panel — and the cost was not internal, because a published
+article read the phase table and announced six forthcoming phases.
+
+The check that was missing takes one sentence and belongs at the top of any
+future ADR in this repo: **what can this binary actually execute?** Everything
+below §0 has now been rewritten to that question.
 
 So the work splits in two, and only one half belongs to this repository:
 
@@ -28,13 +36,19 @@ So the work splits in two, and only one half belongs to this repository:
 | **Server track (S)** | What this process can verifiably do to protect *itself*, and what it can honestly *report* about the host it runs on | **This ADR. Complete.** |
 | **Endpoint track (E)** | The compositor, grants, sandboxing, MAC, accessibility mediation, input/clipboard policy, egress correlation | A desktop operating system. **Not this binary, and not on its roadmap.** |
 
-What survives of the endpoint track is the **threat model** — §2's actors and its
-ten assets — because the shipped registry enumerates exactly those, and every one
-of its channels draws its rationale from that list. What does not survive is the
-layer-by-layer enforcement design that used to fill §3.2; §3.2 now records why it
-was cut. The short version: a threat model and an implementation design are
-different things, and the durable value of the first was being used to justify
-keeping the second.
+What this document is now: §1 states the question a VayuPress host actually
+poses, §2 is a threat model whose actors are the ones on a server — a process
+under the same account, an artifact this process left behind, another local
+account — and §5 is a build order every step of which this binary can run. The
+desktop channels remain enumerated in §3.1 and remain probed, because "absent
+from this host" is a fact worth proving, and because an install sharing a machine
+with a desktop session is a real configuration in which they are not absent.
+
+What is gone is the layer-by-layer enforcement design that used to fill §3.2 —
+seventy lines specifying a compositor, a sandbox and a policy set. §3.2 now
+records why it was cut rather than keeping it "for reference": a threat model and
+an implementation design are different things, and the durable value of the first
+was being used to justify keeping the second.
 
 ## The claim, worded to be defensible
 
@@ -67,64 +81,100 @@ phrase in front of a compromised kernel.
 That is the right claim for a desktop and remains the endpoint track's target.
 **This binary does not make it**, and no surface it renders may imply otherwise.
 
-## 1. Correcting the premise this started from
+## 1. The question this actually answers on a VayuPress host
 
-The motivating worry was that Windows silently screenshots the screen and sells
-it. That is not what happens. Windows Recall snapshots on Copilot+ hardware —
-opt-in, local, encrypted, and redesigned after precisely this criticism.
-Telemetry collects diagnostics, not pixels.
+This started from a desktop worry — that an operating system silently
+screenshots the screen — and the first draft answered that worry. It is a real
+problem: on X11 any process running as you can read every window and every
+password field with no permission, no indicator and no log, and the adversary is
+not the OS vendor but the software the user already installed.
 
-**The real flaw is worse, because it is structural and it is everywhere.**
+**None of that is the question on the machine VayuPress runs on.** There is no
+screen, no browser extension and no cracked game. There is a Go process holding
+decrypted mail, a keystore key, session tokens and PGP private material, on a
+host that also runs whatever else the operator put there.
 
-On X11, any process running as you can read the entire screen — every window,
-every password field — with no permission, no indicator, and no log. That is not
-a bug; X11 predates the threat. On Windows, `BitBlt` and the Desktop Duplication
-API need no privilege either. macOS alone prompts.
+So the question this ADR answers is the server one:
 
-So the adversary is not the OS vendor. It is **the software the user already
-installed**: a browser extension, a free PDF tool, a cracked game, a compromised
-update. Every one of them can do it today, and nothing tells you when.
+> **What on this host can read what this process holds, what has this process
+> verifiably done about it, and where is it still exposed?**
+
+That reframing is what the rest of this document is built on, and it changes the
+answers. The dangerous channel on a desktop is the compositor; here it is an
+artifact this process leaves lying around — a core dump, a swap page, a backup —
+because those contain the same secrets and outlive the process that made them.
+
+The desktop channels are still enumerated in §3.1 and still probed, because
+"absent from this host" is a fact worth reporting and worth being able to prove.
+A VayuPress install on a machine that also runs a desktop session is a real
+configuration, and on that machine those channels stop being absent.
 
 ## 2. Threat model
 
-### Actors, in ascending capability
+### Actors, on the machine this binary actually runs on
 
 | # | Actor | Capability | In scope |
-|---|---|---|---|
-| A1 | Unprivileged app, user's UID | Any documented API, any device node the user can open | **Yes — fully** |
-| A2 | Malicious app with a plausible reason to capture (conferencing, remote support) | Will *ask*, then abuse the grant | **Yes — fully** |
-| A3 | Compromised legitimate app (supply-chain) | Inherits that app's existing grants | **Yes — fully** |
-| A4 | Local attacker with a shell as the user | Everything A1 has, plus persistence | **Yes — fully** |
-| A5 | Attacker with root | Reads `/dev/mem`, loads modules, patches the compositor | **Partially — cost raised, not closed** |
-| A6 | Kernel/driver-level attacker | Reads GPU memory directly | **No** |
-| A7 | Firmware/SMM/ME | Below the OS entirely | **No** |
-| A8 | Physical/optical | Camera, HDMI splitter, hostile monitor, TEMPEST | **No** |
+| --- | --- | --- | --- |
+| S1 | Another process under the same account | Reads this process's memory via `/proc/<pid>/mem`, attaches with ptrace, opens any file this user can | **Yes — fully** |
+| S2 | An artifact this process left behind | A core dump, a swap page, a backup archive, a temp file. Holds the same secrets and outlives the process | **Yes — fully** |
+| S3 | A different unprivileged account on the host | Whatever file modes and namespaces permit | **Yes — fully** |
+| S4 | An operator at a console or SSH session | Legitimately privileged, but what they type stays in console screen memory afterwards | **Partially — the residue is in scope, the session is not** |
+| S5 | Attacker with root | Reads `/dev/mem`, loads modules, reads any file | **Partially — cost raised, not closed** |
+| S6 | The hypervisor, or another tenant escaping it | Reads guest memory from outside | **No** |
+| S7 | Firmware / SMM / management engine | Below the OS entirely | **No** |
+| S8 | Physical access to the disk | Carries the volume away | **No — that is disk encryption's job, not this subsystem's** |
 
-**A1–A4 is where essentially all real-world screen exfiltration lives.** Closing
-it completely is worth doing even though A5–A8 remain.
+**S1 and S2 are where a server install actually loses data**, and they are the
+two this binary can do something about. S2 in particular is the one operators
+underestimate: an encrypted data directory does not cover the swap file, the core
+dump or the backup, and each of those holds exactly what the directory was
+encrypted to protect.
 
 ### Assets
 
-Not just "the screen". Enumerated, because an unenumerated asset is an
-unprotected one:
+Enumerated, because an unenumerated asset is an unprotected one. Ordered by what
+is actually at risk here rather than by what a desktop would rank first:
 
-1. Framebuffer / composited output (screenshots, recording)
-2. Individual window content (per-surface capture)
-3. **Window content as text** — accessibility APIs, the channel everyone forgets
-4. Keyboard input (keyloggers — strictly worse than screenshots)
-5. Pointer position and clicks
-6. Clipboard and primary selection
-7. Notification bodies
-8. Window titles and application list (metadata leaks intent)
-9. Thumbnails and previews generated from files
-10. Suspend/hibernate images and core dumps containing any of the above
+1. **Decrypted mail held in memory** while it is being served or indexed
+2. **The keystore key**, and anything sealed under it
+3. **Session tokens** for every signed-in operator
+4. **PGP private material** in memory during a sign or decrypt
+5. **The SQLite database file** and its write-ahead log
+6. **Backup archives** — every one of the above, at rest, portable
+7. **Swap pages and core dumps** containing any of 1–4
+8. **Console screen memory** — what a root login typed, still readable afterwards
 
-## 3. The architecture: one chokepoint, exhaustively enumerated
+The remaining channels exist only if this host ALSO runs a desktop session, and
+are reported as absent when it does not:
 
-Wayland is what makes this tractable. A Wayland client **cannot** read another
-window or the screen — capture happens only if the compositor hands it over. The
-compositor becomes a real chokepoint, and a chokepoint is something you can put
-policy on. X11 has no equivalent and never will.
+1. Framebuffer, window pixels and window text
+2. Keyboard, pointer, clipboard and the accessibility bus
+3. Notification bodies, window titles and thumbnailer caches
+
+## 3. The architecture: no chokepoint, so an enumeration instead
+
+A desktop design would put policy on the compositor, because a Wayland client
+cannot read another window unless the compositor hands it over — one place
+everything must pass through, and a chokepoint is something you can put policy
+on.
+
+**A server has no such point.** This process cannot mediate what another process
+on the host does, and nothing here is going to become the thing every read goes
+through. That is a constraint, not a phase that has not landed yet.
+
+What is available instead is an enumeration and an honest report: name every
+channel through which observation is possible, probe each one against the
+running host, and report what was found — including, and especially, that a
+channel could not be checked. The value is not enforcement. It is that an
+operator can answer "what can see this install?" from evidence rather than from
+assumption, and that the answer cannot quietly improve itself.
+
+Two things follow, and both are load-bearing:
+
+- **A channel nobody thought of cannot be silently introduced** (§3.1). That is
+  the only honest meaning of "no loophole" here.
+- **The few things this process CAN do to itself are done and then read back**
+  (§5), and they are reported at their real scope — this process, not the host.
 
 ### 3.1 The Observation Contract registry — the "no loophole" mechanism
 
@@ -138,7 +188,7 @@ are invalid**:
 ```go
 type Channel struct {
     ID        ChannelID     // wlr-screencopy, at-spi, /dev/input, …
-    Asset     Asset         // which of the ten assets it exposes
+    Asset     Asset         // which enumerated asset it exposes
     Default   Disposition   // dispositionUnset is NOT a valid answer
     Grant     GrantModel    // grantUnset is NOT a valid answer
     Indicator IndicatorKind // indicatorUnset is NOT a valid answer

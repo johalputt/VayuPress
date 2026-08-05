@@ -22,7 +22,7 @@ package vayuveil
 
 import "strings"
 
-// Asset is one of the ten observable assets enumerated in ADR-0150 §2. An
+// Asset is one of the observable assets enumerated in ADR-0150 §2. An
 // unenumerated asset is an unprotected one, so the list is closed and the zero
 // value is not a member of it.
 type Asset uint8
