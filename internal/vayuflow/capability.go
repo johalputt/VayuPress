@@ -258,6 +258,43 @@ var capabilities = []Capability{
 			"Space when the provider is remote, permitted when it runs on this host.",
 	},
 	{
+		Action: "egress.fetch", Kind: KindEgress,
+		Writes: WriteNone,
+		// The field this policy was written for. An outbound call from a Tor
+		// Space is precisely what ADR-0141 exists to prevent, and Effects.Fetch
+		// refuses it here regardless of what the call site remembers to do.
+		Onion: OnionInert,
+		Undo:  ReversibleByOperator,
+		// Editor rather than admin: a fetch reads, and reading a URL an
+		// operator already chose is not an administrative act. The URL is fixed
+		// in the flow at save time, so this is not an open proxy.
+		MinRole: RoleEditor,
+		Rationale: "Fetches one URL through the guarded client — the same one that carries the SSRF " +
+			"defences and the Tor kill-switch — and hands the body to the next step. Inert in a Tor " +
+			"Space: an outbound call is the leak that mode exists to prevent.",
+	},
+	{
+		Action: "mail.send", Kind: KindMail,
+		// WriteLive, and stated plainly. Mail reaches a person; there is no
+		// draft form of a delivered message, and pretending otherwise to keep
+		// the "nothing writes live" property tidy would be the panel overstating
+		// what is bounded.
+		Writes: WriteLive,
+		// Active in a Tor Space: delivery goes through the built-in sender, and
+		// the EXTERNAL relay is separately refused by safefetch.ClearnetBlocked.
+		// Registering this inert would claim mail cannot be sent at all there,
+		// which is not true and would be a claim the panel could not support.
+		Onion: OnionActive,
+		// The field Irreversible was written for. A delivered message cannot be
+		// recalled, so the panel must never offer it an undo, and arming a flow
+		// that sends must not read like arming one that drafts.
+		Undo:    Irreversible,
+		MinRole: RoleAdmin,
+		Rationale: "Sends one message to one recipient through the built-in sender. Irreversible: " +
+			"delivered mail cannot be recalled. Admin-only and one recipient per step, because a " +
+			"recipient list would spend a single write and deliver many.",
+	},
+	{
 		Action: "content.draft.update", Kind: KindContent,
 		Writes: WriteDraft, Onion: OnionActive, Undo: ReversibleByOperator,
 		MinRole: RoleEditor,

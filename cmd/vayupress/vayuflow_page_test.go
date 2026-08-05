@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/vayuflow"
+	"github.com/johalputt/vayupress/internal/vayuflow/flowaudit"
 )
 
 func samplePageFlow() vayuflow.Flow {
@@ -30,7 +31,7 @@ func samplePageFlow() vayuflow.Flow {
 func renderPage(t *testing.T, flows []vayuflow.Flow, rejected map[string]error,
 	stats vayuflow.Stats, runs []vayuflow.Run, wired bool) string {
 	t.Helper()
-	return vayuFlowPage(flows, rejected, stats, runs, wired)
+	return vayuFlowPage(flows, rejected, stats, runs, flowaudit.Run(flowaudit.Inputs{Wired: wired, Flows: flows, Rejected: rejected}), wired)
 }
 
 // The blast radius must read while an accordion is COLLAPSED, because the
@@ -266,5 +267,43 @@ func TestVayuFlowIsUnderOperationsAndNotInTheSidebar(t *testing.T) {
 	// "unreachable".
 	if !strings.Contains(ui, `Get("/os/vayuflow"`) {
 		t.Error("the /os/vayuflow route is missing")
+	}
+}
+
+// The posture report must reach the page, and the honest ceiling must be on it.
+// A report computed and not rendered is the same as no report.
+func TestThePosturePageCarriesTheHonestCeiling(t *testing.T) {
+	page := renderPage(t, []vayuflow.Flow{samplePageFlow()}, nil, vayuflow.Stats{}, nil, true)
+	if !strings.Contains(page, "What this report does not cover") {
+		t.Fatal("the honest ceiling is not rendered on the page")
+	}
+	if !strings.Contains(page, "taken over") {
+		t.Error("the page does not say the engine is no defence against a compromised account")
+	}
+	// And it must not be toned as a success.
+	i := strings.Index(page, "What this report does not cover")
+	window := page[clampLo(i-400) : i+200]
+	if strings.Contains(window, "mon-chip--on") {
+		t.Error("the honest ceiling is toned as a pass; it is a fact, not reassurance")
+	}
+}
+
+func clampLo(i int) int {
+	if i < 0 {
+		return 0
+	}
+	return i
+}
+
+// Only Pass gets the "on" tone. A Context row toned green would let a caveat
+// read as reassurance — the exact overstatement this project treats as a defect.
+func TestOnlyAPassIsTonedAsSuccess(t *testing.T) {
+	if !strings.Contains(flowCheckChip(flowaudit.Pass), "mon-chip--on") {
+		t.Error("a pass should be toned on")
+	}
+	for _, s := range []flowaudit.Status{flowaudit.Warn, flowaudit.Fail, flowaudit.Context} {
+		if strings.Contains(flowCheckChip(s), "mon-chip--on") {
+			t.Errorf("%s is toned as a success", s)
+		}
 	}
 }

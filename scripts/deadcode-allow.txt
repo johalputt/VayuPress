@@ -16,7 +16,7 @@
 #  - VerdictFrom: reads the middleware's classification off the request context,
 #  - botdb Store.Import / Store.ReportFalsePositive: operator community-import and
 #  - calibrate.BiasedForTest: constructs a calibrator pre-loaded with a bias so
-#  - internal/vayuflow/*: ADR-0151. The engine IS wired and reachable as of P4 (the panel, the ticker and the content adapter). What remains here is a small, named set belonging to later phases: chargeEgress/Effects.Fetch land with the egress actions in P7, CapabilitiesOfKind with the flowaudit posture report in P7, and ImplementedActions is a registry-consistency helper. This list went 65 -> 6 when the wiring landed; it must reach zero before the ADR-0151 release, and a VayuFlow release still carrying an entry outside those named reasons is a subsystem shipping without being reachable.
+#  - internal/vayuflow/*: ADR-0151. The engine is fully wired and reachable. TWO entries remain and both are named rather than tolerated: Schedule.String returns the expression a cron parsed from and exists so a future editor can echo it back to the operator, and ImplementedActions is the registry-consistency helper the tests use to hold implementations and capabilities against each other. Neither is a subsystem shipping unreachable — that state went 65 -> 2 as the wiring landed, and anything ADDED here for this package needs the same kind of sentence.
 # "<file>: unreachable func: <name>", line/col stripped so it survives edits).
 # Each line below is a function currently unreachable from the program
 # The CI gate fails only on entries NOT listed here, so new dead code is
@@ -261,9 +261,7 @@ internal/trace/store.go: unreachable func: Store.ensureSchema
 internal/trace/store.go: unreachable func: attrsJSON
 internal/trace/store.go: unreachable func: parseStatus
 internal/trace/trace.go: unreachable func: CausationID
-internal/vayuflow/capability.go: unreachable func: CapabilitiesOfKind
 internal/vayuflow/cron.go: unreachable func: Schedule.String
-internal/vayuflow/runner.go: unreachable func: Effects.Fetch
 internal/vayuflow/runner.go: unreachable func: ImplementedActions
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanDelete
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanManageAccounts

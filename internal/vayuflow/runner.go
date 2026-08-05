@@ -9,6 +9,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/safefetch"
 )
 
 // Effects is the ONLY way a step causes anything, and it is where the ceilings
@@ -113,11 +115,17 @@ func (e *Effects) Model(local bool, desc string) error {
 	return nil
 }
 
-// clearnetBlocked reports whether the install is running as a Tor Space. It is
-// a variable so the tests can drive both worlds; production wires it to
-// safefetch's kill-switch in P7, and until then it answers false, which is the
-// honest answer for a clearnet install.
-var clearnetBlocked = func() bool { return false }
+// clearnetBlocked reports whether the install is running as a Tor Space.
+//
+// It IS safefetch's kill-switch — the same one that closes every other outbound
+// path (IndexNow, webhooks, remote images, embed unfurl, WKD). Pointing at the
+// central switch rather than reading VAYUOS_MODE again is deliberate: a second
+// reading of the same fact is a second thing that can disagree with the first,
+// and the disagreement would be an automation still reaching the clearnet after
+// every other subsystem had stopped.
+//
+// It stays a variable so the tests can drive both worlds.
+var clearnetBlocked = safefetch.ClearnetBlocked
 
 // Action performs one step. It returns the value the step produced and an
 // error; ErrDryRun from the effect path is NOT an error the action should

@@ -53,3 +53,12 @@ func ownerAtLeast(have, need string) bool {
 	}
 	return h >= n
 }
+
+// OwnerSatisfies is ownerAtLeast, exported for the posture report.
+//
+// The report has to answer "does this flow's owner still hold what its actions
+// require?" and it must answer it the SAME way the runner does. A second
+// implementation of the ladder would be a second thing that can disagree with
+// the first, and the disagreement would be a panel saying a flow is fine while
+// the engine refuses it.
+func OwnerSatisfies(have, need string) bool { return ownerAtLeast(have, need) }

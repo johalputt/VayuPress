@@ -50,11 +50,54 @@ func TestNoModelStepCanRaiseTheWriteCeiling(t *testing.T) {
 			t.Errorf("a model step was permitted to write at %s", level)
 		}
 	}
-	// And every step that CAN write is capped at draft, so the value a model
-	// produces has nowhere live to land.
-	for _, c := range Capabilities() {
+	// And every CONTENT step is capped at draft, so a generation has nowhere to
+	// land as a published post.
+	//
+	// This assertion was once "no capability writes live at all", which was true
+	// only while content was the only thing a flow could do. Adding mail broke
+	// it, correctly: a delivered message has no draft form, and weakening
+	// mail.send to keep the sentence tidy would have been the panel overstating
+	// what is bounded. The claim this test defends is the one the ADR actually
+	// makes — a bad generation cannot PUBLISH itself — and mail is a separate,
+	// declared, admin-only, irreversible surface with its own row below.
+	for _, c := range CapabilitiesOfKind(KindContent) {
 		if c.Writes == WriteLive {
 			t.Errorf("%s can write live; a model value could reach a published post through it", c.Action)
+		}
+	}
+}
+
+// Mail is the one action that reaches a person irreversibly, so the properties
+// that bound it are asserted rather than assumed.
+func TestMailIsAdminOnlyIrreversibleAndSingleRecipient(t *testing.T) {
+	c, err := CapabilityFor("mail.send")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.MinRole != RoleAdmin {
+		t.Errorf("mail.send requires %q; sending on an install's behalf is an admin act", c.MinRole)
+	}
+	if c.Undo != Irreversible {
+		t.Errorf("mail.send declares Undo=%s; delivered mail cannot be recalled", c.Undo)
+	}
+	if c.Writes != WriteLive {
+		t.Errorf("mail.send declares Writes=%s; a delivered message has no draft form", c.Writes)
+	}
+
+	// A recipient list would spend ONE write and deliver MANY — the budget
+	// would report a single message while the list got one each.
+	SetMailSender(&fakeMailer{})
+	t.Cleanup(func() { SetMailSender(nil) })
+	fn, _ := actionFor("mail.send")
+	for _, to := range []string{"a@example.com,b@example.com", "a@example.com; b@example.com"} {
+		var spend Spend
+		e := &Effects{mode: RunLive, cap: c, budget: testBudget(), spend: &spend}
+		if _, err := fn(context.Background(), map[string]string{
+			"to": to, "subject": "s", "body": "b"}, e); err == nil {
+			t.Errorf("a recipient list %q was accepted", to)
+		}
+		if spend.Writes != 0 {
+			t.Errorf("the refused list still charged %d write(s)", spend.Writes)
 		}
 	}
 }

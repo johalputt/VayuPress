@@ -26,7 +26,9 @@ import (
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/vayuflow"
+	"github.com/johalputt/vayupress/internal/vayuflow/flowaudit"
 )
 
 // handleOSVayuFlow renders the automation console.
@@ -53,7 +55,38 @@ func (a *App) handleOSVayuFlow(w http.ResponseWriter, r *http.Request) {
 		runs, _ = a.flowRuns.Recent(r.Context(), "", 25)
 	}
 
-	body := vayuFlowPage(flows, rejected, stats, runs, a.flowStore != nil)
+	pending := 0
+	if a.flowInbox != nil {
+		pending, _ = a.flowInbox.PendingCount(r.Context())
+	}
+	roles := map[string]string{}
+	resolve := a.flowRoleResolver()
+	for _, f := range flows {
+		if _, seen := roles[f.Owner]; seen {
+			continue
+		}
+		// An unresolvable owner is recorded as an EMPTY role rather than
+		// skipped, so the report reads it as "could not check" and fails
+		// closed — the same answer the runner gives.
+		role, err := resolve(r.Context(), f.Owner)
+		if err != nil {
+			role = ""
+		}
+		roles[f.Owner] = role
+	}
+	checks := flowaudit.Run(flowaudit.Inputs{
+		Wired:           a.flowStore != nil && a.flowRunner != nil,
+		Flows:           flows,
+		Rejected:        rejected,
+		OwnerRoles:      roles,
+		Stats:           stats,
+		PendingInbox:    pending,
+		OnionMode:       safefetch.ClearnetBlocked(),
+		ModelConfigured: a.aiAssist != nil && a.aiAssist.Enabled(),
+		ModelLocal:      flowModel{c: a.aiAssist}.Local(),
+	})
+
+	body := vayuFlowPage(flows, rejected, stats, runs, checks, a.flowStore != nil)
 	full := adminOSShellHead(nonce, "VayuFlow", "vayuflow", cfg) + body +
 		adminOSShellFoot(nonce, vayuFlowScript, pageUsesAlpine(body))
 	writeOSHTML(w, r, full)
@@ -143,6 +176,33 @@ func (a *App) handleOSVayuFlowRun(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// flowCheckChip renders a posture verdict. Only Pass gets the "on" tone — a
+// Context row is a fact, not a success, and toning it green would let the
+// honest-ceiling row read as reassurance.
+func flowCheckChip(s flowaudit.Status) string {
+	switch s {
+	case flowaudit.Pass:
+		return `<span class="mon-chip mon-chip--on" title="` + s.String() + `">ok</span>`
+	case flowaudit.Warn:
+		return `<span class="mon-chip mon-chip--off" title="` + s.String() + `">look</span>`
+	case flowaudit.Fail:
+		return `<span class="mon-chip mon-chip--off" title="` + s.String() + `">act</span>`
+	}
+	return `<span class="mon-chip mon-chip--off" title="` + s.String() + `">note</span>`
+}
+
+func flowCheckIcon(s flowaudit.Status) string {
+	switch s {
+	case flowaudit.Pass:
+		return "✓"
+	case flowaudit.Fail:
+		return "✕"
+	case flowaudit.Warn:
+		return "!"
+	}
+	return "·"
+}
+
 // flowModeChip renders a flow's arming state so it reads while collapsed.
 func flowModeChip(f vayuflow.Flow) string {
 	if !f.Enabled {
@@ -172,7 +232,7 @@ func runStatusChip(s vayuflow.RunStatus) string {
 // vayuFlowPage builds the console body. Pure, so it can be rendered and
 // asserted on without a request or a database.
 func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
-	stats vayuflow.Stats, runs []vayuflow.Run, wired bool) string {
+	stats vayuflow.Stats, runs []vayuflow.Run, checks []flowaudit.Check, wired bool) string {
 	esc := html.EscapeString
 	var b strings.Builder
 
@@ -204,6 +264,20 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 		b.WriteString(`<div class="warn-box">The automation engine is not running in this build, so ` +
 			`nothing on this page can fire. Flows are listed from storage for reference only.</div>`)
 	}
+
+	// ── Posture ──────────────────────────────────────────────────────────────
+	pass, warn, fail, ctxRows := flowaudit.Summary(checks)
+	b.WriteString(`<div class="section-head"><span class="section-head__title">Posture</span>` +
+		`<span class="section-head__hint">Computed now, from live state — ` +
+		strconv.Itoa(fail) + ` to act on, ` + strconv.Itoa(warn) + ` to look at, ` +
+		strconv.Itoa(pass) + ` ok, ` + strconv.Itoa(ctxRows) + ` noted</span></div>`)
+	b.WriteString(`<div class="mon-stack">`)
+	for i, c := range checks {
+		b.WriteString(monAcc(flowCheckIcon(c.Status), esc(c.Title), "", flowCheckChip(c.Status),
+			i == 0 && c.Status != flowaudit.Pass,
+			`<div class="card"><p class="text-sm muted">`+esc(c.Detail)+`</p></div>`))
+	}
+	b.WriteString(`</div>`)
 
 	// ── What can be automated ────────────────────────────────────────────────
 	b.WriteString(`<div class="section-head"><span class="section-head__title">What a flow may do</span>` +

@@ -1032,6 +1032,8 @@ func main() {
 	a.flowDrainer = vayuflow.NewDrainer(a.flowInbox, a.flowStore, a.flowRunner)
 	vayuflow.SetContentWriter(flowContent{repo: dbpkg.NewArticleRepo(dbpkg.DB)})
 	vayuflow.SetModelRunner(flowModel{c: a.aiAssist})
+	vayuflow.SetFetcher(flowFetcher{})
+	vayuflow.SetMailSender(flowMailer{eng: a.vayuMail, from: a.transactionalFrom})
 	// Runs left mid-flight by a previous process become "interrupted" — never
 	// retried, because a step that already sent mail must not be replayed.
 	if n, err := a.flowRuns.RecoverInterrupted(context.Background()); err != nil {
