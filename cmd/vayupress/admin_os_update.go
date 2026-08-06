@@ -188,6 +188,19 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
   </div>`
 	}
 
+	// WHAT A RESTART COSTS, on the page where restarts are decided (ADR-0155 P4).
+	//
+	// This page's whole job is to offer an action that stops the service, and it
+	// has never said what that action costs. On an install without socket
+	// activation the startup time IS the outage, and the number lived only in a
+	// journal line the operator could not read without root. Measured here,
+	// quoted as a range, and paired with whether the socket queues — because the
+	// same number means "everyone gets an error" or "everyone waits" depending
+	// on that, and those are different decisions.
+	cost := readStartupCost(r.Context(), a.siteSettings, socketActivated)
+	banner += `<div class="settings-callout"><strong>What restarting costs here.</strong> ` +
+		`<span class="text-sm muted">` + html.EscapeString(cost.Describe()) + `</span></div>`
+
 	// If the root agent had to repair this install after a failed update, say so
 	// here — this is the page the operator opens next, and an install that
 	// silently rolled itself back to an older binary while they were not looking

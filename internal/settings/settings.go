@@ -306,6 +306,21 @@ const (
 	// clearnet URL. Default OFF — Tor onions are opt-in.
 	KeyTorEnabled = "tor.enabled"
 
+	// KeyStartupMillis is a short ring of recent startup durations, in
+	// milliseconds, newest last, comma-separated (ADR-0155 P4).
+	//
+	// It exists because "how long does a restart take" was being GUESSED. nginx
+	// has no queue in front of the app, so on an install without socket
+	// activation that duration IS the outage an update costs — and the only
+	// place it was written down was a journal line nobody reads. A number an
+	// operator has to SSH for is a number that does not inform a decision.
+	//
+	// A ring rather than a single value, because one figure is the flattering
+	// one. A cold boot after a reboot and a warm restart are different numbers,
+	// and an operator deciding whether an update is safe at this hour needs the
+	// spread, not the best of them.
+	KeyStartupMillis = "runtime.startup_ms"
+
 	// KeyTalkHost is the hostname advertised for the VayuTalk relay (ADR-0155 P2).
 	//
 	// It lives here rather than in the environment for one reason, and the reason
@@ -410,6 +425,9 @@ var RobotsOptions = map[string]bool{
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
 	KeyTalkHost: true,
+	// The startup-duration ring (ADR-0155 P4). Written by the process itself on
+	// every boot, which is the only way it can be true.
+	KeyStartupMillis: true,
 	// The VayuKeep and mail-retention keys below were MISSING from this map while
 	// their panels wrote them, so every one of those writes reported success and
 	// stored nothing — an operator switching on continuous encrypted replication

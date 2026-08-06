@@ -1410,6 +1410,14 @@ func main() {
 		logging.LogError("main", "listen failed", err.Error())
 		os.Exit(1)
 	}
+	// Record what this boot cost, now that the listener is known — the answer
+	// differs depending on whether it queues or refuses, and an operator reading
+	// the panel needs the number WITH that context (ADR-0155 P4). After the
+	// service is serving, never before: a diagnostic that can delay a start is
+	// worse than no diagnostic.
+	if a.siteSettings != nil {
+		go recordStartupCost(context.Background(), a.siteSettings, time.Since(bootTime))
+	}
 	logging.LogInfo("main", fmt.Sprintf("listening on :%s (v%s) — %s", config.Cfg.Port, Version, how))
 	if err := srv.Serve(ln); err != http.ErrServerClosed {
 		logging.LogError("main", "Serve error", err.Error())

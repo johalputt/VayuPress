@@ -212,6 +212,12 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// carrying it would point another install's users at a host its operator
 		// never provisioned.
 		settings.KeyTalkHost: true,
+		// Measured startup durations for THIS machine (ADR-0155 P4). Not a
+		// setting at all in the operator sense — the process writes it about
+		// itself — and a theme bundle carrying it would import one install's
+		// performance history as another's, which is a lie about a number the
+		// Update page uses to decide whether to restart a live site.
+		settings.KeyStartupMillis: true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {

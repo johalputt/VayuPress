@@ -44,19 +44,40 @@ every request is a 502 — there is no queue and no retry. **The outage is exact
 the app's startup time**, whatever that is on a given install.
 
 That number must be read, not guessed. `cmd/vayupress/main.go:1286` already logs
-it on every boot:
+it on every boot as `startup complete in <N>ms`.
+
+**It has now been read, and it refutes the sentence above.** On the reference
+install (`smtp.johal.in`, a live blog with mail):
 
 ```
-startup complete in <N>ms
+startup complete in 1200ms
+startup complete in 1112ms
 ```
 
-`journalctl -u vayupress | grep "startup complete"` gives the real distribution
-for an install. The helper's own source concedes the problem obliquely — its
-health-poll comment says the first version waited ten seconds and "on a live
-install serving a large blog the app simply takes longer than that", and the
-timeout was raised to sixty. Sixty seconds of 502 is not smooth either. Nobody
-has measured the actual figure, and §4 is where that gets fixed rather than
-argued about.
+**Roughly 1.1–1.2 seconds.** So a restart of this service costs about a second of
+502 — not minutes. Two consequences follow, and the second is the important one.
+
+*P5 is a nicety on this install, not the main event.* §4 said the measurement
+would decide that, and it has: socket activation turns a ~1.2s error window into
+a ~1.2s wait. Worth having, correct, and not the thing anybody noticed.
+
+*The ten-minute outage that prompted this ADR is therefore NOT startup time, and
+it is not yet explained.* Removing the restarts removes about a second per
+provisioning run, which is real and is not what was reported. The leading
+hypothesis — stated as a hypothesis, because nothing here has verified it — is
+that `systemctl try-restart vayupress` was being issued **from inside a systemd
+unit** (`vayupress-provision.service`, `TimeoutStartSec=900`). systemd queues
+jobs, and a restart requested from within a running unit can wait on that unit's
+own transaction rather than executing immediately; the service would then be
+stopped and not started again until the provisioning run finished. That fits a
+multi-minute outage with a 1.2-second startup, and it is closed by P1 whichever
+explanation is correct, because the restart is simply gone.
+
+Confirming it needs one look at a real run:
+`journalctl -u vayupress -u vayupress-provision --since <the time a domain was added>`,
+reading the gap between the stop and the subsequent start. Until somebody looks,
+this ADR claims only what it measured: startup is ~1.2s, and three restarts that
+did not need to exist have been removed.
 
 ## 2. The three restarts, each with a verdict
 
@@ -137,11 +158,20 @@ longer performs. The panel currently narrates a step that will not exist; a
 result line describing work nobody did is the same defect as a posture row
 claiming a control nobody verified.
 
-**P4 — Measure the startup, then decide whether it is a defect.** Read
-`startup complete in <N>ms` from the journal across real boots. If it is seconds,
-P5 is a nicety. If it is minutes, there is a second bug here and it deserves its
-own investigation rather than a guess in this document. **This step produces a
-number before anything is built on it.**
+**P4 — Measure the startup, then decide whether it is a defect. DONE, and the
+answer moved the goalposts.** ~1.2s on the reference install (§1), so P5 is a
+nicety there and the reported outage is something else.
+
+The measurement itself is now a product feature rather than a one-off. The
+operator who reported this could not read their own journal —
+`journalctl -u vayupress` answered *"No journal files were opened due to
+insufficient permissions"* — and a number that needs root and a shell is a number
+that never informs a decision. So the install records its own startup durations
+into a short ring and the **Update & Backup page states what a restart costs**,
+as a range across recorded boots, paired with whether the socket queues: the same
+1.2 seconds means "every visitor gets a 502" or "every visitor waits" depending
+on that, and those are different decisions. This is §13's rule about diagnostics
+belonging on the page, applied to the one number this whole ADR turns on.
 
 **P5 — Make the restarts that remain stop being outages: systemd socket
 activation.** With a `vayupress.socket` unit, systemd owns the listening socket
