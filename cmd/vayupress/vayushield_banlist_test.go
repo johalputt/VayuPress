@@ -316,8 +316,34 @@ func TestCleanBanlistStaysOnTheAtomicPath(t *testing.T) {
 	if count != "2" {
 		t.Errorf("count = %q, want 2", count)
 	}
-	if len(calls) != 1 {
-		t.Errorf("a clean banlist took %d nft transactions, want 1 — the fallback is running unnecessarily", len(calls))
+	// Count the BAN transactions, not every nft invocation.
+	//
+	// This asserted len(calls) == 1 and was flaky in CI: about one run in six
+	// under load saw two. Capturing the transactions showed the extra one was
+	// ensure_dyn_table creating the table — its existence probe had failed —
+	// while the ban batch was a single correct atomic transaction the whole
+	// time. The fallback this test is named for was never running.
+	//
+	// The cause is the harness, not the agent: the stub nft is written by the
+	// test and executed immediately, and under load that races ETXTBSY, so the
+	// probe exits non-zero and the table is rebuilt. Retrying the probe would
+	// paper over a real failure mode on a real box, and counting every
+	// invocation measures the harness rather than the code.
+	//
+	// So this now measures the thing the test exists for. The fallback's
+	// signature is one transaction PER ADDRESS; the atomic path emits exactly
+	// one carrying every ban. A table create alongside it is orthogonal and
+	// says nothing about which path ran.
+	banTx := 0
+	for _, c := range calls {
+		if strings.Contains(c, "add element") {
+			banTx++
+		}
+	}
+	if banTx != 1 {
+		t.Errorf("a clean banlist took %d ban transactions, want 1 — the fallback is running "+
+			"unnecessarily, which turns every poll into one nft invocation per banned IP:\n%v",
+			banTx, calls)
 	}
 }
 

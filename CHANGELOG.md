@@ -10,6 +10,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Fixed a CI flake I introduced earlier in this release cycle.**
+  `TestCleanBanlistStaysOnTheAtomicPath` asserted that a clean banlist produced
+  exactly one nft invocation, and failed roughly one run in six under load —
+  twice on `main`. Capturing the transactions from a caught failure showed the
+  extra one was `ensure_dyn_table` creating the table after its existence probe
+  failed, while the ban batch was a single correct atomic transaction
+  throughout. The fallback the test is named for was never running.
+
+  The cause is the harness: the stub `nft` is written by the test and executed
+  immediately, which races `ETXTBSY` under load. Retrying the probe would paper
+  over a real failure mode on a real box, and counting every invocation measured
+  the harness rather than the code. The assertion now counts BAN transactions —
+  the fallback's signature is one per address, the atomic path emits exactly one
+  carrying every ban, and a table create alongside says nothing about which path
+  ran. Forcing the fallback still fails the test; 0 failures in 320 runs under
+  the load that previously broke it.
+
 - **Sanitised SVG could still phone home through a `style` attribute.** Found by
   the adversarial pass, attacking `SanitizeSVG`'s own contract — the sentence
   promising that no off-site resource is fetched and the reader's IP never
