@@ -94,6 +94,11 @@ func (a *App) registerShieldTools(srv *mcp.Server) {
 				"blocklisted":       st.Blocklisted,
 				"reputation_jailed": st.RepJailed,
 				"suspects":          st.Suspects,
+				// Population-level sweep detection. Both fields, always: the
+				// verdict alone would read as "no sweep" on an install where the
+				// detector is dormant, and those are different answers.
+				"sweeping":          st.Sweeping,
+				"sweep_baseline":    st.SweepBaseline,
 				"pardons":           st.Pardons,
 				"fair_shed":         st.FairShed,
 				"surge_challenges":  st.SurgeChallenges,

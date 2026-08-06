@@ -166,6 +166,14 @@ type Inputs struct {
 	RateLimit, LoadShed, AutoBlock, Surge bool
 	// ObserveOnly is the measure-but-do-not-enforce mode.
 	ObserveOnly bool
+
+	// SweepActive reports that the population-level corpus-sweep detector is
+	// currently firing; SweepBaseline is the healthy assets-per-document ratio
+	// this install has demonstrated. Both are needed to say anything honest:
+	// "not sweeping" on an install whose baseline never reached the arming
+	// threshold means the detector is dormant, not that the site is clean.
+	SweepActive   bool
+	SweepBaseline float64
 	// TorInertGates names the enforcement rules that deliberately do not act in a
 	// Tor Space. Empty on a clearnet install.
 	TorInertGates []string
@@ -273,6 +281,30 @@ func Run(in Inputs) []Check {
 	default:
 		add("Tier 1 · in-binary gates", Fail,
 			"Rate limiting and load shedding are both off. Nothing bounds how much work a single visitor can ask this process to do.")
+	}
+
+	switch {
+	case in.SweepActive:
+		add("Corpus-sweep detection", Warn,
+			"A sweep is in progress: this install's assets-per-document ratio has collapsed against the "+
+				"healthy ratio it normally runs at, which is what a crawl taking a page or two from each of "+
+				"many addresses looks like from above. While it holds, a client fetching documents and none "+
+				"of their sub-resources is scored after three requests instead of eight, so a crawler that "+
+				"stays under every per-client threshold can be challenged at all. Nothing is blocked on this "+
+				"signal: it changes how soon a client is judged, never the verdict, and the result is a "+
+				"solvable puzzle.")
+	case in.SweepBaseline >= 1.0:
+		add("Corpus-sweep detection", Pass,
+			fmt.Sprintf("Armed and quiet. This origin is seeing %.1f sub-resources per document, so a "+
+				"collapse in that ratio would be visible as the population-level signature of a distributed "+
+				"crawl.", in.SweepBaseline))
+	default:
+		add("Corpus-sweep detection", Info,
+			fmt.Sprintf("Dormant, by design. This origin sees only %.2f sub-resources per document — "+
+				"typically because the edge answers for stylesheets, scripts and images without consulting "+
+				"the app — so there is no healthy ratio to detect a collapse against. The detector stays off "+
+				"rather than treating every reader here as a crawler. It arms itself if the origin starts "+
+				"serving its own assets; no setting turns it on.", in.SweepBaseline))
 	}
 
 	if in.AutoBlock {

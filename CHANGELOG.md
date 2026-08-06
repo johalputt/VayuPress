@@ -6,6 +6,57 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **VayuShield now sees distributed corpus sweeps.** Every threshold in the
+  behavioural scorer was per client per minute — eight requests before a client
+  is sampled at all, twenty-four before path diversity counts. Those numbers are
+  right for a scraper running from one address and are exactly what a
+  distributed crawl is built to stay under: spread the same sweep across
+  thousands of residential addresses at two or three requests each and no client
+  ever reaches a sample size, so none is ever scored.
+
+  This was found on a live install. Over seven days it recorded 38,403
+  pageviews across 23,189 visits with roughly 1.5% of visits carrying any
+  referrer, and the ten most-viewed pages accounting for under 300 of those
+  views — a corpus touched once per URL, not an audience. The shield's own
+  history for the same week showed 74,234 challenges and 11,254 blocks against a
+  completely different population: self-identifying bots with scanner
+  User-Agents, matched by static signature. The sweep presented as Chrome from
+  non-datacenter addresses and passed every check.
+
+  A population-level signal now runs alongside the per-client ones. When this
+  origin's assets-per-document ratio collapses against the healthy ratio it has
+  been observed running at, the sample size the document-without-assets signal
+  needs drops from eight requests to three — long enough to see the pattern,
+  short enough to catch a client that will only ever make three requests.
+
+  It is a change detector, not a threshold, and that distinction is the whole
+  design. Comparing assets to documents against a fixed floor would arm on every
+  install whose edge serves static files without consulting the app: their
+  origin sees documents and no assets by configuration, so every reader would
+  look like a scraper and be challenged forever. Asking instead whether *this*
+  install's own ratio just collapsed means a site that never sees assets has
+  nothing to fall below, and the detector correctly stays dormant there.
+
+  The baseline only ever rises. A decaying average would hand an attacker the
+  off switch: sweep gently until the install forgets what healthy looked like,
+  then sweep freely.
+
+  Nothing is blocked on this signal. It changes how soon a client is judged,
+  never the verdict, and the outcome is still a solvable puzzle inside the same
+  clamped budget that keeps behavioural scoring from reaching a block on its
+  own. A client reloading one page is still not a crawler, during a sweep or
+  outside one.
+
+- **The posture report and `vayushield_status` say which of the three states
+  the detector is in** — firing, armed and quiet, or dormant because this origin
+  does not serve its own assets. "Not sweeping" and "cannot tell" are different
+  answers and the panel now distinguishes them rather than implying a protection
+  that is not running.
+
 ## [3.17.18] — 2026-08-06
 
 ### Added

@@ -70,8 +70,9 @@ type slot struct {
 
 // Tracker is the fixed-memory behavioural sketch.
 type Tracker struct {
-	tab [slots]slot
-	now func() time.Time
+	tab  [slots]slot
+	site siteState
+	now  func() time.Time
 }
 
 // New builds an empty tracker.
@@ -86,6 +87,12 @@ type Signals struct {
 	Paths     int  // distinct-path estimate, saturating at 64
 	Sampled   bool // false when there is not yet enough to say anything
 	SlotReset bool // the window rolled on this observation
+	// DocFloor is the sample size the document-without-assets signal needs.
+	// It is normally minSample and drops while the population looks like a
+	// corpus sweep — see sweep.go. Carried on the observation rather than read
+	// from the tracker inside Score so that a Signals value stays a complete,
+	// self-contained record of what was true when it was taken.
+	DocFloor int
 }
 
 // Observe records one request and returns the client's behaviour so far in this
@@ -132,11 +139,13 @@ func (t *Tracker) Observe(key string, path string, status int) Signals {
 	if status == http.StatusNotFound {
 		s.notFound.Add(1)
 	}
-	if isAsset(path) {
+	asset := isAsset(path)
+	if asset {
 		s.assets.Add(1)
 	} else {
 		s.docs.Add(1)
 	}
+	t.observeSite(now, asset)
 	s.paths.Or(1 << (hash64(path) & 63))
 
 	return Signals{
@@ -147,6 +156,7 @@ func (t *Tracker) Observe(key string, path string, status int) Signals {
 		Paths:     bits.OnesCount64(s.paths.Load()),
 		Sampled:   n >= minSample,
 		SlotReset: reset,
+		DocFloor:  t.sampleFloor(),
 	}
 }
 
@@ -165,8 +175,37 @@ const minSample = 8
 // and the block threshold — behaviour can push a client into a challenge, and
 // cannot by itself push one into a block.
 func (s Signals) Score() (delta float64, reasons []string) {
+	// The document-without-assets signal is evaluated FIRST and outside the
+	// Sampled gate, because during a sweep its whole job is to speak before the
+	// standard sample size is reached — a client that will only ever make three
+	// requests never reaches eight, which is the gap sweep.go exists to close.
+	//
+	// Every other signal here still waits for the full sample. Lowering the bar
+	// for all of them would let a 404 ratio fire on two requests, and one 404
+	// out of two is not an error rate, it is a coincidence.
+	docFloor := s.DocFloor
+	if docFloor <= 0 {
+		docFloor = minSample
+	}
+	// Path diversity scales with the floor rather than sitting at a constant.
+	// At the normal floor this is the original >= 4. At the sweep floor it
+	// becomes "every document was a different one", which is what separates a
+	// crawler from a reader hammering reload — the case an earlier version of
+	// this signal got wrong and a test still pins.
+	wantPaths := 4
+	if docFloor < wantPaths {
+		wantPaths = docFloor
+	}
+	if s.Docs >= docFloor && s.Assets == 0 && s.Paths >= wantPaths {
+		delta += 0.2
+		reasons = append(reasons, "fetches documents but never their sub-resources")
+	}
+
 	if !s.Sampled {
-		return 0, nil
+		if delta > MaxDelta {
+			delta = MaxDelta
+		}
+		return delta, reasons
 	}
 	req := float64(s.Requests)
 
@@ -177,19 +216,8 @@ func (s Signals) Score() (delta float64, reasons []string) {
 		reasons = append(reasons, "high 404 ratio")
 	}
 
-	// Documents without sub-resources. A browser rendering a page fetches its
-	// stylesheets, scripts and images; a scraper wants the HTML and nothing else,
-	// because fetching the rest is pure cost to it.
-	//
-	// Path diversity is required, and an existing test is why. Without it, twelve
-	// requests to the SAME document tripped this — but a client reloading one page
-	// is not crawling, it is a client reloading one page, and that is the rate
-	// limiter's business rather than the classifier's. The scraper profile is many
-	// DIFFERENT documents with none of their assets.
-	if s.Docs >= minSample && s.Assets == 0 && s.Paths >= 4 {
-		delta += 0.2
-		reasons = append(reasons, "fetches documents but never their sub-resources")
-	}
+	// (Documents without sub-resources is scored above, before the Sampled gate,
+	// because during a sweep it has to speak below the standard sample size.)
 
 	// Many distinct paths in one minute is crawling. A reader moves between a
 	// handful of pages; the estimate saturates at 64, so this fires only well

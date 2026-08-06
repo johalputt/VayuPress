@@ -680,8 +680,20 @@ type Status struct {
 	FairShed    int64 `json:"fair_shed"`   // cumulative L2 fair-shed count
 	WindowRate  int64 `json:"window_rate"` // L2: requests seen in the busiest recent sketch window
 	Suspects    int   `json:"suspects"`    // L5: sources currently under suspicion
-	RepJailed   int   `json:"rep_jailed"`  // L5: sources serving a reputation sentence
-	Pardons     int64 `json:"pardons"`     // L5: cumulative challenge-proof pardons
+	// Sweeping reports that the population currently looks like a corpus sweep
+	// rather than an audience: this install's asset-to-document ratio has
+	// collapsed against the healthy ratio it was previously observed running at.
+	// It refuses nobody — it lowers the sample size the per-client
+	// document-without-assets signal needs, so a crawler taking three pages from
+	// each of a thousand addresses can be scored at all.
+	Sweeping bool `json:"sweeping"`
+	// SweepBaseline is the healthy assets-per-document ratio this install has
+	// demonstrated. Below 1.0 the detector is dormant by design — an origin that
+	// never sees assets has no collapse to detect — so the panel can say the
+	// control is not armed instead of implying a protection that is not running.
+	SweepBaseline float64 `json:"sweep_baseline"`
+	RepJailed     int     `json:"rep_jailed"` // L5: sources serving a reputation sentence
+	Pardons       int64   `json:"pardons"`    // L5: cumulative challenge-proof pardons
 
 	// L3 Sovereign Surge: whether surge is engaged right now, and the cumulative
 	// count of up-front surge interstitials served (each ~one HMAC, no DB/render).
@@ -728,6 +740,8 @@ func (m *Manager) Status() Status {
 		FairShed:         m.prefilter.Shed(),
 		WindowRate:       m.prefilter.WindowRate(),
 		Suspects:         bs.Tracked,
+		Sweeping:         m.behaviour.Sweeping(),
+		SweepBaseline:    m.behaviour.SiteBaselineAssetRatio(),
 		RepJailed:        bs.Jailed,
 		Pardons:          bs.Redeems,
 		CalibrationBias:  bias,

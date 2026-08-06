@@ -151,6 +151,13 @@ func linkSpeedMbps() int {
 func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 	cur := a.shieldCurrentSettings()
 	clusterPeers, clusterIn, clusterRefused, _, _ := a.vayuShield.ClusterStats()
+	// Guarded: Status() has no nil-receiver guard of its own, and this report is
+	// reachable before the shield is constructed — the uninitialised-install test
+	// exists because a panic here takes the whole posture page down.
+	var shieldStats vayushield.Status
+	if a.vayuShield != nil {
+		shieldStats = a.vayuShield.Status()
+	}
 
 	in := shieldaudit.Inputs{
 		Tier2Wanted: shieldTierWanted(2),
@@ -167,6 +174,8 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 		AutoBlock:      cur.AutoBlock,
 		Surge:          cur.Surge,
 		ObserveOnly:    a.vayuShield.Observing(),
+		SweepActive:    shieldStats.Sweeping,
+		SweepBaseline:  shieldStats.SweepBaseline,
 		InspectRules:   inspect.RuleCount(),
 		InspectRuleset: inspect.RulesetVersion,
 		ClusterPeers:   clusterPeers,
