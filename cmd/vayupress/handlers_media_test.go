@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -168,5 +169,60 @@ func TestRemoteImportStillRefusesSVG(t *testing.T) {
 		t.Error("a remote import accepted an SVG. Re-hosting remote SVG on our own origin gives " +
 			"a URL we do not control a same-origin document; the operator-upload path is a " +
 			"different trust level and is the only one that may accept it.")
+	}
+}
+
+// Attacking the bound I added and did not test.
+//
+// upload_media checks the ENCODED length before decoding, so an oversized blob
+// never allocates its decoded form. That is the right shape, but a bound that
+// is never exercised is a bound nobody has confirmed points the right way — and
+// this session has twice found controls that looked tested and were not.
+//
+// Two questions. Does the encoded cap actually correspond to the decoded cap,
+// or does a payload that squeaks under it decode to something the store still
+// has to refuse? And is there a format that skips the size check entirely?
+func TestUploadSizeBoundsAreNotEvadable(t *testing.T) {
+	dir := t.TempDir()
+	oldDir := config.Cfg.MediaDir
+	config.Cfg.MediaDir = dir
+	t.Cleanup(func() { config.Cfg.MediaDir = oldDir })
+
+	// The encoded cap must not admit a payload the raster path would then
+	// accept over its own limit. Decoding the largest permitted base64 string
+	// yields at most this many bytes.
+	maxDecoded := (maxMCPUploadBase64 / 4) * 3
+	if maxDecoded <= maxImageBytes {
+		t.Logf("encoded cap decodes to %d, at or under maxImageBytes %d", maxDecoded, maxImageBytes)
+	}
+
+	// A PNG header followed by filler, just over the raster limit, must be
+	// refused by the store even though it would pass the encoded cap.
+	over := make([]byte, maxImageBytes+1)
+	copy(over, []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A})
+	if _, err := storeValidatedMedia(over, true); !errors.Is(err, errMediaTooLarge) {
+		t.Errorf("a raster one byte over maxImageBytes gave %v, want errMediaTooLarge. The "+
+			"encoded cap is a pre-filter, not the limit — the store is the limit, and it has "+
+			"to hold on its own.", err)
+	}
+
+	// SVG is deliberately exempt from maxImageBytes (it is not decoded as
+	// pixels), so its own bound is the only thing standing between an upload and
+	// an arbitrarily large file on disk. Confirm that bound exists and bites.
+	big := []byte(`<svg xmlns="http://www.w3.org/2000/svg">` +
+		strings.Repeat("<rect width='1' height='1'/>", 200000) + `</svg>`)
+	if len(big) <= maxSVGUploadBytes {
+		t.Fatalf("fixture is %d bytes, not above the %d bound — this test would prove nothing",
+			len(big), maxSVGUploadBytes)
+	}
+	// Note which control this proves. Removing the maxSVGUploadBytes pre-filter
+	// leaves this passing, because SanitizeSVG refuses oversized input on its
+	// own — so what is pinned here is that SOMETHING bounds an SVG upload, and
+	// the something is the sanitiser. The pre-filter is an allocation guard, not
+	// the limit, and its comment says so.
+	if _, err := storeValidatedMedia(big, true); err == nil {
+		t.Errorf("an SVG of %d bytes was stored. SVG skips the raster size check by design, so "+
+			"if nothing else bounds it there is no limit at all on what lands in the media "+
+			"directory.", len(big))
 	}
 }

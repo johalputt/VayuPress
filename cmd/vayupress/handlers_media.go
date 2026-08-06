@@ -299,9 +299,17 @@ func looksLikeSVG(raw []byte) bool {
 	return strings.Contains(low, "<svg")
 }
 
-// maxSVGUploadBytes bounds what is even offered to the sanitiser. Its own limit
-// applies too; this one keeps a multi-megabyte XML bomb from being turned into
-// a string first.
+// maxSVGUploadBytes bounds what is even offered to the sanitiser.
+//
+// NOT independently proven, and marked so rather than left looking tested:
+// removing it fails nothing, because SanitizeSVG carries its own size limit and
+// refuses an oversized document anyway. A mutation found that.
+//
+// It stays for one narrow reason. The sanitiser takes a string, so without this
+// pre-filter an arbitrarily large []byte is copied into one before anything
+// checks its size. That is an allocation an uploader chooses the size of, and
+// refusing it a step earlier is cheaper than the alternative — but the control
+// that actually decides is the sanitiser, not this line.
 const maxSVGUploadBytes = 1 << 20
 
 // maxMCPUploadBase64 bounds the encoded payload an MCP upload may carry. base64
