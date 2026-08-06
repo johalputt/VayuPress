@@ -303,3 +303,9 @@ func looksLikeSVG(raw []byte) bool {
 // applies too; this one keeps a multi-megabyte XML bomb from being turned into
 // a string first.
 const maxSVGUploadBytes = 1 << 20
+
+// maxMCPUploadBase64 bounds the encoded payload an MCP upload may carry. base64
+// inflates bytes by 4/3, so this is maxImageBytes with that overhead plus a
+// little slack for whitespace — checked before decoding so an oversized blob is
+// refused without allocating its decoded form.
+const maxMCPUploadBase64 = (maxImageBytes/3+1)*4 + 1024

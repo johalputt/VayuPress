@@ -10,6 +10,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **`upload_media` over MCP.** The media library was readable from the
+  connector and not writable — `list_media` existed, and its own comment said
+  uploading was "a later increment (binary transfer over MCP needs care)". A
+  file can now be sent as base64 and comes back with its public `/media/<name>`
+  URL, ready to paste into a post.
+
+  The care that comment referred to is handled in two places and nowhere else.
+  The payload is bounded **before** decoding — base64 inflates by 4/3, so
+  checking the encoded length first refuses an oversized blob without ever
+  allocating its decoded form. And the tool performs no validation of its own:
+  it decodes and hands the bytes to `storeValidatedMedia`, the same trusted path
+  the admin form and the remote import use. A second implementation here is how
+  two allowlists drift apart until one of them is wrong.
+
+  Scoped to `media:write`. A `media:read` key lists the library and cannot put
+  files on the origin, and a test pins that.
+
 - **SVG can be uploaded to the media library, and is sanitised on the way in.**
   It was refused outright, with a test pinning the refusal — a defensible
   position rather than a bug, because an uploaded file is served from this

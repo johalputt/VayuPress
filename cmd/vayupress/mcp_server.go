@@ -12,7 +12,9 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -431,6 +433,70 @@ func (a *App) buildMCPServer() *mcp.Server {
 				items = items[:in.Limit]
 			}
 			return jsonStr(items), nil
+		},
+	})
+
+	// upload_media closes the gap the comment above described. The care that
+	// "binary transfer over MCP needs" is mostly about not letting a base64 blob
+	// become an unbounded allocation, and about not becoming a SECOND way into
+	// the media directory with its own idea of what is safe.
+	//
+	// So this does no validation of its own. It decodes, bounds the size, and
+	// hands the bytes to storeValidatedMedia — the same trusted path the browser
+	// upload and the remote import use, which validates by magic number,
+	// sanitises SVG, optimises rasters and content-addresses the result. A
+	// separate implementation here is how two allowlists drift apart until one
+	// of them is wrong.
+	//
+	// allowPDF=true because this is the operator's own authenticated connector,
+	// the same trust level as the admin upload form — not the remote-import path.
+	srv.Register(mcp.Tool{
+		Name: "upload_media",
+		Description: "Upload an image (PNG, JPEG, GIF, WebP, SVG) or PDF to the media library and " +
+			"return its public /media/<name> URL, ready to embed in a post or page. Send the file " +
+			"as base64 in `content`. Duplicate uploads collapse to the same URL.",
+		InputSchema: objSchema([]string{"content"}, map[string]any{
+			"content":  strProp("The file's bytes, base64-encoded."),
+			"filename": strProp("Optional original filename. Recorded in the audit log only — the stored name and type come from the bytes, never from this."),
+		}),
+		Visible: a.mcpVisible(apikeys.SectionMedia, apikeys.ActionWrite),
+		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+			var in struct {
+				Content  string `json:"content"`
+				Filename string `json:"filename"`
+			}
+			if err := json.Unmarshal(args, &in); err != nil {
+				return "", fmt.Errorf("bad arguments: %w", err)
+			}
+			if strings.TrimSpace(in.Content) == "" {
+				return "", fmt.Errorf("content is required (base64-encoded file bytes)")
+			}
+			// Bounded BEFORE decoding. base64 inflates by 4/3, so checking the
+			// encoded length first means a hostile payload is refused without ever
+			// allocating the decoded form.
+			if len(in.Content) > maxMCPUploadBase64 {
+				return "", fmt.Errorf("file too large (limit is about %d MB)", maxImageBytes/(1024*1024))
+			}
+			raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(in.Content))
+			if err != nil {
+				return "", fmt.Errorf("content is not valid base64: %w", err)
+			}
+
+			stored, err := storeValidatedMedia(raw, true)
+			switch {
+			case errors.Is(err, errMediaEmpty):
+				return "", fmt.Errorf("the decoded file is empty")
+			case errors.Is(err, errMediaUnsupported):
+				return "", fmt.Errorf("unsupported file type (allowed: PNG, JPEG, GIF, WebP, SVG, PDF) — " +
+					"the type is read from the bytes, so renaming a file does not change this")
+			case errors.Is(err, errMediaTooLarge):
+				return "", fmt.Errorf("file too large")
+			case err != nil:
+				return "", fmt.Errorf("store failed: %w", err)
+			}
+			dbpkg.AuditLog("media.upload", mcpActor(ctx), stored.Name,
+				fmt.Sprintf("via=mcp size=%d mime=%s given_name=%q", stored.Size, stored.MIME, in.Filename))
+			return jsonStr(stored), nil
 		},
 	})
 

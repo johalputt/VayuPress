@@ -147,6 +147,19 @@ func TestMCPToolsListReflectsScope(t *testing.T) {
 		}
 	}
 
+	// upload_media writes to the media directory, so a media:read key must not
+	// see it. The scoping is the only thing standing between "this key can list
+	// my images" and "this key can put files on my origin".
+	med := listFor(scopedKey([2]string{"media", "read"}))
+	if !med["list_media"] {
+		t.Error("media:read key should see list_media")
+	}
+	if med["upload_media"] {
+		t.Error("media:read key must NOT see upload_media — reading the library and writing " +
+			"to it are different permissions, and this one writes files that get served from " +
+			"our own origin")
+	}
+
 	// A settings:read key sees site_settings but NOT the write tool nor other
 	// sections' tools.
 	set := listFor(scopedKey([2]string{"settings", "read"}))
