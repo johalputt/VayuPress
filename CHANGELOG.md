@@ -6,6 +6,74 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.14] — 2026-08-06
+
+### Fixed
+
+- **Adding a domain took the site to 502 — the actual cause, after three
+  releases that fixed other things.** Ships immediately under the standing
+  exception for something broken for users right now.
+
+  A probe taken during a live outage settled it: `/health`, which touches no
+  database, answered in 1 ms, and nginx's access log contained no 502 at all.
+  The application was never involved. Two faults in the web-server layer were.
+
+  **A backup file was live nginx configuration.** VayuShield saved its
+  pre-change copy of a vhost next to the original — inside
+  `sites-enabled`, which nginx includes with a plain `*` glob and no extension
+  filter. The backup had been parsed as a second server block on every reload
+  for three days, leaving one hostname declared twice; nginx keeps whichever it
+  loads first, discards the other, and says so once at warn level. Backups now
+  go to a dedicated directory outside every include path, and existing installs
+  are repaired: strays already sitting in `sites-enabled` are moved out
+  automatically. Only backup suffixes on regular files — a symlink is how a
+  vhost is enabled, and a plainly-named file may be a hand-written one.
+
+  **Reloads overlapped during provisioning.** Certificates are issued per host
+  in two phases, each needing a reload, so a six-domain install reloaded nginx
+  a dozen-plus times inside ninety seconds. Each reload retires the previous
+  worker generation; issue the next before it has drained and nginx eventually
+  gives up on it — `open socket … left in connection`, then `aborting` — which
+  kills every request in flight on that worker. Provisioning now waits for the
+  previous generation to finish. The wait is observed rather than estimated, so
+  an install with nothing draining pays nothing.
+
+### Added
+
+- **The Sites page reports web-server configuration conflicts.** Any hostname
+  declared by more than one file, naming both files, and any backup sitting
+  where configuration is read from. It shows nothing on a healthy install — this
+  exists to surface a fault that previously lived only in a log line, and a
+  permanent green panel would be the same noise that made the original warning
+  invisible. It does not guess which of two colliding blocks wins; that depends
+  on filename order, and a panel that guessed would be worse than one that
+  stays quiet.
+
+### Security
+
+- **A root process could be pointed at a directory of someone else's choosing.**
+  Found in the pre-release audit, in this release's own new code. The backup
+  directory was initially placed under `/var/lib/vayupress`, which the
+  unprivileged service user owns, while the agent that moves files there runs as
+  root — so that user could pre-create the path as a symlink and have root
+  deposit files wherever they pointed it. Backups moved to a root-owned location,
+  which removes the primitive rather than guarding it, and a symlinked
+  destination is refused outright as defence in depth.
+- **Bounded the configuration read.** The new conflict check reads the files in
+  the sites directory on every Sites page view, including through symlinks, as
+  nginx does. Capped at 512 KB per file; a generated vhost here is under 4 KB.
+
+### Upgrade Notes
+
+- If the Sites page shows a **hostname declared more than once**, one of the two
+  server blocks is not serving anything. VayuShield moves stray backups out on
+  its next pass; a genuine duplicate between two real vhosts needs a decision
+  about which to keep.
+- Existing backups are moved, never deleted. Anything swept out of the sites
+  directory is preserved.
+
+---
+
 ## [3.17.13] — 2026-08-06
 
 ### Fixed

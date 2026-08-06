@@ -9,6 +9,7 @@
 
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
+| [ADR-0157](ADR-0157-nothing-may-write-into-a-directory-nginx-includes.md) | A backup in sites-enabled is live config; reloads must not overlap | Accepted | Core | 2026-08-06 |
 | [ADR-0156](ADR-0156-the-write-connection-must-not-be-a-single-point-of-failure.md) | Traffic must never queue on SQLite's single writer, and a stall must leave evidence | Accepted | Core | 2026-08-06 |
 | [ADR-0155](ADR-0155-certificates-without-a-restart.md) | Adding a domain must not restart the server; two of the three restarts are already unnecessary | Accepted | Core | 2026-08-06 |
 | [ADR-0147](ADR-0147-per-client-connector-pages.md) | One page per client; VayuMCP keeps the protocol | Accepted | Core | 2026-07-28 |

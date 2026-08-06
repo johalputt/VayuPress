@@ -189,6 +189,12 @@ func domainsHeader(domains []domain.Domain, viewingHost string) string {
 		`<span id="dom-status" class="text-sm muted" role="status" aria-live="polite"></span></div></div>`)
 	b.WriteString(`<p class="page-sub">` + sub + `</p>`)
 
+	// A configuration fault that decides which server block answers for a
+	// hostname belongs above the site list, not in a warn-level log line. Empty
+	// on a healthy install, so this costs nothing on the overwhelming majority
+	// of page views (ADR-0157).
+	b.WriteString(nginxConfigHealthCard(inspectNginxSitesEnabled(nginxSitesEnabled)))
+
 	b.WriteString(`<div class="vm-stats">`)
 	b.WriteString(vmStatTile(strconv.Itoa(total), "Sites", ""))
 	b.WriteString(vmStatTile(strconv.Itoa(live), "Enabled", ""))

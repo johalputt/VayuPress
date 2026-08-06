@@ -488,8 +488,57 @@ force_apply() {
 # was correct: the file on disk, the symlink, the DNS, the webroot. The one step
 # that makes any of it take effect was the only step whose failure was thrown
 # away, and it was thrown away deliberately by a `|| true` nobody revisited.
+# await_nginx_drain waits for the PREVIOUS reload's workers to finish before
+# another reload is issued.
+#
+# THE OUTAGE THIS EXISTS TO PREVENT, from a real error log:
+#
+#   09:11:13 [alert] *9550 open socket #17 left in connection 10
+#   09:11:13 [alert] aborting
+#   09:11:17 [alert] aborting
+#   09:11:20 [alert] aborting
+#   09:11:31 [alert] aborting
+#
+# Four nginx workers aborting inside eighteen seconds, at the exact minute this
+# script wrote its vhosts. "open socket left in connection" then "aborting" is a
+# worker being made to exit while it still holds live connections — every
+# request in flight on it is killed mid-response. The client sees a dropped
+# connection, and anything in front of nginx renders that as 502.
+#
+# The cause is arithmetic. This script reloads TWICE per host: once for the
+# HTTP-only vhost that lets certbot validate, once for the real vhost after the
+# certificate exists. On an install with six domains that is twelve reloads,
+# and the helpers for mcp/api/talk/openpgpkey add their own. Each reload starts
+# a new worker generation and asks the previous one to drain; issue the next
+# before that finishes and the generations pile up until nginx gives up on them.
+#
+# Nothing here is nginx misbehaving. It is being asked to reload faster than it
+# can retire a generation of workers, which is a thing only this script can fix.
+#
+# The wait is precise rather than a guess: nginx renames a draining worker's
+# process title to "worker process is shutting down", so the condition can be
+# observed instead of estimated. On the common case — a single-domain install,
+# one reload, nothing draining — this returns immediately and costs nothing.
+await_nginx_drain() {
+  local waited=0 limit="${NGINX_DRAIN_MAX_SECONDS:-45}"
+  while [ "$waited" -lt "$limit" ]; do
+    ps -C nginx -o args= 2>/dev/null | grep -q 'is shutting down' || return 0
+    sleep 1
+    waited=$((waited + 1))
+  done
+  # Draining longer than the cap means a genuinely long-lived connection (a
+  # download, a websocket), not a reload storm. Proceeding is correct — but it
+  # is said out loud, because this is the one path that can still drop a
+  # request and a silent one would be indistinguishable from the bug.
+  warn "nginx still had a worker draining after ${limit}s; reloading anyway."
+  warn "  A request in flight on that worker may be dropped."
+  return 0
+}
+
 reload_ok() {
   nginx_ok || return 1
+  # Never overlap two reloads. See await_nginx_drain.
+  await_nginx_drain
   local out out2
   if out="$(systemctl reload nginx 2>&1)"; then
     return 0

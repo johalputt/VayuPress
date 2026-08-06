@@ -22,6 +22,47 @@
 set -uo pipefail
 
 CONTROL_DIR="${VAYUSHIELD_CONTROL_DIR:-/var/lib/vayupress/vayushield-control}"
+
+# BACKUP_DIR — where a pre-change copy of an nginx file goes.
+#
+# It is a separate directory, and that is the entire point of it existing.
+#
+# This agent used to save its backups NEXT TO the file it was about to rewrite:
+#
+#   local bak="${found}.vayushield.bak"       # $found came from a glob over
+#   cp -f "$found" "$bak"                     # /etc/nginx/sites-enabled/*
+#
+# nginx includes that directory with `include /etc/nginx/sites-enabled/*;` — no
+# extension filter, no exclusion list. So the backup was not a backup. It was a
+# second live copy of a server block, loaded on every reload from the moment it
+# was written, and it stayed loaded for as long as nobody looked in the
+# directory. On the install that found this, a copy taken during one hardening
+# run was still being parsed as configuration three days later.
+#
+# What that does is subtle enough to survive: nginx sees two server blocks
+# claiming one name, keeps whichever the glob reached first, logs
+# `conflicting server name ... ignored` at warn level, and carries on. The
+# operator's real vhost may be the one being ignored, and the only trace is a
+# line in a file nobody reads.
+#
+# A backup must never be written where the thing being backed up is read from.
+# NOT under /var/lib/vayupress. That tree is owned by the UNPRIVILEGED service
+# user, and this agent runs as root — so a writable-by-the-service-user backup
+# directory hands that user a root-writes-where-I-say primitive. It would only
+# take pre-creating `nginx-backups` as a symlink to, say, a directory whose
+# files are executed, and root's own `mv` below would follow it.
+#
+# Found in the pre-release audit of this very change: the first version pointed
+# here at /var/lib/vayupress/nginx-backups and shipped the escalation along with
+# the fix. /var/backups is root-owned on every Debian-family install, which
+# removes the primitive rather than guarding it.
+BACKUP_DIR="${VAYUSHIELD_BACKUP_DIR:-/var/backups/vayupress-nginx}"
+
+# The directory nginx includes. A variable so the sweep below can be exercised
+# against a fixture instead of being trusted; a repair that has never been run
+# is a repair nobody has seen work.
+SITES_ENABLED="${VAYUSHIELD_SITES_ENABLED:-/etc/nginx/sites-enabled}"
+
 LIB_DIR="${VAYUSHIELD_LIB_DIR:-/usr/local/lib/vayushield}"
 FIREWALL="${LIB_DIR}/vayushield-firewall.sh"
 NGINX_CONF_SRC="${LIB_DIR}/nginx-vayushield.conf"
@@ -36,6 +77,68 @@ SYSCTL_CONF_PATH="${VAYUSHIELD_SYSCTL_CONF:-/etc/sysctl.d/99-vayushield.conf}"
 # Digest refreshes every N polls. It shells out to nft and `nginx -T`, which is
 # far too expensive to do at the reconcile cadence.
 DIGEST_EVERY="${VAYUSHIELD_DIGEST_EVERY:-12}"
+
+# shield_backup copies $1 into BACKUP_DIR before it is rewritten.
+#
+# The copy is named after the source but lives OUTSIDE every directory nginx
+# includes, so it can never be parsed as configuration. See BACKUP_DIR above for
+# the outage that taught this.
+# ensure_backup_dir creates BACKUP_DIR, refusing a symlink.
+#
+# root follows symlinks like anybody else. If this path can be pre-created as a
+# link by a less-privileged user, every write below lands wherever they chose.
+ensure_backup_dir() {
+  [ -L "$BACKUP_DIR" ] && return 1
+  [ -d "$BACKUP_DIR" ] || mkdir -p "$BACKUP_DIR" 2>/dev/null || return 1
+  # Re-check: the directory may have been created as a link, or swapped for one.
+  [ -L "$BACKUP_DIR" ] && return 1
+  [ -d "$BACKUP_DIR" ] || return 1
+  chmod 0700 "$BACKUP_DIR" 2>/dev/null || true
+  return 0
+}
+
+shield_backup() { # $1=file to preserve — echoes the backup path, or nothing
+  [ -f "$1" ] || return 0
+  ensure_backup_dir || return 0
+  local dst="${BACKUP_DIR}/$(basename "$1").vayushield.bak"
+  cp -f "$1" "$dst" 2>/dev/null || return 0
+  printf '%s' "$dst"
+}
+
+# sweep_stray_nginx_backups moves backup files OUT of the directories nginx
+# includes, and reports how many it found.
+#
+# This runs on every reconcile because the repair has to reach installs that
+# already have one — a fix that only stops NEW strays leaves every existing
+# install serving a stale server block forever, and those are precisely the
+# installs that have been running long enough to have been hardened.
+#
+# Only unmistakable backup suffixes are moved. A regular file in sites-enabled
+# is unusual but not automatically wrong: some operators keep a real vhost there
+# rather than a symlink into sites-available, and moving that would take their
+# site down to fix a tidiness problem. `.bak`, `.save`, `.orig`, `.dpkg-old` and
+# an editor's `~` are backups by universal convention and nothing else.
+sweep_stray_nginx_backups() {
+  local f moved=0 base
+  for f in "${SITES_ENABLED}"/*.bak "${SITES_ENABLED}"/*.save \
+           "${SITES_ENABLED}"/*.orig "${SITES_ENABLED}"/*.dpkg-old \
+           "${SITES_ENABLED}"/*.dpkg-dist "${SITES_ENABLED}"/*~; do
+    # A symlink is somebody's deliberate choice even with an odd name; only
+    # regular files are swept.
+    [ -f "$f" ] && [ ! -L "$f" ] || continue
+    ensure_backup_dir || continue
+    base="$(basename "$f")"
+    if mv -f "$f" "${BACKUP_DIR}/${base}" 2>/dev/null; then
+      moved=$((moved + 1))
+    fi
+  done
+  if [ "$moved" -gt 0 ]; then
+    # Recorded for the panel, because this repaired a live misconfiguration and
+    # an operator is entitled to know their running config just changed.
+    printf '%s' "$moved" >"${CONTROL_DIR}/nginx_strays_swept" 2>/dev/null || true
+  fi
+  printf '%s' "$moved"
+}
 
 write_state() { # $1=tier tag, $2=state word — best-effort.
   [ -d "$CONTROL_DIR" ] || return 0
@@ -1162,8 +1265,10 @@ reconcile_defaulthost() {
   write_state defaulthost applying
   local bak=""
   if [ -f "$DEFAULT_HOST_CONF" ]; then
-    bak="${DEFAULT_HOST_CONF}.vayushield.bak"
-    cp -f "$DEFAULT_HOST_CONF" "$bak" 2>/dev/null || true
+    # conf.d is included as *.conf, so this suffix never matched and this one
+    # was not live. Moved regardless: a backup's safety must not depend on the
+    # shape of somebody else's include glob.
+    bak="$(shield_backup "$DEFAULT_HOST_CONF")"
   fi
   # The v6 listener is emitted only on a host that has IPv6. On a v4-only box
   # `listen [::]:443` makes nginx -t fail outright with EAFNOSUPPORT, so writing
@@ -1236,8 +1341,11 @@ reconcile_mcpsurface() {
     return 0
   fi
   write_state mcpsurface applying
-  local bak="${found}.vayushield.bak"
-  cp -f "$found" "$bak" 2>/dev/null || true
+  # OUT of sites-enabled. $found came from a glob over that directory, so a
+  # sibling copy here was loaded by nginx as a second live server block — see
+  # BACKUP_DIR. This is the exact line that put a stale vhost into a running
+  # config for three days.
+  local bak; bak="$(shield_backup "$found")"
   # Rewrite only a bare `location / { ... }` on ONE line or spanning lines, and
   # only inside a server block whose server_name starts with mcp. — awk tracks
   # both so a `location /` belonging to the apex vhost in the same file is left
@@ -1331,7 +1439,7 @@ reconcile_realip() {
   # which is the same defect one layer quieter and the exact thing this whole
   # track has been about.
   : >"${CONTROL_DIR}/realip.skipped" 2>/dev/null || true
-  [ -f "$out" ] && { bak="${out}.vayushield.bak"; cp -f "$out" "$bak" 2>/dev/null || true; }
+  [ -f "$out" ] && bak="$(shield_backup "$out")"
 
   {
     printf '%s\n' "# Managed by vayushield-agent. Edits are overwritten."
@@ -1711,6 +1819,12 @@ run_agent() {
     if [ -d "$CONTROL_DIR" ]; then
       printf '%s' "$(date -u +%s)" >"${CONTROL_DIR}/agent.alive" 2>/dev/null || true
       write_caps
+      # BEFORE anything else touches nginx. A stray backup in sites-enabled is
+      # live configuration, so every reconcile below would be testing and
+      # reloading a config that still contains it. This repairs installs that
+      # already have one — a fix that only stops new strays reaches nobody who
+      # was hardened before it shipped, which is everybody affected.
+      sweep_stray_nginx_backups >/dev/null
       reconcile_upgrade
       reconcile_cdnallow
       reconcile_tier2
