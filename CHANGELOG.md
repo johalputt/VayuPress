@@ -6,6 +6,129 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.11] — 2026-08-06
+
+### Security
+
+- **An exported "theme" carried a live API key.** `handleThemeExport` emitted
+  every key in `settings.AllKeys`, and its own comment promised the bundle held
+  "no secrets" and was "safe to share". It held `tor.space_api_key` — the Tor
+  Space child instance's credential — along with the VayuShield allow and deny
+  CIDR lists, the cluster peer list, the subscribed intelligence feeds, payment
+  configuration, the BTCPay store id, and contact and feedback addresses. The
+  panel invites an operator to download the file and "apply it everywhere",
+  which is exactly the action that hands all of that to somebody else.
+
+  The root cause is worth more than the fix. The list of keys that are **not**
+  part of a theme existed only in a **test**: the theme-editor conformance test
+  kept it, the exporter iterated `AllKeys`, and nothing connected the two. The
+  test knew those keys had no editor field while the exporter shipped them
+  anyway. It is production state now — `settings.NotPortable` — the exporter
+  honours it, and the test reads it instead of keeping a copy that can drift
+  again.
+
+  **Rotate `tor.space_api_key` if you have ever shared or published a theme
+  bundle from this install.** The Tor Space page regenerates it.
+
+  Found by the pre-release adversarial pass over ADR-0155, while checking
+  whether widening `AllKeys` (below) had opened a path — it had, and a larger
+  one was already open.
+
+### Fixed
+
+- **A certificate no longer costs an outage** (ADR-0155). Three helpers
+  restarted VayuPress to publish one, and nginx has no queue in front of `:8080`
+  — so every second of those restarts was a 502 for every visitor on every site.
+
+  Two were never needed. The custom-domain helper's only lasting effect on the
+  running app is a registry row written by the provisioning CLI, and the registry
+  re-reads SQLite on a 30-second TTL whose own comment says it exists to bound
+  staleness from an out-of-band DB edit — which is precisely what that CLI is.
+  The certbot renewal hook copied a keypair the mail TLS loader already stats and
+  hot-reloads, so it bounced a live install unattended, quarterly, to do what the
+  binary does by itself. The 60-second health poll went with them: it watched a
+  restart that no longer happens, and a check that watches nothing reports
+  success forever.
+
+  The third was honest — the VayuTalk host came from an environment variable and
+  a process's environment cannot change without an exec. It is a setting now,
+  written by a new narrow `vayupress talk set-host`, validated because the value
+  is published in autoconfig and clients connect to it, and invoked as the
+  service user rather than root because root-owned WAL files in a `www-data`
+  directory is a documented and expensive failure here.
+
+- **Every VayuKeep setting was inert.** `SetMany` silently ignores keys absent
+  from `AllKeys`, and `vayukeep.enabled`, `vayukeep.target`,
+  `vayukeep.retain_days`, `vayukeep.retain_generations` and
+  `mail.queue_retention_days` were all missing from it. The panel reported
+  success, the audit log recorded the change, and nothing was stored — so an
+  operator switching on continuous encrypted replication was told it was on
+  while the next read said disabled.
+
+  **Check your VayuKeep configuration after updating**; it may never have
+  persisted.
+
+  Found by running the new `talk set-host` command against a real database
+  instead of assuming it worked. A guard now makes the class impossible: every
+  declared, non-deprecated settings key must be writable, and a key that is
+  deliberately read-only says `Deprecated:` on the constant.
+
+### Added
+
+- **The Update page says what restarting costs** (ADR-0155 P4). The install
+  records its own startup durations and quotes a range across recorded boots,
+  paired with whether the socket queues — because the same 1.2 seconds means
+  "every visitor gets a 502" or "every visitor waits", and those are different
+  decisions. Built because the operator who reported this could not read their
+  own journal: `journalctl -u vayupress` answered *"No journal files were opened
+  due to insufficient permissions"*, and a number that needs root and a shell
+  never informs a decision.
+
+  A range rather than a figure, one sample labelled as one sample, corrupt
+  values dropped rather than clamped, and no claim at all before the first boot
+  is recorded.
+
+- **Optional socket activation, so the restarts that remain stop being outages**
+  (ADR-0155 P5). An in-app update replaces the binary and always needs a new
+  process. With `vayupress.socket` enabled, systemd holds the listening socket
+  across the restart and arriving connections queue in the kernel backlog
+  instead of being refused: nginx sees a slow response rather than a connection
+  error, and the visitor gets latency instead of an error page.
+
+  The binary only ever **accepts** an inherited socket — it never asks for one
+  and binds exactly as before when none is passed, so an install without the
+  unit takes an identical path. The installer writes the unit and deliberately
+  does **not** enable it; changing how a service acquires its listener is the
+  operator's decision, not a side effect of a script run to fix a certificate.
+
+  Three hazards carry tests rather than comments saying they were considered.
+  `LISTEN_PID` must name this process before fd 3 is touched, because in this
+  binary fd 3 can be the SQLite database. In Tor mode a non-loopback inherited
+  socket is **refused outright** — a unit this process did not write could
+  otherwise publish an install whose whole premise is that it is reachable only
+  through its onion service. And the updater exits for the supervisor rather
+  than re-execing when socket-activated: the new image finds no `LISTEN_FDS`,
+  tries to bind a port systemd still holds, and crash-loops into a worse outage
+  than the one this removes.
+
+### Notes
+
+- **The measurement corrected the ADR.** Startup on the reference install is
+  1200ms and 1112ms — about 1.2 seconds, not minutes. So socket activation is a
+  nicety there rather than the main event, and **the multi-minute outage that
+  prompted this work is not startup time and is not yet explained.** ADR-0155
+  records the leading hypothesis as a hypothesis — a restart issued from inside
+  a systemd unit with `TimeoutStartSec=900`, where systemd can hold the job
+  against that unit's own transaction — and says what single journal query would
+  confirm it. Removing the restarts closes it either way; claiming it is fixed
+  would be claiming something nobody has demonstrated.
+
+- Twelve mutations over this work, all killed. One survived its first run and is
+  the reason the export guard now exercises the real handler over HTTP: the
+  original test re-derived the exporter's filter "the same way the handler
+  derives it", so putting the leaking code back left every test green. A test
+  that reimplements what it tests agrees with itself whatever production does.
+
 ## [3.17.10] — 2026-08-05
 
 ### Added

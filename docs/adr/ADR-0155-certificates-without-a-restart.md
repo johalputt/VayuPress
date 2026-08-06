@@ -1,6 +1,6 @@
 # ADR-0155 — Adding a domain must not restart the server
 
-- **Status:** Accepted, not yet built
+- **Status:** Accepted; P1–P5 shipped in v3.17.11
 - **Date:** 2026-08-06
 - **Supersedes nothing.** Corrects behaviour introduced piecemeal across
   `scripts/setup-vayudomain.sh`, `scripts/setup-talk-subdomain.sh` and the
@@ -201,7 +201,33 @@ requests it and reports what happened rather than printing a command.
   a response, not a connection error. A test that only proves the unit file
   parses proves nothing about the outage.
 
-## 6. Risks worth stating before building
+## 6. What the audit found
+
+The pre-release adversarial pass asked one question about P2 — *widening
+`AllKeys` made six keys writable; did that open a path for someone to write
+them?* The import path was safe (it applies six hardcoded presentation keys),
+and the **export** path was not, in a way that predated this ADR entirely.
+
+`handleThemeExport` emitted every key in `AllKeys` into a bundle the panel invites
+an operator to download and "apply everywhere", while promising "no secrets …
+safe to share". It carried `tor.space_api_key`, the shield's allow and deny CIDR
+lists, the cluster peers, the subscribed intelligence feeds, payment
+configuration and contact addresses — and, once P2 landed, the VayuKeep backup
+destination.
+
+The cause is the one worth remembering: **the set of keys that are not part of a
+theme existed only in a test.** The conformance test kept the list, the exporter
+iterated `AllKeys`, and nothing joined them. A duplicate of production truth
+inside a test is a duplicate that drifts, and this one drifted into a credential
+leak. It is `settings.NotPortable` now, and the test reads it.
+
+One mutation survived its first run and changed the shape of the fix. Restoring
+the leaking loop left every new test green, because those tests re-derived the
+exporter's filter rather than calling it. They exercise the real handler over
+HTTP now, seeded with a distinct canary per key, which is the only version that
+can fail.
+
+## 7. Risks worth stating before building
 
 - **Thirty seconds is not zero.** After P1 a newly provisioned domain starts
   serving within the registry's TTL rather than instantly. That is strictly

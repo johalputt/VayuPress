@@ -422,6 +422,126 @@ var RobotsOptions = map[string]bool{
 	"index,nofollow":   true,
 }
 
+// NotPortable is every setting that must NEVER leave this install inside a
+// shareable bundle.
+//
+// # The vulnerability this exists to close
+//
+// handleThemeExport emitted every key in AllKeys, and its own comment promised
+// "no secrets … so a bundle is safe to share". Both halves were false. The
+// bundle carried `tor.space_api_key` — a live API key — along with the shield's
+// allow and deny CIDR lists, the cluster peer list, payment configuration,
+// contact addresses and, after ADR-0155 P2, the VayuKeep backup destination.
+// The UI invites an operator to download a theme and "apply it everywhere",
+// which is exactly the action that hands those to somebody else.
+//
+// The root cause was that this set existed only in a TEST. The theme editor's
+// conformance test kept a list of keys with no editor field, the exporter
+// iterated AllKeys, and nothing connected the two — so the test knew which keys
+// were not part of a theme while the exporter shipped them anyway. It is
+// production state now, and the test reads it rather than keeping a second copy
+// that can drift again.
+//
+// The rule for membership: a key belongs in a theme bundle only if the theme
+// editor round-trips it. Anything else is configuration, credentials, network
+// policy or measurements about this specific machine.
+var NotPortable = map[string]bool{
+	KeyBrandFavicon:             true,
+	KeySiteTimezone:             true,
+	KeyBrandFaviconType:         true,
+	KeyTorEnabled:               true,
+	KeyTorVisits:                true,
+	KeyTorBridges:               true,
+	KeyTorPageStats:             true,
+	KeyTorPageHits:              true,
+	KeyTorOnionLocation:         true,
+	KeyTorSpaceEnabled:          true,
+	KeyTorSpaceAPIKey:           true,
+	KeyTalkAnonID:               true,
+	KeyTalkOnionFederation:      true,
+	KeyFeatureComments:          true,
+	KeyFeatureNewsletter:        true,
+	KeyFeatureWebmentions:       true,
+	KeyMembershipButtons:        true,
+	KeyMaintenanceMode:          true,
+	KeyMaintenanceMessage:       true,
+	KeyBlockCrawlers:            true,
+	KeyFeedbackEmail:            true,
+	KeyNavItems:                 true,
+	KeyFooterConfig:             true,
+	KeyContactEmail:             true,
+	KeyContactAutoReply:         true,
+	KeyMediaAlt:                 true,
+	KeyThemeHeroImage:           true,
+	KeyThemeHeroImageType:       true,
+	KeyThemeOGImage:             true,
+	KeyThemeOGImageType:         true,
+	KeyHomeHero:                 true,
+	KeySiteMode:                 true,
+	KeyBizTemplate:              true,
+	KeyBizContent:               true,
+	KeyAuthorBio:                true,
+	KeyFeaturePayments:          true,
+	KeyFeatureAds:               true,
+	KeyFeatureGoogleAds:         true,
+	KeyFeatureAffiliate:         true,
+	KeyFeatureSponsors:          true,
+	KeyFeatureSearch:            true,
+	KeyFeatureTrending:          true,
+	KeyPayDirectInstructions:    true,
+	KeyPayCurrency:              true,
+	KeyPaySupportEmail:          true,
+	KeyPayPalSandbox:            true,
+	KeyBTCPayURL:                true,
+	KeyBTCPayStoreID:            true,
+	KeyPremiumMailIDPriceCents:  true,
+	KeyMailIDTerms:              true,
+	KeyAdSlotPriceCents:         true,
+	KeyAdsenseClient:            true,
+	KeyAffiliateDisclosure:      true,
+	KeyShieldEnabled:            true,
+	KeyShieldPoW:                true,
+	KeyShieldJS:                 true,
+	KeyShieldBlock:              true,
+	KeyShieldTarpit:             true,
+	KeyShieldRateLimit:          true,
+	KeyShieldRateRPM:            true,
+	KeyShieldBurst:              true,
+	KeyShieldLoadShed:           true,
+	KeyShieldMaxInFlight:        true,
+	KeyShieldAutoBlock:          true,
+	KeyShieldJailMinutes:        true,
+	KeyShieldUnderAttack:        true,
+	KeyShieldUnderAttackRPS:     true,
+	KeyShieldSurge:              true,
+	KeyShieldBehindCDN:          true,
+	KeyShieldObserve:            true,
+	KeyShieldAllowCIDRs:         true,
+	KeyShieldDenyCIDRs:          true,
+	KeyShieldAllowCountries:     true,
+	KeyShieldDenyCountries:      true,
+	KeyShieldChallengeCountries: true,
+	KeyShieldRouteCosts:         true,
+	KeyShieldClusterPeers:       true,
+	KeyShieldClusterNode:        true,
+	KeyShieldIntelFeeds:         true,
+	KeyAnalyticsBeacon:          true,
+	KeyVeilEnabled:              true,
+	KeyVayuKeepEnabled:          true,
+	KeyVayuKeepTarget:           true,
+	KeyVayuKeepRetainDays:       true,
+	KeyVayuKeepRetainGen:        true,
+	KeyMailQueueRetentionDays:   true,
+	KeyTalkHost:                 true,
+	KeyStartupMillis:            true,
+	// The operator's own VayuOS console theme (light/dark/auto), persisted from
+	// the topbar toggle. A personal preference for THIS operator, not a property
+	// of the site's look.
+	"admin.theme": true,
+	// A VayuShield enforcement gate, like the rest of the shield block above.
+	KeyShieldGroupIPv4: true,
+}
+
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
 	KeyTalkHost: true,

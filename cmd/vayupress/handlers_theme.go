@@ -350,23 +350,40 @@ func (a *App) handleThemeGet(w http.ResponseWriter, r *http.Request) {
 // they don't understand (fail-closed) rather than silently mis-applying them.
 const themeExportVersion = 1
 
-// handleThemeExport streams the persisted, allowlisted site/theme settings as a
-// downloadable JSON bundle. It is a pure read over the settings allowlist — no
-// secrets, no raw HTML, only the same keys the editor already round-trips — so a
-// bundle is safe to share and re-import on another instance.
+// handleThemeExport streams the theme as a downloadable JSON bundle.
+//
+// It emits the settings the theme editor round-trips and NOTHING ELSE, which is
+// narrower than "the settings allowlist" and the distinction is the whole point:
+// AllKeys says what may be WRITTEN, and a great deal that may be written is
+// credentials, network policy or facts about this machine. settings.NotPortable
+// draws that line and this handler honours it.
+//
+// The previous version of this comment claimed the bundle carried "no secrets"
+// and was "safe to share". It carried a live API key.
 func (a *App) handleThemeExport(w http.ResponseWriter, r *http.Request) {
 	vals, err := a.siteSettings.GetAll(r.Context(), settings.ForPrimary())
 	if err != nil {
 		http.Error(w, "failed to load settings", 500)
 		return
 	}
-	// Emit only the canonical allowlist, so an export never carries anything the
-	// import path wouldn't accept back. Branding (the base64 favicon blob) is
-	// deliberately excluded — it is binary, large, and not round-tripped by the
-	// importer, so it would only bloat an otherwise shareable text bundle.
+	// Emit only what a THEME is, which is not the same as what is writable.
+	//
+	// This loop used to walk settings.AllKeys, and the doc comment above it
+	// promised "no secrets … safe to share". Both were wrong: the bundle carried
+	// tor.space_api_key — a live API key — plus the shield's allow and deny CIDR
+	// lists, the cluster peers, payment configuration, contact addresses and the
+	// VayuKeep backup destination. The UI invites an operator to download this
+	// and "apply it everywhere", which is precisely the action that hands all of
+	// that to somebody else.
+	//
+	// settings.NotPortable is the authoritative set of keys that are not part of
+	// a look. It lives in the settings package rather than here, because the
+	// theme editor's conformance test needs the same answer and the two drifting
+	// apart is what produced the leak: the test knew these keys had no editor
+	// field while the exporter shipped them anyway.
 	out := make(map[string]string, len(settings.AllKeys))
 	for key := range settings.AllKeys {
-		if key == settings.KeyBrandFavicon || key == settings.KeyBrandFaviconType {
+		if settings.NotPortable[key] {
 			continue
 		}
 		out[key] = vals[key]
