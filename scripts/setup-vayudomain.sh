@@ -519,19 +519,62 @@ force_apply() {
 # process title to "worker process is shutting down", so the condition can be
 # observed instead of estimated. On the common case — a single-domain install,
 # one reload, nothing draining — this returns immediately and costs nothing.
+# DRAIN_SPENT is the whole run's waiting budget, not one reload's.
+#
+# THE REGRESSION THIS CORRECTS, from a live provisioning log:
+#
+#   nginx still had a worker draining after 45s; reloading anyway.
+#   A request in flight on that worker may be dropped.
+#
+# repeated at every reload. The first version of this guard waited for ZERO
+# draining workers, and on a site with real traffic that never happens: nginx
+# keeps a worker alive for as long as it holds a keepalive connection, so there
+# is essentially always one shutting down. The guard therefore hit its cap every
+# single time and never got what it was waiting for.
+#
+# The arithmetic is what makes it serious rather than merely wasteful. This
+# script reloads twice per host, so six domains is twelve reloads — 45s each is
+# NINE MINUTES of pure waiting added to a run that systemd gives 300 seconds
+# before it kills it. A guard written to protect provisioning was able to time
+# provisioning out.
+#
+# So the budget is per-RUN and small. Waiting a few seconds between reloads
+# still breaks up the tightest bursts, which is what aborted four workers in
+# eighteen seconds; waiting minutes achieves nothing extra because the worker
+# draining is a reader's keepalive, not the previous generation retiring.
+DRAIN_SPENT=0
+DRAIN_BUDGET_WARNED=0
+
 await_nginx_drain() {
-  local waited=0 limit="${NGINX_DRAIN_MAX_SECONDS:-45}"
-  while [ "$waited" -lt "$limit" ]; do
-    ps -C nginx -o args= 2>/dev/null | grep -q 'is shutting down' || return 0
+  local waited=0
+  local limit="${NGINX_DRAIN_MAX_SECONDS:-5}"
+  local budget="${NGINX_DRAIN_BUDGET_SECONDS:-30}"
+
+  # Budget gone: reload immediately for the rest of this run. A provisioning run
+  # that never finishes is worse than a reload that clips a keepalive.
+  if [ "$DRAIN_SPENT" -ge "$budget" ]; then
+    return 0
+  fi
+
+  while [ "$waited" -lt "$limit" ] && [ "$((DRAIN_SPENT + waited))" -lt "$budget" ]; do
+    if ! ps -C nginx -o args= 2>/dev/null | grep -q 'is shutting down'; then
+      DRAIN_SPENT=$((DRAIN_SPENT + waited))
+      return 0
+    fi
     sleep 1
     waited=$((waited + 1))
   done
-  # Draining longer than the cap means a genuinely long-lived connection (a
-  # download, a websocket), not a reload storm. Proceeding is correct — but it
-  # is said out loud, because this is the one path that can still drop a
-  # request and a silent one would be indistinguishable from the bug.
-  warn "nginx still had a worker draining after ${limit}s; reloading anyway."
-  warn "  A request in flight on that worker may be dropped."
+
+  DRAIN_SPENT=$((DRAIN_SPENT + waited))
+  # Once per run, not once per reload. A busy install ALWAYS has a worker
+  # draining, so the per-reload case is normal and saying so twelve times
+  # teaches an operator to skim the log.
+  if [ "$DRAIN_SPENT" -ge "$budget" ] && [ "$DRAIN_BUDGET_WARNED" -eq 0 ]; then
+    DRAIN_BUDGET_WARNED=1
+    warn "nginx has a worker draining that outlasts the ${budget}s settle budget for this run."
+    warn "  That is normal on a site with keepalive traffic. Reloads continue without waiting;"
+    warn "  a request in flight on a retiring worker may be dropped."
+  fi
   return 0
 }
 

@@ -31,6 +31,7 @@ package main
 // in an include path in the first place.
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -381,7 +382,8 @@ func runDomainFunc(t *testing.T, prelude, call string) (string, error) {
 			"has been removed and this test is blind")
 	}
 	harness := filepath.Join(t.TempDir(), "h.sh")
-	src := "#!/usr/bin/env bash\nwarn() { echo \"WARN: $*\"; }\n" + prelude + "\n" + body + "\n" + call + "\n"
+	src := "#!/usr/bin/env bash\nwarn() { echo \"WARN: $*\"; }\nDRAIN_SPENT=0\nDRAIN_BUDGET_WARNED=0\n" +
+		prelude + "\n" + body + "\n" + call + "\n"
 	if err := os.WriteFile(harness, []byte(src), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -438,12 +440,72 @@ sleep() { local n; n=$(cat "$SLEPT_FILE"); echo $((n+1)) > "$SLEPT_FILE"; }
 	}
 }
 
-// A genuinely long-lived connection must not block provisioning forever — but
-// proceeding anyway is the one path that can still drop a request, so it must
-// say so rather than passing silently.
-func TestAnEndlessDrainProceedsButSaysSo(t *testing.T) {
+// THE regression test, and it is about arithmetic rather than logic.
+//
+// The first version of this guard waited for ZERO draining workers with a 45s
+// per-reload cap. On a site with keepalive traffic there is ALWAYS a worker
+// shutting down, so it hit the cap every time — and this script reloads twice
+// per host. Six domains is twelve reloads: NINE MINUTES of waiting added to a
+// run systemd kills after 300 seconds. A guard written to protect provisioning
+// could time provisioning out. It was seen doing exactly that in a live log.
+//
+// So the budget belongs to the RUN, not to one reload.
+func TestTheTotalDrainWaitIsBoundedForTheWholeRun(t *testing.T) {
 	prelude := `
-export NGINX_DRAIN_MAX_SECONDS=3
+export NGINX_DRAIN_MAX_SECONDS=5
+export NGINX_DRAIN_BUDGET_SECONDS=12
+ps() { echo "nginx: worker process is shutting down"; }   # never drains
+SLEPT_FILE="$(mktemp)"; echo 0 > "$SLEPT_FILE"
+sleep() { local n; n=$(cat "$SLEPT_FILE"); echo $((n+1)) > "$SLEPT_FILE"; }
+`
+	// Twelve reloads, the shape of a six-domain run.
+	call := `for i in $(seq 1 12); do await_nginx_drain; done; echo "slept=$(cat "$SLEPT_FILE")"`
+	out, err := runDomainFunc(t, prelude, call)
+	if err != nil {
+		t.Fatalf("await_nginx_drain failed: %v\n%s", err, out)
+	}
+	var slept int
+	if _, e := fmt.Sscanf(strings.TrimSpace(out[strings.LastIndex(out, "slept=")+len("slept="):]), "%d", &slept); e != nil {
+		t.Fatalf("could not read the slept count from %q", out)
+	}
+	if slept > 12 {
+		t.Errorf("twelve reloads spent %ds waiting against a 12s run budget. The per-reload cap "+
+			"multiplies by the domain count, which is how a 45s wait became nine minutes and timed "+
+			"out the provisioning run it was meant to protect.", slept)
+	}
+	if slept == 0 {
+		t.Error("the guard never waited at all, so it cannot break up a burst of reloads")
+	}
+}
+
+// The budget must be reported once per run, not once per reload. A busy install
+// always has a draining worker, and saying so twelve times teaches an operator
+// to skim the log — which is how the original warning went unread.
+func TestTheBudgetWarningIsSaidOncePerRunNotPerReload(t *testing.T) {
+	prelude := `
+export NGINX_DRAIN_MAX_SECONDS=2
+export NGINX_DRAIN_BUDGET_SECONDS=4
+ps() { echo "nginx: worker process is shutting down"; }
+sleep() { :; }
+`
+	out, err := runDomainFunc(t, prelude, `for i in 1 2 3 4 5 6; do await_nginx_drain; done`)
+	if err != nil {
+		t.Fatalf("await_nginx_drain failed: %v\n%s", err, out)
+	}
+	if n := strings.Count(out, "WARN:"); n == 0 {
+		t.Error("the settle budget was exhausted and nothing was said; this is the path that can " +
+			"still drop a request and a silent one is indistinguishable from the original bug")
+	} else if n > 3 {
+		t.Errorf("the warning was printed %d times across six reloads; once per run is the point", n)
+	}
+}
+
+// Provisioning must never be blocked outright — a certificate that is never
+// issued is a worse outcome than a clipped keepalive.
+func TestAnEndlessDrainNeverBlocksProvisioning(t *testing.T) {
+	prelude := `
+export NGINX_DRAIN_MAX_SECONDS=2
+export NGINX_DRAIN_BUDGET_SECONDS=4
 ps() { echo "nginx: worker process is shutting down"; }
 sleep() { :; }
 `
@@ -452,12 +514,8 @@ sleep() { :; }
 		t.Fatalf("await_nginx_drain failed: %v\n%s", err, out)
 	}
 	if !strings.Contains(out, "rc=0") {
-		t.Error("an endless drain blocked provisioning entirely; a download or websocket would " +
-			"stop certificates from ever being issued")
-	}
-	if !strings.Contains(out, "WARN:") {
-		t.Error("the guard gave up waiting and said nothing. This is the one remaining path that " +
-			"can drop a request, and a silent one is indistinguishable from the original bug.")
+		t.Error("an endless drain blocked provisioning; a download or a websocket would stop " +
+			"certificates from ever being issued")
 	}
 }
 

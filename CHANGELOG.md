@@ -6,6 +6,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.16] — 2026-08-06
+
+### Fixed
+
+- **The reload settle guard could time out the provisioning run it was meant to
+  protect.** A regression in v3.17.14, fixed immediately.
+
+  That guard waited for nginx to have **zero** draining workers before issuing
+  another reload. On a site with real traffic that never happens — nginx keeps a
+  worker alive for as long as it holds a keepalive connection, so there is
+  essentially always one shutting down. The guard therefore hit its 45-second
+  cap at every reload and never got what it was waiting for, which showed up in
+  the provisioning log as:
+
+  ```text
+  nginx still had a worker draining after 45s; reloading anyway.
+  ```
+
+  Certificates are issued per host in two phases, each needing a reload, so a
+  six-domain install reloads a dozen-plus times: **nine minutes of pure waiting
+  added to a run systemd terminates after 300 seconds.**
+
+  The settle budget now belongs to the whole run rather than to each reload —
+  30 seconds total, 5 per reload — so it still breaks up the tightest bursts,
+  which is what was aborting workers mid-request, without ever being able to
+  outlast the run. Once the budget is spent, reloads proceed immediately.
+
+  The warning is also said once per run instead of once per reload. A busy
+  install always has a draining worker, and repeating that a dozen times per run
+  teaches an operator to skim the log — which is how the original nginx warning
+  went unread for three days.
+
+---
+
 ## [3.17.15] — 2026-08-06
 
 ### Fixed
