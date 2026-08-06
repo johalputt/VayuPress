@@ -6,6 +6,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **SVG can be uploaded to the media library, and is sanitised on the way in.**
+  It was refused outright, with a test pinning the refusal — a defensible
+  position rather than a bug, because an uploaded file is served from this
+  origin and SVG is the one image format that is a program. Every other format
+  on that path is identified by magic number so a lying filename cannot get
+  bytes through, and SVG is XML with no magic number to sniff.
+
+  What replaces the sniff is `blockrender.SanitizeSVG`, which already existed
+  for Diagram and HTML blocks. The part that matters is that the **sanitised
+  bytes are what reach disk** — script, style, foreignObject, `on*` handlers and
+  every off-site `href` are gone before the file exists, so there is no window
+  in which a hostile SVG sits under `/media` waiting for a later change to relax
+  a header. Accepting it and cleaning it are the same act.
+
+  Operator uploads only. The remote-image import path re-hosts bytes fetched
+  from a URL, which is a far weaker trust signal, and it still refuses SVG —
+  re-hosting a remote SVG on this origin is precisely how a same-origin payload
+  would arrive.
+
 ## [3.17.19] — 2026-08-06
 
 ### Added

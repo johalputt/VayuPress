@@ -30,6 +30,10 @@ func makePNG(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+// NOTE: every call here passes allowPDF=false, i.e. the REMOTE-IMPORT trust
+// level. The name reads as though SVG is refused outright; it is not — an
+// operator upload (allowPDF=true) accepts SVG after sanitising it. See
+// TestUploadedSVGIsStoredSanitised.
 func TestStoreValidatedMediaAcceptsPNGRefusesSVG(t *testing.T) {
 	config.Cfg.MediaDir = t.TempDir()
 

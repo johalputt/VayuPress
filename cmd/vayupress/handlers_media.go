@@ -31,9 +31,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/blockrender"
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/imageproc"
 	"github.com/johalputt/vayupress/internal/logging"
@@ -101,26 +103,54 @@ type storedMedia struct {
 // it, so every byte served from /media has passed the identical gate.
 //
 // allowPDF controls whether a %PDF document is accepted (uploads: yes; remote
-// image import: no — only rasters are re-hosted).
+// image import: no — only rasters are re-hosted). It also gates SVG, for the
+// same reason: an operator uploading a file is a different trust level from a
+// remote URL being re-hosted, and SVG is the one accepted format that is a
+// program rather than a picture.
 func storeValidatedMedia(raw []byte, allowPDF bool) (storedMedia, error) {
 	if len(raw) == 0 {
 		return storedMedia{}, errMediaEmpty
 	}
 	ext, mime, valid := detectImageType(raw)
-	isPDF := false
+	isPDF, isSVG := false, false
 	if !valid && allowPDF && len(raw) >= 4 && string(raw[:4]) == "%PDF" {
 		ext, mime, valid, isPDF = "pdf", "application/pdf", true, true
+	}
+	// SVG, and the reason it cannot follow the rule above. Every other format
+	// here is identified by magic number precisely so a lying filename or
+	// Content-Type cannot get bytes past the gate. SVG is XML: it has no magic
+	// number, so there is nothing to sniff.
+	//
+	// What replaces the sniff is the sanitiser, and the critical part is that
+	// the SANITISED bytes are what get stored. The original never reaches disk,
+	// so there is no window in which a hostile SVG exists under /media waiting
+	// for someone to widen a rule later. Accepting it is the same act as
+	// cleaning it.
+	//
+	// That matters because an uploaded SVG is served from this origin: it
+	// inherits the site's CSP and sits inside the reader's session. The CSP
+	// already refuses inline script, and blockrender.SanitizeSVG strips script,
+	// style, foreignObject, on* handlers and every off-site href — so this is
+	// two independent controls, not one.
+	if !valid && allowPDF && looksLikeSVG(raw) {
+		cleaned, ok := blockrender.SanitizeSVG(string(raw))
+		if !ok {
+			return storedMedia{}, errMediaUnsupported
+		}
+		raw = []byte(cleaned)
+		ext, mime, valid, isSVG = "svg", "image/svg+xml", true, true
 	}
 	if !valid {
 		return storedMedia{}, errMediaUnsupported
 	}
-	if !isPDF && len(raw) > maxImageBytes {
+	if !isPDF && !isSVG && len(raw) > maxImageBytes {
 		return storedMedia{}, errMediaTooLarge
 	}
 
 	stored := raw
 	var imgW, imgH int
-	if !isPDF {
+	// The raster pipeline decodes pixels; SVG has none, and PDF is not an image.
+	if !isPDF && !isSVG {
 		if res, err := imageproc.Optimize(raw, ext, imageproc.DefaultMaxWidth); err == nil {
 			stored, imgW, imgH = res.Data, res.Width, res.Height
 		} else {
@@ -248,3 +278,28 @@ func (a *App) serveMedia(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	http.ServeFile(w, r, filepath.Join(config.Cfg.MediaDir, name)) //nosec G703 -- name validated by safeMediaName regex (no separators or dot segments); confined to MediaDir
 }
+
+// looksLikeSVG reports whether raw is plausibly an SVG document, cheaply and
+// without parsing. It is a pre-filter and NOT a validation: the sanitiser is
+// what decides, and it returns ok=false when there is no <svg> element left.
+// Deliberately narrow — a leading XML declaration or comment is allowed before
+// the root, and nothing else is.
+func looksLikeSVG(raw []byte) bool {
+	if len(raw) > maxSVGUploadBytes {
+		return false
+	}
+	head := raw
+	if len(head) > 1024 {
+		head = head[:1024]
+	}
+	low := strings.ToLower(strings.TrimSpace(string(head)))
+	if !strings.HasPrefix(low, "<") {
+		return false
+	}
+	return strings.Contains(low, "<svg")
+}
+
+// maxSVGUploadBytes bounds what is even offered to the sanitiser. Its own limit
+// applies too; this one keeps a multi-megabyte XML bomb from being turned into
+// a string first.
+const maxSVGUploadBytes = 1 << 20
