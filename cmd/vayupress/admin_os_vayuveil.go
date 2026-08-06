@@ -16,6 +16,7 @@ package main
 // switch on reporting, and no tile can go green while nothing is enforcing.
 
 import (
+	"context"
 	"html"
 	"net/http"
 	"strconv"
@@ -87,11 +88,19 @@ func (a *App) handleOSVayuVeil(w http.ResponseWriter, r *http.Request) {
 	writeOSHTML(w, r, full)
 }
 
-func (a *App) veilEnabled(r *http.Request) bool {
+func (a *App) veilEnabled(r *http.Request) bool { return a.veilEnabledCtx(r.Context()) }
+
+// veilEnabledCtx is the same answer without a request, for the MCP surface.
+//
+// The request-taking form delegates here rather than the two being written
+// twice: a second copy of "is this on" is a second place for the default to
+// drift, and the safe default — off, when the settings store is unavailable —
+// is the one that must never differ between the page and the tool.
+func (a *App) veilEnabledCtx(ctx context.Context) bool {
 	if a.siteSettings == nil {
 		return false
 	}
-	return a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyVeilEnabled) == "on"
+	return a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyVeilEnabled) == "on"
 }
 
 // handleOSVayuVeilToggle activates or deactivates observation reporting.

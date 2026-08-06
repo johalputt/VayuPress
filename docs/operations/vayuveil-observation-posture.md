@@ -234,6 +234,31 @@ protection of anything other than the VayuPress process — every control here i
 process-scoped. And not a roadmap: the endpoint track describes software that
 does not exist, and nothing in the product may render it as forthcoming.
 
+## Reading it without opening the panel
+
+Two read-only MCP tools expose the same report any connected client can call —
+`vayuveil_posture` and `vayuveil_unit_controls`. They exist because this
+subsystem's entire product is a report, and until they did that report lived in
+exactly one place: a browser page. Both are scoped to `settings/read`, the same
+scope VayuShield's read tools use.
+
+`vayuveil_posture` returns every row with its verdict and reasoning, the summary
+counts, whether reporting is switched on, and a `scope` sentence shipped
+**alongside** the numbers rather than left in documentation — a caller reading
+only the counts still cannot conclude that this install defends a screen. Each
+row carries a `permanent` flag, so a limit that is there by construction is
+distinguishable from a failure somebody can act on. Alert on the latter.
+
+`vayuveil_unit_controls` returns the five baseline directives with `in_force`
+and `known` as **separate** fields, the drop-in verdict, what the last run wrote
+and skipped, and the list of directives deliberately refused with their reasons.
+
+**Neither tool can write, and nothing on this surface ever will.** The write that
+would matter here makes root edit a systemd unit and restart a live service, and
+a model's context is full of text other people wrote — a blog comment, a fetched
+page, a mail body. Requesting hardening stays a human pressing a button in
+VayuOS, having read what it costs.
+
 ## Reading it at boot
 
 The posture is written to the log at startup too, because a subsystem visible

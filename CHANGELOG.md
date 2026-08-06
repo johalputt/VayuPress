@@ -8,6 +8,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **VayuVeil can be read without opening a browser.** Two read-only MCP tools —
+  `vayuveil_posture` and `vayuveil_unit_controls` — expose the same report to any
+  connected client, scoped to `settings/read` like VayuShield's.
+
+  The gap was worth closing on its own terms. This subsystem's entire product is
+  a posture report, VayuShield had four MCP tools and VayuVeil had none, so the
+  one thing an operator is told to do — read the state rather than reason about
+  what it must be — was the one thing that required the panel.
+
+  **Flattening a careful report into JSON is exactly where its care gets lost**,
+  so the payload carries its framing rather than leaving it in documentation. The
+  `scope` sentence ships beside the summary counts, so a caller reading only the
+  numbers still cannot conclude this install defends a screen. Every row carries
+  a `permanent` flag, because a limit that exists by construction and a failure
+  somebody can act on must not be the same integer. `in_force` and `known` are
+  separate fields on every directive — one boolean would round "could not be
+  read" into "not in force", which is the direction that turns an unreadable
+  answer into a comfortable one. And an unrecognised status or verdict renders as
+  `unverified` / `unknown`, never as the reassuring end: defaulting a value added
+  later to "fine" is how a new failure mode ships reported as fine.
+
+  **Nothing on this surface writes, and nothing on it ever will.** The write that
+  would matter here makes root edit a systemd unit and restart a live service,
+  and a model's context is full of text other people wrote — a blog comment, a
+  fetched page, a mail body. No permission check makes that trade worth taking.
+
+  The read-only guard earned its place immediately: the second tool was first
+  called `vayuveil_hardening` and the test refused the name. "Hardening" is a verb
+  as readily as a noun, and a model scanning a tool list for something that
+  hardens a server would find it. On a surface whose whole safety argument is that
+  nothing here acts, a name that reads as an action is a defect. Renamed rather
+  than the guard loosened.
+
+  Eight mutations over this surface, all killed.
+
 ### Fixed
 
 - **The VayuVeil card promised a delivery window it could not meet.** It said
