@@ -21,7 +21,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/diagram"
+	"github.com/johalputt/vayupress/internal/embeds"
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
@@ -80,20 +82,21 @@ func renderInlineHTML(s string) string {
 	return out
 }
 
-// embedSrcRe is the closed allowlist for a video-facade iframe source: only the
-// cookie-free YouTube/Vimeo embed origins, with a constrained id. It is used
-// both to validate before emitting the attribute and (re-applied) as the
-// bluemonday Matching barrier — a crafted block can never inject another origin.
-var embedSrcRe = regexp.MustCompile(
-	`^https://(?:www\.youtube-nocookie\.com/embed|player\.vimeo\.com/video)/[A-Za-z0-9_-]{1,64}$`)
+// embedSrcRe is the closed allowlist for a video-facade iframe source, derived
+// from the provider table in internal/embeds rather than restated here. It is
+// applied twice — once to validate before the attribute is emitted, and again as
+// the bluemonday Matching barrier — so a crafted block document can never inject
+// an origin the table does not contain.
+//
+// It used to be a third hand-written copy of that allowlist. Nothing checked the
+// copies against each other, and the way they failed was silent: this file would
+// happily emit data-embed-src for an origin internal/render did not recognise,
+// the page CSP would never be extended for it, and the reader would click a play
+// button whose iframe the page's own policy then refused.
+var embedSrcRe = embeds.SrcPattern()
 
 // safeEmbedSrc returns s if it is an allowlisted video-embed URL, else "".
-func safeEmbedSrc(s string) string {
-	if embedSrcRe.MatchString(s) {
-		return s
-	}
-	return ""
-}
+func safeEmbedSrc(s string) string { return embeds.ValidEmbedSrc(s) }
 
 // localMediaRe constrains a self-hosted media URL to the site's own /media path.
 // Audio/source elements may only ever point here — never at an external origin —
@@ -146,9 +149,16 @@ func safeMediaURL(s string) string {
 //     path — never an external origin (privacy-first).
 var policy = func() *bluemonday.Policy {
 	p := bluemonday.UGCPolicy()
+	// a, p and img are here because this renderer emits classes on all three and
+	// they were being stripped from its own output: embed-card__thumb and
+	// embed-card__title sit on anchors, embed-card__desc on a paragraph, and
+	// video-facade__poster on the image. Without them a link card rendered as
+	// loose unstyled text and the facade's poster did not fill its frame — the
+	// renderer was quietly deleting half of what it had just written.
 	p.AllowAttrs("class").OnElements(
 		"div", "span", "pre", "ul", "ol", "li", "figure", "figcaption",
-		"table", "thead", "tbody", "tr", "th", "td", "details", "summary", "audio")
+		"table", "thead", "tbody", "tr", "th", "td", "details", "summary", "audio",
+		"a", "p", "img")
 	p.AllowAttrs("data-embed-src").Matching(embedSrcRe).OnElements("div")
 	p.AllowAttrs("data-embed-title").OnElements("div")
 	// Footnotes (goldmark extension.Footnote): allow the specific id anchors and
@@ -501,7 +511,19 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 		// iframe. The vetted cookie-free embed URL is carried in data-embed-src so
 		// public/video-facade.js can inject a sandboxed iframe only on click; the
 		// page CSP narrowly admits the origin only when this attribute is present.
-		if blk.Kind == "video" {
+		//
+		// Not in a Tor Space. There, applyOnionCSP strips every external origin
+		// from every directive, frame-src included, so the iframe the facade
+		// injects on click is refused by the page's own policy. What the reader
+		// got was a play button that did nothing at all and said nothing about
+		// why — the control was not weakened, it was absent, and the interface
+		// went on advertising it. Falling through to the link card is the honest
+		// rendering: it names the provider, carries the same poster from local
+		// media, and links out, which is a thing the reader's browser can
+		// actually do. This is deliberately decided here rather than by dropping
+		// the attribute later, so nothing downstream has to infer intent from a
+		// facade with no source.
+		if blk.Kind == "video" && !config.Cfg.OnionMode {
 			if src := safeEmbedSrc(blk.EmbedSrc); src != "" {
 				b.WriteString(`<div class="video-facade" data-embed-src="` + html.EscapeString(src) +
 					`" data-embed-title="` + html.EscapeString(blk.Title) + `">`)

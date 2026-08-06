@@ -24,9 +24,11 @@ import (
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/blockrender"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/mcp"
+	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 )
@@ -504,6 +506,88 @@ func (a *App) buildMCPServer() *mcp.Server {
 			dbpkg.AuditLog("media.upload", mcpActor(ctx), stored.Name,
 				fmt.Sprintf("via=mcp size=%d mime=%s given_name=%q", stored.Size, stored.MIME, in.Filename))
 			return jsonStr(stored), nil
+		},
+	})
+
+	// embed_url turns a pasted URL into the markup a post can carry, so writing a
+	// post through the connector does not mean hand-writing facade markup.
+	//
+	// It matters that this returns RENDERED HTML from blockrender rather than a
+	// shape the caller assembles: the facade is a contract between four things —
+	// the class the loader binds to, the data attribute it reads, the closed
+	// origin table, and the sanitiser that has to let all of it through. A caller
+	// composing that markup itself would be reimplementing the contract, and the
+	// first character it got wrong would produce a play button that silently does
+	// nothing. Rendering it here means the connector's output is byte-identical
+	// to the editor's, and both move together.
+	srv.Register(mcp.Tool{
+		Name: "embed_url",
+		Description: "Turn a URL into ready-to-paste HTML for a post or page. A YouTube, Vimeo, " +
+			"Dailymotion, Loom or Wistia link becomes a click-to-load video player (nothing loads " +
+			"from the video host until the reader clicks it); any other URL becomes a rich link " +
+			"card with the page's title, description and image. The image is copied into this " +
+			"site's own media library, so the card keeps working if the source removes it. Paste " +
+			"the returned `html` straight into the `content` of create_post/update_post.",
+		InputSchema: objSchema([]string{"url"}, map[string]any{
+			"url": strProp("The page or video URL to embed, e.g. https://www.youtube.com/watch?v=..."),
+		}),
+		Visible: a.mcpVisible(apikeys.SectionMedia, apikeys.ActionWrite),
+		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+			var in struct {
+				URL string `json:"url"`
+			}
+			if err := json.Unmarshal(args, &in); err != nil {
+				return "", fmt.Errorf("bad arguments: %w", err)
+			}
+			rawURL := strings.TrimSpace(in.URL)
+			if rawURL == "" {
+				return "", fmt.Errorf("url is required")
+			}
+			// Same mode gate as the editor endpoint: this fetches a remote page and
+			// writes both a media file and a cache row, none of which may happen
+			// while the install is read-only or quarantined.
+			if cur := mode.Global.Current(); cur == mode.ModeReadOnly || cur == mode.ModeQuarantined {
+				return "", fmt.Errorf("embedding is unavailable while the site is in %s mode", cur)
+			}
+
+			res, err := a.resolveEmbed(ctx, "", rawURL)
+			if err != nil {
+				var re *embedResolveError
+				if errors.As(err, &re) {
+					return "", fmt.Errorf("%s", re.Message)
+				}
+				return "", fmt.Errorf("could not resolve that URL")
+			}
+
+			blocks, err := json.Marshal([]blockrender.Block{{
+				Type:        "embed",
+				URL:         res.URL,
+				Title:       res.Title,
+				Description: res.Description,
+				Provider:    res.Provider,
+				ThumbURL:    res.ThumbURL,
+				Kind:        res.Kind,
+				EmbedSrc:    res.EmbedSrc,
+			}})
+			if err != nil {
+				return "", fmt.Errorf("could not build the embed: %w", err)
+			}
+			htmlOut, _, err := blockrender.Render(string(blocks))
+			if err != nil {
+				return "", fmt.Errorf("could not render the embed: %w", err)
+			}
+
+			dbpkg.AuditLog("embed.resolve", mcpActor(ctx), res.URL,
+				fmt.Sprintf("via=mcp kind=%s provider=%q", res.Kind, res.Provider))
+
+			return jsonStr(struct {
+				HTML     string `json:"html"`
+				Kind     string `json:"kind"`
+				Provider string `json:"provider"`
+				Title    string `json:"title"`
+				ThumbURL string `json:"thumbURL,omitempty"`
+				URL      string `json:"url"`
+			}{htmlOut, res.Kind, res.Provider, res.Title, res.ThumbURL, res.URL}), nil
 		},
 	})
 

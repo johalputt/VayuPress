@@ -10,6 +10,94 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Paste a URL, get a working embed — from the connector as well as the
+  editor.** `embed_url` resolves any link and returns ready-to-paste HTML: a
+  YouTube, Vimeo, Dailymotion, Loom or Wistia link becomes a click-to-load video
+  player, and anything else becomes a rich link card carrying the page's title,
+  description and image. The image is copied into this install's own media
+  library through `storeValidatedMedia`, so it is magic-number validated, counted
+  against `MEDIA_QUOTA_GB` and still there when the source removes it. Scoped to
+  `media:write`, the same narrow credential as `upload_media`, and refused in
+  read-only or quarantined mode.
+
+  It returns HTML rendered by `blockrender` rather than assembled by the caller,
+  which is the part that matters: a facade is a contract between the class the
+  loader binds to, the attribute it reads, the closed origin table and the
+  sanitiser that has to pass all three, and a caller composing that markup itself
+  would get one character wrong and ship a play button that does nothing.
+
+- **Three more video platforms — Dailymotion, Loom and Wistia** — joining YouTube
+  and Vimeo. Each is click-to-load, so nothing reaches the platform until a
+  reader asks it to. Twitch, Rumble and self-hosted players are deliberately
+  absent and the reasons are recorded in `internal/embeds` rather than left to be
+  re-litigated: two need a round trip or the embedding domain to build a URL, and
+  the third has no fixed origin for an allowlist to name.
+
+### Fixed
+
+- **The click-to-load video embed did not work on any published post.** The
+  block renderer emitted `<div class="video-facade" data-embed-src="…">`; the
+  article sanitiser is bluemonday's UGC policy, which allows neither `class` nor
+  `data-*`; so the reader was served `<div>`, and `video-facade.js` — which
+  queries `.video-facade[data-embed-src]` — found nothing to bind. The poster
+  rendered and the play button did nothing at all.
+
+  Everything around it was real, which is why it lasted: the CSS shipped, the
+  loader shipped, the CSP was extended for exactly the right origin, and the
+  block renderer's own sanitiser admitted the attribute. Four parts of one
+  feature, three of them working. The same policy was also stripping
+  `embed-card__title`, `embed-card__desc` and `video-facade__poster`, so link
+  cards rendered as loose unstyled text — and `blockrender`'s own policy was
+  removing those three before the article sanitiser ever saw them, because it
+  allowed `class` on `div` and `span` but not on `a`, `p` or `img`.
+
+  The mechanism, named rather than described: `allowBlockComponents` in
+  `internal/render/render.go` teaches the article sanitiser the component
+  contract — `class` confined to the three component prefixes the block renderer
+  emits, `data-embed-src` matched against the SAME closed provider table that
+  builds it and that the CSP check reads, `data-embed-title` bounded, `loading`
+  restricted to lazy/eager. Script, event handlers, inline styles and off-site
+  iframes are still refused; nothing about the XSS posture is relaxed.
+
+  Tests render a real article and extract the facade element before asserting on
+  it, because the rendered page also contains the stylesheet — a whole-page
+  search for `video-facade` passes on a page that stripped every attribute.
+  Four mutations killed: the contract unregistered (the original defect), the
+  embed source admitted without matching the table, the class vocabulary
+  unbounded, and a single-token class pattern that silently dropped
+  `vp-figure vp-figure--wide`.
+
+- **A Tor Space offered a play button it could not honour.** `applyOnionCSP`
+  strips every external origin from every directive, `frame-src` included, so on
+  an onion page the iframe the facade injects on click is refused by the page's
+  own policy. The reader got a poster, a pointer cursor, a keyboard handler, and
+  silence. The facade now degrades to the link card there — same locally-stored
+  poster, same title, a link the browser can actually follow. Three mutations
+  killed, including the clearnet control, so deleting the facade outright cannot
+  pass.
+
+### Changed
+
+- **One provider table instead of four copies.** The framable-origin allowlist,
+  the id patterns, the sanitiser barrier and the URL detection lived in three
+  packages and disagreed silently: `blockrender` could emit an origin
+  `internal/render` did not recognise, the CSP would never be extended for it,
+  and the video would simply never play. `internal/embeds` now holds the one
+  table and every consumer derives from it — including the whole-URL barrier and
+  the origin scanner, which are compiled from the table rather than written
+  beside it. A round-trip test walks every provider from `EmbedSrc` through the
+  barrier, the CSP check and the HTML scanner, so a future entry cannot be added
+  to one consumer and missed by another.
+
+  Five mutations killed on the table itself: a host suffix without its leading
+  dot (`evilwistia.com` resolved), the scheme check removed, an id pattern
+  anchored at one end, the barrier accepting any path after an allowed origin,
+  and hosts matched as substrings. The scheme mutation **survived** the first
+  version of that suite — every non-web fixture was an opaque URL that never
+  reached the check. `javascript://youtube.com/watch?v=…` parses with a real
+  host, and without the check it resolved to a valid video whose source URL then
+  becomes the card's link href.
+
 - **Fixed a CI flake I introduced earlier in this release cycle.**
   `TestCleanBanlistStaysOnTheAtomicPath` asserted that a clean banlist produced
   exactly one nft invocation, and failed roughly one run in six under load —

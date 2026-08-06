@@ -20,6 +20,7 @@ package main
 //     media:write key cannot spend it as disk. See saveEmbedCache.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -29,9 +30,9 @@ import (
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/embeds"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
-	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/safefetch"
 )
 
@@ -66,68 +67,16 @@ type embedMeta struct {
 	EmbedSrc string `json:"embedSrc,omitempty"`
 }
 
-// Fully-anchored ID validators. These match the *entire* extracted id, never a
-// substring, so a crafted query/path fragment cannot smuggle an id through.
-var (
-	ytIDRe    = regexp.MustCompile(`^[A-Za-z0-9_-]{6,64}$`)
-	vimeoIDRe = regexp.MustCompile(`^\d{6,15}$`)
-)
-
 // detectVideoEmbed returns the provider key and a validated cookie-free embed
-// URL when rawURL is a recognised video link, else ("", ""). The host is matched
-// by exact equality after parsing (never a substring regex), so a URL such as
-// https://evil.com/?x=youtube.com/VIDEOID cannot be misclassified. The embed URL
-// is built by render.VideoEmbedSrc, so it is always rooted at an allowlisted origin.
-func detectVideoEmbed(rawURL string) (provider, embedSrc string) {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return "", ""
-	}
-	host := strings.ToLower(u.Hostname())
-	host = strings.TrimPrefix(host, "www.")
-
-	switch host {
-	case "youtube.com", "m.youtube.com", "music.youtube.com":
-		// /watch?v=ID  → id in the query string.
-		if id := u.Query().Get("v"); ytIDRe.MatchString(id) {
-			return "youtube", render.VideoEmbedSrc("youtube", id)
-		}
-		// /embed/ID, /shorts/ID, /v/ID → id is the second path segment.
-		if id := nthPathSegment(u.Path, 1); ytIDRe.MatchString(id) {
-			switch firstPathSegment(u.Path) {
-			case "embed", "shorts", "v":
-				return "youtube", render.VideoEmbedSrc("youtube", id)
-			}
-		}
-	case "youtu.be":
-		// https://youtu.be/ID → id is the first path segment.
-		if id := firstPathSegment(u.Path); ytIDRe.MatchString(id) {
-			return "youtube", render.VideoEmbedSrc("youtube", id)
-		}
-	case "vimeo.com", "player.vimeo.com":
-		// /ID or /video/ID → take the last numeric path segment.
-		seg := firstPathSegment(u.Path)
-		if seg == "video" {
-			seg = nthPathSegment(u.Path, 1)
-		}
-		if vimeoIDRe.MatchString(seg) {
-			return "vimeo", render.VideoEmbedSrc("vimeo", seg)
-		}
-	}
-	return "", ""
-}
-
-// firstPathSegment returns the first non-empty path segment, or "".
-func firstPathSegment(p string) string { return nthPathSegment(p, 0) }
-
-// nthPathSegment returns the n-th (0-based) non-empty path segment, or "".
-func nthPathSegment(p string, n int) string {
-	segs := strings.FieldsFunc(p, func(r rune) bool { return r == '/' })
-	if n >= 0 && n < len(segs) {
-		return segs[n]
-	}
-	return ""
-}
+// URL when rawURL is a recognised video link, else ("", "").
+//
+// The recognition itself lives in internal/embeds, which holds the one provider
+// table the CSP allowlist, the sanitiser barrier and this detection are all
+// derived from. This used to be a hand-written switch over hostnames alongside
+// its own pair of id validators, which meant a new provider had to be added
+// here AND in two regexes in two other packages, in agreement, with no gate
+// checking that they were.
+func detectVideoEmbed(rawURL string) (provider, embedSrc string) { return embeds.Detect(rawURL) }
 
 // handleEmbedUnfurl implements POST /api/v1/admin/embed/unfurl.
 func (a *App) handleEmbedUnfurl(w http.ResponseWriter, r *http.Request) {
@@ -161,29 +110,65 @@ func (a *App) handleEmbedUnfurl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check cache first — avoid re-fetching URLs we've already resolved.
-	if cached := a.loadEmbedCache(rawURL); cached != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(cached) //nolint:errcheck
+	res, err := a.resolveEmbed(r.Context(), getRequestID(r), rawURL)
+	if err != nil {
+		var re *embedResolveError
+		if errors.As(err, &re) {
+			fail(re.Status, re.Message)
+			return
+		}
+		fail(502, "could not resolve that URL")
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res) //nolint:errcheck
+}
+
+// embedResolveError carries the HTTP status an unfurl failure should surface,
+// so the resolver can be shared by the editor endpoint and the connector tool
+// without either of them re-deriving what went wrong from an opaque error.
+type embedResolveError struct {
+	Status  int
+	Message string
+}
+
+func (e *embedResolveError) Error() string { return e.Message }
+
+// resolveEmbed turns a URL into a resolved embed payload: OG metadata, a locally
+// stored thumbnail, and — when the URL is a recognised video — a validated
+// cookie-free embed source for the click-to-load facade.
+//
+// It is the single implementation behind both the editor's paste-a-URL endpoint
+// and the connector's embed_url tool. That matters more than the deduplication:
+// every guard on this path (SSRF-safe fetch with a 1 MB cap, magic-number
+// validation of the thumbnail through storeValidatedMedia, the media quota, the
+// bounded and pruned cache) applies to a caller because it is on this path, not
+// because that caller remembered to apply it. A second resolver written for the
+// connector would have started as a copy and drifted.
+func (a *App) resolveEmbed(ctx context.Context, reqID, rawURL string) (*unfurlResponse, error) {
+	parsed, err := url.ParseRequestURI(rawURL)
+	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
+		return nil, &embedResolveError{400, "url must be a valid http or https URL"}
+	}
+
+	// Check cache first — avoid re-fetching URLs we've already resolved.
+	if cached := a.loadEmbedCache(rawURL); cached != nil {
+		return cached, nil
+	}
+
 	// Fetch the page HTML via the SSRF-safe client.
-	fetchRes, err := htmlFetcher.Get(r.Context(), rawURL)
+	fetchRes, err := htmlFetcher.Get(ctx, rawURL)
 	switch {
 	case errors.Is(err, safefetch.ErrBlockedAddress):
-		fail(400, "that URL is not allowed (private/blocked address or scheme)")
-		return
+		return nil, &embedResolveError{400, "that URL is not allowed (private/blocked address or scheme)"}
 	case errors.Is(err, safefetch.ErrTooLarge):
-		fail(400, "remote page exceeds the 1 MB limit")
-		return
+		return nil, &embedResolveError{400, "remote page exceeds the 1 MB limit"}
 	case err != nil:
-		fail(502, "could not fetch the URL: "+err.Error())
-		return
+		return nil, &embedResolveError{502, "could not fetch the URL: " + err.Error()}
 	}
 	if fetchRes.Status < 200 || fetchRes.Status >= 300 {
-		fail(502, "remote host returned an error status")
-		return
+		return nil, &embedResolveError{502, "remote host returned an error status"}
 	}
 
 	resolvedURL := fetchRes.FinalURL
@@ -209,11 +194,11 @@ func (a *App) handleEmbedUnfurl(w http.ResponseWriter, r *http.Request) {
 	if vp, src := detectVideoEmbed(rawURL); src != "" {
 		kind = "video"
 		embedSrc = src
-		switch vp {
-		case "youtube":
-			provider = "YouTube"
-		case "vimeo":
-			provider = "Vimeo"
+		// The display name comes from the provider table rather than a second
+		// switch here, so adding a provider does not leave this branch labelling
+		// it with its bare hostname.
+		if n := embeds.Name(vp); n != "" {
+			provider = n
 		}
 	}
 
@@ -221,7 +206,7 @@ func (a *App) handleEmbedUnfurl(w http.ResponseWriter, r *http.Request) {
 	// media imports — magic-number checked, content-addressed, SSRF-safe.
 	thumbURL := ""
 	if ogImage != "" {
-		thumbURL = a.fetchAndStoreEmbedThumb(r, ogImage)
+		thumbURL = a.fetchAndStoreEmbedThumb(ctx, reqID, ogImage)
 	}
 
 	result := &unfurlResponse{
@@ -234,16 +219,14 @@ func (a *App) handleEmbedUnfurl(w http.ResponseWriter, r *http.Request) {
 		EmbedSrc:    embedSrc,
 	}
 
-	// Persist to cache so subsequent paste of the same URL is instant.
+	// Persist to cache so a subsequent paste of the same URL is instant.
 	a.saveEmbedCache(rawURL, result)
 
 	logging.LogJSON(logging.LogFields{
 		Level: "info", Component: "embed", Severity: "info",
-		Msg: "unfurled: " + rawURL, RequestID: getRequestID(r),
+		Msg: "unfurled: " + rawURL, RequestID: reqID,
 	})
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result) //nolint:errcheck
+	return result, nil
 }
 
 // parseOGTags extracts og: meta properties from an HTML string.
@@ -280,13 +263,13 @@ func detectEmbedProvider(hostname, siteName string) string {
 // fetchAndStoreEmbedThumb downloads the OG image URL via remoteImageFetcher
 // and stores it using storeValidatedMedia (magic-number validated, same path
 // as all other media). Returns the /media/<name> URL or "" on any failure.
-func (a *App) fetchAndStoreEmbedThumb(r *http.Request, imgURL string) string {
+func (a *App) fetchAndStoreEmbedThumb(ctx context.Context, reqID, imgURL string) string {
 	parsed, err := url.ParseRequestURI(imgURL)
 	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
 		return ""
 	}
 
-	res, err := remoteImageFetcher.Get(r.Context(), imgURL)
+	res, err := remoteImageFetcher.Get(ctx, imgURL)
 	if err != nil {
 		return ""
 	}
@@ -301,7 +284,7 @@ func (a *App) fetchAndStoreEmbedThumb(r *http.Request, imgURL string) string {
 
 	logging.LogJSON(logging.LogFields{
 		Level: "info", Component: "embed", Severity: "info",
-		Msg: "embed thumb stored: " + stored.Name, RequestID: getRequestID(r),
+		Msg: "embed thumb stored: " + stored.Name, RequestID: reqID,
 	})
 
 	return stored.URL

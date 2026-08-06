@@ -29,6 +29,7 @@ import (
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/embeds"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/seo"
@@ -99,8 +100,61 @@ var (
 // Init initializes the HTML sanitizer, compiles the template, writes CSS assets, and warms the cache.
 func Init(staticDir string) {
 	policy = bluemonday.UGCPolicy()
+	allowBlockComponents(policy)
 	WriteCSSAssets(staticDir)
 	initPortalCSSVersion(staticDir)
+}
+
+// blockComponentClassRe is the closed class vocabulary the block renderer emits.
+//
+// Every token must start with one of three component prefixes, so an author can
+// apply the site's own presentational classes and nothing else. Multi-class
+// values are allowed because the figure block uses them (vp-figure
+// vp-figure--wide).
+var blockComponentClassRe = regexp.MustCompile(
+	`^(?:video-facade|embed-card|vp)[a-z0-9_-]*(?: (?:video-facade|embed-card|vp)[a-z0-9_-]*)*$`)
+
+// embedTitleRe bounds the facade's accessible title. bluemonday escapes the
+// value on the way out; this only keeps it a plausible title rather than a
+// document.
+var embedTitleRe = regexp.MustCompile(`^[^<>"]{0,300}$`)
+
+// allowBlockComponents teaches the article sanitiser the block renderer's
+// component contract.
+//
+// # The defect this fixes, stated plainly
+//
+// Article content is sanitised on the way out by bluemonday's UGC policy, which
+// allows neither `class` nor `data-*`. The block renderer's entire output is
+// built from both. So every block-rendered post was being stripped of the
+// markup that makes it work, and the click-to-load video facade — the whole
+// video-embed feature — did not function on any published post: the renderer
+// emitted `<div class="video-facade" data-embed-src="…">`, the sanitiser handed
+// the reader `<div>`, and video-facade.js queried for
+// `.video-facade[data-embed-src]` and found nothing.
+//
+// Nothing failed loudly. The CSS shipped, the loader shipped, the CSP was
+// correctly extended for the origin, and the operator saw a poster with no play
+// button and no way to know why. Three parts of the feature were real and the
+// fourth silently removed them — the same shape as a control asserted in three
+// places and enforced in none.
+//
+// # Why this is narrow
+//
+// Class values are confined to the three component prefixes, so this admits the
+// site's own presentation and not arbitrary styling. The one security-relevant
+// attribute, data-embed-src, is matched against the SAME closed provider table
+// that builds it and that the CSP check reads, so a forged attribute in
+// operator-supplied HTML cannot name an origin the policy would not have
+// admitted anyway. Script, event handlers, styles and off-site iframes are
+// still refused by the underlying UGC policy — none of that is relaxed here.
+func allowBlockComponents(p *bluemonday.Policy) {
+	p.AllowAttrs("class").Matching(blockComponentClassRe).OnElements(
+		"div", "span", "a", "img", "figure", "figcaption", "p",
+		"ul", "ol", "li", "details", "summary", "table", "audio", "pre", "code")
+	p.AllowAttrs("data-embed-src").Matching(embeds.SrcPattern()).OnElements("div")
+	p.AllowAttrs("data-embed-title").Matching(embedTitleRe).OnElements("div")
+	p.AllowAttrs("loading").Matching(regexp.MustCompile(`^(?:lazy|eager)$`)).OnElements("img")
 }
 
 // ── CSS assets ────────────────────────────────────────────────────────────────

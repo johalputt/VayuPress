@@ -12,11 +12,11 @@ package render
 // bug or a tampered block document can never widen the policy.
 
 import (
-	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/embeds"
 )
 
 // applyOnionCSP is the single CSP chokepoint for Tor/anonymous mode (ADR-0141).
@@ -47,21 +47,11 @@ func applyOnionCSP(csp string) string {
 	return strings.Join(directives, "; ")
 }
 
-// privacyFrameOrigins maps a provider key to its cookie-free embed origin. These
-// are the only third-party origins that may ever appear in a frame-src.
-var privacyFrameOrigins = map[string]string{
-	"youtube": "https://www.youtube-nocookie.com",
-	"vimeo":   "https://player.vimeo.com",
-}
-
-// allowedFrameOrigins is the set form of privacyFrameOrigins for O(1) checks.
-var allowedFrameOrigins = func() map[string]bool {
-	m := make(map[string]bool, len(privacyFrameOrigins))
-	for _, o := range privacyFrameOrigins {
-		m[o] = true
-	}
-	return m
-}()
+// The closed allowlist of framable origins lives in internal/embeds, which is
+// the single source of truth for every consumer: this file, the block renderer's
+// sanitiser barrier, and the unfurl handler's URL detection. It used to be
+// written out separately in each, and the copies could disagree without anything
+// failing loudly — see that package's header for what that costs.
 
 // cspBaseline is the strict policy applied to every response. %s is the nonce.
 //
@@ -109,7 +99,7 @@ func validFrameOrigins(in []string) []string {
 	seen := make(map[string]bool, len(in))
 	var out []string
 	for _, o := range in {
-		if allowedFrameOrigins[o] && !seen[o] {
+		if embeds.AllowedOrigin(o) && !seen[o] {
 			seen[o] = true
 			out = append(out, o)
 		}
@@ -119,7 +109,7 @@ func validFrameOrigins(in []string) []string {
 }
 
 // AllowedFrameOrigin reports whether origin is one of the vetted privacy origins.
-func AllowedFrameOrigin(origin string) bool { return allowedFrameOrigins[origin] }
+func AllowedFrameOrigin(origin string) bool { return embeds.AllowedOrigin(origin) }
 
 // ── Advertising network CSP (Google AdSense) ──────────────────────────────────
 //
@@ -188,50 +178,11 @@ func dedupeSorted(in []string) []string {
 	return out
 }
 
-// videoIDRe constrains a provider video id to a safe character set so a crafted
-// id can never break out of the constructed embed URL.
-var videoIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
-
-// VideoEmbedSrc builds the cookie-free embed URL for a provider + video id, or
-// "" if the provider is not allowlisted or the id is unsafe. The returned URL is
-// always rooted at an allowlisted privacy origin.
-func VideoEmbedSrc(provider, id string) string {
-	if !videoIDRe.MatchString(id) {
-		return ""
-	}
-	switch provider {
-	case "youtube":
-		return "https://www.youtube-nocookie.com/embed/" + id
-	case "vimeo":
-		return "https://player.vimeo.com/video/" + id
-	}
-	return ""
-}
-
-// embedSrcOriginRe extracts the origin from a data-embed-src attribute value in
-// rendered article HTML. Only the two allowlisted hosts can match.
-var embedSrcOriginRe = regexp.MustCompile(
-	`data-embed-src="(https://(?:www\.youtube-nocookie\.com|player\.vimeo\.com))/`)
-
 // FrameOriginsInHTML scans rendered article HTML for video-facade embed sources
 // and returns the distinct allowlisted frame origins present, so the caller can
-// extend the page CSP. Pages without facades return nil (strict policy stays).
-func FrameOriginsInHTML(html string) []string {
-	if !strings.Contains(html, "data-embed-src=") {
-		return nil
-	}
-	var out []string
-	seen := make(map[string]bool)
-	for _, m := range embedSrcOriginRe.FindAllStringSubmatch(html, -1) {
-		o := m[1]
-		if allowedFrameOrigins[o] && !seen[o] {
-			seen[o] = true
-			out = append(out, o)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
+// extend the page CSP by exactly what that page contains. Pages without facades
+// return nil and keep the strict policy.
+func FrameOriginsInHTML(html string) []string { return embeds.OriginsInHTML(html) }
 
 // BuildCSPAllowingEval is the baseline policy with 'unsafe-eval' added to
 // script-src, and NOTHING else changed.

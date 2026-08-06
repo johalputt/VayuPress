@@ -5,6 +5,8 @@ package render
 import (
 	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/embeds"
 )
 
 func TestBuildCSPBaseline(t *testing.T) {
@@ -47,20 +49,39 @@ func TestBuildCSPDeduplicatesAndSorts(t *testing.T) {
 	}
 }
 
+// The embed URL is built by internal/embeds, which is the single provider
+// table. These cases live here because this file is where the CSP contract is
+// pinned, and the two are the same contract: an origin only ever reaches
+// frame-src if the table could have built the URL that names it.
 func TestVideoEmbedSrc(t *testing.T) {
 	cases := []struct {
 		provider, id, want string
 	}{
 		{"youtube", "dQw4w9WgXcQ", "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"},
 		{"vimeo", "123456789", "https://player.vimeo.com/video/123456789"},
+		{"dailymotion", "x7tgad0", "https://www.dailymotion.com/embed/video/x7tgad0"},
+		{"loom", strings.Repeat("a", 32), "https://www.loom.com/embed/" + strings.Repeat("a", 32)},
+		{"wistia", "abc123defg", "https://fast.wistia.net/embed/iframe/abc123defg"},
 		{"youtube", "bad id!", ""},               // unsafe id rejected
 		{"youtube", "../../etc/passwd", ""},      // traversal rejected
-		{"dailymotion", "abc123def", ""},         // provider not allowlisted
 		{"youtube", strings.Repeat("a", 65), ""}, // over length cap
+		// The allowlist is closed, so a provider key that is not in the table
+		// yields nothing. Twitch is the honest example rather than a made-up
+		// string: it is a real platform deliberately left out, because its embed
+		// URL needs the embedding domain in a query parameter and so cannot be
+		// built from the table alone.
+		{"twitch", "123456789", ""},
+		{"", "dQw4w9WgXcQ", ""},
+		// Each provider's id pattern is its own — an id that is valid for one
+		// must not be accepted for another. A Vimeo id is digits; a Loom id is
+		// 32 hex; neither is the other.
+		{"vimeo", strings.Repeat("a", 32), ""},
+		{"loom", "123456789", ""},
+		{"wistia", "ABC123DEFG", ""}, // wistia ids are lowercase
 	}
 	for _, c := range cases {
-		if got := VideoEmbedSrc(c.provider, c.id); got != c.want {
-			t.Errorf("VideoEmbedSrc(%q,%q)=%q want %q", c.provider, c.id, got, c.want)
+		if got := embeds.EmbedSrc(c.provider, c.id); got != c.want {
+			t.Errorf("embeds.EmbedSrc(%q,%q)=%q want %q", c.provider, c.id, got, c.want)
 		}
 	}
 }
