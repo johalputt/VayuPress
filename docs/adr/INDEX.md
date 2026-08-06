@@ -9,6 +9,7 @@
 
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
+| [ADR-0155](ADR-0155-certificates-without-a-restart.md) | Adding a domain must not restart the server; two of the three restarts are already unnecessary | Accepted | Core | 2026-08-06 |
 | [ADR-0147](ADR-0147-per-client-connector-pages.md) | One page per client; VayuMCP keeps the protocol | Accepted | Core | 2026-07-28 |
 | [ADR-0148](ADR-0148-multi-node-verdict-sharing.md) | Nodes share VayuShield verdicts under a derived key; the ingress ceiling is linear | Accepted | Core | 2026-07-29 |
 | [ADR-0149](ADR-0149-third-party-network-intelligence.md) | Published network lists may add suspicion or refuse, and can never grant access | Accepted | Core | 2026-07-29 |

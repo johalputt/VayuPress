@@ -1,0 +1,186 @@
+# ADR-0155 — Adding a domain must not restart the server
+
+- **Status:** Accepted, not yet built
+- **Date:** 2026-08-06
+- **Supersedes nothing.** Corrects behaviour introduced piecemeal across
+  `scripts/setup-vayudomain.sh`, `scripts/setup-talk-subdomain.sh` and the
+  certbot renewal hook written by `scripts/deploy-vayupress.sh`.
+
+## 0. The report, and what is actually true
+
+> Adding a domain or subdomain for a certificate restarts VayuPress. The site
+> 502s while it comes back. `mcp.<domain>` and `api.<domain>` do not do this —
+> they are smooth. Make every domain behave like those.
+
+The comparison is exact, and it is the whole diagnosis. Three helpers provision a
+subdomain and **only reload nginx**:
+
+| Helper | What it does at the end |
+| --- | --- |
+| `setup-mcp-subdomain.sh:229` | `systemctl reload nginx` |
+| `setup-api-subdomain.sh:213` | `systemctl reload nginx` |
+| `setup-openpgpkey-subdomain.sh:387` | `systemctl reload nginx` |
+
+Two do something else as well:
+
+| Helper | Extra step |
+| --- | --- |
+| `setup-vayudomain.sh:682` | `systemctl try-restart vayupress`, then poll `/health` for 60s |
+| `setup-talk-subdomain.sh:265` | `systemctl try-restart vayupress` |
+
+Plus the certbot deploy hook written by `deploy-vayupress.sh:1016`, which
+restarts the app on **every mail certificate renewal** — quarterly, unattended,
+with nobody watching.
+
+**Two of those three restarts are already unnecessary today.** Not "could be
+removed with work" — unnecessary, because the mechanism that makes them
+unnecessary is already in the binary and already tested. That is the finding this
+ADR exists to act on.
+
+## 1. Why the outage is as long as it is
+
+nginx terminates TLS and proxies to the app on `:8080`. While the app is down,
+every request is a 502 — there is no queue and no retry. **The outage is exactly
+the app's startup time**, whatever that is on a given install.
+
+That number must be read, not guessed. `cmd/vayupress/main.go:1286` already logs
+it on every boot:
+
+```
+startup complete in <N>ms
+```
+
+`journalctl -u vayupress | grep "startup complete"` gives the real distribution
+for an install. The helper's own source concedes the problem obliquely — its
+health-poll comment says the first version waited ten seconds and "on a live
+install serving a large blog the app simply takes longer than that", and the
+timeout was raised to sixty. Sixty seconds of 502 is not smooth either. Nobody
+has measured the actual figure, and §4 is where that gets fixed rather than
+argued about.
+
+## 2. The three restarts, each with a verdict
+
+### 2.1 Custom domains — `setup-vayudomain.sh` — REMOVE
+
+The helper obtains a certificate, writes a vhost, reloads nginx, and records the
+outcome with `vayupress domains set-tls`. That last call runs in a **separate CLI
+process** and writes to SQLite. Then it restarts the server so it notices.
+
+It does not need to. `internal/domain/domain.go:270`:
+
+> `cacheTTL` bounds how long a resolved snapshot is trusted before a refresh.
+> Host resolution runs on every public request, so the hot path must not touch
+> SQLite; writes invalidate the cache immediately, and **the TTL only bounds
+> staleness from an out-of-band DB edit.**
+
+A CLI process writing the registry *is* an out-of-band DB edit — precisely the
+case the thirty-second TTL was designed for. The running server picks up a new
+domain within thirty seconds, with no restart, by a mechanism that already ships
+and already has tests. The restart buys nothing the TTL does not already give,
+and costs a full startup of 502s.
+
+### 2.2 Mail certificate renewal — the certbot deploy hook — REMOVE
+
+The hook copies the renewed keypair into `/var/lib/vayupress/mailcert/` and
+restarts the app. `internal/vayuos/mail/tls.go:216` already handles this:
+
+> `reloadingCert` serves an operator-supplied keypair from disk and transparently
+> reloads it when the underlying files change … so every mail TLS listener picks
+> up a renewed certificate on the next handshake — **no process restart, no
+> expired-cert outage.** Reload attempts are throttled … and a failed reload
+> (e.g. certbot mid-write) keeps serving the last-good certificate.
+
+`tls.go:164` lists `/var/lib/vayupress/mailcert/fullchain.pem` among the
+candidate paths and `tls.go:118` wires exactly those through `newReloadingCert`.
+So the hot-reload covers the path the hook writes to. The restart is redundant,
+and it is the worst of the three because it fires unattended on renewal.
+
+### 2.3 VayuTalk subdomain — `setup-talk-subdomain.sh` — NEEDS A CODE CHANGE
+
+This one is honest today. The helper sets `VAYUOS_TALK_HOST` in
+`/etc/vayupress/env`, and `cmd/vayupress/vayuos_mail.go:1264` reads it with
+`config.EnvOr`. A process's environment cannot change without an exec, so the
+restart is doing real work.
+
+The fix is to stop reading a host from the environment. Store it in settings —
+the same store the VayuVeil switch and every other runtime toggle uses — and keep
+the env var as a fallback so an existing install is not broken by the upgrade.
+Then the restart deletes like the other two.
+
+## 3. What this is not
+
+**It is not a fix for restarts that genuinely have to happen.** An in-app update
+replaces the binary; that requires an exec and always will. §5 addresses the
+outage those cause, and it addresses it by making a restart not *be* an
+outage — not by pretending it does not happen.
+
+## 4. Build order
+
+Each step states what it changes and how it is proven. A step that cannot be
+verified after the fact does not go in this list.
+
+**P1 — Delete the two redundant restarts.** `setup-vayudomain.sh`'s
+`restart_app_verified` and the mailcert deploy hook's `try-restart`. Proven by a
+test that reads every provisioning helper and fails if any of them restarts the
+app for a certificate — the same shape as the existing guard that asserts no
+helper reads the request flag. The 60-second health poll goes with it: it exists
+only to watch a restart that no longer happens.
+
+**P2 — Move the VayuTalk host out of the environment.** Read it from settings,
+fall back to `VAYUOS_TALK_HOST` when unset so existing installs keep working, and
+have the helper write the setting instead of the env file. Then delete the third
+restart. Proven by a test that the advertised host changes without a re-exec.
+
+**P3 — Report what actually happened.** With the restarts gone, the provisioning
+result should say *no restart was needed* rather than reporting a wait it no
+longer performs. The panel currently narrates a step that will not exist; a
+result line describing work nobody did is the same defect as a posture row
+claiming a control nobody verified.
+
+**P4 — Measure the startup, then decide whether it is a defect.** Read
+`startup complete in <N>ms` from the journal across real boots. If it is seconds,
+P5 is a nicety. If it is minutes, there is a second bug here and it deserves its
+own investigation rather than a guess in this document. **This step produces a
+number before anything is built on it.**
+
+**P5 — Make the restarts that remain stop being outages: systemd socket
+activation.** With a `vayupress.socket` unit, systemd owns the listening socket
+and holds it across a restart of `vayupress.service`. Connections arriving mid-
+restart **queue in the kernel backlog instead of being refused**, so nginx gets a
+slow response rather than a connection error, and the visitor gets latency rather
+than a 502. This is the step that answers "super smooth" for the in-app update,
+which is the one restart nothing can remove.
+
+Two things make it real rather than aspirational: the app must accept an
+inherited listener (`sd_listen_fds`, or the `systemd.socket` conventions Go
+libraries already implement), and installing the unit needs root — which now goes
+through the provision-request path built for ADR-0150 §5 S6, so the panel
+requests it and reports what happened rather than printing a command.
+
+## 5. How each step is proven
+
+- **P1/P2:** a source-level guard over `scripts/*.sh` asserting no certificate
+  path restarts the app, plus the existing helper-delivery guards so the change
+  actually reaches installs rather than only fresh ones. That lesson is three
+  days old and cost a release.
+- **P3:** render the provisioning card and read it, never assert on handler
+  source.
+- **P4:** a number from a live journal, quoted as a range across boots rather
+  than a single flattering figure.
+- **P5:** verified from outside — a request issued *during* a restart must return
+  a response, not a connection error. A test that only proves the unit file
+  parses proves nothing about the outage.
+
+## 6. Risks worth stating before building
+
+- **Thirty seconds is not zero.** After P1 a newly provisioned domain starts
+  serving within the registry's TTL rather than instantly. That is strictly
+  better than a restart, and the panel should say so rather than implying the
+  domain is live the moment certbot returns.
+- **Removing the health poll removes a check.** It currently catches an app that
+  did not come back. It only exists because the restart exists; with no restart
+  there is nothing to catch. The install-wide health signal belongs on the panel,
+  where it already is.
+- **Socket activation changes how the service starts.** It is the one step here
+  that can break a boot, which is why it is last, behind a measurement, and
+  behind the request-and-verify path rather than a hand-edited unit.
