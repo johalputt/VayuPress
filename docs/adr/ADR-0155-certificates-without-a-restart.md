@@ -73,11 +73,20 @@ stopped and not started again until the provisioning run finished. That fits a
 multi-minute outage with a 1.2-second startup, and it is closed by P1 whichever
 explanation is correct, because the restart is simply gone.
 
-Confirming it needs one look at a real run:
-`journalctl -u vayupress -u vayupress-provision --since <the time a domain was added>`,
-reading the gap between the stop and the subsequent start. Until somebody looks,
-this ADR claims only what it measured: startup is ~1.2s, and three restarts that
-did not need to exist have been removed.
+**That hypothesis has since been checked and is WITHDRAWN.** `systemctl
+list-jobs` during a live occurrence showed no queued jobs at all, and the outage
+recurred after these restarts were removed. The attribution was made without
+evidence and the evidence refuted it.
+
+The real mechanism is traced in **ADR-0156**: traffic arriving while anything
+held SQLite's single write connection queued on it without a deadline and
+without a bound, so a brief stall became a multi-minute outage that outlived its
+own cause. This ADR's removals stand on their own merit — a restart that buys
+nothing should not cost a second of 502 — but they were never going to fix what
+was reported, and this section should not have implied otherwise.
+
+What this ADR claims is only what it measured: startup is ~1.2s, and three
+restarts that did not need to exist have been removed.
 
 ## 2. The three restarts, each with a verdict
 

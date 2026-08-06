@@ -6,6 +6,93 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.13] — 2026-08-06
+
+### Fixed
+
+- **The site could stop answering for minutes whenever anything held the
+  database's write connection.** Ships on its own, immediately, under the
+  standing exception for something already released and broken for users right
+  now.
+
+  SQLite has one writer, so VayuPress opens exactly one write connection. Every
+  public page view used to count itself by launching a detached goroutine that
+  wrote to that connection with no deadline — `context.Background()` has no
+  `Done` channel, so the wait in front of the pool was unbounded, and nothing
+  capped how many such goroutines could exist. One per visitor.
+
+  So anything that held the write connection for a moment turned every arriving
+  view into a goroutine queued forever. When the connection freed, that backlog
+  drained one statement at a time, and every request that genuinely needed to
+  write — a sign-in, an admin save, an MCP call — waited behind it. **The outage
+  outlived its own cause, by however long the queue took to drain.** It ended
+  with no restart, left nothing in the log because nothing failed, and got worse
+  the busier the site was, since traffic is what filled the queue.
+
+  Counting a view no longer touches the database. Views accumulate in memory and
+  are written in batched transactions on a timer, so write volume is bounded by
+  how many *distinct pages* were viewed rather than by traffic: measured, 9,000
+  views became 45 statements. A page under load now costs one row update every
+  few seconds however many people read it. The buffer is bounded and drops
+  rather than growing — losing a view count is a rounding error, losing the site
+  is an outage — and drops are reported on the panel.
+
+- **`/health/db` hung during exactly the incident it exists to report.** It ran
+  an unbounded `Ping()` on the single write pool, so it queued behind the stall
+  like everything else and a monitor watching it recorded a timeout rather than
+  a diagnosis. It is bounded now and answers in three states: `ok`, `down`, and
+  `contended` — the database being healthy behind a connection nobody can get
+  hold of is a different fault, with a different fix. `/health/ready`,
+  `/health/workers` and `/health/ethics` had the same shape and are bounded too.
+
+### Added
+
+- **The write connection is watched, and stalls are on the page.** Monitoring
+  gained a *Write connection* band: stalls since boot, the worst one, the total
+  time callers spent queued, and a history table. Mid-incident it leads with how
+  long the current stall has run and how many callers it has delayed — and says
+  that reads and cached pages are unaffected, because that is the first thing an
+  operator needs to know.
+
+  Past five seconds, a goroutine snapshot is captured **while the process is
+  still stuck**, which is the only moment the stacks name what is holding the
+  connection. The last three are kept and pruned, so a recurring stall cannot
+  fill the disk and become a second outage.
+
+  The panel reports no live waiter count, because the runtime does not expose
+  one. It reports how long contention lasted and what it cost, which are
+  measured.
+
+### Security
+
+- **A referrer header can no longer hold arbitrary memory.** The referrer host
+  comes from the visitor, and buffering view counts changed what an absurd one
+  costs: it is now held in memory until the next write rather than going
+  straight to a table. Found in the pre-release adversarial pass, in code this
+  release introduced. Hosts are capped at the DNS limit of 253 octets and
+  discarded past it — not truncated, since truncating would invent a hostname
+  and attribute real traffic to it. The page view itself still counts.
+- **Goroutine snapshots are written beside the database, not under the cache
+  directory.** Every vhost this product writes gives nginx a `root` on the cache
+  directory so the ACME challenge can be served from disk. That location is
+  narrow and the snapshots were not reachable, so this was not exploitable — but
+  a dump naming internal paths and functions should not sit one edit away from
+  being downloadable. A diagnostic's safety must not depend on the contents of
+  an unrelated file.
+
+### Upgrade Notes
+
+- Page-view counts are now up to five seconds behind live, and up to five
+  seconds of counts are lost if the process is killed uncleanly. A clean
+  shutdown flushes them. This is the trade for never queueing traffic on the
+  write connection.
+- If **View counting** on the Monitoring page reads `off`, or the write-connection
+  card says it is *not being watched*, that is a fault in the install rather than
+  a quiet install — both are stated in those words on purpose, because a zero
+  meaning "nothing measured" must never look like a zero meaning "nothing wrong".
+
+---
+
 ## [3.17.12] — 2026-08-06
 
 ### Fixed

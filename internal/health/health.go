@@ -4,6 +4,7 @@
 package health
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync/atomic"
@@ -45,8 +46,16 @@ func HandleHealthLiveness(w http.ResponseWriter, r *http.Request) {
 
 // HandleHealthReady handles GET /health/ready.
 func HandleHealthReady(w http.ResponseWriter, r *http.Request) {
-	if err := dbpkg.DB.Ping(); err != nil {
-		WriteJSON(w, r, 503, map[string]interface{}{"schema_version": healthSchemaVersion, "status": "not_ready", "reason": "db unavailable"})
+	// Bounded (see healthDBProbe). Readiness SHOULD go false while the writer is
+	// jammed — but it must say so, and a probe that hangs says nothing at all.
+	rctx, rcancel := context.WithTimeout(r.Context(), healthDBProbe)
+	defer rcancel()
+	if err := dbpkg.DB.PingContext(rctx); err != nil {
+		reason := "db unavailable"
+		if rctx.Err() != nil {
+			reason = "the write connection is contended; requests that write are queued"
+		}
+		WriteJSON(w, r, 503, map[string]interface{}{"schema_version": healthSchemaVersion, "status": "not_ready", "reason": reason})
 		return
 	}
 	if alive := atomic.LoadInt64(&metrics.WorkerLiveness); alive < 1 {
@@ -56,19 +65,80 @@ func HandleHealthReady(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, r, 200, map[string]interface{}{"schema_version": healthSchemaVersion, "status": "ready"})
 }
 
+// healthDBProbe bounds how long any /health handler will wait for the single
+// write connection.
+//
+// It has to be bounded, and the reason is the whole point of this endpoint.
+// dbpkg.DB is capped at one connection; an unbounded Ping() queues behind
+// whatever holds it, so the DB health check used to hang for exactly as long as
+// the incident it exists to report. A monitor watching it saw a timeout — the
+// one response that says nothing — instead of "degraded, the writer is jammed".
+const healthDBProbe = 2 * time.Second
+
 // HandleHealthDB handles GET /health/db.
+//
+// It answers in three states rather than two, because "down" and "fine" cannot
+// describe the failure this install actually had: a database that is perfectly
+// healthy behind a write connection nobody can get hold of.
+//
+//	ok        — the writer answered inside the probe budget
+//	contended — it did not, and the stall watchdog says why
+//	down      — it answered with an error
+//
+// The stall summary is read first and unconditionally, because WriteStall()
+// takes no connection and therefore still works when nothing else does.
 func HandleHealthDB(w http.ResponseWriter, r *http.Request) {
-	if err := dbpkg.DB.Ping(); err != nil {
-		WriteJSON(w, r, 503, map[string]interface{}{"schema_version": healthSchemaVersion, "status": "down"})
-		return
+	stall := dbpkg.WriteStall()
+	body := map[string]interface{}{
+		"schema_version": healthSchemaVersion,
+		"writer": map[string]interface{}{
+			"in_use":            stall.InUse,
+			"max_open":          stall.MaxOpen,
+			"waits_total":       stall.WaitCount,
+			"wait_seconds":      stall.WaitDuration.Seconds(),
+			"stalled_now":       stall.Stalled,
+			"stalls_since_boot": stall.Total,
+			"longest_stall_s":   stall.Longest.Seconds(),
+			"watching":          stall.Watching,
+		},
 	}
-	WriteJSON(w, r, 200, map[string]interface{}{"schema_version": healthSchemaVersion, "status": "ok"})
+	if stall.Current != nil {
+		body["current_stall"] = map[string]interface{}{
+			"started":         stall.Current.Start.UTC().Format(time.RFC3339),
+			"seconds":         stall.Current.Duration.Seconds(),
+			"queued_seconds":  stall.Current.Blocked.Seconds(),
+			"callers_delayed": stall.Current.Waits,
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), healthDBProbe)
+	defer cancel()
+	err := dbpkg.DB.PingContext(ctx)
+	switch {
+	case err == nil:
+		body["status"] = "ok"
+		WriteJSON(w, r, 200, body)
+	case ctx.Err() != nil:
+		// The database is not down. The queue in front of it is full.
+		body["status"] = "contended"
+		body["reason"] = "the write connection did not free within " + healthDBProbe.String() +
+			"; requests that need to write are queued behind it"
+		WriteJSON(w, r, 503, body)
+	default:
+		body["status"] = "down"
+		body["reason"] = "the database did not answer"
+		WriteJSON(w, r, 503, body)
+	}
 }
 
 // HandleHealthEthics handles GET /health/ethics — P12 ethics compliance signal.
 func HandleHealthEthics(w http.ResponseWriter, r *http.Request) {
 	var auditTable int
-	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='audit_log'`).Scan(&auditTable)
+	// Bounded like /health/db: this runs on the single write connection, and an
+	// unbounded query here hangs the endpoint during a write stall.
+	ectx, ecancel := context.WithTimeout(r.Context(), healthDBProbe)
+	defer ecancel()
+	dbpkg.DB.QueryRowContext(ectx, `SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='audit_log'`).Scan(&auditTable)
 	WriteJSON(w, r, 200, map[string]interface{}{
 		"schema_version": healthSchemaVersion, "status": "ok", "compliant": true,
 		"charter_version": "1.0", "principles": 8, "no_tracking": true, "no_telemetry": true,
@@ -101,7 +171,11 @@ func HandleHealthSearchLegacy(w http.ResponseWriter, r *http.Request) {
 func HandleHealthWorkers(w http.ResponseWriter, r *http.Request) {
 	alive := atomic.LoadInt64(&metrics.WorkerLiveness)
 	var pendingJobs int
-	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM write_jobs WHERE status='pending'`).Scan(&pendingJobs)
+	// Bounded: see healthDBProbe. A worker health check that hangs when the
+	// writer is contended reports nothing about the workers.
+	wctx, wcancel := context.WithTimeout(r.Context(), healthDBProbe)
+	defer wcancel()
+	dbpkg.DB.QueryRowContext(wctx, `SELECT COUNT(1) FROM write_jobs WHERE status='pending'`).Scan(&pendingJobs)
 	staleWorkers := 0
 	metrics.WorkerLastActivity.Range(func(k, v interface{}) bool {
 		if t, ok := v.(time.Time); ok {

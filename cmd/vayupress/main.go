@@ -88,7 +88,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.17.12"
+var Version = "3.17.13"
 var bootTime = time.Now()
 
 // onionSafeBindAddr picks the HTTP listen address (ADR-0141).
@@ -887,6 +887,10 @@ func main() {
 	// widget, is memoised ~24h and single-flighted, so it borrows this pool at
 	// most once a day — negligible.)
 	a.analytics.UseReader(dbpkg.AdminReader())
+	// Start the view-count flusher. Without it every view is buffered and never
+	// written, so this line is pinned by a test: a recorder that counts into a
+	// buffer nobody drains is the same defect as a setting nobody reads.
+	a.analytics.StartCollector(context.Background())
 	a.webhooks = webhooks.New(dbpkg.DB, a.outboundClient)
 	a.social = social.New(social.MastodonConfig{
 		Instance: config.Cfg.MastodonInstance,
@@ -1427,6 +1431,12 @@ func main() {
 	if a.siteSettings != nil {
 		go recordStartupCost(context.Background(), a.siteSettings, time.Since(bootTime))
 	}
+	// Watch the single write connection for contention. SQLite has one writer, so
+	// anything holding it makes every other writer queue — and until this existed
+	// there was no way, from inside the product, to see that queue or to know it
+	// had happened. It samples DBStats and takes no connection of its own, which
+	// is what lets it answer during the incident it describes.
+	dbpkg.StartStallWatch(nil)
 	logging.LogInfo("main", fmt.Sprintf("listening on :%s (v%s) — %s", config.Cfg.Port, Version, how))
 	if err := srv.Serve(ln); err != http.ErrServerClosed {
 		logging.LogError("main", "Serve error", err.Error())

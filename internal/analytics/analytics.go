@@ -24,11 +24,18 @@ import (
 // Store aggregates page views in SQLite.
 type Store struct {
 	db     *sql.DB
-	reader *sql.DB // dashboard/report read pool; falls back to db. Set via UseReader.
+	reader *sql.DB    // dashboard/report read pool; falls back to db. Set via UseReader.
+	coll   *collector // in-memory view tally; see recorder.go
 }
 
 // New creates a Store.
-func New(db *sql.DB) *Store { return &Store{db: db, reader: db} }
+//
+// The collector is created here rather than by a separate opt-in call, so
+// RecordAsync always has somewhere to put a count. Starting the FLUSHER is
+// separate (StartCollector) because it needs a lifetime; a Store whose flusher
+// was never started reports Running:false on the panel rather than losing views
+// in silence.
+func New(db *sql.DB) *Store { return &Store{db: db, reader: db, coll: newCollector()} }
 
 // UseReader routes the report/dashboard read queries at a dedicated read pool
 // instead of the single writer connection. The admin Analytics panel runs many

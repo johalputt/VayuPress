@@ -117,6 +117,16 @@ func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>`
 
+	// ── The write connection ─────────────────────────────────────────────────
+	// The fault that had no page. SQLite has one writer; when it jams, every
+	// write queues and the site 502s with nothing in the log and no restart to
+	// point at. Neither the stall nor its cost was measured anywhere, so the
+	// only available answer was a guess. Both are measured now, and this is
+	// where an operator reads them (ADR-0156).
+	stallState := dbpkg.WriteStall()
+	recState := a.analytics.CollectorStats()
+	writer := writeStallStats(stallState, recState) + writeStallCard(stallState, recState)
+
 	// ── Governance budgets ───────────────────────────────────────────────────
 	rows := ""
 	for _, b := range budget.Global.Status(time.Now()) {
@@ -161,7 +171,7 @@ func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
   <h1>Monitoring</h1>
   <div class="page-actions">` + monUpdatedStamp(time.Now(), false) + `</div>
 </div>
-<p class="page-sub">A live view of your running install — performance, background jobs, storage and budgets, refreshed as you watch.</p>` + poller + modeCard + perf + storageJobs + budgetsCard + consoles
+<p class="page-sub">A live view of your running install — performance, background jobs, storage and budgets, refreshed as you watch.</p>` + poller + modeCard + perf + storageJobs + writer + budgetsCard + consoles
 
 	writeOSHTML(w, r, adminOSLayout(nonce, "Monitoring", "monitoring", cfg, htmpl.HTML(body)))
 }
