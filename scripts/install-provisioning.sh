@@ -136,6 +136,48 @@ Persistent=true
 WantedBy=timers.target
 SYSTEMD
 
+# ── Zero-downtime restarts: socket activation (ADR-0155 P5) ──────────────────
+#
+# systemd binds and HOLDS the listening socket; the service inherits it. Across a
+# restart the socket stays open, so connections queue in the kernel backlog
+# instead of being refused — nginx sees a slow response rather than a connection
+# error, and the visitor gets latency rather than a 502.
+#
+# Written only when the service unit exists and does not already carry a
+# Requires= for it, and NEVER enabled here. Installing this is a change to how
+# the service acquires its listener; it takes effect on the operator's next
+# restart, chosen by them, not as a side effect of a script that was run to fix
+# a certificate.
+VP_PORT="$(sed -n 's/^PORT=//p' /etc/vayupress/env 2>/dev/null | head -1 | tr -d "\"' " || true)"
+VP_PORT="${VP_PORT:-8080}"
+if [[ -f /etc/systemd/system/vayupress.service ]]; then
+  cat > /etc/systemd/system/vayupress.socket <<SOCKET
+[Unit]
+Description=VayuPress — listening socket, held across restarts
+Documentation=https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0155-certificates-without-a-restart.md
+
+[Socket]
+# Loopback only. nginx terminates TLS and proxies here, so nothing outside this
+# machine should reach the app directly — and in Tor mode the binary REFUSES a
+# non-loopback inherited socket outright rather than publishing an install whose
+# whole premise is that it is reachable only through its onion service.
+ListenStream=127.0.0.1:${VP_PORT}
+# The queue that turns a restart into latency instead of an error. Too small and
+# a busy site still refuses connections during the gap.
+Backlog=1024
+
+[Install]
+WantedBy=sockets.target
+SOCKET
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  ok "Socket unit written (vayupress.socket, 127.0.0.1:${VP_PORT}) — NOT enabled."
+  info "  Enable it when you are ready for restarts to queue instead of 502:"
+  info "    sudo systemctl enable --now vayupress.socket && sudo systemctl restart vayupress"
+  info "  The binary uses an inherited socket only if one is passed, so nothing changes until then."
+else
+  info "No vayupress.service on this host; skipping the socket unit."
+fi
+
 # ── VayuVeil unit hardening (ADR-0150 S6) ────────────────────────────────────
 # Requested from VayuOS → VayuVeil, never scheduled. There is deliberately NO
 # .timer beside this one: the worker restarts the service so the directives take

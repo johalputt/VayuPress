@@ -98,6 +98,32 @@ func ScheduleRestart(delay time.Duration, beforeExec func()) {
 func ScheduleRestartExec(execPath string, delay time.Duration, beforeExec func()) {
 	go func() {
 		time.Sleep(delay)
+
+		// EXIT, DO NOT RE-EXEC, when a supervisor is holding the listening
+		// socket (ADR-0155 P5).
+		//
+		// This is not a preference between two working paths — re-exec is BROKEN
+		// under socket activation. systemd binds and holds :8080 and passes the
+		// descriptor in through LISTEN_FDS, which the receiving process clears so
+		// its own children cannot inherit it. Those variables do not survive into
+		// a new program image, so the re-execed process finds no socket, tries to
+		// bind the port itself, and fails with "address in use" because systemd
+		// still has it. The service then crash-loops until systemd gives up and
+		// restarts it properly — a worse outage than the one socket activation
+		// was installed to remove.
+		//
+		// Exiting cleanly is what the socket is being held FOR: connections queue
+		// in the kernel backlog while the supervisor starts the new binary, and
+		// the visitor sees latency rather than a 502.
+		if ExitForSupervisor != nil && ExitForSupervisor() {
+			logging.LogInfo("update", "restarting via the supervisor: the listening socket is held "+
+				"externally, so connections queue instead of being refused")
+			if beforeExec != nil {
+				beforeExec()
+			}
+			os.Exit(0)
+		}
+
 		var err error
 		if strings.TrimSpace(execPath) == "" {
 			err = Relaunch(beforeExec)
@@ -110,3 +136,12 @@ func ScheduleRestartExec(execPath string, delay time.Duration, beforeExec func()
 		}
 	}()
 }
+
+// ExitForSupervisor reports whether this process is serving on a socket it does
+// not own, and must therefore hand a restart to whoever does.
+//
+// A hook rather than a direct call because this package is imported by the CLI
+// paths too, and it must not grow a dependency on how the server acquired its
+// listener. Nil means "no supervisor holds anything", which is the historical
+// behaviour and the right default for every install that has not opted in.
+var ExitForSupervisor func() bool

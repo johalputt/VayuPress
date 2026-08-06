@@ -1402,9 +1402,17 @@ func main() {
 		os.Exit(0)
 	}()
 
-	logging.LogInfo("main", fmt.Sprintf("listening on :%s (v%s)", config.Cfg.Port, Version))
-	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-		logging.LogError("main", "ListenAndServe error", err.Error())
+	// Serve on an inherited socket when systemd passed one, otherwise bind as
+	// this service always has (ADR-0155 P5). An install without the socket unit
+	// takes the identical path it took before this existed.
+	ln, how, err := serveListener(srv.Addr, config.Cfg.OnionMode)
+	if err != nil {
+		logging.LogError("main", "listen failed", err.Error())
+		os.Exit(1)
+	}
+	logging.LogInfo("main", fmt.Sprintf("listening on :%s (v%s) — %s", config.Cfg.Port, Version, how))
+	if err := srv.Serve(ln); err != http.ErrServerClosed {
+		logging.LogError("main", "Serve error", err.Error())
 		os.Exit(1)
 	}
 }

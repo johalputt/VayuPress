@@ -41,7 +41,13 @@ func TestEnablingTheProvisioningWatcherIsNeverDiscarded(t *testing.T) {
 	// — and this gate passed against the exact regression it was written for.
 	// Found by mutation-testing it, which is the only reason it is not still
 	// green and worthless.
-	i := strings.Index(src, "systemctl enable --now")
+	// And anchor on an EXECUTED enable, not on any occurrence of the string. The
+	// installer also PRINTS an enable command in guidance for the optional socket
+	// unit, and that line appears first — so a plain Index found the advice,
+	// checked it for "vayupress-provision.path", and failed on a correct
+	// installer. An assertion that cannot say which line it matched is not an
+	// assertion, and this one had to learn it twice.
+	i := indexExecutedEnable(src)
 	if i < 0 {
 		t.Fatal("the installer no longer enables the provisioning watcher, so a request from " +
 			"the panel is consumed by nothing at all")
@@ -362,4 +368,31 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// indexExecutedEnable finds a `systemctl enable --now` that the shell RUNS,
+// skipping any that only appears inside a message printed to the operator.
+func indexExecutedEnable(src string) int {
+	off := 0
+	for {
+		rel := strings.Index(src[off:], "systemctl enable --now")
+		if rel < 0 {
+			return -1
+		}
+		at := off + rel
+		lineStart := strings.LastIndex(src[:at], "\n") + 1
+		lead := strings.TrimSpace(src[lineStart:at])
+		// `info "…`, `warn "…`, `ok "…` and `echo …` are output, not execution.
+		isOutput := false
+		for _, p := range []string{"info ", "warn ", "ok ", "echo ", "die "} {
+			if strings.HasPrefix(lead, p) {
+				isOutput = true
+				break
+			}
+		}
+		if !isOutput {
+			return at
+		}
+		off = at + 1
+	}
 }

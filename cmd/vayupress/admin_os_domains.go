@@ -214,6 +214,12 @@ func domainsHeader(domains []domain.Domain, viewingHost string) string {
     own console), then run <strong>Provision subdomains</strong> on <a href="/os/dns">Domains &amp; DNS</a>. That
     last step is a root-side helper — this service runs unprivileged and cannot obtain a certificate or reload
     nginx itself. It also runs daily, so a record you point later is picked up without you doing anything.</p>
+  <p class="text-sm muted"><strong>Nothing restarts and nothing goes down.</strong> Provisioning obtains the
+    certificate, writes the vhost and reloads nginx; the running server then picks the new domain up from its own
+    registry <strong>within 30 seconds</strong>. It used to restart the service at the end of every run, which
+    meant a full outage — nginx has no queue in front of the app, so every second of that restart was a 502 for
+    every visitor on every site. If a freshly certified domain does not answer immediately, that half-minute is
+    why; it is not a fault to chase.</p>
   <p class="text-sm muted">A site on <strong>manual hold</strong> is skipped by every provisioning helper. That is
     what the hold is for, and it is why a held site never gets a certificate.</p></div>`))
 	b.WriteString(`</div>`)
