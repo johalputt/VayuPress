@@ -3517,6 +3517,11 @@
 .vmtabs .tab { padding: .5rem .85rem; }
 .vm-row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-top: .75rem; }
 .vm-row--end { align-items: flex-end; }
+/* The certificate diagnostic's re-check wrapper: the swap target for
+   "Re-check now" (ADR-0160). Its own block so the button and the "checked at"
+   stamp sit above the checks rather than beside them. */
+.vm-recheck { display: block; }
+.vm-recheck > .vm-row { margin-top: 0; margin-bottom: .75rem; justify-content: space-between; }
 .vm-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
 .vm-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; align-items: center; }
 .vm-bulk { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: .5rem 0 .75rem; padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-surface-2); }

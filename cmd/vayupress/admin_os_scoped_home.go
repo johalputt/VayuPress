@@ -18,6 +18,7 @@ package main
 
 import (
 	htmpl "html/template"
+	"time"
 
 	"html"
 	"net/http"
@@ -470,7 +471,7 @@ func scopedCertificateSection(d domain.Domain, checks []diagCheck, logLines []st
 		b.WriteString(monAcc("🩺", "What this console checked",
 			"Run here, now, against this install — not a description of where to go and look",
 			chipFor(blocking == 0, "nothing blocking", strconv.Itoa(blocking)+" blocking"),
-			blocking > 0, scopedDiagnosticBody(checks, logLines, d.Host)))
+			blocking > 0, scopedDiagnosticPanel(d.ID, checks, logLines, d.Host, time.Now())))
 	}
 	b.WriteString(`</div>`)
 	return b.String()

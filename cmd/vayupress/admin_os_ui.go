@@ -209,6 +209,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Route("/os/d/{id}", func(dr chi.Router) {
 			dr.Use(a.scopedDomainMiddleware)
 			dr.Get("/", a.handleOSScopedHome)
+			// Re-run the certificate checks on demand. A read, so no CSRF token
+			// and no state change — see ADR-0160.
+			dr.Get("/diagnose/live", a.handleOSScopedDiagnoseLive)
 			dr.Get("/settings", a.handleOSScopedSettings)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/settings", a.handleOSScopedSettingsSave)
 			// Content (ADR-0154 D4). The move endpoint takes "site" or "primary"

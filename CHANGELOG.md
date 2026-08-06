@@ -6,6 +6,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.18] — 2026-08-06
+
+### Added
+
+- **Re-check now, on a site's certificate diagnostic.** The checks re-run
+  immediately and the panel updates in place, with a timestamp so you can tell
+  a fresh answer from one rendered ten minutes ago.
+
+  The diagnostic used to tell an operator to point their DNS at the server and
+  "then run again", and offered nothing to press. The only ways to re-evaluate
+  were reloading the browser — not suggested anywhere — or requesting an entire
+  root-side provisioning run to answer a question a DNS lookup answers in
+  milliseconds. An operator hit exactly that, and worked around it by deleting
+  the domain and adding it back, which succeeded. Deleting a domain to refresh
+  a status line is the panel admitting it has no refresh.
+
+- **An honest note about why a re-check can return the same answer.** When DNS
+  is the blocker, the panel says that this machine's resolver caches a
+  "does not exist" reply for a few minutes and that nothing in the console can
+  clear it — so a record you have just pointed here may need a moment before it
+  shows up. The application itself caches nothing; every check is a fresh
+  lookup. Without that sentence a re-check that legitimately returns the same
+  result reads as a broken button, which is what sends someone back to
+  delete-and-re-add.
+
+  The note appears only when DNS is actually the blocker. Advice for a problem
+  you do not have is the noise that makes the rest go unread.
+
+---
+
 ## [3.17.17] — 2026-08-06
 
 ### Added
