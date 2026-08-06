@@ -30,7 +30,7 @@ func veilPageFor(t *testing.T, enabled bool, presence vayuveil.Presence) string 
 	})
 	return vayuVeilPage(enabled, vayuveil.Channels(), obs, checks,
 		vayuveil.SelfHardening{Supported: true, Known: true, Undumpable: true}, nil,
-		vayuveil.HardenState{}, vayuveil.SandboxState{}, time.Time{})
+		vayuveil.HardenState{}, vayuveil.SandboxState{}, time.Time{}, time.Time{})
 }
 
 // veilPageWith renders the page with a given hardening state and suite run, for
@@ -46,7 +46,7 @@ func veilPageWith(t *testing.T, self vayuveil.SelfHardening, red []vayuveil.Atta
 		Enforced: map[vayuveil.Needs]bool{}, SelfHardening: self, RedTeam: red,
 	})
 	return vayuVeilPage(true, vayuveil.Channels(), obs, checks, self, red,
-		vayuveil.HardenState{}, vayuveil.SandboxState{}, time.Time{})
+		vayuveil.HardenState{}, vayuveil.SandboxState{}, time.Time{}, time.Time{})
 }
 
 // THE test for this page. No wording anywhere may tell a reader that anything is

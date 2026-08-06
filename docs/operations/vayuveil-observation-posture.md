@@ -253,6 +253,17 @@ distinguishable from a failure somebody can act on. Alert on the latter.
 and `known` as **separate** fields, the drop-in verdict, what the last run wrote
 and skipped, and the list of directives deliberately refused with their reasons.
 
+**The capture suite is metered — at most one run every 15 seconds, for every
+caller including the page.** It opens device nodes, so running it once per
+request would let a loop turn a read into device I/O. Both the page and the
+payload state how old the result is; the payload field is `capture_suite_age`.
+
+That caching is confined to the *experiment*. The control rows — process
+hardening, the service sandbox, host posture — are read from the kernel on every
+call and are never cached, because a remembered control is a configuration
+wearing evidence's clothes. Nothing goes green on the strength of the capture
+suite, which is why metering it is honest and metering a control would not be.
+
 **Neither tool can write, and nothing on this surface ever will.** The write that
 would matter here makes root edit a systemd unit and restart a live service, and
 a model's context is full of text other people wrote — a blog comment, a fetched

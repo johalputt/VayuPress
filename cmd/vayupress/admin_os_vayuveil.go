@@ -39,17 +39,21 @@ func (a *App) handleOSVayuVeil(w http.ResponseWriter, r *http.Request) {
 	enabled := a.veilEnabled(r)
 	var obs map[vayuveil.ChannelID]vayuveil.Observation
 	var red []vayuveil.AttackResult
+	var suiteAt time.Time
 	if enabled {
-		host := vayuveil.LiveHost()
-		obs = vayuveil.Inventory(host)
-		// The capture suite runs for real: it tries to come away holding content
-		// and is judged on the bytes. Reads are non-blocking, so a machine with a
-		// keyboard does not hang this request waiting for a keypress.
-		red = vayuveil.RunRedTeam(host, vayuveil.LiveRead)
-		// L8, narrowed to what P0 can honestly record. Findings and gaps only —
-		// a trail filled with "nothing happened" on every page load buries the
-		// entries that matter.
-		recordVeilFindings(dbpkg.AuditActor(r), red)
+		// Metered, and the page goes through the same cache the MCP tool does.
+		// The suite opens device nodes; a refresh loop is the same unmetered sink
+		// a tool loop is, and two separate intervals would be one more thing to
+		// keep in step.
+		var fresh bool
+		obs, red, suiteAt, fresh = veilSuite.Get()
+		if fresh {
+			// L8, narrowed to what P0 can honestly record. Findings and gaps only
+			// — a trail filled with "nothing happened" on every page load buries
+			// the entries that matter. Written only on a real run, so a hundred
+			// readers produce one entry rather than a hundred in a WORM table.
+			recordVeilFindings(dbpkg.AuditActor(r), red)
+		}
 	}
 	// Read back from the kernel every time, never cached from boot. This is the
 	// one row permitted to be green and it earns that by being checked now.
@@ -82,7 +86,7 @@ func (a *App) handleOSVayuVeil(w http.ResponseWriter, r *http.Request) {
 	})
 
 	body := vayuVeilPage(enabled, vayuveil.Channels(), obs, checks, self, red,
-		harden, sandbox, bootTime)
+		harden, sandbox, bootTime, suiteAt)
 	full := adminOSShellHead(nonce, "VayuVeil", "vayuveil", cfg) + body +
 		adminOSShellFoot(nonce, vayuVeilScript, pageUsesAlpine(body))
 	writeOSHTML(w, r, full)
@@ -149,7 +153,8 @@ func veilStatusChip(s veilaudit.Status) string {
 func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 	obs map[vayuveil.ChannelID]vayuveil.Observation, checks []veilaudit.Check,
 	self vayuveil.SelfHardening, red []vayuveil.AttackResult,
-	harden vayuveil.HardenState, sandbox vayuveil.SandboxState, processStart time.Time) string {
+	harden vayuveil.HardenState, sandbox vayuveil.SandboxState, processStart time.Time,
+	suiteAt time.Time) string {
 	esc := html.EscapeString
 	var b strings.Builder
 
@@ -256,6 +261,11 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 		suite.WriteString(`<p class="text-sm"><b>` + strconv.Itoa(captured) + `</b> captured content · <b>` +
 			strconv.Itoa(refused) + `</b> came away empty · <b>` + strconv.Itoa(notPresent) +
 			`</b> had no target here · <b>` + strconv.Itoa(notAttempted) + `</b> not attempted</p>`)
+		// How old this result is, stated rather than implied. Every other row on
+		// this page is read from the kernel at report time and says so; this one
+		// is metered, and presenting a minute-old sweep in the present tense
+		// would be the same defect as remembering a control.
+		suite.WriteString(`<p class="text-xs muted">` + esc(veilSuiteAge(suiteAt, time.Now().UTC())) + `</p>`)
 		suite.WriteString(`<p class="text-sm muted">The techniques marked <i>not attempted</i> are not ` +
 			`defended and not tested — they need a Wayland or AT-SPI client this binary does not link. ` +
 			`They are named rather than counted, because a suite that silently skips what it cannot ` +

@@ -43,7 +43,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   nothing here acts, a name that reads as an action is a defect. Renamed rather
   than the guard loosened.
 
-  Eight mutations over this surface, all killed.
+  **The pre-release pass found two things on this surface, and they were the
+  same finding from opposite ends.** Asked what a caller holding a `settings/read`
+  key could do with a loop, the answer was: run the capture suite once per
+  request. That is not a cheap read — it globs and opens `/dev/fb*`,
+  `/dev/input/event*`, `/dev/dri/card*` and `/dev/vcs*`, and reads another
+  process's memory through `/proc/1/mem`. On a page it is human-paced; behind a
+  tool call it is exactly the unmetered compute sink this project's multi-node
+  audit already found once on the lane reserved for the admin plane.
+
+  The quieter half: the panel records capture findings to the audit log and the
+  MCP handler did not, so a **real capture discovered through the connector was
+  found and thrown away** — a trail with a hole in it that nothing revealed. But
+  recording per call is not the fix either. Every run writes a
+  techniques-not-attempted row, the audit log is WORM, and a loop therefore fills
+  a table nobody can ever clean up. Fix one naively and you create the other.
+
+  One change answers both: the suite is metered to one run per 15 seconds across
+  every caller, and the trail is written only when it actually ran. The panel goes
+  through the same cache — a refresh loop is the same sink a tool loop is, and two
+  intervals to keep in step is one more thing to get wrong.
+
+  **Caching this is allowed and caching a control is not**, which is worth saying
+  because the distinction is the whole justification. `VerifyProcessHardening`,
+  `ReadSandbox` and `ReadHostPosture` stay uncached on every path: they are the
+  rows permitted to be green, and a remembered control is a configuration wearing
+  evidence's clothes. The capture suite is an experiment — nothing goes green
+  because of it — so metering it is honest on one condition, now enforced and
+  asserted: the result carries the time it was **taken**, and both the page and
+  the payload say how old it is rather than presenting a minute-old sweep in the
+  present tense.
+
+  Thirteen mutations over this surface, all killed, one re-run after failing to
+  compile. Also attacked and cleared: the tools' disclosure scope — these expose
+  host posture and sandbox state, but only to a key the operator issued with
+  `settings/read`, the same bar VayuShield's read tools sit behind.
 
 ### Fixed
 

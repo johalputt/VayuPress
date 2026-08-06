@@ -256,3 +256,32 @@ func TestTheHardeningPayloadKeepsUnknownApartFromOff(t *testing.T) {
 		t.Error("no verdict")
 	}
 }
+
+// AUDIT FINDING — the payload must say how old the capture result is.
+//
+// The capture suite is metered: it opens device nodes, so it runs at most once
+// per interval for every caller. That is defensible only because it is an
+// experiment rather than a control — but a payload that presented a minute-old
+// sweep as this instant would be the same defect as remembering a control and
+// calling it verified.
+func TestThePosturePayloadSaysHowOldTheCaptureResultIs(t *testing.T) {
+	tl := veilToolNames(t)["vayuveil_posture"]
+	out, err := tl.Handler(t.Context(), nil)
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	age, _ := got["capture_suite_age"].(string)
+	if age == "" {
+		t.Fatal("the payload does not say when the capture suite last ran")
+	}
+	// And it must not let a reader think the control rows are cached too — they
+	// are not, and conflating the two understates what the report verified.
+	if !strings.Contains(age, "not run") && !strings.Contains(age, "not cached") &&
+		!strings.Contains(age, "just now") {
+		t.Errorf("the age string does not distinguish the metered suite from the uncached controls: %q", age)
+	}
+}

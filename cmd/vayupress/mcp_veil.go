@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/mcp"
@@ -66,10 +67,21 @@ func (a *App) registerVeilTools(srv *mcp.Server) {
 			enabled := a.veilEnabledCtx(ctx)
 			var obs map[vayuveil.ChannelID]vayuveil.Observation
 			var red []vayuveil.AttackResult
+			var suiteAt time.Time
 			if enabled {
-				host := vayuveil.LiveHost()
-				obs = vayuveil.Inventory(host)
-				red = vayuveil.RunRedTeam(host, vayuveil.LiveRead)
+				// Through the SAME cache the panel uses. The suite opens device
+				// nodes, and a tool a model can call in a loop is precisely where
+				// an unmetered one becomes a compute sink.
+				var fresh bool
+				obs, red, suiteAt, fresh = veilSuite.Get()
+				if fresh {
+					// Recorded here too, which it was not before. A real capture
+					// discovered through the connector used to be found and
+					// thrown away — a trail with a hole in it that nothing
+					// revealed. Only on a genuine run, because the audit log is
+					// WORM and a per-call row is a table nobody can clean up.
+					recordVeilFindings(mcpActor(ctx), red)
+				}
 			}
 			sandbox := vayuveil.ReadSandbox()
 			harden := readVeilHardenState()
@@ -104,6 +116,11 @@ func (a *App) registerVeilTools(srv *mcp.Server) {
 				"summary": map[string]any{
 					"pass": pass, "warn": warn, "fail": fail, "unverified": unverified,
 				},
+				// How old the capture result is. The control rows are read from
+				// the kernel on every call and are not cached; this one is
+				// metered, and a payload that did not say so would present a
+				// minute-old sweep as this instant.
+				"capture_suite_age": veilSuiteAge(suiteAt, time.Now().UTC()),
 				// The sentence that keeps the numbers above honest, shipped WITH
 				// them rather than in documentation a caller will not read.
 				"scope": "Every green row is process-scoped: it covers the VayuPress process and " +
