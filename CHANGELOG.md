@@ -6,6 +6,56 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.21] — 2026-08-06
+
+Shipped on its own, immediately, under the standing exception for something
+already released and broken for users right now: the video embed in 3.17.20
+rendered visibly wrong on a published page.
+
+### Fixed
+
+- **The click-to-load player did not fill its frame.** Reported from a live
+  page: the video played — so the renderer, sanitiser, policy builder and loader
+  all agreed, which is what 3.17.20 set out to fix — but the injected iframe sat
+  at its intrinsic size in the middle of a full-width black box.
+
+  Nothing was wrong in Go. It was a cascade collision, and an ordinary one. The
+  article stylesheet carries generic rules for the elements a body can contain —
+  `.content iframe, .content video { height:auto }` and
+  `.content img { height:auto; border:… }` — and those select a class AND an
+  element, specificity (0,1,1). The component rules that make a facade work were
+  written as a single class, (0,1,0). The generic rule wins, `height:auto`
+  replaces `height:100%`, and the player never fills. The poster and the link
+  card's thumbnail lost the same way, at the same specificity, for the same
+  reason.
+
+  The component rules are now scoped under their own block
+  (`.video-facade .video-facade__frame`, and the same for the poster and the
+  card thumbnail), which out-specifies the generic rule while leaving it in
+  place — ordinary body media still stays inside the column, which is what those
+  rules are for.
+
+  This is the failure mode the repo's own design guidance already names, and it
+  is invisible to every gate here: rendering HTML proves nothing, because the
+  markup was correct and only the computed style was wrong. So the new gate in
+  `internal/render/css_specificity_test.go` reasons about **specificity**, not
+  about whether a rule is present — a check for the string would pass against a
+  rule that exists and loses.
+
+  Four mutations killed. Two of the gate's own bugs were found by them and are
+  worth recording, because both are the same species as the defect:
+
+  - The first version **skipped all three cases and reported a pass**. It looked
+    for `".content iframe{"`, and the real rule is written
+    `.content iframe,.content video{…}` — a selector list, so the substring never
+    matched. A skip is not a pass, and a missing premise is now a failure rather
+    than a skip.
+  - Reverting only the card thumbnail's base rule **survived**, because the
+    responsive override at 600px was still scoped and satisfied the check. The
+    layout was correct on a desktop and collapsed on a phone. The gate now also
+    rejects any unscoped variant of a component selector, so both breakpoints
+    have to be right.
+
 ## [3.17.20] — 2026-08-06
 
 ### Added
