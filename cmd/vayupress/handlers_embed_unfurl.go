@@ -125,6 +125,24 @@ func (a *App) handleEmbedUnfurl(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(res) //nolint:errcheck
 }
 
+// Abuse controls for connector-triggered embedding. See the embed_url handler
+// in mcp_server.go for why a media:write key needs a ceiling the admin console
+// does not.
+const (
+	embedPerActorPerMin = 20 // embeds one API key may request per minute
+	embedMaxConcurrent  = 4  // resolutions in flight at once, across all keys
+)
+
+var (
+	// embedPerActor is a fixed-window per-key limiter, the same primitive the
+	// analytics, contact and AI-generate paths use.
+	embedPerActor = newIngestLimiter(embedPerActorPerMin, time.Minute)
+	// embedSlots is a counting semaphore bounding concurrent resolutions, which
+	// is what actually bounds held sockets — a rate limit alone still admits a
+	// burst that all hangs at once.
+	embedSlots = make(chan struct{}, embedMaxConcurrent)
+)
+
 // embedResolveError carries the HTTP status an unfurl failure should surface,
 // so the resolver can be shared by the editor endpoint and the connector tool
 // without either of them re-deriving what went wrong from an opaque error.

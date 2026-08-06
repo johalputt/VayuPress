@@ -35,6 +35,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **`embed_url` answered a media:write key with what the server found on the
+  wire.** Found by the pre-release adversarial pass, attacking the new tool
+  rather than reviewing it. The question that produced it was not "does this
+  work" but "what did this tool move across a trust boundary" — and the answer is
+  that fetching an arbitrary URL from the server's own network position used to
+  require an admin console session plus CSRF, and now the narrowest credential
+  the panel issues buys it.
+
+  The resolver distinguishes a blocked private address from a transport failure
+  carrying Go's own words (`no such host`, `connection refused`) from a non-2xx
+  status. Those three replies are an internal-network mapper and a port scanner:
+  ask for `https://intranet.example/` and a "private address" answer confirms
+  that name resolves into RFC1918 space, with the caller never sending a packet.
+  Every outcome that depends on the target now collapses to one sentence. The
+  400 for a malformed URL is passed through, because it describes the caller's
+  own input and reveals nothing — and a test asserts the two stay
+  *distinguishable*, since answering everything identically would hide the oracle
+  and the operator's typo alike.
+
+- **`embed_url` was an unmetered outbound sink on that same key.** Every call
+  holds an outbound connection for the fetch timeout and nothing bounded how many
+  could be in flight, so one media:write key could pin the box's socket budget by
+  naming slow URLs. Same shape as the unmetered compute sink found on the admin
+  plane once before, and the same answer: `embedPerActorPerMin` (20) and
+  `embedMaxConcurrent` (4), reusing the limiter primitive the analytics, contact
+  and AI-generate paths already use. The editor endpoint keeps its unbounded
+  behaviour deliberately — interactive, one paste at a time, behind a far
+  stronger credential.
+
+  The two are tested **separately**, and that is the finding behind the finding:
+  a single test firing many concurrent calls passes with either control deleted,
+  so it proves neither — only that at least one exists. Both mutations survived
+  it. The rate limit is now proven by sequential calls (never more than one in
+  flight, so concurrency cannot be what refuses) and the ceiling by holding the
+  slots directly with a fresh key. Four mutations killed: the oracle restored,
+  each control removed on its own, and a slot acquired but never released.
+
 - **The click-to-load video embed did not work on any published post.** The
   block renderer emitted `<div class="video-facade" data-embed-src="…">`; the
   article sanitiser is bluemonday's UGC policy, which allows neither `class` nor
@@ -75,6 +112,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   poster, same title, a link the browser can actually follow. Three mutations
   killed, including the clearnet control, so deleting the facade outright cannot
   pass.
+
+### Security
+
+- **Adversarial pass over everything under this heading, recorded including what
+  it did not find.** Attacked: the widened article sanitiser, the connector's new
+  outbound reach, the provider table's host matching, and the path from a stored
+  block document to a reader's `frame-src`.
+
+  Held, with tests: script, event handlers, inline styles and off-site iframes
+  are still refused by the article policy — the widening admits `class` confined
+  to three component prefixes and `data-embed-src` matched against the closed
+  table, nothing else. A forged `data-embed-src` naming an outside origin reaches
+  neither the markup nor the CSP, because both re-derive from the table rather
+  than trusting the document. Host matching resists substring confusion,
+  userinfo (`https://youtube.com@evil.com/`), a suffix attacked from both sides
+  (`evilwistia.com`, `wistia.com.evil.com`), and non-web schemes.
+
+  Not separately proven, and said plainly rather than left to look tested: in a
+  Tor Space `embed_url` cannot reach clearnet because `htmlFetcher` and
+  `remoteImageFetcher` are `safefetch` clients and the central
+  `SetBlockClearnetEgress` kill-switch closes every one of them. That control has
+  its own tests; this tool inherits it by construction rather than by a check of
+  its own.
 
 ### Changed
 

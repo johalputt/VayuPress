@@ -550,13 +550,48 @@ func (a *App) buildMCPServer() *mcp.Server {
 				return "", fmt.Errorf("embedding is unavailable while the site is in %s mode", cur)
 			}
 
+			// Abuse controls, because this tool moved a capability across a trust
+			// boundary. Fetching an arbitrary URL from the server's own network
+			// position used to need an admin console session plus CSRF; here a
+			// media:write key buys it. Every call holds an outbound connection for
+			// the fetch timeout, so without a ceiling one narrow key can pin as
+			// much of this box's socket budget as it likes by naming slow URLs —
+			// the same unmetered-sink shape already found once on the admin plane.
+			//
+			// The editor endpoint keeps its unbounded behaviour deliberately: it is
+			// interactive, one paste at a time, behind a far stronger credential.
+			actor := mcpActor(ctx)
+			if !embedPerActor.allow(actor) {
+				return "", fmt.Errorf("too many embed requests from this key — try again in a minute")
+			}
+			select {
+			case embedSlots <- struct{}{}:
+				defer func() { <-embedSlots }()
+			default:
+				return "", fmt.Errorf("too many embeds in progress — try again shortly")
+			}
+
 			res, err := a.resolveEmbed(ctx, "", rawURL)
 			if err != nil {
 				var re *embedResolveError
-				if errors.As(err, &re) {
+				// A caller learns whether ITS OWN request was well-formed, and
+				// nothing about what the server found when it went looking.
+				//
+				// The resolver distinguishes a blocked private address from a
+				// transport failure carrying Go's own words ("no such host",
+				// "connection refused") from a non-2xx status. Those three answers
+				// handed to a media:write key are an internal-network mapper and a
+				// port scanner: ask for https://intranet.example/ and a "private
+				// address" reply confirms the name resolves into RFC1918 space,
+				// without the caller sending a single packet. So every outcome that
+				// depends on the TARGET collapses to one sentence here. Only the
+				// 400 — the caller's own URL was not a URL — is passed through,
+				// because it is a statement about the input and reveals nothing.
+				if errors.As(err, &re) && re.Status == http.StatusBadRequest && strings.HasPrefix(re.Message, "url must be") {
 					return "", fmt.Errorf("%s", re.Message)
 				}
-				return "", fmt.Errorf("could not resolve that URL")
+				return "", fmt.Errorf("that link could not be embedded — it may be unreachable, " +
+					"refused by this server's outbound policy, or not serving a page")
 			}
 
 			blocks, err := json.Marshal([]blockrender.Block{{
