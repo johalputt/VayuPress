@@ -133,7 +133,7 @@ func (a *App) handleOSScopedHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := scopedConsolePage(d, posts, members, mailboxes, mailOn, clients, checks, logLines,
-		a.scopedToolChips(r, d, posts)) + domainManageScript(nonce)
+		a.scopedToolChips(r, d, posts)) + domainManageScript(nonce) + domainServesScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, d.Host, "optimize", cfg, htmpl.HTML(body)))
 }
 
@@ -237,6 +237,18 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Site administration</span>` +
 		`<span class="section-head__hint">Access, allowances and lifecycle for this site</span></div>`)
 	b.WriteString(`<div class="mon-stack">`)
+	// FIRST in Site administration: what a domain serves is the question every
+	// other row on this page assumes an answer to. It was settable only on the
+	// "Add a domain" form and then frozen forever, because Registry.Update
+	// existed and nothing called it (ADR-0159).
+	servesChip := `<span class="mon-chip mon-chip--on">` +
+		html.EscapeString(siteTypeLabel(d.EffectiveSiteType())) + `</span>`
+	if d.MailEnabled {
+		servesChip = `<span class="mon-chip mon-chip--on">` +
+			html.EscapeString(siteTypeLabel(d.EffectiveSiteType())) + ` + mail</span>`
+	}
+	b.WriteString(monAcc("🌐", "What this domain serves", "Blog, website, or both — and whether it carries mail",
+		servesChip, false, domainServesCard(d, mailOn)))
 	b.WriteString(monAcc("👤", "Client access", "Who can sign in and see only this site",
 		chipFor(len(clients) > 0, strconv.Itoa(len(clients))+" login(s)", "no logins"),
 		len(clients) == 0, domainClientAccessCard(d, clients)))

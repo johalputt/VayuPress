@@ -662,7 +662,12 @@ func tlsLabel(state string) string {
 func domainsAddForm() string {
 	var opts strings.Builder
 	for _, o := range siteTypeOptions {
-		opts.WriteString(`<option value="` + o.Value + `">` + html.EscapeString(o.Label) + `</option>`)
+		// Same outcome language as the per-site card. An operator choosing here
+		// and an operator changing it later are answering one question, and two
+		// vocabularies for it is how "Business + /blog" reads as jargon in one
+		// place and as an answer in the other.
+		opts.WriteString(`<option value="` + o.Value + `">` +
+			html.EscapeString(o.Label+" — "+servesOutcome(o.Value)) + `</option>`)
 	}
 	return `<div class="card">
   <h2 class="card-title">Add a domain</h2>
@@ -672,7 +677,7 @@ func domainsAddForm() string {
       <input type="text" id="dom-host" class="input" placeholder="example.com" autocomplete="off" spellcheck="false"></label>
     <label class="field"><span class="field-label">Serves</span>
       <select id="dom-type" class="input">` + opts.String() + `</select></label>
-    <label class="field field--check"><input type="checkbox" id="dom-mail"> <span class="field-label">Enable branded mail (later stage)</span></label>
+    <label class="field field--check"><input type="checkbox" id="dom-mail"> <span class="field-label">Branded mail on this domain</span></label>
   </div>
   <div class="vm-row" style="gap:.5rem;align-items:center">
     <button type="button" class="btn btn--primary" data-dom-add>Add domain</button>

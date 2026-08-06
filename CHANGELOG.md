@@ -6,6 +6,52 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.17] — 2026-08-06
+
+### Added
+
+- **What a domain serves is now changeable, and mail switches on or off per
+  domain.** A site's console gained a **What this domain serves** card: pick
+  whether the domain answers with a blog, a website, a website with the blog at
+  `/blog`, a static bundle, or mail only — and switch branded mail on or off
+  independently of any of them.
+
+  Both values were previously chosen once on the "Add a domain" form and frozen
+  for the life of the domain. The combination of a website, a blog and mail on
+  one domain was always representable, and the write path to change it had
+  existed the whole time with nothing calling it.
+
+  The choices are written as outcomes rather than internal names — "Business +
+  /blog — website at the root, blog at /blog" — and the Add form now uses the
+  same wording, so choosing at creation and changing later read as one question
+  instead of two.
+
+  The install's primary domain is not editable here: what it serves is the
+  install's own site mode, set on Settings. One value with one control.
+
+### Changed
+
+- **The mail switch says what it actually does.** Turning mail on adds
+  `mail.<host>` to that domain's certificate, which happens on the next
+  provisioning run rather than instantly — the card says so and points at
+  Provision now. Turning it off stops the domain being set up for mail and hides
+  its mail card from the client, but **does not stop delivery to a mailbox that
+  already exists**: mail is served by address and this flag is not consulted at
+  delivery. An operator reaching for it as a kill-switch would otherwise find
+  that out at the worst possible moment.
+
+  The card also distinguishes "mail is off for this domain" from "mail is off
+  for the whole install", and links to the page that fixes each.
+
+### Upgrade Notes
+
+- Changing what a domain serves moves nothing that is already published. A blog
+  switched to "Business + /blog" keeps its posts; they answer at `/blog`.
+- Changing a domain's mail switch requires the **domains:write** capability, so
+  an API key scoped to anything else cannot flip it.
+
+---
+
 ## [3.17.16] — 2026-08-06
 
 ### Fixed

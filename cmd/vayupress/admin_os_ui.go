@@ -242,6 +242,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/sync-all", a.handleOSDomainSyncAll)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/{id}/status", a.handleOSDomainStatus)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/{id}/allowance", a.handleOSDomainAllowance)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/{id}/serves", a.handleOSDomainServes)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/{id}/client", a.handleOSDomainClient)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/{id}/sync", a.handleOSDomainSync)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/{id}/brand", a.handleOSDomainBrand)
