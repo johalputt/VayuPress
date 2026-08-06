@@ -1008,12 +1008,23 @@ if [[ -n "$DOMAIN" && "$DOMAIN" != "localhost" ]]; then
     run mkdir -p /etc/letsencrypt/renewal-hooks/deploy
     cat > /etc/letsencrypt/renewal-hooks/deploy/vayupress-mailcert.sh <<HOOK
 #!/usr/bin/env bash
-# Re-copy the renewed certificate to the VayuMail-readable location and restart.
+# Re-copy the renewed certificate to the VayuMail-readable location.
+#
+# NO RESTART, deliberately — ADR-0155 P1. This hook used to end in
+# \`systemctl try-restart vayupress\`, which made a routine certificate renewal
+# bounce a live install: unattended, quarterly, with nobody watching, and every
+# second of the restart a 502 because nginx has no queue in front of :8080.
+#
+# It was never needed. internal/vayuos/mail/tls.go serves this keypair through a
+# reloading loader that stats both files and hot-reloads on change — "no process
+# restart, no expired-cert outage" — and keeps the last-good certificate if it
+# catches certbot mid-write. The mail listeners pick the new certificate up on
+# the next handshake within the reload window. Restarting to achieve that took
+# the whole site down to do what the binary already does by itself.
 set -e
 install -m 0644 "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" "${DATA_DIR}/mailcert/fullchain.pem"
 install -m 0640 "/etc/letsencrypt/live/${DOMAIN}/privkey.pem"   "${DATA_DIR}/mailcert/privkey.pem"
 chown -R www-data:www-data "${DATA_DIR}/mailcert"
-systemctl try-restart vayupress 2>/dev/null || true
 HOOK
     run chmod +x /etc/letsencrypt/renewal-hooks/deploy/vayupress-mailcert.sh
     ok "Mail certificate installed for mail.${DOMAIN} (auto-renews)."

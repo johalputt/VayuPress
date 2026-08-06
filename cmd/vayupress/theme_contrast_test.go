@@ -191,6 +191,27 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// another install as a side effect of importing a look — the same class of
 		// mistake as carrying somebody's network deny list in a theme.
 		settings.KeyVeilEnabled: true,
+		// VayuKeep's replication settings live on the VayuKeep console, and two
+		// of them would be actively dangerous in a theme bundle rather than
+		// merely out of place: `vayukeep.target` is where this install's
+		// encrypted backups are written, so importing a look would silently
+		// repoint another operator's backups at somebody else's storage. The
+		// retention values decide how much history survives, which is a data
+		// policy and not a colour.
+		settings.KeyVayuKeepEnabled:    true,
+		settings.KeyVayuKeepTarget:     true,
+		settings.KeyVayuKeepRetainDays: true,
+		settings.KeyVayuKeepRetainGen:  true,
+		// How long undelivered mail is kept before the queue drops it — a mail
+		// policy set on the mail console. A theme carrying it would change how
+		// long another install holds someone's undelivered mail.
+		settings.KeyMailQueueRetentionDays: true,
+		// The VayuTalk relay hostname is published in autoconfig and CLIENTS
+		// CONNECT TO IT (ADR-0155 P2). It is written by the privileged subdomain
+		// helper after that host's certificate is issued, and a theme bundle
+		// carrying it would point another install's users at a host its operator
+		// never provisioned.
+		settings.KeyTalkHost: true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {

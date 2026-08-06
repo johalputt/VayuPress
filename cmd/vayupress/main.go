@@ -564,6 +564,26 @@ func main() {
 		os.Exit(0)
 	}
 
+	// talk subcommand: record the hostname advertised for the VayuTalk relay.
+	//
+	// Same shape and same reason as `domains` below — a privileged helper needs
+	// to record one fact and the unprivileged server cannot obtain a certificate
+	// itself. LoadLocalCLI for the same reason too: this reads and writes local
+	// state and serves nothing, so API_KEY is not its business, and requiring it
+	// is what silently broke provisioning for a week.
+	if len(os.Args) > 1 && os.Args[1] == "talk" {
+		config.LoadLocalCLI()
+		if err := dbpkg.Init(); err != nil {
+			fmt.Fprintln(os.Stderr, "DB init failed:", err)
+			os.Exit(1)
+		}
+		if err := runTalkCLI(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "talk:", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	// domains subcommand: list registered domains + record per-domain TLS state.
 	// It is the read/notify surface the privileged TLS+nginx helper drives from
 	// (the server runs unprivileged and cannot certbot/reload nginx itself).

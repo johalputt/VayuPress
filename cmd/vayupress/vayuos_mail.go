@@ -29,6 +29,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/totp"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
@@ -1252,14 +1253,33 @@ func (a *App) buildVayuMailAutoconfigFor(reqHost string) vayuMailAutoconfig {
 }
 
 // talkAutoconfigHost returns the hostname to advertise for the VayuTalk relay, or
-// "" to advertise none. It is the value of VAYUOS_TALK_HOST, and ONLY when the
-// relay is actually enabled — the deploy script sets that variable after it has
-// obtained the subdomain's TLS certificate, so the app is never handed a talk
-// host that isn't live. When empty the app falls back to the mail domain, so
-// existing servers keep working with no change.
+// "" to advertise none — and ONLY when the relay is actually enabled. The
+// subdomain helper publishes the host after it has obtained that subdomain's TLS
+// certificate, so the app is never handed a talk host that is not live. When
+// empty the app falls back to the mail domain, so existing servers keep working.
+//
+// THE SETTING FIRST, THE ENVIRONMENT AS A FALLBACK (ADR-0155 P2).
+//
+// This used to read VAYUOS_TALK_HOST and nothing else, which is why publishing a
+// talk subdomain restarted the whole install: a process's environment cannot
+// change without an exec. nginx has no queue in front of :8080, so every second
+// of that restart was a 502 for every visitor — an outage to advertise a
+// hostname.
+//
+// Read from settings and the same change lands on the next request with nothing
+// interrupted. The env var is still honoured, and that ordering is deliberate:
+// an install provisioned before this existed has the variable and no setting, so
+// it keeps working untouched; an install that has both is one where the operator
+// set the newer value, and the newer value wins.
 func (a *App) talkAutoconfigHost() string {
 	if !a.vayuTalkEnabled() {
 		return ""
+	}
+	if a.siteSettings != nil {
+		if h := strings.ToLower(strings.TrimSpace(
+			a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyTalkHost))); h != "" {
+			return h
+		}
 	}
 	return strings.ToLower(strings.TrimSpace(config.EnvOr("VAYUOS_TALK_HOST", "")))
 }

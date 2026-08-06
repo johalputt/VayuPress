@@ -318,66 +318,42 @@ func TestTheAgentArmsTheWatcherWithoutBeingAsked(t *testing.T) {
 	}
 }
 
-// A SLOW START IS NOT AN OUTAGE. The first version of restart_app_verified
-// waited 10 seconds, then another 10, and then printed "Nothing on this install
-// is being served" — over an app that was simply still starting. The service log
-// for that period shows it answering 200s continuously to bingbot, Applebot and
-// real readers throughout.
+// A SLOW START IS NOT AN OUTAGE — and after ADR-0155 P1 there is no start to be
+// slow. This test used to hold restart_app_verified to a sixty-second window and
+// to telling "still starting" apart from "will not come back", because the first
+// version waited ten seconds and then printed "Nothing on this install is being
+// served" over an app that was simply still booting, recording the run as FAILED
+// with every certificate in it fine.
 //
-// The run was recorded as FAILED because of it, while every certificate in it had
-// succeeded. An alarm that fires on a slow start is worse than no alarm: loud,
-// false, and printed directly above the real results, which is where an operator
-// stops reading.
-func TestASlowStartIsNotReportedAsAnOutage(t *testing.T) {
+// That whole function is gone. The helper no longer restarts anything, so it can
+// no longer misreport a restart — the defect was removed rather than guarded.
+// What remains worth pinning is that the helper makes no claim about the app's
+// health at all: it does not touch the app, so any sentence here declaring the
+// install up or down would be an assertion about something this script did not
+// look at, which is the same false alarm wearing calmer words.
+func TestTheDomainHelperMakesNoClaimAboutTheAppsHealth(t *testing.T) {
 	src := shellCode(readSourceFile(t, "../../scripts/setup-vayudomain.sh"))
-	fn := src[strings.Index(src, "restart_app_verified() {"):]
-	if e := strings.Index(fn, "\n}\n"); e > 0 {
-		fn = fn[:e]
-	}
-	if fn == "" {
-		t.Fatal("restart_app_verified is gone")
-	}
 
-	// The window has to be long enough for a real install to finish starting.
-	if strings.Contains(fn, "for _i in 1 2 3 4 5 6 7 8 9 10; do") {
-		t.Fatal("the startup window is still ten seconds, so a busy install is declared dark " +
-			"while it is starting normally")
+	if strings.Contains(src, "restart_app_verified") {
+		t.Fatal("restart_app_verified is back; a certificate is not worth an outage")
 	}
-	if !strings.Contains(fn, "seq 1 60") {
-		t.Error("the startup window is not the documented 60s")
+	for _, claim := range []string{
+		"Nothing on this install is being",
+		"VayuPress is NOT running",
+		"is answering again",
+	} {
+		if strings.Contains(src, claim) {
+			t.Errorf("the helper still asserts %q — it no longer touches the app, so it "+
+				"cannot know, and a confident sentence about something it did not check is "+
+				"the false alarm this test was originally written about", claim)
+		}
 	}
-
-	// And "running but slow" must be separated from "will not start". They were
-	// reported identically and they need opposite responses.
-	//
-	// Anchored on the FIRST branch after the wait, not on any occurrence of
-	// is-active: the function mentions it again later, so a loose search finds the
-	// second one and passes against a mutation that removed the first. That
-	// happened, and only mutation-testing showed it.
-	wait := strings.Index(fn, "seq 1 60")
-	if wait < 0 {
-		t.Fatal("no startup wait to anchor on")
-	}
-	after := fn[wait:]
-	slowBranch := strings.Index(after, "if systemctl is-active --quiet vayupress")
-	deadBranch := strings.Index(after, `warn "VayuPress is NOT running`)
-	if slowBranch < 0 {
-		t.Fatal("after waiting, nothing asks systemd whether the app is merely still starting, " +
-			"so a slow start and a dead service get the same alarm — and the run is recorded " +
-			"failed with every certificate in it fine")
-	}
-	if deadBranch >= 0 && slowBranch > deadBranch {
-		t.Error("the outage alarm is raised before checking whether the service is simply still " +
-			"starting")
-	}
-	// A running-but-slow app must NOT count as a run failure.
-	seg := after[slowBranch:]
-	if d := strings.Index(seg, `warn "VayuPress is NOT running`); d > 0 {
-		seg = seg[:d]
-	}
-	if !strings.Contains(seg, "return 0") {
-		t.Error("an app that systemd reports running is still counted as a failure, so every " +
-			"run on a slow install is recorded failed with all its certificates fine")
+	// And it must say what DOES happen, because "certificate issued" without
+	// "live within 30s" reads as "live now" and sends an operator looking for a
+	// fault during the settle window.
+	if !strings.Contains(src, "REGISTRY_TTL_SECONDS") {
+		t.Error("the helper never tells the operator how long the registry takes to pick the " +
+			"domain up, so a 30-second settle reads as a failure")
 	}
 }
 

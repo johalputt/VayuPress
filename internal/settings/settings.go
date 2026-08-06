@@ -306,6 +306,21 @@ const (
 	// clearnet URL. Default OFF — Tor onions are opt-in.
 	KeyTorEnabled = "tor.enabled"
 
+	// KeyTalkHost is the hostname advertised for the VayuTalk relay (ADR-0155 P2).
+	//
+	// It lives here rather than in the environment for one reason, and the reason
+	// is an outage. It used to be VAYUOS_TALK_HOST in /etc/vayupress/env, and a
+	// process's environment cannot change without an exec — so the subdomain
+	// helper restarted the whole install to publish a hostname. nginx has no
+	// queue in front of :8080, which made every second of that restart a 502 for
+	// every visitor.
+	//
+	// A setting is read from SQLite at the moment it is used, so the same change
+	// now takes effect on the next request with nothing interrupted. The env var
+	// is still honoured as a fallback for installs provisioned before this
+	// existed; see talkAutoconfigHost.
+	KeyTalkHost = "talk.host"
+
 	// KeyVeilEnabled is the VayuVeil activate/deactivate switch (ADR-0150).
 	//
 	// It governs REPORTING, not protection: when "on", this install inventories
@@ -394,6 +409,18 @@ var RobotsOptions = map[string]bool{
 
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
+	KeyTalkHost: true,
+	// The VayuKeep and mail-retention keys below were MISSING from this map while
+	// their panels wrote them, so every one of those writes reported success and
+	// stored nothing — an operator switching on continuous encrypted replication
+	// was told it was on and it was not. Found by the guard in allkeys_test.go
+	// (ADR-0155), which exists because the same defect had just been introduced
+	// one key at a time.
+	KeyVayuKeepEnabled:         true,
+	KeyVayuKeepTarget:          true,
+	KeyVayuKeepRetainDays:      true,
+	KeyVayuKeepRetainGen:       true,
+	KeyMailQueueRetentionDays:  true,
 	KeyContactEmail:            true,
 	KeyContactAutoReply:        true,
 	KeyMediaAlt:                true,
@@ -631,6 +658,17 @@ type Store struct {
 	ttl   map[string]time.Time
 }
 
+// CacheTTL bounds how long a cached settings snapshot is trusted.
+//
+// Exported because it is a PROMISE now, not an implementation detail. A value
+// written by another process — the privileged VayuTalk helper recording its
+// hostname, say — becomes visible to the running server within this window, and
+// that window is what the CLI quotes back to an operator instead of restarting
+// the install to make the change appear instantly (ADR-0155 P2). Anything that
+// tells someone how long to wait must read the same constant the waiting is
+// actually governed by.
+const CacheTTL = 30 * time.Second
+
 // New creates a Store backed by db.
 func New(db *sql.DB) *Store {
 	return &Store{
@@ -684,7 +722,7 @@ func (s *Store) GetAll(ctx context.Context, sc Scope) (map[string]string, error)
 
 	s.mu.Lock()
 	s.cache[sk] = m
-	s.ttl[sk] = time.Now().Add(30 * time.Second)
+	s.ttl[sk] = time.Now().Add(CacheTTL)
 	s.mu.Unlock()
 	return m, nil
 }

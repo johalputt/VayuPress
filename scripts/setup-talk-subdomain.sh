@@ -117,6 +117,32 @@ if ! nginx_baseline_ok; then
   exit 0
 fi
 
+VP_BIN="${VP_BIN:-$(command -v vayupress || echo /usr/local/bin/vayupress)}"
+SERVICE_USER="${SERVICE_USER:-www-data}"
+DB_PATH="${DB_PATH:-$(env_get DB_PATH)}"; [[ -n "$DB_PATH" ]] && export DB_PATH
+
+# vp — run the VayuPress CLI as the SERVICE USER, never as root.
+#
+# Copied deliberately from setup-vayudomain.sh rather than approximated. The CLI
+# opens SQLite read-write, sets WAL mode and runs migrations; invoked as root —
+# which is how this script always runs, because certbot needs it — SQLite creates
+# vayupress.db-wal and vayupress.db-shm owned by root:root inside a directory
+# owned by www-data. From that moment the unprivileged service cannot write to
+# its own database. Nothing fails here, so provisioning reports success and the
+# site starts failing writes later with nothing linking the two.
+vp() {
+  [[ -x "$VP_BIN" ]] || return 1
+  if [[ $EUID -eq 0 ]] && id -u "$SERVICE_USER" >/dev/null 2>&1; then
+    if command -v runuser >/dev/null 2>&1; then
+      runuser -u "$SERVICE_USER" -- "$VP_BIN" "$@"
+      return
+    fi
+    su -s /bin/sh "$SERVICE_USER" -c "$(printf '%q ' "$VP_BIN" "$@")"
+    return
+  fi
+  "$VP_BIN" "$@"
+}
+
 TALK="talk.${DOMAIN}"
 CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
 AVAIL=/etc/nginx/sites-available/vayupress-talk
@@ -259,11 +285,29 @@ if cert_covers "$TALK"; then
       warn "nginx accepted the config but RELOADING it failed: ${_rl:-no output}."
       warn "  The vhost is on disk and the running nginx has not read it."
     fi
+    # NO RESTART — ADR-0155 P2.
+    #
+    # This used to write VAYUOS_TALK_HOST into /etc/vayupress/env and then
+    # restart the install, because a process's environment cannot change without
+    # an exec. nginx has no queue in front of :8080, so every second of that
+    # restart was a 502 for every visitor — an outage to advertise a hostname.
+    #
+    # The host is a SETTING now. The running server re-reads the settings table
+    # on a 30s TTL, so the new advertisement lands on the next request with
+    # nothing interrupted. The env var is still written for one release so an
+    # install that rolls back to an older binary keeps working; the binary
+    # prefers the setting when both are present.
+    if vp talk set-host "$TALK" >/dev/null 2>&1; then
+      ok "VayuTalk subdomain live: https://${TALK}  (advertised within 30s, no restart)."
+    else
+      # REPORTED, not discarded. If this failed the app never learns the host,
+      # autoconfig keeps pointing clients at the mail domain, and the only sign
+      # is a subdomain that works in a browser and never in a client.
+      warn "The talk host could not be recorded ('vayupress talk set-host' failed)."
+      warn "  The vhost and certificate are live, but the app will keep advertising"
+      warn "  the mail domain until this is recorded."
+    fi
     set_env_var VAYUOS_TALK_HOST "$TALK"
-    # Apply the new advertisement without forcing a start on a fresh install
-    # (try-restart is a no-op when the service isn't running yet).
-    systemctl try-restart vayupress 2>/dev/null || true
-    ok "VayuTalk subdomain live: https://${TALK}  (advertised to the app via autoconfig)."
   else
     warn "nginx config test failed after writing the talk vhost — leaving it disabled."
     rm -f "$ENABLED"
