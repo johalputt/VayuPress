@@ -88,7 +88,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.17.11"
+var Version = "3.17.12"
 var bootTime = time.Now()
 
 // onionSafeBindAddr picks the HTTP listen address (ADR-0141).
@@ -573,7 +573,14 @@ func main() {
 	// is what silently broke provisioning for a week.
 	if len(os.Args) > 1 && os.Args[1] == "talk" {
 		config.LoadLocalCLI()
-		if err := dbpkg.Init(); err != nil {
+		// InitCLI, not Init — see internal/db/cli.go. This runs from the
+		// privileged subdomain helper while the server is serving traffic, and
+		// Init is the SERVER's opening sequence: it takes the write lock to
+		// create a table that exists, scans 87 migrations, maps half a gigabyte
+		// and opens two dozen readers. The server's single write connection
+		// blocks behind that, every page view needs a write, and visitors get
+		// 502 from a process that never went down.
+		if err := dbpkg.InitCLI(); err != nil {
 			fmt.Fprintln(os.Stderr, "DB init failed:", err)
 			os.Exit(1)
 		}
@@ -594,7 +601,9 @@ func main() {
 		// unit that carried no EnvironmentFile — exit fatal before reading a
 		// single row, for a week, silently.
 		config.LoadLocalCLI()
-		if err := dbpkg.Init(); err != nil {
+		// InitCLI for the same reason as `talk` above: this is what the
+		// provisioning helper calls once per domain, while the site is live.
+		if err := dbpkg.InitCLI(); err != nil {
 			fmt.Fprintln(os.Stderr, "DB init failed:", err)
 			os.Exit(1)
 		}

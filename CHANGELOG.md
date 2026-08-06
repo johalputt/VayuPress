@@ -6,6 +6,69 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.12] — 2026-08-06
+
+### Fixed
+
+- **VayuPress stopped answering during certificate provisioning.** Ships on its
+  own, immediately, under the standing exception for something already released
+  and broken for users right now.
+
+  The symptom was a site returning 502 for minutes while the service was
+  `active (running)`, the same PID for hours, no restart in the journal and no
+  queued systemd job — then recovering by itself. Nothing crashed. The server was
+  **blocked**.
+
+  The privileged provisioning helpers record their results by invoking the CLI:
+  `vayupress domains set-tls <host> <state>`, once per domain, plus
+  `domains hosts` to read the work list. Every one of those short-lived processes
+  was calling the **server's** opening sequence:
+
+  - `CREATE TABLE IF NOT EXISTS schema_migrations` — a write, so it takes
+    SQLite's write lock immediately;
+  - a `SELECT` per migration to check whether it had been applied. **There are
+    87**;
+  - a checksum verification pass over all of them;
+  - `PRAGMA mmap_size=512MB` and a 32 MB page cache on the writer;
+  - a read pool of `NumCPU × 4` connections, minimum 24, plus an admin read pool.
+
+  That is the right opening sequence for the process that *owns* the database and
+  will serve from it for months. It is a remarkable thing to do nine times in a
+  row, from processes that exit in milliseconds, against a database another
+  process is serving a website from.
+
+  Both the server and the CLI cap the writer at one connection, and on this
+  product a page view takes a write — so while a helper holds the lock the
+  server's single writer blocks, requests queue behind it, and nginx's proxy read
+  timeout turns that into 502 for everyone. It clears when the helper finishes,
+  which is exactly what makes it so hard to attribute: nothing is down, nothing
+  is in the log, and by the time anyone looks the site is fine.
+
+  Helper subcommands now use `db.InitCLI`: one connection, a 2 MB cache, no
+  mapping, **no migrations, no schema creation, no read pools**, and a *longer*
+  busy timeout than the server's — because a background chore with nobody
+  watching should yield to the process answering a person, not race it.
+  Measured on the same database: **87 migration scans per invocation before, 0
+  after.**
+
+  It also refuses to open a database with no schema rather than creating one.
+  Only the process that owns this database migrates it; a helper that did would
+  be racing the owner's migration run.
+
+  Scoped deliberately to `talk` and `domains` — the two the helpers drive
+  automatically, repeatedly, while the site is live. The operator-run subcommands
+  are untouched, and `migrate` genuinely needs the full path.
+
+  **What this does not claim.** The mechanism is measured and the fix is real,
+  but nothing here has traced the server blocking on that specific lock. It is
+  consistent with every observed symptom — hung not crashed, no restart,
+  self-recovering, aligned with provisioning — and that is the honest strength of
+  it. There is also an unexplained **10.9 GB** resident on the reference install
+  that no part of this addresses.
+
+  Four mutations over the fix, all killed, including restoring the exact call
+  that was shipping.
+
 ## [3.17.11] — 2026-08-06
 
 ### Security
