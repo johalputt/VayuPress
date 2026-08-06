@@ -14,7 +14,10 @@ package main
 //   - HTML fetch uses safefetch (SSRF-safe) with a 1 MB cap.
 //   - Thumbnail is downloaded via remoteImageFetcher and validated by magic number
 //     through storeValidatedMedia — the same path as regular media imports.
-//   - All text fields are stored raw and HTML-escaped at render time (blockrender).
+//   - All text fields are HTML-escaped at render time (blockrender), and clamped
+//     on the way INTO embed_cache: every one of them is copied out of a page the
+//     caller nominated, and the table is bounded in row size and row count so a
+//     media:write key cannot spend it as disk. See saveEmbedCache.
 
 import (
 	"encoding/json"
@@ -341,7 +344,68 @@ func (a *App) loadEmbedCache(rawURL string) *unfurlResponse {
 	}
 }
 
-// saveEmbedCache inserts or replaces a row in embed_cache.
+// ── what the unfurl cache is allowed to cost ─────────────────────────────────
+//
+// Everything an embed_cache row carries — title, description, site name, final
+// URL — is read out of a page the CALLER nominated, and the endpoint sits in the
+// media capability section, so a key holding nothing but media:write reaches it.
+// That is the same credential the MediaDir quota exists to contain, and until
+// these bounds existed it could spend that credential here instead: the fetched
+// page may be a megabyte, one og content attribute can carry most of it, the row
+// key is the request URL so a varying query string makes every call an INSERT
+// rather than an update, and nothing has ever deleted from this table.
+//
+// The consequence is not "a large cache". It is the outage the quota was written
+// for, arriving one endpoint sideways — the filesystem fills, SQLite loses its
+// ability to write, and the install answers 502.
+//
+// Both dimensions are bounded, because bounding either alone leaves the attack
+// intact: rows capped in count but not in size still buy gigabytes, and rows
+// capped in size but not in count still buy everything.
+const (
+	// Long enough for a real headline and a real card summary, short enough that
+	// the whole table is a number an operator can hold in their head. Measured in
+	// runes, so the cut never lands inside a multi-byte character and turns a
+	// cached title into mojibake.
+	maxCachedEmbedTitle       = 300
+	maxCachedEmbedDescription = 1000
+	maxCachedEmbedProvider    = 120
+	// 2048 is the conventional practical ceiling for a URL; a redirect chain that
+	// ends somewhere longer is a link nothing will render usefully anyway.
+	maxCachedEmbedURL = 2048
+)
+
+// maxEmbedCacheRows caps how many URLs stay cached. A var, not a const, so a
+// test can prove the eviction rather than take the number on trust.
+//
+// The `url` column is deliberately NOT truncated: it is the unique key, and a
+// clipped key would answer a later lookup for a DIFFERENT URL with this row's
+// metadata. It is bounded instead by the 8 KB request-body cap on the endpoint,
+// which — multiplied by this ceiling — is what makes the table's worst case a
+// constant rather than a function of how many URLs someone pasted.
+var maxEmbedCacheRows = 5000
+
+// clampRunes returns at most max runes of s, cutting on a rune boundary.
+//
+// Rune-counted rather than byte-counted because the fields it guards are
+// attacker-supplied UTF-8 and a byte cut lands mid-sequence, which is how a
+// length limit turns into a rendering bug nobody connects back to the limit.
+func clampRunes(s string, max int) string {
+	if max <= 0 || len(s) <= max { // bytes >= runes, so this fast path is safe
+		return s
+	}
+	n := 0
+	for i := range s {
+		if n == max {
+			return s[:i]
+		}
+		n++
+	}
+	return s
+}
+
+// saveEmbedCache inserts or replaces a row in embed_cache, clamped to what a
+// card actually renders and followed by an eviction down to maxEmbedCacheRows.
 func (a *App) saveEmbedCache(rawURL string, res *unfurlResponse) {
 	if dbpkg.DB == nil {
 		return
@@ -364,6 +428,35 @@ func (a *App) saveEmbedCache(rawURL string, res *unfurlResponse) {
 		   thumb_name   = excluded.thumb_name,
 		   raw_meta     = excluded.raw_meta,
 		   updated_at   = excluded.updated_at`,
-		rawURL, res.URL, res.Title, res.Description, res.Provider, thumbName, rawMeta,
+		rawURL,
+		clampRunes(res.URL, maxCachedEmbedURL),
+		clampRunes(res.Title, maxCachedEmbedTitle),
+		clampRunes(res.Description, maxCachedEmbedDescription),
+		clampRunes(res.Provider, maxCachedEmbedProvider),
+		thumbName, rawMeta,
+	)
+	pruneEmbedCache()
+}
+
+// pruneEmbedCache drops everything past the newest maxEmbedCacheRows entries.
+//
+// It runs on every write rather than behind a "is it over yet?" check for two
+// reasons: an unfurl has already paid for a network round trip so this is noise
+// beside it, and an install that has been running with an unbounded table needs
+// the very first write after an update to repair it rather than to leave the
+// existing overgrowth in place forever.
+//
+// The tie-break on id is not cosmetic. updated_at has one-second granularity, so
+// a burst of writes inside the same second is entirely ties, and ordering on the
+// timestamp alone would let SQLite keep any subset it liked — including the
+// oldest. id is the AUTOINCREMENT key, so it is the only monotonic thing here.
+func pruneEmbedCache() {
+	if dbpkg.DB == nil || maxEmbedCacheRows <= 0 {
+		return
+	}
+	_, _ = dbpkg.DB.Exec(
+		`DELETE FROM embed_cache
+		  WHERE id NOT IN (SELECT id FROM embed_cache ORDER BY updated_at DESC, id DESC LIMIT ?)`,
+		maxEmbedCacheRows,
 	)
 }

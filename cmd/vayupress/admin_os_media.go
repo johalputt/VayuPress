@@ -6,10 +6,10 @@ package main
 //
 // The upload + storage backend already exists (handlers_media.go): content-
 // addressed files under config.Cfg.MediaDir, served same-origin from /media/{file},
-// with a strict type allowlist (PNG/JPEG/GIF/WebP/PDF — SVG is refused because it
-// can carry inline script). This file adds the os browsing surface: a grid page
-// and a JSON listing endpoint. Listing only ever exposes server-generated names
-// (validated by safeMediaName), so there is no path-traversal or info-leak vector.
+// with a strict type allowlist validated by magic number. This file adds the os
+// browsing surface: a grid page and a JSON listing endpoint. Listing only ever
+// exposes server-generated names (validated by storedMediaName), so there is no
+// path-traversal or info-leak vector.
 
 import (
 	"context"
@@ -65,7 +65,7 @@ func countMediaItems() int {
 	for _, e := range entries {
 		// IsDir and Name come from the directory entry itself (no stat), and the
 		// name check is the same allowlist listMediaItems applies.
-		if e.IsDir() || !safeMediaName.MatchString(e.Name()) {
+		if e.IsDir() || !storedMediaName.MatchString(e.Name()) {
 			continue
 		}
 		n++
@@ -74,8 +74,14 @@ func countMediaItems() int {
 }
 
 // listMediaItems reads MediaDir and returns the stored assets newest-first. Only
-// names matching safeMediaName (the content-addressed pattern this server itself
-// produces) are included, so stray or hostile filenames are ignored.
+// names matching storedMediaName (the content-addressed pattern this server
+// itself produces) are included, so stray or hostile filenames are ignored.
+//
+// storedMediaName, not safeMediaName: the narrower serve allowlist left every
+// uploaded SVG invisible here while the quota went on charging for it, so a
+// library could fill with files this page would not show and the delete
+// endpoint would not touch. The page has to account for everything the ceiling
+// counts, or a full library has no remedy the operator can reach.
 func listMediaItems() []mediaItem {
 	items := []mediaItem{}
 	entries, err := os.ReadDir(config.Cfg.MediaDir)
@@ -87,7 +93,7 @@ func listMediaItems() []mediaItem {
 			continue
 		}
 		name := e.Name()
-		if !safeMediaName.MatchString(name) {
+		if !storedMediaName.MatchString(name) {
 			continue
 		}
 		info, err := e.Info()
@@ -118,9 +124,14 @@ func (a *App) handleOSMediaList(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleOSMediaDelete removes one or more content-addressed media files. Names
-// are validated against safeMediaName (so only server-generated assets can be
+// are validated against storedMediaName (so only server-generated assets can be
 // targeted — no path traversal), their alt entries are pruned, and the count of
 // successful deletions is returned.
+//
+// It has to accept every name the store path can create, not just the ones
+// /media will serve. Deleting is the only way an operator gets back under the
+// quota, and a file that is charged but undeletable turns a full library into a
+// state the panel cannot leave.
 func (a *App) handleOSMediaDelete(w http.ResponseWriter, r *http.Request) {
 	if cur := mode.Global.Current(); cur == mode.ModeReadOnly || cur == mode.ModeQuarantined {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "read-only", "media cannot be deleted in "+string(cur)+" mode", "")
@@ -136,13 +147,19 @@ func (a *App) handleOSMediaDelete(w http.ResponseWriter, r *http.Request) {
 	alts := a.mediaAltMap(r.Context())
 	deleted := 0
 	for _, n := range body.Names {
-		if !safeMediaName.MatchString(n) {
+		if !storedMediaName.MatchString(n) {
 			continue // ignore anything not a server-generated asset name
 		}
 		if err := os.Remove(filepath.Join(config.Cfg.MediaDir, n)); err == nil {
 			deleted++
 			delete(alts, n)
 		}
+	}
+	if deleted > 0 {
+		// The quota's usage figure is cached, so without this the freed space stays
+		// invisible for up to a TTL — an operator who deletes to make room and is
+		// refused the very next upload has been told the delete did not work.
+		invalidateMediaUsage()
 	}
 	if a.siteSettings != nil {
 		if b, err := json.Marshal(alts); err == nil {
@@ -166,7 +183,10 @@ func (a *App) handleOSMediaAlt(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
-	if !safeMediaName.MatchString(body.Name) {
+	// Same allowlist the listing uses: an asset the page shows has to be one the
+	// page can annotate, or the operator gets "Unknown media asset" for a file
+	// sitting in front of them.
+	if !storedMediaName.MatchString(body.Name) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-name", "Unknown media asset", "")
 		return
 	}
@@ -211,8 +231,8 @@ func (a *App) handleOSMedia(w http.ResponseWriter, r *http.Request) {
      aria-label="Upload media — click or drop files">
   <div class="media-dropzone__icon" aria-hidden="true">⬆</div>
   <div class="media-dropzone__text">Drop an image or PDF here, or <span class="media-dropzone__link">browse</span></div>
-  <div class="media-dropzone__hint text-xs muted">PNG · JPEG · GIF · WebP · PDF — up to 32 MB. SVG is refused for security.</div>
-  <input type="file" data-media-input accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" hidden>
+  <div class="media-dropzone__hint text-xs muted">PNG · JPEG · GIF · WebP · SVG · PDF — up to 32 MB. SVG is cleaned on upload: script, styles and off-site references are stripped before the file is stored.</div>
+  <input type="file" data-media-input accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,application/pdf" hidden>
 </div>
 
 <div class="toolbar-row mt-3">

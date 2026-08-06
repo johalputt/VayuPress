@@ -14,6 +14,22 @@ import (
 const ConfigVersion = "1.0"
 const MinCompatibleConfigVersion = "1.0"
 
+// DefaultMediaQuotaGB is the media-directory ceiling when MEDIA_QUOTA_GB is not
+// set, and the floor the enforcement falls back to when MediaQuotaBytes is unset.
+//
+// 5 GB, chosen against what the upload path can actually put there: a raster is
+// capped at 8 MB and a PDF at 32 MB, and rasters are downscaled before they land,
+// so a real library of optimised images runs to tens of megabytes and 5 GB is
+// orders of magnitude above any blog that is not being attacked. It is also ~2.5%
+// of the 200 GB default STORAGE_QUOTA_GB, so media filling up can never be the
+// thing that leaves the database with nowhere to write.
+//
+// The trade is deliberate in that direction: an operator who genuinely wants a
+// bigger library raises one variable and sees a clear refusal telling them so,
+// whereas the previous default — no ceiling at all — was only discovered by the
+// install going down.
+const DefaultMediaQuotaGB = 5
+
 var Cfg struct {
 	APIKey      string
 	DBPath      string
@@ -34,8 +50,25 @@ var Cfg struct {
 	// make clearnet callbacks (IndexNow, webmention, …) which would phone home and
 	// de-anonymise it. The default (VAYUOS_MODE=clearnet, or unset) preserves every
 	// existing behaviour — this flag only ever removes clearnet egress, never adds.
-	OnionMode           bool
-	StorageQuotaGB      int64
+	OnionMode      bool
+	StorageQuotaGB int64
+	// MediaQuotaBytes caps the total size of MediaDir. storeValidatedMedia
+	// content-addresses what it stores, so duplicate uploads collapse to one
+	// file — but DISTINCT files were unbounded, and a credential holding nothing
+	// but media:write could upload unique bytes until the filesystem was full.
+	// A full disk is not a media outage here: SQLite stops being able to write
+	// and the whole install answers 502, which is the failure this box has
+	// already seen once. A narrow key must not be able to reach it.
+	//
+	// Read from MEDIA_QUOTA_GB but held in BYTES, because the enforcement is a
+	// byte comparison and a GB-granular field cannot express a boundary any test
+	// can stand on — a limit nobody can prove bites is the kind that turns out
+	// not to.
+	//
+	// Non-positive means "not configured", and the enforcement then falls back to
+	// DefaultMediaQuotaGB rather than to no ceiling: a Cfg that was never Load()ed
+	// (a subcommand, a test) must not silently be the unlimited case.
+	MediaQuotaBytes     int64
 	MediaRetainDays     int
 	CacheMaxSizeGB      int64
 	SmokeTestTimeout    time.Duration
@@ -159,6 +192,7 @@ func load(requireAPIKey bool) {
 	Cfg.WorkerCount = GetEnvAsInt("WORKER_COUNT", 3)
 	Cfg.BackupRetainDays = GetEnvAsInt("BACKUP_RETAIN_DAYS", 30)
 	Cfg.StorageQuotaGB = int64(GetEnvAsInt("STORAGE_QUOTA_GB", 200))
+	Cfg.MediaQuotaBytes = int64(GetEnvAsInt("MEDIA_QUOTA_GB", DefaultMediaQuotaGB)) * 1024 * 1024 * 1024
 	Cfg.MediaRetainDays = GetEnvAsInt("MEDIA_RETAIN_DAYS", 365)
 	Cfg.CacheMaxSizeGB = int64(GetEnvAsInt("CACHE_MAX_SIZE_GB", 10))
 	Cfg.QueueSaturationWarn = GetEnvAsInt("QUEUE_SATURATION_WARN", 100)

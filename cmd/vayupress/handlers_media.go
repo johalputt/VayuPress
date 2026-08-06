@@ -13,8 +13,12 @@ package main
 //   - Upload is a protected, CSRF-guarded, mode-gated write (see routes.go).
 //   - The stored bytes are validated by MAGIC NUMBER, never by the
 //     attacker-controlled filename or Content-Type header.
-//   - SVG is intentionally NOT accepted: it can carry inline <script> and would
-//     be an XSS vector when served same-origin.
+//   - SVG IS accepted on an operator upload, and only as blockrender.SanitizeSVG
+//     leaves it — the cleaned bytes are the ones that reach disk. It is the one
+//     stored format that is a program rather than a picture, so serveMedia gives
+//     its response a deny-all, sandboxed policy of its own. Two independent
+//     controls, which is what makes accepting it defensible. The remote-image
+//     import still refuses it (handlers_media_import.go).
 //   - The on-disk name is derived from the content hash + a safe extension, so
 //     an attacker cannot influence the path. The serve route additionally
 //     validates the name against a strict regexp before touching the disk, so
@@ -32,6 +36,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -49,9 +55,35 @@ const maxImageBytes = 8 * 1024 * 1024
 // maxDocBytes caps a document (PDF) upload at 32 MB.
 const maxDocBytes = 32 * 1024 * 1024
 
-// safeMediaName matches only the names this server itself generates:
-// 32 lowercase hex chars + a known raster or document extension.
+// safeMediaName matches the INERT names this server generates: 32 lowercase hex
+// chars plus a raster or document extension. A file in this set is a picture or
+// a document — nothing in it can execute — so serveMedia hands it back with no
+// policy of its own.
+//
+// It is deliberately the smaller of the two patterns, and the gap between them
+// is what tells serveMedia which response a name gets. Deriving that from the
+// inert set rather than from a `.svg` suffix test fails safe: a format added to
+// storedMediaName and forgotten here is sandboxed by default, which is the wrong
+// way round to be wrong only if the new format is provably not a program.
 var safeMediaName = regexp.MustCompile(`^[a-f0-9]{32}\.(png|jpg|gif|webp|pdf)$`)
+
+// storedMediaName matches every name storeValidatedMedia can put on disk —
+// safeMediaName's formats plus svg, which the upload path accepts sanitised.
+//
+// The two answer different questions and were being answered by one pattern.
+// safeMediaName asks "is this inert". This one asks "did this server write it",
+// which is what the media library, the quota and the serve route have to go on.
+//
+// Reusing the inert set for both is what let the ceiling charge for files the
+// panel could neither show nor remove. An uploaded SVG lands under MediaDir and
+// counts against MEDIA_QUOTA_GB, while the Media page listed nothing and the
+// delete endpoint refused the name — so a media:write key, the narrowest
+// credential the panel issues and the one the quota exists to contain, could
+// fill the ceiling with files that left every later upload refused by a 507
+// telling the operator to delete what they could not see. A full library has to
+// have a way down from it that is the panel, or the ceiling is a worse failure
+// than the disk-fill it replaced.
+var storedMediaName = regexp.MustCompile(`^[a-f0-9]{32}\.(png|jpg|gif|webp|pdf|svg)$`)
 
 // imageMagic maps a canonical extension to the leading signature bytes used to
 // validate an upload by content. jpg covers the standard JFIF/EXIF SOI marker.
@@ -87,7 +119,7 @@ func detectImageType(b []byte) (ext, mime string, ok bool) {
 
 // storedMedia is the result of validating and persisting a media byte slice.
 type storedMedia struct {
-	Name   string // content-addressed filename (matches safeMediaName)
+	Name   string // content-addressed filename (matches storedMediaName)
 	URL    string // same-origin URL ("/media/{name}")
 	MIME   string // canonical MIME type detected by magic number
 	Size   int    // stored byte length (post-optimization)
@@ -97,10 +129,18 @@ type storedMedia struct {
 
 // storeValidatedMedia is the single trusted path that turns raw bytes into a
 // stored media file. It validates by MAGIC NUMBER (never filename/Content-Type),
-// refuses SVG implicitly (not in the allowlist), optionally downscales rasters
-// with the stdlib pipeline, and content-addresses the result so duplicates
+// takes SVG only from an operator upload and only as the sanitiser leaves it
+// (see allowPDF below), optionally downscales rasters with the stdlib pipeline,
+// and content-addresses the result so duplicates
 // collapse. Both the multipart upload handler and the remote-image import use
 // it, so every byte served from /media has passed the identical gate.
+//
+// The media-directory quota is enforced here too, in writeMediaFile, for exactly
+// the same reason the type gate lives here: the browser upload, the remote
+// import, the embed-thumbnail fetch and the upload_media connector tool all end
+// up on this line, so a ceiling placed here is one every entry point inherits
+// without knowing it exists. A second copy at a caller is how one of them ends
+// up being the one that was never updated.
 //
 // allowPDF controls whether a %PDF document is accepted (uploads: yes; remote
 // image import: no — only rasters are re-hosted). It also gates SVG, for the
@@ -163,11 +203,8 @@ func storeValidatedMedia(raw []byte, allowPDF bool) (storedMedia, error) {
 	if err := os.MkdirAll(config.Cfg.MediaDir, 0o755); err != nil {
 		return storedMedia{}, err
 	}
-	dest := filepath.Join(config.Cfg.MediaDir, name)
-	if _, statErr := os.Stat(dest); os.IsNotExist(statErr) {
-		if err := os.WriteFile(dest, stored, 0o644); err != nil {
-			return storedMedia{}, err
-		}
+	if err := writeMediaFile(name, stored); err != nil {
+		return storedMedia{}, err
 	}
 	return storedMedia{
 		Name: name, URL: "/media/" + name, MIME: mime,
@@ -181,7 +218,147 @@ var (
 	errMediaEmpty       = errors.New("media: empty file")
 	errMediaUnsupported = errors.New("media: unsupported file type")
 	errMediaTooLarge    = errors.New("media: file exceeds size limit")
+	// errMediaQuotaExceeded is a different failure from errMediaTooLarge and has
+	// to read as one: the file was fine, the library is full. A caller that
+	// collapsed the two would tell an operator to shrink an 80 KB image.
+	errMediaQuotaExceeded = errors.New("media: directory quota reached")
 )
+
+// ── media directory quota ────────────────────────────────────────────────────
+//
+// Content addressing bounds DUPLICATE uploads and nothing else: distinct bytes
+// were unlimited, so an API key scoped to media:write alone — a deliberately
+// weak credential — could write until the filesystem was full. On this product
+// that is not a media outage, it is the install: SQLite cannot write into a full
+// disk, and the site starts answering 502.
+//
+// Accounting. Summing the directory costs one stat per file, which is fine once
+// and wasteful on every upload of a library with thousands of entries. So the
+// total is counted at most once per mediaUsageTTL and then carried forward
+// incrementally by adding each newly written file's size.
+//
+// The failure mode of that cached value, stated plainly because a quota that
+// misreads its own usage is worse than none:
+//
+//   - Files REMOVED behind the counter's back (an operator deleting from the
+//     filesystem) leave it overstating usage until the next recount — up to one
+//     TTL of refusing uploads that would in fact have fit. That is the direction
+//     to be wrong in; the opposite error admits bytes past the ceiling. The one
+//     in-product delete path (handleOSMediaDelete) calls invalidateMediaUsage,
+//     so the window only exists for changes made outside the product.
+//   - The counter is per-directory, and a MediaDir that changes forces a
+//     recount, so a total can never be read against the wrong tree.
+//   - What is counted is the library, not the tree — see mediaLibraryBytes.
+//     Bytes the Media page cannot delete are not charged, because a ceiling
+//     reached by files no control removes is a ceiling with no way down from it.
+//
+// The check and the write share one mutex. Without that, N concurrent uploads
+// all read the same "under quota" and all write, overshooting by N files —
+// bounded per-file at 32 MB but unbounded in N. Serialising the write is the
+// cost; uploads here are operator-scale and the alternative is a ceiling that
+// leaks under exactly the concurrency an attacker would use.
+var mediaUsage struct {
+	mu    sync.Mutex
+	dir   string    // the directory `bytes` was counted for
+	bytes int64     // total size of the media directory
+	at    time.Time // when it was last counted; zero forces a recount
+}
+
+// mediaUsageTTL bounds how long a counted total is trusted before it is redone.
+const mediaUsageTTL = time.Minute
+
+// mediaQuotaBytes returns the ceiling the media directory is held to.
+//
+// A non-positive configured value means "unset", not "unlimited": every command
+// that does not call config.Load() leaves Cfg zeroed, and a zero there must not
+// be the way the quota switches itself off.
+func mediaQuotaBytes() int64 {
+	if config.Cfg.MediaQuotaBytes > 0 {
+		return config.Cfg.MediaQuotaBytes
+	}
+	return config.DefaultMediaQuotaGB * 1024 * 1024 * 1024
+}
+
+// invalidateMediaUsage drops the cached total so the next upload recounts.
+// Called after media is deleted, so freed space is usable immediately instead of
+// after a TTL of refusing uploads that now fit.
+func invalidateMediaUsage() {
+	mediaUsage.mu.Lock()
+	mediaUsage.at = time.Time{}
+	mediaUsage.mu.Unlock()
+}
+
+// mediaLibraryBytes sums the stored media directly under dir: the files the
+// Media page lists and its delete endpoint can remove, and nothing else.
+//
+// Deliberately not dirSize, which the storage panel uses for the true on-disk
+// footprint and is the right measure there. What the ceiling CHARGES and what
+// the panel can FREE have to be the same set of bytes. Charge something the
+// operator cannot delete and a full library becomes a state with no way out of
+// it from the panel — the 507 says "delete files you no longer need from Media"
+// and the page it points at cannot show them, so the only remaining remedy is a
+// shell on the box.
+//
+// Top level only, matching the library: every name this server writes is a bare
+// content hash in MediaDir, so nothing it stored is ever in a subdirectory.
+func mediaLibraryBytes(dir string) int64 {
+	if dir == "" {
+		return 0
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	var total int64
+	for _, e := range entries {
+		if e.IsDir() || !storedMediaName.MatchString(e.Name()) {
+			continue
+		}
+		if info, infoErr := e.Info(); infoErr == nil {
+			total += info.Size()
+		}
+	}
+	return total
+}
+
+// mediaBytesUsedLocked returns the media library's total size, recounting it
+// when the cached value is stale or belongs to a different directory. The caller
+// must hold mediaUsage.mu.
+func mediaBytesUsedLocked() int64 {
+	dir := config.Cfg.MediaDir
+	if mediaUsage.dir != dir || mediaUsage.at.IsZero() || time.Since(mediaUsage.at) > mediaUsageTTL {
+		mediaUsage.dir = dir
+		mediaUsage.bytes = mediaLibraryBytes(dir)
+		mediaUsage.at = time.Now()
+	}
+	return mediaUsage.bytes
+}
+
+// writeMediaFile persists one already-validated media file under MediaDir,
+// refusing it with errMediaQuotaExceeded if storing it would take the directory
+// over its quota. The refusal happens BEFORE the write: a quota checked after
+// the bytes are on disk is not a quota, it is a report.
+func writeMediaFile(name string, data []byte) error {
+	mediaUsage.mu.Lock()
+	defer mediaUsage.mu.Unlock()
+
+	dest := filepath.Join(config.Cfg.MediaDir, name)
+	if _, statErr := os.Stat(dest); !os.IsNotExist(statErr) {
+		// The name is the content hash, so this file already holds exactly these
+		// bytes: re-uploading it consumes no additional space and is admitted even
+		// at quota. Refusing it would fail an operation that costs nothing, and an
+		// editor re-pasting the same screenshot would look like a broken library.
+		return nil
+	}
+	if used := mediaBytesUsedLocked(); used+int64(len(data)) > mediaQuotaBytes() {
+		return errMediaQuotaExceeded
+	}
+	if err := os.WriteFile(dest, data, 0o644); err != nil {
+		return err
+	}
+	mediaUsage.bytes += int64(len(data))
+	return nil
+}
 
 // handleMediaUpload accepts a multipart image upload (field "file"), validates
 // it by magic number, stores it under MediaDir keyed by its content hash, and
@@ -237,10 +414,21 @@ func (a *App) handleMediaUpload(w http.ResponseWriter, r *http.Request) {
 		fail(400, "uploaded file is empty")
 		return
 	case errors.Is(err, errMediaUnsupported):
-		fail(415, "unsupported file type (allowed: PNG, JPEG, GIF, WebP, PDF)")
+		// SVG belongs in this list because this path accepts it. Leaving it out told
+		// an operator whose drawing failed the sanitiser that the format itself was
+		// refused, so the repair they attempted was a conversion rather than a look
+		// at what was in the file.
+		fail(415, "unsupported file type (allowed: PNG, JPEG, GIF, WebP, SVG, PDF)")
 		return
 	case errors.Is(err, errMediaTooLarge):
 		fail(400, "image exceeds the 8 MB limit")
+		return
+	case errors.Is(err, errMediaQuotaExceeded):
+		// 507, not 400: the file is fine and resending it will not help. Name the
+		// ceiling and the two things that move it, or the operator is left with a
+		// refusal and no next step.
+		fail(507, "the media library is full — it has reached its "+humanBytes(mediaQuotaBytes())+
+			" quota. Delete files you no longer need from Media, or raise MEDIA_QUOTA_GB.")
 		return
 	case err != nil:
 		fail(500, "could not store file: "+err.Error())
@@ -264,19 +452,46 @@ func (a *App) handleMediaUpload(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// serveMedia serves a previously uploaded image from MediaDir. The filename is
-// validated against safeMediaName before any filesystem access, so there is no
+// serveMedia serves a previously stored asset from MediaDir. The filename is
+// validated against storedMediaName before any filesystem access, so there is no
 // path-traversal vector. Files are immutable (content-addressed) and cached
 // aggressively.
+//
+// storedMediaName, not safeMediaName, and the difference between the two was a
+// whole feature that did not work. The upload path accepts SVG, sanitises it,
+// stores it, lists it on the Media page and charges it against MEDIA_QUOTA_GB —
+// and this route answered 404 to every one of them, because its allowlist was
+// never widened past the rasters. The caller is handed a /media/<hash>.svg URL
+// and the connector tool calls that URL public and ready to paste into a post,
+// so the symptom reached readers as a broken image while the panel showed the
+// asset present and the ceiling went on counting it. An asset the library lists
+// and the quota charges has to be one this route hands back.
+//
+// SVG then needs a second control, because it is the one stored format that is a
+// program rather than a picture. The sanitiser is the first: script, style,
+// foreignObject, on* handlers and off-site references are gone before the file
+// exists. This response carries the second — deny everything, sandbox the
+// document — so a miss in the sanitiser still cannot execute in this origin on
+// direct navigation. It is set HERE rather than left to securityHeadersMiddleware
+// because that policy is built for pages and is widened per-route elsewhere (ad
+// origins, video frame-src); the file that is a program must not be able to
+// inherit a relaxation meant for something else. Rasters and PDFs are inert and
+// keep the plain response, which is also what keeps this header meaningful.
 func (a *App) serveMedia(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "file")
-	if !safeMediaName.MatchString(name) {
+	if !storedMediaName.MatchString(name) {
 		http.NotFound(w, r)
 		return
 	}
 	w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	http.ServeFile(w, r, filepath.Join(config.Cfg.MediaDir, name)) //nosec G703 -- name validated by safeMediaName regex (no separators or dot segments); confined to MediaDir
+	if true {
+		// style-src is admitted because the sanitiser keeps style attributes (with
+		// every url() that is not a local #fragment stripped), and an SVG that
+		// renders without its own fill is not the picture the operator uploaded.
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+	}
+	http.ServeFile(w, r, filepath.Join(config.Cfg.MediaDir, name)) //nosec G703 -- name validated by storedMediaName regex (no separators or dot segments); confined to MediaDir
 }
 
 // looksLikeSVG reports whether raw is plausibly an SVG document, cheaply and

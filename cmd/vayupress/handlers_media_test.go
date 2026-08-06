@@ -53,8 +53,12 @@ func TestDetectImageType(t *testing.T) {
 	}
 }
 
-// TestSafeMediaName ensures the serve route only accepts names this server
-// generates (32 hex + known ext) and rejects path-traversal / odd inputs.
+// TestSafeMediaName ensures the INERT set — names this server generates for
+// formats that cannot execute (32 hex + known raster/document ext) — accepts
+// exactly those and rejects path-traversal / odd inputs. serveMedia admits the
+// wider storedMediaName and uses the gap between the two to decide which
+// response carries the sandboxing policy, so .svg staying out of THIS set is
+// what keeps that policy attached to the one format that needs it.
 func TestSafeMediaName(t *testing.T) {
 	good := []string{
 		"0123456789abcdef0123456789abcdef.png",
@@ -64,7 +68,7 @@ func TestSafeMediaName(t *testing.T) {
 	}
 	bad := []string{
 		"../../etc/passwd",
-		"0123456789abcdef0123456789abcdef.svg", // svg not allowed
+		"0123456789abcdef0123456789abcdef.svg", // stored, but not inert — sandboxed by serveMedia
 		"0123456789abcdef0123456789abcdef.png/../x",
 		"SHORT.png",
 		"0123456789abcdef0123456789abcdef.PNG", // uppercase ext

@@ -14,7 +14,11 @@ package main
 //   - img-src 'self' never has to be relaxed — the strict CSP stays intact.
 //   - the reader's IP is never leaked to a third-party host.
 //   - no mixed-content, no hotlink rot, no tracking pixel.
-//   - SVG is refused (not in the raster allowlist) exactly as for uploads.
+//   - SVG is refused here, UNLIKE a direct upload, which accepts it sanitised.
+//     A URL someone pasted is a far weaker trust signal than a file an operator
+//     chose, and re-hosting a remote SVG on this origin is exactly how a
+//     same-origin payload would arrive. storeValidatedMedia's allowPDF=false
+//     gates both, for that one reason.
 
 import (
 	"encoding/json"
@@ -93,6 +97,13 @@ func (a *App) handleMediaImport(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, errMediaTooLarge):
 		fail(400, "remote image exceeds the 8 MB limit")
+		return
+	case errors.Is(err, errMediaQuotaExceeded):
+		// The fetch succeeded and the image was valid — this refusal is about the
+		// library, not the URL, and saying so stops the operator from hunting for a
+		// problem with a source that is fine.
+		fail(507, "the media library is full — it has reached its "+humanBytes(mediaQuotaBytes())+
+			" quota, so the image was not imported. Delete unused files from Media, or raise MEDIA_QUOTA_GB.")
 		return
 	case err != nil:
 		fail(500, "could not store the imported image")

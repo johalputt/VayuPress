@@ -491,6 +491,13 @@ func (a *App) buildMCPServer() *mcp.Server {
 					"the type is read from the bytes, so renaming a file does not change this")
 			case errors.Is(err, errMediaTooLarge):
 				return "", fmt.Errorf("file too large")
+			case errors.Is(err, errMediaQuotaExceeded):
+				// The connector is precisely the credential this ceiling exists for: a
+				// media:write key can do nothing else, so a caller that keeps retrying
+				// must be told the library is full rather than that the file was bad.
+				return "", fmt.Errorf("the media library is full — it has reached its %s quota. "+
+					"Delete unused files from the media library, or raise the operator's MEDIA_QUOTA_GB limit",
+					humanBytes(mediaQuotaBytes()))
 			case err != nil:
 				return "", fmt.Errorf("store failed: %w", err)
 			}

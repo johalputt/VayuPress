@@ -81,6 +81,103 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   re-hosting a remote SVG on this origin is precisely how a same-origin payload
   would arrive.
 
+### Security
+
+- **The media directory now has a quota, so a `media:write` key can no longer
+  fill the disk.** Uploads are content-addressed, so the same file twice costs
+  one file — which reads like a bound and is not one. Distinct bytes were
+  unlimited, and a connector key granted `media:write` and nothing else is the
+  narrowest credential the panel can issue. On this product a full filesystem is
+  not a media outage: SQLite stops being able to write and the whole install
+  answers 502.
+
+  The mechanism is `writeMediaFile` in `cmd/vayupress/handlers_media.go`, called
+  by `storeValidatedMedia` — the one path that turns bytes into a stored file.
+  The browser upload, the remote-image import, the embed-thumbnail fetch and the
+  `upload_media` connector tool all reach it, so none of them carries its own
+  copy of the rule. The check runs before the write, not after: a ceiling
+  enforced afterwards still lets a caller fill the disk one refused upload at a
+  time. A re-upload of a file already on disk is admitted even at quota, because
+  it consumes nothing and refusing it would fail an operation the operator
+  cannot act on.
+
+  The ceiling is `MEDIA_QUOTA_GB`, default **5 GB** — orders of magnitude above
+  a real library given that a raster is capped at 8 MB and downscaled before it
+  lands, and about 2.5% of the default `STORAGE_QUOTA_GB`, so media can never be
+  what leaves the database with nowhere to write. A refusal is a distinct
+  sentinel and a 507 that names the ceiling and what moves it, rather than a
+  generic "bad file". Usage is counted at most once a minute and carried forward
+  per write, so an upload does not stat the whole library; deleting from the
+  Media page clears the cached figure immediately, so freed space is usable at
+  once.
+
+  Found by the adversarial pass over that ceiling, and fixed inside it: what the
+  quota charged and what the panel could free were not the same set of bytes.
+  The upload path accepts SVG (sanitised) and content-addresses it like anything
+  else, while the media library listed, counted and deleted only the formats
+  `/media` will serve. So a `media:write` key could take the ceiling to full with
+  files the Media page would not show and the delete endpoint refused to remove,
+  and every later upload was refused by a 507 telling the operator to delete what
+  they could not see — a worse outcome than the disk-fill it replaced, because
+  the only remedy left was a shell on the box. A full library has to have a way
+  down from it, and that way has to be the panel. `storedMediaName` in
+  `cmd/vayupress/handlers_media.go` now names everything `storeValidatedMedia`
+  can write and is what the library lists, counts, annotates and deletes;
+  `mediaLibraryBytes` charges exactly that set rather than summing the whole
+  directory tree. The bytes the ceiling counts and the bytes the Media page can
+  delete are now the same bytes, in both directions.
+
+  Tests in `cmd/vayupress/handlers_media_quota_test.go`, each mutation-checked:
+  removing the check, moving it after the write, moving it ahead of the
+  duplicate exemption, dropping the incremental count (which left the quota
+  binding only on the first upload of each window), unkeying the cached total
+  from its directory, and removing the invalidation on delete were all killed by
+  a named test. The recovery invariant is held the same way: narrowing the
+  library's allowlist back to the serve one, at the listing, the header count or
+  the delete endpoint, and charging the whole tree instead of the library, each
+  fail a test that walks the operator's actual way out of a full library. A
+  mutation also showed the delete endpoint's allowlist was itself untested —
+  replacing it with a non-empty check left the suite green while
+  `os.Remove(filepath.Join(MediaDir, name))` took any name a session sent — so
+  `admin_os_ui_test.go` now pins it.
+
+- **The embed cache was the same disk-fill attack, one endpoint sideways, and
+  the media quota did not touch it.** Found by attacking the quota above rather
+  than reviewing it: the question was not "does the ceiling work" but "where
+  else can this key put bytes". `POST /api/v1/admin/embed/unfurl` sits in the
+  **same** capability section as the upload (`api_capabilities.go` maps
+  `/api/v1/admin/embed` to media, write), fetches a page the caller nominates,
+  and wrote a permanent `embed_cache` row carrying that page's `og:title`,
+  `og:description` and `og:site_name` verbatim. Every quantity in the row was
+  the caller's to choose: the page may be 1 MB, one `og` content attribute can
+  carry most of it, a varying query string makes each request an `INSERT`
+  rather than an update, and nothing had ever deleted from the table. Fifty
+  requests deposited 30 MB in a measurement; the ceiling was the attacker's
+  patience. The end state is the one the media quota exists to prevent — a full
+  filesystem, SQLite unable to write, 502 — reached with the narrowest key the
+  panel issues.
+
+  The mechanism is `saveEmbedCache` and `pruneEmbedCache` in
+  `cmd/vayupress/handlers_embed_unfurl.go`. Both dimensions are bounded, because
+  either alone leaves the attack intact: each cached field is clamped on the way
+  in (title 300, description 1000, site name 120, resolved URL 2048 —
+  characters, not bytes, so the cut cannot land inside a multi-byte character),
+  and the table is evicted down to the newest `maxEmbedCacheRows` (5000) on every
+  write. Eviction orders by `updated_at` **and** `id`, because the timestamp has
+  one-second granularity and a burst inside one second is entirely ties. The
+  `url` column is deliberately not clamped — it is the unique key, and a
+  shortened key would answer a later lookup for a different URL — so it is
+  bounded instead by the endpoint's existing 8 KB body cap. Pruning runs on
+  every write rather than behind a threshold check, so an install that has
+  already grown an unbounded table repairs it on the first write after updating.
+
+  Tests in `cmd/vayupress/handlers_embed_unfurl_quota_test.go`. Five mutations,
+  all killed: removing the clamps, removing the eviction, evicting the newest
+  instead of the oldest, dropping the `id` tie-break, and cutting on bytes
+  instead of characters. The last one **survived** the first version of the
+  suite — every test clamped ASCII, where the two are the same thing — and the
+  boundary test exists because of it.
+
 ## [3.17.19] — 2026-08-06
 
 ### Added

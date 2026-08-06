@@ -462,6 +462,7 @@ worlds with the offline bundle: `vayupress migrate export --file bundle.vaybundl
 | `PORT`                | `8080`                         | HTTP listen port                   |
 | `WORKER_COUNT`        | `3`                            | Write queue workers                |
 | `STORAGE_QUOTA_GB`    | `200`                          | Max storage quota (GB)             |
+| `MEDIA_QUOTA_GB`      | `5`                            | Ceiling on the media directory; uploads are refused with 507 above it |
 | `MEDIA_RETAIN_DAYS`   | `365`                          | Days to retain media               |
 | `BACKUP_RETAIN_DAYS`  | `30`                           | Days to retain backups             |
 | `MAX_REPLAY_COUNT`    | `3`                            | Max dead-letter replay attempts    |

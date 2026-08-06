@@ -3,6 +3,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	htmpl "html/template"
 	"net/http"
 	"net/http/httptest"
@@ -182,22 +184,29 @@ func TestListMediaItemsFiltersUnsafeNames(t *testing.T) {
 
 	good := strings.Repeat("a", 32) + ".png"
 	goodPDF := strings.Repeat("b", 32) + ".pdf"
+	// A content-addressed .svg is a name this server writes: the upload path
+	// accepts SVG (sanitised on the way in) and the media quota charges for the
+	// result, so the library has to show it. Hiding it was how a full library
+	// became a state the panel could not get out of — the operator could see
+	// neither the files holding the ceiling down nor a control to remove them.
+	// "evil.svg" stays in the list below, which is the part that matters: the
+	// extension is not what admits a file, the content-addressed name is.
+	goodSVG := strings.Repeat("c", 32) + ".svg"
 	bad := []string{
 		"evil.svg",
 		"..%2fetc%2fpasswd",
-		strings.Repeat("a", 32) + ".svg", // SVG never allowed
 		"short.png",
 		"notes.txt",
 	}
-	for _, n := range append([]string{good, goodPDF}, bad...) {
+	for _, n := range append([]string{good, goodPDF, goodSVG}, bad...) {
 		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	items := listMediaItems()
-	if len(items) != 2 {
-		t.Fatalf("want 2 safe items, got %d: %+v", len(items), items)
+	if len(items) != 3 {
+		t.Fatalf("want 3 safe items, got %d: %+v", len(items), items)
 	}
 	got := map[string]bool{}
 	for _, it := range items {
@@ -206,7 +215,70 @@ func TestListMediaItemsFiltersUnsafeNames(t *testing.T) {
 			t.Errorf("unexpected URL: %q", it.URL)
 		}
 	}
-	if !got[good] || !got[goodPDF] {
+	if !got[good] || !got[goodPDF] || !got[goodSVG] {
 		t.Errorf("expected safe names present, got %+v", got)
+	}
+}
+
+// The delete endpoint removes files this server wrote, and nothing else.
+//
+// This exists because a mutation proved nothing was holding that line: replacing
+// the name check with a test for a non-empty string left the entire suite green.
+// The handler is os.Remove(filepath.Join(MediaDir, name)) over a caller-supplied
+// name, so the allowlist is the only thing between an author-level session and
+// deleting any path the process can reach — the database beside MediaDir
+// included. An untested control on that shape of code is the one worth writing
+// down.
+func TestMediaDeleteRemovesOnlyWhatThisServerWrote(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "media")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	prev := config.Cfg.MediaDir
+	config.Cfg.MediaDir = dir
+	t.Cleanup(func() { config.Cfg.MediaDir = prev })
+
+	outside := filepath.Join(root, "vayupress.db")
+	if err := os.WriteFile(outside, []byte("database"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stray := filepath.Join(dir, "notes.txt")
+	if err := os.WriteFile(stray, []byte("notes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	body, err := json.Marshal(map[string][]string{"names": {
+		"../vayupress.db",
+		"..%2fvayupress.db",
+		"notes.txt",
+		"evil.svg",
+		strings.Repeat("a", 31) + ".png", // one hex char short
+	}})
+	if err != nil {
+		t.Fatalf("marshal delete body: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	(&App{}).handleOSMediaDelete(rec, httptest.NewRequest(http.MethodPost, "/os/media/delete", bytes.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete returned %d: %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Deleted int `json:"deleted"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("bad delete response: %v (%s)", err, rec.Body.String())
+	}
+	if out.Deleted != 0 {
+		t.Errorf("the endpoint reported %d deletion(s) for a request naming nothing this server wrote",
+			out.Deleted)
+	}
+	if _, statErr := os.Stat(outside); statErr != nil {
+		t.Errorf("a file OUTSIDE the media directory was removed through the media endpoint: %v.\n"+
+			"The name is joined onto MediaDir and passed to os.Remove, so anything that gets past "+
+			"the allowlist is an authenticated delete of any path this process can reach.", statErr)
+	}
+	if _, statErr := os.Stat(stray); statErr != nil {
+		t.Errorf("a file the library does not manage was removed: %v", statErr)
 	}
 }
