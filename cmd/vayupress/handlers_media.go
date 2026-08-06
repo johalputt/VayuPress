@@ -131,9 +131,9 @@ type storedMedia struct {
 // stored media file. It validates by MAGIC NUMBER (never filename/Content-Type),
 // takes SVG only from an operator upload and only as the sanitiser leaves it
 // (see allowPDF below), optionally downscales rasters with the stdlib pipeline,
-// and content-addresses the result so duplicates
-// collapse. Both the multipart upload handler and the remote-image import use
-// it, so every byte served from /media has passed the identical gate.
+// and content-addresses the result so duplicates collapse. Both the multipart
+// upload handler and the remote-image import use it, so every byte served from
+// /media has passed the identical gate.
 //
 // The media-directory quota is enforced here too, in writeMediaFile, for exactly
 // the same reason the type gate lives here: the browser upload, the remote
@@ -485,7 +485,7 @@ func (a *App) serveMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if true {
+	if !safeMediaName.MatchString(name) {
 		// style-src is admitted because the sanitiser keeps style attributes (with
 		// every url() that is not a local #fragment stripped), and an SVG that
 		// renders without its own fill is not the picture the operator uploaded.

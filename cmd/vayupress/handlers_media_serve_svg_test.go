@@ -15,6 +15,8 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/johalputt/vayupress/internal/config"
 )
 
 // The claim under test: the media library hands back what it stored.
@@ -162,28 +164,64 @@ func TestServedRasterKeepsThePlainMediaResponse(t *testing.T) {
 // Widening the serve allowlist from the rasters to everything the store writes
 // must not widen it to everything: the name is joined onto MediaDir and handed
 // to the file server, so this regexp is the whole path-traversal defence.
+//
+// Every name below is backed by a REAL file, and that is the point of the test
+// rather than a detail of it. The first version seeded nothing and asserted only
+// on a 404 — so replacing the whole check with `name == ""` survived, because
+// http.ServeFile answers 404 for a path that does not exist and the assertion
+// could not tell a refusal apart from a miss. An allowlist test whose fixtures
+// are absent is testing the filesystem.
 func TestServeMediaStillRefusesNamesThisServerDidNotWrite(t *testing.T) {
-	mediaQuotaDir(t, 1<<20)
+	root := t.TempDir()
+	dir := filepath.Join(root, "media")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	prevDir := config.Cfg.MediaDir
+	config.Cfg.MediaDir = dir
+	t.Cleanup(func() { config.Cfg.MediaDir = prevDir })
 
-	for _, name := range []string{
-		"../../etc/passwd",
+	const secret = "BEGIN OPENSSH PRIVATE KEY"
+	if err := os.WriteFile(filepath.Join(root, "secret.txt"), []byte(secret), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Names inside the directory that the allowlist must still refuse, seeded so
+	// that a handler without the check would hand each of them back.
+	inside := []string{
 		"evil.svg",
-		"0123456789abcdef0123456789abcdef.svg/../x",
+		"x", // what "…svg/../x" cleans to
 		strings.Repeat("a", 32) + ".SVG",
 		strings.Repeat("a", 32) + ".exe",
 		strings.Repeat("a", 31) + ".svg",
 		strings.Repeat("g", 32) + ".svg",
+	}
+	for _, n := range inside {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(secret), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, name := range append([]string{
+		"../secret.txt",
+		"0123456789abcdef0123456789abcdef.svg/../x",
 		"",
-	} {
-		get := httptest.NewRequest(http.MethodGet, "/media/x", nil)
+	}, inside...) {
+		get := httptest.NewRequest(http.MethodGet, "/media/asset", nil)
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("file", name)
 		get = get.WithContext(context.WithValue(get.Context(), chi.RouteCtxKey, rctx))
 		rec := httptest.NewRecorder()
 		(&App{}).serveMedia(rec, get)
+
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("GET /media/%q returned %d, want 404 — the name check in front of the file "+
 				"server is the only thing confining this handler to the media directory", name, rec.Code)
+		}
+		if strings.Contains(rec.Body.String(), secret) {
+			t.Errorf("GET /media/%q handed back the contents of a file this server never wrote.\n"+
+				"The name is joined onto MediaDir and passed to the file server, so anything past "+
+				"the allowlist is an unauthenticated read of whatever the process can open.", name)
 		}
 	}
 }

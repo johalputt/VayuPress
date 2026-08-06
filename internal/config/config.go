@@ -20,9 +20,18 @@ const MinCompatibleConfigVersion = "1.0"
 // 5 GB, chosen against what the upload path can actually put there: a raster is
 // capped at 8 MB and a PDF at 32 MB, and rasters are downscaled before they land,
 // so a real library of optimised images runs to tens of megabytes and 5 GB is
-// orders of magnitude above any blog that is not being attacked. It is also ~2.5%
-// of the 200 GB default STORAGE_QUOTA_GB, so media filling up can never be the
-// thing that leaves the database with nowhere to write.
+// orders of magnitude above any blog that is not being attacked.
+//
+// What it does NOT promise, because the first draft of this comment promised it:
+// that the database will have room. ~5 GiB is about 2.5% of the 200 GB default
+// STORAGE_QUOTA_GB, which means a media library at its ceiling cannot on its own
+// trip the storage quota that gates article creation — a relationship between two
+// configured numbers, not a fact about the volume. STORAGE_QUOTA_GB is
+// self-declared and is never compared against free space (statfs is read only to
+// draw the Storage panel), so on a small disk 5 GiB of media is a real fraction of
+// it. The honest guarantee is narrower and still worth having: the media library's
+// contribution to filling the disk is now bounded and knowable instead of open-
+// ended. Sizing the volume remains the operator's.
 //
 // The trade is deliberate in that direction: an operator who genuinely wants a
 // bigger library raises one variable and sees a clear refusal telling them so,

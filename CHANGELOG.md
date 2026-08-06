@@ -103,8 +103,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
   The ceiling is `MEDIA_QUOTA_GB`, default **5 GB** — orders of magnitude above
   a real library given that a raster is capped at 8 MB and downscaled before it
-  lands, and about 2.5% of the default `STORAGE_QUOTA_GB`, so media can never be
-  what leaves the database with nowhere to write. A refusal is a distinct
+  lands, and about 2.5% of the default `STORAGE_QUOTA_GB`, so a library at its
+  ceiling cannot on its own trip the storage quota that gates article creation.
+  That is a relationship between two configured numbers and not a promise about
+  the volume: `STORAGE_QUOTA_GB` is self-declared and never compared against free
+  space, so what this ceiling guarantees is that the media library's contribution
+  to a full disk is bounded and knowable, not that the disk has room. A refusal
+  is a distinct
   sentinel and a 507 that names the ceiling and what moves it, rather than a
   generic "bad file". Usage is counted at most once a minute and carried forward
   per write, so an upload does not stat the whole library; deleting from the
@@ -140,6 +145,63 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   replacing it with a non-empty check left the suite green while
   `os.Remove(filepath.Join(MediaDir, name))` took any name a session sent — so
   `admin_os_ui_test.go` now pins it.
+
+- **Uploaded SVGs are served again — `/media` had been refusing every one of
+  them.** Found by auditing the claims around the ceiling rather than the
+  ceiling: three surfaces said an uploaded SVG is a library asset, and the route
+  that hands assets back did not. The upload path accepts SVG, sanitises it,
+  content-addresses it, lists it on the Media page and charges it against
+  `MEDIA_QUOTA_GB`; `serveMedia` validated the requested name against the raster
+  allowlist and answered 404. So the caller received a `/media/<hash>.svg` URL —
+  the same URL the `upload_media` connector tool calls public and ready to paste
+  into a post — that never resolved. The symptom reached readers as a broken
+  image while the panel showed the asset present and the ceiling went on counting
+  it, and a comment in the source described the 404 as deliberate.
+
+  `serveMedia` now admits `storedMediaName`, every name the store writes. SVG is
+  the one stored format that is a program rather than a picture, so its response
+  carries `default-src 'none'; style-src 'unsafe-inline'; sandbox` — set on that
+  response rather than left to the page middleware, whose policy is widened
+  per-route elsewhere. That is the second of the two independent controls the
+  sanitiser's own rationale claims: cleaned before the bytes land, and sandboxed
+  when the file is navigated to directly. Rasters and PDFs are inert and keep the
+  plain response, which is what keeps the header meaningful.
+
+  Tests in `cmd/vayupress/handlers_media_serve_svg_test.go`. Four mutations, all
+  killed: narrowing the serve allowlist back to the rasters, dropping the SVG
+  policy, applying that policy to every media response, and replacing the name
+  check with a non-empty test. The last one **survived** the first version of the
+  suite — the traversal fixtures did not exist, so `http.ServeFile` answered 404
+  for a missing file and the assertion could not tell a refusal from a miss. Every
+  refused name is now backed by a real file whose contents the test looks for in
+  the response body.
+
+- **The Media page said SVG was refused, on the page whose dropzone accepts it.**
+  The hint read "SVG is refused for security" and the file picker's `accept` list
+  left `image/svg+xml` out, while the connector tool sharing that path advertised
+  SVG in its description — two surfaces of one feature describing different
+  products. It lands at the worst moment: when the library hits its ceiling the
+  507 tells the operator to delete files from Media, and the grid in front of them
+  shows assets in a format the same page says cannot be there. The 415 refusal
+  had the same gap, so an operator whose drawing failed the sanitiser — the one
+  real reason an SVG is refused on that path — was told the format itself was not
+  allowed, and would convert the file rather than look inside it. Page copy,
+  `accept` list and the 415 now name what the path accepts, pinned by
+  `cmd/vayupress/admin_os_media_copy_test.go`; three mutations restoring each
+  false claim are each killed by a named assertion.
+
+- **The media default's justification claimed something the code does not do.**
+  It read that 5 GB is ~2.5% of the default `STORAGE_QUOTA_GB` "so media filling
+  up can never be the thing that leaves the database with nowhere to write". The
+  ratio is between two configured numbers: `STORAGE_QUOTA_GB` is self-declared and
+  is never compared against free space — `statfs` is read only to draw the Storage
+  panel — so it says nothing about whether the volume has room, and on a small
+  disk 5 GiB of media is a real fraction of it. The per-file reasoning behind the
+  default (8 MB rasters, downscaled; 32 MB PDFs) is sound and stands. Both the
+  comment and the note above now state the narrower thing that is true: the media
+  library's contribution to filling the disk is bounded and knowable, and sizing
+  the volume is still the operator's. No test accompanies this one, because there
+  is no behaviour to test — the defect was a guarantee the code never made.
 
 - **The embed cache was the same disk-fill attack, one endpoint sideways, and
   the media quota did not touch it.** Found by attacking the quota above rather
