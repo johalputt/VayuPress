@@ -6,6 +6,64 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.15] — 2026-08-06
+
+### Fixed
+
+- **The shield could ban the machine it protects, taking the whole site to 502
+  for as long as the ban lasted.** This is the cause of the repeated outages
+  during certificate provisioning. Ships immediately under the standing
+  exception for something broken for users right now.
+
+  What identified it was one command run on the failing server:
+
+  ```text
+  $ curl -m 8 http://127.0.0.1:8080/
+  curl: (28) Failed to connect to 127.0.0.1 port 8080: Connection timed out
+  ```
+
+  A loopback connection cannot time out — there is no network between the two
+  ends, so it connects or it is refused, and both are instant. A timeout means a
+  packet filter is **dropping** the packets, and the filter was ours.
+
+  VayuShield exports jailed addresses to a kernel ban set. That chain runs at
+  hook priority −20, ahead of the main firewall table at −10, and it carried no
+  loopback exemption — the main table's `iif "lo" accept` was never reached,
+  because a drop is final. So one loopback entry in the ban set stopped the
+  machine talking to itself: nginx could not reach the application and every
+  visitor got 502, a local resolver stopped answering, and both failed as
+  timeouts rather than errors. The ban's TTL expired minutes later and the site
+  came back on its own, leaving a running process, a healthy application and an
+  empty log.
+
+  Loopback gets jailed when a reverse proxy's real-IP layer is not configured —
+  every visitor then arrives as one address, so a single bad actor convicts the
+  whole audience and the host with it. Certificate provisioning made it likelier
+  still: the helper issues a burst of loopback pre-flight requests, one per
+  domain, which is exactly the traffic shape the rate limiter exists to punish.
+  That is why the outage tracked provisioning without provisioning being at
+  fault.
+
+  Fixed in three places. The ban chain exempts loopback first and
+  unconditionally; the root agent refuses to install such an entry and counts
+  the refusal; and the application never exports one. Installs hardened before
+  this change already have the old chain, so the agent inspects the live table
+  and rebuilds it rather than only writing correct rules on a fresh machine.
+
+  Private ranges stay bannable on purpose — an operator behind a LAN-facing
+  proxy may have a real reason to ban one, and that is their call. Loopback is
+  different in kind: banning it can never be what anybody wanted.
+
+### Upgrade Notes
+
+- A refused loopback ban is recorded rather than silently dropped. If that count
+  is non-zero, the shield decided this machine was its own attacker — which
+  almost always means a proxy in front whose real-IP handling is not configured,
+  so every visitor shares one address. Worth fixing at the source; the guard
+  stops it taking the site down either way.
+
+---
+
 ## [3.17.14] — 2026-08-06
 
 ### Fixed

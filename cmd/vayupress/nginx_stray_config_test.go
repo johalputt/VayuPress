@@ -96,6 +96,12 @@ func runAgentFunc(t *testing.T, env map[string]string, call string) (string, err
 // shQuote lives in dep_freshness_test.go; this file reuses it.
 
 // extractShellFunc returns one shell function definition, closing brace included.
+//
+// Heredoc-aware, and it has to be. The first version ended the function at the
+// first line that was exactly "}" — which, for a function whose body writes an
+// nftables ruleset via `<<EOF`, is the closing brace of the TABLE, several lines
+// inside the heredoc. It returned half a function and an unterminated heredoc,
+// and bash rejected the harness rather than the code under test.
 func extractShellFunc(src, name string) string {
 	marker := "\n" + name + "() {"
 	i := strings.Index(src, marker)
@@ -103,8 +109,22 @@ func extractShellFunc(src, name string) string {
 		return ""
 	}
 	var out []string
+	heredoc := "" // the delimiter we are waiting for, or "" when not inside one
 	for _, l := range strings.Split(src[i+1:], "\n") {
 		out = append(out, l)
+		if heredoc != "" {
+			if strings.TrimSpace(l) == heredoc {
+				heredoc = ""
+			}
+			continue
+		}
+		if j := strings.Index(l, "<<"); j >= 0 {
+			rest := strings.TrimSpace(strings.TrimLeft(l[j+2:], "-"))
+			if f := strings.Fields(rest); len(f) > 0 {
+				heredoc = strings.Trim(f[0], `"'`)
+			}
+			continue
+		}
 		if l == "}" {
 			return strings.Join(out, "\n")
 		}
@@ -528,4 +548,186 @@ func TestTheBackupDirectoryIsOutsideTheServiceUsersTree(t *testing.T) {
 		}
 	}
 	t.Error("BACKUP_DIR is no longer defined in the agent")
+}
+
+// ── The ban chain that could drop loopback ───────────────────────────────────
+//
+// THE INCIDENT. On the live install, during an outage:
+//
+//	$ curl -m 8 http://127.0.0.1:8080/
+//	curl: (28) Failed to connect to 127.0.0.1 port 8080: Connection timed out
+//
+// Loopback cannot time out. It connects or it is refused, and both are instant.
+// A timeout means packets are being DROPPED — a reject would say "refused".
+//
+// The dynamic ban table is created at hook priority -20, ahead of the main
+// firewall table at -10, and the version that shipped before this change was:
+//
+//	chain input {
+//	    type filter hook input priority -20; policy accept;
+//	    ip saddr @banned4 drop
+//	    ip6 saddr @banned6 drop
+//	}
+//
+// No exemption of any kind. The main table has `iif "lo" accept` and was never
+// reached, because a drop here is final. So a single loopback entry in the ban
+// set took nginx away from the application and 502'd every visitor until the
+// ban's TTL expired, minutes later — leaving a healthy process and a clean log.
+
+// runAgentNft runs one agent function with `nft` stubbed, capturing whatever
+// ruleset the function tries to load and whatever commands it runs.
+func runAgentNft(t *testing.T, existingTable string, call string) (loaded, commands string) {
+	t.Helper()
+	script := filepath.Clean("../../deploy/vayushield-agent.sh")
+	b, err := os.ReadFile(script)
+	if err != nil {
+		t.Skipf("agent script not readable: %v", err)
+	}
+	body := extractShellFunc(string(b), "ensure_dyn_table")
+	if body == "" {
+		t.Fatal("ensure_dyn_table() is gone from the agent; this guard is blind")
+	}
+	tmp := t.TempDir()
+	loadedPath := filepath.Join(tmp, "loaded.nft")
+	cmdPath := filepath.Join(tmp, "commands.txt")
+	existing := filepath.Join(tmp, "existing.txt")
+	if err := os.WriteFile(existing, []byte(existingTable), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The stub answers `list` from the fixture (empty fixture = no such table)
+	// and captures `-f -` loads plus every invocation.
+	stub := `
+DYN_TABLE=vayushield_dyn
+nft() {
+  echo "nft $*" >> ` + shQuote(cmdPath) + `
+  case "$1" in
+    list)
+      if [ -s ` + shQuote(existing) + ` ]; then cat ` + shQuote(existing) + `; return 0; fi
+      return 1 ;;
+    -f) cat > ` + shQuote(loadedPath) + `; return 0 ;;
+    delete) : > ` + shQuote(existing) + `; return 0 ;;
+  esac
+  return 0
+}
+`
+	harness := filepath.Join(tmp, "h.sh")
+	src := "#!/usr/bin/env bash\n" + stub + body + "\n" + call + "\n"
+	if err := os.WriteFile(harness, []byte(src), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("bash", harness).CombinedOutput(); err != nil {
+		t.Fatalf("harness failed: %v\n%s", err, out)
+	}
+	lb, _ := os.ReadFile(loadedPath)
+	cb, _ := os.ReadFile(cmdPath)
+	return string(lb), string(cb)
+}
+
+// THE test. A freshly-created ban chain must exempt loopback, and the exemption
+// must come BEFORE the drops — a rule after them is never reached.
+func TestTheBanChainExemptsLoopbackBeforeItDrops(t *testing.T) {
+	loaded, _ := runAgentNft(t, "", "ensure_dyn_table")
+	if loaded == "" {
+		t.Fatal("no ruleset was loaded")
+	}
+	lo := strings.Index(loaded, `iif "lo" accept`)
+	if lo < 0 {
+		t.Fatalf("the ban chain has NO loopback exemption. It runs at priority -20, ahead of the "+
+			"main table's -10, so a single loopback entry in the ban set drops every packet the "+
+			"machine sends to itself: nginx cannot reach the application and every visitor gets "+
+			"502 until the TTL expires.\nloaded:\n%s", loaded)
+	}
+	drop := strings.Index(loaded, "@banned4 drop")
+	if drop < 0 {
+		t.Fatalf("the chain no longer drops banned addresses at all:\n%s", loaded)
+	}
+	if lo > drop {
+		t.Errorf("the loopback exemption is AFTER the drop, so it is never reached:\n%s", loaded)
+	}
+}
+
+// THE upgrade path, and the load-bearing half. An install hardened before this
+// change already has the old table, and the original code returned early
+// whenever the table existed — so a fix that only wrote new rules on a clean box
+// would have reached nobody who was already broken.
+func TestAnOldBanChainIsRebuiltRatherThanLeftInPlace(t *testing.T) {
+	old := `table inet vayushield_dyn {
+	set banned4 { type ipv4_addr; flags timeout; }
+	chain input {
+		type filter hook input priority -20; policy accept;
+		ip saddr @banned4 drop
+		ip6 saddr @banned6 drop
+	}
+}`
+	loaded, commands := runAgentNft(t, old, "ensure_dyn_table")
+	if !strings.Contains(commands, "delete table") {
+		t.Errorf("an existing table WITHOUT the loopback exemption was left in place. Every install "+
+			"hardened before this change has exactly that table, which is to say the fix would "+
+			"reach none of the machines it is for.\ncommands:\n%s", commands)
+	}
+	if !strings.Contains(loaded, `iif "lo" accept`) {
+		t.Errorf("the rebuilt table still has no loopback exemption:\n%s", loaded)
+	}
+}
+
+// A table that ALREADY has the exemption must be left alone — rebuilding on
+// every poll would flush live bans every few seconds.
+func TestAGoodBanChainIsNotRebuiltOnEveryPoll(t *testing.T) {
+	good := `table inet vayushield_dyn {
+	chain input {
+		type filter hook input priority -20; policy accept;
+		iif "lo" accept
+		ip saddr @banned4 drop
+	}
+}`
+	loaded, commands := runAgentNft(t, good, "ensure_dyn_table")
+	if strings.Contains(commands, "delete table") {
+		t.Errorf("a correct table was torn down anyway; every reconcile poll would flush the live "+
+			"ban set and let attackers back in for the gap:\n%s", commands)
+	}
+	if loaded != "" {
+		t.Errorf("a correct table was rewritten:\n%s", loaded)
+	}
+}
+
+// The second layer: the agent revalidates every line, so an address that must
+// never be dropped is refused before it can become a kernel rule.
+func TestTheAgentRefusesToBanAnAddressThatWouldCutTheMachineOff(t *testing.T) {
+	script := filepath.Clean("../../deploy/vayushield-agent.sh")
+	b, err := os.ReadFile(script)
+	if err != nil {
+		t.Skipf("not readable: %v", err)
+	}
+	fn := extractShellFunc(string(b), "bannable_addr")
+	if fn == "" {
+		t.Fatal("bannable_addr() is gone from the agent")
+	}
+	harness := filepath.Join(t.TempDir(), "h.sh")
+	src := "#!/usr/bin/env bash\n" + fn + `
+for ip in 127.0.0.1 127.0.0.53 ::1 0.0.0.0 :: 203.0.113.9 10.1.2.3 2001:db8::1; do
+  if bannable_addr "$ip"; then echo "ALLOW $ip"; else echo "REFUSE $ip"; fi
+done
+`
+	if err := os.WriteFile(harness, []byte(src), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("bash", harness).CombinedOutput()
+	if err != nil {
+		t.Fatalf("harness: %v\n%s", err, out)
+	}
+	got := string(out)
+	for _, want := range []string{
+		"REFUSE 127.0.0.1", "REFUSE 127.0.0.53", "REFUSE ::1", "REFUSE 0.0.0.0", "REFUSE ::",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected %q — banning it drops the machine's traffic to itself\ngot:\n%s", want, got)
+		}
+	}
+	// And it must not have become a blanket refusal.
+	for _, want := range []string{"ALLOW 203.0.113.9", "ALLOW 10.1.2.3", "ALLOW 2001:db8::1"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected %q; the guard is refusing addresses it should ban\ngot:\n%s", want, got)
+		}
+	}
 }

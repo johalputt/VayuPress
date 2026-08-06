@@ -212,10 +212,15 @@ func runReconcileBanlist(t *testing.T, banlist, failOn string) (state, reason, c
 		t.Fatal(err)
 	}
 	callLog := filepath.Join(dir, "nft.calls")
-	// `nft list table` succeeds so ensure_dyn_table is a no-op; `nft -f` records
+	// `nft list table` succeeds AND reports a table that already carries the
+	// loopback exemption, so ensure_dyn_table is a no-op. Without the exemption
+	// in this fixture the agent correctly rebuilds the table (ADR-0158), which
+	// is a second transaction and not what this test is measuring.
+	// `nft -f` records
 	// the transaction it was given and fails it when it contains failOn.
 	stub := "#!/usr/bin/env bash\n" +
-		"if [ \"$1\" = list ]; then exit 0; fi\n" +
+		"if [ \"$1\" = list ]; then echo 'table inet vayushield_dyn {'; echo '  chain input {'; " +
+		"echo '    iif \"lo\" accept'; echo '  }'; echo '}'; exit 0; fi\n" +
 		"if [ \"$1\" = -f ]; then\n" +
 		"  if [ \"$2\" = - ]; then body=\"$(cat)\"; else body=\"$(cat \"$2\")\"; fi\n" +
 		"  printf '%s\\n---\\n' \"$body\" >>\"" + callLog + "\"\n" +

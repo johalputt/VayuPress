@@ -45,8 +45,13 @@ type Exporter struct {
 	dir       string
 	entries   map[string]time.Time // ip -> expiry
 	protected map[string]time.Time // operator IPs immune from banning
-	dirty     bool
-	now       func() time.Time
+	// refused counts bans declined because the address must never be dropped
+	// in-kernel (see neverBannable). Surfaced so a real-IP misconfiguration —
+	// which makes every visitor arrive as 127.0.0.1 — is visible rather than
+	// silently swallowed.
+	refused map[string]int
+	dirty   bool
+	now     func() time.Time
 }
 
 // New builds an exporter that writes into dir (the VayuShield control
@@ -58,6 +63,7 @@ func New(dir string) *Exporter {
 		dir:       dir,
 		entries:   make(map[string]time.Time),
 		protected: make(map[string]time.Time),
+		refused:   make(map[string]int),
 		now:       time.Now,
 	}
 }
@@ -73,6 +79,44 @@ func canonical(ip string) string {
 		return ""
 	}
 	return addr.String()
+}
+
+// neverBannable reports addresses that must never reach the kernel ban set.
+//
+// # The outage this exists to prevent
+//
+// A kernel ban is a source-address drop applied by the root agent, and it runs
+// in a chain that sits in front of everything else on the machine. Ban the
+// loopback address and NOTHING on the host can talk to itself: nginx cannot
+// reach this application, so every visitor gets 502; a local resolver stops
+// answering, so name lookups fail; and because the rule is a DROP rather than
+// a reject, every one of those failures is a TIMEOUT rather than an error.
+// The site comes back by itself when the ban's TTL expires, minutes later,
+// leaving a running process, a clean application log and no explanation.
+//
+// This is not hypothetical for a reverse-proxied install. VayuShield keys its
+// verdicts by the resolved client address, and when the real-IP layer is not
+// configured — or a proxy is not yet trusted — every visitor arrives as
+// 127.0.0.1. One bad actor in that state jails the loopback address for the
+// whole machine. Provisioning makes it likelier still: the certificate helper
+// issues a burst of loopback pre-flight requests, one per domain, which is
+// exactly the shape the rate limiter is built to punish.
+//
+// The unspecified address is refused for the same reason: 0.0.0.0 as a source
+// match is a wildcard on some paths, and a wildcard drop is a dead machine.
+//
+// Deliberately NOT extended to private ranges. An operator running behind a
+// LAN-facing proxy may have a genuine reason to ban 10.x, and refusing that
+// would be this product overriding a decision that is theirs to make. Loopback
+// is different in kind: banning it can never be what anybody wanted.
+func neverBannable(addr netip.Addr) (bool, string) {
+	switch {
+	case addr.IsLoopback():
+		return true, "loopback"
+	case addr.IsUnspecified():
+		return true, "unspecified"
+	}
+	return false, ""
 }
 
 // Protect marks ip as an operator address: it can never be banned, and any
@@ -124,6 +168,17 @@ func (e *Exporter) Ban(ip string, ttl time.Duration) {
 	key := canonical(ip)
 	if key == "" {
 		return
+	}
+	// Never export a ban that would cut the machine off from itself. See
+	// neverBannable: a loopback drop takes nginx away from this process and
+	// every visitor gets 502 until the TTL runs out.
+	if addr, err := netip.ParseAddr(key); err == nil {
+		if refuse, why := neverBannable(addr); refuse {
+			e.mu.Lock()
+			e.refused[why]++
+			e.mu.Unlock()
+			return
+		}
 	}
 	now := e.now()
 	exp := now.Add(ttl)
@@ -220,4 +275,22 @@ func (e *Exporter) Flush() {
 		return
 	}
 	_ = os.Rename(tmp, path)
+}
+
+// RefusedBans reports bans declined because the address may never be dropped
+// in-kernel, keyed by reason ("loopback", "unspecified").
+//
+// A non-zero loopback count is a real signal, not trivia: it means the shield
+// decided a visitor was a bad actor and that visitor's resolved address was
+// this machine. Almost always that is a reverse proxy whose real-IP layer is
+// not configured, so the whole audience shares one key and one bad actor
+// convicts everybody.
+func (e *Exporter) RefusedBans() map[string]int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make(map[string]int, len(e.refused))
+	for k, v := range e.refused {
+		out[k] = v
+	}
+	return out
 }

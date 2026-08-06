@@ -175,19 +175,73 @@ clear_reason() { # $1=tier tag
 BANLIST="${CONTROL_DIR}/banlist.txt"
 DYN_TABLE="vayushield_dyn"
 
+# ensure_dyn_table creates the ban table, and REPAIRS one built without the
+# loopback exemption.
+#
+# THE OUTAGE THIS FIXES.
+#
+# This chain sits at hook priority -20. The main firewall table is at -10, so
+# this one is evaluated FIRST — and the version that shipped before this change
+# read, in its entirety:
+#
+#     ip saddr @banned4 drop
+#     ip6 saddr @banned6 drop
+#
+# with no exemption of any kind. The main table has `iif "lo" accept`; this one
+# never reached it, because a drop here is final.
+#
+# So the moment the loopback address entered the ban set, the machine stopped
+# being able to talk to itself. nginx could not reach the application, so every
+# visitor got 502. A local resolver stopped answering, so name lookups failed.
+# And because these are DROP rules rather than rejects, each of those was a
+# TIMEOUT — `curl 127.0.0.1` hanging until it gave up, which is not something
+# loopback can otherwise do. Minutes later the ban's TTL expired and the site
+# returned by itself, leaving a running process, a healthy application, an empty
+# error log and no explanation at all.
+#
+# The exemption is unconditional and first. There is no threat model in which
+# dropping a host's own loopback traffic is the desired outcome, so it is not a
+# policy decision and it is not configurable.
+#
+# The `grep` is the upgrade path, and it is the load-bearing half. An install
+# hardened before this change already HAS the old table, and the original code
+# returned early whenever the table existed — so a fix that only wrote the new
+# rules on a clean box would have reached nobody who was already broken.
 ensure_dyn_table() {
-  nft list table inet "${DYN_TABLE}" >/dev/null 2>&1 && return 0
+  if nft list table inet "${DYN_TABLE}" >/dev/null 2>&1; then
+    if nft list table inet "${DYN_TABLE}" 2>/dev/null | grep -q 'iif "lo" accept'; then
+      return 0
+    fi
+    # Rebuild. Live bans are lost, which is the right trade: they are re-added
+    # from banlist.txt on the next reconcile, seconds later, and a table that
+    # can drop loopback must not survive one more poll.
+    nft delete table inet "${DYN_TABLE}" 2>/dev/null || true
+  fi
   nft -f - <<EOF 2>/dev/null
 table inet ${DYN_TABLE} {
   set banned4 { type ipv4_addr; flags timeout; }
   set banned6 { type ipv6_addr; flags timeout; }
   chain input {
     type filter hook input priority -20; policy accept;
+    iif "lo" accept
     ip saddr @banned4 drop
     ip6 saddr @banned6 drop
   }
 }
 EOF
+}
+
+# bannable_addr rejects addresses that must never be dropped in-kernel.
+#
+# The second layer. The chain above means a loopback entry can no longer take
+# the machine down, but an entry that cannot possibly be wanted should not be
+# installed at all — and this agent revalidates every line rather than trusting
+# the file, precisely so a bad entry upstream cannot become a kernel rule.
+bannable_addr() { # $1 = already-validated address
+  case "$1" in
+    127.*|::1|0.0.0.0|::) return 1 ;;
+  esac
+  return 0
 }
 
 remove_dyn_table() {
@@ -302,7 +356,7 @@ reconcile_banlist() {
   # jailed visitor solved the challenge), not just additions.
   printf 'flush set inet %s banned4\nflush set inet %s banned6\n' "$DYN_TABLE" "$DYN_TABLE" >"$flushonly"
   cat "$flushonly" >>"$batch"
-  local skipped=0
+  local skipped=0 refused=0
   if [ -f "$BANLIST" ]; then
     # Field 1 is PARSED as an address (see valid_ip4/valid_ip6 above), field 2
     # must be only digits. Parsing rather than character-filtering is what keeps
@@ -317,10 +371,12 @@ reconcile_banlist() {
       case "$ip" in
         *:*)
           valid_ip6 "$ip" || { skipped=$((skipped + 1)); continue; }
+          bannable_addr "$ip" || { refused=$((refused + 1)); continue; }
           printf 'add element inet %s banned6 { %s timeout %ss }\n' "$DYN_TABLE" "$ip" "$ttl" >>"$batch"
           ;;
         *)
           valid_ip4 "$ip" || { skipped=$((skipped + 1)); continue; }
+          bannable_addr "$ip" || { refused=$((refused + 1)); continue; }
           printf 'add element inet %s banned4 { %s timeout %ss }\n' "$DYN_TABLE" "$ip" "$ttl" >>"$batch"
           ;;
       esac
@@ -408,6 +464,14 @@ reconcile_banlist() {
     # a banlist the app is writing and the agent is silently discarding is worth
     # a line in the log rather than nothing at all.
     printf 'skipped %s unparseable banlist line(s)\n' "$skipped" >>"${CONTROL_DIR}/offload.log" 2>/dev/null || true
+  fi
+  if [ "$refused" -gt 0 ]; then
+    # Loud, because a loopback ban means the shield convicted this machine of
+    # being its own attacker — almost always a reverse proxy whose real-IP layer
+    # is not configured, so every visitor shares one address.
+    printf 'refused %s ban(s) on an address that must never be dropped (loopback/unspecified)\n' \
+      "$refused" >>"${CONTROL_DIR}/offload.log" 2>/dev/null || true
+    printf '%s' "$refused" >"${CONTROL_DIR}/bans_refused" 2>/dev/null || true
   fi
   printf '%s' "$count" >"${CONTROL_DIR}/offload.count" 2>/dev/null || true
   rm -f "$batch" "$xdp_new" "$flushonly"
