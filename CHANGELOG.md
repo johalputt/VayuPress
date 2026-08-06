@@ -10,6 +10,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Sanitised SVG could still phone home through a `style` attribute.** Found by
+  the adversarial pass, attacking `SanitizeSVG`'s own contract — the sentence
+  promising that no off-site resource is fetched and the reader's IP never
+  leaks. The sanitiser stripped `<style>` **elements**; a `style=` **attribute**
+  is not an element, so `style="fill:url(https://tracker.example/p.png)"`
+  survived. The stored file was clean of script, clean of off-site `href`, and
+  still announced every reader's IP, User-Agent and referrer to a third party
+  the moment the image rendered — on a product that ships a Tor Space.
+
+  Every CSS `url()` that is not a local `#fragment` is now removed. Fragment
+  references are kept because they are how SVG works: `fill:url(#gradient)` is
+  the normal case, and breaking it would make the sanitiser useless rather than
+  safe. Four existing tests hold that line.
+
+  This applies to Diagram and HTML blocks too, which have used this sanitiser
+  since v3.14.1 — the hole predates the SVG upload work and was found because
+  that work put weight on the contract.
+
 - **`upload_media` over MCP.** The media library was readable from the
   connector and not writable — `list_media` existed, and its own comment said
   uploading was "a later increment (binary transfer over MCP needs care)". A

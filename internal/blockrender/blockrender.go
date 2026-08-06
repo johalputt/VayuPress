@@ -296,6 +296,21 @@ var (
 	svgForeignRe = regexp.MustCompile(`(?is)<foreignobject.*?</foreignobject\s*>`)
 	svgOnAttrRe  = regexp.MustCompile(`(?is)\son[a-z0-9_-]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
 	svgHrefRe    = regexp.MustCompile(`(?is)\s(?:xlink:)?href\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
+	// CSS url() references, wherever they appear — and the reason this is
+	// separate from svgStyleRe above. That one removes <style> ELEMENTS. A
+	// style= ATTRIBUTE is not an element, and `style="fill:url(https://x/)"`
+	// sailed straight through it: the file stored clean of script, clean of
+	// off-site href, and still announced every reader's IP, User-Agent and
+	// referrer to a third party the moment the image rendered.
+	//
+	// Found by attacking this function's own contract, which says no off-site
+	// resource is fetched and the reader's IP never leaks. It said that while
+	// this hole was open, on a product that ships a Tor Space.
+	//
+	// Local fragment references are kept, because they are how SVG works —
+	// fill:url(#gradient) is the normal case and breaking it would make the
+	// sanitiser useless rather than safe.
+	svgCSSURLRe  = regexp.MustCompile(`(?is)url\(\s*("[^"]*"|'[^']*'|[^)]*)\)`)
 	svgJSProtoRe = regexp.MustCompile(`(?is)(javascript|vbscript|data\s*:\s*text/html)\s*:`)
 )
 
@@ -322,6 +337,18 @@ func SanitizeSVG(src string) (string, bool) {
 	src = svgStyleRe.ReplaceAllString(src, "")
 	src = svgForeignRe.ReplaceAllString(src, "")
 	src = svgOnAttrRe.ReplaceAllString(src, "")
+	// Drop every CSS url() that is not a local #fragment. Runs before the href
+	// pass so a url() inside a style attribute is gone regardless of what the
+	// href rule does or does not consider its business.
+	src = svgCSSURLRe.ReplaceAllStringFunc(src, func(m string) string {
+		inner := m[strings.IndexByte(m, '(')+1 : len(m)-1]
+		inner = strings.TrimSpace(inner)
+		inner = strings.Trim(inner, `"'`)
+		if strings.HasPrefix(inner, "#") {
+			return m
+		}
+		return "none"
+	})
 	// Drop every href/xlink:href that is not a local #fragment (gradient/marker
 	// refs stay; off-site <image>/<use>/<a> targets are removed).
 	src = svgHrefRe.ReplaceAllStringFunc(src, func(m string) string {

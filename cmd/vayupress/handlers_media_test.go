@@ -226,3 +226,48 @@ func TestUploadSizeBoundsAreNotEvadable(t *testing.T) {
 			"directory.", len(big))
 	}
 }
+
+// The claim under attack: "no off-site resource is fetched and the reader's IP
+// never leaks" — SanitizeSVG's own words, which step 1 relied on when it started
+// storing SVG uploads.
+//
+// href and xlink:href are handled. The question is whether anything ELSE in SVG
+// can name a remote URL. CSS can: url() inside a style ATTRIBUTE is not a
+// <style> ELEMENT, and it is the element the sanitiser strips. If that survives,
+// every reader who opens the image announces themselves to a third party — which
+// is precisely the leak the sanitiser says it prevents, on a product that ships
+// a Tor Space.
+func TestSanitisedSVGCannotReachOffOrigin(t *testing.T) {
+	dir := t.TempDir()
+	oldDir := config.Cfg.MediaDir
+	config.Cfg.MediaDir = dir
+	t.Cleanup(func() { config.Cfg.MediaDir = oldDir })
+
+	vectors := map[string]string{
+		"style attribute url()": `<rect width="10" height="10" style="fill:url(https://leak.example/a.png)"/>`,
+		"style attr background": `<rect width="10" height="10" style="background-image:url('https://leak.example/b.png')"/>`,
+		"use element":           `<use href="https://leak.example/c.svg#x"/>`,
+		"image xlink":           `<image xlink:href="https://leak.example/d.png"/>`,
+		"feImage filter":        `<filter id="f"><feImage href="https://leak.example/e.png"/></filter>`,
+		"pattern with image":    `<pattern id="p"><image href="https://leak.example/f.png"/></pattern>`,
+	}
+
+	for name, body := range vectors {
+		raw := []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">` + body + `</svg>`)
+		got, err := storeValidatedMedia(raw, true)
+		if err != nil {
+			continue // refused outright is a fine outcome
+		}
+		onDisk, rerr := os.ReadFile(filepath.Join(dir, got.Name))
+		if rerr != nil {
+			t.Fatalf("%s: read stored: %v", name, rerr)
+		}
+		if strings.Contains(strings.ToLower(string(onDisk)), "leak.example") {
+			t.Errorf("%s: the stored SVG still names an off-origin host.\n%s\n"+
+				"Every reader who opens this image reports their IP, User-Agent and referrer to "+
+				"that host. The sanitiser's contract says no off-site resource is fetched, and "+
+				"step 1 stored SVG uploads on the strength of that sentence.",
+				name, strings.TrimSpace(string(onDisk)))
+		}
+	}
+}
