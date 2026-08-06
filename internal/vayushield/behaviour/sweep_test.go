@@ -268,3 +268,145 @@ func TestSweepScoringStaysWithinTheBudget(t *testing.T) {
 			"keeps this from reaching a block on heuristics alone", delta, MaxDelta)
 	}
 }
+
+// ── adversarial pass ─────────────────────────────────────────────────────────
+
+// The attack the "baseline only climbs" decision created.
+//
+// I made the baseline monotonic so an attacker could not drag it down and
+// switch the detector off. That closed one door and opened a worse one: if the
+// baseline only ever rises, an attacker who INFLATES it poisons the install
+// permanently.
+//
+// The move is cheap. Send a burst of asset requests — stylesheets, images,
+// anything the origin serves — alongside enough documents to clear the sample
+// gate. The baseline records that window as this site's "healthy" ratio. Now
+// stop. Ordinary traffic at six assets per document sits below a quarter of the
+// poisoned baseline, so the install reports itself as permanently sweeping, the
+// sample floor stays at three forever, and every reader with a warm cache who
+// opens three articles gets a puzzle. It never recovers, because the baseline
+// never decays. I have turned the operator's own defence into the outage.
+func TestAnInflatedBaselineCannotPoisonTheDetector(t *testing.T) {
+	tr, clock := trackerAt(time.Unix(1_700_000_000, 0))
+
+	// The poisoning window: 400 documents and 40 assets each.
+	for i := 0; i < 400; i++ {
+		key := fmt.Sprintf("attacker-%d", i)
+		tr.Observe(key, fmt.Sprintf("/doc-%d", i), 200)
+		for a := 0; a < 40; a++ {
+			tr.Observe(key, fmt.Sprintf("/assets/%d-%d.css", i, a), 200)
+		}
+	}
+	*clock = clock.Add(sweepWindowSec * time.Second)
+	tr.Observe("tick", "/", 200)
+
+	// Now entirely ordinary traffic: six sub-resources per page, the profile of
+	// a real site with real readers.
+	for i := 0; i < 400; i++ {
+		key := fmt.Sprintf("reader-%d", i)
+		tr.Observe(key, fmt.Sprintf("/article-%d", i), 200)
+		for a := 0; a < 6; a++ {
+			tr.Observe(key, fmt.Sprintf("/assets/a-%d-%d.css", i, a), 200)
+		}
+	}
+	*clock = clock.Add(sweepWindowSec * time.Second)
+	tr.Observe("tick", "/", 200)
+
+	if tr.Sweeping() {
+		t.Errorf("a site serving six sub-resources per document is reported as sweeping, "+
+			"because a burst of asset requests inflated the baseline to %.1f and a quarter of "+
+			"that is more than any honest ratio.\n"+
+			"Every warm-cache reader opening three pages now gets a puzzle, permanently, "+
+			"because the baseline never decays. The monotonic baseline closed one attack and "+
+			"opened this one: a site actually serving its assets is not sweeping, whatever "+
+			"number the baseline happens to hold.", tr.SiteBaselineAssetRatio())
+	}
+}
+
+// Isolates the absolute ceiling. The baseline here is inside the cap, so the
+// cap cannot be what saves this site — only the ceiling can.
+//
+// This test exists because removing the ceiling killed nothing: the poisoning
+// test was being rescued by the baseline cap instead, so both mutations passed
+// and neither control was actually under test. A suite that cannot say WHICH
+// guard is holding is not testing either of them.
+func TestTheAbsoluteCeilingAloneStopsAPoisonedBaseline(t *testing.T) {
+	tr, clock := trackerAt(time.Unix(1_700_000_000, 0))
+
+	// Baseline of 10 assets per document — high, plausible, and under the cap.
+	for i := 0; i < 400; i++ {
+		key := fmt.Sprintf("rich-%d", i)
+		tr.Observe(key, fmt.Sprintf("/doc-%d", i), 200)
+		for a := 0; a < 10; a++ {
+			tr.Observe(key, fmt.Sprintf("/assets/%d-%d.css", i, a), 200)
+		}
+	}
+	*clock = clock.Add(sweepWindowSec * time.Second)
+	tr.Observe("tick", "/", 200)
+	if base := tr.SiteBaselineAssetRatio(); base >= maxBaselineAssetRatio {
+		t.Fatalf("precondition: baseline %.1f reached the cap, so this test would be "+
+			"measuring the cap rather than the ceiling", base)
+	}
+
+	// Ordinary traffic at 2 sub-resources per document. A quarter of 10 is 2.5,
+	// so the RELATIVE test says this collapsed. It did not — a site serving two
+	// assets per page is serving its assets.
+	for i := 0; i < 400; i++ {
+		key := fmt.Sprintf("reader-%d", i)
+		tr.Observe(key, fmt.Sprintf("/article-%d", i), 200)
+		tr.Observe(key, fmt.Sprintf("/assets/a-%d.css", i), 200)
+		tr.Observe(key, fmt.Sprintf("/assets/b-%d.js", i), 200)
+	}
+	*clock = clock.Add(sweepWindowSec * time.Second)
+	tr.Observe("tick", "/", 200)
+
+	if tr.Sweeping() {
+		t.Error("a site serving 2 sub-resources per document was reported as sweeping because " +
+			"its baseline happened to be 10. The relative test alone cannot tell a quieter " +
+			"day from a corpus sweep; the absolute ceiling is what says 'this is still a site " +
+			"serving its assets'.")
+	}
+}
+
+// Isolates the relative test. Here the absolute ceiling would fire on its own
+// and must not, because this install's own baseline says the ratio is normal
+// for it.
+func TestTheRelativeTestStillMattersOnALowAssetSite(t *testing.T) {
+	tr, clock := trackerAt(time.Unix(1_700_000_000, 0))
+
+	// A site that genuinely runs at ~1 asset per document: mostly text, one
+	// stylesheet, everything else at the edge.
+	for round := 0; round < 2; round++ {
+		for i := 0; i < 400; i++ {
+			key := fmt.Sprintf("reader-%d-%d", round, i)
+			tr.Observe(key, fmt.Sprintf("/article-%d-%d", round, i), 200)
+			tr.Observe(key, fmt.Sprintf("/assets/site-%d-%d.css", round, i), 200)
+		}
+		*clock = clock.Add(sweepWindowSec * time.Second)
+		tr.Observe("tick", "/", 200)
+	}
+	base := tr.SiteBaselineAssetRatio()
+	if base < minBaselineAssetRatio {
+		t.Fatalf("precondition: baseline %.2f is below the arming floor", base)
+	}
+
+	// A window at 0.45 assets per document — under the absolute ceiling of 0.5,
+	// but well ABOVE a quarter of this site's own baseline, so nothing has
+	// collapsed. Only the relative test knows that.
+	for i := 0; i < 400; i++ {
+		key := fmt.Sprintf("later-%d", i)
+		tr.Observe(key, fmt.Sprintf("/late-%d", i), 200)
+		if i%100 < 45 {
+			tr.Observe(key, fmt.Sprintf("/assets/late-%d.css", i), 200)
+		}
+	}
+	*clock = clock.Add(sweepWindowSec * time.Second)
+	tr.Observe("tick", "/", 200)
+
+	if tr.Sweeping() {
+		t.Errorf("a site whose baseline is %.2f was reported as sweeping at 0.45 assets per "+
+			"document. That is above a quarter of its own baseline, so nothing collapsed — "+
+			"the absolute ceiling on its own would challenge readers on every text-heavy "+
+			"site in the world.", base)
+	}
+}

@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.19] — 2026-08-06
 
 ### Added
 
@@ -51,11 +51,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   own. A client reloading one page is still not a crawler, during a sweep or
   outside one.
 
+- **A poisoned baseline cannot turn the detector into an outage.** Found by the
+  adversarial pass over this release, on the fix itself. Making the baseline
+  monotonic stopped an attacker dragging it down to disable detection — and
+  opened a worse door: a burst of asset requests writes an absurd "healthy"
+  ratio that never decays, a quarter of an absurd number exceeds any honest
+  ratio, and the install then reports itself as permanently sweeping during
+  entirely ordinary traffic. Every warm-cache reader would get a puzzle, for as
+  long as the process ran. A window is now only a sweep if it has collapsed
+  relative to this install's own history **and** is low in absolute terms — a
+  site serving two sub-resources per document is serving its assets, whatever
+  number the baseline holds.
+
 - **The posture report and `vayushield_status` say which of the three states
   the detector is in** — firing, armed and quiet, or dormant because this origin
   does not serve its own assets. "Not sweeping" and "cannot tell" are different
   answers and the panel now distinguishes them rather than implying a protection
   that is not running.
+
+### Audit note
+
+The adversarial pass gating this release attacked the sweep detector itself,
+which is the whole of what this version adds. It found one issue and it was a
+defect in the fix rather than in the old code: the monotonic baseline added to
+resist being dragged down could instead be inflated, permanently converting
+ordinary traffic into a site-wide challenge. Fixed above, before the bump.
+
+Two things are recorded rather than claimed. The baseline cap is not
+independently proven — the absolute ceiling subsumes it, so removing the cap
+fails no test; it stays because bounding a number an attacker influences is
+cheap. And two earlier mutations survived their first run because each control
+alone satisfied the test, so neither was actually under test; the suite now
+isolates them and both mutations kill.
 
 ## [3.17.18] — 2026-08-06
 

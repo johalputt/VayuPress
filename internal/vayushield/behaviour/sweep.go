@@ -76,6 +76,32 @@ const (
 	// warming is a signal operators turn off.
 	collapseFraction = 0.25
 
+	// absoluteSweepCeiling is the sanity check the relative test cannot provide.
+	// A window serving at least this many sub-resources per document is a site
+	// serving its own assets, and that is not what a corpus sweep looks like
+	// from above — a sweep's ratio sits at or near zero because fetching the
+	// stylesheet is pure cost to it.
+	//
+	// It exists because the relative test alone is poisonable. The baseline only
+	// climbs, so an attacker who sends a burst of asset requests writes an
+	// absurd "healthy" ratio into it that never decays; a quarter of that absurd
+	// number is larger than any honest ratio, and the install then reports
+	// itself as permanently sweeping during entirely ordinary traffic. Every
+	// warm-cache reader gets a puzzle, forever, and the operator's own defence
+	// has become the outage. Both tests must agree before anything fires.
+	absoluteSweepCeiling = 0.5
+
+	// maxBaselineAssetRatio caps what the baseline will record. Defence in depth
+	// for the same attack: even with the ceiling above, an unbounded monotonic
+	// counter is a number an attacker chooses, and no honest site needs a
+	// baseline beyond this to detect its own collapse.
+	//
+	// Not independently proven, and said plainly rather than left to look
+	// tested: the ceiling subsumes it, so removing this cap fails nothing. It is
+	// here because bounding an attacker-influenced counter is cheap and the
+	// alternative is trusting that the one control above never has a gap.
+	maxBaselineAssetRatio = 12.0
+
 	// sweepSampleFloor is the sample size the document-without-assets signal
 	// drops to while a sweep is in progress. Three, because the sweep that
 	// prompted this averaged three pageviews per visitor — below that there is
@@ -133,7 +159,11 @@ func (t *Tracker) closeSiteWindow() {
 	}
 
 	ratio := float64(assets) / float64(docs)
-	perMille := uint32(ratio * 1000)
+	recorded := ratio
+	if recorded > maxBaselineAssetRatio {
+		recorded = maxBaselineAssetRatio
+	}
+	perMille := uint32(recorded * 1000)
 
 	// The baseline only climbs.
 	for {
@@ -153,7 +183,12 @@ func (t *Tracker) closeSiteWindow() {
 		t.site.sweeping.Store(false)
 		return
 	}
-	t.site.sweeping.Store(ratio < base*collapseFraction)
+	// Both tests, not either: the ratio has to have collapsed relative to this
+	// install's own history AND be low enough in absolute terms to be a sweep at
+	// all. The relative test is what makes this work on sites with different
+	// asset profiles; the absolute one is what stops a poisoned baseline turning
+	// ordinary traffic into a permanent alarm.
+	t.site.sweeping.Store(ratio < base*collapseFraction && ratio < absoluteSweepCeiling)
 }
 
 // Sweeping reports whether the population currently looks like a corpus sweep
