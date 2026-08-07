@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/auth"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
 	"github.com/johalputt/vayupress/internal/logging"
@@ -180,16 +181,42 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// clientIPForContact extracts a best-effort client IP for rate-limiting,
-// honouring X-Forwarded-For's first hop and falling back to RemoteAddr.
+// clientIPForContact returns the client IP used to key the public rate limiters
+// and to name the actor in the audit log.
+//
+// AUDIT FINDING (Section 1). This function used to read the raw
+// X-Forwarded-For header and return its LEFTMOST element with no trusted-proxy
+// check — ignoring r.RemoteAddr, which realIPMiddleware has already replaced
+// with the correctly resolved auth.ClientIP. The shipped nginx templates set
+// `$proxy_add_x_forwarded_for`, which APPENDS the real peer to whatever the
+// client sent, so the leftmost element was entirely attacker-chosen behind the
+// proxy and equally so on a direct-bind install. A fresh header per request
+// minted a fresh budget every time, which is not a rate limit.
+//
+// Two harms, and the second is the one worth naming. Every limiter keyed on this
+// stopped bounding anything — including deviceResetByIP, the ONLY budget on
+// /api/v1/members/vayumail-device-reset, past which the server runs Argon2id
+// over up to twenty stored credentials per request. And the value went straight
+// into the WORM audit log as the actor ("public:"+ip, "device:"+ip), never
+// validated, so an arbitrary string could be written into the actor column. The
+// hazard is documented in as many words on AuditActor (internal/db/db.go): "An
+// audit trail an attacker can author is worse than none: it does not merely fail
+// to record them, it records someone else." That fix landed there and not here.
+//
+// The resolver it should always have called refuses forwarding headers unless
+// the immediate peer is a configured trusted proxy. Reading r.RemoteAddr is
+// equivalent and cheaper, since the middleware already normalised it — the same
+// thing loginClientIP has always done — but auth.ClientIP is called directly so
+// this stays correct if the handler is ever reached without that middleware.
 func clientIPForContact(r *http.Request) string {
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		return strings.TrimSpace(strings.Split(fwd, ",")[0])
+	ip := auth.ClientIP(r)
+	// A key that is not an address is a key an attacker chose. Nothing downstream
+	// parses it — not the limiter, not the audit log, not the recovery email the
+	// victim reads — so validating here is the only place it happens.
+	if net.ParseIP(ip) == nil {
+		return "unknown"
 	}
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
-	}
-	return r.RemoteAddr
+	return ip
 }
 
 // contactPageRef records which page the message was sent from, for the admin

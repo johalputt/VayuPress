@@ -105,6 +105,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   the budget would become the member-enumeration oracle that endpoint exists to
   avoid.
 
+- **The public rate-limit key and the audit actor were both chosen by the
+  caller.** Section 1. `clientIPForContact` read the raw `X-Forwarded-For`
+  header and returned its **leftmost** element with no trusted-proxy check,
+  ignoring the `r.RemoteAddr` that `realIPMiddleware` had already resolved
+  correctly. The shipped nginx templates use `$proxy_add_x_forwarded_for`, which
+  **appends** the real peer to whatever the client sent, so leftmost was
+  attacker-chosen behind the proxy and on a direct-bind install alike — a fresh
+  header per request minted a fresh budget every time. Every limiter keyed on it
+  bounded nothing: the contact form, all three `/mail/recover` paths, and
+  `deviceResetByIP`, which is the only budget in front of up to twenty
+  sequential Argon2id derivations on `/api/v1/members/vayumail-device-reset`.
+
+  Worse, that string was written into the WORM audit log as the actor
+  (`public:<ip>`, `device:<ip>`) with no validation, so an arbitrary value could
+  be recorded as who did it — the hazard `AuditActor` documents in as many words
+  ("*an audit trail an attacker can author is worse than none: it does not
+  merely fail to record them, it records someone else*"), fixed there and never
+  here. It was also interpolated into the recovery email the victim reads.
+
+  The resolver now calls `auth.ClientIP` (forwarding headers honoured only from
+  a configured trusted proxy) and refuses anything `net.ParseIP` rejects.
+  `handleMailDeviceReset` gains `deviceResetByAddress` (3/hour), the axis a
+  distributed caller cannot sidestep by bringing more source addresses.
+
 - **Argon2id work is now bounded process-wide** (`internal/auth/argon_ceiling.go`).
   Every derivation is 64 MiB and every core, and the anti-enumeration decoy
   forces a full run even for addresses that do not exist — so a failing

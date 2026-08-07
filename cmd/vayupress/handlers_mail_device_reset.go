@@ -33,6 +33,18 @@ import (
 // legitimate sign-ins out of their own budget.
 var deviceResetByIP = newIngestLimiter(10, time.Hour)
 
+// deviceResetByAddress bounds the SAME endpoint by the mailbox being attacked.
+//
+// AUDIT FINDING (Section 1). deviceResetByIP was the only budget here, and past
+// it VerifyApprovedDevice runs auth.VerifySecretArgon2id over every approved
+// credential for the address — up to twenty sequential 64 MiB derivations for
+// one unauthenticated request. While the IP key was spoofable that bound nothing
+// at all; even now it is the wrong axis on its own, because a distributed caller
+// simply brings more sources. Keyed on the submitted address, this one holds
+// however many hosts the caller has, and it is the axis the sibling recovery
+// flow already uses (recoveryByAddress, same 3/hour).
+var deviceResetByAddress = newIngestLimiter(3, time.Hour)
+
 // handleMailDeviceReset lets an enrolled device set a new mailbox password.
 //
 // POST /api/v1/members/vayumail-device-reset
@@ -64,7 +76,7 @@ func (a *App) handleMailDeviceReset(w http.ResponseWriter, r *http.Request) {
 			"That mailbox and app password were not accepted.", "")
 	}
 
-	if !deviceResetByIP.allow(ip) {
+	if !deviceResetByIP.allow(ip) || !deviceResetByAddress.allow(addr) {
 		deny("rate-limited")
 		return
 	}
