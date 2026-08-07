@@ -51,6 +51,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `.Junk` directories on an existing install keep their casing. A test fails if
   a folder name is ever routed through the fold.
 
+- **Mail already stranded by the case defect is recovered on the next boot.**
+  Folding the path stops new losses and rescues nothing: an install that
+  received a display-cased `RCPT` before the fix still has those messages in a
+  directory nobody reads. It also left one real regression — a holder who both
+  received mail as `Alice@…` and signed in as `Alice@…` could see it before the
+  fold and would read the lowercase directory after.
+
+  `ReconcileCaseVariants` merges every case-variant account and domain
+  directory into its canonical form at engine start. It is a no-op on a clean
+  store and safe to run every boot. The constraints, in the order they were
+  designed, because this moves somebody's mail: messages are **moved** with
+  `os.Rename`, never copied-then-deleted; a name clash gets a fresh name rather
+  than an overwrite; the source directory is pruned of **empty** directories
+  only, never `RemoveAll`, so a message whose move failed survives for the next
+  boot to retry; and grouping uses the same fold `safeSegment` applies, within
+  one already-canonical domain, so two different people can never be merged.
+  A failure is logged and never fatal — a mail server refusing to start because
+  a repair hit one unreadable file is worse than the defect it repairs.
+
 - **The Section 1 brute-force fix reached one endpoint of two.** Section 2, and
   a gap in this project's own previous remediation.
   `/api/v1/members/vayumail-device-register` accepts the **raw mailbox

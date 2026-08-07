@@ -19,6 +19,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/logging"
 )
 
 // Engine is the VayuMail runtime: DKIM signer + outbound queue + Maildir store,
@@ -578,6 +580,17 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.dkim = dk
 	e.maildir = NewMaildir(e.cfg.StorageDir + "/maildir")
+	// Recover mail stranded by the address-case defect before any listener opens
+	// (Section 2 audit). Runs on every boot: it is a no-op on a clean store, and
+	// on an install that received a display-cased RCPT it moves those messages
+	// into the directory their owner actually reads. Reported, never fatal — a
+	// mail server that refuses to start because a repair hit one unreadable file
+	// is worse than the defect it is repairing.
+	if n, err := e.maildir.ReconcileCaseVariants(); err != nil {
+		logging.LogError("vayumail", "maildir case reconciliation incomplete", err.Error())
+	} else if n > 0 {
+		logging.LogInfo("vayumail", fmt.Sprintf("recovered %d mailbox director(ies) stranded by address case", n))
+	}
 	// Outbound transport: an authenticated smarthost relay when configured
 	// (the relay's IP reputation carries deliverability), otherwise sovereign
 	// direct-to-MX. DKIM signing happens before the queue either way.
