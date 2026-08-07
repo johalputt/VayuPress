@@ -100,10 +100,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `auth.ClientIP` (one host grinding many mailboxes), `mailAuthThrottle` keyed
   on the address (many hosts grinding one), and carries
   `auth.PublicDiscoveryRateLimit` on its route. The magic-link endpoint gains
-  `memberLoginByAddress` (3/hour) and `memberLoginByIP` (10/hour), mirroring the
-  recovery flow; a refused request answers **identically** to a served one, or
-  the budget would become the member-enumeration oracle that endpoint exists to
-  avoid.
+  `memberLoginByAddress` (3/hour) and `memberLoginByIP` (60/hour); a refused
+  request answers **identically** to a served one, or the budget would become
+  the member-enumeration oracle that endpoint exists to avoid.
+
+  Two deliberate choices, both because a control that rations real people is its
+  own outage. The webmail lockout counter is namespaced (`portal:<ip>`) rather
+  than sharing `authFailBuckets` with `RequireAPIKey` and `/os/login` — without
+  that, five failed sign-ins would lock a source out of the REST API for an
+  hour, and behind a CDN, where every reader arrives on the edge address, five
+  typos from a stranger would take the whole audience's webmail, API and console
+  access with them. And `memberLoginByIP` is deliberately loose for the same
+  reason: on a CDN install, or in a Tor Space where every reader is `127.0.0.1`,
+  that key is the entire readership. The per-**address** budget is the limb that
+  closes the finding, and it is never pooled.
+
+- **An author could rewrite or destroy any post on the install, including a
+  hosted customer's.** Section 1. `handleOSEditorSave` reaches
+  `articles.Update`, which calls the explicitly **unscoped** `Repo.Get`, and
+  `handleOSPostDelete` ran `DELETE FROM articles WHERE slug=?` — neither
+  consulted `author_id` or `domain_id`. Both routes sit under `authorAPIAreas`,
+  so author level reaches them, and the Posts manager already lists every hosted
+  customer's articles to an author, so discovery was not even blind. One author
+  account could silently replace or permanently delete every post on the install
+  and on every hosted domain, comments included, live the moment the caches
+  purged — with no snapshot to restore from, since `versions.Store.Save` has no
+  non-test call site. The console documents `accessAuthor` as "author — own
+  content".
+
+  The mechanism: `articleWriteRefusal` (`cmd/vayupress/article_ownership.go`),
+  called before the update in `handleOSEditorSave` and before the delete in
+  `handleOSPostDelete`. Editors and administrators are unchanged — editing
+  across authors is the editor role's job. An author may write a post attributed
+  to them, and unattributed content on the **primary** domain only (imported and
+  migrated posts carry no `author_id`, and refusing those would make an author's
+  own archive uneditable). Another domain's post is refused however it is
+  attributed, and the refusal is audited.
 
 - **The public rate-limit key and the audit actor were both chosen by the
   caller.** Section 1. `clientIPForContact` read the raw `X-Forwarded-For`

@@ -73,6 +73,39 @@ func TestMailboxLoginLocksOutASourceThatKeepsGuessing(t *testing.T) {
 	}
 }
 
+// The lockout must not spill onto the other two surfaces that read the SAME
+// package-global bucket map.
+//
+// auth.CheckAuthLockout is consulted by RequireAPIKey — which fronts the entire
+// /api/v1 key group — and by /os/login. Keying webmail failures on the bare
+// address would mean five wrong passwords here lock that source out of the REST
+// API for an hour, and a stale API key failing five times locks the same source
+// out of webmail. On an install behind a CDN, where the real visitor address
+// does not resolve, every reader shares the edge address: five failures from
+// anyone, anywhere, would lock the whole audience out of all three surfaces.
+//
+// This is the mutation-killer for the "portal:" prefix, and it was added because
+// removing that prefix passed every other test in this file.
+func TestMailboxLoginLockoutDoesNotSpillOntoTheAPIOrTheConsole(t *testing.T) {
+	a := credentialFloodApp(t)
+	const ip = "198.51.100.46"
+
+	for i := 0; i < 12; i++ {
+		postVayuMailLogin(t, a, ip, "boss@example.com", "wrong")
+	}
+	if locked, _ := auth.CheckAuthLockout("portal:" + ip); !locked {
+		t.Fatal("twelve wrong passwords did not lock the portal surface, so the rest of this " +
+			"test proves nothing")
+	}
+	if locked, until := auth.CheckAuthLockout(ip); locked {
+		t.Errorf("failed WEBMAIL sign-ins locked the bare address until %s.\n\n"+
+			"That bucket is read by RequireAPIKey for the whole /api/v1 key group and by "+
+			"/os/login. Behind a CDN every reader shares one address, so five typos from a "+
+			"stranger take the operator's API integrations and console login down with them.",
+			until.Format("15:04:05"))
+	}
+}
+
 // The control, and it matters more than the test above: an install where a
 // wrong password once locks the mailbox out is worse than the flood. The
 // lockout is keyed on the SOURCE, so a second person on a different address
@@ -159,16 +192,24 @@ func TestMagicLinkFloodIsBoundedPerSource(t *testing.T) {
 
 	// One host walking a list. The per-address budget never fires — every address
 	// is fresh — so only the per-source budget can stop this.
+	//
+	// The count is well above the budget on purpose. That budget is deliberately
+	// generous (see memberLoginByIP): on an install behind a CDN, or in a Tor
+	// Space where every reader arrives as 127.0.0.1, this key is the whole
+	// audience, and a tight per-source limit would silently ration real people.
+	// What has to hold is that walking a list terminates — not that it terminates
+	// on the tenth address.
+	const walk = 200
 	issued := 0
-	for i := 0; i < 30; i++ {
+	for i := 0; i < walk; i++ {
 		addr := "target" + strconv.Itoa(i) + "@elsewhere.test"
 		postMemberLogin(t, a, ip, addr)
 		issued += countLoginTokens(t, a, addr)
 	}
-	if issued > 15 {
+	if issued >= walk {
 		t.Errorf("one source made this install send %d unsolicited messages to %d different "+
-			"addresses.\n\nThat is the operator's domain doing the sending, and the fastest "+
-			"available route to having it blocklisted.", issued, 30)
+			"addresses, refusing none of them.\n\nThat is the operator's domain doing the "+
+			"sending, and the fastest available route to having it blocklisted.", issued, walk)
 	}
 }
 

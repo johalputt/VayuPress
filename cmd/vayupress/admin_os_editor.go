@@ -185,6 +185,11 @@ func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Update path (existing slug) ──────────────────────────────────────────
+	// Ownership, before anything is written. Everything above this point creates;
+	// everything below it overwrites somebody's page.
+	if a.refuseArticleWrite(w, r, slug) {
+		return
+	}
 	var titlePtr *string
 	if title != "" {
 		titlePtr = &title
@@ -460,6 +465,11 @@ func (a *App) handleOSPostDelete(w http.ResponseWriter, r *http.Request) {
 	var id, tagsCSV string
 	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT id,COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&id, &tagsCSV); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "not-found", "No post with that slug", "")
+		return
+	}
+	// Deletion is the irreversible half: there is no snapshot to restore from, and
+	// the comments go with it.
+	if a.refuseArticleWrite(w, r, slug) {
 		return
 	}
 	if _, err := dbpkg.WDB.Exec(`DELETE FROM articles WHERE slug=?`, slug); err != nil {

@@ -217,8 +217,21 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	// (internal/auth) bounds the CPU and memory either can spend, which neither
 	// of the first two does — a sleep delays a caller, it does not bound a
 	// thousand arriving together.
+	// NAMESPACED, not the bare address. auth.CheckAuthLockout reads and writes one
+	// package-global bucket map that is ALSO consulted by RequireAPIKey (which
+	// fronts the whole /api/v1 key group) and by /os/login. Sharing the raw IP key
+	// across three surfaces means five failed webmail sign-ins lock that source out
+	// of the REST API for an hour, and a stale API key failing five times locks the
+	// same source out of webmail. Worse on an install behind a CDN where the real
+	// visitor address does not resolve: every reader shares the edge address, so
+	// five failures from anyone lock the entire audience out of all three.
+	//
+	// The prefix gives this surface its own counter. The cross-surface coupling
+	// bought nothing — the per-mailbox throttle and the route limiter already do
+	// the work here.
 	clientIP := auth.ClientIP(r)
-	if locked, until := auth.CheckAuthLockout(clientIP); locked {
+	lockKey := "portal:" + clientIP
+	if locked, until := auth.CheckAuthLockout(lockKey); locked {
 		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(until).Seconds())+1))
 		writeAPIError(w, r, http.StatusTooManyRequests, "too-many-attempts",
 			"Too many sign-in attempts from this address. Try again shortly.", "")
@@ -234,7 +247,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	// the response identical regardless of whether the address exists.
 	if !auth.VerifySecretArgon2id(body.Password, hash) || hash == "" {
 		mailAuthThrottle.Fail(emailAddr)
-		auth.RecordAuthFailure(clientIP)
+		auth.RecordAuthFailure(lockKey)
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
 		return
 	}
@@ -248,7 +261,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 		}
 		if !totp.Validate(secret, code) {
 			mailAuthThrottle.Fail(emailAddr)
-			auth.RecordAuthFailure(clientIP)
+			auth.RecordAuthFailure(lockKey)
 			writeAPIError(w, r, http.StatusUnauthorized, "totp-invalid", "That code is not valid — try the current one", "")
 			return
 		}
@@ -258,7 +271,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	// counters there would hand an attacker who has the password an unlimited
 	// budget for guessing the code.
 	mailAuthThrottle.Success(emailAddr)
-	auth.RecordAuthSuccess(clientIP)
+	auth.RecordAuthSuccess(lockKey)
 
 	// Credentials good: ensure a member record exists for this address and start
 	// a session. The member's tier is whatever it already is (free by default);

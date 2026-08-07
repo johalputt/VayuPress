@@ -110,7 +110,16 @@ func (a *App) resolveCommenter(r *http.Request) *commenterIdentity {
 // sender reputation can survive.
 var (
 	memberLoginByAddress = newIngestLimiter(3, time.Hour)
-	memberLoginByIP      = newIngestLimiter(10, time.Hour)
+	// Deliberately looser than the recovery flow's per-IP budget, and the reason is
+	// worth stating. On an install behind a CDN — or in a Tor Space, where
+	// onionSafeBindAddr binds loopback and every reader arrives as 127.0.0.1 — the
+	// client address does not resolve to a person, so a per-source budget rations
+	// the whole audience rather than one caller. The eleventh reader in an hour
+	// would be told "check your inbox" and receive nothing, because the refusal is
+	// deliberately indistinguishable. Sixty an hour still makes walking a list
+	// expensive while leaving a real readership alone; the per-ADDRESS budget above
+	// is the limb that actually closes the finding, and it is not pooled.
+	memberLoginByIP = newIngestLimiter(60, time.Hour)
 )
 
 // POST /api/v1/members/login  {email}
