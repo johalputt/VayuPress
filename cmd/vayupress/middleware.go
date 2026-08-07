@@ -226,13 +226,18 @@ func writeSecureCookie(w http.ResponseWriter, c *http.Cookie) {
 // attacker to both know the value and set the cookie — which rotation on render
 // never prevented either.
 func csrfTokenFor(w http.ResponseWriter, r *http.Request) string {
+	// Bound to the caller's session (audit Section 1). A token minted for one
+	// principal is no longer acceptable for another, and it expires an hour after
+	// it was issued rather than only in the browser's cookie jar.
+	binding := ""
 	if r != nil {
-		if c, err := r.Cookie("vp_csrf"); err == nil && c.Value != "" && auth.ValidateCSRFToken(c.Value) {
+		binding = auth.CSRFBinding(r)
+		if c, err := r.Cookie("vp_csrf"); err == nil && c.Value != "" && auth.ValidateCSRFToken(c.Value, binding) {
 			setCSRFCookie(w, c.Value)
 			return c.Value
 		}
 	}
-	token := auth.GenerateCSRFToken()
+	token := auth.GenerateCSRFToken(binding)
 	if token != "" {
 		setCSRFCookie(w, token)
 	}

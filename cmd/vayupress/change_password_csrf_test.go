@@ -23,7 +23,7 @@ func TestChangePasswordPageReusesValidCSRFToken(t *testing.T) {
 			break
 		}
 	}
-	if token == "" || !auth.ValidateCSRFToken(token) {
+	if token == "" || !auth.ValidateCSRFToken(token, "") {
 		t.Fatal("first response did not issue a valid CSRF cookie")
 	}
 	if !strings.Contains(firstRec.Body.String(), `name="csrf_token" value="`+token+`"`) {

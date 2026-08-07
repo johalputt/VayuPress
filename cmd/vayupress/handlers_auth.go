@@ -120,6 +120,10 @@ func osPathMinLevel(path string) int {
 		// themselves on a schedule — a privilege-escalation bug wearing a routing
 		// mistake's clothes, which is why the ADR calls this out by name.
 		"vayuflow",
+		// "world" switches the console between the clearnet and Tor views. It
+		// matched no area and fell to the permissive author default, and it is not
+		// under /os/api/ so the fail-closed API rule never saw it either.
+		"world",
 		// Growth is the hub that fronts Members / Newsletter / Monetization /
 		// Advertising; Operations fronts Modes / Policy / Topology / Replay / Faults
 		// / ADR — both inherit their fronted pages' admin gate.

@@ -176,7 +176,7 @@ func TestTheCeilingLeavesVerificationCorrect(t *testing.T) {
 }
 
 func TestTheCeilingIsNotOne(t *testing.T) {
-	if n := ArgonConcurrencyLimit(); n < 2 {
+	if n := cap(argonSlots); n < 2 {
 		t.Errorf("ceiling = %d; a bound below 2 serialises every credential check on the "+
 			"install behind one derivation, which is an outage rather than a limit", n)
 	}

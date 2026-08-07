@@ -74,7 +74,3 @@ func withArgonSlot(fn func()) bool {
 		return false
 	}
 }
-
-// ArgonConcurrencyLimit reports the ceiling, so a posture page can state the
-// bound rather than assert that one exists.
-func ArgonConcurrencyLimit() int { return cap(argonSlots) }

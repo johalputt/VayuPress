@@ -21,7 +21,7 @@ import (
 // the customizer's live iframe depends on.
 func TestThemePreviewLiveFlow(t *testing.T) {
 	srv, key := newTestHarness(t)
-	csrf := auth.GenerateCSRFToken()
+	csrf := auth.GenerateCSRFToken("")
 
 	// 1. Create a draft from a token payload (mirrors what the Studio JS sends).
 	payload, _ := json.Marshal(map[string]interface{}{

@@ -22,7 +22,7 @@ import (
 // changes fonts/colours" report.
 func TestApplyDesignThemeReachesPublicCSS(t *testing.T) {
 	srv, key := newTestHarness(t)
-	csrf := auth.GenerateCSRFToken()
+	csrf := auth.GenerateCSRFToken("")
 
 	get := func(path string) string {
 		resp := doRequest(t, srv, "GET", path, "", nil)

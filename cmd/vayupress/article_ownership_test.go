@@ -18,6 +18,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/queue"
+	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/users"
 )
 
@@ -64,6 +65,12 @@ func ownershipApp(t *testing.T) *App {
 		t.Fatalf("db init: %v", err)
 	}
 	t.Cleanup(func() { _ = dbpkg.DB.Close() })
+	// handleOSEditorSave / handleOSPostDelete fire CachePurge, whose async
+	// sitemap/feed/robots regenerations read config.Cfg.CacheDir on a background
+	// goroutine. Registered LAST so it runs FIRST at teardown (LIFO): drain those
+	// writes before this test returns, or the next test's config.Load races them
+	// under -race. WaitForPurges exists in render for exactly this.
+	t.Cleanup(render.WaitForPurges)
 	return &App{
 		userStore: users.New(dbpkg.DB),
 		articles: &api.ArticleService{

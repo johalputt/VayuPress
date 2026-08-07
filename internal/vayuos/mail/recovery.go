@@ -594,13 +594,43 @@ func (s *AccountStore) VerifyApprovedDevice(ctx context.Context, email, secret s
 	if secret == "" {
 		return 0, false
 	}
+	// AUDIT FINDING (Section 1). The KDF used to run ONLY from inside this loop,
+	// so an address with no enrolled devices never invoked it and never reached
+	// the empty-hash decoy in internal/auth. One request told the caller which it
+	// was: a sub-millisecond 401 meant "no enrolled device", tens to hundreds of
+	// milliseconds meant "at least one". No statistics needed — the decoy path was
+	// measured at ~193 ms against a microsecond zero-row SELECT.
+	//
+	// (It was never a MAILBOX-existence oracle: an unknown address and a real
+	// mailbox with no devices both return zero rows and both answered fast. What
+	// leaked is enrolment.)
+	//
+	// The compute amplifier the same finding names — up to twenty sequential
+	// 64 MiB derivations for one 8 KiB POST — is bounded elsewhere on purpose, and
+	// the reason is worth stating. Capping the loop was the obvious move and it is
+	// wrong: AppPasswordCredentials has no ORDER BY, so a cap would check the
+	// OLDEST rows and refuse a person holding a device enrolled later. That is a
+	// lockout on a recovery path, which is exactly the failure this endpoint
+	// exists to undo. The bound belongs where it costs nobody their access: the
+	// per-address budget on the handler (3/hour) limits how often the work can be
+	// asked for, and the process-wide Argon2id ceiling limits how much of it can
+	// run at once.
+	checked := 0
 	for _, c := range s.AppPasswordCredentials(ctx, email) {
 		if c.Status != DeviceStatusApproved {
 			continue
 		}
+		checked++
 		if auth.VerifySecretArgon2id(secret, c.Hash) {
 			return c.ID, true
 		}
+	}
+	if checked == 0 {
+		// Nothing approved to check. Spend the decoy anyway, so the answer costs
+		// what a real check costs. This is the same thing the device-status sibling
+		// does, and the handler's own comment already promised it ("one uniform
+		// failure for every rejection") — it was a claim, and this is the control.
+		_ = auth.VerifySecretArgon2id(secret, "")
 	}
 	return 0, false
 }

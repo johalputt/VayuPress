@@ -27,7 +27,6 @@ import (
 	"strconv"
 
 	"github.com/johalputt/vayupress/internal/render"
-	"github.com/johalputt/vayupress/internal/settings"
 )
 
 // worldCookie names the per-browser view flag; value "tor" ⇒ view the Tor world.
@@ -80,12 +79,27 @@ func (a *App) handleWorldSwitch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Query().Get("target") == "tor" {
-		// Make sure the Tor world exists / is running, then view it.
-		if a.siteSettings != nil {
-			_ = a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyTorSpaceEnabled: "on"})
-		}
-		if a.torSpace != nil {
-			go a.reconcileTorSpace()
+		// AUDIT FINDING (Section 1). This branch used to write
+		// settings.KeyTorSpaceEnabled="on" and spawn the Tor instance — a persisted,
+		// install-wide state change on a GET, and the identical change its
+		// CSRF-protected sibling POST /os/spaces/toggle makes. The route carries no
+		// CSRF middleware, and auth.CSRFTokenMiddleware returns early for GET in any
+		// case, so any same-site page the signed-in operator clicked — including a
+		// link rendered on this install's own public pages — enabled the Anonymous
+		// Tor Space without their intent. The 303 landed them back on /os with
+		// nothing visibly wrong.
+		//
+		// The comment three lines above the function already described the correct
+		// behaviour ("side-effect-light: it just sets/clears the view cookie
+		// (enabling the Tor world itself is the separate CSRF-checked space
+		// toggle)"). The code did the opposite. Now it does what it says.
+		//
+		// Sending the operator to /os/spaces rather than silently doing nothing is
+		// the point: enabling is one CSRF-protected click away on that page, which
+		// is where the control belongs.
+		if !a.torSpaceEnabled() {
+			http.Redirect(w, r, "/os/spaces", http.StatusSeeOther)
+			return
 		}
 		// SESSION cookie (no MaxAge): viewing the Tor world is a per-session context,
 		// not a sticky preference. A 30-day cookie silently kept the operator in Tor

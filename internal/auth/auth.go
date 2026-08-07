@@ -687,24 +687,62 @@ func WriteReadableCookie(w http.ResponseWriter, c *http.Cookie) {
 	http.SetCookie(w, c)
 }
 
-// GenerateCSRFToken creates a signed CSRF token.
-func GenerateCSRFToken() string {
+// csrfTokenTTL bounds how long a minted token stays acceptable. The cookie has
+// carried MaxAge:3600 all along, but that lived only in the browser — a token
+// copied out of it was good forever, because nothing server-side recorded when
+// it was issued. Now it is inside the signature.
+const csrfTokenTTL = time.Hour
+
+// GenerateCSRFToken creates a signed CSRF token BOUND to one session and one
+// moment.
+//
+// AUDIT FINDING (Section 1). The token used to be b64url(nonce + "." +
+// HMAC(nonce)) and validation recomputed exactly that — no principal, no
+// issued-at. A token minted for one person was byte-for-byte acceptable for
+// another, and it never expired server-side. The middleware's own comment
+// claimed the secret "rotates (every process restart)", which InitCSRFSecret
+// made untrue years ago by persisting it to disk.
+//
+// The reported exploit chain does NOT stand in this codebase — it needs an
+// attacker-controlled cookie write on a sibling origin of the panel, and the
+// custom-site upload routes are admin-gated by a settled product decision, with
+// SameSite=Strict blocking every cross-site POST regardless. This is defence in
+// depth for the operator who later serves third-party content on a subdomain of
+// the panel's registrable domain, or who has a plain-HTTP sibling host there: a
+// network attacker can set a parent-domain cookie from an http sibling, and
+// RFC 6265 §5.4 orders the longer Path first, so r.Cookie would return theirs.
+//
+// binding is an opaque per-principal string (the session token's hash). An empty
+// binding is legitimate — the sign-in page has no session yet — and a token
+// minted then is only valid for a request that also has no session, which is
+// what makes this a binding rather than a formality.
+func GenerateCSRFToken(binding string) string {
 	raw := make([]byte, 24)
 	if _, err := rand.Read(raw); err != nil {
 		return ""
 	}
-	token := hex.EncodeToString(raw)
+	// nonce | binding | issued-at. "|" cannot appear in a hex nonce or a hex
+	// session hash, so the fields cannot be shifted into one another.
+	payload := hex.EncodeToString(raw) + "|" + binding + "|" +
+		strconv.FormatInt(time.Now().Unix(), 10)
 	mac := hmac.New(sha256.New, csrfSecret)
-	mac.Write([]byte(token))
+	mac.Write([]byte(payload))
 	sig := hex.EncodeToString(mac.Sum(nil))
 	// RawURLEncoding (no '=' padding) so the token is safe to carry in a cookie
 	// and read back in JS. base64.URLEncoding adds a trailing '=' which naive
 	// `cookie.split('=')[1]` parsers strip, breaking the double-submit match.
-	return base64.RawURLEncoding.EncodeToString([]byte(token + "." + sig))
+	return base64.RawURLEncoding.EncodeToString([]byte(payload + "." + sig))
 }
 
-// ValidateCSRFToken verifies a token produced by GenerateCSRFToken.
-func ValidateCSRFToken(token string) bool {
+// ValidateCSRFToken verifies a token produced by GenerateCSRFToken, and that it
+// belongs to THIS principal and is not older than csrfTokenTTL.
+//
+// A token in the pre-binding format fails here. That is deliberate and its whole
+// cost is one reload: the GET branch of CSRFTokenMiddleware re-mints whenever
+// validation fails, so an open panel tab recovers on its next page load rather
+// than getting stuck in the "token expired" loop this codebase has already been
+// through once.
+func ValidateCSRFToken(token, binding string) bool {
 	if token == "" {
 		return false
 	}
@@ -715,13 +753,49 @@ func ValidateCSRFToken(token string) bool {
 	if err != nil {
 		return false
 	}
-	parts := strings.SplitN(string(decoded), ".", 2)
-	if len(parts) != 2 {
+	// SplitN from the RIGHT would be wrong: the payload itself contains no ".",
+	// so the last "." separates payload from signature and the first one would
+	// too. Kept as an explicit last-index split so a future payload field
+	// containing "." cannot silently change what is verified.
+	i := strings.LastIndex(string(decoded), ".")
+	if i < 0 {
 		return false
 	}
+	payload, sig := string(decoded)[:i], string(decoded)[i+1:]
+
 	mac := hmac.New(sha256.New, csrfSecret)
-	mac.Write([]byte(parts[0]))
-	return hmac.Equal([]byte(parts[1]), []byte(hex.EncodeToString(mac.Sum(nil))))
+	mac.Write([]byte(payload))
+	if !hmac.Equal([]byte(sig), []byte(hex.EncodeToString(mac.Sum(nil)))) {
+		return false
+	}
+
+	fields := strings.Split(payload, "|")
+	if len(fields) != 3 {
+		return false // pre-binding token, or a shape this build does not mint
+	}
+	if subtle.ConstantTimeCompare([]byte(fields[1]), []byte(binding)) != 1 {
+		return false // minted for somebody else
+	}
+	issued, err := strconv.ParseInt(fields[2], 10, 64)
+	if err != nil {
+		return false
+	}
+	age := time.Since(time.Unix(issued, 0))
+	// Both directions. A token stamped in the future is either a clock that moved
+	// or a value nobody here minted; neither is a reason to extend its life.
+	return age >= 0 && age <= csrfTokenTTL
+}
+
+// CSRFBinding returns the opaque per-principal value a CSRF token is bound to:
+// the hash of the caller's session token, or "" when there is no session (the
+// sign-in page). Hashing rather than using the raw token keeps the session
+// secret out of a cookie the page script is meant to read.
+func CSRFBinding(r *http.Request) string {
+	c, err := r.Cookie(SessionCookie)
+	if err != nil || c.Value == "" {
+		return ""
+	}
+	return hashToken(c.Value)
 }
 
 // SignedToken returns a stateless, HMAC-signed, URL-safe token over payload
@@ -765,17 +839,20 @@ func CSRFTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			// Re-issue the cookie when it is missing, empty, OR no longer valid.
-			// A token can become invalid after the CSRF secret rotates (every
-			// process restart) or after the 1h cookie lifetime. Without the
+			// A token can become invalid after its 1h lifetime, after the CSRF
+			// secret changes, or now that tokens are session-bound, after signing
+			// in or out. (The secret does NOT rotate per restart — InitCSRFSecret
+			// persists it; that claim lived here for years and was not true.) Without the
 			// validity check a *stale* cookie is left untouched, so reloading
 			// the page never recovers it and every subsequent POST 403s — the
 			// "session token expired — reload" loop the operator can't escape.
 			needsToken := true
-			if c, err := r.Cookie("vp_csrf"); err == nil && c.Value != "" && ValidateCSRFToken(c.Value) {
+			binding := CSRFBinding(r)
+			if c, err := r.Cookie("vp_csrf"); err == nil && c.Value != "" && ValidateCSRFToken(c.Value, binding) {
 				needsToken = false
 			}
 			if needsToken {
-				if token := GenerateCSRFToken(); token != "" {
+				if token := GenerateCSRFToken(binding); token != "" {
 					WriteReadableCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, MaxAge: 3600})
 				}
 			}
@@ -808,7 +885,7 @@ func CSRFTokenMiddleware(next http.Handler) http.Handler {
 			// the token matched via response timing. ValidateCSRFToken separately
 			// verifies the HMAC so a forged-but-matching pair still fails.
 			tokensMatch := subtle.ConstantTimeCompare([]byte(headerToken), []byte(cookieToken)) == 1
-			if headerToken == "" || cookieToken == "" || !tokensMatch || !ValidateCSRFToken(headerToken) {
+			if headerToken == "" || cookieToken == "" || !tokensMatch || !ValidateCSRFToken(headerToken, CSRFBinding(r)) {
 				writeAuthError(w, 403, "csrf_invalid", "CSRF token missing or invalid", "/docs/api/csrf")
 				return
 			}

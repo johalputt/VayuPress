@@ -26,7 +26,7 @@ func TestOSEditorSaveRoundTrip(t *testing.T) {
 		"title": "Draft", "slug": "draft-post", "content": "seed", "tags": []string{},
 	})
 
-	csrf := auth.GenerateCSRFToken()
+	csrf := auth.GenerateCSRFToken("")
 	if csrf == "" {
 		t.Fatal("could not generate CSRF token")
 	}
@@ -66,7 +66,7 @@ func TestOSEditorSaveRoundTrip(t *testing.T) {
 func TestOSQuickCreateOpensBlockEditor(t *testing.T) {
 	srv, key := newTestHarness(t)
 
-	csrf := auth.GenerateCSRFToken()
+	csrf := auth.GenerateCSRFToken("")
 	body, _ := json.Marshal(map[string]string{"title": "My Fresh Draft"})
 	req, _ := http.NewRequest("POST", srv.URL+"/os/api/posts/quick-create", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -125,7 +125,7 @@ func TestOSEditorNativeCreatePath(t *testing.T) {
 	}
 
 	// A Save with no slug creates the post.
-	csrf := auth.GenerateCSRFToken()
+	csrf := auth.GenerateCSRFToken("")
 	payload, _ := json.Marshal(map[string]interface{}{
 		"slug":  "",
 		"title": "Born In Blocks",
@@ -185,7 +185,7 @@ func TestOSEditorNativeCreatePath(t *testing.T) {
 func TestOSEditorImportHTML(t *testing.T) {
 	srv, key := newTestHarness(t)
 
-	csrf := auth.GenerateCSRFToken()
+	csrf := auth.GenerateCSRFToken("")
 	payload, _ := json.Marshal(map[string]string{
 		"html": `<h2>Title</h2><p>Some <strong>bold</strong> and a <a href="/x">link</a>.</p>`,
 	})
@@ -230,7 +230,7 @@ func TestOSEditorSavePersistsPublishingOptions(t *testing.T) {
 		"title": "Draft", "slug": "meta-post", "content": "seed", "tags": []string{},
 	})
 
-	csrf := auth.GenerateCSRFToken()
+	csrf := auth.GenerateCSRFToken("")
 	payload, _ := json.Marshal(map[string]interface{}{
 		"slug":  "meta-post",
 		"title": "Meta Post",
@@ -290,7 +290,7 @@ func TestOSEditorSlugRename(t *testing.T) {
 		"title": "Old", "slug": "old-slug", "content": "seed", "tags": []string{},
 	})
 
-	csrf := auth.GenerateCSRFToken()
+	csrf := auth.GenerateCSRFToken("")
 	payload, _ := json.Marshal(map[string]string{"slug": "old-slug", "newSlug": "Brand New Title!"})
 	req, _ := http.NewRequest("POST", srv.URL+"/os/api/editor/slug", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")

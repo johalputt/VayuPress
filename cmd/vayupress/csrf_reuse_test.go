@@ -27,7 +27,7 @@ import (
 
 // TestCSRFTokenIsReusedWhenStillValid pins the core behaviour.
 func TestCSRFTokenIsReusedWhenStillValid(t *testing.T) {
-	existing := auth.GenerateCSRFToken()
+	existing := auth.GenerateCSRFToken("")
 	if existing == "" {
 		t.Fatal("could not mint a token to test with")
 	}
@@ -62,7 +62,7 @@ func TestCSRFTokenIsMintedWhenAbsentOrInvalid(t *testing.T) {
 		{"no cookie", ""},
 		{"empty cookie", " "},
 		{"forged cookie", "bm90LWEtdmFsaWQtdG9rZW4"},
-		{"stale cookie", auth.GenerateCSRFToken() + "tampered"},
+		{"stale cookie", auth.GenerateCSRFToken("") + "tampered"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/os", nil)
@@ -71,7 +71,7 @@ func TestCSRFTokenIsMintedWhenAbsentOrInvalid(t *testing.T) {
 			}
 			rec := httptest.NewRecorder()
 			got := csrfTokenFor(rec, req)
-			if got == "" || !auth.ValidateCSRFToken(got) {
+			if got == "" || !auth.ValidateCSRFToken(got, "") {
 				t.Fatalf("csrfTokenFor returned %q, want a freshly minted valid token", got)
 			}
 			if got == tc.cookie {
@@ -104,8 +104,8 @@ func TestNoHandlerMintsCSRFTokensDirectly(t *testing.T) {
 		if name == "middleware.go" {
 			continue
 		}
-		if strings.Contains(src, "auth.GenerateCSRFToken()") {
-			t.Errorf("%s calls auth.GenerateCSRFToken() directly — use csrfTokenFor(w, r), "+
+		if strings.Contains(src, "auth.GenerateCSRFToken(") {
+			t.Errorf("%s calls auth.GenerateCSRFToken directly — use csrfTokenFor(w, r), "+
 				"or a second tab's form will 403 when this page rotates the cookie", name)
 		}
 	}

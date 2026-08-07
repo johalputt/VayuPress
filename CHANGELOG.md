@@ -172,6 +172,67 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   function of how many requests arrived. Work **queues** rather than failing, so
   a sign-in during a burst is slow instead of refused.
 
+- **`GET /os/world?target=tor` enabled the Anonymous Tor Space install-wide.**
+  Section 1. The handler persisted `settings.KeyTorSpaceEnabled` and spawned the
+  Tor instance — the identical state change its sibling `POST /os/spaces/toggle`
+  makes behind CSRF — on a bare GET with no CSRF middleware, and
+  `auth.CSRFTokenMiddleware` returns early for GET in any case. `SameSite=Strict`
+  blocks a purely cross-site initiator but not a **same-site** one, so a link
+  rendered on the install's own public pages and clicked by the signed-in
+  operator flipped it; the 303 landed them back on `/os` with nothing visibly
+  wrong. The handler's own doc comment already described the correct behaviour
+  ("*side-effect-light: it just sets/clears the view cookie*") — a claim, not a
+  control.
+
+  The switch now sets the view cookie only. Asking for the Tor view while the
+  space is off redirects to `/os/spaces`, where the CSRF-protected toggle lives.
+  `/os/world` was also added to `adminAreas` in `osPathMinLevel`: it matched no
+  area and is not under `/os/api/`, so it inherited the permissive author
+  default and the fail-closed API rule never saw it.
+
+- **A timing oracle told anyone which addresses have a phone enrolled.**
+  Section 1. `VerifyApprovedDevice` reached Argon2id only from inside its loop
+  over stored credentials, so an address with no enrolled devices never ran the
+  KDF and never reached the empty-hash decoy. One
+  `POST /api/v1/members/vayumail-device-reset` and a stopwatch answered the
+  question: a sub-millisecond 401 meant "nobody enrolled", tens to hundreds of
+  milliseconds meant "at least one". The decoy path measures around 193 ms
+  against a microsecond zero-row `SELECT` — no statistics needed. (It was never
+  a mailbox-existence oracle: an unknown address and a real mailbox with no
+  devices both answered fast.) The handler's comment promised "one uniform
+  failure for every rejection", which is why nothing was looking.
+
+  The zero-approved-devices path now spends the decoy, as its device-status
+  sibling already did. The compute amplifier the same finding names — up to
+  twenty sequential 64 MiB derivations per request — is bounded by the new
+  per-address budget and the process-wide Argon2id ceiling rather than by
+  capping the loop: the credential query has no `ORDER BY`, so a cap would check
+  the oldest rows and refuse someone holding a device enrolled later, which is a
+  lockout on the path that exists to undo lockouts.
+
+- **CSRF tokens carry no principal and no expiry.** Section 1, and the fix is
+  depth rather than a live hole. The token was `b64url(nonce + "." +
+  HMAC(nonce))` and validation recomputed exactly that, so a token minted for
+  one session was byte-for-byte acceptable for another, and it never expired
+  server-side — `MaxAge:3600` lived only on the cookie. The reported chain does
+  **not** stand here: it needs an attacker-controlled cookie write on a sibling
+  origin of the panel, and `SameSite=Strict` blocks every cross-site POST
+  regardless. It becomes real for an operator who later serves third-party
+  content on a subdomain of the panel's registrable domain, or who has a
+  plain-HTTP sibling host there.
+
+  `GenerateCSRFToken` now signs `nonce|binding|issued-at`, where the binding is
+  the hash of the caller's session token (`auth.CSRFBinding`), and
+  `ValidateCSRFToken` checks both. A token minted before sign-in is valid only
+  while signed out. Tokens in the old format are refused rather than
+  grandfathered — accepting them would exempt every cookie already in a browser.
+  The middleware comment claiming the secret "rotates (every process restart)"
+  was corrected; `InitCSRFSecret` has persisted it to disk for years.
+
+  **Upgrade note:** a panel tab left open across the update may need one reload,
+  because its stored token predates the binding. The GET path re-mints whenever
+  validation fails, so the reload is the whole cost.
+
 ### Fixed
 
 - **A VayuMail mailbox could not sign in to the console at all.** Found while

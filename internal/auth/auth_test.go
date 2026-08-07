@@ -24,20 +24,20 @@ func init() {
 }
 
 func TestCSRFTokenRoundTrip(t *testing.T) {
-	token := GenerateCSRFToken()
+	token := GenerateCSRFToken("")
 	if token == "" {
 		t.Fatal("GenerateCSRFToken returned empty string")
 	}
-	if !ValidateCSRFToken(token) {
+	if !ValidateCSRFToken(token, "") {
 		t.Fatal("token should be valid immediately after generation")
 	}
 }
 
 func TestCSRFTokenInvalid(t *testing.T) {
-	if ValidateCSRFToken("") {
+	if ValidateCSRFToken("", "") {
 		t.Fatal("empty token should be invalid")
 	}
-	if ValidateCSRFToken("garbage-not-base64!!!") {
+	if ValidateCSRFToken("garbage-not-base64!!!", "") {
 		t.Fatal("garbage token should be invalid")
 	}
 }
@@ -293,7 +293,7 @@ func TestCSRFMiddlewareRefreshesStaleCookie(t *testing.T) {
 	if issued == "" {
 		t.Fatal("a stale cookie should be replaced with a freshly issued token on GET")
 	}
-	if !ValidateCSRFToken(issued) {
+	if !ValidateCSRFToken(issued, "") {
 		t.Fatal("the re-issued token must be valid")
 	}
 }
@@ -305,7 +305,7 @@ func TestCSRFMiddlewareKeepsValidCookie(t *testing.T) {
 		w.WriteHeader(200)
 	}))
 
-	valid := GenerateCSRFToken()
+	valid := GenerateCSRFToken("")
 	req := httptest.NewRequest("GET", "/os/vayuos/mail/compose", nil)
 	req.AddCookie(&http.Cookie{Name: "vp_csrf", Value: valid})
 	rr := httptest.NewRecorder()
