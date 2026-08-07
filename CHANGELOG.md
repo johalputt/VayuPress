@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.23] — 2026-08-07
 
 ### Audit record — Section 1: authentication, sessions, API keys
 
