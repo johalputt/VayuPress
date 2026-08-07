@@ -38,6 +38,12 @@ func testEngineConfig() Config {
 	c.SubmissionListen = "127.0.0.1:0"
 	c.IMAPListen = "127.0.0.1:0"
 	c.IMAPSListen = "127.0.0.1:0"
+	// POP3 was missing from this list and defaulted to ":110", a privileged port.
+	// It binds fine when the suite runs as root and fails with "permission denied"
+	// when it does not — so a POP3 listener test passed locally and broke CI. Every
+	// listener a test can start belongs here, or the next one hits the same trap.
+	c.POP3Listen = "127.0.0.1:0"
+	c.POP3SListen = "127.0.0.1:0"
 	return c
 }
 
