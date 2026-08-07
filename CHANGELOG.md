@@ -42,6 +42,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   submission listener only, and the inbound listener is pinned by a test that
   fails if it ever acquires one.
 
+### Audit record — Section 2 (in progress): VayuMail transport
+
+Two controls were attacked and **held**, and are now pinned by tests so they
+keep holding:
+
+- **Cross-mailbox isolation on IMAP.** The account is never a client-supplied
+  parameter — every Maildir call uses the session's authenticated identity — and
+  `canonicalFolder` is an allowlist, so a hostile `SELECT ../../bob/` collapses
+  to the caller's own inbox rather than becoming a path component. Two tests,
+  because each catches a mutation the other misses: a slash-stripping sanitiser
+  does not traverse (only the mechanism test notices), while a raw pass-through
+  does (only the path test notices).
+- **STARTTLS command injection** (the CVE-2011-0411 class) on all three
+  listeners. A command pipelined in the same packet as `STARTTLS` sits in the
+  reader's buffer across the handshake; a server that keeps that reader executes
+  it inside the encrypted session. SMTP, IMAP and POP3 each rebuild the reader
+  over the TLS connection, and each is now pinned by an end-to-end test that
+  smuggles a command and fails if its reply ever appears.
+
 ## [3.17.23] — 2026-08-07
 
 ### Audit record — Section 1: authentication, sessions, API keys
