@@ -6,6 +6,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **The device ceiling could lock a mailbox out of its own mail.** Every VayuMail
+  sign-in registers a new device credential and nothing dedupes them, against a
+  hard cap of 20 per mailbox. A phone re-added a few times over its life reaches
+  that cap on its own — and once there, registration is refused and only an
+  operator can clear it from the console. Somebody locked out because they signed
+  in too often is a worse outcome than the credential sprawl the cap prevents.
+
+  `PrunePendingDevices` reclaims device rows that were never approved and are
+  older than 24 hours, and the register handler calls it before counting.
+  Approved and blocked rows are never touched: one is somebody's working mail,
+  the other a decision an operator made deliberately, and silently reaping
+  either would be a fix that causes a worse bug than it closes. A day is long
+  enough that an operator who steps away mid-approval still finds the device
+  waiting.
+
+  Three mutations killed: pruning everything *except* pending (which deletes
+  working mail), the age comparison inverted (which reaps the device being
+  approved right now), and the age ignored entirely.
+
 ## [3.17.21] — 2026-08-06
 
 Shipped on its own, immediately, under the standing exception for something

@@ -1833,6 +1833,12 @@ const appPasswordLength = 20
 // is guaranteed to actually authenticate.
 const appPasswordMaxPerMailbox = 20
 
+// stalePendingDeviceAge is how long a never-approved device credential is kept
+// before a later registration may reclaim its slot. A day is long enough that an
+// operator who steps away mid-setup still finds the device waiting, and short
+// enough that abandoned attempts cannot accumulate into a lockout.
+const stalePendingDeviceAge = 24 * time.Hour
+
 // generateAppPasswordSecret draws an appPasswordLength-character secret from
 // appPasswordAlphabet with crypto/rand, using rejection sampling (62×4 = 248)
 // so every character is equally likely — no modulo bias.

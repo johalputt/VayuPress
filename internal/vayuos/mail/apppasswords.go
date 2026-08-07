@@ -283,3 +283,31 @@ func (s *AccountStore) DeleteAppPasswordsByLabel(ctx context.Context, email, lab
 		`DELETE FROM vayumail_app_passwords WHERE email=? AND label=?`, normEmail(email), label)
 	return err
 }
+
+// PrunePendingDevices deletes device credentials for a mailbox that have never
+// been approved and are older than olderThan, returning how many went.
+//
+// It exists because the device ceiling could lock a mailbox out of its own mail.
+// Every sign-in registers a new row and nothing dedupes them, so a phone set up
+// a few times over its life walks toward the cap on its own — and once there,
+// registration is refused and only an operator can clear it. A pending row is a
+// credential that was never approved and therefore never used for anything, so
+// reclaiming an old one costs nothing.
+//
+// Approved and blocked rows are never touched: an approved device is somebody's
+// working mail, and a blocked one is a decision an operator made deliberately —
+// silently reaping either would be the fix causing a worse bug than the one it
+// closes.
+func (s *AccountStore) PrunePendingDevices(ctx context.Context, email string, olderThan time.Duration) (int64, error) {
+	if err := s.ensureAppPasswords(); err != nil {
+		return 0, err
+	}
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM vayumail_app_passwords WHERE email=? AND status=? AND created_at < ?`,
+		normEmail(email), DeviceStatusPending, time.Now().UTC().Add(-olderThan))
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}

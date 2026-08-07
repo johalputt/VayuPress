@@ -20,6 +20,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -304,6 +305,16 @@ func (a *App) handleMemberVayuMailDeviceRegister(w http.ResponseWriter, r *http.
 	mailAuthThrottle.Success(emailAddr)
 
 	accts := a.vayuMail.Accounts()
+	// Reclaim never-approved devices before counting. Without this the ceiling
+	// could lock a mailbox out of its own mail: every sign-in registers a row,
+	// nothing dedupes them, and a phone re-added a few times over its life
+	// reaches the cap on its own — after which registration is refused and only
+	// an operator can clear it. A pending row was never approved and so never
+	// synced anything; approved and blocked rows are left alone, because one is
+	// somebody's working mail and the other is a deliberate decision.
+	if n, err := accts.PrunePendingDevices(r.Context(), emailAddr, stalePendingDeviceAge); err == nil && n > 0 {
+		logging.LogInfo("members", "reclaimed "+strconv.FormatInt(n, 10)+" unapproved VayuMail device(s) for "+emailAddr)
+	}
 	// The auth path reads back at most appPasswordMaxPerMailbox rows, so a row
 	// beyond the cap would be a credential that can never authenticate.
 	if len(accts.AppPasswordCredentials(r.Context(), emailAddr)) >= appPasswordMaxPerMailbox {
