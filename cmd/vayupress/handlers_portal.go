@@ -342,16 +342,37 @@ func (a *App) handleMemberVayuMailDeviceRegister(w http.ResponseWriter, r *http.
 	// Authenticate in web-bootstrap scope: the raw mailbox password is accepted
 	// here even when the mailbox requires device approval — this endpoint IS the
 	// bootstrap that turns a password into an approvable device credential.
+	//
+	// AUDIT FINDING (Section 2). Because it takes the raw password by design, it
+	// is the natural place to move a spray once /vayumail-login is metered — and
+	// for a while it was, because the Section 1 lockout landed only on that one
+	// route while this route's comment claimed parity with it. The per-mailbox
+	// throttle below does not close it: it is keyed on the ADDRESS and capped at
+	// two seconds, so one guess tried against a thousand mailboxes never delays.
+	//
+	// Same key as the webmail login on purpose. A wrong mailbox password from an
+	// address is the same fact whichever endpoint carried it, and a separate
+	// counter would hand a sprayer a fresh budget simply for alternating routes.
+	clientIP := auth.ClientIP(r)
+	lockKey := "portal:" + clientIP
+	if locked, until := auth.CheckAuthLockout(lockKey); locked {
+		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(until).Seconds())+1))
+		writeAPIError(w, r, http.StatusTooManyRequests, "too-many-attempts",
+			"Too many sign-in attempts from this address. Try again shortly.", "")
+		return
+	}
 	bridge := &vayuMailBridge{app: a}
 	if d := mailAuthThrottle.Delay(emailAddr); d > 0 {
 		time.Sleep(d)
 	}
 	if !bridge.verifyCredentialWeb(r.Context(), emailAddr, body.Password) {
 		mailAuthThrottle.Fail(emailAddr)
+		auth.RecordAuthFailure(lockKey)
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
 		return
 	}
 	mailAuthThrottle.Success(emailAddr)
+	auth.RecordAuthSuccess(lockKey)
 
 	accts := a.vayuMail.Accounts()
 	// Reclaim never-approved devices before counting. Without this the ceiling

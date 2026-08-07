@@ -292,3 +292,86 @@ func credentialFloodApp(t *testing.T) *App {
 		members:   members.New(dbpkg.DB),
 	}
 }
+
+// ---------------------------------------------------------------------------
+// The gap the Section 1 fix left, found by the Section 2 audit.
+// ---------------------------------------------------------------------------
+//
+// In the attacker's voice:
+//
+//	Your Section 1 fix put a per-source lockout on /vayumail-login. Fine. I
+//	spray /vayumail-device-register instead.
+//
+//	It takes the same raw mailbox password — deliberately, because it is the
+//	bootstrap that turns a password into a device. verifyCredentialScoped says
+//	so itself: "Web-bootstrap scope keeps accepting it so a new device can
+//	register." Its only defence is mailAuthThrottle, which is keyed per MAILBOX
+//	and capped at two seconds, so spraying one guess across many mailboxes
+//	never touches it. No per-IP lockout, no route limiter, and /api is in
+//	shieldBypassPrefixes so VayuShield never sees me either.
+//
+// The route comment claimed otherwise — "Same throttle + uniform-401
+// anti-enumeration as vayumail-login above" — and that claim is why the
+// endpoint was skipped when the lockout was added. A comment asserting parity
+// is not parity.
+//
+// The lockout deliberately shares the "portal:" namespace with vayumail-login:
+// a wrong mailbox password from one address is the same fact whichever endpoint
+// carried it, and separate counters would hand a sprayer a fresh budget per
+// endpoint.
+
+func postDeviceRegister(t *testing.T, a *App, ip, email, pass string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/members/vayumail-device-register",
+		strings.NewReader(`{"email":"`+email+`","password":"`+pass+`","device_name":"phone","platform":"android"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = ip + ":40000"
+	rec := httptest.NewRecorder()
+	a.handleMemberVayuMailDeviceRegister(rec, req)
+	return rec
+}
+
+func TestDeviceRegisterLocksOutASourceThatKeepsGuessing(t *testing.T) {
+	a := credentialFloodApp(t)
+	const ip = "198.51.100.60"
+
+	refused := 0
+	for i := 0; i < 12; i++ {
+		if postDeviceRegister(t, a, ip, "boss@example.com", "guess"+strconv.Itoa(i)).Code == http.StatusTooManyRequests {
+			refused++
+		}
+	}
+	if refused == 0 {
+		t.Error("twelve wrong mailbox passwords at device-register from one address were all " +
+			"answered normally.\n\nThis endpoint accepts the raw mailbox password by design, and " +
+			"the per-mailbox throttle does not see a spray across many mailboxes. Closing " +
+			"/vayumail-login alone just moves the attack one route over.")
+	}
+}
+
+// The counters must be SHARED with the webmail login, or alternating between the
+// two endpoints doubles the attacker's budget.
+func TestDeviceRegisterSharesItsLockoutWithTheWebmailLogin(t *testing.T) {
+	a := credentialFloodApp(t)
+	const ip = "198.51.100.61"
+
+	for i := 0; i < 12; i++ {
+		postDeviceRegister(t, a, ip, "boss@example.com", "wrong")
+	}
+	if rec := postVayuMailLogin(t, a, ip, "boss@example.com", "wrong"); rec.Code != http.StatusTooManyRequests {
+		t.Errorf("after being locked out at device-register, the same address was served at "+
+			"vayumail-login (%d).\n\nSeparate counters mean a sprayer alternates endpoints and "+
+			"gets a fresh budget on each.", rec.Code)
+	}
+}
+
+// The control: enrolling a device with the CORRECT password is the VayuMail
+// mobile app's entire onboarding flow. It must still work.
+func TestDeviceRegisterStillEnrolsWithTheRightPassword(t *testing.T) {
+	a := credentialFloodApp(t)
+	rec := postDeviceRegister(t, a, "203.0.113.120", "boss@example.com", "the-password-the-attacker-stole")
+	if rec.Code == http.StatusUnauthorized || rec.Code == http.StatusTooManyRequests {
+		t.Fatalf("a valid mailbox credential was refused at device-register (%d) — the mobile "+
+			"app cannot onboard.\n\nbody: %s", rec.Code, rec.Body.String())
+	}
+}

@@ -26,6 +26,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   than the rest of the message — over-serving a bad read is the wrong direction
   to fail in.
 
+- **The Section 1 brute-force fix reached one endpoint of two.** Section 2, and
+  a gap in this project's own previous remediation.
+  `/api/v1/members/vayumail-device-register` accepts the **raw mailbox
+  password** by design — it is the bootstrap that turns a password into an
+  approvable device, and `verifyCredentialScoped` says so in as many words:
+  *"Web-bootstrap scope keeps accepting it so a new device can register."* Its
+  only defence was `mailAuthThrottle`, which is keyed per **mailbox** and capped
+  at two seconds, so one guess sprayed across a thousand mailboxes never delayed
+  once. No per-source lockout, no route limiter, and `/api` is in
+  `shieldBypassPrefixes`. Metering `/vayumail-login` alone moved the attack one
+  route over.
+
+  What hid it is worth naming: the route comment claimed parity — *"Same
+  throttle + uniform-401 anti-enumeration as vayumail-login above"* — and that
+  claim is why the endpoint was not looked at. It now carries the same
+  `auth.CheckAuthLockout` on the **same** `portal:` counter, plus
+  `PublicDiscoveryRateLimit`; sharing the counter is deliberate, since separate
+  ones would hand a sprayer a fresh budget for alternating routes. The comments
+  on the sibling routes were corrected to describe what actually defends them:
+  `/vayumail-privkey` needs no lockout because it authenticates in mail-sync
+  scope, where the raw password is refused outright for any mailbox requiring
+  device approval.
+
 ## [3.17.24] — 2026-08-07
 
 Ships on its own rather than waiting for the rest of the Section 2 audit,

@@ -365,14 +365,25 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// VayuMail-Mobile private-key sync — returns the authenticated caller's OWN
 	// mailbox PGP private key (armored) so the app can import it and decrypt
 	// received mail on-device (WKD only serves public keys). Same credential
-	// check, brute-force throttle and anti-enumeration timing as vayumail-login
-	// above; the response is audit-logged and no-store. See ADR-0128.
+	// check and anti-enumeration timing as vayumail-login above; the response is
+	// audit-logged and no-store. See ADR-0128.
+	//
+	// NOT the same brute-force posture, and the comment used to claim it was: this
+	// route carries no per-source lockout. It does not need one — it authenticates
+	// in MAIL-SYNC scope, where verifyCredentialScoped refuses the raw mailbox
+	// password outright for any mailbox requiring device approval (on by default),
+	// so what reaches the KDF here is a ~119-bit server-generated device secret.
+	// Stating that rather than asserting parity, because the parity claim is what
+	// hid the device-register gap through a whole audit section.
 	r.Post("/api/v1/members/vayumail-privkey", a.handleMemberVayuMailPrivKey)
 	// VayuMail-Mobile device approval (ADR-0129): a new device registers with
 	// the mailbox password and receives a pending device credential; it polls
 	// its approval status until the operator approves it in the web console.
-	// Same throttle + uniform-401 anti-enumeration as vayumail-login above.
-	r.Post("/api/v1/members/vayumail-device-register", a.handleMemberVayuMailDeviceRegister)
+	// device-register is the ONE endpoint that takes the raw mailbox password in
+	// web-bootstrap scope — that is its job — so it carries the same per-source
+	// lockout as vayumail-login, on the same counter, plus the route limiter.
+	// Anything less just moves a password spray one route over.
+	r.With(auth.PublicDiscoveryRateLimit).Post("/api/v1/members/vayumail-device-register", a.handleMemberVayuMailDeviceRegister)
 	r.Post("/api/v1/members/vayumail-device-status", a.handleMemberVayuMailDeviceStatus)
 	// Trusted-device recovery (ADR-0144): a device whose app password still works
 	// sets a new mailbox password without the old one. Uniform 401 on every
