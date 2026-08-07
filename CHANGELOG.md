@@ -8,6 +8,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Audit record — Section 1: authentication, sessions, API keys
+
+An adversarial pass over the console's identity surface, run before this
+release rather than after it. Twenty-five candidate findings were raised; ten
+were refuted under verification, eleven confirmed and fixed below, and four
+severity ratings were corrected downward because their chains needed a
+credential rather than an unauthenticated position.
+
+**Attacked:** the API-key capability table and every `isAdminRequest` call site;
+key lifecycle and minting; the `/os/login` password and mailbox-fallback paths;
+session issue, validation, revocation and logout; CSRF token generation,
+validation and every middleware wrapper; the public member and mailbox
+credential endpoints; the trusted-proxy client-IP resolution; and the
+per-article authorization on the editor and post-delete handlers.
+
+**What held, and is worth recording because it was genuinely attacked:** the
+session cookie posture (`SameSite=Strict` survives a login-CSRF attempt because
+browsers enforce SameSite on cookie *storage*, not only on sending);
+`serveWithAccess`'s client confinement and its allowlist; the fail-closed
+capability default for unmapped `/os/api/` routes; `auth.ClientIP`'s
+trusted-proxy handling under the shipped nginx templates; logout's
+destroy-before-redirect ordering; the Tor-world CSRF pass-through (real
+plumbing, unreachable cross-site); and the app-password path, which cannot
+mint a console identity because `authMailAccount` consults only the account
+hash.
+
+**Not covered by this section, and not claimed to be:** VayuShield internals,
+the OAuth 2.1 authorization server, VayuMail transport (IMAP/SMTP/POP3), media
+handling, VayuFlow, payments, and the multi-domain surface. Those are later
+sections of the same audit.
+
 ### Security
 
 - **A scoped API key could make itself the install owner.** Found by the
