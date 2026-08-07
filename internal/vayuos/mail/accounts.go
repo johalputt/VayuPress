@@ -356,13 +356,71 @@ func (s *AccountStore) SetActive(ctx context.Context, email string, active bool)
 	return nil
 }
 
-// Delete removes an account.
+// perAddressTables lists the per-mailbox state Delete removes with the account,
+// as (table, address column). Two of these hand out access and the rest are the
+// departed holder's own data:
+//
+//	app_passwords      every enrolled device's credential — mail access itself
+//	recovery_codes     a spent-nothing code resets the password on this address
+//	recovery_tokens    the same, via an unexpired magic link
+//	recovery_requests  a pending "operator, please help me back in" ticket
+//	contacts           the holder's private address book
+//	filters            rules that would run on somebody else's mail
+//	snooze             per-mailbox scheduling state
+//	autoreply_log      auto-reply dedupe bookkeeping
+//
+// vayumail_aliases is deliberately absent. An alias is operator configuration,
+// visible and editable in the console, and silently deleting it on account
+// removal would destroy a routing decision its owner never asked to lose.
+var perAddressTables = [][2]string{
+	{"vayumail_app_passwords", "email"},
+	{"vayumail_recovery_codes", "email"},
+	{"vayumail_recovery_tokens", "email"},
+	{"vayumail_recovery_requests", "email"},
+	{"vayumail_contacts", "owner"},
+	{"vayumail_filters", "mailbox"},
+	{"vayumail_snooze", "mailbox"},
+	{"vayumail_autoreply_log", "mailbox"},
+}
+
+// Delete removes an account and the per-address state that outlived it.
+//
+// AUDIT FINDING (Section 2). This was a single-table DELETE, and every row keyed
+// on the address stayed behind. Two of those grant access, so the account was
+// gone while the way in was not: the departed holder's phone kept authenticating
+// on its device credential, and an unspent recovery code or token still reset the
+// password on that address. Reissuing the address — a role account changing hands
+// — handed the new occupant's mailbox to whoever held it before.
+//
+// One transaction, because a half-deleted account is the dangerous state: an
+// account row removed while its credentials survive is exactly the hole above,
+// arrived at from the other direction.
+//
+// A missing table is not an error. Most of these are created lazily on first use
+// by their own ensure* helper, so a store that never enrolled a device has no
+// app-password table — and failing the delete over it would leave the operator
+// unable to remove an account at all. Same tolerant re-run pattern as the
+// duplicate-column migrations above.
 func (s *AccountStore) Delete(ctx context.Context, email string) error {
 	if s.db == nil {
 		return errors.New("vayumail: no storage")
 	}
-	_, err := s.db.ExecContext(ctx, `DELETE FROM vayumail_accounts WHERE email=?`, normEmail(email))
-	return err
+	addr := normEmail(email)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM vayumail_accounts WHERE email=?`, addr); err != nil {
+		return err
+	}
+	for _, t := range perAddressTables {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM `+t[0]+` WHERE `+t[1]+`=?`, addr); err != nil &&
+			!strings.Contains(err.Error(), "no such table") {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // HashFor returns the stored password hash for an account, or "" if unknown or

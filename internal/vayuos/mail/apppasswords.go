@@ -138,12 +138,37 @@ func normDeviceStatus(status string) string {
 // AppPasswordCredentials returns the stored credential rows for a mailbox
 // (few rows; used by the auth path to verify a presented secret and enforce
 // the per-device approval status).
+//
+// AUDIT FINDING (Section 2). This is the single chokepoint every enrolled device
+// authenticates through — IMAP, POP3, submission and the private-key sync all
+// reach mail via verifyCredentialScoped, which reads exactly this list. It did
+// not consult the account's state, so disabling a mailbox cut nothing: HashFor
+// is the only query carrying "AND active=1", so the raw password stopped working
+// — which is precisely what made it look like disabling had worked — while every
+// enrolled phone kept syncing. An operator disabling a mailbox because a device
+// was stolen believed they had cut it off.
+//
+// The predicate is "no DISABLED row exists", deliberately not "an ACTIVE row
+// exists", and the difference is an outage. A CMS user is a first-class mailbox
+// holder here: verifyCredentialScoped authenticates them through userStore and
+// GetUserByEmail resolves their mailbox, with no vayumail_accounts row anywhere
+// in it — the bootstrap admin has exactly that shape. Requiring a row would have
+// logged every CMS-only holder out of their own mail on upgrade. An address with
+// no row keeps behaving exactly as it does today.
+//
+// Deletion is closed at the source instead, in Delete: an account row that is
+// gone cannot be told apart from a CMS user's here, so the credential rows are
+// removed with the account rather than filtered out afterwards.
 func (s *AccountStore) AppPasswordCredentials(ctx context.Context, email string) []AppPasswordCredential {
 	if s.ensureAppPasswords() != nil {
 		return nil
 	}
+	addr := normEmail(email)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,hash,COALESCE(status,'approved') FROM vayumail_app_passwords WHERE email=? LIMIT 20`, normEmail(email))
+		`SELECT id,hash,COALESCE(status,'approved') FROM vayumail_app_passwords
+		 WHERE email=?
+		   AND NOT EXISTS (SELECT 1 FROM vayumail_accounts WHERE email=? AND active=0)
+		 LIMIT 20`, addr, addr)
 	if err != nil {
 		return nil
 	}

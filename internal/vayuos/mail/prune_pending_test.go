@@ -11,9 +11,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// newPruneTestStore builds a store on a scratch database. ensureAppPasswords
-// creates the table this test needs, so the schema comes from the product
-// rather than from a restatement of it here.
+// newPruneTestStore builds a store on a scratch database through the product's
+// own constructor and schema helper, so the tables come from the product rather
+// than from a restatement of them here.
 func newPruneTestStore(t *testing.T) *AccountStore {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -21,7 +21,10 @@ func newPruneTestStore(t *testing.T) *AccountStore {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	s := &AccountStore{db: db}
+	s, err := NewAccountStore(db)
+	if err != nil {
+		t.Fatalf("NewAccountStore: %v", err)
+	}
 	if err := s.ensureAppPasswords(); err != nil {
 		t.Fatalf("ensureAppPasswords: %v", err)
 	}

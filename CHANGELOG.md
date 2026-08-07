@@ -10,6 +10,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **Disabling or deleting a mailbox revoked nothing.** Section 2. Both controls
+  are what an operator reaches for in an emergency — a stolen phone, somebody
+  leaving — and neither cut off a single enrolled device. `SetActive` wrote one
+  column of `vayumail_accounts` and `Delete` was a single-table `DELETE`;
+  `HashFor` carried the only `AND active=1` in the store, so the *account
+  password* stopped working, which is exactly what made it look like the switch
+  had worked. `AppPasswordCredentials` — the one list IMAP, POP3, submission and
+  private-key sync all authenticate through — selected `WHERE email=?` with no
+  join and no account predicate, so every registered device kept syncing mail.
+
+  The enforcement is now in that query: it returns nothing while a
+  `vayumail_accounts` row for the address exists with `active=0`. The predicate
+  is deliberately "no disabled row exists" rather than "an active row exists",
+  because a CMS user is a first-class mailbox holder here and has no mail-account
+  row at all — the stricter reading would have logged every one of them out of
+  their own mail on upgrade. Re-enabling restores the holder's devices rather
+  than making them re-enrol every phone.
+
+  Deletion is closed at the source, in `Delete`, because a row that is gone
+  cannot be told apart from a CMS user's at read time. It now removes the
+  account and its per-address state in one transaction: app passwords, recovery
+  codes, recovery tokens and pending recovery requests, plus the holder's
+  contacts, filters, snooze and auto-reply state. Two of those were access —
+  an unspent recovery code or an unexpired recovery link reset the password on
+  that address — so reissuing an address handed the new occupant's mailbox to
+  whoever held it before. Aliases are deliberately left alone: they are operator
+  configuration, visible in the console, and removing them silently would destroy
+  a routing decision nobody asked to lose. A missing optional table is tolerated,
+  so an install that never enrolled a device can still delete an account.
+
+  Mail already on disk is untouched by this change. Revoking the credentials
+  means nobody can authenticate to read it, but the Maildir of a deleted mailbox
+  is still there and a reissued address would inherit it — whether deletion
+  should destroy the mail is a product decision, not something to slip into a
+  security fix.
+
 - **One IMAP command killed the entire install.** Section 2. `applyPartialFetch`
   validated the *offset* of an RFC 3501 `BODY[]<offset.size>` partial and never
   the size, and its clamp only ever pulled `end` down — so `BODY[]<0.-1>`

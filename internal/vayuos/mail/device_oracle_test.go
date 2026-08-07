@@ -42,7 +42,15 @@ func oracleStore(t *testing.T) *AccountStore {
 	}
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
-	s := &AccountStore{db: db}
+	// The production constructor, not a hand-built struct. Every AccountStore the
+	// product creates comes from here, and both callers exit if it fails — so a
+	// store without vayumail_accounts is a shape that only ever existed in this
+	// harness. The credential query reads that table to enforce mailbox state,
+	// and a harness missing it fails devices for a reason production cannot have.
+	s, err := NewAccountStore(db)
+	if err != nil {
+		t.Fatalf("schema: %v", err)
+	}
 	if err := s.ensureAppPasswords(); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
