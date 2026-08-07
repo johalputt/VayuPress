@@ -70,3 +70,11 @@ node_modules/
 # Scratch file written by the VayuShield real-IP reconciler; never a repo artifact.
 cmd/vayupress/realip.skipped
 realip.skipped
+
+# Security-audit working files. Deliberately NOT committed: this repository is
+# public, and these files hold unverified attack write-ups against code that is
+# running on live installs. Publishing them is handing an attacker the roadmap
+# before the fixes exist. Findings reach the repo as FIXES plus their regression
+# tests, and as CHANGELOG entries that name the mechanism — never as a list of
+# open holes. Coordinate anything further through SECURITY.md.
+security-audit/
