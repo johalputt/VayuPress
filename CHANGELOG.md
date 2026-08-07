@@ -10,9 +10,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 Ships on its own rather than waiting for the rest of the Section 2 audit,
 because the hole below is **live and proven exploitable on released code**.
-CLAUDE.md §1 batches a plan into one release with one exception — something
-already released and broken for users right now — and this is that exception,
-stated explicitly as the rule requires. The attack was reproduced against a
+This project's release policy batches a plan into one release with one
+exception — something already released and broken for users right now — and this
+is that exception, stated explicitly as the rule requires. The attack was reproduced against a
 checkout of the v3.17.23 tag itself, so this is not an inference about what the
 released binary does.
 

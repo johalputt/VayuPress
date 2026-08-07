@@ -495,6 +495,11 @@ Each of these was learned by getting it wrong here, and each cost real time.
   three times in a row — so the check is now mechanical: before bumping, ask
   whether the operator would call the whole thing one piece of work. If yes, it
   waits.
+- **A small change is not a reason to run a subset of the gates.** A hotfix
+  touched `CHANGELOG.md`, so build + gofmt + SPDX + the one changed package felt
+  like enough. The attribution gate lives in `cmd/vayupress` and was never run;
+  it catches the exact leak that shipped, naming the file and line. §4 is the
+  list for every push, and a release commit is the last place to shorten it.
 - **One rejected file rejects the whole upload.** A bundle containing a single
   disallowed extension was refused in full, silently, repeatedly. Skip known
   junk, report what was skipped, and make a refusal impossible to miss.
