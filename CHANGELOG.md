@@ -6,6 +6,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Security
+
+- **An authenticated mailbox holder could send DMARC-aligned mail as any
+  colleague on the same domain — signed by this server.** Found by the sectioned
+  security audit, Section 2 (VayuMail transport). The envelope binding added
+  earlier refuses `MAIL FROM:<someone-else@local>`, and stopped one field short
+  of the only address a human ever sees. An ordinary holder could keep their own
+  envelope sender, so the binding never fired, and put a colleague's address in
+  the message's `From:` header:
+
+  ```text
+  MAIL FROM:<alice@example.com>     accepted — genuinely hers
+  RCPT TO:<board@partner.example>
+  DATA
+  From: ceo@example.com             never inspected
+  ```
+
+  `relayOutbound` then chose the DKIM signing key from the **envelope** domain
+  and signed the message, so it left with `d=example.com` perfectly aligned to a
+  `From:` of `example.com` — passing DMARC at the recipient with this install's
+  own signature vouching for it. Ordinary spoofing lands in junk; this did not.
+
+  The mechanism: `headerFromAddress` (`internal/vayuos/mail/authverify.go`)
+  shares the strictness the inbound side already applies — exactly one `From`
+  header carrying exactly one address — and the submission server now checks it
+  at `DATA`, where the header first exists. `WithSenderCheck` wires the same
+  predicate to both fields, because they answer one question about two fields
+  and a caller who hardens the envelope and forgets the header is precisely the
+  gap this closes. Aliases still work: the shipped predicate resolves them, so a
+  holder of `sales@` may still send as `sales@`. Display names, external `From`
+  addresses and inbound mail are untouched — the check is bound to the
+  submission listener only, and the inbound listener is pinned by a test that
+  fails if it ever acquires one.
+
 ## [3.17.23] — 2026-08-07
 
 ### Audit record — Section 1: authentication, sessions, API keys

@@ -50,6 +50,12 @@ type SMTPServer struct {
 	// authenticated user may send as a given From/MAIL FROM address — the
 	// sender-login binding that stops one mailbox spoofing another (audit M5).
 	senderAllowed func(authUser, fromAddr string) bool
+	// headerFromAllowed reports whether an authenticated submitter may put
+	// fromAddr in the message's From HEADER. Distinct from senderAllowed above,
+	// which governs the envelope, and it is the one that matters to a human: the
+	// envelope is invisible in every mail client, the header is what is rendered.
+	// Nil disables the check (the inbound listener never sets it).
+	headerFromAllowed func(authUser, fromAddr string) bool
 
 	ln     net.Listener
 	wg     sync.WaitGroup
@@ -90,6 +96,14 @@ func (s *SMTPServer) WithRecipientCheck(exists func(addr string) bool) *SMTPServ
 // server (audit M5). Returns the server for chaining.
 func (s *SMTPServer) WithSenderCheck(allowed func(authUser, fromAddr string) bool) *SMTPServer {
 	s.senderAllowed = allowed
+	// The header binding defaults to the SAME predicate. Wiring them together is
+	// deliberate: they answer one question ("may this login use this address?")
+	// about two fields, and a caller that hardened the envelope and forgot the
+	// header is exactly the gap this closes. WithHeaderFromCheck overrides it
+	// where the two rules genuinely need to differ.
+	if s.headerFromAllowed == nil {
+		s.headerFromAllowed = allowed
+	}
 	return s
 }
 
@@ -370,6 +384,34 @@ func (s *SMTPServer) handle(conn net.Conn) {
 			if derr != nil {
 				write("552 5.3.4 Message too big or read error")
 				return
+			}
+			// SECTION 2 AUDIT FINDING. The envelope binding above refuses
+			// MAIL FROM:<someone-else@local>, and stopped one field short of the
+			// only address a recipient ever sees. An authenticated holder could put
+			// a colleague's address in the From HEADER, keep their own envelope
+			// sender so the binding never fired, and have this server DKIM-sign the
+			// result with the key chosen from the envelope domain — producing a
+			// perfectly DMARC-aligned message from the CEO, carrying this server's
+			// own cryptographic word. Ordinary spoofing lands in junk; this did not.
+			//
+			// Checked here rather than at MAIL because the header only exists once
+			// DATA has been read.
+			if s.submission && s.headerFromAllowed != nil {
+				hdrFrom, wellFormed := headerFromAddress(raw)
+				if !wellFormed {
+					// Zero, several, or a multi-address From. RFC 5322 permits exactly
+					// one of each, every real client sends one, and the malformed
+					// shapes are precisely how a verifier and a renderer are made to
+					// disagree — the inbound side already refuses them for that reason.
+					reset()
+					write("550 5.7.7 A single, well-formed From header is required")
+					continue
+				}
+				if !s.headerFromAllowed(authUser, hdrFrom) {
+					reset()
+					write("553 5.7.1 From header address not owned by the authenticated account")
+					continue
+				}
 			}
 			if s.handler != nil {
 				msg := raw

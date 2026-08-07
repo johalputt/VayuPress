@@ -193,6 +193,35 @@ func headerFromDomain(raw []byte) (domain string, wellFormed bool) {
 	return d, true
 }
 
+// headerFromAddress returns the single address in the message's From header,
+// applying exactly the strictness headerFromDomain applies inbound: one From
+// header, one address, or nothing.
+//
+// Shared deliberately. The inbound side already refuses the two-From and
+// multi-address shapes because a verifier and a renderer can be made to read
+// different addresses; the same trick pointed OUTWARD is an authenticated
+// submitter forging a colleague. One rule, one place, so the two directions
+// cannot drift apart.
+func headerFromAddress(raw []byte) (addr string, wellFormed bool) {
+	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		return "", false
+	}
+	froms := msg.Header["From"]
+	if len(froms) != 1 {
+		return "", false
+	}
+	list, err := netmail.ParseAddressList(froms[0])
+	if err != nil || len(list) != 1 {
+		return "", false
+	}
+	a := strings.TrimSpace(list[0].Address)
+	if a == "" || domainOf(a) == "" {
+		return "", false
+	}
+	return a, true
+}
+
 // domainsAligned reports DMARC identifier alignment. Strict requires an exact
 // (case-insensitive) match; relaxed (the default) also accepts an
 // organizational-domain match, approximated here by a subdomain suffix.
