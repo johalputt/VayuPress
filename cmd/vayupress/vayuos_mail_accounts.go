@@ -585,6 +585,16 @@ func (a *App) handleVayuOSAccountsAction(w http.ResponseWriter, r *http.Request)
 	accts := a.vayuMail.Accounts()
 	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 	op := r.FormValue("op")
+	// The inline list actions reach the same mutations as the JSON endpoints, so
+	// they need the same fence: a mail:write key could re-role, disable or delete
+	// a console-capable mailbox from here without ever touching /accounts/update.
+	switch op {
+	case "toggle", "role", "delete", "handover":
+		if !a.mailCredentialActionAuthorized(r, email) {
+			writeMailSessionRequired(w, r)
+			return
+		}
+	}
 	var opErr error
 	switch op {
 	case "toggle":
@@ -598,6 +608,13 @@ func (a *App) handleVayuOSAccountsAction(w http.ResponseWriter, r *http.Request)
 		}
 	case "role":
 		role := strings.TrimSpace(r.FormValue("role"))
+		// PROMOTING through this door is the same act as promoting through
+		// /accounts/update, which already refuses a key. The check above catches a
+		// target that is console-capable today; this catches one being made so.
+		if mailRoleGrantsConsole(role) && !a.isAdminSession(r) {
+			writeMailSessionRequired(w, r)
+			return
+		}
 		if opErr = accts.SetRole(r.Context(), email, role); opErr == nil {
 			dbpkg.AuditLog("vayumail.account.role", dbpkg.AuditActor(r), email, role)
 		}

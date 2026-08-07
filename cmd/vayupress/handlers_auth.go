@@ -633,6 +633,55 @@ func mailRoleGrantsConsole(role string) bool {
 	return console
 }
 
+// mailTargetGrantsConsole reports whether the mailbox at email CURRENTLY holds a
+// role that grants console access — read from storage, not from the request.
+func (a *App) mailTargetGrantsConsole(ctx context.Context, email string) bool {
+	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
+		return false
+	}
+	return mailRoleGrantsConsole(a.vayuMail.Accounts().RoleFor(ctx, strings.TrimSpace(email)))
+}
+
+// mailCredentialActionAuthorized gates every operation that can TAKE OVER, or
+// lock out, an existing console-capable mailbox: resetting its password,
+// removing its second factor, disabling it, re-roling it, deleting it.
+//
+// isAdminSession above closed the CREATE and PROMOTE doors by inspecting the
+// SUBMITTED role. That is only half the surface, because a mailbox that already
+// holds a console-capable role does not need promoting — it needs taking. A key
+// granted only mail:write satisfied isAdminRequest and could:
+//
+//	POST /os/vayumail/accounts/update {"email":"boss@…","pass":"…"}
+//	  => the install owner's mailbox now has a password I chose. No Role field is
+//	     submitted, so the promote guard never fires.
+//	POST /os/vayumail/accounts/totp   {"email":"boss@…","action":"disable"}
+//	  => and now there is no second factor between me and the console.
+//	POST /os/vayumail/accounts/delete {"email":"boss@…"}
+//	  => or I simply delete every administrator and the operator is locked out.
+//
+// The rule is symmetric with creation: a credential that grants console access
+// may only be minted, promoted, reset, stripped or destroyed by a human session.
+//
+// Deliberately narrow. It reads the target's CURRENT role, so the ordinary
+// mailboxes automation manages (role "mailbox", "reviewer", a custom role) are
+// untouched and every existing API-key script against them keeps working. Only
+// the handful of mailboxes that can sign in to the console are fenced.
+func (a *App) mailCredentialActionAuthorized(r *http.Request, email string) bool {
+	if !a.mailTargetGrantsConsole(r.Context(), email) {
+		return true
+	}
+	return a.isAdminSession(r)
+}
+
+// writeMailSessionRequired is the single refusal used by the guard above, so the
+// message an operator's automation receives explains the boundary rather than
+// reading as a generic 403.
+func writeMailSessionRequired(w http.ResponseWriter, r *http.Request) {
+	writeAPIError(w, r, http.StatusForbidden, "session-admin-required",
+		"this mailbox can sign in to the console, so changing its credentials, its second factor, "+
+			"its role or its existence requires an administrator session; an API key cannot do it", "")
+}
+
 // keyLifecycleAuthorized reports whether the caller may perform API-key lifecycle
 // mutations (rotate / revoke / delete / activate / deactivate). Managing the key
 // fleet is an operator-admin / superuser operation: a session administrator is

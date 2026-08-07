@@ -39,6 +39,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   them did, so a new row in the staff list was the only evidence an escalation
   had happened.
 
+- **A `mail:write` key could take over a mailbox that signs in to the console.**
+  Section 1 again, and the other half of the door above. The existing guard on
+  `/os/vayumail/accounts/update` refused a *promotion* by inspecting the
+  **submitted** role — so a request that submitted no role at all sailed past
+  it, which is all a password reset needs. A key granted only `mail:write`
+  could `POST {"email":"owner@…","pass":"…"}` against the install owner's
+  mailbox, `POST {"action":"disable"}` to `/os/vayumail/accounts/totp` to strip
+  the second factor now in its way, and then sign in to VayuOS as an
+  administrator. `/os/vayumail/accounts/delete` was the same class from the
+  other side: delete every administrator mailbox and the operator is locked out.
+  The inline HTMX list at `/os/vayumail/accounts/action` reached the same
+  mutations — `toggle`, `role`, `delete`, `handover` — without going through
+  `update` at all.
+
+  The mechanism: `mailCredentialActionAuthorized` (`handlers_auth.go`) resolves
+  the target's **current** role from storage with `Accounts().RoleFor` and
+  requires a human administrator session when that role grants console access.
+  Deliberately narrow — the ordinary mailboxes automation manages (role
+  `mailbox`, `reviewer`, a custom role) are untouched, and quota, retention and
+  signature stay open to a key even on a console mailbox, because none of them
+  changes who can sign in. `/os/vayumail/accounts/delete` now writes an audit
+  entry; it was the only account mutation that did not.
+
   Four mutations killed. **The first version of the regression tests was
   worthless and the mutations are what said so:** with no `X-API-Key` header,
   `HasValidAPIKey` was false, every request got 403 for the wrong reason, and

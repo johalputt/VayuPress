@@ -1609,10 +1609,17 @@ func (a *App) handleVayuOSAccountDelete(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
 		return
 	}
+	// Deleting a console-capable mailbox is a lockout, and it was reachable by a
+	// mail:write key — see mailCredentialActionAuthorized.
+	if !a.mailCredentialActionAuthorized(r, in.Email) {
+		writeMailSessionRequired(w, r)
+		return
+	}
 	if err := a.vayuMail.Accounts().Delete(r.Context(), in.Email); err != nil {
 		writeAPIError(w, r, 500, "delete-failed", err.Error(), "")
 		return
 	}
+	dbpkg.AuditLog("vayumail.account.delete", dbpkg.AuditActor(r), in.Email, "")
 	writeJSON(w, r, 200, map[string]bool{"deleted": true})
 }
 
@@ -1661,6 +1668,19 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 	if mailRoleGrantsConsole(in.Role) && !a.isAdminSession(r) {
 		writeAPIError(w, r, http.StatusForbidden, "session-admin-required",
 			"promoting a mailbox to a role that grants console access requires an administrator session; an API key cannot do it", "")
+		return
+	}
+	// And the other half of that door. The guard above reads the SUBMITTED role,
+	// so a request carrying no Role at all sailed past it — which is all a
+	// password reset needs. Taking over a mailbox that is ALREADY console-capable
+	// is the same act as promoting one, so it takes the same session.
+	//
+	// Quota, retention and signature are excluded on purpose: none of them
+	// changes who can sign in, and fencing them would break ordinary automation
+	// for no security gain.
+	credentialChange := in.Pass != "" || in.Active != nil || strings.TrimSpace(in.Role) != ""
+	if credentialChange && !a.mailCredentialActionAuthorized(r, in.Email) {
+		writeMailSessionRequired(w, r)
 		return
 	}
 	if in.Signature != nil {
@@ -1763,6 +1783,14 @@ func (a *App) handleVayuOSAccountTOTP(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	if email == "" {
 		writeAPIError(w, r, 400, "validation_error", "email is required", "")
+		return
+	}
+	// Stripping the second factor from a mailbox that can sign in to the console
+	// is a credential change in everything but name — it is the step an attacker
+	// takes between resetting a password and using it. Enrolling a NEW secret is
+	// the same act from the other side: it hands the caller the factor.
+	if !a.mailCredentialActionAuthorized(r, email) {
+		writeMailSessionRequired(w, r)
 		return
 	}
 	accts := a.vayuMail.Accounts()
