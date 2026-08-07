@@ -10,6 +10,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **The MIME part-count budget was attacked and held; its test did not cover the
+  attack.** Section 2 reported the FETCH parser as having no part-count budget.
+  It has one — `maxMIMEParts`, a whole-message counter threaded through
+  `buildPart` since audit H5 — and a message of 10,000 parts across four levels
+  of nesting (4.7 MB, well inside the ingest cap) parses to 257 parts in single-
+  digit milliseconds. The finding was wrong.
+
+  What was real is that nothing pinned the property the budget claims.
+  `TestParseMessagePartCountBounded` counts only the root's direct children, so
+  it proves the bound for a message that floods siblings at one level and is
+  silent about one that floods at every level — under a nested flood the root has
+  a single child. Changing the budget from whole-tree to per-container yielded
+  **111,111 parts against a budget of 256** and both existing bound tests still
+  passed. `TestParseMessagePartBudgetIsWholeTreeNotPerLevel` now covers it.
+
 - **Every RCPT from a stranger read the whole users table.** Section 2. The
   inbound recipient check reached `GetUserByEmail`, which called `List` and
   walked the result with `EqualFold` — every column of every row loaded and
