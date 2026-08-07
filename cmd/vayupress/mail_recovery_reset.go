@@ -66,13 +66,21 @@ type mailResetDeps struct {
 	SetPasswordHash    func(ctx context.Context, email, hash string) error
 	RevokeAppPasswords func(ctx context.Context, email string) (int, error)
 	RevokeSessions     func(ctx context.Context, email string) (int, error)
-	InvalidateTokens   func(ctx context.Context, email string)
-	HoldQueue          func(ctx context.Context, email string) (int, error)
-	RecoveryContact    func(ctx context.Context, email string) string
-	Notify             func(ctx context.Context, to, subject, body string) error
-	FileToMailbox      func(ctx context.Context, email, subject, body string) error
-	Audit              func(action, actor, target, detail string)
-	Now                func() time.Time
+	// RevokeConsoleSessions ends the /os console sessions a mailbox credential
+	// can mint. RevokeSessions above is the MEMBER store — a different table in a
+	// different package — and for years it was the only one wired, so a reset
+	// reported "0 web sessions ended" while the attacker's console cookie kept
+	// resolving. ADR-0144 enumerated IMAP/SMTP, app passwords and the webmail
+	// member session, and omitted the /os/login mailbox fallback entirely; this
+	// is that fourth credential finally getting its revocation step.
+	RevokeConsoleSessions func(ctx context.Context, email string) (int, error)
+	InvalidateTokens      func(ctx context.Context, email string)
+	HoldQueue             func(ctx context.Context, email string) (int, error)
+	RecoveryContact       func(ctx context.Context, email string) string
+	Notify                func(ctx context.Context, to, subject, body string) error
+	FileToMailbox         func(ctx context.Context, email, subject, body string) error
+	Audit                 func(action, actor, target, detail string)
+	Now                   func() time.Time
 	// handedOver reports whether this mailbox has been handed to its owner
 	// (ADR-0152 D4). Nil in tests and in installs where VayuMail is absent, which
 	// reads as "not handed over" — the historic behaviour.
@@ -178,6 +186,19 @@ func applyMailPasswordReset(ctx context.Context, d mailResetDeps, email, newPass
 			fail("revoke sessions", err)
 		} else {
 			out.SessionsRevoked = n
+		}
+	}
+	// 3b. And the /os console session that same mailbox password can mint. This
+	//     is a SEPARATE store from step 3 — see RevokeConsoleSessions — and its
+	//     absence was the gap between what the notice below claims and what the
+	//     reset actually did. The count joins SessionsRevoked because the holder
+	//     is being told how many things were signed out, not which table they
+	//     lived in.
+	if d.RevokeConsoleSessions != nil {
+		if n, err := d.RevokeConsoleSessions(ctx, email); err != nil {
+			fail("revoke console sessions", err)
+		} else {
+			out.SessionsRevoked += n
 		}
 	}
 	// 4. Outstanding reset links, including the one that authorised this reset if
@@ -286,6 +307,15 @@ func (a *App) mailResetDepsFor() (mailResetDeps, bool) {
 	}
 	if a.members != nil {
 		d.RevokeSessions = a.members.RevokeSessions
+	}
+	if a.sessions != nil {
+		// "vmail:"+address is the user id handleOSLoginSubmit stores when a
+		// mailbox credential signs in to the console (admin_os_ui.go). Ending it
+		// here is what makes the notice's "everything that could still be signed
+		// in was disconnected" true.
+		d.RevokeConsoleSessions = func(ctx context.Context, email string) (int, error) {
+			return a.sessions.DestroyForUser(ctx, "vmail:"+strings.ToLower(strings.TrimSpace(email)))
+		}
 	}
 	d.HoldQueue = a.vayuMail.HoldOutboundFor
 	d.Notify = a.sendRecoveryNotice

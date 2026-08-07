@@ -100,6 +100,33 @@ func (s *SessionStore) Destroy(ctx context.Context, token string) error {
 	return err
 }
 
+// DestroyForUser deletes EVERY console session belonging to one principal and
+// reports how many it ended.
+//
+// AUDIT FINDING. Destroy above takes a raw token, so the only session anything
+// could end was the one presenting itself — logout. There was no way to evict a
+// principal, and the mailbox password-reset pipeline depended on there being
+// one: it revoked app passwords, member sessions, reset links and queued mail,
+// mailed the holder "everything that could still be signed in was disconnected",
+// and left the /os console session untouched. An attacker who had signed in at
+// /os/login with the stolen mailbox password kept full VayuOS access for the
+// remaining seven days of its TTL, through a recovery that told the victim
+// otherwise.
+//
+// The user id for a mailbox console session is "vmail:"+address; a CMS staff
+// session carries the user's id. Both are ended by the same call.
+func (s *SessionStore) DestroyForUser(ctx context.Context, userID string) (int, error) {
+	if s == nil || s.db == nil || userID == "" {
+		return 0, nil
+	}
+	res, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=?`, userID)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 // PurgeExpired removes all sessions whose expiry has passed. Intended to run on
 // a periodic sweep.
 func (s *SessionStore) PurgeExpired(ctx context.Context) (int64, error) {

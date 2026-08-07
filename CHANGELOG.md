@@ -62,6 +62,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   changes who can sign in. `/os/vayumail/accounts/delete` now writes an audit
   entry; it was the only account mutation that did not.
 
+- **A mailbox password reset left the VayuOS console session alive, and told the
+  holder it had not.** Section 1. `applyMailPasswordReset` revoked app passwords,
+  member sessions, outstanding reset links and queued mail, then emailed *"For
+  your security, everything that could still be signed in was disconnected"* —
+  and never touched the `sessions` table, where the cookie minted by signing in
+  at `/os/login` with the mailbox password lives for seven days.
+  `resolveMailSessionUser` refuses only when `HashFor` returns **empty**, and a
+  changed hash is not an empty one, so an attacker's session kept resolving for
+  the rest of its TTL. For an `administrator`-role mailbox that is install-wide
+  administration retained through the exact remediation the product documents.
+  The count made it worse: `SessionsRevoked` came from the member store alone,
+  so the notice read "0 web sessions ended" while one was live.
+
+  The mechanism: `SessionStore.DestroyForUser` (`internal/auth/session.go`) is
+  new — until now the only session anything could end was the one presenting its
+  own token, so there was no way to evict a principal at all. The reset pipeline
+  gains a `RevokeConsoleSessions` step wired to it in `mailResetDepsFor`, and its
+  result joins `SessionsRevoked` so the number the holder reads is the number of
+  things actually signed out. Deleting a staff account now calls the same
+  primitive.
+
+### Fixed
+
+- **A VayuMail mailbox could not sign in to the console at all.** Found while
+  building the tests for the entry above. `sessions.user_id` was declared as a
+  foreign key into `users(id)` by migration 020, and every connection opens with
+  `PRAGMA foreign_keys=ON` — but a mailbox console session is stored as
+  `vmail:<address>`, and that identity is deliberately never persisted as a user
+  row. The insert was refused, so the documented sign-in at `/os/login` with a
+  mailbox credential answered *"could not start session"*. Nothing caught it
+  because nothing in the suite had ever minted one of those sessions.
+
+  Migration `088-sessions-synthetic-principals` rebuilds the table without the
+  constraint, since the column legitimately holds principals that are not user
+  rows. The `ON DELETE CASCADE` that constraint carried is now explicit in
+  `handleUserDelete` — better placed, because the cascade was invisible,
+  untested, and never covered the `vmail:` half of the column.
+
   Four mutations killed. **The first version of the regression tests was
   worthless and the mutations are what said so:** with no `X-API-Key` header,
   `HasValidAPIKey` was false, every request got 403 for the wrong reason, and

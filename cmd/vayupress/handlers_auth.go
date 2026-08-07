@@ -16,12 +16,14 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/totp"
 	"github.com/johalputt/vayupress/internal/users"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
@@ -777,9 +779,26 @@ func (a *App) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := chi.URLParam(r, "email")
+	// Resolve the id BEFORE the delete: sessions are keyed on it, and after the
+	// row is gone there is nothing left to look it up by.
+	var deletedID string
+	if u, err := a.userStore.GetByEmail(r.Context(), email); err == nil && u != nil {
+		deletedID = u.ID
+	}
 	if err := a.userStore.Delete(r.Context(), email); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "delete-error", err.Error(), "")
 		return
+	}
+	// Migration 088 removed the users foreign key from sessions, and with it the
+	// ON DELETE CASCADE that used to sign a removed account out. Doing it here
+	// restores that and improves on it: the cascade was invisible and untested,
+	// and it never covered the "vmail:" half of the column at all.
+	if a.sessions != nil && deletedID != "" {
+		if n, err := a.sessions.DestroyForUser(r.Context(), deletedID); err != nil {
+			logging.LogError("auth", "could not end sessions for deleted account "+email, err.Error())
+		} else if n > 0 {
+			dbpkg.AuditLog("user.sessions.revoked", dbpkg.AuditActor(r), email, strconv.Itoa(n)+" ended")
+		}
 	}
 	dbpkg.AuditLog("user.delete", dbpkg.AuditActor(r), email, "")
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"deleted": email})
