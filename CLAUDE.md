@@ -498,3 +498,62 @@ Each of these was learned by getting it wrong here, and each cost real time.
 - **One rejected file rejects the whole upload.** A bundle containing a single
   disallowed extension was refused in full, silently, repeatedly. Skip known
   junk, report what was skipped, and make a refusal impossible to miss.
+
+## 17. Code quality — the standing bar
+
+Said by the operator and therefore not a per-task negotiation: **write only the
+code that is needed, and make it enterprise-grade.** Less code, higher quality.
+No filler, no scaffolding "for later", no helper that exists because it felt
+tidy. Every line shipped is a line someone maintains and an attacker can reach.
+
+This is a bar, not a leash. It does not mean being timid or doing less than the
+task requires — if the right answer is a substantial change, make it. What is
+ruled out is *volume without purpose*.
+
+### Debugging must not break what already works
+
+The first duty of any fix is to leave every working path working. Before a
+change lands, know what legitimate use it could take away, and say so.
+
+- **The narrowest rule that closes the hole wins.** The author-ownership guard
+  refuses another domain's post and another author's post, and deliberately
+  still allows unattributed primary-site content — because imported archives
+  carry no `author_id`, and the "obvious" stricter rule would have made an
+  author's own back catalogue uneditable.
+- **Delete a fix that costs someone their access.** `VerifyApprovedDevice` had
+  a loop cap written, reviewed and working, to bound an Argon2id amplifier. It
+  was removed before commit: the credential query has no `ORDER BY`, so the cap
+  would have checked the OLDEST devices and refused a person holding one
+  enrolled later — a lockout on the one path that exists to undo a lockout. The
+  bound went where it costs nobody anything (a per-address budget and the
+  process-wide ceiling). Writing the code was not the mistake; keeping it would
+  have been.
+- **A control that rations real people is its own outage.** The webmail lockout
+  was namespaced and the magic-link per-source budget loosened because behind a
+  CDN every reader shares one address. Ask who else is on the other side of the
+  check.
+
+### Verify under the real conditions, not convenient ones
+
+A check that does not match reality proves nothing about reality, in **either**
+direction. Both have already cost a red CI here:
+
+- **Stricter than the product** — a test harness refused an empty address while
+  the shipped predicate fails open on it, so a missing control was hidden and
+  the mutation survived.
+- **More permissive than the runner** — the suite was run as root, where a test
+  could bind port 110; CI is unprivileged and could not. The test passed locally
+  for a reason unrelated to the code.
+
+### What "enterprise-grade" means concretely here
+
+- **Reuse the mechanism that already exists.** The From-header binding shares
+  `headerFromAddress` with the inbound path rather than parsing again, and
+  `WithSenderCheck` wires one predicate to both fields — so the envelope and the
+  header cannot drift apart. A second copy of a rule is a future divergence.
+- **Fix at the root, not at the call site.** POP3's missing test port was fixed
+  in the shared config, because the next POP3 test would have hit it too.
+- **A comment earns its place by saying WHY**, especially why an obvious
+  alternative was rejected. Restating what the next line does is noise.
+- **No dead code, no speculative interfaces, no unused exports.** The deadcode
+  gate is in §4 for a reason.
