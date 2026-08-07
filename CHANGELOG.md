@@ -6,6 +6,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Security
+
+- **One IMAP command killed the entire install.** Section 2. `applyPartialFetch`
+  validated the *offset* of an RFC 3501 `BODY[]<offset.size>` partial and never
+  the size, and its clamp only ever pulled `end` down — so `BODY[]<0.-1>`
+  reached `b[off:end]` with `end < off` and panicked. Nothing in the mail
+  package recovers, so the panic on the IMAP connection goroutine terminated the
+  whole single binary: website, blog, admin console, SMTP receive, submission,
+  POP3 and the database writer, together. Any mailbox holder could send it, and
+  send it again on restart — an off switch rather than a crash.
+
+  Two ways in, and a size check alone closes only one:
+  `BODY[]<1.9223372036854775807>` is two positive numbers whose sum overflows
+  negative. The fix rejects a negative size and clamps on `end < off`, which
+  catches the overflow. A malformed partial now yields an empty slice rather
+  than the rest of the message — over-serving a bad read is the wrong direction
+  to fail in.
+
 ## [3.17.24] — 2026-08-07
 
 Ships on its own rather than waiting for the rest of the Section 2 audit,

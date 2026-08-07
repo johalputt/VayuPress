@@ -446,11 +446,23 @@ func applyPartialFetch(b []byte, spec string) (out []byte, origin int, partial b
 		}
 		size = len(b)
 	}
-	if off < 0 || off > len(b) {
+	// AUDIT FINDING (Section 2). This guard used to cover the OFFSET only, and the
+	// clamp below only ever pulled `end` down. A client sending BODY[]<0.-1> —
+	// two decimal numbers, exactly the shape RFC 3501 defines — produced end < off
+	// and `b[off:end]` panicked. Nothing in this package recovers, so the panic on
+	// the IMAP connection goroutine terminated the whole single binary: website,
+	// console, SMTP, POP3 and the database writer together, repeatably.
+	//
+	// A negative size is not a partial fetch anyone can serve, so it yields the
+	// empty slice rather than an error: the client gets a well-formed, empty
+	// BODY[] response instead of a dropped connection.
+	if off < 0 || off > len(b) || size < 0 {
 		return []byte{}, off, true
 	}
+	// `end < off` catches integer overflow, which a size check alone does not:
+	// <1.9223372036854775807> is two positive numbers whose sum wraps negative.
 	end := off + size
-	if end > len(b) {
+	if end < off || end > len(b) {
 		end = len(b)
 	}
 	return b[off:end], off, true
