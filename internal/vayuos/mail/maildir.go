@@ -30,7 +30,25 @@ func safeSegment(s string) string {
 	if s == "." || s == string(filepath.Separator) || s == "" {
 		return "_"
 	}
-	return s
+	// AUDIT FINDING (Section 2). Every identity lookup in this system folds case
+	// -- normEmail, RoleFor, QuotaFor, HashFor, ResolveAlias -- and this path did
+	// not, so the two disagreed about who a mailbox belongs to.
+	//
+	// Delivery was the serious half: RCPT TO:<ALICE@example.com> resolved through
+	// the case-insensitive lookups, earned a 250 (so the sending server recorded
+	// it delivered and would never retry or bounce), and then landed in
+	// <base>/example.com/ALICE/ while its owner read .../alice/. Mail accepted and
+	// then unreachable forever, with nothing reporting a failure -- and it fired
+	// by accident, whenever a correspondent's address book held the display-cased
+	// form. Login was the other half: POP3 and IMAP derive the directory from the
+	// string the person typed, so the same holder reached a different mailbox
+	// depending on how they capitalised their own address.
+	//
+	// Folded HERE rather than at each caller because this is the single function
+	// every Maildir path component passes through -- delivery, POP3 login, IMAP
+	// login and the retention sweep all arrive at it. Normalising at four call
+	// sites would leave the fifth to be forgotten.
+	return strings.ToLower(s)
 }
 
 func (m *Maildir) accountDir(domain, username string) string {

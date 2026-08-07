@@ -61,7 +61,17 @@ func TestSafeSegment(t *testing.T) {
 		"":            "_",
 		"  spaced  ":  "spaced",
 		"/abs/path/x": "x",
-		".Sent":       ".Sent",
+		// Case is folded: this function keys the mail store, and every identity
+		// lookup in the system is already case-insensitive. Leaving the two out of
+		// step delivered ALICE@example.com into a directory alice could not read.
+		"ALICE":       "alice",
+		"EXAMPLE.COM": "example.com",
+		// A leading-dot name folds too, and that is SAFE rather than merely
+		// tolerated: safeSegment has exactly two call sites, both in accountDir
+		// (domain and username). A folder name never reaches it — folderDir builds
+		// "."+canonicalFolder(folder) directly — so the ".Sent" / ".Junk"
+		// directories on an existing install are not touched by this.
+		".Sent": ".sent",
 	}
 	for in, want := range cases {
 		if got := safeSegment(in); got != want {

@@ -26,6 +26,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   than the rest of the message — over-serving a bad read is the wrong direction
   to fail in.
 
+- **Mail addressed with any capital letter was accepted and then unreachable
+  forever.** Section 2, found independently by two of the audit's readers, and
+  it fires with no attacker at all. Every identity lookup here folds case —
+  `normEmail`, `RoleFor`, `QuotaFor`, `HashFor`, `ResolveAlias` — and the
+  filesystem path did not. So `RCPT TO:<ALICE@example.com>` resolved, earned a
+  **250** (the sending server records that as delivered and never retries or
+  bounces), and landed in `…/example.com/ALICE/` while its owner reads
+  `…/example.com/alice/`. A statement, an invoice or a password-reset link
+  simply never arrives, and nothing anywhere reports a failure. It needs only a
+  correspondent whose address book holds the display-cased form.
+
+  There is a second half: POP3 and IMAP derive the mailbox directory from the
+  login string the person typed, so the same holder signing in as
+  `Alice@example.com` reached a *third* directory. One person, different mail
+  depending on how they capitalised their own address.
+
+  Folded in `safeSegment`, the single function every Maildir path component
+  passes through — delivery, POP3 login, IMAP login and the retention sweep all
+  arrive there, and normalising at four call sites would leave the fifth to be
+  forgotten. **Folder directories are unaffected and that is pinned:**
+  `safeSegment` has exactly two call sites, both in `accountDir`, and
+  `folderDir` builds `"."+canonicalFolder(folder)` directly — so the `.Sent` and
+  `.Junk` directories on an existing install keep their casing. A test fails if
+  a folder name is ever routed through the fold.
+
 - **The Section 1 brute-force fix reached one endpoint of two.** Section 2, and
   a gap in this project's own previous remediation.
   `/api/v1/members/vayumail-device-register` accepts the **raw mailbox
