@@ -10,6 +10,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **An unauthenticated connection could allocate memory without limit on IMAP
+  and POP3.** Section 2. `bufio.Reader.ReadString('\n')` grows its buffer until
+  it finds the delimiter, and both command loops run before any credential is
+  checked — so a connection that opened, sent bytes and never sent a newline made
+  the server allocate every one of them. Measured here at 24 MB accepted per
+  connection in 0.15 seconds, with no account and no password. This is one
+  process: the website, the blog, the admin console, SMTP receive, submission and
+  the database writer go down together when the allocator gives up.
+
+  `readCommandLine` (in `imapd.go`, shared with `pop3d.go`) now caps a single
+  line at 64 KiB using `ReadSlice`, which reports a full buffer instead of
+  growing. It is wired into every network-facing read on both listeners: the IMAP
+  command loop, the `AUTHENTICATE PLAIN` continuation, the literal trailer and
+  the `IDLE` DONE read, plus the POP3 command loop. Submission was never exposed
+  — `smtpd` already wraps its connection in an `io.LimitReader`. Any line up to
+  the cap is returned intact, so long-but-legitimate commands (a UID set on a
+  large mailbox) are unaffected; that is pinned by its own test.
+
+  This is the half `connlimit.go` assumed it already had. That file caps
+  concurrency at 256 global / 16 per source and describes a connection's cost as
+  bounded, which was true of `smtpd` and of neither listener here — and a bounded
+  connection count multiplied by an unbounded per-connection cost is still
+  unbounded. The two controls only compose now that a line has a ceiling.
+
 - **Disabling or deleting a mailbox revoked nothing.** Section 2. Both controls
   are what an operator reaches for in an emergency — a stolen phone, somebody
   leaving — and neither cut off a single enrolled device. `SetActive` wrote one

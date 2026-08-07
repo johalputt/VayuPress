@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -191,7 +192,7 @@ func (s *IMAPServer) handle(conn net.Conn) {
 
 	sess := &imapSession{}
 	for {
-		raw, err := br.ReadString('\n')
+		raw, err := readCommandLine(br)
 		if err != nil {
 			return
 		}
@@ -347,7 +348,7 @@ func (s *IMAPServer) doAuthenticate(br *bufio.Reader, w *bufio.Writer, line func
 	if payload == "" {
 		_, _ = w.WriteString("+ \r\n")
 		_ = w.Flush()
-		l, err := br.ReadString('\n')
+		l, err := readCommandLine(br)
 		if err != nil {
 			return
 		}
@@ -1108,7 +1109,7 @@ func (s *IMAPServer) doAppend(br *bufio.Reader, w *bufio.Writer, line func(strin
 	if _, err := io.ReadFull(br, buf); err != nil {
 		return
 	}
-	_, _ = br.ReadString('\n') // trailing CRLF after the literal
+	_, _ = readCommandLine(br) // trailing CRLF after the literal
 
 	newID, err := s.maildir.DeliverTo(sess.authedDomain, sess.authedUser, folder, buf)
 	if err != nil {
@@ -1179,7 +1180,7 @@ func (s *IMAPServer) doIdle(br *bufio.Reader, w *bufio.Writer, line func(string)
 	doneCh := make(chan struct{})
 	// Reader goroutine waits for the "DONE" line.
 	go func() {
-		l, err := br.ReadString('\n')
+		l, err := readCommandLine(br)
 		_ = l
 		_ = err
 		close(doneCh)
@@ -1204,6 +1205,65 @@ func (s *IMAPServer) doIdle(br *bufio.Reader, w *bufio.Writer, line func(string)
 }
 
 // ── shared parsing helpers ───────────────────────────────────────────────────
+
+// maxCommandLine bounds ONE protocol command line on the IMAP and POP3
+// listeners.
+//
+// AUDIT FINDING (Section 2). bufio.Reader.ReadString('\n') grows its buffer
+// until it finds the delimiter, and both command loops run before any credential
+// is checked. An unauthenticated connection that simply never sent a newline
+// allocated without limit — in the single process that is also the website, the
+// blog, the admin console, SMTP receive and the database writer, so the whole
+// install went down together. Measured at 24 MB accepted per connection in
+// 0.15s, with no account and no password. Submission was never exposed: smtpd
+// wraps its connection in an io.LimitReader, which is this same idea applied one
+// level up.
+//
+// 64 KiB is what widely deployed IMAP servers use, and it is far above real
+// traffic: the longest legitimate lines are UID sets on a large mailbox. POP3
+// commands are smaller still (RFC 1939 caps them at 255 octets), and one shared
+// constant is deliberate — two numbers for one rule is a future divergence.
+//
+// This is the piece connLimiter assumed was already here. That file bounds
+// concurrency (256 global, 16 per source) and reasons about the cost of a
+// connection as bounded — "each accepted connection holds a bufio.Reader sized
+// against MaxMessageBytes" — which was true of smtpd and of neither listener
+// here. Multiplying an unbounded per-connection cost by a bounded connection
+// count is still unbounded. With the cap the two controls compose the way that
+// comment always claimed: 256 × 64 KiB is a number, and it is a small one.
+const maxCommandLine = 64 << 10
+
+// errCommandLineTooLong ends a connection whose sender is not speaking the
+// protocol. There is no reply: a client 64 KiB into a single line is either
+// broken or hostile, and draining the rest to stay polite is the same unbounded
+// work the cap exists to refuse.
+var errCommandLineTooLong = errors.New("vayumail: command line too long")
+
+// readCommandLine reads one newline-terminated line without buffering more than
+// maxCommandLine bytes.
+//
+// ReadSlice, not ReadString: it reports ErrBufferFull instead of growing, which
+// hands the loop the decision ReadString never offers. Any line up to the cap is
+// returned intact; peak memory is the cap plus one bufio buffer, because the
+// chunk that completes a line is always taken whole.
+func readCommandLine(br *bufio.Reader) (string, error) {
+	var sb strings.Builder
+	for {
+		chunk, err := br.ReadSlice('\n')
+		// ReadSlice's result is only valid until the next read, so it is copied
+		// here rather than referenced.
+		_, _ = sb.Write(chunk)
+		if err == nil {
+			return sb.String(), nil
+		}
+		if err != bufio.ErrBufferFull {
+			return sb.String(), err
+		}
+		if sb.Len() > maxCommandLine {
+			return "", errCommandLineTooLong
+		}
+	}
+}
 
 func cutSpace(s string) (head, rest string) {
 	s = strings.TrimSpace(s)

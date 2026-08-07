@@ -171,7 +171,7 @@ func (s *POP3Server) handle(conn net.Conn) {
 	)
 
 	for {
-		raw, err := br.ReadString('\n')
+		raw, err := readCommandLine(br)
 		if err != nil {
 			return
 		}
