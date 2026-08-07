@@ -21,10 +21,10 @@ func TestCrossDomainMaildirIsolation(t *testing.T) {
 	primaryRaw := []byte("From: a@partner.test\r\nTo: bob@example.com\r\nSubject: Primary msg\r\n\r\nprimary body\r\n")
 	secondaryRaw := []byte("From: a@partner.test\r\nTo: bob@shop.example\r\nSubject: Secondary msg\r\n\r\nsecondary body\r\n")
 
-	if _, err := e.DeliverInbound("bob@example.com", primaryRaw); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "bob@example.com", primaryRaw); err != nil {
 		t.Fatalf("deliver primary: %v", err)
 	}
-	if _, err := e.DeliverInbound("bob@shop.example", secondaryRaw); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "bob@shop.example", secondaryRaw); err != nil {
 		t.Fatalf("deliver secondary: %v", err)
 	}
 
@@ -75,7 +75,7 @@ func TestEngineReadResolvesSecondaryMailbox(t *testing.T) {
 
 	// A message delivered to the secondary is visible only via the full address.
 	raw := []byte("From: a@partner.test\r\nTo: bob@shop.example\r\nSubject: Sec\r\n\r\nx\r\n")
-	if _, err := e.DeliverInbound("bob@shop.example", raw); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "bob@shop.example", raw); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
 	full, err := e.ListFolder(ReadAsSystem("bob@shop.example", "test"), "Inbox")

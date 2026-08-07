@@ -476,7 +476,7 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 
 	localRcpt, remoteRcpt := e.splitLocalRecipients(all)
 	for _, rcpt := range localRcpt {
-		if _, derr := e.DeliverInbound(rcpt, rawMsg); derr != nil {
+		if _, derr := e.DeliverInbound(envelopeAddress(m.From), rcpt, rawMsg); derr != nil {
 			return 0, fmt.Errorf("vayumail: local delivery to %s: %w", rcpt, derr)
 		}
 	}
@@ -713,10 +713,10 @@ func (e *Engine) Start(ctx context.Context) error {
 }
 
 // inboundDeliver files each recipient's copy of a received message locally.
-func (e *Engine) inboundDeliver(_ string, rcpts []string, raw []byte) error {
+func (e *Engine) inboundDeliver(from string, rcpts []string, raw []byte) error {
 	var firstErr error
 	for _, rcpt := range rcpts {
-		if _, derr := e.DeliverInbound(rcpt, raw); derr != nil && firstErr == nil {
+		if _, derr := e.DeliverInbound(from, rcpt, raw); derr != nil && firstErr == nil {
 			firstErr = derr
 		}
 	}
@@ -1110,7 +1110,7 @@ func (e *Engine) sendMail(ctx context.Context, from string, to []string, subject
 	// never land in the recipient's Inbox on this instance.
 	local, remote := e.splitLocalRecipients(to)
 	for _, rcpt := range local {
-		if _, derr := e.DeliverInbound(rcpt, rawMsg); derr != nil {
+		if _, derr := e.DeliverInbound(envelopeAddress(from), rcpt, rawMsg); derr != nil {
 			return 0, fmt.Errorf("vayumail: local delivery to %s: %w", rcpt, derr)
 		}
 	}

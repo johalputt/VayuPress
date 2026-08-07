@@ -10,6 +10,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **The vacation autoresponder was an open reflector.** Section 2. It picked the
+  address to answer out of `Reply-To`, falling back to `From` — both headers,
+  both written by whoever sent the message, neither connected to the envelope the
+  mail actually arrived on. Anyone who found a mailbox with an active responder
+  could name a stranger in a header and have this server compose a reply, sign it
+  with this domain's DKIM key and deliver it to someone who never wrote here. The
+  dedupe log is keyed on that same address, so changing the header also bought a
+  fresh slot every time: attacker-chosen destination, attacker-chosen volume,
+  this install's IP and reputation paying for it.
+
+  `shouldAutoReply` now takes the **envelope sender** and answers that, per
+  RFC 3834 §4, and refuses a **null envelope sender** outright — which is what a
+  bounce and every other automatic message carries, and the real form of the
+  "never respond to bounces" claim the package comment has always made (what
+  enforced it before was a substring search for `mailer-daemon` in the header
+  address, a naming convention the sender picks). The header checks stay, because
+  they answer a different question: the envelope decides *where* a reply goes,
+  while `Auto-Submitted`, `Precedence` and the `List-*` family decide *whether*
+  one should exist.
+
+  The envelope was available the whole time — `inboundDeliver` received it from
+  `smtpd` and discarded it in its own parameter list (`_ string`). It is now
+  threaded through `DeliverInbound`, whose signature carries it so the compiler
+  requires every caller to say what the envelope is. Ordinary correspondents are
+  unaffected: envelope and `From` agree for essentially all real mail, and a
+  forwarded message is answered at its return path, which is the point.
+
 - **An unauthenticated connection could allocate memory without limit on IMAP
   and POP3.** Section 2. `bufio.Reader.ReadString('\n')` grows its buffer until
   it finds the delimiter, and both command loops run before any credential is

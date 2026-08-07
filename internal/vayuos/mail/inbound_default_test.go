@@ -80,7 +80,7 @@ func TestInboundBindFailureIsNonFatal(t *testing.T) {
 		t.Fatalf("expected InboundError to record the failed bind")
 	}
 	// Outbound/local delivery must still be usable despite the inbound failure.
-	if _, err := e.DeliverInbound("bob@example.com", []byte(
+	if _, err := e.DeliverInbound("sender@other.test", "bob@example.com", []byte(
 		"From: a@partner.test\r\nTo: bob@example.com\r\nSubject: hi\r\n"+
 			"Date: Mon, 02 Jan 2006 15:04:05 -0700\r\n\r\nbody\r\n")); err != nil {
 		t.Fatalf("local delivery should still work: %v", err)

@@ -13,7 +13,7 @@ func TestMarkReadAndUnread(t *testing.T) {
 	e := newLoopbackEngine(t, nil)
 	raw := []byte(crlf("From: a@partner.test\nTo: bob@example.com\nSubject: hi\n" +
 		"Date: Mon, 02 Jan 2006 15:04:05 -0700\n\nbody\n"))
-	if _, err := e.DeliverInbound("bob@example.com", raw); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "bob@example.com", raw); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
 	msgs, _ := e.ListFolder(ReadAsSystem("bob", "test"), "Inbox")
@@ -43,7 +43,7 @@ func TestMarkReadStaleID(t *testing.T) {
 	t.Parallel()
 	e := newLoopbackEngine(t, nil)
 	raw := []byte(crlf("From: a@partner.test\nTo: bob@example.com\nSubject: hi\n\nbody\n"))
-	if _, err := e.DeliverInbound("bob@example.com", raw); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "bob@example.com", raw); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
 	msgs, _ := e.ListFolder(ReadAsSystem("bob", "test"), "Inbox")
@@ -68,7 +68,7 @@ func TestPinPreservesSeen(t *testing.T) {
 	t.Parallel()
 	e := newLoopbackEngine(t, nil)
 	raw := []byte(crlf("From: a@partner.test\nTo: bob@example.com\nSubject: hi\n\nbody\n"))
-	if _, err := e.DeliverInbound("bob@example.com", raw); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "bob@example.com", raw); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
 	id := mustFirstID(t, e, "bob", "Inbox")
@@ -151,7 +151,7 @@ func TestMailboxQuotaEnforced(t *testing.T) {
 		t.Fatalf("set quota: %v", err)
 	}
 	small := []byte(crlf("From: a@p.test\nTo: cap@example.com\nSubject: ok\n\n" + "x" + "\n"))
-	if _, err := e.DeliverInbound("cap@example.com", small); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "cap@example.com", small); err != nil {
 		t.Fatalf("small delivery under quota should succeed: %v", err)
 	}
 	big := make([]byte, 4096)
@@ -159,14 +159,14 @@ func TestMailboxQuotaEnforced(t *testing.T) {
 		big[i] = 'y'
 	}
 	raw := append([]byte(crlf("From: a@p.test\nTo: cap@example.com\nSubject: big\n\n")), big...)
-	if _, err := e.DeliverInbound("cap@example.com", raw); err == nil {
+	if _, err := e.DeliverInbound("sender@other.test", "cap@example.com", raw); err == nil {
 		t.Fatalf("delivery over quota must be refused")
 	}
 	// Unlimited (0) never blocks.
 	if err := e.Accounts().SetQuota(ctx, "cap@example.com", 0); err != nil {
 		t.Fatalf("clear quota: %v", err)
 	}
-	if _, err := e.DeliverInbound("cap@example.com", raw); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "cap@example.com", raw); err != nil {
 		t.Fatalf("unlimited quota should never block: %v", err)
 	}
 }

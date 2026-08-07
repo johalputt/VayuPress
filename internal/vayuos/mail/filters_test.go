@@ -92,7 +92,7 @@ func TestFilterDeliveryEndToEnd(t *testing.T) {
 
 	// Newsletter → Archive; forward + autoreply still fire (2 enqueues).
 	news := []byte("From: news@big.co\r\nSubject: weekly\r\n\r\nx")
-	if _, err := e.DeliverInbound(mbox, news); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", mbox, news); err != nil {
 		t.Fatalf("deliver news: %v", err)
 	}
 	if msgs, _ := e.maildir.ListFolder("example.com", "ankush", "Archive"); len(msgs) != 1 {
@@ -104,7 +104,7 @@ func TestFilterDeliveryEndToEnd(t *testing.T) {
 
 	// Spam rule → Junk; forward and autoreply must both be suppressed.
 	spam := []byte("From: spam@bad.co\r\nSubject: buy\r\n\r\nx")
-	if _, err := e.DeliverInbound(mbox, spam); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", mbox, spam); err != nil {
 		t.Fatalf("deliver spam: %v", err)
 	}
 	if msgs, _ := e.maildir.ListFolder("example.com", "ankush", "Junk"); len(msgs) != 1 {
@@ -116,7 +116,7 @@ func TestFilterDeliveryEndToEnd(t *testing.T) {
 
 	// No matching rule → Inbox as before.
 	plain := []byte("From: friend@x.y\r\nSubject: hi\r\n\r\nx")
-	if _, err := e.DeliverInbound(mbox, plain); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", mbox, plain); err != nil {
 		t.Fatalf("deliver plain: %v", err)
 	}
 	if msgs, _ := e.maildir.ListFolder("example.com", "ankush", "Inbox"); len(msgs) != 1 {
@@ -126,7 +126,7 @@ func TestFilterDeliveryEndToEnd(t *testing.T) {
 	// markread action: filed in Inbox already seen.
 	_ = s.CreateFilter(ctx, FilterRule{Mailbox: mbox, Field: "subject", Contains: "receipt", Action: "markread"})
 	rcpt := []byte("From: shop@x.y\r\nSubject: your receipt\r\n\r\nx")
-	if _, err := e.DeliverInbound(mbox, rcpt); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", mbox, rcpt); err != nil {
 		t.Fatalf("deliver receipt: %v", err)
 	}
 	msgs, _ := e.maildir.ListFolder("example.com", "ankush", "Inbox")

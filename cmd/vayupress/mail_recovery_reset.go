@@ -349,7 +349,10 @@ func (a *App) fileRecoveryNotice(_ context.Context, mailbox, subject, body strin
 	}
 	from := "security@" + a.vayuMail.Config().Domain
 	raw := buildNoticeMessage(from, mailbox, subject, body, time.Now())
-	_, err := a.vayuMail.DeliverInbound(mailbox, raw)
+	// Null envelope sender: this notice is machine-generated, and RFC 3834 uses
+	// exactly that to mean "never answer this". A holder who is on holiday during
+	// a takeover should not have their vacation responder write back to us.
+	_, err := a.vayuMail.DeliverInbound("", mailbox, raw)
 	return err
 }
 

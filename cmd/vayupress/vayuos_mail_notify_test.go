@@ -18,7 +18,7 @@ func deliverTestMail(t *testing.T, a *App, to, from, subject string) {
 	t.Helper()
 	raw := "From: " + from + "\r\nTo: " + to + "\r\nSubject: " + subject + "\r\n" +
 		"Date: Mon, 21 Jul 2026 10:00:00 +0000\r\n\r\nhello\r\n"
-	if _, err := a.vayuMail.DeliverInbound(to, []byte(raw)); err != nil {
+	if _, err := a.vayuMail.DeliverInbound("sender@other.test", to, []byte(raw)); err != nil {
 		t.Fatalf("deliver to %s: %v", to, err)
 	}
 }

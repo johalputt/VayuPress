@@ -21,7 +21,7 @@ func TestInboundDeliverListRead(t *testing.T) {
 		"\r\n" +
 		"Hello Bob, this is the body.\r\n")
 
-	id, err := e.DeliverInbound("bob@example.com", raw)
+	id, err := e.DeliverInbound("sender@other.test", "bob@example.com", raw)
 	if err != nil || id == "" {
 		t.Fatalf("deliver inbound: id=%q err=%v", id, err)
 	}

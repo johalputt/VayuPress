@@ -21,10 +21,10 @@ func TestMailboxesForDomain(t *testing.T) {
 
 	// Delivery provisions the Maildir, so each account then shows up under its
 	// own domain.
-	if _, err := e.DeliverInbound("alice@example.com", []byte("From: x@p.test\r\nTo: alice@example.com\r\nSubject: p\r\n\r\nb\r\n")); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "alice@example.com", []byte("From: x@p.test\r\nTo: alice@example.com\r\nSubject: p\r\n\r\nb\r\n")); err != nil {
 		t.Fatalf("deliver primary: %v", err)
 	}
-	if _, err := e.DeliverInbound("shopkeeper@shop.example", []byte("From: x@p.test\r\nTo: shopkeeper@shop.example\r\nSubject: s\r\n\r\nb\r\n")); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "shopkeeper@shop.example", []byte("From: x@p.test\r\nTo: shopkeeper@shop.example\r\nSubject: s\r\n\r\nb\r\n")); err != nil {
 		t.Fatalf("deliver secondary: %v", err)
 	}
 

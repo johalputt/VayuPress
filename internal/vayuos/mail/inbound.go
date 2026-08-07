@@ -118,7 +118,7 @@ const forwardLoopHeader = "X-VayuMail-Forwarded"
 // (single-level, see CreateAlias), and after successful filing a copy is
 // relayed to the mailbox's auto-forward address when one is set (best-effort —
 // a forwarding problem never fails local delivery).
-func (e *Engine) DeliverInbound(recipientEmail string, raw []byte) (string, error) {
+func (e *Engine) DeliverInbound(envelopeFrom, recipientEmail string, raw []byte) (string, error) {
 	if e.maildir == nil {
 		return "", errors.New("vayumail: not started")
 	}
@@ -164,7 +164,7 @@ func (e *Engine) DeliverInbound(recipientEmail string, raw []byte) (string, erro
 			id, err := e.maildir.DeliverTo(domain, local, folder, raw)
 			if err == nil && !strings.EqualFold(folder, "Junk") && !strings.EqualFold(folder, "Trash") {
 				e.forwardCopy(addr, raw)
-				e.maybeAutoReply(addr, raw)
+				e.maybeAutoReply(envelopeFrom, addr, raw)
 			}
 			return id, err
 		case "markread", "pin":
@@ -180,7 +180,7 @@ func (e *Engine) DeliverInbound(recipientEmail string, raw []byte) (string, erro
 					}
 				}
 				e.forwardCopy(addr, raw)
-				e.maybeAutoReply(addr, raw)
+				e.maybeAutoReply(envelopeFrom, addr, raw)
 			}
 			return id, err
 		}
@@ -188,7 +188,7 @@ func (e *Engine) DeliverInbound(recipientEmail string, raw []byte) (string, erro
 	id, err := e.maildir.Deliver(domain, local, raw)
 	if err == nil {
 		e.forwardCopy(addr, raw)
-		e.maybeAutoReply(addr, raw)
+		e.maybeAutoReply(envelopeFrom, addr, raw)
 	}
 	return id, err
 }

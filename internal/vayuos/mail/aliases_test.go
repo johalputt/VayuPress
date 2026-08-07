@@ -157,7 +157,7 @@ func TestDeliverInboundAliasAndForward(t *testing.T) {
 	// Deliver to the ALIAS: it must land in the TARGET mailbox and enqueue a
 	// tagged forward copy.
 	raw := []byte("From: x@y.z\r\nSubject: order\r\n\r\nhello")
-	if _, err := e.DeliverInbound("sales@example.com", raw); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "sales@example.com", raw); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
 	st, _ := e.maildir.Stats("example.com", "ankush")
@@ -177,7 +177,7 @@ func TestDeliverInboundAliasAndForward(t *testing.T) {
 
 	// A message that ALREADY carries the tag must not be forwarded again.
 	tagged := prependHeader(raw, forwardLoopHeader+": elsewhere@x.y")
-	if _, err := e.DeliverInbound("ankush@example.com", tagged); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "ankush@example.com", tagged); err != nil {
 		t.Fatalf("deliver tagged: %v", err)
 	}
 	if d, _, _ := q.ProcessDue(ctx, time.Now().Add(2*time.Hour)); d != 0 {

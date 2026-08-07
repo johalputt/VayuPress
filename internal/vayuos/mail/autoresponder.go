@@ -18,11 +18,18 @@ import (
 // safety checks are what make this enterprise-grade rather than a mail-loop
 // generator:
 //
+//   - the reply goes to the ENVELOPE sender (RFC 3834 §4), never to an address
+//     read out of Reply-To or From. Those are headers, so trusting them made
+//     this a reflector that would mail anyone the sender named;
+//   - never respond to a NULL envelope sender. That is what a bounce and every
+//     other automatic message carries, and it is the real bounce check — the
+//     machine-name list below is a naming convention the sender picks, so it
+//     backs the envelope rule up rather than standing in for it;
 //   - never respond to auto-generated/auto-replied mail (Auto-Submitted),
 //     suppressed senders (X-Auto-Response-Suppress), bulk/list/junk
 //     Precedence, or list mail (List-Id / List-Unsubscribe / List-Post);
-//   - never respond to bounces or machine senders (mailer-daemon, postmaster,
-//     no-reply, bounce addresses) or to the mailbox itself;
+//   - never respond to machine senders (mailer-daemon, postmaster, no-reply)
+//     or to the mailbox itself;
 //   - never respond to copies our own forwarder relayed (forwardLoopHeader);
 //   - our replies are themselves tagged Auto-Submitted: auto-replied and
 //     X-Auto-Response-Suppress: All, so two autoresponders can never converse.
@@ -160,7 +167,47 @@ var noAutoReplySenders = []string{"mailer-daemon", "postmaster", "no-reply", "no
 // shouldAutoReply applies the RFC 3834 safety checks to an inbound message and
 // returns the correspondent address to answer, or "" when no reply must be
 // sent.
-func shouldAutoReply(mailbox string, raw []byte) string {
+//
+// AUDIT FINDING (Section 2). The correspondent used to be read out of Reply-To,
+// falling back to From. Both are HEADERS — the part of a message its sender
+// types — and neither has any connection to the envelope the message actually
+// arrived on. So anyone who could find a mailbox with an active responder could
+// name a stranger in a header and have this server compose a reply, sign it with
+// this domain's DKIM key and send it to a person who never wrote here. The
+// dedupe log is keyed on the correspondent, so varying the header also bought a
+// fresh slot every time: attacker-chosen destination, attacker-chosen volume,
+// this install's IP and reputation.
+//
+// The correspondent is now the ENVELOPE sender, which is RFC 3834 §4 and is what
+// the envelope means: the address a bounce returns to. It was available all
+// along — inboundDeliver received it from smtpd and discarded it in its own
+// parameter list.
+//
+// The header checks below stay, because they answer a different question. The
+// envelope says WHERE a reply goes; Auto-Submitted, Precedence and the List-*
+// family say WHETHER one should exist at all.
+func shouldAutoReply(envelopeFrom, mailbox string, raw []byte) string {
+	// RFC 3834 §2 and §4: a null envelope sender is how a bounce and every other
+	// automatic message identifies itself, and answering one is how two servers
+	// begin talking to each other forever. extractAddr reduces the wire form
+	// `MAIL FROM:<>` to the empty string, so this is the shape it arrives in.
+	//
+	// This is also the control the package comment above has always claimed under
+	// "never respond to bounces". What enforced that before was a substring search
+	// for "mailer-daemon" and friends in the From HEADER — a naming convention the
+	// sender chooses, not a control.
+	//
+	// Stated plainly because a mutation proved it: deleting these three lines
+	// changes no behaviour today, since envelopeAddress returns "" for an empty
+	// input and ParseAddress then rejects it. The rule is kept explicit anyway. It
+	// is a named requirement on a path where the alternative enforcement is an
+	// accident of two helpers downstream, and "the parser happens to fail" is not
+	// something the next person editing envelopeAddress will know they must
+	// preserve. The property is pinned by test regardless of which line enforces
+	// it.
+	if strings.TrimSpace(envelopeFrom) == "" {
+		return ""
+	}
 	// Machine-generated or suppressed mail: never answer.
 	if v := strings.ToLower(headerValue(raw, "Auto-Submitted")); v != "" && v != "no" {
 		return ""
@@ -180,12 +227,11 @@ func shouldAutoReply(mailbox string, raw []byte) string {
 	if hasHeader(raw, forwardLoopHeader) {
 		return ""
 	}
-	// Correspondent: Reply-To wins, else From.
-	sender := headerValue(raw, "Reply-To")
-	if sender == "" {
-		sender = headerValue(raw, "From")
-	}
-	addr, err := netmail.ParseAddress(sender)
+	// The correspondent, from the envelope. envelopeAddress is the same reduction
+	// the queue uses for MAIL FROM, so the address answered here and the address
+	// mail is sent from cannot drift apart.
+	replyTo := envelopeAddress(envelopeFrom)
+	addr, err := netmail.ParseAddress(replyTo)
 	if err != nil || addr.Address == "" {
 		return ""
 	}
@@ -208,7 +254,7 @@ func shouldAutoReply(mailbox string, raw []byte) string {
 // maybeAutoReply sends the vacation reply for a just-delivered message when
 // the mailbox's autoresponder is active and every safety check passes.
 // Best-effort by design: a responder problem never affects delivery.
-func (e *Engine) maybeAutoReply(mailbox string, raw []byte) {
+func (e *Engine) maybeAutoReply(envelopeFrom, mailbox string, raw []byte) {
 	if e.accounts == nil || e.queue == nil {
 		return
 	}
@@ -218,7 +264,7 @@ func (e *Engine) maybeAutoReply(mailbox string, raw []byte) {
 	if !ar.Active(now) {
 		return
 	}
-	sender := shouldAutoReply(mailbox, raw)
+	sender := shouldAutoReply(envelopeFrom, mailbox, raw)
 	if sender == "" {
 		return
 	}

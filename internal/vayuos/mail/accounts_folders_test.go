@@ -196,7 +196,7 @@ func TestDeliverInboundFilesSpamToJunk(t *testing.T) {
 
 	spam := []byte("Subject: FREE MONEY WINNER!!!\r\n\r\n" +
 		"You won the lottery, click here, act now, $$$ 100% guaranteed free money.")
-	if _, err := e.DeliverInbound("dave@example.com", spam); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "dave@example.com", spam); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
 	inbox, _ := e.ListFolder(ReadAsSystem("dave", "test"), "Inbox")
@@ -209,7 +209,7 @@ func TestDeliverInboundFilesSpamToJunk(t *testing.T) {
 	}
 
 	ham := []byte("From: a@b.com\r\nDate: Mon, 01 Jan 2024 10:00:00 +0000\r\nSubject: Hi\r\n\r\nNormal note.")
-	if _, err := e.DeliverInbound("dave@example.com", ham); err != nil {
+	if _, err := e.DeliverInbound("sender@other.test", "dave@example.com", ham); err != nil {
 		t.Fatalf("deliver ham: %v", err)
 	}
 	inbox, _ = e.ListFolder(ReadAsSystem("dave", "test"), "Inbox")
