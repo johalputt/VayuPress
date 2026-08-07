@@ -1,0 +1,253 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/members"
+	"github.com/johalputt/vayupress/internal/users"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
+)
+
+// Two audit findings, both about the same thing: a public endpoint that spends
+// the server's Argon2id budget on a stranger's say-so, with nothing counting.
+//
+//	POST /api/v1/members/vayumail-login — mail addresses are public by design
+//	(WKD, autoconfig, the avatar endpoint), so I do not need to guess who exists.
+//	This handler had no throttle, no lockout and no limiter, while its three
+//	siblings in the same file all had one. I guessed passwords against every
+//	mailbox on the install at whatever rate the box could hash, and because the
+//	failures were never recorded, the operator's mail-side brute-force counter
+//	stayed clean the whole time.
+//
+//	POST /api/v1/members/login — and when I got bored of guessing, I pointed the
+//	install's own mailer at a victim. Unauthenticated, unmetered, DKIM-signed
+//	with the operator's domain. A few thousand of those and the domain is
+//	blocklisted, which takes the entire mail product down with it.
+//
+// The Argon2id ceiling is the third control and the one that bounds the damage
+// either way: 64 MiB and every core per derivation, with the anti-enumeration
+// decoy forcing a full run even for addresses that do not exist.
+
+// ---------------------------------------------------------------------------
+// The per-IP lockout on the mailbox login
+// ---------------------------------------------------------------------------
+
+func postVayuMailLogin(t *testing.T, a *App, ip, email, pass string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/members/vayumail-login",
+		strings.NewReader(`{"email":"`+email+`","password":"`+pass+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = ip + ":40000"
+	rec := httptest.NewRecorder()
+	a.handleMemberVayuMailLogin(rec, req)
+	return rec
+}
+
+func TestMailboxLoginLocksOutASourceThatKeepsGuessing(t *testing.T) {
+	a := credentialFloodApp(t)
+	const ip = "198.51.100.44"
+
+	var refused int
+	for i := 0; i < 12; i++ {
+		rec := postVayuMailLogin(t, a, ip, "boss@example.com", "guess-number-"+string(rune('a'+i)))
+		if rec.Code == http.StatusTooManyRequests {
+			refused++
+		}
+	}
+	if refused == 0 {
+		t.Error("twelve wrong passwords from one address were all answered normally.\n\n" +
+			"Mail addresses on this install are published by WKD and autoconfig, so an attacker " +
+			"does not have to find the mailboxes — only the passwords. Nothing here is counting, " +
+			"and because the failures are not recorded the IMAP/SMTP throttle stays clean too.")
+	}
+}
+
+// The control, and it matters more than the test above: an install where a
+// wrong password once locks the mailbox out is worse than the flood. The
+// lockout is keyed on the SOURCE, so a second person on a different address
+// must be unaffected by the first one's mistakes.
+func TestMailboxLoginLockoutDoesNotPunishABystander(t *testing.T) {
+	a := credentialFloodApp(t)
+	const attacker, honest = "198.51.100.45", "203.0.113.77"
+
+	for i := 0; i < 12; i++ {
+		postVayuMailLogin(t, a, attacker, "boss@example.com", "wrong")
+	}
+	if rec := postVayuMailLogin(t, a, honest, "boss@example.com", "also-wrong"); rec.Code == http.StatusTooManyRequests {
+		t.Error("someone else's failed attempts locked out an unrelated address.\n\n" +
+			"That turns the control into the outage: anyone can lock every reader out of " +
+			"sign-in by guessing badly on purpose.")
+	}
+}
+
+// And a correct password must still work, or the fix is an outage with a
+// security rationale.
+func TestMailboxLoginStillAcceptsTheRightPassword(t *testing.T) {
+	a := credentialFloodApp(t)
+	const ip = "203.0.113.90"
+
+	rec := postVayuMailLogin(t, a, ip, "boss@example.com", "the-password-the-attacker-stole")
+	if rec.Code == http.StatusUnauthorized || rec.Code == http.StatusTooManyRequests {
+		t.Fatalf("a valid mailbox credential was refused (%d) — sign-in is broken.\n\nbody: %s",
+			rec.Code, rec.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The magic-link budget
+// ---------------------------------------------------------------------------
+
+func postMemberLogin(t *testing.T, a *App, ip, email string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/members/login",
+		strings.NewReader(`{"email":"`+email+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = ip + ":40000"
+	rec := httptest.NewRecorder()
+	a.handleMemberLogin(rec, req)
+	return rec
+}
+
+// countLoginTokens is the assertion that matters. The response is deliberately
+// identical whether the request was served or dropped — a 429 here would be a
+// member-enumeration oracle — so the only honest way to tell is to count what
+// the request actually caused.
+func countLoginTokens(t *testing.T, a *App, email string) int {
+	t.Helper()
+	var n int
+	if err := dbpkg.DB.QueryRow(
+		`SELECT COUNT(*) FROM member_login_tokens WHERE email=?`, email).Scan(&n); err != nil {
+		t.Fatalf("count tokens: %v", err)
+	}
+	return n
+}
+
+func TestMagicLinkFloodIsBoundedPerAddress(t *testing.T) {
+	a := credentialFloodApp(t)
+
+	// Twenty requests aimed at one victim, each from a DIFFERENT source, which is
+	// what a botnet or a rotating proxy looks like and what the installer's
+	// per-IP nginx limit cannot see.
+	for i := 0; i < 20; i++ {
+		postMemberLogin(t, a, "192.0.2."+strconv.Itoa(i+1), "victim@elsewhere.test")
+	}
+
+	n := countLoginTokens(t, a, "victim@elsewhere.test")
+	if n > 5 {
+		t.Errorf("%d magic links were issued to one address from 20 different sources.\n\n"+
+			"Each one is a real message, DKIM-signed by the operator's domain, sent to someone "+
+			"who did not ask for it. The address budget is what stops a distributed flood "+
+			"aimed at a single victim, and the per-IP limit cannot: every request came from "+
+			"a different IP.", n)
+	}
+}
+
+func TestMagicLinkFloodIsBoundedPerSource(t *testing.T) {
+	a := credentialFloodApp(t)
+	const ip = "192.0.2.200"
+
+	// One host walking a list. The per-address budget never fires — every address
+	// is fresh — so only the per-source budget can stop this.
+	issued := 0
+	for i := 0; i < 30; i++ {
+		addr := "target" + strconv.Itoa(i) + "@elsewhere.test"
+		postMemberLogin(t, a, ip, addr)
+		issued += countLoginTokens(t, a, addr)
+	}
+	if issued > 15 {
+		t.Errorf("one source made this install send %d unsolicited messages to %d different "+
+			"addresses.\n\nThat is the operator's domain doing the sending, and the fastest "+
+			"available route to having it blocklisted.", issued, 30)
+	}
+}
+
+// The control: an ordinary person asking for a sign-in link must get one.
+func TestMagicLinkStillWorksForAnHonestRequest(t *testing.T) {
+	a := credentialFloodApp(t)
+
+	rec := postMemberLogin(t, a, "203.0.113.5", "reader@elsewhere.test")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a first magic-link request got %d, want 200", rec.Code)
+	}
+	if countLoginTokens(t, a, "reader@elsewhere.test") != 1 {
+		t.Error("no login token was created for a first, entirely ordinary request — " +
+			"the budget is refusing people who have done nothing")
+	}
+}
+
+// A refusal must be INVISIBLE. If a throttled request answered differently from
+// a served one, this endpoint would become the member-enumeration oracle its own
+// comment says it must never be.
+func TestMagicLinkRefusalIsIndistinguishable(t *testing.T) {
+	a := credentialFloodApp(t)
+	const ip = "203.0.113.6"
+
+	first := postMemberLogin(t, a, ip, "reader2@elsewhere.test")
+	var last *httptest.ResponseRecorder
+	for i := 0; i < 12; i++ {
+		last = postMemberLogin(t, a, ip, "reader2@elsewhere.test")
+	}
+	if last.Code != first.Code || last.Body.String() != first.Body.String() {
+		t.Errorf("a throttled request answers differently from a served one:\n"+
+			"  served:    %d %s\n  throttled: %d %s\n\n"+
+			"That difference is readable by anyone, and it turns the budget into an oracle.",
+			first.Code, first.Body.String(), last.Code, last.Body.String())
+	}
+}
+
+// credentialFloodApp gives every test its own database, mail engine, member
+// store and mailer sink. Per-test isolation is not tidiness here: the budgets
+// under test are package-level and keyed on address and source, so tests that
+// shared either would spend one another's allowance and fail in a full run
+// while passing alone.
+func credentialFloodApp(t *testing.T) *App {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("DB_PATH", filepath.Join(dir, "flood.db"))
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("DOMAIN", "example.com")
+	t.Setenv("CACHE_DIR", dir)
+	config.Load()
+	if err := dbpkg.Init(); err != nil {
+		t.Fatalf("db init: %v", err)
+	}
+	t.Cleanup(func() { _ = dbpkg.DB.Close() })
+
+	cfg := vmail.DefaultConfig()
+	cfg.Enabled = true
+	cfg.Domain = "example.com"
+	cfg.Hostname = "mail.example.com"
+	cfg.StorageDir = dir
+	cfg.InboundEnabled = false
+	e := vmail.NewEngine(&cfg, nil, dbpkg.DB)
+	if err := e.Start(context.Background()); err != nil {
+		t.Fatalf("start engine: %v", err)
+	}
+	t.Cleanup(func() { _ = e.Stop(context.Background()) })
+
+	hash, err := auth.HashSecretArgon2id("the-password-the-attacker-stole")
+	if err != nil {
+		t.Fatalf("hash: %v", err)
+	}
+	if err := e.Accounts().Create(context.Background(),
+		"boss@example.com", hash, "Boss", "mailbox"); err != nil {
+		t.Fatalf("seed mailbox: %v", err)
+	}
+	return &App{
+		vayuMail:  e,
+		sessions:  auth.NewSessionStore(dbpkg.DB),
+		userStore: users.New(dbpkg.DB),
+		members:   members.New(dbpkg.DB),
+	}
+}

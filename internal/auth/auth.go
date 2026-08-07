@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -505,7 +506,15 @@ func HashSecretArgon2id(secret string) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	hash := argon2.IDKey([]byte(secret), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	// Hashing shares the verification ceiling: a password change and a sign-in
+	// cost the same 64 MiB, and counting only one of them would leave the bound
+	// describing half the work.
+	var hash []byte
+	if !withArgonSlot(func() {
+		hash = argon2.IDKey([]byte(secret), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	}) {
+		return "", errors.New("the server is busy hashing credentials; try again shortly")
+	}
 	return fmt.Sprintf("%s$v=2$t=%d$%s$%s",
 		argonV2Prefix, argonTime,
 		base64.RawStdEncoding.EncodeToString(salt),
@@ -570,7 +579,15 @@ func VerifySecretArgon2id(secret, encoded string) bool {
 	if err != nil {
 		return false
 	}
-	got := argon2.IDKey([]byte(secret), salt, t, argonMemory, argonThreads, argonKeyLen)
+	// The derivation itself runs under the process-wide ceiling (argon_ceiling.go).
+	// Everything above is parsing and costs nothing; only this line allocates
+	// 64 MiB and burns cores, so it is the only part worth bounding.
+	var got []byte
+	if !withArgonSlot(func() {
+		got = argon2.IDKey([]byte(secret), salt, t, argonMemory, argonThreads, argonKeyLen)
+	}) {
+		return false
+	}
 	return hmac.Equal(got, want) && !forceFail
 }
 

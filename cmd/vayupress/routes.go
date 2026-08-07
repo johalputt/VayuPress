@@ -349,7 +349,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Post("/api/v1/members/mailbox/premium/activate", a.handleMemberMailIDActivate)
 	r.Get("/api/v1/members/ads", a.handleMemberAdsStatus)
 	r.Post("/api/v1/members/ads", a.handleMemberAdSubmit)
-	r.Post("/api/v1/members/vayumail-login", a.handleMemberVayuMailLogin)
+	// PublicDiscoveryRateLimit is the outermost of three controls on this route
+	// (the handler adds a per-IP lockout and a per-mailbox throttle). It was
+	// registered bare, outside every limiter group, and /api is in
+	// shieldBypassPrefixes -- so nothing at all metered unauthenticated password
+	// guessing against every mailbox on the install.
+	r.With(auth.PublicDiscoveryRateLimit).Post("/api/v1/members/vayumail-login", a.handleMemberVayuMailLogin)
 	// Member self-serve 2FA on their OWN VayuMail mailbox (member-session, SameSite
 	// Lax + same-origin JSON — same protection model as the sibling member POSTs).
 	// begin returns {secret,uri,qr}; the QR + otpauth label auto-fill the account

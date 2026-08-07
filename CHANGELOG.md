@@ -83,6 +83,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   things actually signed out. Deleting a staff account now calls the same
   primitive.
 
+- **Two public endpoints spent the server's credentials budget on a stranger's
+  say-so, with nothing counting.** Section 1.
+  `POST /api/v1/members/vayumail-login` had no throttle, no lockout and no rate
+  limiter, while its three siblings in the same file all carry one and the
+  IMAP/SMTP/POP3 listeners carry one too. Mail addresses are published by design
+  (WKD, autoconfig, the avatar endpoint), so this was unmetered online password
+  guessing against every mailbox on the install — and because failures were
+  never recorded, the operator's mail-side brute-force counter stayed clean
+  throughout. `POST /api/v1/members/login` was the other half: any anonymous
+  caller could aim the install's own mailer at a victim, or at thousands of
+  addresses, DKIM-signed with the operator's domain.
+
+  Three mechanisms, because each covers what the others cannot. The mailbox
+  login now calls `auth.CheckAuthLockout` / `RecordAuthFailure` keyed on
+  `auth.ClientIP` (one host grinding many mailboxes), `mailAuthThrottle` keyed
+  on the address (many hosts grinding one), and carries
+  `auth.PublicDiscoveryRateLimit` on its route. The magic-link endpoint gains
+  `memberLoginByAddress` (3/hour) and `memberLoginByIP` (10/hour), mirroring the
+  recovery flow; a refused request answers **identically** to a served one, or
+  the budget would become the member-enumeration oracle that endpoint exists to
+  avoid.
+
+- **Argon2id work is now bounded process-wide** (`internal/auth/argon_ceiling.go`).
+  Every derivation is 64 MiB and every core, and the anti-enumeration decoy
+  forces a full run even for addresses that do not exist — so a failing
+  unauthenticated request cost exactly as much as a succeeding one, and nothing
+  limited how many ran at once. The per-mailbox throttles are `time.Sleep`
+  calls, which delay one caller and bound nothing about a thousand arriving
+  together. Hashing and verification now share a slot table sized to half the
+  cores (floor 2, cap 8), so the worst case is slots × 64 MiB rather than a
+  function of how many requests arrived. Work **queues** rather than failing, so
+  a sign-in during a burst is slow instead of refused.
+
 ### Fixed
 
 - **A VayuMail mailbox could not sign in to the console at all.** Found while

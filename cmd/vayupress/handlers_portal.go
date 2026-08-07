@@ -202,11 +202,39 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// AUDIT FINDING (Section 1). This handler had no brute-force defence of any
+	// kind — no throttle, no lockout, no limiter — while its three siblings in
+	// this same file all carry one, and the IMAP/SMTP/POP3 listeners carry one
+	// too. Mail addresses are public by design (WKD, autoconfig, the avatar
+	// endpoint), so an attacker had unmetered online password guessing against
+	// every mailbox on the install, at whatever rate the box could hash. Because
+	// nothing recorded the failures, the mail-side throttle counter also stayed
+	// clean, and the operator's other defence never fired either.
+	//
+	// Three controls, because each covers what the others do not. The lockout is
+	// per source IP and stops one host grinding many mailboxes. The throttle is
+	// per mailbox and stops many hosts grinding one. The Argon2id ceiling
+	// (internal/auth) bounds the CPU and memory either can spend, which neither
+	// of the first two does — a sleep delays a caller, it does not bound a
+	// thousand arriving together.
+	clientIP := auth.ClientIP(r)
+	if locked, until := auth.CheckAuthLockout(clientIP); locked {
+		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(until).Seconds())+1))
+		writeAPIError(w, r, http.StatusTooManyRequests, "too-many-attempts",
+			"Too many sign-in attempts from this address. Try again shortly.", "")
+		return
+	}
+	if d := mailAuthThrottle.Delay(emailAddr); d > 0 {
+		time.Sleep(d)
+	}
+
 	accts := a.vayuMail.Accounts()
 	hash := accts.HashFor(r.Context(), emailAddr)
 	// Verify even when the account is unknown (hash == "") to keep the timing and
 	// the response identical regardless of whether the address exists.
 	if !auth.VerifySecretArgon2id(body.Password, hash) || hash == "" {
+		mailAuthThrottle.Fail(emailAddr)
+		auth.RecordAuthFailure(clientIP)
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
 		return
 	}
@@ -219,10 +247,18 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		if !totp.Validate(secret, code) {
+			mailAuthThrottle.Fail(emailAddr)
+			auth.RecordAuthFailure(clientIP)
 			writeAPIError(w, r, http.StatusUnauthorized, "totp-invalid", "That code is not valid — try the current one", "")
 			return
 		}
 	}
+	// Cleared on a COMPLETE sign-in, not on a correct password: a right password
+	// with a wrong second factor is still a failed attempt, and resetting the
+	// counters there would hand an attacker who has the password an unlimited
+	// budget for guessing the code.
+	mailAuthThrottle.Success(emailAddr)
+	auth.RecordAuthSuccess(clientIP)
 
 	// Credentials good: ensure a member record exists for this address and start
 	// a session. The member's tier is whatever it already is (free by default);

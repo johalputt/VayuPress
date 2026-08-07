@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -102,6 +103,16 @@ func (a *App) resolveCommenter(r *http.Request) *commenterIdentity {
 	return nil
 }
 
+// Budgets for the magic-link endpoint. The numbers mirror the recovery flow
+// (handlers_mail_recovery.go), which is the same shape of surface: unauthenticated,
+// address-keyed, and it makes the server send mail on a stranger's say-so.
+// Three links an hour is more than any honest person needs and far below what a
+// sender reputation can survive.
+var (
+	memberLoginByAddress = newIngestLimiter(3, time.Hour)
+	memberLoginByIP      = newIngestLimiter(10, time.Hour)
+)
+
 // POST /api/v1/members/login  {email}
 // Issues a magic link by email. Always responds 200 with a generic message so
 // the endpoint cannot be used to enumerate which emails are members.
@@ -138,8 +149,29 @@ func (a *App) handleMemberLogin(w http.ResponseWriter, r *http.Request) {
 	// expires in 30 minutes, so nothing durable is written for an address that
 	// never confirms. Behaviour is identical for known and unknown addresses, so
 	// this still cannot be used to enumerate members.
-	if token, err := a.members.CreateLoginToken(r.Context(), email); err == nil {
-		go a.sendMemberMagicLink(email, token)
+	// AUDIT FINDING (Section 1). Nothing bounded this. An anonymous caller could
+	// aim the install's mailer at any address, or at thousands of them, with the
+	// operator's domain as the DKIM-signing sender — the fastest route to that
+	// domain being blocklisted, which takes the whole mail product down with it.
+	// Every sibling public write endpoint already declares a budget
+	// (contactLimiter, recoveryByAddress/recoveryByIP, deviceResetByIP); this one
+	// simply never did. Each request also inserts a token row that lives its full
+	// 30-minute TTL against an hourly purge.
+	//
+	// Two keys, because either alone is trivially sidestepped: per address stops
+	// a distributed flood aimed at ONE victim, per IP stops one host walking a
+	// list. The shipped installer's nginx limit_req is per source IP only, does
+	// not cover the form variant, and is absent behind a proxy or on the api
+	// subdomain — so the control belongs here, in the binary.
+	//
+	// The refusal is INVISIBLE: the response below is the same generic 200 (or
+	// the same redirect) either way. Answering 429 would turn this endpoint into
+	// the member-enumeration oracle the comment above says it must not be.
+	overBudget := !memberLoginByIP.allow(auth.ClientIP(r)) || !memberLoginByAddress.allow(email)
+	if !overBudget {
+		if token, err := a.members.CreateLoginToken(r.Context(), email); err == nil {
+			go a.sendMemberMagicLink(email, token)
+		}
 	}
 	if formPost {
 		http.Redirect(w, r, "/?check_email=1", http.StatusSeeOther)
