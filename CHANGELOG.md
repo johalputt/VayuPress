@@ -10,6 +10,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **Every RCPT from a stranger read the whole users table.** Section 2. The
+  inbound recipient check reached `GetUserByEmail`, which called `List` and
+  walked the result with `EqualFold` — every column of every row loaded and
+  scanned, once per recipient. Port 25 answers anyone by design and
+  `maxRcptsPerTxn` allows a hundred recipients per transaction, none of which
+  need to exist, so one small unauthenticated SMTP conversation became a hundred
+  full reads of the users table, through the same SQLite handle that serves the
+  website and the blog. Measured at **605 allocations per check against 20 users
+  and 54,073 against 2,000** — the cost of answering a stranger grew with the
+  size of the install, and connection limits bound the concurrency but not this.
+
+  `GetUserByEmail` now uses `users.Store.GetByEmail`, an indexed equality lookup
+  on a `UNIQUE` column that already existed and is already used a few functions
+  below in `twoFactorEnabled`. The same measurement is now **52 allocations flat**
+  at both table sizes. Case behaviour is preserved rather than assumed, which
+  matters because the scan folded case on both sides: `GetByEmail` lowercases its
+  argument, and every `INSERT` into `users` lowercases the address, so exact match
+  finds precisely what the scan found. Pinned by a test that fails if either half
+  of that stops being true.
+
 - **The vacation autoresponder was an open reflector.** Section 2. It picked the
   address to answer out of `Reply-To`, falling back to `From` — both headers,
   both written by whoever sent the message, neither connected to the envelope the

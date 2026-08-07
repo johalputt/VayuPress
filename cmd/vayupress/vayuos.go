@@ -220,24 +220,39 @@ func (b *vayuMailBridge) twoFactorEnabled(ctx context.Context, addr string) bool
 	return false
 }
 
+// GetUserByEmail resolves a CMS account by address. It backs the RCPT-time
+// recipient check on the inbound listener, so it runs for strangers.
+//
+// AUDIT FINDING (Section 2). This used to call List and walk the result with
+// EqualFold — every column of every row loaded and scanned, per lookup. Port 25
+// answers anyone by design and maxRcptsPerTxn allows a hundred recipients per
+// transaction, none of which need to exist, so a single small SMTP conversation
+// from an unauthenticated stranger cost a hundred full reads of the users table
+// through the same SQLite handle that serves the website and the blog. Measured
+// at 605 allocations per check against 20 users and 54,073 against 2,000 — the
+// cost of answering a stranger scaled with the size of the install.
+//
+// GetByEmail was already there, an indexed equality lookup on a UNIQUE column,
+// used a few functions below in twoFactorEnabled. This path simply never used it.
+//
+// Case behaviour is preserved rather than assumed, which matters because the
+// scan folded case on both sides: GetByEmail lowercases its argument, and every
+// INSERT into users lowercases the address (Create and CreateClient both do, and
+// nothing updates the column), so exact match on the stored value finds exactly
+// what EqualFold over the whole table found. A test pins that.
 func (b *vayuMailBridge) GetUserByEmail(emailAddr string) (*vmail.MailUser, error) {
 	if b.app.userStore == nil {
 		return nil, fmt.Errorf("vayumail: user store unavailable")
 	}
-	users, err := b.app.userStore.List(context.Background())
-	if err != nil {
-		return nil, err
+	u, err := b.app.userStore.GetByEmail(context.Background(), emailAddr)
+	if err != nil || u == nil {
+		return nil, fmt.Errorf("vayumail: no such user")
 	}
-	for _, u := range users {
-		if strings.EqualFold(u.Email, emailAddr) {
-			local := emailAddr
-			if i := strings.Index(local, "@"); i >= 0 {
-				local = local[:i]
-			}
-			return &vmail.MailUser{UserID: u.ID, Email: u.Email, Domain: b.app.vayuMail.Config().Domain, Username: local}, nil
-		}
+	local := emailAddr
+	if i := strings.Index(local, "@"); i >= 0 {
+		local = local[:i]
 	}
-	return nil, fmt.Errorf("vayumail: no such user")
+	return &vmail.MailUser{UserID: u.ID, Email: u.Email, Domain: b.app.vayuMail.Config().Domain, Username: local}, nil
 }
 
 func (b *vayuMailBridge) IsLocalRecipient(emailAddr string) bool {
