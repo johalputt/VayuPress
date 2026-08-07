@@ -6,7 +6,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.24] — 2026-08-07
+
+Ships on its own rather than waiting for the rest of the Section 2 audit,
+because the hole below is **live and proven exploitable on released code**.
+CLAUDE.md §1 batches a plan into one release with one exception — something
+already released and broken for users right now — and this is that exception,
+stated explicitly as the rule requires. The attack was reproduced against a
+checkout of the v3.17.23 tag itself, so this is not an inference about what the
+released binary does.
+
+The only runtime change since v3.17.23 is the From-header binding. Everything
+else in this release is tests and documentation.
 
 ### Security
 
