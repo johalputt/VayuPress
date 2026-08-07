@@ -94,7 +94,11 @@ func (a *App) handleUserSetRole(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "users-disabled", "Accounts not initialised", "")
 		return
 	}
-	if !a.isAdminRequest(r) {
+	// PROMOTING an identity is the same trust class as minting one — see the
+	// note on handleUserCreate. A key holding only settings:write reached this
+	// route through the same capability mapping and could raise any existing
+	// account to admin.
+	if !a.keyLifecycleAuthorized(r) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return
 	}
@@ -170,7 +174,9 @@ type mailboxBody struct {
 // "local@domain" to a team member and links it to their account so their mail
 // panel scopes to it. Admin-only, CSRF-protected.
 func (a *App) handleAssignMailbox(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
+	// Assigning a mailbox creates or re-passwords a credential linked to a team
+	// account, so it mints a way in and belongs on the stricter predicate.
+	if !a.keyLifecycleAuthorized(r) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return
 	}

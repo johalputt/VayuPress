@@ -13,6 +13,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"net"
 	"net/http"
 	"strings"
@@ -655,7 +656,21 @@ func (a *App) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "users-disabled", "Accounts not initialised", "")
 		return
 	}
-	if !a.isAdminRequest(r) {
+	// keyLifecycleAuthorized, not isAdminRequest. This handler MINTS AN IDENTITY
+	// THAT CAN LOG IN, and isAdminRequest accepts any valid API key as admin —
+	// so a key granted only settings:write reached here (the capability table
+	// maps /api/v1/admin/users to SectionSettings) and created itself an account
+	// with role "admin". Signing in with the password it chose then yielded full
+	// console administration, outliving revocation of the key that did it.
+	//
+	// The predicate eleven lines above already draws the right line and is the
+	// one the key-minting path uses: a human admin session, or a SUPERUSER key.
+	// That keeps the documented "admin pages accept either a valid API key or a
+	// login session" true for a real admin key, and denies it to a scoped one.
+	// The reasoning is spelled out on isAdminSession, which named this exact
+	// escalation for /os/vayumail and closed it there; this is the same hole in
+	// the CMS user API, which was never migrated.
+	if !a.keyLifecycleAuthorized(r) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return
 	}
@@ -667,6 +682,11 @@ func (a *App) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := a.userStore.Create(r.Context(), body.Email, body.Name, body.Password, body.Role)
+	if err == nil {
+		// Neither create nor role-change wrote an audit entry, so an account
+		// appearing in the staff list was the only evidence it had happened.
+		dbpkg.AuditLog("user.create", dbpkg.AuditActor(r), body.Email, "role="+body.Role)
+	}
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "create-error", err.Error(), "")
 		return
@@ -700,7 +720,10 @@ func (a *App) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "users-disabled", "Accounts not initialised", "")
 		return
 	}
-	if !a.isAdminRequest(r) {
+	// Destroying a login is the same trust class as minting one: a scoped key
+	// that can delete accounts can remove every administrator and lock the
+	// operator out of their own install.
+	if !a.keyLifecycleAuthorized(r) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return
 	}
@@ -709,5 +732,6 @@ func (a *App) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusNotFound, "delete-error", err.Error(), "")
 		return
 	}
+	dbpkg.AuditLog("user.delete", dbpkg.AuditActor(r), email, "")
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"deleted": email})
 }

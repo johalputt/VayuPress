@@ -77,7 +77,12 @@ func TestNoAssistantAttributionInTrackedFiles(t *testing.T) {
 
 		if info.IsDir() {
 			switch info.Name() {
-			case ".git", "node_modules", "vendor", "dist", ".claude":
+			// security-audit/ is gitignored on purpose: it holds attack write-ups
+			// against code on live installs, and this repository is public. It is
+			// therefore not a PUSHED artifact, which is the only thing this gate
+			// is about — walking the filesystem rather than the index is what
+			// brought it into scope at all.
+			case ".git", "node_modules", "vendor", "dist", ".claude", "security-audit":
 				return filepath.SkipDir
 			}
 			return nil

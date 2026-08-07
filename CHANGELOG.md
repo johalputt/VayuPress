@@ -6,6 +6,48 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Security
+
+- **A scoped API key could make itself the install owner.** Found by the
+  sectioned security audit, Section 1. A key granted only `settings:write` — the
+  largest and most commonly granted section, covering redirects, webhooks, i18n,
+  email templates and the outbox — could `POST /api/v1/admin/users` with
+  `{"role":"admin"}`, then sign in at `/os/login` with the password it chose.
+  The resulting account is a password login that **survives revocation of the key
+  that created it**.
+
+  The mechanism, named rather than described: the capability table maps
+  `/api/v1/admin/users` to `SectionSettings`, so `keyMayCall` passed the key;
+  the handler's own gate was `isAdminRequest`, which returns
+  `auth.HasValidAPIKey(r)` when there is no session — true for ANY valid key,
+  scoped or not. CSRF was no obstacle either, since `CSRFTokenMiddleware`
+  short-circuits on a valid key. `handleUserSetRole` was the same hole by
+  another door, and `handleUserDelete` the same class again: a key that can
+  delete every administrator locks the operator out.
+
+  The codebase had already diagnosed this exact escalation for `/os/vayumail`
+  and closed it there; the CMS user API was never migrated. The fix uses
+  `keyLifecycleAuthorized` — the predicate eleven lines above the handler, and
+  the one the key-minting path already uses: **a human admin session, or a
+  superuser key**. That keeps `docs/INSTALLATION.md`'s promise that "admin pages
+  accept either a valid API key or a login session" true for a real admin key
+  while denying it to a scoped one, so no working integration stops.
+
+  `user.create`, `user.role` and `user.delete` now write audit entries. None of
+  them did, so a new row in the staff list was the only evidence an escalation
+  had happened.
+
+  Four mutations killed. **The first version of the regression tests was
+  worthless and the mutations are what said so:** with no `X-API-Key` header,
+  `HasValidAPIKey` was false, every request got 403 for the wrong reason, and
+  the attack tests passed against the vulnerable code. Two mutations survived
+  that. The tests now carry a real key header alongside a scoped identity — the
+  production shape — and the reverted code visibly creates the administrator
+  (`got 201, want 403`). A non-admin session case was added for the same reason:
+  widening the predicate to "any session user" had survived too.
+
 ## [3.17.22] — 2026-08-06
 
 ### Fixed
