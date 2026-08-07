@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.22] — 2026-08-06
 
 ### Fixed
 
@@ -28,6 +28,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   Three mutations killed: pruning everything *except* pending (which deletes
   working mail), the age comparison inverted (which reaps the device being
   approved right now), and the age ignored entirely.
+
+### Security
+
+- **Adversarial pass over the reclaim, recorded including that it found
+  nothing.** Attacked: whether the deletion can be reached without proving the
+  mailbox password, whether it can be aimed at somebody else's device, and
+  whether it can be used to evict a working one. It runs only after
+  `verifyCredentialWeb` succeeds, is scoped to the authenticated mailbox, and
+  touches only rows that were never approved — so the worst a caller can do to
+  their own account is discard an abandoned sign-in attempt of their own. The
+  approved/blocked exclusion is the control that matters and it is
+  mutation-tested rather than asserted.
 
 ## [3.17.21] — 2026-08-06
 
