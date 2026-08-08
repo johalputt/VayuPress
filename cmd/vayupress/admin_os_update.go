@@ -8,8 +8,8 @@ package main
 // (CLI `vayupress update …`, manual file copies) into a single one-click admin
 // surface, while preserving every security guarantee of the underlying engine:
 //
-//   1. One-click self-update. Check GitHub for a newer signed release, then
-//      apply it — download, SHA-256 + Ed25519 signature verification against the
+//   1. One-click self-update. Check GitHub for a newer release, then apply it —
+//      download, SHA-256 + Sigstore signature verification against the
 //      pinned release key, automatic database backup, atomic binary swap, and an
 //      in-process re-exec to activate the new version. No command line, nothing
 //      left half-done. Rollback restores the previous binary.
@@ -166,9 +166,15 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 	curMode := string(mode.Global.Current())
 	modeOK := update.PreflightMode(curMode) == nil
 
-	// Pre-render a banner explaining the current verification posture. One-click
-	// apply works for an authenticated admin; pinning a release key only upgrades
-	// verification from checksum to checksum+signature.
+	// Pre-render a banner explaining the current verification posture.
+	//
+	// It used to have two arms, and BOTH overstated what was enforced: the
+	// no-key arm called the update "checksum verified" while the page around it
+	// said "signed", and the key arm promised Ed25519 verification against an
+	// asset the release pipeline has never produced, so pinning a key broke
+	// updates outright. Every release is now verified against the signature it
+	// actually carries, so the posture no longer depends on operator setup and
+	// the copy says the same thing in both arms.
 	var banner string
 	switch {
 	case !modeOK:
@@ -178,13 +184,13 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
   </div>`
 	case hasKey:
 		banner = `<div class="settings-callout">
-    <strong>One-click updates are armed (signature-verified).</strong>
-    <span class="text-sm muted">Releases are verified by SHA-256 checksum <em>and</em> Ed25519 signature against your pinned release key, then the binary is swapped atomically and the service re-launches itself to finish. A database backup before updating is optional (see the checkbox below).</span>
+    <strong>One-click updates are ready.</strong>
+    <span class="text-sm muted">Every release is checked against the signature its build published, and installed only if that signature was made by this project&rsquo;s own release workflow &mdash; so a binary from anywhere else is refused even if it downloads cleanly. You have also pinned a release key, which is required on top. The binary is then swapped atomically and the service restarts. A database backup first is optional (checkbox below).</span>
   </div>`
 	default:
 		banner = `<div class="settings-callout">
     <strong>One-click updates are ready.</strong>
-    <span class="text-sm muted">Click <em>Update now</em> to install the latest release: the download is SHA-256 checksum verified, the binary is swapped atomically, and the service restarts. A pre-update database backup is optional (checkbox below). For an extra layer, pin a release signing key in <code>VAYU_RELEASE_PUBKEY</code> to also require Ed25519 signature verification.</span>
+    <span class="text-sm muted">Every release is checked against the signature its build published, and installed only if that signature was made by this project&rsquo;s own release workflow &mdash; so a binary from anywhere else is refused even if it downloads cleanly. Nothing to configure: this applies to every install. The binary is then swapped atomically and the service restarts. A database backup first is optional (checkbox below).</span>
   </div>`
 	}
 
@@ -239,14 +245,14 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
     <span class="text-sm muted">Current version <strong>v` + html.EscapeString(Version) + `</strong> · mode <strong>` + html.EscapeString(curMode) + `</strong></span>
   </div>
 </div>
-<p class="page-sub">Keep VayuPress current and your data safe — one-click signed updates and full, checksummed database backups. Tap a card to expand it.</p>
+<p class="page-sub">Keep VayuPress current and your data safe — one-click updates that refuse anything not signed by this project, and full, checksummed database backups. Tap a card to expand it.</p>
 ` + banner + `
-<div class="section-head"><span class="section-head__title">Install an update</span><span class="section-head__hint">Signed · verified · auto-backup · atomic swap</span></div>
+<div class="section-head"><span class="section-head__title">Install an update</span><span class="section-head__hint">Signature checked · auto-backup · atomic swap</span></div>
 <div class="upd-hero" data-update-card>
   <div class="upd-hero__aura" aria-hidden="true"></div>
   <div class="upd-hero__head">
     <span class="upd-hero__badge">Software update</span>
-    <p class="upd-hero__lead">Install the latest <strong>signed</strong> VayuPress release in one click — download, signature verification, automatic database backup, atomic swap and restart, all handled for you.</p>
+    <p class="upd-hero__lead">Install the latest VayuPress release in one click — the download is refused unless it carries a valid signature from this project&rsquo;s release workflow, then automatic database backup, atomic swap and restart, all handled for you.</p>
   </div>
   <div class="upd-vers" data-update-state>
     <div class="upd-ver">
@@ -274,7 +280,7 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
     <label class="upd-check">
       <input type="checkbox" data-update-prerelease> <span>Include pre-release &amp; development builds</span>
     </label>
-    <div class="upd-opt-note">Off installs only stable, signed releases. Turn on to also offer the newest <strong>unreleased</strong> pre-release build when one is published — useful for early testing. Verification is unchanged (checksum always, signature when a release key is pinned).</div>
+    <div class="upd-opt-note">Off installs only stable releases. Turn on to also offer the newest <strong>unreleased</strong> pre-release build when one is published — useful for early testing. Verification is unchanged: a pre-release is signed by the same workflow and checked the same way.</div>
   </div>
   <div class="upd-actions" data-actions-wrap>
     <button type="button" class="btn btn--ghost btn--sm" data-update-check>Check for updates</button>
@@ -372,13 +378,17 @@ func (a *App) handleOSUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	enabled, hasKey := selfUpdateConfigured()
 	modeOK := update.PreflightMode(string(mode.Global.Current())) == nil
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
-		"current":    Version,
-		"latest":     rel.Version,
-		"available":  available,
-		"notes":      rel.Notes,
-		"url":        rel.URL,
-		"canApply":   modeOK,
-		"signed":     hasKey,
+		"current":   Version,
+		"latest":    rel.Version,
+		"available": available,
+		"notes":     rel.Notes,
+		"url":       rel.URL,
+		"canApply":  modeOK,
+		// "signed" reported whether an operator had pinned a key, which never had
+		// anything to do with whether the release was signed — and read as though
+		// it did. Every release is signature-verified now, so it says so; hasKey
+		// stays for the separate, optional Ed25519 pin.
+		"signed":     true,
 		"enabled":    enabled,
 		"hasKey":     hasKey,
 		"mode":       string(mode.Global.Current()),
@@ -386,7 +396,7 @@ func (a *App) handleOSUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// latestUpdateNotice reports whether a newer signed release is known to exist,
+// latestUpdateNotice reports whether a newer release is known to exist,
 // returning its version. It reads ONLY the cached update_history rows (the most
 // recent "checked" record), never the network, so it is cheap enough to call on
 // every page render for the topbar bell. It stays silent in a Tor Space — the
@@ -413,7 +423,7 @@ func (a *App) latestUpdateNotice(ctx context.Context) (string, bool) {
 	return "", false
 }
 
-// startUpdateWatcher periodically checks GitHub for a newer signed release and
+// startUpdateWatcher periodically checks GitHub for a newer release and
 // records the result in update_history, so the topbar bell can surface "update
 // available" without the operator ever opening this page. Read-only and
 // clearnet-only: it never runs in a Tor Space (anti-leak, ADR-0141), and it only

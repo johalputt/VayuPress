@@ -469,7 +469,7 @@ worlds with the offline bundle: `vayupress migrate export --file bundle.vaybundl
 | `WAL_SIZE_THRESHOLD_MB`| `32`                          | WAL size to trigger RESTART checkpoint|
 | `VAYU_MAINTENANCE`    | `false`                        | Enable maintenance mode            |
 | `VAYU_SELFUPDATE_ENABLED`| `false`                     | Opt-in for `vayupress update apply` (see UPGRADING.md) |
-| `VAYU_RELEASE_PUBKEY` | (unset)                        | Hex Ed25519 key the signed apply verifies against |
+| `VAYU_RELEASE_PUBKEY` | (unset)                        | Optional extra Ed25519 pin. Releases are always Sigstore-verified without it |
 | `SMTP_HOST`           | (unset)                        | SMTP server for email delivery. Empty = email disabled (no-op) |
 | `SMTP_PORT`           | `587`                          | SMTP submission port               |
 | `SMTP_USERNAME`       | (unset)                        | SMTP auth username (omit for unauthenticated relays) |

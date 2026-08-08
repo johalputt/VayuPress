@@ -19,32 +19,67 @@ class** that a naïve "upgrade now" button would introduce. See
 | Check for updates | Read-only; no trust decision, no mutation |
 | Download binary | Over TLS to GitHub; bytes are *untrusted* until verified |
 | Integrity | SHA-256 vs published checksum (constant-time compare) |
-| **Authenticity** | **Ed25519 signature over the digest, verified against an operator-pinned key** |
+| **Authenticity** | **Sigstore signature, pinned to this project's release workflow identity** |
+| Executable check | The verified bytes must be an executable image for this platform |
 | Apply | Atomic rename, previous binary kept as `.bak` |
 | Restart | Operator action only — never automatic |
 
 ### Why signatures, not just checksums
 
 A checksum proves the bytes match the *published* checksum file. If the release
-channel is compromised, the attacker controls both the binary and its checksum.
-Authenticity requires a signature verified against a key the operator obtained
-**out-of-band** (`VAYU_RELEASE_PUBKEY`) and that never travels with the artifact.
+channel is compromised, the attacker controls both the binary and its checksum —
+they are published together and fetched over the same connection, so a checksum
+is a self-certificate.
+
+Authenticity is therefore the release's Sigstore signature. It is verified
+against a trust root **compiled into this binary**, so verification needs no
+network and cannot silently degrade when a fetch fails.
+
+A Sigstore signature on its own proves only that *somebody* signed — anyone can
+run a CI job and obtain a valid certificate. The security is in the identity
+policy: the signature must come from
+
+- SAN `https://github.com/johalputt/VayuPress/.github/workflows/tag-release.yml@refs/heads/main`
+- issuer `https://token.actions.githubusercontent.com`
+
+The branch is part of that identity deliberately. The same workflow filename on
+another branch, or in a fork, produces a perfectly valid signature carrying a
+different SAN, and a policy matching only the repository would accept it.
+
+Signing certificates are keyless and live about ten minutes, so every release is
+signed by a certificate that has long expired by the time anyone installs it.
+Validity is therefore judged as of the transparency log's signed record of when
+the signature was made, not the current time.
 
 ### Gates (all must pass before any filesystem change)
 
-1. `VAYU_SELFUPDATE_ENABLED=true` (opt-in; off by default)
-2. `VAYU_RELEASE_PUBKEY` present (no key → no apply)
-3. System mode ∉ {`read-only`, `quarantined`, `maintenance`}
-4. Checksum verifies
-5. Ed25519 signature verifies
-6. Database backed up
+1. System mode ∉ {`read-only`, `quarantined`, `maintenance`}
+2. Checksum verifies
+3. A signature bundle exists for the binary — a release without one is refused,
+   never accepted on its checksum
+4. That signature verifies, and its certificate identity matches the workflow above
+5. The verified bytes are an executable image for this platform
+6. Database backed up (optional; the operator's choice, and never silent)
 
-### No web apply
+`VAYU_RELEASE_PUBKEY` is an **optional additional** Ed25519 pin for operators who
+maintain their own key. It is not required, and it is no longer what provides
+authenticity.
 
-There is exactly one update-related HTTP route: `GET /admin/api/updates/check`
-(read-only). There is **no** endpoint that downloads, replaces, or restarts. A
-bug on the check route cannot escalate beyond information disclosure of the
-latest public release.
+The CLI path additionally requires `VAYU_SELFUPDATE_ENABLED=true`.
+
+### The web apply route
+
+`POST /os/api/update/apply` downloads, verifies and replaces the binary;
+`/os/api/update/restart` and `/os/api/update/rollback` sit beside it. All three
+are admin-role-checked and CSRF-protected, and all three run the verification
+above — there is no flag, environment variable or request field that turns it
+off.
+
+> An earlier version of this document stated that no endpoint downloaded,
+> replaced or restarted the binary. That described ADR-0064's original CLI-only
+> design and had not been true since the VayuOS panel gained one-click updates.
+> It is recorded here rather than quietly corrected, because a security document
+> that under-describes the attack surface is itself a finding.
 
 ---
 

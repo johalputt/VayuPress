@@ -45,11 +45,19 @@ satisfied.
    ```bash
    export VAYU_SELFUPDATE_ENABLED=true
    ```
-2. **Pin the release signing key** (obtain it out-of-band from the project's
-   published key, *not* over the same channel as the binary):
-   ```bash
-   export VAYU_RELEASE_PUBKEY=<hex-encoded-ed25519-public-key>
-   ```
+2. **Nothing else to configure.** Every release is verified against the Sigstore
+   signature its build published, pinned to this project's release workflow
+   identity, using a trust root compiled into the binary. That happens on every
+   install and cannot be switched off.
+
+   `VAYU_RELEASE_PUBKEY` remains available as an **optional additional** Ed25519
+   pin for operators who maintain their own signing key. It is not required.
+
+   > Until v3.17.29 this step told you to set `VAYU_RELEASE_PUBKEY` and implied
+   > it was what made updates trustworthy. It was not: the release pipeline has
+   > never produced the `.sig` asset that path looks for, so pinning a key made
+   > every update fail, while leaving it unset meant no signature was checked at
+   > all. If you set it and updates stopped working, this was why.
 
 ### Dry run first (verifies everything, changes nothing)
 
