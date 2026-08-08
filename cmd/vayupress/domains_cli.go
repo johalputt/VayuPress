@@ -57,6 +57,16 @@ func runDomainsCLI(args []string, out io.Writer) error {
 				syncCol = "—"
 			}
 			fmt.Fprintf(out, "%-32s %-9s %-5s %-8s %s\n", d.Host, role, mail, syncCol, d.TLSState)
+			// `hosts` withholds this row from the root worker, and silence there
+			// would read as "provisioning is broken". It is said HERE rather than
+			// on `hosts` because the helper captures that command's stdout AND
+			// stderr as the work list (`HOSTS_OUT="$(vp_checked domains hosts
+			// 2>&1)"`), so a warning printed there becomes a bogus hostname. This
+			// is also the command the helper's own failure text tells an operator
+			// to run.
+			if err := domain.ValidateHost(d.Host); err != nil {
+				fmt.Fprintf(out, "  ^ NOT provisioned: %v\n", err)
+			}
 		}
 		return nil
 
@@ -100,6 +110,20 @@ func runDomainsCLI(args []string, out io.Writer) error {
 				if !d.IsSyncApproved() {
 					continue
 				}
+			}
+			// THE BOUNDARY into root. Five helper scripts read this list and
+			// interpolate each name into an nginx directive and into the name of
+			// a file they write as root, unquoted. Filtering here rather than at
+			// the HTTP handler is deliberate: it also covers rows stored by a
+			// version that had no validation, rows from a restored backup, and
+			// rows written straight into SQLite — none of which a check on the
+			// way in would ever see.
+			//
+			// Skipped, not fatal. One unusable row must not stop every other
+			// domain getting its certificate; `domains list` names what was
+			// withheld and why.
+			if domain.ValidateHost(d.Host) != nil {
+				continue
 			}
 			fmt.Fprintln(out, d.Host)
 		}

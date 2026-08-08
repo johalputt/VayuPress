@@ -92,8 +92,17 @@ func (r *Registry) EnsurePrimary(ctx context.Context, host, siteType string) err
 // approves the sync explicitly (P5 manual sync gate).
 func (r *Registry) Create(ctx context.Context, host, siteType string, mailEnabled bool) (Domain, error) {
 	host = NormalizeHost(host)
-	if host == "" {
-		return Domain{}, fmt.Errorf("domain: host is required")
+	// Refused at the point of entry so an operator sees the reason immediately,
+	// rather than registering a domain that later goes quietly unprovisioned
+	// because the root worker's list withholds it. The list is still the
+	// enforcing boundary — this is the courteous half, not the load-bearing one.
+	//
+	// EnsurePrimary deliberately does NOT do this. The primary is filtered out of
+	// `domains hosts` and skipped by the helper (`$HOST == $DOMAIN`), so it never
+	// reaches the interpolation; adding the check there would only risk refusing
+	// to boot an install whose DOMAIN has always worked.
+	if err := ValidateHost(host); err != nil {
+		return Domain{}, err
 	}
 	if !validSiteType(siteType) {
 		return Domain{}, fmt.Errorf("domain: invalid site type %q", siteType)
@@ -165,8 +174,10 @@ func (r *Registry) SetStatus(ctx context.Context, id, status string) error {
 // (its host is the install's identity) and the new host must be unique.
 func (r *Registry) SetHost(ctx context.Context, id, host string) error {
 	host = NormalizeHost(host)
-	if host == "" {
-		return fmt.Errorf("domain: host is required")
+	// A v3 onion address is 56 base32 characters plus `.onion`, so the Tor
+	// rewrite this function exists for passes unchanged.
+	if err := ValidateHost(host); err != nil {
+		return err
 	}
 	cur, err := r.get(ctx, id)
 	if err != nil {
