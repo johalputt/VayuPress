@@ -10,6 +10,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **The OAuth consent token is now bound to the request it approves.** Section 3,
+  and stated plainly: this is hardening, not a demonstrated exploit. The token is
+  rendered only into an authenticated administrator's consent page, never travels
+  in a URL, and cannot be read cross-origin — no way to obtain one was found.
+
+  It was nonetheless broader than the decision it represented. The payload was
+  `<admin id>|<expiry>`, the consent POST requires no session by design (the
+  browser drops every cookie on that cross-site request), and `client_id`,
+  `redirect_uri` and `code_challenge` all arrive in the form — so a token minted
+  to approve ONE named connector authorised any registered client, at any of its
+  registered redirects, for ten minutes. The consent screen exists so an operator
+  approves a specific app; the token now says which one.
+
+  The chosen grant is deliberately not bound — the operator picks it on the page,
+  so it does not exist at mint time. The binding hashes the three fields
+  NUL-separated: joining them without a separator lets two different requests
+  collapse to one fingerprint, which was confirmed as a real collision and is
+  pinned by its own test rather than described in a comment.
+
+  **Upgrade note:** consent pages already rendered by the previous binary carry
+  the two-field token and are refused, with the "reconnect from your MCP client
+  and try again" message the handler already shows. The window is at most the
+  ten-minute consent TTL.
+
 - **The MCP capability gate was attacked and held; one property of it was not
   covered.** Section 3. The consent screen promises a read-only connector
   "cannot change anything", and that promise rests on one predicate. Tool names

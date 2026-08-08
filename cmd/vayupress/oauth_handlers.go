@@ -10,6 +10,9 @@ package main
 // bespoke about how a connector is authorized once it holds a token.
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -208,7 +211,7 @@ func (a *App) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 	// authenticated admin here, so a value the consent handler accepts proves the
 	// POST originated from this page — and it identifies the approver without any
 	// cookie (the consent handler no longer needs the session on the POST).
-	consentTok := auth.SignedToken(u.ID + "|" + strconv.FormatInt(time.Now().Add(consentTokenTTL).Unix(), 10))
+	consentTok := oauthConsentToken(u.ID, time.Now().Add(consentTokenTTL), clientID, redirectURI, challenge)
 
 	// The approval POST is 303-redirected to the client's registered redirect_uri
 	// (e.g. https://claude.ai/…). CSP `form-action` is enforced across the WHOLE
@@ -251,6 +254,62 @@ func redirectCSPSource(raw string) string {
 	}
 }
 
+// oauthConsentBinding is the fingerprint a consent token is tied to: the exact
+// authorization request the operator was shown.
+//
+// NUL-separated because it is a hash input over attacker-influenced strings —
+// joining with a character any field may contain lets two different requests
+// produce one fingerprint.
+func oauthConsentBinding(clientID, redirectURI, challenge string) string {
+	sum := sha256.Sum256([]byte(clientID + "\x00" + redirectURI + "\x00" + challenge))
+	return hex.EncodeToString(sum[:])
+}
+
+// oauthConsentToken mints the signed approval token carried in the consent form.
+//
+// The payload names the approver, an expiry, and the request it approves. The
+// binding is what stops it being a general-purpose approval: the POST needs no
+// session by design (the browser drops every cookie on that cross-site request),
+// and client_id / redirect_uri / code_challenge all arrive in the form — so
+// without it a token minted to approve ONE named connector would authorise any
+// registered client for ten minutes. The consent screen exists so an operator
+// approves a specific app; the token now says which one.
+//
+// The chosen grant is deliberately NOT bound: the operator picks it on the page,
+// so it does not exist yet at mint time.
+func oauthConsentToken(userID string, expiry time.Time, clientID, redirectURI, challenge string) string {
+	return auth.SignedToken(userID + "|" + strconv.FormatInt(expiry.Unix(), 10) + "|" +
+		oauthConsentBinding(clientID, redirectURI, challenge))
+}
+
+// oauthConsentApprover verifies a consent token against the request being
+// approved and returns the approving admin's id.
+//
+// A token in the pre-binding two-field shape is refused. An upgrade therefore
+// leaves at most a consentTokenTTL window of already-rendered consent pages
+// whose approval fails with the "reconnect and try again" message the handler
+// already shows — which is the right trade against continuing to honour an
+// unbound token.
+func oauthConsentApprover(token, clientID, redirectURI, challenge string) (string, bool) {
+	payload, ok := auth.VerifySignedToken(token)
+	if !ok {
+		return "", false
+	}
+	fields := strings.Split(payload, "|")
+	if len(fields) != 3 || fields[0] == "" {
+		return "", false
+	}
+	exp, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil || time.Now().Unix() > exp {
+		return "", false
+	}
+	want := oauthConsentBinding(clientID, redirectURI, challenge)
+	if subtle.ConstantTimeCompare([]byte(fields[2]), []byte(want)) != 1 {
+		return "", false
+	}
+	return fields[0], true
+}
+
 // consentTokenTTL bounds how long an OAuth consent approval token stays valid
 // after the consent screen is rendered.
 const consentTokenTTL = 10 * time.Minute
@@ -287,18 +346,9 @@ func (a *App) handleOAuthConsent(w http.ResponseWriter, r *http.Request) {
 	// blocking). An attacker cannot forge it (HMAC over the server secret), and it is
 	// only ever shown to an authenticated admin, so a token the server accepts proves
 	// the POST came from this consent page — and it names the approver without a cookie.
-	payload, ok := auth.VerifySignedToken(r.FormValue("consent_token"))
+	ownerID, ok := oauthConsentApprover(r.FormValue("consent_token"), clientID, redirectURI, challenge)
 	if !ok {
 		oauthHTMLError(w, "This approval could not be verified. Reconnect from your MCP client and try again.")
-		return
-	}
-	ownerID, expStr, found := strings.Cut(payload, "|")
-	if !found || ownerID == "" {
-		oauthHTMLError(w, "Invalid approval token.")
-		return
-	}
-	if exp, perr := strconv.ParseInt(expStr, 10, 64); perr != nil || time.Now().Unix() > exp {
-		oauthHTMLError(w, "This approval expired. Reconnect from your MCP client and approve again.")
 		return
 	}
 
