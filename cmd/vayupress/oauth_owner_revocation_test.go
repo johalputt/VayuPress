@@ -263,3 +263,54 @@ func TestPromotingAUserLeavesTheirKeysAlone(t *testing.T) {
 		t.Error("re-setting the SAME role revoked the user's keys")
 	}
 }
+
+// THE PROPERTY BOTH FIXES REST ON, found by attacking them rather than the code
+// they replaced.
+//
+// Revoking the key is only half a revocation if the connector can rotate it back.
+// The OAuth refresh path takes a refresh token, resolves the key id it is bound
+// to, and rotates that key — and the refresh-token row is NOT deleted when the
+// key is revoked, so a departed administrator's client still holds a valid one
+// and will present it within the hour as a matter of routine.
+//
+// RotateWithExpiry updates WHERE id=? AND revoked=0, so the rotation finds no
+// row and the token endpoint answers "the connector key no longer exists". That
+// is the correct outcome and it was already true; nothing tested it, and it is
+// the single condition that makes revoking-on-delete and revoking-on-demote real
+// rather than cosmetic.
+func TestARevokedKeyCannotBeRotatedBackToLife(t *testing.T) {
+	ks, us, _ := keyStoreWithUsers(t)
+	ctx := context.Background()
+
+	u, err := us.Create(ctx, "leaver@example.com", "Leaver", "a-long-password", "admin")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	perms := apikeys.NewPermissions()
+	sec, act, _ := apikeys.ParseCapability("*:*")
+	perms.Grant(sec, act)
+	key, raw, err := ks.CreateWithPermissions(ctx, u.ID, "Claude via OAuth (Full control)", perms, nil, 0)
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+	if !ks.Verify(raw) {
+		t.Fatal("fixture: the minted key does not authenticate")
+	}
+
+	deleteVia(t, ks, us, "leaver@example.com")
+
+	// Exactly what oauthTokenFromRefresh does once the refresh token checks out.
+	fresh, rerr := ks.RotateWithExpiry(ctx, key.ID, nil)
+	if rerr == nil {
+		t.Fatalf("a revoked key was rotated and handed back a working token (%d chars).\n\n"+
+			"The refresh-token row outlives the revocation, so the departed "+
+			"administrator's client presents it on its normal renewal and gets its "+
+			"access back. Revoking the key would be cosmetic.", len(fresh))
+	}
+	if ks.Verify(raw) {
+		t.Error("the original token still authenticates after revocation")
+	}
+	if fresh != "" && ks.Verify(fresh) {
+		t.Error("the rotated token authenticates")
+	}
+}

@@ -67,6 +67,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   it. `TestOnlySiteInfoIsUngated` asserts the exact set a zero-grant key can see;
   registering an ungated tool now fails the build instead of shipping.
 
+- **Revoking a key survives the refresh path** — the condition both revocations
+  above depend on, pinned by the pre-release pass attacking them rather than the
+  code they replaced. Revoking a key is only half a revocation if the connector
+  can rotate it back, and the refresh-token row is deliberately NOT deleted when
+  a key is revoked, so a departed administrator's client still holds a valid one
+  and presents it on its normal renewal. `RotateWithExpiry` updates
+  `WHERE id=? AND revoked=0`, so the rotation matches no row and the token
+  endpoint answers "the connector key no longer exists". That was already true;
+  nothing tested it, and it is the single condition that makes revoking on delete
+  and on demote real rather than cosmetic.
+
 - **Demoting an administrator did not take back what they granted either.**
   Section 3, the quiet half of the finding below. A key's capabilities are fixed
   when it is minted and nothing revisits them, so an administrator moved down to
