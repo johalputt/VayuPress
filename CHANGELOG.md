@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.26] — 2026-08-08
 
 ### Security
 
