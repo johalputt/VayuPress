@@ -6,6 +6,64 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **The agency-client confinement refused the client's own controls.** Section 4,
+  and the finding came from attacking the allowlist from the side nobody had:
+  the customer's. Every existing check asks "what can a client reach that they
+  were not given?" — none asked the inverse. A bound client could open the
+  composer at `/os/vayumail/compose` and could **not** send, because
+  `/os/vayumail/send` was never declared. The same gap closed mailbox search,
+  the contacts panel their own inbox renders, attachment downloads, the
+  new-mail poller, the sender avatars, and the app-password button that is the
+  entire purpose of the Connect page they were given.
+
+  This is filed as a security fix rather than a bug because of what the cheap
+  repair would have been. `handlers_client.go` already warned that widening
+  `/os/vayumail/compose` to `/os/vayumail` re-admits `accounts/create`,
+  `accounts/delete`, `accounts/update`, TOTP, DNS, PGP and the security page to
+  every client on the install. The warning was right; what was missing was the
+  pressure that makes someone reach for it, and a Send button that 403s is
+  exactly that pressure. The gap is closed precisely instead — nine leaf
+  entries, each behind a handler that already forces a non-admin onto their own
+  mailbox (`mailReader` ignores `?user=`, `contactOwner` and
+  `canManageAppPassword` resolve the caller's own address, and the send path
+  overwrites `From` with it). That those handlers refuse is not asserted from
+  their comments: `TestAClientReachingTheNewEndpointsStillCannotTouchAnother-`
+  `Mailbox` drives them against a second, real mailbox and checks the credential
+  table afterwards, because a handler that refuses loudly and writes anyway is
+  the failure worth catching.
+
+  Two of the nine sit under `/os/vayumail/accounts`, which an existing gate
+  declares administrative in full. The gate was kept absolute rather than
+  softened: exceptions are now declared separately from the surface table, so
+  adding a route to the allowlist does not on its own satisfy the gate, and a
+  stale exemption fails its own test.
+
+  The reachability check is **derived** — it renders the five pages a client is
+  granted and requires every control they emit to be allowed — so a widget added
+  to the inbox next year that posts somewhere undeclared fails in CI rather than
+  in a support ticket.
+
+- **A client had no link to their own site.** The same finding one layer up. An
+  agency client is a console session, not a mail-only one, so the sidebar fell
+  through to the operator branch — where every gated item closed against the
+  client's floor access level and the two ungated product links pointed at pages
+  the confinement refuses. `/os/mysite`, the page ADR-0152 exists to deliver, was
+  reachable only by typing the URL. The sidebar now has a client branch (their
+  site, their visitors, their mailbox, their profile), and a test derives every
+  link it emits and requires the confinement to allow it.
+
+  Known and deliberately not folded into this change: the VayuMail tab strip
+  still offers a client an "Overview" tab pointing at `/os/vayumail`, which
+  bounces them. Filtering it needs a signature change across thirteen call sites
+  — a UI refactor rather than a security fix, so it is named here rather than
+  buried in this diff.
+
+---
+
 ## [3.17.26] — 2026-08-08
 
 ### Security

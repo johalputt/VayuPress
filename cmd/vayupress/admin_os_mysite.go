@@ -364,7 +364,7 @@ func (a *App) handleOSMySiteTraffic(w http.ResponseWriter, r *http.Request) {
 		`so a site added recently will show a short history.` +
 		`</p></div>`
 
-	full := adminOSShellHead(nonce, "Visitors", "mysite", cfg) + body +
+	full := adminOSShellHead(nonce, "Visitors", "mysite-traffic", cfg) + body +
 		adminOSShellFoot(nonce, "", pageUsesAlpine(body))
 	writeOSHTML(w, r, full)
 }

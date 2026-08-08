@@ -1140,6 +1140,18 @@ func osSidebarNav(active string, s *osSettings) string {
 		lvl = s.AccessLevel
 		mailOnly = s.MailOnly
 	}
+	// An agency client (ADR-0152) is a console session, not a mail-only one, so
+	// it fell through to the operator sidebar below — where every gate() closed
+	// against its floor access level and the two ungated product links pointed at
+	// pages the confinement refuses. The result was a customer with no link to
+	// their own site at all: /os/mysite was reachable only by typing it.
+	if s != nil && s.UserRole == roleClientName {
+		return `<div class="sidebar-section-label">Your account</div>` +
+			navItem("/os/mysite", "My site", "mysite", active, iconDomains) +
+			navItem("/os/mysite/traffic", "Visitors", "mysite-traffic", active, iconAnalytics) +
+			navItem("/os/vayumail/inbox", "Mailbox", "vayuos", active, iconSecurity) +
+			navItem("/os/profile", "My Profile", "profile", active, iconMembers)
+	}
 	if mailOnly {
 		return `<div class="sidebar-section-label">Mail</div>` +
 			navItem("/os/vayumail/inbox", "Mailbox", "vayuos", active, iconSecurity) +

@@ -206,6 +206,28 @@ func TestEveryClientSurfaceEntryMatchesARealRoute(t *testing.T) {
 	}
 }
 
+// selfServiceUnderAdminPrefix names the ONLY routes allowed to sit under an
+// administrative prefix and still be client-reachable.
+//
+// It is declared here, in the test, and NOT derived from clientSurface — a
+// blanket rule that any surface entry can satisfy by existing is not a rule.
+// Adding a route to the surface therefore fails the gate below until someone
+// also writes it here, which is the moment to ask whether it belongs.
+//
+// Each entry earns its place by refusing a non-admin acting on another mailbox,
+// which is driven (not asserted from a comment) in
+// TestAClientReachingTheNewEndpointsStillCannotTouchAnotherMailbox:
+//
+//   - apppassword — canManageAppPassword: owner, or an admin who has not handed
+//     the mailbox over. It is what the Connect page a client is given exists to do.
+//   - avatar — the serve leaf reads a stored picture by address and renders the
+//     sender chips in the client's own inbox; its writing siblings (remove,
+//     cartoon) are isAdminRequest-gated in the handler.
+var selfServiceUnderAdminPrefix = []string{
+	"/os/vayumail/accounts/apppassword",
+	"/os/vayumail/accounts/avatar",
+}
+
 // The inverse, and the one that matters most: no route that administers
 // mailboxes, or exposes the operator's own console, may be reachable by a
 // client. Asserted against the live route table so a route added under one of
@@ -217,15 +239,39 @@ func TestNoAdministrativeRouteIsClientReachable(t *testing.T) {
 		"/os/posts", "/os/editor", "/os/media", "/os/members", "/os/backup",
 		"/os/update", "/os/storage", "/os/vayushield", "/os/tor", "/os/world",
 	}
+	exempt := func(rt string) bool {
+		for _, e := range selfServiceUnderAdminPrefix {
+			if rt == e || strings.HasPrefix(rt, e+"/") {
+				return true
+			}
+		}
+		return false
+	}
 	for _, rt := range osRoutes(t) {
 		for _, f := range forbidden {
 			if rt != f && !strings.HasPrefix(rt, f+"/") {
 				continue
 			}
-			if clientPathAllowed(rt) {
+			if clientPathAllowed(rt) && !exempt(rt) {
 				t.Errorf("registered route %q is reachable by a client — it is under the "+
-					"administrative prefix %q", rt, f)
+					"administrative prefix %q.\n\n"+
+					"If it is genuinely self-service, prove it refuses a non-admin acting on "+
+					"another mailbox and add it to selfServiceUnderAdminPrefix. Widening the "+
+					"surface entry alone is not enough, deliberately.", rt, f)
 			}
+		}
+	}
+}
+
+// The exemption list must not outlive what it exempts. An entry naming a route
+// nobody can reach reads as a granted capability and quietly licenses the next
+// one added beneath it.
+func TestTheSelfServiceExemptionsAreAllStillGranted(t *testing.T) {
+	for _, e := range selfServiceUnderAdminPrefix {
+		if !clientPathAllowed(e) {
+			t.Errorf("%q is exempted from the administrative-prefix gate but is not on the "+
+				"client surface. A stale exemption pre-authorises whatever is registered "+
+				"under it next", e)
 		}
 	}
 }

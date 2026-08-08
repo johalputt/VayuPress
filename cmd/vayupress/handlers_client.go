@@ -81,6 +81,26 @@ var clientSurface = []clientSurfaceEntry{
 	{Prefix: "/os/vayumail/compose", Audience: audienceClient},
 	{Prefix: "/os/vayumail/sent", Audience: audienceClient},
 	{Prefix: "/os/vayumail/connect", Audience: audienceClient},
+	// The machinery those five pages run on. Granting the page and withholding
+	// its controls is the failure this list was audited for: the composer was
+	// reachable and Send was not, so a client could write a message and get a
+	// 403 pressing the only button on the page. Every entry below is a leaf that
+	// forces a non-admin onto their own mailbox — mailReader ignores ?user=,
+	// contactOwner and canManageAppPassword resolve the caller's own address,
+	// and handleVayuOSSend overwrites From with it.
+	{Prefix: "/os/vayumail/send", Audience: audienceClient},
+	{Prefix: "/os/vayumail/draft", Audience: audienceClient},
+	{Prefix: "/os/vayumail/search", Audience: audienceClient},
+	{Prefix: "/os/vayumail/attachment", Audience: audienceClient},
+	{Prefix: "/os/vayumail/contacts", Audience: audienceClient},
+	{Prefix: "/os/vayumail/unseen", Audience: audienceClient},
+	// Two LEAVES under accounts/, never the branch. apppassword is what the
+	// Connect page exists to do; avatar renders the sender chips in their own
+	// inbox. Matching is exact-or-child, so neither carries /os/vayumail/accounts
+	// itself, and the writing siblings of both (avatar/remove, avatar/cartoon)
+	// refuse a non-admin in the handler regardless.
+	{Prefix: "/os/vayumail/accounts/apppassword", Audience: audienceClient},
+	{Prefix: "/os/vayumail/accounts/avatar", Audience: audienceClient},
 	{Prefix: "/os/api/vayuos/mail/", Audience: audienceClient},
 	// Their own account and the way out.
 	{Prefix: "/os/profile", Audience: audienceClient},
