@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.31] — 2026-08-08
 
 Section 6 of the audit: the panel→root provisioning channel.
 
