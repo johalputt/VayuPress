@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 )
 
 // admin_os_provision.go — the unprivileged half of one-click subdomain setup.
@@ -44,6 +46,10 @@ const provisionInstallCommand = "curl -sSL https://raw.githubusercontent.com/joh
 
 const (
 	provisionRequestFile = "provision.request"
+	// provisionAuditAction names the record written whenever the root unit is
+	// asked to run. Both doors — this handler and the MCP tool — write it, so one
+	// query answers "who made root do this".
+	provisionAuditAction = "vayudomains.provision.request"
 	provisionResultFile  = "provision.result"
 	// provisionRequestTTL bounds how long a pending request is considered live in
 	// the UI. If the units are not installed nothing consumes the flag, and
@@ -63,6 +69,15 @@ type provisionResult struct {
 	Details string `json:"details"`
 }
 
+// The root half's locations. Package variables rather than literals so the
+// tests can drive the real check against a fixture tree — /usr and /etc are not
+// writable from a test, and a check nobody can exercise is how the data-dir
+// mismatch below survived unnoticed in the first place.
+var (
+	provisionWorkerPath = "/usr/local/lib/vayupress/provision-subdomains.sh"
+	provisionUnitPath   = "/etc/systemd/system/vayupress-provision.path"
+)
+
 func provisionStateDir() string {
 	if d := strings.TrimSpace(os.Getenv("VAYU_DATA_DIR")); d != "" {
 		return d
@@ -81,11 +96,34 @@ func provisionUnitsInstalled() bool {
 	// appears to work and does nothing, which is precisely what this check exists
 	// to prevent. The shell updater installs the script but does not write the
 	// units, so that combination is reachable in practice, not hypothetical.
-	if _, err := os.Stat("/usr/local/lib/vayupress/provision-subdomains.sh"); err != nil {
+	if _, err := os.Stat(provisionWorkerPath); err != nil {
 		return false
 	}
-	_, err := os.Stat("/etc/systemd/system/vayupress-provision.path")
-	return err == nil
+	unit, err := os.ReadFile(provisionUnitPath)
+	if err != nil {
+		return false
+	}
+
+	// THE THIRD TRAP, and the one the two checks above were blind to: the unit
+	// may exist and watch a DIFFERENT FILE from the one this process writes.
+	//
+	// provisionStateDir() honours VAYU_DATA_DIR; the unit's PathExists= is
+	// written as a literal by the installer and knows nothing about it. Set that
+	// variable — a supported configuration — and the panel writes its request to
+	// one path while systemd watches another. Both halves are installed, so the
+	// button renders enabled, reports success, and is consumed by nothing:
+	// exactly the failure described above, reached through configuration rather
+	// than a partial install.
+	//
+	// Compared against what is actually on disk rather than assumed, because the
+	// installer's literal is the only authority on what systemd will watch.
+	want := filepath.Join(provisionStateDir(), provisionRequestFile)
+	for _, line := range strings.Split(string(unit), "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "PathExists="); ok {
+			return strings.TrimSpace(v) == want
+		}
+	}
+	return false
 }
 
 func readProvisionResult() (provisionResult, bool) {
@@ -155,6 +193,8 @@ func (a *App) handleOSProvisionRequest(w http.ResponseWriter, r *http.Request) {
 			"Could not create the provisioning request", err.Error())
 		return
 	}
+	dbpkg.AuditLog(provisionAuditAction, dbpkg.AuditActor(r), "provision", "requested via the panel")
+
 	note := "Provisioning runs in the background; it usually finishes within a minute."
 	if staleCleared {
 		note = "An earlier request was still waiting — it was cleared and a fresh one made, " +

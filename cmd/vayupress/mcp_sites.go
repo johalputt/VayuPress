@@ -549,7 +549,7 @@ func (a *App) registerCertificateTools(srv *mcp.Server) {
 			"diagnose_certificate afterwards to see what happened.",
 		InputSchema: objSchema(nil, map[string]any{}),
 		Visible:     a.mcpVisible(apikeys.SectionDomains, apikeys.ActionWrite),
-		Handler: func(_ context.Context, _ json.RawMessage) (string, error) {
+		Handler: func(ctx context.Context, _ json.RawMessage) (string, error) {
 			if !provisionUnitsInstalled() {
 				return "", errProvisionUnavailable
 			}
@@ -565,6 +565,10 @@ func (a *App) registerCertificateTools(srv *mcp.Server) {
 			if err := os.WriteFile(path, nil, 0o644); err != nil { //nolint:gosec // an empty flag a root unit watches for
 				return "", err
 			}
+			// Same record as the panel button. This is the door with the lower
+			// bar — a scoped domains:write key reaches it — so it is the one that
+			// most needs to leave a trace.
+			dbpkg.AuditLog(provisionAuditAction, mcpActor(ctx), "provision", "requested via MCP")
 			return jsonStr(map[string]any{
 				"status": "requested", "rearmed": rearmed,
 				"note": "the request carries no arguments and its contents are never read, so this " +

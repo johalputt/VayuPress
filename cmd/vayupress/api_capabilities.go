@@ -109,6 +109,12 @@ var capabilityRules = []capRule{
 
 	// ── domains (VayuDomains) ──
 	{prefix: "/os/api/domains", section: apikeys.SectionDomains},
+	// Provisioning starts a root systemd unit. Mapped here rather than left to
+	// the fail-closed superuser default so it states the SAME rule as the MCP
+	// tool provision_certificates, which does the identical thing behind
+	// domains:write. Two doors to one privileged action must not disagree by
+	// omission.
+	{prefix: "/os/api/provision", section: apikeys.SectionDomains},
 
 	// ── mail (VayuMail + VayuTalk surfaces) ──
 	{prefix: "/os/vayumail", section: apikeys.SectionMail},

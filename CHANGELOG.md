@@ -6,6 +6,73 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+Section 6 of the audit: the panel→root provisioning channel.
+
+The channel itself came through clean, and that is worth saying plainly rather
+than burying. The request file is empty **on purpose** — root reads that it
+exists and never reads a byte of it — and a test fails if anything ever writes
+content there. There is no way for the unprivileged side to pass an argument to
+the privileged one. That design is sound and was left alone.
+
+### Security
+
+- **Registry hostnames are validated before they can reach root.** Triggering
+  provisioning starts a root worker that reads this binary's own domain registry
+  and interpolates each hostname, unquoted, into an nginx directive and into the
+  name of a file it writes as root. nginx directives end at a semicolon, not a
+  newline, so a host of `mine.example; deny all; #` writes a second, real
+  directive into a root-owned server block — and the filename takes the same
+  text.
+
+  **This was not exploitable.** `getent hosts` refuses to resolve such a name, so
+  the worker skipped it before writing anything. That is the entire protection,
+  and it is an accident: the line was written to ask "has DNS been pointed here
+  yet?", and it answers "is this safe to interpolate into root-owned
+  configuration?" only as a side effect. Nothing stated the second job and no
+  test covered it, so a reasonable reordering — checking DNS after writing the
+  HTTP-only vhost, which is the order certbot actually wants — would have removed
+  it with nobody noticing.
+
+  The control now sits at the boundary: the one printer every helper script reads
+  its hostnames from. That covers rows stored by a version with no validation,
+  rows from a restored backup and rows written straight into SQLite, none of
+  which a check on the way in would ever see. Registration also refuses such a
+  name outright, so an operator gets an immediate reason instead of a domain that
+  later goes quietly unprovisioned. A row that cannot be provisioned is named in
+  `vayupress domains list` and skipped rather than fatal — one unusable entry
+  must not stop every other domain renewing its certificate.
+
+- **The two doors to the root unit now state the same rule.** `POST
+  /os/api/provision/run` and the MCP tool `provision_certificates` write the same
+  flag and start the same root unit, and they did not agree on who may do it: the
+  route appeared in no capability rule, so it fell through to the superuser
+  default, while the tool accepted a scoped `domains:write` key. The route is now
+  mapped explicitly to `domains:write`. This grants nothing that did not already
+  exist — the same key could always do exactly this through the tool — and it
+  replaces an omission with a decision.
+
+- **Starting the root unit is recorded.** Both doors write an audit entry, so one
+  query answers who caused root to rewrite nginx and talk to a certificate
+  authority. The sibling VayuVeil hardening request has recorded this since it
+  was written; provisioning simply never called it.
+
+### Fixed
+
+- **Provisioning is no longer offered when it cannot possibly work.** The panel
+  honours `VAYU_DATA_DIR` when writing its request; the systemd `.path` unit
+  carries `/var/lib/vayupress/provision.request` as a literal. Set that variable —
+  a supported configuration — and the panel writes to one path while systemd
+  watches another. Both halves were installed, so the button rendered enabled,
+  answered success, and reported the request as running until it timed out, with
+  nothing anywhere saying why. That is precisely the failure the availability
+  check was written to prevent, reached through configuration instead of a
+  partial install. The check now reads the unit and compares what systemd
+  actually watches against what this process actually writes.
+
+---
+
 ## [3.17.30] — 2026-08-08
 
 Shipped on its own, immediately, rather than batched: v3.17.29's updater refuses
