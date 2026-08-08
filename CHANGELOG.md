@@ -10,6 +10,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **The MCP capability gate was attacked and held; one property of it was not
+  covered.** Section 3. The consent screen promises a read-only connector
+  "cannot change anything", and that promise rests on one predicate. Tool names
+  are public, so the question is not what a connector is *shown* but what happens
+  when it calls `delete_post` anyway. `internal/mcp` consults `Visible` on the
+  call path as well as the listing, and reports a gated tool as "unknown or
+  unavailable" rather than "forbidden" — so a key cannot even map what it lacks.
+  Both halves now have tests against the real tool registry rather than a
+  synthetic one, because a gate can be right in the mechanism and missing in the
+  composition.
+
+  What was NOT covered is the registry itself. Every tool carries a predicate
+  except `site_info`, which is deliberate — but a tool added without one is
+  callable by every connector regardless of what the operator approved, and the
+  existing scope test names two tools specifically, so a new ungated tool passed
+  it. `TestOnlySiteInfoIsUngated` asserts the exact set a zero-grant key can see;
+  registering an ungated tool now fails the build instead of shipping.
+
 - **Deleting an administrator did not take back what they granted.** Section 3.
   An admin who connected an MCP client kept that connector working after their
   account was deleted — with whatever grant they approved, up to `*:*` over the
