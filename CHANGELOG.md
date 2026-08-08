@@ -44,6 +44,30 @@ the privileged one. That design is sound and was left alone.
   `vayupress domains list` and skipped rather than fatal — one unusable entry
   must not stop every other domain renewing its certificate.
 
+- **The code root downloads and executes is pinned to the workflow and branch
+  that signs it, not merely to the repository.** Every provisioning run fetches a
+  tarball of helper scripts from the latest release, verifies it, and installs it
+  with `install -o root -g root` before executing it. Three places did that
+  verification with an identity *pattern* — `^https://github.com/<repo>/` —
+  anchored at the front and open at the back, so a certificate naming any
+  workflow, on any branch or pull request of the repository, satisfied it.
+
+  The updater already refuses exactly that certificate, and says why in its own
+  source: a workflow file of the same name on another branch produces a perfectly
+  valid signature carrying a different identity. The binary had learned the rule;
+  the scripts that run as root had not. One of them carried a comment reading
+  *"The signer is pinned to this project"* — true of the repository and false of
+  the workflow and the branch, which is the half that matters.
+
+  All three now pin the exact identity, derived in the test from the same
+  constant the updater enforces so a script and the binary cannot drift apart.
+  The repository segment stays a variable, because a fork publishing its own
+  signed helpers is a supported deployment. Grounded in a real published
+  certificate rather than reasoning: the fixture is the certificate from a
+  shipped helper bundle, and the test fails if the pinned identity is not the one
+  the pipeline actually signs with — refusing every genuine upgrade would be the
+  mirror of the same mistake, somewhere nobody is watching a log.
+
 - **The two doors to the root unit now state the same rule.** `POST
   /os/api/provision/run` and the MCP tool `provision_certificates` write the same
   flag and start the same root unit, and they did not agree on who may do it: the

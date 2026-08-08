@@ -1209,11 +1209,16 @@ reconcile_provisionhelpers() {
   fi
 
   # Verified BEFORE unpacking: unpacking an unverified archive as root is
-  # already the compromise, whatever is checked afterwards. The signer is pinned
-  # to this project, because accepting any valid signature accepts an attacker's.
+  # already the compromise, whatever is checked afterwards.
+  #
+  # Pinned to the exact workflow AND branch, not to the repository. This said
+  # "pinned to this project" while matching `^https://github.com/<repo>/`, which
+  # is open at the back: any workflow, on any branch or pull request of the
+  # repository, mints a certificate that satisfies it — and every one of them
+  # signs code this function installs with `install -o root` and runs.
   if ! "$COSIGN" verify-blob "${tmp}/${asset}" \
         --bundle "${tmp}/bundle.json" \
-        --certificate-identity-regexp "^https://github.com/${repo}/" \
+        --certificate-identity "https://github.com/${repo}/.github/workflows/tag-release.yml@refs/heads/main" \
         --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
         >"${tmp}/verify.log" 2>&1; then
     write_state provisionhelpers error
@@ -1778,7 +1783,7 @@ self_upgrade() {
   # the compromise, whatever is checked afterwards.
   if ! "$COSIGN" verify-blob "${tmp}/${UPGRADE_ASSET}" \
         --bundle "${tmp}/bundle.json" \
-        --certificate-identity-regexp "^https://github.com/${UPGRADE_REPO}/" \
+        --certificate-identity "https://github.com/${UPGRADE_REPO}/.github/workflows/tag-release.yml@refs/heads/main" \
         --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
         >"${tmp}/verify.log" 2>&1; then
     # WHY it failed decides what to tell the operator, and the two answers are

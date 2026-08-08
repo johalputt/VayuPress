@@ -111,9 +111,16 @@ self_upgrade_helpers() {
 
   # Verified BEFORE unpacking. Unpacking an unverified archive as root is already
   # the compromise, whatever is checked afterwards.
+  #
+  # The identity names the workflow and the branch, not just the repository. The
+  # earlier `^https://github.com/<repo>/` was anchored only at the front, so any
+  # workflow on any branch or pull request of this repository produced a
+  # certificate it accepted — for a tarball installed with `install -o root` and
+  # then executed. The repository segment stays a variable so a fork publishing
+  # its own signed helpers keeps working.
   if ! "$cosign_bin" verify-blob "${tmp}/${UPGRADE_ASSET}" \
         --bundle "${tmp}/bundle.json" \
-        --certificate-identity-regexp "^https://github.com/${UPGRADE_REPO}/" \
+        --certificate-identity "https://github.com/${UPGRADE_REPO}/.github/workflows/tag-release.yml@refs/heads/main" \
         --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
         >"${tmp}/verify.log" 2>&1; then
     # Not reported as "someone tampered with it". Keyless verification needs

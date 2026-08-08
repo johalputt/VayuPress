@@ -187,13 +187,27 @@ func TestTheRootWorkerUpgradesItselfAndRefusesUnverifiedCode(t *testing.T) {
 		t.Fatal("the bundle is installed without verifying its signature — an unverified " +
 			"archive executed as root is a full compromise of the machine")
 	}
-	// The identity must be pinned to this project. Verifying "a valid signature"
-	// without pinning who signed it accepts anybody's.
-	for _, want := range []string{"certificate-identity-regexp", "certificate-oidc-issuer"} {
+	// The identity must be pinned to the WORKFLOW AND BRANCH, not the repository.
+	//
+	// This check used to require the literal "certificate-identity-regexp", and
+	// the script satisfied it with `^https://github.com/<repo>/` — anchored at
+	// the front, open at the back, so any workflow on any branch or pull request
+	// of the repository passed. The test warned that "any valid Sigstore
+	// signature would pass" while accepting the form that let almost any of them.
+	//
+	// Asserted on the workflow-and-branch suffix rather than on
+	// "certificate-identity", because "certificate-identity-regexp" CONTAINS that
+	// string and a Contains check would pass for the very form being ruled out.
+	for _, want := range []string{"tag-release.yml@refs/heads/main", "certificate-oidc-issuer"} {
 		if !strings.Contains(body, want) {
-			t.Errorf("the verification does not pin %s, so any valid Sigstore signature would "+
-				"pass — including an attacker's own", want)
+			t.Errorf("the verification does not pin %s, so a certificate naming another "+
+				"workflow or branch of this repository would pass — and it signs code "+
+				"installed with `install -o root` and executed", want)
 		}
+	}
+	if strings.Contains(body, "certificate-identity-regexp") {
+		t.Error("the verification matches the signer identity with a pattern; a pattern that " +
+			"is not anchored at both ends accepts identities nobody intended")
 	}
 	// Verify BEFORE unpacking. Unpacking an unverified archive as root is already
 	// the compromise, whatever is checked afterwards.
@@ -271,10 +285,15 @@ func TestTheShieldAgentCanRepairTheProvisioningHelpers(t *testing.T) {
 		t.Fatal("the bundle is installed without verifying its signature — unverified code " +
 			"executed as root is a full compromise")
 	}
-	for _, want := range []string{"certificate-identity-regexp", "certificate-oidc-issuer"} {
+	// Workflow and branch, not just the repository — see the longer note above.
+	for _, want := range []string{"tag-release.yml@refs/heads/main", "certificate-oidc-issuer"} {
 		if !strings.Contains(body, want) {
-			t.Errorf("verification does not pin %s, so any valid Sigstore signature passes", want)
+			t.Errorf("verification does not pin %s, so a certificate from another workflow "+
+				"or branch of this repository passes", want)
 		}
+	}
+	if strings.Contains(body, "certificate-identity-regexp") {
+		t.Error("the signer identity is matched with a pattern rather than pinned exactly")
 	}
 	if v, x := strings.Index(body, "verify-blob"), strings.Index(body, "tar -C"); v < 0 || x < 0 || v > x {
 		t.Fatal("the archive is unpacked before its signature is checked")
