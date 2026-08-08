@@ -95,17 +95,28 @@ jobs:
           sha256sum dist/vayupress > dist/vayupress.sha256
           echo "built $VERSION (static)"
 
+      # Signing the binary is FATAL if it fails, and both steps below say so by
+      # omission — no continue-on-error, no `|| echo`.
+      #
+      # It used to be best-effort on both, so any hiccup published a release
+      # "without signature" and nothing downstream cared, because nothing checked.
+      # The updater now refuses a release it cannot verify, which turns a silently
+      # unsigned build into one no install can apply. An unpublished release is a
+      # nuisance; an unverifiable one that every install refuses is an outage, and
+      # an unsigned one nobody notices is the supply-chain hole this closes.
       - name: Install cosign
         if: steps.exists.outputs.skip != 'true'
-        continue-on-error: true
         uses: sigstore/cosign-installer@v3
 
       - name: Sign binary (keyless OIDC)
         if: steps.exists.outputs.skip != 'true'
-        continue-on-error: true
         run: |
-          cosign sign-blob --yes dist/vayupress --bundle dist/vayupress.cosign.bundle || echo "cosign signing skipped/failed — publishing release without signature"
-          echo "sign step complete"
+          # --new-bundle-format writes the Sigstore protobuf bundle the updater
+          # reads. The older default emits a legacy shape it cannot parse.
+          cosign sign-blob --yes --new-bundle-format \
+            dist/vayupress --bundle dist/vayupress.cosign.bundle
+          test -s dist/vayupress.cosign.bundle
+          echo "signed dist/vayupress"
 
       - name: Generate SBOM (CycloneDX)
         if: steps.exists.outputs.skip != 'true'
