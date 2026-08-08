@@ -65,7 +65,7 @@ import (
 // Rotation is the same three steps: installs running an older binary keep
 // verifying against the older key until they update, which is why the key is
 // changed in a release rather than out of band.
-const releaseEd25519PubKey = ""
+const releaseEd25519PubKey = "d644670c592630d755d62270c15762702afdd3adb4bd0ef3c9c9fe8d6e3e2454"
 
 // ReleaseRequiresEd25519 reports whether this build enforces the second
 // signature. It exists so the panel can state which controls are actually in
@@ -80,7 +80,19 @@ func ReleaseRequiresEd25519() bool { return strings.TrimSpace(releaseEd25519PubK
 // verified without holding forty megabytes twice, and it matches what the
 // pipeline signs.
 func verifyReleaseEd25519(data []byte, sigHex string) error {
-	key := strings.TrimSpace(releaseEd25519PubKey)
+	return verifyEd25519Against(releaseEd25519PubKey, data, sigHex)
+}
+
+// verifyEd25519Against is the check with the key as a parameter.
+//
+// Split out so the failure modes of a BAD pin are reachable from a test. The pin
+// itself is a compile-time constant — correctly, since that is what stops anyone
+// changing it at runtime — but a constant cannot be varied, and a branch no test
+// can reach is a branch nobody has seen work. The earlier shape left the
+// malformed-pin path covered by a skip message that claimed coverage elsewhere
+// and there was no elsewhere.
+func verifyEd25519Against(pubKeyHex string, data []byte, sigHex string) error {
+	key := strings.TrimSpace(pubKeyHex)
 	if key == "" {
 		return errors.New("update: no release signing key is compiled into this build")
 	}

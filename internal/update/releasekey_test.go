@@ -42,13 +42,31 @@ func TestTheKeyAndTheCheckCannotBeSeparated(t *testing.T) {
 // drops a control the build was configured to have, which is how a security
 // feature becomes decoration.
 func TestAMalformedPinnedKeyRefusesRatherThanFallingThrough(t *testing.T) {
-	if ReleaseRequiresEd25519() {
-		t.Skip("this build pins a key; the malformed case is covered by the unit below")
+	payload := []byte("payload")
+	// A real signature over the payload, so only the KEY is at fault below and a
+	// refusal cannot be credited to a bad signature instead.
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("keygen: %v", err)
 	}
-	// With no key pinned, the verifier must refuse outright rather than pass.
-	if err := verifyReleaseEd25519([]byte("payload"), "00"); err == nil {
-		t.Error("verifyReleaseEd25519 accepted a signature with no key compiled in — " +
-			"it must never return success when it has nothing to verify against")
+	digest := sha256.Sum256(payload)
+	good := hex.EncodeToString(ed25519.Sign(priv, digest[:]))
+
+	for name, key := range map[string]string{
+		"empty":            "",
+		"not hex":          "zzzz",
+		"too short":        "aabb",
+		"too long":         strings.Repeat("ab", 40),
+		"odd length":       "abc",
+		"whitespace only":  "   ",
+		"private-key size": strings.Repeat("cd", 64),
+	} {
+		if err := verifyEd25519Against(key, payload, good); err == nil {
+			t.Errorf("a %s pinned key was accepted.\n\n"+
+				"Treating an unusable pin as \"no pin\" and falling through to Sigstore "+
+				"alone silently drops a control the build was configured to have, which is "+
+				"how a security feature becomes decoration.", name)
+		}
 	}
 }
 

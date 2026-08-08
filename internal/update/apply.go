@@ -127,20 +127,6 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 	if sumAsset == nil {
 		return "", fmt.Errorf("update: release %s is missing a .sha256 checksum for %s", rel.Version, binAsset.Name)
 	}
-	// When this build pins a release signing key, a valid Ed25519 signature is
-	// required too — there is no state where a key is present and the check is
-	// skipped. Resolved here, before any download, so a release missing it is
-	// refused for a reason the operator can read.
-	var sigAsset *Asset
-	if ReleaseRequiresEd25519() {
-		sigAsset = selectSidecar(rel.Assets, binAsset.Name, ".sig")
-		if sigAsset == nil {
-			return "", fmt.Errorf("update: release %s carries no Ed25519 signature for %s, "+
-				"which this build requires in addition to the Sigstore signature. A release "+
-				"missing it did not complete correctly, or did not come from the project",
-				rel.Version, binAsset.Name)
-		}
-	}
 	// No bundle, no install. A release that failed to sign is refused rather than
 	// taken on its checksum, which is the whole point: an attacker who can publish
 	// to the release channel can publish a matching checksum, and could otherwise
@@ -151,6 +137,17 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 			"verified and will not be installed. Every genuine release is signed by the "+
 			"project's release workflow; an unsigned one means the release did not complete "+
 			"correctly, or did not come from the project", rel.Version, binAsset.Name)
+	}
+	// The second lock, resolved after the first so a release missing both is
+	// reported against the primary control rather than this one.
+	var sigAsset *Asset
+	if ReleaseRequiresEd25519() {
+		sigAsset = selectSidecar(rel.Assets, binAsset.Name, ".sig")
+		if sigAsset == nil {
+			return "", fmt.Errorf("update: release %s carries no Ed25519 signature for %s, "+
+				"which this build requires in addition to the Sigstore signature",
+				rel.Version, binAsset.Name)
+		}
 	}
 
 	binData, err := download(ctx, client, binAsset.DownloadURL)
@@ -189,21 +186,19 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 	if err != nil {
 		return "", fmt.Errorf("update: download release signature: %w", err)
 	}
-	if err := verifyReleaseSignature(binData, bundleData); err != nil {
-		return "", err
-	}
-
-	// The second lock, with a different key custody model: holding the workflow
-	// identity does not yield this key, and holding this key does not let you
-	// publish under that identity.
+	sigHex := ""
 	if sigAsset != nil {
 		sigData, derr := download(ctx, client, sigAsset.DownloadURL)
 		if derr != nil {
-			return "", fmt.Errorf("update: download release signature: %w", derr)
+			return "", fmt.Errorf("update: download release key signature: %w", derr)
 		}
-		if err := verifyReleaseEd25519(binData, string(sigData)); err != nil {
-			return "", err
-		}
+		sigHex = string(sigData)
+	}
+	if err := verifyReleaseSignature(binData, bundleData, sigHex); err != nil {
+		return "", err
+	}
+
+	if sigAsset != nil {
 		logging.LogInfo("update", fmt.Sprintf(
 			"verified release %s (checksum + Sigstore signature by %s + release signing key OK)",
 			rel.Version, ReleaseSignerIdentity))
@@ -667,16 +662,28 @@ func RestartInstructions(newVersion string) string {
 		newVersion)
 }
 
-// verifyReleaseSignature is the authenticity check ApplyVerified performs.
+// verifyReleaseSignature runs EVERY authenticity check a release must pass, in
+// one place, so a caller cannot satisfy one lock and skip the other.
+//
+// Sigstore is checked first because it is the primary control and the one every
+// build enforces; the Ed25519 signature is an additional lock that applies when
+// this build pins a key. A release failing either is refused.
 //
 // A package-level variable purely so tests can drive the stages AFTER it with a
-// synthetic release, since a fixture cannot hold a genuine Sigstore signature.
-// It is deliberately UNEXPORTED and absent from ApplyOptions: nothing outside
-// this package can reach it, so it cannot become the opt-out that
-// AllowUnsigned was. TestAReleaseWithAnUnreadableSignatureIsRefused drives the
-// real function end to end, so substituting it in other tests cannot hide a
-// regression here.
-var verifyReleaseSignature = VerifyReleaseBundle
+// synthetic release, since no fixture can hold a genuine Sigstore signature. It
+// is deliberately UNEXPORTED and absent from ApplyOptions: nothing outside this
+// package can reach it, so it cannot become the opt-out AllowUnsigned was.
+// TestAReleaseWithAnUnreadableSignatureIsRefused drives the real function end to
+// end, so substituting it elsewhere cannot hide a regression here.
+var verifyReleaseSignature = func(artifact, bundleJSON []byte, sigHex string) error {
+	if err := VerifyReleaseBundle(artifact, bundleJSON); err != nil {
+		return err
+	}
+	if ReleaseRequiresEd25519() {
+		return verifyReleaseEd25519(artifact, sigHex)
+	}
+	return nil
+}
 
 // selectBundleAsset finds the Sigstore bundle proving who built the binary.
 //

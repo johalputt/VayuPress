@@ -28,7 +28,7 @@ import (
 func withStubbedSignature(t *testing.T) {
 	t.Helper()
 	prev := verifyReleaseSignature
-	verifyReleaseSignature = func(_, _ []byte) error { return nil }
+	verifyReleaseSignature = func(_, _ []byte, _ string) error { return nil }
 	t.Cleanup(func() { verifyReleaseSignature = prev })
 }
 
@@ -162,6 +162,46 @@ func TestAReleaseWithNoSignatureIsRefused(t *testing.T) {
 			"can publish both.")
 	}
 	if !strings.Contains(err.Error(), "carries no signature") {
+		t.Errorf("refused for the wrong reason: %v", err)
+	}
+}
+
+// A release pinned by this build must carry BOTH signatures. With a key
+// compiled in, a release missing the Ed25519 one is refused after the Sigstore
+// check has already passed — the locks are independent and both are required.
+func TestAReleaseMissingTheSecondSignatureIsRefused(t *testing.T) {
+	if !ReleaseRequiresEd25519() {
+		t.Skip("this build pins no release signing key, so there is no second lock to miss")
+	}
+	binary := []byte("\x7fELF payload")
+	sum := sha256.Sum256(binary)
+	sumHex := hex.EncodeToString(sum[:])
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+		base := "http://" + r.Host
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tag_name": "v3.0.0",
+			"assets": []map[string]any{
+				{"name": "b", "browser_download_url": base + "/bin"},
+				{"name": "b.sha256", "browser_download_url": base + "/sum"},
+				{"name": "b.cosign.bundle", "browser_download_url": base + "/bundle"},
+			},
+		})
+	})
+	mux.HandleFunc("/bin", func(w http.ResponseWriter, r *http.Request) { w.Write(binary) })
+	mux.HandleFunc("/sum", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(sumHex + "  b\n")) })
+	mux.HandleFunc("/bundle", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("{}")) })
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second, Transport: rewriteTransport{target: srv.URL}}
+	_, err := ApplyVerified(context.Background(), client, "o", "r",
+		ApplyOptions{Current: "v1.0.0", DryRun: true}, nil)
+	if err == nil {
+		t.Fatal("a release carrying only one of the two required signatures was accepted")
+	}
+	if !strings.Contains(err.Error(), "Ed25519") {
 		t.Errorf("refused for the wrong reason: %v", err)
 	}
 }

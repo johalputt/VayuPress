@@ -270,6 +270,7 @@ func TestApplyRefusesAReleaseWhoseBinaryAssetIsNotABinary(t *testing.T) {
 				{"name": "vayupress", "browser_download_url": base + "/bin"},
 				{"name": "vayupress.sha256", "browser_download_url": base + "/sum"},
 				{"name": "vayupress.cosign.bundle", "browser_download_url": base + "/bundle"},
+				{"name": "vayupress.sig", "browser_download_url": base + "/sig"},
 			},
 		})
 	})
@@ -278,6 +279,7 @@ func TestApplyRefusesAReleaseWhoseBinaryAssetIsNotABinary(t *testing.T) {
 		_, _ = w.Write([]byte(sumHex + "  vayupress\n"))
 	})
 	mux.HandleFunc("/bundle", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("{}")) })
+	mux.HandleFunc("/sig", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("00")) })
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
