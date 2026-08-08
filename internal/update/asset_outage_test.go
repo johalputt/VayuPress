@@ -253,6 +253,10 @@ func TestTheWritePathRefusesANonExecutableEvenIfCalledDirectly(t *testing.T) {
 // the release really did publish those bytes. Only the format check stands
 // between this and a service that will not start.
 func TestApplyRefusesAReleaseWhoseBinaryAssetIsNotABinary(t *testing.T) {
+	// The authenticity stage runs before this one by design, so a synthetic
+	// release must get past it to reach the executable-image backstop. Ordering
+	// is deliberate: an unauthentic file is rejected as unauthentic first.
+	withStubbedSignature(t)
 	payload := append([]byte("PK\x03\x04"), make([]byte, 4096)...) // a zip, correctly named
 	sum := sha256.Sum256(payload)
 	sumHex := hex.EncodeToString(sum[:])
@@ -265,6 +269,7 @@ func TestApplyRefusesAReleaseWhoseBinaryAssetIsNotABinary(t *testing.T) {
 			"assets": []map[string]any{
 				{"name": "vayupress", "browser_download_url": base + "/bin"},
 				{"name": "vayupress.sha256", "browser_download_url": base + "/sum"},
+				{"name": "vayupress.cosign.bundle", "browser_download_url": base + "/bundle"},
 			},
 		})
 	})
@@ -272,11 +277,12 @@ func TestApplyRefusesAReleaseWhoseBinaryAssetIsNotABinary(t *testing.T) {
 	mux.HandleFunc("/sum", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(sumHex + "  vayupress\n"))
 	})
+	mux.HandleFunc("/bundle", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("{}")) })
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second, Transport: rewriteTransport{target: srv.URL}}
-	opt := ApplyOptions{Current: "v1.0.0", DryRun: true, AllowUnsigned: true, BinaryPath: "/opt/vayupress/vayupress"}
+	opt := ApplyOptions{Current: "v1.0.0", DryRun: true, BinaryPath: "/opt/vayupress/vayupress"}
 
 	_, err := ApplyVerified(context.Background(), client, "o", "r", opt, nil)
 	if err == nil {

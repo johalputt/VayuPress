@@ -26,14 +26,6 @@ type ApplyOptions struct {
 	BackupDir  string
 	BinaryPath string // path to the currently-running binary to replace (os.Executable())
 
-	// AllowUnsigned permits applying a release using SHA-256 checksum
-	// verification alone when no pinned release public key is configured
-	// (PubKeyHex is empty). When a pinned key IS present the Ed25519 signature is
-	// always required regardless of this flag. The CLI leaves this false
-	// (strict, signature-mandatory); the authenticated admin UI sets it so an
-	// operator can update in one click without first provisioning a signing key.
-	AllowUnsigned bool
-
 	// IncludePrerelease opts into the development channel: GitHub pre-releases
 	// (unreleased builds) become eligible for install, not just stable releases.
 	// Verification is unchanged — checksum always, signature when a key is pinned.
@@ -69,8 +61,9 @@ func PreflightMode(currentMode string) error {
 //   - mode must not be read-only / quarantined / maintenance
 //   - pinned pubkey must be present
 //
-// This is the strict gate used by the CLI. The admin UI uses PreflightMode plus
-// ApplyOptions.AllowUnsigned instead.
+// This is the strict gate used by the CLI; the admin UI uses PreflightMode. Both
+// paths now verify the release's Sigstore signature unconditionally, so neither
+// can apply an unauthentic binary — the flag that used to permit that is gone.
 func PreflightApply(enabled bool, currentMode string, pubKeyHex string) error {
 	if !enabled {
 		return errors.New("update: apply refused — set VAYU_SELFUPDATE_ENABLED=true to opt in")
@@ -102,14 +95,23 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 		return "", fmt.Errorf("update: no newer release available (current=%s latest=%s)", opt.Current, rel.Version)
 	}
 
-	// Verification policy: the SHA-256 checksum is ALWAYS verified. The Ed25519
-	// signature is required whenever a release key is pinned; if none is pinned,
-	// apply proceeds on checksum alone only when the caller opted in
-	// (AllowUnsigned, i.e. an authenticated admin clicking Update).
+	// VERIFICATION POLICY (Section 5 audit).
+	//
+	// Authenticity is the Sigstore signature every release carries, pinned to the
+	// release workflow's identity. It is ALWAYS required — there is no flag that
+	// turns it off, because the previous design made the signature conditional on
+	// an operator pinning a key and so gave the default install no authenticity
+	// control at all. The checksum is still verified: it catches a truncated or
+	// proxy-mangled download and produces a far clearer error than a signature
+	// failure would.
+	//
+	// The Ed25519 path this replaces was worse than absent. It required a
+	// "<binary>.sig" asset the release pipeline has never produced, so pinning
+	// VAYU_RELEASE_PUBKEY — which the panel and docs both told operators to do —
+	// made every update fail. opt.PubKeyHex is still honoured as an ADDITIONAL
+	// check for anyone who has one, and its absence no longer means "verify
+	// nothing".
 	verifySig := strings.TrimSpace(opt.PubKeyHex) != ""
-	if !verifySig && !opt.AllowUnsigned {
-		return "", errors.New("update: apply refused — pinned release public key (VAYU_RELEASE_PUBKEY) is empty")
-	}
 
 	// The name of the file about to be overwritten is the strongest evidence
 	// available about which asset is the binary; fall back to the repository name
@@ -127,6 +129,17 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 	sumAsset := selectChecksumAsset(rel.Assets, binAsset.Name)
 	if sumAsset == nil {
 		return "", fmt.Errorf("update: release %s is missing a .sha256 checksum for %s", rel.Version, binAsset.Name)
+	}
+	// No bundle, no install. A release that failed to sign is refused rather than
+	// taken on its checksum, which is the whole point: an attacker who can publish
+	// to the release channel can publish a matching checksum, and could otherwise
+	// simply omit the signature to be waved through.
+	bundleAsset := selectBundleAsset(rel.Assets, binAsset.Name)
+	if bundleAsset == nil {
+		return "", fmt.Errorf("update: release %s carries no signature for %s, so it cannot be "+
+			"verified and will not be installed. Every genuine release is signed by the "+
+			"project's release workflow; an unsigned one means the release did not complete "+
+			"correctly, or did not come from the project", rel.Version, binAsset.Name)
 	}
 	var sigAsset *Asset
 	if verifySig {
@@ -166,6 +179,16 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 			"This normally means the download was corrupted or intercepted in transit (a proxy/CDN issue), not a bad release; retry the update", err, len(binData))
 	}
 
+	// THE AUTHENTICITY CHECK. Everything above proves the bytes arrived intact;
+	// only this proves who made them.
+	bundleData, err := download(ctx, client, bundleAsset.DownloadURL)
+	if err != nil {
+		return "", fmt.Errorf("update: download release signature: %w", err)
+	}
+	if err := verifyReleaseSignature(binData, bundleData); err != nil {
+		return "", err
+	}
+
 	if verifySig {
 		sigData, derr := download(ctx, client, sigAsset.DownloadURL)
 		if derr != nil {
@@ -174,9 +197,9 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 		if err := VerifySignature(opt.PubKeyHex, binData, strings.TrimSpace(string(sigData))); err != nil {
 			return "", err
 		}
-		logging.LogInfo("update", fmt.Sprintf("verified release %s (checksum + Ed25519 signature OK)", rel.Version))
+		logging.LogInfo("update", fmt.Sprintf("verified release %s (checksum + Sigstore signature + pinned Ed25519 key OK)", rel.Version))
 	} else {
-		logging.LogInfo("update", fmt.Sprintf("verified release %s (SHA-256 checksum OK; signature check skipped — no pinned release key)", rel.Version))
+		logging.LogInfo("update", fmt.Sprintf("verified release %s (checksum + Sigstore signature by %s OK)", rel.Version, ReleaseSignerIdentity))
 	}
 
 	// Authenticity is settled; now the question authenticity cannot answer. These
@@ -639,4 +662,33 @@ func RestartInstructions(newVersion string) string {
 			"  sudo systemctl restart vayupress\n"+
 			"Rollback (if needed): move <binary>.bak back over the binary, then restart.",
 		newVersion)
+}
+
+// verifyReleaseSignature is the authenticity check ApplyVerified performs.
+//
+// A package-level variable purely so tests can drive the stages AFTER it with a
+// synthetic release, since a fixture cannot hold a genuine Sigstore signature.
+// It is deliberately UNEXPORTED and absent from ApplyOptions: nothing outside
+// this package can reach it, so it cannot become the opt-out that
+// AllowUnsigned was. TestAReleaseWithAnUnreadableSignatureIsRefused drives the
+// real function end to end, so substituting it in other tests cannot hide a
+// regression here.
+var verifyReleaseSignature = VerifyReleaseBundle
+
+// selectBundleAsset finds the Sigstore bundle proving who built the binary.
+//
+// Exact sibling only — no "sole asset with this suffix" fallback like the
+// checksum and signature selectors have. Those fall back because a release
+// shipping one checksum for one binary is unambiguous. A bundle is different:
+// this release attaches bundles for the helper archives and the SBOM too, so
+// "the only .cosign.bundle" would silently pair the binary with a signature over
+// something else, and that pairing is exactly what an attacker wants.
+func selectBundleAsset(assets []Asset, binaryName string) *Asset {
+	want := strings.ToLower(binaryName) + ".cosign.bundle"
+	for i := range assets {
+		if strings.ToLower(assets[i].Name) == want {
+			return &assets[i]
+		}
+	}
+	return nil
 }

@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 )
@@ -133,4 +134,24 @@ func verifyCosignEntity(entity verify.SignedEntity, artifact []byte, tm root.Tru
 		return fmt.Errorf("update: release signature rejected: %w", err)
 	}
 	return nil
+}
+
+// VerifyReleaseBundle is the production entry point: it checks that bundleJSON
+// is a Sigstore bundle proving this project's release workflow signed artifact.
+//
+// Enforced, with no opt-out flag. The previous design made the signature check
+// conditional on an operator pinning a key, which meant the default install had
+// no authenticity control and the one operator who followed the security
+// documentation had a broken updater. A control that is off unless someone
+// opts in protects the people who already knew, and nobody else.
+func VerifyReleaseBundle(artifact, bundleJSON []byte) error {
+	tm, err := ReleaseTrustMaterial()
+	if err != nil {
+		return err
+	}
+	var b bundle.Bundle
+	if err := b.UnmarshalJSON(bundleJSON); err != nil {
+		return fmt.Errorf("update: the release signature bundle could not be read: %w", err)
+	}
+	return verifyCosignEntity(&b, artifact, tm, ReleaseSignerIdentity, ReleaseSignerIssuer)
 }

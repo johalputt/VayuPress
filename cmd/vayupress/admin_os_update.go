@@ -518,8 +518,9 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	curMode := string(mode.Global.Current())
 	// The caller is an authenticated admin who explicitly clicked Update — that
 	// is the opt-in. We only refuse in modes that forbid mutating the binary.
-	// Verification still happens in ApplyVerified: checksum always, plus Ed25519
-	// signature when a release key is pinned (AllowUnsigned covers the no-key case).
+	// Verification still happens in ApplyVerified, and is no longer optional:
+	// the release's Sigstore signature is required and pinned to the project's
+	// release workflow, with the checksum kept for a clearer transport error.
 	if err := update.PreflightMode(curMode); err != nil {
 		writeAPIError(w, r, http.StatusPreconditionFailed, "preflight", err.Error(), "")
 		return
@@ -567,7 +568,6 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 		DryRun:            body.DryRun,
 		PubKeyHex:         pubKey,
 		BinaryPath:        realPath, // swap the resolved real file, not a launch-time symlink
-		AllowUnsigned:     true,     // admin-initiated; checksum-verified when no key is pinned
 		IncludePrerelease: body.Prerelease,
 	}
 	// Pre-update database backup is the operator's choice. When enabled we point
