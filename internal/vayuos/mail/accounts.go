@@ -307,6 +307,22 @@ func (s *AccountStore) SetRole(ctx context.Context, email, role string) error {
 	return nil
 }
 
+// FullNameFor returns an account's display name, or "" when it has none (or
+// there is no such account).
+//
+// It exists so the composer can put a friendly name in the From header without
+// loading every mailbox on the install to find one — the same argument
+// CountForDomain makes about counting. The send path and the draft autosave both
+// call it, and the autosave runs on a timer while someone types.
+func (s *AccountStore) FullNameFor(ctx context.Context, email string) string {
+	if s.db == nil {
+		return ""
+	}
+	var name string
+	_ = s.db.QueryRowContext(ctx, `SELECT full_name FROM vayumail_accounts WHERE email=?`, normEmail(email)).Scan(&name)
+	return strings.TrimSpace(name)
+}
+
 // RoleFor returns the role of an account, or "" if unknown.
 func (s *AccountStore) RoleFor(ctx context.Context, email string) string {
 	if s.db == nil {

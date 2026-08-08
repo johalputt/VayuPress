@@ -206,26 +206,36 @@ func TestEveryClientSurfaceEntryMatchesARealRoute(t *testing.T) {
 	}
 }
 
-// selfServiceUnderAdminPrefix names the ONLY routes allowed to sit under an
+// clientReachableUnderAdminPrefix names the ONLY routes allowed to sit under an
 // administrative prefix and still be client-reachable.
 //
-// It is declared here, in the test, and NOT derived from clientSurface — a
-// blanket rule that any surface entry can satisfy by existing is not a rule.
-// Adding a route to the surface therefore fails the gate below until someone
-// also writes it here, which is the moment to ask whether it belongs.
+// Reachable is not the same as permitted: the confinement lets these through and
+// the HANDLER decides, exactly as it does for the recovery-decide endpoint under
+// /os/api/vayuos/mail/. Two kinds of entry qualify, and the distinction is
+// recorded per route because it is the whole justification:
 //
-// Each entry earns its place by refusing a non-admin acting on another mailbox,
-// which is driven (not asserted from a comment) in
-// TestAClientReachingTheNewEndpointsStillCannotTouchAnotherMailbox:
+//   - SCOPED TO THE CALLER — canManageAppPassword resolves the caller's own
+//     address (owner, or an admin who has not handed the mailbox over), so a
+//     client acting through it acts on themselves. Provisioning a device is what
+//     the Connect page a client is given exists to do. Driven, not assumed, in
+//     TestAClientReachingTheNewEndpointsStillCannotTouchAnotherMailbox.
+//   - REFUSED BY THE HANDLER — the avatar writers (upload, remove, cartoon) are
+//     isAdminRequest-gated; only the GET that serves a stored picture is open,
+//     and the client's own inbox renders it on every row.
 //
-//   - apppassword — canManageAppPassword: owner, or an admin who has not handed
-//     the mailbox over. It is what the Connect page a client is given exists to do.
-//   - avatar — the serve leaf reads a stored picture by address and renders the
-//     sender chips in the client's own inbox; its writing siblings (remove,
-//     cartoon) are isAdminRequest-gated in the handler.
-var selfServiceUnderAdminPrefix = []string{
+// MATCHING IS EXACT, deliberately. An earlier version matched children too, so
+// a route registered under one of these prefixes next year would have been
+// exempted by a decision nobody made about it — pre-authorised by a list written
+// before it existed. Now it fails the gate, and someone has to look at it.
+//
+// The list is declared here, in the test, and NOT derived from clientSurface: a
+// blanket rule that any surface entry satisfies by existing is not a rule.
+var clientReachableUnderAdminPrefix = []string{
 	"/os/vayumail/accounts/apppassword",
+	"/os/vayumail/accounts/apppassword/delete",
 	"/os/vayumail/accounts/avatar",
+	"/os/vayumail/accounts/avatar/remove",
+	"/os/vayumail/accounts/avatar/cartoon",
 }
 
 // The inverse, and the one that matters most: no route that administers
@@ -240,8 +250,8 @@ func TestNoAdministrativeRouteIsClientReachable(t *testing.T) {
 		"/os/update", "/os/storage", "/os/vayushield", "/os/tor", "/os/world",
 	}
 	exempt := func(rt string) bool {
-		for _, e := range selfServiceUnderAdminPrefix {
-			if rt == e || strings.HasPrefix(rt, e+"/") {
+		for _, e := range clientReachableUnderAdminPrefix {
+			if rt == e { // exact only — see the list's comment
 				return true
 			}
 		}
@@ -255,9 +265,10 @@ func TestNoAdministrativeRouteIsClientReachable(t *testing.T) {
 			if clientPathAllowed(rt) && !exempt(rt) {
 				t.Errorf("registered route %q is reachable by a client — it is under the "+
 					"administrative prefix %q.\n\n"+
-					"If it is genuinely self-service, prove it refuses a non-admin acting on "+
-					"another mailbox and add it to selfServiceUnderAdminPrefix. Widening the "+
-					"surface entry alone is not enough, deliberately.", rt, f)
+					"Prove it either scopes a non-admin to their own mailbox or refuses them "+
+					"outright, then name it in clientReachableUnderAdminPrefix. Widening the "+
+					"surface entry alone is not enough, deliberately — and naming a parent "+
+					"does not cover this route, because matching there is exact.", rt, f)
 			}
 		}
 	}
@@ -267,7 +278,7 @@ func TestNoAdministrativeRouteIsClientReachable(t *testing.T) {
 // nobody can reach reads as a granted capability and quietly licenses the next
 // one added beneath it.
 func TestTheSelfServiceExemptionsAreAllStillGranted(t *testing.T) {
-	for _, e := range selfServiceUnderAdminPrefix {
+	for _, e := range clientReachableUnderAdminPrefix {
 		if !clientPathAllowed(e) {
 			t.Errorf("%q is exempted from the administrative-prefix gate but is not on the "+
 				"client surface. A stale exemption pre-authorises whatever is registered "+

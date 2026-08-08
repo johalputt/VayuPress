@@ -632,21 +632,19 @@ func (a *App) senderDisplayName(ctx context.Context, emailAddr string) string {
 	if emailAddr == "" {
 		return ""
 	}
+	// Two indexed lookups, not two table reads. Both stores hold the address
+	// lowercased at insert and nothing updates the column, so an exact match on
+	// the stored value finds precisely what walking the table with EqualFold
+	// found — which the control test asserts across three capitalisations.
 	if a.vayuMail != nil && a.vayuMail.Accounts() != nil {
-		if accs, err := a.vayuMail.Accounts().List(ctx); err == nil {
-			for _, ac := range accs {
-				if strings.EqualFold(ac.Email, emailAddr) && strings.TrimSpace(ac.FullName) != "" {
-					return strings.TrimSpace(ac.FullName)
-				}
-			}
+		if name := a.vayuMail.Accounts().FullNameFor(ctx, emailAddr); name != "" {
+			return name
 		}
 	}
 	if a.userStore != nil {
-		if users, err := a.userStore.List(ctx); err == nil {
-			for _, u := range users {
-				if strings.EqualFold(u.Email, emailAddr) && strings.TrimSpace(u.Name) != "" {
-					return strings.TrimSpace(u.Name)
-				}
+		if u, err := a.userStore.GetByEmail(ctx, emailAddr); err == nil && u != nil {
+			if name := strings.TrimSpace(u.Name); name != "" {
+				return name
 			}
 		}
 	}

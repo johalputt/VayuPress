@@ -38,9 +38,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
   Two of the nine sit under `/os/vayumail/accounts`, which an existing gate
   declares administrative in full. The gate was kept absolute rather than
-  softened: exceptions are now declared separately from the surface table, so
-  adding a route to the allowlist does not on its own satisfy the gate, and a
-  stale exemption fails its own test.
+  softened: exceptions are declared separately from the surface table, so adding
+  a route to the allowlist does not on its own satisfy the gate, and a stale
+  exemption fails its own test. The adversarial pass then found the exception
+  mechanism itself too generous — it matched children, so a route registered
+  under one of those prefixes next year would have been pre-authorised by a
+  decision nobody made about it. Matching is now exact, and every currently
+  reachable child is named with which of the two justifications it rests on
+  (scoped to the caller, or refused by the handler).
 
   The reachability check is **derived** — it renders the five pages a client is
   granted and requires every control they emit to be allowed — so a widget added
@@ -55,6 +60,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   reachable only by typing the URL. The sidebar now has a client branch (their
   site, their visitors, their mailbox, their profile), and a test derives every
   link it emits and requires the confinement to allow it.
+
+- **Resolving a sender's display name no longer reads two whole tables.** Found
+  by the pre-release adversarial pass, attacking the surface this release
+  widened. Opening send and draft to agency clients adds no capability an
+  untrusted principal lacked — a mailbox holder already reached both — but it
+  puts more principals on a path that cost more than it looked. Every send and
+  every draft autosave called `senderDisplayName`, which listed **every mail
+  account** and then **every staff user**, walking each with `EqualFold`, through
+  the same SQLite handle that serves the website. The composer autosaves on a
+  timer while someone types.
+
+  Measured before and after on the same harness: 870 allocations per resolution
+  against 20 rows and 38,121 against 1,000 — 44× for a 50× table, which is the
+  shape of a scan. After: 50 at both sizes. This is the Section 2 recipient-path
+  finding in a different function and it has the same fix — `users.Store` already
+  had `GetByEmail`, and `AccountStore`'s row of scalar `WHERE email=?` lookups
+  (`RoleFor`, `SignatureFor`, `QuotaFor`, `HashFor`) now includes `FullNameFor`.
+  The name still resolves for every principal it resolved for before, in any
+  capitalisation, with the mail account still winning over the CMS user — pinned,
+  because a faster lookup that loses the From header's display name is a worse
+  outcome than the scan.
 
 - **The recovery scope's silent narrowing is now pinned.** Not a defect — a
   clean result recorded as a test, because the way it is clean reads like a bug.
