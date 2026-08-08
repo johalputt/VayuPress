@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -88,7 +89,7 @@ func (a *App) handleFaviconUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Removal path — clear the stored favicon so the embedded default returns.
 	if r.FormValue("remove") == "1" {
-		if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
+		if err := a.siteSettings.SetMany(r.Context(), osScope(r), map[string]string{
 			settings.KeyBrandFavicon:     "",
 			settings.KeyBrandFaviconType: "",
 		}); err != nil {
@@ -130,7 +131,16 @@ func (a *App) handleFaviconUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
+	// osScope, not ForPrimary. Mounted unscoped this is still the primary, so the
+	// operator's own branding page is unchanged; mounted under /os/d/{id} it
+	// writes THAT domain's mark.
+	//
+	// It used to be ForPrimary at every mount, including the one reached from a
+	// hosted domain's Theme Studio. The control said "Logo & favicon" on that
+	// domain's page and silently replaced the install-wide mark for every site on
+	// the box — an operator who uploaded a client's logo rebranded their own
+	// studio, and nothing said so.
+	if err := a.siteSettings.SetMany(r.Context(), osScope(r), map[string]string{
 		settings.KeyBrandFavicon:     base64.StdEncoding.EncodeToString(raw),
 		settings.KeyBrandFaviconType: mime,
 	}); err != nil {
@@ -174,16 +184,18 @@ func (a *App) serveFavicon(fallback []byte) http.HandlerFunc {
 			http.NotFound(w, r)
 			return
 		}
+		// The same reasoning one step further out: a hosted domain that has its
+		// own mark wears it. Only when it has none does the primary's stand in —
+		// that fallback is left alone deliberately, because removing it would
+		// blank the tab icon on every domain that has never uploaded one.
 		if a.siteSettings != nil {
-			if enc := a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyBrandFavicon); enc != "" {
-				if b, err := base64.StdEncoding.DecodeString(enc); err == nil && len(b) > 0 {
-					ct := a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyBrandFaviconType)
-					if ct == "" {
-						ct = "image/png"
-					}
-					serveFaviconBytes(w, r, b, ct)
-					return
-				}
+			if b, ct, ok := a.brandMark(r.Context(), settings.ForDomain(a.contentScope(r))); ok {
+				serveFaviconBytes(w, r, b, ct)
+				return
+			}
+			if b, ct, ok := a.brandMark(r.Context(), settings.ForPrimary()); ok {
+				serveFaviconBytes(w, r, b, ct)
+				return
 			}
 		}
 		// Default embedded mark. Serve it with an ETag + short revalidation (NOT a
@@ -195,6 +207,43 @@ func (a *App) serveFavicon(fallback []byte) http.HandlerFunc {
 		// default→custom switch show within a minute.
 		serveFaviconBytes(w, r, fallback, "image/png")
 	}
+}
+
+// brandMark returns the mark stored for one scope. An invalid scope — which is
+// what ForDomain("") deliberately yields for the primary's sentinel id — reports
+// no mark rather than falling through to the operator's own, because resolving a
+// blank id to the primary is how a hosted domain silently inherits the
+// operator's branding.
+func (a *App) brandMark(ctx context.Context, scope settings.Scope) ([]byte, string, bool) {
+	if a.siteSettings == nil || !scope.Valid() {
+		return nil, "", false
+	}
+	enc := a.siteSettings.Get(ctx, scope, settings.KeyBrandFavicon)
+	if enc == "" {
+		return nil, "", false
+	}
+	b, err := base64.StdEncoding.DecodeString(enc)
+	if err != nil || len(b) == 0 {
+		return nil, "", false
+	}
+	ct := a.siteSettings.Get(ctx, scope, settings.KeyBrandFaviconType)
+	if ct == "" {
+		ct = "image/png"
+	}
+	return b, ct, true
+}
+
+// hasBrandMark reports whether a scope has a mark WITHOUT decoding it.
+//
+// It reads the type key, which is a short MIME string, rather than the image.
+// The Optimize page asks this once per hosted site on every render, and reading
+// a megabyte of base64 eleven times to decide whether to draw an icon is the
+// kind of cost that only shows up on the install with the most sites.
+func (a *App) hasBrandMark(ctx context.Context, scope settings.Scope) bool {
+	if a.siteSettings == nil || !scope.Valid() {
+		return false
+	}
+	return a.siteSettings.Get(ctx, scope, settings.KeyBrandFaviconType) != ""
 }
 
 // serveFaviconBytes writes b with an ETag so an updated upload propagates
@@ -211,4 +260,29 @@ func serveFaviconBytes(w http.ResponseWriter, r *http.Request, b []byte, content
 		return
 	}
 	_, _ = w.Write(b)
+}
+
+// handleOSScopedBrandMark serves one hosted domain's own mark to the console.
+//
+// The console runs on the operator's host, so it cannot fetch a client domain's
+// /favicon.ico — that is a different origin, and on a Tor install reaching for it
+// would be a clearnet callback from a page that must not make one. This route
+// answers from the database instead, over the connection the operator is already
+// on.
+//
+// 404 rather than the primary's mark when this domain has none. The panel draws
+// its neutral globe in that case, and a card showing the studio's logo above a
+// client's hostname is the confusion this whole change exists to remove.
+func (a *App) handleOSScopedBrandMark(w http.ResponseWriter, r *http.Request) {
+	d, ok := osScopedDomain(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	b, ct, ok := a.brandMark(r.Context(), settings.ForDomain(d.ID))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	serveFaviconBytes(w, r, b, ct)
 }

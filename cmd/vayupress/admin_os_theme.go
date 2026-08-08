@@ -277,6 +277,19 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	}
 
 	faviconBust := time.Now().Format("150405")
+
+	// The mark this page is EDITING, not the install's.
+	//
+	// It was the bare /favicon.ico at every mount, so a hosted domain's Theme
+	// Studio showed the operator's own logo above a control labelled "Logo &
+	// favicon" for that domain. The upload beneath it wrote install-wide too, so
+	// the picture was at least consistent with the behaviour — both were wrong
+	// together. Now the upload is scoped, and this must follow it or the page
+	// would show one site's mark while saving another's.
+	brandMarkURL := "/favicon.ico?t=" + faviconBust
+	if d, ok := osScopedDomain(r); ok {
+		brandMarkURL = "/os/d/" + html.EscapeString(d.ID) + "/branding/mark?t=" + faviconBust
+	}
 	navSeed := html.EscapeString(val(settings.KeyNavItems))
 	membershipChecked := ""
 	if val(settings.KeyMembershipButtons) == "true" {
@@ -326,7 +339,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">The essentials — logo, social share image and the Sign in / Sign up buttons. These stay fixed when you switch themes.</p>
         <div class="cz-logo">
-          <img id="brand-favicon-img" class="cz-logo__img" src="/favicon.ico?t=` + faviconBust + `" alt="Current site mark" width="44" height="44">
+          <img id="brand-favicon-img" class="cz-logo__img" src="` + brandMarkURL + `" alt="Current site mark" width="44" height="44">
           <div class="cz-logo__meta">
             <div class="cz-logo__title">Logo &amp; favicon</div>
             <div class="text-xs muted" id="brand-favicon-state">Used as the favicon and nav-bar logo.</div>

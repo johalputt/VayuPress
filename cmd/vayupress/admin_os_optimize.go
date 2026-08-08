@@ -17,6 +17,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/settings"
+
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -27,6 +29,10 @@ type optimizeSite struct {
 	ID    string
 	Host  string
 	Label string
+	// HasMark is whether THIS site has its own uploaded logo. Kept as a flag
+	// rather than the image so the page never carries eleven base64 blobs it
+	// would only use to decide which icon to draw.
+	HasMark bool
 }
 
 // handleOSOptimize renders the Optimize hub. Opens at editor level (osPathMinLevel
@@ -44,7 +50,13 @@ func (a *App) handleOSOptimize(w http.ResponseWriter, r *http.Request) {
 				if d.IsPrimary || isPendingTorSite(d.Host) {
 					continue
 				}
-				sites = append(sites, optimizeSite{ID: d.ID, Host: d.Host, Label: siteTypeLabel(d.EffectiveSiteType())})
+				// Its OWN mark, or none — never the primary's. Asked by the type
+				// key, which is a short MIME string, so this stays one cheap read
+				// per site rather than decoding every stored image on render.
+				sites = append(sites, optimizeSite{
+					ID: d.ID, Host: d.Host, Label: siteTypeLabel(d.EffectiveSiteType()),
+					HasMark: a.hasBrandMark(r.Context(), settings.ForDomain(d.ID)),
+				})
 			}
 		}
 	}
@@ -90,7 +102,17 @@ func osOptimizeGrid(level int, sites []optimizeSite) string {
 	if len(sites) > 0 && level >= osPathMinLevel("/os/domains") {
 		var cards strings.Builder
 		for _, s := range sites {
-			cards.WriteString(osWorkCard("/os/d/"+html.EscapeString(s.ID), s.Host, s.Label, iconDomains, 0, "", false))
+			// A site wears its own logo. The globe is the fallback for a site that
+			// has not uploaded one — not the house mark, because eleven cards
+			// carrying the operator's logo above eleven different hostnames says
+			// the opposite of "edit branding per site", which is what this row is
+			// headed.
+			icon := iconDomains
+			if s.HasMark {
+				icon = `<img class="work-card__mark" src="/os/d/` + html.EscapeString(s.ID) +
+					`/branding/mark" alt="" width="20" height="20">`
+			}
+			cards.WriteString(osWorkCard("/os/d/"+html.EscapeString(s.ID), s.Host, s.Label, icon, 0, "", false))
 		}
 		b.WriteString(`<div class="section-head"><span class="section-head__title">Your websites</span>` +
 			`<span class="section-head__hint">Edit branding, content &amp; theme per site</span></div>` +

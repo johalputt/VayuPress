@@ -6,6 +6,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Every website now wears its own logo, and uploading one no longer rebrands
+  the whole install.** The Optimize hub drew the same globe on each site card,
+  under a heading reading "Edit branding, content & theme per site". It had
+  nothing else to draw: the only logo upload in the product wrote the
+  install-wide mark at every mount — including the one reached from a hosted
+  domain's Theme Studio, whose control is labelled "Logo & favicon" and whose
+  preview was the unscoped `/favicon.ico`. An operator who uploaded a client's
+  logo there replaced their own studio's mark for every domain on the box, and
+  nothing on the page said so.
+
+  The upload now writes the scope the page is acting on, the Theme Studio shows
+  and busts the mark it is actually editing, and each site card renders that
+  site's own logo.
+
+  A site with no logo of its own falls back to the neutral globe and never to
+  the operator's mark. That is the strict half: a client's hostname above the
+  studio's logo is not a cosmetic imperfection, it is the panel asserting
+  something false about whose site it is — the same reasoning the favicon route
+  already applied to bundle-backed domains, extended to the rest. A hosted
+  domain that has uploaded a mark now serves it at its own `/favicon.ico` too,
+  with the install-wide mark still standing in for domains that have none, so
+  no existing site loses its tab icon.
+
+  The card asks a short MIME key rather than decoding every stored image, so
+  rendering the hub does not read a megabyte per site to decide which icon to
+  draw.
+
+---
+
 ## [3.17.31] — 2026-08-08
 
 Section 6 of the audit: the panel→root provisioning channel.

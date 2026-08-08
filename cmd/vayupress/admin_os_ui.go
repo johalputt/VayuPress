@@ -236,6 +236,15 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			// for every future theme change to be forgotten.
 			dr.Get("/theme", a.handleOSTheme)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/theme/code", a.handleOSThemeCode)
+			// This domain's own mark. The SAME upload handler as the operator's
+			// branding page, mounted a second time — it takes its scope from the
+			// request, so one code path stores both and a per-domain copy cannot
+			// drift from the primary's.
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/branding/favicon", a.handleFaviconUpload)
+			// Read side, for the console. A hosted domain's mark is already public
+			// at that domain's own /favicon.ico; this exists because the panel is
+			// served from a DIFFERENT origin and cannot ask another host for it.
+			dr.Get("/branding/mark", a.handleOSScopedBrandMark)
 			dr.Get("/seo", a.handleOSScopedSEO)
 			dr.Get("/analytics", a.handleOSScopedAnalytics)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/copy-from-primary", a.handleOSScopedCopyFromPrimary)
@@ -3450,13 +3459,19 @@ var favStatus=document.getElementById('brand-favicon-status');
 var favImg=document.getElementById('brand-favicon-img');
 var favState=document.getElementById('brand-favicon-state');
 function favSet(t,isErr){if(favStatus){favStatus.textContent=t;favStatus.style.color=isErr?'var(--color-danger,#ef4444)':'var(--color-success,#22c55e)';}}
-function favBust(){if(favImg)favImg.src='/favicon.ico?t='+Date.now();}
+// The endpoint and the preview both follow the page's scope, taken from the
+// image the server already rendered. Hard-coding /os/api/branding/favicon here
+// is what made a hosted domain's Theme Studio save the install-wide mark while
+// looking like it saved that domain's.
+var favBase=(favImg&&favImg.getAttribute('src')||'/favicon.ico').split('?')[0];
+var favPost=favBase==='/favicon.ico'?'/os/api/branding/favicon':favBase.replace('/branding/mark','/api/branding/favicon');
+function favBust(){if(favImg)favImg.src=favBase+'?t='+Date.now();}
 if(favUp)favUp.addEventListener('click',function(){
   var f=favFile&&favFile.files&&favFile.files[0];
   if(!f){favSet('Choose a PNG or ICO first',true);return;}
   favUp.disabled=true;favSet('Uploading…',false);
   var fd=new FormData();fd.append('favicon',f);
-  fetch('/os/api/branding/favicon',{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
+  fetch(favPost,{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
     .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
     .then(function(res){favUp.disabled=false;if(res.ok){favSet('Favicon updated',false);favBust();if(favState)favState.textContent='Custom favicon active — stored in the database.';}else{favSet(res.d.error||'Upload failed',true);}})
     .catch(function(e){favUp.disabled=false;favSet('Error: '+e,true);});
@@ -3464,7 +3479,7 @@ if(favUp)favUp.addEventListener('click',function(){
 if(favRm)favRm.addEventListener('click',function(){
   favRm.disabled=true;favSet('Removing…',false);
   var fd=new FormData();fd.append('remove','1');
-  fetch('/os/api/branding/favicon',{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
+  fetch(favPost,{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
     .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
     .then(function(res){favRm.disabled=false;if(res.ok){favSet('Default restored',false);favBust();if(favState)favState.textContent='Using the default mark.';}else{favSet(res.d.error||'Remove failed',true);}})
     .catch(function(e){favRm.disabled=false;favSet('Error: '+e,true);});

@@ -1180,6 +1180,12 @@
 .vp-os .work-card:hover .work-card__icon { transform: scale(1.08); }
 .vp-os .work-card__icon svg { width: 20px; height: 20px; }
 .vp-os .work-card__icon--accent { background: var(--accent-dim); color: var(--accent); }
+/* A site's own uploaded mark, in the slot the globe would occupy. contain, not
+   cover, because a logo cropped to fill a square stops being that logo — and
+   these sit beside each other, so one squashed mark reads as a broken card. */
+.vp-os .work-card__mark {
+  width: 20px; height: 20px; object-fit: contain; border-radius: 2px; display: block;
+}
 .vp-os .work-card__body { flex: 1; min-width: 0; }
 .vp-os .work-card__title {
   display: flex; align-items: center; gap: var(--sp-2);
