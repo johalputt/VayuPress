@@ -56,6 +56,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   site, their visitors, their mailbox, their profile), and a test derives every
   link it emits and requires the confinement to allow it.
 
+- **The recovery scope's silent narrowing is now pinned.** Not a defect — a
+  clean result recorded as a test, because the way it is clean reads like a bug.
+  `recoveryScope` answers a mailbox holder about their OWN address whatever they
+  asked for, quietly, rather than refusing a mismatch. The obvious "fix" is a
+  regression: refusing would answer differently for an address that exists and
+  one that does not, turning recovery status into a mailbox enumeration oracle
+  for every holder and agency client on the install, on an endpoint their own
+  console polls. The function also carried a branch returning exactly what its
+  fallthrough returned — dead in effect, and an invitation to correct it into
+  that refusal. The branch is gone and the reasoning is in its place.
+
   Known and deliberately not folded into this change: the VayuMail tab strip
   still offers a client an "Overview" tab pointing at `/os/vayumail`, which
   bounces them. Filtering it needs a signature change across thirteen call sites

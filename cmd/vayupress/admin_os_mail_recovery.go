@@ -48,11 +48,13 @@ func (a *App) recoveryScope(r *http.Request, requested string) (string, bool) {
 	if own == "" {
 		return "", false
 	}
-	// An empty request means "mine"; a mismatched one is silently narrowed rather
-	// than refused, so the response cannot confirm another address exists.
-	if requested != "" && requested != own {
-		return own, true
-	}
+	// A non-admin gets their own mailbox whatever they asked for. Narrowing
+	// SILENTLY is the point and the reason there is no branch here: refusing a
+	// mismatch would answer "that is not you" for an address that exists and
+	// "no mailbox" for one that does not, turning this endpoint into an
+	// enumeration oracle over every mailbox on the install. `requested` is
+	// therefore not consulted at all — a value that is merely validated is one a
+	// later change can start trusting.
 	return own, true
 }
 
