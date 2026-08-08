@@ -48,7 +48,10 @@ var attributionPatterns = []struct {
 // attributionExempt are paths where a match is expected. Keep this list short:
 // every entry is a place the rule does not reach.
 var attributionExempt = map[string]bool{
-	"CLAUDE.md":                         true, // the config itself; its own name is unavoidable
+	// The assistant-config file that used to sit at the repository root is gone —
+	// the standing instructions moved to a private repository — so the one
+	// exemption that existed for it is gone with it. This list is now a single
+	// entry, which is the right size for it.
 	"cmd/vayupress/attribution_test.go": true, // this file has to spell out what it forbids
 }
 

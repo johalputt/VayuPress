@@ -61,8 +61,10 @@ mem.prof
 # Note: go.mod and go.sum are intentionally NOT ignored.
 # They must be committed when Go source is present in this repo.
 .claude/
-# CLAUDE.md is intentionally tracked — it holds standing agent instructions
-# that every session (including fresh clones) must auto-follow.
+# The standing agent instructions no longer live in this repository. They were
+# moved to a private one so that no assistant-config filename or content travels
+# with the public source. Recover the last tracked copy with
+# `git show c81e0b5f:CLAUDE.md` if it is ever needed.
 
 # npm workspace for the screenshot capture tooling (scripts/screenshot.mjs).
 node_modules/
