@@ -6,6 +6,98 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.29] — 2026-08-08
+
+### Security
+
+- **Updates are now verified against the signature every release has always
+  carried.** Section 5 of the audit, and the most serious finding in it: the
+  update path had no authenticity control at all, and three separate surfaces
+  said it did.
+
+  What actually happened on a default install: the binary was downloaded and
+  checked against a SHA-256 published *by that same release, over that same
+  connection*. That proves the bytes were not mangled in transit. It proves
+  nothing whatever about who produced them. Anyone able to publish to the
+  release channel — a stolen Actions token, a malicious tag — could publish a
+  binary and a matching checksum, and every install would verify it and execute
+  it as the service user on the operator's next click.
+
+  Every release has been Sigstore-signed the whole time. Nothing ever read the
+  signature. It is read now, and pinned to the one identity permitted to
+  produce a release: the workflow file, on the branch, in this repository. The
+  branch is part of that identity deliberately — the same workflow name on
+  another branch or in a fork yields a perfectly valid signature carrying a
+  different identity, which a policy matching only the repository would accept.
+
+  Three things this had to get right, none of them obvious:
+
+  - A keyless signing certificate lives about ten minutes, so *every* release is
+    signed by a certificate long expired by the time anyone installs it.
+    Checking it against the current time rejects every genuine release; the
+    tempting repair — ignoring expiry — accepts a stolen certificate forever.
+    The transparency log's own signed record of *when* the signature was made is
+    the reference point instead.
+  - The trust root is compiled into the binary, so verification needs no
+    network. Tor mode refuses clearnet egress by design, and an update path that
+    silently degrades when a fetch fails is the exact failure this closes. The
+    embedded root was cross-checked before being committed: a real release
+    certificate chains to the authorities inside it.
+  - A release that carries no signature is refused rather than accepted on its
+    checksum. An attacker who can publish a checksum could otherwise simply omit
+    the signature and be waved through.
+
+- **A second, independent signature now applies.** Releases also carry an
+  Ed25519 signature from a key held only in the release runner's secret store.
+  The two locks have different custody: holding the workflow identity does not
+  yield the key, and holding the key does not let you publish under that
+  identity. Compromising one is not enough.
+
+- **The release pipeline can no longer publish an unsigned binary.** Signing was
+  best-effort on both the installer and the signing step, with a fallback that
+  echoed "publishing release without signature" and carried on. Nothing noticed,
+  because nothing checked. Both are fatal now, and a build that pins a signing
+  key is refused outright if the signing secret is absent — a release nobody can
+  install is worse than a release that never publishes.
+
+### Fixed
+
+- **Pinning a release key used to break updates completely.** The Ed25519 path
+  required a `.sig` asset the pipeline has never produced, so setting
+  `VAYU_RELEASE_PUBKEY` — which the panel and `docs/UPGRADING.md` both told
+  operators to do — made every update fail, while leaving it unset verified
+  nothing. There was no configuration in which `vayupress update apply` worked
+  at all: without a key the preflight refused, with one the apply refused. That
+  path is gone rather than demoted to optional, because keeping it as an
+  "optional extra" would have left the same landmine armed under release notes
+  calling it optional.
+
+- **Every claim about update security now matches what runs.** The panel called
+  releases "signed" and promised "signature verification" regardless of posture.
+  `docs/SECURITY.md` named Ed25519-against-a-pinned-key as *the* authenticity
+  mechanism, listed six gates "all must pass" of which the panel enforced
+  neither of the first two, and stated there was **no** endpoint that downloads,
+  replaces or restarts — while three such endpoints exist. That last correction
+  is made in the open rather than quietly: a security document that
+  under-describes its own attack surface sends a reviewer to the wrong place.
+
+  A gate now ties the words to the code. The page may claim a signature only
+  while the apply path still resolves one, and the signer identity in the
+  document must be the constant the binary enforces, so the two cannot drift
+  apart again — which is the failure that produced this finding.
+
+### Upgrade Notes
+
+- **Nothing to configure.** Verification applies to every install and cannot be
+  switched off. If you previously set `VAYU_RELEASE_PUBKEY` and your updates
+  stopped working, that was why; the variable is no longer read.
+- **This release is the first to carry both signatures**, so it is also the
+  first whose verification runs end to end against a real artifact rather than a
+  test fixture. Installs on 3.17.28 and earlier apply it using the older
+  checksum path, which is unchanged for them.
+
+---
+
 ## [3.17.28] — 2026-08-08
 
 ### Security
