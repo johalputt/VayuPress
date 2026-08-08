@@ -10,6 +10,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **Dynamic client registration is bounded.** Section 3, hygiene rather than a
+  breach: registration is open by design (RFC 7591) and rate-limited. What makes
+  it worth doing is where the client name lands — the consent screen renders it
+  **above** the sentence naming the destination, which is the only thing on that
+  page distinguishing a real connector from an impostor. The name is escaped, so
+  this is not injection; it is layout, and a 32 KiB name (the request-body limit)
+  pushes the warning off the screen. The stored name is now capped at 120
+  characters and the redirect list at 20 entries.
+
+  Both **truncate** rather than reject. A refused registration reaches the
+  operator as "couldn't register with <site>'s sign-in service" — the failure
+  this endpoint has already been through once — and neither field is worth that.
+  Truncation is by rune, not byte, so a multi-byte name is not cut mid-sequence.
+  An ordinary registration is untouched, which is pinned.
+
 - **The OAuth consent token is now bound to the request it approves.** Section 3,
   and stated plainly: this is hardening, not a demonstrated exploit. The token is
   rendered only into an authenticated administrator's consent page, never travels

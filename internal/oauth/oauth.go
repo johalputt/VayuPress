@@ -96,6 +96,28 @@ func hashToken(raw string) string {
 
 // ── clients (RFC 7591 dynamic registration) ────────────────────────────────────
 
+// maxClientNameLen bounds the stored display name of a dynamically-registered
+// client, and maxRedirectURIs bounds how many callbacks one registration keeps.
+//
+// AUDIT FINDING (Section 3). Registration is open by design (RFC 7591) and
+// rate-limited, so neither of these is a breach — they bound what an
+// unauthenticated stranger can store, and more importantly what they can put in
+// front of an operator. The client name is rendered on the consent screen ABOVE
+// the sentence naming the destination, which is the only thing on that page
+// distinguishing a real connector from an impostor. The name is escaped, so this
+// is not injection; it is layout. The request body allows 32 KiB, and a name that
+// long pushes the warning off the screen.
+//
+// Both TRUNCATE rather than reject. A refused registration reaches the operator
+// as "couldn't register with <site>'s sign-in service" — the failure this
+// endpoint has already been through once — and neither field is worth that: the
+// name is cosmetic, and a client presenting more than a handful of callbacks is
+// not a real one.
+const (
+	maxClientNameLen = 120
+	maxRedirectURIs  = 20
+)
+
 // RegisterClient stores a new public client with the given name and redirect URIs
 // and returns it (with a freshly generated client_id). At least one redirect URI
 // is required; each must be an absolute https URL (or http://localhost for local
@@ -110,6 +132,13 @@ func (s *Store) RegisterClient(ctx context.Context, name string, redirectURIs []
 	}
 	if len(clean) == 0 {
 		return Client{}, errors.New("oauth: at least one valid redirect_uri is required")
+	}
+	if len(clean) > maxRedirectURIs {
+		clean = clean[:maxRedirectURIs]
+	}
+	// Runes, not bytes: slicing a UTF-8 name mid-sequence stores invalid encoding.
+	if r := []rune(name); len(r) > maxClientNameLen {
+		name = string(r[:maxClientNameLen])
 	}
 	id, err := randToken(18)
 	if err != nil {
