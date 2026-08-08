@@ -46,6 +46,10 @@ type IMAPServer struct {
 	decrypt DecryptHook
 	uids    *UIDStore
 
+	// quotaFor reports a mailbox's storage limit in bytes (0 = unlimited). Nil
+	// means unlimited, which is what every construction outside the engine gets.
+	quotaFor func(email string) int64
+
 	tls         *tls.Config
 	implicitTLS bool
 	listenAddr  string
@@ -71,6 +75,35 @@ func (s *IMAPServer) WithImplicitTLS(t *tls.Config, addr string) *IMAPServer {
 	s.implicitTLS = true
 	s.listenAddr = addr
 	return s
+}
+
+// WithQuota wires the per-mailbox storage limit so the two commands that ADD
+// bytes to a mailbox — APPEND and COPY — respect it.
+//
+// AUDIT FINDING (Section 2). The quota bound inbound delivery and the webmail
+// send/draft paths, and nothing else. APPEND is how every IMAP client uploads a
+// message and COPY duplicates one already stored; both are a line in a script,
+// so the limit an operator set was absent from the two ways past it that need no
+// mail to be sent at all. The disk being filled carries SQLite, so the whole
+// single-binary install stops writing.
+//
+// MOVE is deliberately left alone. It is net-neutral, and it is how somebody
+// over quota gets back under it — refusing it would leave them full, unable to
+// receive, and without the one action that fixes the state.
+func (s *IMAPServer) WithQuota(q func(email string) int64) *IMAPServer { s.quotaFor = q; return s }
+
+// wouldExceedQuota reports whether adding n bytes would push this session's
+// mailbox past its limit. Unlimited (0, and the nil wiring) is always false, so
+// an install that never set a quota is untouched.
+func (s *IMAPServer) wouldExceedQuota(sess *imapSession, n int) bool {
+	if s.quotaFor == nil || s.maildir == nil {
+		return false
+	}
+	limit := s.quotaFor(sess.authedMail)
+	if limit <= 0 {
+		return false
+	}
+	return s.maildir.AccountSize(sess.authedDomain, sess.authedUser)+int64(n) > limit
 }
 
 // WithUIDStore attaches the persistent UID/UIDVALIDITY store. Without it the
@@ -729,6 +762,13 @@ func (s *IMAPServer) doCopy(line func(string), sess *imapSession, tag, arg strin
 		if err != nil {
 			continue
 		}
+		// COPY adds bytes: the source stays where it is. MOVE, a few lines below,
+		// deliberately has no such check — it is net-neutral and it is the way back
+		// under a quota.
+		if s.wouldExceedQuota(sess, len(raw)) {
+			line(tag + " NO [OVERQUOTA] COPY would exceed the mailbox storage quota")
+			return
+		}
 		newID, err := s.maildir.DeliverTo(sess.authedDomain, sess.authedUser, dest, raw)
 		if err != nil {
 			continue
@@ -1111,6 +1151,13 @@ func (s *IMAPServer) doAppend(br *bufio.Reader, w *bufio.Writer, line func(strin
 	}
 	_, _ = readCommandLine(br) // trailing CRLF after the literal
 
+	// Checked after the literal is consumed rather than before: the client has
+	// already been told to send it, and leaving those bytes unread would desync
+	// the connection and make the next command parse as message content.
+	if s.wouldExceedQuota(sess, len(buf)) {
+		line(tag + " NO [OVERQUOTA] APPEND would exceed the mailbox storage quota")
+		return
+	}
 	newID, err := s.maildir.DeliverTo(sess.authedDomain, sess.authedUser, folder, buf)
 	if err != nil {
 		line(tag + " NO APPEND failed")

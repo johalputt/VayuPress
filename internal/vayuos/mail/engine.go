@@ -666,7 +666,7 @@ func (e *Engine) Start(ctx context.Context) error {
 			e.smtpd = smtpd
 		}
 
-		imapd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithTLS(e.tlsConf).WithUIDStore(e.uids)
+		imapd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithQuota(e.MailboxQuota).WithTLS(e.tlsConf).WithUIDStore(e.uids)
 		if err := imapd.Start(ctx); err != nil {
 			e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("imap: %w", err))
 		} else {
@@ -686,7 +686,7 @@ func (e *Engine) Start(ctx context.Context) error {
 		// but a failed bind is now recorded in inboundErr (rather than silently
 		// dropped) so the panel and logs can explain why a client can't connect.
 		if e.tlsConf != nil {
-			imapsd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithImplicitTLS(e.tlsConf, e.cfg.IMAPSListen).WithUIDStore(e.uids)
+			imapsd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithQuota(e.MailboxQuota).WithImplicitTLS(e.tlsConf, e.cfg.IMAPSListen).WithUIDStore(e.uids)
 			if err := imapsd.Start(ctx); err != nil {
 				e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("imaps (993): %w", err))
 			} else {

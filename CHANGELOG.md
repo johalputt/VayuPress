@@ -10,6 +10,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **The mailbox storage quota did not bind IMAP.** Section 2. The limit an
+  operator sets per mailbox was enforced on inbound delivery and on the webmail
+  send/draft paths, and on nothing else — so `APPEND`, which is how every IMAP
+  client uploads a message, and `COPY`, which duplicates one already stored,
+  both ignored it. Neither needs any mail to be sent and both are a line in a
+  script. The disk they fill carries SQLite, so the website, the blog and the
+  write-ahead log stop with the mailbox.
+
+  `WithQuota` now wires the limit into both IMAP listeners, and `APPEND`/`COPY`
+  answer `NO [OVERQUOTA]` rather than growing past it. The default is unlimited
+  (`0`), so an install that never set a quota behaves exactly as before — the
+  defect was narrower and worse than "a mailbox can grow": an operator who set
+  the limit was told it applied.
+
+  **`MOVE` is deliberately left unbounded.** It is net-neutral, and it is how
+  somebody over quota gets back under it — everything into Trash, then expunge.
+  Guarding it too is the tempting version of this fix and it would leave a full
+  mailbox unable to receive and unable to do the one thing that fixes the state.
+  That is pinned by a test, and adding the "consistent" `MOVE` check fails it.
+
 - **The MIME part-count budget was attacked and held; its test did not cover the
   attack.** Section 2 reported the FETCH parser as having no part-count budget.
   It has one — `maxMIMEParts`, a whole-message counter threaded through
