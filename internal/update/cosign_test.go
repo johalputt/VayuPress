@@ -3,14 +3,16 @@
 package update
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
-	"encoding/pem"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/sigstore/sigstore-go/pkg/testing/ca"
 	"github.com/sigstore/sigstore-go/pkg/verify"
@@ -60,44 +62,10 @@ func TestAGenuineReleaseSignatureVerifies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sign: %v", err)
 	}
-	if err := verifyCosignEntity(entity, binary, sigstore, testSAN, testIssuer, testVerifyOptions()...); err != nil {
+	if err := verifyCosignEntity(entity, sha256.Sum256(binary), sigstore, testSAN, testIssuer, testVerifyOptions()...); err != nil {
 		t.Fatalf("a genuine release signature was refused: %v\n\n"+
 			"Enforcing a check that rejects real releases does not make anyone safer — "+
 			"it stops every install updating, including away from a vulnerable version.", err)
-	}
-}
-
-// THE TEN-MINUTE TRAP, and the reason this is not a two-line feature.
-//
-// Keyless signing certificates live about ten minutes. Every release an operator
-// ever installs was signed by a certificate that expired long before they
-// clicked Update — the one I decoded from a live release was valid 08:04:30 to
-// 08:14:30. A verifier that checks the certificate against time.Now() therefore
-// rejects EVERY genuine signature, and the obvious "fix" for that is to stop
-// checking expiry, which accepts a stolen certificate forever.
-//
-// The correct answer is neither: the Rekor entry's integrated time says when the
-// signature was made, and the certificate is checked as of THAT moment. The
-// timestamp is only trustworthy because the log's signature over it is verified
-// first — which is why this is delegated to sigstore-go rather than hand-rolled.
-func TestASignatureStillVerifiesLongAfterItsCertificateExpired(t *testing.T) {
-	sigstore, err := ca.NewVirtualSigstore()
-	if err != nil {
-		t.Fatalf("virtual sigstore: %v", err)
-	}
-	binary := []byte("a release published a long time ago")
-
-	// Signed a year back — far outside any signing certificate's lifetime.
-	entity, err := sigstore.SignAtTime(testSAN, testIssuer, binary, time.Now().Add(-365*24*time.Hour))
-	if err != nil {
-		t.Fatalf("sign at time: %v", err)
-	}
-	if err := verifyCosignEntity(entity, binary, sigstore, testSAN, testIssuer, testVerifyOptions()...); err != nil {
-		t.Fatalf("a release signed a year ago was refused: %v\n\n"+
-			"Signing certificates live ten minutes, so this is the state of EVERY release "+
-			"by the time anyone installs it. A verifier that fails here fails always, and "+
-			"the tempting repair — ignoring certificate validity — accepts a stolen "+
-			"certificate forever.", err)
 	}
 }
 
@@ -121,7 +89,7 @@ func TestASignatureFromAnotherWorkflowIsRefused(t *testing.T) {
 		if serr != nil {
 			t.Fatalf("sign as %s: %v", imposter, serr)
 		}
-		if err := verifyCosignEntity(entity, binary, sigstore, testSAN, testIssuer, testVerifyOptions()...); err == nil {
+		if err := verifyCosignEntity(entity, sha256.Sum256(binary), sigstore, testSAN, testIssuer, testVerifyOptions()...); err == nil {
 			t.Errorf("a binary signed by %q was accepted as a VayuPress release.\n\n"+
 				"A Sigstore signature proves SOMEBODY signed it, and anybody can run an "+
 				"Action. Without an identity policy the check proves nothing at all — it "+
@@ -142,7 +110,7 @@ func TestASignatureFromAnotherIssuerIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sign: %v", err)
 	}
-	if err := verifyCosignEntity(entity, binary, sigstore, testSAN, testIssuer, testVerifyOptions()...); err == nil {
+	if err := verifyCosignEntity(entity, sha256.Sum256(binary), sigstore, testSAN, testIssuer, testVerifyOptions()...); err == nil {
 		t.Error("a signature carrying this project's SAN but another OIDC issuer was " +
 			"accepted — the SAN is only meaningful together with the issuer that vouched for it")
 	}
@@ -161,7 +129,7 @@ func TestASignatureDoesNotTransferToDifferentBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sign: %v", err)
 	}
-	if err := verifyCosignEntity(entity, []byte("the attacker's binary"), sigstore, testSAN, testIssuer, testVerifyOptions()...); err == nil {
+	if err := verifyCosignEntity(entity, sha256.Sum256([]byte("the attacker's binary")), sigstore, testSAN, testIssuer, testVerifyOptions()...); err == nil {
 		t.Error("the genuine release's signature verified against different bytes.\n\n" +
 			"That is the swap this control exists to stop: publish a real signature " +
 			"beside a replaced binary and every install takes it.")
@@ -185,7 +153,7 @@ func TestASignatureFromAnUntrustedAuthorityIsRefused(t *testing.T) {
 		t.Fatalf("sign: %v", err)
 	}
 	// Correct identity, correct bytes, wrong root of trust.
-	if err := verifyCosignEntity(entity, binary, real, testSAN, testIssuer, testVerifyOptions()...); err == nil {
+	if err := verifyCosignEntity(entity, sha256.Sum256(binary), real, testSAN, testIssuer, testVerifyOptions()...); err == nil {
 		t.Error("a signature from an unknown certificate authority was accepted — an " +
 			"attacker who can run their own Fulcio would then sign whatever they like")
 	}
@@ -196,10 +164,146 @@ func TestASignatureFromAnUntrustedAuthorityIsRefused(t *testing.T) {
 //
 // Narrowing a harness to fit a fixture is how a missing control hides, so the
 // gap is closed rather than shrugged at: the clause dropped here is covered
-// against the real release certificate in the test below. Every other clause of
+// against the real release certificate below. Every other clause of
 // releaseVerifyOptions is exercised by the suite above.
 func testVerifyOptions() []verify.VerifierOption {
-	return []verify.VerifierOption{verify.WithObserverTimestamps(1)}
+	return []verify.VerifierOption{
+		verify.WithTransparencyLog(1),
+		verify.WithObserverTimestamps(1),
+	}
+}
+
+// The clause testVerifyOptions drops must still be PROVEN to be in force, or
+// dropping it there quietly makes it optional everywhere.
+//
+// This turns the harness's limitation into the assertion: the in-process CA
+// issues certificates with no embedded SCT, so a signature it produces — genuine
+// in every other respect, right identity, right bytes, right trust root — must be
+// refused under the unnarrowed production policy. If it is accepted, the
+// certificate-transparency requirement has been removed.
+func TestTheProductionPolicyRefusesACertificateWithNoTransparencyProof(t *testing.T) {
+	sigstore, err := ca.NewVirtualSigstore()
+	if err != nil {
+		t.Fatalf("virtual sigstore: %v", err)
+	}
+	binary := []byte("signed by a Fulcio that never published the certificate")
+	entity, err := sigstore.Sign(testSAN, testIssuer, binary)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	// No opts: the production policy, whole.
+	if err := verifyCosignEntity(entity, sha256.Sum256(binary), sigstore, testSAN, testIssuer); err == nil {
+		t.Error("a signing certificate carrying no Certificate Transparency proof was " +
+			"accepted.\n\nThat proof is what stops a certificate Fulcio was tricked into " +
+			"issuing from being used quietly — without it, the misissuance is never visible " +
+			"to anyone watching the log.")
+	}
+}
+
+// THE TEST THIS FILE WAS MISSING, and the release that proved it.
+//
+// v3.17.29 shipped a verifier that refused the very release carrying it. Every
+// test above passed. They passed because sigstore-go's in-process CA attaches an
+// RFC3161 timestamp to what it signs and `cosign sign-blob` does not: the
+// harness met the observer-timestamp threshold from a source that does not exist
+// in a real bundle, so the missing WithTransparencyLog clause — the one that
+// makes the log's timestamp count at all — was invisible.
+//
+// The gap was never in the code under test. It was in the fixture, which had a
+// property the product does not, and no amount of forged-input testing against
+// that fixture could have found it. So the fixture here is a bundle taken
+// verbatim from a published GitHub release, verified against the SHA-256 that
+// release published, under the UNNARROWED production policy.
+//
+// It also carries THE TEN-MINUTE TRAP, which nothing else can. Keyless signing
+// certificates live about ten minutes, so every release an operator installs was
+// signed by a certificate that expired long before they clicked Update. A
+// verifier judging that certificate against time.Now() rejects every genuine
+// release; the obvious repair — skipping expiry — accepts a stolen certificate
+// forever. The correct answer is neither: the log's signed record of WHEN is the
+// reference point. The in-process CA cannot express this at all, because
+// SignAtTime backdates the log entry while still minting the certificate now —
+// which is why the test that claimed to cover it was passing on a certificate
+// valid at the moment it ran.
+//
+// If this fails, installs cannot take the next update.
+func TestThePublishedReleaseVerifiesUnderTheProductionPolicy(t *testing.T) {
+	bundleJSON := publishedReleaseBundle(t)
+
+	// The certificate must genuinely be dead by now, or the paragraph above is a
+	// story rather than a test — a fixture regenerated with a live certificate
+	// would pass while proving nothing.
+	cert := publishedReleaseCertificate(t)
+	if !cert.NotAfter.Before(time.Now()) {
+		t.Fatalf("the fixture's signing certificate has not expired yet (valid until %s), "+
+			"so this test cannot show that verification survives expiry", cert.NotAfter)
+	}
+
+	if err := verifyReleaseBundleDigest(publishedReleaseDigest(t), bundleJSON); err != nil {
+		t.Fatalf("a real published VayuPress release was refused by the shipped policy: %v\n\n"+
+			"This is not a test-harness problem. Every install running this binary would "+
+			"refuse the next update — including one published to fix it. The in-process CA "+
+			"cannot show this, because it attaches an RFC3161 timestamp that a real "+
+			"cosign bundle does not have.", err)
+	}
+}
+
+// The published bundle must be refused against any other bytes. Without this,
+// the test above would still pass if the digest were ignored entirely, and
+// "verified" would mean nothing more than "a genuine release exists somewhere".
+func TestThePublishedReleaseBundleIsRefusedAgainstOtherBytes(t *testing.T) {
+	if err := verifyReleaseBundleDigest(sha256.Sum256([]byte("the attacker's binary")), publishedReleaseBundle(t)); err == nil {
+		t.Error("a genuine release bundle verified against a different artifact — the " +
+			"signature would then transfer to any binary an attacker cared to publish " +
+			"beside it")
+	}
+}
+
+// publishedReleaseBundle is the signature bundle of a real GitHub release,
+// stored verbatim.
+func publishedReleaseBundle(t *testing.T) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "published_release.cosign.bundle"))
+	if err != nil {
+		t.Fatalf("read the published release bundle: %v", err)
+	}
+	return b
+}
+
+// publishedReleaseDigest is the SHA-256 that release published beside the bundle
+// above, as vayupress.sha256. Sigstore signs the digest, so the fifty-megabyte
+// binary is not needed to check its signature.
+func publishedReleaseDigest(t *testing.T) [sha256.Size]byte {
+	t.Helper()
+	raw, err := hex.DecodeString("50e1b3468ef588f3d5339a5a64f123fd70936693b04875c4114d1dbb69155fcc")
+	if err != nil {
+		t.Fatalf("fixture digest: %v", err)
+	}
+	var digest [sha256.Size]byte
+	copy(digest[:], raw)
+	return digest
+}
+
+// publishedReleaseCertificate is the Fulcio leaf out of that same bundle.
+//
+// Read from the bundle rather than kept beside it as a second PEM fixture: two
+// copies of the same certificate are a divergence waiting to happen, and the
+// question every test below asks is what Fulcio issued for THIS signature.
+func publishedReleaseCertificate(t *testing.T) *x509.Certificate {
+	t.Helper()
+	var b bundle.Bundle
+	if err := b.UnmarshalJSON(publishedReleaseBundle(t)); err != nil {
+		t.Fatalf("parse the published release bundle: %v", err)
+	}
+	vc, err := b.VerificationContent()
+	if err != nil {
+		t.Fatalf("verification content: %v", err)
+	}
+	cert := vc.Certificate()
+	if cert == nil {
+		t.Fatal("the published release bundle carries no signing certificate")
+	}
+	return cert
 }
 
 // The production policy demands the signing certificate prove it was published
@@ -210,18 +314,7 @@ func testVerifyOptions() []verify.VerifierOption {
 // Asserted against a certificate taken from a PUBLISHED release rather than one
 // this test mints, because the question is what Fulcio really issues.
 func TestTheReleaseCertificateCarriesTheProofThisPolicyRequires(t *testing.T) {
-	pemBytes, err := os.ReadFile(filepath.Join("testdata", "release_cert.pem"))
-	if err != nil {
-		t.Fatalf("read the published release certificate: %v", err)
-	}
-	blk, _ := pem.Decode(pemBytes)
-	if blk == nil {
-		t.Fatal("fixture is not PEM")
-	}
-	cert, err := x509.ParseCertificate(blk.Bytes)
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
+	cert := publishedReleaseCertificate(t)
 
 	// RFC 6962 embedded SCT list.
 	sctOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 2}
@@ -252,6 +345,20 @@ func TestTheEmbeddedTrustRootIsUsable(t *testing.T) {
 		t.Error("the embedded trust root names no transparency log — without one there is " +
 			"no trustworthy signing timestamp, and every signature looks expired")
 	}
+	// The load-bearing precondition for reaching v3.17.29 installs at all.
+	//
+	// That version counts RFC3161 timestamps and never counts the log entry, so
+	// the release pipeline attaches an RFC3161 countersignature to give it
+	// something it can verify. That rescue works only if the timestamp authority
+	// that signed it is anchored here — otherwise the countersignature is
+	// unverifiable, v3.17.29 refuses the release, and nothing later reaches it
+	// because its verifier is the broken one.
+	if len(tm.TimestampingAuthorities()) == 0 {
+		t.Error("the embedded trust root names no timestamp authority.\n\n" +
+			"The RFC3161 countersignature on every release is then unverifiable, and " +
+			"v3.17.29 installs — whose own verifier cannot count a log entry — are " +
+			"stranded on a version no update can replace.")
+	}
 }
 
 // The real release certificate must chain to the EMBEDDED trust root. This is
@@ -263,15 +370,7 @@ func TestTheEmbeddedTrustRootAnchorsTheRealReleaseCertificate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("trust material: %v", err)
 	}
-	pemBytes, err := os.ReadFile(filepath.Join("testdata", "release_cert.pem"))
-	if err != nil {
-		t.Fatalf("read cert: %v", err)
-	}
-	blk, _ := pem.Decode(pemBytes)
-	cert, err := x509.ParseCertificate(blk.Bytes)
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
+	cert := publishedReleaseCertificate(t)
 
 	roots := x509.NewCertPool()
 	intermediates := x509.NewCertPool()

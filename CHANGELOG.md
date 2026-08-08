@@ -6,6 +6,66 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.30] — 2026-08-08
+
+Shipped on its own, immediately, rather than batched: v3.17.29's updater refuses
+every release including its own, so installs that took it cannot update at all.
+Leaving that in the field to respect a batching rule would be the wrong trade.
+
+### Fixed
+
+- **v3.17.29 refused the very release that carried it.** The verification policy
+  introduced in that version required an *observer timestamp* — the signed record
+  of when a signature was made, which is what allows a ten-minute signing
+  certificate to be verified months later. It never asked for the transparency
+  log entry to be verified, and that is the step which produces the timestamp.
+  The threshold was therefore always compared against an empty set, and every
+  genuine release was rejected as unverifiable.
+
+  The policy now verifies the log entry, so the timestamp it carries exists to be
+  counted. Confirmed against the real v3.17.29 artifacts: the published binary,
+  its published checksum, its Sigstore bundle and its Ed25519 signature all
+  verify end to end.
+
+- **The tests could not have caught it, and that was the real defect.** Every
+  test passed against the shipped bug. They used sigstore-go's in-process
+  certificate authority, which attaches an RFC3161 timestamp to whatever it
+  signs — a property `cosign sign-blob` did not produce. The harness satisfied
+  the threshold from a source that does not exist in a real release, so the
+  missing clause was invisible; and the test named for the ten-minute-certificate
+  problem was quietly passing on a certificate that was valid at the moment it
+  ran, because that harness mints the certificate now however far back the log
+  entry is dated.
+
+  The suite now verifies a bundle taken verbatim from a published release,
+  against the checksum that release published, under the unnarrowed production
+  policy — and asserts that the certificate is genuinely expired first, so the
+  claim is checked rather than told. The separate certificate fixture was deleted
+  and read out of that bundle instead; two copies of the same certificate are a
+  divergence waiting to happen.
+
+### Security
+
+- **Releases now carry an RFC3161 countersignature alongside the transparency
+  log entry.** A second, independent observer of when the signature was made,
+  from a timestamp authority anchored in the trust root compiled into the binary.
+
+  It is also what reaches the installs that need this fix. A v3.17.29 install
+  runs the broken verifier, so it would refuse v3.17.30 as well — and there is no
+  later release that gets to it either, because its verifier is the one at fault.
+  That version's policy does count RFC3161 timestamps; it is only the log entry
+  it never counts. Giving the bundle a countersignature it can verify turns a
+  stranded install back into one that updates normally.
+
+- The three clauses of the verification policy — log entry, certificate
+  transparency, observer timestamp — are now each individually pinned by a test
+  that fails when it is removed. The transparency requirement is proved by
+  turning the harness's own limitation into the assertion: the in-process
+  authority issues certificates with no transparency proof, so a signature it
+  produces must be refused under the production policy.
+
+---
+
 ## [3.17.29] — 2026-08-08
 
 ### Security

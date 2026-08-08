@@ -74,35 +74,44 @@ func ReleaseTrustMaterial() (root.TrustedMaterial, error) {
 
 // releaseVerifyOptions is the policy a real release is held to.
 //
-// WithObserverTimestamps is what makes verification possible at all, and is
-// explained at the call site. WithSignedCertificateTimestamps additionally
-// requires the signing certificate to carry proof that it was published to a
-// Certificate Transparency log — so a certificate Fulcio was tricked into
-// issuing cannot be used quietly. Checked against a real release certificate
-// rather than assumed: the one decoded from a published bundle carries the
-// "CT Precertificate SCTs" extension, which is why requiring it is safe.
+// WithTransparencyLog is what actually verifies the Rekor entry — the log's
+// signature over it, its inclusion proof, and the integrated time. It is NOT
+// implied by WithObserverTimestamps, and that distinction is the whole reason
+// this comment exists. WithObserverTimestamps only counts timestamps somebody
+// else verified; sigstore-go collects transparency-log timestamps solely when
+// WithTransparencyLog is also set, so requiring the observer threshold alone
+// leaves nothing to count and refuses every real release. The first shipped
+// version of this file did exactly that.
+//
+// WithSignedCertificateTimestamps additionally requires the signing certificate
+// to carry proof that it was published to a Certificate Transparency log — so a
+// certificate Fulcio was tricked into issuing cannot be used quietly. Checked
+// against a real release certificate rather than assumed: the one decoded from a
+// published bundle carries the "CT Precertificate SCTs" extension, which is why
+// requiring it is safe.
 //
 // COVERAGE NOTE, stated because a silent gap is worse than a named one:
-// sigstore-go's in-process test CA does not mint SCTs, so the tests below drive
-// every other clause of this policy and NOT this one. TestTheReleaseCertificate
-// CarriesTheProofThisPolicyRequires covers it against the real certificate
-// instead.
+// sigstore-go's in-process test CA does not mint SCTs, so the forged-input tests
+// drive every other clause of this policy and NOT this one. The published-bundle
+// test drives the policy whole, against a real release.
 func releaseVerifyOptions() []verify.VerifierOption {
 	return []verify.VerifierOption{
+		verify.WithTransparencyLog(1),
 		verify.WithSignedCertificateTimestamps(1),
 		verify.WithObserverTimestamps(1),
 	}
 }
 
-// verifyCosignEntity checks one parsed Sigstore entity against artifact, the
-// trust material, and the signer identity. opts defaults to the production
-// policy; the tests narrow it only where the in-process CA cannot reach.
+// verifyCosignEntity checks one parsed Sigstore entity against the artifact
+// digest, the trust material, and the signer identity. opts defaults to the
+// production policy; the tests narrow it only where the in-process CA cannot
+// reach.
 //
 // Split from bundle parsing so the tests can drive it with an in-process CA and
 // forged input: there is no way to obtain a genuinely forged Sigstore bundle, so
 // a verifier only ever exercised against real releases is a verifier nobody has
 // ever seen say no.
-func verifyCosignEntity(entity verify.SignedEntity, artifact []byte, tm root.TrustedMaterial, identity, issuer string, opts ...verify.VerifierOption) error {
+func verifyCosignEntity(entity verify.SignedEntity, digest [sha256.Size]byte, tm root.TrustedMaterial, identity, issuer string, opts ...verify.VerifierOption) error {
 	certID, err := verify.NewShortCertificateIdentity(issuer, "", identity, "")
 	if err != nil {
 		return fmt.Errorf("update: build signer identity policy: %w", err)
@@ -126,7 +135,6 @@ func verifyCosignEntity(entity verify.SignedEntity, artifact []byte, tm root.Tru
 		return fmt.Errorf("update: build verifier: %w", err)
 	}
 
-	digest := sha256.Sum256(artifact)
 	if _, err := v.Verify(entity, verify.NewPolicy(
 		verify.WithArtifactDigest("sha256", digest[:]),
 		verify.WithCertificateIdentity(certID),
@@ -145,6 +153,19 @@ func verifyCosignEntity(entity verify.SignedEntity, artifact []byte, tm root.Tru
 // documentation had a broken updater. A control that is off unless someone
 // opts in protects the people who already knew, and nobody else.
 func VerifyReleaseBundle(artifact, bundleJSON []byte) error {
+	return verifyReleaseBundleDigest(sha256.Sum256(artifact), bundleJSON)
+}
+
+// verifyReleaseBundleDigest is VerifyReleaseBundle over the digest alone.
+//
+// Sigstore signs the digest, never the bytes, so this is the honest shape of the
+// operation — and it is what lets the whole production path be tested against a
+// REAL published bundle without committing a fifty-megabyte binary to do it.
+// That test is not a convenience: the policy this file enforces was wrong in a
+// way no in-process fixture could show, because sigstore-go's test CA attaches
+// an RFC3161 timestamp that `cosign sign-blob` does not, and it silently
+// satisfied the threshold a real release could not meet.
+func verifyReleaseBundleDigest(digest [sha256.Size]byte, bundleJSON []byte) error {
 	tm, err := ReleaseTrustMaterial()
 	if err != nil {
 		return err
@@ -153,5 +174,5 @@ func VerifyReleaseBundle(artifact, bundleJSON []byte) error {
 	if err := b.UnmarshalJSON(bundleJSON); err != nil {
 		return fmt.Errorf("update: the release signature bundle could not be read: %w", err)
 	}
-	return verifyCosignEntity(&b, artifact, tm, ReleaseSignerIdentity, ReleaseSignerIssuer)
+	return verifyCosignEntity(&b, digest, tm, ReleaseSignerIdentity, ReleaseSignerIssuer)
 }

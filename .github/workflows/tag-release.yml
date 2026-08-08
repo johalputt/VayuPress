@@ -113,7 +113,17 @@ jobs:
         run: |
           # --new-bundle-format writes the Sigstore protobuf bundle the updater
           # reads. The older default emits a legacy shape it cannot parse.
+          #
+          # --timestamp-server-url adds an RFC3161 countersignature alongside the
+          # transparency-log entry: a second, independent observer of WHEN this
+          # was signed, which is the only thing that makes a ten-minute
+          # certificate verifiable months later. It is also what lets a v3.17.29
+          # install take this release at all — that version's policy counts
+          # RFC3161 timestamps and (through a bug fixed in v3.17.30) not log
+          # entries, so a bundle carrying only the log entry is refused by the
+          # very installs most in need of the fix.
           cosign sign-blob --yes --new-bundle-format \
+            --timestamp-server-url https://timestamp.sigstore.dev/api/v1/timestamp \
             dist/vayupress --bundle dist/vayupress.cosign.bundle
           test -s dist/vayupress.cosign.bundle
           echo "signed dist/vayupress"

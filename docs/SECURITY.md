@@ -48,8 +48,19 @@ different SAN, and a policy matching only the repository would accept it.
 
 Signing certificates are keyless and live about ten minutes, so every release is
 signed by a certificate that has long expired by the time anyone installs it.
-Validity is therefore judged as of the transparency log's signed record of when
-the signature was made, not the current time.
+Validity is therefore judged as of a signed record of *when* the signature was
+made, not the current time. Two independent observers supply that record: the
+transparency log entry, whose inclusion in the log is verified before its
+timestamp is trusted, and an RFC3161 countersignature from a timestamp authority
+anchored in the same embedded trust root.
+
+Requiring such a timestamp is not the same as verifying one. v3.17.29 asked for
+the observer-timestamp threshold without asking for the transparency log entry to
+be verified — and verifying that entry is what produces the timestamp — so the
+threshold was compared against an empty set and every genuine release was
+rejected. It is recorded here because the shape of the mistake outlives it: a
+policy clause that consumes a value proves nothing unless some other clause
+produces it.
 
 ### Gates (all must pass before any filesystem change)
 

@@ -101,6 +101,18 @@ func TestTheReleasePipelineCannotPublishAnUnsignedBinary(t *testing.T) {
 			"legacy bundle shape the updater cannot read. Every release would be " +
 			"refused as unverifiable.")
 	}
+	// An RFC3161 countersignature is a second independent observer of when the
+	// signature was made — and, concretely, the only route by which a v3.17.29
+	// install can take an update at all. That version's policy counts RFC3161
+	// timestamps and, through the bug v3.17.30 fixes, never counts the log entry,
+	// so a bundle carrying only the log entry is refused by exactly the installs
+	// that need the fix. Dropping this flag strands them permanently.
+	if !strings.Contains(step, "--timestamp-server-url") {
+		t.Error("the binary is signed with no RFC3161 timestamp.\n\n" +
+			"Every v3.17.29 install would refuse this release — and v3.17.29 is the " +
+			"version whose verifier is broken, so there is no later release that reaches " +
+			"them either. They would need the binary replaced by hand.")
+	}
 }
 
 // The signed artifact and the asset the updater looks for must be the same file.
