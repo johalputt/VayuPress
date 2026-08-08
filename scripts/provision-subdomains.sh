@@ -66,11 +66,30 @@ log() { echo "[provision] $*"; }
 
 # Self-healing rather than an installer dependency: a worker that upgraded
 # itself before the installer ran would otherwise write nowhere.
-install -d -m 0755 -o root -g root "$OUT_DIR" 2>/dev/null || true
+#
+# Checked, not best-effort, and that distinction was a real regression. When this
+# was `|| true`, a directory that could not be created left the lock unopenable,
+# `flock` then failed on a bad file descriptor, and the run took the branch below
+# meant for a genuine concurrent run: it announced "another provisioning run is
+# in progress" and exited 0. Nothing was running. Provisioning stopped for ever
+# while the log reported a healthy skip.
+if ! install -d -m 0755 -o root -g root "$OUT_DIR" 2>/dev/null; then
+  log "FATAL: could not create ${OUT_DIR}, so this run has nowhere to record what it did"
+  log "       and no lock to serialise against a second run. Nothing was changed."
+  exit 1
+fi
 
 # Serialise: the .path unit and the .timer can fire close together, and two
 # certbot runs against the same name at once is how rate limits get burned.
-exec 9>"$LOCK" 2>/dev/null || true
+#
+# A lock that cannot be OPENED is not the same as a lock that is HELD, and only
+# one of those means "someone else is working". Conflating them turns every
+# failure into a reassuring message about a run that does not exist.
+if ! exec 9>"$LOCK"; then
+  log "FATAL: could not open the run lock at ${LOCK}; refusing to run unserialised,"
+  log "       because two certbot runs at once is how rate limits get burned."
+  exit 1
+fi
 if command -v flock >/dev/null 2>&1; then
   flock -n 9 || { log "another provisioning run is in progress — skipping"; exit 0; }
 fi

@@ -170,3 +170,93 @@ JSON`, "bash", link)
 		t.Errorf("the redirect replaced the link instead of following it (%v)", err)
 	}
 }
+
+// A REGRESSION THIS AUDIT INTRODUCED, caught by attacking its own fix.
+//
+// Moving the lock out of the state directory made it depend on a directory that
+// must first be created. If that creation fails, `exec 9>"$LOCK"` fails, `flock
+// -n 9` then errors on a bad file descriptor, and the worker takes the branch
+// that exists for a DIFFERENT reason: it logs "another provisioning run is in
+// progress" and exits 0.
+//
+// Nothing is wrong with the lock; nothing else is running. Provisioning simply
+// stops for ever, announcing a healthy state while it does. Before the move the
+// lock lived in the systemd StateDirectory, which always exists, so this could
+// not happen — a fix that broke something that worked, which is the failure mode
+// the standing rules name first.
+//
+// The two conditions must be told apart and neither may be silent.
+func TestTheWorkerDoesNotBlameAConcurrentRunForAMissingDirectory(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	src, err := os.ReadFile(filepath.Join("..", "..", "scripts", "provision-subdomains.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Everything up to the point the request is consumed: assignments, the
+	// directory, the lock. Running further needs root, nginx and certbot.
+	lines := strings.Split(string(src), "\n")
+	end := -1
+	for i, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), `rm -f "$REQUEST"`) {
+			end = i
+			break
+		}
+	}
+	if end < 0 {
+		t.Fatal("the worker no longer consumes the request with rm -f; this gate cannot " +
+			"find the end of the preamble")
+	}
+	preamble := strings.Join(lines[:end], "\n")
+
+	// A path that cannot be created: its parent is a regular file. Portable, and
+	// it fails for an unprivileged CI runner exactly as it would for root.
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := strings.ReplaceAll(preamble, "OUT_DIR=/var/lib/vayupress-provision",
+		"OUT_DIR="+filepath.Join(blocker, "out"))
+
+	cmd := exec.Command("bash", "-c", script)
+	out, err := cmd.CombinedOutput()
+
+	if strings.Contains(string(out), "another provisioning run is in progress") {
+		t.Errorf("the worker blamed a concurrent run for a directory it could not create.\n\n"+
+			"Nothing else is running. Provisioning stops for ever and the log says everything\n"+
+			"is fine — the operator has no reason to look, and no reason to look HERE.\n\noutput:\n%s", out)
+	}
+	if err == nil {
+		t.Errorf("the worker continued after failing to create the directory holding its\n"+
+			"lock and its result.\n\nWithout the lock, two certbot runs can overlap, which is\n"+
+			"how rate limits get burned — the exact thing the lock exists to prevent.\n\noutput:\n%s", out)
+	}
+	// Asserted on the SPECIFIC reason, not merely on failing. Two guards stand
+	// here — the directory check and the lock-open check — and either alone
+	// produces a non-zero exit, so an outcome-only assertion cannot tell which
+	// one fired and kills neither under mutation. The operator needs the one that
+	// names the directory.
+	if !strings.Contains(string(out), "could not create") {
+		t.Errorf("the failure is reported without naming the directory that could not be\n"+
+			"created, so the operator is told the lock is the problem when the directory is.\n\noutput:\n%s", out)
+	}
+	// And it stops THERE. Falling through to the lock guard would print a second
+	// fatal about the lock, which is true but is not the cause, and an operator
+	// reading two fatals chases the wrong one first.
+	if strings.Contains(string(out), "could not open the run lock") {
+		t.Errorf("the directory failure fell through to the lock guard and reported both.\n\n"+
+			"The lock is unopenable BECAUSE the directory is missing; leading with that sends\n"+
+			"the operator to the wrong place.\n\noutput:\n%s", out)
+	}
+}
+
+// COVERAGE NOTE, stated rather than left implied: the second guard — the one
+// that fires when OUT_DIR exists but the lock still cannot be opened — is not
+// driven here. Reaching it needs `install -d -o root -g root` to SUCCEED, which
+// it does for root and not for an unprivileged CI runner, and a harness that
+// behaves differently in the two places is how a broken test passes locally.
+// It stays because its message is the right one for a read-only filesystem or a
+// lock path that is not a regular file; it is defence in depth, and it is not
+// proven by this suite.

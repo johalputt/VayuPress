@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"html"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -164,9 +165,21 @@ func provisionUnitsInstalled() bool {
 	return false
 }
 
+// provisionResultMaxBytes bounds the result read. The file is a fixed handful of
+// JSON fields, so anything larger is not a result — and on an install whose
+// worker has not upgraded yet, provisionOutputPath still falls back to a file the
+// service user can write, where an unbounded ReadFile on every page render is a
+// way to take the process down from inside it.
+const provisionResultMaxBytes = 64 << 10
+
 func readProvisionResult() (provisionResult, bool) {
 	var res provisionResult
-	b, err := os.ReadFile(provisionOutputPath(provisionResultFile))
+	f, err := os.Open(filepath.Clean(provisionOutputPath(provisionResultFile)))
+	if err != nil {
+		return res, false
+	}
+	defer func() { _ = f.Close() }()
+	b, err := io.ReadAll(io.LimitReader(f, provisionResultMaxBytes))
 	if err != nil {
 		return res, false
 	}

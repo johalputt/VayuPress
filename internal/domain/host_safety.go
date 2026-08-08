@@ -61,6 +61,18 @@ func ValidateHost(host string) error {
 				// Named rather than summarised: an operator who typed a stray
 				// character needs to know which one, and a report of "invalid
 				// hostname" sends them to re-read the whole string.
+				//
+				// A non-ASCII letter is almost always an internationalised domain
+				// typed in its display form, so that case says what to do instead
+				// of only what is wrong. It was never usable here: DNS, nginx's
+				// server_name and certbot all want the encoded form, so the
+				// refusal replaces a domain that would have failed later with no
+				// explanation.
+				if r > 127 {
+					return fmt.Errorf("domain: host %q contains %q; register the punycode form "+
+						"instead (the xn--… spelling), which is what DNS and the certificate "+
+						"authority use", host, r)
+				}
 				return fmt.Errorf("domain: host %q contains %q, which is not allowed in a hostname", host, r)
 			}
 		}

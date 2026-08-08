@@ -108,6 +108,28 @@ the privileged one. That design is sound and was left alone.
 
 ### Fixed
 
+- **A regression this audit introduced, found by attacking its own fix.** Moving
+  the lock out of the state directory made it depend on a directory that must
+  first be created. When that creation was best-effort, a failure left the lock
+  unopenable, `flock` then failed on a bad file descriptor, and the worker took
+  the branch meant for a genuine concurrent run: it logged *"another provisioning
+  run is in progress"* and exited successfully. Nothing was running. Provisioning
+  would have stopped for ever while reporting a healthy skip. A lock that cannot
+  be opened and a lock that is held are different conditions, and only one of
+  them means someone else is working.
+
+- **Registering an internationalised domain now says what to register instead.**
+  A name typed in its display form (`münchen.de`) was refused with the offending
+  character named and nothing else. It never worked — DNS, nginx's `server_name`
+  and the certificate authority all want the encoded spelling — so the message
+  now points at the punycode form rather than leaving an operator to conclude
+  their domain is unsupported.
+
+- The provisioning result is read with a bound. It is a handful of JSON fields,
+  and on an install whose worker has not upgraded yet the read still falls back
+  to a file the service user can write — where an unbounded read on every page
+  render is a way to take the process down from inside it.
+
 - **Provisioning is no longer offered when it cannot possibly work.** The panel
   honours `VAYU_DATA_DIR` when writing its request; the systemd `.path` unit
   carries `/var/lib/vayupress/provision.request` as a literal. Set that variable —
