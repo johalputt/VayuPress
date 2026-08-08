@@ -115,8 +115,10 @@ downstream commercial user will ask for, since that is the binding constraint ei
 
 3. **`security.txt` published** at `/.well-known/security.txt`. RFC 9116 requires an `Expires`
    field, and an expired file is reported as stale by the scanners that read it, so a committed
-   date would eventually become a finding rather than prevent one. `deploy-site.yml` stamps it
-   180 days out at deploy time and also runs daily on a schedule, so it refreshes itself.
+   date would eventually become a finding rather than prevent one. The date now ships as
+   committed — vayupress.com serves from a VayuPress install rather than GitHub Pages, so the
+   workflow that stamped it daily is gone — and `scripts/check-security-txt.py` fails CI once
+   the file is within 45 days of expiring, which is the mechanism that keeps it current.
 
 ### Remaining
 

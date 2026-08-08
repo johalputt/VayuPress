@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Regenerate the VayuPress screenshots used by README.md and the marketing site.
 #
-# One source of truth: deploy-site.yml copies docs/screenshots/*.png into the
-# published site, so a page captured here appears in both places.
+# One source of truth: scripts/build-selfhosted-site.sh copies docs/screenshots/*.png
+# into the uploaded bundle, so a page captured here appears in both places.
 #
 # Usage (CI — proxy injects X-API-Key for admin pages):
 #   API_KEY=... ./scripts/capture-screenshots.sh [PROXY_BASE_URL]

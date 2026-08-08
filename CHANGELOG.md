@@ -6,6 +6,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **The marketing site no longer publishes to GitHub Pages.** vayupress.com is
+  served from a VayuPress install as an uploaded custom website, so
+  `.github/workflows/deploy-site.yml` and `docs/site/CNAME` are removed. The
+  source stays exactly where it was: `docs/site/` is what
+  `scripts/build-selfhosted-site.sh` builds the bundle from, and what
+  `tag-release.yml` attaches to every release.
+
+### Security
+
+- **`security.txt` cannot silently expire now that nothing rewrites it.** The
+  removed workflow stamped the RFC 9116 `Expires` field 180 days out and ran
+  daily, so the committed date was a placeholder that never mattered. It ships
+  verbatim in the uploaded bundle now — `build-selfhosted-site.sh` copies the
+  whole `docs/site/` tree — so the committed date is the served date.
+
+  An expired `security.txt` is worse than none: scanners report it as the
+  finding it exists to prevent, and `docs/CRA-READINESS.md` cited the daily
+  stamping as the mechanism that kept it current. Deleting the workflow without
+  replacing that mechanism would have left the claim standing with nothing
+  behind it. `scripts/check-security-txt.py` now fails CI once the file is
+  within 45 days of expiring, and it checks the shape too — exactly one
+  `Expires`, at least one `Contact`, a parseable timestamp carrying an offset.
+  It takes an injectable `--now` so its own failure is testable without waiting
+  for time to pass.
+
+  The `Encryption:` field is also gone. That workflow probed the VayuPGP Web Key
+  Directory and published the line only on a 200, because a key URL that 404s is
+  worse than none — a reporter who cannot fetch the key sends the report in
+  cleartext. Nothing probes it now, so nothing advertises it.
+
 ## [3.17.32] — 2026-08-08
 
 ### Fixed

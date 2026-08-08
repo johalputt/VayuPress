@@ -3,7 +3,7 @@
 # build-selfhosted-site.sh — turn docs/site/ into a bundle a VayuPress install
 # can serve, and produce the .zip the panel's website upload accepts.
 #
-# WHY THIS EXISTS. docs/site/ is published to GitHub Pages, where a page may pull
+# WHY THIS EXISTS. docs/site/ was written for GitHub Pages, where a page may pull
 # whatever it likes from wherever it likes and run whatever it wants inline. A
 # VayuPress install is the opposite: every response carries
 #
@@ -47,7 +47,7 @@
 #	VayuOS → the domain → Website → "Allow this site to use eval"
 #
 # Without it the layout and typography are correct and the animations are inert.
-# With it, the page behaves exactly as it does on GitHub Pages.
+# With it, the page behaves exactly as it was written to.
 #
 # Usage:  bash scripts/build-selfhosted-site.sh [outdir]
 set -euo pipefail
@@ -60,7 +60,6 @@ OUT="${1:-dist/selfhosted-site}"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 cp -R "${SRC}/." "$OUT/"
-rm -f "${OUT}/CNAME"   # the GitHub Pages custom domain must not travel with the bundle
 
 # Repository housekeeping that is not part of the site, and MUST NOT travel with
 # it. README.md is the worked example and the reason this line exists: a
@@ -72,7 +71,7 @@ rm -f "${OUT}/CNAME"   # the GitHub Pages custom domain must not travel with the
 rm -f "${OUT}/README.md" "${OUT}/readme.md" "${OUT}/.gitignore" "${OUT}/.nojekyll"
 
 # The gallery. Its 31 images live in docs/screenshots/, OUTSIDE docs/site/, and
-# deploy-site.yml copies them into the published tree — so on GitHub Pages the
+# the Pages workflow used to copy them into the published tree — so there the
 # gallery works and nothing in docs/site/ records the dependency.
 #
 # This script copied docs/site/ alone, so every self-hosted bundle shipped a
@@ -227,7 +226,7 @@ for page in sorted(out.rglob("*.html")):
 #
 # The checks above prove nothing is fetched off-origin. They say nothing about
 # whether what IS referenced exists, and that is how a gallery of 31 broken
-# images shipped: the files sat in docs/screenshots/, which only the GitHub Pages
+# images shipped: the files sat in docs/screenshots/, which only the Pages
 # workflow ever copied. A 404 and a policy refusal look identical to a visitor —
 # a gap where a picture should be — and neither announces itself.
 #
@@ -265,7 +264,7 @@ for base, url in sorted(referenced):
 
 # ── Every utility class a page uses must EXIST in the compiled stylesheet ────
 #
-# On GitHub Pages the framework is a browser-side JIT: it reads the markup and
+# Unbundled, the framework is a browser-side JIT: it reads the markup and
 # generates whatever class it finds, so any class an author writes simply works.
 # The bundle swaps that for a stylesheet compiled once from a fixed set. A class
 # the compiler never saw therefore does nothing at all — and does it silently, on

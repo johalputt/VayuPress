@@ -143,6 +143,13 @@ jobs:
         # "proprietary". Enforced here because consistency across ~930 files
         # survives exactly as long as something checks it.
         run: python3 scripts/spdx-headers.py --check
+      - name: security.txt has not gone stale
+        # RFC 9116 requires an Expires field, and an expired security.txt is
+        # reported by scanners as the finding it exists to prevent. The date used
+        # to be stamped daily by deploy-site.yml; vayupress.com now serves from a
+        # VayuPress install, that workflow is gone, and the committed date is what
+        # ships. Nothing refreshes it, so this notices 45 days out.
+        run: python3 scripts/check-security-txt.py
 
   # ── P10: Governance self-consistency check ────────────────────────────────
   check-governance:

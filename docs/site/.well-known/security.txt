@@ -1,18 +1,27 @@
 # VayuPress — security contact (RFC 9116)
 #
-# The Expires value below is rewritten at deploy time by
-# .github/workflows/deploy-site.yml, which also runs daily on a schedule, so the
-# published file never goes stale. The date committed here is a placeholder and
-# is not what gets served.
+# THE DATE BELOW IS THE DATE THAT GETS SERVED. It used to be a placeholder,
+# rewritten at publish time by .github/workflows/deploy-site.yml, which ran daily
+# so the file could never go stale. vayupress.com is now served from a VayuPress
+# install instead of GitHub Pages, that workflow is gone, and
+# scripts/build-selfhosted-site.sh copies this tree verbatim into the uploaded
+# bundle. Nothing rewrites it any more.
 #
-# An Encryption: field is appended by that same step, but only when the VayuPGP
-# Web Key Directory actually answers -- a key URL that 404s is worse than none,
-# because a reporter who cannot fetch the key sends the report in cleartext.
-# It appears and disappears on its own; do not add it by hand.
+# So it is checked instead: scripts/check-security-txt.py fails CI once the file
+# is within 45 days of expiring. Push the date out when that fires. An expired
+# security.txt is worse than none — scanners report it as the finding it was
+# meant to prevent.
+#
+# An Encryption: field was appended by that same removed step, and only when the
+# VayuPGP Web Key Directory actually answered, because a key URL that 404s is
+# worse than none: a reporter who cannot fetch the key sends the report in
+# cleartext. Nothing probes it now, so no Encryption: line is published. Add one
+# by hand ONLY after confirming the WKD URL returns 200, and remove it if that
+# ever stops being true.
 
 Contact: mailto:security@vayupress.com
 Contact: https://github.com/johalputt/VayuPress/security/advisories/new
-Expires: 2027-01-01T00:00:00.000Z
+Expires: 2027-08-08T00:00:00.000Z
 Preferred-Languages: en
 Canonical: https://vayupress.com/.well-known/security.txt
 Policy: https://github.com/johalputt/VayuPress/blob/main/SECURITY.md
