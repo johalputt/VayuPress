@@ -6,6 +6,56 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.28] — 2026-08-08
+
+### Security
+
+- **A reissued mailbox address no longer inherits the previous holder's mail.**
+  Raised three times during the Section 4 audit and left open each time, because
+  the obvious fix destroys mail and destroying mail has no undo. Deleting a
+  mailbox removed every credential and every database row and never touched the
+  Maildir, so creating the same address again handed the new holder the old
+  holder's messages on their first IMAP sync — no grant, no prompt, nothing in
+  any log to say it had happened. `info@`, `accounts@`, `admin@` and `support@`
+  are exactly the addresses a business reissues when somebody leaves, and on an
+  agency install a whole domain can change hands.
+
+  The fix is **retirement, not deletion**, and that choice is the point. The hole
+  is *inheritance*, and moving the directory out of the delivery tree closes it
+  completely. Erasing the messages would close it too, and would also destroy the
+  only copy of a mailbox deleted by mistake or held for retention. The panel now
+  says which of the two happened, because after deleting a client's mailbox that
+  is the only question an operator has.
+
+  Ordering is the control and lives in one root the handler cannot bypass: the
+  account rows go first, because while the account exists SMTP still delivers
+  into the directory being moved. A failed move is reported rather than
+  swallowed. The retired tree is a *sibling* of the Maildir base, never a
+  directory inside it — every component under the base passes through
+  `safeSegment`, which reduces a domain to one lowercased segment, so a directory
+  inside could be named by a domain and delivered into.
+
+  **Not covered, stated plainly:** retired mail is never swept, because the
+  retention sweep enumerates accounts from the database and a retired mailbox has
+  no row. Disk usage is unchanged — the mail was already kept forever, in the
+  delivery tree — but there is still no panel surface to review or reclaim it,
+  and there should be.
+
+### Fixed
+
+- **The VayuMail tab strip no longer offers a client a tab that bounces them.**
+  Named in v3.17.27 rather than buried in its diff, and now done. Overview points
+  at `/os/vayumail`, the mailbox-administration dashboard the confinement
+  refuses, and it was the first tab on every mailbox page a client holds — so a
+  paying customer's first click threw them back to `/os/mysite` with no
+  explanation. The strip now asks `clientPathAllowed` instead of carrying a
+  second copy of the rule, so it cannot drift from the confinement it reflects.
+  The filter is keyed on the client role and not applied to everyone: a
+  mailbox-only holder is not a client and legitimately reaches the whole
+  non-admin strip, Overview included.
+
+---
+
 ## [3.17.27] — 2026-08-08
 
 ### Fixed
