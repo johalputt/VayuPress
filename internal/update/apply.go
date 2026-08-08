@@ -21,7 +21,6 @@ import (
 type ApplyOptions struct {
 	Current    string
 	DryRun     bool
-	PubKeyHex  string
 	DBPath     string
 	BackupDir  string
 	BinaryPath string // path to the currently-running binary to replace (os.Executable())
@@ -59,22 +58,21 @@ func PreflightMode(currentMode string) error {
 // proceed:
 //   - VAYU_SELFUPDATE_ENABLED must be "true" (enabled==true)
 //   - mode must not be read-only / quarantined / maintenance
-//   - pinned pubkey must be present
+//
+// It no longer requires a pinned Ed25519 key. Requiring one made the CLI
+// unusable in BOTH directions: without a key this refused, and with a key
+// ApplyVerified demanded a ".sig" asset the release pipeline has never
+// produced. Authenticity is the release's Sigstore signature, which needs no
+// operator configuration.
 //
 // This is the strict gate used by the CLI; the admin UI uses PreflightMode. Both
 // paths now verify the release's Sigstore signature unconditionally, so neither
 // can apply an unauthentic binary — the flag that used to permit that is gone.
-func PreflightApply(enabled bool, currentMode string, pubKeyHex string) error {
+func PreflightApply(enabled bool, currentMode string) error {
 	if !enabled {
 		return errors.New("update: apply refused — set VAYU_SELFUPDATE_ENABLED=true to opt in")
 	}
-	if err := PreflightMode(currentMode); err != nil {
-		return err
-	}
-	if strings.TrimSpace(pubKeyHex) == "" {
-		return errors.New("update: apply refused — pinned release public key (VAYU_RELEASE_PUBKEY) is empty")
-	}
-	return nil
+	return PreflightMode(currentMode)
 }
 
 // ApplyVerified downloads the release binary plus its .sig and .sha256, verifies
@@ -105,13 +103,12 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 	// proxy-mangled download and produces a far clearer error than a signature
 	// failure would.
 	//
-	// The Ed25519 path this replaces was worse than absent. It required a
-	// "<binary>.sig" asset the release pipeline has never produced, so pinning
-	// VAYU_RELEASE_PUBKEY — which the panel and docs both told operators to do —
-	// made every update fail. opt.PubKeyHex is still honoured as an ADDITIONAL
-	// check for anyone who has one, and its absence no longer means "verify
-	// nothing".
-	verifySig := strings.TrimSpace(opt.PubKeyHex) != ""
+	// The Ed25519 path this replaces is GONE, not demoted to optional. It
+	// required a "<binary>.sig" asset the release pipeline has never produced, so
+	// pinning VAYU_RELEASE_PUBKEY — which the panel and docs both told operators
+	// to do — made every update fail, while leaving it unset verified nothing.
+	// Keeping it as an "optional extra" would have left that landmine armed
+	// underneath release notes calling it optional.
 
 	// The name of the file about to be overwritten is the strongest evidence
 	// available about which asset is the binary; fall back to the repository name
@@ -140,13 +137,6 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 			"verified and will not be installed. Every genuine release is signed by the "+
 			"project's release workflow; an unsigned one means the release did not complete "+
 			"correctly, or did not come from the project", rel.Version, binAsset.Name)
-	}
-	var sigAsset *Asset
-	if verifySig {
-		sigAsset = selectSignatureAsset(rel.Assets, binAsset.Name)
-		if sigAsset == nil {
-			return "", fmt.Errorf("update: release %s missing a .sig asset for %s (required because a release public key is pinned)", rel.Version, binAsset.Name)
-		}
 	}
 
 	binData, err := download(ctx, client, binAsset.DownloadURL)
@@ -189,18 +179,7 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 		return "", err
 	}
 
-	if verifySig {
-		sigData, derr := download(ctx, client, sigAsset.DownloadURL)
-		if derr != nil {
-			return "", fmt.Errorf("update: download sig: %w", derr)
-		}
-		if err := VerifySignature(opt.PubKeyHex, binData, strings.TrimSpace(string(sigData))); err != nil {
-			return "", err
-		}
-		logging.LogInfo("update", fmt.Sprintf("verified release %s (checksum + Sigstore signature + pinned Ed25519 key OK)", rel.Version))
-	} else {
-		logging.LogInfo("update", fmt.Sprintf("verified release %s (checksum + Sigstore signature by %s OK)", rel.Version, ReleaseSignerIdentity))
-	}
+	logging.LogInfo("update", fmt.Sprintf("verified release %s (checksum + Sigstore signature by %s OK)", rel.Version, ReleaseSignerIdentity))
 
 	// Authenticity is settled; now the question authenticity cannot answer. These
 	// bytes are provably the ones the release published — that says nothing about
@@ -500,12 +479,6 @@ func selectBinaryAsset(assets []Asset, goos, goarch, wantName string) *Asset {
 // sole .sha256 asset when a release ships just one.
 func selectChecksumAsset(assets []Asset, binaryName string) *Asset {
 	return selectSidecar(assets, binaryName, ".sha256")
-}
-
-// selectSignatureAsset finds the Ed25519 .sig file for the chosen binary, with
-// the same exact-sibling-then-sole-asset preference as selectChecksumAsset.
-func selectSignatureAsset(assets []Asset, binaryName string) *Asset {
-	return selectSidecar(assets, binaryName, ".sig")
 }
 
 // selectSidecar returns the asset named "<binaryName><suffix>" if present, else

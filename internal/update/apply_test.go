@@ -33,31 +33,26 @@ func withStubbedSignature(t *testing.T) {
 }
 
 func TestPreflightApply(t *testing.T) {
-	const pk = "deadbeef"
-
-	if err := PreflightApply(false, "normal", pk); err == nil {
+	if err := PreflightApply(false, "normal"); err == nil {
 		t.Error("enabled=false should fail")
 	}
-	if err := PreflightApply(true, "read-only", pk); err == nil {
+	if err := PreflightApply(true, "read-only"); err == nil {
 		t.Error("read-only mode should fail")
 	}
-	if err := PreflightApply(true, "quarantined", pk); err == nil {
+	if err := PreflightApply(true, "quarantined"); err == nil {
 		t.Error("quarantined mode should fail")
 	}
-	if err := PreflightApply(true, "maintenance", pk); err == nil {
+	if err := PreflightApply(true, "maintenance"); err == nil {
 		t.Error("maintenance mode should fail")
 	}
-	if err := PreflightApply(true, "normal", ""); err == nil {
-		t.Error("empty pubkey should fail")
-	}
-	if err := PreflightApply(true, "normal", pk); err != nil {
+	if err := PreflightApply(true, "normal"); err != nil {
 		t.Errorf("all-good should pass: %v", err)
 	}
 }
 
 func TestApplyVerifiedDryRun(t *testing.T) {
 	withStubbedSignature(t)
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +95,6 @@ func TestApplyVerifiedDryRun(t *testing.T) {
 	opt := ApplyOptions{
 		Current:    "v1.0.0",
 		DryRun:     true,
-		PubKeyHex:  hex.EncodeToString(pub),
 		BinaryPath: "/should/not/be/touched",
 	}
 	newVersion, err := ApplyVerified(context.Background(), client, "johalputt", "vayupress", opt, nil)
@@ -111,42 +105,6 @@ func TestApplyVerifiedDryRun(t *testing.T) {
 		t.Errorf("version = %q", newVersion)
 	}
 }
-
-func TestApplyVerifiedBadSignature(t *testing.T) {
-	pub, _, _ := ed25519.GenerateKey(rand.Reader)
-	_, priv2, _ := ed25519.GenerateKey(rand.Reader) // wrong key
-	binary := []byte("payload")
-	sum := sha256.Sum256(binary)
-	sumHex := hex.EncodeToString(sum[:])
-	badSig := hex.EncodeToString(ed25519.Sign(priv2, sum[:]))
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
-		base := "http://" + r.Host
-		rel := map[string]any{
-			"tag_name": "v2.0.0",
-			"assets": []map[string]any{
-				{"name": "b", "browser_download_url": base + "/bin"},
-				{"name": "b.sha256", "browser_download_url": base + "/sum"},
-				{"name": "b.sig", "browser_download_url": base + "/sig"},
-			},
-		}
-		_ = json.NewEncoder(w).Encode(rel)
-	})
-	mux.HandleFunc("/bin", func(w http.ResponseWriter, r *http.Request) { w.Write(binary) })
-	mux.HandleFunc("/sum", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(sumHex)) })
-	mux.HandleFunc("/sig", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(badSig)) })
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	client := &http.Client{Timeout: 5 * time.Second, Transport: rewriteTransport{target: srv.URL}}
-	opt := ApplyOptions{Current: "v1.0.0", DryRun: true, PubKeyHex: hex.EncodeToString(pub)}
-	_, err := ApplyVerified(context.Background(), client, "o", "r", opt, nil)
-	if err == nil || !strings.Contains(err.Error(), "signature") {
-		t.Fatalf("expected signature failure, got %v", err)
-	}
-}
-
 func TestPreflightMode(t *testing.T) {
 	for _, m := range []string{"read-only", "readonly", "quarantined", "maintenance"} {
 		if err := PreflightMode(m); err == nil {
@@ -305,5 +263,41 @@ func TestResolveInstallPath(t *testing.T) {
 	// Empty input is returned unchanged.
 	if got := ResolveInstallPath(""); got != "" {
 		t.Errorf("ResolveInstallPath(\"\") = %q, want \"\"", got)
+	}
+}
+
+// SECTION 5 PRE-RELEASE PASS — the same defect, still live on the other path.
+//
+// Enforcement was wired into ApplyVerified and the panel was fixed, and the CLI
+// was left exactly as it was. In an operator's voice:
+//
+//	I read UPGRADING.md, exported VAYU_SELFUPDATE_ENABLED=true, and ran
+//	`vayupress update apply`. It told me to pin a release key. I pinned one.
+//	Now it tells me the release is missing a .sig asset. There is no value of
+//	VAYU_RELEASE_PUBKEY that makes this command work, including not setting it.
+//
+// PreflightApply demanded a pinned key, and the pinned key then demanded a .sig
+// asset the pipeline has never produced. Both refusals, in both directions.
+//
+// The Ed25519 path is removed rather than repaired. It has never verified a
+// single release, cannot without pipeline changes nobody has made, and its only
+// effect on a live install is to break the updater of whoever followed the
+// documentation. Keeping it as an "optional extra" would have kept that landmine
+// armed while the release notes called it optional.
+func TestTheCLIPathCanActuallyApplyAnUpdate(t *testing.T) {
+	// No key pinned: the CLI opt-in and a sane mode are all it may require.
+	if err := PreflightApply(true, "normal"); err != nil {
+		t.Errorf("PreflightApply refuses without a pinned key: %v\n\n"+
+			"There is then no way to run `vayupress update apply` at all, because "+
+			"pinning a key made ApplyVerified demand a .sig asset that has never been "+
+			"published. Both directions refused.", err)
+	}
+	// The opt-in and the mode gate are the CLI's own guards and must survive.
+	if err := PreflightApply(false, "normal"); err == nil {
+		t.Error("PreflightApply no longer requires VAYU_SELFUPDATE_ENABLED — that is the " +
+			"CLI's deliberate opt-in and removing it was not the point")
+	}
+	if err := PreflightApply(true, "read-only"); err == nil {
+		t.Error("PreflightApply no longer refuses read-only mode")
 	}
 }

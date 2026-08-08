@@ -524,7 +524,6 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pubKey := os.Getenv("VAYU_RELEASE_PUBKEY")
 	curMode := string(mode.Global.Current())
 	// The caller is an authenticated admin who explicitly clicked Update — that
 	// is the opt-in. We only refuse in modes that forbid mutating the binary.
@@ -576,7 +575,6 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	opt := update.ApplyOptions{
 		Current:           Version,
 		DryRun:            body.DryRun,
-		PubKeyHex:         pubKey,
 		BinaryPath:        realPath, // swap the resolved real file, not a launch-time symlink
 		IncludePrerelease: body.Prerelease,
 	}

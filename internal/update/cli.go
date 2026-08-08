@@ -102,10 +102,9 @@ func runCheck(ctx context.Context, w io.Writer, client *http.Client, owner, repo
 
 func runApply(ctx context.Context, w io.Writer, client *http.Client, owner, repo string, st *Store, current string, dryRun bool) error {
 	enabled := os.Getenv("VAYU_SELFUPDATE_ENABLED") == "true"
-	pubKey := os.Getenv("VAYU_RELEASE_PUBKEY")
 	currentMode := string(mode.Global.Current())
 
-	if err := PreflightApply(enabled, currentMode, pubKey); err != nil {
+	if err := PreflightApply(enabled, currentMode); err != nil {
 		_, _ = st.Log(ctx, Record{FromVersion: current, Status: "failed", Detail: "preflight: " + err.Error()})
 		return err
 	}
@@ -120,7 +119,6 @@ func runApply(ctx context.Context, w io.Writer, client *http.Client, owner, repo
 	opt := ApplyOptions{
 		Current:    current,
 		DryRun:     dryRun,
-		PubKeyHex:  pubKey,
 		DBPath:     config.Cfg.DBPath,
 		BackupDir:  config.Cfg.CacheDir + "/update-backups",
 		BinaryPath: binPath,
