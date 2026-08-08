@@ -20,6 +20,7 @@ import (
 	htmpl "html/template"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -89,6 +90,46 @@ type roleBody struct {
 
 // PUT /api/v1/admin/users/{email}/role  {role}
 // PUT /os/api/users/{email}/role        {role}
+// setUserRole is the single root for changing a VayuPress account's role: it
+// applies the change and, when the change REDUCES the account's access, revokes
+// the API keys that account owns.
+//
+// AUDIT FINDING (Section 3), the quiet half of the deleted-administrator one.
+// A key's capabilities are fixed when it is minted and nothing revisits them, so
+// an administrator who approved an MCP connector with full control kept that
+// connector after being demoted to author — the panel told the operator it had
+// taken their administration away, while the connector went on running the whole
+// site and renewing itself through its refresh token. The demoted holder ended
+// up with more authority through their connector than their own session allows.
+//
+// Only a REDUCTION revokes. A promotion leaves the keys alone: they already sit
+// inside the wider authority the operator just granted, and revoking them would
+// break working integrations at the exact moment somebody was given more trust —
+// a change nobody would connect back to its cause. Setting the same role again
+// is not a reduction either.
+func (a *App) setUserRole(ctx context.Context, email, role string) error {
+	before := -1
+	if u, err := a.userStore.GetByEmail(ctx, email); err == nil && u != nil {
+		before = accessLevelFor(u.Role, false)
+	}
+	if err := a.userStore.SetRole(ctx, email, role); err != nil {
+		return err
+	}
+	if a.apiKeys == nil || before < 0 || accessLevelFor(role, false) >= before {
+		return nil
+	}
+	u, err := a.userStore.GetByEmail(ctx, email)
+	if err != nil || u == nil {
+		return nil
+	}
+	if n, rerr := a.apiKeys.RevokeOwnedBy(ctx, u.ID); rerr != nil {
+		logging.LogError("auth", "revoking API keys for a demoted user", rerr.Error())
+	} else if n > 0 {
+		dbpkg.AuditLog("apikey.revoke_owner_demoted", "user:"+u.ID, email, strconv.Itoa(n)+" key(s)")
+	}
+	return nil
+}
+
 func (a *App) handleUserSetRole(w http.ResponseWriter, r *http.Request) {
 	if a.userStore == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "users-disabled", "Accounts not initialised", "")
@@ -120,7 +161,7 @@ func (a *App) handleUserSetRole(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := a.userStore.SetRole(r.Context(), email, body.Role); err != nil {
+	if err := a.setUserRole(r.Context(), email, body.Role); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "role-error", err.Error(), "")
 		return
 	}

@@ -52,6 +52,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   it. `TestOnlySiteInfoIsUngated` asserts the exact set a zero-grant key can see;
   registering an ungated tool now fails the build instead of shipping.
 
+- **Demoting an administrator did not take back what they granted either.**
+  Section 3, the quiet half of the finding below. A key's capabilities are fixed
+  when it is minted and nothing revisits them, so an administrator moved down to
+  author kept the `*:*` connector they had approved — the panel said their
+  administration had been taken away while the connector went on running the
+  whole site and renewing itself. The demoted holder ended up with more authority
+  through their connector than their own session allows.
+
+  Role changes now go through `setUserRole`, which revokes the account's keys
+  when the change **reduces** its access level. A promotion deliberately does
+  not: those keys already sit inside the wider authority just granted, and
+  revoking them would break working integrations at the moment somebody was given
+  more trust — a breakage nobody would trace back to its cause. Re-setting the
+  same role is not a reduction. Both directions are pinned, and the
+  revoke-on-any-change version fails the control.
+
 - **Deleting an administrator did not take back what they granted.** Section 3.
   An admin who connected an MCP client kept that connector working after their
   account was deleted — with whatever grant they approved, up to `*:*` over the

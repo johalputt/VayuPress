@@ -198,3 +198,68 @@ func TestRevokingByAnEmptyOwnerIsRefused(t *testing.T) {
 		t.Error("an unrelated owner's key was revoked by a blank-owner call")
 	}
 }
+
+// The other half of the same finding: DEMOTION.
+//
+// Deleting the account is the loud version. The quiet one is an operator moving
+// an administrator down to author — which the panel presents as taking their
+// administration away — while the connector they approved as an admin keeps its
+// *:* grant. The key is a credential in its own right; its capabilities were
+// fixed at mint time and nothing revisits them, so the demoted person now holds
+// more through their connector than their own session allows.
+//
+// The rule is narrowed to a REDUCTION in access. A promotion leaves the keys
+// alone: they are already within the wider authority the operator just granted,
+// and revoking them would break working integrations for no security reason.
+func TestDemotingAnAdministratorRevokesTheirConnector(t *testing.T) {
+	ks, us, _ := keyStoreWithUsers(t)
+	ctx := context.Background()
+
+	u, err := us.Create(ctx, "demoted@example.com", "Demoted", "a-long-password", "admin")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	raw := fullControlKeyFor(t, ks, u.ID)
+
+	app := &App{userStore: us, apiKeys: ks}
+	if err := app.setUserRole(ctx, "demoted@example.com", "author"); err != nil {
+		t.Fatalf("demote: %v", err)
+	}
+
+	if ks.Verify(raw) {
+		t.Error("an administrator demoted to author kept a *:* connector.\n\n" +
+			"The panel told the operator it had taken their administration away. The " +
+			"connector still runs the whole site, and it renews itself.")
+	}
+}
+
+// THE CONTROL. Promotion must not disturb anything: the keys are already inside
+// the authority the operator just widened.
+func TestPromotingAUserLeavesTheirKeysAlone(t *testing.T) {
+	ks, us, _ := keyStoreWithUsers(t)
+	ctx := context.Background()
+
+	u, err := us.Create(ctx, "rising@example.com", "Rising", "a-long-password", "author")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	raw := fullControlKeyFor(t, ks, u.ID)
+
+	app := &App{userStore: us, apiKeys: ks}
+	if err := app.setUserRole(ctx, "rising@example.com", "admin"); err != nil {
+		t.Fatalf("promote: %v", err)
+	}
+
+	if !ks.Verify(raw) {
+		t.Error("promoting a user revoked their working connector.\n\n" +
+			"Their integrations stop the moment they are given MORE authority, which " +
+			"is a change nobody would connect to the cause.")
+	}
+	// And a no-op role write (admin → admin) is not a demotion either.
+	if err := app.setUserRole(ctx, "rising@example.com", "admin"); err != nil {
+		t.Fatalf("re-set same role: %v", err)
+	}
+	if !ks.Verify(raw) {
+		t.Error("re-setting the SAME role revoked the user's keys")
+	}
+}
