@@ -55,6 +55,52 @@ func (m *Maildir) accountDir(domain, username string) string {
 	return filepath.Join(m.base, safeSegment(domain), safeSegment(username))
 }
 
+// retiredBase is where a deleted account's mail is set aside.
+//
+// It is a SIBLING of the Maildir base, never a directory inside it. Every path
+// component under the base passes through safeSegment, which reduces a domain to
+// one lowercased segment — so a dot-directory inside the base could be named by a
+// hostile or merely unlucky domain and delivered into. Nothing routed by
+// accountDir can reach a sibling.
+func (m *Maildir) retiredBase() string { return m.base + "-retired" }
+
+// Retire moves an account's mail out of the delivery tree and returns where it
+// went, or "" when the account had no directory at all.
+//
+// It MOVES rather than deletes on purpose. The hole being closed is inheritance
+// — a reissued address handing its new holder the previous holder's mail — and a
+// rename closes that completely. Erasing the messages would close it too, and
+// would also destroy the only copy of a mailbox deleted by mistake or held for
+// retention. stamp distinguishes successive retirements of the same address; the
+// caller supplies it so this stays a pure filesystem move.
+func (m *Maildir) Retire(domain, username, stamp string) (string, error) {
+	src := m.accountDir(domain, username)
+	if _, err := os.Stat(src); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil // never received mail; nothing to set aside
+		}
+		return "", err
+	}
+	dstDir := filepath.Join(m.retiredBase(), safeSegment(domain))
+	if err := os.MkdirAll(dstDir, 0o700); err != nil {
+		return "", err
+	}
+	dst := filepath.Join(dstDir, safeSegment(username)+"."+safeSegment(stamp))
+	// A same-second second retirement of the same address must not land on the
+	// first and destroy it. Rename onto an existing directory is refused rather
+	// than merged, so suffix until the name is free.
+	for i := 1; ; i++ {
+		if _, err := os.Stat(dst); os.IsNotExist(err) {
+			break
+		}
+		dst = filepath.Join(dstDir, fmt.Sprintf("%s.%s.%d", safeSegment(username), safeSegment(stamp), i))
+	}
+	if err := os.Rename(src, dst); err != nil {
+		return "", err
+	}
+	return dst, nil
+}
+
 // Create provisions the tmp/new/cur directories for an account.
 func (m *Maildir) Create(domain, username string) error {
 	for _, sub := range []string{"tmp", "new", "cur"} {

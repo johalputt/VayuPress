@@ -48,7 +48,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Compose</h1></div>`)
 	body.WriteString(`<p class="page-sub">Send DKIM-signed mail — auto-PGP-encrypted when the recipient's key is known.</p>`)
-	body.WriteString(vayuosNav("compose", a.isAdminRequest(r)))
+	body.WriteString(a.vayuosNav(r, "compose"))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to enable outbound delivery.</div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -834,7 +834,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Mail accounts</h1></div>`)
 	body.WriteString(`<p class="page-sub">Admin-managed email IDs &amp; passwords (SMTP/IMAP login). Each mailbox is a card — tap to expand.</p>`)
-	body.WriteString(vayuosNav("accounts", a.isAdminRequest(r)))
+	body.WriteString(a.vayuosNav(r, "accounts"))
 	if !a.isAdminRequest(r) {
 		body.WriteString(`<div class="empty-state">Mail-account management is available to administrators only. Your own mailbox is under <a href="/os/vayumail/inbox">Mailbox</a>.</div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -1308,7 +1308,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Connect a mail app</h1></div>`)
 	body.WriteString(`<p class="page-sub">IMAP / POP3 / SMTP settings for the Gmail app, Apple Mail, Thunderbird, Outlook and more.</p>`)
-	body.WriteString(vayuosNav("connect", a.isAdminRequest(r)))
+	body.WriteString(a.vayuosNav(r, "connect"))
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to enable mailboxes and mail-client access.</div>`)
@@ -1613,12 +1613,26 @@ func (a *App) handleVayuOSAccountDelete(w http.ResponseWriter, r *http.Request) 
 		writeMailSessionRequired(w, r)
 		return
 	}
-	if err := a.vayuMail.Accounts().Delete(r.Context(), in.Email); err != nil {
+	// DeleteMailbox, never Accounts().Delete: the store only clears SQLite, and a
+	// mailbox whose messages stay on disk is inherited whole by whoever is given
+	// the address next. The engine owns the ordering (rows first, so nothing is
+	// still delivering) and reports where the mail was set aside.
+	retired, err := a.vayuMail.DeleteMailbox(r.Context(), in.Email)
+	if err != nil {
 		writeAPIError(w, r, 500, "delete-failed", err.Error(), "")
 		return
 	}
-	dbpkg.AuditLog("vayumail.account.delete", dbpkg.AuditActor(r), in.Email, "")
-	writeJSON(w, r, 200, map[string]bool{"deleted": true})
+	dbpkg.AuditLog("vayumail.account.delete", dbpkg.AuditActor(r), in.Email, retired)
+	// The operator is told the mail was kept and roughly where, without being
+	// handed a server path — an panel message naming a directory on the box is
+	// infrastructure detail leaking into product copy.
+	msg := "The mailbox was deleted. It had no stored mail."
+	if retired != "" {
+		msg = "The mailbox was deleted. Its messages were moved out of the delivery " +
+			"tree and kept, so the address can be reissued without the new holder " +
+			"seeing them."
+	}
+	writeJSON(w, r, 200, map[string]any{"deleted": true, "retained": retired != "", "detail": msg})
 }
 
 // handleVayuOSAccountUpdate sets a new password and/or enables/disables an

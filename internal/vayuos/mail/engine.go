@@ -940,6 +940,41 @@ func (e *Engine) CreateMailbox(domain, username string) error {
 	return e.maildir.Create(domain, username)
 }
 
+// DeleteMailbox removes an account and sets its mail aside, returning the path
+// the mail was moved to ("" when it had none).
+//
+// This is the ONLY correct way to delete a mailbox, and it exists because the
+// two halves have to happen in this order. AccountStore.Delete only ever touched
+// SQLite: every credential and row went, the Maildir stayed, and reissuing the
+// address — info@, accounts@, support@, the addresses a business reissues when
+// somebody leaves — handed the next holder the previous holder's mail.
+//
+// ORDER IS THE CONTROL. The account rows go FIRST, because while the account
+// exists SMTP still delivers into the directory being moved, and a message
+// landing in that window is left behind for the next holder. Once the rows are
+// gone nothing authenticates and nothing delivers, so the move is quiet.
+//
+// A failed move is returned as an error rather than swallowed. The account is
+// already gone at that point and Delete is idempotent, so the operator can retry
+// — but they must be told, because a silent failure leaves exactly the
+// inheritance this closes.
+func (e *Engine) DeleteMailbox(ctx context.Context, email string) (retiredTo string, err error) {
+	if e.accounts == nil {
+		return "", errors.New("vayumail: no account store")
+	}
+	dom, local := e.mailboxKey(normEmail(email))
+	if local == "" {
+		return "", errors.New("vayumail: no such account")
+	}
+	if err := e.accounts.Delete(ctx, email); err != nil {
+		return "", err
+	}
+	if e.maildir == nil {
+		return "", nil
+	}
+	return e.maildir.Retire(dom, local, time.Now().UTC().Format("20060102T150405Z"))
+}
+
 // MailboxStats returns message counts for a local account.
 func (e *Engine) MailboxStats(domain, username string) (MailboxStats, error) {
 	if e.maildir == nil {
