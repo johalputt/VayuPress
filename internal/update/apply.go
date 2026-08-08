@@ -127,6 +127,20 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 	if sumAsset == nil {
 		return "", fmt.Errorf("update: release %s is missing a .sha256 checksum for %s", rel.Version, binAsset.Name)
 	}
+	// When this build pins a release signing key, a valid Ed25519 signature is
+	// required too — there is no state where a key is present and the check is
+	// skipped. Resolved here, before any download, so a release missing it is
+	// refused for a reason the operator can read.
+	var sigAsset *Asset
+	if ReleaseRequiresEd25519() {
+		sigAsset = selectSidecar(rel.Assets, binAsset.Name, ".sig")
+		if sigAsset == nil {
+			return "", fmt.Errorf("update: release %s carries no Ed25519 signature for %s, "+
+				"which this build requires in addition to the Sigstore signature. A release "+
+				"missing it did not complete correctly, or did not come from the project",
+				rel.Version, binAsset.Name)
+		}
+	}
 	// No bundle, no install. A release that failed to sign is refused rather than
 	// taken on its checksum, which is the whole point: an attacker who can publish
 	// to the release channel can publish a matching checksum, and could otherwise
@@ -179,7 +193,23 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 		return "", err
 	}
 
-	logging.LogInfo("update", fmt.Sprintf("verified release %s (checksum + Sigstore signature by %s OK)", rel.Version, ReleaseSignerIdentity))
+	// The second lock, with a different key custody model: holding the workflow
+	// identity does not yield this key, and holding this key does not let you
+	// publish under that identity.
+	if sigAsset != nil {
+		sigData, derr := download(ctx, client, sigAsset.DownloadURL)
+		if derr != nil {
+			return "", fmt.Errorf("update: download release signature: %w", derr)
+		}
+		if err := verifyReleaseEd25519(binData, string(sigData)); err != nil {
+			return "", err
+		}
+		logging.LogInfo("update", fmt.Sprintf(
+			"verified release %s (checksum + Sigstore signature by %s + release signing key OK)",
+			rel.Version, ReleaseSignerIdentity))
+	} else {
+		logging.LogInfo("update", fmt.Sprintf("verified release %s (checksum + Sigstore signature by %s OK)", rel.Version, ReleaseSignerIdentity))
+	}
 
 	// Authenticity is settled; now the question authenticity cannot answer. These
 	// bytes are provably the ones the release published — that says nothing about
