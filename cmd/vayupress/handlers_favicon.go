@@ -237,6 +237,54 @@ func (a *App) brandMark(ctx context.Context, scope settings.Scope) ([]byte, stri
 	return b, ct, true
 }
 
+// siteBundleDir returns a hosted domain's deployed bundle directory, and false
+// when it has none.
+//
+// The guard against customSiteRoot() is the load-bearing line. customSiteDirFor
+// falls back to the PRIMARY's directory for a blank or non-hex id — a deliberate
+// choice there, where "a wrong site rather than an escape" is the right trade for
+// a serving path. Here it would be the operator's own bundle icon appearing on a
+// client's card, which is the exact confusion this whole change exists to remove.
+func siteBundleDir(id string) (string, bool) {
+	dir := customSiteDirFor(id)
+	if dir == customSiteRoot() {
+		return "", false
+	}
+	if !customsite.Deployed(dir) {
+		return "", false
+	}
+	return dir, true
+}
+
+// bundleMarkPaths are the names a hand-built site may carry its icon under, in
+// the order serveFavicon already prefers them. Kept in one place so the console
+// and the public path cannot disagree about what counts as a site's mark.
+var bundleMarkPaths = []string{"/favicon.ico", "/favicon.png", "/favicon.svg"}
+
+// siteHasOwnMark reports whether a hosted site has a logo of its OWN — either
+// uploaded through its branding page, or shipped inside its deployed bundle.
+//
+// The bundle half was missing when this shipped, and the omission was visible on
+// the operator's own install: three sites served hand-built bundles carrying
+// their own favicon, the public path had preferred that icon for a year, and the
+// console still drew a generic globe for all three. The data existed; only this
+// question failed to ask for it.
+func (a *App) siteHasOwnMark(ctx context.Context, id string) bool {
+	if a.hasBrandMark(ctx, settings.ForDomain(id)) {
+		return true
+	}
+	dir, ok := siteBundleDir(id)
+	if !ok {
+		return false
+	}
+	for _, p := range bundleMarkPaths {
+		if customsite.Has(dir, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // hasBrandMark reports whether a scope has a mark WITHOUT decoding it.
 //
 // It reads the type key, which is a short MIME string, rather than the image.
@@ -283,10 +331,19 @@ func (a *App) handleOSScopedBrandMark(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	b, ct, ok := a.brandMark(r.Context(), settings.ForDomain(d.ID))
-	if !ok {
-		http.NotFound(w, r)
+	if b, ct, ok := a.brandMark(r.Context(), settings.ForDomain(d.ID)); ok {
+		serveFaviconBytes(w, r, b, ct)
 		return
 	}
-	serveFaviconBytes(w, r, b, ct)
+	// Then the site's own bundle, in the same order the public path prefers
+	// them. An uploaded mark wins because it is the more recent, more deliberate
+	// statement of what this site's logo is.
+	if dir, ok := siteBundleDir(d.ID); ok {
+		for _, p := range bundleMarkPaths {
+			if customsite.Serve(w, r, dir, p) {
+				return
+			}
+		}
+	}
+	http.NotFound(w, r)
 }

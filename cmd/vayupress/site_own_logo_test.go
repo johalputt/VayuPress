@@ -5,9 +5,12 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/settings"
@@ -131,3 +134,101 @@ func TestTheOptimizePageDrawsEachSitesOwnMarkAndAGlobeForTheRest(t *testing.T) {
 }
 
 func b64(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
+
+// THE HALF THAT SHIPPED MISSING, reported from the operator's own install:
+// "still after update no logo appear on this page".
+//
+// Three of that install's sites serve hand-built bundles that carry their own
+// favicon, and serveFavicon has preferred a bundle's icon over the primary's
+// since the day a live install reported the opposite. The console asked only the
+// settings store, so it drew a generic globe for all three while the data sat on
+// disk. Nothing was misconfigured and nothing needed uploading — the question
+// simply never looked where the answer was.
+func TestASiteWithNoUploadStillShowsTheLogoInsideItsOwnBundle(t *testing.T) {
+	a := resetSessionApp(t)
+	a.siteSettings = settings.New(dbpkg.DB)
+	isolateBundleRoot(t)
+	ctx := context.Background()
+
+	// A bundle-backed site: a deployed bundle carrying its own favicon.
+	bundled := seedSiteWithMark(t, a, "bundled.example", nil)
+	deployBundleWithFiles(t, bundled.ID, map[string]string{
+		"index.html":  "<!doctype html><title>b</title>",
+		"favicon.png": "\x89PNG\r\n\x1a\nbundle-icon",
+	})
+
+	// A bundle-backed site whose bundle carries NO icon.
+	bare := seedSiteWithMark(t, a, "bare.example", nil)
+	deployBundleWithFiles(t, bare.ID, map[string]string{
+		"index.html": "<!doctype html><title>x</title>",
+	})
+
+	if !a.siteHasOwnMark(ctx, bundled.ID) {
+		t.Error("a site whose deployed bundle carries its own favicon is reported as having " +
+			"no logo, so its card shows the generic globe while the icon sits on disk")
+	}
+	if a.siteHasOwnMark(ctx, bare.ID) {
+		t.Error("a site whose bundle carries no icon is reported as having one — its card " +
+			"would render an <img> that 404s")
+	}
+}
+
+// customSiteDirFor falls back to the PRIMARY's bundle directory for a blank or
+// non-hex id. That is the right trade where it lives — a wrong site rather than
+// an escape — and exactly the wrong one here, where it would put the operator's
+// own bundle icon on a client's card.
+func TestABlankOrHostileIDNeverBorrowsThePrimarysBundleIcon(t *testing.T) {
+	a := resetSessionApp(t)
+	a.siteSettings = settings.New(dbpkg.DB)
+	isolateBundleRoot(t)
+	ctx := context.Background()
+
+	// The PRIMARY's bundle has an icon. Nothing unidentified may inherit it.
+	deployBundleWithFiles(t, "", map[string]string{
+		"index.html":  "<!doctype html><title>primary</title>",
+		"favicon.ico": "primary-icon-bytes",
+	})
+
+	for _, id := range []string{"", "   ", "../../etc", "NOTHEX", "zzzz"} {
+		if a.siteHasOwnMark(ctx, id) {
+			t.Errorf("id %q was reported as having its own mark; it would be served the "+
+				"operator's bundle icon", id)
+		}
+		if _, ok := siteBundleDir(id); ok {
+			t.Errorf("id %q resolved to a bundle directory", id)
+		}
+	}
+}
+
+// isolateBundleRoot redirects customSiteRoot() into this test's own temp
+// directory for the duration of the test.
+//
+// Not optional hygiene. customSiteRoot() is filepath.Dir(config.Cfg.MediaDir) +
+// "/custom-site", a real data path, and the first version of the fixture below
+// deployed a bundle for the PRIMARY straight into it. That left index.html on
+// disk after the run, so every LATER run — including one with these changes
+// stashed — saw a deployed primary bundle, and a website-mode test that refuses
+// "custom" for an undeployed site began accepting it. It passed alone and failed
+// in the suite, and it kept failing after the process exited, which is what
+// distinguishes writing outside t.TempDir() from ordinary test pollution.
+func isolateBundleRoot(t *testing.T) {
+	t.Helper()
+	prev := config.Cfg.MediaDir
+	config.Cfg.MediaDir = filepath.Join(t.TempDir(), "media")
+	t.Cleanup(func() { config.Cfg.MediaDir = prev })
+}
+
+// deployBundleWithFiles writes a live bundle for one domain id ("" = primary)
+// under the isolated root.
+func deployBundleWithFiles(t *testing.T, id string, files map[string]string) {
+	t.Helper()
+	dir := filepath.Join(customSiteDirFor(id), "current")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

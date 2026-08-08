@@ -17,8 +17,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/johalputt/vayupress/internal/settings"
-
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -55,7 +53,7 @@ func (a *App) handleOSOptimize(w http.ResponseWriter, r *http.Request) {
 				// per site rather than decoding every stored image on render.
 				sites = append(sites, optimizeSite{
 					ID: d.ID, Host: d.Host, Label: siteTypeLabel(d.EffectiveSiteType()),
-					HasMark: a.hasBrandMark(r.Context(), settings.ForDomain(d.ID)),
+					HasMark: a.siteHasOwnMark(r.Context(), d.ID),
 				})
 			}
 		}

@@ -426,6 +426,32 @@ func Serve(w http.ResponseWriter, r *http.Request, base, urlPath string) bool {
 	return true
 }
 
+// Has reports whether the live bundle contains a regular file at urlPath.
+//
+// The existence half of Serve, sharing its confined root and its path cleaning
+// rather than re-deriving them: a second implementation of "which file does this
+// URL mean" is a second place for traversal to be got wrong, and only one of the
+// two would be the one anybody reviews.
+//
+// It exists because the console has to DECIDE something before serving — whether
+// a hosted site has a mark of its own to draw — and answering that by writing a
+// response into a throwaway recorder would make a decision out of a side effect.
+func Has(base, urlPath string) bool {
+	current, _, _ := dirs(base)
+	root, err := os.OpenRoot(current)
+	if err != nil {
+		return false
+	}
+	defer root.Close()
+
+	rel := strings.TrimPrefix(path.Clean("/"+strings.TrimPrefix(urlPath, "/")), "/")
+	if rel == "" {
+		return false
+	}
+	fi, err := root.Stat(rel)
+	return err == nil && fi.Mode().IsRegular()
+}
+
 func manifestPath(base string) string { return filepath.Join(base, "manifest.json") }
 
 // ReadManifest returns the persisted manifest (zero value if none).

@@ -6,7 +6,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.33] — 2026-08-08
+
+Shipped on its own: v3.17.32 put a per-site logo on the Optimize hub and the
+cards stayed generic on the operator's own install, so the feature is live and
+not doing what it says.
+
+It also carries the marketing-site change below, which landed on `main` in
+parallel. Recorded under this version rather than left under `[Unreleased]`
+because it ships in this binary and in the site bundle attached to it, and a
+release whose notes omit what it contains is the same defect as one that
+overstates it.
+
+### Fixed
+
+- **A site whose logo lives inside its deployed bundle now shows it.** v3.17.32
+  asked only the settings store, so a site had a logo only if someone had
+  uploaded one through its branding page. Three sites on the reporting install
+  serve hand-built bundles that carry their own `favicon`, and `serveFavicon` has
+  preferred a bundle's icon over the operator's since a live install reported the
+  opposite a year ago. The console never asked. Nothing was misconfigured and
+  nothing needed uploading — the question simply did not look where the answer
+  was.
+
+  The console now resolves a site's mark the way the public path already does:
+  an uploaded mark first, because it is the more recent and more deliberate
+  statement of what the logo is, then the bundle's own icon.
+
+  The existence check reuses `customsite`'s confined root and path cleaning
+  rather than re-deriving them, because a second implementation of "which file
+  does this URL mean" is a second place for traversal to be got wrong, and only
+  one of the two would be the one anybody reviews.
+
+  `customSiteDirFor` falls back to the PRIMARY's directory for a blank or
+  non-hex id — the right trade where it lives, and exactly the wrong one here,
+  where it would put the operator's own bundle icon on a client's card. That
+  fallback is refused explicitly and a test drives it with blank, whitespace,
+  traversal and non-hex ids.
 
 ### Changed
 
@@ -39,6 +75,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   Directory and published the line only on a 200, because a key URL that 404s is
   worse than none — a reporter who cannot fetch the key sends the report in
   cleartext. Nothing probes it now, so nothing advertises it.
+
+---
 
 ## [3.17.32] — 2026-08-08
 
