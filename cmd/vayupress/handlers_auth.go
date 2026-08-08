@@ -770,6 +770,45 @@ func (a *App) handleUserList(w http.ResponseWriter, r *http.Request) {
 }
 
 // DELETE /api/v1/admin/users/{email}
+// deleteUserAccount is the single root for removing a VayuPress account: it
+// resolves the id, deletes the row, and revokes every API key that account
+// owned. It returns the deleted user's id so the caller can tear down whatever
+// else is keyed on it (sessions).
+//
+// AUDIT FINDING (Section 3). The delete used to be the users row alone.
+// vayu_api_keys.owner_user_id carries no foreign key and key resolution never
+// joins to users, so an administrator who had connected an MCP client kept that
+// connector working after their account was deleted — with whatever grant they
+// approved, up to *:* over the whole install, renewed indefinitely by the
+// rotating OAuth refresh token. The account disappeared from every screen the
+// operator has; the access did not.
+//
+// Revoking rather than deleting the key rows is deliberate: revoked=1 is what
+// key resolution already filters on, it goes through the store's own path so the
+// resolver cache is invalidated rather than bypassed, and the row survives for
+// the audit trail. Keys with an empty owner are untouched — ” means
+// operator/system-owned (migration 062) — and RevokeOwnedBy refuses a blank id
+// outright, so no call site can turn this into a mass revocation.
+func (a *App) deleteUserAccount(ctx context.Context, email string) (string, error) {
+	// Resolve the id BEFORE the delete: everything else is keyed on it, and once
+	// the row is gone there is nothing left to look it up by.
+	var deletedID string
+	if u, err := a.userStore.GetByEmail(ctx, email); err == nil && u != nil {
+		deletedID = u.ID
+	}
+	if err := a.userStore.Delete(ctx, email); err != nil {
+		return "", err
+	}
+	if a.apiKeys != nil && deletedID != "" {
+		if n, err := a.apiKeys.RevokeOwnedBy(ctx, deletedID); err != nil {
+			logging.LogError("auth", "revoking API keys for a deleted user", err.Error())
+		} else if n > 0 {
+			dbpkg.AuditLog("apikey.revoke_owner_deleted", "user:"+deletedID, email, strconv.Itoa(n)+" key(s)")
+		}
+	}
+	return deletedID, nil
+}
+
 func (a *App) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 	if a.userStore == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "users-disabled", "Accounts not initialised", "")
@@ -783,14 +822,9 @@ func (a *App) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := chi.URLParam(r, "email")
-	// Resolve the id BEFORE the delete: sessions are keyed on it, and after the
-	// row is gone there is nothing left to look it up by.
-	var deletedID string
-	if u, err := a.userStore.GetByEmail(r.Context(), email); err == nil && u != nil {
-		deletedID = u.ID
-	}
-	if err := a.userStore.Delete(r.Context(), email); err != nil {
-		writeAPIError(w, r, http.StatusNotFound, "delete-error", err.Error(), "")
+	deletedID, derr := a.deleteUserAccount(r.Context(), email)
+	if derr != nil {
+		writeAPIError(w, r, http.StatusNotFound, "delete-error", derr.Error(), "")
 		return
 	}
 	// Migration 088 removed the users foreign key from sessions, and with it the

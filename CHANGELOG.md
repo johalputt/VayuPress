@@ -6,6 +6,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Security
+
+- **Deleting an administrator did not take back what they granted.** Section 3.
+  An admin who connected an MCP client kept that connector working after their
+  account was deleted — with whatever grant they approved, up to `*:*` over the
+  whole install, and renewed indefinitely because the rotating OAuth refresh
+  token never revisits the grant's owner. Every link in the chain checked
+  something else: `users.Delete` is a single-table `DELETE`,
+  `vayu_api_keys.owner_user_id` carries no foreign key, and key resolution
+  filters on `revoked`/`active`/expiry with no join to `users`. The account
+  vanished from every screen the operator has; the access did not.
+
+  Account deletion now has a single root, `deleteUserAccount`, which resolves the
+  id, deletes the row and revokes every key that account owned — revoking rather
+  than deleting, so it goes through the store's own path (invalidating the
+  resolver cache instead of bypassing it) and the row survives for the audit
+  trail. Keys with an **empty** owner are untouched: `''` is operator/system-owned
+  by design (migration 062), and `RevokeOwnedBy` refuses a blank id outright so
+  no future call site can turn this into a mass revocation of the install's whole
+  API surface. Deleting one administrator leaves every other connector alone,
+  which is pinned separately.
+
 ## [3.17.25] — 2026-08-08
 
 ### Security

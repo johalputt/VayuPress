@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -268,6 +269,43 @@ func (s *Store) Revoke(ctx context.Context, id string) error {
 	}
 	s.invalidate()
 	return nil
+}
+
+// RevokeOwnedBy revokes every key owned by ownerUserID and returns how many were
+// revoked.
+//
+// AUDIT FINDING (Section 3). Deleting a VayuPress user left the keys they owned
+// authenticating. owner_user_id carries no foreign key, users.Delete is a
+// single-table DELETE, and key resolution filters on revoked/active/expiry with
+// no join to users — so an administrator who connected an MCP client with full
+// control kept that control after their account was deleted, renewed
+// indefinitely by the rotating OAuth refresh token. The account vanished from
+// every screen the operator has; the access did not.
+//
+// An EMPTY ownerUserID is refused rather than treated as a wildcard. ” is the
+// documented value for operator/system-owned keys (migration 062), so a caller
+// that passed a blank id through would revoke the install's entire provisioned
+// API surface in one statement. Refusing it here means that mistake cannot be
+// made from any call site.
+//
+// The internal key is exempt for the same reason Revoke exempts it.
+func (s *Store) RevokeOwnedBy(ctx context.Context, ownerUserID string) (int, error) {
+	if strings.TrimSpace(ownerUserID) == "" {
+		return 0, errors.New("apikeys: refusing to revoke by an empty owner id")
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE vayu_api_keys SET revoked=1 WHERE owner_user_id=? AND revoked=0 AND id<>?`,
+		ownerUserID, InternalKeyID)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	if n > 0 {
+		// Same invalidation Revoke performs: without it the cached key keeps
+		// authenticating until the 30s TTL lapses.
+		s.invalidate()
+	}
+	return int(n), nil
 }
 
 // Delete removes a key row entirely.
