@@ -5,6 +5,25 @@
 
 [x-cloak] { display: none !important; }
 
+/* ── One utility the precompiled stylesheet does not carry ──
+   scripts/build-selfhosted-site.sh swaps the browser-side JIT compiler for a
+   precompiled, purged stylesheet. That set is fixed, and diffing every class
+   this page uses against it turns up exactly one that the JIT generated and the
+   compiled sheet lacks — so on a self-hosted install the scrolled navigation bar
+   lost its backdrop and the links sat on bare page.
+
+   Only this one. `decoration-saffron-500/40` and `xs:text-5xl` are also absent,
+   and are deliberately NOT defined here: neither `saffron-500` nor an `xs`
+   breakpoint is in the Tailwind config above, so the JIT never generated them
+   either. They are inert on GitHub Pages today, and writing rules for them here
+   would not be a port — it would be a silent change of appearance. */
+
+.bg-ink-950\/94 { background-color: rgb(4 6 13 / 0.94); }
+
+/* The footer grew a fourth link column (Explore), so the brand block's two
+   columns plus four lists need six. The compiled stylesheet stops at five. */
+@media (min-width: 1024px) { .lg\:grid-cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
 /* ── Custom properties ── */
 :root {
   --teal: #0d9488;

@@ -179,8 +179,6 @@ function app() {
     heroKey:    0,          // bump on world switch to replay hero entrance
     typed:      '',
     copied:     false,
-    stars:      '★',
-    version:    '',
     _typing:    false,
 
     deployScript:
@@ -555,11 +553,25 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
     ],
 
     footer: [
+      // The sections the navigation bar no longer names. Cutting a link from
+      // the bar is only decongestion if the destination survives somewhere —
+      // otherwise it is deletion wearing a tidier hat.
+      { head:'Explore', links:[
+        { label:'Worlds',      href:'#worlds' },
+        { label:'Studio',      href:'#studio' },
+        { label:'Compare',     href:'#compare' },
+        { label:'Gallery',     href:'#gallery' },
+        { label:'Quick start', href:'#quickstart' },
+      ]},
       { head:'Project', links:[
         { label:'GitHub',    href:'https://github.com/johalputt/VayuPress' },
         { label:'Sponsor ♥', href:'https://github.com/sponsors/johalputt' },
         { label:'About the developer', href:'about.html' },
-        { label:'VayuWeb',      href:'vayuweb.html' },
+        // Its own domain rather than the vayuweb.html slug. VayuWeb is a
+        // separate product on a separate host; linking it as a page of this
+        // site said the opposite, and the slug breaks the moment this bundle is
+        // served from anywhere but the directory that file sits in.
+        { label:'VayuWeb',   href:'https://vayuweb.vayupress.com' },
         { label:'Changelog', href:'https://github.com/johalputt/VayuPress/blob/main/CHANGELOG.md' },
         { label:'Releases',  href:'https://github.com/johalputt/VayuPress/releases' },
       ]},
@@ -676,56 +688,9 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
       });
     },
 
-    async fetchVersion() {
-      // Same two-stage, always-live pattern as the star count: a same-origin
-      // version.json baked by the deploy workflow first (instant, never
-      // rate-limited), then the live GitHub releases API to refresh it in the
-      // browser. Falls back silently to whichever value it already has.
-      const setVer = (t) => {
-        if (typeof t === 'string' && /^v?\d/.test(t)) this.version = t.charAt(0) === 'v' ? t : 'v' + t;
-      };
-      try {
-        const b = await fetch('assets/version.json', { cache: 'no-cache' });
-        if (b.ok) { const j = await b.json(); setVer(j.tag_name || j.version); }
-      } catch (_) { /* baked file absent in dev — fall through to the API */ }
-      try {
-        const r = await fetch('https://api.github.com/repos/johalputt/VayuPress/releases/latest', { cache: 'default' });
-        if (!r.ok) return;
-        const d = await r.json();
-        setVer(d.tag_name);
-      } catch (_) { /* offline / rate-limited — keep the baked value */ }
-    },
-
-    async fetchStars() {
-      // Two-stage, always-live star count:
-      //  1) a same-origin stars.json baked fresh by the deploy workflow (and a
-      //     daily schedule) — instant, never rate-limited, works even if the
-      //     visitor's network blocks api.github.com;
-      //  2) the live GitHub API with default caching (honours GitHub's own
-      //     ~60s Cache-Control, so it revalidates instead of pinning a stale
-      //     copy the way force-cache did) — refreshes the baked value in-browser.
-      const setStars = (n) => {
-        if (typeof n === 'number' && n >= 0) this.stars = n.toLocaleString();
-      };
-      try {
-        const b = await fetch('assets/stars.json', { cache: 'no-cache' });
-        if (b.ok) { const j = await b.json(); setStars(j.stargazers_count); }
-      } catch (_) { /* baked file absent in dev — fall through to the API */ }
-      try {
-        const r = await fetch('https://api.github.com/repos/johalputt/VayuPress', { cache: 'default' });
-        if (!r.ok) return;
-        const d = await r.json();
-        setStars(d.stargazers_count);
-      } catch (_) { /* offline / rate-limited — keep the baked value */ }
-    },
-
     init() {
       /* scroll listener */
       addEventListener('scroll', () => this.onScroll(), { passive: true });
-
-      /* fetch star count + latest release version (both live) */
-      this.fetchStars();
-      this.fetchVersion();
 
       /* hero terminal boot (world-aware) */
       this.bootTerminal();

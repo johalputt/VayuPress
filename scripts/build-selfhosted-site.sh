@@ -71,6 +71,21 @@ rm -f "${OUT}/CNAME"   # the GitHub Pages custom domain must not travel with the
 # live. Two days of "the clone does not match" was this.
 rm -f "${OUT}/README.md" "${OUT}/readme.md" "${OUT}/.gitignore" "${OUT}/.nojekyll"
 
+# The gallery. Its 31 images live in docs/screenshots/, OUTSIDE docs/site/, and
+# deploy-site.yml copies them into the published tree — so on GitHub Pages the
+# gallery works and nothing in docs/site/ records the dependency.
+#
+# This script copied docs/site/ alone, so every self-hosted bundle shipped a
+# gallery of 31 broken images. Same shape as the failure in the header: the part
+# that was checked was correct, and the part nobody thought to check was the
+# product. The asset gate below now fails the build if a referenced file is
+# missing, so this cannot regress silently again.
+if [ -d docs/screenshots ]; then
+  mkdir -p "${OUT}/screenshots"
+  cp docs/screenshots/*.png "${OUT}/screenshots/" 2>/dev/null || true
+  echo "copied $(ls -1 "${OUT}/screenshots" | wc -l | tr -d ' ') gallery image(s)"
+fi
+
 python3 - "$OUT" <<'PY'
 import re, sys, pathlib
 
@@ -208,6 +223,81 @@ for page in sorted(out.rglob("*.html")):
             problems.append("%s: an inline <script> survived; it can never run "
                             "without a nonce this bundle cannot carry" % rel)
 
+# ── Every same-origin asset a page asks for must BE in the bundle ────────────
+#
+# The checks above prove nothing is fetched off-origin. They say nothing about
+# whether what IS referenced exists, and that is how a gallery of 31 broken
+# images shipped: the files sat in docs/screenshots/, which only the GitHub Pages
+# workflow ever copied. A 404 and a policy refusal look identical to a visitor —
+# a gap where a picture should be — and neither announces itself.
+#
+# app.js is read too, not just the markup: the gallery is a list of paths in a
+# JavaScript array, so a check confined to HTML would have missed all 31.
+referenced = set()
+# The lookbehind is load-bearing: `:href="l.href"` and `x-bind:src="s.src"` are
+# Alpine EXPRESSIONS, not URLs, and a bare (src|href)= pattern matches the tail
+# of both and then reports `l.href` as a missing file.
+REF = re.compile(r'(?<![:\w-])(?:src|href)="([^"]+)"')
+for page in sorted(out.rglob("*.html")):
+    referenced.update((page.relative_to(out).parent, u) for u in REF.findall(page.read_text(encoding="utf-8")))
+for js in sorted(out.rglob("*.js")):
+    text = js.read_text(encoding="utf-8")
+    for u in re.findall(r"['\"]((?:/|\./)?(?:assets|screenshots)/[A-Za-z0-9._/-]+\.[a-z0-9]{2,5})['\"]", text):
+        referenced.add((pathlib.PurePosixPath("."), u))
+
+for base, url in sorted(referenced):
+    if re.match(r'^(?:https?:)?//|^(?:data|mailto|tel|javascript):|^#', url):
+        continue
+    clean = url.split("?", 1)[0].split("#", 1)[0]
+    if not clean:
+        continue
+    # A root-absolute path the BINARY serves (/static/…, /media/…, /docs/…) is
+    # not this bundle's to carry, and asserting on it would fail every build.
+    if clean.startswith(("/static/", "/media/", "/docs/", "/blog", "/api/")):
+        continue
+    target = (out / clean.lstrip("/")) if clean.startswith("/") else (out / base / clean)
+    try:
+        exists = target.resolve().is_file() or (target / "index.html").is_file()
+    except OSError:
+        exists = False
+    if not exists:
+        problems.append("missing asset: %s is referenced but not in the bundle" % clean)
+
+# ── Every utility class a page uses must EXIST in the compiled stylesheet ────
+#
+# On GitHub Pages the framework is a browser-side JIT: it reads the markup and
+# generates whatever class it finds, so any class an author writes simply works.
+# The bundle swaps that for a stylesheet compiled once from a fixed set. A class
+# the compiler never saw therefore does nothing at all — and does it silently, on
+# one breakpoint, in one component, which is close to unfindable by looking.
+#
+# Found the hard way: changing a button from `sm:inline-flex` to `lg:inline-flex`
+# — a class the compiled sheet does not carry — left it `hidden` at every width,
+# so the Sponsor button vanished from the bundle and from nothing else.
+#
+# Project classes live in assets/style.css, so both files count as coverage.
+tw_path = pathlib.Path("static/vayuweb/tailwind.css")
+local_css = "\n".join(p.read_text(encoding="utf-8") for p in (out / "assets").rglob("*.css"))
+if tw_path.is_file():
+    have = tw_path.read_text(encoding="utf-8") + "\n" + local_css
+
+    def escape_class(c):
+        return re.sub(r'([:\/\[\]\.\(\)%,#])', r'\\\1', c)
+
+    seen = set()
+    for page in sorted(out.rglob("*.html")):
+        # Plain class="…" only. `:class="a ? 'x' : 'y'"` is an expression, and
+        # treating its fragments as class names reports quotes and operators.
+        for m in re.finditer(r'(?<![:\w-])class="([^"]*)"', page.read_text(encoding="utf-8")):
+            for c in m.group(1).split():
+                if re.fullmatch(r'[a-z][a-zA-Z0-9:_\/\.\[\]\(\)%,#-]*', c):
+                    seen.add(c)
+    absent = sorted(c for c in seen if ("." + escape_class(c)) not in have)
+    if absent:
+        problems.append(
+            "%d class(es) used in the markup have no rule in the compiled stylesheet or "
+            "assets/style.css, so they do nothing: %s" % (len(absent), ", ".join(absent)))
+
 # Every file must carry an extension the deploy accepts, or the upload is
 # refused in full and the operator is left with their previous site and no idea
 # why. Checked here, at build time, where it is a one-line fix rather than a
@@ -237,49 +327,6 @@ print("rewrote %d page(s); externalised %d <style> block(s) and %d inline script
 print("checked all %d page(s): no off-origin subresource, no <style> block, no inline script"
       % len(list(out.rglob("*.html"))))
 PY
-
-# ── The two files the GitHub Pages deploy bakes, which the bundle did not ─────
-#
-# The page shows a live star count and the current version. It reads
-# assets/stars.json and assets/version.json first (instant, same-origin) and only
-# then refreshes from the GitHub API. deploy-site.yml writes both at publish
-# time, so on GitHub Pages they are always there.
-#
-# The bundle shipped without them, and the result was invisible in exactly the
-# way everything else here has been: two 404s, then a fallback fetch to
-# api.github.com that `connect-src 'self'` refuses outright. No error on screen —
-# the star count and the version simply never appeared, on a page where they are
-# part of the design.
-#
-# Baked at BUILD time, because a bundle is static: these are a snapshot, and the
-# `generated_at` stamp says so rather than implying they are live. The null form
-# is a shape the page already handles, so a build with no network still produces
-# a bundle that works — it just has nothing to show in those two spots.
-mkdir -p "${OUT}/assets"
-STARS_JSON='{"stargazers_count":null}'
-VERSION_JSON='{"tag_name":null}'
-NOW="$(date -u +%FT%TZ)"
-
-if [ -n "${VAYU_SITE_STARS:-}" ]; then
-  STARS_JSON="$(printf '{"stargazers_count":%s,"generated_at":"%s"}' "$VAYU_SITE_STARS" "$NOW")"
-elif command -v curl >/dev/null 2>&1; then
-  COUNT="$(curl -sS --max-time 10 -H 'Accept: application/vnd.github+json' \
-            "https://api.github.com/repos/johalputt/VayuPress" 2>/dev/null \
-            | grep -o '"stargazers_count"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$' || true)"
-  [ -n "${COUNT:-}" ] && STARS_JSON="$(printf '{"stargazers_count":%s,"generated_at":"%s"}' "$COUNT" "$NOW")"
-fi
-
-if [ -n "${VAYU_SITE_VERSION:-}" ]; then
-  VERSION_JSON="$(printf '{"tag_name":"%s","generated_at":"%s"}' "$VAYU_SITE_VERSION" "$NOW")"
-elif [ -f .release-version ]; then
-  # The version this very build is cutting is a better answer than a network
-  # call that may not be reachable, and it cannot be stale by construction.
-  VERSION_JSON="$(printf '{"tag_name":"%s","generated_at":"%s"}' "$(cat .release-version)" "$NOW")"
-fi
-
-printf '%s\n' "$STARS_JSON"   > "${OUT}/assets/stars.json"
-printf '%s\n' "$VERSION_JSON" > "${OUT}/assets/version.json"
-echo "baked assets/stars.json and assets/version.json"
 
 if command -v zip >/dev/null 2>&1; then
   (cd "$OUT" && zip -qr ../"$(basename "$OUT").zip" .)

@@ -84,39 +84,37 @@
     <nav class="max-w-7xl mx-auto h-14 flex items-center justify-between rounded-2xl px-5 transition-all duration-500"
          :class="scrolled ? 'bg-ink-950/80 backdrop-blur-xl border border-white/[0.07] shadow-2xl shadow-black/50' : ''">
 
-      <a href="#hero" class="flex items-center gap-2.5 group" aria-label="VayuPress home">
+      <a href="#hero" class="flex items-center gap-2.5 group shrink-0" aria-label="VayuPress home">
         <img src="assets/mark-dark.png" alt="VayuPress mark"
              class="brand-mark h-7 w-auto transition-transform duration-300 group-hover:scale-110" />
         <span class="font-display font-semibold text-white tracking-tight hidden sm:block">VayuPress</span>
-        <span class="hidden sm:inline text-[10px] text-teal-300 font-mono border border-teal-800/60 rounded px-1.5 py-0.5 leading-none" x-text="version || 'v3.14.68'"></span>
       </a>
 
-      <!-- desktop links -->
-      <div class="hidden md:flex items-center gap-5 lg:gap-7 text-sm text-gray-400">
-        <a href="#worlds"     class="nav-link hover:text-white transition-colors">Worlds</a>
-        <a href="#products"   class="nav-link hover:text-white transition-colors">Products</a>
-        <a href="#install"    class="nav-link hover:text-white transition-colors">Install</a>
-        <a href="#monetize"   class="nav-link hover:text-white transition-colors">Monetize</a>
-        <a href="#studio"     class="nav-link hover:text-white transition-colors">Studio</a>
-        <a href="#compare"    class="nav-link hover:text-white transition-colors">Compare</a>
-        <a href="#gallery"    class="nav-link hover:text-white transition-colors">Gallery</a>
-        <a href="#quickstart" class="nav-link hover:text-white transition-colors">Quick start</a>
-        <a href="/docs/"      class="nav-link hover:text-white transition-colors">Docs</a>
-        <a href="vayuweb.html"   class="nav-link hover:text-white transition-colors">VayuWeb</a>
-        <a href="about.html"  class="nav-link hover:text-white transition-colors">About</a>
+      <!-- FIVE LINKS, and they are on phones too.
+           This bar carried eleven links, a version chip, a sponsor button and a
+           live star count. Everything competed and nothing led. It was also
+           `hidden md:flex`, so below 768px a visitor got no navigation at all —
+           the congestion and the absence were the same decision.
+           Two of the five fold away on the narrowest screens rather than the
+           whole bar. Every section dropped from here is still reachable: the
+           page scrolls, and the footer's Explore column names them. -->
+      <div class="flex items-center gap-4 sm:gap-5 lg:gap-7 text-sm text-gray-400">
+        <a href="#products" class="nav-link hover:text-white transition-colors">Products</a>
+        <a href="#install"  class="nav-link hover:text-white transition-colors">Install</a>
+        <a href="#monetize" class="nav-link hover:text-white transition-colors hidden sm:inline">Monetize</a>
+        <a href="/docs/"    class="nav-link hover:text-white transition-colors">Docs</a>
+        <a href="about.html" class="nav-link hover:text-white transition-colors hidden sm:inline">About</a>
       </div>
 
       <a href="https://github.com/sponsors/johalputt" target="_blank" rel="noopener"
-         class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded-lg bg-pink-500/[0.12] hover:bg-pink-500/[0.22] border border-pink-400/[0.25] text-sm font-medium text-pink-200 transition-all duration-200 hover:-translate-y-px"
+         class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-pink-500/[0.12] hover:bg-pink-500/[0.22] border border-pink-400/[0.25] text-sm font-medium text-pink-200 transition-all duration-200 hover:-translate-y-px"
          aria-label="Sponsor VayuPress on GitHub">
         <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.25l-.345-.666C4.451 10.855 1.75 8.416 1.75 5.75 1.75 3.679 3.429 2 5.5 2c1.06 0 2.06.49 2.5 1.29C8.44 2.49 9.44 2 10.5 2c2.071 0 3.75 1.679 3.75 3.75 0 2.666-2.701 5.105-5.905 7.834L8 14.25z"/></svg>
         <span>Sponsor</span>
       </a>
-      <a href="https://github.com/johalputt/VayuPress" target="_blank" rel="noopener"
-         class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.09] text-sm font-medium text-gray-200 transition-all duration-200 hover:-translate-y-px"
-         aria-label="Star VayuPress on GitHub">
-        <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
-        <span class="font-mono text-xs tabular-nums" x-text="stars"></span>
+      <a href="#quickstart"
+         class="inline-flex items-center px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.09] text-sm font-medium text-gray-200 transition-all duration-200 hover:-translate-y-px shrink-0">
+        Quick start
       </a>
     </nav>
   </header>
@@ -157,7 +155,7 @@
         <!-- cinematic masked headline — re-keyed on world so it re-rises -->
         <template x-for="hk in [heroKey]" :key="'h'+hk">
           <h1 class="hero-title font-display font-bold tracking-tightest text-white leading-[0.92] mb-6
-                     text-[2.9rem] xs:text-5xl sm:text-6xl lg:text-[5rem]">
+                     text-[2.9rem] sm:text-6xl lg:text-[5rem]">
             <template x-for="(ln, i) in w.title" :key="i">
               <span class="line" :style="`--i:${i}`">
                 <span class="line-in" :class="i === w.title.length-1 ? 'text-gradient' : ''" x-html="ln"></span>
@@ -495,7 +493,7 @@
             </div>
 
             <!-- ── Visual stage ── -->
-            <div class="prod-visual order-1 lg:order-2">
+            <div class="order-1 lg:order-2">
               <div class="prod-frame">
                 <div class="prod-frame-bar">
                   <span class="prod-dot" style="background:#ff5f57" aria-hidden="true"></span>
@@ -1221,7 +1219,7 @@
       <!-- tip -->
       <div data-reveal class="mt-8 sm:mt-10 rounded-xl border border-saffron-600/20 bg-saffron-600/[0.06] p-5 sm:p-6">
         <p class="text-sm text-saffron-300 font-mono font-medium mb-1.5">Tip · go live with a domain</p>
-        <p class="text-sm text-gray-400 leading-relaxed">Point your domain at the VPS and run the installer — it provisions nginx and free Let's Encrypt certificates for your <span class="text-gray-200">website</span>, <span class="text-gray-200 font-mono">blog.</span>, and <span class="text-gray-200 font-mono">mail.</span> hosts automatically. To add the real-time <span class="text-gray-200">VayuTalk</span> relay, point one extra record — <span class="font-mono text-gray-200">talk.yourdomain.com</span> → your server, CDN proxy <span class="text-gray-200">off</span> — and re-run the installer; it adds the certificate, vhost and app advertisement for you. Full steps in the <a href="https://github.com/johalputt/VayuPress/blob/main/docs/INSTALLATION.md" target="_blank" rel="noopener" class="text-gray-100 underline decoration-saffron-500/40 hover:decoration-saffron-400">installation guide</a>.</p>
+        <p class="text-sm text-gray-400 leading-relaxed">Point your domain at the VPS and run the installer — it provisions nginx and free Let's Encrypt certificates for your <span class="text-gray-200">website</span>, <span class="text-gray-200 font-mono">blog.</span>, and <span class="text-gray-200 font-mono">mail.</span> hosts automatically. To add the real-time <span class="text-gray-200">VayuTalk</span> relay, point one extra record — <span class="font-mono text-gray-200">talk.yourdomain.com</span> → your server, CDN proxy <span class="text-gray-200">off</span> — and re-run the installer; it adds the certificate, vhost and app advertisement for you. Full steps in the <a href="https://github.com/johalputt/VayuPress/blob/main/docs/INSTALLATION.md" target="_blank" rel="noopener" class="text-gray-100 underline hover:decoration-saffron-400">installation guide</a>.</p>
       </div>
     </div>
   </section>
@@ -1247,8 +1245,7 @@
                   text-white font-semibold transition-all duration-200
                   hover:shadow-2xl hover:shadow-teal-600/40 hover:-translate-y-0.5 focus-ring">
           <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
-          Star on GitHub
-          <span class="px-2 py-0.5 rounded-md bg-white/15 text-xs font-mono tabular-nums" x-text="stars"></span>
+          View the source
         </a>
         <a href="https://github.com/johalputt/VayuPress/blob/main/docs/INSTALLATION.md"
            target="_blank" rel="noopener"
@@ -1264,7 +1261,10 @@
   <!-- ══════════════ FOOTER ══════════════ -->
   <footer class="pt-16 sm:pt-20 pb-10 sm:pb-12 border-t border-white/[0.06]">
     <div class="max-w-7xl mx-auto px-6">
-      <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-10 pb-10 sm:pb-12 border-b border-white/[0.06]">
+      <!-- Six columns now: the brand block spans two and there are four link
+           columns, one of them the Explore list that catches what the navigation
+           bar no longer names. -->
+      <div class="grid sm:grid-cols-2 lg:grid-cols-6 gap-10 pb-10 sm:pb-12 border-b border-white/[0.06]">
         <div class="lg:col-span-2">
           <img src="assets/logo-dark.png" alt="VayuPress" width="200" height="149"
                class="brand-mark h-9 sm:h-11 w-auto mb-5" loading="lazy" />
@@ -1277,7 +1277,13 @@
             <ul class="space-y-2.5">
               <template x-for="l in col.links" :key="l.label">
                 <li>
-                  <a :href="l.href" target="_blank" rel="noopener"
+                  <!-- target is conditional. It used to be a hardcoded _blank on
+                       every footer link, which was fine while they were all
+                       off-site — the Explore column is on-page anchors, and
+                       opening "#gallery" in a new tab is not navigation. -->
+                  <a :href="l.href"
+                     :target="l.href.charAt(0) === '#' ? null : '_blank'"
+                     :rel="l.href.charAt(0) === '#' ? null : 'noopener'"
                      class="text-sm text-gray-400 hover:text-teal-300 transition-colors focus-ring rounded"
                      x-text="l.label"></a>
                 </li>
