@@ -10,6 +10,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **The autoresponder still answered a forged envelope** — found by the
+  pre-release pass attacking the envelope fix below rather than the original
+  bug. Moving the reply address to the envelope stops a sender aiming it with a
+  header; it does not stop them aiming it with `MAIL FROM:<victim>`, which is
+  equally theirs to write. `shouldAutoReply` now refuses a message whose
+  envelope **failed SPF** — a verdict this server already computes in
+  `verifyInbound` and which `stripTrustedHeaders` protects by deleting any
+  `Authentication-Results` the sender forged before stamping its own.
+
+  Only an explicit `fail` is refused: that is the purported sender's domain
+  saying the IP is not theirs. `none`, `neutral`, `softfail` and the temporary
+  errors keep their reply, because a great many real senders publish no SPF and
+  a responder that went quiet for them would be a broken feature rather than a
+  hardened one. Both halves are pinned, and the over-strict "anything but pass"
+  version fails the control.
+
 - **The mailbox storage quota did not bind IMAP.** Section 2. The limit an
   operator sets per mailbox was enforced on inbound delivery and on the webmail
   send/draft paths, and on nothing else — so `APPEND`, which is how every IMAP

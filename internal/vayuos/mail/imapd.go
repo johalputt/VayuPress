@@ -92,18 +92,31 @@ func (s *IMAPServer) WithImplicitTLS(t *tls.Config, addr string) *IMAPServer {
 // receive, and without the one action that fixes the state.
 func (s *IMAPServer) WithQuota(q func(email string) int64) *IMAPServer { s.quotaFor = q; return s }
 
+// quotaState returns this mailbox's limit and its current usage, both zero when
+// no quota applies.
+//
+// Usage is measured, not cached: AccountSize lists every folder and stats every
+// file. That is affordable once per command and NOT once per message, which is
+// why COPY reads it before its loop and carries the running total itself — the
+// first version of this guard called wouldExceedQuota per message and turned an
+// N-message COPY into N walks of the whole mailbox. Nothing is read at all when
+// the quota is unlimited, so the cost exists only on mailboxes that opted into it.
+func (s *IMAPServer) quotaState(sess *imapSession) (limit, used int64) {
+	if s.quotaFor == nil || s.maildir == nil {
+		return 0, 0
+	}
+	if limit = s.quotaFor(sess.authedMail); limit <= 0 {
+		return 0, 0
+	}
+	return limit, s.maildir.AccountSize(sess.authedDomain, sess.authedUser)
+}
+
 // wouldExceedQuota reports whether adding n bytes would push this session's
 // mailbox past its limit. Unlimited (0, and the nil wiring) is always false, so
 // an install that never set a quota is untouched.
 func (s *IMAPServer) wouldExceedQuota(sess *imapSession, n int) bool {
-	if s.quotaFor == nil || s.maildir == nil {
-		return false
-	}
-	limit := s.quotaFor(sess.authedMail)
-	if limit <= 0 {
-		return false
-	}
-	return s.maildir.AccountSize(sess.authedDomain, sess.authedUser)+int64(n) > limit
+	limit, used := s.quotaState(sess)
+	return limit > 0 && used+int64(n) > limit
 }
 
 // WithUIDStore attaches the persistent UID/UIDVALIDITY store. Without it the
@@ -757,18 +770,21 @@ func (s *IMAPServer) doCopy(line func(string), sess *imapSession, tag, arg strin
 	dest := canonicalFolder(strings.Trim(strings.TrimSpace(mbox), `"`))
 	targets := s.resolveSet(sess, seqPart, byUID)
 	srcUIDs, dstUIDs := []string{}, []string{}
+	// COPY adds bytes: the source stays where it is. Measured once and carried,
+	// because a per-message measurement walks the whole mailbox per message.
+	// MOVE, a few lines below, deliberately has no such check — it is net-neutral
+	// and it is the way back under a quota.
+	quota, used := s.quotaState(sess)
 	for _, m := range targets {
 		raw, err := s.maildir.ReadRawFolder(sess.authedDomain, sess.authedUser, sess.selected, m.id)
 		if err != nil {
 			continue
 		}
-		// COPY adds bytes: the source stays where it is. MOVE, a few lines below,
-		// deliberately has no such check — it is net-neutral and it is the way back
-		// under a quota.
-		if s.wouldExceedQuota(sess, len(raw)) {
+		if quota > 0 && used+int64(len(raw)) > quota {
 			line(tag + " NO [OVERQUOTA] COPY would exceed the mailbox storage quota")
 			return
 		}
+		used += int64(len(raw))
 		newID, err := s.maildir.DeliverTo(sess.authedDomain, sess.authedUser, dest, raw)
 		if err != nil {
 			continue

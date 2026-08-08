@@ -235,3 +235,71 @@ func TestAForwardedMessageIsAnsweredAtItsReturnPath(t *testing.T) {
 			"forwarder@relay.example", got)
 	}
 }
+
+// THE RESIDUAL, found by attacking the fix above rather than the original bug.
+//
+// Moving the reply address to the envelope stops a sender aiming it with a
+// header. It does not stop them aiming it with the envelope, which is equally
+// theirs to write:
+//
+//	MAIL FROM:<victim@example.org>
+//
+// SPF exists precisely to answer this, and this server already computes it:
+// verifyInbound checks the connecting IP against the envelope domain, and
+// stripTrustedHeaders removes any Authentication-Results the sender forged
+// before the real verdict is prepended. So the stored message carries a verdict
+// this server wrote and can trust.
+//
+// A DMARC policy of quarantine or reject already routes such mail to Junk, and
+// junk never reaches the autoresponder. The gap is a domain that publishes SPF
+// -all and no DMARC policy: the message lands in the inbox and the responder
+// answers an address whose owner never wrote here.
+//
+// The rule is deliberately narrow — only an explicit spf=fail is refused.
+// "fail" is the domain owner stating that this IP is not them. none, neutral,
+// softfail and the temporary errors all still get their reply, so the many
+// senders with no SPF at all are unaffected.
+func TestTheAutoresponderIgnoresAMessageThatFailedSPF(t *testing.T) {
+	t.Parallel()
+	const mailbox = "onholiday@example.com"
+	e, q, sentTo := autoreplyHarness(t, mailbox)
+
+	// The header this server stamps on ingest, for a forged envelope.
+	raw := []byte("Authentication-Results: mail.example.com; spf=fail smtp.mailfrom=example.org; dkim=none; dmarc=none\r\n" +
+		"From: Accounts <victim@example.org>\r\nSubject: invoice\r\n\r\nx")
+	if _, err := e.DeliverInbound("victim@example.org", mailbox, raw); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+
+	if got := drainQueue(t, q, sentTo); len(got) != 0 {
+		t.Errorf("a message whose envelope failed SPF was auto-answered, to %+v.\n\n"+
+			"The envelope is as forgeable as the header this fix moved away from. "+
+			"spf=fail is the purported sender's own domain saying the message is not "+
+			"theirs — answering it mails a stranger on their behalf.", got)
+	}
+}
+
+// THE CONTROL for that rule, and the reason it keys on "fail" alone. A great
+// many legitimate senders publish no SPF record at all, and a responder that
+// went quiet for them would be a broken feature rather than a hardened one.
+func TestSendersWithoutSPFStillGetTheirReply(t *testing.T) {
+	t.Parallel()
+	for _, result := range []string{"none", "neutral", "softfail", "temperror", "permerror"} {
+		t.Run(result, func(t *testing.T) {
+			const mailbox = "onholiday@example.com"
+			e, q, sentTo := autoreplyHarness(t, mailbox)
+			raw := []byte("Authentication-Results: mail.example.com; spf=" + result +
+				" smtp.mailfrom=other.com; dkim=none\r\n" +
+				"From: Bob <bob@other.com>\r\nSubject: hi\r\n\r\nx")
+			if _, err := e.DeliverInbound("bob@other.com", mailbox, raw); err != nil {
+				t.Fatalf("deliver: %v", err)
+			}
+			if got := drainQueue(t, q, sentTo); len(got) != 1 {
+				t.Errorf("spf=%s produced %d replies, want 1.\n\n"+
+					"Only an explicit fail means forged. Treating every non-pass as "+
+					"suspicious silences the responder for most of the internet.",
+					result, len(got))
+			}
+		})
+	}
+}

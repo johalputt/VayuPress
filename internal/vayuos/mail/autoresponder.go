@@ -25,6 +25,11 @@ import (
 //     other automatic message carries, and it is the real bounce check — the
 //     machine-name list below is a naming convention the sender picks, so it
 //     backs the envelope rule up rather than standing in for it;
+//   - never respond to mail whose envelope FAILED SPF. The envelope is as
+//     forgeable as the header, so the address rule above closes the easy shot
+//     and this closes the aimed one. Only an explicit fail counts — none,
+//     neutral and softfail still get answered, or the responder would go quiet
+//     for every sender who publishes no SPF;
 //   - never respond to auto-generated/auto-replied mail (Auto-Submitted),
 //     suppressed senders (X-Auto-Response-Suppress), bulk/list/junk
 //     Precedence, or list mail (List-Id / List-Unsubscribe / List-Post);
@@ -208,6 +213,26 @@ func shouldAutoReply(envelopeFrom, mailbox string, raw []byte) string {
 	if strings.TrimSpace(envelopeFrom) == "" {
 		return ""
 	}
+	// The envelope is as forgeable as the header this function used to trust, so
+	// moving to it closes the easy shot and not the aimed one: MAIL FROM:<victim>
+	// points the reply just as well as Reply-To did. SPF is the answer to exactly
+	// that question, and it has already been asked — verifyInbound checks the
+	// connecting IP against the envelope domain, and stripTrustedHeaders deletes
+	// any Authentication-Results the sender wrote before ours is prepended, so
+	// this header is one this server produced.
+	//
+	// Only an explicit "fail" is refused. That is the purported sender's own
+	// domain stating this IP is not them. none / neutral / softfail and the
+	// temporary errors keep their reply, because a great many real senders publish
+	// no SPF at all and a responder that went quiet for them would be a broken
+	// feature rather than a hardened one.
+	//
+	// A DMARC policy of quarantine or reject already routes this mail to Junk,
+	// which never reaches the responder. The gap this closes is the domain that
+	// publishes -all and no DMARC policy.
+	if spfResult(raw) == "fail" {
+		return ""
+	}
 	// Machine-generated or suppressed mail: never answer.
 	if v := strings.ToLower(headerValue(raw, "Auto-Submitted")); v != "" && v != "no" {
 		return ""
@@ -310,4 +335,25 @@ func (e *Engine) maybeAutoReply(envelopeFrom, mailbox string, raw []byte) {
 func sanitizeHeader(s string) string {
 	s = strings.ReplaceAll(s, "\r", " ")
 	return strings.ReplaceAll(s, "\n", " ")
+}
+
+// spfResult extracts the spf= token from the Authentication-Results header this
+// server stamps on ingest, lowercased, or "" when absent.
+//
+// Reading a header is safe here only because of stripTrustedHeaders: a remote
+// sender's own Authentication-Results is deleted before ours is prepended, so
+// the value read back is this server's verdict. Without that this would be the
+// same mistake as trusting Reply-To.
+func spfResult(raw []byte) string {
+	ar := strings.ToLower(headerValue(raw, "Authentication-Results"))
+	i := strings.Index(ar, "spf=")
+	if i < 0 {
+		return ""
+	}
+	rest := ar[i+len("spf="):]
+	// The token ends at the first delimiter: "spf=fail smtp.mailfrom=x; dkim=none".
+	if j := strings.IndexAny(rest, " ;\t"); j >= 0 {
+		rest = rest[:j]
+	}
+	return strings.TrimSpace(rest)
 }
