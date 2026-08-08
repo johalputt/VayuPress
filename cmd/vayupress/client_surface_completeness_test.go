@@ -234,6 +234,67 @@ func TestAClientsSidebarLeadsToTheirOwnPagesAndNowhereElse(t *testing.T) {
 	}
 }
 
+// The last piece of the same finding, carried forward from the release that
+// named it: the VayuMail tab strip offered a client an "Overview" tab pointing
+// at /os/vayumail — the mailbox-administration dashboard the confinement
+// refuses. It was the FIRST tab on every mailbox page they were given, so a
+// paying customer's first click threw them back to /os/mysite with no
+// explanation.
+//
+// The strip now asks clientPathAllowed rather than carrying a second copy of the
+// rule, so it cannot drift from the confinement it reflects.
+func TestTheMailTabStripOffersAClientNothingTheyCannotOpen(t *testing.T) {
+	a := resetSessionApp(t)
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/inbox", nil), boundClient())
+	tabs := a.vayuosNav(req, "mailbox")
+
+	got := regexp.MustCompile(`href="(/os/[^"?#]*)`).FindAllStringSubmatch(tabs, -1)
+	if len(got) == 0 {
+		t.Fatal("a client's mail tab strip is empty — they can no longer move between " +
+			"their own inbox, composer and connect page")
+	}
+	for _, m := range got {
+		if !clientPathAllowed(m[1]) {
+			t.Errorf("the mail tab strip offers a client %q, which the confinement refuses — "+
+				"clicking it bounces them to /os/mysite with no explanation", m[1])
+		}
+	}
+	// It must still be a usable strip, not an empty one: the pages they DO hold.
+	for _, want := range []string{"/os/vayumail/inbox", "/os/vayumail/compose", "/os/vayumail/connect"} {
+		if !strings.Contains(tabs, `href="`+want+`"`) {
+			t.Errorf("the strip no longer offers %q, which a client is sold", want)
+		}
+	}
+}
+
+// THE CONTROL, and the reason the filter is keyed on the client role rather than
+// applied to everyone: a mailbox-only holder is NOT a client and legitimately
+// reaches the whole non-admin strip, Overview included. Filtering unconditionally
+// would take that away to fix somebody else's problem.
+func TestTheMailTabStripIsUnchangedForAMailboxHolder(t *testing.T) {
+	a := resetSessionApp(t)
+
+	holder := &users.User{ID: "m1", Email: "boss@example.com", Role: users.RoleAuthor, MailAddress: "boss@example.com"}
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/inbox", nil), holder)
+	tabs := a.vayuosNav(req, "mailbox")
+
+	for _, want := range []string{"/os/vayumail", "/os/vayumail/compose", "/os/vayumail/inbox",
+		"/os/vayumail/connect", "/os/vayumail/sent"} {
+		if !strings.Contains(tabs, `href="`+want+`"`) {
+			t.Errorf("a mailbox holder lost the %q tab. The confinement filter is meant for "+
+				"agency clients only; applying it to everyone removes a working page from "+
+				"people who were never confined.", want)
+		}
+	}
+	// And the admin-only tabs stay hidden from them, as before.
+	for _, hidden := range []string{"/os/vayumail/accounts", "/os/vayumail/dns", "/os/vayumail/pgp"} {
+		if strings.Contains(tabs, `href="`+hidden+`"`) {
+			t.Errorf("a non-admin was offered the %q tab", hidden)
+		}
+	}
+}
+
 // The additions sit UNDER /os/vayumail/accounts. Exact-or-child matches
 // downward only, so granting the app-password and avatar leaves must not grant
 // the parent — where create, delete, update and TOTP live.

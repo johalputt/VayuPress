@@ -1119,7 +1119,7 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 <div class="table-wrap"><table class="table"><thead><tr><th>Component</th><th>Status</th><th>Detail</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>`
 	}
 	body := `<div class="page-header"><h1>VayuMail</h1></div>
-<p class="page-sub">Your mailboxes — read, compose and connect any mail app. Everything in one place.</p>` + vayuosNav("overview", admin) + statStrip + `
+<p class="page-sub">Your mailboxes — read, compose and connect any mail app. Everything in one place.</p>` + a.vayuosNav(r, "overview") + statStrip + `
 <div class="section-head"><span class="section-head__title">Your mailbox</span><span class="section-head__hint">Read, send and connect an app</span></div>
 <div class="grid grid-3">
   <div class="card"><div class="card-title">Inbox</div><p class="muted">Read mail received into your mailboxes (Maildir).</p><a class="btn" href="/os/vayumail/inbox">Open inbox</a></div>
@@ -1173,7 +1173,7 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 		wkdRows.WriteString(`<tr><td colspan="2" class="muted">No mailboxes yet.</td></tr>`)
 	}
 	body := `<div class="page-header"><h1>VayuPGP keys</h1></div>
-<p class="page-sub">Ed25519 + Curve25519 · private keys AES-256-GCM encrypted at rest · published via WKD.</p>` + vayuosNav("pgp", true) + `
+<p class="page-sub">Ed25519 + Curve25519 · private keys AES-256-GCM encrypted at rest · published via WKD.</p>` + a.vayuosNav(r, "pgp") + `
 <div class="section-head"><span class="section-head__title">Keypairs</span><span class="section-head__hint">One per mailbox — generated automatically on account creation</span></div>
 <div class="card">
 <div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Fingerprint</th><th>State</th><th>Expires</th><th>Public key</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div>
@@ -1210,7 +1210,7 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>VayuMail · DNS</h1></div>`)
 	body.WriteString(`<p class="page-sub">Native outbound mail sovereignty — publish these records, then verify every mail domain. Tap a card to expand it.</p>`)
-	body.WriteString(vayuosNav("mail", true))
+	body.WriteString(a.vayuosNav(r, "mail"))
 	if !mc.Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set your domain (DOMAIN env / first-boot wizard) to activate DKIM signing and outbound delivery.</div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -1265,7 +1265,7 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>`)
 	body.WriteString(`<p class="page-sub">Upstream PGP &amp; crypto dependency monitoring — VayuPress never reaches out on its own.</p>`)
-	body.WriteString(vayuosNav("security", true))
+	body.WriteString(a.vayuosNav(r, "security"))
 	if !rep.Enabled {
 		body.WriteString(`<div class="empty-state">Automatic background checks are off by default (privacy first) — VayuPress never reaches out on its own. Click <strong>Check now</strong> above for a one-time, on-demand check (it fetches only public release metadata from GitHub and sends nothing about your site). To run checks automatically, set <code>VAYUOS_SECURITY_UPDATES=on</code> and restart.</div>`)
 	} else if rep.UpdatesAvailable > 0 {
@@ -1350,7 +1350,21 @@ func (a *App) handleVayuOSHealthJSON(w http.ResponseWriter, r *http.Request) {
 // DNS records, the security-update watcher and account management — so the four
 // non-admin roles (editor, author, reviewer, mailbox) only ever see the mail
 // surface they actually use (Overview, Compose, Mailbox, Connect, Outbox).
-func vayuosNav(active string, admin bool) string {
+func (a *App) vayuosNav(r *http.Request, active string) string {
+	admin := a.isAdminRequest(r)
+	// A bound client reaches only part of this strip. Overview points at
+	// /os/vayumail — the mailbox-administration dashboard — which the confinement
+	// refuses, so it was the FIRST tab on the page and threw a paying customer
+	// back to /os/mysite with no explanation on their first click.
+	//
+	// Asked of clientPathAllowed rather than answered with a second adminOnly
+	// flag: the confinement already knows what a client can open, and a duplicate
+	// rule here would be a future divergence. Non-clients are unfiltered, because
+	// a mail-only holder legitimately reaches every tab a non-admin sees.
+	confined := false
+	if u := currentUser(r); u != nil && u.Role == roleClientName {
+		confined = true
+	}
 	type navTab struct {
 		key, label, href string
 		adminOnly        bool
@@ -1370,6 +1384,9 @@ func vayuosNav(active string, admin bool) string {
 	sb.WriteString(`<div class="vmtabs">`)
 	for _, it := range items {
 		if it.adminOnly && !admin {
+			continue
+		}
+		if confined && !clientPathAllowed(it.href) {
 			continue
 		}
 		cls := "tab"
@@ -1797,7 +1814,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Mailbox</h1></div>`)
 	body.WriteString(`<p class="page-sub">Received &amp; filed mail (Maildir).</p>`)
-	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
+	body.WriteString(a.vayuosNav(r, "mailbox"))
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to a real domain to provision mailboxes. The inbound SMTP/IMAP listener runs by default once a domain is set (disable with <code>VAYUOS_MAIL_INBOUND=off</code>); receiving external mail also needs port 25 reachable and MX/A DNS records pointing at this host.</div>`)
@@ -2277,7 +2294,7 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	sf := parseSearchFilters(r)
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Search mail</h1><span class="muted text-sm">` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + `</span></div>`)
-	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
+	body.WriteString(a.vayuosNav(r, "mailbox"))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive or no mailbox selected. <a href="/os/vayumail/inbox">Back to Mailbox</a></div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -2550,7 +2567,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body strings.Builder
-		body.WriteString(`<div class="page-header"><h1>Message</h1></div>` + vayuosNav("mailbox", a.isAdminRequest(r)))
+		body.WriteString(`<div class="page-header"><h1>Message</h1></div>` + a.vayuosNav(r, "mailbox"))
 		body.WriteString(`<div class="empty-state">Message not available. <a href="/os/vayumail/inbox">Back to Mailbox</a></div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
@@ -2563,7 +2580,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body strings.Builder
-		body.WriteString(`<div class="page-header"><h1>Message</h1></div>` + vayuosNav("mailbox", a.isAdminRequest(r)))
+		body.WriteString(`<div class="page-header"><h1>Message</h1></div>` + a.vayuosNav(r, "mailbox"))
 		body.WriteString(`<div class="empty-state">Could not read message. <a href="/os/vayumail/inbox?user=` + qparam(user) + `">Back</a></div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
@@ -2575,7 +2592,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Message</h1><span class="muted text-sm">` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + ` · ` + html.EscapeString(folder) + `</span></div>`)
-	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
+	body.WriteString(a.vayuosNav(r, "mailbox"))
 	body.WriteString(card)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -2923,7 +2940,7 @@ func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Outbox</h1></div>`)
 	body.WriteString(`<p class="page-sub">Outbound delivery queue — auto-retries with backoff until sent, with one-click Resend.</p>`)
-	body.WriteString(vayuosNav("outbox", a.isAdminRequest(r)))
+	body.WriteString(a.vayuosNav(r, "outbox"))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to activate outbound delivery.</div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
