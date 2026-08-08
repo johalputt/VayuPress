@@ -209,11 +209,15 @@ func (a *App) serveFavicon(fallback []byte) http.HandlerFunc {
 	}
 }
 
-// brandMark returns the mark stored for one scope. An invalid scope — which is
-// what ForDomain("") deliberately yields for the primary's sentinel id — reports
-// no mark rather than falling through to the operator's own, because resolving a
-// blank id to the primary is how a hosted domain silently inherits the
-// operator's branding.
+// brandMark returns the mark stored for one scope.
+//
+// The Valid() check is a SECOND line, not the one holding the boundary, and it
+// is worth being accurate about which is which: settings.Store.Get already
+// returns the product default for an unset scope and refuses to fall through to
+// the primary's stored value, with a comment recording that inheritance as the
+// defect it was. This guard exists so that a reader of THIS function does not
+// have to know that, and so a future default for brand.favicon_type — today an
+// empty string — could not turn "no scope" into "has a mark".
 func (a *App) brandMark(ctx context.Context, scope settings.Scope) ([]byte, string, bool) {
 	if a.siteSettings == nil || !scope.Valid() {
 		return nil, "", false
