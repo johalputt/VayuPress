@@ -34,6 +34,14 @@ import (
 // there is no channel through which a compromised web session could influence
 // what root executes.
 //
+// That sentence is about EXECUTION, and it stayed true while a second question
+// went unasked: where does root WRITE? The worker used to put its result, lock
+// and log inside the state directory, which the installer gives to the service
+// user — so a compromised web process could not change the command, but could
+// replace those names with symlinks and choose the file root truncated. Root's
+// output now lives in a root-owned directory (provisionOutputDir) where the
+// unprivileged side cannot create names at all.
+//
 // A daily .timer runs the same worker regardless, so a DNS record pointed later
 // is picked up without anyone asking.
 
@@ -77,6 +85,36 @@ var (
 	provisionWorkerPath = "/usr/local/lib/vayupress/provision-subdomains.sh"
 	provisionUnitPath   = "/etc/systemd/system/vayupress-provision.path"
 )
+
+// provisionOutputDir is where the ROOT worker writes its result and log.
+//
+// Deliberately not provisionStateDir(). That directory belongs to the service
+// user so the panel can create its request in it, and anything root writes into
+// a directory the unprivileged user owns can be pointed elsewhere first with a
+// symlink. Root's own files live where the web process cannot create names.
+const provisionOutputDir = "/var/lib/vayupress-provision"
+
+// provisionOutputPath resolves one of the worker's output files, preferring the
+// root-owned directory and falling back to the old in-state-directory location.
+//
+// The fallback is not indefinite tolerance of the unsafe path; it is for the
+// window where a binary has updated and the root worker has not yet upgraded
+// itself. Without it the panel would show "never run" on a working install and
+// send an operator looking for a fault that is not there. Reading a file the
+// service user could have written is safe in a way WRITING to one is not: the
+// worst case is a wrong status on a host whose web process is already
+// compromised, which is not a boundary this can defend anyway.
+func provisionOutputPath(name string) string {
+	if p := filepath.Join(provisionOutputDir, name); fileExists(p) {
+		return p
+	}
+	return filepath.Join(provisionStateDir(), name)
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
 
 func provisionStateDir() string {
 	if d := strings.TrimSpace(os.Getenv("VAYU_DATA_DIR")); d != "" {
@@ -128,7 +166,7 @@ func provisionUnitsInstalled() bool {
 
 func readProvisionResult() (provisionResult, bool) {
 	var res provisionResult
-	b, err := os.ReadFile(filepath.Join(provisionStateDir(), provisionResultFile))
+	b, err := os.ReadFile(provisionOutputPath(provisionResultFile))
 	if err != nil {
 		return res, false
 	}
@@ -269,7 +307,7 @@ func provisionCardHTML() string {
 		if res.Ran == 0 {
 			detail += `<p class="text-xs muted">A helper skips when its DNS is not pointed — or when <code>DOMAIN</code> ` +
 				`cannot be read from <code>/etc/vayupress/env</code>, which skips every one of them at once. ` +
-				`Check <code>/var/lib/vayupress/provision.log</code> for the reason.</p>`
+				`Check <code>/var/lib/vayupress-provision/provision.log</code> for the reason.</p>`
 		}
 	}
 

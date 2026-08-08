@@ -81,6 +81,12 @@ chmod 0755 "$LIB_DIR"
 ok "Helpers installed to ${LIB_DIR} (root-owned)"
 
 # ── 2. systemd units ─────────────────────────────────────────────────────────
+# Root's provisioning output lives outside the service's StateDirectory, which is
+# owned by the unprivileged service user. Root writing into a directory that user
+# owns lets it replace the name with a symlink first, and a shell redirect
+# follows one. 0755 so the panel can still read the result and log it renders.
+install -d -m 0755 -o root -g root /var/lib/vayupress-provision
+
 cat > /etc/systemd/system/vayupress-provision.service <<'SYSTEMD'
 [Unit]
 Description=VayuPress — provision subdomain certificates and vhosts
@@ -254,7 +260,7 @@ info "Provisioning subdomains…"
 if bash "${LIB_DIR}/provision-subdomains.sh"; then
   ok "Provisioning finished."
 else
-  warn "Provisioning reported a problem — see /var/lib/vayupress/provision.log"
+  warn "Provisioning reported a problem — see /var/lib/vayupress-provision/provision.log"
 fi
 
 echo

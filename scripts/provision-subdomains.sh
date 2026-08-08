@@ -40,10 +40,33 @@ set -u
 STATE_DIR=/var/lib/vayupress
 LIB_DIR=/usr/local/lib/vayupress
 REQUEST="${STATE_DIR}/provision.request"
-RESULT="${STATE_DIR}/provision.result"
-LOCK="${STATE_DIR}/provision.lock"
+
+# Root's own files live OUTSIDE the state directory, and that separation is a
+# security control rather than tidiness.
+#
+# STATE_DIR is the service's systemd StateDirectory and is `chown -R
+# www-data:www-data` by the installer, because the unprivileged panel has to
+# create its request there. Anything root writes into a directory the
+# unprivileged user owns can be replaced by that user with a symlink first, and
+# a shell redirect follows symlinks: root would then truncate, or append to,
+# whatever file the web process chose. It needs no race — the daily timer is
+# enough — and fs.protected_symlinks does not help, because that only covers
+# world-writable STICKY directories such as /tmp.
+#
+# Removing the link before writing was rejected: it leaves a window between the
+# unlink and the open, and a privilege boundary closed most of the time reads as
+# closed. Writing where the unprivileged side cannot create names at all has no
+# window. 0755 so the panel can still READ the result and the log it renders.
+OUT_DIR=/var/lib/vayupress-provision
+RESULT="${OUT_DIR}/provision.result"
+LOCK="${OUT_DIR}/provision.lock"
+LOG="${OUT_DIR}/provision.log"
 
 log() { echo "[provision] $*"; }
+
+# Self-healing rather than an installer dependency: a worker that upgraded
+# itself before the installer ran would otherwise write nowhere.
+install -d -m 0755 -o root -g root "$OUT_DIR" 2>/dev/null || true
 
 # Serialise: the .path unit and the .timer can fire close together, and two
 # certbot runs against the same name at once is how rate limits get burned.
@@ -297,8 +320,8 @@ for helper in setup-openpgpkey-subdomain.sh setup-talk-subdomain.sh \
   script="${LIB_DIR}/${helper}"
   [[ -x "$script" ]] || { log "skip ${helper} (not installed)"; continue; }
   log "running ${helper}"
-  before="$(wc -c <"${STATE_DIR}/provision.log" 2>/dev/null || echo 0)"
-  if bash "$script" >>"${STATE_DIR}/provision.log" 2>&1; then
+  before="$(wc -c <"$LOG" 2>/dev/null || echo 0)"
+  if bash "$script" >>"$LOG" 2>&1; then
     # An exit status of 0 is not the same as work done: every helper exits 0
     # when it skips, by design. Read back what this run appended and classify it,
     # so the result cannot claim success for a no-op.
@@ -316,7 +339,7 @@ for helper in setup-openpgpkey-subdomain.sh setup-talk-subdomain.sh \
     # The nginx abort is recorded as a PROBLEM rather than a skip. It needs the
     # operator; a subdomain whose DNS is simply not pointed yet does not, and
     # putting them in one column loses the difference.
-    appended="$(tail -c "+$((before + 1))" "${STATE_DIR}/provision.log" 2>/dev/null || true)"
+    appended="$(tail -c "+$((before + 1))" "$LOG" 2>/dev/null || true)"
     if printf '%s' "$appended" | grep -qi "ALREADY invalid"; then
       failed=$((failed + 1))
       details+=("${helper}=nginx-config-broken")
@@ -355,9 +378,11 @@ cat > "$RESULT" <<JSON
 JSON
 
 # Keep the log from growing without bound on a daily timer.
-if [[ -f "${STATE_DIR}/provision.log" ]]; then
-  tail -n 2000 "${STATE_DIR}/provision.log" > "${STATE_DIR}/provision.log.tmp" 2>/dev/null &&
-    mv "${STATE_DIR}/provision.log.tmp" "${STATE_DIR}/provision.log"
+if [[ -f "$LOG" ]]; then
+  # The temp file goes in OUT_DIR too: a scratch name in the unprivileged
+  # directory is the same symlink hazard as the file it is trimming.
+  tail -n 2000 "$LOG" > "${OUT_DIR}/provision.log.tmp" 2>/dev/null &&
+    mv "${OUT_DIR}/provision.log.tmp" "$LOG"
 fi
 
 log "finished: ${ran} provisioned, ${skipped} skipped, ${failed} reported a problem"

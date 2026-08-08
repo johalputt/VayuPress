@@ -44,6 +44,30 @@ the privileged one. That design is sound and was left alone.
   `vayupress domains list` and skipped rather than fatal — one unusable entry
   must not stop every other domain renewing its certificate.
 
+- **Root no longer writes into the directory the unprivileged service owns.**
+  `admin_os_provision.go` opens by saying the privilege boundary "is not
+  crossed", and it is right about the half it describes: the request file is
+  empty, so nothing can influence *what* root executes. The unasked question was
+  where root **writes**.
+
+  `/var/lib/vayupress` is the service's systemd `StateDirectory` and is
+  `chown -R www-data:www-data`, because the panel has to create its request
+  there. The root worker put its result, lock and log in that same directory. A
+  shell redirect follows symlinks, and owning a directory is enough to replace a
+  name with one — so a compromised web process could not change the command, but
+  could point `provision.result` at any file on the system and let root truncate
+  it on the next run. No race is needed; the daily timer suffices, and
+  `fs.protected_symlinks` does not apply because it only covers world-writable
+  *sticky* directories such as `/tmp`.
+
+  Root's output now lives in a root-owned directory the web process cannot create
+  names in. Removing the link before writing was rejected: it leaves a window
+  between the unlink and the open, and a privilege boundary that holds most of the
+  time reads as one that holds. The worker creates the directory itself, so a
+  helper that self-upgrades before the installer runs still has somewhere to
+  write, and the panel reads the new location first and falls back to the old one
+  so status keeps rendering while a worker is still on the previous version.
+
 - **The code root downloads and executes is pinned to the workflow and branch
   that signs it, not merely to the repository.** Every provisioning run fetches a
   tarball of helper scripts from the latest release, verifies it, and installs it

@@ -54,7 +54,7 @@ const provisionLogLines = 400
 // worker, and a console page must never be the thing that reads an unbounded
 // file into memory.
 func provisionLogTail(n int) []string {
-	f, err := os.Open(filepath.Clean(filepath.Join(provisionStateDir(), "provision.log")))
+	f, err := os.Open(filepath.Clean(provisionOutputPath("provision.log")))
 	if err != nil {
 		return nil
 	}
@@ -634,7 +634,7 @@ func workerTraceCheck(logAt time.Time, haveLog bool, resAt time.Time, haveRes bo
 
 // provisionFileTime returns a provisioning state file's modification time.
 func provisionFileTime(name string) (time.Time, bool) {
-	fi, err := os.Stat(filepath.Clean(filepath.Join(provisionStateDir(), name)))
+	fi, err := os.Stat(filepath.Clean(provisionOutputPath(name)))
 	if err != nil {
 		return time.Time{}, false
 	}
