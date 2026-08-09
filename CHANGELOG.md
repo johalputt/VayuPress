@@ -10,6 +10,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **The operator's console answered on every client's domain.**
+  `scripts/setup-vayudomain.sh` writes one reverse-proxy vhost per hosted
+  domain, and its HTTPS server block proxied `location /` to the shared origin
+  with nothing carved out. The origin serves one app on every host it answers
+  for, so `https://aclientsdomain/os` rendered this install's sign-in page,
+  `/oauth/authorize` its consent screen, `/mcp` its connector endpoint and
+  `/api/v1/admin/*` its admin API.
+
+  Authentication held throughout — none of it was reachable without a session,
+  and no client gained access to anything. It is still the property ADR-0152
+  claims in as many words ("no client can reach … the operator's controls"): a
+  login form for the whole install, served on a hostname whose DNS a client
+  controls, is where credential-stuffing and a convincing phishing page aim.
+  `scripts/setup-mcp-subdomain.sh` had already narrowed exactly this on its own
+  vhost; the client vhost had not.
+
+  The mechanism is ten `return 404` locations in that script's `write_full`,
+  covering `/os`, `/admin`, `/oauth`, `/mcp` and `/api/v1/admin` in both their
+  exact (`location =`) and subtree (`location ^~ …/`) forms. 404 rather than
+  403: on that hostname those paths genuinely do not exist, and a 403 confirms
+  to a prober that something is behind them.
+
+  **`/api` is deliberately NOT refused wholesale.** The analytics beacon posts
+  to `/api/v1/analytics/collect` on the current origin, so the obvious blanket
+  rule would have switched off analytics on every client site while every page
+  went on loading normally. Only `/api/v1/admin` is an operator control; the
+  rest of `/api` is public, member- or credential-gated and belongs to the site
+  being served. `/__vayushield` and `/__vayuanalytics` stay reachable for the
+  same reason — they are the visitor-facing halves of the edge.
+
+  Matching is whole-segment so the refusal cannot cost a client access to their
+  own pages: `/oscar`, `/administration`, `/mcphersons-bakery` and `/oauthorize`
+  all still reach their site. `client_vhost_boundary_test.go` asserts the
+  generated template directly — every refusal present in both forms, no bare
+  prefix that would swallow a client page, `/api` not blanket-refused, and the
+  nginx list agreeing with the middleware's `evalRefusedPath`. Verified beyond
+  the template too: the rendered vhost was loaded into a real nginx and probed,
+  where all twelve operator paths return 404, all eleven client paths reach the
+  origin, and `/o%73/login`, `/os//login` and `/foo/../os/login` are normalised
+  into the refusal rather than around it.
+
 - **The per-domain eval opt-in reached the member portal and the checkout
   pages.** `SiteConfig.AllowEval` relaxes the Content-Security-Policy to admit
   `'unsafe-eval'` for one hosted domain serving a hand-built bundle. The rule it
@@ -123,9 +164,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   What this still does not give you: the published binary is not independently
   rebuildable by a stranger. v3.17.47 was built with go1.26.5 — readable from
   the artifact with `go version <file>` — and a different Go or C toolchain
-  yields a different, equally deterministic result. Nothing here pins the
-  release compiler. That is the real open work, and it is a narrower and more
-  honest statement than the one being retracted.
+  yields a different, equally deterministic result. When this entry was written
+  nothing pinned the release compiler, which is addressed by the `toolchain`
+  directive above; a stranger with the same tag now gets the same Go. The C
+  toolchain and the runner image are still unpinned, so this remains a narrower
+  claim than "anyone can rebuild the published artifact", and that gap is the
+  real open work.
+
+### Upgrade Notes
+
+- **The client-vhost refusal above arrives with the root-side helpers, not with
+  the binary.** `setup-vayudomain.sh` lives in `/usr/local/lib/vayupress`, which
+  the in-app updater runs unprivileged and cannot write to — so updating from
+  the console alone leaves the old vhost template in place and `/os` keeps
+  answering on client domains until the helpers are refreshed and the daily
+  provisioning sweep rewrites each vhost. The console already reports stale
+  root-side helpers on a site's certificate panel; that notice is the signal
+  this change is not yet live on an install.
 
 ---
 

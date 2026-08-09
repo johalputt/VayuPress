@@ -279,6 +279,46 @@ server {
 
     location ^~ /.well-known/acme-challenge/ { root ${CACHE_DIR}; default_type text/plain; try_files \$uri =404; }
 
+    # The operator's controls are not part of a client's site.
+    #
+    # This vhost proxies "/" to the shared origin, and the origin serves ONE app
+    # on every host it answers for. So before these blocks, the console login,
+    # the admin API, the OAuth consent screen and the MCP endpoint all answered
+    # on every provisioned client hostname — a client's own domain offered a
+    # sign-in box for the whole install. Authentication still held (nothing here
+    # was reachable unauthenticated), but ADR-0152 states that no client can
+    # reach the operator's controls, and a login form on their domain is exactly
+    # that reach: it is where credential-stuffing and a convincing phishing page
+    # aim, on a hostname whose DNS the client controls.
+    #
+    # 404 rather than 403: on this hostname these paths genuinely do not exist,
+    # and a 403 would confirm to a prober that the console lives behind it.
+    #
+    # Matching is whole-segment on purpose. A bare prefix would take a client's
+    # own /oscar or /apirefs page down with it, and this must not cost anyone
+    # access to their own site.
+    #
+    # No case-insensitive regex, deliberately: chi routes case-sensitively, so
+    # /OS/login is already a 404 at the origin, and a regex location here would
+    # lose the "^~ stops regex evaluation" property these blocks rely on.
+    #
+    # WHY /api IS NOT HERE, only /api/v1/admin: the analytics beacon posts to
+    # /api/v1/analytics/collect on the CURRENT origin, so refusing /api wholesale
+    # would silently end analytics on every client site. The rest of /api is
+    # public, member- or credential-gated and belongs to the site being served.
+    # Same reason /__vayushield and /__vayuanalytics stay reachable — those are
+    # the visitor-facing halves of the edge, not operator controls.
+    location = /os               { return 404; }
+    location ^~ /os/             { return 404; }
+    location = /admin            { return 404; }
+    location ^~ /admin/          { return 404; }
+    location = /oauth            { return 404; }
+    location ^~ /oauth/          { return 404; }
+    location = /mcp              { return 404; }
+    location ^~ /mcp/            { return 404; }
+    location = /api/v1/admin     { return 404; }
+    location ^~ /api/v1/admin/   { return 404; }
+
     # Reverse-proxy the whole site to the origin. Host resolution in the binary
     # scopes every response to this domain (VayuDomains Stage 2/3).
     location / {

@@ -377,6 +377,15 @@ nothing.
 
 - A client requesting each operator-only path is refused; adding a bare `/os`
   prefix to the surface table must fail the suite.
+- The operator's controls do not answer at all on a client's hostname. The
+  vhost `scripts/setup-vayudomain.sh` writes refuses `/os`, `/admin`, `/oauth`,
+  `/mcp` and `/api/v1/admin` with a 404 before the request reaches the binary,
+  so the sign-in form for this install is not served on a hostname whose DNS a
+  client controls. This is the outer half of the claim above and is independent
+  of the in-process audience check — the point is that both hold. It must stay
+  whole-segment: a rule that also refuses a client's own `/oscar` fails the
+  suite, and so does refusing `/api` wholesale, which would take the analytics
+  beacon on every client site with it.
 - Every `/os` route declares an audience; registering one that does not must fail
   the build, naming it.
 - A client whose binding is empty, disabled, or the primary domain gets no
