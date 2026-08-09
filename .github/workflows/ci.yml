@@ -370,6 +370,21 @@ jobs:
           # carries the crypto/tls + crypto/x509 security patches (GO-2025-*).
           go-version: 'stable'
           cache: true
+      - name: Use the pinned toolchain for the analysers too
+        # go.mod pins the compiler, but `go install <tool>@latest` builds the
+        # tool in module-aware mode OUTSIDE this module, so it picks a toolchain
+        # from the tool's own go directive. A staticcheck or golangci-lint built
+        # with an older Go then refuses the newer stdlib outright:
+        #   "the Go language version (go1.25) used to build golangci-lint is
+        #    lower than the targeted Go version (1.26.5)"
+        # Exporting GOTOOLCHAIN makes every later step — tool builds included —
+        # use the pinned compiler. Read from go.mod rather than written here, so
+        # the pin has exactly one source.
+        run: |
+          TC=$(sed -n 's/^toolchain //p' go.mod)
+          [ -n "$TC" ] || { echo "::error::go.mod has no toolchain directive"; exit 1; }
+          echo "GOTOOLCHAIN=$TC" >> "$GITHUB_ENV"
+          echo "pinned toolchain: $TC"
       - name: go vet
         run: go vet ./...
       - name: gofmt (must be clean)

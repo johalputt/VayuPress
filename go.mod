@@ -2,6 +2,13 @@ module github.com/johalputt/vayupress
 
 go 1.25.8
 
+// Pinned so a release is reproducible from its tag alone. tag-release.yml
+// builds with GOTOOLCHAIN=auto, so this directive — not whatever the runner
+// happens to have installed — decides the compiler, and anyone checking out the
+// tag gets the same one. Bump it deliberately: govulncheck fails the build if a
+// pinned toolchain carries a known stdlib CVE.
+toolchain go1.26.5
+
 require (
 	blitiri.com.ar/go/spf v1.5.1
 	filippo.io/edwards25519 v1.2.0

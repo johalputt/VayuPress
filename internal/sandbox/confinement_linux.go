@@ -181,7 +181,6 @@ var portableSyscalls = []uint32{
 	// FD management
 	syscall.SYS_CLOSE,
 	syscall.SYS_FCNTL,
-	syscall.SYS_FSTAT,
 	syscall.SYS_EPOLL_CREATE1,
 	syscall.SYS_EPOLL_CTL,
 	// epoll_pwait, not epoll_wait, is what the Go runtime's netpoller issues —
@@ -198,8 +197,9 @@ var portableSyscalls = []uint32{
 
 // allowedSyscalls returns the full allowlist for this architecture.
 func allowedSyscalls() []uint32 {
-	out := make([]uint32, 0, len(portableSyscalls)+len(legacyPollSyscalls))
+	out := make([]uint32, 0, len(portableSyscalls)+len(statSyscalls)+len(legacyPollSyscalls))
 	out = append(out, portableSyscalls...)
+	out = append(out, statSyscalls...)
 	return append(out, legacyPollSyscalls...)
 }
 

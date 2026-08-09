@@ -10,6 +10,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **The release compiler is pinned, so a tag now decides its own binary.**
+  v3.17.47 was built with go1.26.5 because the workflow asked setup-go for
+  `stable` and that is what the runner had that day. Nothing in the repository
+  recorded it, so two builds of the same tag weeks apart could differ for a
+  reason no diff shows — which is what made "reproducible" a claim about one
+  afternoon rather than about the tag.
+
+  `go.mod` now carries `toolchain go1.26.5`, and `tag-release.yml` already
+  builds with `GOTOOLCHAIN=auto`, so the directive — not the runner — decides.
+  `TestReleaseToolchainIsPinned` asserts both halves, because the pin is inert
+  without that environment variable.
+
+  It also closed a gap in the other direction that nobody had noticed: local
+  gates were running go1.25.8 while CI had moved to 1.26, so "green locally" and
+  "green in CI" were statements about different compilers.
+
+  Pinning broke the analysers, which is worth recording because the failure is
+  not obvious. `go install <tool>@latest` builds in module-aware mode **outside**
+  this module, so it picks a toolchain from the tool's own go directive — and a
+  golangci-lint built with go1.25 refuses a go1.26 stdlib outright. CI now
+  exports `GOTOOLCHAIN` read out of `go.mod` before installing anything, so the
+  analysers are built with the same compiler as the code they analyse, from one
+  source of truth.
+
+- **The sandbox now compiles for every Linux architecture Go supports**, loong64
+  and the mips and big-endian ppc64 family included. `syscall.SYS_FSTAT` sat in
+  architecture-neutral code; LoongArch was defined after `statx(2)` and carries
+  no `fstat` at all, so the package would not build for it.
+
+  The stat call moved to a per-architecture file. loong64 gets `SYS_STATX`, and
+  that entry is documented as **unexercised**: loong64 has no `AUDIT_ARCH_*`
+  entry, so `ApplySeccompFilter` refuses there and the list is never turned into
+  a filter. It is present so the package compiles, not because it has been shown
+  to work — and no loong64 audit-arch entry was added, because claiming
+  enforcement that cannot be tested is the failure this audit track exists to
+  stop.
+
 - **Retraction: the release build is reproducible, and the claim that it was not
   is withdrawn.** 3.17.46 and 3.17.47 both shipped an Upgrade Note saying two
   builds from identical source differ and that a third party therefore cannot

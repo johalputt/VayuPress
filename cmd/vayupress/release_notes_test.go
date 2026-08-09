@@ -135,3 +135,30 @@ func TestProvisioningHelperVersionStampIsWired(t *testing.T) {
 			"publishes helpers stamped \"dev\"")
 	}
 }
+
+// TestReleaseToolchainIsPinned pins the compiler, which is the last thing
+// standing between "our two builds match" and "anyone can rebuild this tag and
+// get the published binary".
+//
+// v3.17.47 was built with go1.26.5 while the workflow asked setup-go for
+// "stable" — so the compiler was decided by whatever the runner had that day,
+// and nothing in the repository recorded it. Two builds a month apart could
+// then differ for a reason no diff shows. tag-release.yml builds with
+// GOTOOLCHAIN=auto, so this directive is what actually decides.
+//
+// It also closed a gap in the other direction: local gates were running
+// go1.25.8 against a CI that had moved to 1.26, so "green locally" and "green
+// in CI" were statements about different compilers.
+func TestReleaseToolchainIsPinned(t *testing.T) {
+	mod := repoFile(t, "go.mod")
+	if !strings.Contains(mod, "\ntoolchain go1.") {
+		t.Fatal("go.mod carries no toolchain directive; the release compiler is then " +
+			"whatever the runner happens to have, and the build is not reproducible from the tag")
+	}
+	// GOTOOLCHAIN=auto is what makes the directive binding rather than advisory.
+	wf := repoFile(t, ".github/workflows/tag-release.yml")
+	if !strings.Contains(wf, "GOTOOLCHAIN=auto") {
+		t.Error("tag-release.yml must build with GOTOOLCHAIN=auto, or the go.mod toolchain " +
+			"directive is ignored and the pin means nothing")
+	}
+}

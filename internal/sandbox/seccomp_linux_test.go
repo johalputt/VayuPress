@@ -259,6 +259,23 @@ func TestNetpollSyscallIsAllowed(t *testing.T) {
 	}
 }
 
+// TestPluginCanStatItsOwnDescriptors pins the file-status call. It lives in a
+// per-architecture file because LoongArch has no fstat(2) at all — it was
+// defined after statx(2) — and naming syscall.SYS_FSTAT in
+// architecture-neutral code stopped this package compiling for it. A plugin
+// whose stat call is missing from the allowlist takes EPERM on every file it
+// opens, which is a failure no compile check can see.
+func TestPluginCanStatItsOwnDescriptors(t *testing.T) {
+	if len(statSyscalls) == 0 {
+		t.Fatalf("linux/%s allows no file-status call; a sandboxed plugin cannot stat its own fds", runtime.GOARCH)
+	}
+	for _, nr := range statSyscalls {
+		if !allowsSyscall(uintptr(nr)) {
+			t.Errorf("statSyscalls entry %d is not in the final allowlist", nr)
+		}
+	}
+}
+
 // TestAllowlistStaysMinimal guards the direction of travel: the list exists to
 // be small, and a syscall that opens files, opens sockets or starts processes
 // defeats the confinement whatever else the sandbox does.

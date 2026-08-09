@@ -469,15 +469,18 @@ bug and still shipped two more.
 matrix proves the other six architectures *compile*, not that they were tested,
 and releases remain a single native build.
 
-The reproducibility gate proves the build is deterministic **given the same
-toolchain and host** — two cold builds, each from an empty module cache and its
-own temporary directory, are byte-identical. It does not make the published
-binary independently verifiable by a stranger: a different Go or C toolchain
-produces a different, equally deterministic result, and nothing in this
-repository pins the compiler a release was built with. Rebuilding a published
-artifact to the same hash therefore requires matching the release runner's
-toolchain, which you can read out of the binary itself with
-`go version <file>`. Pinning that is open work.
+The reproducibility gate proves the build is deterministic: two cold builds,
+each from an empty module cache and its own temporary directory, are
+byte-identical. `go.mod` pins the Go toolchain and the release builds with
+`GOTOOLCHAIN=auto`, so a tag decides its own compiler rather than inheriting
+whatever the runner happened to have — which is what makes the property a
+statement about the tag instead of about one afternoon.
+
+The remaining variable is the C side: the release links SQLite statically, so
+the host's gcc and libc still participate. Reproducing a published binary
+exactly therefore means matching the release runner's C toolchain as well. The
+Go version is recorded in the artifact itself (`go version <file>`); the C
+toolchain is not, and pinning it is open work.
 
 An earlier version of this section claimed builds were *not* reproducible. That
 was wrong, and it was published in two sets of release notes before being
