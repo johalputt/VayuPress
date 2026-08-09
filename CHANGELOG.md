@@ -6,6 +6,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.41] — 2026-08-09
+
+### Fixed
+
+- **Asked without a request, the posture report said `fail` and called it a
+  measurement.** `vayushield_posture` over the connector calls
+  `shieldAuditInputs(nil)`, and the comment beside that call has always said the
+  client-IP row then "reports from recent visitor traffic rather than from a
+  request that does not exist". Nothing did. `ClientIPResolved` stayed at its
+  zero value, so on any proxied install the row could report only failure —
+  whatever the install was actually doing.
+
+  A claim beside a call, with no control behind it, in the one row this whole
+  release series was steering by. It was read as evidence through five releases
+  of diagnosis on a live install, and it never contained any.
+
+  `realIPMiddleware` now samples, from ordinary traffic, whether the address the
+  per-IP controls key on turned out to be the reader's — the fact the row needs
+  and the CDN sighting beside it never carried. `/os` is excluded, because an
+  operator commonly reaches their console without going through their own proxy
+  and that is the least representative request on the site. With nothing observed
+  the row still says nothing rather than inventing an answer.
+
+### Audit
+
+One mutation, killed: restoring the zero-value nil path.
+
+The gate's first version asserted on `lastVisitorResolution`, the helper the
+fixed code happens to call, rather than on `shieldAuditInputs(nil)` — the thing
+that was broken. It passed against the bug. Rewritten to go through the real
+path it failed at once. Fifth oracle defect in this series, and the same shape
+every time: the assertion pointed at something adjacent to the defect rather
+than at the defect.
+
+---
+
 ## [3.17.40] — 2026-08-09
 
 The row that decided everything above was comparing a value with itself.

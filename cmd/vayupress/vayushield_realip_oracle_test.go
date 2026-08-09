@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
 )
@@ -141,3 +142,58 @@ func TestARealReaderBehindTheSameEdgeStillCounts(t *testing.T) {
 		t.Error("a real reader's address behind the proxy was rejected")
 	}
 }
+
+// ASKED WITHOUT A REQUEST, THE REPORT SAID FAIL AND CALLED IT A MEASUREMENT.
+//
+// vayushield_posture over the connector calls shieldAuditInputs(nil), and the
+// comment there says the client-IP row "reports from recent visitor traffic
+// rather than from a request that does not exist". It did not. ClientIPResolved
+// stayed at its zero value, so on any proxied install the row could only ever
+// say FAIL — and an entire investigation was run off that row, through five
+// releases, before anyone noticed it was not a measurement at all.
+func TestTheNilRequestPathReportsFromRealVisitorTraffic(t *testing.T) {
+	restore := func() (prevOK bool, prevAt int64) {
+		return visitorResolvedOK.Load(), visitorResolvedUnix.Load()
+	}
+	ok0, at0 := restore()
+	t.Cleanup(func() { visitorResolvedOK.Store(ok0); visitorResolvedUnix.Store(at0) })
+
+	a := newShieldApp(t, "on")
+
+	for _, tc := range []struct {
+		name        string
+		observed    bool
+		wantResolve bool
+	}{
+		{"visitors resolve to their own addresses", true, true},
+		{"visitors do not resolve", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			visitorResolvedOK.Store(tc.observed)
+			visitorResolvedUnix.Store(timeNowUnixForTest())
+
+			// Through the REAL nil path, not the helper it happens to call — the
+			// helper was never the broken part.
+			in := a.shieldAuditInputs(nil)
+			if in.ClientIPResolved != tc.wantResolve {
+				t.Errorf("ClientIPResolved = %v, want %v.\n\n"+
+					"Asked without a request, the report must say what ordinary traffic showed. "+
+					"Leaving it at the zero value pins the row to FAIL on every proxied install, "+
+					"which is what it did through five releases of diagnosis.",
+					in.ClientIPResolved, tc.wantResolve)
+			}
+			if !in.ClientIPFromVisitorTraffic {
+				t.Error("the answer is not marked as coming from visitor traffic, so the row " +
+					"claims to have measured the request that asked — and there was none")
+			}
+		})
+	}
+
+	// And with nothing observed, it must NOT invent an answer.
+	visitorResolvedUnix.Store(0)
+	if _, seen := lastVisitorResolution(); seen {
+		t.Error("an unobserved install reported an observation")
+	}
+}
+
+func timeNowUnixForTest() int64 { return time.Now().Unix() }

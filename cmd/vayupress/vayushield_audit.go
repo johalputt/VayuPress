@@ -210,6 +210,13 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 	}
 	if r != nil {
 		in.ClientIPResolved, in.ClientIPFromVisitorTraffic = shieldResolvesVisitorIP(r)
+	} else if ok, seen := lastVisitorResolution(); seen {
+		// Asked without a request — the connector's posture tool. Report from what
+		// ordinary traffic actually showed, which is what the caller there has
+		// always been told this does. It did not: ClientIPResolved stayed false,
+		// so on a proxied install the row could only ever say FAIL, and a whole
+		// investigation was run off a value that was never a measurement.
+		in.ClientIPResolved, in.ClientIPFromVisitorTraffic = ok, true
 	}
 	// Whether the operator has stated any rule that depends on a country lookup.
 	// Without this the real-IP row could only describe the rate-limiting cost,

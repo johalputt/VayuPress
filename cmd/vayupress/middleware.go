@@ -76,6 +76,11 @@ func realIPMiddleware(next http.Handler) http.Handler {
 		// practice, and the reason the panel once told a proxied site that nothing
 		// was in front of it. Rate-limited internally to near-zero cost.
 		noteCDNObservation(r)
+		// Whether the address the per-IP controls will key on is the READER's,
+		// sampled from ordinary traffic. Without this the posture report has no
+		// answer at all when it is asked without a request, which is how it came
+		// to report failure on every proxied install over the connector.
+		noteVisitorResolution(r)
 		next.ServeHTTP(w, r)
 	})
 }

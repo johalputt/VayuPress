@@ -782,6 +782,12 @@ var shieldCDNVendors = []struct{ header, vendor string }{
 var (
 	cdnSeenUnix   atomic.Int64
 	cdnSeenVendor atomic.Value // string
+	// Whether ordinary traffic resolved to a reader's address, and when that was
+	// last sampled. Separate from the sighting above: "a proxy is in front" and
+	// "the reader's address is getting through it" are different facts, and the
+	// second is the one every per-IP control and every country rule depends on.
+	visitorResolvedOK   atomic.Bool
+	visitorResolvedUnix atomic.Int64
 )
 
 // cdnObservationTTL bounds how long an observation stays meaningful. Long enough
@@ -808,6 +814,42 @@ func noteCDNObservation(r *http.Request) {
 		cdnSeenVendor.Store(vendor)
 		cdnSeenUnix.Store(time.Now().Unix())
 	}
+}
+
+// noteVisitorResolution records, from ORDINARY traffic, whether the address the
+// per-IP controls will key on turned out to be the reader's.
+//
+// It exists because the posture report had no answer at all when there was no
+// request to look at. `vayushield_posture` over the connector calls
+// shieldAuditInputs(nil), and the comment there says the row "reports from
+// recent visitor traffic rather than from a request that does not exist" — but
+// nothing did. ClientIPResolved simply stayed false, which on a proxied install
+// pins the row to FAIL whatever the truth is. A whole diagnosis was run off that
+// row before anyone noticed it could not say anything else.
+//
+// Sampled at most every two minutes, like the CDN sighting above, so the request
+// path stays free. The operator's own console is excluded: they commonly reach it
+// without going through their proxy, and that request is the least representative
+// one on the site.
+func noteVisitorResolution(r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/os") {
+		return
+	}
+	if time.Since(time.Unix(visitorResolvedUnix.Load(), 0)) < 2*time.Minute {
+		return
+	}
+	visitorResolvedOK.Store(shieldAddressIsTheReaders(r))
+	visitorResolvedUnix.Store(time.Now().Unix())
+}
+
+// lastVisitorResolution reports what recent ordinary traffic showed, and whether
+// anything was seen inside the TTL at all.
+func lastVisitorResolution() (resolved, seen bool) {
+	at := visitorResolvedUnix.Load()
+	if at == 0 || time.Since(time.Unix(at, 0)) > cdnObservationTTL {
+		return false, false
+	}
+	return visitorResolvedOK.Load(), true
 }
 
 // lastCDNObservation returns the vendor seen on recent ordinary traffic, or "" if
