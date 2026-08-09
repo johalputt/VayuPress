@@ -431,6 +431,7 @@ without being listed there would be a job that cannot fail the build.
 | deadcode gate | Newly unreachable code, against a committed baseline |
 | **cross-compile matrix** | **Architecture-specific compile errors, on seven Linux ABIs** |
 | **`go mod tidy` drift, `go mod verify`** | **Undeclared or unused dependencies; module contents that no longer match `go.sum`** |
+| **reproducible build** | **Two cold builds of identical source that are not byte-identical** |
 
 **Everything around the code**
 
@@ -466,11 +467,24 @@ bug and still shipped two more.
 
 **What these gates do not prove.** They run on `linux/amd64`; the cross-compile
 matrix proves the other six architectures *compile*, not that they were tested,
-and releases remain a single native build. Builds are not currently
-bit-for-bit reproducible, so a third party cannot yet independently confirm that
-a signed release binary corresponds to its tagged source — that is open work, and
-deliberately not gated, because a gate for a property the build does not have is
-worse than no gate.
+and releases remain a single native build.
+
+The reproducibility gate proves the build is deterministic **given the same
+toolchain and host** — two cold builds, each from an empty module cache and its
+own temporary directory, are byte-identical. It does not make the published
+binary independently verifiable by a stranger: a different Go or C toolchain
+produces a different, equally deterministic result, and nothing in this
+repository pins the compiler a release was built with. Rebuilding a published
+artifact to the same hash therefore requires matching the release runner's
+toolchain, which you can read out of the binary itself with
+`go version <file>`. Pinning that is open work.
+
+An earlier version of this section claimed builds were *not* reproducible. That
+was wrong, and it was published in two sets of release notes before being
+checked properly. The measurement behind it compared two binaries built while
+the working tree was being edited, which is not a reproducibility test at all.
+The controlled test — cold, independent caches, unmodified tree — passes, and is
+now a gate so the answer stops depending on who measured it.
 
 The shell lint is worth a note of its own, because for a long time it could not
 fail. It ran `find scripts/ -name "*.sh" -exec shellcheck {} \;`, and `find`

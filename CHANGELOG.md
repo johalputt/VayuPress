@@ -6,6 +6,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Retraction: the release build is reproducible, and the claim that it was not
+  is withdrawn.** 3.17.46 and 3.17.47 both shipped an Upgrade Note saying two
+  builds from identical source differ and that a third party therefore cannot
+  confirm a signed binary matches its tag. That is wrong.
+
+  The measurement behind it compared two binaries built while the working tree
+  was being edited, so the two builds did not have identical source — which is
+  not a reproducibility test at all, and the differing sizes should have said so
+  at the time. The claim was then repeated in the README and in two sets of
+  published release notes without ever being checked under controlled
+  conditions.
+
+  Under controlled conditions it passes. Two builds, each from an **empty**
+  `GOCACHE` and its own `TMPDIR` so neither can reuse the other's objects,
+  produce byte-identical binaries — both for the static release configuration
+  and for the non-static variant. Building twice back to back is *not* the test:
+  the second run reuses the cache and matches trivially, which is how a
+  reproducibility check can look green while proving nothing.
+
+  The property is now a gate. `scripts/reproducible-build.sh` builds twice from
+  independent cold caches and fails if the hashes differ. It reads the build
+  tags and ldflags **out of `tag-release.yml`** rather than keeping a second
+  copy, because a determinism check that runs different flags from the release
+  is a claim about a binary nobody ships; if it cannot find those flags it fails
+  rather than guessing.
+
+  What this still does not give you: the published binary is not independently
+  rebuildable by a stranger. v3.17.47 was built with go1.26.5 — readable from
+  the artifact with `go version <file>` — and a different Go or C toolchain
+  yields a different, equally deterministic result. Nothing here pins the
+  release compiler. That is the real open work, and it is a narrower and more
+  honest statement than the one being retracted.
+
+---
+
 ## [3.17.47] — 2026-08-09
 
 ### Fixed

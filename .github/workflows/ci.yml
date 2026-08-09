@@ -476,6 +476,32 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: go vet ./...
 
+  # ── Reproducible build ─────────────────────────────────────────────────────
+  # Two cold builds of identical source must be byte-identical. Releases are
+  # cosign- and Ed25519-signed, which proves an artifact came from this
+  # pipeline but not that it corresponds to the source at its tag; only a
+  # deterministic build lets anyone check that by rebuilding. Nothing else
+  # announces the loss of that property — a build that starts varying still
+  # signs, publishes and installs — so it needs a gate.
+  #
+  # Its own job because it runs two full CGO builds and would otherwise double
+  # the length of go-native.
+  check-reproducible-build:
+    name: "P13 · Reproducible Build"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install C build tools (required for CGO/sqlite3)
+        run: sudo apt-get install -y gcc build-essential
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 'stable'
+          cache: true
+      - name: Build twice from independent caches and compare
+        run: |
+          chmod +x scripts/reproducible-build.sh
+          scripts/reproducible-build.sh
+
   # ── Release metadata consistency ───────────────────────────────────────────
   check-release-consistency:
     name: "P13 · Release Metadata Consistency"
@@ -517,6 +543,7 @@ jobs:
       - check-deploy-script
       - check-source-sync
       - check-release-consistency
+      - check-reproducible-build
       - go-native
       - cross-compile
     runs-on: ubuntu-24.04
@@ -539,6 +566,7 @@ jobs:
             "${{ needs.check-deploy-script.result }}"
             "${{ needs.check-source-sync.result }}"
             "${{ needs.check-release-consistency.result }}"
+            "${{ needs.check-reproducible-build.result }}"
             "${{ needs.go-native.result }}"
             "${{ needs.cross-compile.result }}"
           )
@@ -547,7 +575,8 @@ jobs:
             "check-licenses" "check-governance" "check-adrs"
             "check-security-policy" "check-ethics" "check-community"
             "check-deploy-script" "check-source-sync"
-            "check-release-consistency" "go-native" "cross-compile"
+            "check-release-consistency" "check-reproducible-build"
+            "go-native" "cross-compile"
           )
           for i in "${!RESULTS[@]}"; do
             if [ "${RESULTS[$i]}" != "success" ]; then
