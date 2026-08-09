@@ -6,7 +6,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [3.17.35] — 2026-08-09
+## [3.17.36] — 2026-08-09
+
+Shipped on its own, immediately: v3.17.35 had already published by the time this
+was found, and it is the fix that unblocks the release before it.
 
 ### Fixed
 
@@ -50,6 +53,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
   The recipe is gone from the nginx template, replaced by the panel path, and a
   test fails if it returns.
+
+---
+
+## [3.17.35] — 2026-08-09
+
+### Fixed
 
 - **A country rule now says when it is not being applied.** Reported from a live
   install: Singapore had been refused and Analytics still showed it as 91% of
