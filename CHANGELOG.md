@@ -8,7 +8,54 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-### Fixed
+### Security
+
+- **The per-domain eval opt-in reached the member portal and the checkout
+  pages.** `SiteConfig.AllowEval` relaxes the Content-Security-Policy to admit
+  `'unsafe-eval'` for one hosted domain serving a hand-built bundle. The rule it
+  was written to enforce, in its own comment, is that the relaxation "must not
+  follow a visitor into the panel, the API, an OAuth consent screen or **anything
+  else that carries a session**". The implementation was seven path prefixes:
+  `/os`, `/api`, `/admin`, `/oauth`, `/mcp`, `/__vayushield`, `/__vayuanalytics`.
+
+  `vp_member` is written with `Path: "/"`, so a member session is attached to
+  every path on the host. `/api/v1/members/...` was refused by the `/api`
+  prefix — but the API is not where a script runs. `/members`, `/members/account`
+  and the `/checkout` flow are HTML pages, and a page is where eval executes with
+  that cookie in scope. `/signup`, `/mail` and `/vayumail` were in the same
+  position. All are now refused.
+
+  Refusing them cannot break an opted-in site: the custom bundle is served at
+  `/` and as the 404 fallback, so a registered route was never the operator's own
+  static page to begin with. `TestThePrefixMatchDoesNotOverreach` covers the new
+  prefixes too — `/mailbox` is not `/mail`.
+
+  This is a defence-in-depth weakening rather than a direct compromise: it needs
+  an injection on one of those pages, on a domain whose operator had opted in and
+  deployed a bundle. It is recorded as Security anyway, because the entire stated
+  value of that file is what it proves the relaxation **cannot** reach.
+
+- **The tests guarding that rule were asserting against a copy of it.** Every
+  test in `site_csp_test.go` re-implemented the prefix loop inline instead of
+  calling the production matcher, so loosening the real one to a bare
+  `strings.HasPrefix` — which would refuse `/mailbox` for merely starting like
+  `/mail` — changed nothing any of them could see. They now call
+  `evalRefusedPath`.
+
+  One level up, nothing exercised the entry point at all: `siteAllowsEval` could
+  stop consulting the refusal list entirely and the file still passed. Two
+  further mutations survived even after the first fix, both for the same reason —
+  the assertions were reached through a code path that returns false anyway when
+  no bundle is deployed, so they never tested the condition they named. The
+  conditions decidable from the request now live in a pure `evalPermittedFor`,
+  and each one fails a test when removed: primary-domain guard, the AllowEval
+  flag, the path refusal, whole-segment matching, and the entry point's call.
+
+  The flag case needed its own setup to be meaningful. A domain with **no** site
+  config and a domain with a config that simply left eval **off** take different
+  branches, and only the second describes a configured client site. Collapsing
+  them (`||` to `&&`) relaxed the policy for every configured site that never
+  asked for it, and passed until that case was written.
 
 - **The release compiler is pinned, so a tag now decides its own binary.**
   v3.17.47 was built with go1.26.5 because the workflow asked setup-go for

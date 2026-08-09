@@ -15,9 +15,12 @@ package main
 // than never having offered it.
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -109,14 +112,7 @@ func TestTheRelaxationNeverReachesAnAuthenticatedSurface(t *testing.T) {
 		"/__vayushield/pow", "/__vayuanalytics/enter",
 	}
 	for _, p := range mustRefuse {
-		refused := false
-		for _, pre := range evalRefusedPrefixes {
-			if p == pre || strings.HasPrefix(p, pre+"/") {
-				refused = true
-				break
-			}
-		}
-		if !refused {
+		if !evalRefusedPath(p) {
 			t.Errorf("%q would receive the relaxed policy. A session lives behind that path, and "+
 				"'unsafe-eval' there converts an injected string into full control of the "+
 				"operator's account", p)
@@ -128,10 +124,8 @@ func TestTheRelaxationNeverReachesAnAuthenticatedSurface(t *testing.T) {
 // refusal wearing a setting's clothes.
 func TestAnOrdinarySitePathIsNotRefused(t *testing.T) {
 	for _, p := range []string{"/", "/index.html", "/assets/app.js", "/assets/site.css", "/about"} {
-		for _, pre := range evalRefusedPrefixes {
-			if p == pre || strings.HasPrefix(p, pre+"/") {
-				t.Errorf("%q is refused by prefix %q, so the opted-in site still cannot run", p, pre)
-			}
+		if evalRefusedPath(p) {
+			t.Errorf("%q is refused, so the opted-in site still cannot run", p)
 		}
 	}
 }
@@ -140,12 +134,132 @@ func TestAnOrdinarySitePathIsNotRefused(t *testing.T) {
 // "/oscar" is not "/os", and refusing it would break an innocent page for a
 // reason nobody could find.
 func TestThePrefixMatchDoesNotOverreach(t *testing.T) {
-	for _, p := range []string{"/oscar", "/apiary", "/administration", "/mcpherson"} {
-		for _, pre := range evalRefusedPrefixes {
-			if p == pre || strings.HasPrefix(p, pre+"/") {
-				t.Errorf("%q was refused by prefix %q — a legitimate page broken by an "+
-					"over-eager match", p, pre)
-			}
+	for _, p := range []string{"/oscar", "/apiary", "/administration", "/mcpherson",
+		// The visitor-facing prefixes added later. A bundle may legitimately own
+		// any of these, and the matcher must require a whole segment: "/mailbox"
+		// is not "/mail", and refusing it would break a page for a reason nobody
+		// could find.
+		"/mailbox", "/mailing-list", "/members-only", "/membership",
+		"/checkouts", "/signups", "/vayumailer"} {
+		if evalRefusedPath(p) {
+			t.Errorf("%q was refused — a legitimate page broken by an over-eager match", p)
 		}
+	}
+}
+
+// TestTheRelaxationNeverReachesASessionBEARINGPage is the test the one above
+// should have been.
+//
+// TestTheRelaxationNeverReachesAnAuthenticatedSurface enumerates only paths that
+// already sit under the seven refused prefixes, so it asserts that the list
+// contains what the list contains. It passes whatever else carries a session.
+//
+// These do. vp_member is written with Path "/" (handlers_portal.go), so the
+// member session cookie is attached to every path on that host — including these
+// HTML pages, which are where a script actually runs in the browser. The member
+// API under /api/v1/members/... was already refused by the /api prefix, but the
+// API is not where the script executes; the page is.
+//
+// The comment on evalRefusedPrefixes states the rule as "the panel, the API, an
+// OAuth consent screen or anything else that carries a session". This is the
+// "anything else".
+func TestTheRelaxationNeverReachesASessionBearingPage(t *testing.T) {
+	// Registered routes, not bundle pages: the custom bundle is served at "/"
+	// and as the 404 fallback, so a registered path is never the operator's own
+	// static page and refusing it cannot break a site that worked.
+	sessionPages := []string{
+		"/members",                // member sign-in
+		"/members/account",        // member account — reads and writes the session
+		"/checkout",               // payment
+		"/checkout/success",       // payment return, fulfils server-side
+		"/checkout/paypal/return", // ditto
+		"/checkout/crypto/return", // ditto
+		"/signup",                 // account creation
+		"/mail",                   // webmail
+		"/vayumail",               // webmail
+	}
+	for _, p := range sessionPages {
+		if !evalRefusedPath(p) {
+			t.Errorf("%q would receive 'unsafe-eval'. The member session cookie is Path=\"/\", so "+
+				"it is attached to this page, and eval there turns an injected string into "+
+				"account takeover", p)
+		}
+	}
+}
+
+// TestTheMiddlewareItselfRefusesAnAuthenticatedPath exercises siteAllowsEval,
+// not the matcher it calls.
+//
+// Every other test in this file asserts against evalRefusedPath. That leaves the
+// entry point unguarded: siteAllowsEval could stop consulting the refusal list
+// altogether and nothing would fail — a mutation returning true unconditionally
+// passed the whole file. This is the test that sees it.
+//
+// It needs no deployed bundle because the path refusal is now evaluated before
+// customSiteActive, so a request that must be refused is refused on the strength
+// of its path alone.
+func TestTheMiddlewareItselfRefusesAnAuthenticatedPath(t *testing.T) {
+	optedIn := domain.Domain{
+		ID: "abc123", Host: "client.example", IsPrimary: false, Status: "active",
+	}
+	cfg, err := domain.EncodeSiteConfigInto("", domain.SiteConfig{Mode: "custom", AllowEval: true})
+	if err != nil {
+		t.Fatalf("encode site config: %v", err)
+	}
+	optedIn.ConfigJSON = cfg
+	if s, ok := optedIn.Site(); !ok || !s.AllowEval {
+		t.Fatalf("test setup is wrong: the domain does not carry AllowEval (%+v)", s)
+	}
+
+	// A domain that has opted in, on paths that must never be relaxed.
+	for _, p := range []string{"/os/settings", "/api/v1/members/me", "/members/account", "/checkout"} {
+		if evalPermittedFor(optedIn, p) {
+			t.Errorf("eval permitted on %q for an opted-in domain", p)
+		}
+	}
+
+	// The site it was built for still works, or the feature is a refusal
+	// wearing a setting's clothes.
+	if !evalPermittedFor(optedIn, "/assets/app.js") {
+		t.Error("eval refused on an ordinary bundle path, so the opt-in does nothing")
+	}
+
+	// The primary domain is never relaxed, whatever it carries.
+	primary := optedIn
+	primary.IsPrimary = true
+	if evalPermittedFor(primary, "/") {
+		t.Error("eval permitted on the PRIMARY domain — the operator's own install")
+	}
+
+	// A domain with NO site config at all.
+	bare := optedIn
+	bare.ConfigJSON = ""
+	if evalPermittedFor(bare, "/") {
+		t.Error("eval permitted for a domain carrying no site config")
+	}
+
+	// And the case that actually describes every configured client site: it HAS
+	// a site config, mode and all, and simply left the eval switch off. This is
+	// the default state, so it is the one that matters most — and it is distinct
+	// from the bare case above, because here d.Site() succeeds and only the flag
+	// says no. A guard that collapsed those two (|| becoming &&) relaxed the
+	// policy for every configured site that never asked for it.
+	configuredButOff, err := domain.EncodeSiteConfigInto("", domain.SiteConfig{Mode: "custom"})
+	if err != nil {
+		t.Fatalf("encode site config: %v", err)
+	}
+	off := optedIn
+	off.ConfigJSON = configuredButOff
+	if s, ok := off.Site(); !ok || s.AllowEval {
+		t.Fatalf("test setup is wrong: want a readable site config with AllowEval off, got ok=%v %+v", ok, s)
+	}
+	if evalPermittedFor(off, "/") {
+		t.Error("eval permitted for a configured domain that left AllowEval off")
+	}
+
+	// And the middleware entry point must still refuse when no domain resolved.
+	a := &App{}
+	if a.siteAllowsEval(httptest.NewRequest(http.MethodGet, "/", nil)) {
+		t.Error("siteAllowsEval allowed eval with no resolved domain")
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -21,6 +22,19 @@ import (
 // added later inherits the refusal without anyone remembering to add it here.
 var evalRefusedPrefixes = []string{
 	"/os", "/api", "/admin", "/oauth", "/mcp", "/__vayushield", "/__vayuanalytics",
+	// The visitor-facing half of "anything else that carries a session", which
+	// the list above missed for as long as it existed.
+	//
+	// vp_member is written with Path "/" (setMemberSessionCookie), so a member
+	// session is attached to every path on the host. /api/v1/members/... was
+	// already refused by the /api prefix — but the API is not where a script
+	// runs. These are the HTML pages, and a page is where eval executes with
+	// that cookie in scope.
+	//
+	// Refusing these cannot break an opted-in site: the custom bundle is served
+	// at "/" and as the 404 fallback, so a REGISTERED route was never the
+	// operator's own static page to begin with.
+	"/members", "/checkout", "/signup", "/mail", "/vayumail",
 }
 
 // siteCSPMiddleware relaxes the Content-Security-Policy for a hosted domain that
@@ -56,24 +70,54 @@ func (a *App) siteCSPMiddleware(next http.Handler) http.Handler {
 // opt-in covers.
 func (a *App) siteAllowsEval(r *http.Request) bool {
 	d, ok := activeDomain(r)
-	if !ok || d.IsPrimary {
+	if !ok || !evalPermittedFor(d, r.URL.Path) {
+		return false
+	}
+	// A relaxation that applies to a site which is not actually being served
+	// from a bundle would be a setting with no visible cause — and it would
+	// linger after the operator switched back to a template. This is the one
+	// condition that needs App state; every condition above it is decidable
+	// from the request alone, which is why they live in evalPermittedFor.
+	return a.customSiteActive(r)
+}
+
+// evalPermittedFor holds every condition that can be decided from the resolved
+// domain and the path, with no App state and no I/O.
+//
+// It is split out because the conditions used to be inline, and a test could
+// then only reach them through siteAllowsEval — which returns false anyway when
+// no bundle is deployed. Mutations that deleted the primary-domain guard and the
+// path refusal both survived the whole test file for exactly that reason: the
+// assertions passed on the strength of a missing bundle, never reaching the
+// condition they named. Pure and separate, each one fails a test when removed.
+func evalPermittedFor(d domain.Domain, path string) bool {
+	// The primary domain is the operator's own install, panel and all.
+	if d.IsPrimary {
 		return false
 	}
 	site, ok := d.Site()
 	if !ok || !site.AllowEval {
 		return false
 	}
-	// A relaxation that applies to a site which is not actually being served
-	// from a bundle would be a setting with no visible cause — and it would
-	// linger after the operator switched back to a template.
-	if !a.customSiteActive(r) {
-		return false
-	}
-	p := r.URL.Path
+	// Absolute: no setting reaches past this.
+	return !evalRefusedPath(path)
+}
+
+// evalRefusedPath reports whether p sits under one of evalRefusedPrefixes.
+//
+// It is a named function because the tests used to re-implement this loop
+// instead of calling it, so they were asserting against a copy of the rule.
+// Loosening the real matcher to a bare strings.HasPrefix — which would refuse
+// "/mailbox" for merely starting like "/mail" — changed nothing any of them
+// could see. A second copy of a rule is a future divergence; a second copy
+// living in the test that guards the rule is the divergence already.
+//
+// The match is whole-segment on purpose: "/mailbox" is not "/mail".
+func evalRefusedPath(p string) bool {
 	for _, pre := range evalRefusedPrefixes {
 		if p == pre || strings.HasPrefix(p, pre+"/") {
-			return false
+			return true
 		}
 	}
-	return true
+	return false
 }
