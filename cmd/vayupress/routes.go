@@ -17,21 +17,42 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/gossip"
 )
 
-// registerRoutes wires all HTTP routes onto r. Route registration is kept in
-// one place so main() stays focused on lifecycle orchestration (ADR-0048).
-func (a *App) registerRoutes(r chi.Router, staticDir string) {
-	r.Use(
+// coreMiddleware is the base stack every request passes through, in order.
+//
+// RECOVERER RUNS SECOND, and the order is the point rather than a detail. A panic
+// in a middleware registered BEFORE it is not recovered by it: the panic reaches
+// net/http, which closes the connection without a response, and the reverse proxy
+// in front turns that into a **502 Bad Gateway** for the visitor — no stack in
+// the app log tied to a status, just a dead connection.
+//
+// Recoverer used to sit fourth, leaving realIPMiddleware and
+// structuredLoggerMiddleware outside it. Both run on every single request, and
+// realIPMiddleware has been growing: it resolves the client address, records
+// proxy sightings, and now samples whether resolution reached the reader. That is
+// exactly the code most likely to meet a request shape nobody anticipated, and it
+// was the code least protected when it did.
+//
+// requestIDMiddleware stays first so a recovered panic is still logged against a
+// request ID. It does nothing but read a header and generate random bytes.
+func coreMiddleware() []func(http.Handler) http.Handler {
+	return []func(http.Handler) http.Handler{
 		requestIDMiddleware,
+		chimw.Recoverer,
 		// Proxy-aware client-IP resolution (audit F-3). Replaces chi's
 		// middleware.RealIP, which trusts forwarding headers unconditionally and
 		// is vulnerable to IP spoofing; realIPMiddleware honours them only from
 		// configured trusted proxies (TRUSTED_PROXIES, default loopback).
 		realIPMiddleware,
 		structuredLoggerMiddleware,
-		chimw.Recoverer,
-		chimw.Timeout(30*time.Second),
+		chimw.Timeout(30 * time.Second),
 		securityHeadersMiddleware,
-	)
+	}
+}
+
+// registerRoutes wires all HTTP routes onto r. Route registration is kept in
+// one place so main() stays focused on lifecycle orchestration (ADR-0048).
+func (a *App) registerRoutes(r chi.Router, staticDir string) {
+	r.Use(coreMiddleware()...)
 	// Maintenance mode — when the operator has taken the public site offline
 	// (VayuOS → Power & Maintenance), serve the premium maintenance page to
 	// visitors. A near-free pass-through when off; always lets /os, the health

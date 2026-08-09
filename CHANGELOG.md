@@ -6,6 +6,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.42] — 2026-08-09
+
+### Fixed
+
+- **A panic in the two middlewares that run on every request was a 502, not a
+  500.** `chimw.Recoverer` sat fourth in the stack, so `realIPMiddleware` and
+  `structuredLoggerMiddleware` ran outside it. A panic in either reaches
+  net/http, which closes the connection with no response; the reverse proxy in
+  front turns that into a **502 Bad Gateway** for the visitor, and the app log
+  carries no status at all — the hardest shape of failure to trace, because
+  nothing in the application appears to have happened.
+
+  `realIPMiddleware` was the worst place to leave unguarded. It runs on every
+  request, resolves the client address, records proxy sightings and — as of
+  3.17.41 — samples whether resolution reached the reader. That is the code most
+  likely to meet a request shape nobody anticipated, and it had the least cover
+  when it did.
+
+  The stack is now `coreMiddleware()`, an ordered slice with `Recoverer` second,
+  immediately after `requestIDMiddleware` so a recovered panic is still logged
+  against a request ID. Nothing else moved.
+
+  Prompted by an operator reporting a 502 on VayuOS after an update. That one was
+  the ordinary restart window and resolved itself — but it named a failure the
+  stack was genuinely open to, and the release before it had just added work
+  inside the unprotected window.
+
+### Audit
+
+One mutation, killed: moving `Recoverer` back after the per-request middlewares.
+The gate reads the real slice by function pointer rather than the source text, so
+it fails on the ORDER regressing rather than on a line being reworded.
+
+---
+
 ## [3.17.41] — 2026-08-09
 
 ### Fixed
