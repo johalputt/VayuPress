@@ -215,3 +215,75 @@ func TestPerThemeExtras(t *testing.T) {
 		}
 	}
 }
+
+// TestAuthorBoxOptionEmitsBothDirections pins the design studio's Author box
+// control end to end.
+//
+// It had two faults at once, and each hid the other. "Hide" wrote
+// `.vayu-author-box{display:none}` for a class the renderer never emitted, so
+// the control did nothing whichever way it was set; and only "Hide" was handled
+// at all, so even once the card became real, "Show" would have stayed a no-op
+// sitting next to a working "Hide". A control that cannot be seen to act in
+// both directions has not been tested in either.
+func TestAuthorBoxOptionEmitsBothDirections(t *testing.T) {
+	compile := func(v string) string {
+		g := theme.Gale()
+		g.Options = map[string]string{"authorbox": v}
+		css, err := theme.CompileCSS(g)
+		if err != nil {
+			t.Fatalf("compile %q: %v", v, err)
+		}
+		return css
+	}
+
+	// What the OPTION emits, not what the sheet contains.
+	//
+	// The first version of this test asked whether the compiled CSS contained
+	// ".vayu-author-box{display:" — which every design theme's own stylesheet
+	// already satisfies (Gale's author card is display:flex). It passed with the
+	// option deleted, so it was measuring the theme, not the control. Mutation
+	// testing caught it; the fix is to diff against the untouched baseline.
+	base := compile("default")
+	delta := func(v string) string {
+		got := compile(v)
+		if !strings.HasPrefix(got, base) {
+			t.Fatalf("option CSS is no longer appended to the theme's own — this test's premise is broken, not the option")
+		}
+		return strings.TrimPrefix(got, base)
+	}
+
+	if got := delta("hidden"); !strings.Contains(got, ".vayu-author-box{display:none}") {
+		t.Errorf(`"Hide" does not hide the author card; option emitted %q`, got)
+	}
+	if got := delta("show"); !strings.Contains(got, ".vayu-author-box{display:flex}") {
+		t.Errorf(`"Show" emits nothing — it cannot reveal a card a theme hid; option emitted %q`, got)
+	}
+	// The default must stay silent, or it would override every theme's own
+	// treatment of the card for operators who never touched the control.
+	if strings.Contains(base, ".vayu-author-box{display:none}") {
+		t.Error(`"Theme default" hides the card`)
+	}
+
+	// Every choice the admin offers must be one the switch handles. A choice
+	// with no case is a control that silently does nothing — which is how the
+	// original bug shipped.
+	var choices []string
+	for _, o := range theme.AllOptions() {
+		if o.Key == "authorbox" {
+			for _, c := range o.Choices {
+				choices = append(choices, c.Value)
+			}
+		}
+	}
+	if len(choices) == 0 {
+		t.Fatal("the authorbox option is not registered")
+	}
+	for _, c := range choices {
+		if c == "default" {
+			continue
+		}
+		if got := delta(c); !strings.Contains(got, ".vayu-author-box{display:") {
+			t.Errorf("choice %q is offered in the admin but emits no CSS", c)
+		}
+	}
+}

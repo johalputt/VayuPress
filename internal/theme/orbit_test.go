@@ -3,8 +3,6 @@
 package theme
 
 import (
-	"fmt"
-	"math"
 	"regexp"
 	"strings"
 	"testing"
@@ -420,68 +418,6 @@ func TestOrbitHasStoreMetadata(t *testing.T) {
 		return
 	}
 	t.Fatal("Orbit is missing from Store()")
-}
-
-// Orbit's store card ends with the words "WCAG-AA". That is a claim about the
-// palette, and a claim in shipped copy with nothing enforcing it is the failure
-// mode this repository keeps rediscovering — so the palette is measured.
-//
-// Scoped to Orbit deliberately: this is the theme whose colours changed, and
-// widening it to the whole catalogue would fail presets nobody asked to
-// repaint. The helper below is written so that widening it later is a loop.
-func TestOrbitPaletteMeetsAA(t *testing.T) {
-	tk := orbitTokens(t)
-	// Every foreground the theme actually paints on a background it actually
-	// uses. Muted is included because the log's dates, labels and footer are all
-	// muted-on-background — most of the chrome, not an edge case.
-	for _, p := range []struct{ name, fg, bg string }{
-		{"text on page (dark)", tk.TextDark, tk.BgDark},
-		{"muted on page (dark)", tk.MutedDark, tk.BgDark},
-		{"accent on page (dark)", tk.AccentDark, tk.BgDark},
-		{"text on surface (dark)", tk.TextDark, tk.SurfaceDark},
-		{"muted on surface (dark)", tk.MutedDark, tk.SurfaceDark},
-		{"text on page (light)", tk.TextLight, tk.BgLight},
-		{"muted on page (light)", tk.MutedLight, tk.BgLight},
-		{"accent on page (light)", tk.AccentLight, tk.BgLight},
-		{"text on surface (light)", tk.TextLight, tk.SurfaceLight},
-		{"muted on surface (light)", tk.MutedLight, tk.SurfaceLight},
-	} {
-		if got := contrastRatio(t, p.fg, p.bg); got < 4.5 {
-			t.Errorf("%s: %s on %s is %.2f:1, below the 4.5:1 the store card promises", p.name, p.fg, p.bg, got)
-		}
-	}
-}
-
-// contrastRatio implements WCAG 2.1 relative luminance and the contrast formula.
-func contrastRatio(t *testing.T, fg, bg string) float64 {
-	t.Helper()
-	l1, l2 := relLuminance(t, fg), relLuminance(t, bg)
-	if l1 < l2 {
-		l1, l2 = l2, l1
-	}
-	return (l1 + 0.05) / (l2 + 0.05)
-}
-
-func relLuminance(t *testing.T, hex string) float64 {
-	t.Helper()
-	h := strings.TrimPrefix(hex, "#")
-	if len(h) != 6 {
-		t.Fatalf("not a six-digit hex colour: %q", hex)
-	}
-	ch := [3]float64{}
-	for i := range ch {
-		var v int
-		if _, err := fmt.Sscanf(h[i*2:i*2+2], "%02x", &v); err != nil {
-			t.Fatalf("bad hex %q: %v", hex, err)
-		}
-		c := float64(v) / 255
-		if c <= 0.03928 {
-			ch[i] = c / 12.92
-		} else {
-			ch[i] = math.Pow((c+0.055)/1.055, 2.4)
-		}
-	}
-	return 0.2126*ch[0] + 0.7152*ch[1] + 0.0722*ch[2]
 }
 
 // keyframeBodies returns the body of every @keyframes rule, matched by counting

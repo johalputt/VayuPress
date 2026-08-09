@@ -6,6 +6,72 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **The author card existed everywhere except on the page.** The admin offered a
+  bio field ("One line about the author"), the design studio offered a Show/Hide
+  control for the card, twelve theme stylesheets styled `.vayu-author-box`,
+  `.vayu-author-avatar`, `.vayu-author-name` and `.vayu-author-bio`, ADR-0086
+  named it and the whole-site coverage gate **required every theme to style it**
+  — and no page ever contained the class. A bio an operator typed went into
+  settings, through `SiteSettings`, into the article template's data, and
+  stopped. The Hide control hid nothing; Show was not wired at all.
+
+  The card is now rendered, using the class names those twelve stylesheets were
+  already written against, so every existing theme rule comes alive instead of
+  being deleted. It appears **only when the author has a bio** — an operator who
+  never filled the field in sees no change, and one who did was already promised
+  a card by the admin copy. `authorbox` now emits in both directions, and a test
+  walks the option's choices so a choice with no case behind it fails.
+
+  Three tests were watched to fail before the fixes landed: the card inverted
+  onto pages, the markup renamed off the classes themes style, and Show reverted
+  to a no-op. A fourth mutation — adding an admin choice with no case — did *not*
+  fail, because the first version of that test asked whether the compiled CSS
+  contained `.vayu-author-box{display:` and every design theme's own stylesheet
+  already satisfies it. It was measuring the theme, not the control. It now diffs
+  against the untouched baseline.
+
+- **The byline was unstyled on nine of the twelve themes.** `.vayu-byline` is
+  emitted under every article headline and had **no base rules at all** — the
+  avatar rendered as a bare 36px image and the initials fallback as a loose
+  letter. The coverage gate that exists to catch exactly this was pointed at
+  `.vayu-author-box`, which nothing emitted, so it reported green throughout.
+
+  There are now base rules for the byline, per-theme rules in each of the nine
+  themes that lacked them — each in that theme's own idiom rather than a shared
+  copy, so Maverick's byline is a hard square and Gale's is a squared serif
+  portrait — and `.vayu-byline` is in the coverage list.
+
+  **The gate now has a gate.** `TestWholeSiteSelectorsAreRealMarkup` renders every
+  public page and fails if a selector the list demands of all themes is not
+  actually emitted, so the list cannot drift back into requiring CSS for markup
+  that does not exist. It found a second case on its first run: the premium
+  footer's link columns are conditional, and a harness that renders less than the
+  templates can produce reports live selectors as dead.
+
+- **"WCAG-AA" was on twelve store cards and measured on none of them.** The claim
+  is now a control: `TestEveryPresetMeetsAA` checks every foreground each preset
+  paints on every background it uses, in both schemes, against 4.5:1 for body
+  text and 3:1 for large/decorative accents — colour-palette presets included,
+  since a palette with no CSS still decides every colour on the page.
+
+  It failed on **28 of the presets**. The largest class was light-mode link
+  colour: `--accent` compiles to `--pico-primary`, which Pico uses for `a`, so a
+  soft accent on a near-white canvas is body text at 2.4:1 (Mint), 2.6:1
+  (Glacier) or 1.9:1 (Meadow). Muted text — dates, section labels, excerpts,
+  captions, footer links — was the second.
+
+  62 colours were adjusted, each by the smallest hue-preserving move that clears
+  the threshold: hue and saturation held, lightness walked in 1/512 steps until
+  the pair passes with a hair of margin. Amber stays amber and Meadow stays
+  green; they are simply legible now. Backgrounds were never touched — a theme's
+  canvas is the theme.
+
+---
+
 ## [3.17.47] — 2026-08-09
 
 ### Fixed

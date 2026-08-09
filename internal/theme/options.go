@@ -569,8 +569,15 @@ func applyThemeOptions(t *Tokens) string {
 	if t.Options["trendingposts"] == "hidden" {
 		extra.WriteString(".vayu-trending{display:none}")
 	}
-	if t.Options["authorbox"] == "hidden" {
+	// Both directions are emitted. Only "hidden" used to be, which made "Show" a
+	// control that did nothing — and since the renderer emits the card only when
+	// the author has a bio, "Show" has to be able to reveal one a theme hid
+	// rather than being a silent no-op next to a working "Hide".
+	switch t.Options["authorbox"] {
+	case "hidden":
 		extra.WriteString(".vayu-author-box{display:none}")
+	case "show":
+		extra.WriteString(".vayu-author-box{display:flex}")
 	}
 	switch t.Options["cardimage"] {
 	case "top":

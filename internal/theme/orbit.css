@@ -50,6 +50,7 @@
 .vayu-post-thumb,
 .vayu-feature-image,
 .vayu-byline-avatar,
+.vayu-author-avatar,
 .vayu-author-box,
 .vayu-tag,
 .vayu-page-link,
@@ -573,32 +574,53 @@ article.vayu-prose {
 .vayu-tag:hover { color: var(--accent, #d97757); }
 .vayu-tag-count { opacity: .5; }
 
-/* .vayu-byline is the class the renderer emits; .vayu-author-box is the older
-   name the shared "hide author box" option and the whole-site coverage gate
-   still address. Both name the same block, so both are styled here. */
-.vayu-byline,
+/* Two different components, styled separately because they ARE different: the
+   byline is a line under the headline, the author card is a block at the foot of
+   the post. An earlier version of this file treated them as one name for one
+   thing — understandably, since nothing rendered the card at the time — and gave
+   the byline a rule above it, which belongs on the card and nowhere near a
+   headline. */
+
+.vayu-byline {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-bottom: .8rem;
+}
+
+.vayu-byline-avatar,
+.vayu-author-avatar {
+  border-radius: 0;
+  filter: grayscale(1);
+  transition: filter var(--t, .35s ease);
+}
+
+.vayu-byline:hover .vayu-byline-avatar,
+.vayu-author-box:hover .vayu-author-avatar { filter: grayscale(0); }
+
+.vayu-byline-name,
+.vayu-author-name {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .78rem;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+/* The card is a ruled band, like every other section boundary in the theme. */
 .vayu-author-box {
   border: 0;
   border-top: 1px solid var(--border, rgba(125, 125, 125, .22));
   border-radius: 0;
   background: none;
   box-shadow: none;
-  padding: 1rem 0 0;
+  padding: 1.35rem 0 0;
+  margin: 2.5rem 0 0;
 }
 
-.vayu-byline-avatar {
-  border-radius: 0;
-  filter: grayscale(1);
-  transition: filter var(--t, .35s ease);
-}
-
-.vayu-byline:hover .vayu-byline-avatar { filter: grayscale(0); }
-
-.vayu-byline-name {
-  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: .78rem;
-  letter-spacing: .1em;
-  text-transform: uppercase;
+.vayu-author-bio {
+  font-size: .9rem;
+  color: var(--muted, #8d8d92);
 }
 
 /* Numbered section rails, so a long read carries the index it sits behind. */

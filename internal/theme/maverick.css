@@ -285,6 +285,12 @@ article.vayu-prose h1,.vayu-article-header h1{font-size:clamp(2.6rem,7vw,4.4rem)
 .vayu-post-card--media .vayu-post-thumb{margin:-1.5rem -1.5rem 1.1rem;overflow:hidden;border-bottom:2px solid var(--vp-text)}
 .vayu-post-card--media .vayu-post-thumb img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;filter:grayscale(.1) contrast(1.05)}
 .vayu-post-author{text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+.vayu-byline{display:flex;align-items:center;gap:.7rem;margin-bottom:.85rem}
+.vayu-byline-link{display:inline-flex;align-items:center;gap:.7rem;text-decoration:none;color:inherit}
+.vayu-byline-avatar{width:34px;height:34px;border-radius:0;object-fit:cover;border:2px solid var(--vp-text)}
+.vayu-byline-avatar--ph{display:inline-flex;align-items:center;justify-content:center;background:var(--vp-text);color:var(--vp-bg);font-weight:800;font-size:.85rem}
+.vayu-byline-name{font-weight:800;text-transform:uppercase;letter-spacing:.02em}
+.vayu-byline-link:hover .vayu-byline-name{color:var(--vp-accent)}
 .vayu-author-box{display:flex;gap:1.1rem;align-items:flex-start;border:2px solid var(--vp-text);border-radius:0;padding:1.5rem;margin:2.6rem 0}
 .vayu-author-avatar{border-radius:0}
 .vayu-author-name{font-weight:800;text-transform:uppercase;letter-spacing:.02em}

@@ -1728,6 +1728,13 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 </header>
 <div class="content" itemprop="articleBody">{{.Content | safeHTML}}</div>
 </article>
+{{if and .AuthorBio (not .IsPage)}}<aside class="vayu-author-box" aria-label="About the author">
+  {{if .AuthorAvatar}}<img class="vayu-author-avatar" src="{{.AuthorAvatar}}" alt="" width="52" height="52" loading="lazy" referrerpolicy="no-referrer">{{else}}<span class="vayu-author-avatar vayu-author-avatar--ph" aria-hidden="true">{{.Author | initial}}</span>{{end}}
+  <div class="vayu-author-text">
+    <strong class="vayu-author-name">{{if .AuthorSlug}}<a href="/author/{{.AuthorSlug}}" rel="author">{{.Author}}</a>{{else}}{{.Author}}{{end}}</strong>
+    <p class="vayu-author-bio">{{.AuthorBio}}</p>
+  </div>
+</aside>{{end}}
 {{if and .Related (not .IsPage)}}<section class="vayu-related" aria-label="Related articles">
 <h2 class="vayu-related-heading">Related articles</h2>
 <ul class="vayu-related-list">{{range .Related}}<li><a href="/{{.Slug}}">{{.Title}}</a> <time>{{.CreatedAt | humanDate}}</time></li>{{end}}</ul>
@@ -3036,6 +3043,106 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   gap: 0.5rem 1rem;
   font-size: 0.9rem;
+  color: var(--pico-muted-color);
+}
+
+/* ── Author ──────────────────────────────────────────────────────────────────
+   The byline under the headline and the author card at the foot of a post.
+   Both are markup this file emits, so both are styled here: a theme may restyle
+   them, but a theme that does not must still get something finished-looking.
+   The byline had NO base rules at all — the avatar rendered as a bare 36px
+   image and the initials placeholder as a loose letter on every theme that had
+   not styled it, which was nine of the twelve. */
+.vayu-byline {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.vayu-byline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.vayu-byline-avatar {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--pico-muted-border-color);
+}
+
+/* The placeholder is a span, not an img, so it needs the box drawn for it. */
+.vayu-byline-avatar--ph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--pico-primary-inverse, #fff);
+  background: var(--pico-primary);
+  text-transform: uppercase;
+}
+
+.vayu-byline-name { font-weight: 600; }
+.vayu-byline-link:hover .vayu-byline-name { color: var(--pico-primary); }
+
+/* Rendered only when the site author has a bio (settings → "One line about the
+   author"). Gating on the bio rather than on a flag is what keeps this from
+   appearing on every existing site the moment it ships: an operator who never
+   filled the field in sees no change, and one who did was already promised a
+   card by the admin copy. */
+.vayu-author-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.1rem;
+  margin: 2.5rem 0;
+  padding: 1.35rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 12px;
+  background: var(--pico-card-background-color, transparent);
+}
+
+/* The class names here are the ones the twelve theme stylesheets were already
+   written against — .vayu-author-avatar / -name / -bio. They described this
+   component in detail while nothing emitted it; matching their vocabulary means
+   every existing theme rule starts working instead of being deleted. */
+.vayu-author-avatar {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--pico-muted-border-color);
+}
+
+.vayu-author-avatar--ph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--pico-primary-inverse, #fff);
+  background: var(--pico-primary);
+  text-transform: uppercase;
+}
+
+.vayu-author-text { min-width: 0; }
+.vayu-author-name { display: block; margin-bottom: 0.25rem; font-weight: 700; }
+.vayu-author-name a { text-decoration: none; color: inherit; }
+.vayu-author-name a:hover { color: var(--pico-primary); }
+
+.vayu-author-bio {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.6;
   color: var(--pico-muted-color);
 }
 

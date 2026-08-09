@@ -85,6 +85,12 @@ article.vayu-prose h1,.vayu-article-header h1{font-family:Georgia,"Times New Rom
 .vayu-post-card--media .vayu-post-thumb{border-radius:0;overflow:hidden;margin-bottom:1.1rem;filter:grayscale(.15)}
 .vayu-post-card--media .vayu-post-thumb img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block}
 .vayu-post-author{font-family:Georgia,serif;font-style:italic}
+.vayu-byline{display:flex;align-items:center;gap:.7rem;margin-bottom:.85rem}
+.vayu-byline-link{display:inline-flex;align-items:center;gap:.7rem;text-decoration:none;color:inherit}
+.vayu-byline-avatar{width:34px;height:34px;border-radius:0;object-fit:cover;border:1px solid color-mix(in srgb,var(--vp-muted) 24%,transparent)}
+.vayu-byline-avatar--ph{display:inline-flex;align-items:center;justify-content:center;background:var(--vp-text);color:var(--vp-bg);font-weight:700;font-size:.85rem}
+.vayu-byline-name{font-family:Georgia,"Times New Roman",serif;font-weight:700}
+.vayu-byline-link:hover .vayu-byline-name{color:var(--vp-accent)}
 .vayu-author-box{display:flex;gap:1.1rem;align-items:flex-start;border-top:1px solid color-mix(in srgb,var(--vp-muted) 24%,transparent);border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 24%,transparent);padding:1.6rem 0;margin:2.6rem 0}
 .vayu-author-avatar{border-radius:0}
 .vayu-author-name{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:1.15rem}
