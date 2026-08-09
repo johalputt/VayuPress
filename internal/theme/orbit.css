@@ -1,0 +1,937 @@
+/* Orbit — an observatory log.
+ *
+ * WHAT MAKES IT DIFFERENT, stated plainly because the first version of this file
+ * was a recolour of Vayu and was correctly called one.
+ *
+ * Vayu — and every other dark theme in this catalogue — is soft: rounded glass
+ * cards in a responsive grid, a cosmic wash behind the hero, a glow-lift on
+ * hover. Orbit inverts each of those decisions rather than repainting them:
+ *
+ *   Vayu / the rest                Orbit
+ *   ---------------                -----
+ *   card grid, auto-fill           one column of numbered log entries
+ *   rounded 14px, shadowed         sharp 0px, no shadow anywhere
+ *   filled card surfaces           hairlines; the page itself is the surface
+ *   sans display throughout        mono-led, tracked, uppercase chrome
+ *   hover lifts the card           hover draws a rule under the row
+ *   thumbnail on top, 16:9         thumbnail a small square at the row's end
+ *   atmosphere (blur, gradient)    structure (rails, counters, tick marks)
+ *   date inline under the title    date in its own left rail, mono
+ *
+ * The result reads as an instrument log rather than a magazine: every entry
+ * numbered, dated in a rail of its own, separated by a rule that draws itself as
+ * the entry arrives.
+ *
+ * The three house rules still hold, and they are why this can be fast rather
+ * than claim to be:
+ *
+ *   1. NO EXTERNAL REQUEST. No web font, no image, no icon set. Every ornament
+ *      is a gradient or a border. On a hosted domain an off-origin fetch is
+ *      refused by the Content-Security-Policy outright, so this is the
+ *      difference between a styled page and an unstyled one — not a preference.
+ *   2. NO JAVASCRIPT. The blog's own scripts stay as they are; this adds none.
+ *   3. NOTHING MOVES ONCE PAINTED. Every animation here is transform or opacity
+ *      only. Nothing animates width, height, inset, margin or font-size, so
+ *      there is no layout shift to score — CLS measures exactly the mistake that
+ *      rule forbids.
+ *
+ * Written against the markup internal/render actually emits, not against the
+ * markup it would be convenient to assume: a post card's only children are the
+ * optional .vayu-post-thumb and .vayu-post-body, and .vayu-post-meta lives
+ * INSIDE the body. Rails that assume otherwise silently do nothing.
+ */
+
+/* ── Sharp ──────────────────────────────────────────────────────────────────
+   The single decision that most separates this from the rounded-glass family it
+   would otherwise join. Stated once, up front, so nothing below has to remember
+   to opt out. */
+
+.vayu-post-card,
+.vayu-post-thumb,
+.vayu-feature-image,
+.vayu-byline-avatar,
+.vayu-author-box,
+.vayu-tag,
+.vayu-page-link,
+.vayu-trending-card,
+.vayu-trending-tab,
+.vayu-nav-signin,
+.vayu-nav-signup,
+.vayu-theme-toggle,
+.vayu-search-input,
+.vayu-hero-search .vayu-search-input,
+.vayu-hero-search button,
+.vayu-footer-badge {
+  border-radius: 0;
+}
+
+/* ── Chrome ─────────────────────────────────────────────────────────────── */
+
+.vayu-nav {
+  border-bottom: 1px solid var(--border, rgba(125, 125, 125, .22));
+  padding-bottom: .85rem;
+}
+
+.vayu-nav-brand {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-weight: 500;
+  letter-spacing: .02em;
+  text-transform: lowercase;
+}
+
+.vayu-nav-links a,
+.vayu-nav-links button {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .78rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.vayu-nav-signin,
+.vayu-nav-signup {
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: none;
+  padding: .2rem 0;
+  transition: border-color var(--t, .25s ease);
+}
+
+.vayu-nav-signin:hover,
+.vayu-nav-signup:hover { border-bottom-color: var(--accent, #d97757); }
+
+.vayu-theme-toggle {
+  border: 1px solid var(--border, rgba(125, 125, 125, .22));
+  background: none;
+}
+
+/* The search fields are ruled, not pills.
+ *
+ * THE SECOND RULE IS THE ONE THAT WORKS, and it is worth saying why, because the
+ * first one alone looks sufficient and is not. Pico rounds the ends of a form
+ * group with
+ *
+ *     [role="search"] > :first-child { border-top-left-radius: 5rem; … }
+ *
+ * — LONGHANDS, at specificity (0,2,0). A `border-radius: 0` on
+ * `.vayu-search-input` is (0,1,0) and loses, so the field stays a pill however
+ * many times the theme says it is square, and the shorthand/longhand split means
+ * a search for "border-radius" in the vendor stylesheet does not even find the
+ * rule responsible. Matching Pico's own selector shape is what turns it off.
+ * Both forms the renderer emits carry role="search" — the nav one and the
+ * search page's — so one rule covers both.
+ *
+ * Pico's magnifier and its leading indent are deliberately LEFT ALONE: the icon
+ * is a data: URI (no request, CSP-clean) and it is a real affordance. Sharpening
+ * the field is the change worth making; removing a working search cue is not. */
+.vayu-search-input {
+  border: 0;
+  border-bottom: 1px solid var(--border, rgba(125, 125, 125, .22));
+  background-color: transparent;
+  padding-block: .35rem;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .82rem;
+  transition: border-color var(--t, .25s ease);
+}
+
+.vayu-search[role="search"] > :first-child,
+.vayu-search[role="search"] > :last-child {
+  border-radius: 0;
+}
+
+.vayu-search-input:focus {
+  outline: none;
+  box-shadow: none;
+  border-bottom-color: var(--accent, #d97757);
+}
+
+/* The search page's own form: same underlined field, and a submit that is a
+   tracked mono word over a rule rather than a filled button. */
+.vayu-search--page .vayu-search-input { font-size: 1.05rem; padding-block: .7rem; }
+
+.vayu-search-btn {
+  border: 0;
+  border-bottom: 2px solid var(--accent, #d97757);
+  background: none;
+  color: inherit;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .76rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  padding: .7rem 0 .7rem 1.25rem;
+  transition: opacity var(--t, .3s ease);
+}
+
+.vayu-search-btn:hover { opacity: .65; }
+
+/* ── Masthead ────────────────────────────────────────────────────────────── */
+
+.vayu-hero {
+  position: relative;
+  border-top: 1px solid var(--border, rgba(125, 125, 125, .22));
+  border-bottom: 1px solid var(--border, rgba(125, 125, 125, .22));
+  padding-block: 3.5rem 2.75rem;
+  margin-bottom: 0;
+  background: none;
+}
+
+/* A tick rail across the top edge — a ruler, not a glow. One repeating gradient,
+   so it is a single paint and adds no elements. */
+.vayu-hero::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 9px;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg,
+    var(--border, rgba(125, 125, 125, .22)) 0 1px, transparent 1px 44px);
+}
+
+.vayu-hero h1 {
+  font-size: clamp(2.5rem, 7.5vw, 5.25rem);
+  line-height: .95;
+  letter-spacing: -0.045em;
+  font-weight: 700;
+  max-width: 18ch;
+  margin-bottom: .9rem;
+  text-transform: none;
+}
+
+.vayu-hero-eyebrow {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .68rem;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  color: var(--muted, #8d8d92);
+}
+
+.vayu-hero-tagline {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .82rem;
+  line-height: 1.75;
+  letter-spacing: .01em;
+  max-width: 64ch;
+  color: var(--muted, #8d8d92);
+}
+
+/* Readings on an instrument: figure over a tracked label, separated by a rule
+   rather than by whitespace. */
+.vayu-stats {
+  margin-top: 2rem;
+  border-top: 1px solid var(--border, rgba(125, 125, 125, .22));
+  padding-top: 1rem;
+}
+
+.vayu-stat-val {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 1.4rem;
+  letter-spacing: -0.02em;
+}
+
+.vayu-stat-label {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .62rem;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+}
+
+/* ── Section labels ──────────────────────────────────────────────────────────
+   The label carries the rule out to the right margin, so a section opens with a
+   measured line instead of a gap. */
+
+.vayu-section-label,
+.vayu-related-heading,
+.vayu-trending-label {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .68rem;
+  font-weight: 500;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--muted, #8d8d92);
+  margin-top: 2.75rem;
+  margin-bottom: 0;
+}
+
+.vayu-section-label::after,
+.vayu-related-heading::after,
+.vayu-trending-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border, rgba(125, 125, 125, .22));
+}
+
+/* ── The log ─────────────────────────────────────────────────────────────────
+   The base stylesheet lays the feed out as a card grid
+   (repeat(auto-fill, minmax(300px, 1fr))). This replaces it outright with a
+   single column of ruled rows. */
+
+.vayu-post-list {
+  display: block;
+  counter-reset: vayu-entry;
+  border-top: 1px solid var(--border, rgba(125, 125, 125, .22));
+  margin-top: 1.25rem;
+  gap: 0;
+}
+
+.vayu-post-card {
+  counter-increment: vayu-entry;
+  position: relative;
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+  column-gap: 1.5rem;
+  align-items: start;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border, rgba(125, 125, 125, .22));
+  border-radius: 0;
+  padding: 1.55rem 0;
+  overflow: visible;
+  transform: none;
+  box-shadow: none;
+  transition: none;
+}
+
+/* The entry number, as a CSS counter — correct for however many posts the page
+   carries, and asking nothing of the renderer. */
+.vayu-post-card::before {
+  content: counter(vayu-entry, decimal-leading-zero);
+  grid-column: 1;
+  grid-row: 1;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .76rem;
+  line-height: 2;
+  letter-spacing: .08em;
+  color: var(--muted, #8d8d92);
+  opacity: .6;
+  transition: opacity var(--t, .3s ease);
+}
+
+/* Hover draws a rule along the row's foot. scaleX rather than width: a width
+   transition is a layout animation, which is the thing rule 3 above forbids —
+   this is the composited equivalent and looks identical. */
+.vayu-post-card::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--accent, #d97757);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--t, .45s cubic-bezier(.22, 1, .36, 1));
+  pointer-events: none;
+}
+
+.vayu-post-card:hover::after,
+.vayu-post-card:focus-visible::after { transform: scaleX(1); }
+.vayu-post-card:hover::before { opacity: 1; }
+.vayu-post-card:hover .vayu-post-title { color: var(--accent, #d97757); }
+
+/* The body is itself a rail: date on the left, title and excerpt on the right.
+   .vayu-post-meta is a child of the body, not of the card, so the rail has to be
+   built here — declaring it on the card would match nothing. */
+.vayu-post-body {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  column-gap: 1.5rem;
+  padding: 0;
+  flex: none;
+}
+
+.vayu-post-meta {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .15rem;
+  margin: 0;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .7rem;
+  line-height: 2.1;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+/* The search page emits a SECOND .vayu-post-meta for tags. Left in the rail it
+   would stack on top of the date; it belongs under the title. */
+.vayu-post-meta ~ .vayu-post-meta {
+  grid-column: 2;
+  grid-row: auto;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .6rem;
+  line-height: 1.6;
+}
+
+/* The dot separated a horizontal date·author pair. In a stacked rail it reads as
+   a stray mark. */
+.vayu-post-dot { display: none; }
+
+.vayu-post-author { font-weight: 400; opacity: .75; }
+
+.vayu-post-title {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: clamp(1.15rem, 2.3vw, 1.75rem);
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  font-weight: 600;
+  margin: 0;
+  transition: color var(--t, .25s ease);
+}
+
+.vayu-post-excerpt {
+  grid-column: 2;
+  grid-row: 2;
+  margin: .55rem 0 0;
+  max-width: 64ch;
+  font-size: .92rem;
+  line-height: 1.65;
+}
+
+/* The thumbnail stops being the headline act: a small square at the end of the
+   row rather than a banner above it.
+ *
+ * Positioned out of flow ON PURPOSE. post_card_media.js deletes the thumb node
+ * when the image 404s; a thumb that occupied a grid track would leave an empty
+ * column and its gap behind. Out of flow, its removal costs a little unused
+ * right padding and nothing else. Fixed width and height, so an image arriving
+ * late cannot move the row it sits in. */
+.vayu-post-thumb {
+  position: absolute;
+  right: 0;
+  top: 1.6rem;
+  width: 5.5rem;
+  height: 5.5rem;
+  aspect-ratio: auto;
+  overflow: hidden;
+  background: none;
+  filter: grayscale(1) contrast(1.05);
+  opacity: .68;
+  transition: filter var(--t, .4s ease), opacity var(--t, .4s ease);
+}
+
+.vayu-post-card:hover .vayu-post-thumb { filter: grayscale(0); opacity: 1; }
+.vayu-post-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vayu-post-card:hover .vayu-post-thumb img { transform: none; }
+.vayu-post-card--media .vayu-post-body { padding-right: 7rem; }
+
+@media (max-width: 52rem) {
+  .vayu-post-card { grid-template-columns: 2.75rem minmax(0, 1fr); column-gap: 1rem; }
+  /* Block, not a narrower grid: the DOM order is date, title, excerpt, which is
+     already the right reading order once the rail is gone. */
+  .vayu-post-body { display: block; }
+  .vayu-post-meta { flex-direction: row; gap: .5rem; margin-bottom: .35rem; }
+  .vayu-post-thumb { display: none; }
+  .vayu-post-card--media .vayu-post-body { padding-right: 0; }
+}
+
+/* ── Arrival ─────────────────────────────────────────────────────────────────
+   Entries fade up as they enter the viewport, driven by scroll position itself
+   rather than by hover and without a line of JavaScript.
+
+   THE @supports IS THE POINT, not decoration. A scroll timeline a browser does
+   not implement leaves its animation parked in the FROM state — every entry at
+   opacity 0, i.e. a blank archive. Declaring the animation only inside the
+   support query means an unsupported browser gets rows that are simply visible,
+   which is the correct fallback rather than a degraded one. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .vayu-post-card {
+      animation: vayuEntryArrive linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 42%;
+    }
+  }
+}
+
+@keyframes vayuEntryArrive {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Paper does not scroll. A scroll-driven animation has no defined progress on a
+   printed page, and this one starts at opacity 0 — so without this an archive
+   printed or saved as PDF comes out with one entry on it. Found by capturing a
+   full-page screenshot, which fails the same way for the same reason. */
+@media print {
+  .vayu-post-card { animation: none; opacity: 1; transform: none; }
+}
+
+.vayu-empty {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .82rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted, #8d8d92);
+  border-bottom: 1px solid var(--border, rgba(125, 125, 125, .22));
+  padding: 2.5rem 0;
+}
+
+/* ── Pager ───────────────────────────────────────────────────────────────── */
+
+.vayu-pagination {
+  border-top: 0;
+  padding-top: 1.5rem;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.vayu-page-link {
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: none;
+  padding: .3rem 0;
+  font-size: .74rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  transition: border-color var(--t, .25s ease);
+}
+
+.vayu-page-link:hover { border-bottom-color: var(--accent, #d97757); }
+.vayu-page-link.is-disabled { opacity: .3; border-bottom-color: transparent; }
+
+.vayu-page-status {
+  font-size: .68rem;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--muted, #8d8d92);
+}
+
+/* ── Reading ─────────────────────────────────────────────────────────────── */
+
+/* Pico renders every article element as a card — padding, radius, a raised
+   surface and a shadow — and gives `article > header` its own tinted sectioning
+   band with negative margins. Both are exactly the vocabulary this theme
+   refuses, and both sit on element selectors, so a class in the theme reaches
+   them without any specificity gymnastics. The article body is the page here,
+   not a card on it.
+   (Written without angle brackets on purpose. The VCB theme contract rejects a
+   custom_css containing an opening-tag character — markup in a stylesheet being
+   an injection smell — and a prose comment is not worth an exception to that
+   rule. The first draft of this comment tripped exactly that gate.) */
+article.vayu-prose {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.vayu-article-header {
+  margin-inline: 0;
+  padding: 0 0 1.5rem;
+  background: none;
+  border-bottom: 1px solid var(--border, rgba(125, 125, 125, .22));
+}
+
+.vayu-article-header h1 {
+  font-size: clamp(2rem, 5.5vw, 3.5rem);
+  line-height: 1.03;
+  letter-spacing: -0.035em;
+  font-weight: 700;
+}
+
+.vayu-feature-image {
+  filter: grayscale(1) contrast(1.05);
+  transition: filter var(--t, .5s ease);
+}
+
+.vayu-article-header:hover .vayu-feature-image { filter: grayscale(0); }
+
+.vayu-article-meta {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .72rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted, #8d8d92);
+}
+
+/* Tags as bracketed mono tokens rather than pills — the same refusal of the
+   filled-surface vocabulary the cards make. */
+.vayu-tag {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-right: .75rem;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .72rem;
+  letter-spacing: .06em;
+  color: var(--muted, #8d8d92);
+  transition: color var(--t, .25s ease);
+}
+
+.vayu-tag::before { content: "["; opacity: .45; }
+.vayu-tag::after { content: "]"; opacity: .45; }
+.vayu-tag:hover { color: var(--accent, #d97757); }
+.vayu-tag-count { opacity: .5; }
+
+/* .vayu-byline is the class the renderer emits; .vayu-author-box is the older
+   name the shared "hide author box" option and the whole-site coverage gate
+   still address. Both name the same block, so both are styled here. */
+.vayu-byline,
+.vayu-author-box {
+  border: 0;
+  border-top: 1px solid var(--border, rgba(125, 125, 125, .22));
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  padding: 1rem 0 0;
+}
+
+.vayu-byline-avatar {
+  border-radius: 0;
+  filter: grayscale(1);
+  transition: filter var(--t, .35s ease);
+}
+
+.vayu-byline:hover .vayu-byline-avatar { filter: grayscale(0); }
+
+.vayu-byline-name {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .78rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+/* Numbered section rails, so a long read carries the index it sits behind. */
+.vayu-prose { counter-reset: vayu-h2; }
+
+.vayu-prose .content h2 {
+  counter-increment: vayu-h2;
+  border-top: 1px solid var(--border, rgba(125, 125, 125, .22));
+  padding-top: 1.5rem;
+  margin-top: 2.75rem;
+  letter-spacing: -0.025em;
+}
+
+.vayu-prose .content h2::before {
+  content: "§ " counter(vayu-h2, decimal-leading-zero);
+  display: block;
+  width: auto;
+  height: auto;
+  background: none;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .66rem;
+  letter-spacing: .22em;
+  color: var(--muted, #8d8d92);
+  margin-bottom: .55rem;
+}
+
+.vayu-prose .content h3 {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .88rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+/* Ruled top and bottom rather than a left bar, and upright rather than italic —
+   a quoted reading, not an aside. */
+.vayu-prose .content blockquote {
+  border-left: 0;
+  border-top: 1px solid var(--accent, #d97757);
+  border-bottom: 1px solid var(--accent, #d97757);
+  border-radius: 0;
+  background: none;
+  padding: 1.1rem 0;
+  margin-inline: 0;
+  font-style: normal;
+}
+
+.vayu-prose .content pre {
+  border-radius: 0;
+  border-left: 2px solid var(--accent, #d97757);
+  box-shadow: none;
+}
+
+.vayu-prose .content code { border-radius: 0; }
+.vayu-prose .content img { border-radius: 0; }
+
+.vayu-prose .content th {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .72rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.vayu-related {
+  border-top: 1px solid var(--border, rgba(125, 125, 125, .22));
+}
+
+.vayu-related-list {
+  counter-reset: vayu-rel;
+  margin-top: 1rem;
+}
+
+/* Grid, not the base flex row. With three items and space-between the title ends
+   up floating in the middle of the row; a number / title / date grid puts the
+   title where a reader looks for it and keeps the dates in one column. */
+.vayu-related-list li {
+  counter-increment: vayu-rel;
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0 1.5rem;
+  border-bottom: 1px solid var(--border, rgba(125, 125, 125, .22));
+  padding: .7rem 0;
+}
+
+.vayu-related-list li::before {
+  content: counter(vayu-rel, decimal-leading-zero);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .7rem;
+  letter-spacing: .08em;
+  color: var(--muted, #8d8d92);
+  opacity: .6;
+}
+
+.vayu-related-list a { border-bottom: 0; }
+.vayu-related-list time {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .68rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+/* ── Trending ────────────────────────────────────────────────────────────────
+   Built by trending.js, so the class names below are the ones that script
+   assigns. Same vocabulary as the log: ruled rows, a mono rank, no card. */
+
+.vayu-trending-head {
+  border-bottom: 0;
+}
+
+.vayu-trending-tabs { gap: 1.25rem; }
+
+.vayu-trending-tab {
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: none;
+  padding: .25rem 0;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .68rem;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  transition: border-color var(--t, .25s ease), color var(--t, .25s ease);
+}
+
+.vayu-trending-tab[aria-selected="true"] {
+  background: none;
+  color: var(--accent, #d97757);
+  border-bottom-color: var(--accent, #d97757);
+}
+
+.vayu-trending-list {
+  border-top: 1px solid var(--border, rgba(125, 125, 125, .22));
+  margin-top: 1rem;
+}
+
+.vayu-trending-card {
+  border: 0;
+  border-bottom: 1px solid var(--border, rgba(125, 125, 125, .22));
+  border-radius: 0;
+  background: none;
+  padding: .9rem 0;
+  transition: none;
+}
+
+.vayu-trending-card:hover { border-bottom-color: var(--accent, #d97757); }
+.vayu-trending-card:active { transform: none; }
+
+.vayu-trending-rank {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .74rem;
+  letter-spacing: .08em;
+  color: var(--muted, #8d8d92);
+}
+
+.vayu-trending-thumb {
+  border-radius: 0;
+  filter: grayscale(1);
+  opacity: .7;
+  transition: filter var(--t, .35s ease), opacity var(--t, .35s ease);
+}
+
+.vayu-trending-card:hover .vayu-trending-thumb { filter: grayscale(0); opacity: 1; }
+
+.vayu-trending-pin {
+  background: none;
+  border: 1px solid var(--accent, #d97757);
+  border-radius: 0;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+/* ── Error pages ─────────────────────────────────────────────────────────────
+   A status readout, not an apology: the code set in mono at instrument scale
+   with the message underneath it, left-aligned like everything else. */
+
+.vayu-err {
+  align-items: flex-start;
+  text-align: left;
+  border-top: 1px solid var(--border, rgba(125, 125, 125, .22));
+  border-bottom: 1px solid var(--border, rgba(125, 125, 125, .22));
+  padding: 4rem 0;
+}
+
+.vayu-err-code {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: clamp(4rem, 16vw, 9rem);
+  line-height: .9;
+  letter-spacing: -0.06em;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  color: var(--accent, #d97757);
+  /* The base stylesheet fades this to opacity .15 so it sits behind the message
+     as a watermark. On a flat page with nothing layered over it that reads as a
+     rendering fault, not a design — here the code IS the readout. */
+  opacity: .9;
+}
+
+.vayu-err-msg {
+  font-size: 1.1rem;
+  letter-spacing: -0.01em;
+  margin-top: .75rem;
+}
+
+.vayu-err-sub {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .74rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted, #8d8d92);
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+
+.vayu-footer {
+  border-top: 1px solid var(--border, rgba(125, 125, 125, .22));
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .76rem;
+  letter-spacing: .02em;
+}
+
+.vayu-footer-brand {
+  font-size: .95rem;
+  letter-spacing: .02em;
+  text-transform: lowercase;
+}
+
+.vayu-footer-col-title {
+  font-size: .64rem;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--muted, #8d8d92);
+  border-bottom: 1px solid var(--border, rgba(125, 125, 125, .22));
+  padding-bottom: .5rem;
+  margin-bottom: .75rem;
+}
+
+.vayu-footer-col-links a {
+  display: block;
+  padding-block: .3rem;
+  opacity: .72;
+  transition: opacity var(--t, .25s ease);
+}
+
+.vayu-footer-col-links a:hover { opacity: 1; }
+
+.vayu-footer-bottom {
+  border-top: 1px solid var(--border, rgba(125, 125, 125, .22));
+  font-size: .68rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.vayu-footer-badge {
+  border: 1px solid var(--border, rgba(125, 125, 125, .22));
+  background: none;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.vayu-footer-social a {
+  opacity: .7;
+  transition: opacity var(--t, .25s ease);
+}
+
+.vayu-footer-social a:hover { opacity: 1; }
+
+/* ── Hero search ─────────────────────────────────────────────────────────────
+   Only ever visible in the "search" hero mode (orbitHeroCSS in options.go); the
+   base stylesheet keeps .vayu-hero-search display:none. Underlined rather than
+   boxed, so the mode stays inside the rule-and-hairline vocabulary instead of
+   importing a pill from another theme. */
+
+.vayu-hero-search .vayu-search-input {
+  border: 0;
+  border-bottom: 2px solid var(--border, rgba(125, 125, 125, .22));
+  background: none;
+  padding: .85rem 0;
+  font-size: 1.1rem;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  transition: border-color var(--t, .3s ease);
+}
+
+.vayu-hero-search .vayu-search-input:focus {
+  outline: none;
+  box-shadow: none;
+  border-bottom-color: var(--accent, #d97757);
+}
+
+.vayu-hero-search button {
+  border: 0;
+  border-bottom: 2px solid var(--accent, #d97757);
+  background: none;
+  color: inherit;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: .76rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  padding: .85rem 0 .85rem 1.5rem;
+  transition: opacity var(--t, .3s ease);
+}
+
+.vayu-hero-search button:hover { opacity: .65; }
+
+/* ── Reduced motion ──────────────────────────────────────────────────────────
+   The arrival animation is already inside a no-preference query above, so this
+   block covers the transitions — including the one that would otherwise leave a
+   hover rule mid-draw. */
+@media (prefers-reduced-motion: reduce) {
+  .vayu-post-card::before,
+  .vayu-post-card::after,
+  .vayu-post-title,
+  .vayu-post-thumb,
+  .vayu-feature-image,
+  .vayu-byline-avatar,
+  .vayu-trending-thumb,
+  .vayu-trending-tab,
+  .vayu-tag,
+  .vayu-page-link,
+  .vayu-nav-signin,
+  .vayu-nav-signup,
+  .vayu-search-input,
+  .vayu-search-btn,
+  .vayu-hero-search .vayu-search-input,
+  .vayu-hero-search button,
+  .vayu-footer-col-links a,
+  .vayu-footer-social a {
+    transition: none;
+    animation: none;
+  }
+  .vayu-post-card:hover::after,
+  .vayu-post-card:focus-visible::after { transform: scaleX(1); }
+}

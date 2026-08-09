@@ -249,9 +249,9 @@ var catalogMeta = map[string]ThemeMeta{
 		Category:    CatEditorial,
 	},
 	"Orbit": {
-		Tagline:     "Deep space, drawn in pure CSS.",
-		Description: "A deep-space publication theme carrying the design sense of vayuweb.vayupress.com onto the blog: concentric orbit rings drawn entirely in CSS behind the hero, tracked-out mono section labels, glass cards edged with a masked gradient hairline that brightens on hover, and display type allowed to be genuinely large on a near-black canvas. Ships four hero modes — the signature rings, a full-width search bar as the primary call to action, a quiet light beam, or no ornament at all — each emitted on its own so a reader downloads only the mode in use. No web fonts, no JavaScript and no external request of any kind; every animation is transform/opacity only and every one stops under prefers-reduced-motion, so nothing on the page can move once it has painted. Light & dark, WCAG-AA, CSP-safe.",
-		Tags:        []string{"dark", "premium", "space", "glass", "search", "animated", "fast"},
+		Tagline:     "An observatory log, not a magazine.",
+		Description: "The archive as an instrument log. Where every other dark theme reaches for a rounded, softly-lit card grid, Orbit inverts each of those decisions: one column of numbered entries, sharp corners, hairline rules instead of filled surfaces, and a mono-led chrome tracked wide over a neutral near-black. Each post's date sits in a rail of its own beside the title, the entry number is a CSS counter, and the thumbnail is a small desaturated square at the end of the row rather than a banner above it. Entries arrive on the scroll position itself — a real scroll-driven animation, guarded so a browser that lacks it shows them plainly rather than not at all — and hovering draws a rule under the row instead of lifting a card. Article headings carry a numbered § rail, tags are bracketed mono tokens, and even the 404 reads as a status line. Ships four hero modes — the signature tick rail, a measured grid field, a full-width search bar as the primary call to action, or no ornament — each emitted on its own so a reader downloads only the mode in use. No web fonts, no JavaScript and no external request of any kind; every animation is transform/opacity only and every one stops under prefers-reduced-motion, so nothing on the page can move once it has painted. Light & dark, WCAG-AA, CSP-safe.",
+		Tags:        []string{"dark", "premium", "minimal", "mono", "editorial", "search", "animated", "fast"},
 		Category:    CatDark,
 	},
 	"Vayu": {

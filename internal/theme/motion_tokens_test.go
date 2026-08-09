@@ -106,31 +106,75 @@ func TestVPTokenNamesSurface(t *testing.T) {
 // TestFlagshipThemesConsumeMotionTokens is the deliverable guard for UX P4:
 // the flagship themes must be built ON the sovereign token system — consuming
 // the scheme-adaptive elevation + motion tokens — not hardcoding their own.
+//
+// Themes are identified by preset NAME, not by a signature selector. The
+// earlier version fingerprinted Vayu by `.vayu-post-card {`, which is not a
+// signature at all — it is the shared public markup, and the moment a second
+// theme restyled that card it inherited Vayu's expectations. Orbit did, and it
+// is a deliberately flat design with no elevation to assert on; the check would
+// have forced a shadow into it purely to satisfy a matcher.
 func TestFlagshipThemesConsumeMotionTokens(t *testing.T) {
-	checkedApex, checkedVayu := false, false
+	// Each flagship is checked for the token families its design actually uses.
+	// A theme that declines elevation is not thereby excused from the token
+	// system — see the hardcoded-shadow check below, which is the rule that
+	// applies to it.
+	want := map[string][]string{
+		"Apex":  {"var(--sh-lg", "var(--sh,", "var(--t-slow", "var(--t,"},
+		"Vayu":  {"var(--sh-lg", "var(--t,"},
+		"Orbit": {"var(--t,"},
+	}
+	seen := map[string]bool{}
 	for _, p := range AllPresets() {
-		css := p.CustomCSS
-		if strings.Contains(css, ".apex-bento__cell") {
-			checkedApex = true
-			for _, want := range []string{"var(--sh-lg", "var(--sh,", "var(--t-slow", "var(--t,"} {
-				if !strings.Contains(css, want) {
-					t.Errorf("Apex flagship does not consume sovereign token %q — it should be built on the token system", want)
-				}
+		toks, ok := want[p.Name]
+		if !ok {
+			continue
+		}
+		seen[p.Name] = true
+		for _, tok := range toks {
+			if !strings.Contains(p.CustomCSS, tok) {
+				t.Errorf("%s flagship does not consume sovereign token %q — it should be built on the token system", p.Name, tok)
 			}
 		}
-		if strings.Contains(css, ".vayu-post-card {") {
-			checkedVayu = true
-			for _, want := range []string{"var(--sh-lg", "var(--t,"} {
-				if !strings.Contains(css, want) {
-					t.Errorf("Vayu flagship does not consume sovereign token %q", want)
-				}
+		// Orbit is exempt from the elevation tokens because it has no elevation
+		// at all — hairlines and rules, never a raised surface. That is a claim
+		// about the design, so it is checked rather than trusted: the moment a
+		// shadow appears the exemption above stops being honest and this fails.
+		//
+		// Apex and Vayu are not held to the same line: both cast an
+		// accent-tinted glow, which is a coloured effect rather than the neutral
+		// elevation --sh* provides, and forcing it through the token would flatten
+		// a deliberate part of their look.
+		if p.Name != "Orbit" {
+			continue
+		}
+		for _, decl := range shadowDecls(p.CustomCSS) {
+			if strings.TrimSpace(decl) == "none" {
+				continue
 			}
+			t.Errorf("Orbit declares an elevation (%q) — it is exempted from the --sh* tokens on the grounds that it has none", decl)
 		}
 	}
-	if !checkedApex {
-		t.Error("Apex flagship preset not found among AllPresets()")
+	for name := range want {
+		if !seen[name] {
+			t.Errorf("%s flagship preset not found among AllPresets()", name)
+		}
 	}
-	if !checkedVayu {
-		t.Error("Vayu flagship preset not found among AllPresets()")
+}
+
+// shadowDecls returns the value of every box-shadow declaration in css.
+func shadowDecls(css string) []string {
+	var out []string
+	for i := 0; ; {
+		k := strings.Index(css[i:], "box-shadow:")
+		if k < 0 {
+			return out
+		}
+		k += i + len("box-shadow:")
+		end := strings.IndexAny(css[k:], ";}")
+		if end < 0 {
+			return append(out, strings.TrimSpace(css[k:]))
+		}
+		out = append(out, strings.TrimSpace(css[k:k+end]))
+		i = k + end
 	}
 }

@@ -261,10 +261,10 @@ var perThemeOptions = []ThemedOption{
 		Themes: []string{"Orbit"},
 		Option: Option{
 			Key: "orbithero", Label: "Hero mode", Default: "default",
-			Help: "The ornament behind the hero. Rings is the signature; Search puts a full-width search bar in the hero and hides the one in the nav.",
+			Help: "The rule behind the masthead. Tick rail is the signature; Search puts a full-width search bar in the hero and hides the one in the nav.",
 			Choices: []OptionChoice{
-				{"default", "Rings (signature)"}, {"search", "Big search bar"},
-				{"beam", "Light beam"}, {"flat", "No ornament"},
+				{"default", "Tick rail (signature)"}, {"search", "Big search bar"},
+				{"grid", "Measured grid"}, {"flat", "No ornament"},
 			},
 		},
 	},
@@ -658,66 +658,49 @@ func applyThemeOptions(t *Tokens) string {
 // affect LCP or CLS.
 func orbitHeroCSS(mode string) string {
 	switch mode {
-	case "beam":
+	case "grid":
+		// The tick rail taken from an edge to a field: the same repeating
+		// gradient in both axes, faded out downwards so the masthead type is
+		// never read against a live grid line.
 		return `
 .vayu-hero::before {
-  inset: 0;
-  background: linear-gradient(180deg,
-    color-mix(in oklab, var(--pico-primary) 26%, transparent), transparent 62%);
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
-          mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
-  animation: none;
+  top: 0;
+  bottom: 0;
+  height: auto;
+  opacity: .5;
+  background:
+    repeating-linear-gradient(90deg, var(--border, rgba(125,125,125,.22)) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(180deg, var(--border, rgba(125,125,125,.22)) 0 1px, transparent 1px 44px);
+  -webkit-mask-image: linear-gradient(180deg, #000, transparent 86%);
+          mask-image: linear-gradient(180deg, #000, transparent 86%);
 }`
 	case "flat":
 		return `
-.vayu-hero::before, .vayu-hero::after { content: none; }
+.vayu-hero::before { content: none; }
 .vayu-hero {
-  border-bottom: 1px solid var(--pico-muted-border-color);
-  min-height: 0;
-  padding-block: 3.5rem 3rem;
+  border-top: 0;
+  padding-block: 2.5rem 2.25rem;
 }`
 	case "search":
 		// Revealing the hero search also hides the copy in the nav, so the page
 		// never carries two search forms — one of them would be a second
 		// landmark for a screen reader to walk past for no benefit.
+		//
+		// Layout only. The field and the button are already styled in orbit.css
+		// as underlined rather than boxed; restating them here would be a second
+		// copy of the same rule, and the two would drift.
 		return `
 .vayu-hero-search {
   display: flex;
-  gap: .5rem;
+  align-items: flex-end;
+  gap: 0;
   width: 100%;
-  max-width: 34rem;
-  margin-top: 2rem;
+  max-width: 40rem;
+  margin-top: 2.25rem;
 }
 .vayu-nav .vayu-search { display: none; }
-.vayu-hero-search .vayu-search-input {
-  flex: 1;
-  min-width: 0;
-  font-size: 1.05rem;
-  padding: .95rem 1.15rem;
-  border-radius: var(--vayu-radius-lg, 1rem);
-  border: 1px solid var(--pico-muted-border-color);
-  background: color-mix(in oklab, var(--pico-card-background-color) 82%, transparent);
-  backdrop-filter: blur(14px);
-  transition: border-color .3s ease, box-shadow .3s ease;
-}
-.vayu-hero-search .vayu-search-input:focus {
-  outline: none;
-  border-color: color-mix(in oklab, var(--pico-primary) 62%, transparent);
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--pico-primary) 18%, transparent);
-}
-.vayu-hero-search button {
-  flex: 0 0 auto;
-  padding: .95rem 1.6rem;
-  border-radius: var(--vayu-radius-lg, 1rem);
-  font-weight: 600;
-  border: 1px solid transparent;
-  transition: transform .25s ease, filter .25s ease;
-}
-.vayu-hero-search button:hover { transform: translateY(-1px); filter: brightness(1.08); }
-@media (prefers-reduced-motion: reduce) {
-  .vayu-hero-search button, .vayu-hero-search .vayu-search-input { transition: none; }
-  .vayu-hero-search button:hover { transform: none; }
-}`
+.vayu-hero-search .vayu-search-input { flex: 1; min-width: 0; }
+.vayu-hero-search button { flex: 0 0 auto; }`
 	}
 	return ""
 }

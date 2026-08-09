@@ -88,28 +88,74 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   no `og:description` and no `og:site_name` at all — the three fields every link
   preview reads first.
 
-- **Orbit — a new blog theme.** A deep-space publication design carrying the
-  sense of vayuweb.vayupress.com onto the blog: concentric orbit rings drawn
-  entirely in CSS behind the hero, tracked-out mono section labels, glass cards
-  edged with a masked gradient hairline that brightens on hover, and display type
-  allowed to be genuinely large on a near-black canvas.
+- **Orbit — a new blog theme, and the one that is not another dark card grid.**
+  Every dark design in the catalogue had converged on the same shape: rounded
+  glass cards in an auto-fill grid, a wash behind the hero, a glow-lift on hover.
+  A first pass at Orbit joined them, and was correctly read as a recolour. This
+  is the rebuild, and it inverts each of those decisions rather than repainting
+  them.
+
+  The archive is an **instrument log**: one column of numbered entries instead of
+  a card grid, sharp corners instead of 14px, hairline rules instead of filled
+  surfaces, a mono-led chrome instead of a sans one. Each post's date sits in a
+  rail of its own beside the title, the entry number is a CSS counter (so it is
+  right for any number of posts and asks nothing of the renderer), and the
+  thumbnail is a small desaturated square at the end of the row rather than a
+  banner above it. Article headings carry a numbered `§` rail, tags are bracketed
+  mono tokens, related posts are a numbered ledger, and the 404 reads as a status
+  line. The radii compile to `0`, so the sharpness reaches shared components this
+  stylesheet never names.
+
+  Entries arrive on the **scroll position itself** — `animation-timeline: view()`,
+  no JavaScript and no observer. That is guarded twice, and both guards are the
+  point rather than decoration. A browser without scroll timelines leaves the
+  animation parked in its FROM state, which here is `opacity: 0` — a blank
+  archive, not a degraded one — so the animation is only ever declared *inside*
+  the `@supports`. Paper has no scroll position either, so `@media print`
+  restores the entries; without it, printing an archive produced one entry on an
+  otherwise empty page. Both are pinned by tests, and both tests were watched to
+  fail with the guard removed.
+
+  Written against the markup `internal/render` actually emits rather than the
+  markup it would be convenient to assume. `.vayu-post-meta` is a child of
+  `.vayu-post-body`, not of the card, so the date rail is built where the element
+  really lives; a rail declared on the card matches nothing and fails silently.
+  The thumbnail is positioned out of flow on purpose, because `post-card-media.js`
+  deletes it when an image 404s and a grid track would leave an empty column
+  behind.
+
+  Two vendor defaults had to be defeated, and both were invisible failures rather
+  than loud ones:
+
+  - Pico rounds a form group with `[role="search"] > :first-child { border-top-left-radius: 5rem }`
+    — **longhands**, at a specificity no `.vayu-search-input { border-radius: 0 }`
+    can reach. The theme's own rule was present, lost the cascade, and the search
+    box stayed a pill on an otherwise square page. Searching the vendor stylesheet
+    for `border-radius` does not even find the rule responsible.
+  - Pico renders every article element as a card, with its own padding, radius,
+    raised surface and shadow, and gives `article > header` a tinted sectioning
+    band. The reading page was a card floating on the page it was supposed to be.
 
   It ships **four hero modes** under an Orbit-only `orbithero` option — the
-  signature rings, a full-width **search bar** as the primary call to action, a
-  quiet light beam, or no ornament. `herostyle` already exists as a *shared*
+  signature tick rail, a measured grid field, a full-width **search bar** as the
+  primary call to action, or no ornament. `herostyle` already exists as a *shared*
   option on a different axis (centered/left/minimal/boxed), so overloading that
   key would have silently changed every theme already using it; the new control
-  is scoped to Orbit and a test pins that it never shadows a shared key.
+  is scoped to Orbit and a test pins that it never shadows a shared key. Only the
+  chosen mode's CSS is emitted rather than all four behind selectors — a theme is
+  CSS-only (`internal/render` deliberately does not import `internal/theme`), so
+  there is no attribute on the document to select against, and emitting one mode
+  keeps three unused rule sets out of the stylesheet every reader downloads.
 
-  Only the chosen mode's CSS is emitted rather than all four behind selectors —
-  a theme is CSS-only (`internal/render` deliberately does not import
-  `internal/theme`), so there is no attribute on the document to select against,
-  and emitting one mode keeps three unused rule sets out of the stylesheet every
-  reader downloads.
+  The store card ends with the words "WCAG-AA", so the palette is now **measured**
+  rather than asserted: every foreground Orbit paints on a background it uses is
+  checked against 4.5:1 in both schemes.
 
-  Built on the ADR-0136 sovereign token system (`--sh-sm`, `--sh-lg`, `--t`)
-  rather than hardcoded shadows and timings, so elevation and motion follow a
-  scheme change instead of being left behind.
+  Verified by serving the real rendered pages under the real hosted-domain CSP
+  and driving them in Chromium — the home feed, an article, search, the 404,
+  light and dark, mobile, reduced motion and print — asserting on the things that
+  fail silently: a rail that matched nothing, a refused subresource, an entry
+  stuck invisible, an error code painted at opacity 0.15.
 
 - **The homepage hero can carry a search box.** `internal/render` now emits a
   `.vayu-hero-search` form inside the hero on any homepage with both a hero and

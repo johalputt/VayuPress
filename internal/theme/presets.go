@@ -37,6 +37,9 @@ var editorCSS string
 //go:embed vayu.css
 var vayuCSS string
 
+//go:embed orbit.css
+var orbitCSS string
+
 // Default returns the Default preset — neutral dark/light tones.
 func Default() Tokens {
 	return Tokens{
@@ -719,31 +722,38 @@ func Vayu() Tokens {
 	}
 }
 
-// Orbit — a deep-space publication theme that carries the design sense of
-// vayuweb.vayupress.com onto the blog: concentric orbit rings drawn in pure CSS
-// behind the hero, tracked-out mono section labels, glass cards with a masked
-// gradient hairline, and very large display type on a near-black canvas.
+// Orbit — an observatory log. The catalogue's answer to "everything dark here
+// looks like the same soft glass card", and it gets there by inverting those
+// decisions rather than repainting them: one column of numbered log entries
+// instead of a card grid, sharp corners instead of rounded, hairline rules
+// instead of filled surfaces, a mono-led chrome instead of a sans one, and a
+// scroll-driven arrival instead of a hover lift. The date sits in a rail of its
+// own beside each entry and the thumbnail is a small square at the row's end
+// rather than a banner over it.
 //
-// It ships FOUR hero modes rather than one, because the hero is the only part of
-// a blog that a publisher wants to change often: "rings" (the signature orbit
-// field), "search" (a full-width search bar as the primary call to action —
-// the reason the renderer emits .vayu-hero-search), "beam" (a quiet light
-// column) and "flat" (no ornament at all).
+// The radii are ZERO on purpose. They compile to --radius/--radius2, which the
+// shared card, tag and button rules read, so sharpness reaches the parts of the
+// site this stylesheet never names.
+//
+// It ships four hero modes under an Orbit-only option, because the hero is the
+// part of a blog a publisher wants to change often: the signature tick rail, a
+// measured grid field, a full-width search bar as the primary call to action
+// (the reason the renderer emits .vayu-hero-search), or no ornament at all.
 //
 // Written to the same bar as Vayu and Editor: no web fonts, no JS, no external
 // request of any kind, and nothing that can move once painted. Every animation
-// is transform/opacity only and every one of them is switched off under
+// is transform/opacity only and every one is switched off under
 // prefers-reduced-motion, so it stays fast and stays still — which is what a
 // Core Web Vitals score is actually measuring.
 func Orbit() Tokens {
 	return Tokens{
-		Name: "Orbit", BgDark: "#05060a", SurfaceDark: "#0c0f18", TextDark: "#eef1f7",
-		MutedDark: "#98a1b4", AccentDark: "#8fb3ff", Accent2Dark: "#c9a6ff", HiDark: "#ffd79a", GreenDark: "#5fe3a1",
-		BgLight: "#f8f9fc", SurfaceLight: "#ffffff", TextLight: "#0a0d16", MutedLight: "#55607a",
-		AccentLight: "#3557c7", Accent2Light: "#6d43c0", HiLight: "#a15c00",
+		Name: "Orbit", BgDark: "#0a0a0b", SurfaceDark: "#121213", TextDark: "#ededee",
+		MutedDark: "#8d8d92", AccentDark: "#d97757", Accent2Dark: "#a8a29e", HiDark: "#e8b298", GreenDark: "#7fb069",
+		BgLight: "#fbfbfa", SurfaceLight: "#ffffff", TextLight: "#111111", MutedLight: "#6b6b70",
+		AccentLight: "#a94b28", Accent2Light: "#57534e", HiLight: "#8a3a1c",
 		FontSans:     "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
 		FontMono:     "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
-		FontSizeBase: "1.0625rem", LineHeight: "1.7", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "1rem",
+		FontSizeBase: "1.0625rem", LineHeight: "1.65", MaxWidth: "46rem", RadiusSm: "0", RadiusLg: "0",
 		CustomCSS: orbitCSS,
 	}
 }
