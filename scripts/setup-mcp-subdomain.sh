@@ -180,7 +180,7 @@ server {
     # this the widest-open vhost on the install AND one whose paths sit in
     # shieldBypassPrefixes, because an MCP client cannot solve a proof-of-work.
     # Widest-open plus shield-bypassed is not a combination to leave on a
-    # wildcard. The sibling api-host script already closes with `return 404`;
+    # wildcard. The sibling api-host script already closes with a 404 return;
     # this now matches it.
     location ^~ /.well-known/oauth-authorization-server { proxy_pass http://127.0.0.1:8080; }
     location ^~ /.well-known/oauth-protected-resource   { proxy_pass http://127.0.0.1:8080; }

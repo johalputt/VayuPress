@@ -126,7 +126,6 @@ rm -f "$REQUEST"
 # empty flag file that asks for a run.
 UPGRADE_REPO="${UPGRADE_REPO:-johalputt/VayuPress}"
 UPGRADE_ASSET="vayuprovision-helpers.tar.gz"
-HELPERS_VERSION_STAMP="dev"
 
 self_upgrade_helpers() {
   # Every failure here is a SKIP, never a stop. This runs before the work, and a

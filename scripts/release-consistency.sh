@@ -16,11 +16,13 @@ set -euo pipefail
 
 VERSION_FILE="${1:-.release-version}"
 CHANGELOG="${2:-CHANGELOG.md}"
+MAIN_GO="${3:-cmd/vayupress/main.go}"
 
 fail() { printf '❌ %s\n' "$1" >&2; exit 1; }
 
 [ -r "$VERSION_FILE" ] || fail "$VERSION_FILE is missing or unreadable"
 [ -r "$CHANGELOG" ] || fail "$CHANGELOG is missing or unreadable"
+[ -r "$MAIN_GO" ] || fail "$MAIN_GO is missing or unreadable"
 
 # tr -d strips the trailing newline whether or not the file has one.
 raw=$(tr -d ' \t\r\n' < "$VERSION_FILE")
@@ -55,5 +57,20 @@ body=$(awk -v v="## [$version]" '
 	seen' "$CHANGELOG" | tr -d '[:space:]')
 [ -n "$body" ] || fail "$CHANGELOG section [$version] has no content under its heading"
 
-printf '✅ .release-version (%s) matches CHANGELOG.md section [%s], which is non-empty\n' \
-	"$raw" "$changelog_version"
+# The third source. main.go's Version is overridden at release time by
+# -X main.Version, so a stale literal does not reach a published binary — but it
+# does reach anyone who builds from source without those ldflags, and it is the
+# value every in-tree caller (health, render) reads. The first version of this
+# script checked only two of the three files and passed while this one was a
+# release behind; a gate that is greener than reality is worse than no gate.
+main_version=$(sed -n 's/^var Version = "\([^"]*\)".*/\1/p' "$MAIN_GO" | head -1)
+[ -n "$main_version" ] || fail "could not read 'var Version' out of $MAIN_GO"
+
+if [ "$main_version" != "$version" ]; then
+	fail "$MAIN_GO declares Version $main_version but $VERSION_FILE says $raw.
+   A source build would report the wrong version, and every in-tree reader of
+   Version would agree with it."
+fi
+
+printf '✅ .release-version (%s), CHANGELOG.md section [%s] and %s Version (%s) all agree; the section is non-empty\n' \
+	"$raw" "$changelog_version" "$MAIN_GO" "$main_version"

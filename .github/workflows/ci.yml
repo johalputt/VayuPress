@@ -65,8 +65,14 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
       - name: Lint all shell scripts
+        # xargs, not -exec: `find -exec shellcheck {} \;` discards every exit
+        # code and find returns 0, so this step reported "passed" no matter what
+        # shellcheck found. It was hiding an SC2152 error — a `return 404`
+        # inside backticks in an UNQUOTED heredoc, which the shell ran as a
+        # command substitution and silently deleted from the nginx config being
+        # written. A gate that cannot fail is documentation, not a gate.
         run: |
-          find scripts/ -name "*.sh" -exec shellcheck --severity=warning {} \;
+          find scripts/ -name "*.sh" -print0 | xargs -0 -r shellcheck --severity=warning
           echo "✅ Shell lint passed."
 
   # ── P10: Markdown linting ──────────────────────────────────────────────────

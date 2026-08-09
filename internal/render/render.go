@@ -1476,8 +1476,13 @@ type articlePage struct {
 	// for og:image when the article has no inline image of its own.
 	SiteOGImage string
 	// Per-post publishing options (resolved override → derived → site default).
-	TitleTag           string // full <title> text
-	Canonical          string // absolute canonical URL
+	TitleTag  string // full <title> text
+	Canonical string // absolute canonical URL
+	// BreadcrumbJSONLD is the article's BreadcrumbList, built in Go rather than
+	// interpolated into the template, for the reason given in
+	// internal/seo/jsonld.go: one unescaped quote in a title truncates
+	// interpolated JSON silently, and every consumer then drops the block.
+	BreadcrumbJSONLD   template.HTML
 	OGTitle            string
 	OGDescription      string
 	TwitterTitle       string
@@ -1683,7 +1688,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta name="twitter:title" content="{{.TwitterTitle}}">
 <meta name="twitter:description" content="{{.TwitterDescription}}">
 {{if .TwitterImageURL}}<meta name="twitter:image" content="{{.TwitterImageURL}}">{{end}}
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"{{.Title | jsonAttr}}","description":"{{.SEODescription | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","url":"{{.Canonical}}","mainEntityOfPage":{"@type":"WebPage","@id":"{{.Canonical}}"},"inLanguage":"en",{{if .OGImage}}"image":"{{.OGImage}}",{{end}}"author":{"@type":"Person","name":"{{if .Author}}{{.Author | jsonAttr}}{{else if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}"},"publisher":{"@type":"Organization","name":"{{if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}","url":"{{.Origin}}"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"{{.Title | jsonAttr}}","description":"{{.SEODescription | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","url":"{{.Canonical}}","mainEntityOfPage":{"@type":"WebPage","@id":"{{.Canonical}}"},"inLanguage":"en",{{if .OGImage}}"image":"{{.OGImage}}",{{end}}"author":{"@type":"Person","name":"{{if .Author}}{{.Author | jsonAttr}}{{else if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}"},"publisher":{"@type":"Organization","name":"{{if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}","url":"{{.Origin}}"}}</script>{{.BreadcrumbJSONLD}}
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}<link rel="stylesheet" href="/static/chroma.css">{{.HeadMeta}}{{.ThemeToggleJSLink}}{{.VideoFacadeJSLink}}
 {{pwaHead}}{{pwaJS}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
@@ -2312,6 +2317,11 @@ func RenderArticleWithMetaSettings(s SiteSettings, a db.Article, layout ArticleL
 		TrendingJSLink:     TrendingJSLink(),
 		SearchModalJSLink:  SearchModalJSLink(),
 	}
+	// Built from the values this page renders — the same origin, site name,
+	// title and canonical the BlogPosting block beside it uses — so the two
+	// cannot describe different pages. Empty inputs yield "", and the template
+	// then emits nothing rather than a half-formed crumb trail.
+	data.BreadcrumbJSONLD = seo.BreadcrumbJSONLD(seo.Origin(domain), s.Name, a.Title, canonical)
 	// Per-post author (multi-author) wins over the site-wide author; empty/unknown
 	// falls back to the site author resolved by name below.
 	if a.AuthorID != "" && AuthorByIDFn != nil {

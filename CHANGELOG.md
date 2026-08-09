@@ -8,6 +8,51 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **`cmd/vayupress/main.go` was a release behind, and the new release gate did
+  not notice.** 3.17.46 was cut with `.release-version` and `CHANGELOG.md` at
+  3.17.46 while `var Version` still read 3.17.45. The published binary is not
+  affected — `tag-release.yml` builds with `-X main.Version=${VERSION#v}`, so it
+  reports 3.17.46 correctly — but a build from source without those ldflags
+  reports the wrong version, and every in-tree reader of `Version` (health,
+  render) agrees with it.
+
+  The version-agreement rule already existed as a Go test,
+  `TestReleaseVersionFilesAgree`, which pins all three files. The
+  `release-consistency.sh` gate added in 3.17.46 checked only two of them, so
+  the fast standalone job went green while the invariant was broken, and the
+  breakage surfaced late in `go test (race)` instead. The script now checks the
+  same three sources. A gate that is greener than reality is worse than no gate,
+  and a second copy of a rule that covers less than the first is how that
+  happens.
+
+- **The shell-lint gate could not fail.** It ran
+  `find scripts/ -name "*.sh" -exec shellcheck {} \;`, which discards every exit
+  code; `find` returns 0 whatever shellcheck reports, so the step printed
+  "✅ Shell lint passed" unconditionally. It runs through `xargs -0` now.
+
+  It had been hiding a genuine SC2152 error. `setup-mcp-subdomain.sh` writes its
+  nginx config from an **unquoted** heredoc, so backticks in the body are live
+  command substitution rather than text — and a comment inside it read
+  ``already closes with `return 404` ``. The shell ran that as a command in a
+  subshell and substituted its empty output, so every generated config carried a
+  comment with the words silently removed. Reworded to avoid backticks;
+  reproduced first, then fixed.
+
+  Also removed `HELPERS_VERSION_STAMP` from `provision-subdomains.sh`, assigned
+  and never read (SC2034).
+
+- **`seo.BreadcrumbJSONLD` was written, tested, and never called.** The deadcode
+  gate caught it. It now renders on article pages, built from the same origin,
+  site name, title and canonical the `BlogPosting` block beside it uses, so the
+  two cannot describe different pages.
+
+  Its first wiring test passed against a mutation that blanked the site name,
+  because `"name":"Acme Press"` also appears in the BlogPosting block as the
+  publisher and the assertion searched the whole page. It now isolates the
+  BreadcrumbList block before asserting anything about it.
+
 ### Added
 
 - **The homepage emits structured data, and `/llms.txt` exists.** Two gaps on the
