@@ -6,6 +6,84 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **The plugin sandbox could not be built for arm64, and killed plugins outright
+  on arm and 386.** `internal/sandbox` named `syscall.SYS_EPOLL_WAIT` and
+  `syscall.SYS_POLL` in architecture-neutral code. The arm64 and riscv64 ABIs
+  were defined after `epoll_pwait(2)` and `ppoll(2)` existed and never carried
+  the older spellings, so the package did not compile for them at all — VayuPress
+  could not be built for an ARM VPS. On the architectures that did compile, the
+  seccomp filter's arch guard was a hardcoded `AUDIT_ARCH_X86_64`: on arm or 386
+  it could not match, and the guard's own action is a kill, so every sandboxed
+  plugin died on its first syscall. The `AUDIT_ARCH_*` value now comes from a
+  table keyed on the build architecture, covering amd64, arm64, arm, 386,
+  riscv64, ppc64le and s390x; anywhere else `ApplySeccompFilter()` refuses and
+  the plugin does not start, because a filter whose guard cannot match is worse
+  than no filter.
+
+- **A sandboxed Go plugin's netpoller was denied on x86-64.** The allowlist
+  carried `epoll_wait` but not `epoll_pwait`, and `epoll_pwait` is what the Go
+  runtime's netpoller actually issues — on every Linux architecture, including
+  the one this product ships. Every poll of a plugin's own IPC pipe took EPERM.
+  `epoll_pwait` and `ppoll` are now in the architecture-neutral allowlist;
+  `epoll_wait` and `poll` remain on the ABIs that define them, so a plugin that
+  is not a Go binary keeps working.
+
+- **A seccomp breach killed one thread instead of the process.** The action
+  constant was `0x00000000` while its comment read `SECCOMP_RET_KILL_PROCESS`;
+  that value is `SECCOMP_RET_KILL_THREAD`. Reaping one thread of a Go process
+  mid-syscall does not terminate it, it deadlocks it — a containment failure
+  that hangs rather than stops. Corrected to `0x80000000`.
+
+### Added
+
+- **Cross-compile CI gate over seven Linux ABIs** (amd64, arm64, arm, 386,
+  riscv64, ppc64le, s390x). Every other Go gate runs on the runner's own
+  `linux/amd64`, so nothing in CI ever asked whether the source compiled
+  anywhere else — which is why the arm64 break above survived. The gate proves
+  the source compiles for those targets; it does not claim they are tested or
+  released.
+
+- **Release-metadata consistency gate** (`scripts/release-consistency.sh`).
+  Pushing `.release-version` *is* the release here, and nothing downstream
+  re-derives the version, so the file and the top versioned `CHANGELOG.md`
+  section could disagree unnoticed — publishing one version while announcing
+  another, or announcing fixes for a build never cut. An `## [Unreleased]`
+  section on top stays legal; it is skipped, not rejected.
+
+- **`go mod tidy` drift, `go mod verify`, and `go test -shuffle=on` in CI.**
+  The first two were in the project's local gate list but had never been
+  enforced in CI. The third catches tests that only pass in their usual order.
+
+- **Tests for the seccomp filter, which previously had none.**
+  `TestSeccompFilterActuallyEnforces` installs the real filter in a child
+  process and probes both an allowed and a denied syscall, asserting the denied
+  one returns EPERM and does not kill. The `AUDIT_ARCH_*` table is re-derived
+  from each ELF machine number rather than compared against a second copy of the
+  same hex, which is the only check that reaches the six architectures no test
+  here can run on.
+
+### Upgrade Notes
+
+- No configuration or data changes. Releases remain a single native
+  `linux/amd64` build; the cross-compile gate widens what is *known to compile*,
+  not what is published.
+- Seccomp enforcement is exercised end to end on `linux/amd64` only. The other
+  six architectures are covered by compilation and by the re-derived audit-arch
+  table — not by running a filter on that hardware. The two legacy allowlist
+  entries (`epoll_wait`, `poll`) exist for non-Go plugins and no test covers
+  them, because the suite has no non-Go plugin.
+- Builds are still not bit-for-bit reproducible: two builds from identical
+  source with the release flags differ. A third party therefore cannot yet
+  independently confirm a signed release binary corresponds to its tagged
+  source. This is open work and deliberately has no CI gate, rather than a gate
+  asserting a property the build does not have.
+
+---
+
 ## [3.17.45] — 2026-08-09
 
 ### Added

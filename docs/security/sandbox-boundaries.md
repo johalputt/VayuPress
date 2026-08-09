@@ -74,10 +74,16 @@ child  → parent: {"ok":true, "log_lines":[...]}\n
 | Memory | `brk`, `mmap`, `munmap`, `mprotect`, `mremap` |
 | Signals | `rt_sigaction`, `rt_sigprocmask`, `rt_sigreturn`, `sigaltstack` |
 | Go runtime | `futex`, `clone`, `gettid`, `getpid`, `tgkill`, `sched_yield`, `nanosleep` |
-| FD management | `close`, `fcntl`, `fstat`, `epoll_create1`, `epoll_ctl`, `epoll_wait`, `pipe2`, `poll` |
+| FD management | `close`, `fcntl`, `fstat`, `epoll_create1`, `epoll_ctl`, `epoll_pwait`, `pipe2`, `ppoll` |
 | Time | `clock_gettime`, `gettimeofday` |
+| Legacy polling (ABIs that define them) | `epoll_wait`, `poll` |
 
 All other syscalls → `SECCOMP_RET_ERRNO | EPERM`.
+
+`epoll_pwait` and `ppoll` are the spellings every supported ABI carries, and
+`epoll_pwait` is what the Go runtime's netpoller actually issues — on x86-64 as
+much as on arm64. `epoll_wait` and `poll` are kept for plugins that are not Go
+binaries, on the ABIs that still define them; arm64 and riscv64 never did.
 
 ---
 
@@ -90,6 +96,8 @@ All other syscalls → `SECCOMP_RET_ERRNO | EPERM`.
 | `applyProcMask` bind-mount fails | Logged as warn; sandbox continues |
 | `capset` fails | Returns error; plugin does not start |
 | `ApplySeccompFilter` fails (plugin-side) | Plugin init returns error; parent sees crash → restart budget applies |
+| Architecture has no `AUDIT_ARCH_*` entry | `ApplySeccompFilter` refuses; plugin does not start. It never installs an unguarded filter — a guard that cannot match kills on the first syscall |
+| Syscall arrives under a different ABI than the filter was built for | `SECCOMP_RET_KILL_PROCESS` — the whole process, not just the offending thread |
 
 ---
 

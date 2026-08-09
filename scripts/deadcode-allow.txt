@@ -181,6 +181,7 @@ internal/sandbox/confinement_linux.go: unreachable func: MountNamespaceFlags
 internal/sandbox/confinement_linux.go: unreachable func: PluginConfinement.ScratchDir
 internal/sandbox/confinement_linux.go: unreachable func: PrepareExecEnv
 internal/sandbox/confinement_linux.go: unreachable func: SetupConfinement
+internal/sandbox/confinement_linux.go: unreachable func: allowedSyscalls
 internal/sandbox/confinement_linux.go: unreachable func: applyMountPropagation
 internal/sandbox/confinement_linux.go: unreachable func: applyProcMask
 internal/sandbox/confinement_linux.go: unreachable func: buildSeccompFilter
@@ -195,6 +196,7 @@ internal/sandbox/namespace_linux.go: unreachable func: namespaceCloneflags
 internal/sandbox/path_hardening.go: unreachable func: ResolveAndCheckPath
 internal/sandbox/pool.go: unreachable func: NewPool
 internal/sandbox/pool.go: unreachable func: Pool.Invoke
+internal/sandbox/seccomp_arch_linux.go: unreachable func: auditArch
 internal/sandbox/subprocess.go: unreachable func: NewSubprocessPlugin
 internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.Invoke
 internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.Telemetry

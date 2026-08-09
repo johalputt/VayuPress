@@ -44,12 +44,25 @@ as a regular directory) — best-effort degradation.
 ### 3. Seccomp-BPF Syscall Allowlist
 
 `buildSeccompFilter()` generates a minimal BPF program that:
-1. Validates `AUDIT_ARCH_X86_64` (kills on wrong arch).
+
+1. Validates the `AUDIT_ARCH_*` value for the architecture the binary was built
+   for, taken from the `seccompAuditArch` table, and returns
+   `SECCOMP_RET_KILL_PROCESS` on a mismatch. The guard is not decoration: a task
+   can enter the kernel under a second ABI at runtime (the `int 0x80` compat
+   gate on x86-64), where the same syscall numbers name different calls.
 2. Allows a curated set of ~35 syscalls: exit/exit_group, read/write, mmap/brk,
    signal handling, Go runtime (futex/clone/gettid/tgkill), FD management,
-   epoll, clock/time.
+   epoll, clock/time. The list is architecture-neutral apart from
+   `legacyPollSyscalls`, which carries `epoll_wait`/`poll` on the ABIs that
+   define them — arm64 and riscv64 do not, and only ever had
+   `epoll_pwait`/`ppoll`.
 3. Returns `SECCOMP_RET_ERRNO | EPERM` (not KILL) for anything else — the plugin
    gets an error rather than a crash, enabling graceful degradation.
+
+Where `auditArch()` has no entry the filter is **not built and not installed**;
+`ApplySeccompFilter()` returns an error and the plugin does not start. Installing
+a filter whose guard cannot match is strictly worse than installing none, because
+the guard's own failure action kills.
 
 `ApplySeccompFilter()` installs via `prctl(PR_SET_NO_NEW_PRIVS, 1)` then
 `prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog)`. This is called by the
@@ -84,8 +97,27 @@ never inherited.
 - Writable scratch is isolated per-plugin, auto-cleaned, size-capped.
 
 **Negative / Trade-offs:**
-- Seccomp filter is x86-64 only; other architectures get no filtering
-  (non-Linux stubs are no-ops — see `confinement_other.go`).
+- The filter is built for seven Linux ABIs — amd64, arm64, arm, 386, riscv64,
+  ppc64le, s390x. Any other Linux architecture gets no filter and
+  `ApplySeccompFilter()` refuses; non-Linux stubs are no-ops (see
+  `confinement_other.go`).
+- Enforcement is exercised end to end on the CI runner's architecture only
+  (`TestSeccompFilterActuallyEnforces` installs the real filter in a child
+  process and probes an allowed and a denied syscall). The other six are covered
+  by compilation and by re-deriving every `AUDIT_ARCH_*` value from its ELF
+  machine number, not by running a filter on that hardware.
+- `legacyPollSyscalls` exists so a non-Go plugin's libc `poll()` keeps working.
+  Nothing in the suite is a non-Go plugin, so those two entries are the one part
+  of the allowlist no test covers — removing them does not fail any test.
+
+**This section previously read "Seccomp filter is x86-64 only; other
+architectures get no filtering."** That was wrong in the direction that hurts.
+The filter's arch guard is a kill, not a bypass: built with a hardcoded
+`AUDIT_ARCH_X86_64` and run on arm or 386 — both of which compiled fine — the
+guard could not match and every sandboxed plugin died on its first syscall. On
+arm64 and riscv64 the package did not compile at all. A trade-off written as
+"less protection" concealed "no plugin runs, on architectures nobody built for".
+Read a documented limitation as a claim to check, not as a measurement.
 - `CLONE_NEWNS` may require `CAP_SYS_ADMIN` on older kernels or restricted
   container runtimes; EPERM falls back to no isolation (P27 pattern).
 - Capability drop must be done in the child process before execve — current
@@ -96,6 +128,11 @@ never inherited.
 ## Files Changed
 
 - `internal/sandbox/confinement_linux.go` — P28 implementation (Linux)
+- `internal/sandbox/seccomp_arch_linux.go` — `AUDIT_ARCH_*` table, `auditArch()`
+- `internal/sandbox/seccomp_poll_{legacy,modern,other}_linux.go` — per-ABI
+  `epoll_wait`/`poll` entries
+- `internal/sandbox/seccomp_linux_test.go` — enforcement probe, audit-arch
+  derivation, allowlist assertions
 - `internal/sandbox/confinement_other.go` — no-op stubs (non-Linux)
 - `internal/sandbox/manifest.go` — `ConfineMounts`, `DropCaps` fields
 - `internal/sandbox/subprocess.go` — wired `SetupConfinement`, `CloseExtraFDs`,

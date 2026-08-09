@@ -7,6 +7,7 @@ package sandbox
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -106,7 +107,12 @@ func applyProcMask() {
 // seccompAction constants
 const (
 	seccompActAllow = 0x7fff0000 // SECCOMP_RET_ALLOW
-	seccompActKill  = 0x00000000 // SECCOMP_RET_KILL_PROCESS
+	// SECCOMP_RET_KILL_PROCESS. This was 0x00000000, which is
+	// SECCOMP_RET_KILL_THREAD — the two differ by more than a name. Killing
+	// the thread leaves the rest of a Go process running with one of its
+	// threads gone mid-syscall, which does not terminate: it deadlocks on the
+	// scheduler holding a dead M. A confinement breach has to end the process.
+	seccompActKill  = 0x80000000
 	seccompActErrno = 0x00050000 // SECCOMP_RET_ERRNO | EPERM
 )
 
@@ -135,9 +141,13 @@ const (
 	bpfK   = 0x00
 )
 
-// allowedSyscalls is the minimal syscall allowlist for sandboxed plugins.
-// Any syscall not in this list results in EPERM (graceful denial).
-var allowedSyscalls = []uint32{
+// portableSyscalls is the minimal syscall allowlist for sandboxed plugins, in
+// the spellings every Linux ABI we support carries. Any syscall not in the
+// final list results in EPERM (graceful denial).
+//
+// Architecture-specific additions live in legacyPollSyscalls; use
+// allowedSyscalls() rather than this slice.
+var portableSyscalls = []uint32{
 	// Process lifecycle
 	syscall.SYS_EXIT,
 	syscall.SYS_EXIT_GROUP,
@@ -171,17 +181,33 @@ var allowedSyscalls = []uint32{
 	syscall.SYS_FSTAT,
 	syscall.SYS_EPOLL_CREATE1,
 	syscall.SYS_EPOLL_CTL,
-	syscall.SYS_EPOLL_WAIT,
+	// epoll_pwait, not epoll_wait, is what the Go runtime's netpoller issues —
+	// on every Linux architecture, x86-64 included. Allowing only epoll_wait
+	// left a sandboxed Go plugin's netpoller taking EPERM on the one
+	// architecture this product ships.
+	syscall.SYS_EPOLL_PWAIT,
 	syscall.SYS_PIPE2,
-	syscall.SYS_POLL,
+	syscall.SYS_PPOLL,
 	// Time
 	syscall.SYS_CLOCK_GETTIME,
 	syscall.SYS_GETTIMEOFDAY,
 }
 
+// allowedSyscalls returns the full allowlist for this architecture.
+func allowedSyscalls() []uint32 {
+	out := make([]uint32, 0, len(portableSyscalls)+len(legacyPollSyscalls))
+	out = append(out, portableSyscalls...)
+	return append(out, legacyPollSyscalls...)
+}
+
+// errSeccompUnsupportedArch reports that no filter can be built here. It is
+// deliberately not a "filter disabled" path: the caller must fail rather than
+// run the plugin unconfined.
+var errSeccompUnsupportedArch = fmt.Errorf("sandbox: seccomp unsupported on linux/%s", runtime.GOARCH)
+
 // buildSeccompFilter constructs a BPF program that allows only the syscalls in
 // allowedSyscalls and returns EPERM for all others.
-func buildSeccompFilter() []bpfInstruction {
+func buildSeccompFilter() ([]bpfInstruction, error) {
 	// Layout: load arch, validate, load syscall number, compare each allowed,
 	// default deny with ERRNO(EPERM).
 	const (
@@ -189,28 +215,34 @@ func buildSeccompFilter() []bpfInstruction {
 		archOffset = 4
 		// offsetof(struct seccomp_data, nr)
 		nrOffset = 0
-		// AUDIT_ARCH_X86_64
-		auditArchX86_64 = 0xc000003e
 	)
+
+	arch := auditArch()
+	if arch == 0 {
+		return nil, errSeccompUnsupportedArch
+	}
 
 	insns := []bpfInstruction{
 		// Load architecture word.
 		{bpfLD | bpfW | bpfABS, 0, 0, archOffset},
-		// If arch != X86_64, kill.
-		{bpfJMP | bpfJEQ | bpfK, 1, 0, auditArchX86_64},
+		// If the ABI is not the one these syscall numbers belong to, kill. A
+		// task can enter the kernel under a second ABI at runtime — the
+		// int 0x80 compat gate on x86-64 — where the same numbers name
+		// different calls.
+		{bpfJMP | bpfJEQ | bpfK, 1, 0, arch},
 		{bpfRET | bpfK, 0, 0, seccompActKill},
 		// Load syscall number.
 		{bpfLD | bpfW | bpfABS, 0, 0, nrOffset},
 	}
 
-	for _, nr := range allowedSyscalls {
+	for _, nr := range allowedSyscalls() {
 		// jeq nr, allow, next
 		insns = append(insns, bpfInstruction{bpfJMP | bpfJEQ | bpfK, 0, 1, nr})
 		insns = append(insns, bpfInstruction{bpfRET | bpfK, 0, 0, seccompActAllow})
 	}
 	// Default: return ERRNO (EPERM) so the plugin gets an error, not a signal.
 	insns = append(insns, bpfInstruction{bpfRET | bpfK, 0, 0, seccompActErrno | uint32(syscall.EPERM)})
-	return insns
+	return insns, nil
 }
 
 // ApplySeccompFilter installs the BPF syscall filter on the calling thread via
@@ -221,7 +253,10 @@ func buildSeccompFilter() []bpfInstruction {
 // This is called from the child side of the sandbox setup (via a pre-exec
 // helper or directly in a single-threaded moment before execve).
 func ApplySeccompFilter() error {
-	insns := buildSeccompFilter()
+	insns, err := buildSeccompFilter()
+	if err != nil {
+		return err
+	}
 	prog := bpfProgram{
 		len:    uint16(len(insns)),
 		filter: &insns[0],

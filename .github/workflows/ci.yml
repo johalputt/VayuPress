@@ -414,6 +414,68 @@ jobs:
         run: |
           chmod +x scripts/deadcode-gate.sh
           scripts/deadcode-gate.sh
+      - name: go mod tidy (must not drift)
+        run: |
+          go mod tidy
+          if ! git diff --quiet go.mod go.sum; then
+            echo "❌ go mod tidy changed go.mod/go.sum — commit the tidied files:"
+            git --no-pager diff go.mod go.sum
+            exit 1
+          fi
+          echo "✅ go.mod and go.sum are tidy"
+      - name: go mod verify (dependency contents match go.sum)
+        run: go mod verify
+      - name: go test (shuffled order — catches inter-test state leakage)
+        run: go test -shuffle=on ./... -count=1
+
+  # ── Cross-compilation ──────────────────────────────────────────────────────
+  # Every other Go gate runs on the runner's own linux/amd64, so an
+  # architecture-specific compile error reaches a release unseen. That is not
+  # hypothetical here: internal/sandbox named syscall.SYS_EPOLL_WAIT in
+  # architecture-neutral code, which does not exist on the arm64 or riscv64
+  # ABIs, and nothing in CI could tell. ARM VPSes are squarely this product's
+  # audience.
+  #
+  # CGO is off because the C toolchain is the runner's; this gate answers "does
+  # the Go source compile for that architecture", which is the question that
+  # was going unasked. It does not claim these targets are released or tested —
+  # releases are still a single native build.
+  cross-compile:
+    name: "P16 · Cross-compile (${{ matrix.goarch }})"
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64, arm, "386", riscv64, ppc64le, s390x]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 'stable'
+          cache: true
+      - name: go build (linux/${{ matrix.goarch }})
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+        run: go build ./...
+      - name: go vet (linux/${{ matrix.goarch }})
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+        run: go vet ./...
+
+  # ── Release metadata consistency ───────────────────────────────────────────
+  check-release-consistency:
+    name: "P13 · Release Metadata Consistency"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: .release-version and CHANGELOG.md agree
+        run: |
+          chmod +x scripts/release-consistency.sh
+          scripts/release-consistency.sh
 
   # ── Link check (advisory) ──────────────────────────────────────────────────
   check-links:
@@ -444,7 +506,9 @@ jobs:
       - check-community
       - check-deploy-script
       - check-source-sync
+      - check-release-consistency
       - go-native
+      - cross-compile
     runs-on: ubuntu-24.04
     if: always()
     steps:
@@ -464,13 +528,16 @@ jobs:
             "${{ needs.check-community.result }}"
             "${{ needs.check-deploy-script.result }}"
             "${{ needs.check-source-sync.result }}"
+            "${{ needs.check-release-consistency.result }}"
             "${{ needs.go-native.result }}"
+            "${{ needs.cross-compile.result }}"
           )
           NAMES=(
             "check-docs" "lint-shell" "lint-markdown" "secret-scan"
             "check-licenses" "check-governance" "check-adrs"
             "check-security-policy" "check-ethics" "check-community"
-            "check-deploy-script" "check-source-sync" "go-native"
+            "check-deploy-script" "check-source-sync"
+            "check-release-consistency" "go-native" "cross-compile"
           )
           for i in "${!RESULTS[@]}"; do
             if [ "${RESULTS[$i]}" != "success" ]; then

@@ -408,6 +408,68 @@ The adaptive-governance runtime is fully inspectable from inside VayuOS — syst
 
 ---
 
+## What every change passes before it ships
+
+There is no separate QA step. A commit reaches `main` only by passing fifteen
+required CI jobs — one of which, the cross-compile matrix, is itself seven
+parallel builds — and `ci-pass` re-checks every one by name. A job that ran
+without being listed there would be a job that cannot fail the build.
+
+**The Go code itself**
+
+| Gate | What it catches |
+|---|---|
+| `go vet`, `gofmt -l` | Suspicious constructs; unformatted source |
+| `staticcheck` | Dead stores, impossible conditions, misused stdlib |
+| `golangci-lint run` (v2, zero issues) | The aggregate linter set, errcheck included |
+| `gosec -severity high -confidence high` | Injection, weak crypto, hardcoded credentials |
+| `govulncheck` | Known CVEs on code paths actually reachable from this binary |
+| `go build -race` + `go test -race` | Data races, in unit and integration runs |
+| `go test -shuffle=on` | Tests that only pass in their usual order — shared state between tests |
+| `go test ./internal/archcheck/` | Layering violations: which package may import which |
+| `go test ./internal/compat/` | Golden-file breaks in the plugin/theme contract (VCB) |
+| deadcode gate | Newly unreachable code, against a committed baseline |
+| **cross-compile matrix** | **Architecture-specific compile errors, on seven Linux ABIs** |
+| **`go mod tidy` drift, `go mod verify`** | **Undeclared or unused dependencies; module contents that no longer match `go.sum`** |
+
+**Everything around the code**
+
+| Gate | What it catches |
+|---|---|
+| trufflehog (filesystem mode) | Committed secrets |
+| shellcheck, markdownlint | Broken shell, malformed docs |
+| SPDX + license check | A source file with no licence header |
+| ADR completeness, required docs | A design decision that shipped unrecorded |
+| Governance / ethics / security-policy / community checks | Drift between the Constitution and the repository |
+| source-sync | `cmd/vayupress/main.go` diverging from the deploy script's copy |
+| **release-metadata consistency** | **`.release-version` and the top `CHANGELOG.md` section disagreeing** |
+
+The last one exists because of how releases work here: pushing `.release-version`
+*is* the release. Nothing downstream re-derives the version. Without that check a
+version can be bumped and announced while the notes describe a different release
+— or a changelog can claim fixes shipped when no build was ever cut.
+
+The cross-compile matrix earned its place the same way. Every other Go gate runs
+on the runner's own `linux/amd64`, so nothing asked whether the source compiled
+anywhere else. It did not: `internal/sandbox` named `syscall.SYS_EPOLL_WAIT` in
+architecture-neutral code, and the arm64 and riscv64 ABIs have never defined it.
+ARM VPSes are squarely this product's audience.
+
+**What these gates do not prove.** They run on `linux/amd64`; the cross-compile
+matrix proves the other six architectures *compile*, not that they were tested,
+and releases remain a single native build. Builds are not currently
+bit-for-bit reproducible, so a third party cannot yet independently confirm that
+a signed release binary corresponds to its tagged source — that is open work, and
+deliberately not gated, because a gate for a property the build does not have is
+worse than no gate.
+
+Two style tools were evaluated and rejected rather than added: `gofumpt` (96
+files, formatting preference rather than correctness) and `go vet -vettool=shadow`
+(127 findings, overwhelmingly benign shadowing). A gate nobody can keep green
+gets disabled, and a disabled gate protects nothing.
+
+---
+
 ## Documentation
 
 - **[CHANGELOG.md](CHANGELOG.md)** — every release and what changed, version by version.
