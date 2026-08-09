@@ -1285,8 +1285,15 @@ func shieldAgentBootstrapCmd() string {
 	base := "https://github.com/" + shieldAgentRepo + "/releases/latest/download"
 	return `sudo bash -c 'd=$(mktemp -d) && cd "$d" && ` +
 		`curl -fsSLO ` + base + `/vayushield-agent.tar.gz && ` +
-		`curl -fsSL -o sum ` + base + `/vayushield-agent.tar.gz.sha256 && ` +
-		`echo "$(cat sum)  vayushield-agent.tar.gz" | sha256sum -c - && ` +
+		`curl -fsSL -O ` + base + `/vayushield-agent.tar.gz.sha256 && ` +
+		// sha256sum -c reads the file directly now. It used to be
+		// `echo "$(cat sum)  vayushield-agent.tar.gz" | sha256sum -c -`, because
+		// the release emitted a BARE hash with no filename — a format the standard
+		// tool cannot check, so this command hand-assembled the missing half.
+		// The release emits "<hash>  <name>" now, and hand-assembling on top of
+		// that would append the name twice and fail the check. The two move
+		// together; TestTheAgentBootstrapReadsTheChecksumFormatWePublish binds them.
+		`sha256sum -c vayushield-agent.tar.gz.sha256 && ` +
 		`tar -xzf vayushield-agent.tar.gz && bash ./vayushield-agent.sh install; rm -rf "$d"'`
 }
 

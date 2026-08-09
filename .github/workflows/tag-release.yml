@@ -92,7 +92,12 @@ jobs:
           if file dist/vayupress | grep -q "dynamically linked"; then
             echo "::error::release binary is dynamically linked — it would crash on older glibc"; exit 1
           fi
-          sha256sum dist/vayupress > dist/vayupress.sha256
+          # From inside dist/, so the NAME in the file is the name the asset is
+          # downloaded under. Emitting `sha256sum dist/vayupress` wrote the
+          # build-time path, and `sha256sum -c vayupress.sha256` then failed with
+          # "dist/vayupress: No such file or directory" for every user who tried
+          # to check their download. The hash was right; the file was unusable.
+          (cd dist && sha256sum vayupress > vayupress.sha256)
           echo "built $VERSION (static)"
 
       # Signing the binary is FATAL if it fails, and both steps below say so by
@@ -234,7 +239,9 @@ jobs:
             echo "FAIL: the helper version stamp was not applied"; exit 1; }
           for f in dist/provision/*.sh; do bash -n "$f"; done
           tar -C dist/provision -czf dist/vayuprovision-helpers.tar.gz .
-          sha256sum dist/vayuprovision-helpers.tar.gz | awk '{print $1}' > dist/vayuprovision-helpers.tar.gz.sha256
+          # Hash AND name, not a bare hash: `sha256sum -c` on a nameless file
+          # reports "no properly formatted checksum lines found".
+          (cd dist && sha256sum vayuprovision-helpers.tar.gz > vayuprovision-helpers.tar.gz.sha256)
 
       - name: Sign the provisioning helpers (keyless OIDC)
         if: steps.exists.outputs.skip != 'true'
@@ -269,7 +276,7 @@ jobs:
           # `selfhosted-site.zip` took a production site down; the vayupress-
           # prefix keeps it behind the binary for every one of those installs.
           mv dist/selfhosted-site.zip dist/vayupress-selfhosted-site.zip
-          sha256sum dist/vayupress-selfhosted-site.zip | awk '{print $1}' > dist/vayupress-selfhosted-site.zip.sha256
+          (cd dist && sha256sum vayupress-selfhosted-site.zip > vayupress-selfhosted-site.zip.sha256)
 
       - name: Package the VayuShield helper agent
         if: steps.exists.outputs.skip != 'true'
@@ -354,7 +361,7 @@ jobs:
           # a digest change, which is the one signal that must stay meaningful.
           tar --sort=name --mtime='UTC 2020-01-01' --owner=0 --group=0 --numeric-owner \
               -czf dist/vayushield-agent.tar.gz -C dist/agent .
-          sha256sum dist/vayushield-agent.tar.gz | awk '{print $1}' > dist/vayushield-agent.tar.gz.sha256
+          (cd dist && sha256sum vayushield-agent.tar.gz > vayushield-agent.tar.gz.sha256)
           echo "agent bundle sha256: $(cat dist/vayushield-agent.tar.gz.sha256)"
 
       - name: Sign the helper agent bundle (keyless OIDC)

@@ -64,6 +64,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   A bundle page there now renders under the strict baseline. That is the right
   security answer and a real cost, and it is named rather than denied.
 
+- **Two release-pipeline gates that looked like verification and were not.**
+
+  **The published `.sha256` files could not be checked with `sha256sum`.** The
+  hashes were correct; the files were unusable. `vayupress.sha256` carried the
+  build-time path — `…  dist/vayupress` — so a user who downloaded the asset got
+  `dist/vayupress: No such file or directory`. The other three were piped through
+  `awk '{print $1}'`, a bare hash with no filename, which `sha256sum -c` rejects
+  as "no properly formatted checksum lines found". A verification artifact that
+  cannot verify is the same class as a gate that does not gate: the user
+  concludes the download is corrupt, or stops checking. All four are now emitted
+  from inside `dist/`, so the name in the file is the name the asset arrives
+  under, and a test proves it end to end with the real tool.
+
+  **Fixing that would have broken a root command operators paste.**
+  `shieldAgentBootstrapCmd` builds a `curl … && sha256sum -c` one-liner for
+  installing the VayuShield agent, and it hand-assembled the missing filename
+  (`echo "$(cat sum)  <name>"`) precisely *because* the release emitted a bare
+  hash. With the format corrected, that would append the name twice and fail on a
+  good download — and `shieldAgentRepo` is this repository, so it reads the very
+  files this workflow writes. Both ends move together now, bound by a test.
+
+  **`TestReleaseVersionFilesAgree` failed a tree the pipeline would have shipped.**
+  It compared `.release-version` byte-for-byte, so a trailing newline failed it —
+  while `tag-release.yml` reads the file as `tr -d ' \t\r\n'` and the shell gate
+  does the same. Whitespace is not part of the contract. This was noticed during
+  the v3.17.48 cut and read the wrong way round at the time: the shell gate
+  passed, the Go test failed, and the two were reconciled as "the Go one is
+  stricter and therefore right". Stricter than the thing being protected is not
+  right — it is a gate that fails a releasable tree, which is how gates come to be
+  worked around. The comparison follows the workflow now, and a test pins all
+  three readers to the same rule.
+
+  A note on all three, and on two earlier fixes in this section: each was first
+  written as a source scan that matched its own explanatory comment — the text
+  describing the old broken form is, by construction, an example of it. The
+  heredoc audit hit this months ago. A check that cannot tell code from the prose
+  about the code is a recurring shape here, and the fix each time is to strip
+  comments or assert on behaviour rather than on text.
+
 - **The per-site Theme Studio wrote the operator's own install, and is
   retired.** This was recorded as known-and-open in v3.17.48's notes; it is
   fixed now, by removal rather than repair, because there was nothing to repair.

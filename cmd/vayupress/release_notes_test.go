@@ -62,8 +62,20 @@ func TestThisReleaseHasNotes(t *testing.T) {
 // They are edited by hand, and a mismatch is invisible until the wrong binary is
 // published under the right tag.
 func TestReleaseVersionFilesAgree(t *testing.T) {
-	rv := repoFile(t, ".release-version")
-	if rv != "v"+Version {
+	// TRIMMED, and the trimming is the correction.
+	//
+	// This compared raw bytes, so a .release-version with a trailing newline
+	// failed here — on a tree the pipeline would have released perfectly well.
+	// tag-release.yml reads the file as `tr -d ' \t\r\n' < .release-version`
+	// and scripts/release-consistency.sh does the same, so whitespace is not
+	// part of the contract and this test was asserting a property nothing
+	// downstream requires.
+	//
+	// It cost a real false alarm during the v3.17.48 cut: the shell gate passed,
+	// this failed, and the two were read as "the Go one is stricter and therefore
+	// right". Stricter than the thing being protected is not right — it is a gate
+	// that fails a releasable tree, which is how gates come to be worked around.
+	if rv := repoFile(t, ".release-version"); !releaseVersionMatches(rv, Version) {
 		t.Errorf(".release-version is %q but main.go Version is %q — the tag and the binary would disagree", rv, Version)
 	}
 	if !strings.Contains(repoFile(t, "CHANGELOG.md"), "## ["+Version+"]") {
@@ -161,4 +173,51 @@ func TestReleaseToolchainIsPinned(t *testing.T) {
 		t.Error("tag-release.yml must build with GOTOOLCHAIN=auto, or the go.mod toolchain " +
 			"directive is ignored and the pin means nothing")
 	}
+}
+
+// The three readers of .release-version must agree on HOW they read it, or one
+// of them decides a release is malformed while the other two ship it.
+//
+// The workflow is the authority — it is what actually cuts the release — so the
+// shell gate and this package both follow its trimming rather than inventing a
+// stricter rule of their own.
+func TestEveryReaderOfTheVersionFileTrimsTheSameWay(t *testing.T) {
+	wf := repoFile(t, ".github/workflows/tag-release.yml")
+	sh := repoFile(t, "scripts/release-consistency.sh")
+	const read = `tr -d ' \t\r\n' < `
+
+	if !strings.Contains(wf, read+".release-version") {
+		t.Fatal("tag-release.yml no longer reads .release-version with the trimming this test " +
+			"and the shell gate are aligned to; whichever way it reads it now is the contract, " +
+			"and the other two have to follow it rather than the reverse")
+	}
+	if !strings.Contains(sh, read) {
+		t.Error("scripts/release-consistency.sh no longer trims the way the workflow does, so it " +
+			"can pass a file the release rejects, or reject one the release would ship")
+	}
+	// And the comparison itself must tolerate what the workflow tolerates.
+	//
+	// Asserted on BEHAVIOUR, not on the source of this file. The first version
+	// grepped itself for the old byte-exact line and failed — because the comment
+	// explaining the correction quotes that line verbatim. A source scan that
+	// cannot tell code from the prose describing it is the same defect as the
+	// heredoc audit tripping over a comment, and it is why this is a function
+	// call instead.
+	for _, raw := range []string{"v9.9.9", "v9.9.9\n", " v9.9.9 \r\n"} {
+		if !releaseVersionMatches(raw, "9.9.9") {
+			t.Errorf("releaseVersionMatches(%q) is false, but the workflow strips exactly this "+
+				"whitespace and would have released it", raw)
+		}
+	}
+	// It must still catch a genuine mismatch, or trimming has become "accept
+	// anything".
+	if releaseVersionMatches("v9.9.8\n", "9.9.9") {
+		t.Error("a real version mismatch is accepted, so the gate no longer gates")
+	}
+}
+
+// releaseVersionMatches reports whether .release-version's contents name this
+// build's version, read the way tag-release.yml reads the file.
+func releaseVersionMatches(fileContents, version string) bool {
+	return strings.TrimSpace(fileContents) == "v"+version
 }
