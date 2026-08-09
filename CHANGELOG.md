@@ -6,6 +6,60 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.40] — 2026-08-09
+
+The row that decided everything above was comparing a value with itself.
+
+### Fixed
+
+- **`Real visitor IP` reported failure on installs where resolution works, and
+  could not see the failure where it does not.** `realIPMiddleware` is second in
+  the chain and does `r.RemoteAddr = auth.ClientIP(r)`, so every handler
+  downstream sees an already-resolved address. The posture check then asked
+  `auth.ClientIP(r) != stripPort(r.RemoteAddr)` — re-running the resolver over
+  its own output. On a working install the second pass sees a real visitor as the
+  peer, honours no header, and returns it unchanged: the two sides match and the
+  row reports failure.
+
+  This is the shape already recorded as a lesson in this project — *a test that
+  calls the function under test to judge its output compares the code with
+  itself* — sitting in the product, deciding a posture row, with a session's
+  worth of diagnosis resting on it.
+
+  `realIPMiddleware` now stores the pre-rewrite peer in the request context and
+  `shieldAddressIsTheReaders` is the one place the verdict is reached. It answers
+  a sharper question than the old comparison could:
+
+  - the address equals the original peer → nothing was resolved;
+  - **the address is inside the CDN's own published ranges → resolution
+    "worked" and landed on the edge.** A forwarding header was honoured and the
+    value did change — it changed to the wrong thing. This is exactly what an
+    nginx `real_ip_header` naming a header the CDN does not send looks like from
+    inside the app, it is the state the reporting install is in, and **nothing in
+    the product could detect it**;
+  - otherwise the address is a reader's.
+
+  Requests that never passed through the middleware — a caller outside the chain
+  — keep the old comparison, which is valid there precisely because `RemoteAddr`
+  is still the raw peer.
+
+### Audit
+
+Four mutations, all killed: removing the CDN-edge check, restoring the
+compare-with-itself expression, always claiming resolved on the no-middleware
+path, and adding a second call site to reintroduce the divergence.
+
+Two recording notes. The no-middleware mutation was first written in a form that
+orphaned the `auth` import — a BUILD failure, not a kill, the **third** of that
+shape in this track; re-run as `auth.ClientIP(r) != ""` it failed immediately.
+And `TestBothScreensDeriveTheAnswerFromOneFunction` went red on this change
+because it keyed on the literal expression `auth.ClientIP(r) !=
+stripPort(r.RemoteAddr)` — it was guarding a *spelling*, so replacing that
+expression with a correct one broke it. It now counts call sites of the named
+verdict instead, and the count was verified rather than assumed.
+
+---
+
 ## [3.17.39] — 2026-08-09
 
 ### Added

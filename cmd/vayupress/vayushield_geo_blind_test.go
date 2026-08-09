@@ -137,10 +137,24 @@ func TestTheGeoWarningIsAbsentWhenTheShieldCanSeeTheVisitor(t *testing.T) {
 func TestBothScreensDeriveTheAnswerFromOneFunction(t *testing.T) {
 	src := readSourceFile(t, "vayushield_audit.go")
 
-	if strings.Count(src, "auth.ClientIP(r) != stripPort(r.RemoteAddr)") != 1 {
-		t.Error("the visitor-address comparison appears more than once (or not at all).\n\n" +
+	// The verdict is reached in exactly one place. Named for what it decides
+	// rather than for the comparison it happens to use — the first version of
+	// this test keyed on the literal expression `auth.ClientIP(r) !=
+	// stripPort(r.RemoteAddr)`, which went red the moment that expression was
+	// replaced by a CORRECT one, so it was guarding a spelling rather than the
+	// property.
+	if strings.Count(src, "func shieldAddressIsTheReaders(") != 1 {
+		t.Error("the verdict is not reached in exactly one function.\n\n" +
 			"Two copies are two answers: the posture report said the address was not resolving " +
 			"while the policy band showed a country rule as enforcing, and nothing connected them.")
+	}
+	// Exactly one CALL site. The definition reads
+	// `shieldAddressIsTheReaders(r *http.Request)` and so does not match this
+	// literal — checked rather than assumed, because an off-by-one here would
+	// make the assertion unfalsifiable in one direction.
+	if n := strings.Count(src, "shieldAddressIsTheReaders(r)"); n != 1 {
+		t.Errorf("the verdict is called from %d places, want 1 — every consumer must reach it "+
+			"through shieldResolvesVisitorIP, or the two screens can drift apart again", n)
 	}
 	if !strings.Contains(src, "in.ClientIPResolved, in.ClientIPFromVisitorTraffic = shieldResolvesVisitorIP(r)") {
 		t.Error("the posture report no longer sources ClientIPResolved from shieldResolvesVisitorIP")

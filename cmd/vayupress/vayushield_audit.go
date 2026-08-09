@@ -236,7 +236,7 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 // and did — show an enforcing geo rule on one screen and the reason it cannot
 // fire on another, with nothing connecting them.
 func shieldResolvesVisitorIP(r *http.Request) (resolved, fromVisitorTraffic bool) {
-	resolved = auth.ClientIP(r) != stripPort(r.RemoteAddr)
+	resolved = shieldAddressIsTheReaders(r)
 	// ...unless this request is the operator's, and the operator does not go
 	// through their own proxy.
 	//
@@ -258,6 +258,38 @@ func shieldResolvesVisitorIP(r *http.Request) (resolved, fromVisitorTraffic bool
 		}
 	}
 	return resolved, false
+}
+
+// shieldAddressIsTheReaders reports whether the address every per-IP control
+// will key on is the reader's rather than the proxy's.
+//
+// Two distinct failures, and the second is the one that had no detector at all:
+//
+//   - No forwarding header was honoured, so the address is the peer. On a
+//     proxied origin that is the edge.
+//   - A header WAS honoured and produced an address inside the CDN's own
+//     published ranges. Resolution "worked" and still landed on the edge, which
+//     is what an nginx real_ip_header naming a header the CDN does not send
+//     looks like from in here. Comparing against the peer cannot see this: the
+//     value changed, it just changed to the wrong thing.
+//
+// The peer comes from the request context because realIPMiddleware has already
+// overwritten RemoteAddr by the time anything downstream asks. Without that
+// stored value the only available comparison is the resolver against its own
+// output, which is no comparison at all.
+func shieldAddressIsTheReaders(r *http.Request) bool {
+	addr := stripPort(r.RemoteAddr)
+	// An address in the CDN's ranges is the edge, however it got here.
+	if ip := net.ParseIP(addr); ip != nil && config.IsCloudflareIP(ip) {
+		return false
+	}
+	if peer, ok := r.Context().Value(ctxKeyPeerAddr{}).(string); ok {
+		return addr != peer
+	}
+	// The middleware has not run — a hand-built request in a test, or a caller
+	// that bypassed the chain. RemoteAddr is still the raw peer, so resolving it
+	// now is a genuine comparison rather than a value against itself.
+	return auth.ClientIP(r) != addr
 }
 
 // shieldGeoIsBlind reports that a country lookup in the ENFORCEMENT path is

@@ -52,9 +52,23 @@ func safeOutboundTransport() *http.Transport {
 // and is therefore vulnerable to IP spoofing (GHSA-3fxj-6jh8-hvhx, audit F-3).
 // Forwarding headers are honoured only when the immediate peer is a configured
 // trusted proxy; otherwise RemoteAddr is left as the direct peer address.
+// ctxKeyPeerAddr carries the address the connection ACTUALLY came from, before
+// this middleware overwrites RemoteAddr with the resolved client address.
+//
+// Kept because the overwrite destroys the only evidence that resolution
+// happened. Downstream code asking `auth.ClientIP(r) != r.RemoteAddr` is
+// re-running the resolver over its own output: on a working install the second
+// pass sees a real visitor as the peer, honours no header, and returns it
+// unchanged — so the two sides match and the check reports failure on an install
+// where everything works. That is what the posture report was doing, and every
+// conclusion drawn from that row was unfounded while it did.
+type ctxKeyPeerAddr struct{}
+
 func realIPMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		peer := stripPort(r.RemoteAddr)
 		r.RemoteAddr = auth.ClientIP(r)
+		r = r.WithContext(context.WithValue(r.Context(), ctxKeyPeerAddr{}, peer))
 		// Record whether this request came through a CDN, so the hardening panel
 		// can answer "is this SITE proxied?" rather than only "did the request I
 		// am serving come through a proxy?". Those differ exactly when an operator
