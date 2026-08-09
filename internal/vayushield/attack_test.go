@@ -271,7 +271,7 @@ func TestAChallengedCountryNeverDegradesIntoARefusal(t *testing.T) {
 		Signer:    challenge.NewSigner([]byte("test-secret")),
 		Now:       time.Now,
 		ClientIP:  func(r *http.Request) string { return "198.51.100.9:1234" },
-		CountryFn: func(string) string { return "CN" },
+		CountryFn: func(*http.Request, string) string { return "CN" },
 	})
 	m.ApplySettings(Settings{
 		Enabled: true, PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8,
@@ -323,7 +323,7 @@ func TestAVerifiedReaderFromAChallengedCountryIsAskedOnce(t *testing.T) {
 		Signer:    challenge.NewSigner([]byte("test-secret")),
 		Now:       time.Now,
 		ClientIP:  func(r *http.Request) string { return "198.51.100.9:1234" },
-		CountryFn: func(string) string { return "CN" },
+		CountryFn: func(*http.Request, string) string { return "CN" },
 	})
 	m.ApplySettings(Settings{
 		Enabled: true, PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8,
@@ -359,7 +359,7 @@ func TestAChallengedCountryCannotDeIndexTheSite(t *testing.T) {
 		Signer:    challenge.NewSigner([]byte("test-secret")),
 		Now:       time.Now,
 		ClientIP:  func(r *http.Request) string { return "198.51.100.9:1234" },
-		CountryFn: func(string) string { return "CN" },
+		CountryFn: func(*http.Request, string) string { return "CN" },
 	})
 	m.ApplySettings(Settings{
 		Enabled: true, PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8,

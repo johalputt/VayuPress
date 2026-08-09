@@ -15,7 +15,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/auth"
-	"github.com/johalputt/vayupress/internal/geoip"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -209,22 +208,15 @@ func geoFromHeaders(r *http.Request) analytics.GeoInfo {
 		}
 		return s
 	}
-	country := strings.ToUpper(pick(
-		"CF-IPCountry",              // Cloudflare (all plans)
-		"CloudFront-Viewer-Country", // AWS CloudFront
-		"X-Vercel-IP-Country",       // Vercel
-		"Fastly-Geo-Country",        // Fastly (when configured)
-		"X-Geo-Country", "X-Country", "X-AppEngine-Country",
-	))
-	if country == "XX" || country == "T1" || len(country) != 2 {
-		country = ""
-	}
-	// No proxy supplied a usable country: resolve it offline from the real
-	// client IP (trusted-proxy-aware), so sovereign self-hosters without a CDN
-	// still see countries. The IP is used only for this lookup, never stored.
-	if country == "" {
-		country = geoip.Country(auth.ClientIP(r))
-	}
+	// THE SAME resolver the shield uses, not a second copy of the rule.
+	//
+	// These were two independent implementations of "which country is this
+	// visitor in", and on a live install they disagreed for a week: this side
+	// reported a country as 91% of the audience while the enforcement side had
+	// never seen a single request from it. An operator refused that country,
+	// watched it keep arriving, and was right to conclude something was broken —
+	// it was the disagreement itself.
+	country := requestCountry(r, auth.ClientIP(r))
 	region := decode(pick(
 		"CF-Region",                             // Cloudflare (full name, e.g. "California")
 		"CloudFront-Viewer-Country-Region-Name", // AWS CloudFront (name)

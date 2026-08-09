@@ -150,7 +150,12 @@ type Config struct {
 	GroupIPv4 bool
 
 	// Injected side channels (all optional).
-	CountryFn func(ip string) string        // e.g. geoip.Country
+	// CountryFn resolves the visitor's country. It takes the REQUEST as well as
+	// the address because a CDN states the country per request in a header, and
+	// that is both fresher than any compiled-in table and — the deciding reason —
+	// the number the operator is looking at when they write a country rule. A
+	// control must act on the fact its operator saw. See internal/geoip.Resolve.
+	CountryFn func(r *http.Request, ip string) string
 	ClientIP  func(r *http.Request) string  // trusted-proxy-aware client IP
 	OnEvent   func(a Action, score float64) // charge the error budget, emit metrics
 	Now       func() time.Time
@@ -1447,7 +1452,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 				return
 			}
 			if m.cfg.CountryFn != nil && pol.GeoActive() {
-				if pol.Country(m.cfg.CountryFn(ipKey)) == policy.VerdictDeny &&
+				if pol.Country(m.cfg.CountryFn(r, ipKey)) == policy.VerdictDeny &&
 					!m.observing(lc, GateGeoDeny) {
 					reqclass.MarkShielded(r.Context())
 					m.onEvent(ActionBlock, 1.0)
@@ -1758,7 +1763,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// cost anyone is one puzzle.
 		if !verified && m.cfg.CountryFn != nil {
 			if pol := m.Policy(); !pol.Empty() && pol.GeoActive() {
-				if pol.Country(m.cfg.CountryFn(ipKey)) == policy.VerdictChallenge &&
+				if pol.Country(m.cfg.CountryFn(r, ipKey)) == policy.VerdictChallenge &&
 					!m.observing(lc, GateGeoChallenge) {
 					if m.serveChallenge(w, r, Verdict{}, challenge.DefaultDifficulty, false) {
 						reqclass.MarkShielded(r.Context())
@@ -2393,7 +2398,7 @@ func (m *Manager) recordChallenge(r *http.Request, v Verdict, ctype, outcome str
 	ip := m.cfg.ClientIP(r)
 	country := ""
 	if m.cfg.CountryFn != nil {
-		country = m.cfg.CountryFn(ip)
+		country = m.cfg.CountryFn(r, ip)
 	}
 	m.recordExec(r.Context(), `INSERT INTO vayushield_challenges
 (session_hash,challenge_type,bot_score,fingerprint_hash,outcome,time_to_solve_ms,ip_hash,country_code)
@@ -2415,7 +2420,7 @@ func (m *Manager) recordChallengeSolved(r *http.Request) {
 	ip := m.cfg.ClientIP(r)
 	country := ""
 	if m.cfg.CountryFn != nil {
-		country = m.cfg.CountryFn(ip)
+		country = m.cfg.CountryFn(r, ip)
 	}
 	m.recordExec(r.Context(), `INSERT INTO vayushield_challenges
 (session_hash,challenge_type,bot_score,fingerprint_hash,outcome,time_to_solve_ms,ip_hash,country_code)
@@ -2429,7 +2434,7 @@ func (m *Manager) recordBlock(r *http.Request, v Verdict) {
 	ip := m.cfg.ClientIP(r)
 	country := ""
 	if m.cfg.CountryFn != nil {
-		country = m.cfg.CountryFn(ip)
+		country = m.cfg.CountryFn(r, ip)
 	}
 	reason := "bot_score>=block_threshold"
 	if len(v.Result.Reasons) > 0 {

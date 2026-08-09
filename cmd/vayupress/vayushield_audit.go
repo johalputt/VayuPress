@@ -208,6 +208,7 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 	if a.siteSettings != nil {
 		in.BehindCDN = a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyShieldBehindCDN) == "on"
 	}
+	in.CountryEdgeAnswers, in.CountryTableAnswers, in.CountryDisagreements = countrySourceStats()
 	if r != nil {
 		in.ClientIPResolved, in.ClientIPFromVisitorTraffic = shieldResolvesVisitorIP(r)
 	} else if ok, seen := lastVisitorResolution(); seen {

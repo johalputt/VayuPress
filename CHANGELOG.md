@@ -6,6 +6,70 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.43] — 2026-08-09
+
+**One request now has one country.** This is the root cause under a week of
+symptoms, and every release from 3.17.35 onward was a layer of it.
+
+### Fixed
+
+- **VayuShield and Analytics answered "what country is this visitor in" from
+  different sources, and nothing could show they disagreed.** An operator refused
+  Singapore. Analytics went on reporting Singapore as 91% of the audience while
+  the shield's own trail held **not one request from there in seven days**.
+  Neither side was broken:
+
+  - Analytics read `CF-IPCountry` — computed by the edge, per request, from live
+    data.
+  - The shield resolved the address through a country table compiled into the
+    binary at release time.
+
+  Two answers, one visitor. The operator wrote a rule against the country they
+  could **see**, and the enforcement path compared against a country it had
+  looked up somewhere else. Confirmed on the live install: its twenty heaviest
+  served clients resolve to FR, IN, NL and US through the shield's table, with no
+  Singapore address among them, while Analytics reported Singapore as the
+  overwhelming majority.
+
+  `internal/geoip.Resolve` is now the only answer, and `requestCountry` the only
+  caller-facing entry point — used by `vayushield.Config.CountryFn` and by
+  Analytics alike. **The edge wins when it has spoken**, for two reasons pointing
+  the same way: it is the fresher data, and it is the number the operator is
+  looking at when they type a country into a rule. A control has to act on the
+  fact its operator saw.
+
+  `CountryFn` takes the request now, not just an address, because a country is a
+  property of a request when a CDN states it. Trust is the same test
+  `auth.ClientIP` applies to a forwarding address — an untrusted peer cannot name
+  its own country, or every geo rule would be escapable with one header. A
+  direct-served origin with no CDN keeps resolving from the embedded table, which
+  is the right source there.
+
+  `XX` and `T1` — Cloudflare's placeholders for *unknown* and *Tor* — are refused
+  rather than treated as codes, so `deny XX` cannot look like a control while
+  matching the edge's own ignorance, and a Tor reader is not filed under a
+  country named T1.
+
+### Added
+
+- **A `Country source` posture row, so this can never be silent again.** It
+  reports which source is answering and **counts the requests where the two named
+  different countries**. The divergence itself was survivable; being unable to
+  see it is what cost a week. A rising count means the table in this build is
+  behind the edge for some address space — actionable, and stated instead of left
+  for two screens to contradict each other quietly.
+
+### Audit
+
+Three mutations, all killed: making the table win over the edge, honouring the
+country header from an untrusted peer, and dropping the disagreement counter.
+
+The untrusted-peer mutation was first written in a form that orphaned the `auth`
+import — a build failure, not a kill, and the **fourth** of that shape in this
+series. Caught this time by checking the build before reading the result.
+
+---
+
 ## [3.17.42] — 2026-08-09
 
 ### Fixed

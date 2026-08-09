@@ -36,7 +36,6 @@ import (
 	"github.com/johalputt/vayupress/internal/budget"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
-	"github.com/johalputt/vayupress/internal/geoip"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/render"
@@ -202,7 +201,7 @@ func (a *App) bootVayuShield() {
 		// every submitted URL with no error reported anywhere.
 		BypassFn:          a.isIndexNowKeyPath,
 		SessionCookieName: "vayushield",
-		CountryFn:         geoip.Country,
+		CountryFn:         requestCountry,
 		ClientIP:          auth.ClientIP,
 		CookieSecure:      auth.CSRFCookieSecure(),
 		// Tor Space: never issue a browser challenge (crypto.subtle is undefined

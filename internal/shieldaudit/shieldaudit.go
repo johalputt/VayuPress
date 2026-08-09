@@ -223,6 +223,19 @@ type Inputs struct {
 	// and "verified from your own request" are different strengths of evidence
 	// and the report's whole value is not overstating either.
 	ClientIPFromVisitorTraffic bool
+	// CountryEdgeAnswers / CountryTableAnswers / CountryDisagreements record which
+	// source answered "what country is this visitor in", and how often the two
+	// available sources named DIFFERENT countries for the same request.
+	//
+	// The disagreement was invisible, and being invisible is what made it
+	// expensive: a live install refused a country, the enforcement side resolved
+	// addresses through the compiled-in table and never matched it, and Analytics
+	// read the edge's per-request header and reported that country as 91% of the
+	// audience. Both sides were working. Nothing could show they were answering
+	// different questions.
+	CountryEdgeAnswers   int64
+	CountryTableAnswers  int64
+	CountryDisagreements int64
 	// GeoRulesSet reports that the operator has stated at least one rule keyed on
 	// the visitor's country. It changes what the real-IP failure MEANS: without
 	// geo rules an unresolved visitor address is a rate-limiting problem, and
@@ -400,6 +413,33 @@ func Run(in Inputs) []Check {
 			"A forwarding header was honoured, but this site is not marked as proxied. Check that the peer really is a trusted proxy — otherwise a visitor can choose the address they are limited under.")
 	default:
 		add("Real visitor IP", Pass, "Traffic arrives directly, so the connection's peer address is the visitor.")
+	}
+
+	// --- Where the country verdict comes from --------------------------------
+
+	switch {
+	case in.CountryEdgeAnswers+in.CountryTableAnswers == 0:
+		// Nothing has been classified yet; say nothing rather than invent a state.
+	case in.CountryDisagreements > 0:
+		add("Country source", Warn,
+			"Your CDN and the country table compiled into this build disagree about where some "+
+				"visitors are: "+itoa64(in.CountryDisagreements)+" request(s) so far. The CDN's answer "+
+				"is used, because it is computed per request from live data and it is the number you "+
+				"are looking at in Analytics when you write a country rule — so the rule and the "+
+				"report now act on the same fact. A rising count means the embedded table is behind "+
+				"the edge for some address space; nothing is broken by it, and an update refreshes "+
+				"the table.")
+	case in.CountryEdgeAnswers > 0:
+		add("Country source", Pass,
+			"Countries come from your CDN's per-request header, verified to have arrived from a "+
+				"trusted peer. Analytics and every country rule read that same value, so what you "+
+				"see and what is enforced cannot drift apart.")
+	default:
+		add("Country source", Info,
+			"No CDN is stating a country for these requests, so countries are resolved from the "+
+				"visitor's address using the table compiled into this build. That is the right source "+
+				"for a direct-served origin. It is a release-time snapshot: address space that "+
+				"changed hands since this build will be attributed to its previous owner.")
 	}
 
 	// --- Bind address --------------------------------------------------------
@@ -673,6 +713,8 @@ func tierChecks(in Inputs, stale bool) []Check {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+func itoa64(n int64) string { return strconv.FormatInt(n, 10) }
 
 // isLoopback reports whether a bind address is loopback-only. The address is
 // read from configuration, not parsed from a packet, so a simple prefix test is
