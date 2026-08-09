@@ -106,14 +106,17 @@ func applyProcMask() {
 
 // seccompAction constants
 const (
-	seccompActAllow = 0x7fff0000 // SECCOMP_RET_ALLOW
+	// Typed uint32, not untyped: SECCOMP_RET_KILL_PROCESS does not fit in an
+	// int on a 32-bit build, so an untyped constant here fails to compile the
+	// moment anything passes it to a variadic interface{} parameter.
+	seccompActAllow uint32 = 0x7fff0000 // SECCOMP_RET_ALLOW
 	// SECCOMP_RET_KILL_PROCESS. This was 0x00000000, which is
 	// SECCOMP_RET_KILL_THREAD — the two differ by more than a name. Killing
 	// the thread leaves the rest of a Go process running with one of its
 	// threads gone mid-syscall, which does not terminate: it deadlocks on the
 	// scheduler holding a dead M. A confinement breach has to end the process.
-	seccompActKill  = 0x80000000
-	seccompActErrno = 0x00050000 // SECCOMP_RET_ERRNO | EPERM
+	seccompActKill  uint32 = 0x80000000
+	seccompActErrno uint32 = 0x00050000 // SECCOMP_RET_ERRNO | EPERM
 )
 
 // bpfInstruction is a single BPF instruction (sock_filter).

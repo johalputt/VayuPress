@@ -59,6 +59,20 @@ as a regular directory) — best-effort degradation.
 3. Returns `SECCOMP_RET_ERRNO | EPERM` (not KILL) for anything else — the plugin
    gets an error rather than a crash, enabling graceful degradation.
 
+The table was verified empirically, not from memory: a trivial binary was
+cross-compiled for each of the seven targets and its ELF header read directly,
+comparing `e_machine`, `EI_CLASS` and `EI_DATA` against the machine number and
+the two flag bits each table entry decomposes to. All seven matched, s390x
+included — it is the one entry with no little-endian bit. Re-run that check
+rather than eyeballing the constants if an architecture is ever added; a test
+that re-derives a value from a number typed by the same person who typed the
+value proves only that they were consistent.
+
+`SECCOMP_RET_KILL_PROCESS` needs Linux 4.14 (2017). Older kernels mask an
+unrecognised action down to `SECCOMP_RET_KILL_THREAD`, which is what this code
+did on every kernel before the fix — so the floor is the previous behaviour, not
+a new failure mode.
+
 Where `auditArch()` has no entry the filter is **not built and not installed**;
 `ApplySeccompFilter()` returns an error and the plugin does not start. Installing
 a filter whose guard cannot match is strictly worse than installing none, because

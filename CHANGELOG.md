@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.46] — 2026-08-09
 
 ### Fixed
 
@@ -46,6 +46,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   anywhere else — which is why the arm64 break above survived. The gate proves
   the source compiles for those targets; it does not claim they are tested or
   released.
+
+  It failed on its own first run, twice, against the code written to fix that
+  break: a 32-bit `int` cannot hold `SECCOMP_RET_KILL_PROCESS`, and 386 has no
+  `SYS_SOCKET` — it multiplexes through `socketcall(2)`. Both were in test
+  files, so a local per-architecture `go build` had passed them: `go build` does
+  not compile tests, `go vet` does. The matrix runs both, which is why the
+  seccomp action constants are now typed `uint32` rather than untyped.
 
 - **Release-metadata consistency gate** (`scripts/release-consistency.sh`).
   Pushing `.release-version` *is* the release here, and nothing downstream

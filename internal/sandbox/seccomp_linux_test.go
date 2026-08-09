@@ -209,15 +209,15 @@ func TestFilterGuardsTheArchItWasBuiltFor(t *testing.T) {
 // termination, so a breach of the arch guard would hang instead of stopping.
 func TestKillActionEndsTheProcessNotJustTheThread(t *testing.T) {
 	const (
-		killThread  = 0x00000000 // SECCOMP_RET_KILL_THREAD
-		killProcess = 0x80000000 // SECCOMP_RET_KILL_PROCESS
+		killThread  uint32 = 0x00000000 // SECCOMP_RET_KILL_THREAD
+		killProcess uint32 = 0x80000000 // SECCOMP_RET_KILL_PROCESS
 	)
 	if seccompActKill == killThread {
 		t.Fatal("kill action is SECCOMP_RET_KILL_THREAD; a filter breach must end the process")
 	}
 	if seccompActKill != killProcess {
 		t.Errorf("kill action = %#08x, want SECCOMP_RET_KILL_PROCESS (%#08x)",
-			uint32(seccompActKill), uint32(killProcess))
+			seccompActKill, killProcess)
 	}
 }
 
@@ -263,13 +263,19 @@ func TestNetpollSyscallIsAllowed(t *testing.T) {
 // be small, and a syscall that opens files, opens sockets or starts processes
 // defeats the confinement whatever else the sandbox does.
 func TestAllowlistStaysMinimal(t *testing.T) {
+	// Only syscalls every supported ABI spells the same way. socket(2) is the
+	// obvious omission — 386 has no SYS_SOCKET, it multiplexes through
+	// socketcall(2), which arm64 and riscv64 in turn do not have. Naming
+	// either one here would make this test compile on some architectures and
+	// not others, which is the exact defect the surrounding work exists to fix.
 	forbidden := map[string]uintptr{
 		"execve": syscall.SYS_EXECVE,
 		"openat": syscall.SYS_OPENAT,
-		"socket": syscall.SYS_SOCKET,
 		"ptrace": syscall.SYS_PTRACE,
 		"mount":  syscall.SYS_MOUNT,
 		"prctl":  syscall.SYS_PRCTL,
+		"chroot": syscall.SYS_CHROOT,
+		"kill":   syscall.SYS_KILL,
 	}
 	for name, nr := range forbidden {
 		if allowsSyscall(nr) {

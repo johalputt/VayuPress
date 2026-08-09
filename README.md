@@ -455,6 +455,14 @@ anywhere else. It did not: `internal/sandbox` named `syscall.SYS_EPOLL_WAIT` in
 architecture-neutral code, and the arm64 and riscv64 ABIs have never defined it.
 ARM VPSes are squarely this product's audience.
 
+It then failed on its own first run, twice, on code written to fix that — a
+32-bit `int` cannot hold `SECCOMP_RET_KILL_PROCESS`, and `SYS_SOCKET` does not
+exist on 386, which multiplexes through `socketcall(2)`. Both were in test files,
+which is why they had survived a local per-architecture `go build`: `go build`
+does not compile tests and `go vet` does. That is the argument for the gate in
+one sentence — the person adding it had just spent a day on this exact class of
+bug and still shipped two more.
+
 **What these gates do not prove.** They run on `linux/amd64`; the cross-compile
 matrix proves the other six architectures *compile*, not that they were tested,
 and releases remain a single native build. Builds are not currently
