@@ -666,6 +666,70 @@ func (a *App) buildMCPServer() *mcp.Server {
 	})
 
 	// ── analytics (read) ──────────────────────────────────────────────────────
+	// analytics_audience answers "WHERE is this traffic from", which nothing could
+	// answer over this connector.
+	//
+	// It exists because its absence cost a week. An operator refused a country and
+	// kept seeing it in their audience report; every diagnosis of that had to be
+	// run off a screenshot, and this project's own standing rule is to read a
+	// number from an API and never off a dashboard image — a rule that could not
+	// be followed here, because the API had no such field. The breakdown the panel
+	// draws was simply not reachable, so the one number the whole investigation
+	// turned on was the one number that could not be checked.
+	//
+	// Aggregate counts only, exactly like the panel: no address, no visitor.
+	srv.Register(mcp.Tool{
+		Name: "analytics_audience",
+		Description: "Return where traffic came from over the last N days: visitors and pageviews " +
+			"grouped by country, region, city, browser, device or operating system. Aggregate " +
+			"counts only — VayuPress stores no per-visitor personal data. Use this to check what " +
+			"a country rule is actually doing rather than reading it off a dashboard.",
+		InputSchema: objSchema(nil, map[string]any{
+			"report": strProp("One of: countries (default), regions, cities, browsers, devices, os."),
+			"days":   intProp("Look-back window in days (default 30, max 365)."),
+			"limit":  intProp("How many rows to return (default 20, max 100)."),
+		}),
+		Visible: a.mcpVisible(apikeys.SectionAnalytics, apikeys.ActionRead),
+		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+			if a.analytics == nil {
+				return "", fmt.Errorf("analytics are unavailable")
+			}
+			var in struct {
+				Report string `json:"report"`
+				Days   int    `json:"days"`
+				Limit  int    `json:"limit"`
+			}
+			_ = json.Unmarshal(args, &in)
+			if in.Days <= 0 {
+				in.Days = 30
+			}
+			if in.Days > 365 {
+				in.Days = 365
+			}
+			if in.Limit <= 0 {
+				in.Limit = 20
+			}
+			if in.Limit > 100 {
+				in.Limit = 100
+			}
+			if in.Report == "" {
+				in.Report = "countries"
+			}
+			rows, err := audienceFor(ctx, a.analytics, in.Report, in.Days)
+			if err != nil {
+				return "", err
+			}
+			if len(rows) > in.Limit {
+				rows = rows[:in.Limit]
+			}
+			return jsonStr(map[string]any{
+				"report": in.Report,
+				"days":   in.Days,
+				"rows":   rows,
+			}), nil
+		},
+	})
+
 	// analytics_summary gives Claude the privacy-first traffic picture (aggregate
 	// counts only — VayuPress stores no per-visitor PII) so it can report on and
 	// optimise the site. Read-only.
