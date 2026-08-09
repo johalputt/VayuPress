@@ -248,6 +248,12 @@ var catalogMeta = map[string]ThemeMeta{
 		Tags:        []string{"newspaper", "news", "broadsheet", "editorial", "premium", "serif", "layout"},
 		Category:    CatEditorial,
 	},
+	"Orbit": {
+		Tagline:     "Deep space, drawn in pure CSS.",
+		Description: "A deep-space publication theme carrying the design sense of vayuweb.vayupress.com onto the blog: concentric orbit rings drawn entirely in CSS behind the hero, tracked-out mono section labels, glass cards edged with a masked gradient hairline that brightens on hover, and display type allowed to be genuinely large on a near-black canvas. Ships four hero modes — the signature rings, a full-width search bar as the primary call to action, a quiet light beam, or no ornament at all — each emitted on its own so a reader downloads only the mode in use. No web fonts, no JavaScript and no external request of any kind; every animation is transform/opacity only and every one stops under prefers-reduced-motion, so nothing on the page can move once it has painted. Light & dark, WCAG-AA, CSP-safe.",
+		Tags:        []string{"dark", "premium", "space", "glass", "search", "animated", "fast"},
+		Category:    CatDark,
+	},
 	"Vayu": {
 		Tagline:     "Match your site — the vayupress.com look for your blog.",
 		Description: "The flagship theme that mirrors vayupress.com: a deep cosmic \u201cink\u201d canvas lit with bright teal and saffron, gradient display headings, glassy post cards with a teal glow-lift, an underlined nav, gradient-bordered code blocks and a refined reading experience. Deploy it in one click so your blog and website share one identity. Pure CSS with a system-font stack \u2014 no web fonts, no JavaScript, no external requests \u2014 so it stays blazing fast (100/100 PageSpeed) and fully sovereign, in light and dark.",

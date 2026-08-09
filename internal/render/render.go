@@ -1871,6 +1871,10 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 {{if .ShowHero}}<section class="vayu-hero">
   {{if .Tagline}}<h1>{{.Tagline}}</h1>{{else}}<h1>{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}</h1>{{end}}
   {{if .Description}}<p class="vayu-hero-tagline">{{.Description}}</p>{{end}}
+  {{if .ShowSearch}}<form class="vayu-hero-search" method="get" action="/search" data-vayu-search>
+    <input class="vayu-search-input" type="search" name="q" placeholder="Search the archive…" aria-label="Search posts">
+    <button type="submit">Search</button>
+  </form>{{end}}
 </section>{{end}}
 {{if .Articles}}<div class="vayu-section-label">Latest writing</div>
 <div class="vayu-post-list">
@@ -3031,6 +3035,19 @@ h1, h2, h3, h4, h5, h6 {
   max-width: 16ch;
   margin-bottom: 1rem;
 }
+
+/* The hero search ships on every homepage that has both a hero and search
+   enabled, and is HIDDEN unless the active theme asks for it. Themes are
+   CSS-only by design — internal/render deliberately does not import
+   internal/theme — so a theme cannot add markup, only style what is already
+   there. Emitting it inert costs one form element on one page and keeps that
+   boundary intact.
+
+   display:none, not a visually-hidden class: while it is unused it must be out
+   of the accessibility tree, otherwise every homepage in every other theme
+   quietly grows a second search form for a screen reader to walk past. A theme
+   that reveals it should hide the one in the nav. */
+.vayu-hero-search { display: none; }
 
 .vayu-hero-tagline {
   max-width: 55ch;

@@ -594,6 +594,41 @@ overstates it.
   fallback is refused explicitly and a test drives it with blank, whitespace,
   traversal and non-hex ids.
 
+### Added
+
+- **Orbit — a new blog theme.** A deep-space publication design carrying the
+  sense of vayuweb.vayupress.com onto the blog: concentric orbit rings drawn
+  entirely in CSS behind the hero, tracked-out mono section labels, glass cards
+  edged with a masked gradient hairline that brightens on hover, and display type
+  allowed to be genuinely large on a near-black canvas.
+
+  It ships **four hero modes** under an Orbit-only `orbithero` option — the
+  signature rings, a full-width **search bar** as the primary call to action, a
+  quiet light beam, or no ornament. `herostyle` already exists as a *shared*
+  option on a different axis (centered/left/minimal/boxed), so overloading that
+  key would have silently changed every theme already using it; the new control
+  is scoped to Orbit and a test pins that it never shadows a shared key.
+
+  Only the chosen mode's CSS is emitted rather than all four behind selectors —
+  a theme is CSS-only (`internal/render` deliberately does not import
+  `internal/theme`), so there is no attribute on the document to select against,
+  and emitting one mode keeps three unused rule sets out of the stylesheet every
+  reader downloads.
+
+  Built on the ADR-0136 sovereign token system (`--sh-sm`, `--sh-lg`, `--t`)
+  rather than hardcoded shadows and timings, so elevation and motion follow a
+  scheme change instead of being left behind.
+
+- **The homepage hero can carry a search box.** `internal/render` now emits a
+  `.vayu-hero-search` form inside the hero on any homepage with both a hero and
+  search enabled, hidden by default so no existing theme changes. A theme cannot
+  add markup — only style what is already there — so this is the only way a hero
+  search could exist without coupling the renderer to the theme package.
+  `display: none` rather than a visually-hidden class is deliberate: while it is
+  unused it must be out of the accessibility tree, or every homepage in every
+  other theme quietly grows a second search form. Orbit's search mode reveals it
+  and hides the one in the nav, so the page never carries two.
+
 ### Changed
 
 - **The marketing site no longer publishes to GitHub Pages.** vayupress.com is

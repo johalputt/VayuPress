@@ -258,6 +258,17 @@ var perThemeOptions = []ThemedOption{
 		},
 	},
 	{
+		Themes: []string{"Orbit"},
+		Option: Option{
+			Key: "orbithero", Label: "Hero mode", Default: "default",
+			Help: "The ornament behind the hero. Rings is the signature; Search puts a full-width search bar in the hero and hides the one in the nav.",
+			Choices: []OptionChoice{
+				{"default", "Rings (signature)"}, {"search", "Big search bar"},
+				{"beam", "Light beam"}, {"flat", "No ornament"},
+			},
+		},
+	},
+	{
 		Themes: []string{"Editor"},
 		Option: Option{
 			Key: "paper", Label: "Paper tone", Default: "default",
@@ -438,6 +449,13 @@ func applyThemeOptions(t *Tokens) string {
 	// voice wins over any archetype heading tweaks.
 	if fontPairCSS != "" {
 		extra.WriteString(fontPairCSS)
+	}
+	// Orbit's hero mode. Emitted rather than selected: a theme is only ever CSS,
+	// so there is no attribute on the document to hang [data-…] off — and
+	// emitting just the mode in use keeps three unused rule sets out of the
+	// stylesheet every reader downloads.
+	if v := t.Options["orbithero"]; v != "" && v != "default" {
+		extra.WriteString(orbitHeroCSS(v))
 	}
 	if t.Options["headingcase"] == "uppercase" {
 		extra.WriteString(headingSelectors + "{text-transform:uppercase;letter-spacing:-.01em}")
@@ -625,4 +643,81 @@ func applyThemeOptions(t *Tokens) string {
 		extra.WriteString(".vayu-hero h1{font-size:4.6rem}.vayu-post-title{font-size:1.8rem}article.vayu-prose h1,.vayu-article-header h1{font-size:3.9rem}")
 	}
 	return extra.String()
+}
+
+// orbitHeroCSS returns the CSS for one of Orbit's hero modes.
+//
+// The mode cannot be a selector. A theme is only ever CSS — internal/render
+// deliberately does not import this package — so there is no attribute on <html>
+// to hang [data-…] off. What the option actually decides is WHICH CSS is
+// emitted, which is both simpler and smaller: a reader downloads the one mode
+// in use rather than four sets of rules and three that never match.
+//
+// Every mode keeps identical type and spacing. Only the ornament changes, so
+// switching mode can never move the largest element on the page and cannot
+// affect LCP or CLS.
+func orbitHeroCSS(mode string) string {
+	switch mode {
+	case "beam":
+		return `
+.vayu-hero::before {
+  inset: 0;
+  background: linear-gradient(180deg,
+    color-mix(in oklab, var(--pico-primary) 26%, transparent), transparent 62%);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+  animation: none;
+}`
+	case "flat":
+		return `
+.vayu-hero::before, .vayu-hero::after { content: none; }
+.vayu-hero {
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  min-height: 0;
+  padding-block: 3.5rem 3rem;
+}`
+	case "search":
+		// Revealing the hero search also hides the copy in the nav, so the page
+		// never carries two search forms — one of them would be a second
+		// landmark for a screen reader to walk past for no benefit.
+		return `
+.vayu-hero-search {
+  display: flex;
+  gap: .5rem;
+  width: 100%;
+  max-width: 34rem;
+  margin-top: 2rem;
+}
+.vayu-nav .vayu-search { display: none; }
+.vayu-hero-search .vayu-search-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.05rem;
+  padding: .95rem 1.15rem;
+  border-radius: var(--vayu-radius-lg, 1rem);
+  border: 1px solid var(--pico-muted-border-color);
+  background: color-mix(in oklab, var(--pico-card-background-color) 82%, transparent);
+  backdrop-filter: blur(14px);
+  transition: border-color .3s ease, box-shadow .3s ease;
+}
+.vayu-hero-search .vayu-search-input:focus {
+  outline: none;
+  border-color: color-mix(in oklab, var(--pico-primary) 62%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--pico-primary) 18%, transparent);
+}
+.vayu-hero-search button {
+  flex: 0 0 auto;
+  padding: .95rem 1.6rem;
+  border-radius: var(--vayu-radius-lg, 1rem);
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition: transform .25s ease, filter .25s ease;
+}
+.vayu-hero-search button:hover { transform: translateY(-1px); filter: brightness(1.08); }
+@media (prefers-reduced-motion: reduce) {
+  .vayu-hero-search button, .vayu-hero-search .vayu-search-input { transition: none; }
+  .vayu-hero-search button:hover { transform: none; }
+}`
+	}
+	return ""
 }

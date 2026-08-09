@@ -329,6 +329,7 @@ func allPresetsRaw() []Tokens {
 		Apex(),
 		Editor(),
 		Vayu(),
+		Orbit(),
 	}
 }
 
@@ -715,5 +716,34 @@ func Vayu() Tokens {
 		FontSans: "Inter, system-ui, -apple-system, Segoe UI, sans-serif", FontMono: "JetBrains Mono, IBM Plex Mono, ui-monospace, monospace",
 		FontSizeBase: "1.0625rem", LineHeight: "1.7", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.875rem",
 		CustomCSS: vayuCSS,
+	}
+}
+
+// Orbit — a deep-space publication theme that carries the design sense of
+// vayuweb.vayupress.com onto the blog: concentric orbit rings drawn in pure CSS
+// behind the hero, tracked-out mono section labels, glass cards with a masked
+// gradient hairline, and very large display type on a near-black canvas.
+//
+// It ships FOUR hero modes rather than one, because the hero is the only part of
+// a blog that a publisher wants to change often: "rings" (the signature orbit
+// field), "search" (a full-width search bar as the primary call to action —
+// the reason the renderer emits .vayu-hero-search), "beam" (a quiet light
+// column) and "flat" (no ornament at all).
+//
+// Written to the same bar as Vayu and Editor: no web fonts, no JS, no external
+// request of any kind, and nothing that can move once painted. Every animation
+// is transform/opacity only and every one of them is switched off under
+// prefers-reduced-motion, so it stays fast and stays still — which is what a
+// Core Web Vitals score is actually measuring.
+func Orbit() Tokens {
+	return Tokens{
+		Name: "Orbit", BgDark: "#05060a", SurfaceDark: "#0c0f18", TextDark: "#eef1f7",
+		MutedDark: "#98a1b4", AccentDark: "#8fb3ff", Accent2Dark: "#c9a6ff", HiDark: "#ffd79a", GreenDark: "#5fe3a1",
+		BgLight: "#f8f9fc", SurfaceLight: "#ffffff", TextLight: "#0a0d16", MutedLight: "#55607a",
+		AccentLight: "#3557c7", Accent2Light: "#6d43c0", HiLight: "#a15c00",
+		FontSans:     "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+		FontMono:     "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.7", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "1rem",
+		CustomCSS: orbitCSS,
 	}
 }
