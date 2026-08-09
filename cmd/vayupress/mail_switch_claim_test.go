@@ -3,6 +3,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -98,10 +99,30 @@ func TestTheMailCardDoesNotDenyThatItStopsDelivery(t *testing.T) {
 // than rejected, which is a widening that costs nobody access. That is luck, not
 // method. The set is pinned so the next addition has to justify itself.
 var mailPredicateCallSites = map[string]string{
-	"smtpd.go":    "the RCPT gate — the delivery refusal the card describes",
-	"engine.go":   "isLocalRecipient — the same refusal from the other side",
-	"recovery.go": "validRecoveryContact — refuses a recovery address on a hosted domain",
+	"internal/vayuos/mail/config.go":   "AcceptsMailDomain itself, and the MailAccepts hook it consults",
+	"internal/vayuos/mail/smtpd.go":    "the RCPT gate — the delivery refusal the card describes",
+	"internal/vayuos/mail/engine.go":   "isLocalRecipient — the same refusal from the other side",
+	"internal/vayuos/mail/recovery.go": "validRecoveryContact — refuses a recovery address on a hosted domain",
+	"cmd/vayupress/vayuos.go":          "wires MailAccepts to the registry-backed predicate",
+	// NOT a consumer of the value: it hands the predicate to the account store.
+	// Listed because it is how the recovery.go site is reached, and because it
+	// sits outside internal/vayuos/mail — which is exactly the file the
+	// one-directory glob could not see.
+	"cmd/vayupress/admin_os_mail_recovery.go": "passes the predicate into SetRecoveryContactPending",
+	// Prose, not code: the card's own header describes every entry above. It
+	// matches because it NAMES them, which is the point — the description and
+	// the set it describes fail together.
+	"cmd/vayupress/admin_os_domain_serves.go": "the card's copy, which names all of the above",
 }
+
+// NOTE ON WHAT IS ABSENT. cmd/vayupress/middleware_domain.go defines
+// acceptsSecondaryMailDomain — the predicate itself — and does not appear here,
+// because "acceptsSecondaryMailDomain" does not contain the substring
+// "AcceptsMailDomain" and the file names none of the other markers. That is not
+// an oversight: theMailSwitchIsConsultedAtDelivery pins that file directly by
+// function body, which is a stronger check than a substring scan. Recorded so
+// the next reader does not "fix" the list by adding an entry the walk can never
+// produce, and watch the test fail for it.
 
 // What the switch does NOT do has to survive the correction, or the fix trades
 // one wrong statement for a scarier wrong statement. Mailboxes and their stored
@@ -117,22 +138,46 @@ func TestTheMailCardDoesNotOverstateWhatTurningItOffDestroys(t *testing.T) {
 
 	// The mechanism behind that reassurance: every place the predicate reaches,
 	// found by BOTH the name and the parameter shape it travels under.
-	files, err := filepath.Glob("../../internal/vayuos/mail/*.go")
-	if err != nil {
-		t.Fatalf("glob: %v", err)
-	}
+	// WALK THE REPO, not one directory.
+	//
+	// This globbed internal/vayuos/mail/*.go, so anything consulting the
+	// predicate from outside that package was invisible — and one already did:
+	// cmd/vayupress/admin_os_mail_recovery.go passes it into
+	// SetRecoveryContactPending, which is the entry point for the recovery.go
+	// site the correction above counts as the third. The claim "a fourth fails
+	// the build" was therefore false in the same commit that made it: a fourth
+	// consumer anywhere else in the tree changed nothing here.
 	found := map[string]bool{}
-	for _, p := range files {
-		base := filepath.Base(p)
-		if strings.HasSuffix(base, "_test.go") || base == "config.go" {
-			continue // config.go DEFINES the predicate; it is not a call site
+	err := filepath.Walk("../..", func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
 		}
-		src := readSourceFile(t, p)
-		if strings.Contains(src, "AcceptsMailDomain") ||
-			strings.Contains(src, "accepts func(domain string) bool") ||
-			strings.Contains(src, "accepts(domain)") {
-			found[base] = true
+		if info.IsDir() {
+			switch info.Name() {
+			case ".git", "node_modules", "docs", "security-audit":
+				return filepath.SkipDir
+			}
+			return nil
 		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		src, rerr := os.ReadFile(p)
+		if rerr != nil {
+			return rerr
+		}
+		body := string(src)
+		if strings.Contains(body, "AcceptsMailDomain") ||
+			strings.Contains(body, "MailAccepts") ||
+			strings.Contains(body, "accepts func(domain string) bool") ||
+			strings.Contains(body, "accepts(domain)") {
+			rel := filepath.ToSlash(strings.TrimPrefix(filepath.Clean(p), "../../"))
+			found[rel] = true
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk: %v", err)
 	}
 
 	for f := range found {
@@ -150,7 +195,7 @@ func TestTheMailCardDoesNotOverstateWhatTurningItOffDestroys(t *testing.T) {
 	}
 	// The two that must never appear, named explicitly: these are sign-in, and
 	// the card's reassurance is exactly that sign-in is untouched.
-	for _, f := range []string{"imapd.go", "pop3d.go"} {
+	for _, f := range []string{"internal/vayuos/mail/imapd.go", "internal/vayuos/mail/pop3d.go"} {
 		if found[f] {
 			t.Errorf("%s now consults the acceptance predicate, so turning mail off also locks "+
 				"the client out of reading mail they already have — the card says it does not", f)

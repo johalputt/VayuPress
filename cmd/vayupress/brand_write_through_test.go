@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -176,5 +177,52 @@ func TestSaveBrandWritesBothStores(t *testing.T) {
 	if !strings.Contains(body, "SetBrand") {
 		t.Error("saveBrand no longer writes the domain record, so brandForRequest's fallback " +
 			"(used when the settings store errors) has nothing to fall back to")
+	}
+}
+
+// FINDING (post-v3.17.48) — nothing bound saveBrand to normalizeBrand.
+//
+// Every assertion above calls normalizeBrand directly, so the RULES were tested
+// and their APPLICATION was not: replacing saveBrand's `b, err := normalizeBrand(in)`
+// with `b := in` left the whole suite green. The colour check and the length cap
+// would then be dead code sitting beside the endpoint that is supposed to run
+// them, and the CSS injection this section closed would be open again with the
+// tests still reporting it shut.
+//
+// Driven through saveBrand itself. A zero App has no registry, so a VALID brand
+// stops at "domain registry not initialised" — which is exactly what makes this
+// work: an INVALID one must fail earlier, with the colour message, and that
+// difference is only observable if normalizeBrand actually runs first.
+func TestSaveBrandRefusesBeforeItWritesAnything(t *testing.T) {
+	a := &App{}
+	ctx := context.Background()
+
+	bad := brandFixture()
+	bad.AccentLight = "red; --x: url(javascript:alert(1))"
+	_, err := a.saveBrand(ctx, "abc123", bad)
+	if err == nil {
+		t.Fatal("saveBrand accepted a non-hex accent; it lands in this domain's /theme.css verbatim")
+	}
+	if !strings.Contains(err.Error(), "hex colour") {
+		t.Fatalf("saveBrand failed with %q, not the colour refusal — so it got past validation "+
+			"and stopped somewhere else, which means normalizeBrand is not being consulted", err)
+	}
+
+	// The control: a VALID brand must get further, or the test above would pass
+	// against a saveBrand that refuses everything.
+	_, err = a.saveBrand(ctx, "abc123", brandFixture())
+	if err == nil {
+		t.Fatal("a zero App wrote a brand somehow")
+	}
+	if strings.Contains(err.Error(), "hex colour") {
+		t.Fatal("a valid brand was refused as a bad colour")
+	}
+
+	// And over-long text must be CAPPED rather than refused — the two failure
+	// modes are different and the endpoint must not turn one into the other.
+	long := brandFixture()
+	long.SiteName = strings.Repeat("x", 500)
+	if _, err := a.saveBrand(ctx, "abc123", long); err != nil && strings.Contains(err.Error(), "hex colour") {
+		t.Error("an over-long site name was reported as a colour problem")
 	}
 }

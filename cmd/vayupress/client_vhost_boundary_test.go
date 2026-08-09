@@ -30,7 +30,12 @@ var clientVhostRefusals = []string{"/os", "/admin", "/oauth", "/mcp", "/api/v1/a
 
 // nginxLocationRe captures the modifier and the path of every location in a
 // server block: `location ^~ /os/ {` → ("^~", "/os/").
-var nginxLocationRe = regexp.MustCompile(`(?m)^\s*location\s+(=|\^~)?\s*(\S+)\s*\{`)
+//
+// The modifier group accepts `~` and `~*` as well, even though this template
+// uses neither. It has to: with `(=|\^~)?` a regex location did not match AT
+// ALL, so the branch below that exists to reject one could never fire — the
+// dangerous shape was the shape that made its own guard unreachable.
+var nginxLocationRe = regexp.MustCompile(`(?m)^\s*location\s+(=|\^~|~\*|~)?\s*(\S+)\s*\{`)
 
 // clientVhostTemplate returns the nginx config write_full emits — the heredoc
 // body itself, not the shell around it.
@@ -67,6 +72,24 @@ func clientVhostTemplate(t *testing.T) string {
 	return tmpl
 }
 
+// nginxBlockBody returns the text of one location block, given everything after
+// its opening brace. Brace-counted, so a nested block cannot end it early.
+func nginxBlockBody(rest string) string {
+	depth := 1
+	for i := 0; i < len(rest); i++ {
+		switch rest[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return rest[:i]
+			}
+		}
+	}
+	return rest // unbalanced; nginx -t would reject it, and so will the caller
+}
+
 // refusingLocations returns the set of prefixes the template answers with a 404.
 func refusingLocations(tmpl string) map[string]string { // path → modifier
 	out := map[string]string{}
@@ -76,13 +99,22 @@ func refusingLocations(tmpl string) map[string]string { // path → modifier
 			mod = tmpl[m[2]:m[3]]
 		}
 		path := tmpl[m[4]:m[5]]
-		// The directive's body runs to the end of its line, which is where the
-		// one-line `{ return 404; }` form this template uses lives.
-		line := tmpl[m[1]:]
-		if i := strings.IndexByte(line, '\n'); i >= 0 {
-			line = line[:i]
-		}
-		if strings.Contains(line, "return 404") {
+		// THE WHOLE BLOCK, not the first line of it.
+		//
+		// This read to the end of the opening line, because that is where the
+		// one-line `{ return 404; }` form this template uses puts the directive.
+		// So a refusal written in the ordinary multi-line nginx style —
+		//
+		//	location ^~ /api/ {
+		//	    return 404;
+		//	}
+		//
+		// never entered this map, and every NEGATIVE assertion below became
+		// vacuous against it: the blanket /api refusal that would switch off
+		// analytics on every hosted site could be added in that form with all
+		// three tests in this file staying green. Verified by adding exactly that
+		// and watching them pass.
+		if strings.Contains(nginxBlockBody(tmpl[m[1]:]), "return 404") {
 			out[path] = mod
 		}
 	}

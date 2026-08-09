@@ -31,9 +31,23 @@ var evalRefusedPrefixes = []string{
 	// runs. These are the HTML pages, and a page is where eval executes with
 	// that cookie in scope.
 	//
-	// Refusing these cannot break an opted-in site: the custom bundle is served
-	// at "/" and as the 404 fallback, so a REGISTERED route was never the
-	// operator's own static page to begin with.
+	// WHAT REFUSING THESE COSTS, stated accurately after the first version of
+	// this comment got it wrong. It said refusing them "cannot break an opted-in
+	// site: the custom bundle is served at / and as the 404 fallback, so a
+	// REGISTERED route was never the operator's own static page to begin with."
+	// That reasoning only holds for paths that ARE registered routes. /members,
+	// /checkout and /signup are; bare /mail and /vayumail are not — routes.go
+	// registers /mail/recover* and /vayumail/privacy and nothing else — so those
+	// two, and every unregistered path beneath all five, fall through
+	// handleNotFound to the bundle and ARE the operator's own static pages.
+	//
+	// So a bundle page at /mail, or at /checkout/thanks, now renders under the
+	// strict baseline while the rest of the site keeps the relaxation. That is
+	// the correct security answer and it is a real cost: vp_member is written
+	// with Path "/", so a member session is in scope on exactly those pages, and
+	// eval there is what the opt-in must not grant. It is named here rather than
+	// denied, because a page that renders inert with nothing explaining why is
+	// the failure this file exists to prevent, not one to hide.
 	"/members", "/checkout", "/signup", "/mail", "/vayumail",
 }
 
@@ -69,6 +83,28 @@ func (a *App) siteCSPMiddleware(next http.Handler) http.Handler {
 // siteAllowsEval reports whether this exact request is the narrow case the
 // opt-in covers.
 func (a *App) siteAllowsEval(r *http.Request) bool {
+	return siteAllowsEvalGiven(r, a.customSiteActive)
+}
+
+// siteAllowsEvalGiven is siteAllowsEval with its one App-dependent condition
+// supplied as an argument.
+//
+// WHY THE SEAM EXISTS, because it is not tidiness. The composition here — "the
+// path refusal AND the bundle check" — had no test at all, and the file's own
+// comment claimed otherwise. Every assertion called evalPermittedFor directly;
+// the single call to siteAllowsEval used &App{} on a request with no resolved
+// domain, so it returned at the !ok branch and never reached the refusal it was
+// written to guard. Deleting `!evalPermittedFor(d, r.URL.Path)` from the
+// condition left the entire suite green, which drops the primary-domain guard,
+// the AllowEval opt-in and the path refusal in one edit.
+//
+// Testing it through the real customSiteActive would need a settings store in
+// "custom" mode and a deployed bundle on disk — a fixture heavy enough that the
+// test would not have been written, which is how it came to be missing. A
+// function parameter is the same answer recovery.go already reached for the mail
+// acceptance predicate: "a parameter rather than a package lookup so the rule is
+// testable".
+func siteAllowsEvalGiven(r *http.Request, bundleActive func(*http.Request) bool) bool {
 	d, ok := activeDomain(r)
 	if !ok || !evalPermittedFor(d, r.URL.Path) {
 		return false
@@ -78,7 +114,7 @@ func (a *App) siteAllowsEval(r *http.Request) bool {
 	// linger after the operator switched back to a template. This is the one
 	// condition that needs App state; every condition above it is decidable
 	// from the request alone, which is why they live in evalPermittedFor.
-	return a.customSiteActive(r)
+	return bundleActive(r)
 }
 
 // evalPermittedFor holds every condition that can be decided from the resolved

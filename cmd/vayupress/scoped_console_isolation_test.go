@@ -3,6 +3,9 @@
 package main
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -147,6 +150,67 @@ func TestEveryPerSitePageIsCheckedForInstallWideLinks(t *testing.T) {
 		{"the analytics page", scopedAnalyticsBody(10, 5, 25.0, 42.0, nil)},
 	} {
 		assertNoInstallWideLinks(t, c.label, d.ID, c.page)
+	}
+}
+
+// THE SEVENTH PAGE, and the count this test shipped with was wrong.
+//
+// The per-site block mounts /theme as well — Theme Studio, the SAME handler as
+// /os/theme, mounted a second time — so there are seven per-site pages, not six.
+// It was omitted, and it is the one that fails: the page rendered
+// `href="/os/theme/store"` and `href="/os/api/theme/export"`, both absolute
+// install-wide routes, and the export handler resolves osScope(r) to the PRIMARY
+// when reached that way. An operator on a client's Theme Studio pressed "Export
+// theme JSON" and downloaded their own site's theme.
+//
+// Rendered through the real handler rather than a body function, because that is
+// where the withholding decision is made — a body-level test would assert
+// against markup that never sees the request.
+func TestThePerSiteThemeStudioCarriesNoInstallWideControls(t *testing.T) {
+	d := isolationDomain()
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/os/d/"+d.ID+"/theme", nil)
+	(&App{}).handleOSTheme(rec, r.WithContext(context.WithValue(r.Context(), ctxScopedDomainKey, d)))
+	perSite := rec.Body.String()
+	if perSite == "" {
+		t.Fatal("the per-site Theme Studio rendered nothing, so the assertions below prove nothing")
+	}
+
+	// Asserted on the two CONTROLS, not through assertNoInstallWideLinks.
+	//
+	// That helper takes a body fragment; the other six pages are tested through
+	// their body builders, which emit no shell. This one has to go through the
+	// handler — the withholding decision needs the request — so the output
+	// carries the whole VayuOS chrome: /os/static/…, /os/manifest.webmanifest and
+	// every nav entry. Running the generic matcher over it reports the navigation
+	// as a finding, which is noise, not the defect. Naming the two controls keeps
+	// the assertion about the thing that was wrong.
+	for _, gone := range []string{`href="/os/theme/store"`, `href="/os/api/theme/export"`} {
+		if strings.Contains(perSite, gone) {
+			t.Errorf("the per-site Theme Studio still renders %s. It is an absolute install-wide "+
+				"route, and the export handler resolves osScope to the PRIMARY when reached that "+
+				"way — so the button downloads the operator's own theme from a page titled with "+
+				"the client's domain", gone)
+		}
+	}
+
+	// The install-wide mount must KEEP them, or this is a feature deleted rather
+	// than a control scoped.
+	wideRec := httptest.NewRecorder()
+	(&App{}).handleOSTheme(wideRec, httptest.NewRequest(http.MethodGet, "/os/theme", nil))
+	wide := wideRec.Body.String()
+	for _, want := range []string{`href="/os/theme/store"`, `href="/os/api/theme/export"`} {
+		if !strings.Contains(wide, want) {
+			t.Errorf("the install-wide Theme Studio lost %s — the fix was to withhold these on a "+
+				"client's page, not to remove them from the operator's own", want)
+		}
+	}
+
+	// And the per-site page must SAY why they are missing, or the operator reads
+	// it as a rendering fault and goes looking for the button.
+	if !strings.Contains(perSite, "install-wide only") {
+		t.Error("the per-site page withholds the controls without explaining that they are " +
+			"install-wide, so their absence reads as a bug")
 	}
 }
 

@@ -6,6 +6,84 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Security
+
+- **Five gates from v3.17.48 did not gate, and one release note was wrong.**
+  Found by attacking that release's own claims after it shipped. Each was
+  reproduced before being fixed, and each fix was mutation-checked against the
+  mutation that exposed it.
+
+  **The eval opt-in's entry point had no test, and its comment said it did.**
+  `site_csp_test.go` claimed to exercise `siteAllowsEval` "not the matcher it
+  calls". Its one call used a zero `App` on a request carrying no resolved
+  domain, so it returned at the `!ok` branch and never reached the refusal.
+  Deleting `!evalPermittedFor(d, r.URL.Path)` from the condition left the WHOLE
+  suite green — one edit dropping the primary-domain guard, the AllowEval opt-in
+  and the path refusal together, which would serve `'unsafe-eval'` on `/os/*`,
+  `/members/account` and the operator's own primary domain. The composition now
+  takes its one App-dependent condition as an argument, the way `recovery.go`
+  already does for the mail predicate, so a test can drive it without a settings
+  store and a bundle on disk — the fixture weight that is why it was never
+  written.
+
+  **`saveBrand` was not bound to `normalizeBrand`.** Every assertion tested the
+  validation rules directly, so replacing `b, err := normalizeBrand(in)` with
+  `b := in` passed: the hex check and the length cap became dead code beside the
+  endpoint meant to run them, and the CSS injection v3.17.48 closed would have
+  been open with the tests still reporting it shut.
+
+  **The nginx location detector only saw one-line blocks.** It read to the end of
+  the opening line, so a refusal in the ordinary multi-line style never entered
+  the map and every negative assertion went vacuous against it — the blanket
+  `/api` refusal that kills analytics on every hosted site could be added that
+  way with all three tests green. It now brace-counts the block. The regex-
+  location branch could never fire either, because the modifier group did not
+  match `~` at all: the shape it warned about was the shape that made its own
+  guard unreachable.
+
+  **"A fourth fails the build" was false when written.** The mail call-site
+  pinning globbed `internal/vayuos/mail/*.go`, so a consumer anywhere else was
+  invisible — and one already existed, in `cmd/vayupress`. It walks the tree now.
+
+  **The per-site link gate covered six pages; there are seven.** Theme Studio is
+  mounted a second time at `/os/d/{id}/theme`, and it is the one that failed:
+  the page rendered `/os/theme/store` and `/os/api/theme/export`, both absolute
+  install-wide routes, and the export handler resolves `osScope` to the PRIMARY
+  when reached that way — so "Export theme JSON" on a client's page downloaded
+  the operator's own theme. Both controls are now withheld on the per-site mount
+  and the page says why.
+
+  **Correction to v3.17.48's notes:** they said refusing `/members`, `/checkout`,
+  `/signup`, `/mail` and `/vayumail` "cannot break an opted-in site", because a
+  registered route was never the operator's static page. That holds for the first
+  three. `/mail` and `/vayumail` are **not** registered — only `/mail/recover*`
+  and `/vayumail/privacy` are — so those two, and every unregistered path beneath
+  all five, fall through to the bundle and are exactly the operator's own pages.
+  A bundle page there now renders under the strict baseline. That is the right
+  security answer and a real cost, and it is named rather than denied.
+
+### Upgrade Notes
+
+- **Known, not fixed: the per-site Theme Studio writes the PRIMARY site.**
+  `static/js/admin-os-theme.js` hard-codes absolute install-wide endpoints —
+  `/os/api/theme/apply`, `/os/api/theme/code`, `/os/api/theme/import`,
+  `/os/api/settings` and the branding uploads. The per-site mount serves that
+  same script, so on `/os/d/{id}/theme` pressing **Apply theme**, saving custom
+  CSS, importing a theme or uploading a mark acts on the operator's own install,
+  not the client's. The scoped route registered beside it
+  (`/os/d/{id}/api/theme/code`) is never called by the page, and its existence is
+  part of why the mount read as scoped.
+
+  This predates v3.17.48 and is the write half of the same defect whose link half
+  is fixed above. It is stated here rather than fixed quietly at the tail of a
+  release, because the fix is a client-side base-path change across several
+  endpoints shared with other pages, and it deserves its own change with its own
+  tests.
+
+---
+
 ## [3.17.48] — 2026-08-09
 
 ### Security
