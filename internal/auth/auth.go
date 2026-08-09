@@ -105,6 +105,26 @@ func ClientIP(r *http.Request) string {
 	return host
 }
 
+// PeerIsTrustedProxy reports whether r's immediate peer is a configured trusted
+// proxy — the same test ClientIP applies before it will honour any forwarding
+// header.
+//
+// It exists because the address is not the only thing a proxy asserts about a
+// visitor. A CDN also states their COUNTRY (CF-IPCountry and its equivalents),
+// and that header was being read straight off the request by the analytics
+// ingest — which is public, unauthenticated and exempt from the shield — so any
+// client could file itself under any country. ClientIP was hardened against
+// exactly this for the address; the country needs the same gate rather than a
+// second copy of the rule.
+func PeerIsTrustedProxy(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	peer := net.ParseIP(strings.TrimSpace(host))
+	return peer != nil && ipIsTrustedProxy(peer)
+}
+
 // ipIsTrustedProxy reports whether ip falls within any configured trusted-proxy
 // CIDR range.
 func ipIsTrustedProxy(ip net.IP) bool {

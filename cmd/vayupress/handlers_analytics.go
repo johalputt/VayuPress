@@ -173,7 +173,26 @@ func (a *App) handleAnalyticsCollect(w http.ResponseWriter, r *http.Request) {
 // in-process lookup. Country is an uppercase ISO alpha-2 code; Cloudflare's
 // "XX"/"T1" placeholders (unknown / Tor) are dropped.
 func geoFromHeaders(r *http.Request) analytics.GeoInfo {
+	// A proxy header is worth what the peer that sent it is worth.
+	//
+	// Every header below is a statement by a CDN about somebody else, and it was
+	// being read from whoever happened to connect. The ingest endpoint that
+	// consumes this is public, unauthenticated and on the shield's bypass list,
+	// so a client could post beacons declaring any country it liked and the
+	// operator's audience report would show it — including the country they had
+	// just refused, which is precisely the sort of contradiction that sends
+	// someone looking for a fault in the shield.
+	//
+	// Gated on the same trust ClientIP requires, and no further: with a local
+	// reverse proxy in front the peer is that proxy, so ordinary installs are
+	// unaffected and keep the country their CDN reports. Untrusted peers fall
+	// through to the offline lookup below, which for a direct connection reads
+	// the real address and is the more accurate answer anyway.
+	trusted := auth.PeerIsTrustedProxy(r)
 	pick := func(keys ...string) string {
+		if !trusted {
+			return ""
+		}
 		for _, k := range keys {
 			if v := strings.TrimSpace(r.Header.Get(k)); v != "" {
 				return v
