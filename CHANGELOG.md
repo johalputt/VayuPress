@@ -6,6 +6,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.45] — 2026-08-09
+
+### Added
+
+- **`analytics_audience` — where traffic came from, over the connector.** Visitors
+  and pageviews grouped by country, region, city, browser, device or operating
+  system. Aggregate counts only, exactly like the panel: no address, no visitor.
+  Gated on `analytics:read` like every other reader.
+
+  It exists because its absence cost a week. An operator refused a country and
+  kept seeing it at the top of their audience report. Every diagnosis of that ran
+  off a screenshot — while this project's own standing rule is to read a number
+  from an API and never off a dashboard image. That rule could not be followed,
+  because the API had no such field: the connector exposed totals and top pages
+  and nothing about WHERE traffic came from. The single number the whole
+  investigation turned on was the one number that could not be checked, and nine
+  releases were steered by it.
+
+  The general form, worth stating once: **when a read-only surface reports a
+  problem, it has to expose the dimension the problem is described in.** A
+  connector that can say "10,089 pageviews" and not "from where" cannot help with
+  a question about where.
+
+### Audit
+
+One mutation, killed: registering the tool without a `Visible` predicate. It is
+caught twice over — by this tool's own gating test, and by
+`TestOnlySiteInfoIsUngated`, which exists so that a tool added without a
+predicate can never become callable by every connector regardless of what the
+operator approved.
+
+---
+
 ## [3.17.44] — 2026-08-09
 
 **The actual answer.** The country rule was working the whole time. What was not
