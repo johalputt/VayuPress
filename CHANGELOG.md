@@ -10,6 +10,101 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **Three records asserted a limitation the code had already removed, in the
+  present tense.** Each was found by checking a written claim against the
+  mechanism it names, which is the whole method of this track and the reason the
+  two findings below were reachable at all.
+
+  ADR-0152's findings section still said *"Websites are install-wide, not
+  per-domain … A studio can host a hand-built site; it cannot host thirty
+  different ones. **This, not the Content-Security-Policy, is what blocks the
+  product**"* — while `customSiteDirFor(scope)` had long since resolved bundles
+  to `…/custom-site/<domain_id>/`, with `customsite_scope_test.go` pinning it.
+  ADR-0153's "what is actually scoped today" table said `analytics_pageviews` has
+  *"no domain column at all"*, which migration 084 added and the beacon writes.
+  And `admin_os_mysite.go`'s header explained that a client is shown no traffic
+  figure because the analytics table has no domain dimension — in a file that
+  renders a scoped Visitors page reading `ViewsForScope(d.ID, …)`.
+
+  A stale blocker is not harmless: it is the sentence that stops the next person
+  building the thing that already exists, and in a findings section it reads as
+  the current state of the world. All three now name the migration or the call
+  that makes them true, so the claim and the mechanism can be checked against
+  each other.
+
+  Verified clean while looking, and recorded because the map suspected
+  otherwise: a bound client cannot reach `/os/shield` or any other install-wide
+  control — `clientSurface` is deny-by-default and declares neither; and custom
+  bundles are not publicly readable even when a trailing slash on `MEDIA_DIR`
+  places them inside the media directory, because `/media/{file}` matches one
+  regex-validated path segment and no subdirectory.
+
+- **The mail switch said it was not a delivery switch. For a client's domain it
+  is one, and the card invited the exact action whose consequence it denied.**
+  The card under "What this domain serves" read: *"Turning mail off … does not
+  stop delivery to a mailbox that already exists — mail is served by address,
+  and this switch is not consulted at delivery."* It also gave the reason to
+  flip it: *"hides its mail card from the client."*
+
+  `SMTPServer.recipientAccepted` asks `Config.AcceptsMailDomain`, which for a
+  non-primary host asks `MailAccepts` — wired in `vayuos.go` to
+  `App.acceptsSecondaryMailDomain`, which reads `d.MailEnabled` live from the
+  registry. The engine's `isLocalRecipient` asks the same predicate. So turning
+  mail off makes the receiving server decline **every** address on that domain
+  at `RCPT TO`, and an operator following the card to hide a UI element stops
+  their client's incoming mail while being told on the same screen that they
+  have not.
+
+  The behaviour is deliberately unchanged: a domain the install is not set up to
+  serve mail for should not be accepting mail for it, and `recipientAccepted` is
+  the open-relay gate. The claim is what was wrong. The card now states the
+  consequence — new mail is refused and senders get a bounce — and keeps the
+  half that was always true and still matters: nothing is deleted and nobody is
+  locked out, because `AcceptsMailDomain` has exactly two call sites in the mail
+  stack and neither is authentication, so existing mailboxes stay readable over
+  webmail, IMAP and POP3.
+
+  **A test was enforcing the false sentence.**
+  `TestTheCardDoesNotImplyMailOffStopsDelivery` required the card to say mail off
+  "does not stop delivery", so the copy read as verified and every reader of that
+  file was told the premise had been checked. It is retired, with the reason left
+  in place. Its replacement binds the claim to the mechanism instead of to a
+  string: `mail_switch_claim_test.go` reads `acceptsSecondaryMailDomain`, the
+  `MailAccepts` wiring and smtpd's `RCPT` gate, and fails if the copy disagrees
+  with any of them in **either** direction. Six mutations killed, including
+  restoring the old sentence and dropping the flag from the predicate.
+
+- **A client's own branding editor wrote a store the public site no longer
+  reads, under a heading promising the opposite.** `/os/mysite` tells a client
+  *"Your website's name, description and colours. Changes go live immediately."*
+  The save called `domains.SetBrand`, which writes `domains.config_json` — and
+  ADR-0153 Phase 4 moved the render path off it. `brandForRequest` asks
+  `settings.ForDomain(d.ID)` first and returns as soon as `GetAll` succeeds;
+  `GetAll` on a scope with no rows **succeeds**, returning the compiled-in
+  defaults. `d.Brand()` is reached only when the settings store *errors*. So on
+  every healthy install a client renamed their site, was told it was live, and
+  nothing changed. ADR-0154 D3 had already prescribed the remedy — "writing
+  through to the scoped store" — and neither of the two brand endpoints did it.
+
+  **The fix would have armed a dormant hole, so it had to close that too.** Only
+  the operator's `/os/api/domains/{id}/brand` validated what it stored: hex-check
+  on the three colour fields, length cap on the three text fields. The client's
+  `/os/api/mysite/brand` — the one reachable by a principal the operator does not
+  employ — did neither. That was close to inert while the brand reached nothing;
+  making the brand reach `/theme.css` is precisely what would have turned it into
+  a CSS injection.
+
+  Both endpoints now go through one `saveBrand`, which validates, caps, writes
+  the domain record **and** writes the six fields into the domain's settings
+  scope. The domain record is kept because it is what `brandForRequest` falls
+  back to when the settings store cannot answer — dropping it would leave the
+  fallback with nothing to fall back to. Empty fields are written rather than
+  skipped, so clearing a tagline clears it instead of reading as un-editable.
+  `brand_write_through_test.go` asserts the round trip through the production
+  reader (`siteSettingsFromValues(brandSettingValues(b))`), so a field written
+  under a key the render path does not read fails; eight mutations killed,
+  including both endpoints bypassing the shared path.
+
 - **The operator's console answered on every client's domain.**
   `scripts/setup-vayudomain.sh` writes one reverse-proxy vhost per hosted
   domain, and its HTTPS server block proxied `location /` to the shared origin

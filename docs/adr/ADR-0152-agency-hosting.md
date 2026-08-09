@@ -58,12 +58,25 @@ in one click, no build step on the server.
 
 Four findings, each verified against the source rather than inferred.
 
-**1. Websites are install-wide, not per-domain.** `customSiteDir()` returns
+**1. Websites are install-wide, not per-domain.** ~~`customSiteDir()` returns
 `filepath.Join(filepath.Dir(config.Cfg.MediaDir), "custom-site")` — no domain
 component — and `bizSettings` reads mode, template and content from global
 settings keys. So one custom bundle serves every domain on the install. A studio
 can host *a* hand-built site; it cannot host thirty different ones. **This, not
-the Content-Security-Policy, is what blocks the product.**
+the Content-Security-Policy, is what blocks the product.**~~
+
+**FIXED — D1 shipped, and this finding stayed in the present tense for several
+releases after it did.** `customSiteDirFor(scope)` resolves to
+`…/custom-site/<domain_id>/`, the primary keeping the historic path so an
+existing bundle needs no redeploy; `customsite_scope_test.go` pins it. A studio
+can host thirty different hand-built sites today.
+
+Left struck through rather than deleted, because the pattern is the point: a
+findings section is read as the current state of the world, and this one asserted
+a blocker that the same repository had already removed. The rule that came out of
+it — a claim in a document names the mechanism that makes it true, so the claim
+and the mechanism can be checked against each other — is why the correction is
+dated to the code rather than to an opinion.
 
 **2. Roles are install-wide.** The `users` table (migration 020) carries no
 domain column, `Authenticate` keys on a globally unique email, and the login form

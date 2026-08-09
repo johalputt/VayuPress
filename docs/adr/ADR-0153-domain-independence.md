@@ -36,7 +36,7 @@ Measured, not recalled.
 | **Everything else — 327 setting keys** | `site_settings(key PRIMARY KEY, value)` | **No** |
 | Theme (colours, custom CSS, typography) | `site_settings` | **No** |
 | SEO defaults, head meta, social cards | `site_settings` | **No** |
-| Analytics event log, top pages, trending | `analytics_pageviews` — **no domain column at all** | **No** |
+| Analytics event log, top pages, trending | `analytics_pageviews.domain_id` (migration 084, written on every beacon) | **Yes**, on the per-site page; the operator's `/os/analytics` still sums the install |
 | Newsletter, comments, monetization, integrations | `site_settings` | **No** |
 | Media library | shared filesystem | **No** |
 

@@ -1075,35 +1075,19 @@ func (a *App) handleOSDomainBrand(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
 		return
 	}
-	clip := func(s string, n int) string {
-		s = strings.TrimSpace(s)
-		if len(s) > n {
-			s = strings.TrimSpace(s[:n])
-		}
-		return s
-	}
-	brand := domain.Brand{
-		SiteName:    clip(body.SiteName, 120),
-		Tagline:     clip(body.Tagline, 200),
-		Description: clip(body.Description, 320),
-		AccentLight: strings.TrimSpace(body.AccentLight),
-		AccentDark:  strings.TrimSpace(body.AccentDark),
-		ThemeColor:  strings.TrimSpace(body.ThemeColor),
-	}
-	// Colour fields are injected verbatim into the domain's /theme.css and its
-	// <meta theme-color>, so a non-empty value MUST be a plain hex colour — this
-	// closes any CSS/attribute injection through the accent variables.
-	for _, c := range []struct{ name, val string }{
-		{"Accent (light)", brand.AccentLight},
-		{"Accent (dark)", brand.AccentDark},
-		{"Theme colour", brand.ThemeColor},
-	} {
-		if c.val != "" && !hexColorRe.MatchString(c.val) {
-			writeAPIError(w, r, http.StatusBadRequest, "bad-color", c.name+" must be a hex colour like #2563eb", "")
-			return
-		}
-	}
-	if err := a.domains.SetBrand(r.Context(), id, brand); err != nil {
+	// Clipping, the hex check and the write-through all live in saveBrand, which
+	// the client's own /os/api/mysite/brand also calls. They used to live here
+	// only — so the client-facing endpoint stored unvalidated colours, and
+	// neither endpoint reached the store the public site reads.
+	brand, err := a.saveBrand(r.Context(), id, domain.Brand{
+		SiteName:    body.SiteName,
+		Tagline:     body.Tagline,
+		Description: body.Description,
+		AccentLight: body.AccentLight,
+		AccentDark:  body.AccentDark,
+		ThemeColor:  body.ThemeColor,
+	})
+	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "brand-failed", err.Error(), "")
 		return
 	}

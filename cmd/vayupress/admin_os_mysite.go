@@ -18,11 +18,18 @@ package main
 // "edit your own pages" before that check exists would be selling a control the
 // code cannot honour.
 //
-// Traffic is absent for the same reason and it is worth being explicit: the
-// analytics table is keyed (day, path) with no domain dimension, so two client
-// domains sharing /about have MERGED view counts. Showing a client that figure
-// would be showing them another client's traffic and calling it theirs. The
-// panel says so in those words rather than displaying a number with a footnote.
+// Traffic USED to be absent for the same reason: the analytics table was keyed
+// (day, path) with no domain dimension, so two client domains sharing /about had
+// MERGED view counts, and showing a client that figure would have shown them
+// another client's traffic and called it theirs.
+//
+// Migration 084 added analytics_pageviews.domain_id and the beacon writes it, so
+// the Visitors page below is real and scoped — handleOSMySiteTraffic asks
+// ViewsForScope(d.ID, …), and the domain comes from the session, not the request.
+// This paragraph asserted the old shape in the present tense for several releases
+// after the page shipped beneath it, which is the reason it now names the
+// migration and the call: a comment that cannot be checked against a mechanism is
+// a comment that goes stale silently.
 
 import (
 	"context"
@@ -268,22 +275,31 @@ func (a *App) handleOSMySiteBrand(w http.ResponseWriter, r *http.Request) {
 			"That site is not yours to change.", "")
 		return
 	}
-	b := domain.Brand{
-		SiteName:    strings.TrimSpace(in.SiteName),
-		Tagline:     strings.TrimSpace(in.Tagline),
-		Description: strings.TrimSpace(in.Description),
-		AccentLight: strings.TrimSpace(in.AccentLight),
-		AccentDark:  strings.TrimSpace(in.AccentDark),
-		ThemeColor:  strings.TrimSpace(in.ThemeColor),
-	}
-	// SetBrand merges into the existing config_json, so the domain's website
-	// override (and anything else an operator has set beside it) survives a brand
-	// save. That is not incidental: the whole-blob writer this replaced would have
-	// let a client take their own site offline by editing their colours.
-	if err := a.domains.SetBrand(r.Context(), d.ID, b); err != nil {
+	// saveBrand validates (this endpoint used to do none) and writes BOTH the
+	// domain record and the domain's settings scope. config_json alone was the
+	// bug: the public render path reads the scope, so a client was told their
+	// change was live and their site never moved.
+	//
+	// The underlying SetBrand still merges into the existing config_json, so the
+	// domain's website override (and anything else an operator has set beside it)
+	// survives a brand save. That is not incidental: the whole-blob writer it
+	// replaced would have let a client take their own site offline by editing
+	// their colours.
+	if _, err := a.saveBrand(r.Context(), d.ID, domain.Brand{
+		SiteName:    in.SiteName,
+		Tagline:     in.Tagline,
+		Description: in.Description,
+		AccentLight: in.AccentLight,
+		AccentDark:  in.AccentDark,
+		ThemeColor:  in.ThemeColor,
+	}); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "save-failed", err.Error(), "")
 		return
 	}
+	// Their identity changed on a live site, so the public HTML caches holding the
+	// old name have to go — otherwise "live immediately" is true of the database
+	// and false of the page, which is the same complaint one layer along.
+	render.CachePurgeAll()
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "saved"})
 }
 

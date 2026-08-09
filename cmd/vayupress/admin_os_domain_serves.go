@@ -19,19 +19,36 @@ package main
 //
 // # What mail_enabled actually does, since the copy has to be true
 //
-// It is a PROVISIONING and PRESENTATION flag, not a delivery switch:
+// It provisions, it presents, AND — for a secondary domain — it gates inbound
+// delivery:
 //
 //   - setup-vayudomain.sh adds mail.<host> to the domain's certificate when it
 //     is on (and only when that name resolves);
 //   - the client's own site page shows or hides its mail card;
 //   - the DNS page lists the mail records for the domain;
-//   - the mailbox allowance is meaningful only while it is on.
+//   - the mailbox allowance is meaningful only while it is on;
+//   - the receiving server declines every recipient on the domain while it is
+//     off, so senders get a bounce.
 //
-// It is NOT consulted by the mail stack. internal/vayuos/mail serves accounts
-// by address and never reads the domain registry, so switching mail off does
-// not stop delivery to a mailbox that already exists. The card says exactly
-// that, because an operator who believes "off" means "stopped" will use it as
-// a kill-switch and be wrong at the worst moment.
+// THIS BLOCK USED TO SAY THE OPPOSITE, in the present tense: "It is NOT
+// consulted by the mail stack … switching mail off does not stop delivery to a
+// mailbox that already exists." The card repeated it, and it was wrong.
+// SMTPServer.recipientAccepted asks Config.AcceptsMailDomain, which for a
+// non-primary host asks MailAccepts — wired in vayuos.go to
+// App.acceptsSecondaryMailDomain, which reads d.MailEnabled live from this very
+// registry. The engine's isLocalRecipient asks the same predicate.
+//
+// The cost of the wrong version was the shape that matters: it named "hides its
+// mail card from the client" as the reason to flip the switch, and denied the
+// consequence of doing so. An operator following it stops a client's incoming
+// mail and is told on the same screen that they have not.
+//
+// What turning it off does NOT do, and the card has to keep saying so: nothing
+// is deleted, and no one is locked out. AcceptsMailDomain has exactly two call
+// sites in the mail stack (smtpd's RCPT gate and the engine's local-recipient
+// check) and neither is authentication, so existing mailboxes and their stored
+// mail stay readable over IMAP, POP3 and webmail. mail_switch_claim_test.go
+// holds both halves against the code.
 
 import (
 	"encoding/json"
@@ -188,10 +205,12 @@ func domainServesCard(d domain.Domain, mailOnInstall bool) string {
   <p class="text-sm muted"><strong>Turning mail on</strong> adds <code>mail.` + htmlEscape(d.Host) +
 		`</code> to this domain's certificate — which happens on the next provisioning run, not
   instantly. Press <strong>Provision now</strong> above after saving.</p>
-  <p class="text-sm muted"><strong>Turning mail off</strong> stops this domain being set up for mail
-  and hides its mail card from the client. It does <strong>not</strong> stop delivery to a mailbox
-  that already exists — mail is served by address, and this switch is not consulted at delivery.
-  Remove a mailbox in VayuMail if that is what you meant.</p>
+  <p class="text-sm muted"><strong>Turning mail off</strong> stops this domain being set up for mail,
+  hides its mail card from the client, and <strong>refuses new mail for it</strong>: the receiving
+  server declines every address on <code>` + htmlEscape(d.Host) + `</code>, so anyone writing to a
+  mailbox here gets a bounce. Nothing is deleted and nobody is locked out — existing mailboxes and
+  their stored mail stay readable in webmail, IMAP and POP3. If you meant to close one mailbox,
+  delete it in VayuMail instead; this switch closes the whole domain to incoming mail.</p>
   <div class="vm-row">
     <button type="button" class="btn btn--primary btn--sm" data-serves-save>Save</button>
     <span id="serves-status" class="text-sm muted" role="status" aria-live="polite"></span>

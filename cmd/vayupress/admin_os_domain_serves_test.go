@@ -83,21 +83,27 @@ func TestTheMailSwitchReflectsTheStoredState(t *testing.T) {
 	}
 }
 
-// THE claim test, and the one that matters most.
+// RETIRED — TestTheCardDoesNotImplyMailOffStopsDelivery, which required the card
+// to say mail off "does not stop delivery".
 //
-// Turning mail off is not a delivery kill-switch. internal/vayuos/mail never
-// reads this flag — it serves accounts by address — so an existing mailbox
-// keeps receiving. The card must say so rather than letting "off" imply
-// "stopped".
-func TestTheCardDoesNotImplyMailOffStopsDelivery(t *testing.T) {
+// It IS a delivery kill-switch for a secondary domain, and this test is why
+// nobody noticed: it asserted the false sentence, so the copy read as verified
+// and every reader of this file was told the premise was checked. A test can
+// only be as right as the claim it encodes, and the way to catch that is to bind
+// the claim to the mechanism rather than to a string. mail_switch_claim_test.go
+// does exactly that — it reads acceptsSecondaryMailDomain, the MailAccepts
+// wiring and smtpd's RCPT gate, and fails if the card's copy disagrees with any
+// of them in either direction.
+//
+// What survives here is the half that was always true and is still worth
+// pinning: the card has to name where a mailbox is actually removed, because
+// "close this one mailbox" and "close the domain to mail" are different actions
+// and only one of them is this switch.
+func TestTheCardSaysWhereAMailboxIsActuallyRemoved(t *testing.T) {
 	card := domainServesCard(secondaryDomain(), true)
-	if !strings.Contains(card, "does <strong>not</strong> stop delivery") {
-		t.Errorf("the card does not say that switching mail off leaves existing mailboxes "+
-			"receiving. An operator reaching for this as a kill-switch would be wrong, and would "+
-			"find out at the worst moment:\n%s", card)
-	}
 	if !strings.Contains(card, "VayuMail") {
-		t.Error("the card does not say where an operator actually removes a mailbox")
+		t.Errorf("the card does not say where an operator actually removes a mailbox, so the "+
+			"switch reads as the way to do it:\n%s", card)
 	}
 }
 
