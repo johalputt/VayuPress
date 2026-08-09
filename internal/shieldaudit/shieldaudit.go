@@ -115,6 +115,35 @@ type Digest struct {
 	// re-pressing a button and re-reading the same sentence while the panel and
 	// the report disagreed, because neither could point at anything.
 	MCPVhostOpenAt string
+	// RealIPHeader is the real_ip_header actually in effect at http level, as the
+	// agent read it out of `nginx -T`. Empty when none is set.
+	//
+	// The app cannot obtain this: it is unprivileged and has no business reading
+	// /etc/nginx. Without it the real-IP row can only report that resolution did
+	// not happen, which leaves the operator — and anyone helping them — guessing
+	// between a wrong header, a missing range list, and a reload that never
+	// happened. That guessing cost three releases.
+	RealIPHeader string
+	// RealIPRanges is how many set_real_ip_from directives the running config
+	// carries. Zero with a header set means the directive has nothing to trust,
+	// which fails exactly as silently as the wrong header does.
+	RealIPRanges int
+}
+
+// CDNSentHeaders are the header names a CDN actually sets to carry the visitor's
+// address. A real_ip_header naming anything else — X-Real-IP above all, because
+// it is nginx's own default and therefore the likeliest thing already written in
+// a config — leaves nginx with nothing to read and resolves nobody.
+var CDNSentHeaders = []string{"CF-Connecting-IP", "True-Client-IP", "X-Forwarded-For"}
+
+// headerCanResolve reports whether h is one a CDN sends.
+func headerCanResolve(h string) bool {
+	for _, c := range CDNSentHeaders {
+		if strings.EqualFold(h, c) {
+			return true
+		}
+	}
+	return false
 }
 
 // Tri is a three-valued flag: the agent said yes, the agent said no, or the
@@ -339,6 +368,26 @@ func Run(in Inputs) []Check {
 		// operator refused keeps arriving with nothing anywhere saying why.
 		if in.GeoRulesSet {
 			detail += " Your country rules are not being applied to anyone arriving through the proxy either — the lookup is resolving the edge's location, never the reader's, so a \"never serve\" country is still being served. Traffic from a country you have refused will keep appearing in Analytics, which reads the country from the proxy's own header and is therefore right while the rule is not."
+		}
+		// And WHY, from what the agent read out of the running config. A row that
+		// can only say "it did not resolve" sends the operator round the loop of
+		// pressing the remediation again; these three sentences name the line to
+		// change. Each is stated only when the agent actually observed it, because
+		// a confident wrong cause is worse than none.
+		switch {
+		case !in.Digest.Present:
+			// Nothing observed; say nothing rather than guess.
+		case in.Digest.RealIPHeader == "":
+			detail += " The running nginx config sets no real_ip_header at all, so nginx never looks for a forwarded address. Press \"Resolve the real visitor address\" in Hardening below."
+		case !headerCanResolve(in.Digest.RealIPHeader):
+			detail += " The cause is in the running config: real_ip_header is \"" + in.Digest.RealIPHeader +
+				"\", which no CDN sends — nginx therefore finds nothing to read and every visitor keeps the edge's address. Change it to CF-Connecting-IP, or delete that line and press \"Resolve the real visitor address\" so the helper writes it."
+		case in.Digest.RealIPRanges == 0:
+			detail += " The cause is in the running config: real_ip_header is \"" + in.Digest.RealIPHeader +
+				"\" but no set_real_ip_from range is configured, so nginx trusts nobody to declare an address and ignores the header entirely. Press \"Allowlist your proxy's edge ranges\", then \"Resolve the real visitor address\"."
+		default:
+			detail += " The running config looks right — real_ip_header is \"" + in.Digest.RealIPHeader +
+				"\" over " + itoa(in.Digest.RealIPRanges) + " trusted range(s) — so the addresses reaching this origin are not coming from the ranges listed. That happens when the proxy connects over an address family the list does not cover."
 		}
 		add("Real visitor IP", Fail, detail)
 	case in.BehindCDN && in.ClientIPFromVisitorTraffic:

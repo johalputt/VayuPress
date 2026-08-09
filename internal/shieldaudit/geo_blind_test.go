@@ -124,3 +124,97 @@ func TestAResolvedVisitorAddressLeavesNoGeoWarningAtAll(t *testing.T) {
 		})
 	}
 }
+
+// THE ROW MUST NAME THE CAUSE, NOT JUST THE SYMPTOM.
+//
+// "Resolution did not happen" is true, unactionable, and cost a live install
+// three releases: the operator pressed the remediation, read a green pill, and
+// came back with the same complaint, because nothing anywhere said WHICH line of
+// nginx config was wrong. The app cannot look — it is unprivileged and has no
+// business in /etc/nginx — so the agent now reports what nginx will actually use
+// and the row explains itself from that.
+func TestTheRealIPFailureNamesTheCauseFromTheRunningConfig(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		header        string
+		ranges        int
+		digestPresent bool
+		want          string
+		absent        string
+	}{
+		{
+			// The case on the reporting install: nginx's own default name, which
+			// looks right and which no CDN sends.
+			name: "a header no CDN sends", header: "X-Real-IP", ranges: 22, digestPresent: true,
+			want: "which no CDN sends",
+		},
+		{
+			name: "no header at all", header: "", ranges: 22, digestPresent: true,
+			want: "sets no real_ip_header at all",
+		},
+		{
+			// A header with nothing trusted to send it fails just as silently.
+			name: "header but no trusted ranges", header: "CF-Connecting-IP", ranges: 0, digestPresent: true,
+			want: "no set_real_ip_from range is configured",
+		},
+		{
+			// Config correct and resolution still failing — say so, rather than
+			// naming a cause that is not there.
+			name: "config correct, still not resolving", header: "CF-Connecting-IP", ranges: 22, digestPresent: true,
+			want: "not coming from the ranges listed", absent: "no CDN sends",
+		},
+		{
+			// No observation: say nothing. A confident wrong cause is worse than
+			// none, and an agent that has never run must not be quoted.
+			//
+			// The absent string is the DIRECTIVE NAME, deliberately. The first
+			// version looked for "running config" while every branch says "running
+			// nginx config", so it matched nothing and the mutation that deleted
+			// this guard survived. An absence assertion is only worth the line if
+			// the phrase would genuinely be there.
+			name: "no digest", header: "", ranges: 0, digestPresent: false,
+			absent: "real_ip_header",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := proxiedWithoutRealIP()
+			in.GeoRulesSet = true
+			in.Digest.Present = tc.digestPresent
+			in.Digest.RealIPHeader = tc.header
+			in.Digest.RealIPRanges = tc.ranges
+
+			c, ok := find(Run(in), "Real visitor IP")
+			if !ok {
+				t.Fatal("no Real visitor IP row")
+			}
+			if tc.want != "" && !strings.Contains(c.Detail, tc.want) {
+				t.Errorf("the row never says %q, so it reports a symptom the operator cannot "+
+					"act on.\n\ngot: %s", tc.want, c.Detail)
+			}
+			if tc.absent != "" && strings.Contains(c.Detail, tc.absent) {
+				t.Errorf("the row claims %q when that is not the situation.\n\ngot: %s", tc.absent, c.Detail)
+			}
+		})
+	}
+}
+
+// X-Forwarded-For and True-Client-IP genuinely carry the address, so a host
+// using either must not be told its header is wrong — the false alarm pointing
+// the other way, which teaches an operator to stop reading the row.
+func TestAWorkingHeaderIsNotReportedAsTheCause(t *testing.T) {
+	for _, h := range CDNSentHeaders {
+		in := proxiedWithoutRealIP()
+		in.Digest.Present, in.Digest.RealIPHeader, in.Digest.RealIPRanges = true, h, 22
+		c, _ := find(Run(in), "Real visitor IP")
+		if strings.Contains(c.Detail, "no CDN sends") {
+			t.Errorf("%s is reported as a header no CDN sends:\n%s", h, c.Detail)
+		}
+	}
+	// And case must not decide it: nginx does not care, so neither may this.
+	in := proxiedWithoutRealIP()
+	in.Digest.Present, in.Digest.RealIPHeader, in.Digest.RealIPRanges = true, "cf-connecting-ip", 22
+	c, _ := find(Run(in), "Real visitor IP")
+	if strings.Contains(c.Detail, "no CDN sends") {
+		t.Errorf("a lowercase spelling was treated as a different header:\n%s", c.Detail)
+	}
+}

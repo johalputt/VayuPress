@@ -88,6 +88,13 @@ func readShieldDigest() shieldaudit.Digest {
 	d.DefaultServer = shieldaudit.ParseTri(kv["default_server_443"])
 	d.MCPVhostRestricted = shieldaudit.ParseTri(kv["mcp_vhost_restricted"])
 	d.MCPVhostOpenAt = sanitiseConfigRef(kv["mcp_vhost_open_at"])
+	// Sanitised on the way in like every other agent-supplied string: the digest
+	// is root-written, but it is still a file this process did not create, and
+	// the value lands in an HTML page.
+	d.RealIPHeader = sanitiseConfigRef(kv["realip_header"])
+	if n, err := strconv.Atoi(strings.TrimSpace(kv["realip_ranges"])); err == nil && n > 0 {
+		d.RealIPRanges = n
+	}
 	return d
 }
 

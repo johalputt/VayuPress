@@ -298,3 +298,42 @@ func TestTheNginxTemplateNoLongerHandsOutTheCollidingRecipe(t *testing.T) {
 			"describes a problem with no remedy")
 	}
 }
+
+// THE TWO SIDES OF THE DIGEST HAVE TO AGREE ON THE KEY NAMES.
+//
+// The agent writes the file and the app reads it, in different languages, in
+// different repositories of knowledge, with nothing between them but a string.
+// A key renamed on one side is not a compile error — it is a field that silently
+// stays zero, which for this field means the posture row goes back to reporting
+// a symptom with no cause. That is exactly the state this whole track started in.
+func TestTheRealIPDigestKeysRoundTripFromTheAgentToTheRow(t *testing.T) {
+	agent := readDeployFile(t, "vayushield-agent.sh")
+
+	// The agent must emit them...
+	for _, k := range []string{"realip_header", "realip_ranges"} {
+		if !strings.Contains(agent, "printf '"+k+"=%s\\n'") {
+			t.Errorf("the agent never emits %q, so the app reads a key nothing writes and the "+
+				"posture row loses the cause it exists to report", k)
+		}
+	}
+
+	// ...and the app must actually parse them. Behavioural: a real digest file
+	// through the real reader.
+	dir := t.TempDir()
+	t.Setenv("VAYUSHIELD_CONTROL_DIR", dir)
+	digest := "schema=1\ngenerated=1\nrealip_header=X-Real-IP\nrealip_ranges=22\n"
+	if err := os.WriteFile(filepath.Join(dir, shieldDigestName), []byte(digest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	d := readShieldDigest()
+	if !d.Present {
+		t.Fatal("the digest did not parse at all")
+	}
+	if d.RealIPHeader != "X-Real-IP" {
+		t.Errorf("RealIPHeader = %q, want X-Real-IP", d.RealIPHeader)
+	}
+	if d.RealIPRanges != 22 {
+		t.Errorf("RealIPRanges = %d, want 22", d.RealIPRanges)
+	}
+}

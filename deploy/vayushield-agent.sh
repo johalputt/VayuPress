@@ -818,6 +818,18 @@ write_digest() {
           printf 'mcp_vhost_restricted=yes\n'
         fi
       fi
+      # WHY real-IP resolution is or is not happening, read out of the running
+      # config. The app is unprivileged and cannot look at /etc/nginx, so without
+      # these two lines its posture row can only report that resolution did not
+      # occur — which is true, unactionable, and sent a live install round the
+      # remediation loop three times. The header is passed with an empty "mine"
+      # so the agent's own file is included: this reports what nginx will USE,
+      # not what is missing from somewhere else.
+      local rih rir
+      rih="$(realip_existing_header '' 2>/dev/null | head -n 1 | sed 's/.*	//' | tr -cd 'A-Za-z0-9._-' | tail -c 64)"
+      rir="$(nginx -T 2>/dev/null | grep -cE '^[[:space:]]*set_real_ip_from[[:space:]]' || true)"
+      printf 'realip_header=%s\n' "$rih"
+      printf 'realip_ranges=%s\n' "${rir:-0}"
     fi
   } >"$tmp" 2>/dev/null
 

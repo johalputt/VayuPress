@@ -6,6 +6,50 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.38] — 2026-08-09
+
+### Fixed
+
+- **The real-IP row now names the cause instead of only the symptom.** "This
+  request did not resolve to a visitor address" is true and unactionable. It sent
+  a live install round the remediation loop three times: press the button, read
+  the state, still be receiving the country you refused, with nothing anywhere
+  saying WHICH line of nginx config was wrong.
+
+  The app cannot look — it is unprivileged and has no business reading
+  `/etc/nginx` — so the agent reports it instead. `write_digest` gained
+  `realip_header` (the `real_ip_header` actually in effect at http level, read
+  from `nginx -T` with the agent's own file included, so it reports what nginx
+  will USE rather than what is missing elsewhere) and `realip_ranges` (how many
+  `set_real_ip_from` directives the running config carries). The posture row then
+  distinguishes four situations and states the fix for each:
+
+  - no `real_ip_header` at all → press the control;
+  - a header no CDN sends — `X-Real-IP` above all, because it is nginx's own
+    default and therefore the likeliest thing already written → change it or
+    delete it;
+  - a working header with zero trusted ranges → allowlist the edge ranges first;
+  - config correct and still not resolving → the addresses arriving are not from
+    the listed ranges, which is what an uncovered address family looks like.
+
+  When the agent has never run, the row says none of this rather than guessing.
+
+### Audit
+
+Three mutations, all killed: treating `X-Real-IP` as resolvable, matching header
+names case-sensitively when nginx does not, and quoting a digest that was never
+written.
+
+One defect in the gate, recorded rather than quietly fixed. The absence assertion
+for the never-ran case looked for "running config" while every branch says
+"running nginx config" — so it matched nothing, and the mutation deleting that
+guard survived a test written to catch it. **An absence assertion is only worth
+the line if the phrase would genuinely be there**; it now keys on the directive
+name. That is the second source-shaped oracle to fail in this track, both found
+only because the mutation lived.
+
+---
+
 ## [3.17.37] — 2026-08-09
 
 Shipped immediately: v3.17.36 reported success for a configuration that resolves
