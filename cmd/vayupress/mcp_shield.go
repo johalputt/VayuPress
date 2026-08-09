@@ -142,7 +142,8 @@ func (a *App) registerShieldTools(srv *mcp.Server) {
 		Description: "Return the VayuShield posture report: every control with a pass/warn/info/fail " +
 			"verdict and the reasoning, computed from what is actually enforcing rather than from " +
 			"which switches are on. Includes the permanent volumetric-absorption failure that no " +
-			"configuration can clear. Read-only.",
+			"configuration can clear, and the state of each hardening remediation with the reason " +
+			"the root helper last recorded. Read-only.",
 		InputSchema: objSchema(nil, nil),
 		Visible:     read,
 		Handler: func(ctx context.Context, _ json.RawMessage) (string, error) {
@@ -160,6 +161,17 @@ func (a *App) registerShieldTools(srv *mcp.Server) {
 			pass, warn, info, fail := shieldaudit.Summary(checks)
 			return jsonStr(map[string]any{
 				"rows": rows,
+				// The remediations, with what the root helper last said about each.
+				//
+				// A posture row names a fault; the remediation row says whether the
+				// attempt to fix it worked and why not. Only the second was on the
+				// page and not here, so diagnosing a stuck install over this
+				// connector meant asking the operator to read a paragraph back —
+				// twice in one session, on a fault whose cause the helper had
+				// already written down. Read-only and no new capability: this is the
+				// same text the panel renders, to a caller that already holds
+				// settings:read.
+				"remediations": shieldFixReport(),
 				"summary": map[string]any{
 					"pass": pass, "warn": warn, "info": info, "fail": fail,
 					// Compare against this, never against zero: a perfectly

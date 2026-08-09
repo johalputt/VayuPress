@@ -6,6 +6,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.39] — 2026-08-09
+
+### Added
+
+- **`vayushield_posture` now reports each hardening remediation's state and the
+  reason the root helper recorded.** The connector could see the fault and not
+  the attempt to fix it: a caller read `Real visitor IP: fail` while the helper
+  had already written down exactly why — nginx refusing a duplicate directive, a
+  header the CDN does not send, a range list that came back malformed — and none
+  of it was reachable. Diagnosing a stuck install therefore meant asking the
+  operator to read a paragraph back off the page, which happened twice in one
+  session on a fault whose cause was sitting in a control file the whole time.
+
+  Read-only, no new capability, and the same text the panel renders: the tool
+  already required `settings:read`. Each row carries `key`, `title`, `state` and
+  `reason`, sorted so two reports can be compared.
+
+  `never-run` and `unsupported` are separate states rather than one empty one.
+  "This helper is too old to offer the fix" and "nobody has pressed it yet" have
+  different next steps, and collapsing them is how somebody ends up hunting for a
+  button that was never rendered.
+
+### Audit
+
+Three mutations, all killed: dropping the reason while keeping the state,
+collapsing `never-run` into empty, and leaving the report in map order.
+
+The order mutation was scored wrong first time round and had to be re-run. Its
+first form deleted `sort.Strings(keys)`, which left the `sort` import unused —
+a BUILD failure, not a killed mutation, and the "ok" that followed came from the
+restore step in the same command rather than from the mutated tree. Re-run as
+`sort.Strings(nil)`, which compiles and leaves the keys unsorted, it failed the
+stability check immediately. This is the third scoring error in this track and
+the second of exactly this shape.
+
+---
+
 ## [3.17.38] — 2026-08-09
 
 ### Fixed

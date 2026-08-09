@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -558,6 +559,45 @@ func shieldControlRead(name string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(b))
+}
+
+// shieldFixReport returns each remediation's key, title, state and the reason
+// the root helper last recorded — the same facts the panel renders, in a form a
+// read-only caller can consume.
+//
+// Sorted, because a map's order changes between calls and a report that reorders
+// itself cannot be diffed against the last one.
+func shieldFixReport() []map[string]string {
+	keys := make([]string, 0, len(shieldFixes))
+	for k := range shieldFixes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	out := make([]map[string]string, 0, len(keys))
+	for _, k := range keys {
+		fix := shieldFixes[k]
+		row := map[string]string{"key": k, "title": fix.Title}
+		// "supported" distinguishes a helper too old to offer the fix from one
+		// that offers it and has never been asked. Collapsing those two into an
+		// empty state is how an operator ends up pressing a button that is not
+		// there.
+		if !shieldAgentSupportsFix(fix.Cap) {
+			row["state"] = "unsupported"
+			row["reason"] = "the running helper predates this fix; upgrade the helper"
+		} else {
+			st := shieldControlRead(fix.State)
+			if st == "" {
+				st = "never-run"
+			}
+			row["state"] = st
+			if reason := shieldControlRead(fix.Reason); reason != "" {
+				row["reason"] = reason
+			}
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // handleOSShieldFix records the operator's request for one remediation.
