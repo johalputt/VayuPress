@@ -68,11 +68,7 @@ func TestAReadOnlyGrantCannotCallAWritingTool(t *testing.T) {
 	// Exactly the grant behind the consent screen's "Read-only" preset.
 	readonly := scopedKey([2]string{"posts", "read"}, [2]string{"analytics", "read"})
 
-	for _, tool := range []string{
-		"create_post", "update_post", "delete_post",
-		"update_site_settings", "apply_theme", "upload_media",
-		"update_site", "build_site", "restore_previous_site", "provision_certificates",
-	} {
+	for _, tool := range mutatingMCPTools {
 		got := mcpCall(t, readonly, tool)
 		if !strings.Contains(got, "unknown or unavailable") {
 			t.Errorf("a read-only connector called %q and the server did not refuse it.\n\n"+
