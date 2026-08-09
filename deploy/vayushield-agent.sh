@@ -1480,6 +1480,61 @@ reconcile_mcpsurface() {
 # here fetches from the network and nothing here accepts a range from the panel:
 # the panel writes an empty flag, and every address written into nginx comes from
 # a root-owned file this agent's own firewall script populated.
+# realip_existing_header echoes "<file>:<line><TAB><value>" for a real_ip_header
+# already set in the http context by a file OTHER than $1, or nothing.
+#
+# THE COLLISION THIS EXISTS FOR, seen on a live install:
+#
+#   nginx: [emerg] "real_ip_header" directive is duplicate in
+#   /etc/nginx/conf.d/vayushield-realip.conf:25
+#
+# nginx refuses a second real_ip_header in the same block, and conf.d is included
+# INTO http — so a hand-written file setting it makes this helper permanently
+# unappliable. The operator gets "Could not apply" every time they press the
+# button, with nginx's text and no way to act on it, while the posture row that
+# sent them there stays red.
+#
+# They had not gone off-script: deploy/nginx-vayupress.conf carried a copy-paste
+# recipe writing exactly such a file. The product shipped two remedies for one
+# problem and the manual one silently disabled the automatic one.
+#
+# What counts as "http level" is decided by ABSENCE of a server/location scope,
+# not by brace depth, because `nginx -T` dumps each file WHOLE rather than
+# inlining its includes. A conf.d file therefore starts at column zero in the
+# dump while really sitting inside `http {`, and a running brace counter across
+# the stream measures nothing. Counting only server/location blocks gives the
+# right answer for both shapes: a directive at the top of a conf.d file and one
+# written directly inside `http {` in nginx.conf are both unscoped, and both
+# collide with this file; one inside a server or location is legal alongside
+# ours and must NOT be reported, or the helper would omit its own directive and
+# leave the host with ranges and no header at http level.
+realip_existing_header() { # $1 = the path this agent manages
+  nginx -T 2>/dev/null | awk -v mine="$1" '
+    /^# configuration file / {
+      fn=$0; sub(/^# configuration file /,"",fn); sub(/:[ \t]*$/,"",fn)
+      ln=0; d=0; scope=0; delete mark; next
+    }
+    {
+      ln++
+      s=$0
+      sub(/#.*$/,"",s)
+      if (scope==0 && fn!=mine && s ~ /(^|[ \t;])real_ip_header[ \t]/) {
+        v=s
+        sub(/^.*real_ip_header[ \t]+/,"",v)
+        sub(/[ \t]*;.*$/,"",v)
+        print fn ":" ln "\t" v
+      }
+      scoped = (s ~ /^[ \t]*(server|location|if|map|geo|upstream|split_clients)[ \t({]/) ? 1 : 0
+      L=length(s)
+      for (i=1; i<=L; i++) {
+        c=substr(s,i,1)
+        if (c=="{") { d++; mark[d]=scoped; if (scoped) scope++ }
+        else if (c=="}") { if (d>0) { if (mark[d]) scope--; d-- } }
+      }
+    }
+  ' 2>/dev/null
+}
+
 reconcile_realip() {
   [ -f "${CONTROL_DIR}/realip.want" ] || return 0
   command -v nginx >/dev/null 2>&1 || {
@@ -1500,6 +1555,14 @@ reconcile_realip() {
   write_state realip applying
   local out="/etc/nginx/conf.d/vayushield-realip.conf"
   local bak="" n=0
+  # Probed BEFORE this file is written, so the dump being read is the config
+  # nginx is actually running rather than one containing a half-applied attempt.
+  local conflict="" conflict_where="" conflict_value=""
+  conflict="$(realip_existing_header "$out" | head -n 1)"
+  if [ -n "$conflict" ]; then
+    conflict_where="${conflict%%	*}"
+    conflict_value="${conflict##*	}"
+  fi
   # Rejected tokens are COUNTED, in a file, because the validation above is
   # strict enough to drop a real range. The malformed token that caused this
   # work — two CIDRs welded together — contains one genuine IPv4 range and one
@@ -1583,7 +1646,17 @@ reconcile_realip() {
     # so it cannot be confused by a chain, which is why it is preferred over
     # X-Forwarded-For where it exists. real_ip_recursive is pointless with a
     # single-value header and is deliberately left off.
-    printf '%s\n' "real_ip_header CF-Connecting-IP;"
+    #
+    # Omitted entirely when the http context already sets one. nginx treats a
+    # second as fatal, so emitting ours anyway is not a stricter choice — it is
+    # the choice that leaves the operator with no resolution at all, because the
+    # whole file is rolled back. The ranges are the part only this agent can
+    # maintain; the header is one line the operator has already written.
+    if [ -z "$conflict" ]; then
+      printf '%s\n' "real_ip_header CF-Connecting-IP;"
+    else
+      printf '%s\n' "# real_ip_header is set at ${conflict_where} (${conflict_value}); not repeated here."
+    fi
   } >"$out" 2>/dev/null
 
   local skipped=0
@@ -1604,13 +1677,27 @@ reconcile_realip() {
   if nginx_try_reload "$out" "$bak"; then
     write_state realip active
     clear_reason realip
+    local msg=""
     if [ "$skipped" -gt 0 ]; then
       # Applied, and NOT silently. A range the strict shape check refused is a
       # range this server will not resolve visitors behind, so the operator is
       # told which ones and how many rather than discovering it in a rate limit.
-      printf '%s' "Applied ${n} range(s). ${skipped} line(s) were refused as malformed and are NOT in effect — most often two CIDRs welded together by a fetch that lost the newline between the IPv4 and IPv6 lists. Press \"Allowlist your proxy's edge ranges\" to re-fetch them cleanly, then apply this again." \
-        >"${CONTROL_DIR}/realip.reason" 2>/dev/null || true
+      msg="Applied ${n} range(s). ${skipped} line(s) were refused as malformed and are NOT in effect — most often two CIDRs welded together by a fetch that lost the newline between the IPv4 and IPv6 lists. Press \"Allowlist your proxy's edge ranges\" to re-fetch them cleanly, then apply this again."
     fi
+    # An applied state reached by deferring to somebody else's header is not the
+    # same fact as an applied state this agent controls end to end, and the
+    # difference decides whether resolution actually works. Said plainly, and
+    # said LOUDER when the header is not the one these ranges are for: a
+    # CF-Connecting-IP allowlist paired with an X-Forwarded-For header resolves
+    # whatever the chain claims, which is the spoof the peer check exists to stop.
+    if [ -n "$conflict" ]; then
+      if [ "$conflict_value" = "CF-Connecting-IP" ]; then
+        msg="${msg:+${msg} }Applied ${n} range(s). real_ip_header was already set to CF-Connecting-IP at ${conflict_where}, so it was left alone rather than written twice — nginx refuses a duplicate and would have rejected the whole file."
+      else
+        msg="${msg:+${msg} }Applied ${n} range(s), but real_ip_header at ${conflict_where} is \"${conflict_value}\", not CF-Connecting-IP. These ranges are your CDN's, so unless that header is the one your CDN sets, visitors will still not resolve. Change it there or remove that line and press this again."
+      fi
+    fi
+    [ -n "$msg" ] && printf '%s' "$msg" >"${CONTROL_DIR}/realip.reason" 2>/dev/null
     write_digest
   else
     write_state realip error

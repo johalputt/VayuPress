@@ -10,6 +10,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **The real-IP control could never be applied on a host that already set
+  `real_ip_header`.** From the operator's panel, verbatim:
+
+  ```text
+  Could not apply — nginx rejected the real-IP config; the previous state was
+  restored. nginx: [emerg] "real_ip_header" directive is duplicate in
+  /etc/nginx/conf.d/vayushield-realip.conf:25
+  ```
+
+  `conf.d` is included into `http`, and nginx treats a second `real_ip_header`
+  in one block as fatal. The helper wrote a file that could never load, rolled
+  it back, and reported nginx's text — on every press, permanently. The posture
+  row that sent them there stayed red, every per-IP control went on metering the
+  edge, and their country rules stayed inert, which is how this was found.
+
+  **They had not gone off-script.** `deploy/nginx-vayupress.conf` shipped a
+  copy-paste recipe writing exactly such a file to
+  `/etc/nginx/conf.d/00-cdn-realip.conf`. The product documented two remedies for
+  one problem and the manual one silently disabled the supported one.
+
+  The mechanism is `realip_existing_header` in `deploy/vayushield-agent.sh`: it
+  reads `nginx -T` and reports an `real_ip_header` already set at http level by
+  any file other than the one the agent manages, and the generator then omits its
+  own directive rather than duplicating it. The ranges are the part only the
+  agent can maintain; the header is one line the operator already has.
+
+  http level is decided by the **absence of a server/location scope**, not by
+  brace depth — `nginx -T` dumps each file whole instead of inlining its
+  includes, so a conf.d file starts at column zero while really sitting inside
+  `http {}` and a running brace counter measures nothing. A directive inside a
+  `server` block is legal alongside ours and is deliberately not reported;
+  treating it as a conflict would leave a host with ranges and no header at all.
+
+  The panel now says which file holds the header and what it is set to, and says
+  it **louder** when that value is not `CF-Connecting-IP` — a Cloudflare range
+  allowlist under an `X-Forwarded-For` header resolves whatever the chain claims,
+  which is the spoof the peer check exists to prevent.
+
+  The recipe is gone from the nginx template, replaced by the panel path, and a
+  test fails if it returns.
+
 - **A country rule now says when it is not being applied.** Reported from a live
   install: Singapore had been refused and Analytics still showed it as 91% of
   the audience. Nothing was misconfigured. The site is proxied, the origin was
