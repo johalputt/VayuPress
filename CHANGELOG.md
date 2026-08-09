@@ -6,6 +6,52 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.37] — 2026-08-09
+
+Shipped immediately: v3.17.36 reported success for a configuration that resolves
+nobody, and the operator upgraded, read the green pill, and came back still
+receiving the traffic they had refused.
+
+### Fixed
+
+- **The real-IP control reported "Applied" for a config that cannot resolve
+  anyone.** v3.17.36 taught the helper to defer to an existing `real_ip_header`
+  rather than duplicate it. It then wrote state `active` on any successful nginx
+  reload and put the problem in the reason prose. But a deferral is only as good
+  as the header deferred to: Cloudflare does not send `X-Real-IP` — which is
+  nginx's own default name, and therefore the most likely thing already in a
+  config — so nginx finds nothing to read, `$remote_addr` keeps the edge's
+  address, and not one visitor resolves. The pill said Applied.
+
+  The mechanism: `reconcile_realip` now classifies the header it deferred to.
+  `CF-Connecting-IP`, `True-Client-IP` and `X-Forwarded-For` are what a CDN
+  actually sends, and stay `active` with the value named. Anything else writes
+  state **`error`** with a reason that names the file, the value, and the two
+  ways out — change that line to `CF-Connecting-IP`, or delete it so the helper
+  can write it.
+
+  This is the same "a claim is not a control" defect as the geo rule that started
+  the investigation, one layer further in, and introduced while fixing that one.
+  Green has to mean the thing the operator pressed the button for is now true.
+
+### Audit
+
+Three mutations, all killed: reverting to an unconditional `active`, accepting
+`X-Real-IP` as workable, and refusing `CF-Connecting-IP` (the false alarm in the
+other direction, which would tell a correctly configured host it is broken).
+
+One defect in the gate itself, recorded rather than quietly fixed. Its first
+version asserted on the function's SOURCE and passed against the exact bug it
+was written for — it looked for `write_state realip active` immediately after
+the `if`, which an intervening line broke up, and for `write_state realip error`
+anywhere in the reload path, which the rejected-config branch supplies whatever
+the deferral logic does. Two assertions, both green, neither touching behaviour.
+The gate now executes the shipped function with its seams stubbed and reads the
+state file it writes, which required making the output path overridable exactly
+as `CDN_ALLOW_FILE` already was.
+
+---
+
 ## [3.17.36] — 2026-08-09
 
 Shipped on its own, immediately: v3.17.35 had already published by the time this

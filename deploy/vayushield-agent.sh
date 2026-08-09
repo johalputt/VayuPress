@@ -1553,7 +1553,12 @@ reconcile_realip() {
   fi
 
   write_state realip applying
-  local out="/etc/nginx/conf.d/vayushield-realip.conf"
+  # Overridable exactly as CDN_ALLOW_FILE above is, and for the same reason: the
+  # gate that proves this function reports failure honestly has to RUN it, and a
+  # gate that cannot run the shipped code ends up asserting on its source text
+  # instead — which is how the "green whatever happened" bug got past a test
+  # written specifically to catch it.
+  local out="${REALIP_CONF_FILE:-/etc/nginx/conf.d/vayushield-realip.conf}"
   local bak="" n=0
   # Probed BEFORE this file is written, so the dump being read is the config
   # nginx is actually running rather than one containing a half-applied attempt.
@@ -1675,9 +1680,8 @@ reconcile_realip() {
   fi
 
   if nginx_try_reload "$out" "$bak"; then
-    write_state realip active
     clear_reason realip
-    local msg=""
+    local msg="" resolves=1
     if [ "$skipped" -gt 0 ]; then
       # Applied, and NOT silently. A range the strict shape check refused is a
       # range this server will not resolve visitors behind, so the operator is
@@ -1691,11 +1695,35 @@ reconcile_realip() {
     # CF-Connecting-IP allowlist paired with an X-Forwarded-For header resolves
     # whatever the chain claims, which is the spoof the peer check exists to stop.
     if [ -n "$conflict" ]; then
-      if [ "$conflict_value" = "CF-Connecting-IP" ]; then
-        msg="${msg:+${msg} }Applied ${n} range(s). real_ip_header was already set to CF-Connecting-IP at ${conflict_where}, so it was left alone rather than written twice — nginx refuses a duplicate and would have rejected the whole file."
-      else
-        msg="${msg:+${msg} }Applied ${n} range(s), but real_ip_header at ${conflict_where} is \"${conflict_value}\", not CF-Connecting-IP. These ranges are your CDN's, so unless that header is the one your CDN sets, visitors will still not resolve. Change it there or remove that line and press this again."
-      fi
+      case "$conflict_value" in
+        # Headers a CDN actually sets, so the ranges above have something to
+        # match against. X-Forwarded-For is weaker than CF-Connecting-IP but does
+        # carry the address; it is named rather than silently accepted.
+        CF-Connecting-IP|True-Client-IP|X-Forwarded-For)
+          msg="${msg:+${msg} }Applied ${n} range(s). real_ip_header was already set to ${conflict_value} at ${conflict_where}, so it was left alone rather than written twice — nginx refuses a duplicate and would have rejected the whole file."
+          ;;
+        # Anything else names a header the edge does not send — X-Real-IP most
+        # often, because it looks right and is what nginx defaults to. nginx then
+        # finds nothing to read, $remote_addr keeps the edge's address, and NO
+        # visitor resolves.
+        #
+        # Reported as a FAILURE, not as a success with a caveat. The first
+        # version of this wrote "active" and put the problem in the reason text,
+        # and the operator read the green pill, upgraded, and came back still
+        # seeing the traffic they had refused. A control that wrote its config
+        # and cannot do the thing it was pressed for has not been applied — a
+        # green state that means "the file parsed" is the same defect this whole
+        # track is about, one layer further in.
+        *)
+          resolves=0
+          msg="${msg:+${msg} }Wrote ${n} range(s), but nothing will resolve yet: real_ip_header at ${conflict_where} is \"${conflict_value}\", which your CDN does not send. nginx therefore finds no address to read and every visitor still arrives as your edge. Change that line to CF-Connecting-IP, or delete it and press this again so this helper can write it."
+          ;;
+      esac
+    fi
+    if [ "$resolves" = 1 ]; then
+      write_state realip active
+    else
+      write_state realip error
     fi
     [ -n "$msg" ] && printf '%s' "$msg" >"${CONTROL_DIR}/realip.reason" 2>/dev/null
     write_digest

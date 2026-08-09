@@ -150,6 +150,138 @@ func runRealIPProbe(t *testing.T, dir, probe, dump, mine string) string {
 	return string(out)
 }
 
+// A CONTROL THAT CANNOT DO WHAT IT WAS PRESSED FOR HAS NOT BEEN APPLIED.
+//
+// The first version of the deferral wrote state "active" whatever header it
+// found, and put the problem in the reason prose. The operator upgraded, read
+// the green "Applied" pill, and came back still receiving the traffic they had
+// refused — because the header their config named was one their CDN does not
+// send, so nginx had nothing to read and every visitor still arrived as the
+// edge.
+//
+// Green has to mean the thing you pressed the button for is now true. This is
+// the same "a claim is not a control" defect as the geo rule itself, one layer
+// further in, introduced while fixing that one.
+// RUN, don't read. The first version of this test asserted on the function's
+// source and passed against the exact bug it was written for: it looked for
+// `write_state realip active` immediately after the `if`, which a later line
+// broke up, and for the presence of `write_state realip error` anywhere — which
+// the rejected-config branch supplies whatever the deferral logic does. Two
+// assertions, both green, neither touching the behaviour.
+func TestDeferringToAHeaderTheCDNDoesNotSendIsReportedAsAFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name, header, wantState string
+	}{
+		// What their host is doing: nginx's own default name, which looks right
+		// and which Cloudflare never sends.
+		{"a header the CDN does not send", "X-Real-IP", "error"},
+		{"the header this helper would have written", "CF-Connecting-IP", "active"},
+		{"the enterprise equivalent", "True-Client-IP", "active"},
+		{"the weaker but working one", "X-Forwarded-For", "active"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, reason := runReconcileRealIP(t, tc.header)
+			if got != tc.wantState {
+				t.Errorf("state = %q, want %q\n\nreason: %s\n\n"+
+					"A green pill means the thing the operator pressed the button for is now "+
+					"true. It was reported for a config that parses and resolves nobody, and "+
+					"the operator upgraded, saw green, and came back still receiving the "+
+					"traffic they had refused.", got, tc.wantState, reason)
+			}
+			if tc.wantState == "error" && !strings.Contains(reason, "does not send") {
+				t.Errorf("the failure never says the CDN does not send that header, which is the "+
+					"one fact explaining why a config nginx ACCEPTED still resolves nobody.\n\n"+
+					"reason: %s", reason)
+			}
+			if !strings.Contains(reason, tc.header) {
+				t.Errorf("the reason does not name the header in effect (%s), so the operator "+
+					"cannot tell which line to change.\n\nreason: %s", tc.header, reason)
+			}
+		})
+	}
+}
+
+// runReconcileRealIP executes the SHIPPED reconcile_realip with its external
+// dependencies stubbed, and returns the state and reason it wrote.
+//
+// Only the seams are replaced — nginx, the reload, the digest, the state
+// writers. The decision being tested is the function's own.
+func runReconcileRealIP(t *testing.T, existingHeader string) (state, reason string) {
+	t.Helper()
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh unavailable")
+	}
+	agent := readDeployFile(t, "vayushield-agent.sh")
+	probe := shellFuncBody(agent, "realip_existing_header")
+	fn := shellFuncBody(agent, "reconcile_realip")
+	if probe == "" || fn == "" {
+		t.Fatal("could not extract the shipped functions")
+	}
+
+	dir := t.TempDir()
+	ctl := filepath.Join(dir, "control")
+	bin := filepath.Join(dir, "bin")
+	for _, d := range []string{ctl, bin} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The panel's request, and a proxy range list with one valid range.
+	write := func(p, s string) {
+		if err := os.WriteFile(p, []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(ctl, "realip.want"), "")
+	allow := filepath.Join(dir, "cdn-allow.conf")
+	write(allow, "173.245.48.0/20\n2400:cb00::/32\n")
+
+	// nginx -T reports a host that already sets the directive at http level.
+	dump := "# configuration file /etc/nginx/conf.d/00-cdn-realip.conf:\n" +
+		"real_ip_header " + existingHeader + ";\n"
+	dumpPath := filepath.Join(dir, "dump.txt")
+	write(dumpPath, dump)
+	write(filepath.Join(bin, "nginx"), "#!/bin/sh\nexec cat "+dumpPath+"\n")
+	if err := os.Chmod(filepath.Join(bin, "nginx"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(dir, "vayushield-realip.conf")
+	script := filepath.Join(dir, "run.sh")
+	write(script, `#!/bin/sh
+CONTROL_DIR=`+ctl+`
+CDN_ALLOW_FILE=`+allow+`
+REALIP_CONF_FILE=`+out+`
+write_state() { printf '%s' "$2" >"${CONTROL_DIR}/$1.state"; }
+clear_reason() { rm -f "${CONTROL_DIR}/$1.reason"; }
+write_digest() { :; }
+shield_backup() { :; }
+# nginx accepts the file — the whole point is that a config which PARSES can
+# still resolve nobody.
+nginx_try_reload() { return 0; }
+`+probe+`
+}
+`+fn+`
+}
+reconcile_realip
+`)
+	if err := os.Chmod(script, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("/bin/sh", script)
+	cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
+	if o, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("reconcile_realip failed: %v\n%s", err, o)
+	}
+	s, err := os.ReadFile(filepath.Join(ctl, "realip.state"))
+	if err != nil {
+		t.Fatalf("no state written: %v", err)
+	}
+	r, _ := os.ReadFile(filepath.Join(ctl, "realip.reason"))
+	return string(s), string(r)
+}
+
 // The manual recipe that CREATED the collision must not come back. It wrote
 // /etc/nginx/conf.d/00-cdn-realip.conf with its own real_ip_header, and any host
 // that ran it could never apply the panel control again.
