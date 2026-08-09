@@ -201,35 +201,74 @@ func (a *App) shieldAuditInputs(r *http.Request) shieldaudit.Inputs {
 	if a.siteSettings != nil {
 		in.BehindCDN = a.siteSettings.Get(context.Background(), settings.ForPrimary(), settings.KeyShieldBehindCDN) == "on"
 	}
-	// Whether real-client-IP resolution actually produced a visitor address
-	// distinct from the peer, ON THIS REQUEST. This is the one signal that cannot
-	// be derived from configuration: the panel could already detect the pooling
-	// failure but had nowhere to record it.
 	if r != nil {
-		in.ClientIPResolved = auth.ClientIP(r) != stripPort(r.RemoteAddr)
-		// ...unless this request is the operator's, and the operator does not go
-		// through their own proxy.
-		//
-		// That is the common case, not an edge case: an administrator keeps a hosts
-		// entry (or split-horizon DNS) pointing the domain at the origin so the
-		// console stays reachable when the CDN is unwell. Their request therefore
-		// carries no forwarding header, resolution correctly does nothing, and a
-		// row derived from that one sample declared "Real visitor IP: FAIL" on a
-		// site whose actual readers were resolving perfectly.
-		//
-		// A sample of one is bad enough. A sample of one drawn from the least
-		// representative request on the site is worse — and a red row that is wrong
-		// is not a neutral cost, it is what teaches an operator to stop reading the
-		// report. The hardening panel already tracks proxy sightings from REAL
-		// visitor traffic for exactly this reason; the posture row now defers to it.
-		if !in.ClientIPResolved && lastCDNObservation() != "" {
-			if here, _ := shieldDetectCDN(r); !here {
-				in.ClientIPResolved = true
-				in.ClientIPFromVisitorTraffic = true
-			}
+		in.ClientIPResolved, in.ClientIPFromVisitorTraffic = shieldResolvesVisitorIP(r)
+	}
+	// Whether the operator has stated any rule that depends on a country lookup.
+	// Without this the real-IP row could only describe the rate-limiting cost,
+	// which is a nuisance; an unenforced "never serve" is a control the panel is
+	// claiming and not applying.
+	if a.siteSettings != nil {
+		g := func(k string) string {
+			return strings.TrimSpace(a.siteSettings.Get(context.Background(), settings.ForPrimary(), k))
 		}
+		in.GeoRulesSet = g(settings.KeyShieldDenyCountries) != "" ||
+			g(settings.KeyShieldChallengeCountries) != "" ||
+			g(settings.KeyShieldAllowCountries) != ""
 	}
 	return in
+}
+
+// shieldResolvesVisitorIP reports whether real-client-IP resolution produces a
+// visitor address distinct from the peer, and whether that answer came from
+// recent visitor traffic rather than from this request.
+//
+// It is one function because two screens ask it. The posture report asks so it
+// can raise the "Real visitor IP" row; the policy band asks so a country rule
+// can say it is not being applied. When those were separate the panel could —
+// and did — show an enforcing geo rule on one screen and the reason it cannot
+// fire on another, with nothing connecting them.
+func shieldResolvesVisitorIP(r *http.Request) (resolved, fromVisitorTraffic bool) {
+	resolved = auth.ClientIP(r) != stripPort(r.RemoteAddr)
+	// ...unless this request is the operator's, and the operator does not go
+	// through their own proxy.
+	//
+	// That is the common case, not an edge case: an administrator keeps a hosts
+	// entry (or split-horizon DNS) pointing the domain at the origin so the
+	// console stays reachable when the CDN is unwell. Their request therefore
+	// carries no forwarding header, resolution correctly does nothing, and a
+	// row derived from that one sample declared "Real visitor IP: FAIL" on a
+	// site whose actual readers were resolving perfectly.
+	//
+	// A sample of one is bad enough. A sample of one drawn from the least
+	// representative request on the site is worse — and a red row that is wrong
+	// is not a neutral cost, it is what teaches an operator to stop reading the
+	// report. The hardening panel already tracks proxy sightings from REAL
+	// visitor traffic for exactly this reason; the posture row defers to it.
+	if !resolved && lastCDNObservation() != "" {
+		if here, _ := shieldDetectCDN(r); !here {
+			return true, true
+		}
+	}
+	return resolved, false
+}
+
+// shieldGeoIsBlind reports that a country lookup in the ENFORCEMENT path is
+// reading the proxy's address rather than the reader's, so every country rule is
+// inert for anyone arriving through the CDN.
+//
+// The two halves both matter. Proxied without resolution is the broken state.
+// Un-proxied without resolution is correct and healthy: traffic arrives
+// directly, so the peer IS the visitor and geography works.
+func (a *App) shieldGeoIsBlind(r *http.Request) bool {
+	if r == nil || a.siteSettings == nil {
+		return false
+	}
+	if a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyShieldBehindCDN) != "on" {
+		return false
+	}
+	resolved, _ := shieldResolvesVisitorIP(r)
+	return !resolved
 }
 
 func stripPort(addr string) string {

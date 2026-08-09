@@ -600,7 +600,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Protection</span><span class="section-head__hint">How unproven traffic is screened — verified crawlers always pass</span></div>`)
 	b.WriteString(`<div class="mon-stack">`)
 	b.WriteString(monAcc("🛡️", "Protection &amp; settings", "Challenge thresholds, rate-limit, surge &amp; the resilience gates", monChip(enabled, "On", "Off"), false,
-		`<form hx-post="/os/api/shield/settings" hx-swap="none"><div id="vs-body-protection" hx-get="/os/shield/section/protection" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+a.shieldProtectionBody(r.Context())+`</div></form>`))
+		`<form hx-post="/os/api/shield/settings" hx-swap="none"><div id="vs-body-protection" hx-get="/os/shield/section/protection" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+a.shieldProtectionBody(r.Context(), a.shieldGeoIsBlind(r))+`</div></form>`))
 	// Live self-test: proves, against the CURRENT settings, that real readers and
 	// crawlers are served content. It answers the two questions an operator cannot
 	// otherwise verify without leaving the panel — "am I hurdling my own visitors?"
@@ -909,7 +909,7 @@ func vsLayer(tag, name, state, desc, stat1, stat2 string) string {
 // shieldProtectionBody renders the protection/availability/analytics settings
 // form fields (everything inside the <form>). Refreshed in place after a save
 // so it reflects the applied (and clamped) state.
-func (a *App) shieldProtectionBody(ctx context.Context) string {
+func (a *App) shieldProtectionBody(ctx context.Context, geoBlind bool) string {
 	cur := a.shieldCurrentSettings()
 	beaconOn := a.siteSettings == nil || a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAnalyticsBeacon) != "off"
 	behindCDN := a.siteSettings != nil && a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyShieldBehindCDN) == "on"
@@ -976,7 +976,7 @@ func (a *App) shieldProtectionBody(ctx context.Context) string {
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_surge", "Sovereign Surge (Under-Attack Mode)", "Meet every unverified visitor with a one-time browser check BEFORE any classification — so a million-bot swarm is absorbed at ~one hash per request, with no CDN. Real browsers pass silently in a moment (their clearance is bound to their network, so a solved check can't be shared across a botnet); bots that won't run it never reach the site. Surge also engages automatically during a flood even when this is off, and a manually-forced surge auto-expires after 12h so a forgotten switch can never keep challenging visitors.", cur.Surge, false))
 	b.WriteString(`</div>`)
-	b.WriteString(a.shieldPolicyBand(ctx))
+	b.WriteString(a.shieldPolicyBand(ctx, geoBlind))
 	b.WriteString(a.shieldIntelBand(ctx))
 	b.WriteString(`<div class="card-title vs-section">Analytics</div>`)
 	b.WriteString(`<div class="vs-feat">`)
@@ -1018,7 +1018,7 @@ func clipPolicyField(v string) string {
 // fields are statements of fact by the operator, so they do exactly what they
 // say: a denied network is refused even if it solves a challenge, and an allowed
 // one skips every gate including the jail.
-func (a *App) shieldPolicyBand(ctx context.Context) string {
+func (a *App) shieldPolicyBand(ctx context.Context, geoBlind bool) string {
 	get := func(k string) string {
 		if a.siteSettings == nil {
 			return ""
@@ -1041,19 +1041,34 @@ func (a *App) shieldPolicyBand(ctx context.Context) string {
 	// the control most likely to be reached for after one bad night and the one
 	// most likely to quietly cost real readers.
 	b.WriteString(`<div class="vs-feat"><div class="vs-adv vs-adv--open">`)
-	geoNote := `Two-letter country codes, one per line. Location is inferred from the visitor's address and is approximate — a traveller, a corporate VPN, or anyone using a privacy network is attributed somewhere else, so this refuses people rather than places. Search-engine crawlers are refused too, which removes those pages from results.`
+	// Every field below is compared against a country looked up from the address
+	// the shield resolves. Behind a proxy that address is the edge until nginx is
+	// told to resolve the reader, and until then these rules match nobody who
+	// arrives through the CDN — while Analytics, which reads the country from the
+	// proxy's own header, goes on reporting the traffic they were meant to stop.
+	//
+	// The warning is attached to the fields rather than left to the posture
+	// report because that is where the operator is when they form the belief. A
+	// rule typed into a box that accepts it, on a page reporting the shield as
+	// protecting, is a claim the panel is making; the posture row was on another
+	// screen and spoke only about rate limiting.
+	geoBlindNote := ""
+	if geoBlind && !config.Cfg.OnionMode {
+		geoBlindNote = `<strong>Not being applied right now.</strong> This site is marked as proxied but the origin is not resolving the visitor's address, so every country lookup returns your CDN's location instead of the reader's and nothing below can match a proxied visitor. Analytics shows their true country because it reads it from the CDN's own header — that is why it can report traffic from a country you have refused. Use <em>Resolve the visitor's real address</em> in Hardening on this page; these rules start applying the moment it takes effect, with no change here. `
+	}
+	geoNote := geoBlindNote + `Two-letter country codes, one per line. Location is inferred from the visitor's address and is approximate — a traveller, a corporate VPN, or anyone using a privacy network is attributed somewhere else, so this refuses people rather than places. Search-engine crawlers are refused too, which removes those pages from results.`
 	if config.Cfg.OnionMode {
 		geoNote = `<strong>Disabled in this Space.</strong> Every visitor arrives through Tor as 127.0.0.1, so a country lookup would return this server's own location for all of them — the rule would refuse everyone or serve everyone while appearing to do geography. Saved values are kept and will apply on a clearnet install.`
 	}
 	b.WriteString(vsArea("sh_deny_countries", "Never serve (countries)", geoNote,
 		"RU\nCN", get(settings.KeyShieldDenyCountries)))
-	challengeNote := `The middle setting, and usually the right one. These visitors are not refused &mdash; they are met with a one-time browser check they can solve in a moment, and once solved they are never asked again. Use it where the traffic is mostly automated but real readers exist: a refusal says &ldquo;you are not a customer&rdquo;, a check says &ldquo;prove you are a person&rdquo;. Verified search engines skip it entirely, so it cannot cost you indexing, and it never escalates to a block.`
+	challengeNote := geoBlindNote + `The middle setting, and usually the right one. These visitors are not refused &mdash; they are met with a one-time browser check they can solve in a moment, and once solved they are never asked again. Use it where the traffic is mostly automated but real readers exist: a refusal says &ldquo;you are not a customer&rdquo;, a check says &ldquo;prove you are a person&rdquo;. Verified search engines skip it entirely, so it cannot cost you indexing, and it never escalates to a block.`
 	if config.Cfg.OnionMode {
 		challengeNote = `<strong>Disabled in this Space.</strong> Two reasons, either of which alone would be enough: a country lookup returns this server&rsquo;s own location for every Tor visitor, and the check needs browser crypto that a plain-http onion does not expose &mdash; so nobody could solve it even if the geography meant something.`
 	}
 	b.WriteString(vsArea("sh_challenge_countries", "Check visitors from these countries", challengeNote,
 		"CN\nRU\nTR", get(settings.KeyShieldChallengeCountries)))
-	b.WriteString(vsArea("sh_allow_countries", "Serve ONLY these countries", `Sharper than the field above: anything not on this list is refused. Empty means no restriction. Filling this in on a public site normally costs more real readers than it stops abuse.`,
+	b.WriteString(vsArea("sh_allow_countries", "Serve ONLY these countries", geoBlindNote+`Sharper than the field above: anything not on this list is refused. Empty means no restriction. Filling this in on a public site normally costs more real readers than it stops abuse.`,
 		"GB\nDE\nIN", get(settings.KeyShieldAllowCountries)))
 	b.WriteString(`</div></div>`)
 
@@ -1303,7 +1318,7 @@ func (a *App) handleOSShieldSection(w http.ResponseWriter, r *http.Request) {
 	case "throughput":
 		out = a.shieldThroughputBody()
 	case "protection":
-		out = a.shieldProtectionBody(r.Context())
+		out = a.shieldProtectionBody(r.Context(), a.shieldGeoIsBlind(r))
 	case "signatures":
 		out = a.shieldSignaturesBody(r.Context())
 	case "queue":

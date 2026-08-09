@@ -6,6 +6,59 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **A country rule now says when it is not being applied.** Reported from a live
+  install: Singapore had been refused and Analytics still showed it as 91% of
+  the audience. Nothing was misconfigured. The site is proxied, the origin was
+  not resolving the reader's address, and the enforcement path therefore looked
+  up the country of the CDN's edge for every proxied visitor — so a denied
+  country could never match. Seven days of the shield's own trail contained not
+  one request from either denied country while Analytics, which reads the
+  country from the CDN's header, was reporting the truth.
+
+  The mechanism: `shieldResolvesVisitorIP` in `cmd/vayupress/vayushield_audit.go`
+  is now the single answer to "does a request resolve to the reader's address",
+  and both consumers derive from it — the `Real visitor IP` posture row and, new,
+  the three country fields in *Your own rules*, which say **Not being applied
+  right now** and name the Hardening control that fixes it. `shieldaudit` gained
+  `GeoRulesSet`, so that row states the geo consequence — a control shown as set
+  and never run — instead of only the shared-bucket one.
+
+  Two copies of that answer were the underlying defect: the posture report could
+  already detect the failure and the policy band asked nothing, so the panel
+  showed an enforcing rule on one screen and the reason it could not fire on
+  another. `TestBothScreensDeriveTheAnswerFromOneFunction` fails if the
+  comparison is ever written a second time.
+
+  Nothing about enforcement changed, and no rule was loosened or tightened. What
+  changed is that the panel no longer presents a control it is not running.
+
+### Security
+
+- **A visitor can no longer choose the country they are recorded under.**
+  `geoFromHeaders` read `CF-IPCountry` and six equivalent vendor headers straight
+  off the request, from any peer. The endpoint that consumes them —
+  `POST /api/v1/analytics/collect` — is public, unauthenticated, and on
+  VayuShield's bypass list, so a client could post beacons declaring any country
+  and the operator's audience report would show them there.
+
+  The mechanism is `auth.PeerIsTrustedProxy`, the same test `ClientIP` already
+  applies before honouring a forwarding header — reused rather than copied,
+  because two spellings of one trust rule diverge. Ordinary installs are
+  unaffected: the peer is the local reverse proxy, so the country its CDN reports
+  is still used. An untrusted peer now falls through to the offline lookup, which
+  for a direct connection reads the real address and is the better answer anyway.
+
+  Analytics geography was never an enforcement input, so this forged nothing and
+  bypassed nothing. What it could do is make the audience report contradict the
+  shield — which is exactly the shape that sent this investigation looking for a
+  fault in the shield first.
+
+---
+
 ## [3.17.34] — 2026-08-08
 
 Shipped on its own, again: the cards were still generic after v3.17.33 on the

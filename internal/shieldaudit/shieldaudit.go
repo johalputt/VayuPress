@@ -194,6 +194,11 @@ type Inputs struct {
 	// and "verified from your own request" are different strengths of evidence
 	// and the report's whole value is not overstating either.
 	ClientIPFromVisitorTraffic bool
+	// GeoRulesSet reports that the operator has stated at least one rule keyed on
+	// the visitor's country. It changes what the real-IP failure MEANS: without
+	// geo rules an unresolved visitor address is a rate-limiting problem, and
+	// with them it is also a control the panel shows as set and never applies.
+	GeoRulesSet bool
 	// LinkSpeedMbps is the operator's measured ingress capacity, read from
 	// /sys/class/net/*/speed. Zero when it could not be determined.
 	LinkSpeedMbps int
@@ -325,8 +330,17 @@ func Run(in Inputs) []Check {
 
 	switch {
 	case in.BehindCDN && !in.ClientIPResolved:
-		add("Real visitor IP", Fail,
-			"This site is marked as proxied, but the request that generated this report did not resolve to a visitor address distinct from the peer. Every per-IP limit is therefore measuring the edge, not the reader: the whole audience shares one bucket, and the first busy minute shows everyone a challenge.")
+		detail := "This site is marked as proxied, but the request that generated this report did not resolve to a visitor address distinct from the peer. Every per-IP limit is therefore measuring the edge, not the reader: the whole audience shares one bucket, and the first busy minute shows everyone a challenge."
+		// The country rules deserve their own sentence, because their failure is
+		// silent in a way the rate limiter's is not. A shared bucket announces
+		// itself — readers get challenged and the operator hears about it. A
+		// country rule that cannot see the visitor simply never matches: the panel
+		// lists it, the shield reports itself as protecting, and the traffic the
+		// operator refused keeps arriving with nothing anywhere saying why.
+		if in.GeoRulesSet {
+			detail += " Your country rules are not being applied to anyone arriving through the proxy either — the lookup is resolving the edge's location, never the reader's, so a \"never serve\" country is still being served. Traffic from a country you have refused will keep appearing in Analytics, which reads the country from the proxy's own header and is therefore right while the rule is not."
+		}
+		add("Real visitor IP", Fail, detail)
 	case in.BehindCDN && in.ClientIPFromVisitorTraffic:
 		add("Real visitor IP", Pass,
 			"Recent visitor traffic arrives through the proxy and resolves to distinct reader addresses, so per-IP limits apply per reader. Your OWN connection skips the proxy — usually a hosts entry so the console stays reachable when the edge is unwell — so this row is verified from your readers' requests rather than from this one.")
