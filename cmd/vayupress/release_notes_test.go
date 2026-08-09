@@ -104,3 +104,34 @@ func TestUpdateNotesRenderedWithoutInnerHTML(t *testing.T) {
 		t.Error("the renderer must drop GitHub's generated Full Changelog tail")
 	}
 }
+
+// TestProvisioningHelperVersionStampIsWired pins a coupling neither side can
+// see. provision-subdomains.sh assigns HELPERS_VERSION_STAMP and never reads
+// it; tag-release.yml seds that exact line to the release version and greps to
+// confirm the stamp landed. shellcheck, reading only the script, calls it unused
+// (SC2034) — and it was deleted on that advice, which failed the release at the
+// grep. The linter was not wrong about what it could see. This test is what it
+// could not see.
+func TestProvisioningHelperVersionStampIsWired(t *testing.T) {
+	script := repoFile(t, "scripts/provision-subdomains.sh")
+	if !strings.Contains(script, "\nHELPERS_VERSION_STAMP=") {
+		t.Error("provision-subdomains.sh has no HELPERS_VERSION_STAMP line at the start of a line; " +
+			"tag-release.yml's sed anchors on ^HELPERS_VERSION_STAMP= and the release will fail")
+	}
+	// The disable is load-bearing: without it the now-blocking shell lint
+	// rejects the line the release depends on, and the next person deletes it
+	// again for the same reason.
+	if !strings.Contains(script, "shellcheck disable=SC2034") {
+		t.Error("the HELPERS_VERSION_STAMP assignment needs its SC2034 disable, or shell lint fails the build")
+	}
+
+	wf := repoFile(t, ".github/workflows/tag-release.yml")
+	if !strings.Contains(wf, "^HELPERS_VERSION_STAMP=") {
+		t.Error("tag-release.yml no longer rewrites HELPERS_VERSION_STAMP; the shipped helpers would " +
+			"stamp themselves \"dev\" and the root worker could not tell an upgrade from a downgrade")
+	}
+	if !strings.Contains(wf, "the helper version stamp was not applied") {
+		t.Error("tag-release.yml must still verify the stamp landed; a sed that silently matches nothing " +
+			"publishes helpers stamped \"dev\"")
+	}
+}

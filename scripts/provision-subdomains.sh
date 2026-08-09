@@ -126,6 +126,13 @@ rm -f "$REQUEST"
 # empty flag file that asks for a run.
 UPGRADE_REPO="${UPGRADE_REPO:-johalputt/VayuPress}"
 UPGRADE_ASSET="vayuprovision-helpers.tar.gz"
+# Rewritten by tag-release.yml, which seds this exact line to the release
+# version and then greps to confirm the stamp landed — so it is read by the
+# release, not by this script, and shellcheck cannot see that from here. It was
+# deleted once as "unused" on the linter's word and the release failed closed at
+# that grep. TestProvisioningHelperVersionStampIsWired pins both ends.
+# shellcheck disable=SC2034
+HELPERS_VERSION_STAMP="dev"
 
 self_upgrade_helpers() {
   # Every failure here is a SKIP, never a stop. This runs before the work, and a

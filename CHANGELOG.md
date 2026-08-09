@@ -106,8 +106,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   comment with the words silently removed. Reworded to avoid backticks;
   reproduced first, then fixed.
 
-  Also removed `HELPERS_VERSION_STAMP` from `provision-subdomains.sh`, assigned
-  and never read (SC2034).
+  `HELPERS_VERSION_STAMP` in `provision-subdomains.sh` was removed as unused
+  (SC2034) and **put back**, because it was not unused. `tag-release.yml` seds
+  that exact line to the release version and greps to confirm the stamp landed;
+  shellcheck, reading only the script, could not see the workflow that rewrites
+  it. The release failed closed at that grep rather than shipping helpers
+  stamped `dev`, which is the guard working. The line now carries an
+  explicit disable and its reason, and
+  `TestProvisioningHelperVersionStampIsWired` pins both ends — the assignment,
+  its disable, the workflow's sed, and the workflow's verification — so the next
+  reader who is told it is unused gets a red test instead of a failed release.
+  A linter that can only see one file is not wrong about what it sees; it is
+  answering a narrower question than the one being asked.
 
   The class is now gated rather than the one instance. `scripts/heredoc-audit.sh`
   refuses an unescaped backtick inside any unquoted heredoc across `scripts/`
