@@ -230,12 +230,21 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle", a.handleOSScopedBundleUpload)
 			dr.Get("/api/website/preview", a.handleOSScopedWebsitePreview)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle/rollback", a.handleOSScopedBundleRollback)
-			// Theme Studio is the SAME handler as /os/theme, mounted a second
-			// time. It reads its scope from the request, so one code path serves
-			// both — a parallel per-domain implementation would be a second place
-			// for every future theme change to be forgotten.
-			dr.Get("/theme", a.handleOSTheme)
-			dr.With(auth.CSRFTokenMiddleware).Post("/api/theme/code", a.handleOSThemeCode)
+			// THEME STUDIO IS NO LONGER MOUNTED PER SITE, and the comment that
+			// used to sit here is why it took so long to notice: it said the
+			// handler "reads its scope from the request, so one code path serves
+			// both". The HANDLER does. The PAGE does not — its script posts to
+			// absolute /os/api/theme/* and /os/api/settings paths, so every write
+			// from /os/d/{id}/theme landed on the primary. Beneath that,
+			// theme_tokens is CHECK(id=1) and applying a theme sets a process
+			// global, so there is no per-site theme for a scoped route to write.
+			//
+			// The old address REDIRECTS rather than 404s — it is in bookmarks and
+			// in this console's own history — and lands on the per-site settings
+			// page, which is where a hosted site's identity genuinely lives
+			// (ADR-0154 D3). Theme Studio is now named in sharedTools as
+			// install-wide, alongside the media library and the newsletter.
+			dr.Get("/theme", a.handleOSScopedThemeRetired)
 			// This domain's own mark. The SAME upload handler as the operator's
 			// branding page, mounted a second time — it takes its scope from the
 			// request, so one code path stores both and a per-domain copy cannot

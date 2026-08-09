@@ -39,6 +39,37 @@ var scopedSettingKeys = []struct {
 	{settings.KeySiteAuthor, "Author", "The by-line on posts that do not name one."},
 }
 
+// scopedColourKeys is this site's own colour, kept SEPARATE from the identity
+// set above because the Identity tile counts that set — folding colour into it
+// would make "4 of 7" mean something no label explains.
+//
+// COLOUR LIVES HERE because the per-site Theme Studio was retired. ADR-0154 D3
+// named "/os/d/{id}/settings the only editor for identity, and Theme Studio the
+// only editor for colour". The second half never worked for a hosted site: that
+// page's script posts to absolute /os/api/... routes, so its writes landed on
+// the primary, and theme_tokens is CHECK(id=1) regardless. Retiring it would
+// have left a hosted site's colours with no editor at all.
+//
+// These are the three the public render path reads per domain
+// (siteSettingsFromValues) and the same three saveBrand writes, so the
+// operator's editor and the client's own /os/mysite now agree on one store.
+var scopedColourKeys = []struct {
+	Key, Label, Hint string
+}{
+	{settings.KeyThemeAccentLight, "Accent (light)", "Hex like #2563eb. Links and buttons in the light theme."},
+	{settings.KeyThemeAccentDark, "Accent (dark)", "Hex like #60a5fa. The same, for the dark theme."},
+	{settings.KeyHeadThemeColor, "Browser theme colour", "Hex. Tints the browser chrome on mobile."},
+}
+
+// scopedEditableKeys is every key this page may write — identity and colour.
+// The save allowlist reads from here so a field added to either group is
+// editable without a second edit somewhere else.
+func scopedEditableKeys() []struct{ Key, Label, Hint string } {
+	out := make([]struct{ Key, Label, Hint string }, 0, len(scopedSettingKeys)+len(scopedColourKeys))
+	out = append(out, scopedSettingKeys...)
+	return append(out, scopedColourKeys...)
+}
+
 // handleOSScopedSettings renders one domain's own settings.
 func (a *App) handleOSScopedSettings(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
@@ -52,7 +83,7 @@ func (a *App) handleOSScopedSettings(w http.ResponseWriter, r *http.Request) {
 
 	sc := osScope(r)
 	values := map[string]string{}
-	for _, f := range scopedSettingKeys {
+	for _, f := range scopedEditableKeys() {
 		values[f.Key] = a.siteSettings.Get(r.Context(), sc, f.Key)
 	}
 
@@ -176,6 +207,36 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 	b.WriteString(monAcc("🪪", "Identity", "Name, tagline, description and by-line for this site alone",
 		identChip, true, ident.String()))
 
+	// Colour, which used to live on the per-site Theme Studio — a page whose
+	// every write landed on the operator's own install. Same store, same save
+	// button, so an operator sets a client's accent where they set its name.
+	var colour strings.Builder
+	colour.WriteString(`<div class="card"><div class="form-grid">`)
+	colourSet := 0
+	for _, f := range scopedColourKeys {
+		if strings.TrimSpace(values[f.Key]) != "" {
+			colourSet++
+		}
+		colour.WriteString(`<label class="field"><span class="field-label">` + esc(f.Label) + `</span>` +
+			`<input type="text" class="input" data-scoped-key="` + esc(f.Key) + `" value="` + esc(values[f.Key]) +
+			`" autocomplete="off" placeholder="#2563eb"><span class="field-hint">` + esc(f.Hint) + `</span></label>`)
+	}
+	colour.WriteString(`</div><div class="vm-row">` +
+		`<button type="button" class="btn btn--primary btn--sm" data-scoped-save>Save</button></div>` +
+		`<p class="text-sm muted">Left blank, this site uses the product default — not the ` +
+		`operator's colours. Presets and typography are install-wide and are not edited here.</p></div>`)
+
+	// "no colour set", NOT "product default": the Presentation band already uses
+	// that phrase for a different question, and two chips saying the same words
+	// about different things is how a reader stops trusting either.
+	colourChip := `<span class="mon-chip mon-chip--off">no colour set</span>`
+	if colourSet > 0 {
+		colourChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(colourSet) +
+			` of ` + strconv.Itoa(len(scopedColourKeys)) + `</span>`
+	}
+	b.WriteString(monAcc("🎨", "Colour", "This site's own accents and browser tint",
+		colourChip, false, colour.String()))
+
 	styleChip := `<span class="mon-chip mon-chip--off">not known</span>`
 	switch pres {
 	case presDefault:
@@ -277,7 +338,7 @@ func (a *App) handleOSScopedSettingsSave(w http.ResponseWriter, r *http.Request)
 	// otherwise a client-facing surface built on this endpoint later could write
 	// any of the 327 keys, including the operational ones.
 	allowed := map[string]bool{}
-	for _, f := range scopedSettingKeys {
+	for _, f := range scopedEditableKeys() {
 		allowed[f.Key] = true
 	}
 	kv := map[string]string{}

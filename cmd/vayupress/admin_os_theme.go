@@ -230,14 +230,6 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
-	// Theme Studio is mounted twice — install-wide at /os/theme and per-site at
-	// /os/d/{id}/theme. Two of its controls have no per-site equivalent and are
-	// wired to the INSTALL-WIDE routes by absolute path, so on a client's page
-	// they act on the operator's own site. They are withheld there rather than
-	// shown pointing at the wrong install (ADR-0154 D2: not demoted, not
-	// caveated — absent).
-	_, perSite := osScopedDomain(r)
-
 	// Current persisted custom CSS + head/SEO values (Tumblr-style code editor).
 	// Guard the settings store like every other settings-dependent handler does:
 	// if it isn't ready yet (startup race / settings-store init failure) we still
@@ -315,7 +307,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
   </div>
   <div class="page-actions">
     <span class="text-sm muted" data-theme-status>Loading…</span>
-    ` + themeStoreLink(perSite) + `
+    <a class="btn btn--ghost btn--sm" href="/os/theme/store">Browse Theme Store</a>
     <button type="button" class="btn btn--ghost btn--sm" data-theme-revert>Revert</button>
     <button type="button" class="btn btn--primary btn--sm" data-theme-apply>Apply theme</button>
   </div>
@@ -558,7 +550,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       <div class="cz-group__body">
         <div class="text-sm muted mb-3">Download the full theme as JSON, or import one to apply it everywhere. Imported tokens are validated before they go live.</div>
         <div class="vm-row">
-          ` + themeExportLink(perSite) + `
+          <a class="btn btn--sm" href="/os/api/theme/export" download>Export theme JSON</a>
         </div>
         <div class="vm-row mt-2">
           <input type="file" accept="application/json,.json" class="input" data-theme-import-file>
@@ -864,28 +856,4 @@ func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 		Msg: "theme imported: " + env.Tokens.Name, RequestID: getRequestID(r),
 	})
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok", "name": env.Tokens.Name})
-}
-
-// themeStoreLink and themeExportLink withhold the two Theme Studio controls that
-// only exist install-wide.
-//
-// /os/theme/store and /os/api/theme/export are absolute install-wide routes, and
-// the export handler resolves osScope(r) — which, reached from the install-wide
-// route, is the PRIMARY. Rendered on /os/d/{id}/theme they offered an operator a
-// button labelled for the client's site that browses and downloads the
-// operator's own. That is the reported bug ADR-0154 D2 names, and a caveat
-// beside them is what D2 rules out.
-func themeStoreLink(perSite bool) string {
-	if perSite {
-		return ""
-	}
-	return `<a class="btn btn--ghost btn--sm" href="/os/theme/store">Browse Theme Store</a>`
-}
-
-func themeExportLink(perSite bool) string {
-	if perSite {
-		return `<span class="text-sm muted">Export and import are install-wide only — they act on ` +
-			`your own site, not this one.</span>`
-	}
-	return `<a class="btn btn--sm" href="/os/api/theme/export" download>Export theme JSON</a>`
 }

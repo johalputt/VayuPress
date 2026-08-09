@@ -61,8 +61,6 @@ var scopedTools = []scopedTool{
 		Desc: "Serve this domain as a blog or as a website"},
 	{Key: "settings", Path: "/os/d/%s/settings", Icon: "⚙️", Title: "Site settings", Live: true,
 		Desc: "Name, tagline and description for this site"},
-	{Key: "theme", Path: "/os/d/%s/theme", Icon: "🎨", Title: "Theme Studio", Live: true,
-		Desc: "Colours, typography and custom CSS — this site's own"},
 	{Key: "seo", Path: "/os/d/%s/seo", Icon: "🔍", Title: "SEO", Live: true,
 		Desc: "Head directives, tokens, sitemap and robots"},
 	{Key: "analytics", Path: "/os/d/%s/analytics", Icon: "📈", Title: "Visitors", Live: true,
@@ -86,7 +84,25 @@ type scopedToolChip struct {
 // Naming them is the honest half: an operator needs to know what a hosted site
 // does not yet get its own copy of, and finding out by clicking into the
 // operator's own newsletter would be the reported bug again.
-var sharedTools = []string{"Media library", "Comments", "Newsletter", "Monetization", "Integrations"}
+var sharedTools = []string{
+	"Media library", "Comments", "Newsletter", "Monetization", "Integrations",
+	// THEME STUDIO WAS LISTED AS PER-SITE, described as "Colours, typography and
+	// custom CSS — this site's own". It is none of those things for a hosted
+	// site, at two levels.
+	//
+	// theme_tokens is `CHECK(id=1)` — ONE row for the whole install by schema —
+	// and applying a theme also sets render.SetThemeCSS, a process global, then
+	// purges every cache. There is no per-site theme to write. And the page's
+	// script posts to absolute /os/api/theme/* and /os/api/settings paths, so
+	// even the half that does read osScope (custom CSS, import, export) resolved
+	// to the PRIMARY when reached from /os/d/{id}/theme.
+	//
+	// So an operator opening a client's Theme Studio, changing colours and
+	// pressing Apply restyled their OWN site — the reported bug ADR-0154 D2 names,
+	// as a write rather than a link. Naming it here is the honest half; the tile
+	// that linked it is gone.
+	"Theme Studio",
+}
 
 // handleOSScopedHome renders the console for one hosted site.
 func (a *App) handleOSScopedHome(w http.ResponseWriter, r *http.Request) {

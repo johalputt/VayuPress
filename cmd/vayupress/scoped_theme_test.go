@@ -17,28 +17,21 @@ import (
 // theme, the custom CSS, the head meta and 315 other keys were never the
 // domain's. That is what "the tools are all linked" meant concretely.
 
-// Theme Studio must be ONE handler mounted twice, not a per-domain copy.
-// A parallel implementation is a second place for every future theme change to
-// be forgotten, and the forgotten one is always the client-facing one.
-func TestThemeStudioIsOneHandlerMountedTwice(t *testing.T) {
-	routes := readSourceFile(t, "admin_os_ui.go")
-	if !strings.Contains(routes, `dr.Get("/theme", a.handleOSTheme)`) {
-		t.Fatal("Theme Studio is not mounted under the per-domain route family")
-	}
-	if !strings.Contains(routes, `pr.Get("/os/theme", a.handleOSTheme)`) &&
-		!strings.Contains(routes, `"/os/theme", a.handleOSTheme`) {
-		t.Error("the primary's own Theme Studio route no longer points at the same handler")
-	}
-	// And that handler must read its scope from the request rather than a constant.
-	body := goFuncBody(readSourceFile(t, "admin_os_theme.go"), "handleOSTheme")
-	if strings.Contains(body, "settings.ForPrimary()") {
-		t.Error("Theme Studio reads the PRIMARY explicitly, so opening it under a hosted " +
-			"domain's URL shows and edits the operator's own theme")
-	}
-	if !strings.Contains(body, "osScope(r)") {
-		t.Error("Theme Studio does not read the request's scope")
-	}
-}
+// RETIRED — TestThemeStudioIsOneHandlerMountedTwice, which REQUIRED the
+// per-domain mount to exist.
+//
+// It asserted the right thing about the handler and the wrong thing about the
+// page. handleOSTheme does read osScope(r), so the test passed; but the page it
+// renders loads a script that posts to ABSOLUTE /os/api/theme/* and
+// /os/api/settings paths, which never carry the scoped context. So every write
+// from /os/d/{id}/theme landed on the primary while this test reported the mount
+// correctly scoped. Beneath that, theme_tokens is CHECK(id=1) and applying a
+// theme sets a process global — there was no per-site theme for the handler's
+// scope-awareness to reach.
+//
+// A test that checks the handler and not the page it serves is the shape that
+// kept this alive. The mount is retired; its replacement is
+// TestThePerSiteThemeStudioIsRetiredRatherThanServed, which drives the address.
 
 // The cross-tenant write this phase nearly introduced.
 //
@@ -105,22 +98,11 @@ func TestTheSettingsToRenderMappingIsNotDuplicated(t *testing.T) {
 	var _ render.SiteSettings = got
 }
 
-// Theme Studio is now live on the per-domain console, so the card must link.
-func TestThemeStudioIsLinkedFromTheScopedConsole(t *testing.T) {
-	var found bool
-	for _, tool := range scopedTools {
-		if tool.Title == "Theme Studio" {
-			found = true
-			if !tool.Live {
-				t.Error("Theme Studio is scoped but still listed as not-yet-available")
-			}
-		}
-	}
-	if !found {
-		t.Fatal("Theme Studio is missing from the per-domain console")
-	}
-	page := scopedConsolePage(testDomain("abc123", "client.example"), 0, 0, 0, false, nil, nil, nil, nil)
-	if !strings.Contains(page, `href="/os/d/abc123/theme"`) {
-		t.Error("the console does not link this domain's Theme Studio")
-	}
-}
+// RETIRED — TestThemeStudioIsLinkedFromTheScopedConsole, which REQUIRED the
+// per-site console to link Theme Studio and to describe it as live.
+//
+// It enforced the tile that sent an operator to a page which restyled their own
+// install. Theme Studio is now named in sharedTools as install-wide, and
+// TestTheConsoleNamesWhatIsStillInstallWide asserts it is still NAMED — an
+// operator has to know what a hosted site does not get its own copy of, and
+// silence there is how the original defect read as normal.

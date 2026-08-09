@@ -153,64 +153,67 @@ func TestEveryPerSitePageIsCheckedForInstallWideLinks(t *testing.T) {
 	}
 }
 
-// THE SEVENTH PAGE, and the count this test shipped with was wrong.
+// FINDING (post-v3.17.48) — the seventh per-site page wrote the operator's site.
 //
-// The per-site block mounts /theme as well — Theme Studio, the SAME handler as
-// /os/theme, mounted a second time — so there are seven per-site pages, not six.
-// It was omitted, and it is the one that fails: the page rendered
-// `href="/os/theme/store"` and `href="/os/api/theme/export"`, both absolute
-// install-wide routes, and the export handler resolves osScope(r) to the PRIMARY
-// when reached that way. An operator on a client's Theme Studio pressed "Export
-// theme JSON" and downloaded their own site's theme.
+// The gate covered six renderers. The per-site block mounted a seventh:
+// /os/d/{id}/theme, Theme Studio, the SAME handler as /os/theme. Its tile called
+// it "Colours, typography and custom CSS — this site's own". It was none of
+// those for a hosted site.
 //
-// Rendered through the real handler rather than a body function, because that is
-// where the withholding decision is made — a body-level test would assert
-// against markup that never sees the request.
-func TestThePerSiteThemeStudioCarriesNoInstallWideControls(t *testing.T) {
+// The page linked /os/theme/store and /os/api/theme/export — absolute
+// install-wide routes, and the export handler resolves osScope to the PRIMARY
+// when reached that way. Worse, its script posts to absolute /os/api/theme/apply,
+// /os/api/theme/code, /os/api/theme/import, /os/api/settings and the branding
+// uploads, so pressing Apply on a client's page restyled the operator's own
+// install. Beneath all of that, theme_tokens is CHECK(id=1) and applying a theme
+// sets a process global — there is no per-site theme for a scoped route to write.
+//
+// So the mount is retired rather than repaired: the address redirects to the
+// per-site settings page, and Theme Studio is named in sharedTools as
+// install-wide. Removing it costs nobody anything they had — it never edited the
+// site whose name was on the page.
+func TestThePerSiteThemeStudioIsRetiredRatherThanServed(t *testing.T) {
 	d := isolationDomain()
+
+	// The old address must redirect, not 404: it is in bookmarks and in this
+	// console's own history.
 	rec := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/os/d/"+d.ID+"/theme", nil)
-	(&App{}).handleOSTheme(rec, r.WithContext(context.WithValue(r.Context(), ctxScopedDomainKey, d)))
-	perSite := rec.Body.String()
-	if perSite == "" {
-		t.Fatal("the per-site Theme Studio rendered nothing, so the assertions below prove nothing")
+	(&App{}).handleOSScopedThemeRetired(rec, r.WithContext(context.WithValue(r.Context(), ctxScopedDomainKey, d)))
+	if rec.Code != http.StatusMovedPermanently {
+		t.Fatalf("the retired per-site Theme Studio answered %d, want a permanent redirect — a "+
+			"dead link teaches nothing and the URL is in circulation", rec.Code)
+	}
+	if got := rec.Header().Get("Location"); got != "/os/d/"+d.ID+"/settings" {
+		t.Errorf("it redirects to %q, not this site's own settings page", got)
 	}
 
-	// Asserted on the two CONTROLS, not through assertNoInstallWideLinks.
-	//
-	// That helper takes a body fragment; the other six pages are tested through
-	// their body builders, which emit no shell. This one has to go through the
-	// handler — the withholding decision needs the request — so the output
-	// carries the whole VayuOS chrome: /os/static/…, /os/manifest.webmanifest and
-	// every nav entry. Running the generic matcher over it reports the navigation
-	// as a finding, which is noise, not the defect. Naming the two controls keeps
-	// the assertion about the thing that was wrong.
-	for _, gone := range []string{`href="/os/theme/store"`, `href="/os/api/theme/export"`} {
-		if strings.Contains(perSite, gone) {
-			t.Errorf("the per-site Theme Studio still renders %s. It is an absolute install-wide "+
-				"route, and the export handler resolves osScope to the PRIMARY when reached that "+
-				"way — so the button downloads the operator's own theme from a page titled with "+
-				"the client's domain", gone)
-		}
+	// It must not be routed to the Theme Studio handler any more.
+	routes := readSourceFile(t, "admin_os_ui.go")
+	if strings.Contains(routes, `dr.Get("/theme", a.handleOSTheme)`) {
+		t.Error("Theme Studio is mounted per-site again. Its script posts to absolute " +
+			"/os/api/... paths, so every write from that page lands on the primary")
 	}
 
-	// The install-wide mount must KEEP them, or this is a feature deleted rather
-	// than a control scoped.
-	wideRec := httptest.NewRecorder()
-	(&App{}).handleOSTheme(wideRec, httptest.NewRequest(http.MethodGet, "/os/theme", nil))
-	wide := wideRec.Body.String()
+	// The console must stop advertising it as this site's own, and must still
+	// NAME it — an operator needs to know what a hosted site does not get.
+	page := scopedConsolePage(d, 0, 0, 0, true, nil, nil, nil, nil)
+	if strings.Contains(page, "/os/d/"+d.ID+"/theme") {
+		t.Error("the console still links the retired per-site Theme Studio")
+	}
+	if !strings.Contains(page, "Theme Studio") {
+		t.Error("the console no longer mentions Theme Studio at all, so an operator cannot tell " +
+			"whether a hosted site has its own — silence is how the first version of this misled")
+	}
+
+	// And the install-wide Studio must be untouched.
+	wide := httptest.NewRecorder()
+	(&App{}).handleOSTheme(wide, httptest.NewRequest(http.MethodGet, "/os/theme", nil))
 	for _, want := range []string{`href="/os/theme/store"`, `href="/os/api/theme/export"`} {
-		if !strings.Contains(wide, want) {
-			t.Errorf("the install-wide Theme Studio lost %s — the fix was to withhold these on a "+
-				"client's page, not to remove them from the operator's own", want)
+		if !strings.Contains(wide.Body.String(), want) {
+			t.Errorf("the operator's own Theme Studio lost %s — the fix was to stop serving it "+
+				"per-site, not to strip it", want)
 		}
-	}
-
-	// And the per-site page must SAY why they are missing, or the operator reads
-	// it as a rendering fault and goes looking for the button.
-	if !strings.Contains(perSite, "install-wide only") {
-		t.Error("the per-site page withholds the controls without explaining that they are " +
-			"install-wide, so their absence reads as a bug")
 	}
 }
 

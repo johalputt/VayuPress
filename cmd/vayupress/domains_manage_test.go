@@ -47,11 +47,21 @@ func TestDomainManagerBrandingEscapes(t *testing.T) {
 	}
 	// It must instead POINT AT the scoped editors, or the fields become
 	// unreachable and this is a removal rather than a consolidation.
-	for _, want := range []string{`href="/os/d/s1/settings"`, `href="/os/d/s1/theme"`} {
+	//
+	// /os/d/{id}/theme USED TO BE the second of these. It is retired: its writes
+	// went to the primary, so it was never an editor for this site's colours —
+	// and removing it would have left them with no way in, which is what this
+	// assertion exists to prevent. The colour keys moved onto the settings page
+	// instead, so one link now covers both halves of ADR-0154 D3.
+	for _, want := range []string{`href="/os/d/s1/settings"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the console does not link %s, so retiring the duplicate editor left "+
 				"those fields with no way in", want)
 		}
+	}
+	if strings.Contains(page, `href="/os/d/s1/theme"`) {
+		t.Error("the console links the retired per-site Theme Studio, whose every write lands " +
+			"on the operator's own install")
 	}
 	// The live-view link uses the site's own origin (https for a clearnet host).
 	if !strings.Contains(page, `href="https://shop.example"`) {

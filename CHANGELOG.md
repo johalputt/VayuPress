@@ -64,23 +64,50 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   A bundle page there now renders under the strict baseline. That is the right
   security answer and a real cost, and it is named rather than denied.
 
+- **The per-site Theme Studio wrote the operator's own install, and is
+  retired.** This was recorded as known-and-open in v3.17.48's notes; it is
+  fixed now, by removal rather than repair, because there was nothing to repair.
+
+  `/os/d/{id}/theme` served Theme Studio — the same handler as `/os/theme`,
+  mounted a second time — under a tile calling it *"Colours, typography and
+  custom CSS — this site's own"*. It was none of those for a hosted site, at two
+  levels. The page's script posts to absolute `/os/api/theme/apply`,
+  `/os/api/theme/code`, `/os/api/theme/import`, `/os/api/settings` and the
+  branding uploads, none of which carry the scoped context, so every write landed
+  on the primary. Beneath that, `theme_tokens` is `CHECK(id=1)` — one row for the
+  whole install by schema — and applying a theme also sets `render.SetThemeCSS`,
+  a process global, then purges every cache. There is no per-site theme for a
+  scoped route to write.
+
+  So an operator opening a client's Theme Studio, changing colours and pressing
+  **Apply** restyled their own site. That is ADR-0154 D2's reported bug as a
+  write rather than a link, and the comment on the route asserted the opposite —
+  "it reads its scope from the request, so one code path serves both". The
+  *handler* does. The *page* does not, and a test checking the handler and not
+  the page it serves is what kept this alive for so long.
+
+  The address now redirects to the per-site settings page rather than 404ing —
+  it is in bookmarks and in this console's own history — and Theme Studio is
+  named in `sharedTools` as install-wide, alongside the media library and the
+  newsletter: stated, not linked.
+
+  **Retiring it would have left a hosted site's colours with no editor**, since
+  D3 named Theme Studio as the one for colour. So `theme.accent_light`,
+  `theme.accent_dark` and `head.theme_color` moved onto `/os/d/{id}/settings`,
+  which writes through `osScope` and genuinely scopes. They are a separate group
+  from the identity fields, because the Identity tile counts that set and "4 of
+  7" would mean something no label explains. The operator's editor and the
+  client's own `/os/mysite` now write the same three keys to the same store.
+
+  Two tests that REQUIRED the broken design are retired with their reasons —
+  one demanded the per-site mount exist, the other demanded the console link it.
+  Four mutations killed, including remounting it and silently dropping colour
+  from the save allowlist.
+
 ### Upgrade Notes
 
-- **Known, not fixed: the per-site Theme Studio writes the PRIMARY site.**
-  `static/js/admin-os-theme.js` hard-codes absolute install-wide endpoints —
-  `/os/api/theme/apply`, `/os/api/theme/code`, `/os/api/theme/import`,
-  `/os/api/settings` and the branding uploads. The per-site mount serves that
-  same script, so on `/os/d/{id}/theme` pressing **Apply theme**, saving custom
-  CSS, importing a theme or uploading a mark acts on the operator's own install,
-  not the client's. The scoped route registered beside it
-  (`/os/d/{id}/api/theme/code`) is never called by the page, and its existence is
-  part of why the mount read as scoped.
-
-  This predates v3.17.48 and is the write half of the same defect whose link half
-  is fixed above. It is stated here rather than fixed quietly at the tail of a
-  release, because the fix is a client-side base-path change across several
-  endpoints shared with other pages, and it deserves its own change with its own
-  tests.
+- **Superseded — the per-site Theme Studio finding above is now fixed.** It was
+  recorded here as known-and-open when v3.17.48 shipped.
 
 ---
 
