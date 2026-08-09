@@ -10,6 +10,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **The console session's host binding is a control that exists only as an
+  omission, and it is now pinned.** No defect was found here — this is a clean
+  verification, recorded because of what the property rests on.
+
+  The cross-site map raised it as a suspected hole: the `sessions` table is
+  `(token_hash, user_id, created_at, expires_at)` with no host column, `Validate`
+  takes no host parameter, and `resolveConsoleUser` runs on public site
+  navigation. Read together that says an operator's session is valid on every
+  hostname this install answers for, a customer's included.
+
+  It is not, and the reason is not in the table. `vp_session` is written with no
+  `Domain` attribute, which under RFC 6265 makes it **host-only**: the browser
+  returns it to the exact host that set it and to nothing else, not even a
+  subdomain. An operator never presents that cookie to a client's domain, so
+  `Validate` is never reached there — resolution stops at an absent token before
+  any query, which is also why a per-pageview session lookup is not being paid on
+  every hosted site. The token is accepted from the cookie and from no header or
+  query parameter, so there is no second channel that would escape the rule.
+
+  What makes it worth a changelog entry is that the whole binding is a field
+  nobody sets. It is invisible in review and one plausible, well-meaning line
+  from being gone — setting `Domain` so the session also works on `mail.<host>`
+  and `mcp.<host>` would widen it to every subdomain at once. That could not
+  reach a customer's own domain, but it reaches further than login:
+  `resolveCommenter` treats any signed-in operator as a paid member with access
+  to gated content on whatever host the request arrived at, and the cookie's
+  scope is what bounds that to one hostname. The dependency is now stated at the
+  cookie's declaration and asserted against the `Set-Cookie` header a browser
+  actually receives. Five mutations killed, including adding `Domain`, relaxing
+  `SameSite`, and accepting the token from a header.
+
+  Note this is now belt and braces with the edge refusal above: `/os` does not
+  answer on a client vhost at all, and the cookie would not travel there if it
+  did.
+
 - **Every hosted domain appeared in the operator's referrer list as a site
   referring traffic to itself.** The exclusion behind "internal navigation is not
   a referral" was built from `config.Cfg.Domain` — one value, on an install that

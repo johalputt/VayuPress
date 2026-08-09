@@ -14,6 +14,26 @@ import (
 )
 
 // SessionCookie is the cookie name carrying the opaque session token.
+//
+// IT IS WRITTEN WITH NO Domain ATTRIBUTE, ON PURPOSE, AND THAT OMISSION IS THE
+// HOST BINDING OF EVERY CONSOLE SESSION. Under RFC 6265 a cookie with no Domain
+// is host-only: the browser returns it to the exact host that set it and to
+// nothing else, not even a subdomain. This install serves many domains from one
+// process, and the sessions table records no host — so an operator's session is
+// confined to the hostname they signed in at solely because their browser never
+// offers the cookie anywhere else.
+//
+// Adding Domain to make the session span mail.<host> or mcp.<host> would widen
+// it to every subdomain at once. It could not reach a customer's own domain (a
+// Domain attribute only widens to a parent of the setting host), but it would
+// reach further than login: resolveCommenter treats any signed-in operator as a
+// paid member with access to gated content on whatever host the request arrived
+// at, and the cookie's scope is what bounds that to one hostname.
+//
+// session_host_binding_test.go asserts the property on the Set-Cookie header a
+// browser actually receives, and that a token is accepted from the cookie and
+// from no header or query parameter — a second channel would not be subject to
+// any cookie rule at all.
 const SessionCookie = "vp_session"
 
 // DefaultSessionTTL is how long a login session remains valid.
