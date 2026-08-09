@@ -461,6 +461,15 @@ func (a *App) handleVAEnter(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	// Same rule as the page-view ingest beside it: a country the operator refused
+	// cannot write engagement either. Both beacons reach this process on the /api
+	// bypass, so gating only one of them would leave the operator's audience
+	// report half-honest — and the half that lied would be the one with the
+	// bigger numbers.
+	if a.analyticsGeoRefused(geoFromHeaders(r).Country) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 
 	utm := parseUTM(req.Q)
 	class := classifier.Classify(req.R, config.Cfg.Domain, utm, isBot)

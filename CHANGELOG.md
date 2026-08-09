@@ -6,6 +6,69 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.44] — 2026-08-09
+
+**The actual answer.** The country rule was working the whole time. What was not
+was the one path it had no authority over — and, separately, the evidence used to
+judge it.
+
+### Fixed
+
+- **A refused country could still write into the operator's own Analytics.** The
+  ingest (`POST /api/v1/analytics/collect`, and the engagement beacon beside it)
+  is public, unauthenticated and on VayuShield's `/api` bypass. That bypass is
+  correct and stays — a beacon is a machine request and cannot solve a browser
+  challenge, so shielding it would break every honest reader's page view. But
+  *cannot be challenged* was conflated with *exempt from an explicit operator
+  refusal*, and nothing on that path ever consulted the operator's rules.
+
+  The result on a live install: Singapore was marked never-serve and **the page
+  path refused it correctly** — verified here by two tests against that install's
+  exact configuration, one showing a denied visitor gets `503` with zero requests
+  reaching the application, the other showing a **solved challenge does not escape
+  it**. So those visitors never loaded a page and never ran the tracking script.
+  Singapore nevertheless stayed at the top of Analytics, because a client can POST
+  beacons straight at the ingest without ever requesting a page. The operator's
+  own panel told them a country they had refused was their largest audience.
+
+  Refusing there is only safe *because* the page path provably refuses those
+  countries: no legitimately served traffic can be hidden, because there is none.
+  The comment says so, so the day that stops being true is the day this is
+  revisited.
+
+  A **challenged** country is untouched. Its readers were asked to prove they are
+  people, not turned away, and dropping the ones who did would under-report an
+  audience the operator deliberately kept.
+
+### Added
+
+- **A `Country rules cover Analytics` posture row** counting the beacons dropped.
+  A number that quietly falls out of a report is the same defect as one that
+  should not be in it.
+
+### Audit
+
+Three mutations. Two killed: treating a challenged country as refused, and
+dropping silently without counting.
+
+The third **survived, and was right to** — removing a `country == ""` guard
+changed nothing, because `policy.Rules.Country("")` already returns
+`VerdictNone`. The guard was a second copy of a rule that already had a home, and
+a surviving mutation is exactly how a duplicate announces itself. Deleted rather
+than defended, along with an unused `*http.Request` parameter the function never
+read.
+
+### Note on the evidence
+
+Recorded because it shaped nine releases: the "no Singapore in seven days" figure
+this investigation was built on came from `vayushield_history`, whose country
+breakdown queries **`FROM vayushield_blocked` only** (`botdb/trail.go:174`). A
+geo-denied browser navigation is offered a solvable challenge first, so it is
+recorded in `vayushield_challenges` — a different table, absent from that view.
+The rule was firing all along and the report could not show it.
+
+---
+
 ## [3.17.43] — 2026-08-09
 
 **One request now has one country.** This is the root cause under a week of

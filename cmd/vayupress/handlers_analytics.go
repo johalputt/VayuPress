@@ -151,6 +151,14 @@ func (a *App) handleAnalyticsCollect(w http.ResponseWriter, r *http.Request) {
 	}
 	// Geo is set server-side from trusted proxy headers, never from the beacon.
 	req.Geo = geoFromHeaders(r)
+	// An operator's "never serve" country does not get to write into their own
+	// analytics. The page path refuses these visitors outright — verified by test,
+	// including that a solved challenge does not escape it — so a beacon claiming
+	// to be a page view from there did not come from a page this site served.
+	if a.analyticsGeoRefused(req.Geo.Country) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	// The domain is resolved by THIS INSTALL from the host it served, never from
 	// the beacon body. This endpoint is public and unauthenticated: a domain a
 	// visitor could name is a domain a visitor could write traffic into.

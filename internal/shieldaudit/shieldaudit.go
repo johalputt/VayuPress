@@ -236,6 +236,10 @@ type Inputs struct {
 	CountryEdgeAnswers   int64
 	CountryTableAnswers  int64
 	CountryDisagreements int64
+	// AnalyticsGeoRefusals is how many analytics beacons an operator country rule
+	// dropped. Reported because a number that quietly falls out of a report is the
+	// same defect as a number that should not be in it.
+	AnalyticsGeoRefusals int64
 	// GeoRulesSet reports that the operator has stated at least one rule keyed on
 	// the visitor's country. It changes what the real-IP failure MEANS: without
 	// geo rules an unresolved visitor address is a rate-limiting problem, and
@@ -413,6 +417,17 @@ func Run(in Inputs) []Check {
 			"A forwarding header was honoured, but this site is not marked as proxied. Check that the peer really is a trusted proxy — otherwise a visitor can choose the address they are limited under.")
 	default:
 		add("Real visitor IP", Pass, "Traffic arrives directly, so the connection's peer address is the visitor.")
+	}
+
+	// --- The operator's country rules, at the ingest --------------------------
+
+	if in.AnalyticsGeoRefusals > 0 {
+		add("Country rules cover Analytics", Pass,
+			"Your \"never serve\" countries are refused at the analytics ingest too: "+
+				itoa64(in.AnalyticsGeoRefusals)+" beacon(s) dropped. That endpoint is public and "+
+				"exempt from the shield's challenges by design — a beacon cannot solve one — so "+
+				"without this a refused country could still post page views into your own report "+
+				"and appear as your largest audience while never being served a page.")
 	}
 
 	// --- Where the country verdict comes from --------------------------------
