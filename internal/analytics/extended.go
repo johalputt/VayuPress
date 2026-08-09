@@ -447,13 +447,12 @@ func (s *Store) TopReferrers(ctx context.Context, days, limit int) ([]ReferrerSt
 	// as direct. One dataset, two panels, opposite answers: the referrer list was
 	// topped by the operator's own webmail and MCP hosts, each with a count larger
 	// than the site's entire pageview total.
-	site, sub, sitePort, subPort := selfHostPatterns()
+	notSelf, selfArgs := s.selfHostExclusion("referrer")
 	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT referrer,COUNT(1) as cnt FROM analytics_pageviews
-		 WHERE created_at>=? AND event_type=1 AND referrer!=''
-		   AND LOWER(referrer)<>? AND LOWER(referrer) NOT LIKE ?
-		   AND LOWER(referrer) NOT LIKE ? AND LOWER(referrer) NOT LIKE ?
-		 GROUP BY referrer ORDER BY cnt DESC LIMIT ?`, from, site, sub, sitePort, subPort, limit)
+		 WHERE created_at>=? AND event_type=1 AND referrer!=''`+notSelf+
+			` GROUP BY referrer ORDER BY cnt DESC LIMIT ?`,
+		append(append([]any{from}, selfArgs...), limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -749,13 +748,12 @@ func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 	// place the same predicate was needed and the third place it was missing —
 	// which is why they now share selfHostPatterns rather than each carrying a
 	// copy of the WHERE clause.
-	liveSite, liveSub, liveSitePort, liveSubPort := selfHostPatterns()
+	liveNotSelf, liveSelfArgs := s.selfHostExclusion("referrer")
 	if rows, err := s.readDB().QueryContext(ctx,
 		`SELECT referrer,COUNT(1) FROM analytics_pageviews
-		 WHERE created_at>=? AND referrer!=''
-		   AND LOWER(referrer)<>? AND LOWER(referrer) NOT LIKE ?
-		   AND LOWER(referrer) NOT LIKE ? AND LOWER(referrer) NOT LIKE ?
-		 GROUP BY referrer ORDER BY 2 DESC LIMIT 10`, since, liveSite, liveSub, liveSitePort, liveSubPort); err == nil {
+		 WHERE created_at>=? AND referrer!=''`+liveNotSelf+
+			` GROUP BY referrer ORDER BY 2 DESC LIMIT 10`,
+		append([]any{since}, liveSelfArgs...)...); err == nil {
 		for rows.Next() {
 			var a AudienceStat
 			if err := rows.Scan(&a.Label, &a.Count); err == nil {

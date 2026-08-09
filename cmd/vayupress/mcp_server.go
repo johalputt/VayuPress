@@ -681,9 +681,11 @@ func (a *App) buildMCPServer() *mcp.Server {
 	srv.Register(mcp.Tool{
 		Name: "analytics_audience",
 		Description: "Return where traffic came from over the last N days: visitors and pageviews " +
-			"grouped by country, region, city, browser, device or operating system. Aggregate " +
-			"counts only — VayuPress stores no per-visitor personal data. Use this to check what " +
-			"a country rule is actually doing rather than reading it off a dashboard.",
+			"grouped by country, region, city, browser, device or operating system. Covers EVERY " +
+			"domain this install serves, added together — it is not scoped to one site and takes " +
+			"no host parameter. Aggregate counts only — VayuPress stores no per-visitor personal " +
+			"data. Use this to check what a country rule is actually doing rather than reading " +
+			"it off a dashboard.",
 		InputSchema: objSchema(nil, map[string]any{
 			"report": strProp("One of: countries (default), regions, cities, browsers, devices, os."),
 			"days":   intProp("Look-back window in days (default 30, max 365)."),
@@ -735,7 +737,7 @@ func (a *App) buildMCPServer() *mcp.Server {
 	// optimise the site. Read-only.
 	srv.Register(mcp.Tool{
 		Name:        "analytics_summary",
-		Description: "Return a privacy-first traffic summary for the last N days: total pageviews, unique visitors, visits, bounce rate, average visit duration, and the top pages. Aggregate counts only — VayuPress stores no per-visitor personal data.",
+		Description: "Return a privacy-first traffic summary for the last N days: total pageviews, unique visitors, visits, bounce rate, average visit duration, and the top pages. Covers EVERY domain this install serves, added together — it is not scoped to one site and takes no host parameter. Aggregate counts only — VayuPress stores no per-visitor personal data.",
 		InputSchema: objSchema(nil, map[string]any{
 			"days":  intProp("Look-back window in days (default 30, max 365)."),
 			"limit": intProp("How many top pages to return (default 10, max 50)."),

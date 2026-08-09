@@ -450,6 +450,33 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 // is only ever invoked from the background fragment cache — never inline on a
 // request. Returns "" on a hard query error so the cache retries rather than
 // caching an empty report.
+// analyticsScopeNote says whose traffic this page is counting.
+//
+// Every figure on it comes from the UNSCOPED readers (Since, OverviewSince,
+// TopPages …), so on a multi-domain install each one sums every hosted domain.
+// The page never said so. It made no false claim either — its subtitle only ever
+// promised "computed on your own server" — but an operator hosting thirty
+// clients reads "Analytics", sees a number, and has no way to know whether it is
+// theirs or everyone's. Silence about scope, on a page whose sibling IS scoped,
+// is a number that means something different from what it looks like.
+//
+// Nothing is said on a single-domain install: there the figures are the whole
+// truth already, and a caveat that can never apply is noise that teaches the
+// reader to skip the notices that do.
+func (a *App) analyticsScopeNote(ctx context.Context) string {
+	if a.domains == nil {
+		return ""
+	}
+	list, err := a.domains.List(ctx)
+	if err != nil || len(list) < 2 {
+		return ""
+	}
+	return `<div class="card"><p class="text-sm muted"><strong>These figures cover every domain ` +
+		`this install serves</strong> — all ` + strconv.Itoa(len(list)) + ` of them, added together. ` +
+		`For one site on its own, open it from <a href="/os/domains">Sites</a> and use its own ` +
+		`Visitors page; that one is filtered to that hostname.</p></div>`
+}
+
 func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel string) string {
 	sum, err := a.analytics.Since(ctx, days, 10)
 	if err != nil {
@@ -658,6 +685,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		` · updated ` + config.FormatSiteStamp(now) + `</span>
 </div>
 <p class="page-sub">Privacy-first, cookieless analytics — audience, engagement, geography and campaigns, all computed on your own server. Tap a card to expand it.</p>` +
+		a.analyticsScopeNote(ctx) +
 		osPeriodSelector(days) + kpiHeader + sections + osPrivacyNote()
 
 	return body

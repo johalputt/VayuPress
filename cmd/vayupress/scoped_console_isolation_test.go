@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/bizsite"
+	"github.com/johalputt/vayupress/internal/customsite"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
 )
@@ -41,6 +43,19 @@ var scopedSiteLinkAllowlist = map[string]bool{
 	"/os/domains": true,
 	"/os/dns":     true,
 	"/os":         true,
+	// VayuMCP is connector SETUP, not a tool that edits a site. Following it
+	// pairs an assistant with this install; it changes no site's content, so it
+	// cannot produce the outcome D2 exists to stop — an operator editing the
+	// primary from a page titled with a client's domain. The pages that link it
+	// say so in the sentence around it ("ask an assistant to build a site for
+	// <this host>"), and the assistant then takes the host from list_sites.
+	//
+	// /os/seo was NOT admitted here and its link was removed instead. That one is
+	// a report about the primary's cached artefacts, offered from a page titled
+	// with a client's domain, under a caveat — which is exactly the "demoted, not
+	// absent" shape D2 rules out. Its own sentence said "it is not shown here"
+	// while being a link to it.
+	"/os/vayumcp": true,
 }
 
 // scopedSiteLinkPrefixAllowlist are destinations addressed by a SLUG that this
@@ -107,6 +122,32 @@ func TestEveryPerSiteToolLinksNoInstallWideTool(t *testing.T) {
 		{Title: "A page", Slug: "a-page", Status: "published", IsPage: true, UpdatedAt: time.Unix(3, 0).UTC()},
 	}
 	assertNoInstallWideLinks(t, "the content page", d.ID, scopedContentPage(d, items))
+}
+
+// ADR-0154 D2 says "A test enforces this: any href="/os/<tool>" in per-site
+// markup fails the build." It named every per-site page and the test ran on two
+// of them — so /os/d/{id}/seo shipped an <a href="/os/seo"> and the website page
+// shipped two links to /os/vayumcp, none of which any assertion could see.
+//
+// A gate that covers a third of what it claims is the failure class this audit
+// track keeps finding: the claim is the control, and nobody checks the claim.
+// Every per-site renderer is now driven through the same helper, so adding a
+// page and forgetting this test is the thing that has to be noticed, not the
+// thing that silently passes.
+func TestEveryPerSitePageIsCheckedForInstallWideLinks(t *testing.T) {
+	d := isolationDomain()
+	for _, c := range []struct{ label, page string }{
+		{"the site console", scopedConsolePage(d, 3, 2, 1, true, nil, nil, nil, nil)},
+		{"the content page", scopedContentPage(d, []dbpkg.Article{
+			{Title: "Live one", Slug: "live-one", Status: "published", UpdatedAt: time.Unix(1, 0).UTC()},
+		})},
+		{"the SEO page", scopedSEOBody(d.ID, "https://"+d.Host, map[string]string{"canonical": "https://" + d.Host})},
+		{"the settings page", scopedSettingsBody(d.ID, d.Host, map[string]string{}, presUnknown)},
+		{"the website page", scopedWebsitePage(d, "", bizsite.Content{}, false, customsite.Manifest{})},
+		{"the analytics page", scopedAnalyticsBody(10, 5, 25.0, 42.0, nil)},
+	} {
+		assertNoInstallWideLinks(t, c.label, d.ID, c.page)
+	}
 }
 
 // The drafts must be listed. The public listing excludes them by design, and an

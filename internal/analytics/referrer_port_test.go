@@ -65,7 +65,7 @@ func TestSelfHostPatternsCoverThePortForms(t *testing.T) {
 	t.Cleanup(func() { config.Cfg.Domain = prev })
 	config.Cfg.Domain = "Johal.in" // mixed case: the helper must lower it
 
-	host, sub, hostPort, subPort := selfHostPatterns()
+	host, sub, hostPort, subPort := selfHostPatterns(config.Cfg.Domain)
 	if host != "johal.in" {
 		t.Fatalf("host = %q, want %q (the helper must lower-case the domain)", host, "johal.in")
 	}

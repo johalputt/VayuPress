@@ -26,6 +26,10 @@ type Store struct {
 	db     *sql.DB
 	reader *sql.DB    // dashboard/report read pool; falls back to db. Set via UseReader.
 	coll   *collector // in-memory view tally; see recorder.go
+	// selfHosts reports every host this install answers for, so referrer lists
+	// exclude internal navigation on ALL of them. Nil is the single-domain
+	// shape; see UseSelfHosts.
+	selfHosts func() []string
 }
 
 // New creates a Store.
@@ -130,8 +134,8 @@ func (s *Store) ViewsForScope(ctx context.Context, scope string, days, limit int
 	return total, top, nil
 }
 
-// selfHostPatterns returns the site's own host and the LIKE pattern matching its
-// subdomains, for excluding internal navigation from referrer lists.
+// selfHostPatterns returns one host's exact form and the LIKE patterns matching
+// its subdomains, for excluding internal navigation from referrer lists.
 //
 // It exists because the same exclusion was written once, in one of the two
 // referrer queries, and the panel called the other one. A predicate duplicated
@@ -143,9 +147,65 @@ func (s *Store) ViewsForScope(ctx context.Context, scope string, days, limit int
 // into the operator's referrer list looking like an external site. Ingest now
 // strips the port (see referrerHost), but rows recorded before that still carry
 // it, so the read path excludes both spellings and needs no data migration.
-func selfHostPatterns() (host, subdomainLike, hostPortLike, subdomainPortLike string) {
-	host = strings.ToLower(strings.TrimSpace(config.Cfg.Domain))
+func selfHostPatterns(host string) (exact, subdomainLike, hostPortLike, subdomainPortLike string) {
+	host = strings.ToLower(strings.TrimSpace(host))
 	return host, "%." + host, host + ":%", "%." + host + ":%"
+}
+
+// UseSelfHosts supplies every host this install answers for, so referrer lists
+// can exclude ALL of them rather than only the primary.
+//
+// WHY THIS EXISTS. The exclusion was built from config.Cfg.Domain alone, which
+// is one value on an install that serves many domains. So on a multi-domain
+// install a hosted domain's own internal navigation was not excluded: a visitor
+// moving between two pages of client.example produced a referral FROM
+// client.example, and the list an operator reads was topped by the client's own
+// hostname. That is the exact defect already fixed for the primary — the comment
+// at TopReferrers describes it happening with the operator's own webmail and MCP
+// hosts — left open for every domain added since.
+//
+// A function rather than a slice because the registry changes while the process
+// runs; it is read per query and the registry's own snapshot cache makes that
+// cheap. Nil is the single-domain shape and stays byte-identical: the primary is
+// always excluded whether or not anything calls this.
+func (s *Store) UseSelfHosts(fn func() []string) { s.selfHosts = fn }
+
+// selfHostExclusion builds the WHERE fragment that removes this install's own
+// hosts from a referrer column, with its bind arguments.
+//
+// col is interpolated into SQL and MUST therefore be a compiled-in literal —
+// every caller passes a constant column name and nothing derived from a request
+// reaches it. The VALUES are bound, never formatted.
+func (s *Store) selfHostExclusion(col string) (string, []any) {
+	seen := map[string]bool{}
+	var hosts []string
+	add := func(h string) {
+		h = strings.ToLower(strings.TrimSpace(h))
+		// An empty host would produce the pattern "%." matching every referrer
+		// with a dot in it — i.e. an exclusion that empties the whole list. A
+		// registry row mid-write is not a reason to report no referrals at all.
+		if h == "" || seen[h] {
+			return
+		}
+		seen[h] = true
+		hosts = append(hosts, h)
+	}
+	add(config.Cfg.Domain)
+	if s.selfHosts != nil {
+		for _, h := range s.selfHosts() {
+			add(h)
+		}
+	}
+
+	var b strings.Builder
+	args := make([]any, 0, len(hosts)*4)
+	for _, h := range hosts {
+		exact, sub, exactPort, subPort := selfHostPatterns(h)
+		b.WriteString(" AND LOWER(" + col + ")<>? AND LOWER(" + col + ") NOT LIKE ?" +
+			" AND LOWER(" + col + ") NOT LIKE ? AND LOWER(" + col + ") NOT LIKE ?")
+		args = append(args, exact, sub, exactPort, subPort)
+	}
+	return b.String(), args
 }
 
 // PathCount is a path with its view total over the queried window.
@@ -339,21 +399,18 @@ func (s *Store) Since(ctx context.Context, days, limit int) (*Summary, error) {
 	// because fixing the function whose name matched is not the same as fixing the
 	// one the panel calls. Both now share selfHostPatterns so they cannot drift
 	// apart again.
-	site, sub, sitePort, subPort := selfHostPatterns()
+	notSelf, selfArgs := s.selfHostExclusion("host")
 	// The population behind the top-N list, under the identical exclusions — a
 	// denominator taken from a different filter would be its own quiet lie.
 	if err := s.readDB().QueryRowContext(ctx,
-		`SELECT COALESCE(SUM(hits),0) FROM analytics_referrers
-		 WHERE day>=? AND LOWER(host)<>? AND LOWER(host) NOT LIKE ?
-		   AND LOWER(host) NOT LIKE ? AND LOWER(host) NOT LIKE ?`,
-		from, site, sub, sitePort, subPort).Scan(&sum.TotalReferrals); err != nil {
+		`SELECT COALESCE(SUM(hits),0) FROM analytics_referrers WHERE day>=?`+notSelf,
+		append([]any{from}, selfArgs...)...).Scan(&sum.TotalReferrals); err != nil {
 		sum.TotalReferrals = 0
 	}
 	if rows, err := s.readDB().QueryContext(ctx,
-		`SELECT host,SUM(hits) h FROM analytics_referrers
-		 WHERE day>=? AND LOWER(host)<>? AND LOWER(host) NOT LIKE ?
-		   AND LOWER(host) NOT LIKE ? AND LOWER(host) NOT LIKE ?
-		 GROUP BY host ORDER BY h DESC LIMIT ?`, from, site, sub, sitePort, subPort, limit); err == nil {
+		`SELECT host,SUM(hits) h FROM analytics_referrers WHERE day>=?`+notSelf+
+			` GROUP BY host ORDER BY h DESC LIMIT ?`,
+		append(append([]any{from}, selfArgs...), limit)...); err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var h HostCount

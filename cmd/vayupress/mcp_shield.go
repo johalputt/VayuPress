@@ -302,9 +302,10 @@ func (a *App) registerShieldTools(srv *mcp.Server) {
 	// up. Diagnosing that from a screenshot is how a wrong conclusion gets shipped.
 	srv.Register(mcp.Tool{
 		Name: "analytics_referrers",
-		Description: "Return the top referring hosts for the last N days, with counts. The site's " +
-			"own domain and subdomains are excluded — internal navigation is not a referral. " +
-			"Aggregate counts only. Read-only.",
+		Description: "Return the top referring hosts for the last N days, with counts. Every host " +
+			"this install serves, and their subdomains, are excluded — internal navigation is not " +
+			"a referral. Covers EVERY domain this install serves, added together; it is not scoped " +
+			"to one site and takes no host parameter. Aggregate counts only. Read-only.",
 		InputSchema: objSchema(nil, map[string]any{
 			"days":  intProp("Look-back window in days (default 30, max 365)."),
 			"limit": intProp("How many referrers to return (default 20, max 200)."),

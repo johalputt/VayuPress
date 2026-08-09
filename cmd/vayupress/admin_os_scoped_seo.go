@@ -144,7 +144,7 @@ func scopedSEOBody(domainID, origin string, declared map[string]string) string {
 	// The honest limit, on the page rather than in a commit message.
 	b.WriteString(monAcc("🏛", "What is still install-level", "Not per-domain, and not claimed to be",
 		`<span class="mon-chip mon-chip--off">by construction</span>`, false,
-		`<div class="card"><p class="text-sm muted">The <a href="/os/seo">SEO health report</a> checks cached `+
+		`<div class="card"><p class="text-sm muted">The install-wide SEO health report checks cached `+
 			`artefacts and the install's canonical hostname, so it describes the primary site. It is not shown `+
 			`here rather than shown here mislabelled: a freshness check reported under this domain's name, `+
 			`measuring another site's files, would be worse than no check at all.</p></div>`))

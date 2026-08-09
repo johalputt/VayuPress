@@ -891,6 +891,11 @@ func main() {
 	// widget, is memoised ~24h and single-flighted, so it borrows this pool at
 	// most once a day — negligible.)
 	a.analytics.UseReader(dbpkg.AdminReader())
+	// Every host this install answers for, so referrer lists exclude internal
+	// navigation on ALL of them and not only the primary. Without this a hosted
+	// domain's own hostname sits at the top of the operator's referrer list,
+	// counted as an external site referring traffic to itself.
+	a.analytics.UseSelfHosts(a.registeredHosts)
 	// Start the view-count flusher. Without it every view is buffered and never
 	// written, so this line is pinned by a test: a recorder that counts into a
 	// buffer nobody drains is the same defect as a setting nobody reads.

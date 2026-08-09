@@ -10,6 +10,59 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **Every hosted domain appeared in the operator's referrer list as a site
+  referring traffic to itself.** The exclusion behind "internal navigation is not
+  a referral" was built from `config.Cfg.Domain` — one value, on an install that
+  serves many domains. The primary and its subdomains were excluded and nothing
+  else was, so a visitor moving between two pages of `client.example` recorded a
+  referral **from** `client.example` and it stayed at the top of the list.
+
+  This is the same defect as the one already fixed for the primary, left
+  unfinished: `TopReferrers`' own comment describes it happening with the
+  operator's webmail and MCP hosts, "each with a count larger than the site's
+  entire pageview total". The fix stopped at the one host the code knew about.
+
+  `Store.UseSelfHosts` now supplies every registered host and one
+  `selfHostExclusion` builds the WHERE fragment for all three referrer queries,
+  in every spelling (exact, subdomain, and both `:port` forms recorded before
+  ingest stripped ports). `registeredHosts` deliberately does **not** filter by
+  status: a domain disabled today still produced the rows recorded while it was
+  live, and filtering would leave exactly those in the list. A nil hook is
+  byte-identical to the single-domain behaviour, blank and duplicate hosts are
+  dropped — an empty host yields the pattern `%.`, which matches every referrer
+  containing a dot and would silently empty the entire list — and an unreadable
+  registry narrows the exclusion rather than widening it. Six mutations killed,
+  including one that leaves the hook unwired in `main.go`.
+
+- **The install-wide Analytics page never said it was install-wide.** Every
+  figure on `/os/analytics` comes from the unscoped readers, so on a
+  multi-domain install each one sums every hosted domain. The page made no false
+  claim — its subtitle promised only "computed on your own server" — and that is
+  the failure: an operator hosting thirty clients reads "Analytics", sees a
+  number, and cannot tell whose it is, while the sibling per-site page IS scoped
+  and says so. It now states the count of domains it covers and points at where
+  a single site's figures live, on installs serving more than one domain only —
+  a caveat that can never apply is a notice operators learn to skip.
+
+  The MCP tools were the same, one layer further from anyone who could check.
+  `analytics_summary`, `analytics_audience` and `analytics_referrers` take no
+  host parameter and aggregate the whole install; all three now say so, and
+  `analytics_referrers` no longer describes "the site's own domain" in the
+  singular now that the exclusion covers every host.
+
+- **ADR-0154 D2 said a test enforces "no install-wide link on a per-site page".
+  It ran on two of the six.** So `/os/d/{id}/seo` shipped an `<a href="/os/seo">`
+  — under a caveat saying the report "describes the primary site", which is
+  precisely the demoted-not-absent shape D2 rules out, and whose own sentence
+  read "it is not shown here" while being a link to it. The link is gone; the
+  sentence stays.
+
+  `/os/vayumcp`, linked twice from the website page, was admitted to the existing
+  allowlist instead, with the reason recorded: it is connector setup, it edits no
+  site, and so it cannot produce the outcome D2 exists to stop. Every per-site
+  renderer now runs through the same assertion, so a page added later that
+  forgets this test is the thing that gets noticed.
+
 - **Three records asserted a limitation the code had already removed, in the
   present tense.** Each was found by checking a written claim against the
   mechanism it names, which is the whole method of this track and the reason the

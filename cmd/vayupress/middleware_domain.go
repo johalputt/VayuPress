@@ -214,6 +214,36 @@ func (a *App) acceptsSecondaryMailDomain(host string) bool {
 	return !d.IsPrimary && d.MailEnabled && d.Status == domain.StatusActive
 }
 
+// registeredHosts returns every host this install answers for, whatever its
+// status. It backs the analytics referrer exclusion, where the question is "is
+// this referrer us?" — and a domain that is disabled today still produced the
+// rows recorded while it was live, so filtering by status would leave exactly
+// those rows in the operator's list as phantom external referrals.
+//
+// The primary is not added here: the analytics store always excludes
+// config.Cfg.Domain, so a nil hook stays byte-identical to the single-domain
+// behaviour. Reads come from the registry's 30-second snapshot cache.
+func (a *App) registeredHosts() []string {
+	if a.domains == nil {
+		return nil
+	}
+	list, err := a.domains.List(context.Background())
+	if err != nil {
+		// Returning nothing narrows the exclusion to the primary — the old
+		// behaviour — rather than widening it. A registry we cannot read is a
+		// reason to report a referrer we might have hidden, never a reason to
+		// hide one we should have shown.
+		return nil
+	}
+	out := make([]string, 0, len(list))
+	for _, d := range list {
+		if d.Host != "" {
+			out = append(out, d.Host)
+		}
+	}
+	return out
+}
+
 // mailSecondaryHosts returns the hosts of active, mail_enabled secondary domains
 // (VayuDomains Stage 3b). It is empty on a single-domain install, so the mail
 // admin UI that consumes it stays byte-identical there.

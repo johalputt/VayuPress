@@ -398,7 +398,7 @@ func TestBothReferrerQueriesExcludeTheSiteItself(t *testing.T) {
 // the two largest entries, so matching only the bare domain would have fixed
 // almost nothing.
 func TestTheSelfHostPredicateCoversSubdomains(t *testing.T) {
-	host, like, _, _ := selfHostPatterns()
+	host, like, _, _ := selfHostPatterns(config.Cfg.Domain)
 	if like != "%."+host {
 		t.Fatalf("subdomain pattern %q does not cover subdomains of %q", like, host)
 	}
