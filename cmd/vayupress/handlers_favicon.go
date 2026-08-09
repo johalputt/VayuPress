@@ -175,11 +175,14 @@ func (a *App) serveFavicon(fallback []byte) http.HandlerFunc {
 		// icon — or its deliberate absence — is authoritative. A miss returns 404
 		// rather than falling through: an empty tab icon is a small cosmetic gap,
 		// and another business's logo on a client's domain is not.
+		// Resolved from what the bundle DECLARES, not from three guessed root
+		// names. Guessing was wrong about the bundles this project itself builds:
+		// the marketing site declares assets/favicon-32.png and carries nothing at
+		// its root, so /favicon.ico on that domain answered 404 while the site had
+		// an icon all along and every page referenced it.
 		if dir := a.customSiteDir(r); customsite.Deployed(dir) {
-			for _, p := range []string{"/favicon.ico", "/favicon.png", "/favicon.svg"} {
-				if customsite.Serve(w, r, dir, p) {
-					return
-				}
+			if p, has := customsite.IconPath(dir); has && customsite.Serve(w, r, dir, p) {
+				return
 			}
 			http.NotFound(w, r)
 			return
@@ -256,11 +259,6 @@ func siteBundleDir(id string) (string, bool) {
 	return dir, true
 }
 
-// bundleMarkPaths are the names a hand-built site may carry its icon under, in
-// the order serveFavicon already prefers them. Kept in one place so the console
-// and the public path cannot disagree about what counts as a site's mark.
-var bundleMarkPaths = []string{"/favicon.ico", "/favicon.png", "/favicon.svg"}
-
 // siteHasOwnMark reports whether a hosted site has a logo of its OWN — either
 // uploaded through its branding page, or shipped inside its deployed bundle.
 //
@@ -277,12 +275,8 @@ func (a *App) siteHasOwnMark(ctx context.Context, id string) bool {
 	if !ok {
 		return false
 	}
-	for _, p := range bundleMarkPaths {
-		if customsite.Has(dir, p) {
-			return true
-		}
-	}
-	return false
+	_, has := customsite.IconPath(dir)
+	return has
 }
 
 // hasBrandMark reports whether a scope has a mark WITHOUT decoding it.
@@ -335,14 +329,11 @@ func (a *App) handleOSScopedBrandMark(w http.ResponseWriter, r *http.Request) {
 		serveFaviconBytes(w, r, b, ct)
 		return
 	}
-	// Then the site's own bundle, in the same order the public path prefers
-	// them. An uploaded mark wins because it is the more recent, more deliberate
-	// statement of what this site's logo is.
+	// Then the icon the site's own bundle declares. An uploaded mark wins because
+	// it is the more recent, more deliberate statement of what this logo is.
 	if dir, ok := siteBundleDir(d.ID); ok {
-		for _, p := range bundleMarkPaths {
-			if customsite.Serve(w, r, dir, p) {
-				return
-			}
+		if p, has := customsite.IconPath(dir); has && customsite.Serve(w, r, dir, p) {
+			return
 		}
 	}
 	http.NotFound(w, r)

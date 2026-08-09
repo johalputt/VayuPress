@@ -150,11 +150,26 @@ func TestASiteWithNoUploadStillShowsTheLogoInsideItsOwnBundle(t *testing.T) {
 	isolateBundleRoot(t)
 	ctx := context.Background()
 
-	// A bundle-backed site: a deployed bundle carrying its own favicon.
+	// Shaped like the bundles this project ACTUALLY builds, which is the whole
+	// point. The first version of this test put favicon.png at the bundle root
+	// and passed, while the marketing site — built by scripts/build-selfhosted-
+	// site.sh from docs/site/ — declares assets/favicon-32.png and has nothing at
+	// its root at all. The fixture was more convenient than reality, so it proved
+	// a convention no real bundle follows.
 	bundled := seedSiteWithMark(t, a, "bundled.example", nil)
 	deployBundleWithFiles(t, bundled.ID, map[string]string{
-		"index.html":  "<!doctype html><title>b</title>",
-		"favicon.png": "\x89PNG\r\n\x1a\nbundle-icon",
+		"index.html": `<!doctype html><html><head>` +
+			`<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png" />` +
+			`</head><body>b</body></html>`,
+		"assets/favicon-32.png": "\x89PNG\r\n\x1a\ndeclared-icon",
+	})
+
+	// And one that ships a root favicon without declaring it, which must still
+	// be found.
+	rooted := seedSiteWithMark(t, a, "rooted.example", nil)
+	deployBundleWithFiles(t, rooted.ID, map[string]string{
+		"index.html":  "<!doctype html><title>r</title>",
+		"favicon.ico": "root-icon",
 	})
 
 	// A bundle-backed site whose bundle carries NO icon.
@@ -164,8 +179,13 @@ func TestASiteWithNoUploadStillShowsTheLogoInsideItsOwnBundle(t *testing.T) {
 	})
 
 	if !a.siteHasOwnMark(ctx, bundled.ID) {
-		t.Error("a site whose deployed bundle carries its own favicon is reported as having " +
-			"no logo, so its card shows the generic globe while the icon sits on disk")
+		t.Error("a site whose bundle DECLARES its icon via <link rel=\"icon\"> is reported as\n" +
+			"having no logo. This is the shape every bundle this project builds actually\n" +
+			"uses, so a root-only lookup finds nothing for a site that plainly has an icon.")
+	}
+	if !a.siteHasOwnMark(ctx, rooted.ID) {
+		t.Error("a bundle shipping /favicon.ico without declaring it is reported as having no " +
+			"logo; the conventional name must still be found")
 	}
 	if a.siteHasOwnMark(ctx, bare.ID) {
 		t.Error("a site whose bundle carries no icon is reported as having one — its card " +
@@ -227,7 +247,11 @@ func deployBundleWithFiles(t *testing.T, id string, files map[string]string) {
 		t.Fatal(err)
 	}
 	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+		full := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

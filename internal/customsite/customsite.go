@@ -28,11 +28,14 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"golang.org/x/net/html"
 )
 
 // Limits bound an upload. They are deliberately generous for an image-rich
@@ -450,6 +453,117 @@ func Has(base, urlPath string) bool {
 	}
 	fi, err := root.Stat(rel)
 	return err == nil && fi.Mode().IsRegular()
+}
+
+// IconPath returns the URL path of the icon the live bundle DECLARES for itself,
+// and false when it declares none that exists.
+//
+// It reads index.html and honours <link rel="icon">, because that is what the
+// site itself says its icon is and what a browser actually fetches. Guessing at
+// /favicon.ico instead was wrong about the bundles this project builds: the
+// marketing site declares assets/favicon-32.png and has nothing at its root, so
+// a root-only lookup found no icon for a site that plainly has one.
+//
+// Parsed rather than pattern-matched. A regexp over markup gets attribute order,
+// single quotes and self-closing tags wrong in ways that are invisible until a
+// bundle happens to be written the other way — and the answer here decides which
+// file a panel shows for somebody's business.
+//
+// Relative hrefs resolve against the bundle root, which is what a browser does
+// for a page served at "/". Anything absolute, protocol-relative or off-origin
+// is refused: a bundle must not be able to point the console at another host.
+// htmlNode is html.Node under a shorter name, so the walker below reads as the
+// tree walk it is.
+type htmlNode = html.Node
+
+func IconPath(base string) (string, bool) {
+	current, _, _ := dirs(base)
+	root, err := os.OpenRoot(current)
+	if err != nil {
+		return "", false
+	}
+	defer root.Close()
+
+	f, err := root.Open("index.html")
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+
+	// Bounded: an index.html large enough to matter is not one whose <head> is
+	// worth scanning further.
+	doc, err := html.Parse(io.LimitReader(f, 1<<20))
+	if err != nil {
+		return "", false
+	}
+
+	var found string
+	var walk func(*htmlNode)
+	walk = func(n *htmlNode) {
+		if found != "" || n == nil {
+			return
+		}
+		if n.Type == html.ElementNode && n.Data == "link" {
+			var rel, href string
+			for _, a := range n.Attr {
+				switch strings.ToLower(a.Key) {
+				case "rel":
+					rel = strings.ToLower(a.Val)
+				case "href":
+					href = a.Val
+				}
+			}
+			// "icon", "shortcut icon", "apple-touch-icon" all qualify; the first
+			// declared wins, which is the one a browser prefers too.
+			if strings.Contains(rel, "icon") && href != "" {
+				if p, ok := bundleRelativePath(href); ok && Has(base, p) {
+					found = p
+					return
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	if found != "" {
+		return found, true
+	}
+
+	// Then the conventional root names, for a bundle that ships one without
+	// declaring it.
+	for _, p := range []string{"/favicon.ico", "/favicon.png", "/favicon.svg"} {
+		if Has(base, p) {
+			return p, true
+		}
+	}
+	return "", false
+}
+
+// bundleRelativePath turns an icon href into a path inside the bundle, refusing
+// anything that leaves it.
+func bundleRelativePath(href string) (string, bool) {
+	href = strings.TrimSpace(href)
+	if href == "" {
+		return "", false
+	}
+	// One check, because one is what does the work. Explicit "//" and "data:"
+	// prefix tests stood here until mutation showed neither could be made to
+	// fail: url.Parse already reports a Host for the first and a Scheme for the
+	// second, so they were reassuring rather than load-bearing.
+	if u, err := url.Parse(href); err != nil || u.Scheme != "" || u.Host != "" {
+		return "", false
+	}
+	// Strip any query or fragment a cache-buster may carry.
+	if i := strings.IndexAny(href, "?#"); i >= 0 {
+		href = href[:i]
+	}
+	p := path.Clean("/" + strings.TrimPrefix(href, "/"))
+	if p == "/" {
+		return "", false
+	}
+	return p, true
 }
 
 func manifestPath(base string) string { return filepath.Join(base, "manifest.json") }

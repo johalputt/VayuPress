@@ -6,6 +6,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.34] — 2026-08-08
+
+Shipped on its own, again: the cards were still generic after v3.17.33 on the
+install that reported them.
+
+### Fixed
+
+- **A bundle's icon is found where the bundle says it is, not where three
+  guessed names hoped it would be.** v3.17.33 looked for `/favicon.ico`,
+  `/favicon.png` and `/favicon.svg` at a bundle's root. The marketing site — the
+  one this repository itself builds, from `docs/site/` — declares
+  `assets/favicon-32.png` in a `<link rel="icon">` and carries nothing at its
+  root at all. Every one of those pages referenced an icon the lookup could not
+  see.
+
+  The bundle is now asked what its own icon is: `index.html` is parsed and its
+  declared `<link rel="icon">` honoured, with the conventional root names as the
+  fallback for a bundle that ships one without declaring it. Parsed rather than
+  pattern-matched, because a regexp over markup gets attribute order, quoting and
+  self-closing tags wrong in ways that stay invisible until a bundle is written
+  the other way — and the answer decides which image the panel shows for
+  somebody's business.
+
+  **This also fixes the public path**, which had the same three-name assumption:
+  `vayupress.com/favicon.ico` answered 404 while that site had an icon all along.
+  Both now resolve through one function, so the console and the browser cannot
+  disagree about what a site's logo is.
+
+  A declared href that is absolute, protocol-relative, off-origin or a `data:`
+  URI is refused, and a relative one is resolved inside the bundle's confined
+  root. A bundle is operator-uploaded content, so its markup is the least trusted
+  input this reads.
+
+---
+
 ## [3.17.33] — 2026-08-08
 
 Shipped on its own: v3.17.32 put a per-site logo on the Optimize hub and the
