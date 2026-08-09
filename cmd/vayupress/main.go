@@ -475,7 +475,11 @@ func writeRSSScoped(host, scope string, scoped bool, rel string) {
 func generateRobots() { writeRobotsScoped(config.Cfg.Domain, "robots.txt") }
 
 func writeRobotsScoped(host, rel string) {
-	render.CacheWrite(rel, fmt.Sprintf("User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\n\nSitemap: https://%s/sitemap.xml\n", host)) //nolint:errcheck
+	// The trailing comment advertises /llms.txt. There is no standard robots.txt
+	// directive for it, and inventing one risks a strict parser rejecting the
+	// file — a comment is ignored by every parser and still found by anyone
+	// reading robots.txt to discover what a site offers.
+	render.CacheWrite(rel, fmt.Sprintf("User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\n\nSitemap: https://%s/sitemap.xml\n# LLM index: https://%s/llms.txt\n", host, host)) //nolint:errcheck
 }
 
 // =============================================================================

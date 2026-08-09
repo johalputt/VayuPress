@@ -1745,6 +1745,9 @@ type HomeArticle struct {
 }
 
 type homePage struct {
+	// JSONLD is the homepage's schema.org @graph, built in Go rather than
+	// interpolated into the template. See internal/seo/jsonld.go for why.
+	JSONLD template.HTML
 	Domain string
 	// Origin is seo.Origin(Domain): "https://<host>" clearnet, "http://<onion>" for
 	// a Tor site. Canonical/prev/next/og:url/og:image all use it so the onion emits
@@ -1842,11 +1845,13 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <link rel="prev" href="{{.Origin}}{{.PrevURL}}">{{end}}{{if .HasNext}}
 <link rel="next" href="{{.Origin}}{{.NextURL}}">{{end}}
 <link rel="alternate" type="application/rss+xml" title="{{.Domain}} feed" href="/feed.xml">
-<meta property="og:type" content="website"><meta property="og:title" content="{{.Domain}}">
+<meta property="og:type" content="website"><meta property="og:title" content="{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}{{if .Tagline}} — {{.Tagline}}{{end}}">
+<meta property="og:description" content="{{if .Description}}{{.Description}}{{else if .Tagline}}{{.Tagline}}{{else}}{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}{{end}}">
+{{if .SiteName}}<meta property="og:site_name" content="{{.SiteName}}">{{end}}
 <meta property="og:url" content="{{.Origin}}{{.Canonical}}">
 {{if .OGImage}}<meta property="og:image" content="{{.Origin}}{{.OGImage}}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="{{.Origin}}{{.OGImage}}">{{end}}
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}
-{{pwaHead}}{{pwaJS}}
+{{pwaHead}}{{pwaJS}}{{.JSONLD}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
@@ -1963,7 +1968,49 @@ func RenderHomeWithSettings(s SiteSettings, domain, version string, articles []H
 	if hasNext {
 		nextURL = blogPageURL(page + 1)
 	}
+	// The structured-data graph. Built from the same values the page renders, so
+	// it cannot describe a different site than the one on screen — and only the
+	// posts actually on this page are listed.
+	origin := seo.Origin(domain)
+	ldPosts := make([]seo.HomePost, 0, len(articles))
+	for _, a := range articles {
+		img := a.Image
+		if img != "" && strings.HasPrefix(img, "/") {
+			img = origin + img
+		}
+		ldPosts = append(ldPosts, seo.HomePost{
+			Title:       a.Title,
+			Slug:        a.Slug,
+			Excerpt:     a.Excerpt,
+			Published:   a.CreatedAt,
+			Author:      a.Author,
+			ImageURL:    img,
+			AbsoluteURL: origin + "/" + a.Slug,
+		})
+	}
+	// Only claim a SearchAction when search is actually switched on. The same
+	// flag the template uses to render the box, so the schema and the page can
+	// never disagree.
+	searchPath := ""
+	if searchEnabled.Load() {
+		searchPath = "/search"
+	}
+	ogImage := s.OGImage
+	if ogImage != "" && strings.HasPrefix(ogImage, "/") {
+		ogImage = origin + ogImage
+	}
+	jsonLD := seo.HomeJSONLD(seo.HomeDoc{
+		Origin:      origin,
+		Canonical:   canonical,
+		SiteName:    s.Name,
+		Description: firstNonEmptyStr(s.Description, s.Tagline),
+		LogoURL:     ogImage,
+		SearchPath:  searchPath,
+		Posts:       ldPosts,
+	})
+
 	err := homeTmpl.Execute(&buf, homePage{
+		JSONLD:              jsonLD,
 		Domain:              domain,
 		Origin:              seo.Origin(domain),
 		Version:             version,
@@ -3522,3 +3569,13 @@ h1, h2, h3, h4, h5, h6 {
 
 .vayu-tag-back:hover { color: var(--pico-primary); text-decoration: none; }
 `
+
+// firstNonEmptyStr returns the first argument that is not blank after trimming.
+func firstNonEmptyStr(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}

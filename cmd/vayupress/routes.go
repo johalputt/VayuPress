@@ -137,6 +137,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/sitemap-{part}.xml", a.handleSitemapChild)
 	r.Get("/feed.xml", a.handleFeed)
 	r.Get("/robots.txt", a.handleRobots)
+	r.Get("/llms.txt", a.handleLLMsTxt)
 	// Public documentation site: guides, operations runbooks, the security model
 	// and every ADR, rendered from markdown embedded in the binary for public
 	// audit. Hosted at a path (no docs subdomain). /doc redirects to /docs.

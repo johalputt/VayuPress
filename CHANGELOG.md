@@ -6,6 +6,78 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **The homepage emits structured data, and `/llms.txt` exists.** Two gaps on the
+  discovery side: every article carried a `BlogPosting` block while the homepage
+  carried none at all, and nothing told a language model what the site was about.
+
+  The homepage now emits a schema.org `@graph` — `WebSite`, `Organization` and
+  `Blog` with the posts actually on the page — built from the same values the
+  page renders, so the schema and the page cannot describe different sites. The
+  `SearchAction` that earns a sitelinks search box is emitted **only when search
+  is switched on**, read from the same flag that renders the box; declaring one
+  that 404s is worse than declaring none.
+
+  It is assembled with `encoding/json` rather than interpolated into the
+  template, which is how the article block is built. One unescaped quote in a
+  post title truncates interpolated JSON, and the failure is silent and total —
+  the page looks right and every consumer drops the block. `encoding/json`
+  escapes `<`, `>` and `&` by default, so a title containing a closing script tag
+  cannot close the element it sits in, and a test asserts exactly that.
+
+  `/llms.txt` (llmstxt.org) is the plain-text index a language model reads: what
+  the site is, and its posts as links with one-line summaries. Generative engines
+  increasingly answer from a few fetched pages rather than a ranked list, so the
+  choice is between being summarised from whatever page happened to rank and
+  being summarised from an index the author wrote. It **honours the crawler-block
+  switch** — when the operator has taken the site dark it 404s exactly as the
+  disallow-everything `robots.txt` does, because publishing a curated invitation
+  while refusing everything is a contradiction nobody asked for. `robots.txt`
+  advertises it as a comment: there is no standard directive, and inventing one
+  risks a strict parser rejecting the file.
+
+  Also fixed on the homepage: `og:title` carried the bare domain, and there was
+  no `og:description` and no `og:site_name` at all — the three fields every link
+  preview reads first.
+
+- **Orbit — a new blog theme.** A deep-space publication design carrying the
+  sense of vayuweb.vayupress.com onto the blog: concentric orbit rings drawn
+  entirely in CSS behind the hero, tracked-out mono section labels, glass cards
+  edged with a masked gradient hairline that brightens on hover, and display type
+  allowed to be genuinely large on a near-black canvas.
+
+  It ships **four hero modes** under an Orbit-only `orbithero` option — the
+  signature rings, a full-width **search bar** as the primary call to action, a
+  quiet light beam, or no ornament. `herostyle` already exists as a *shared*
+  option on a different axis (centered/left/minimal/boxed), so overloading that
+  key would have silently changed every theme already using it; the new control
+  is scoped to Orbit and a test pins that it never shadows a shared key.
+
+  Only the chosen mode's CSS is emitted rather than all four behind selectors —
+  a theme is CSS-only (`internal/render` deliberately does not import
+  `internal/theme`), so there is no attribute on the document to select against,
+  and emitting one mode keeps three unused rule sets out of the stylesheet every
+  reader downloads.
+
+  Built on the ADR-0136 sovereign token system (`--sh-sm`, `--sh-lg`, `--t`)
+  rather than hardcoded shadows and timings, so elevation and motion follow a
+  scheme change instead of being left behind.
+
+- **The homepage hero can carry a search box.** `internal/render` now emits a
+  `.vayu-hero-search` form inside the hero on any homepage with both a hero and
+  search enabled, hidden by default so no existing theme changes. A theme cannot
+  add markup — only style what is already there — so this is the only way a hero
+  search could exist without coupling the renderer to the theme package.
+  `display: none` rather than a visually-hidden class is deliberate: while it is
+  unused it must be out of the accessibility tree, or every homepage in every
+  other theme quietly grows a second search form. Orbit's search mode reveals it
+  and hides the one in the nav, so the page never carries two.
+
+---
+
 ## [3.17.46] — 2026-08-09
 
 ### Fixed
@@ -678,41 +750,6 @@ overstates it.
   where it would put the operator's own bundle icon on a client's card. That
   fallback is refused explicitly and a test drives it with blank, whitespace,
   traversal and non-hex ids.
-
-### Added
-
-- **Orbit — a new blog theme.** A deep-space publication design carrying the
-  sense of vayuweb.vayupress.com onto the blog: concentric orbit rings drawn
-  entirely in CSS behind the hero, tracked-out mono section labels, glass cards
-  edged with a masked gradient hairline that brightens on hover, and display type
-  allowed to be genuinely large on a near-black canvas.
-
-  It ships **four hero modes** under an Orbit-only `orbithero` option — the
-  signature rings, a full-width **search bar** as the primary call to action, a
-  quiet light beam, or no ornament. `herostyle` already exists as a *shared*
-  option on a different axis (centered/left/minimal/boxed), so overloading that
-  key would have silently changed every theme already using it; the new control
-  is scoped to Orbit and a test pins that it never shadows a shared key.
-
-  Only the chosen mode's CSS is emitted rather than all four behind selectors —
-  a theme is CSS-only (`internal/render` deliberately does not import
-  `internal/theme`), so there is no attribute on the document to select against,
-  and emitting one mode keeps three unused rule sets out of the stylesheet every
-  reader downloads.
-
-  Built on the ADR-0136 sovereign token system (`--sh-sm`, `--sh-lg`, `--t`)
-  rather than hardcoded shadows and timings, so elevation and motion follow a
-  scheme change instead of being left behind.
-
-- **The homepage hero can carry a search box.** `internal/render` now emits a
-  `.vayu-hero-search` form inside the hero on any homepage with both a hero and
-  search enabled, hidden by default so no existing theme changes. A theme cannot
-  add markup — only style what is already there — so this is the only way a hero
-  search could exist without coupling the renderer to the theme package.
-  `display: none` rather than a visually-hidden class is deliberate: while it is
-  unused it must be out of the accessibility tree, or every homepage in every
-  other theme quietly grows a second search form. Orbit's search mode reveals it
-  and hides the one in the nav, so the page never carries two.
 
 ### Changed
 
