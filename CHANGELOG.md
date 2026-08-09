@@ -148,9 +148,48 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   the open-relay gate. The claim is what was wrong. The card now states the
   consequence — new mail is refused and senders get a bounce — and keeps the
   half that was always true and still matters: nothing is deleted and nobody is
-  locked out, because `AcceptsMailDomain` has exactly two call sites in the mail
-  stack and neither is authentication, so existing mailboxes stay readable over
-  webmail, IMAP and POP3.
+  locked out, because sign-in never consults the flag, so existing mailboxes stay
+  readable over webmail, IMAP and POP3.
+
+  **Correction, from this section's own pre-release pass:** that sentence first
+  read "`AcceptsMailDomain` has exactly two call sites in the mail stack". It has
+  three. The third is `validRecoveryContact`, which receives the predicate as an
+  `accepts func(domain string) bool` parameter and never names
+  `AcceptsMailDomain` — so a search for the name could not find it, and the
+  number reached this file before anyone counted. It changes nothing an operator
+  would notice: that site *refuses* a recovery address on a domain this install
+  hosts, so turning mail off makes such an address acceptable rather than
+  rejected, which is a widening. The reassurance stands; the count did not. The
+  test now pins the SET of call sites in both spellings, so a fourth fails the
+  build and forces the claim to be re-earned rather than restated.
+
+- **A value ending in a backslash broke the JSON-LD block on every page that
+  carried it.** `jsonAttr` escapes a value for interpolation between the quotes
+  of a structured-data string. It replaced `"` with `\"` and did nothing about
+  the backslash, so a site name of `Acme\` rendered as `"name":"Acme\"` — the
+  trailing backslash escapes the closing quote and the document stops parsing. A
+  literal tab passed through raw, which is also invalid inside a JSON string.
+  Either way the page's structured data is silently discarded by whatever reads
+  it, which is the entire purpose of emitting it.
+
+  Not a security hole, and worth saying why rather than leaving it ambiguous: the
+  markup strip removes `</script>` before it can close the element, and the block
+  is `application/ld+json`, so a malformed document is bad data rather than
+  executable script. It is a correctness bug in the one function whose whole job
+  is to make a value safe to put between quotes.
+
+  It surfaced here because the branding write-through above newly lets a **client**
+  set the site name that lands in that block. The bug is older than that change
+  and was already reachable through the operator's own settings page — what
+  changed is who can reach it. `encoding/json` does the escaping now: it handles
+  backslashes, control characters and invalid UTF-8, and escapes `<`, `>` and `&`
+  to `\u` sequences, which is what one wants inside a script element. The length
+  cap counts runes rather than bytes, so truncating a long non-ASCII title no
+  longer cuts a character in half. The tests assert by *parsing* the result
+  rather than by matching expected escape sequences — a list of sequences agrees
+  with any escaper that happens to produce them and misses the input nobody
+  thought of. Five mutations killed, including restoring the original escaper and
+  one that escapes everything to empty.
 
   **A test was enforcing the false sentence.**
   `TestTheCardDoesNotImplyMailOffStopsDelivery` required the card to say mail off

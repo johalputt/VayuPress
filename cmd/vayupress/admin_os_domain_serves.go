@@ -44,11 +44,26 @@ package main
 // mail and is told on the same screen that they have not.
 //
 // What turning it off does NOT do, and the card has to keep saying so: nothing
-// is deleted, and no one is locked out. AcceptsMailDomain has exactly two call
-// sites in the mail stack (smtpd's RCPT gate and the engine's local-recipient
-// check) and neither is authentication, so existing mailboxes and their stored
-// mail stay readable over IMAP, POP3 and webmail. mail_switch_claim_test.go
-// holds both halves against the code.
+// is deleted, and no one is locked out. The predicate reaches three places in
+// the mail stack and none of them is authentication:
+//
+//   - smtpd's RCPT gate (the delivery refusal described above);
+//   - the engine's local-recipient check (the same refusal, from the other side);
+//   - validRecoveryContact, which REFUSES a recovery address on a domain this
+//     install hosts — so turning mail off makes such an address acceptable
+//     rather than rejected. That is a widening, and it costs nobody access.
+//
+// Sign-in is untouched, so existing mailboxes and their stored mail stay
+// readable over IMAP, POP3 and webmail.
+//
+// THAT LIST USED TO SAY "exactly two call sites", and it was wrong: the third
+// arrives as an `accepts func(domain string) bool` parameter and never names
+// AcceptsMailDomain, so a search for the name did not find it. The count was
+// asserted in the changelog and in this comment before anyone counted. It cost
+// nothing here because the third site is a widening, but a precise number stated
+// without checking is the same defect as a control claimed without one — hence
+// mail_switch_claim_test.go now pins the SET of call sites, in both spellings,
+// so a fourth fails the build and forces this paragraph to be re-earned.
 
 import (
 	"encoding/json"

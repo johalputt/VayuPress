@@ -1635,16 +1635,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 		return s
 	},
 	"safeHTML": func(s string) template.HTML { return template.HTML(s) },
-	"jsonAttr": func(s string) string {
-		s = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(s, "")
-		s = strings.TrimSpace(s)
-		s = strings.ReplaceAll(s, `"`, `\"`)
-		s = strings.ReplaceAll(s, "\n", " ")
-		if len(s) > 300 {
-			s = s[:300]
-		}
-		return s
-	},
+	"jsonAttr": jsonAttr,
 	"readTime": func(s string) int {
 		text := regexp.MustCompile(`<[^>]+>`).ReplaceAllString(s, "")
 		words := len(strings.Fields(text))

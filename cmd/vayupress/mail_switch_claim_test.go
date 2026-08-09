@@ -3,6 +3,7 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -81,10 +82,30 @@ func TestTheMailCardDoesNotDenyThatItStopsDelivery(t *testing.T) {
 	}
 }
 
+// mailPredicateCallSites is every file in the mail stack the acceptance
+// predicate reaches, with what it does there.
+//
+// A SET, not a count, and pinned in BOTH spellings — that distinction is the
+// finding. The first version of this test checked that imapd.go and pop3d.go do
+// not mention AcceptsMailDomain, and the comment beside it said the predicate
+// had "exactly two call sites". It has three. The third arrives as an
+// `accepts func(domain string) bool` parameter and never names AcceptsMailDomain
+// at all, so a search for the name could not see it, and the number went into
+// the changelog unchecked.
+//
+// Nothing was harmed by it — validRecoveryContact REFUSES a recovery address on
+// a hosted domain, so turning mail off makes such an address acceptable rather
+// than rejected, which is a widening that costs nobody access. That is luck, not
+// method. The set is pinned so the next addition has to justify itself.
+var mailPredicateCallSites = map[string]string{
+	"smtpd.go":    "the RCPT gate — the delivery refusal the card describes",
+	"engine.go":   "isLocalRecipient — the same refusal from the other side",
+	"recovery.go": "validRecoveryContact — refuses a recovery address on a hosted domain",
+}
+
 // What the switch does NOT do has to survive the correction, or the fix trades
 // one wrong statement for a scarier wrong statement. Mailboxes and their stored
-// mail are untouched, and IMAP/POP3/webmail sign-in never consults the flag —
-// AcceptsMailDomain has exactly two delivery call sites, and neither is auth.
+// mail are untouched, and sign-in never consults the flag.
 func TestTheMailCardDoesNotOverstateWhatTurningItOffDestroys(t *testing.T) {
 	card := strings.ToLower(domainServesCard(domain.Domain{ID: "abc123", Host: "client.example"}, true))
 	for _, want := range []string{"mailbox", "delete"} {
@@ -94,11 +115,45 @@ func TestTheMailCardDoesNotOverstateWhatTurningItOffDestroys(t *testing.T) {
 		}
 	}
 
-	// The mechanism behind that reassurance: the flag reaches delivery only.
+	// The mechanism behind that reassurance: every place the predicate reaches,
+	// found by BOTH the name and the parameter shape it travels under.
+	files, err := filepath.Glob("../../internal/vayuos/mail/*.go")
+	if err != nil {
+		t.Fatalf("glob: %v", err)
+	}
+	found := map[string]bool{}
+	for _, p := range files {
+		base := filepath.Base(p)
+		if strings.HasSuffix(base, "_test.go") || base == "config.go" {
+			continue // config.go DEFINES the predicate; it is not a call site
+		}
+		src := readSourceFile(t, p)
+		if strings.Contains(src, "AcceptsMailDomain") ||
+			strings.Contains(src, "accepts func(domain string) bool") ||
+			strings.Contains(src, "accepts(domain)") {
+			found[base] = true
+		}
+	}
+
+	for f := range found {
+		if _, known := mailPredicateCallSites[f]; !known {
+			t.Errorf("%s now consults the mail-acceptance predicate and is not in the known set. "+
+				"The card promises that turning mail off deletes nothing and locks nobody out — "+
+				"re-establish that against this new use before adding it here", f)
+		}
+	}
+	for f, why := range mailPredicateCallSites {
+		if !found[f] {
+			t.Errorf("%s no longer consults the predicate (%s). If that is deliberate the card's "+
+				"copy may need to change with it", f, why)
+		}
+	}
+	// The two that must never appear, named explicitly: these are sign-in, and
+	// the card's reassurance is exactly that sign-in is untouched.
 	for _, f := range []string{"imapd.go", "pop3d.go"} {
-		if strings.Contains(readSourceFile(t, "../../internal/vayuos/mail/"+f), "AcceptsMailDomain") {
-			t.Errorf("%s now consults AcceptsMailDomain, so turning mail off also locks the "+
-				"client out of reading mail they already have — the card says it does not", f)
+		if found[f] {
+			t.Errorf("%s now consults the acceptance predicate, so turning mail off also locks "+
+				"the client out of reading mail they already have — the card says it does not", f)
 		}
 	}
 }
