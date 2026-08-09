@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.47] — 2026-08-09
 
 ### Fixed
 
@@ -70,11 +70,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   green; they are simply legible now. Backgrounds were never touched — a theme's
   canvas is the theme.
 
----
-
-## [3.17.47] — 2026-08-09
-
-### Fixed
+### Fixed — release and gate integrity
 
 - **`cmd/vayupress/main.go` was a release behind, and the new release gate did
   not notice.** 3.17.46 was cut with `.release-version` and `CHANGELOG.md` at
