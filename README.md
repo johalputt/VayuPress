@@ -29,19 +29,21 @@
 
 ## About
 
-> **Live install:** **[johal.in](https://johal.in)** — **234,477 posts**, **100 across Performance, Accessibility, Best Practices and SEO**, 2 domains and a full mail server, all on **one Contabo VPS 10**. [See the numbers →](#running-in-production--johalin)
+> **Live install:** **[johal.in](https://johal.in)** — **234,499 posts**, **100 across Performance, Accessibility, Best Practices and SEO**, **12 sites** and a full mail server, all on **one Contabo VPS 10**. [See the numbers →](#running-in-production--johalin)
 
 **Vayu** is Sanskrit for *wind* — the invisible force that moves everything and is owned by no one. VayuPress moves your online presence the same way: entirely under your control, seen by no third party.
 
 VayuPress began as a publishing engine. It is now a **complete sovereign platform** —
-**ten products in one Go binary**: a business **website**, a **blog**, a private
+**thirteen products in one Go binary**: a business **website**, a **blog**, a private
 **PGP email server** (VayuMail) for your own domain with an official **mobile app**,
 **ephemeral end-to-end-encrypted chat** (VayuTalk), a self-learning **bot shield**
 (VayuShield), **privacy-first analytics** (VayuAnalytics), a fine-grained **scoped
 API** (VayuAPI), **one-click Tor `.onion` services** for every domain (VayuTor), a
 built-in **MCP server** that connects Claude and any MCP client in one click
-(VayuMCP), and a single admin console (**VayuOS**) — that runs on a single modest
-VPS. **VayuOS installs as an app** (PWA) on your phone or desktop in one click,
+(VayuMCP), **many independent sites from one process** (VayuDomains), an
+**automation engine that shows its diff before it runs** (VayuFlow), an
+**endpoint observation console** (VayuVeil), and a single admin console
+(**VayuOS**) — that runs on a single modest VPS. **VayuOS installs as an app** (PWA) on your phone or desktop in one click,
 always live via a zero-cache service worker — no store, no build step. You can run
 it as **two independently switchable worlds** — a public **Clearnet Space** and a
 fully anonymous, web-only **Tor Space** (VayuOS Spaces) — and you can **get paid**
@@ -155,6 +157,15 @@ Flip one switch in VayuOS and **every domain becomes reachable as its own Tor v3
 ### 🌐🧅 Two worlds, one binary — VayuOS Spaces (Clearnet & Tor)
 Run your platform as **two separate, independently switchable worlds**. A whole-install switch (`VAYUOS_MODE=clearnet|tor`) selects a **Clearnet Space** — your public HTTPS site, global VayuMail, mail-linked VayuTalk, normal analytics — or an anonymous **Tor Space** that is **web-only and fully anonymous**: a Tor-native site on its own `.onion`, webmail-only VayuMail·Tor, and an anonymous rotatable VayuTalk. The Tor world is **anti-leak by construction** — no clearnet callbacks (WKD/gravatar/webmention/MX gated off), external hotlinked images blocked, `img-src 'self' data:` never widened, and http-onion serving with **no CA-TLS, no HSTS, no Secure cookie**. From the clearnet console an operator flips into the Tor world with one click (it manages that world's own data — its Tor domains, blog, mail and chat) and back again. The two worlds keep **separate databases**; accounts, mailboxes, PGP keys and Talk IDs never cross — content moves only through a checksummed, offline-movable `vayupress migrate export|import` bundle. *([architecture →](docs/adr/ADR-0141-vayuos-spaces-clearnet-tor.md))*
 
+### 🏢 Many sites, one binary — VayuDomains & agency hosting
+Point a second domain at the same server and it is **a site, not a copy of yours**. Each host gets its own certificate, its own console, its own branding, its own content and its own analytics scope — and decides for itself whether it serves a blog, a business template or a hand-built bundle, changeable later without a migration. The live install runs **twelve hostnames across two apex domains from one process and one database**: six blogs, five custom bundles, one business template, every certificate renewing without a restart. There is no per-site process, no per-site config file and no per-site cron. *([agency hosting →](docs/adr/ADR-0152-agency-hosting.md) · [domain independence →](docs/adr/ADR-0153-domain-independence.md) · [one console per site →](docs/adr/ADR-0154-one-console-per-site.md) · [what a domain serves →](docs/adr/ADR-0159-what-a-domain-serves-is-changeable.md))*
+
+### ⚙️ Automation that shows its work before it runs (VayuFlow)
+Schedules, events and manual triggers drive **flows** — ordered steps over the capabilities the platform already has (content, mail, egress, model calls), each one **armed explicitly** before it can act. A flow is **dry-runnable**: you see the exact diff it would apply before anything is written. Runs are recorded with idempotency keys and survive a crash, a durable inbox holds event triggers, model steps are bounded in output, and the whole engine is **inert in a Tor Space** rather than quietly reaching the clearnet. *([architecture →](docs/adr/ADR-0151-vayuflow-automation-engine.md))*
+
+### 🔭 Know what your endpoints are doing (VayuVeil)
+An admin-only **observation-control console** for the surfaces this binary exposes — what is reachable, what is being observed, and which units are switched on. Read-only where reading is enough, with the controls that do change something kept explicit and audited. *([architecture →](docs/adr/ADR-0150-vayuveil-endpoint-observation-control.md))*
+
 ### 💳 Turn it on and get paid — Monetization
 A complete, **redirect-based** monetization suite (no payment SDK ever embedded — checkout is a top-level redirect, your strict CSP untouched), controlled and audited from one **Monetization control centre** in VayuOS. Take payments through **your own Stripe and PayPal keys** — auto-renewing **PayPal subscriptions** and instant **Stripe one-time** purchases — **or take crypto:** connect a self-hosted **BTCPay Server** and accept **Bitcoin, Monero, Ethereum, and stablecoins** — VayuPress creates the invoice over BTCPay's Greenfield API and a HMAC-verified webhook settles it, with funds landing straight in *your* BTCPay wallet with **no processor, no custody, and no KYC** — the one rail that lets an anonymous or Tor buyer pay without an account. All three sit on one sovereign payments ledger with idempotent fulfilment and verified webhook receipts. Sell **paid membership tiers** that unlock member-only posts; put a **per-post paywall** on any single article (one-time unlock, remembered per member). Turn tiers into **VayuMail mailboxes**: each paid tier provisions a real mailbox with its quota, an auto PGP keypair + WKD, and VayuTalk — plus a **premium / vanity mail-ID marketplace** where reserved and custom addresses are sold (bought → paid entitlement → member claims and sets a password), with operator approve/revoke and a terms-agreement trail. And let members **advertise on your site**: a self-serve "Advertise here" panel takes a flat fee (Stripe, PayPal, BTCPay, or the sovereign direct method) and drops each image ad into an operator **moderation queue** — nothing renders until you approve it. Every paid section — subscriptions, premium IDs, paid posts, member ads — flows through one auditable **Orders** ledger.
 
@@ -253,9 +264,9 @@ Benchmarks are easy to stage. This is a live install you can open right now and 
 | | |
 |---|---|
 | **Site** | **[johal.in](https://johal.in)** — a working blog, publicly reachable |
-| **Published posts** | **234,477** in one SQLite database |
+| **Published posts** | **234,499** in one SQLite database |
 | **Hardware** | A single **Contabo VPS&nbsp;10** — one box, nothing else |
-| **Running on it** | 2 domains **+** a full mail server **+** the blog |
+| **Running on it** | **12 sites** (2 apex + 10 subdomains, every certificate live) **+** a full mail server **+** the blog |
 | **Version** | VayuPress — the current release |
 
 ### Google PageSpeed Insights
@@ -294,13 +305,15 @@ A second, independent Lighthouse run (Cloudflare Synthetic Monitoring, from Iowa
 | Total Blocking Time | 29 ms | **0 ms** |
 | Cumulative Layout Shift | **0** | **0** |
 
-**156 ms to first byte, from Iowa to a single VPS, with 234,477 posts in SQLite.** That is the answer to the scaling objection stated as a number: the database is not the bottleneck, and at this size it is not close to being one.
+**156 ms to first byte, from Iowa to a single VPS, with 234,499 posts in SQLite.** That is the answer to the scaling objection stated as a number: the database is not the bottleneck, and at this size it is not close to being one.
 
 Three things worth drawing out.
 
-**234,477 posts on SQLite, on one small VPS.** "SQLite doesn't scale" is the most common objection to this architecture, and this is the answer to it: a quarter of a million articles, served from a single file, on hardware that costs less per month than most managed-database add-ons. WAL mode, prepared statements and an async write queue do the work — details in [One binary, by design](#one-binary-by-design) above.
+**234,499 posts on SQLite, on one small VPS.** "SQLite doesn't scale" is the most common objection to this architecture, and this is the answer to it: a quarter of a million articles, served from a single file, on hardware that costs less per month than most managed-database add-ons. WAL mode, prepared statements and an async write queue do the work — details in [One binary, by design](#one-binary-by-design) above.
 
-**Everything on one box.** The same VPS terminates TLS for two domains, runs the mail server (SMTP/IMAP/POP3, DKIM, WKD) and serves the blog — from one binary and one database. No managed Postgres, no Redis, no separate mail provider, no CDN origin shield.
+**Everything on one box — now twelve sites of it.** The same VPS terminates TLS for **twelve hostnames** across two apex domains, runs the mail server (SMTP/IMAP/POP3, DKIM, WKD) and serves the blog — from one binary and one database. Six of those sites serve blogs, five serve hand-built bundles, one runs a business template; every certificate is live and renews without a restart. No managed Postgres, no Redis, no separate mail provider, no CDN origin shield, and no second process per site.
+
+That is the number the architecture is really claiming. One binary hosting a dozen independent sites is not a bigger version of hosting one — it is the case where a shared database, a shared TLS store and a shared control plane either hold or do not.
 
 **0 ms blocking time is a design outcome, not a tuning trick.** There is no third-party analytics, no tag manager, no font CDN and no tracking pixel to block on, because the platform ships its own analytics and serves every byte from your origin under a strict `style-src 'self'` policy. The pages are fast largely because nothing else is invited onto them.
 
@@ -346,7 +359,7 @@ Open it, run your own test, browse the archive. That is the entire pitch, deploy
 ![VayuAnalytics](docs/screenshots/admin-os-analytics.png)
 *VayuAnalytics — cookieless, no-PII product analytics computed entirely from your local SQLite database.*
 
-### The rest of the ten products
+### The rest of the products
 
 | | |
 |---|---|
