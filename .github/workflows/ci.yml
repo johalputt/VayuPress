@@ -74,6 +74,10 @@ jobs:
         run: |
           find scripts/ -name "*.sh" -print0 | xargs -0 -r shellcheck --severity=warning
           echo "✅ Shell lint passed."
+      - name: Heredoc audit (no live backticks in generated config)
+        run: |
+          chmod +x scripts/heredoc-audit.sh
+          scripts/heredoc-audit.sh
 
   # ── P10: Markdown linting ──────────────────────────────────────────────────
   lint-markdown:

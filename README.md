@@ -438,6 +438,7 @@ without being listed there would be a job that cannot fail the build.
 |---|---|
 | trufflehog (filesystem mode) | Committed secrets |
 | shellcheck, markdownlint | Broken shell, malformed docs |
+| **heredoc audit** | **An unescaped backtick inside an unquoted heredoc — live command substitution in a file that is supposed to be config text** |
 | SPDX + license check | A source file with no licence header |
 | ADR completeness, required docs | A design decision that shipped unrecorded |
 | Governance / ethics / security-policy / community checks | Drift between the Constitution and the repository |
@@ -470,6 +471,15 @@ bit-for-bit reproducible, so a third party cannot yet independently confirm that
 a signed release binary corresponds to its tagged source — that is open work, and
 deliberately not gated, because a gate for a property the build does not have is
 worse than no gate.
+
+The shell lint is worth a note of its own, because for a long time it could not
+fail. It ran `find scripts/ -name "*.sh" -exec shellcheck {} \;`, and `find`
+returns 0 whatever its `-exec` reports — so the step printed its success line
+unconditionally. It runs through `xargs -0` now. It had been concealing a real
+error: a config-writing heredoc with an unquoted delimiter, where backticks are
+live command substitution rather than text, so every generated nginx file
+carried a comment with words silently deleted. The heredoc audit above gates
+that whole class rather than the single instance.
 
 Two style tools were evaluated and rejected rather than added: `gofumpt` (96
 files, formatting preference rather than correctness) and `go vet -vettool=shadow`

@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.47] — 2026-08-09
 
 ### Fixed
 
@@ -42,6 +42,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
   Also removed `HELPERS_VERSION_STAMP` from `provision-subdomains.sh`, assigned
   and never read (SC2034).
+
+  The class is now gated rather than the one instance. `scripts/heredoc-audit.sh`
+  refuses an unescaped backtick inside any unquoted heredoc across `scripts/`
+  and `deploy/`. shellcheck only objects when the substituted command is itself
+  suspect — it caught `return 404` because return outside a function is an
+  error, and would say nothing about `` `date` ``, which would silently vary a
+  generated config between runs. An escaped `` \` `` is literal even in an
+  unquoted heredoc and is the correct way to write one, so the audit accepts it;
+  `deploy-vayupress.sh` already did exactly that, and it was verified both ways
+  before the gate was written. A sweep of every heredoc in the tree found that
+  one correct instance and the one real bug, and nothing else.
 
 - **`seo.BreadcrumbJSONLD` was written, tested, and never called.** The deadcode
   gate caught it. It now renders on article pages, built from the same origin,
