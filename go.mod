@@ -7,7 +7,7 @@ go 1.25.8
 // happens to have installed — decides the compiler, and anyone checking out the
 // tag gets the same one. Bump it deliberately: govulncheck fails the build if a
 // pinned toolchain carries a known stdlib CVE.
-toolchain go1.26.5
+toolchain go1.26.6
 
 require (
 	blitiri.com.ar/go/spf v1.5.1
