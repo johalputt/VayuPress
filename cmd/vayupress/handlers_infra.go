@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -50,10 +50,14 @@ func (a *App) handleCSPReport(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	// Always answer 204 — browsers ignore the body. Bail out cheaply when the
 	// source is over its rate limit so abuse cannot inflate metrics or logs.
-	ip := r.Header.Get("X-Real-IP")
-	if ip == "" {
-		ip = strings.Split(r.RemoteAddr, ":")[0]
-	}
+	//
+	// Audit H7: the limiter key used to come straight from the client-supplied
+	// X-Real-IP header, so rotating that header granted each request a fresh
+	// bucket and let an anonymous loop drain the strict governance budget —
+	// on actuating installs repeatedly flipping the site into Degraded mode.
+	// Key on the middleware-resolved client address like every other ingest
+	// path instead.
+	ip := auth.ClientIP(r)
 	if !auth.AllowCSPReport(ip) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		return
@@ -155,11 +159,59 @@ func (a *App) handleQueueReplay(w http.ResponseWriter, r *http.Request) {
 	queue.HandleQueueReplay(w, r, writeJSON, writeAPIError)
 }
 
+// metricsHeavyRefreshInterval caps how often /metrics pays for its two
+// expensive samples. runtime.ReadMemStats stops the world, and the article
+// count hits SQLite; before this cache a flood of scrapes (or an anonymous
+// loop) turned each request into a stop-the-world pause plus a query.
+const metricsHeavyRefreshInterval = 5 * time.Second
+
+var (
+	metricsHeavyMu        sync.Mutex
+	metricsHeavyAt        time.Time
+	metricsHeavyAlloc     uint64
+	metricsHeavyArticles  int
+)
+
+// refreshMetricsHeavySamples returns a memoized (memory-alloc, article-count)
+// pair, re-sampling at most once per interval no matter how many callers ask.
+func refreshMetricsHeavySamples() (uint64, int) {
+	metricsHeavyMu.Lock()
+	defer metricsHeavyMu.Unlock()
+	if time.Since(metricsHeavyAt) >= metricsHeavyRefreshInterval {
+		var ms runtime.MemStats
+		runtime.ReadMemStats(&ms)
+		metricsHeavyAlloc = ms.Alloc
+		dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&metricsHeavyArticles)
+		metricsHeavyAt = time.Now()
+	}
+	return metricsHeavyAlloc, metricsHeavyArticles
+}
+
+// isLoopbackPeer reports whether the request arrived over the loopback
+// interface (as opposed to claiming a loopback address in a header).
+func isLoopbackPeer(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	var totalArticles int
-	dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&totalArticles)
-	var ms runtime.MemStats
-	runtime.ReadMemStats(&ms)
+	// Audit H5: this endpoint sat on both the shield bypass list and the
+	// never-shed priority lane while serving full internal telemetry to
+	// anyone — surge/jail/RPS state reads as a live attack-feedback oracle,
+	// and every request paid a stop-the-world ReadMemStats plus a SQL COUNT.
+	// Metrics are infrastructure: require the API key or a local peer and
+	// answer everyone else with a plain 404 so the surface stops existing.
+	if !auth.HasValidAPIKey(r) && !isLoopbackPeer(r) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, "404 page not found\n")
+		return
+	}
+	msAlloc, totalArticles := refreshMetricsHeavySamples()
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	fmt.Fprintf(w,
 		"vayupress_uptime_seconds %.0f\nvayupress_articles_total %d\n"+
@@ -187,7 +239,7 @@ func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		atomic.LoadInt64(&metrics.MetricQueueProcessed), atomic.LoadInt64(&metrics.MetricQueueFailed), atomic.LoadInt64(&metrics.MetricQueueStuckResets),
 		atomic.LoadInt64(&metrics.MetricSearchErrors), atomic.LoadInt64(&metrics.MetricSearchErrors),
 		atomic.LoadInt64(&metrics.MetricCacheHits), atomic.LoadInt64(&metrics.MetricCacheMisses),
-		metrics.CacheHitRatio(), ms.Alloc, atomic.LoadInt64(&metrics.WorkerLiveness),
+		metrics.CacheHitRatio(), msAlloc, atomic.LoadInt64(&metrics.WorkerLiveness),
 		atomic.LoadInt64(&metrics.CachedStorageBytes), atomic.LoadInt64(&metrics.MetricPluginPanics), atomic.LoadInt64(&metrics.MetricAuthLockouts),
 		atomic.LoadInt64(&metrics.MetricWALCheckpoints), atomic.LoadInt64(&metrics.MetricSlowQueries), atomic.LoadInt64(&metrics.MetricDeadLetterJobs),
 		atomic.LoadInt64(&metrics.MetricWALCheckpointDurationMS), atomic.LoadInt64(&metrics.MetricWALAdaptiveCheckpoints),

@@ -19,6 +19,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -504,8 +505,19 @@ func (a *App) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 
 // gofmt: keep helpers below
 
+// stripeMaxAgeSeconds bounds how far outside the signing window a webhook's
+// timestamp may sit before the event is treated as a replay (±5 minutes,
+// matching Stripe's official SDKs).
+const stripeMaxAgeSeconds int64 = 300
+
 // verifyStripeSignature implements Stripe's t=…,v1=… HMAC-SHA256 scheme over
 // "<timestamp>.<payload>" using the endpoint signing secret.
+//
+// The signature covers the timestamp precisely so the verifier can bound how
+// old a captured event may be. Without that bound one leaked webhook body
+// (log file, proxy hop, support ticket) could be replayed indefinitely and
+// re-grant a paid tier long after a refund or downgrade. ±5 minutes is the
+// tolerance Stripe's own verification libraries enforce.
 func verifyStripeSignature(header string, payload []byte, secret string) bool {
 	var ts, v1 string
 	for _, part := range strings.Split(header, ",") {
@@ -521,6 +533,13 @@ func verifyStripeSignature(header string, payload []byte, secret string) bool {
 		}
 	}
 	if ts == "" || v1 == "" {
+		return false
+	}
+	tsUnix, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return false
+	}
+	if skew := time.Now().Unix() - tsUnix; skew > stripeMaxAgeSeconds || skew < -stripeMaxAgeSeconds {
 		return false
 	}
 	mac := hmac.New(sha256.New, []byte(secret))

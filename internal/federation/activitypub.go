@@ -61,9 +61,10 @@ type Server struct {
 	followers []string
 
 	// keyResolver maps a Signature keyId to the signer's RSA public key (PEM).
-	// When non-nil, InboxHandler requires and verifies an HTTP signature on
-	// every inbound request; when nil, verification is skipped (the historical
-	// behaviour, retained for tests and trusted single-tenant deployments).
+	// InboxHandler REQUIRES it: with no resolver configured the inbox refuses
+	// every delivery rather than accepting unsigned ones (audit H2 — the old
+	// skip-when-nil default was fail-open). Wire it at boot wherever the
+	// inbox is mounted.
 	keyResolver func(keyID string) (string, error)
 
 	// replay, when non-nil, gives InboxHandler durable replay protection: each
@@ -84,6 +85,9 @@ func (s *Server) SetReplayStore(rs *ReplayStore) {
 // SetKeyResolver enables HTTP-signature enforcement on the inbox. The resolver
 // receives the Signature header's keyId and must return the corresponding RSA
 // public key in PEM form, or an error if the key is unknown.
+//
+// Until a resolver is set the inbox REFUSES all deliveries (503) — it never
+// falls back to accepting unsigned traffic (audit H2).
 func (s *Server) SetKeyResolver(fn func(keyID string) (string, error)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -154,16 +158,23 @@ func (s *Server) InboxHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// When a key resolver is configured, every inbound request must carry a
-	// valid HTTP signature from a known actor before it is admitted.
+	// HTTP-signature enforcement is mandatory, not opt-in (audit H2): every
+	// inbound request must carry a valid signature from a known actor before
+	// it is admitted. The historical nil-resolver branch silently SKIPPED
+	// verification — fail-open by construction — so the moment an inbox route
+	// was mounted without wiring SetKeyResolver, the endpoint accepted
+	// anything from anyone. A server without a configured resolver now
+	// refuses all deliveries instead.
 	s.mu.RLock()
 	resolver := s.keyResolver
 	s.mu.RUnlock()
-	if resolver != nil {
-		if err := s.verifyInbound(r, body, resolver); err != nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
+	if resolver == nil {
+		http.Error(w, "inbox signature verification not configured", http.StatusServiceUnavailable)
+		return
+	}
+	if err := s.verifyInbound(r, body, resolver); err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
 	}
 
 	var act Activity

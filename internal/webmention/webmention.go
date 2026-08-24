@@ -52,7 +52,9 @@ func (s *Store) Receive(ctx context.Context, sourceURL, targetURL string) (*Ment
 	if err != nil {
 		return nil, fmt.Errorf("invalid target URL: %w", err)
 	}
-	if !strings.HasPrefix(src.Scheme, "http") || !strings.HasPrefix(tgt.Scheme, "http") {
+	// Exact scheme match: HasPrefix("http") also accepted pseudo-schemes such
+	// as "httpx://" that no crawler would ever dereference.
+	if (src.Scheme != "http" && src.Scheme != "https") || (tgt.Scheme != "http" && tgt.Scheme != "https") {
 		return nil, fmt.Errorf("source and target must be HTTP/HTTPS URLs")
 	}
 	if strings.EqualFold(src.Hostname(), tgt.Hostname()) {

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -46,17 +47,32 @@ var (
 	countryTableAnswers  atomic.Int64
 )
 
-// edgeCountryHeader returns the country a TRUSTED proxy stated for this request.
+// edgeCountryHeader returns the country a TRUSTED EDGE stated for this request.
 //
 // The trust check is the whole security of this function and is the same one
-// auth.ClientIP applies before honouring a forwarding address: on an ordinary
-// install the peer is the local reverse proxy, which forwards unknown request
-// headers untouched, so reading this from an untrusted peer would let any client
-// choose the country it is judged and counted under — including the country an
-// operator has just refused.
+// auth.ClientIP applies before honouring a forwarding address.
+//
+// Audit H6: peer-trust alone was not enough. TRUSTED_PROXIES defaults to
+// loopback, and on the standard install that loopback peer is the local nginx —
+// which forwards unknown client headers untouched. Any visitor could therefore
+// hand the server `CF-IPCountry: US` themselves and be judged, counted, and
+// admitted under whatever country they named, including one the operator had
+// refused. A genuine edge always connects from a public address, so country
+// assertions from loopback/private peers are refused outright; the shipped
+// proxy config blanks these headers as belt-and-braces (see
+// deploy/nginx-vayupress.conf). Operators fronted by a real CDN add its public
+// ranges to TRUSTED_PROXIES and keep working unchanged.
 func edgeCountryHeader(r *http.Request) string {
 	if !auth.PeerIsTrustedProxy(r) {
 		return ""
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(strings.TrimSpace(host)); ip != nil &&
+		(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
+		return "" // local proxy: it cannot vouch for a header the client may have set
 	}
 	for _, k := range cdnCountryHeaders {
 		if v := strings.TrimSpace(r.Header.Get(k)); v != "" {

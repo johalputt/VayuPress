@@ -6,6 +6,7 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
@@ -136,20 +137,38 @@ func buildSigningString(r *http.Request, headers []string) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
-// ParseRSAPublicKeyPEM decodes a PEM-encoded RSA public key (PKIX or PKCS1).
+// federationMinRSABits is the smallest RSA modulus accepted from a peer. 2048
+// bits is the floor everywhere else in the modern ecosystem; anything smaller
+// is either a mistake or an attack on the signature scheme itself.
+const federationMinRSABits = 2048
+
+// ParseRSAPublicKeyPEM decodes a PEM-encoded RSA public key (PKIX or PKCS1),
+// rejecting keys smaller than federationMinRSABits (audit H2: no size check
+// meant a peer could present a 512-bit key and make forgery cheap).
 func ParseRSAPublicKeyPEM(pemStr string) (*rsa.PublicKey, error) {
 	block, _ := pem.Decode([]byte(strings.TrimSpace(pemStr)))
 	if block == nil {
 		return nil, errors.New("federation: invalid PEM public key")
 	}
 	if pub, err := x509.ParsePKIXPublicKey(block.Bytes); err == nil {
-		if rsaPub, ok := pub.(*rsa.PublicKey); ok {
-			return rsaPub, nil
+		rsaPub, ok := pub.(*rsa.PublicKey)
+		if !ok {
+			return nil, errors.New("federation: public key is not RSA")
 		}
-		return nil, errors.New("federation: public key is not RSA")
+		if rsaPub.Size()*8 < federationMinRSABits {
+			return nil, fmt.Errorf("federation: RSA key %d bits < %d", rsaPub.Size()*8, federationMinRSABits)
+		}
+		return rsaPub, nil
 	}
 	// Fall back to the legacy PKCS#1 encoding some peers still emit.
-	return x509.ParsePKCS1PublicKey(block.Bytes)
+	rsaPub, err := x509.ParsePKCS1PublicKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	if rsaPub.Size()*8 < federationMinRSABits {
+		return nil, fmt.Errorf("federation: RSA key %d bits < %d", rsaPub.Size()*8, federationMinRSABits)
+	}
+	return rsaPub, nil
 }
 
 // verifyDigest checks that the SHA-256 of body matches a "SHA-256=base64" Digest
@@ -167,7 +186,10 @@ func verifyDigest(digestHeader string, body []byte) error {
 	want := strings.TrimSpace(digestHeader[idx+len(prefix):])
 	sum := sha256.Sum256(body)
 	got := base64.StdEncoding.EncodeToString(sum[:])
-	if got != want {
+	// Constant-time even though the digest covers attacker-known data: it sits
+	// on an inbound trust path and the codebase's own standard elsewhere is
+	// subtle.ConstantTimeCompare (audit consistency note).
+	if subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
 		return ErrDigestMismatch
 	}
 	return nil

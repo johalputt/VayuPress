@@ -20,11 +20,13 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/comments"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
@@ -694,6 +696,16 @@ func (a *App) handleNewsletterList(w http.ResponseWriter, r *http.Request) {
 // Webmentions
 // =============================================================================
 
+// Webmention ingest limits (audit H4): the receiver is public and anonymous,
+// and every accepted submission is a persistent INSERT — so, like every other
+// ingest path here, it gets a per-address budget, a body cap, and field caps.
+var webmentionIngest = newIngestLimiter(30, time.Minute)
+
+const (
+	webmentionMaxBodyLen  = 16 * 1024 // whole submitted form
+	webmentionMaxFieldLen = 2048      // per source/target URL
+)
+
 // POST /webmention  (W3C endpoint — public, no auth)
 func (a *App) handleWebmentionReceive(w http.ResponseWriter, r *http.Request) {
 	if a.webmentionStore == nil {
@@ -704,16 +716,42 @@ func (a *App) handleWebmentionReceive(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
+	if !webmentionIngest.allow(auth.ClientIP(r)) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	}
+	// Cap the parsed form: r.FormValue spools the entire body while parsing,
+	// so without this an anonymous POST could make the server buffer an
+	// arbitrarily large request before any validation ran.
+	r.Body = http.MaxBytesReader(w, r.Body, webmentionMaxBodyLen)
 	source := r.FormValue("source")
 	target := r.FormValue("target")
-	if source == "" || target == "" {
+	invalid := func() {
+		// One generic rejection for every invalid shape — store errors used to
+		// be echoed verbatim to anonymous callers, leaking driver detail.
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("source and target parameters required"))
+		w.Write([]byte("invalid webmention"))
+	}
+	if source == "" || target == "" || len(source) > webmentionMaxFieldLen || len(target) > webmentionMaxFieldLen {
+		invalid()
+		return
+	}
+	// The target must be a page on this site: a webmention notifies the site
+	// that something linked to it, so an off-site or hostless target has no
+	// business reaching the store.
+	tgt, err := url.Parse(target)
+	if err != nil || (tgt.Scheme != "http" && tgt.Scheme != "https") {
+		invalid()
+		return
+	}
+	host := strings.ToLower(tgt.Hostname())
+	primary := strings.ToLower(strings.TrimSpace(config.Cfg.Domain))
+	if host == "" || (host != primary && host != strings.ToLower(r.Host)) {
+		invalid()
 		return
 	}
 	if _, err := a.webmentionStore.Receive(r.Context(), source, target); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		invalid()
 		return
 	}
 	w.WriteHeader(http.StatusAccepted) // 202 per W3C spec

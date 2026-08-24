@@ -152,6 +152,23 @@ func TestDecryptAndVerifyForEmail(t *testing.T) {
 	if verified2 {
 		t.Fatal("message was 'verified' against the wrong sender key")
 	}
+
+	// Regression (audit H1): a message signed by a key already inside the
+	// recipient's decryption ring — here the recipient's own key — must NOT
+	// verify against an arbitrary claimed sender. The verifier used to accept
+	// any ring key, letting a replayed self-signed ciphertext masquerade as
+	// "verified" from whoever the attacker put in From:.
+	ctOwn, err := e.EncryptAndSignFromEmail(msg, "rcv@example.com", "rcv@example.com")
+	if err != nil {
+		t.Fatalf("encrypt+sign (self): %v", err)
+	}
+	_, verifiedOwn, err := e.DecryptAndVerifyForEmail(ctOwn, "rcv@example.com", "snd@example.com")
+	if err != nil {
+		t.Fatalf("decrypt+verify (self-signed, claimed third party): %v", err)
+	}
+	if verifiedOwn {
+		t.Fatal("recipient's own signature authenticated a third-party sender claim")
+	}
 }
 
 func TestKeystoreEncryptedAtRest(t *testing.T) {

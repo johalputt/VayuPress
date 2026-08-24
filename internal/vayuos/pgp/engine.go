@@ -468,8 +468,10 @@ func (e *Engine) DecryptAndVerifyForEmail(ciphertext []byte, recipientEmail, sen
 	}
 	// Add the sender's public key to the ring so ReadMessage can identify and
 	// check the signature. Best-effort: absence just means we cannot verify.
+	var senderEntity *openpgp.Entity
 	if senderEmail != "" {
 		if sender, serr := e.recipientEntity(senderEmail); serr == nil && sender != nil {
+			senderEntity = sender
 			ring = append(ring, sender)
 		}
 	}
@@ -485,7 +487,15 @@ func (e *Engine) DecryptAndVerifyForEmail(ciphertext []byte, recipientEmail, sen
 	if err != nil {
 		return nil, false, err
 	}
-	verified := md.IsSigned && md.SignedBy != nil && md.SignatureError == nil
+	// verified requires the signing key to be exactly the claimed sender's
+	// key — not merely some key present in the decryption ring. The ring
+	// always carries the recipient's current and archived keys, so without
+	// this binding a replayed message the recipient had themselves signed
+	// (or one signed by a rotated-out key) would verify against an arbitrary
+	// claimed sender.
+	verified := md.IsSigned && md.SignedBy != nil && md.SignatureError == nil &&
+		senderEntity != nil && md.SignedBy.Entity != nil &&
+		bytes.Equal(senderEntity.PrimaryKey.Fingerprint, md.SignedBy.Entity.PrimaryKey.Fingerprint)
 	return body, verified, nil
 }
 

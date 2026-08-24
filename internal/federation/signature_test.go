@@ -148,14 +148,20 @@ func TestInboxHandler_EnforcesSignature(t *testing.T) {
 	}
 }
 
-func TestInboxHandler_NoResolverStaysOpen(t *testing.T) {
-	// Backward-compat: without a resolver, the inbox accepts unsigned requests.
+func TestInboxHandler_NoResolverFailsClosed(t *testing.T) {
+	// Audit H2: the historical behaviour accepted unsigned traffic whenever no
+	// resolver was configured — fail-open by construction, one route
+	// registration away from an open inbox. A server without a resolver now
+	// refuses every delivery instead of trusting all of them.
 	srv := NewServer("https://johal.in", "alice", "Alice")
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/u/alice/inbox",
 		strings.NewReader(`{"type":"Create"}`))
 	srv.InboxHandler(rec, req)
-	if rec.Code != http.StatusAccepted {
-		t.Fatalf("want 202 without resolver, got %d", rec.Code)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 without resolver, got %d", rec.Code)
+	}
+	if srv.InboxCount() != 0 {
+		t.Fatalf("activity admitted without a resolver: count=%d", srv.InboxCount())
 	}
 }
