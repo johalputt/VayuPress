@@ -34,6 +34,14 @@ jobs:
     runs-on: ubuntu-latest
     env:
       API_KEY: screenshot-ci-key
+      # VayuShield defaults ON (gentle) even on a fresh DB, classifies
+      # HeadlessChrome as automation and answers the four PUBLIC pages
+      # (/, article, /signup, /pricing) with a 403 block page; /os/* rides
+      # the admin bypass lane so it never noticed. screenshot.mjs refuses to
+      # photograph error pages, so those PNGs silently stayed stale. The env
+      # var overrides the stored toggle in either direction — off disables
+      # the shield for this throwaway capture instance only.
+      VAYUSHIELD: off
       DB_PATH: /tmp/vayupress/vayupress.db
       CACHE_DIR: /tmp/vayupress/cache
       TMP_DIR: /tmp/vayupress/tmp
@@ -45,7 +53,16 @@ jobs:
       STATIC_DIR: ${{ github.workspace }}/static
       VAYU_DOCS_DIR: ${{ github.workspace }}/docs
     steps:
+      # The commit step pushes back to main, which branch protection guards
+      # with a required status check. The default GITHUB_TOKEN acts as
+      # github-actions[bot], which cannot bypass the rule — runs captured
+      # fine and then died at `git push` with GH006. A PAT owned by an admin
+      # (repo secret SCREENSHOTS_PAT, contents read/write) pushes as that
+      # admin, who IS allowed to bypass (enforce_admins is false). Falls
+      # back to GITHUB_TOKEN when the secret is not configured.
       - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.SCREENSHOTS_PAT || github.token }}
 
       - uses: actions/setup-go@v7
         with:
