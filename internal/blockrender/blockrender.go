@@ -359,7 +359,11 @@ func SanitizeSVG(src string) (string, bool) {
 		case xml.StartElement:
 			name := t.Name.Local
 			if !svgAllowedElem(name) {
-				dec.Skip() // consume the entire subtree, content included
+				// Consume the entire subtree, content included. A skip that
+				// errors mid-subtree means malformed input: reject everything.
+				if err := dec.Skip(); err != nil {
+					return "", false
+				}
 				continue
 			}
 			if name == "svg" {
