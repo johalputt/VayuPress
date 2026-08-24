@@ -166,10 +166,10 @@ func (a *App) handleQueueReplay(w http.ResponseWriter, r *http.Request) {
 const metricsHeavyRefreshInterval = 5 * time.Second
 
 var (
-	metricsHeavyMu        sync.Mutex
-	metricsHeavyAt        time.Time
-	metricsHeavyAlloc     uint64
-	metricsHeavyArticles  int
+	metricsHeavyMu       sync.Mutex
+	metricsHeavyAt       time.Time
+	metricsHeavyAlloc    uint64
+	metricsHeavyArticles int
 )
 
 // refreshMetricsHeavySamples returns a memoized (memory-alloc, article-count)
