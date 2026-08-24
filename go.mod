@@ -10,7 +10,7 @@ go 1.25.8
 toolchain go1.26.6
 
 require (
-	blitiri.com.ar/go/spf v1.5.1
+	blitiri.com.ar/go/spf v1.6.0
 	filippo.io/edwards25519 v1.2.0
 	github.com/ProtonMail/go-crypto v1.4.1
 	github.com/alecthomas/chroma/v2 v2.27.0
