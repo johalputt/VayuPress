@@ -157,6 +157,11 @@ func avatarVer(choice, gender string) string {
 	return hex.EncodeToString(sum[:3])
 }
 
+// commentIngest bounds comment writes per principal. Commenting is
+// members-only, but a single authenticated account flooding every article with
+// rows was still unmetered (audit: uncapped/unbudgeted comment writes).
+var commentIngest = newIngestLimiter(20, time.Minute)
+
 // POST /api/v1/articles/{slug}/comments
 func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 	if a.commentStore == nil {
@@ -178,6 +183,10 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusUnauthorized, "members-only", "Please sign in as a member to comment", "")
 		return
 	}
+	if !commentIngest.allow(who.Email) {
+		writeAPIError(w, r, http.StatusTooManyRequests, "rate-limited", "You are commenting too quickly; try again shortly", "")
+		return
+	}
 	slug := chi.URLParam(r, "slug")
 
 	var body struct {
@@ -186,7 +195,9 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 		Body     string `json:"body"`
 		ParentID string `json:"parent_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	// 16 KB covers any legitimate comment many times over; without a cap the
+	// decode spooled the whole request body into memory first (audit).
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
@@ -542,6 +553,12 @@ func (a *App) handleCollectionAddArticle(w http.ResponseWriter, r *http.Request)
 // Newsletter
 // =============================================================================
 
+// newsletterIngest bounds anonymous subscription attempts per address. The
+// endpoint used to be an unlimited mail-bomb relay (one request = one
+// confirmation email to any address) AND an enumeration oracle (created vs
+// existing revealed who subscribes); both are closed below (audit).
+var newsletterIngest = newIngestLimiter(10, time.Hour)
+
 // POST /api/v1/newsletter/subscribe
 func (a *App) handleNewsletterSubscribe(w http.ResponseWriter, r *http.Request) {
 	if a.newsletterStore == nil {
@@ -552,28 +569,35 @@ func (a *App) handleNewsletterSubscribe(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, http.StatusForbidden, "newsletter-off", "Newsletter signup is disabled by the operator", "")
 		return
 	}
+	// Budget BEFORE touching the store: abuse cannot inflate sends or rows.
+	if !newsletterIngest.allow(auth.ClientIP(r)) {
+		writeAPIError(w, r, http.StatusTooManyRequests, "rate-limited", "Too many subscription attempts; try again later", "")
+		return
+	}
 	var body struct {
 		Email string `json:"email"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
 	sub, isNew, err := a.newsletterStore.Subscribe(r.Context(), body.Email)
-	if err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "subscribe-error", err.Error(), "")
+	if err != nil || sub == nil {
+		// Uniform refusal: the specific store error (e.g. already-subscribed
+		// variants) must not reach an anonymous caller — that is the other half
+		// of the enumeration oracle. The real cause stays in the log.
+		logging.LogInfo("newsletter", "subscribe refused: "+err.Error())
+		writeAPIError(w, r, http.StatusBadRequest, "subscribe-error", "Please provide a valid email address", "")
 		return
 	}
 	// Send the double opt-in confirmation email out-of-band (no-op when SMTP is
 	// unconfigured). Only new, unconfirmed subscribers receive a fresh link.
-	if isNew && sub != nil && sub.Token != "" {
+	if isNew && sub.Token != "" {
 		go a.sendNewsletterConfirmation(sub.Email, sub.Token)
 	}
-	code := http.StatusCreated
-	if !isNew {
-		code = http.StatusOK
-	}
-	writeJSON(w, r, code, map[string]interface{}{"subscriber": sub, "new": isNew})
+	// One uniform answer for every successful attempt: nobody learns whether an
+	// address was already on the list from this endpoint's status code or body.
+	writeJSON(w, r, http.StatusAccepted, map[string]string{"status": "confirmation-sent"})
 }
 
 // sendNewsletterConfirmation emails the double opt-in confirmation link,

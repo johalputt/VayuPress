@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"sync/atomic"
@@ -25,6 +26,15 @@ var ErrQuarantined = errors.New("sandbox: plugin quarantined after repeated cras
 
 // ErrSystemQuarantined is returned when the system mode forbids plugin invocation.
 var ErrSystemQuarantined = errors.New("sandbox: plugin invocation denied — system mode is quarantined")
+
+// allowNoNamespaceSandbox gates the EPERM fallback that strips namespace
+// isolation (audit: that fallback used to fire silently, so a plugin could run
+// with a shared network/mount view and nothing but a log line would say so).
+// The operator must now opt in explicitly; without it, a kernel that refuses
+// namespace creation refuses the plugin rather than quietly weakening the
+// sandbox. VAYUSANDBOX_ALLOW_NO_NAMESPACES=1 restores the old behaviour for
+// unprivileged runners that genuinely cannot create namespaces.
+var allowNoNamespaceSandbox = os.Getenv("VAYUSANDBOX_ALLOW_NO_NAMESPACES") == "1"
 
 // isEPERM returns true if the error wraps a syscall.EPERM permission error.
 func isEPERM(err error) bool {
@@ -101,12 +111,23 @@ func (p *SubprocessPlugin) start() error {
 
 	if err := cmd.Start(); err != nil {
 		// EPERM may mean the kernel rejected namespace creation (e.g. unprivileged user).
-		// Retry without namespace flags so the plugin still starts.
+		// Fail closed unless the operator explicitly accepted the weaker mode:
+		// starting a plugin WITHOUT namespace isolation silently was how a
+		// hardened sandbox quietly turned into no sandbox at all (audit).
 		if isEPERM(err) && nsFlags != 0 {
+			if !allowNoNamespaceSandbox {
+				p.confinement.Cleanup()
+				logging.LogJSON(logging.LogFields{
+					Level:     "error",
+					Component: "sandbox",
+					Msg:       fmt.Sprintf("sandbox: namespace flags rejected (EPERM) for %s — refusing to start without isolation (set VAYUSANDBOX_ALLOW_NO_NAMESPACES=1 to override)", p.manifest.Name),
+				})
+				return fmt.Errorf("sandbox: %s needs namespaces but the kernel refused them (EPERM); start aborted", p.manifest.Name)
+			}
 			logging.LogJSON(logging.LogFields{
 				Level:     "warn",
 				Component: "sandbox",
-				Msg:       fmt.Sprintf("sandbox: namespace flags rejected (EPERM) for %s — retrying without namespaces", p.manifest.Name),
+				Msg:       fmt.Sprintf("sandbox: namespace flags rejected (EPERM) for %s — retrying without namespaces (operator-accepted)", p.manifest.Name),
 			})
 			cmd2 := exec.Command(p.manifest.Executable, p.manifest.Args...)
 			cmd2.Env = cmd.Env

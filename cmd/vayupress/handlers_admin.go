@@ -936,6 +936,15 @@ func (a *App) renderPaywall(r *http.Request, art dbpkg.Article, level string) st
 }
 
 func (a *App) handleSmokeTest(w http.ResponseWriter, r *http.Request) {
+	// This endpoint WRITES to the production database — enqueue, poll, teardown.
+	// It used to sit on the public mux, so any internet caller could drive
+	// prod-DB writes and worker churn at will (audit: public prod-DB writes).
+	// Like /metrics it now answers only a loopback peer or a valid API key;
+	// everyone else gets the same 404 any unknown route gives.
+	if !auth.HasValidAPIKey(r) && !isLoopbackPeer(r) {
+		http.NotFound(w, r)
+		return
+	}
 	if !a.smokeTestMutex.TryLock() {
 		http.Error(w, "smoke-test already running", http.StatusServiceUnavailable)
 		return

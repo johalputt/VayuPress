@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/johalputt/vayupress/internal/config"
 )
@@ -264,8 +265,34 @@ func (e *Engine) ServeWKD(fallbackDomain string) http.Handler {
 	})
 }
 
+// entityClaimsEmail reports whether any self-signed identity on the key
+// carries exactly this email address (case-insensitive). A WKD response whose
+// key claims nothing about the queried address is not proof of the recipient:
+// auto-encrypting to it would hand the plaintext to whoever controls that
+// WKD record (audit: unpinned TOFU without UID validation).
+func entityClaimsEmail(ent *openpgp.Entity, email string) bool {
+	if ent == nil {
+		return false
+	}
+	want := strings.ToLower(strings.TrimSpace(email))
+	if want == "" {
+		return false
+	}
+	for _, id := range ent.Identities {
+		if id.UserId == nil {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(id.UserId.Email), want) {
+			return true
+		}
+	}
+	return false
+}
+
 // LookupExternalKey discovers a recipient's public key via WKD over HTTPS,
-// trying the advanced method first and then the direct method.
+// trying the advanced method first and then the direct method. A fetched key is
+// accepted only if it self-identifies with the queried address; anything else
+// is treated as not-found rather than trusted for auto-encryption.
 func (e *Engine) LookupExternalKey(email string) (*PublicKey, error) {
 	// In a Tor Space (OnionMode, ADR-0141) a WKD discovery is an outbound HTTPS
 	// call to the recipient's clearnet domain — a network leak that would correlate
@@ -313,6 +340,11 @@ func (e *Engine) LookupExternalKey(email string) (*PublicKey, error) {
 		}
 		pk, err := e.ImportPublicKey(buf.Bytes())
 		if err != nil {
+			continue
+		}
+		if ent, entErr := entityFromArmor(buf.String()); entErr != nil || !entityClaimsEmail(ent, email) {
+			// The server answered, but with a key that does not claim this
+			// address: not the recipient's key, refuse it.
 			continue
 		}
 		pk.Email = email
@@ -378,6 +410,11 @@ func (e *Engine) LookupOnionKey(email string, client *http.Client) (*PublicKey, 
 	}
 	pk, err := e.ImportPublicKey(buf.Bytes())
 	if err != nil {
+		return nil, ErrNotFound
+	}
+	if ent, entErr := entityFromArmor(buf.String()); entErr != nil || !entityClaimsEmail(ent, email) {
+		// Same rule as clearnet WKD: a key that does not claim the queried
+		// address is not the recipient's key, whoever serves it.
 		return nil, ErrNotFound
 	}
 	pk.Email = email

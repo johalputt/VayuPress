@@ -23,6 +23,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -587,6 +588,29 @@ var (
 	cssExternalURLRe = regexp.MustCompile(`(?i)url\(\s*['"]?\s*(?:https?:)?//[^)]*\)`)
 )
 
+// cssHexEscapeRe matches a CSS escape: a backslash followed by one to six hex
+// digits and an optional single whitespace terminator (which the parser eats).
+var cssHexEscapeRe = regexp.MustCompile(`\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?`)
+
+// cssLooseEscapeRe matches any remaining backslash-escaped character, which CSS
+// decodes to that character literally.
+var cssLooseEscapeRe = regexp.MustCompile(`\\(.)`)
+
+// cssUnescape decodes CSS character escapes so pattern-based filters cannot be
+// dodged with them (audit: `ur\6C (` slipped past a raw-text url( filter while
+// every browser decoded it right back). The result is semantically identical
+// CSS — that is what the escapes are for — just written out literally.
+func cssUnescape(s string) string {
+	s = cssHexEscapeRe.ReplaceAllStringFunc(s, func(m string) string {
+		cp, err := strconv.ParseUint(strings.TrimSpace(m[1:]), 16, 32)
+		if err != nil || cp == 0 || cp > unicode.MaxRune {
+			return "\uFFFD"
+		}
+		return string(rune(cp))
+	})
+	return cssLooseEscapeRe.ReplaceAllString(s, "$1")
+}
+
 // sanitizeCustomCSS neutralises off-origin references in operator-supplied theme
 // CSS (audit L4). The clearnet CSP keeps img-src 'self' data: https: so authors
 // can hotlink content images, which means a raw `background:url(https://evil/beacon)`
@@ -594,8 +618,10 @@ var (
 // promise that /theme.css is served same-origin and self-contained, and giving a
 // tracking/deanonymisation beacon on public signup/member/legal pages. Strip
 // @import and external url() here (data:, relative and same-origin url()s are
-// kept), so the guarantee holds regardless of the CSP.
+// kept), so the guarantee holds regardless of the CSP. Escapes are decoded
+// FIRST: the filters match what a browser actually sees, not what was typed.
 func sanitizeCustomCSS(css string) string {
+	css = cssUnescape(css)
 	css = cssImportRe.ReplaceAllString(css, "")
 	css = cssExternalURLRe.ReplaceAllString(css, "url()")
 	return css
