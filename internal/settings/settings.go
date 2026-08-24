@@ -16,7 +16,7 @@ import (
 // errNoScope is returned when a write arrives without a scope.
 var errNoScope = errors.New("settings: write attempted without a scope")
 
-// Known setting keys — exhaustive list; unknown keys are rejected on write.
+// Known setting keys â€” exhaustive list; unknown keys are rejected on write.
 const (
 	KeySiteName        = "site.name"
 	KeySiteTagline     = "site.tagline"
@@ -26,7 +26,7 @@ const (
 	// timestamps stay UTC; this only controls what is rendered. Empty means UTC.
 	KeySiteTimezone = "site.timezone"
 	// KeyMembershipButtons shows the public Sign in / Sign up buttons in the
-	// homepage nav. Unlike feature flags it defaults OFF — only the string
+	// homepage nav. Unlike feature flags it defaults OFF â€” only the string
 	// "true" (as written by the settings toggle) enables it.
 	KeyMembershipButtons = "site.membership_buttons"
 
@@ -43,12 +43,12 @@ const (
 
 	// KeyBlockCrawlers, when "on", hard-blocks search-engine and AI crawlers from
 	// the PUBLIC site: robots.txt disallows everything, known crawler user-agents
-	// (Googlebot, Bingbot, GPTBot, ClaudeBot, PerplexityBot, …) get a 403, and
+	// (Googlebot, Bingbot, GPTBot, ClaudeBot, PerplexityBot, â€¦) get a 403, and
 	// every public response carries X-Robots-Tag: noindex as a backstop. The
 	// VayuOS console and operational endpoints are never affected. Defaults OFF.
 	KeyBlockCrawlers = "site.block_crawlers"
 
-	// VayuKeep — automatic backup, configured from VayuOS (ADR-0145). The target
+	// VayuKeep â€” automatic backup, configured from VayuOS (ADR-0145). The target
 	// is a setting rather than an env var so it can be changed from the console;
 	// the passphrase is a sealed credential, never a setting.
 	KeyVayuKeepTarget  = "vayukeep.target"
@@ -58,9 +58,9 @@ const (
 	KeyVayuKeepRetainGen  = "vayukeep.retain_generations"
 	KeyVayuKeepRetainDays = "vayukeep.retain_days"
 
-	// Business-website mode (VayuOS → Website). KeySiteMode selects what the
+	// Business-website mode (VayuOS â†’ Website). KeySiteMode selects what the
 	// root domain serves: "" / "blog" keeps the blog at the root (the historic
-	// behaviour — existing installs never change on update), "business" serves
+	// behaviour â€” existing installs never change on update), "business" serves
 	// the business site at the root with the blog at blog.<domain>.
 	KeySiteMode    = "site.mode"
 	KeyBizTemplate = "biz.template" // active business template key
@@ -76,7 +76,7 @@ const (
 	// `theme.custom_head` field (removed): arbitrary head HTML allowed
 	// meta-refresh redirects, external beacons, and <base> hijacks that the
 	// CSP does not fully cover. Each capability below renders to a single
-	// escaped, allowlisted <meta> tag — no arbitrary markup reaches the page.
+	// escaped, allowlisted <meta> tag â€” no arbitrary markup reaches the page.
 	KeyHeadKeywords     = "head.keywords"      // <meta name="keywords">
 	KeyHeadThemeColor   = "head.theme_color"   // <meta name="theme-color"> (hex)
 	KeyHeadRobots       = "head.robots"        // <meta name="robots"> (allowlisted)
@@ -85,11 +85,11 @@ const (
 
 	// KeyMailQueueRetentionDays is the operator-chosen auto-clear window (days) for
 	// DELIVERED outbound-queue rows shown in the Outbox; "" / "0" = keep forever.
-	// Only the delivery-status record is pruned — the Sent Maildir copy is kept.
+	// Only the delivery-status record is pruned â€” the Sent Maildir copy is kept.
 	KeyMailQueueRetentionDays = "mail.queue_retention_days"
 
 	// Branding. A custom favicon/logo uploaded through the theme console is
-	// stored base64-encoded in the DB (sovereign — survives in backups, no
+	// stored base64-encoded in the DB (sovereign â€” survives in backups, no
 	// extra file management) and overrides the embedded default marks at the
 	// favicon serving routes. The type key records the validated MIME so the
 	// serving handler sets the right Content-Type.
@@ -119,13 +119,13 @@ const (
 
 	// Navigation menu. A JSON array of {"label","href"} objects defining the
 	// public nav links (top of every page). When unset, a sensible default
-	// (Home / Feed / Console) is rendered. Operators add/remove items — internal
-	// pages or external/redirect links — from Settings → Navigation.
+	// (Home / Feed / Console) is rendered. Operators add/remove items â€” internal
+	// pages or external/redirect links â€” from Settings â†’ Navigation.
 	KeyNavItems = "nav.items"
 
 	// Footer. A JSON object describing the premium public-site footer: tagline,
-	// link columns, social links, legal links (Privacy/Terms…) and the copyright
-	// line. Edited in Settings → Footer. When unset, a clean default copyright
+	// link columns, social links, legal links (Privacy/Termsâ€¦) and the copyright
+	// line. Edited in Settings â†’ Footer. When unset, a clean default copyright
 	// bar is rendered.
 	KeyFooterConfig = "footer.config"
 
@@ -146,7 +146,7 @@ const (
 	// default alt when inserting that image. Absent keys simply have no default.
 	KeyMediaAlt = "media.alt"
 
-	// Feature flags — operator-toggleable platform modules surfaced in the
+	// Feature flags â€” operator-toggleable platform modules surfaced in the
 	// Tools & Plugins panel. Each value is "on" (default) or "off". Disabling a
 	// flag turns the corresponding public surface off at the request boundary;
 	// it never tears down the backing store, so re-enabling is instant and
@@ -159,7 +159,7 @@ const (
 	// box, the instant search modal, and the server-rendered /search page).
 	// Default ON. When off, the search box/modal are hidden, /search returns 404,
 	// and the search engine returns no results. This is the operator's single
-	// "search on/off" switch — VayuPress has no external search dependency.
+	// "search on/off" switch â€” VayuPress has no external search dependency.
 	KeyFeatureSearch = "feature.search"
 
 	// KeyFeatureMeili is the legacy external-Meilisearch toggle.
@@ -202,12 +202,12 @@ const (
 	// the checkout page so payers can reach a human. Falls back to SMTP From.
 	KeyPaySupportEmail = "monetization.support_email"
 	// KeyPayPalSandbox routes PayPal to the sandbox host ("on") instead of live
-	// ("off", default) — for testing with sandbox REST credentials.
+	// ("off", default) â€” for testing with sandbox REST credentials.
 	KeyPayPalSandbox = "monetization.paypal_sandbox"
 	// KeyBTCPayURL / KeyBTCPayStoreID are the non-secret coordinates of the
 	// operator's self-hosted BTCPay Server store (the Greenfield API key + webhook
 	// secret live in the encrypted credential store). With all three present, the
-	// crypto gateway accepts BTC/XMR/ETH/USDT via BTCPay's hosted checkout —
+	// crypto gateway accepts BTC/XMR/ETH/USDT via BTCPay's hosted checkout â€”
 	// letting anonymous / Tor buyers pay without an account.
 	KeyBTCPayURL     = "monetization.btcpay_url"
 	KeyBTCPayStoreID = "monetization.btcpay_store_id"
@@ -229,7 +229,7 @@ const (
 
 	// Advertising configuration.
 	//
-	// KeyAdsenseClient is the Google AdSense publisher id ("ca-pub-…"); when set
+	// KeyAdsenseClient is the Google AdSense publisher id ("ca-pub-â€¦"); when set
 	// and the Google Ads module is on, ad slots of type "adsense" render real
 	// AdSense units and the page CSP is widened to admit Google's ad origins.
 	KeyAdsenseClient = "ads.adsense_client"
@@ -237,8 +237,8 @@ const (
 	// when the affiliate module is enabled (FTC-style "contains affiliate links").
 	KeyAffiliateDisclosure = "ads.affiliate_disclosure"
 
-	// VayuShield — bot protection + Tier-1 (in-binary) DDoS resilience. All of
-	// these are operator-toggleable live from VayuOS → VayuShield
+	// VayuShield â€” bot protection + Tier-1 (in-binary) DDoS resilience. All of
+	// these are operator-toggleable live from VayuOS â†’ VayuShield
 	// with no restart. Booleans are "on"/"off"; shield.enabled and every
 	// resilience toggle default OFF so a fresh install never challenges or
 	// throttles a real visitor until the operator explicitly opts in.
@@ -275,10 +275,14 @@ const (
 	// customers; challenging one says the traffic is mostly automated.
 	KeyShieldChallengeCountries = "shield.challenge_countries"
 	KeyShieldRouteCosts         = "shield.route_costs" // "<path> <weight>" per line: what a route costs to serve
+	// KeyShieldRefuseUnknownCountry sharpens an active allow_countries fence:
+	// visitors whose country cannot be resolved at all are refused instead of
+	// served (audit: the unresolved case failed open). Off by default.
+	KeyShieldRefuseUnknownCountry = "shield.refuse_unknown_country"
 
 	// Multi-node verdict sharing. Peers are the base URLs of the OTHER nodes,
 	// one per line; the node name identifies this one in a peer's accounting.
-	// The gossip key is DERIVED from the install secret, never stored here — a
+	// The gossip key is DERIVED from the install secret, never stored here â€” a
 	// key in the settings table would be a key in every backup.
 	KeyShieldClusterPeers = "shield.cluster_peers"
 	KeyShieldClusterNode  = "shield.cluster_node"
@@ -295,7 +299,7 @@ const (
 	KeyShieldIntelFeeds = "shield.intel_feeds"
 
 	// KeyAnalyticsBeacon toggles the VayuAnalytics engagement beacon (time on
-	// page / scroll depth) injected on public pages. Default ON — it is
+	// page / scroll depth) injected on public pages. Default ON â€” it is
 	// cookieless and stores no PII, the same posture as the existing view
 	// analytics, so it is safe to enable by default.
 	KeyAnalyticsBeacon = "analytics.beacon"
@@ -303,7 +307,7 @@ const (
 	// KeyTorEnabled is the one-click VayuTor toggle: when "on" (and the env
 	// master switch VAYUOS_TOR is not off, and a tor control port is reachable),
 	// every hosted domain is published as a v3 onion service alongside its
-	// clearnet URL. Default OFF — Tor onions are opt-in.
+	// clearnet URL. Default OFF â€” Tor onions are opt-in.
 	KeyTorEnabled = "tor.enabled"
 
 	// KeyStartupMillis is a short ring of recent startup durations, in
@@ -311,7 +315,7 @@ const (
 	//
 	// It exists because "how long does a restart take" was being GUESSED. nginx
 	// has no queue in front of the app, so on an install without socket
-	// activation that duration IS the outage an update costs — and the only
+	// activation that duration IS the outage an update costs â€” and the only
 	// place it was written down was a journal line nobody reads. A number an
 	// operator has to SSH for is a number that does not inform a decision.
 	//
@@ -325,7 +329,7 @@ const (
 	//
 	// It lives here rather than in the environment for one reason, and the reason
 	// is an outage. It used to be VAYUOS_TALK_HOST in /etc/vayupress/env, and a
-	// process's environment cannot change without an exec — so the subdomain
+	// process's environment cannot change without an exec â€” so the subdomain
 	// helper restarted the whole install to publish a hostname. nginx has no
 	// queue in front of :8080, which made every second of that restart a 502 for
 	// every visitor.
@@ -341,31 +345,31 @@ const (
 	// It governs REPORTING, not protection: when "on", this install inventories
 	// the observation channels present on its host and computes the posture
 	// report. Turning it on does not defend a screen and turning it off does not
-	// expose anything that was not already exposed — ADR-0150 is at P0, which
+	// expose anything that was not already exposed â€” ADR-0150 is at P0, which
 	// registers channels and enforces none of them. The panel says so in those
 	// words, because a privacy switch that reads as a shield is worse than no
 	// switch. Default OFF: the probes read device nodes and kernel tunables, and
 	// an install should not start doing that without being asked.
 	KeyVeilEnabled = "veil.enabled"
-	// KeyTorVisits is the persisted aggregate count of onion pageviews — the
+	// KeyTorVisits is the persisted aggregate count of onion pageviews â€” the
 	// ENTIRE VayuTor analytic. No identifier, time, path, or any other datum is
 	// ever stored (privacy by construction).
 	KeyTorVisits = "tor.visits"
 	// KeyTorBridges holds operator-supplied Tor bridge lines (newline/";"-
 	// separated obfs4 or vanilla Bridge lines), configured entirely from the
-	// VayuTor admin page — no server access needed. When set, VayuTor routes its
+	// VayuTor admin page â€” no server access needed. When set, VayuTor routes its
 	// managed tor through these bridges, which defeats a network that blocks Tor
 	// at the IP level (a VPS null-routing public relays, or DPI).
 	KeyTorBridges = "tor.bridges"
 	// KeyTorPageStats opts INTO per-page onion visit counts. Default OFF, which
 	// preserves VayuTor's stricter "not even the path" promise. When "on", VayuTor
-	// keeps an AGGREGATE cumulative count per page (host+path → total views) — and
+	// keeps an AGGREGATE cumulative count per page (host+path â†’ total views) â€” and
 	// still no identifier, no time, no session, no ordering, so individual visits
 	// can never be correlated or a visitor deanonymised. Visitor geolocation is
 	// deliberately absent: an onion service never sees the client's IP.
 	KeyTorPageStats = "tor.page_stats"
 	// KeyTorPageHits persists the per-page counts (a small JSON object of
-	// "host path" → count) when KeyTorPageStats is on. Aggregate only.
+	// "host path" â†’ count) when KeyTorPageStats is on. Aggregate only.
 	KeyTorPageHits = "tor.page_hits"
 	// KeyTorOnionLocation controls whether clearnet responses advertise their
 	// onion via the Onion-Location header (so Tor Browser can offer/auto-switch).
@@ -379,12 +383,12 @@ const (
 	// identity is stable across restarts and never shares the parent's key.
 	KeyTorSpaceAPIKey = "tor.space_api_key"
 	// KeyTalkAnonID is the local-part of the ANONYMOUS, rotatable VayuTalk identity
-	// used in the Tor world (ADR-0141) — a random handle, not a mailbox address, so
+	// used in the Tor world (ADR-0141) â€” a random handle, not a mailbox address, so
 	// chat is not linked to a mail account. "Rotate" replaces it with a fresh one.
 	KeyTalkAnonID = "talk.anon_id"
 	// KeyTalkOnionFederation opts into experimental onion-to-onion VayuTalk
 	// delivery (ADR-0142): reaching a chat code hosted on a DIFFERENT .onion over
-	// Tor. Off by default — while off, behaviour is unchanged (a message to a
+	// Tor. Off by default â€” while off, behaviour is unchanged (a message to a
 	// remote onion code fails with an honest "not reachable"). Enabling it adds a
 	// guard-railed, .onion-only outbound Tor lane; it has no effect outside the
 	// Tor world.
@@ -415,7 +419,7 @@ func (s *Store) FeatureEnabled(ctx context.Context, sc Scope, key string) bool {
 
 // RobotsOptions is the allowlist of accepted <meta name="robots"> directives.
 var RobotsOptions = map[string]bool{
-	"":                 true, // unset — omit the tag
+	"":                 true, // unset â€” omit the tag
 	"index,follow":     true,
 	"noindex,nofollow": true,
 	"noindex,follow":   true,
@@ -428,8 +432,8 @@ var RobotsOptions = map[string]bool{
 // # The vulnerability this exists to close
 //
 // handleThemeExport emitted every key in AllKeys, and its own comment promised
-// "no secrets … so a bundle is safe to share". Both halves were false. The
-// bundle carried `tor.space_api_key` — a live API key — along with the shield's
+// "no secrets â€¦ so a bundle is safe to share". Both halves were false. The
+// bundle carried `tor.space_api_key` â€” a live API key â€” along with the shield's
 // allow and deny CIDR lists, the cluster peer list, payment configuration,
 // contact addresses and, after ADR-0155 P2, the VayuKeep backup destination.
 // The UI invites an operator to download a theme and "apply it everywhere",
@@ -437,7 +441,7 @@ var RobotsOptions = map[string]bool{
 //
 // The root cause was that this set existed only in a TEST. The theme editor's
 // conformance test kept a list of keys with no editor field, the exporter
-// iterated AllKeys, and nothing connected the two — so the test knew which keys
+// iterated AllKeys, and nothing connected the two â€” so the test knew which keys
 // were not part of a theme while the exporter shipped them anyway. It is
 // production state now, and the test reads it rather than keeping a second copy
 // that can drift again.
@@ -446,94 +450,95 @@ var RobotsOptions = map[string]bool{
 // editor round-trips it. Anything else is configuration, credentials, network
 // policy or measurements about this specific machine.
 var NotPortable = map[string]bool{
-	KeyBrandFavicon:             true,
-	KeySiteTimezone:             true,
-	KeyBrandFaviconType:         true,
-	KeyTorEnabled:               true,
-	KeyTorVisits:                true,
-	KeyTorBridges:               true,
-	KeyTorPageStats:             true,
-	KeyTorPageHits:              true,
-	KeyTorOnionLocation:         true,
-	KeyTorSpaceEnabled:          true,
-	KeyTorSpaceAPIKey:           true,
-	KeyTalkAnonID:               true,
-	KeyTalkOnionFederation:      true,
-	KeyFeatureComments:          true,
-	KeyFeatureNewsletter:        true,
-	KeyFeatureWebmentions:       true,
-	KeyMembershipButtons:        true,
-	KeyMaintenanceMode:          true,
-	KeyMaintenanceMessage:       true,
-	KeyBlockCrawlers:            true,
-	KeyFeedbackEmail:            true,
-	KeyNavItems:                 true,
-	KeyFooterConfig:             true,
-	KeyContactEmail:             true,
-	KeyContactAutoReply:         true,
-	KeyMediaAlt:                 true,
-	KeyThemeHeroImage:           true,
-	KeyThemeHeroImageType:       true,
-	KeyThemeOGImage:             true,
-	KeyThemeOGImageType:         true,
-	KeyHomeHero:                 true,
-	KeySiteMode:                 true,
-	KeyBizTemplate:              true,
-	KeyBizContent:               true,
-	KeyAuthorBio:                true,
-	KeyFeaturePayments:          true,
-	KeyFeatureAds:               true,
-	KeyFeatureGoogleAds:         true,
-	KeyFeatureAffiliate:         true,
-	KeyFeatureSponsors:          true,
-	KeyFeatureSearch:            true,
-	KeyFeatureTrending:          true,
-	KeyPayDirectInstructions:    true,
-	KeyPayCurrency:              true,
-	KeyPaySupportEmail:          true,
-	KeyPayPalSandbox:            true,
-	KeyBTCPayURL:                true,
-	KeyBTCPayStoreID:            true,
-	KeyPremiumMailIDPriceCents:  true,
-	KeyMailIDTerms:              true,
-	KeyAdSlotPriceCents:         true,
-	KeyAdsenseClient:            true,
-	KeyAffiliateDisclosure:      true,
-	KeyShieldEnabled:            true,
-	KeyShieldPoW:                true,
-	KeyShieldJS:                 true,
-	KeyShieldBlock:              true,
-	KeyShieldTarpit:             true,
-	KeyShieldRateLimit:          true,
-	KeyShieldRateRPM:            true,
-	KeyShieldBurst:              true,
-	KeyShieldLoadShed:           true,
-	KeyShieldMaxInFlight:        true,
-	KeyShieldAutoBlock:          true,
-	KeyShieldJailMinutes:        true,
-	KeyShieldUnderAttack:        true,
-	KeyShieldUnderAttackRPS:     true,
-	KeyShieldSurge:              true,
-	KeyShieldBehindCDN:          true,
-	KeyShieldObserve:            true,
-	KeyShieldAllowCIDRs:         true,
-	KeyShieldDenyCIDRs:          true,
-	KeyShieldAllowCountries:     true,
-	KeyShieldDenyCountries:      true,
-	KeyShieldChallengeCountries: true,
-	KeyShieldRouteCosts:         true,
-	KeyShieldClusterPeers:       true,
-	KeyShieldClusterNode:        true,
-	KeyShieldIntelFeeds:         true,
-	KeyAnalyticsBeacon:          true,
-	KeyVeilEnabled:              true,
-	KeyVayuKeepEnabled:          true,
-	KeyVayuKeepTarget:           true,
-	KeyVayuKeepRetainDays:       true,
-	KeyVayuKeepRetainGen:        true,
-	KeyMailQueueRetentionDays:   true,
-	KeyTalkHost:                 true,
-	KeyStartupMillis:            true,
+	KeyBrandFavicon:               true,
+	KeySiteTimezone:               true,
+	KeyBrandFaviconType:           true,
+	KeyTorEnabled:                 true,
+	KeyTorVisits:                  true,
+	KeyTorBridges:                 true,
+	KeyTorPageStats:               true,
+	KeyTorPageHits:                true,
+	KeyTorOnionLocation:           true,
+	KeyTorSpaceEnabled:            true,
+	KeyTorSpaceAPIKey:             true,
+	KeyTalkAnonID:                 true,
+	KeyTalkOnionFederation:        true,
+	KeyFeatureComments:            true,
+	KeyFeatureNewsletter:          true,
+	KeyFeatureWebmentions:         true,
+	KeyMembershipButtons:          true,
+	KeyMaintenanceMode:            true,
+	KeyMaintenanceMessage:         true,
+	KeyBlockCrawlers:              true,
+	KeyFeedbackEmail:              true,
+	KeyNavItems:                   true,
+	KeyFooterConfig:               true,
+	KeyContactEmail:               true,
+	KeyContactAutoReply:           true,
+	KeyMediaAlt:                   true,
+	KeyThemeHeroImage:             true,
+	KeyThemeHeroImageType:         true,
+	KeyThemeOGImage:               true,
+	KeyThemeOGImageType:           true,
+	KeyHomeHero:                   true,
+	KeySiteMode:                   true,
+	KeyBizTemplate:                true,
+	KeyBizContent:                 true,
+	KeyAuthorBio:                  true,
+	KeyFeaturePayments:            true,
+	KeyFeatureAds:                 true,
+	KeyFeatureGoogleAds:           true,
+	KeyFeatureAffiliate:           true,
+	KeyFeatureSponsors:            true,
+	KeyFeatureSearch:              true,
+	KeyFeatureTrending:            true,
+	KeyPayDirectInstructions:      true,
+	KeyPayCurrency:                true,
+	KeyPaySupportEmail:            true,
+	KeyPayPalSandbox:              true,
+	KeyBTCPayURL:                  true,
+	KeyBTCPayStoreID:              true,
+	KeyPremiumMailIDPriceCents:    true,
+	KeyMailIDTerms:                true,
+	KeyAdSlotPriceCents:           true,
+	KeyAdsenseClient:              true,
+	KeyAffiliateDisclosure:        true,
+	KeyShieldEnabled:              true,
+	KeyShieldPoW:                  true,
+	KeyShieldJS:                   true,
+	KeyShieldBlock:                true,
+	KeyShieldTarpit:               true,
+	KeyShieldRateLimit:            true,
+	KeyShieldRateRPM:              true,
+	KeyShieldBurst:                true,
+	KeyShieldLoadShed:             true,
+	KeyShieldMaxInFlight:          true,
+	KeyShieldAutoBlock:            true,
+	KeyShieldJailMinutes:          true,
+	KeyShieldUnderAttack:          true,
+	KeyShieldUnderAttackRPS:       true,
+	KeyShieldSurge:                true,
+	KeyShieldBehindCDN:            true,
+	KeyShieldObserve:              true,
+	KeyShieldAllowCIDRs:           true,
+	KeyShieldDenyCIDRs:            true,
+	KeyShieldAllowCountries:       true,
+	KeyShieldDenyCountries:        true,
+	KeyShieldChallengeCountries:   true,
+	KeyShieldRouteCosts:           true,
+	KeyShieldRefuseUnknownCountry: true,
+	KeyShieldClusterPeers:         true,
+	KeyShieldClusterNode:          true,
+	KeyShieldIntelFeeds:           true,
+	KeyAnalyticsBeacon:            true,
+	KeyVeilEnabled:                true,
+	KeyVayuKeepEnabled:            true,
+	KeyVayuKeepTarget:             true,
+	KeyVayuKeepRetainDays:         true,
+	KeyVayuKeepRetainGen:          true,
+	KeyMailQueueRetentionDays:     true,
+	KeyTalkHost:                   true,
+	KeyStartupMillis:              true,
 	// The operator's own VayuOS console theme (light/dark/auto), persisted from
 	// the topbar toggle. A personal preference for THIS operator, not a property
 	// of the site's look.
@@ -550,7 +555,7 @@ var AllKeys = map[string]bool{
 	KeyStartupMillis: true,
 	// The VayuKeep and mail-retention keys below were MISSING from this map while
 	// their panels wrote them, so every one of those writes reported success and
-	// stored nothing — an operator switching on continuous encrypted replication
+	// stored nothing â€” an operator switching on continuous encrypted replication
 	// was told it was on and it was not. Found by the guard in allkeys_test.go
 	// (ADR-0155), which exists because the same defect had just been introduced
 	// one key at a time.
@@ -620,43 +625,44 @@ var AllKeys = map[string]bool{
 	// persisted from the topbar theme toggle rather than the theme editor form.
 	"admin.theme": true,
 	// VayuShield + VayuAnalytics runtime toggles.
-	KeyShieldEnabled:            true,
-	KeyShieldPoW:                true,
-	KeyShieldJS:                 true,
-	KeyShieldBlock:              true,
-	KeyShieldTarpit:             true,
-	KeyShieldRateLimit:          true,
-	KeyShieldRateRPM:            true,
-	KeyShieldBurst:              true,
-	KeyShieldLoadShed:           true,
-	KeyShieldMaxInFlight:        true,
-	KeyShieldAutoBlock:          true,
-	KeyShieldJailMinutes:        true,
-	KeyShieldUnderAttack:        true,
-	KeyShieldUnderAttackRPS:     true,
-	KeyShieldSurge:              true,
-	KeyShieldBehindCDN:          true,
-	KeyShieldGroupIPv4:          true,
-	KeyShieldObserve:            true,
-	KeyShieldAllowCIDRs:         true,
-	KeyShieldDenyCIDRs:          true,
-	KeyShieldAllowCountries:     true,
-	KeyShieldDenyCountries:      true,
-	KeyShieldChallengeCountries: true,
-	KeyShieldRouteCosts:         true,
-	KeyShieldClusterPeers:       true,
-	KeyShieldClusterNode:        true,
-	KeyShieldIntelFeeds:         true,
-	KeyAnalyticsBeacon:          true,
-	KeyTorEnabled:               true,
-	KeyVeilEnabled:              true,
-	KeyTorVisits:                true,
-	KeyTorBridges:               true,
-	KeyTorPageStats:             true,
-	KeyTorPageHits:              true,
-	KeyTorOnionLocation:         true,
+	KeyShieldEnabled:              true,
+	KeyShieldPoW:                  true,
+	KeyShieldJS:                   true,
+	KeyShieldBlock:                true,
+	KeyShieldTarpit:               true,
+	KeyShieldRateLimit:            true,
+	KeyShieldRateRPM:              true,
+	KeyShieldBurst:                true,
+	KeyShieldLoadShed:             true,
+	KeyShieldMaxInFlight:          true,
+	KeyShieldAutoBlock:            true,
+	KeyShieldJailMinutes:          true,
+	KeyShieldUnderAttack:          true,
+	KeyShieldUnderAttackRPS:       true,
+	KeyShieldSurge:                true,
+	KeyShieldBehindCDN:            true,
+	KeyShieldGroupIPv4:            true,
+	KeyShieldObserve:              true,
+	KeyShieldAllowCIDRs:           true,
+	KeyShieldDenyCIDRs:            true,
+	KeyShieldAllowCountries:       true,
+	KeyShieldDenyCountries:        true,
+	KeyShieldChallengeCountries:   true,
+	KeyShieldRouteCosts:           true,
+	KeyShieldRefuseUnknownCountry: true,
+	KeyShieldClusterPeers:         true,
+	KeyShieldClusterNode:          true,
+	KeyShieldIntelFeeds:           true,
+	KeyAnalyticsBeacon:            true,
+	KeyTorEnabled:                 true,
+	KeyVeilEnabled:                true,
+	KeyTorVisits:                  true,
+	KeyTorBridges:                 true,
+	KeyTorPageStats:               true,
+	KeyTorPageHits:                true,
+	KeyTorOnionLocation:           true,
 	// Anonymous Tor Space (ADR-0141). MUST be registered here or SetMany silently
-	// drops the write — the one-click world toggle would appear to succeed (200)
+	// drops the write â€” the one-click world toggle would appear to succeed (200)
 	// yet never persist, so the reloaded page always reads "off".
 	KeyTorSpaceEnabled:     true,
 	KeyTorSpaceAPIKey:      true,
@@ -670,7 +676,7 @@ var Defaults = map[string]string{
 	KeySiteTagline:             "Publishing as an adaptive runtime.",
 	KeySiteDescription:         "Durable by design, observable end to end.",
 	KeySiteAuthor:              "Ankush Choudhary Johal",
-	KeyThemePrimaryLight:       "#0f766e", // teal-700 — clears WCAG AA on the light bg
+	KeyThemePrimaryLight:       "#0f766e", // teal-700 â€” clears WCAG AA on the light bg
 	KeyThemePrimaryDark:        "#2dd4bf",
 	KeyThemeAccentLight:        "#f59e0b",
 	KeyThemeAccentDark:         "#fbbf24",
@@ -728,55 +734,56 @@ var Defaults = map[string]string{
 	// It caps concurrent in-flight requests and answers a cheap 503 with
 	// Retry-After when the process is genuinely saturated. It has no per-visitor
 	// keying at all, so it cannot single anyone out, cannot be wrong about who a
-	// visitor is, and cannot lock a reader out — the worst it does under load is
+	// visitor is, and cannot lock a reader out â€” the worst it does under load is
 	// what the process would do anyway, but cheaply and with a signal a crawler
 	// honours instead of a timeout.
 	//
 	// Rate limiting is deliberately NOT defaulted on beside it. It keys on the
 	// client address, and on a proxied origin that has not set "Behind a CDN"
-	// every visitor resolves to a handful of edge addresses — so the whole
+	// every visitor resolves to a handful of edge addresses â€” so the whole
 	// audience shares one bucket and 120 requests a minute is nothing. Defaulting
 	// it on would take exactly the installs that have never opened this panel and
 	// show all of their readers a 429. Auto-block is not defaulted on either: it
 	// is the punitive one, and observe mode now exists so an operator can watch
 	// what it would have done to their own traffic first.
-	KeyShieldLoadShed:           "on",
-	KeyShieldMaxInFlight:        "0",
-	KeyShieldAutoBlock:          "off",
-	KeyShieldJailMinutes:        "10",
-	KeyShieldUnderAttack:        "off",
-	KeyShieldUnderAttackRPS:     "200",
-	KeyShieldBehindCDN:          "off",
-	KeyShieldGroupIPv4:          "off",
-	KeyShieldObserve:            "off",
-	KeyShieldAllowCIDRs:         "",
-	KeyShieldDenyCIDRs:          "",
-	KeyShieldAllowCountries:     "",
-	KeyShieldDenyCountries:      "",
-	KeyShieldChallengeCountries: "",
-	KeyShieldRouteCosts:         "",
-	KeyShieldClusterPeers:       "",
-	KeyShieldClusterNode:        "",
-	KeyShieldIntelFeeds:         "",
-	KeyAnalyticsBeacon:          "on",
-	KeyTorEnabled:               "off",
-	KeyVeilEnabled:              "off",
-	KeyTorVisits:                "0",
-	KeyTorBridges:               "",
-	KeyTorPageStats:             "off",
-	KeyTorPageHits:              "",
-	KeyTorOnionLocation:         "on",
-	KeyTorSpaceEnabled:          "off",
-	KeyTorSpaceAPIKey:           "",
-	KeyTalkAnonID:               "",
-	KeyTalkOnionFederation:      "off",
+	KeyShieldLoadShed:             "on",
+	KeyShieldMaxInFlight:          "0",
+	KeyShieldAutoBlock:            "off",
+	KeyShieldJailMinutes:          "10",
+	KeyShieldUnderAttack:          "off",
+	KeyShieldUnderAttackRPS:       "200",
+	KeyShieldBehindCDN:            "off",
+	KeyShieldGroupIPv4:            "off",
+	KeyShieldObserve:              "off",
+	KeyShieldAllowCIDRs:           "",
+	KeyShieldDenyCIDRs:            "",
+	KeyShieldAllowCountries:       "",
+	KeyShieldDenyCountries:        "",
+	KeyShieldChallengeCountries:   "",
+	KeyShieldRouteCosts:           "",
+	KeyShieldRefuseUnknownCountry: "",
+	KeyShieldClusterPeers:         "",
+	KeyShieldClusterNode:          "",
+	KeyShieldIntelFeeds:           "",
+	KeyAnalyticsBeacon:            "on",
+	KeyTorEnabled:                 "off",
+	KeyVeilEnabled:                "off",
+	KeyTorVisits:                  "0",
+	KeyTorBridges:                 "",
+	KeyTorPageStats:               "off",
+	KeyTorPageHits:                "",
+	KeyTorOnionLocation:           "on",
+	KeyTorSpaceEnabled:            "off",
+	KeyTorSpaceAPIKey:             "",
+	KeyTalkAnonID:                 "",
+	KeyTalkOnionFederation:        "off",
 }
 
 // Store is a thread-safe settings store with an in-process read cache.
 // Store is the settings store. Every read and write takes a Scope (ADR-0153 D1).
 //
 // Settings are stored per scope: site_settings has a (scope,key) primary key
-// (migration 082), the primary's rows carry scope=” so nothing written before
+// (migration 082), the primary's rows carry scope=â€ so nothing written before
 // ADR-0153 needed rewriting, and a hosted domain's rows are its own.
 //
 // A key with no row for a scope resolves to the compiled-in DEFAULT and never
@@ -790,7 +797,7 @@ type Store struct {
 	// cache and ttl are keyed by Scope.key(), so one domain's settings can never
 	// be served to another out of a shared map. Getting this wrong would be a
 	// cross-tenant leak with no schema change behind it, visible only under
-	// concurrency — the first domain to warm the cache would serve its theme to
+	// concurrency â€” the first domain to warm the cache would serve its theme to
 	// every other domain on the install.
 	cache map[string]map[string]string
 	ttl   map[string]time.Time
@@ -799,8 +806,8 @@ type Store struct {
 // CacheTTL bounds how long a cached settings snapshot is trusted.
 //
 // Exported because it is a PROMISE now, not an implementation detail. A value
-// written by another process — the privileged VayuTalk helper recording its
-// hostname, say — becomes visible to the running server within this window, and
+// written by another process â€” the privileged VayuTalk helper recording its
+// hostname, say â€” becomes visible to the running server within this window, and
 // that window is what the CLI quotes back to an operator instead of restarting
 // the install to make the change appear instantly (ADR-0155 P2). Anything that
 // tells someone how long to wait must read the same constant the waiting is
@@ -820,7 +827,7 @@ func New(db *sql.DB) *Store {
 // Defaults.
 //
 // An unset scope resolves to Defaults alone and never touches the database. A
-// caller that did not say whose settings it wants does not get the primary's —
+// caller that did not say whose settings it wants does not get the primary's â€”
 // that silent inheritance is the defect this design removes, and answering it
 // with the product's own defaults is the one answer that belongs to nobody.
 func (s *Store) GetAll(ctx context.Context, sc Scope) (map[string]string, error) {
@@ -882,8 +889,8 @@ func defaultsCopy() map[string]string {
 // Get returns one setting's value (falling back to its default).
 //
 // It reads the cached map in place rather than going through GetAll, which
-// COPIES every entry. Get is the hot accessor — the VayuOS shell alone calls it
-// several times per page render and it is used from ~60 call sites — so copying
+// COPIES every entry. Get is the hot accessor â€” the VayuOS shell alone calls it
+// several times per page render and it is used from ~60 call sites â€” so copying
 // the whole ~85-entry map to read a single string was pure waste on every admin
 // page load and every public render. Only a cold/expired cache falls through to
 // GetAll (which does the query and refills).

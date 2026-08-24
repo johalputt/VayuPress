@@ -20,7 +20,14 @@ func TestForcedChangePathAllowed(t *testing.T) {
 }
 
 func TestGenerateInitialPassword(t *testing.T) {
-	a, b := generateInitialPassword(), generateInitialPassword()
+	a, err := generateInitialPassword()
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	b, err := generateInitialPassword()
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
 	if len(a) != 20 || len(b) != 20 {
 		t.Fatalf("want 20-char passwords, got %d and %d", len(a), len(b))
 	}

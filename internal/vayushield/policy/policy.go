@@ -69,9 +69,10 @@ type Rules struct {
 	allow []netip.Prefix
 	deny  []netip.Prefix
 
-	allowCountries     map[string]bool // when non-empty, ONLY these are served
-	denyCountries      map[string]bool
-	challengeCountries map[string]bool
+	allowCountries       map[string]bool // when non-empty, ONLY these are served
+	denyCountries        map[string]bool
+	challengeCountries   map[string]bool
+	refuseUnknownCountry bool // with an allow list, an unresolvable country is refused
 
 	routes []Route
 
@@ -113,7 +114,14 @@ type Config struct {
 	// ChallengeCountries are served a solvable proof of work rather than
 	// refused. See VerdictChallenge.
 	ChallengeCountries []string
-	Routes             []Route
+	// RefuseUnknownCountry, when an AllowCountries list is active, refuses
+	// visitors whose country could not be resolved at all instead of serving
+	// them (audit: the unresolved case failed open). Off by default: an empty
+	// answer usually means "no data for this address", and refusing every
+	// address without table coverage would blank whole regions. An operator
+	// running a strict geo fence opts into the sharper behaviour.
+	RefuseUnknownCountry bool
+	Routes               []Route
 	// OnionMode compiles away both the address rules and the country rules,
 	// leaving only the route rules. See Source and Country for why each is wrong
 	// rather than merely useless where every peer is 127.0.0.1.
@@ -181,6 +189,7 @@ func Compile(c Config) (Rules, []string) {
 		r.allowCountries = set(c.AllowCountries)
 		r.denyCountries = set(c.DenyCountries)
 		r.challengeCountries = set(c.ChallengeCountries)
+		r.refuseUnknownCountry = c.RefuseUnknownCountry
 	}
 
 	for _, rt := range c.Routes {
@@ -250,6 +259,14 @@ func (r Rules) Source(ip string) Verdict {
 // form.
 func (r Rules) Country(code string) Verdict {
 	if r.onionMode || code == "" {
+		// An allow list that cannot see a country used to read as "no verdict,
+		// serve" — a visitor who simply had no resolvable geography sailed past
+		// the fence the operator built. With RefuseUnknownCountry the operator
+		// chooses the sharp edge instead; without it the historical lenient
+		// reading stands, because empty usually means no data, not evasion.
+		if code == "" && !r.onionMode && r.refuseUnknownCountry && len(r.allowCountries) > 0 {
+			return VerdictDeny
+		}
 		return VerdictNone
 	}
 	code = strings.ToUpper(code)

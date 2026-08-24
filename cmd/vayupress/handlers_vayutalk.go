@@ -245,13 +245,17 @@ func (a *App) handleTalkSend(w http.ResponseWriter, r *http.Request) {
 
 // handleTalkAck read-destroys an envelope: it is deleted from the store
 // immediately and, if the sender is streaming, a read receipt is emitted to it.
+// Ownership-bound (audit): only the envelope's RECIPIENT may ack it — an
+// authenticated peer naming someone else's id gets a 404 and the mail
+// survives, instead of destroying another user's message from afar.
 func (a *App) handleTalkAck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if !a.vayuTalkEnabled() {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "vayutalk-disabled", "VayuTalk is not available", "")
 		return
 	}
-	if _, ok := a.talkAuth(w, r); !ok {
+	email, ok := a.talkAuth(w, r)
+	if !ok {
 		return
 	}
 	var body struct {
@@ -261,11 +265,16 @@ func (a *App) handleTalkAck(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
-	if strings.TrimSpace(body.ID) == "" {
+	id := strings.TrimSpace(body.ID)
+	if id == "" {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "id is required", "")
 		return
 	}
-	a.vayuTalk.Ack(strings.TrimSpace(body.ID))
+	if !a.vayuTalk.AckAs(id, email) {
+		// Unknown id or not the recipient: indistinguishable on purpose.
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "no such envelope", "")
+		return
+	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{})
 }
 

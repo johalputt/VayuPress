@@ -202,6 +202,18 @@ func (s *Store) Delete(id string) (sender string, existed bool) {
 	return env.From, true
 }
 
+// RecipientOf reports who an envelope is addressed to, without removing it —
+// the ownership check an ack must pass before read-destroying anything.
+func (s *Store) RecipientOf(id string) (to string, existed bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	env, ok := s.byID[id]
+	if !ok {
+		return "", false
+	}
+	return env.To, true
+}
+
 // PurgeExpired removes every envelope whose expiry is at or before now and
 // returns a receipt per removed envelope so senders can be notified.
 func (s *Store) PurgeExpired(now time.Time) []ExpiredReceipt {

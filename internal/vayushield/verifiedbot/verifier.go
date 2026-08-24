@@ -230,6 +230,16 @@ func (v *Verifier) Classify(ip netip.Addr, ua string) (Verdict, string, Class) {
 	if !ok {
 		return Unknown, "", ""
 	}
+	if v.cfg.OnionMode {
+		// Audit: UA-only crawler trust on fresh boots. In a Tor Space every peer
+		// arrives as 127.0.0.1, so neither a feed-CIDR hit nor FCrDNS can ever
+		// corroborate a User-Agent claim — honouring one would hand any visitor
+		// who types "Googlebot" the good-bot fast path (never challenged,
+		// never shed) for free. Crawler recognition stays off there entirely:
+		// such visitors are treated as ordinary traffic, which is the honest
+		// reading of evidence that cannot exist.
+		return Unknown, "", ""
+	}
 	switch vd.tier {
 	case tierUAOnly:
 		v.note(vd.name)

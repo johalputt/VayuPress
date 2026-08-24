@@ -126,6 +126,16 @@ type Config struct {
 	// nil disables it.
 	BypassFn func(*http.Request) bool
 
+	// OnionRequestFn marks requests that arrived over a Tor onion address. A
+	// plain-http .onion origin is not a secure context, so the browser does not
+	// expose crypto.subtle there and a PoW challenge can never be solved —
+	// serving one to those visitors locks every Tor reader out for as long as
+	// surge lasts (audit: unsolvable challenges on the overlay). When the
+	// predicate matches, challenges are suppressed and the request proceeds;
+	// nil leaves challenge behaviour unchanged (Tor Space installs already
+	// disable surge wholesale via OnionMode).
+	OnionRequestFn func(*http.Request) bool
+
 	SessionCookieName string        // default "vayushield"
 	SessionTTL        time.Duration // default 12h
 	ChallengeTTL      time.Duration // default 5m
@@ -1418,26 +1428,20 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if m.isBypassed(r) {
-			next.ServeHTTP(w, r)
-			return
-		}
-
 		ipKey := ipOnly(m.cfg.ClientIP(r))
 
-		// The operator's own rules, before anything the shield infers.
+		// The operator's own rules, before ANYTHING else — including the bypass.
 		//
-		// Placed ahead of the verified-session short-circuit deliberately. Every
-		// other gate below yields to a signed session, because a visitor who solved
-		// a challenge has proved something about themselves. An operator's DENY has
-		// not been out-argued by that proof: they said not to serve this network,
-		// and a rule that a client can escape by solving a puzzle is not a rule.
-		//
-		// The symmetric case is the reason ALLOW sits here too: it is the escape
-		// hatch that gets an operator back into their own site after a
-		// false-positive run, and an escape hatch that is itself subject to the
-		// jail is no escape hatch.
-		if pol := m.Policy(); !pol.Empty() {
+		// The bypass used to short-circuit BEFORE policy evaluation, which meant
+		// a request for any exempt prefix (/os, /api, /oauth …) or any
+		// feed-shaped path sailed past an explicit operator DENY as if the rule
+		// did not exist (audit: bypass-before-policy). An exemption from the
+		// shield's INFERRED gates (challenge, rate-limit, shedding) was never
+		// meant to be an exemption from the operator's own orders: the two DENY
+		// verdicts are evaluated first, and only then does the bypass get its
+		// say — followed by the ALLOW escape hatch.
+		pol := m.Policy()
+		if !pol.Empty() {
 			switch pol.Source(ipKey) {
 			case policy.VerdictDeny:
 				if !m.observing(lc, GatePolicyDeny) {
@@ -1447,6 +1451,10 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 					return
 				}
 			case policy.VerdictAllow:
+				if m.isBypassed(r) {
+					next.ServeHTTP(w, r)
+					return
+				}
 				m.onEvent(ActionAllow, 0)
 				next.ServeHTTP(w, r)
 				return
@@ -1460,6 +1468,13 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 					return
 				}
 			}
+		}
+		// With the operator's DENY verdicts heard, exempt machine endpoints
+		// (configured prefixes, dynamic key files, feed-shaped paths) proceed
+		// without the inferred gates below.
+		if m.isBypassed(r) {
+			next.ServeHTTP(w, r)
+			return
 		}
 
 		// enfKey is the identity the DURABLE gates count against — the /64 for
@@ -2139,6 +2154,13 @@ func (m *Manager) serveChallenge(w http.ResponseWriter, r *http.Request, v Verdi
 		// A Tor Space serves plain-http .onion, so window.crypto.subtle is
 		// undefined and the PoW solver cannot run — a challenge here locks EVERY
 		// human out. Fail open; the non-crypto gates still enforce.
+		return false
+	}
+	if m.cfg.OnionRequestFn != nil && m.cfg.OnionRequestFn(r) {
+		// The onion OVERLAY on a clearnet Space has the same property: the
+		// visitor is in Tor Browser over plain http, so the solver cannot run
+		// and a served challenge is an outage with extra steps (audit). Fail
+		// open for these requests; every non-crypto gate still applies.
 		return false
 	}
 	pow, err := m.cfg.Signer.IssuePoW(difficulty, m.cfg.ChallengeTTL)

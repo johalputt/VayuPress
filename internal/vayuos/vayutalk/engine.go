@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -194,6 +195,22 @@ func (e *Engine) AckReturningSender(id string) (sender string, ok bool) {
 	}
 	e.hub.PublishReceipt(sender, id, "read")
 	return sender, true
+}
+
+// AckAs is the ownership-checked ack: the envelope is destroyed only when the
+// claimant IS its recipient (audit: the plain ack accepted any authenticated
+// user's id, letting one peer read-destroy another's mail). Unknown ids and
+// foreign envelopes both return false with no side effects.
+func (e *Engine) AckAs(id, claimant string) bool {
+	if e == nil || id == "" || claimant == "" {
+		return false
+	}
+	to, ok := e.store.RecipientOf(id)
+	if !ok || !strings.EqualFold(to, claimant) {
+		return false
+	}
+	e.Ack(id)
+	return true
 }
 
 // PublishReceipt delivers a receipt (e.g. "read") to a streaming user. Used to

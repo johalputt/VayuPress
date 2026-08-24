@@ -207,7 +207,13 @@ func (a *App) bootVayuShield() {
 		// Tor Space: never issue a browser challenge (crypto.subtle is undefined
 		// on the plain-http .onion, so it would lock every visitor out).
 		OnionMode: config.Cfg.OnionMode,
-		OnEvent:   a.vayuShieldOnEvent,
+		// The onion overlay on a clearnet Space has the same constraint per
+		// REQUEST rather than per install: a .onion Host means the visitor is in
+		// Tor Browser over plain http, so PoW challenges are suppressed for
+		// those requests while clearnet visitors are still challenged (audit:
+		// unsolvable challenges served to Tor Browser under surge).
+		OnionRequestFn: func(r *http.Request) bool { return isOnionHost(r.Host) },
+		OnEvent:        a.vayuShieldOnEvent,
 		// L0 -> L2 pressure link: when the public sovereignty lane passes 75%
 		// occupancy the L2 pre-filter starts fair-shedding heavy hitters, easing
 		// the lane back down BEFORE it saturates and starts shedding blindly.
@@ -1078,6 +1084,12 @@ func (a *App) shieldPolicyBand(ctx context.Context, geoBlind bool) string {
 		"CN\nRU\nTR", get(settings.KeyShieldChallengeCountries)))
 	b.WriteString(vsArea("sh_allow_countries", "Serve ONLY these countries", geoBlindNote+`Sharper than the field above: anything not on this list is refused. Empty means no restriction. Filling this in on a public site normally costs more real readers than it stops abuse.`,
 		"GB\nDE\nIN", get(settings.KeyShieldAllowCountries)))
+	refuseUnknown := strings.TrimSpace(get(settings.KeyShieldRefuseUnknownCountry)) == "on"
+	refuseUnknownDesc := `When this is on and the list above is active, a visitor whose country cannot be resolved at all is REFUSED rather than served. Off by default: an empty answer usually means no data for that address, not evasion — turning this on trades coverage gaps for strictness.`
+	if config.Cfg.OnionMode {
+		refuseUnknownDesc = `<strong>Disabled in this Space</strong> — country rules do not apply where every visitor arrives as 127.0.0.1.`
+	}
+	b.WriteString(`<div class="vs-row"><div><div class="vs-row-title">Refuse visitors with no resolvable country</div><div class="vs-row-desc">` + refuseUnknownDesc + `</div></div>` + vsToggle("sh_refuse_unknown", refuseUnknown, false) + `</div>`)
 	b.WriteString(`</div></div>`)
 
 	// Route weights. The default of one-slot-per-request is what makes an
@@ -1572,14 +1584,15 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		// The operator's own rules. Stored as typed, minus a size cap: these are
 		// paste targets, and an unbounded textarea is a way to put megabytes into
 		// a settings row that is then re-parsed on every save.
-		settings.KeyShieldAllowCIDRs:         area("sh_allow_cidrs"),
-		settings.KeyShieldDenyCIDRs:          area("sh_deny_cidrs"),
-		settings.KeyShieldAllowCountries:     area("sh_allow_countries"),
-		settings.KeyShieldDenyCountries:      area("sh_deny_countries"),
-		settings.KeyShieldChallengeCountries: area("sh_challenge_countries"),
-		settings.KeyShieldRouteCosts:         area("sh_route_costs"),
-		settings.KeyShieldClusterPeers:       area("sh_cluster_peers"),
-		settings.KeyShieldClusterNode:        area("sh_cluster_node"),
+		settings.KeyShieldAllowCIDRs:           area("sh_allow_cidrs"),
+		settings.KeyShieldDenyCIDRs:            area("sh_deny_cidrs"),
+		settings.KeyShieldAllowCountries:       area("sh_allow_countries"),
+		settings.KeyShieldDenyCountries:        area("sh_deny_countries"),
+		settings.KeyShieldChallengeCountries:   area("sh_challenge_countries"),
+		settings.KeyShieldRefuseUnknownCountry: bs("sh_refuse_unknown"),
+		settings.KeyShieldRouteCosts:           area("sh_route_costs"),
+		settings.KeyShieldClusterPeers:         area("sh_cluster_peers"),
+		settings.KeyShieldClusterNode:          area("sh_cluster_node"),
 
 		// Feed opt-ins arrive as one checkbox per feed and are stored as a single
 		// comma-separated list, filtered to the IDs this build ships. An unknown
@@ -1824,13 +1837,14 @@ func (a *App) shieldSettings(ctx context.Context) vayushield.Settings {
 		GroupIPv4:            on(settings.KeyShieldGroupIPv4),
 		ObserveOnly:          on(settings.KeyShieldObserve),
 		Policy: policy.Config{
-			AllowCIDRs:         policyLines(g(settings.KeyShieldAllowCIDRs)),
-			DenyCIDRs:          policyLines(g(settings.KeyShieldDenyCIDRs)),
-			AllowCountries:     policyLines(g(settings.KeyShieldAllowCountries)),
-			DenyCountries:      policyLines(g(settings.KeyShieldDenyCountries)),
-			ChallengeCountries: policyLines(g(settings.KeyShieldChallengeCountries)),
-			Routes:             parseRouteCosts(g(settings.KeyShieldRouteCosts)),
-			OnionMode:          config.Cfg.OnionMode,
+			AllowCIDRs:           policyLines(g(settings.KeyShieldAllowCIDRs)),
+			DenyCIDRs:            policyLines(g(settings.KeyShieldDenyCIDRs)),
+			AllowCountries:       policyLines(g(settings.KeyShieldAllowCountries)),
+			DenyCountries:        policyLines(g(settings.KeyShieldDenyCountries)),
+			ChallengeCountries:   policyLines(g(settings.KeyShieldChallengeCountries)),
+			RefuseUnknownCountry: on(settings.KeyShieldRefuseUnknownCountry),
+			Routes:               parseRouteCosts(g(settings.KeyShieldRouteCosts)),
+			OnionMode:            config.Cfg.OnionMode,
 		},
 	}
 }

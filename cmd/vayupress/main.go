@@ -188,7 +188,16 @@ func (a *App) bootstrapDefaultAdmin(ctx context.Context) {
 		domain = "localhost"
 	}
 	email := "admin@" + domain
-	pass := generateInitialPassword()
+	pass, err := generateInitialPassword()
+	if err != nil {
+		// No CSPRNG at bootstrap means no unpredictable credential. A
+		// time-derived fallback would be guessable from boot logs, so refuse to
+		// create the account rather than mint a known password (audit:
+		// time-derived fallback password).
+		logging.LogError("users", "default admin bootstrap aborted: no secure randomness available", err.Error())
+		logging.LogInfo("users", "create one manually: vayupress user add <email> <password> --admin")
+		return
+	}
 	if _, err := a.userStore.CreateBootstrapAdmin(ctx, email, "Administrator", pass); err != nil {
 		logging.LogError("users", "default admin bootstrap failed", err.Error())
 		logging.LogInfo("users", "create one manually: vayupress user add <email> <password> --admin")
@@ -196,36 +205,40 @@ func (a *App) bootstrapDefaultAdmin(ctx context.Context) {
 	}
 
 	// Persist the credentials to a root-only file beside the DB so they survive a
-	// scrolled-past log. Best-effort: a write failure still leaves them in the log.
+	// scrolled-past log. Best-effort: if the write fails, the operator is told to
+	// bootstrap by hand — the password itself is never logged (audit: a
+	// credential in a log line lands in journald rotations and every `docker
+	// logs` scrollback forever).
 	credPath := filepath.Join(filepath.Dir(config.Cfg.DBPath), "initial-admin.txt")
 	content := "VayuPress initial administrator (CHANGE THE PASSWORD ON FIRST LOGIN)\n" +
 		"URL:      /os/login\n" +
 		"Email:    " + email + "\n" +
 		"Password: " + pass + "\n"
 	if err := os.WriteFile(credPath, []byte(content), 0o600); err != nil {
-		credPath = "(could not write file: " + err.Error() + ")"
+		logging.LogWarn("users", "could not write initial-admin.txt ("+err.Error()+"); create the admin manually: vayupress user add <email> <password> --admin")
 	}
 
 	logging.LogInfo("users", "════════════════════════════════════════════════════════")
 	logging.LogInfo("users", "Default admin created — sign in at /os/login and change the password")
 	logging.LogInfo("users", "  Email:    "+email)
-	logging.LogInfo("users", "  Password: "+pass)
-	logging.LogInfo("users", "  Saved to: "+credPath)
+	logging.LogInfo("users", "  Password saved to: "+credPath+" (root-only file)")
 	logging.LogInfo("users", "════════════════════════════════════════════════════════")
 }
 
 // generateInitialPassword returns a strong, readable 20-character random password
-// (no ambiguous characters) for the bootstrapped admin.
-func generateInitialPassword() string {
+// (no ambiguous characters) for the bootstrapped admin. It fails closed: if the
+// CSPRNG is unavailable there is NO time-derived fallback, which would be
+// guessable from boot logs.
+func generateInitialPassword() (string, error) {
 	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
 	b := make([]byte, 20)
 	if _, err := rand.Read(b); err != nil {
-		return "vayupress-" + hex.EncodeToString([]byte(time.Now().String()))[:12]
+		return "", err
 	}
 	for i := range b {
 		b[i] = alphabet[int(b[i])%len(alphabet)]
 	}
-	return string(b)
+	return string(b), nil
 }
 
 func newUUID() string {
