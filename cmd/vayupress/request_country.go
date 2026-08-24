@@ -3,7 +3,6 @@
 package main
 
 import (
-	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -50,29 +49,25 @@ var (
 // edgeCountryHeader returns the country a TRUSTED EDGE stated for this request.
 //
 // The trust check is the whole security of this function and is the same one
-// auth.ClientIP applies before honouring a forwarding address.
+// auth.ClientIP applies before honouring a forwarding address: a country
+// assertion is only read from a peer on TRUSTED_PROXIES, never from an
+// arbitrary direct connection.
 //
-// Audit H6: peer-trust alone was not enough. TRUSTED_PROXIES defaults to
-// loopback, and on the standard install that loopback peer is the local nginx —
-// which forwards unknown client headers untouched. Any visitor could therefore
-// hand the server `CF-IPCountry: US` themselves and be judged, counted, and
-// admitted under whatever country they named, including one the operator had
-// refused. A genuine edge always connects from a public address, so country
-// assertions from loopback/private peers are refused outright; the shipped
-// proxy config blanks these headers as belt-and-braces (see
-// deploy/nginx-vayupress.conf). Operators fronted by a real CDN add its public
-// ranges to TRUSTED_PROXIES and keep working unchanged.
+// Audit H6 follow-up: the header a trusted local proxy forwards is only as
+// honest as what it received, so the shipped reverse-proxy config
+// (deploy/nginx-vayupress.conf) blanks all seven CDN country headers on
+// everything it forwards from clients. On the standard install that means a
+// visitor cannot smuggle `CF-IPCountry` past the proxy and be judged under a
+// country they named; geography falls back to the embedded table, and an
+// operator who fronts a real CDN re-enables pass-through deliberately, knowing
+// only the edge can set those headers there. Refusing the headers APP-SIDE by
+// peer address was evaluated and rejected: on every normal topology the
+// immediate peer is the loopback nginx, so address-based refusal silently
+// blanks audience reporting for everyone (see
+// TestTheLocalReverseProxyStillSuppliesTheVisitorsCountry).
 func edgeCountryHeader(r *http.Request) string {
 	if !auth.PeerIsTrustedProxy(r) {
 		return ""
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	if ip := net.ParseIP(strings.TrimSpace(host)); ip != nil &&
-		(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
-		return "" // local proxy: it cannot vouch for a header the client may have set
 	}
 	for _, k := range cdnCountryHeaders {
 		if v := strings.TrimSpace(r.Header.Get(k)); v != "" {
