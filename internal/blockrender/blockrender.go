@@ -16,7 +16,9 @@ package blockrender
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"html"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -300,26 +302,12 @@ func renderDiagramBlock(blk Block, plain *strings.Builder) string {
 const maxRawSVGBytes = 512 * 1024
 
 var (
-	svgOpenRe    = regexp.MustCompile(`(?is)^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!doctype[^>]*>\s*)?<svg[\s>]`)
-	svgScriptRe  = regexp.MustCompile(`(?is)<script.*?</script\s*>`)
-	svgStyleRe   = regexp.MustCompile(`(?is)<style.*?</style\s*>`)
-	svgForeignRe = regexp.MustCompile(`(?is)<foreignobject.*?</foreignobject\s*>`)
-	svgOnAttrRe  = regexp.MustCompile(`(?is)\son[a-z0-9_-]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
-	svgHrefRe    = regexp.MustCompile(`(?is)\s(?:xlink:)?href\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
-	// CSS url() references, wherever they appear — and the reason this is
-	// separate from svgStyleRe above. That one removes <style> ELEMENTS. A
-	// style= ATTRIBUTE is not an element, and `style="fill:url(https://x/)"`
-	// sailed straight through it: the file stored clean of script, clean of
-	// off-site href, and still announced every reader's IP, User-Agent and
-	// referrer to a third party the moment the image rendered.
-	//
-	// Found by attacking this function's own contract, which says no off-site
-	// resource is fetched and the reader's IP never leaks. It said that while
-	// this hole was open, on a product that ships a Tor Space.
-	//
-	// Local fragment references are kept, because they are how SVG works —
-	// fill:url(#gradient) is the normal case and breaking it would make the
-	// sanitiser useless rather than safe.
+	svgOpenRe = regexp.MustCompile(`(?is)^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!doctype[^>]*>\s*)?<svg[\s>]`)
+	// CSS url() references, wherever they appear — used by filterSVGCSSURLs to
+	// scrub style ATTRIBUTES (a <style> element can no longer exist at all: the
+	// parse-based sanitiser drops it wholesale). Local fragment references are
+	// kept, because they are how SVG works — fill:url(#gradient) is the normal
+	// case and breaking it would make the sanitiser useless rather than safe.
 	svgCSSURLRe  = regexp.MustCompile(`(?is)url\(\s*("[^"]*"|'[^']*'|[^)]*)\)`)
 	svgJSProtoRe = regexp.MustCompile(`(?is)(javascript|vbscript|data\s*:\s*text/html)\s*:`)
 )
@@ -330,27 +318,204 @@ func LooksLikeSVG(src string) bool {
 	return svgOpenRe.MatchString(src)
 }
 
-// SanitizeSVG defensively strips the active-content vectors from a raw SVG:
-// <script>/<style>/<foreignObject> subtrees, inline event-handler attributes,
-// dangerous URL schemes, and any href/xlink:href that is not a same-document
-// (#fragment) reference — so no off-site resource is fetched and the reader's IP
-// never leaks. It returns the cleaned SVG and ok=false when the input is too
-// large or no longer contains an <svg> element. This is defence in depth: the
-// public/admin CSP (script-src 'self' 'nonce-…', no unsafe-inline) already blocks
-// inline script and event-handler execution, so a cleaned SVG cannot run code.
+// SanitizeSVG defensively strips the active-content vectors from a raw SVG.
+//
+// It is PARSE-BASED by design (audit: the previous implementation stripped
+// deny-listed constructs with regular expressions and re-assembled the
+// remainder, which two attack classes defeat — an unterminated `<script>`
+// that never matches a `</script>` pattern yet still parses in recovery mode,
+// and nested/recombined markup such as `<scr<script>ipt>` where removing the
+// inner match leaves exactly the outer tag behind). This version walks the
+// input with encoding/xml and REBUILDS the document from an allowlist: known
+// shape/paint elements, known-safe attributes, href only as a same-document
+// #fragment, comments/PIs/DTD dropped, style values filtered for url(). Any
+// token error — malformed XML, undefined entities, tag mismatch — rejects the
+// whole input. If the strict XML parse succeeds there is no recovery-mode
+// ambiguity left for a browser to exploit.
+//
+// ok=false when the input is too large, fails to parse, or contains no allowed
+// <svg> root. Defence in depth: the public CSP already blocks inline script
+// execution; this layer additionally stops off-site resource loads (reader
+// IP/referrer beacons) even where CSP allows img-src https:.
 func SanitizeSVG(src string) (string, bool) {
 	src = strings.TrimSpace(src)
 	if src == "" || len(src) > maxRawSVGBytes {
 		return "", false
 	}
-	src = svgScriptRe.ReplaceAllString(src, "")
-	src = svgStyleRe.ReplaceAllString(src, "")
-	src = svgForeignRe.ReplaceAllString(src, "")
-	src = svgOnAttrRe.ReplaceAllString(src, "")
-	// Drop every CSS url() that is not a local #fragment. Runs before the href
-	// pass so a url() inside a style attribute is gone regardless of what the
-	// href rule does or does not consider its business.
-	src = svgCSSURLRe.ReplaceAllStringFunc(src, func(m string) string {
+	dec := xml.NewDecoder(strings.NewReader(src))
+	dec.Strict = true
+
+	var out strings.Builder
+	sawSVG := false
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", false // malformed / DTD tricks / tag mismatch — reject all
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			name := t.Name.Local
+			if !svgAllowedElem(name) {
+				dec.Skip() // consume the entire subtree, content included
+				continue
+			}
+			if name == "svg" {
+				if sawSVG {
+					return "", false // nested root: reject
+				}
+				sawSVG = true
+			}
+			out.WriteByte('<')
+			out.WriteString(name)
+			for _, a := range t.Attr {
+				if v, keep := sanitizeSVGAttr(a); keep {
+					out.WriteByte(' ')
+					out.WriteString(attrName(a))
+					out.WriteString(`="`)
+					out.WriteString(escapeSVGAttrValue(v))
+					out.WriteByte('"')
+				}
+			}
+			out.WriteByte('>')
+		case xml.EndElement:
+			if !svgAllowedElem(t.Name.Local) {
+				continue // its start was skipped; nothing to emit
+			}
+			out.WriteString("</" + t.Name.Local + ">")
+		case xml.CharData:
+			out.WriteString(escapeSVGText(string(t)))
+		default:
+			// Comments, directives, processing instructions: never re-emitted.
+			// They are parser-state noise at best and splitter attacks at worst.
+			continue
+		}
+	}
+	if !sawSVG {
+		return "", false
+	}
+	return out.String(), true
+}
+
+// svgAllowedElem reports whether an element may appear in sanitized output.
+// Everything not listed — script, style, foreignObject, image, use, a,
+// animation elements — is dropped wholesale, content and all.
+func svgAllowedElem(name string) bool {
+	switch name {
+	case "svg", "g", "defs", "symbol", "use", "title", "desc", "metadata",
+		"path", "rect", "circle", "ellipse", "line", "polyline", "polygon",
+		"text", "tspan", "textPath",
+		"marker", "clipPath", "mask", "pattern",
+		"linearGradient", "radialGradient", "stop",
+		"filter", "feBlend", "feColorMatrix", "feComponentTransfer",
+		"feComposite", "feConvolveMatrix", "feDiffuseLighting",
+		"feDisplacementMap", "feDistantLight", "feDropShadow", "feFlood",
+		"feFuncA", "feFuncB", "feFuncG", "feFuncR", "feGaussianBlur",
+		"feImage", "feMerge", "feMergeNode", "feMorphology", "feOffset",
+		"fePointLight", "feSpecularLighting", "feSpotLight", "feTile",
+		"feTurbulence":
+		return true
+	}
+	return false
+}
+
+// sanitizeSVGAttr filters one attribute. href/xlink:href survive only as
+// same-document fragments; event handlers are impossible by construction
+// (never on the allowlist) and style values are URL-filtered. Returns
+// ("", false) to drop the attribute entirely.
+func sanitizeSVGAttr(a xml.Attr) (string, bool) {
+	local := strings.ToLower(a.Name.Local)
+	isXLink := strings.HasSuffix(strings.ToLower(a.Name.Space), "xlink")
+	switch {
+	case strings.HasPrefix(local, "on"):
+		return "", false // event-handler shape, however spelled
+	case local == "href" || (isXLink && local == "href"):
+		v := strings.TrimSpace(a.Value)
+		if strings.HasPrefix(v, "#") {
+			return v, true // gradient/marker refs stay same-document
+		}
+		return "", false // everything off-site or scheme-bearing goes
+	case local == "style":
+		return filterSVGCSSURLs(a.Value), true
+	case local == "xmlns":
+		return "http://www.w3.org/2000/svg", true
+	case local == "xlink":
+		return "http://www.w3.org/1999/xlink", true
+	case local == "src" || local == "srcset" || local == "action" ||
+		local == "formaction" || local == "data" || local == "poster":
+		return "", false
+	}
+	if !svgAllowedAttr(local) {
+		return "", false
+	}
+	return a.Value, true
+}
+
+// svgAllowedAttr is the attribute allowlist shared by every element: geometry,
+// paint, filter plumbing, typography and accessibility metadata only.
+func svgAllowedAttr(local string) bool {
+	switch local {
+	case "id", "class", "role", "aria-hidden", "aria-label", "aria-labelledby",
+		"title", "tabindex", "focusable",
+		"x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry",
+		"width", "height", "d", "points", "transform", "pathlength",
+		"viewbox", "preserveaspectratio",
+		"fill", "fill-opacity", "fill-rule", "stroke", "stroke-width",
+		"stroke-opacity", "stroke-linecap", "stroke-linejoin",
+		"stroke-dasharray", "stroke-dashoffset", "paint-order",
+		"opacity", "color", "clip-path", "clip-rule", "mask",
+		"filter", "flood-color", "flood-opacity",
+		"offset", "stop-color", "stop-opacity",
+		"gradientunits", "gradienttransform", "spreadmethod", "fx", "fy", "fr",
+		"patternunits", "patterncontentunits", "patterntransform",
+		"maskunits", "maskcontentunits", "clippathunits", "primitiveunits",
+		"markerwidth", "markerheight", "refx", "refy", "orient",
+		"marker-start", "marker-mid", "marker-end",
+		"in", "in2", "result", "values", "mode", "operator", "k1", "k2", "k3", "k4",
+		"stddeviation", "dx", "dy", "scale", "angle", "radius", "surfacescale",
+		"diffuseconstant", "specularconstant", "specularexponent",
+		"basefrequency", "numoctaves", "seed", "stitchtiles",
+		"xchannelselector", "ychannelselector",
+		"tablevalues", "slope", "intercept", "amplitude", "exponent",
+		"azimuth", "elevation", "limitingconeangle",
+		"pointsatx", "pointsaty", "pointsatz",
+		"font-family", "font-size", "font-weight", "font-style",
+		"text-anchor", "dominant-baseline", "alignment-baseline", "baseline-shift",
+		"letter-spacing", "word-spacing", "text-decoration", "direction",
+		"xml:space", "xml:lang", "lang":
+		return true
+	}
+	return false
+}
+
+// attrName renders an xml.Attr's full name, preserving the xlink namespace on
+// href so downstream processors keep resolving it correctly.
+func attrName(a xml.Attr) string {
+	if a.Name.Space != "" {
+		return a.Name.Space + ":" + a.Name.Local
+	}
+	return a.Name.Local
+}
+
+// escapeSVGAttrValue makes a value safe inside a double-quoted attribute.
+func escapeSVGAttrValue(s string) string {
+	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
+	return r.Replace(s)
+}
+
+// escapeSVGText makes character data safe as text content.
+func escapeSVGText(s string) string {
+	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
+	return r.Replace(s)
+}
+
+// filterSVGCSSURLs strips every CSS url() that is not a same-document
+// fragment reference from a style value, and neutralises script pseudo-
+// schemes while it is there.
+func filterSVGCSSURLs(style string) string {
+	style = svgCSSURLRe.ReplaceAllStringFunc(style, func(m string) string {
 		inner := m[strings.IndexByte(m, '(')+1 : len(m)-1]
 		inner = strings.TrimSpace(inner)
 		inner = strings.Trim(inner, `"'`)
@@ -359,28 +524,7 @@ func SanitizeSVG(src string) (string, bool) {
 		}
 		return "none"
 	})
-	// Drop every href/xlink:href that is not a local #fragment (gradient/marker
-	// refs stay; off-site <image>/<use>/<a> targets are removed).
-	src = svgHrefRe.ReplaceAllStringFunc(src, func(m string) string {
-		i := strings.IndexAny(m, "\"'")
-		val := ""
-		if i >= 0 {
-			val = strings.TrimSpace(m[i+1 : len(m)-1])
-		} else if eq := strings.Index(m, "="); eq >= 0 {
-			val = strings.TrimSpace(m[eq+1:])
-		}
-		if strings.HasPrefix(val, "#") {
-			return m
-		}
-		return ""
-	})
-	if svgJSProtoRe.MatchString(src) {
-		src = svgJSProtoRe.ReplaceAllString(src, "")
-	}
-	if !strings.Contains(strings.ToLower(src), "<svg") {
-		return "", false
-	}
-	return src, true
+	return svgJSProtoRe.ReplaceAllString(style, "")
 }
 
 // renderRawSVG sanitises a pasted SVG and wraps it in a trusted, constant

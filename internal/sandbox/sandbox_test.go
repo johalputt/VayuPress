@@ -163,6 +163,11 @@ func buildEchoPlugin(t *testing.T) string {
 }
 
 func TestSubprocessPluginInvoke(t *testing.T) {
+	// CI runners are typically unprivileged: the kernel refuses namespace
+	// creation with EPERM. Production now fails closed there (audit), so these
+	// tests opt into the documented operator override to exercise the plugin
+	// lifecycle end to end.
+	t.Setenv("VAYUSANDBOX_ALLOW_NO_NAMESPACES", "1")
 	bin := buildEchoPlugin(t)
 	m := Manifest{
 		Name:        "echo",
@@ -312,6 +317,9 @@ func TestNamespaceCloneflagsNoNetwork(t *testing.T) {
 }
 
 func TestSubprocessPluginQuarantine(t *testing.T) {
+	// Same override as TestSubprocessPluginInvoke: unprivileged CI kernels
+	// refuse namespaces, and the default is now to refuse the plugin too.
+	t.Setenv("VAYUSANDBOX_ALLOW_NO_NAMESPACES", "1")
 	m := Manifest{
 		Name:        "crash-plugin",
 		Executable:  "/bin/false", // exits immediately with failure
