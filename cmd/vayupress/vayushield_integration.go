@@ -551,9 +551,14 @@ func (a *App) handleVAEngagementJS(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(vaEngagementJS))
 }
 
-// handlePrivacyReport serves the machine-readable GDPR disclosure.
+// handlePrivacyReport serves the machine-readable GDPR disclosure. Its claims
+// are DERIVED from the running configuration (audit: the old static JSON
+// asserted a privacy posture the logs contradicted).
 func (a *App) handlePrivacyReport(w http.ResponseWriter, r *http.Request) {
 	rep := vagdpr.NewReport(config.Cfg.AnalyticsRetainDays, config.Cfg.Domain, "")
+	if debugRequestIdentity {
+		rep.ServerLogIdentity = "plaintext_debug_optin_vayu_debug_requests"
+	}
 	b, err := rep.JSON()
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "report-error", err.Error(), "")

@@ -11,9 +11,10 @@ import (
 
 // LearningResult summarizes one run of the 24-hour learning cycle.
 type LearningResult struct {
-	Promoted     int64 `json:"promoted"`      // unknown candidates promoted to bad_bot
-	Purged       int64 `json:"purged"`        // stale low-value signatures removed
-	BlocksPurged int64 `json:"blocks_purged"` // aged-out rows from the hashed block log
+	Promoted         int64 `json:"promoted"`          // unknown candidates promoted to bad_bot
+	Purged           int64 `json:"purged"`            // stale low-value signatures removed
+	BlocksPurged     int64 `json:"blocks_purged"`     // aged-out rows from the hashed block log
+	ChallengesPurged int64 `json:"challenges_purged"` // aged-out rows from the challenge trail
 }
 
 // RunLearningCycle performs one improvement pass over the adaptive database:
@@ -71,6 +72,11 @@ WHERE auto_learned=1 AND operator_verified=0 AND classification='unknown'
 		}
 		if n, perr := m.cfg.Bots.PurgeBlocked(ctx, blockRetain); perr == nil {
 			out.BlocksPurged = n
+		}
+		// And the challenge trail — same schedule. Every issued challenge wrote a
+		// row here and nothing ever aged them out (audit: unbounded growth).
+		if n, perr := m.cfg.Bots.PurgeChallenges(ctx, blockRetain); perr == nil {
+			out.ChallengesPurged = n
 		}
 	}
 	return out, nil

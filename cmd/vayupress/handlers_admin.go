@@ -108,17 +108,18 @@ func (a *App) handleAdminVacuum(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) pprofHandler(w http.ResponseWriter, r *http.Request) {
-	ip := r.RemoteAddr
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		ip = xri
-	}
+	// Key the limiter on the sanitized post-middleware address. The old
+	// X-Real-IP read let any caller rotate a fresh header value per request and
+	// never share a bucket (audit LOW).
+	ip := auth.ClientIP(r)
 	if !auth.AllowPprof(ip) {
 		atomic.AddInt64(&metrics.MetricPprofAccesses, 1)
 		writeAPIError(w, r, 429, "pprof_rate_limited", fmt.Sprintf("pprof rate limit exceeded (%d/min)", config.Cfg.PprofRateLimit), "/docs/operations/profiling")
 		return
 	}
 	atomic.AddInt64(&metrics.MetricPprofAccesses, 1)
-	logging.LogJSON(logging.LogFields{Level: "info", Component: "pprof-access", RequestID: getRequestID(r), RemoteAddr: ip, Path: r.URL.Path, Msg: "pprof access (ADR-0037)"})
+	lra, _ := logIdentity(r)
+	logging.LogJSON(logging.LogFields{Level: "info", Component: "pprof-access", RequestID: getRequestID(r), RemoteAddr: lra, Path: r.URL.Path, Msg: "pprof access (ADR-0037)"})
 	pprofMux.ServeHTTP(w, r)
 }
 
@@ -187,10 +188,9 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 		purged = 1
 	} else {
 		purgeType = "full"
-		remoteIP := r.Header.Get("X-Real-IP")
-		if remoteIP == "" {
-			remoteIP = strings.Split(r.RemoteAddr, ":")[0]
-		}
+		// Sanitized post-middleware address, never the client-supplied
+		// X-Real-IP (audit LOW): header rotation must not dodge the bucket.
+		remoteIP := auth.ClientIP(r)
 		if !auth.AllowPurge(remoteIP) {
 			writeAPIError(w, r, 429, "rate_limited", "full cache purge rate-limited", "/docs/api/cache")
 			return

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -128,6 +129,24 @@ func getRequestID(r *http.Request) string {
 // must never be counted as request latency.
 const streamLatencyCutoff = 30 * time.Second
 
+// debugRequestIdentity gates plaintext client identity (IP, User-Agent) in
+// server logs and trace spans. The published privacy report promises
+// pii_stored:false, yet journald/Docker kept these lines forever, outside every
+// purge job (audit). Default logs carry NO address and NO agent; an operator
+// debugging traffic sets VAYU_DEBUG_REQUESTS=1 and owns the retention policy
+// that comes with it.
+var debugRequestIdentity = os.Getenv("VAYU_DEBUG_REQUESTS") == "1"
+
+// logIdentity returns the plaintext identity fields for a request log entry,
+// or empty strings when debug identity is off (the fields are omitempty, so
+// they vanish from the JSON entirely).
+func logIdentity(r *http.Request) (remoteAddr, userAgent string) {
+	if !debugRequestIdentity {
+		return "", ""
+	}
+	return r.RemoteAddr, r.UserAgent()
+}
+
 func structuredLoggerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Root HTTP span: wraps the entire request lifecycle. Kept deliberately
@@ -140,7 +159,13 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 		ctx, span := trace.Start(r.Context(), "http."+r.Method+" "+r.URL.Path)
 		span.SetAttribute("http.method", r.Method)
 		span.SetAttribute("http.path", r.URL.Path)
-		span.SetAttribute("http.remote_addr", r.RemoteAddr)
+		// Client identity is deliberately ABSENT from spans by default: the
+		// published privacy report promises pii_stored:false, and span storage
+		// sits outside every analytics purge job. VAYU_DEBUG_REQUESTS=1 opts
+		// the operator back in (their retention policy to manage).
+		if debugRequestIdentity {
+			span.SetAttribute("http.remote_addr", r.RemoteAddr)
+		}
 		// Seed a mutable classification so VayuShield (an inner middleware) can flag
 		// a request it deliberately delayed (a 5s tarpit) or challenged — that time
 		// is bot defence, not page latency, and must be kept out of the p95.
@@ -170,12 +195,13 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 			metrics.HTTPLatency.Record(dur)
 			metrics.HTTPLatencyWindow.Record(dur)
 		}
+		ra, ua := logIdentity(r)
 		logging.LogJSON(logging.LogFields{
 			Level: "info", RequestID: getRequestID(r),
 			CorrelationID: trace.CorrelationID(r.Context()),
 			Method:        r.Method, Path: r.URL.Path,
 			Status: ww.Status(), LatencyMS: dur.Milliseconds(),
-			RemoteAddr: r.RemoteAddr, UserAgent: r.UserAgent(), Component: "http",
+			RemoteAddr: ra, UserAgent: ua, Component: "http",
 		})
 	})
 }

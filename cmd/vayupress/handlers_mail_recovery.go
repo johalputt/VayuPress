@@ -31,6 +31,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/seo"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
 // Recovery is deliberately expensive to attack and cheap to use once. The
@@ -286,6 +287,9 @@ func (a *App) handleMailRecoverAsk(w http.ResponseWriter, r *http.Request) {
 	if err := a.vayuMail.Accounts().FileRecoveryRequest(r.Context(), addr, note, ip); err != nil {
 		logging.LogError("vayumail", "could not file a recovery request", err.Error())
 	}
-	dbpkg.AuditLog("vayumail.recovery.help_requested", "public:"+ip, addr, note)
+	// The WORM audit log is append-only and never purged, so it gets the same
+	// pseudonym storage does — never "public:"+rawIP (audit: that contradicted
+	// gdpr.go's published pii_stored:false).
+	dbpkg.AuditLog("vayumail.recovery.help_requested", "public:"+vmail.PseudonymizeIP(ip), addr, note)
 	a.renderRecoveryPage(w, r, recoveryAskedPage())
 }

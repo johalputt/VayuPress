@@ -28,6 +28,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -44,6 +45,10 @@ type saltRotator struct {
 }
 
 // current returns today's salt, rotating (and discarding yesterday's) on day change.
+// A nil result means entropy is unavailable and NO identifier may be derived:
+// the previous fallback (a time-derived constant anyone reading this source
+// could reproduce) would have made every "pseudonymous" ID constant across all
+// installs and trivially linkable — so this now fails closed instead.
 func (s *saltRotator) current() []byte {
 	day := time.Now().UTC().Format("2006-01-02")
 	s.mu.Lock()
@@ -51,20 +56,33 @@ func (s *saltRotator) current() []byte {
 	if s.day != day || len(s.salt) == 0 {
 		buf := make([]byte, 32)
 		if _, err := rand.Read(buf); err != nil {
-			// Fall back to a time-seeded salt; still rotates daily and stores no PII.
-			buf = []byte(day + "vayu-fallback-salt")
+			saltUnavailable.Store(true)
+			s.salt = nil
+			s.day = day
+			return nil
 		}
+		saltUnavailable.Store(false)
 		s.salt = buf
 		s.day = day
 	}
 	return s.salt
 }
 
+// saltUnavailable records a crypto/rand failure. While set, visitor/session
+// derivation refuses to run: events are dropped rather than written under a
+// predictable pseudonym.
+var saltUnavailable atomic.Bool
+
 // visitorID derives a stable-for-today, unlinkable-across-days visitor hash.
-// ip and ua are used only to compute the hash and are never stored.
+// ip and ua are used only to compute the hash and are never stored. Returns ""
+// when no safe salt exists (entropy failure) — callers must not fabricate one.
 func visitorID(ip, ua, host string) string {
+	salt := dailySalt.current()
+	if len(salt) == 0 {
+		return ""
+	}
 	h := sha256.New()
-	h.Write(dailySalt.current())
+	h.Write(salt)
 	h.Write([]byte{0})
 	h.Write([]byte(ip))
 	h.Write([]byte{0})
@@ -195,6 +213,12 @@ func (s *Store) Collect(ctx context.Context, req CollectRequest, ip, ua, domainI
 	}
 	host := strings.TrimSpace(req.Hostname)
 	vid := visitorID(ip, ua, host)
+	if vid == "" {
+		// Fail closed: entropy is unavailable, so no safe pseudonym exists.
+		// Drop the event rather than merge all visitors into one predictable
+		// session or invent an identity we cannot stand behind.
+		return nil
+	}
 	sid := sessionID(vid)
 
 	browser := coarseBrowser(ua)

@@ -39,10 +39,48 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/auth"
 )
+
+// recoveryIPSalt is a process-lifetime random salt used ONLY to pseudonymize
+// the requester address recorded with recovery help requests. The audit found
+// the raw visitor IP stored in SQLite and echoed into the WORM audit log,
+// contradicting the published privacy posture; the IP's only legitimate use
+// here is showing the administrator "same requester as before", which a salted
+// hash preserves within this process without retaining the address itself.
+var (
+	recoveryIPSaltOnce sync.Once
+	recoveryIPSalt     []byte
+)
+
+// PseudonymizeIP maps a client address to a short non-reversible token. It
+// returns "" when there is nothing to hash or when entropy is unavailable —
+// failing closed rather than storing something linkable under a guessable key.
+func PseudonymizeIP(ip string) string {
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return ""
+	}
+	recoveryIPSaltOnce.Do(func() {
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			b = nil // no safe salt: refuse to derive an identifier at all
+		}
+		recoveryIPSalt = b
+	})
+	if len(recoveryIPSalt) == 0 {
+		return ""
+	}
+	h := sha256.New()
+	h.Write([]byte("vayu-recovery-ip:v1\x00"))
+	h.Write(recoveryIPSalt)
+	h.Write([]byte{0})
+	h.Write([]byte(ip))
+	return "h:" + hex.EncodeToString(h.Sum(nil))[:16]
+}
 
 const (
 	// RecoveryCodeCount is how many single-use codes a generation produces.
@@ -459,6 +497,10 @@ func (s *AccountStore) FileRecoveryRequest(ctx context.Context, email, note, ip 
 	if len([]rune(note)) > maxRecoveryNote {
 		note = string([]rune(note)[:maxRecoveryNote])
 	}
+	// The raw address never reaches storage (audit): only its pseudonym does,
+	// which still tells the administrator "same requester as before" without
+	// keeping the address itself.
+	ip = PseudonymizeIP(ip)
 	var existing int64
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT id FROM vayumail_recovery_requests WHERE email=? AND status='pending'`,
@@ -473,11 +515,30 @@ func (s *AccountStore) FileRecoveryRequest(ctx context.Context, email, note, ip 
 	return err
 }
 
+// recoveryRetentionDays bounds how long any recovery request row may live.
+// Decided rows have no value once the operator has seen them; a pending row
+// older than this is stale queue noise. Both contradict the privacy posture if
+// kept forever (audit: "no retention").
+const recoveryRetentionDays = 30
+
+// pruneRecoveryRequests enforces the retention bound. Called opportunistically
+// whenever the queue is listed, so no scheduler is needed and an install that
+// never uses recovery never pays for it.
+func (s *AccountStore) pruneRecoveryRequests(ctx context.Context) {
+	_, _ = s.db.ExecContext(ctx,
+		`DELETE FROM vayumail_recovery_requests
+		 WHERE (status IN ('approved','declined') AND decided_at IS NOT NULL AND decided_at < datetime('now', ?))
+		    OR (status='pending' AND created_at < datetime('now', ?))`,
+		"-"+fmt.Sprint(recoveryRetentionDays)+" days",
+		"-"+fmt.Sprint(recoveryRetentionDays)+" days")
+}
+
 // PendingRecoveryRequests lists requests awaiting a decision, newest first.
 func (s *AccountStore) PendingRecoveryRequests(ctx context.Context) []RecoveryRequest {
 	if err := s.ensureRecoveryRequests(); err != nil {
 		return nil
 	}
+	s.pruneRecoveryRequests(ctx)
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id,email,note,ip,status,created_at FROM vayumail_recovery_requests
 		 WHERE status='pending' ORDER BY created_at DESC LIMIT 100`)

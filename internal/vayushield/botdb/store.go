@@ -478,6 +478,39 @@ func (s *Store) PurgeBlocked(ctx context.Context, retainDays int) (int64, error)
 	}
 }
 
+// PurgeChallenges ages out old rows from vayushield_challenges — the one trail
+// table the maintenance cycle forgot (audit): every issued challenge writes a
+// row and nothing ever removed them, so a site under sustained probe traffic
+// grew that table forever. The data is aggregate-only (hashed IP, coarse
+// outcome), but unbounded growth is still a liability; the daily learning cycle
+// now trims it on the same schedule as the block log. Chunked and index-driven
+// (idx_challenges_created).
+func (s *Store) PurgeChallenges(ctx context.Context, retainDays int) (int64, error) {
+	if s == nil || s.db == nil || retainDays <= 0 {
+		return 0, nil
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -retainDays)
+	var total int64
+	for {
+		res, err := s.db.ExecContext(ctx,
+			`DELETE FROM vayushield_challenges WHERE rowid IN (SELECT rowid FROM vayushield_challenges WHERE created_at<? LIMIT ?)`,
+			cutoff, purgeChunk)
+		if err != nil {
+			return total, err
+		}
+		n, _ := res.RowsAffected()
+		total += n
+		if n < purgeChunk {
+			return total, nil
+		}
+		select {
+		case <-ctx.Done():
+			return total, ctx.Err()
+		default:
+		}
+	}
+}
+
 // ── scanning helpers ─────────────────────────────────────────────────────────
 
 const selectCols = `SELECT id,fingerprint_hash,ja3_hash,ja4_hash,http2_settings_hash,header_order_hash,user_agent_pattern,ip_range_hint,post_quantum_present,classification,bot_name,confidence,request_count,false_positive_count,auto_learned,operator_verified,notes,first_seen,last_seen FROM vayushield_signatures`

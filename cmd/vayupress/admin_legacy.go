@@ -43,14 +43,15 @@ func legacyToOSPath(p string) string {
 func legacyRedirect() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		target := legacyToOSPath(r.URL.Path)
+		ra, ua := logIdentity(r)
 		logging.LogJSON(logging.LogFields{
 			Level:      "warn",
 			Severity:   "warning",
 			Component:  "admin-legacy",
 			Method:     r.Method,
 			Path:       r.URL.Path,
-			RemoteAddr: r.RemoteAddr,
-			UserAgent:  r.UserAgent(),
+			RemoteAddr: ra,
+			UserAgent:  ua,
 			Msg:        "deprecated admin route used; permanently redirecting to VayuOS (" + target + ")",
 		})
 		http.Redirect(w, r, target, http.StatusMovedPermanently)
@@ -65,14 +66,15 @@ func legacyRedirect() http.HandlerFunc {
 func operatorLegacyRedirect() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		target := "/os/" + strings.TrimPrefix(r.URL.Path, "/admin/")
+		ra, ua := logIdentity(r)
 		logging.LogJSON(logging.LogFields{
 			Level:      "warn",
 			Severity:   "warning",
 			Component:  "admin-legacy",
 			Method:     r.Method,
 			Path:       r.URL.Path,
-			RemoteAddr: r.RemoteAddr,
-			UserAgent:  r.UserAgent(),
+			RemoteAddr: ra,
+			UserAgent:  ua,
 			Msg:        "deprecated operator route used; permanently redirecting to VayuOS (" + target + ")",
 		})
 		http.Redirect(w, r, target, http.StatusMovedPermanently)

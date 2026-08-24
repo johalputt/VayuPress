@@ -2462,14 +2462,14 @@ func (m *Manager) recordBlock(r *http.Request, v Verdict) {
 	if len(v.Result.Reasons) > 0 {
 		reason = strings.Join(v.Result.Reasons, "; ")
 	}
-	ua := v.Signals.UserAgent
-	if len(ua) > 512 {
-		ua = ua[:512]
-	}
+	// The full User-Agent is a fingerprint, not "not PII" as migration 055's
+	// header once claimed (audit). Nothing in the trail dashboards reads this
+	// column, so the blocked table now stores only the coarse uaFamily bucket;
+	// PurgeBlocked still bounds the row's lifetime.
 	m.recordExec(r.Context(), `INSERT INTO vayushield_blocked
 (fingerprint_hash,ja3_hash,ip_hash,user_agent,request_path,block_reason,bot_score,country_code)
 VALUES(?,?,?,?,?,?,?,?)`,
-		v.Composite.FingerprintHash, v.Composite.JA3, m.hashIP(ip), ua, r.URL.Path, reason, v.Result.BotScore, country)
+		v.Composite.FingerprintHash, v.Composite.JA3, m.hashIP(ip), uaFamily(v.Signals.UserAgent), r.URL.Path, reason, v.Result.BotScore, country)
 }
 
 // hostOf extracts the lowercase host from a referrer URL.
