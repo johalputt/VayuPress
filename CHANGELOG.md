@@ -6,6 +6,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.50] — 2026-08-24
+
+### Added
+
+- **The screenshot pipeline now refreshes itself every two hours.**
+  `.github/workflows/screenshots.yml` fired only on manual
+  `workflow_dispatch`, so the README PNGs drifted from the live UI until
+  someone remembered to click the button. It now also carries a `schedule`
+  trigger — `23 */2 * * *` UTC, off the top-of-hour cron spike the GitHub
+  docs warn about — plus a concurrency group (`screenshots-<ref>`, no
+  cancel-in-progress) so a stalled run makes the next trigger replace the
+  queued one instead of stacking into a backlog.
+
+  The schedule alone would have been worthless: `inputs` is null on
+  scheduled events, so the old `${{ inputs.commit }}` guard skipped the
+  commit step and every two hours the workflow would have captured fresh
+  PNGs and silently thrown them away. The commit step now runs when
+  `github.event_name == 'schedule' || inputs.commit`; manual dispatch keeps
+  its toggle.
+
+  Scheduled workflows fire only from the default branch, and GitHub
+  auto-disables them after 60 days of repo inactivity (a quiet site that
+  never changes its screenshots may need the schedule re-enabled by hand).
+
 ## [3.17.49] — 2026-08-09
 
 ### Security
