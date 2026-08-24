@@ -169,11 +169,16 @@ func TestSubprocessPluginInvoke(t *testing.T) {
 	// lifecycle end to end.
 	t.Setenv("VAYUSANDBOX_ALLOW_NO_NAMESPACES", "1")
 	bin := buildEchoPlugin(t)
+	// Generous margins ON PURPOSE: under -race on a loaded runner a freshly
+	// linked plugin binary can take seconds to answer its first hook, and the
+	// old 2-second timeout turned that into kill → crash → restart → kill →
+	// quarantined before any real assertion ran (observed flaking in CI).
+	// Tight-budget quarantine behaviour has its own dedicated test below.
 	m := Manifest{
 		Name:        "echo",
 		Executable:  bin,
-		MaxRestarts: 1,
-		Timeout:     2 * time.Second,
+		MaxRestarts: 3,
+		Timeout:     10 * time.Second,
 	}
 	p := NewSubprocessPlugin(m)
 	defer p.Shutdown()
