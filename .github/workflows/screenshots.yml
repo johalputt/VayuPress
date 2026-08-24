@@ -6,12 +6,25 @@ name: screenshots
 # (scripts/screenshot-proxy) injects it and the capture script points Chrome at
 # the proxy. The refreshed PNGs are committed back to the triggering branch.
 on:
+  # Continuous refresh: capture and commit the README screenshots every two
+  # hours. GitHub cron runs in UTC; minute 23 stays off the top-of-hour load
+  # spike GH docs warn about. Scheduled workflows fire only from the default
+  # branch, and GitHub auto-disables them after 60 days of repo inactivity.
+  schedule:
+    - cron: '23 */2 * * *'
   workflow_dispatch:
     inputs:
       commit:
         description: "Commit refreshed screenshots back to the branch"
         type: boolean
         default: true
+
+# One capture run takes minutes, well inside the 2-hour cadence — but if
+# runners stall, don't let crons stack into a backlog. A newer trigger
+# replaces the queued run instead of piling up behind it.
+concurrency:
+  group: screenshots-${{ github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -130,7 +143,10 @@ jobs:
           path: docs/screenshots/*.png
 
       - name: Commit refreshed screenshots
-        if: ${{ inputs.commit }}
+        # `inputs` is null on `schedule` events, so a bare inputs.commit guard
+        # would capture fresh PNGs every two hours and silently discard them.
+        # Scheduled runs always commit; manual dispatch keeps its toggle.
+        if: ${{ github.event_name == 'schedule' || inputs.commit }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

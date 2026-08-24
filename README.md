@@ -395,7 +395,7 @@ The adaptive-governance runtime is fully inspectable from inside VayuOS — syst
 
 </details>
 
-> Screenshots are regenerated from a live instance by the [screenshots CI workflow](.github/workflows/screenshots.yml).
+> Screenshots are regenerated from a live instance by the [screenshots CI workflow](.github/workflows/screenshots.yml), which runs automatically every two hours (and on demand via `workflow_dispatch`).
 
 ---
 
