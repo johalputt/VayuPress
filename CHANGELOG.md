@@ -6,6 +6,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.52] — 2026-08-24
+
+### Security
+
+- **Privacy truthfulness (audit batch 3).** Request logs and trace spans no
+  longer record client IP or User-Agent (`VAYU_DEBUG_REQUESTS=1` opts back in);
+  VayuMail recovery stores a salted pseudonym of the requester address instead
+  of the raw IP, with 30-day retention; `vayushield_blocked` keeps only a coarse
+  browser-family bucket; the challenge trail ages out on the daily maintenance
+  cycle; the analytics daily salt fails closed instead of degrading to a
+  guessable constant; and `/.well-known/privacy-report.json` now reports
+  server-log identity and shield-trail retention from live configuration rather
+  than hard-coded claims.
+- **Input and abuse hardening (audit batch 2).** WKD auto-encrypt accepts only
+  keys that self-identify with the queried address; the custom-CSS beacon filter
+  decodes CSS character escapes before matching; SanitizeSVG rebuilds documents
+  from an allowlist over a strict XML parse (unterminated tags, nested-tag
+  recombination and recovery-mode parsing can no longer smuggle active content);
+  the plugin sandbox refuses to start without namespace isolation unless the
+  operator sets `VAYUSANDBOX_ALLOW_NO_NAMESPACES=1`; `/smoke-test` answers
+  loopback or API-key callers only; newsletter subscription is budgeted and
+  returns one uniform answer so status codes stop revealing who subscribes;
+  comments are per-member budgeted with capped bodies; redirect rules validate
+  as same-site paths with real redirect codes and the site root cannot be
+  hijacked; feed-shaped URLs hold the never-shed lane under a bounded budget;
+  and every workflow action is pinned to full commit SHAs.
+- **Hygiene (audit batch 4).** Merkle proof verification compares roots in
+  constant time with domain-separated leaf/node hashes; IPv4-mapped IPv6 policy
+  CIDRs unwrap instead of compiling into never-matching rules; `/health/*`
+  detail probes answer loopback or API-key callers only and public liveness
+  drops version/uptime recon detail; the mode journal replays at boot so a
+  crashed read-only/quarantined install no longer reboots normal; comment
+  display names always come from the authenticated session; pprof and full-purge
+  limiters key on the sanitized address instead of client-controlled headers.
+
 ## [3.17.51] — 2026-08-24
 
 ### Fixed
