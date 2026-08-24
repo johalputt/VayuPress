@@ -108,6 +108,26 @@ func (s *Store) MarkPremiumGrantPaidByOrder(ctx context.Context, orderRef string
 	return err
 }
 
+// RevokePremiumGrantByOrder revokes the grant created for an order reference —
+// the mirror image of MarkPremiumGrantPaidByOrder, called when that order is
+// refunded or canceled after having been paid (audit: revoke-on-refund). A
+// claimed premium mail-ID is revoked with it: the buyer no longer holds an
+// entitlement they paid for.
+func (s *Store) RevokePremiumGrantByOrder(ctx context.Context, orderRef string) (bool, error) {
+	orderRef = strings.TrimSpace(orderRef)
+	if orderRef == "" {
+		return false, fmt.Errorf("order reference required")
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE premium_mailid_grants SET status='revoked' WHERE order_ref=? AND status IN ('pending','paid','claimed')`,
+		orderRef)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
 // ClaimablePremiumGrants returns a member's paid-but-unclaimed premium grants —
 // the addresses they have bought and may now activate by setting a password.
 func (s *Store) ClaimablePremiumGrants(ctx context.Context, email string) ([]PremiumGrant, error) {

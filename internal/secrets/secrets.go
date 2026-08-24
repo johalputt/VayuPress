@@ -634,3 +634,32 @@ func (s *Store) ProviderSecret(ctx context.Context, provider string) (secret, en
 	}
 	return string(pt), ep
 }
+
+// ProviderSecretByLabel returns the decrypted secret for the enabled
+// credential that matches BOTH the provider and the exact label. This lets one
+// provider slug hold several independent credentials — e.g. a distinct webhook
+// signing secret per connected payment gateway (label = gateway name), so
+// compromising one processor's secret cannot forge events for another (audit:
+// generic gateway webhook shared a single secret across all processors).
+func (s *Store) ProviderSecretByLabel(ctx context.Context, provider, label string) (secret, endpoint string) {
+	if err := s.ensure(); err != nil {
+		return "", ""
+	}
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return "", ""
+	}
+	var nonceHex, ctHex, ep string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT secret_nonce, secret_ct, endpoint FROM service_credentials
+		 WHERE provider=? AND label=? AND enabled=1 LIMIT 1`, provider, label,
+	).Scan(&nonceHex, &ctHex, &ep)
+	if err != nil {
+		return "", ""
+	}
+	pt, err := s.open(nonceHex, ctHex)
+	if err != nil {
+		return "", ep
+	}
+	return string(pt), ep
+}

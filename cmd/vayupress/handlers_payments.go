@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -557,9 +558,19 @@ func checkoutCryptoPendingPage() string {
 // ── Generic payment webhook (connected third-party gateways) ──────────────────
 
 // handlePaymentWebhook fulfils an order when a connected processor posts a
-// signature-verified event. The shared secret is stored encrypted under the
-// payment_gateway provider. The body must be JSON containing at least a
-// "reference" (the VayuPress order reference) and may carry a gateway "id".
+// signature-verified event. Each gateway SHOULD have its own credential stored
+// under provider payment_gateway with label = {gateway} — a distinct signing
+// secret per processor, so one compromised secret cannot forge events for
+// another (audit: generic gateway webhook). When no labelled credential exists
+// the legacy shared payment_gateway secret is honoured for backwards
+// compatibility. The body must be JSON containing at least a "reference" (the
+// VayuPress order reference) and an explicit positive "status" ("paid",
+// "succeeded" or "completed") — an event with no status field is acknowledged
+// but never pays, so a malformed or hostile payload cannot flip an order by
+// omission. A "timestamp" (unix seconds), when present, must be within ±5
+// minutes. Replays of already-paid events are harmless: fulfilment is
+// idempotent, and refunded/canceled orders are terminal, so a captured event
+// cannot re-grant entitlement after a reversal.
 //
 //	POST /api/v1/payments/webhook/{gateway}
 //	X-VayuPress-Signature: <hex hmac-sha256 of the raw body>
@@ -569,7 +580,10 @@ func (a *App) handlePaymentWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	gateway := chi.URLParam(r, "gateway")
-	secret, _ := a.secrets.ProviderSecret(r.Context(), secrets.ProviderPaymentGateway)
+	secret, _ := a.secrets.ProviderSecretByLabel(r.Context(), secrets.ProviderPaymentGateway, gateway)
+	if strings.TrimSpace(secret) == "" {
+		secret, _ = a.secrets.ProviderSecret(r.Context(), secrets.ProviderPaymentGateway)
+	}
 	if strings.TrimSpace(secret) == "" {
 		http.Error(w, "gateway not configured", http.StatusServiceUnavailable)
 		return
@@ -591,17 +605,32 @@ func (a *App) handlePaymentWebhook(w http.ResponseWriter, r *http.Request) {
 		Reference string `json:"reference"`
 		ID        string `json:"id"`
 		Status    string `json:"status"`
+		Timestamp int64  `json:"timestamp"`
 	}
 	if jerr := json.Unmarshal(payload, &evt); jerr != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
+	}
+	// Freshness is enforced whenever the processor includes a timestamp;
+	// captured payloads older than the tolerance are refused outright.
+	const webhookMaxAgeSeconds int64 = 300
+	if evt.Timestamp != 0 {
+		skew := time.Now().Unix() - evt.Timestamp
+		if skew > webhookMaxAgeSeconds || skew < -webhookMaxAgeSeconds {
+			logging.LogWarn("payments", "webhook timestamp outside tolerance: "+gateway)
+			http.Error(w, "stale event", http.StatusBadRequest)
+			return
+		}
 	}
 	ref := strings.TrimSpace(evt.Reference)
 	if ref == "" {
 		http.Error(w, "missing reference", http.StatusBadRequest)
 		return
 	}
-	if evt.Status != "" && evt.Status != "paid" && evt.Status != "succeeded" && evt.Status != "completed" {
+	// Only an explicit success status pays. The previous fall-through treated
+	// an ABSENT status as paid — a missing field flipped orders.
+	paidStatus := evt.Status == "paid" || evt.Status == "succeeded" || evt.Status == "completed"
+	if !paidStatus {
 		// Acknowledge non-payment events without acting.
 		w.WriteHeader(http.StatusOK)
 		return
@@ -613,6 +642,12 @@ func (a *App) handlePaymentWebhook(w http.ResponseWriter, r *http.Request) {
 	order, perr := a.payments.MarkPaid(r.Context(), ref, gwRef)
 	if errors.Is(perr, payments.ErrAlreadyPaid) {
 		w.WriteHeader(http.StatusOK) // idempotent: already fulfilled
+		return
+	}
+	if errors.Is(perr, payments.ErrNotPayable) {
+		// Refunded/canceled are terminal: the processor is told plainly rather
+		// than getting a misleading "unknown order".
+		http.Error(w, "order not payable", http.StatusConflict)
 		return
 	}
 	if perr != nil {
@@ -793,17 +828,82 @@ func (a *App) handleOSOrderMarkPaid(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "paid", "reference": order.Reference})
 }
 
-// handleOSOrderCancel marks an order canceled (no fulfilment).
+// revokeOrderFulfilment reverses the entitlement an order granted, best-effort
+// per order kind (audit: refund/cancel never revoked entitlements):
+//   - membership orders → the member's active subscription is canceled and the
+//     member drops to the free tier immediately;
+//   - premium mail-ID orders → the grant (pending/paid/claimed) is revoked, so
+//     an already-claimed premium address stops being claimable/active;
+//   - paid-post unlocks and ad purchases have no self-serve reversal path; the
+//     operator handles those manually and the log line says so plainly rather
+//     than pretending a reversal happened.
+func (a *App) revokeOrderFulfilment(ctx context.Context, o *payments.Order) {
+	if o == nil {
+		return
+	}
+	switch o.TierSlug {
+	case mailIDOrderTier:
+		revoked, err := a.members.RevokePremiumGrantByOrder(ctx, o.Reference)
+		if err != nil {
+			logging.LogError("payments", "grant revocation failed: "+o.Reference, err.Error())
+			return
+		}
+		if !revoked {
+			logging.LogInfo("payments", "no grant to revoke for order "+o.Reference)
+			return
+		}
+		logging.LogInfo("payments", "premium grant revoked for order "+o.Reference)
+	default:
+		m, err := a.members.Upsert(ctx, o.Email)
+		if err != nil {
+			logging.LogError("payments", "member lookup for revocation failed: "+o.Reference, err.Error())
+			return
+		}
+		if err := a.members.CancelSubscription(ctx, m.ID); err != nil {
+			logging.LogError("payments", "subscription revocation failed: "+o.Reference, err.Error())
+			return
+		}
+		logging.LogInfo("payments", "subscription revoked for order "+o.Reference+" ("+o.TierSlug+")")
+	}
+}
+
+// handleOSOrderCancel marks an order canceled (no fulfilment). If the order
+// had ALREADY been paid, cancelling also revokes what it granted — otherwise
+// "cancel" after payment would be a free way to keep the goods.
 func (a *App) handleOSOrderCancel(w http.ResponseWriter, r *http.Request) {
-	if a.payments == nil {
+	a.handleOSOrderReversal(w, r, payments.StatusCanceled)
+}
+
+// handleOSOrderRefund marks a PAID order refunded and revokes its entitlements
+// immediately: subscription back to free tier, grants revoked (audit:
+// revoke-on-refund).
+func (a *App) handleOSOrderRefund(w http.ResponseWriter, r *http.Request) {
+	a.handleOSOrderReversal(w, r, payments.StatusRefunded)
+}
+
+// handleOSOrderReversal is the shared cancel/refund path: transition the order,
+// then reverse whatever it granted when the order had been fulfilled.
+func (a *App) handleOSOrderReversal(w http.ResponseWriter, r *http.Request, status string) {
+	if a.payments == nil || a.members == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "payments-error", "payments not initialised", "")
 		return
 	}
-	if err := a.payments.SetStatus(r.Context(), chi.URLParam(r, "id"), payments.StatusCanceled); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "order-error", err.Error(), "")
+	id := chi.URLParam(r, "id")
+	order, err := a.payments.GetByID(r.Context(), id)
+	wasPaid := err == nil && order != nil && order.Status == payments.StatusPaid
+	if serr := a.payments.SetStatus(r.Context(), id, status); serr != nil {
+		if errors.Is(serr, payments.ErrInvalidTransition) {
+			writeAPIError(w, r, http.StatusConflict, "order-error", serr.Error(), "")
+			return
+		}
+		writeAPIError(w, r, http.StatusBadRequest, "order-error", serr.Error(), "")
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]string{"status": "canceled"})
+	if wasPaid && order != nil {
+		a.revokeOrderFulfilment(r.Context(), order)
+	}
+	logging.LogInfo("payments", "order "+status+" by operator: "+id)
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": status})
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

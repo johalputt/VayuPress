@@ -72,6 +72,17 @@ const (
 // caller can make fulfilment idempotent (never charge/upgrade/email twice).
 var ErrAlreadyPaid = errors.New("payments: order already paid")
 
+// ErrNotPayable is returned by MarkPaid when the order sits in a terminal
+// state — canceled or refunded — and can no longer be moved to paid. Before
+// this guard existed (audit: money state machine), a captured webhook event
+// replayed AFTER a refund flipped the refunded order straight back to paid
+// and re-granted the entitlement.
+var ErrNotPayable = errors.New("payments: order is canceled or refunded")
+
+// ErrInvalidTransition is returned by SetStatus when a status change would
+// violate the order state machine (e.g. canceled -> paid).
+var ErrInvalidTransition = errors.New("payments: invalid status transition")
+
 // ErrNotFound is returned when no order matches the supplied id/reference.
 var ErrNotFound = errors.New("payments: order not found")
 
@@ -270,31 +281,51 @@ func (s *Store) MarkPaid(ctx context.Context, idOrRef, gatewayRef string) (*Orde
 		return nil, err
 	}
 	now := time.Now().UTC()
-	// Atomic transition (audit L10): the `status<>paid` predicate lets exactly one
+	// Atomic transition (audit L10): the status predicate lets exactly one
 	// concurrent caller flip the row, so fulfilment runs once even when the browser
 	// return and a gateway webhook (or a gateway retry) race for the same order.
 	// A read-then-write (checking o.Status, then an unconditional UPDATE) let both
 	// racers observe "pending" and both fulfil — duplicate receipts/provisioning.
+	//
+	// Only pending and failed orders may become paid. The original predicate
+	// (`status<>paid`) also admitted canceled and refunded rows, so any stale
+	// "paid" event replayed after a reversal resurrected the order and its
+	// entitlements (audit: money state machine). Canceled/refunded are terminal.
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE payment_orders SET status=?,gateway_ref=COALESCE(NULLIF(?,''),gateway_ref),paid_at=?,updated_at=? WHERE id=? AND status<>?`,
-		StatusPaid, strings.TrimSpace(gatewayRef), now, now, o.ID, StatusPaid)
+		`UPDATE payment_orders SET status=?,gateway_ref=COALESCE(NULLIF(?,''),gateway_ref),paid_at=?,updated_at=? WHERE id=? AND status IN (?,?)`,
+		StatusPaid, strings.TrimSpace(gatewayRef), now, now, o.ID, StatusPending, StatusFailed)
 	if err != nil {
 		return nil, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		// The row was already paid (or a concurrent caller won the race): signal the
-		// caller to skip re-fulfilment, returning the current order state.
-		paid, gerr := s.GetByID(ctx, o.ID)
+		// Either already paid (idempotent re-delivery → ErrAlreadyPaid) or in a
+		// terminal state (→ ErrNotPayable); surface which so callers can react.
+		cur, gerr := s.GetByID(ctx, o.ID)
 		if gerr != nil {
 			return nil, gerr
 		}
-		return paid, ErrAlreadyPaid
+		if cur.Status == StatusPaid {
+			return cur, ErrAlreadyPaid
+		}
+		return cur, ErrNotPayable
 	}
 	return s.GetByID(ctx, o.ID)
 }
 
-// SetStatus updates an order's status (e.g. cancel, refund). It clears paid_at
-// when moving away from paid so reporting stays truthful.
+// orderTransitions is the allowed state machine for payment orders. Terminal
+// states (canceled, refunded) accept no further changes; a canceled or
+// refunded order can never return to paid (audit: money state machine).
+var orderTransitions = map[string][]string{
+	StatusPending:  {StatusPaid, StatusCanceled, StatusFailed},
+	StatusFailed:   {StatusPaid, StatusCanceled},
+	StatusPaid:     {StatusRefunded, StatusCanceled},
+	StatusCanceled: {},
+	StatusRefunded: {},
+}
+
+// SetStatus updates an order's status (e.g. cancel, refund), enforcing the
+// order state machine. It clears paid_at when moving away from paid so
+// reporting stays truthful.
 func (s *Store) SetStatus(ctx context.Context, idOrRef, status string) error {
 	switch status {
 	case StatusPending, StatusPaid, StatusCanceled, StatusRefunded, StatusFailed:
@@ -304,6 +335,19 @@ func (s *Store) SetStatus(ctx context.Context, idOrRef, status string) error {
 	o, err := s.resolve(ctx, idOrRef)
 	if err != nil {
 		return err
+	}
+	if o.Status == status {
+		return nil // idempotent re-application
+	}
+	allowed := false
+	for _, next := range orderTransitions[o.Status] {
+		if next == status {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, o.Status, status)
 	}
 	now := time.Now().UTC()
 	if status == StatusPaid {
