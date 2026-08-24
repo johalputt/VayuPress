@@ -34,7 +34,13 @@ var ErrSystemQuarantined = errors.New("sandbox: plugin invocation denied — sys
 // namespace creation refuses the plugin rather than quietly weakening the
 // sandbox. VAYUSANDBOX_ALLOW_NO_NAMESPACES=1 restores the old behaviour for
 // unprivileged runners that genuinely cannot create namespaces.
-var allowNoNamespaceSandbox = os.Getenv("VAYUSANDBOX_ALLOW_NO_NAMESPACES") == "1"
+//
+// The environment is read at CALL time, not package-init time: tests set the
+// variable with t.Setenv long after process start, and an init-cached value
+// made the override invisible to them (observed as P16/race reds).
+func allowNoNamespaceSandbox() bool {
+	return os.Getenv("VAYUSANDBOX_ALLOW_NO_NAMESPACES") == "1"
+}
 
 // isEPERM returns true if the error wraps a syscall.EPERM permission error.
 func isEPERM(err error) bool {
@@ -115,7 +121,7 @@ func (p *SubprocessPlugin) start() error {
 		// starting a plugin WITHOUT namespace isolation silently was how a
 		// hardened sandbox quietly turned into no sandbox at all (audit).
 		if isEPERM(err) && nsFlags != 0 {
-			if !allowNoNamespaceSandbox {
+			if !allowNoNamespaceSandbox() {
 				p.confinement.Cleanup()
 				logging.LogJSON(logging.LogFields{
 					Level:     "error",
