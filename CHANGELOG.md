@@ -6,6 +6,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.51] — 2026-08-24
+
+### Fixed
+
+- **The screenshot pipeline's CI was failing at both ends.** Found by
+  dispatching `.github/workflows/screenshots.yml` by hand and reading why it
+  died — it had failed every manual run since July, and would have failed
+  every scheduled run too.
+
+  **The capture half silently threw away four pages.** VayuShield defaults ON
+  (gentle) even on a throwaway instance with a fresh database, classifies
+  HeadlessChrome as automation, and answered the four PUBLIC pages (`/`, the
+  article page, `/signup`, `/pricing`) with a 403 block page. `/os/*` rode
+  the admin bypass lane, so pre-flight stayed green and nothing looked wrong;
+  `screenshot.mjs` refuses to photograph error pages, so those four PNGs just
+  quietly stopped refreshing while twenty-seven others updated around them.
+  The workflow now starts its capture instance with `VAYUSHIELD=off` (the env
+  var overrides the stored toggle in either direction), and a verification
+  run captures all 31 pages clean.
+
+  **The commit half never pushed anything at all.** Branch protection on
+  `main` requires the `CI Pass — All Required Checks` status check, and the
+  workflow's default `GITHUB_TOKEN` acts as `github-actions[bot]`, which
+  cannot bypass it — every run captured fine, uploaded its artifact, and
+  then died at `git push` with `GH006: Protected branch update failed`. The
+  checkout step now uses `${{ secrets.SCREENSHOTS_PAT || github.token }}`: an
+  admin-owned PAT pushes as that admin, whom `enforce_admins: false` allows
+  through, and until the operator adds that secret the workflow falls back to
+  the old behavior instead of breaking.
+
 ## [3.17.50] — 2026-08-24
 
 ### Added
