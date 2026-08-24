@@ -122,6 +122,7 @@ internal/merkle/tree.go: unreachable func: Tree.Proof
 internal/merkle/tree.go: unreachable func: Tree.Root
 internal/merkle/tree.go: unreachable func: Verify
 internal/merkle/tree.go: unreachable func: hashCopy
+internal/merkle/tree.go: unreachable func: leafHash
 internal/merkle/tree.go: unreachable func: pairHash
 internal/merkle/tree.go: unreachable func: parentLayer
 internal/migrations/migrate.go: unreachable func: Migrator.Applied
