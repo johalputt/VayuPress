@@ -203,6 +203,7 @@ internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.Telemetry
 internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.handleCrash
 internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.restart
 internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.start
+internal/sandbox/subprocess.go: unreachable func: allowNoNamespaceSandbox
 internal/sandbox/subprocess.go: unreachable func: isEPERM
 internal/sandbox/subprocess_linux.go: unreachable func: applyNamespaceFlags
 internal/sandbox/subprocess_linux.go: unreachable func: applyProcAttr
