@@ -15,16 +15,16 @@ require (
 	github.com/ProtonMail/go-crypto v1.4.1
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/emersion/go-msgauth v0.7.0
-	github.com/go-chi/chi/v5 v5.3.1
+	github.com/go-chi/chi/v5 v5.3.2
 	github.com/graphql-go/graphql v0.8.1
-	github.com/mattn/go-sqlite3 v1.14.49
+	github.com/mattn/go-sqlite3 v1.14.50
 	github.com/microcosm-cc/bluemonday v1.0.27
-	github.com/phuslu/iploc v1.0.20260802
+	github.com/phuslu/iploc v1.0.20260815
 	github.com/rs/cors v1.11.1
 	github.com/sigstore/sigstore-go v1.3.0
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib v1.6.0
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20260312101154-fc105a03c0e0
-	golang.org/x/crypto v0.54.0
+	golang.org/x/crypto v0.55.0
 	rsc.io/qr v0.2.0
 )
 
@@ -103,7 +103,7 @@ require (
 	golang.org/x/mod v0.38.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260523011958-0a33c5d7ca68 // indirect
 	google.golang.org/grpc v1.82.1 // indirect
@@ -115,6 +115,6 @@ require (
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/yuin/goldmark v1.8.5
-	golang.org/x/net v0.57.0
+	golang.org/x/net v0.58.0
 	golang.org/x/sys v0.47.0
 )
