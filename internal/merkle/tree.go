@@ -5,6 +5,7 @@ package merkle
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 )
@@ -17,14 +18,19 @@ type Tree struct {
 }
 
 // New builds a Merkle tree from a set of data items.
+//
+// Leaves and interior nodes are DOMAIN-SEPARATED (leaf = H(0x00‖data), node =
+// H(0x01‖L‖R)): without the tags, H(item) is ambiguous with an interior hash of
+// the same bytes, which is the classic second-preimage ambiguity that lets a
+// leaf be re-interpreted as a subtree in proof verification.
 func New(items [][]byte) (*Tree, error) {
 	if len(items) == 0 {
 		return nil, errors.New("merkle: no items")
 	}
 	t := &Tree{}
 	for _, item := range items {
-		h := sha256.Sum256(item)
-		t.leaves = append(t.leaves, h[:])
+		h := leafHash(item)
+		t.leaves = append(t.leaves, h)
 	}
 
 	layer := hashCopy(t.leaves)
@@ -61,10 +67,12 @@ func (t *Tree) Proof(index int) ([]string, error) {
 	return proof, nil
 }
 
-// Verify checks that leaf (raw data) at index is part of the tree with root rootHex.
+// Verify checks that leaf (raw data) at index is part of the tree with root
+// rootHex. The final comparison is constant-time: a proof verification whose
+// outcome leaks through byte-at-a-time timing would let a prober forge
+// inclusion evidence one nibble at a time.
 func Verify(leaf []byte, index int, proof []string, rootHex string) bool {
-	h := sha256.Sum256(leaf)
-	cur := h[:]
+	cur := leafHash(leaf)
 	idx := index
 	for _, sibHex := range proof {
 		sib, err := hex.DecodeString(sibHex)
@@ -78,7 +86,11 @@ func Verify(leaf []byte, index int, proof []string, rootHex string) bool {
 		}
 		idx /= 2
 	}
-	return hex.EncodeToString(cur) == rootHex
+	want, err := hex.DecodeString(rootHex)
+	if err != nil || len(want) != len(cur) {
+		return false
+	}
+	return subtle.ConstantTimeCompare(cur, want) == 1
 }
 
 func parentLayer(layer [][]byte) [][]byte {
@@ -94,10 +106,18 @@ func parentLayer(layer [][]byte) [][]byte {
 }
 
 func pairHash(left, right []byte) []byte {
-	combined := make([]byte, len(left)+len(right))
-	copy(combined, left)
-	copy(combined[len(left):], right)
+	// 0x01 domain tag: interior node.
+	combined := make([]byte, 0, 1+len(left)+len(right))
+	combined = append(combined, 0x01)
+	combined = append(combined, left...)
+	combined = append(combined, right...)
 	h := sha256.Sum256(combined)
+	return h[:]
+}
+
+// leafHash hashes a data item with the 0x00 leaf domain tag.
+func leafHash(item []byte) []byte {
+	h := sha256.Sum256(append([]byte{0x00}, item...))
 	return h[:]
 }
 

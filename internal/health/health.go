@@ -29,19 +29,37 @@ var (
 // SearchPingFn is injected by main to check Meilisearch health without importing the search package.
 var SearchPingFn func(method, path string, body interface{}) error
 
+// TrustedProbeFn is injected by main. When it answers true — a loopback peer or
+// a valid API key, per the audit's recon-detail finding — the detail endpoints
+// and the liveness payload's version/uptime fields are served. Anonymous
+// callers get the minimal status shape: exact version + uptime tell an
+// attacker which known CVEs apply and how long they have had access.
+var TrustedProbeFn func(r *http.Request) bool
+
+// trusted reports whether this request may see recon-useful health detail.
+func trusted(r *http.Request) bool {
+	return TrustedProbeFn != nil && TrustedProbeFn(r)
+}
+
 // WriteJSON and WriteAPIError are injected by main.
 var (
 	WriteJSON     func(w http.ResponseWriter, r *http.Request, code int, v interface{})
 	WriteAPIError func(w http.ResponseWriter, r *http.Request, code int, errCode, msg, docs string)
 )
 
-// HandleHealthLiveness handles GET /health and /health/live.
+// HandleHealthLiveness handles GET /health and /health/live. Load balancers
+// need only the status; version/config/uptime are recon detail (audit) and go
+// out solely to loopback/API-key probes.
 func HandleHealthLiveness(w http.ResponseWriter, r *http.Request) {
-	WriteJSON(w, r, 200, map[string]interface{}{
+	resp := map[string]interface{}{
 		"schema_version": healthSchemaVersion, "status": "alive",
-		"version": Version, "config_version": ConfigVersion,
-		"uptime_seconds": time.Since(BootTime).Seconds(),
-	})
+	}
+	if trusted(r) {
+		resp["version"] = Version
+		resp["config_version"] = ConfigVersion
+		resp["uptime_seconds"] = time.Since(BootTime).Seconds()
+	}
+	WriteJSON(w, r, 200, resp)
 }
 
 // HandleHealthReady handles GET /health/ready.

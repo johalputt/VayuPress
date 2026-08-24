@@ -138,6 +138,26 @@ func (m *Manager) ForceTransition(to Mode, reason string) {
 	}
 }
 
+// Restore silently seeds the manager's current mode from durable state at boot
+// (audit: an install that went read-only or quarantined before a crash rebooted
+// into NORMAL and started accepting writes nobody had re-authorised). Unlike a
+// transition it records NO history entry and fires NO hooks — the journal
+// already contains the original event; replaying it as news would duplicate the
+// row on every restart.
+func (m *Manager) Restore(to Mode) {
+	switch to {
+	case ModeNormal, ModeDegraded, ModeReadOnly, ModeRecovery, ModeMaintenance, ModeQuarantined:
+	default:
+		return // unknown persisted value: keep the safe default (normal)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if to == m.current {
+		return
+	}
+	m.current = to
+}
+
 // OnTransition registers a hook called on every successful transition.
 // Hooks are called synchronously in the order registered; keep them fast.
 func (m *Manager) OnTransition(h func(Transition)) {

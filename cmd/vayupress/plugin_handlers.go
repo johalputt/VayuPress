@@ -201,13 +201,13 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
-	// Identity comes from the authenticated member, not the client payload, so a
-	// commenter cannot impersonate someone else. An optional display name is
-	// honoured but the email is always the session's.
-	author := strings.TrimSpace(body.Author)
-	if author == "" {
-		author = who.Name
-	}
+	// Identity comes from the authenticated session ONLY (audit: a client
+	// supplied display name let any member sign a comment as "Site Owner" —
+	// the email was bound but the visible name was free-form impersonation).
+	// The body's author field is accepted and ignored so old clients keep
+	// working; the stored identity is always the session's.
+	_ = body.Author
+	author := who.Name
 
 	// Resolve article ID from slug. Drafts are not public, so commenting on one
 	// returns the same not-found as a non-existent slug (no existence leak).

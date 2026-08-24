@@ -1039,6 +1039,14 @@ func main() {
 		logging.LogJSON(logging.LogFields{Level: "warn", Component: "mode", Msg: "mode journal unavailable (non-fatal): " + err.Error()})
 	} else {
 		logging.LogInfo("mode", fmt.Sprintf("mode journal open — %d prior transitions loaded", len(past)))
+		// Replay the persisted state (audit): a crash in read-only/quarantined
+		// used to reboot into NORMAL and accept writes nobody re-authorised.
+		// Restore seeds silently — no new journal row, no duplicated history.
+		if len(past) > 0 {
+			last := past[len(past)-1]
+			mode.Global.Restore(last.To)
+			logging.LogInfo("mode", fmt.Sprintf("mode restored from journal: %s (reason=%s)", last.To, last.Reason))
+		}
 		defer modeJournal.Close()
 	}
 
@@ -1216,6 +1224,11 @@ func main() {
 	}
 	health.WriteJSON = writeJSON
 	health.WriteAPIError = writeAPIError
+	// Recon gate (audit): health detail answers loopback peers or API-key
+	// holders only; anonymous probes get the bare status shape.
+	health.TrustedProbeFn = func(r *http.Request) bool {
+		return isLoopbackPeer(r) || auth.HasValidAPIKey(r)
+	}
 
 	// Wire render package version.
 	render.Version = Version

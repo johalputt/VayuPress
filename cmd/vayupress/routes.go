@@ -110,24 +110,35 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		AllowCredentials: true,
 	}).Handler)
 
-	// Public health endpoints
+	// Public health endpoints. Liveness/readiness stay anonymous (load
+	// balancers, and the connector docs promise curl-able JSON); the DETAIL
+	// probes — DB internals, worker queues, storage, migrations, dependency
+	// graph — are recon (audit) and answer loopback/API-key callers only.
+	gateHealth := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if !isLoopbackPeer(r) && !auth.HasValidAPIKey(r) {
+				http.NotFound(w, r)
+				return
+			}
+			h(w, r)
+		}
+	}
 	r.Get("/health", health.HandleHealthLiveness)
 	r.Get("/health/live", health.HandleHealthLiveness)
 	r.Get("/health/ready", health.HandleHealthReady)
-	r.Get("/health/db", health.HandleHealthDB)
-	r.Get("/health/search", health.HandleHealthSearch)
+	r.Get("/health/db", gateHealth(health.HandleHealthDB))
+	r.Get("/health/search", gateHealth(health.HandleHealthSearch))
 	// Kept as an alias, not revived: it points at the same built-in engine. An
 	// operator's monitoring may still call it, and silently 404ing a health check
 	// is a worse failure than an inaccurate path.
-	r.Get("/health/meilisearch", health.HandleHealthSearchLegacy)
-	r.Get("/health/workers", health.HandleHealthWorkers)
-	r.Get("/health/storage", health.HandleHealthStorage)
-	r.Get("/health/benchmarks", a.handleHealthBenchmarks)
-	r.Get("/health/migrations", health.HandleHealthMigrations)
-	r.Get("/health/ethics", health.HandleHealthEthics)
-	r.Get("/health/dependencies", health.HandleHealthDependencies)
-	r.Get("/health/search", health.HandleHealthSearch)
-	r.Get("/health/queue", health.HandleHealthQueue)
+	r.Get("/health/meilisearch", gateHealth(health.HandleHealthSearchLegacy))
+	r.Get("/health/workers", gateHealth(health.HandleHealthWorkers))
+	r.Get("/health/storage", gateHealth(health.HandleHealthStorage))
+	r.Get("/health/benchmarks", gateHealth(a.handleHealthBenchmarks))
+	r.Get("/health/migrations", gateHealth(health.HandleHealthMigrations))
+	r.Get("/health/ethics", gateHealth(health.HandleHealthEthics))
+	r.Get("/health/dependencies", gateHealth(health.HandleHealthDependencies))
+	r.Get("/health/queue", gateHealth(health.HandleHealthQueue))
 
 	// Static files + feeds. Per-domain scoped when a secondary domain is
 	// registered (VayuDomains Stage 2c); byte-identical global artefacts

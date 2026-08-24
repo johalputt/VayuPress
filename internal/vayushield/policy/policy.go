@@ -141,6 +141,18 @@ func Compile(c Config) (Rules, []string) {
 
 	parse := func(list []string, what string) []netip.Prefix {
 		out := make([]netip.Prefix, 0, len(list))
+		// An IPv4-mapped IPv6 entry (::ffff:a.b.c.d[/n]) can NEVER equal a
+		// native IPv4 peer address, so storing it verbatim made the rule
+		// silently dead — the operator believed a network was allowed/denied
+		// while every request walked straight past it (audit). Unwrap to the
+		// native v4 range instead; same intent, actually enforced.
+		unwrap := func(p netip.Prefix) netip.Prefix {
+			if p.Addr().Is4In6() {
+				a4 := netip.AddrFrom4(p.Addr().As4())
+				return netip.PrefixFrom(a4, p.Bits()-96)
+			}
+			return p
+		}
 		for _, s := range list {
 			s = strings.TrimSpace(s)
 			if s == "" || strings.HasPrefix(s, "#") {
@@ -149,7 +161,12 @@ func Compile(c Config) (Rules, []string) {
 			// A bare address is a host route; operators write both.
 			if !strings.Contains(s, "/") {
 				if a, err := netip.ParseAddr(s); err == nil {
-					out = append(out, netip.PrefixFrom(a, a.BitLen()))
+					bits := a.BitLen()
+					if a.Is4In6() {
+						a = netip.AddrFrom4(a.As4())
+						bits = 32
+					}
+					out = append(out, netip.PrefixFrom(a, bits))
 					continue
 				}
 				bad = append(bad, what+": "+s)
@@ -160,7 +177,7 @@ func Compile(c Config) (Rules, []string) {
 				bad = append(bad, what+": "+s)
 				continue
 			}
-			out = append(out, p.Masked())
+			out = append(out, unwrap(p.Masked()))
 		}
 		return out
 	}
