@@ -19,7 +19,7 @@ jobs:
     name: "P9 · Supply Chain Audit"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Check for hardcoded secrets / credentials
         run: |
@@ -57,7 +57,7 @@ jobs:
     name: "P9 · Security Headers in Source"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Verify all required security headers present in deploy script
         run: |
           MISSING=0
@@ -85,7 +85,7 @@ jobs:
     name: "P9 · CSRF Protection"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Verify CSRF token implementation present
         run: |
           grep -q "X-CSRF-Token\|csrfToken\|csrf_token" scripts/deploy-vayupress.sh \
@@ -97,7 +97,7 @@ jobs:
     name: "P9 · SSRF Protection"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Verify SSRF protection present
         run: |
           grep -q "169.254.169.254\|ssrf\|SSRF\|private.*IP\|allowlist" scripts/deploy-vayupress.sh \
@@ -109,7 +109,7 @@ jobs:
     name: "P9 · Authentication Security"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Verify authentication security measures
         run: |
           MISSING=0
@@ -132,7 +132,7 @@ jobs:
     name: "P9 · Audit Logging"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Verify audit logging present
         run: |
           grep -q "audit\|auditLog\|audit_log" scripts/deploy-vayupress.sh \
@@ -144,7 +144,7 @@ jobs:
     name: "P9 · Rate Limiting"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Verify rate limiting present
         run: |
           grep -q "rateLimit\|rate_limit\|RateLimit\|allowPurge\|allowPprof" scripts/deploy-vayupress.sh \
@@ -156,7 +156,7 @@ jobs:
     name: "P9 · Threat Model"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Verify threat model document exists and has required sections
         run: |
           [ -f "docs/THREAT-MODEL.md" ] || { echo "FAIL: docs/THREAT-MODEL.md missing"; exit 1; }
@@ -173,7 +173,7 @@ jobs:
     name: "P9 · Vulnerability Disclosure"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Verify vulnerability disclosure process documented
         run: |
           [ -f "SECURITY.md" ] || { echo "FAIL: SECURITY.md missing"; exit 1; }

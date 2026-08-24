@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -20,6 +21,46 @@ type Rule struct {
 	ToPath    string    `json:"to_path"`
 	Code      int       `json:"code"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// allowedRedirectCodes is the closed set of redirect statuses a rule may use.
+// Anything else (200, 404, 5xx…) would turn the middleware into a way to
+// answer normal routes with nonsense.
+var allowedRedirectCodes = map[int]bool{301: true, 302: true, 303: true, 307: true, 308: true}
+
+// validateRedirectRule enforces the invariants Create relies on (audit: rules
+// were stored with zero validation, so a settings-write key could plant a
+// site-wide "/" hijack, an open redirect through an absolute target URL, or a
+// scheme-bearing from-path that could never match a request anyway):
+//
+//   - both sides are same-site PATHS: they must start with "/" and never with
+//     "//" (protocol-relative), contain a scheme/host, or smuggle control or
+//     whitespace characters that different HTTP stacks parse differently;
+//   - from_path is never "/" itself — the site root cannot be redirected;
+//   - the status code is one of the real redirect codes (301 default).
+func validateRedirectRule(from, to string, code int) error {
+	if code == 0 {
+		code = 301
+	}
+	if !allowedRedirectCodes[code] {
+		return fmt.Errorf("redirects: unsupported status code %d", code)
+	}
+	if len(from) == 0 || len(from) > 2048 || len(to) > 2048 {
+		return fmt.Errorf("redirects: path missing or too long")
+	}
+	for _, p := range []string{from, to} {
+		if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") {
+			return fmt.Errorf("redirects: %q is not a same-site path", p)
+		}
+		if strings.ContainsAny(p, " \t\r\n\"'\\") ||
+			strings.Contains(p, "://") || strings.Contains(p, "@") {
+			return fmt.Errorf("redirects: %q contains characters not allowed in a site path", p)
+		}
+	}
+	if from == "/" {
+		return fmt.Errorf("redirects: refusing to redirect the site root")
+	}
+	return nil
 }
 
 // Manager holds cached redirect rules and serves the redirect middleware.
@@ -80,8 +121,8 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 
 // Create adds a new redirect rule.
 func (m *Manager) Create(ctx context.Context, from, to string, code int) (*Rule, error) {
-	if code == 0 {
-		code = 301
+	if err := validateRedirectRule(from, to, code); err != nil {
+		return nil, err
 	}
 	res, err := m.db.ExecContext(ctx,
 		`INSERT INTO redirects(from_path,to_path,code) VALUES(?,?,?)`, from, to, code)

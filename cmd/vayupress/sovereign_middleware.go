@@ -132,10 +132,11 @@ func (a *App) isSovereignLane(r *http.Request) bool {
 	// robots.txt / sitemap.xml / feeds are priority (never shed). A 503 on
 	// robots.txt pauses ALL crawling and a 503 on sitemap.xml drops URLs from the
 	// index, so these machine endpoints must always reach the handler even under a
-	// public-traffic flood. The set is small, cacheable and unspoofable (path
-	// shape only), so priority-admitting it can never be abused to bypass the
-	// public-lane cap. (The shield's own bypass already covers them one layer in;
-	// this closes the gap at L0, which runs before the shield.)
+	// public-traffic flood. Unlike the prefixes above, this class is matched by
+	// spoofable URL shape, so sovereignMiddleware bounds how many of them may
+	// hold the lane at once before the rest compete as public traffic.
+	// (The shield's own bypass already covers them one layer in; this closes
+	// the gap at L0, which runs before the shield.)
 	if vayushield.IsFeedLikePath(p) {
 		return true
 	}
@@ -195,6 +196,22 @@ func (a *App) isTrustedOperator(r *http.Request) bool {
 // gets a cheap, cacheable 503 + Retry-After — no handler, no render, no SQLite.
 // When the cap is not being approached this is a single atomic increment, so it
 // adds no measurable latency to normal traffic.
+// maxFeedPriority bounds how many feed-like requests may hold the never-shed
+// priority lane at once. Feed admission is decided by URL SHAPE alone — any
+// caller can mint unlimited /whatever.xml paths — so without this bound the
+// "machine endpoints are priority" rule was an unbounded, always-admit compute
+// sink: a flood of random *.xml requests each ran the full handler stack (DB
+// read + render) while never being shed (audit). Eight concurrent slots cover
+// every real reader: feed consumers poll a handful of URLs each and crawlers
+// fetch robots/sitemaps serially. Overflow is NOT refused — it just falls back
+// to ordinary public-lane admission, where it competes (and sheds) like all
+// other traffic.
+const maxFeedPriority = 8
+
+// feedPriorityLane hands out the bounded feed-priority slots. Buffered channel
+// as a semaphore; package-level like the other ingest budgets.
+var feedPriorityLane = make(chan struct{}, maxFeedPriority)
+
 func (a *App) sovereignMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if a.sovereign == nil {
@@ -206,11 +223,32 @@ func (a *App) sovereignMiddleware(next http.Handler) http.Handler {
 		// touches the public budget, and an install with no policy short-circuits
 		// on an empty rule set.
 		priority := a.isSovereignLane(r)
+		feedSlot := false
+		if priority {
+			// Feed-like paths are the one priority class decided by spoofable
+			// URL shape rather than an authenticated session or a fixed admin
+			// prefix. Bound them before they enter the lane.
+			if vayushield.IsFeedLikePath(r.URL.Path) {
+				select {
+				case feedPriorityLane <- struct{}{}:
+					feedSlot = true
+				default:
+					priority = false // lane full: compete as public traffic
+				}
+			}
+		}
 		cost := 1
 		if !priority {
 			cost = a.vayuShield.RouteCost(r)
 		}
 		release, ok := a.sovereign.AdmitCost(priority, cost)
+		if ok && feedSlot {
+			prior := release
+			release = func() {
+				<-feedPriorityLane
+				prior()
+			}
+		}
 		if !ok {
 			// Public overflow during saturation. Shed cheaply so the CPU we save
 			// keeps the admin plane and verified readers responsive. 503 (not a

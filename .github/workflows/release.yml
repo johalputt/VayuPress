@@ -11,10 +11,10 @@ jobs:
     name: "Build, sign, and publish release"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install C build tools
         run: sudo apt-get install -y gcc build-essential
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: 'stable'
           cache: true
@@ -40,7 +40,7 @@ jobs:
           echo "✅ built $VERSION (static)"
       - name: Install cosign
         continue-on-error: true
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
       - name: Sign binary (keyless OIDC)
         continue-on-error: true
         run: |
@@ -67,7 +67,7 @@ jobs:
             --bundle "dist/vayupress-${GITHUB_REF_NAME}.sbom.cosign.bundle" \
             || echo "cosign SBOM signing skipped/failed — publishing SBOM without signature"
       - name: Upload release assets
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
           # A semver pre-release tag (one containing a hyphen, e.g. v2.9.10-rc1)
           # is published as a GitHub *pre-release*, so it only appears in the
