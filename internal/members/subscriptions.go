@@ -284,6 +284,12 @@ func (s *Store) ExpireLapsedSubscriptions(ctx context.Context) (int64, error) {
 			lapsedSubs = append(lapsedSubs, l)
 		}
 	}
+	// A mid-iteration I/O failure must not silently shrink the expiry set:
+	// a lapsed subscription we failed to see stays active for another hour.
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
 	rows.Close()
 	if len(lapsedSubs) == 0 {
 		return 0, nil
