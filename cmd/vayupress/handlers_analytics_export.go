@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/analytics"
+	"github.com/johalputt/vayupress/internal/auth"
 )
 
 // analyticsExportReports lists the reports the export endpoint understands. It
@@ -37,6 +38,14 @@ var analyticsExportReports = []string{
 func (a *App) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 	if a.analytics == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "analytics-disabled", "Analytics not initialised", "")
+		return
+	}
+	// Exports are install-wide today. A domain-scoped key (migration 092) may
+	// not read aggregates that blend other domains' traffic, so it is refused
+	// here until exports grow a per-domain filter.
+	if ki, isKey := auth.KeyInfoFromContext(r.Context()); isKey && ki.DomainID != "" {
+		writeAPIError(w, r, http.StatusForbidden, "key-scope-mismatch",
+			"domain-scoped API keys cannot read install-wide exports", "")
 		return
 	}
 	report := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("report")))

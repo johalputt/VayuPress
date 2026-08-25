@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/settings"
 )
@@ -86,6 +87,14 @@ func (a *App) scopedDomainMiddleware(next http.Handler) http.Handler {
 			// sentinel, handing this page the operator's own settings under a
 			// hosted domain's URL. Refuse rather than resolve.
 			http.Redirect(w, r, "/os/domains", http.StatusSeeOther)
+			return
+		}
+		// Domain-scoped API keys (migration 092) stop here: a key bound to one
+		// hosted domain never reaches another domain's pages or APIs through
+		// this middleware, whatever grant set it carries.
+		if !auth.APIKeyMayAccessDomain(r, d.ID) {
+			writeAPIError(w, r, http.StatusForbidden, "key-scope-mismatch",
+				"API key is bound to a different domain", "")
 			return
 		}
 		ctx := context.WithValue(r.Context(), ctxScopeKey, sc)
