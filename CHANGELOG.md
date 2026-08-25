@@ -6,6 +6,50 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.55] — 2026-08-25
+
+### Fixed
+
+Defense-in-depth sweep: five specialist auditors hunted the low-severity
+tier; every finding that survived adversarial verification is closed.
+
+- **The lapsed-subscription sweep could strand a permanently paid member.** A
+  tier-demotion failure inside the sweep no longer commits the row's expiry,
+  audit events are recorded only for subscriptions that actually expired, and
+  a failed sweep is logged loudly instead of silently dropped.
+- **Webhooks delivered payloads signed under an empty secret** when the hook's
+  secret reload failed, producing deliveries every receiver must reject while
+  looking like a receiver outage. A failed reload now skips the hook and
+  records why.
+- **Unverified-member removal string-matched its refusal sentinel**, so any
+  wording drift would turn a deliberate 409 into a misleading 404; the bulk
+  purge swallowed refusals and failures, and a failed remaining-count read
+  reported an empty queue. All three now report honestly.
+- **Comment moderation's JSON path skipped the id allowlist and error
+  sanitisation the console path enforces**, reflecting request text and
+  driver detail in responses. Both paths now share the same hygiene.
+- **The Tor-world cookie lost its Secure attribute behind the TLS-terminating
+  proxy** — a request-time check that can never fire there. It now forces
+  Secure like every other cookie.
+- **Member mailbox and ads GETs were heuristically cacheable** while all
+  sibling member endpoints set Cache-Control: no-store. They match now.
+- **The nginx micro-cache treated API-key requests as anonymous**, so an
+  admin GET could enter the shared cache for up to a second. The credential
+  bypass list covers X-API-Key too.
+- **Conflicting duplicate X-Frame-Options headers** (app DENY vs proxy
+  SAMEORIGIN) left framing policy to client tie-breaking; all shipped nginx
+  templates defer to the application middleware, with tests pinning it.
+- **Console slug renames accepted slugs the rest of the system rejects**,
+  orphaning posts from their own service layer, and leaked driver errors on
+  collisions. Renames enforce the global slug contract and report conflicts
+  as conflicts.
+- **Bulk article creation diverged from single create**: no slug auto-
+  derivation, silent duplicate-lookup failure, and enqueue failures counted
+  as queued. Bulk now mirrors single-create semantics exactly.
+- **Scheduled posts staged inputs their own publish pipeline would reject**,
+  converting operator success into a silent late failure. Staging validates
+  with the publish rules, caps its body, and refuses comma-containing tags.
+
 ## [3.17.54] — 2026-08-25
 
 ### Security
