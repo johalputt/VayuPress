@@ -1063,12 +1063,30 @@ type Verdict struct {
 	Signals    fingerprint.Signals
 	HasTLS     bool
 	AIReferrer string // AI system name if the referrer indicates AI-assisted browsing
+
+	// InspectClass is the compiled-in inspection class that matched this
+	// request (1-based; 0 = no match). It lets the request path count the
+	// finding from the verdict instead of running inspect.Scan a second time —
+	// the scan already ran inside Classify, and a second pass on every
+	// classified request doubles its cost for nothing.
+	InspectClass int
 }
 
 // Classify runs the full fingerprint → static/adaptive lookup → score pipeline
 // for a request. It never mutates state (learning happens in the middleware),
 // so analytics can call it freely.
 func (m *Manager) Classify(r *http.Request) Verdict {
+	return m.ClassifyWithIntel(r, intel.Kind(0))
+}
+
+// ClassifyWithIntel is Classify with the caller's already-known network-intel
+// verdict carried down. The middleware's hostile gate looks the source up once;
+// handing the answer here keeps the datacenter tally and the score weight on
+// that single lookup instead of asking the feed function twice per unverified
+// request (a refresh landing between two lookups could also produce a request
+// that was neither counted nor scored consistently). Kind(0) means "unknown,
+// look it up" — what plain Classify callers want.
+func (m *Manager) ClassifyWithIntel(r *http.Request, knownIntel intel.Kind) Verdict {
 	sig, hasTLS := m.signals(r)
 	comp := sig.Fingerprint()
 
@@ -1115,9 +1133,11 @@ func (m *Manager) Classify(r *http.Request) Verdict {
 	// counter moved here would be inflated by how chatty the beacon is rather
 	// than by how many probes arrived, and that number is what an operator uses
 	// to decide whether they are under attack. The middleware counts it once.
+	inspectClass := 0
 	if f, ok := inspect.Scan(r.URL.Path, r.URL.RawQuery); ok {
 		in.InspectDelta = f.Delta()
 		in.InspectReasons = []string{f.Reason()}
+		inspectClass = int(f.Class)
 	}
 
 	// Third-party network intelligence, as a fourth input and the weakest one.
@@ -1135,11 +1155,13 @@ func (m *Manager) Classify(r *http.Request) Verdict {
 	// Off in a Tor Space for the same reason the hostile gate is: every peer is
 	// 127.0.0.1 there, so the answer would be identical for the whole audience
 	// and would be describing this server's own address.
-	if m.cfg.IntelFn != nil && !m.cfg.OnionMode {
-		if kind, source := m.cfg.IntelFn(ipOnly(m.cfg.ClientIP(r))); kind == intel.KindDatacenter {
-			in.NetworkDelta = intel.DatacenterDelta
-			in.NetworkReasons = []string{"datacenter or hosting network (" + source + ")"}
-		}
+	intelKind := knownIntel
+	if m.cfg.IntelFn != nil && !m.cfg.OnionMode && intelKind == intel.Kind(0) {
+		intelKind, _ = m.cfg.IntelFn(ipOnly(m.cfg.ClientIP(r)))
+	}
+	if intelKind == intel.KindDatacenter {
+		in.NetworkDelta = intel.DatacenterDelta
+		in.NetworkReasons = []string{"datacenter or hosting network"}
 	}
 	if m.cfg.Static != nil {
 		if s, ok := m.cfg.Static.MatchUA(sig.UserAgent); ok {
@@ -1163,7 +1185,7 @@ func (m *Manager) Classify(r *http.Request) Verdict {
 			m.sigCache.Put(comp.FingerprintHash, nil, false)
 		}
 	}
-	v := Verdict{Result: scorer.Score(in), Composite: comp, Signals: sig, HasTLS: hasTLS}
+	v := Verdict{Result: scorer.Score(in), Composite: comp, Signals: sig, HasTLS: hasTLS, InspectClass: inspectClass}
 	if ref := r.Referer(); ref != "" && m.cfg.Static != nil {
 		if host := hostOf(ref); host != "" {
 			if name, ok := m.cfg.Static.MatchReferrerAI(host); ok {
@@ -1802,13 +1824,17 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		v := m.Classify(r)
-		// Count the inspection finding exactly once, on the request path, rather
-		// than inside Classify — which analytics also calls.
-		if f, ok := inspect.Scan(r.URL.Path, r.URL.RawQuery); ok {
-			if i := int(f.Class) - 1; i >= 0 && i < len(m.inspectHits) {
-				m.inspectHits[i].Add(1)
-			}
+		// The hostile gate above already looked this source up; carry the answer
+		// down so the feed function runs once per request, not twice.
+		v := m.ClassifyWithIntel(r, intelKind)
+		// Count the inspection finding exactly once, on the request path, from
+		// the verdict Classify already produced — not by running inspect.Scan a
+		// second time (which is what this block used to do, doubling the scan
+		// cost of every classified request). The counter lives here rather than
+		// inside Classify because analytics calls that too, and beacon chatter
+		// must not inflate probe counts.
+		if c := v.InspectClass; c > 0 && c <= len(m.inspectHits) {
+			m.inspectHits[c-1].Add(1)
 		}
 		// Same reasoning for the datacenter tally: Classify applied the weight,
 		// the request path is what counts it. (The hostile tally is incremented at

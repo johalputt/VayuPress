@@ -40,7 +40,9 @@ type Store struct {
 // separate (StartCollector) because it needs a lifetime; a Store whose flusher
 // was never started reports Running:false on the panel rather than losing views
 // in silence.
-func New(db *sql.DB) *Store { return &Store{db: db, reader: db, coll: newCollector(), evq: &evCollector{}} }
+func New(db *sql.DB) *Store {
+	return &Store{db: db, reader: db, coll: newCollector(), evq: &evCollector{}}
+}
 
 // UseReader routes the report/dashboard read queries at a dedicated read pool
 // instead of the single writer connection. The admin Analytics panel runs many
