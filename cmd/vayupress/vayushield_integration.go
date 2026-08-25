@@ -2012,6 +2012,10 @@ window.addEventListener('click',onInteract);
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')send();});
 window.addEventListener('pagehide',send);
 try{fetch('/__vayuanalytics/enter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p:location.pathname,q:location.search,r:document.referrer||'',l:lcp,n:inp,c:Math.round(cls*100)}),keepalive:true}).catch(function(){});}catch(e){}
+// SPA route tracking: history pushState/replaceState are wrapped so a client-side
+// navigation fires a fresh enter for the new path — otherwise an entire React/Vue
+// visit collapses into one page view and per-page engagement lies.
+(function(){var wrap=function(orig){return function(s,u){var r=orig.apply(this,arguments);try{fetch('/__vayuanalytics/enter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p:location.pathname,q:location.search,r:'',l:lcp,n:inp,c:Math.round(cls*100)}),keepalive:true}).catch(function(){});}catch(e){}return r;};};try{history.pushState=wrap(history.pushState);history.replaceState=wrap(history.replaceState);}catch(e){}})();
 })();`
 
 // startShieldCluster joins this node to a fleet, if the operator configured one,
