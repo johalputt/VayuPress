@@ -23,6 +23,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -40,6 +41,7 @@ import (
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/siemsink"
 	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
 	vagdpr "github.com/johalputt/vayupress/internal/vayuanalytics/gdpr"
 	vasession "github.com/johalputt/vayupress/internal/vayuanalytics/session"
@@ -186,6 +188,11 @@ func (a *App) bootVayuShield() {
 		Bots:   bots,
 		Signer: signer,
 		DB:     dbpkg.DB,
+		// SIEM export (2025 plan Wave 4) is opt-in via VAYU_SIEM_FILE: when the
+		// operator names a file, every enforcement decision lands there as one
+		// ArcSight CEF line for their existing log shipper. Unset = nil sink =
+		// zero cost, zero egress.
+		SIEM: siemSinkFromEnv(),
 		// The admin panel, API, feeds, health/metrics, the shield's own
 		// endpoints AND static assets are never challenged or blocked. /static
 		// matters: a challenge/429 in place of a stylesheet or htmx.js breaks
@@ -428,6 +435,29 @@ func (a *App) handleVayuShieldPoW(w http.ResponseWriter, r *http.Request) {
 	a.shieldOffload.Unban(auth.ClientIP(r))
 	http.SetCookie(w, a.vayuShield.SessionCookie(tok))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// siemSinkFromEnv honours VAYU_SIEM_FILE: a path whose file receives one CEF
+// line per enforcement decision (rotated at 10 MiB with one kept generation).
+// Returns nil unless the operator opted in, so the request path is untouched
+// by default.
+func siemSinkFromEnv() func(event, src, detail string) {
+	path := strings.TrimSpace(os.Getenv("VAYU_SIEM_FILE"))
+	if path == "" {
+		return nil
+	}
+	sink, err := siemsink.New(path, Version)
+	if err != nil {
+		logging.LogWarn("vayushield", "SIEM export disabled — cannot open "+path+": "+err.Error())
+		return nil
+	}
+	logging.LogInfo("vayushield", "SIEM CEF export active → "+path)
+	return func(event, src, detail string) {
+		if event == "" {
+			return
+		}
+		sink.Emit(event, src, detail)
+	}
 }
 
 // handleVAEnter records a page-enter engagement event. Public, per-IP rate

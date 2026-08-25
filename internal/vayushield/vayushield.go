@@ -25,6 +25,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"html"
 	"html/template"
 	"net"
@@ -65,6 +66,23 @@ const (
 	ActionTarpit                     // Level 4 — operator-enabled deliberate delay
 )
 
+// siemEventFor names a decision for the CEF sink. Allow is not emitted: an
+// all-allow day would be pure volume, and the SIEM's job is the exceptions.
+func siemEventFor(a Action) string {
+	switch a {
+	case ActionChallengePoW:
+		return "CHALLENGE_POW"
+	case ActionChallengeJS:
+		return "CHALLENGE_JS"
+	case ActionBlock:
+		return "BLOCK"
+	case ActionTarpit:
+		return "TARPIT"
+	default:
+		return ""
+	}
+}
+
 // Config configures a Manager. Only Enabled + at least a StaticDB are required;
 // everything else degrades gracefully.
 type Config struct {
@@ -103,6 +121,13 @@ type Config struct {
 	// restore the operator-facing copy that was retired for exactly this reason.
 	Capture *fingerprint.Store
 	DB      *sql.DB // for recording challenges/blocks (nil disables recording)
+
+	// SIEM, when set, receives one line per enforcement decision for the
+	// operator's Common Event Format file sink (see internal/siemsink). Nil is
+	// the default and costs nothing: telemetry is opt-in, never a dependency.
+	// Arguments: event name ("BLOCK", "CHALLENGE_POW", "JAIL", "REFUSED"),
+	// source key as the shield addresses it, free-text detail.
+	SIEM func(event, src, detail string)
 
 	// Score thresholds (0..1). Defaults: PoW 0.4, JS 0.6, Block 0.8.
 	PoWThreshold   float64
@@ -1845,6 +1870,10 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		}
 		action := m.Decide(r, v)
 		m.onEvent(action, v.Result.BotScore)
+		if m.cfg.SIEM != nil {
+			m.cfg.SIEM(siemEventFor(action), ipKey,
+				fmt.Sprintf("score=%.2f client=%s path=%s", v.Result.BotScore, v.Result.ClientType, r.URL.Path))
+		}
 
 		// Learn: a challenged-but-not-blocked "unknown" fingerprint becomes an
 		// auto-learned review candidate. The action is required because the trigger
