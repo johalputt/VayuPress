@@ -56,7 +56,7 @@ func TestTOTPSecretSealedAtRest(t *testing.T) {
 	if !strings.HasPrefix(raw, "f1.") {
 		t.Fatalf("sealed blob missing f1 prefix: %q", raw)
 	}
-	got, enabled, err := s.TOTPSecretByEmail(ctx, "SEED@example.com")
+	got, enabled, err := s.TOTPSecretByEmail(ctx, "SEEDED@example.com")
 	if err != nil || got != secret || enabled {
 		t.Fatalf("open roundtrip: secret=%q enabled=%v err=%v", got, enabled, err)
 	}
