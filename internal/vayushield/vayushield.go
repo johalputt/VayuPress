@@ -1893,8 +1893,13 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		case ActionChallengePoW:
 			// Reputation-scaled difficulty (L5→L4): an unknown client works a
 			// light, silent PoW; a source already under suspicion works harder.
+			// During an active surge EVERY silent PoW escalates to the hard tier:
+			// difficulty-4 costs a solver ~65k hashes, which a script fleet
+			// shrugs off at flood scale — the whole point of scaling is that the
+			// price of admission tracks how much adversarial pressure the
+			// controller currently sees.
 			diff := challenge.DefaultDifficulty
-			if m.brain.Standing(enfKey) < 0.3 {
+			if m.brain.Standing(enfKey) < 0.3 || m.controller.UnderAttack() {
 				diff = challenge.HardDifficulty
 			}
 			if !m.serveChallenge(w, r, v, diff, true) {

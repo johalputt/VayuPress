@@ -86,6 +86,12 @@ type EnterInput struct {
 	ClientType  string // human | GoodBot | BadBot | AIAgent | Headless | Unknown
 	BotScore    float64
 	Now         time.Time
+	// Real-user Core Web Vitals as reported by the page's PerformanceObserver
+	// (migration 091). Zero means "not reported yet"; the unload beacon
+	// overwrites with MAX semantics, so late INP/CLS still land on the row.
+	LCPMs   int // Largest Contentful Paint, milliseconds
+	INPMs   int // Interaction to Next Paint, milliseconds
+	CLSX100 int // Cumulative Layout Shift × 100 (integer-exact)
 }
 
 // RecordEnter inserts a new engagement row for a page view. is_new_session is
@@ -126,12 +132,32 @@ func recordEnter(ctx context.Context, e execer, in EnterInput) error {
 	if ct == "" {
 		ct = "human"
 	}
+	lcp, inp, clsx := clampCWV(in.LCPMs, in.INPMs, in.CLSX100)
 	_, err := e.ExecContext(ctx, `INSERT INTO vayuanalytics_sessions
-(session_hash,visitor_hash,page_path,source_category,source_detail,referrer_domain,referrer_path,entry_time,country_code,client_type,bot_score,is_new_session)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+(session_hash,visitor_hash,page_path,source_category,source_detail,referrer_domain,referrer_path,entry_time,country_code,client_type,bot_score,is_new_session,lcp_ms,inp_ms,cls_x100)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		in.SessionHash, visitor, in.PagePath, string(in.Class.Category), in.Class.Detail,
-		in.Class.ReferrerDomain, in.Class.ReferrerPath, now, in.Country, ct, in.BotScore, isNew)
+		in.Class.ReferrerDomain, in.Class.ReferrerPath, now, in.Country, ct, in.BotScore, isNew,
+		lcp, inp, clsx)
 	return err
+}
+
+// clampCWV bounds client-reported vitals before storage. A beacon is
+// unauthenticated input: negative or absurd values are lies, and a lie that
+// reaches an aggregate is a lie the operator reads. Ceilings are far above any
+// real observation (a 60s LCP means the tab was backgrounded, not that paint
+// took a minute) while still letting genuine slow-network data through.
+func clampCWV(lcp, inp, clsx int) (int, int, int) {
+	if lcp < 0 || lcp > 60000 {
+		lcp = 0
+	}
+	if inp < 0 || inp > 10000 {
+		inp = 0
+	}
+	if clsx < 0 || clsx > 4000 { // CLS > 40 is not a layout shift, it's a seizure
+		clsx = 0
+	}
+	return lcp, inp, clsx
 }
 
 // BeaconInput is an engagement update sent as the reader leaves or hides the tab.
@@ -142,6 +168,12 @@ type BeaconInput struct {
 	ScrollDepth  int // percent 0..100
 	Interactions int
 	Now          time.Time
+	// Late-reported Core Web Vitals (migration 091): INP and CLS often only
+	// exist by unload time. Zero = not reported; the UPDATE folds with MAX so
+	// the enter row's earlier value never regresses.
+	LCPMs   int
+	INPMs   int
+	CLSX100 int
 }
 
 // engagedThresholdSec / engagedThresholdScroll define an "engaged read".
@@ -181,11 +213,15 @@ func recordBeacon(ctx context.Context, e execer, in BeaconInput) error {
 	if in.TimeOnPage < 0 {
 		in.TimeOnPage = 0
 	}
+	lcp, inp, clsx := clampCWV(in.LCPMs, in.INPMs, in.CLSX100)
 	_, err := e.ExecContext(ctx, `UPDATE vayuanalytics_sessions SET
 exit_time=?,
 time_on_page_seconds=MAX(time_on_page_seconds,?),
 scroll_depth_percent=MAX(scroll_depth_percent,?),
 interaction_count=MAX(interaction_count,?),
+lcp_ms=CASE WHEN ?=0 THEN lcp_ms ELSE MAX(lcp_ms,?) END,
+inp_ms=CASE WHEN ?=0 THEN inp_ms ELSE MAX(inp_ms,?) END,
+cls_x100=CASE WHEN ?=0 THEN cls_x100 ELSE MAX(cls_x100,?) END,
 engaged=CASE WHEN MAX(time_on_page_seconds,?)>=? AND MAX(scroll_depth_percent,?)>=? THEN 1 ELSE 0 END,
 bounce=CASE WHEN MAX(time_on_page_seconds,?)<? AND MAX(scroll_depth_percent,?)<? THEN 1 ELSE 0 END
 WHERE id=(SELECT id FROM vayuanalytics_sessions WHERE session_hash=? AND page_path=? ORDER BY entry_time DESC LIMIT 1)`,
@@ -193,6 +229,9 @@ WHERE id=(SELECT id FROM vayuanalytics_sessions WHERE session_hash=? AND page_pa
 		in.TimeOnPage,
 		in.ScrollDepth,
 		in.Interactions,
+		lcp, lcp,
+		inp, inp,
+		clsx, clsx,
 		in.TimeOnPage, engagedThresholdSec, in.ScrollDepth, engagedThresholdScroll,
 		in.TimeOnPage, bounceMaxSec, in.ScrollDepth, engagedThresholdScroll,
 		in.SessionHash, in.PagePath)

@@ -365,6 +365,59 @@ FROM vayuanalytics_sessions WHERE entry_time>=? GROUP BY date(entry_time) ORDER 
 	return rep, nil
 }
 
+// WebVitals is the p75 real-user Core Web Vitals readout for the window
+// (migration 091). P75 is the industry assessment point: it is what "good"
+// thresholds are defined against, and it is robust to the one visitor on a
+// satellite link dragging an average around. Zero means too few rows carry a
+// reported value to quote honestly (the k-floor logic in spirit).
+type WebVitals struct {
+	P75LCPMs   int   `json:"p75_lcp_ms"`
+	P75INPMs   int   `json:"p75_inp_ms"`
+	P75CLSX100 int   `json:"p75_cls_x100"`
+	Samples    int64 `json:"samples"` // rows with at least one reported vital
+}
+
+// WebVitalsP75 computes the trailing-window 75th percentile per vital with one
+// ordered scan per metric over only rows that actually reported. The
+// ORDER BY/OFFSET trick is exact for SQLite without extension modules and
+// cheap here because the WHERE clause excludes unreported rows.
+func (s *Store) WebVitalsP75(ctx context.Context, days int) (*WebVitals, error) {
+	from := fromTime(days)
+	out := &WebVitals{}
+	pick := func(col string, dst *int, count *int64) error {
+		var n int64
+		if err := s.readDB().QueryRowContext(ctx,
+			`SELECT COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+col+`>0`, from).Scan(&n); err != nil {
+			return err
+		}
+		*count = n
+		if n == 0 {
+			return nil
+		}
+		off := n * 3 / 4 // floor(p75 rank)-1 → zero-based OFFSET
+		return s.readDB().QueryRowContext(ctx,
+			`SELECT `+col+` FROM vayuanalytics_sessions WHERE entry_time>=? AND `+col+`>0 ORDER BY `+col+` LIMIT 1 OFFSET ?`,
+			from, off).Scan(dst)
+	}
+	if err := pick("lcp_ms", &out.P75LCPMs, &out.Samples); err != nil {
+		return nil, err
+	}
+	var n2, n3 int64
+	if err := pick("inp_ms", &out.P75INPMs, &n2); err != nil {
+		return nil, err
+	}
+	if err := pick("cls_x100", &out.P75CLSX100, &n3); err != nil {
+		return nil, err
+	}
+	if n2 > out.Samples {
+		out.Samples = n2
+	}
+	if n3 > out.Samples {
+		out.Samples = n3
+	}
+	return out, nil
+}
+
 func round2(f float64) float64 {
 	return float64(int64(f*100+0.5)) / 100
 }
