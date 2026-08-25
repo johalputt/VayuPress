@@ -63,6 +63,9 @@ func keyStoreWithUsers(t *testing.T) (*apikeys.Store, *users.Store, *sql.DB) {
 		"020-users-sessions", "038-user-profiles", "039-user-mailbox",
 		"050-user-must-change-password", "051-user-username", "079-client-domain",
 		"041-api-keys", "042-api-keys-envelope", "062-api-keys-permissions",
+		// 092 adds vayu_api_keys.domain_id; the store's INSERT names it since
+		// the domain-scoping wave, so a fixture without it cannot mint keys.
+		"092-apikeys-domain-scope",
 	} {
 		applyMigration(t, db, m)
 	}

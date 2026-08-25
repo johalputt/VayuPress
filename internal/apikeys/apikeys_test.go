@@ -22,9 +22,10 @@ func newTestStore(t *testing.T) *Store {
 	// make writes invisible (a flake that surfaces under -race timing).
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
-	// Schema mirrors migrations 041 + 042 + 062 (the columns fine-grained
-	// permissions add), so the store's post-062 queries exercise the real shape.
-	schema := `CREATE TABLE vayu_api_keys(id TEXT PRIMARY KEY,label TEXT NOT NULL DEFAULT '',prefix TEXT NOT NULL DEFAULT '',key_hash TEXT NOT NULL,scope TEXT NOT NULL DEFAULT 'external',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,last_used_at DATETIME,revoked INTEGER NOT NULL DEFAULT 0,permissions TEXT NOT NULL DEFAULT '{}',expires_at DATETIME,owner_user_id TEXT NOT NULL DEFAULT '',rate_per_min INTEGER NOT NULL DEFAULT 0,use_count INTEGER NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1)`
+	// Schema mirrors migrations 041 + 042 + 062 + 092 (the columns fine-grained
+	// permissions and domain-scoping add), so the store's queries exercise the
+	// real shape.
+	schema := `CREATE TABLE vayu_api_keys(id TEXT PRIMARY KEY,label TEXT NOT NULL DEFAULT '',prefix TEXT NOT NULL DEFAULT '',key_hash TEXT NOT NULL,scope TEXT NOT NULL DEFAULT 'external',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,last_used_at DATETIME,revoked INTEGER NOT NULL DEFAULT 0,permissions TEXT NOT NULL DEFAULT '{}',expires_at DATETIME,owner_user_id TEXT NOT NULL DEFAULT '',rate_per_min INTEGER NOT NULL DEFAULT 0,use_count INTEGER NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,domain_id TEXT NOT NULL DEFAULT '')`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
