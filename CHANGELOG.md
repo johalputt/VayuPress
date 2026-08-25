@@ -6,6 +6,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.58] — 2026-08-25
+
+### Added
+
+- **SPA route tracking.** The engagement beacon wraps `history.pushState` /
+  `replaceState`, so a client-side navigation (React/Vue/Svelte routers) fires
+  a fresh enter per path instead of collapsing an entire app visit into one
+  page view. Core Web Vitals ride along; the referrer-less re-enter classifies
+  as internal/direct exactly like a normal navigation would.
+
+### Fixed
+
+- **The sqlite-backed test suite failed against migration 091's new columns**
+  (shared inline test schema lacked `lcp_ms`/`inp_ms`/`cls_x100`). The lesson
+  from the 090 sweep is now standing policy: a migration column ships with the
+  test schema updated in the same commit.
+
 ## [3.17.57] — 2026-08-25
 
 ### Added
