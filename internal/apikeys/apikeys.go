@@ -116,6 +116,12 @@ func generateToken() (raw, prefix string, err error) {
 // nothing behaviour every issued key had before fine-grained permissions), so
 // existing automation that mints a key the classic way is unchanged. The admin UI
 // uses CreateWithPermissions to issue scoped keys with an explicit grant set.
+//
+// Deprecated: minting an unrestricted key by default is exactly how operators
+// end up with more FULL-ACCESS credentials than they can account for (audit).
+// Call CreateWithPermissions with an explicit grant set instead — deny-all,
+// scoped, or Superuser() when full access genuinely is the intent. Any new
+// caller of this method now fails the staticcheck gate.
 func (s *Store) Create(ctx context.Context, label string) (Key, string, error) {
 	return s.CreateWithPermissions(ctx, "", label, Superuser(), nil, 0)
 }
@@ -123,6 +129,9 @@ func (s *Store) Create(ctx context.Context, label string) (Key, string, error) {
 // CreateScoped issues a new key with an explicit scope, superuser-granted (see
 // Create). Retained for API compatibility; the scope only distinguishes internal
 // vs external — internal keys are provisioned by EnsureInternal, not here.
+//
+// Deprecated: same reasoning as Create — issue scoped keys through
+// CreateWithPermissions with an explicit grant set.
 func (s *Store) CreateScoped(ctx context.Context, label, scope string) (Key, string, error) {
 	return s.CreateWithPermissions(ctx, "", label, Superuser(), nil, 0)
 }

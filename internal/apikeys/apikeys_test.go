@@ -34,7 +34,7 @@ func newTestStore(t *testing.T) *Store {
 func TestCreateAndVerify(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	key, raw, err := s.Create(ctx, "CI bot")
+	key, raw, err := s.CreateWithPermissions(ctx, "", "CI bot", Superuser(), nil, 0)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestCreateAndVerify(t *testing.T) {
 func TestRotateInvalidatesOldToken(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	key, raw, err := s.Create(ctx, "deploy")
+	key, raw, err := s.CreateWithPermissions(ctx, "", "deploy", Superuser(), nil, 0)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestRotateInvalidatesOldToken(t *testing.T) {
 func TestRevokeAndDelete(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
-	key, raw, err := s.Create(ctx, "temp")
+	key, raw, err := s.CreateWithPermissions(ctx, "", "temp", Superuser(), nil, 0)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}

@@ -22,10 +22,15 @@ jobs:
           go-version: 'stable'
           cache: true
       - name: Fuzz migrations parser
+        env:
+          # Interpolating the input straight into run: would let whoever
+          # dispatches the workflow inject shell (audit). Env indirection keeps
+          # it data, never code.
+          FUZZ_TIME: ${{ github.event.inputs.fuzz_time || '30s' }}
         run: |
-          TIME="${{ github.event.inputs.fuzz_time || '30s' }}"
-          go test -fuzz=FuzzMigratorApply -fuzztime="$TIME" ./internal/migrations/
+          go test -fuzz=FuzzMigratorApply -fuzztime="$FUZZ_TIME" ./internal/migrations/
       - name: Fuzz event schema validator
+        env:
+          FUZZ_TIME: ${{ github.event.inputs.fuzz_time || '30s' }}
         run: |
-          TIME="${{ github.event.inputs.fuzz_time || '30s' }}"
-          go test -fuzz=FuzzValidate -fuzztime="$TIME" ./internal/events/schema/
+          go test -fuzz=FuzzValidate -fuzztime="$FUZZ_TIME" ./internal/events/schema/

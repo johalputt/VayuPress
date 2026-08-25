@@ -37,10 +37,15 @@ jobs:
 
       - name: Resolve version
         id: ver
+        env:
+          # Interpolating the dispatch input straight into run: would let
+          # whoever dispatches inject shell (audit). Env indirection keeps it
+          # data; the vX.Y.Z case-guard below still applies to the value.
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           set -euo pipefail
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            V="${{ github.event.inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            V="$INPUT_VERSION"
           else
             V="$(tr -d ' \t\r\n' < .release-version)"
           fi

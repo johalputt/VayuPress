@@ -191,13 +191,15 @@ func TestResolveRespectsLifecycle(t *testing.T) {
 		t.Error("widened grant should now allow posts:delete")
 	}
 
-	// Legacy Create → superuser (backward-compatible full access).
-	_, legacyRaw, err := s.Create(ctx, "legacy")
+	// Legacy Create semantics → superuser (backward-compatible full access).
+	// Exercised through CreateWithPermissions(Superuser()) since Create itself is
+	// deprecated; the contract under test is what a legacy key resolves to.
+	_, legacyRaw, err := s.CreateWithPermissions(ctx, "", "legacy", Superuser(), nil, 0)
 	if err != nil {
 		t.Fatalf("legacy create: %v", err)
 	}
 	if lk, ok := s.Resolve(legacyRaw); !ok || !lk.IsSuperuser() {
-		t.Error("legacy Create must yield a superuser key for backward compatibility")
+		t.Error("legacy-shaped key must yield a superuser key for backward compatibility")
 	}
 }
 
