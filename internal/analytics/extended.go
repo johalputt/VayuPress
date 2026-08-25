@@ -869,6 +869,13 @@ func (s *Store) CreateFunnel(ctx context.Context, name string, steps []FunnelSte
 }
 
 // GetFunnel returns a funnel and its conversion data.
+//
+// Order-enforced single-pass evaluation (2025 audit: the old per-step
+// COUNT(DISTINCT) let step counts exceed step zero — "conversion rates"
+// above 100% — because nothing tied hits to a journey). One scan over the
+// window's pageviews walks each session's events chronologically, advancing
+// a step pointer on every match, so a visitor can only ever reach step N
+// after passing steps 0..N-1 IN ORDER.
 func (s *Store) GetFunnel(ctx context.Context, id string) (*Funnel, []FunnelResult, error) {
 	var f Funnel
 	var stepsJSON string
@@ -879,23 +886,57 @@ func (s *Store) GetFunnel(ctx context.Context, id string) (*Funnel, []FunnelResu
 		return nil, nil, err
 	}
 	_ = json.Unmarshal([]byte(stepsJSON), &f.Steps)
+	if len(f.Steps) == 0 {
+		return &f, []FunnelResult{}, nil
+	}
 
 	since := time.Now().UTC().AddDate(0, 0, -f.TimeWindow).Format("2006-01-02")
-	results := []FunnelResult{}
-	totalVisitors := 0
-	for i, step := range f.Steps {
-		var cnt int
-		_ = s.readDB().QueryRowContext(ctx,
-			`SELECT COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? AND url_path=? AND event_type=1`,
-			since, normalizePathExtended(step.URLPath)).Scan(&cnt)
-		if i == 0 {
-			totalVisitors = cnt
+	// Pre-normalize step paths once; row paths are normalized to match.
+	stepPaths := make([]string, len(f.Steps))
+	for i, st := range f.Steps {
+		stepPaths[i] = normalizePathExtended(st.URLPath)
+	}
+
+	rows, err := s.readDB().QueryContext(ctx,
+		`SELECT session_id,url_path FROM analytics_pageviews WHERE created_at>=? AND event_type=1 ORDER BY session_id,created_at`,
+		since)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	reached := make([]int, len(f.Steps)) // reached[i] = sessions that reached step i
+	curSession := ""
+	curStep := 0
+	hadSession := false
+	for rows.Next() {
+		var sid, path string
+		if err := rows.Scan(&sid, &path); err != nil {
+			continue
 		}
+		if !hadSession || sid != curSession {
+			curSession, curStep, hadSession = sid, 0, true
+		}
+		if curStep >= len(stepPaths) {
+			continue // already converted; later pages cannot re-enter earlier steps
+		}
+		if normalizePathExtended(path) == stepPaths[curStep] {
+			reached[curStep]++
+			curStep++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	totalVisitors := reached[0]
+	results := make([]FunnelResult, len(f.Steps))
+	for i, step := range f.Steps {
 		rate := 0.0
 		if totalVisitors > 0 {
-			rate = float64(cnt) / float64(totalVisitors) * 100
+			rate = float64(reached[i]) / float64(totalVisitors) * 100
 		}
-		results = append(results, FunnelResult{Name: step.Name, URLPath: step.URLPath, Visitors: cnt, Rate: rate})
+		results[i] = FunnelResult{Name: step.Name, URLPath: step.URLPath, Visitors: reached[i], Rate: rate}
 	}
 	return &f, results, nil
 }
@@ -932,74 +973,95 @@ type CohortRow struct {
 // constant so cohort slices are never sized from request-controlled input.
 const maxRetentionWeeks = 12
 
-// Retention returns weekly cohort retention computed in a single pass over the
-// session table (bounded set), avoiding per-visitor N+1 queries.
+// Retention returns weekly cohort retention.
+//
+// Unbiased by construction (2025 audit: the old newest-50k-row sample
+// anchored "first seen" inside the sample, silently re-aging every veteran
+// visitor and warping every cohort). First-seen comes from a global
+// MIN(created_at) per visitor via one grouped query over idx_asession_visitor;
+// only ACTIVITY days are window-bounded. Day comparisons are lexicographic on
+// ISO dates — no per-day time.Parse in the aggregation loop (the old code
+// re-parsed each visitor's day set once per week).
 func (s *Store) Retention(ctx context.Context, weeks int) ([]CohortRow, error) {
 	// Hard-clamp the request-controlled window to a fixed maximum. weeks is only
 	// ever used as a loop/slice bound below — never as an allocation size.
 	if weeks <= 0 || weeks > maxRetentionWeeks {
 		weeks = maxRetentionWeeks
 	}
+	now := time.Now().UTC()
+	windowStart := now.AddDate(0, 0, -(weeks*7 - 1)).Format("2006-01-02")
+
+	// Pass 1 — global first-seen for every visitor active in the window:
+	// one GROUP BY over the visitor index, no sampling.
+	firstSeen := map[string]string{}
+	frows, err := s.readDB().QueryContext(ctx,
+		`SELECT s.visitor_id, MIN(x.created_at) FROM analytics_sessions s
+		 JOIN analytics_sessions x ON x.visitor_id=s.visitor_id
+		 WHERE s.created_at>=? GROUP BY s.visitor_id`, windowStart)
+	if err != nil {
+		return nil, err
+	}
+	for frows.Next() {
+		var vid, first string
+		if err := frows.Scan(&vid, &first); err != nil {
+			continue
+		}
+		firstSeen[vid] = first[:10] // ISO date prefix
+	}
+	if err := frows.Err(); err != nil {
+		frows.Close()
+		return nil, err
+	}
+	frows.Close()
+
+	// Pass 2 — activity days inside the window (bounded rows, string keys).
+	days := map[string]map[string]bool{}
 	rows, err := s.readDB().QueryContext(ctx,
-		`SELECT visitor_id, DATE(created_at) FROM analytics_sessions ORDER BY created_at DESC LIMIT 50000`)
+		`SELECT visitor_id, DATE(created_at) FROM analytics_sessions WHERE created_at>=?`,
+		windowStart)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
-	type vstate struct {
-		first time.Time
-		days  map[string]bool
-	}
-	visitors := map[string]*vstate{}
 	for rows.Next() {
 		var vid, day string
 		if err := rows.Scan(&vid, &day); err != nil {
 			continue
 		}
-		d, perr := time.Parse("2006-01-02", day)
-		if perr != nil {
-			continue
-		}
-		v, ok := visitors[vid]
+		set, ok := days[vid]
 		if !ok {
-			v = &vstate{first: d, days: map[string]bool{}}
-			visitors[vid] = v
+			set = map[string]bool{}
+			days[vid] = set
 		}
-		if d.Before(v.first) {
-			v.first = d
-		}
-		v.days[day] = true
+		set[day] = true
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	now := time.Now().UTC()
 	type agg struct {
 		size  int
 		weeks []int
 	}
 	cohorts := map[string]*agg{}
-	for _, v := range visitors {
-		cohortKey := v.first.Format("2006-01-02")
-		a, ok := cohorts[cohortKey]
+	for vid, daySet := range days {
+		first, ok := firstSeen[vid]
 		if !ok {
+			continue
+		}
+		a, exists := cohorts[first]
+		if !exists {
 			// Allocate a fixed-size slice (constant, never request-sized); only
 			// indices [1, weeks) are populated below.
 			a = &agg{weeks: make([]int, maxRetentionWeeks)}
-			cohorts[cohortKey] = a
+			cohorts[first] = a
 		}
 		a.size++
 		for w := 1; w < weeks; w++ {
-			wStart := v.first.AddDate(0, 0, w*7)
-			wEnd := wStart.AddDate(0, 0, 7)
-			if wStart.After(now) {
-				break
-			}
-			for day := range v.days {
-				d, _ := time.Parse("2006-01-02", day)
-				if !d.Before(wStart) && d.Before(wEnd) {
+			wStart := now.AddDate(0, 0, -(weeks*7)).AddDate(0, 0, w*7).Format("2006-01-02")
+			wEnd := now.AddDate(0, 0, -(weeks * 7)).AddDate(0, 0, (w+1)*7).Format("2006-01-02")
+			for day := range daySet {
+				if len(day) == 10 && day >= wStart && day < wEnd {
 					a.weeks[w]++
 					break
 				}

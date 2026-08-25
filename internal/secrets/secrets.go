@@ -168,13 +168,16 @@ func New(db *sql.DB, kekSecret []byte, keyfilePath string) *Store {
 // VayuAnalytics daily session salts) derive it here instead of minting their
 // own in-memory random value. The purpose string is domain separation only;
 // it is not secret.
+//
+// Calls ensure() directly — wrapping it in another once.Do would be a
+// reentrant sync.Once and deadlock the caller forever (caught by e2e: the
+// server hung between the Aegis lane log and keyring init).
 func (s *Store) Derive(purpose string) ([]byte, error) {
 	if s == nil {
 		return nil, errors.New("secrets: nil store")
 	}
-	s.once.Do(func() { s.initErr = s.ensure() })
-	if s.initErr != nil {
-		return nil, s.initErr
+	if err := s.ensure(); err != nil {
+		return nil, err
 	}
 	mac := hmac.New(sha256.New, s.dek[:])
 	mac.Write([]byte("vayusecrets-derive-v1:" + purpose))
