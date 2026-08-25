@@ -6,6 +6,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.53] — 2026-08-25
+
+### Security
+
+- **TOTP secrets are no longer stored in plaintext.** The base32 seed behind a
+  staff account's or mailbox's second factor used to sit verbatim in the
+  database, so a database read alone yielded every second factor on the
+  install. Seeds are now sealed with AES-256-GCM under the service-credential
+  key (wrapped by `VAYU_SECRET` or the host-bound key file). Legacy plaintext
+  rows keep verifying untouched and are re-sealed automatically the next time
+  that secret is written.
+- **TOTP codes are single-use.** A captured code stayed valid for its whole
+  ±30-second acceptance window and could be replayed within it. Verification
+  now records the last consumed time step and refuses any code that is not
+  strictly newer, so each code dies at first use — enforced on admin sign-in,
+  portal mailbox sign-in, member self-serve enrol/disable, VayuOS mail
+  enrolment, and the operator console.
+- **Superuser API keys can no longer be minted by accident.** The legacy
+  one-argument key constructor silently issued FULL-ACCESS credentials;
+  production code had already moved to explicit-grant issuance, and the legacy
+  constructors are now marked deprecated so any future caller fails CI's
+  static analysis gate instead of shipping a new all-powerful key by default.
+- **Workflow dispatch inputs can no longer inject shell.** Two workflows
+  interpolated manual-dispatch inputs directly into `run:` scripts. Both now
+  pass values through environment indirection; the version-format guard still
+  applies to the resolved value.
+
 ## [3.17.52] — 2026-08-24
 
 ### Security
