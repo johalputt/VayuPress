@@ -13,7 +13,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
 )
 
-const schema = `CREATE TABLE vayuanalytics_sessions(id INTEGER PRIMARY KEY AUTOINCREMENT,session_hash TEXT NOT NULL,page_path TEXT NOT NULL,source_category TEXT NOT NULL DEFAULT 'direct',source_detail TEXT NOT NULL DEFAULT '',referrer_domain TEXT NOT NULL DEFAULT '',referrer_path TEXT NOT NULL DEFAULT '',entry_time DATETIME NOT NULL,exit_time DATETIME,time_on_page_seconds INTEGER NOT NULL DEFAULT 0,scroll_depth_percent INTEGER NOT NULL DEFAULT 0,engaged INTEGER NOT NULL DEFAULT 0,bounce INTEGER NOT NULL DEFAULT 0,interaction_count INTEGER NOT NULL DEFAULT 0,country_code TEXT NOT NULL DEFAULT '',client_type TEXT NOT NULL DEFAULT 'human',bot_score REAL NOT NULL DEFAULT 0,is_new_session INTEGER NOT NULL DEFAULT 1,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`
+const schema = `CREATE TABLE vayuanalytics_sessions(id INTEGER PRIMARY KEY AUTOINCREMENT,session_hash TEXT NOT NULL,visitor_hash TEXT NOT NULL DEFAULT '',page_path TEXT NOT NULL,source_category TEXT NOT NULL DEFAULT 'direct',source_detail TEXT NOT NULL DEFAULT '',referrer_domain TEXT NOT NULL DEFAULT '',referrer_path TEXT NOT NULL DEFAULT '',entry_time DATETIME NOT NULL,exit_time DATETIME,time_on_page_seconds INTEGER NOT NULL DEFAULT 0,scroll_depth_percent INTEGER NOT NULL DEFAULT 0,engaged INTEGER NOT NULL DEFAULT 0,bounce INTEGER NOT NULL DEFAULT 0,interaction_count INTEGER NOT NULL DEFAULT 0,country_code TEXT NOT NULL DEFAULT '',client_type TEXT NOT NULL DEFAULT 'human',bot_score REAL NOT NULL DEFAULT 0,is_new_session INTEGER NOT NULL DEFAULT 1,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);CREATE INDEX IF NOT EXISTS idx_va_visitor_time ON vayuanalytics_sessions(visitor_hash, entry_time);`
 
 func testStore(t *testing.T) *Store {
 	t.Helper()
@@ -57,8 +57,14 @@ func TestEnterNewVsReturning(t *testing.T) {
 	if o.UniqueSessions != 1 {
 		t.Fatalf("unique want 1 got %d", o.UniqueSessions)
 	}
+	if o.UniqueVisitors != 1 {
+		t.Fatalf("unique visitors want 1 got %d", o.UniqueVisitors)
+	}
 	if o.NewSessions != 1 {
 		t.Fatalf("new want 1 got %d", o.NewSessions)
+	}
+	if o.ReturningSessions != 0 {
+		t.Fatalf("returning want 0 got %d", o.ReturningSessions)
 	}
 }
 
