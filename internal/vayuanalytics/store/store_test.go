@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -174,9 +175,11 @@ func TestRealtime(t *testing.T) {
 	ctx := context.Background()
 	s := testStore(t)
 	now := time.Now().UTC()
-	in := enter("live", "/now", "organic", "Google", "human", now)
-	in.Country = "US"
-	_ = s.RecordEnter(ctx, in)
+	// The k-anonymity floor suppresses country segments with fewer than 5
+	// distinct visitors: a lone visitor must NOT appear (re-identification).
+	lone := enter("lone", "/now", "organic", "Google", "human", now)
+	lone.Country = "US"
+	_ = s.RecordEnter(ctx, lone)
 	rt, err := s.Realtime(ctx, 5)
 	if err != nil {
 		t.Fatalf("realtime: %v", err)
@@ -184,7 +187,20 @@ func TestRealtime(t *testing.T) {
 	if rt.ActiveVisitors != 1 {
 		t.Fatalf("active want 1 got %d", rt.ActiveVisitors)
 	}
-	if rt.ByCountry["US"] != 1 {
-		t.Fatalf("country US want 1 got %v", rt.ByCountry)
+	if _, exposed := rt.ByCountry["US"]; exposed {
+		t.Fatal("a single-visitor country segment leaked past the k-anonymity floor")
+	}
+	// Five distinct visitors from one country form a real segment and show.
+	for i := 0; i < 5; i++ {
+		in := enter(fmt.Sprintf("live%d", i), "/now", "organic", "Google", "human", now)
+		in.Country = "DE"
+		_ = s.RecordEnter(ctx, in)
+	}
+	rt2, err := s.Realtime(ctx, 5)
+	if err != nil {
+		t.Fatalf("realtime2: %v", err)
+	}
+	if rt2.ByCountry["DE"] != 5 {
+		t.Fatalf("country DE want 5 got %v", rt2.ByCountry)
 	}
 }

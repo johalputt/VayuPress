@@ -6,6 +6,82 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.56] — 2026-08-25
+
+### Added
+
+The Vayu Frontier campaign (plan reviewed by the operator): a seventeen-agent
+deep audit of VayuShield and VayuAnalytics produced a five-wave upgrade plan;
+the waves below shipped under full CI gates. Every change is measured against
+one prime directive — zero speed regression; several are perf-positive.
+
+- **Visitor identity for engagement analytics (migration 090).** A day-stable
+  `visitor_hash` joins the per-session token, so daily uniques finally count
+  people rather than session rows, retention cohorts anchor on true
+  first-seen, and new-vs-returning is answered against global history through
+  one covered index probe.
+- **Restart-proof daily salts.** The analytics session/visitor salts derive
+  from the service keyring (`secrets.Derive`) when configured, ending the old
+  behaviour where every deploy made all continuing visitors look brand-new
+  mid-day. Without a keyring the historic random mode applies. Unlinkability
+  across days is unchanged.
+- **Sliding 30-minute reading sessions.** Hits under half an hour apart keep
+  one session token across clock boundaries via a bounded sharded activity
+  table; the old hour-bucket identity split sessions at :00 and merged visits
+  fifty minutes apart.
+- **True new-vs-returning visitors** in the Overview, plus honest bounce:
+  rows whose beacon never arrived now count as bounces on read instead of
+  persisting as engaged=0/bounce=0 forever.
+- **Bot-share surface.** A daily human-vs-bot split computed from the
+  client_type/bot_score columns every enter already records — the operator
+  sees what fraction of everything that hit the site was real traffic.
+- **k-anonymity floors (k=5) at the query layer.** Source breakdowns and
+  realtime country segments suppress groups with fewer distinct visitors, so
+  dashboards and CSV exports cannot single out tiny segments.
+- **DNT / Sec-GPC honoring.** Beacons carrying an explicit browser-level
+  tracking opt-out drop measurement entirely on both ingest paths.
+- **Challenge tier for generic HTTP libraries.** curl/wget,
+  python-requests/aiohttp, go-http-client, libwww-perl and Java UAs classify
+  Unknown at score 0.6 — solvable challenge band — instead of an immediate
+  block + jail + kernel ban + fleet-wide gossip with no solvable recovery.
+  Dedicated hostile automation (sqlmap, scanners) remains an authoritative
+  conviction; hostile behaviour among library clients is still caught by
+  behaviour/inspect heuristics and learning.
+- **NAT-split behaviour sketch.** The sketch grows to 16,384 slots keyed on
+  IP|UA-family so CGNAT subscribers stop blending into whoever hit their slot
+  second.
+
+### Fixed
+
+- **Referrer attribution was spoofable by substring.** "x.com" matched
+  box.com and wix.com; matching is now label-anchored (exact host or complete
+  DNS label), keeping TLD-wildcard intents while killing lookalikes. The
+  legacy collect endpoint also drops BadBot verdicts, so both ingest paths
+  agree and crawlers executing page JS can no longer inflate cards.
+- **Funnels were unordered per-step counters** whose conversion rates could
+  exceed 100%. One ordered scan walks each session chronologically and a
+  visitor can only reach step N after passing steps 0..N-1 in order.
+- **Retention cohorts were biased twice**: a newest-50k-row sample re-aged
+  every veteran visitor inside it, and each week re-parsed every visitor's
+  day set. First-seen comes from a global grouped MIN over the visitor index;
+  day comparisons are lexicographic ISO strings.
+- **AI-referrer attribution accepted lookalike hosts** ("chatgpt.com" as a
+  substring anywhere); the ladder now requires the real domain or a true
+  subdomain of it.
+- **A reentrant sync.Once in the new secrets.Derive deadlocked boot forever**
+  between two log lines with no error output anywhere (caught by e2e).
+  Derive calls ensure() directly like every other entry point, with a
+  fast-fail regression test.
+- **Retention purge deleted in one giant transaction**, stalling the single
+  SQLite writer for minutes on deep ranges. Purge now deletes in bounded
+  chunks of 5,000 and checkpoints the WAL once at the end.
+
+### Security
+
+- All of the above under the standing gates; the generic-library
+  reclassification strictly reduces hot-path enforcement work while hostile
+  automation keeps its existing detection coverage.
+
 ## [3.17.55] — 2026-08-25
 
 ### Fixed
