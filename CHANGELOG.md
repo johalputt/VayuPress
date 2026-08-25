@@ -6,6 +6,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.57] — 2026-08-25
+
+### Added
+
+Second tranche of the Vayu Frontier campaign, completing waves 0–3 of the
+plan and cutting into wave 4.
+
+- **Batched legacy `/collect` ingest (migration-free, audit A2).** The
+  extended-analytics beacon no longer executes 2–26 statements per event on
+  the single SQLite writer. `CollectAsync` normalises on the request
+  goroutine, queues in a bounded buffer (8,192 with drop counting surfaced on
+  the panel), and one flusher applies chunk-sized single transactions every
+  two seconds — write cost now scales with distinct visitors per interval,
+  not with traffic.
+- **Real-user Core Web Vitals through the existing engagement beacons
+  (migration 091).** The beacon script captures LCP/INP/CLS via
+  PerformanceObserver and rides the enter + unload payloads; the server clamps
+  impossible values, folds late vitals with MAX onto the same row, and the
+  engagement panel renders p75 readouts with good-threshold colouring.
+  Real-user performance from real readers — zero third-party script, zero
+  cookies.
+- **Hot-path benchmark suite (plan Wave 0).** Static UA match, inspection
+  scan, behaviour sketch, PoW issue/verify, and end-to-end classification
+  through a real Manager are now benchmarked, making the campaign's
+  zero-regression directive measurable instead of asserted (full pipeline:
+  ~8 µs/request).
+
+### Changed
+
+- **Silent PoW challenges escalate to the hard tier during an active surge**,
+  so script fleets pay flood-scale prices instead of the calm-weather price of
+  admission.
+
+### Fixed
+
+- **The shield ran its request-inspection scan twice per classified request**
+  (once inside Classify, once again for the counter) and consulted the
+  third-party intel feed twice per unverified request. Both now run exactly
+  once: the verdict carries the inspection class, and the middleware's hostile
+  gate hands its intel answer down through `ClassifyWithIntel`.
+
 ## [3.17.56] — 2026-08-25
 
 ### Added
