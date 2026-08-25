@@ -42,7 +42,7 @@ func TestGenerateAtMatchesRFC(t *testing.T) {
 	}
 }
 
-func TestValidateRoundTrip(t *testing.T) {
+func TestMatchAtRoundTrip(t *testing.T) {
 	secret, err := GenerateSecret()
 	if err != nil {
 		t.Fatal(err)
@@ -52,30 +52,37 @@ func TestValidateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ValidateAt(secret, code, now) {
+	step, ok := MatchAt(secret, code, now)
+	if !ok {
 		t.Error("freshly generated code failed validation")
+	}
+	if want := uint64(now.Unix() / Period); step != want {
+		t.Errorf("matched step = %d, want %d", step, want)
 	}
 }
 
-func TestValidateSkewTolerance(t *testing.T) {
+func TestMatchAtSkewTolerance(t *testing.T) {
 	secret, _ := GenerateSecret()
 	base := time.Unix(1_700_000_000, 0)
-	// A code from the previous step must still validate at the current time.
+	// A code from the previous step must still validate at the current time,
+	// and the matched counter is the PREVIOUS step (what a single-use consumer
+	// must record).
 	prev, _ := GenerateAt(secret, base.Add(-Period*time.Second))
-	if !ValidateAt(secret, prev, base) {
-		t.Error("previous-step code should validate within skew window")
+	step, ok := MatchAt(secret, prev, base)
+	if !ok || step != uint64(base.Unix()/Period-1) {
+		t.Errorf("previous-step code: ok=%v step=%d — want ok with step one behind", ok, step)
 	}
 	// A code two steps away must NOT validate.
 	old, _ := GenerateAt(secret, base.Add(-3*Period*time.Second))
-	if ValidateAt(secret, old, base) {
+	if _, ok := MatchAt(secret, old, base); ok {
 		t.Error("code three steps old should be rejected")
 	}
 }
 
-func TestValidateRejectsGarbage(t *testing.T) {
+func TestMatchAtRejectsGarbage(t *testing.T) {
 	secret, _ := GenerateSecret()
 	for _, bad := range []string{"", "12345", "1234567", "abcdef", "  12 "} {
-		if Validate(secret, bad) {
+		if _, ok := MatchAt(secret, bad, time.Now()); ok {
 			t.Errorf("garbage code %q should not validate", bad)
 		}
 	}

@@ -71,21 +71,12 @@ func GenerateAt(secret string, t time.Time) (string, error) {
 	return hotp(secret, counter, Digits)
 }
 
-// Validate reports whether code is valid for secret at the current time. It
-// accepts the current step plus one step either side (±30s) to tolerate clock
-// skew, comparing in constant time.
-func Validate(secret, code string) bool {
-	_, ok := MatchAt(secret, code, time.Now())
-	return ok
-}
-
-// MatchAt returns the matched time step's counter when code is valid for
-// secret at time t (tolerating ±1 step of clock skew), with ok=false otherwise.
-// Callers that must enforce single-use semantics capture the counter and refuse
-// any code whose counter is not strictly newer than the last one consumed — a
-// code skimmed in transit then dies after its first use instead of staying
-// valid for the remainder of its 90-second acceptance window (audit: TOTP
-// replay).
+// MatchAt reports whether code is valid for secret at time t (tolerating ±1
+// step of clock skew) and returns the matched time step's counter. The counter
+// is what makes single-use enforcement possible: a caller that records the last
+// consumed step can refuse any code whose step is not strictly newer, so a
+// code skimmed in transit dies after its first use instead of staying valid
+// for the remainder of its 90-second acceptance window (audit: TOTP replay).
 func MatchAt(secret, code string, t time.Time) (counter uint64, ok bool) {
 	code = strings.TrimSpace(code)
 	if len(code) != Digits {
@@ -103,12 +94,6 @@ func MatchAt(secret, code string, t time.Time) (counter uint64, ok bool) {
 		}
 	}
 	return 0, false
-}
-
-// ValidateAt is Validate with an explicit reference time (for testing).
-func ValidateAt(secret, code string, t time.Time) bool {
-	_, ok := MatchAt(secret, code, t)
-	return ok
 }
 
 // ProvisioningURI builds an otpauth://totp/ URI for enrolment in an authenticator
