@@ -33,15 +33,36 @@ func readNginxTemplate(t *testing.T) string {
 // the cache, and a signed-in reader must never be served from it — two separate
 // directives, in two directions, and having only one of them is a data leak
 // rather than a performance bug.
+//
+// The bypass list must cover EVERY header the application authenticates with:
+// X-API-Key was added because the admin/analytics API presents that header
+// alone, and a key-bearing GET used to look anonymous to this cache (audit).
 func TestMicrocacheCannotServeOnePersonsPageToAnother(t *testing.T) {
 	src := readNginxTemplate(t)
 	for _, want := range []string{
-		"proxy_no_cache           $http_cookie $http_authorization;",
-		"proxy_cache_bypass       $http_cookie $http_authorization;",
+		"proxy_no_cache           $http_cookie $http_authorization $http_x_api_key;",
+		"proxy_cache_bypass       $http_cookie $http_authorization $http_x_api_key;",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("missing %q — with only one direction covered, a logged-in reader's page "+
 				"either enters the shared cache or is served from it", want)
+		}
+	}
+}
+
+// TestNginxDoesNotDuplicateFramingHeaders — the Go middleware owns
+// X-Frame-Options end-to-end (DENY globally, SAMEORIGIN for the theme preview).
+// An nginx always-add duplicates the header with a different value, leaving the
+// effective framing policy to whichever duplicate the client picks (audit).
+func TestNginxDoesNotDuplicateFramingHeaders(t *testing.T) {
+	src := readNginxTemplate(t)
+	for _, line := range strings.Split(src, "\n") {
+		if i := strings.Index(line, "#"); i >= 0 {
+			line = line[:i]
+		}
+		if strings.HasPrefix(strings.TrimSpace(line), "add_header X-Frame-Options") {
+			t.Error("the template sets X-Frame-Options itself — the app middleware already sends it " +
+				"and conflicting duplicates leave framing policy to client tie-breaking")
 		}
 	}
 }

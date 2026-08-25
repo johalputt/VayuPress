@@ -382,7 +382,9 @@ func (a *App) handleCommentDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.commentStore.DeleteThread(r.Context(), id); err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "delete-error", err.Error(), "")
+		// Fixed message: the store's error text can carry driver detail that
+		// has no business in a client response.
+		writeAPIError(w, r, http.StatusInternalServerError, "delete-error", "Could not delete the comment", "")
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]bool{"deleted": true})
@@ -394,25 +396,38 @@ func (a *App) handleCommentModerate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "comments-disabled", "Comments not initialised", "")
 		return
 	}
+	// The HTMX moderation path proves the id untainted before it reaches the
+	// store; this JSON path used to pass the raw URL param through and reflect
+	// the store's error — embedding arbitrary request text and driver detail
+	// in the response (audit). Same allowlist, same fixed messages.
 	id := chi.URLParam(r, "id")
+	if !commentIDRe.MatchString(id) {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-input", "Invalid comment id", "")
+		return
+	}
 	var body struct {
 		Status string `json:"status"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4*1024)).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
-	if err := a.commentStore.Moderate(r.Context(), id, body.Status); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "moderate-error", err.Error(), "")
+	status := canonicalCommentStatus(body.Status)
+	if status == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-status", "Unknown moderation status", "")
+		return
+	}
+	if err := a.commentStore.Moderate(r.Context(), id, status); err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "No comment with that id", "")
 		return
 	}
 	// Email the commenter when their comment is approved, and — if it is a reply —
 	// notify the parent comment's author that they got a response.
-	if body.Status == "approved" {
+	if status == "approved" {
 		go a.notifyCommentApproved(context.WithoutCancel(r.Context()), id)
 		go a.notifyCommentReply(context.WithoutCancel(r.Context()), id)
 	}
-	writeJSON(w, r, http.StatusOK, map[string]string{"status": body.Status})
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": status})
 }
 
 // GET /api/v1/admin/comments?status=pending

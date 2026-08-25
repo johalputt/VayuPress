@@ -36,8 +36,8 @@ func TestCreationAlwaysRecordsVerification(t *testing.T) {
 	if again.VerifiedAt == nil {
 		t.Error("verified_at must be stored, not only returned")
 	}
-	if s.CountUnverified(ctx) != 0 {
-		t.Error("a member created through the normal path is not unconfirmed")
+	if n, err := s.CountUnverified(ctx); err != nil || n != 0 {
+		t.Errorf("a member created through the normal path is not unconfirmed (n=%d err=%v)", n, err)
 	}
 }
 
@@ -50,8 +50,8 @@ func TestLegacyUnverifiedRowIsConfirmedOnFirstProof(t *testing.T) {
 	ctx := context.Background()
 	insertLegacyUnverified(t, s, "legacy@example.com")
 
-	if s.CountUnverified(ctx) != 1 {
-		t.Fatal("expected the legacy row to count as unconfirmed")
+	if n, err := s.CountUnverified(ctx); err != nil || n != 1 {
+		t.Fatalf("expected the legacy row to count as unconfirmed (n=%d err=%v)", n, err)
 	}
 	m, err := s.UpsertScoped(ctx, "", "legacy@example.com")
 	if err != nil {
@@ -60,8 +60,8 @@ func TestLegacyUnverifiedRowIsConfirmedOnFirstProof(t *testing.T) {
 	if m.VerifiedAt == nil {
 		t.Error("proving the address must confirm the existing row")
 	}
-	if n := s.CountUnverified(ctx); n != 0 {
-		t.Errorf("CountUnverified = %d, want 0 after confirmation", n)
+	if n, err := s.CountUnverified(ctx); err != nil || n != 0 {
+		t.Errorf("CountUnverified = %d, want 0 after confirmation (err=%v)", n, err)
 	}
 }
 
@@ -147,8 +147,8 @@ func TestExistsDoesNotCreate(t *testing.T) {
 	if s.Exists(ctx, "stranger@example.com") {
 		t.Error("Exists reported an address that was never added")
 	}
-	if n := s.CountUnverified(ctx); n != 0 {
-		t.Errorf("asking about an address created %d rows", n)
+	if n, err := s.CountUnverified(ctx); err != nil || n != 0 {
+		t.Errorf("asking about an address created %d rows (err=%v)", n, err)
 	}
 	var total int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM members`).Scan(&total); err != nil {

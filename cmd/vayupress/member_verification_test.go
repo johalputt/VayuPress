@@ -97,8 +97,8 @@ func TestConsumingTheLinkCreatesTheMember(t *testing.T) {
 	if m.VerifiedAt == nil {
 		t.Error("a member created by verification must be marked verified")
 	}
-	if a.members.CountUnverified(ctx) != 0 {
-		t.Error("verification must not leave an unconfirmed row")
+	if n, err := a.members.CountUnverified(ctx); err != nil || n != 0 {
+		t.Errorf("verification must not leave an unconfirmed row (n=%d err=%v)", n, err)
 	}
 	if !strings.Contains(rec.Header().Get("Set-Cookie"), memberCookie) {
 		t.Error("verification should start a member session")

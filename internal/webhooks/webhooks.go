@@ -233,10 +233,17 @@ func (s *Store) subscribers(ctx context.Context, event string) ([]Hook, error) {
 		}
 		for _, e := range h.Events {
 			if e == event || e == "*" {
-				// secret is needed for signing — reload it.
-				if sec, err := s.secretOf(ctx, h.ID); err == nil {
-					h.Secret = sec
+				// secret is needed for signing — reload it. A failed reload must
+				// SKIP the hook, not deliver under an empty-key HMAC: that ships
+				// a payload the receiver rejects as unauthenticated and records
+				// an opaque "status 401", indistinguishable from a broken
+				// receiver (audit: webhook dispatch fail-open).
+				sec, serr := s.secretOf(ctx, h.ID)
+				if serr != nil {
+					s.record(ctx, h.ID, event, 0, 0, "secret unavailable - delivery skipped")
+					break
 				}
+				h.Secret = sec
 				out = append(out, h)
 				break
 			}

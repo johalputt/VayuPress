@@ -947,8 +947,12 @@ func main() {
 				// Entitlement expiry (audit): a paid period that ended with no
 				// renewal must end the entitlement, whatever gateway took the
 				// payment — Stripe webhooks renew themselves, PayPal/direct/
-				// generic orders never did until this sweep existed.
-				if n, err := a.members.ExpireLapsedSubscriptions(context.Background()); err == nil && n > 0 {
+				// generic orders never did until this sweep existed. A failed
+				// sweep must be LOUD: silence here hides a paid-entitlement
+				// divergence behind a healthy-looking log.
+				if n, err := a.members.ExpireLapsedSubscriptions(context.Background()); err != nil {
+					logging.LogError("members", "lapsed-subscription sweep failed; lapsed subscriptions stay active until the next tick", err.Error())
+				} else if n > 0 {
 					logging.LogInfo("members", fmt.Sprintf("expired %d lapsed subscription(s) past their paid period", n))
 				}
 			}

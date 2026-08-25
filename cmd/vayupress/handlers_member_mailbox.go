@@ -124,6 +124,9 @@ func (a *App) mailboxLocalpartCheck(ctx context.Context, local string) (bool, st
 
 // GET /api/v1/members/mailbox — the member's mailbox entitlement + current state.
 func (a *App) handleMemberMailboxStatus(w http.ResponseWriter, r *http.Request) {
+	// Per-member data: same no-store rule as every sibling member endpoint
+	// (audit — heuristic caching must never hold one member's entitlements).
+	w.Header().Set("Cache-Control", "no-store")
 	m := a.resolveMember(r)
 	if m == nil {
 		writeAPIError(w, r, http.StatusUnauthorized, "members-only", "Please sign in", "")
@@ -330,6 +333,8 @@ func (a *App) handleMemberMailIDActivate(w http.ResponseWriter, r *http.Request)
 
 // GET /api/v1/members/mailbox/available?localpart=X — live availability check.
 func (a *App) handleMemberMailboxAvailable(w http.ResponseWriter, r *http.Request) {
+	// Availability answers are member-scoped too — no-store like the status GET.
+	w.Header().Set("Cache-Control", "no-store")
 	m := a.resolveMember(r)
 	if m == nil {
 		writeAPIError(w, r, http.StatusUnauthorized, "members-only", "Please sign in", "")

@@ -295,6 +295,7 @@ func (s *Store) ExpireLapsedSubscriptions(ctx context.Context) (int64, error) {
 		return 0, nil
 	}
 	var expired int64
+	var demoted []lapsed // rows whose expiry AND tier-demotion both succeeded
 	for _, l := range lapsedSubs {
 		res, err := tx.ExecContext(ctx,
 			`UPDATE member_subscriptions SET status='expired',canceled_at=? WHERE id=? AND status=?`,
@@ -303,16 +304,30 @@ func (s *Store) ExpireLapsedSubscriptions(ctx context.Context) (int64, error) {
 			continue
 		}
 		n, _ := res.RowsAffected()
-		expired += n
-		if n > 0 {
-			_, _ = tx.ExecContext(ctx,
-				`UPDATE members SET tier=? WHERE id=? AND tier=?`, TierFree, l.memberID, l.tier)
+		if n == 0 {
+			continue // renewed or expired concurrently
 		}
+		// The tier demotion is part of the expiry, not an afterthought: if it
+		// fails, the row must not expire either — a subscription marked
+		// expired while members.tier keeps the paid slug would leave the
+		// member permanently paid with no active subscription and nothing to
+		// revisit (IsPaid reads only the denormalised column).
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE members SET tier=? WHERE id=? AND tier=?`, TierFree, l.memberID, l.tier); err != nil {
+			// Demotion failed: skip committing this row's expiry entirely —
+			// it stays active and is retried next sweep rather than stranding
+			// a permanently-paid member behind an expired subscription row.
+			continue
+		}
+		expired += n
+		demoted = append(demoted, l)
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	for _, l := range lapsedSubs {
+	// Only rows actually expired get an event: the audit trail must not claim
+	// expiries whose UPDATE errored.
+	for _, l := range demoted {
 		s.recordEventTx(ctx, l.memberID, EventExpired, "", 0)
 	}
 	return expired, nil

@@ -63,6 +63,10 @@ func (a *App) fulfillAdOrder(ctx context.Context, o *payments.Order) error {
 
 // GET /api/v1/members/ads — the member's submitted ads + the advertise price.
 func (a *App) handleMemberAdsStatus(w http.ResponseWriter, r *http.Request) {
+	// Per-member data: same no-store rule as every sibling member endpoint —
+	// without it a shared or heuristic cache could retain one member's
+	// submissions for another (audit).
+	w.Header().Set("Cache-Control", "no-store")
 	m := a.resolveMember(r)
 	if m == nil {
 		writeAPIError(w, r, http.StatusUnauthorized, "members-only", "Please sign in", "")

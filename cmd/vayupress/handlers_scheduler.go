@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/johalputt/vayupress/internal/api"
 )
 
 // =============================================================================
@@ -19,6 +20,12 @@ import (
 // Body: {slug, title, content, tags[], publish_at (RFC3339)}
 // Stages a post for future publication. When publish_at is in the past the
 // post is promoted on the next scheduler tick (effectively "publish now").
+//
+// The body is validated with the SAME rules the publish pipeline will apply
+// (ValidateArticleInput): staging used to accept anything, so an operator got
+// 201 Created and then the post silently never published — discoverable only
+// by polling this list (audit). Tags may not contain commas: staging joins
+// them with one, so a comma would silently become several tags at promotion.
 func (a *App) handleScheduleCreate(w http.ResponseWriter, r *http.Request) {
 	if a.scheduler == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "scheduler-disabled", "Scheduler not initialised", "")
@@ -31,7 +38,7 @@ func (a *App) handleScheduleCreate(w http.ResponseWriter, r *http.Request) {
 		Tags      []string `json:"tags"`
 		PublishAt string   `json:"publish_at"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 5<<20)).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
@@ -40,7 +47,22 @@ func (a *App) handleScheduleCreate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-time", "publish_at must be RFC3339 (e.g. 2026-07-01T09:00:00Z)", "")
 		return
 	}
-	post, err := a.scheduler.Schedule(r.Context(), body.Slug, body.Title, body.Content, body.Tags, publishAt)
+	slug := strings.TrimSpace(body.Slug)
+	if slug == "" {
+		slug = api.Slugify(body.Title)
+	}
+	for _, tag := range body.Tags {
+		if strings.Contains(tag, ",") {
+			writeAPIError(w, r, http.StatusBadRequest, "bad-tag",
+				"Tags cannot contain commas — they are stored comma-joined until publish", "")
+			return
+		}
+	}
+	if verr := api.ValidateArticleInput(strings.TrimSpace(body.Title), slug, body.Content, body.Tags); verr != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-input", verr.Error(), "")
+		return
+	}
+	post, err := a.scheduler.Schedule(r.Context(), slug, body.Title, body.Content, body.Tags, publishAt)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "schedule-error", err.Error(), "")
 		return

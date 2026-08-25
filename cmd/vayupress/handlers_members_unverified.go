@@ -16,12 +16,14 @@ package main
 // refuses to delete a verified member, so this can never remove a real account.
 
 import (
+	"errors"
 	"html"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/members"
 )
 
 // unverifiedMembersCardHTML renders the cleanup card. It returns "" when nothing
@@ -52,9 +54,11 @@ func (a *App) handleMemberDeleteAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 	email := chi.URLParam(r, "email")
 	if err := a.members.Delete(r.Context(), email); err != nil {
-		// "member is verified" is a refusal, not a failure to find them: a confirmed
-		// account is a real person and is not this endpoint's business.
-		if err.Error() == "member is verified" {
+		// A verified member is a refusal, not a failure to find them: a confirmed
+		// account is a real person and is not this endpoint's business. Matched
+		// by sentinel — a string comparison here silently converted a deliberate
+		// 409 into a misleading 404 when wording drifted (audit).
+		if errors.Is(err, members.ErrVerified) {
 			writeAPIError(w, r, http.StatusConflict, "member-verified",
 				"That member confirmed their address, so this cannot remove them", "")
 			return
@@ -78,12 +82,27 @@ func (a *App) handleMembersPurgeUnverified(w http.ResponseWriter, r *http.Reques
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", "Could not list unconfirmed members", "")
 		return
 	}
-	removed := 0
+	removed, refused, failed := 0, 0, 0
 	for _, m := range list {
-		if err := a.members.Delete(r.Context(), m.Email); err == nil {
+		switch err := a.members.Delete(r.Context(), m.Email); {
+		case err == nil:
 			removed++
+		case errors.Is(err, members.ErrVerified):
+			// Confirmed between listing and delete (opened their link in the
+			// meantime) — a refusal, not a failure, but never silent on a
+			// destructive bulk path.
+			refused++
+		default:
+			failed++
+			logging.LogError("members", "purge could not remove "+m.Email, err.Error())
 		}
 	}
-	logging.LogInfo("members", "purged unconfirmed members: "+strconv.Itoa(removed))
-	writeJSON(w, r, http.StatusOK, map[string]int{"removed": removed, "remaining": a.members.CountUnverified(r.Context())})
+	logging.LogInfo("members", "purged unconfirmed members: "+strconv.Itoa(removed)+
+		" (refused: "+strconv.Itoa(refused)+", failed: "+strconv.Itoa(failed)+")")
+	remaining, cerr := a.members.CountUnverified(r.Context())
+	if cerr != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "db-error", "Purged, but the remaining count could not be read", "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]int{"removed": removed, "refused": refused, "failed": failed, "remaining": remaining})
 }

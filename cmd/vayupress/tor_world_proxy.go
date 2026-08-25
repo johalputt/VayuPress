@@ -108,23 +108,25 @@ func (a *App) handleWorldSwitch(w http.ResponseWriter, r *http.Request) {
 		// mobile app stayed on the clearnet relay. Session scope means a fresh browser
 		// session always starts on Clearnet; entering Tor is a deliberate, visible act
 		// each time (ADR-0141).
-		http.SetCookie(w, &http.Cookie{
+		//
+		// Secure is FORCED, matching CSRFCookieSecure's policy (auth.go): TLS
+		// terminates at nginx so r.TLS is always nil inside this process and a
+		// request-aware check silently dropped Secure on clearnet HTTPS (audit).
+		// Tor Browser treats .onion as potentially-trustworthy and stores/sends
+		// Secure cookies over plain-http .onion, so forcing Secure breaks nothing.
+		writeSecureCookie(w, &http.Cookie{
 			Name: worldCookie, Value: "tor", Path: "/",
-			SameSite: http.SameSiteLaxMode, HttpOnly: true, Secure: r.TLS != nil,
+			SameSite: http.SameSiteLaxMode,
 		})
 	} else {
 		// Back to clearnet: clear the view cookie (the Tor world keeps running).
 		// Clear BOTH the current Path=/ cookie and any legacy Path=/os cookie from an
 		// earlier build, so an operator can never get stuck viewing Tor. The deletion
-		// cookies carry the SAME attributes the cookie was set with (line above) —
-		// HttpOnly, SameSite and request-aware Secure (https clearnet gets Secure; the
-		// http .onion world must not, or the delete would be dropped over http, and the
-		// operator could never switch back). Mirroring them also satisfies the CodeQL
-		// "cookie Secure attribute" scan without weakening the onion world.
+		// cookies carry the same forced-Secure attributes as the setter above.
 		clearWorldCookie := func(path string) {
-			http.SetCookie(w, &http.Cookie{
+			writeSecureCookie(w, &http.Cookie{
 				Name: worldCookie, Value: "", Path: path,
-				SameSite: http.SameSiteLaxMode, HttpOnly: true, Secure: r.TLS != nil, MaxAge: -1,
+				SameSite: http.SameSiteLaxMode, MaxAge: -1,
 			})
 		}
 		clearWorldCookie("/")

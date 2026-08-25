@@ -23,6 +23,7 @@ import (
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -137,6 +138,16 @@ func (a *App) handleOSEditorSlug(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-input", "slug and a non-empty newSlug are required", "")
 		return
 	}
+	// The slug CONTRACT is ^[a-z0-9][a-z0-9_-]{0,198}[a-z0-9]$ everywhere else.
+	// migrateSlugify preserves Unicode letters, so a title like "Über uns"
+	// produced "über-uns": the row persisted fine here but then failed
+	// ValidateArticleInput on every later read and update, orphaning the post
+	// from its own service layer (audit). Enforce the contract at rename time.
+	if !api.IsValidSlug(next) {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-input",
+			"newSlug must produce a lowercase alphanumeric slug of 1-200 characters", "")
+		return
+	}
 	if next == old {
 		writeJSON(w, r, http.StatusOK, map[string]string{"slug": old})
 		return
@@ -147,16 +158,32 @@ func (a *App) handleOSEditorSlug(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusNotFound, "not-found", "No article with that slug", "")
 		return
 	}
-	// Uniquify against collisions, preserving the operator's intent.
+	// Uniquify against collisions, preserving the operator's intent. Only a
+	// definitive not-found means available: an invalid-slug lookup error is a
+	// bad target, not free space.
 	base := next
 	for i := 2; i <= 99; i++ {
 		if _, e := a.articles.Get(r.Context(), next); e != nil {
-			break // available
+			break // available (or unreadable — caught by the UPDATE below)
 		}
 		next = base + "-" + strconv.Itoa(i)
+		if !api.IsValidSlug(next) {
+			writeAPIError(w, r, http.StatusConflict, "slug-conflict", "That slug is taken and no variant fits", "")
+			return
+		}
 	}
 	if _, err := dbpkg.WDB.Exec(`UPDATE articles SET slug=?, updated_at=? WHERE slug=?`, next, time.Now().UTC(), old); err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "update-error", err.Error(), "")
+		// A UNIQUE failure here is a race on the target slug — say so plainly
+		// instead of surfacing raw driver text.
+		msg := "Could not rename the post"
+		code := "update-error"
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "UNIQUE constraint") {
+			status = http.StatusConflict
+			code = "slug-conflict"
+			msg = "Another post took that slug first"
+		}
+		writeAPIError(w, r, status, code, msg, "")
 		return
 	}
 	// Purge both URLs (article page, home, tag pages, sitemap, feed).

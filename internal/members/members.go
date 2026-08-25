@@ -24,6 +24,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/mail"
 	"strings"
@@ -217,11 +218,15 @@ func (s *Store) Unverified(ctx context.Context, limit int) ([]Member, error) {
 	return out, rows.Err()
 }
 
-// CountUnverified returns how many members were never confirmed.
-func (s *Store) CountUnverified(ctx context.Context) int {
+// CountUnverified returns how many members were never confirmed. The count is
+// a real query that can really fail: reporting 0 on error would tell the
+// operator the cleanup queue is empty when it may not be (audit).
+func (s *Store) CountUnverified(ctx context.Context) (int, error) {
 	var n int
-	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM members WHERE verified_at IS NULL`).Scan(&n)
-	return n
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM members WHERE verified_at IS NULL`).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 // RevokeSessions drops every live session and pending magic-link token for an
@@ -254,6 +259,11 @@ func (s *Store) RevokeSessions(ctx context.Context, email string) (int, error) {
 // history. It refuses to touch a verified member — removing a real person's
 // account is a different, deliberate operation, and this exists to clear
 // never-confirmed rows.
+// ErrVerified is returned by Delete when the member has confirmed their
+// account. Match it with errors.Is — a wording-drifted string comparison
+// silently converted a deliberate refusal into a misleading not-found (audit).
+var ErrVerified = errors.New("member is verified")
+
 func (s *Store) Delete(ctx context.Context, email string) error {
 	email = strings.TrimSpace(strings.ToLower(email))
 	m, err := s.Get(ctx, email)
@@ -261,7 +271,7 @@ func (s *Store) Delete(ctx context.Context, email string) error {
 		return fmt.Errorf("no such member")
 	}
 	if m.VerifiedAt != nil {
-		return fmt.Errorf("member is verified")
+		return ErrVerified
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

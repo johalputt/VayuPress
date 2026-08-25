@@ -140,13 +140,21 @@ func (s *ArticleService) ListPages(ctx context.Context, limit int) ([]ArticleSum
 }
 
 // BulkCreate creates multiple articles, skipping those that fail validation or
-// have duplicate slugs.
+// have duplicate slugs. It follows the same rules as single Create: slugs are
+// auto-derived from the title when omitted (ADR-0047), a duplicate-slug lookup
+// failure is fail-closed rather than treated as "not a duplicate", and an
+// enqueue failure counts the item as skipped — Queued must mean persisted.
 func (s *ArticleService) BulkCreate(ctx context.Context, items []BulkCreateItem) (BulkResult, error) {
 	if len(items) > 1000 {
 		return BulkResult{}, ErrBulkLimit
 	}
 	res := BulkResult{}
 	for _, in := range items {
+		// Mirror Create's ADR-0047 derivation so the same logical payload is
+		// not accepted once and skipped in bulk.
+		if in.Slug == "" {
+			in.Slug = Slugify(in.Title)
+		}
 		if err := ValidateArticleInput(in.Title, in.Slug, in.Content, in.Tags); err != nil {
 			res.Skipped++
 			res.SkipReasons = append(res.SkipReasons, in.Slug+": "+err.Error())
@@ -163,7 +171,14 @@ func (s *ArticleService) BulkCreate(ctx context.Context, items []BulkCreateItem)
 				continue
 			}
 		}
-		exists, _ := s.Repo.SlugExists(ctx, in.Slug)
+		exists, err := s.Repo.SlugExists(ctx, in.Slug)
+		if err != nil {
+			// Unknown state: enqueueing anyway would defeat the guard and let
+			// the item die invisibly against the UNIQUE constraint.
+			res.Skipped++
+			res.SkipReasons = append(res.SkipReasons, in.Slug+": slug lookup unavailable")
+			continue
+		}
 		if exists {
 			res.Skipped++
 			res.SkipReasons = append(res.SkipReasons, in.Slug+": duplicate slug")
@@ -174,7 +189,11 @@ func (s *ArticleService) BulkCreate(ctx context.Context, items []BulkCreateItem)
 			Content: in.Content, Tags: in.Tags,
 			CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 		}
-		s.Queue.Enqueue(ctx, art, "insert") //nolint:errcheck
+		if err := s.Queue.Enqueue(ctx, art, "insert"); err != nil {
+			res.Skipped++
+			res.SkipReasons = append(res.SkipReasons, in.Slug+": enqueue failed ("+err.Error()+")")
+			continue
+		}
 		res.Queued++
 	}
 	return res, nil

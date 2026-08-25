@@ -10,7 +10,8 @@ server {
     server_name $DOMAIN;
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
     add_header X-Content-Type-Options nosniff always;
-    add_header X-Frame-Options SAMEORIGIN always;
+    # X-Frame-Options is owned by the VayuPress middleware (DENY / theme-preview SAMEORIGIN) —
+    # duplicating it here leaves framing policy to client tie-breaking between conflicting values.
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Content-Security-Policy "default-src 'self'" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;

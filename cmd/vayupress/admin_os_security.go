@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/totp"
@@ -263,7 +264,17 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 
 	// Unconfirmed leftovers from the old pre-send signup path. The card only exists
 	// while there is something to clean up, so a healthy install never sees it.
-	unverifiedCount := a.members.CountUnverified(ctx)
+	// On a count error the card stays hidden and the failure is logged — a wrong
+	// number would be worse than none, and the purge endpoint re-lists
+	// authoritatively.
+	unverifiedCount := 0
+	if a.members != nil {
+		if n, err := a.members.CountUnverified(ctx); err == nil {
+			unverifiedCount = n
+		} else {
+			logging.LogError("members", "unconfirmed-member count failed; cleanup card hidden", err.Error())
+		}
+	}
 	unconfirmedCard := unverifiedMembersCardHTML(unverifiedCount)
 	unconfirmedAcc := ""
 	if unconfirmedCard != "" {
