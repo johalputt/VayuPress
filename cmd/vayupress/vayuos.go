@@ -536,6 +536,10 @@ func (a *App) bootVayuOS() {
 		mailCfg.RelayRequireTLS = !strings.EqualFold(config.EnvOr("VAYUOS_MAIL_RELAY_TLS", "on"), "off")
 	}
 	a.vayuMail = vmail.NewEngine(&mailCfg, &vayuMailBridge{app: a}, dbpkg.DB)
+	// Mailbox TOTP seeds are second factors: seal them at rest with the
+	// service-credential DEK (audit). Legacy plaintext rows keep verifying and
+	// re-seal on their next write.
+	a.vayuMail.UseTOTPCodec(a.secrets)
 	// Transparent PGP decryption when serving mail over IMAP to the owner.
 	a.vayuMail.SetDecryptHook(a.pgpDecryptForAccount)
 	// Retention sweeps (ADR-0130) land in the audit log like every other

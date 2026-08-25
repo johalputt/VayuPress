@@ -423,6 +423,42 @@ func (s *Store) open(nonceHex, ctHex string) ([]byte, error) {
 	return openWith(s.dek, nonceHex+"."+ctHex)
 }
 
+// SealField encrypts a short sensitive column value (a TOTP seed, a recovery
+// answer) at rest under this store's DEK, returning a self-describing
+// "f1.<nonce>.<ct>" blob (audit: TOTP secrets were stored as plaintext base32,
+// so a database read alone yielded every account's second factor). The f1
+// prefix keeps sealed blobs distinguishable from legacy plaintext values so
+// readers can upgrade transparently.
+func (s *Store) SealField(plaintext string) (string, error) {
+	if err := s.ensure(); err != nil {
+		return "", err
+	}
+	blob, err := sealWith(s.dek, []byte(plaintext))
+	if err != nil {
+		return "", err
+	}
+	return "f1." + blob, nil
+}
+
+// OpenField decrypts a blob produced by SealField. Values without the f1
+// prefix are legacy plaintext stored before sealing existed and pass through
+// unchanged — old rows keep verifying while they wait to be re-sealed on next
+// write.
+func (s *Store) OpenField(stored string) (string, error) {
+	const prefix = "f1."
+	if !strings.HasPrefix(stored, prefix) {
+		return stored, nil
+	}
+	if err := s.ensure(); err != nil {
+		return "", err
+	}
+	pt, err := openWith(s.dek, strings.TrimPrefix(stored, prefix))
+	if err != nil {
+		return "", err
+	}
+	return string(pt), nil
+}
+
 // mask renders a non-reversible hint for a secret: the last 4 chars revealed,
 // the rest replaced with bullets. Empty input yields an empty hint.
 func mask(secret string) string {

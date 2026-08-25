@@ -88,6 +88,10 @@ type User struct {
 type Store struct {
 	db     *sql.DB // writer: account create/update/delete
 	reader *sql.DB // read pool: hot read paths (GetByID runs on every admin request)
+
+	// totpCodec seals the totp_secret column at rest when installed
+	// (UseTOTPCodec); nil keeps legacy plaintext behaviour for tests.
+	totpCodec SecretCodec
 }
 
 // New creates a Store. Reads default to the same handle as writes; call
@@ -583,6 +587,43 @@ func (s *Store) Delete(ctx context.Context, email string) error {
 
 // ── Two-factor (TOTP) ──────────────────────────────────────────────────────
 
+// SecretCodec seals sensitive column values at rest. It is satisfied by the
+// service-credential store (internal/secrets), whose DEK is wrapped by
+// VAYU_SECRET or a host-bound key file (audit: TOTP seeds were plaintext
+// base32 in the database, so a DB read alone yielded every second factor).
+type SecretCodec interface {
+	SealField(plaintext string) (string, error)
+	OpenField(stored string) (string, error)
+}
+
+// UseTOTPCodec installs an at-rest codec for the totp_secret column. Legacy
+// plaintext rows keep verifying (OpenField passes them through) and are
+// re-sealed on their next write.
+func (s *Store) UseTOTPCodec(c SecretCodec) { s.totpCodec = c }
+
+// sealTOTP applies the codec when present; otherwise the value is stored as-is.
+func (s *Store) sealTOTP(secret string) (string, error) {
+	if s.totpCodec == nil {
+		return secret, nil
+	}
+	return s.totpCodec.SealField(secret)
+}
+
+// openTOTP reverses sealTOTP; legacy plaintext and empty values pass through.
+func (s *Store) openTOTP(stored string) string {
+	if s.totpCodec == nil || stored == "" {
+		return stored
+	}
+	pt, err := s.totpCodec.OpenField(stored)
+	if err != nil {
+		// A sealed value that cannot be opened means the KEK changed under us;
+		// returning garbage would lock the operator out with a confusing
+		// "wrong code" error, so fail loudly instead.
+		return ""
+	}
+	return pt
+}
+
 // TOTPStatus reports whether the user has a pending secret and whether 2FA is
 // fully enabled (verified).
 func (s *Store) TOTPStatus(ctx context.Context, id string) (secret string, enabled bool, err error) {
@@ -590,14 +631,18 @@ func (s *Store) TOTPStatus(ctx context.Context, id string) (secret string, enabl
 	err = s.db.QueryRowContext(ctx,
 		`SELECT COALESCE(totp_secret,''), COALESCE(totp_enabled,0) FROM users WHERE id=?`, id).
 		Scan(&secret, &enabledInt)
-	return secret, enabledInt == 1, err
+	return s.openTOTP(secret), enabledInt == 1, err
 }
 
 // SetTOTPSecret stores a (not-yet-verified) secret for the user. Enabling is a
 // separate step so an abandoned enrolment never activates 2FA.
 func (s *Store) SetTOTPSecret(ctx context.Context, id, secret string) error {
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE users SET totp_secret=?, totp_enabled=0 WHERE id=?`, secret, id)
+	stored, err := s.sealTOTP(secret)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE users SET totp_secret=?, totp_enabled=0 WHERE id=?`, stored, id)
 	return err
 }
 
@@ -613,6 +658,22 @@ func (s *Store) DisableTOTP(ctx context.Context, id string) error {
 	return err
 }
 
+// ConsumeTOTPStep enforces single-use codes: it advances the account's last
+// consumed time step only when step is strictly newer than what is recorded,
+// reporting ok=false for a replay (audit: a captured code stayed valid for its
+// whole ±30s window). Callers verify the code first via totp.MatchAt and then
+// consume its counter atomically.
+func (s *Store) ConsumeTOTPStep(ctx context.Context, email string, step int64) (ok bool, err error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE users SET totp_last_step=? WHERE email=? AND totp_last_step<?`,
+		step, strings.TrimSpace(strings.ToLower(email)), step)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
 // TOTPSecretByEmail returns the stored secret and enabled flag for a login by
 // email — used during sign-in to decide whether to demand a 2FA code.
 func (s *Store) TOTPSecretByEmail(ctx context.Context, email string) (secret string, enabled bool, err error) {
@@ -620,7 +681,7 @@ func (s *Store) TOTPSecretByEmail(ctx context.Context, email string) (secret str
 	err = s.db.QueryRowContext(ctx,
 		`SELECT COALESCE(totp_secret,''), COALESCE(totp_enabled,0) FROM users WHERE email=?`,
 		strings.TrimSpace(strings.ToLower(email))).Scan(&secret, &enabledInt)
-	return secret, enabledInt == 1, err
+	return s.openTOTP(secret), enabledInt == 1, err
 }
 
 // decoyHash is a valid Argon2id-encoded hash of a random value, used to spend

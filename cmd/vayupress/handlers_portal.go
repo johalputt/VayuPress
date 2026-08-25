@@ -259,10 +259,20 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 			writeAPIError(w, r, http.StatusUnauthorized, "totp-required", "This account uses two-factor authentication — enter your 6-digit code", "")
 			return
 		}
-		if !totp.Validate(secret, code) {
+		step, ok := totp.MatchAt(secret, code, time.Now())
+		if !ok {
 			mailAuthThrottle.Fail(emailAddr)
 			auth.RecordAuthFailure(lockKey)
 			writeAPIError(w, r, http.StatusUnauthorized, "totp-invalid", "That code is not valid — try the current one", "")
+			return
+		}
+		// Single-use (audit): consume the matched step atomically so a captured
+		// code cannot be replayed within its acceptance window.
+		consumed, cerr := accts.ConsumeTOTPStep(r.Context(), emailAddr, int64(step))
+		if cerr != nil || !consumed {
+			mailAuthThrottle.Fail(emailAddr)
+			auth.RecordAuthFailure(lockKey)
+			writeAPIError(w, r, http.StatusUnauthorized, "totp-invalid", "That code has already been used — try the next one", "")
 			return
 		}
 	}

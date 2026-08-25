@@ -1829,8 +1829,14 @@ func (a *App) handleVayuOSAccountTOTP(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, 400, "totp-failed", "start enrolment first", "")
 			return
 		}
-		if !totp.Validate(secret, in.Code) {
+		step, ok := totp.MatchAt(secret, in.Code, time.Now())
+		if !ok {
 			writeAPIError(w, r, 400, "totp-invalid", "that code is not valid — check the time on the device", "")
+			return
+		}
+		// Single-use (audit): consume the enabling code like any other.
+		if consumed, cerr := accts.ConsumeTOTPStep(r.Context(), email, int64(step)); cerr != nil || !consumed {
+			writeAPIError(w, r, 400, "totp-invalid", "that code has already been used — try the next one", "")
 			return
 		}
 		if err := accts.EnableTOTP(r.Context(), email); err != nil {

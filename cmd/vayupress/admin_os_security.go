@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/members"
@@ -31,7 +32,9 @@ import (
 
 // verifyTOTPForLogin decides whether a login may proceed. It returns required=true
 // when the account has 2FA enabled; ok reflects whether the supplied code is
-// valid. When 2FA is not enabled, required=false and ok=true (no code needed).
+// valid AND newly consumed — a code that already authenticated once is refused
+// even inside its validity window (audit: TOTP replay). When 2FA is not
+// enabled, required=false and ok=true (no code needed).
 func (a *App) verifyTOTPForLogin(ctx context.Context, email, code string) (ok, required bool) {
 	if a.userStore == nil {
 		return true, false
@@ -40,7 +43,15 @@ func (a *App) verifyTOTPForLogin(ctx context.Context, email, code string) (ok, r
 	if err != nil || !enabled || secret == "" {
 		return true, false
 	}
-	return totp.Validate(secret, code), true
+	step, matched := totp.MatchAt(secret, code, time.Now())
+	if !matched {
+		return false, true
+	}
+	consumed, cerr := a.userStore.ConsumeTOTPStep(ctx, email, int64(step))
+	if cerr != nil || !consumed {
+		return false, true
+	}
+	return true, true
 }
 
 // ── Members page ───────────────────────────────────────────────────────────
@@ -470,8 +481,14 @@ func (a *App) handleOSTOTPVerify(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "no-pending", "Start 2FA setup first", "")
 		return
 	}
-	if !totp.Validate(secret, strings.TrimSpace(body.Code)) {
+	step, matched := totp.MatchAt(secret, strings.TrimSpace(body.Code), time.Now())
+	if !matched {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-code", "That code is not valid — try again", "")
+		return
+	}
+	// Single-use (audit): consume the enabling code so it cannot be replayed.
+	if consumed, cerr := a.userStore.ConsumeTOTPStep(r.Context(), u.Email, int64(step)); cerr != nil || !consumed {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-code", "That code has already been used — try the next one", "")
 		return
 	}
 	if err := a.userStore.EnableTOTP(r.Context(), u.ID); err != nil {

@@ -106,6 +106,41 @@ type AccountStore struct {
 	defaultDomain string
 	handover      *handoverCache
 	handoverOnce  sync.Once
+
+	// totpCodec seals the totp_secret column at rest when installed
+	// (UseTOTPCodec); nil keeps legacy plaintext behaviour for tests.
+	totpCodec SecretCodec
+}
+
+// SecretCodec seals sensitive column values at rest. Satisfied by the
+// service-credential store (internal/secrets) — audit: mailbox TOTP seeds sat
+// as plaintext base32 in the database.
+type SecretCodec interface {
+	SealField(plaintext string) (string, error)
+	OpenField(stored string) (string, error)
+}
+
+// UseTOTPCodec installs an at-rest codec for the totp_secret column. Legacy
+// plaintext rows keep verifying (OpenField passes them through) and are
+// re-sealed on their next write.
+func (s *AccountStore) UseTOTPCodec(c SecretCodec) { s.totpCodec = c }
+
+func (s *AccountStore) sealTOTP(secret string) (string, error) {
+	if s.totpCodec == nil {
+		return secret, nil
+	}
+	return s.totpCodec.SealField(secret)
+}
+
+func (s *AccountStore) openTOTP(stored string) string {
+	if s.totpCodec == nil || stored == "" {
+		return stored
+	}
+	pt, err := s.totpCodec.OpenField(stored)
+	if err != nil {
+		return "" // KEK changed under us: refuse rather than mislead (see users store)
+	}
+	return pt
 }
 
 // errHandedOverAccount is returned by the account mutations an operator may no
@@ -143,6 +178,9 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 	for _, stmt := range []string{
 		`ALTER TABLE vayumail_accounts ADD COLUMN totp_secret TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE vayumail_accounts ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0`,
+		// Single-use TOTP (audit): records the last time step whose code was
+		// consumed so a captured code cannot be replayed within its window.
+		`ALTER TABLE vayumail_accounts ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0`,
 		// Per-mailbox storage quota in bytes; 0 means unlimited. Existing accounts
 		// default to unlimited so the migration changes no behaviour.
 		`ALTER TABLE vayumail_accounts ADD COLUMN quota_bytes INTEGER NOT NULL DEFAULT 0`,
@@ -649,8 +687,12 @@ func (s *AccountStore) SetTOTPSecret(ctx context.Context, email, secret string) 
 	if strings.TrimSpace(secret) == "" {
 		return errors.New("secret required")
 	}
+	stored, err := s.sealTOTP(secret)
+	if err != nil {
+		return err
+	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE vayumail_accounts SET totp_secret=?, totp_enabled=0 WHERE email=?`, secret, normEmail(email))
+		`UPDATE vayumail_accounts SET totp_secret=?, totp_enabled=0 WHERE email=?`, stored, normEmail(email))
 	if err != nil {
 		return err
 	}
@@ -704,5 +746,23 @@ func (s *AccountStore) TOTPStatus(ctx context.Context, email string) (secret str
 	var en int
 	_ = s.db.QueryRowContext(ctx,
 		`SELECT totp_secret, totp_enabled FROM vayumail_accounts WHERE email=?`, normEmail(email)).Scan(&secret, &en)
-	return secret, en == 1
+	return s.openTOTP(secret), en == 1
+}
+
+// ConsumeTOTPStep enforces single-use codes: it advances the account's last
+// consumed time step only when step is strictly newer than what is recorded,
+// reporting ok=false for a replay (audit: a captured mailbox code stayed valid
+// for its whole ±30s window). Callers verify via totp.MatchAt first.
+func (s *AccountStore) ConsumeTOTPStep(ctx context.Context, email string, step int64) (ok bool, err error) {
+	if s.db == nil {
+		return false, errors.New("vayumail: no storage")
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE vayumail_accounts SET totp_last_step=? WHERE email=? AND totp_last_step<?`,
+		step, normEmail(email), step)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
 }

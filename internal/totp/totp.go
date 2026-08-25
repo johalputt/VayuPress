@@ -75,26 +75,40 @@ func GenerateAt(secret string, t time.Time) (string, error) {
 // accepts the current step plus one step either side (±30s) to tolerate clock
 // skew, comparing in constant time.
 func Validate(secret, code string) bool {
-	return ValidateAt(secret, code, time.Now())
+	_, ok := MatchAt(secret, code, time.Now())
+	return ok
+}
+
+// MatchAt returns the matched time step's counter when code is valid for
+// secret at time t (tolerating ±1 step of clock skew), with ok=false otherwise.
+// Callers that must enforce single-use semantics capture the counter and refuse
+// any code whose counter is not strictly newer than the last one consumed — a
+// code skimmed in transit then dies after its first use instead of staying
+// valid for the remainder of its 90-second acceptance window (audit: TOTP
+// replay).
+func MatchAt(secret, code string, t time.Time) (counter uint64, ok bool) {
+	code = strings.TrimSpace(code)
+	if len(code) != Digits {
+		return 0, false
+	}
+	now := uint64(t.Unix() / Period)
+	for skew := int64(-1); skew <= 1; skew++ {
+		counter := now + uint64(skew)
+		want, err := hotp(secret, counter, Digits)
+		if err != nil {
+			return 0, false
+		}
+		if subtle.ConstantTimeCompare([]byte(want), []byte(code)) == 1 {
+			return counter, true
+		}
+	}
+	return 0, false
 }
 
 // ValidateAt is Validate with an explicit reference time (for testing).
 func ValidateAt(secret, code string, t time.Time) bool {
-	code = strings.TrimSpace(code)
-	if len(code) != Digits {
-		return false
-	}
-	for skew := -1; skew <= 1; skew++ {
-		counter := uint64((t.Unix() / Period) + int64(skew))
-		want, err := hotp(secret, counter, Digits)
-		if err != nil {
-			return false
-		}
-		if subtle.ConstantTimeCompare([]byte(want), []byte(code)) == 1 {
-			return true
-		}
-	}
-	return false
+	_, ok := MatchAt(secret, code, t)
+	return ok
 }
 
 // ProvisioningURI builds an otpauth://totp/ URI for enrolment in an authenticator

@@ -552,7 +552,14 @@ func (a *App) authMailAccount(ctx context.Context, email, pass, code string) (ad
 		return addr, false, false
 	}
 	if secret, enabled := a.vayuMail.Accounts().TOTPStatus(ctx, addr); enabled && secret != "" {
-		if !totp.Validate(secret, code) {
+		step, ok := totp.MatchAt(secret, code, time.Now())
+		if !ok {
+			return addr, false, true
+		}
+		// Single-use (audit): consume the matched step atomically so a captured
+		// code cannot be replayed within its acceptance window.
+		consumed, err := a.vayuMail.Accounts().ConsumeTOTPStep(ctx, addr, int64(step))
+		if err != nil || !consumed {
 			return addr, false, true
 		}
 	}

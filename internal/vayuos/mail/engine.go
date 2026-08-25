@@ -56,11 +56,24 @@ type Engine struct {
 	// retentionAudit reports a completed retention sweep to the host's
 	// audit log (nil-safe; see SetRetentionAudit).
 	retentionAudit func(email string, count, days int)
+	// totpCodec seals mailbox TOTP seeds at rest (audit); stashed here by
+	// UseTOTPCodec and handed to the account store when it is created.
+	totpCodec SecretCodec
 	// queueRetention is the operator-settable auto-clear window (days) for
 	// DELIVERED outbound-queue rows; 0 = keep forever. Runtime-updatable, so it is
 	// an atomic rather than a copy of cfg.QueueRetentionDays.
 	queueRetention atomic.Int64
 	done           chan struct{}
+}
+
+// UseTOTPCodec installs an at-rest codec for mailbox TOTP seeds (audit: they
+// were stored as plaintext base32). Applied immediately if the account store
+// already exists, otherwise stashed for its creation. Nil-safe.
+func (e *Engine) UseTOTPCodec(c SecretCodec) {
+	e.totpCodec = c
+	if e.accounts != nil {
+		e.accounts.UseTOTPCodec(c)
+	}
 }
 
 // SetQueueRetentionDays sets the auto-clear window (days) for delivered
@@ -620,6 +633,9 @@ func (e *Engine) Start(ctx context.Context) error {
 		// (ADR-0152 D4). Wired here rather than passed through NewAccountStore so
 		// the store keeps no knowledge of what a handover is beyond "this one is".
 		as.SetDefaultDomain(e.cfg.Domain)
+		if e.totpCodec != nil {
+			as.UseTOTPCodec(e.totpCodec)
+		}
 		e.accounts = as
 	} else {
 		return fmt.Errorf("vayumail: accounts init: %w", aerr)

@@ -995,6 +995,10 @@ func main() {
 	// down with it.
 	a.userStore = users.New(dbpkg.DB)
 	a.userStore.UseReader(dbpkg.AdminReader())
+	// TOTP seeds are second factors: seal them at rest with the service-credential
+	// DEK (VAYU_SECRET / host key file wrapped — audit). Legacy plaintext rows
+	// keep verifying and re-seal on their next write.
+	a.userStore.UseTOTPCodec(a.secrets)
 	a.sessions = auth.NewSessionStore(dbpkg.DB)
 	a.sessions.UseReader(dbpkg.AdminReader())
 	if n, err := a.userStore.Count(context.Background()); err == nil && n == 0 {

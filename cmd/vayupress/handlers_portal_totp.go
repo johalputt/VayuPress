@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/totp"
@@ -102,8 +103,14 @@ func (a *App) handleMemberTOTPVerify(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "no-pending", "Start 2FA setup first", "")
 		return
 	}
-	if !totp.Validate(secret, strings.TrimSpace(body.Code)) {
+	step, ok := totp.MatchAt(secret, strings.TrimSpace(body.Code), time.Now())
+	if !ok {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-code", "That code is not valid — try the current one", "")
+		return
+	}
+	// Single-use (audit): the enabling code is consumed like any other.
+	if consumed, cerr := accts.ConsumeTOTPStep(r.Context(), email, int64(step)); cerr != nil || !consumed {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-code", "That code has already been used — try the next one", "")
 		return
 	}
 	if err := accts.EnableTOTP(r.Context(), email); err != nil {
@@ -139,8 +146,15 @@ func (a *App) handleMemberTOTPDisable(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, r, http.StatusOK, map[string]string{"status": "disabled"})
 		return
 	}
-	if !totp.Validate(secret, strings.TrimSpace(body.Code)) {
+	step, ok := totp.MatchAt(secret, strings.TrimSpace(body.Code), time.Now())
+	if !ok {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-code", "Enter your current 6-digit code to turn 2FA off", "")
+		return
+	}
+	// Single-use (audit): the disabling code is consumed too — it is exactly the
+	// code a hijacker would try to reuse.
+	if consumed, cerr := accts.ConsumeTOTPStep(r.Context(), email, int64(step)); cerr != nil || !consumed {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-code", "That code has already been used — try the next one", "")
 		return
 	}
 	if err := accts.DisableTOTP(r.Context(), email); err != nil {
