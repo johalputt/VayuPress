@@ -6,6 +6,49 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.54] — 2026-08-25
+
+### Security
+
+Red-team round 2: nine specialised attacker profiles swept the codebase for
+novel weaknesses; every finding that survived adversarial verification is
+closed here.
+
+- **Approved comments could be rewritten forever.** Editing your own comment
+  left its approved status untouched, so one benign moderation approval
+  permanently converted an account into an unmoderated publisher — and the
+  edit path had neither the submission rate budget nor a body cap. An owner
+  edit now returns the comment to pending in the same statement, under the
+  same budget and size limit as posting.
+- **The shipped nginx config opened the health-probe gate to everyone.** The
+  `/health` location forwarded no identity headers, so at the application
+  every internet visitor appeared as the loopback proxy connection — exactly
+  what the loopback-only detail gate trusts. Identity headers are forwarded
+  there like everywhere else now.
+- **Unpublished drafts leaked through the public GraphQL API.** The article
+  resolver served whatever the slug matched, draft or not; search hits and
+  list results carried the same hole. All three resolvers now enforce the
+  same visibility rule as the public site: only published articles exist.
+- **Handed-over mailboxes could silently re-acquire operator access.**
+  Assigning a CMS user over an existing handed-over mailbox reset its
+  password outside every audited funnel, and approving a recovery request for
+  one minted a bearer link straight to the operator. Both are refused;
+  break-glass with its permanent client-visible record remains the only way
+  in after handover.
+- **Refunded premium addresses kept sending mail.** Refund reversal flipped
+  the ledger row but left a claimed mailbox fully active. The live mailbox is
+  now deactivated with it.
+- **Bulk imports bypassed the storage quota.** Single-article creation was
+  refused at quota while a bulk call could keep filling the database. Bulk
+  creation honours the same gate per item.
+- **Non-Stripe memberships never expired.** A PayPal, direct or generic
+  webhook order set the paid-through timestamp once and nothing ever moved
+  it. Subscriptions past their period now expire lazily on read plus an
+  hourly sweep, demoting only members still on the lapsed tier.
+- **A plugin timeout could crash the whole server.** The timeout path raced
+  its own output reader into a nil dereference inside an unrecoverable
+  goroutine. The reader now scans a pipe it captured before the race window.
+
 ## [3.17.53] — 2026-08-25
 
 ### Security
