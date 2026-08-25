@@ -1059,7 +1059,7 @@ func (s *Store) Retention(ctx context.Context, weeks int) ([]CohortRow, error) {
 		a.size++
 		for w := 1; w < weeks; w++ {
 			wStart := now.AddDate(0, 0, -(weeks*7)).AddDate(0, 0, w*7).Format("2006-01-02")
-			wEnd := now.AddDate(0, 0, -(weeks * 7)).AddDate(0, 0, (w+1)*7).Format("2006-01-02")
+			wEnd := now.AddDate(0, 0, -(weeks*7)).AddDate(0, 0, (w+1)*7).Format("2006-01-02")
 			for day := range daySet {
 				if len(day) == 10 && day >= wStart && day < wEnd {
 					a.weeks[w]++
