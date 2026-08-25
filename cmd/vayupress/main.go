@@ -916,6 +916,9 @@ func main() {
 	// Start the /collect batch flusher. Without it every collected beacon is
 	// buffered and never written — same pinned-defect class as above.
 	a.analytics.StartEventCollector(context.Background())
+	// Weekly analytics digest (2025 plan Wave 4): opt-in via VAYU_REPORT_EMAIL;
+	// disabled silently when unset.
+	a.startScheduledReports(context.Background())
 	a.webhooks = webhooks.New(dbpkg.DB, a.outboundClient)
 	a.social = social.New(social.MastodonConfig{
 		Instance: config.Cfg.MastodonInstance,
@@ -1423,6 +1426,10 @@ func main() {
 		if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
 			a.pluginManager.Shutdown()
 			plugins.ShutdownSubprocesses()
+		}
+		// Close the opt-in SIEM CEF sink last-written state (nil when disabled).
+		if a.siemSink != nil {
+			_ = a.siemSink.Close()
 		}
 		// Tear down onion services (their lifetime is bound to VayuPress) and
 		// flush the aggregate visit counter to the DB before it closes.

@@ -54,6 +54,7 @@ import (
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/secrets"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/siemsink"
 	"github.com/johalputt/vayupress/internal/social"
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
@@ -84,6 +85,10 @@ import (
 type App struct {
 	// HTTP
 	outboundClient *http.Client
+
+	// siemSink holds the opt-in CEF export file (VAYU_SIEM_FILE) so graceful
+	// shutdown can close it; nil when the operator did not opt in.
+	siemSink *siemsink.Sink
 
 	// router is the fully-assembled request handler, kept so the console and the
 	// connector can replay a request for a hosted domain and report what a

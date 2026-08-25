@@ -191,8 +191,9 @@ func (a *App) bootVayuShield() {
 		// SIEM export (2025 plan Wave 4) is opt-in via VAYU_SIEM_FILE: when the
 		// operator names a file, every enforcement decision lands there as one
 		// ArcSight CEF line for their existing log shipper. Unset = nil sink =
-		// zero cost, zero egress.
-		SIEM: siemSinkFromEnv(),
+		// zero cost, zero egress. The sink is kept on the App so graceful
+		// shutdown can close it.
+		SIEM: a.wireSIEMSink(),
 		// The admin panel, API, feeds, health/metrics, the shield's own
 		// endpoints AND static assets are never challenged or blocked. /static
 		// matters: a challenge/429 in place of a stylesheet or htmx.js breaks
@@ -437,11 +438,11 @@ func (a *App) handleVayuShieldPoW(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// siemSinkFromEnv honours VAYU_SIEM_FILE: a path whose file receives one CEF
-// line per enforcement decision (rotated at 10 MiB with one kept generation).
-// Returns nil unless the operator opted in, so the request path is untouched
-// by default.
-func siemSinkFromEnv() func(event, src, detail string) {
+// wireSIEMSink honours VAYU_SIEM_FILE: a path whose file receives one CEF line
+// per enforcement decision (rotated at 10 MiB with one kept generation). The
+// opened sink is kept on the App for graceful-shutdown Close. Returns nil
+// unless the operator opted in, so the request path is untouched by default.
+func (a *App) wireSIEMSink() func(event, src, detail string) {
 	path := strings.TrimSpace(os.Getenv("VAYU_SIEM_FILE"))
 	if path == "" {
 		return nil
@@ -451,6 +452,7 @@ func siemSinkFromEnv() func(event, src, detail string) {
 		logging.LogWarn("vayushield", "SIEM export disabled — cannot open "+path+": "+err.Error())
 		return nil
 	}
+	a.siemSink = sink
 	logging.LogInfo("vayushield", "SIEM CEF export active → "+path)
 	return func(event, src, detail string) {
 		if event == "" {
