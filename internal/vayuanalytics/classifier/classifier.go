@@ -198,11 +198,36 @@ func Classify(referrer, siteHost string, utm UTM, isBot bool) Result {
 	return res
 }
 
-// matchHost returns the label for the first table key that is a substring of host.
+// matchHost returns the label for the first table key that genuinely denotes
+// host. Three key styles are honoured:
+//
+//   - full hosts ("bing.com"): host equals the key or is a deeper subdomain
+//     of it (www.bing.com) — never a lookalike like notbing.com;
+//   - trailing-dot wildcards ("google."): the label opens some position of
+//     the domain (google.de, www.google.com, news.google.co.uk);
+//   - bare labels ("mastodon"): a complete DNS label anywhere in the host
+//     (mastodon.social) — not a substring of one (notmastodon.com).
+//
+// The old unanchored strings.Contains was spoofable: any referrer CONTAINING
+// "x.com" (box.com, wix.com…) claimed X/Twitter attribution (audit A1).
 func matchHost(host string, table map[string]string) (string, bool) {
 	for k, v := range table {
-		if strings.Contains(host, k) {
-			return v, true
+		switch {
+		case strings.HasSuffix(k, "."):
+			base := strings.TrimSuffix(k, ".")
+			if strings.HasPrefix(host, base+".") || strings.Contains(host, "."+base+".") {
+				return v, true
+			}
+		case !strings.Contains(k, "."):
+			for _, label := range strings.Split(host, ".") {
+				if label == k {
+					return v, true
+				}
+			}
+		default:
+			if host == k || strings.HasSuffix(host, "."+k) {
+				return v, true
+			}
 		}
 	}
 	return "", false

@@ -17,11 +17,12 @@ func fromTime(days int) time.Time {
 
 // Overview is the headline human-traffic summary for the dashboard.
 type Overview struct {
-	Days              int     `json:"days"`
-	Views             int64   `json:"views"`           // human page views
-	UniqueSessions    int64   `json:"unique_sessions"` // distinct human session hashes
-	NewSessions       int64   `json:"new_sessions"`
-	ReturningSessions int64   `json:"returning_sessions"`
+	Days              int     `json:"days"`               // window length
+	Views             int64   `json:"views"`              // human page views
+	UniqueVisitors    int64   `json:"unique_visitors"`    // distinct day-stable visitor hashes
+	UniqueSessions    int64   `json:"unique_sessions"`    // distinct reading sessions (sliding 30-min)
+	NewSessions       int64   `json:"new_sessions"`       // visitors first seen in the window
+	ReturningSessions int64   `json:"returning_sessions"` // visitors with history before the window
 	AvgTimeSeconds    float64 `json:"avg_time_seconds"`
 	AvgScrollPct      float64 `json:"avg_scroll_percent"`
 	EngagementRate    float64 `json:"engagement_rate"` // engaged / views
@@ -33,27 +34,49 @@ type Overview struct {
 const human = `client_type NOT IN ('BadBot','GoodBot','AIAgent','Headless')`
 
 // Overview computes the headline metrics over the trailing window.
+//
+// New-vs-returning is answered per VISITOR against global history: a window
+// visitor whose first-ever row predates the window is returning. The probe is
+// a covered lookup on idx_va_visitor_time, so it costs one index seek per
+// distinct window visitor — never a table scan (audit: the old daily-reset
+// flag made this headline read ~zero forever).
+//
+// Bounce is derived on READ: rows whose beacon never arrived keep the storage
+// defaults engaged=0/bounce=0 forever, so SUM(bounce=1) undercounted every
+// one-page visit. A row IS a bounce when it recorded one OR it shows no
+// engagement signal at all (audit).
 func (s *Store) Overview(ctx context.Context, days int) (*Overview, error) {
 	from := fromTime(days)
 	o := &Overview{Days: days}
 	var engaged, bounced int64
 	if err := s.readDB().QueryRowContext(ctx, `SELECT
 COALESCE(SUM(CASE WHEN `+human+` THEN 1 ELSE 0 END),0),
+COALESCE(COUNT(DISTINCT CASE WHEN `+human+` THEN visitor_hash END),0),
 COALESCE(COUNT(DISTINCT CASE WHEN `+human+` THEN session_hash END),0),
-COALESCE(SUM(CASE WHEN `+human+` AND is_new_session=1 THEN 1 ELSE 0 END),0),
 COALESCE(SUM(CASE WHEN NOT (`+human+`) THEN 1 ELSE 0 END),0),
 COALESCE(AVG(CASE WHEN `+human+` THEN time_on_page_seconds END),0),
 COALESCE(AVG(CASE WHEN `+human+` THEN scroll_depth_percent END),0),
 COALESCE(SUM(CASE WHEN `+human+` AND engaged=1 THEN 1 ELSE 0 END),0),
-COALESCE(SUM(CASE WHEN `+human+` AND bounce=1 THEN 1 ELSE 0 END),0)
+COALESCE(SUM(CASE WHEN `+human+` AND (bounce=1 OR (engaged=0 AND time_on_page_seconds<=0)) THEN 1 ELSE 0 END),0)
 FROM vayuanalytics_sessions WHERE entry_time>=?`, from).Scan(
-		&o.Views, &o.UniqueSessions, &o.NewSessions, &o.BotViews,
+		&o.Views, &o.UniqueVisitors, &o.UniqueSessions, &o.BotViews,
 		&o.AvgTimeSeconds, &o.AvgScrollPct, &engaged, &bounced); err != nil {
 		return nil, err
 	}
-	o.ReturningSessions = o.UniqueSessions - o.NewSessions
-	if o.ReturningSessions < 0 {
-		o.ReturningSessions = 0
+	// True new vs returning over window VISITORS by global first-seen: the
+	// EXISTS probe is a covered seek on idx_va_visitor_time, one per distinct
+	// window visitor — never a scan.
+	if err := s.readDB().QueryRowContext(ctx, `SELECT
+COALESCE(COUNT(DISTINCT CASE WHEN NOT EXISTS(
+    SELECT 1 FROM vayuanalytics_sessions p
+    WHERE p.visitor_hash=v.vh AND p.entry_time<?) THEN v.vh END),0),
+COALESCE(COUNT(DISTINCT CASE WHEN EXISTS(
+    SELECT 1 FROM vayuanalytics_sessions p
+    WHERE p.visitor_hash=v.vh AND p.entry_time<?) THEN v.vh END),0)
+FROM (SELECT DISTINCT visitor_hash vh FROM vayuanalytics_sessions
+      WHERE entry_time>=? AND visitor_hash<>'' AND `+human+`) v`,
+		from, from, from).Scan(&o.NewSessions, &o.ReturningSessions); err != nil {
+		return nil, err
 	}
 	if o.Views > 0 {
 		o.EngagementRate = round2(float64(engaged) / float64(o.Views))

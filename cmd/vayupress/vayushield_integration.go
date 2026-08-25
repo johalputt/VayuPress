@@ -114,7 +114,17 @@ func (a *App) bootVayuShield() {
 		logging.LogInfo("vayushield", fmt.Sprintf("Aegis L0 admin-sovereignty lane active — public concurrency cap %d (auto, CPU-derived)", a.sovereign.Cap()))
 	}
 
+	// Session/visitor salts: derive from the service keyring when available so
+	// a restart no longer resets every visitor to "brand new" mid-day (audit:
+	// in-memory random salt turned each deploy into 100%-new-traffic day).
+	// Without a keyring (init error) fall back to the historic random mode.
 	a.vaSessions = vasession.NewHasher()
+	if a.secrets != nil {
+		if master, err := a.secrets.Derive("vayuanalytics-session-salt"); err == nil && len(master) > 0 {
+			a.vaSessions = vasession.NewMasterHasher(master)
+			logging.LogInfo("vayuanalytics", "session/visitor salts bound to the service keyring — restart-stable within the day")
+		}
+	}
 	a.vaEngagement = vastore.New(dbpkg.DB)
 	// Dashboard reads (Overview, sources, AI traffic, top pages, realtime) run a
 	// dozen heavy aggregate scans over the ever-growing vayuanalytics_sessions
@@ -487,10 +497,12 @@ func (a *App) handleVAEnter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess := a.vaSessions.Session(realIP, ua, lang, now)
+	visitor := a.vaSessions.Visitor(realIP, ua, lang, now)
 	// Enqueue for batched, off-request-path persistence so a page view never
 	// blocks on — or saturates — the single SQLite writer (see store.StartIngest).
 	a.vaEngagement.QueueEnter(vastore.EnterInput{
 		SessionHash: sess,
+		VisitorHash: visitor,
 		PagePath:    path,
 		Class:       class,
 		Country:     geoFromHeaders(r).Country,

@@ -16,6 +16,7 @@ import (
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 )
 
 // ── Ingest rate limiting ─────────────────────────────────────────────────────
@@ -151,6 +152,16 @@ func (a *App) handleAnalyticsCollect(w http.ResponseWriter, r *http.Request) {
 	}
 	// Geo is set server-side from trusted proxy headers, never from the beacon.
 	req.Geo = geoFromHeaders(r)
+	// A bad bot must never pollute analytics — same rule as the engagement
+	// ingest beside it. The two dashboards previously disagreed because this
+	// endpoint classified nobody: crawlers executing the page JS wrote
+	// browser=Chrome/device=Desktop rows into every card (audit A1).
+	if a.vayuShield != nil {
+		if verdict := a.vayuShield.Classify(r); verdict.Result.ClientType == botdb.TypeBadBot {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
 	// An operator's "never serve" country does not get to write into their own
 	// analytics. The page path refuses these visitors outright — verified by test,
 	// including that a solved challenge does not escape it — so a beacon claiming

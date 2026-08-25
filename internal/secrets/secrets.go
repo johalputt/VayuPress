@@ -33,6 +33,7 @@ package secrets
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -159,6 +160,25 @@ type Store struct {
 // lazily on first use.
 func New(db *sql.DB, kekSecret []byte, keyfilePath string) *Store {
 	return &Store{db: db, kekSecret: kekSecret, keyfilePath: strings.TrimSpace(keyfilePath)}
+}
+
+// Derive returns a purpose-bound 32-byte subkey from the DEK:
+// HMAC-SHA256(DEK, "vayusecrets-derive-v1:"+purpose). Subsystems that need a
+// stable secret across restarts and nodes sharing the keyring (e.g. the
+// VayuAnalytics daily session salts) derive it here instead of minting their
+// own in-memory random value. The purpose string is domain separation only;
+// it is not secret.
+func (s *Store) Derive(purpose string) ([]byte, error) {
+	if s == nil {
+		return nil, errors.New("secrets: nil store")
+	}
+	s.once.Do(func() { s.initErr = s.ensure() })
+	if s.initErr != nil {
+		return nil, s.initErr
+	}
+	mac := hmac.New(sha256.New, s.dek[:])
+	mac.Write([]byte("vayusecrets-derive-v1:" + purpose))
+	return mac.Sum(nil), nil
 }
 
 // deriveKEK turns an encryption secret into a 32-byte AES key (domain

@@ -77,6 +77,9 @@ func (s *Store) readDB() *sql.DB {
 // EnterInput is a page-enter event (fired immediately on page load).
 type EnterInput struct {
 	SessionHash string
+	// VisitorHash is the day-stable anonymous visitor identity (session.Visitor).
+	// Empty falls back to SessionHash so pre-090 callers and tests keep working.
+	VisitorHash string
 	PagePath    string
 	Class       classifier.Result
 	Country     string
@@ -86,8 +89,9 @@ type EnterInput struct {
 }
 
 // RecordEnter inserts a new engagement row for a page view. is_new_session is
-// true when this session hash has not been seen today, giving new-vs-returning
-// analytics without any cross-day identifier.
+// true when this VISITOR has not been seen today — with the stable daily
+// visitor hash (migration 090) that finally means what it says; the old
+// session-hash probe reset every UTC day and made the metric read ~zero.
 func (s *Store) RecordEnter(ctx context.Context, in EnterInput) error {
 	if s == nil || s.db == nil {
 		return nil
@@ -106,10 +110,14 @@ func recordEnter(ctx context.Context, e execer, in EnterInput) error {
 		now = time.Now().UTC()
 	}
 	day := now.Format("2006-01-02")
+	visitor := in.VisitorHash
+	if visitor == "" {
+		visitor = in.SessionHash // legacy fallback (pre-090 rows/tests)
+	}
 	var seen int
 	_ = e.QueryRowContext(ctx,
-		`SELECT COUNT(1) FROM vayuanalytics_sessions WHERE session_hash=? AND date(entry_time)=?`,
-		in.SessionHash, day).Scan(&seen)
+		`SELECT COUNT(1) FROM vayuanalytics_sessions WHERE visitor_hash=? AND date(entry_time)=?`,
+		visitor, day).Scan(&seen)
 	isNew := 1
 	if seen > 0 {
 		isNew = 0
@@ -119,9 +127,9 @@ func recordEnter(ctx context.Context, e execer, in EnterInput) error {
 		ct = "human"
 	}
 	_, err := e.ExecContext(ctx, `INSERT INTO vayuanalytics_sessions
-(session_hash,page_path,source_category,source_detail,referrer_domain,referrer_path,entry_time,country_code,client_type,bot_score,is_new_session)
-VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-		in.SessionHash, in.PagePath, string(in.Class.Category), in.Class.Detail,
+(session_hash,visitor_hash,page_path,source_category,source_detail,referrer_domain,referrer_path,entry_time,country_code,client_type,bot_score,is_new_session)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		in.SessionHash, visitor, in.PagePath, string(in.Class.Category), in.Class.Detail,
 		in.Class.ReferrerDomain, in.Class.ReferrerPath, now, in.Country, ct, in.BotScore, isNew)
 	return err
 }
