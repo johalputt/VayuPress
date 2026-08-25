@@ -1399,7 +1399,9 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 	if ov, err := a.vaEngagement.Overview(ctx, days); err == nil {
 		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Engagement — last ` + strconv.Itoa(days) + ` days</div><div class="vs-stats">`)
 		b.WriteString(vsStat(strconv.FormatInt(ov.Views, 10), "Human views"))
-		b.WriteString(vsStat(strconv.FormatInt(ov.UniqueSessions, 10), "Unique sessions"))
+		b.WriteString(vsStat(strconv.FormatInt(ov.UniqueVisitors, 10), "Unique visitors"))
+		b.WriteString(vsStat(strconv.FormatInt(ov.UniqueSessions, 10), "Sessions"))
+		b.WriteString(vsStat(strconv.FormatInt(ov.ReturningSessions, 10), "Returning visitors"))
 		b.WriteString(vsStat(pct(ov.EngagementRate), "Engagement"))
 		b.WriteString(vsStat(pct(ov.BounceRate), "Bounce"))
 		b.WriteString(vsStat(ftoa2(ov.AvgTimeSeconds)+"s", "Avg time"))

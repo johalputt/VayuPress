@@ -27,22 +27,25 @@ func testStore(t *testing.T) *Store {
 
 func TestStaticMatchUA(t *testing.T) {
 	d := NewStaticDB()
-	cases := map[string]Classification{
-		"Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)": ClassGoodBot,
-		"Mozilla/5.0 AppleWebKit ChatGPT-User/1.0":                                 ClassAIAgent,
-		// Generic HTTP libraries are challenge-tier since the 2025 audit: a
-		// library UA is not a conviction (monitors, webhooks, feed fetchers).
-		"python-requests/2.31.0":                  ClassUnknown,
-		"sqlmap/1.7":                              ClassBadBot,
-		"Mozilla/5.0 (compatible; ClaudeBot/1.0)": ClassAIAgent,
+	// Generic HTTP libraries are challenge-tier since the 2025 audit: a
+	// library UA is not a conviction (monitors, webhooks, feed fetchers).
+	cases := []struct {
+		ua   string
+		want Classification
+	}{
+		{"Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)", ClassGoodBot},
+		{"Mozilla/5.0 AppleWebKit ChatGPT-User/1.0", ClassAIAgent},
+		{"python-requests/2.31.0", ClassUnknown},
+		{"sqlmap/1.7", ClassBadBot},
+		{"Mozilla/5.0 (compatible; ClaudeBot/1.0)", ClassAIAgent},
 	}
-	for ua, want := range cases {
-		sig, ok := d.MatchUA(ua)
+	for _, c := range cases {
+		sig, ok := d.MatchUA(c.ua)
 		if !ok {
-			t.Fatalf("expected match for %q", ua)
+			t.Fatalf("expected match for %q", c.ua)
 		}
-		if sig.Classification != want {
-			t.Fatalf("%q -> %s, want %s (%s)", ua, sig.Classification, want, sig.Name)
+		if sig.Classification != c.want {
+			t.Fatalf("%q -> %s, want %s (%s)", c.ua, sig.Classification, c.want, sig.Name)
 		}
 	}
 	if _, ok := d.MatchUA("Mozilla/5.0 (Windows NT 10.0) Chrome/130 Safari/537.36"); ok {
