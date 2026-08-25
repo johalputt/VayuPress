@@ -38,7 +38,7 @@ func newTOTPTestStore(t *testing.T) *Store {
 func TestTOTPSecretSealedAtRest(t *testing.T) {
 	s := newTOTPTestStore(t)
 	ctx := context.Background()
-	u, err := s.Create(ctx, "seeded@example.com", "Seed", "pw", RoleAdmin)
+	u, err := s.Create(ctx, "seeded@example.com", "Seed", "a-long-password", RoleAdmin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestTOTPSecretSealedAtRest(t *testing.T) {
 func TestConsumeTOTPStepRejectsReplay(t *testing.T) {
 	s := newTestStore(t) // no codec needed; step logic is orthogonal
 	ctx := context.Background()
-	if _, err := s.Create(ctx, "replay@example.com", "R", "pw", RoleAdmin); err != nil {
+	if _, err := s.Create(ctx, "replay@example.com", "R", "a-long-password", RoleAdmin); err != nil {
 		t.Fatal(err)
 	}
 	secret := "JBSWY3DPEHPK3PXP"
