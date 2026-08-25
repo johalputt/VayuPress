@@ -30,9 +30,11 @@ func TestStaticMatchUA(t *testing.T) {
 	cases := map[string]Classification{
 		"Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)": ClassGoodBot,
 		"Mozilla/5.0 AppleWebKit ChatGPT-User/1.0":                                 ClassAIAgent,
-		"python-requests/2.31.0":                                                   ClassBadBot,
-		"sqlmap/1.7":                                                               ClassBadBot,
-		"Mozilla/5.0 (compatible; ClaudeBot/1.0)":                                  ClassAIAgent,
+		// Generic HTTP libraries are challenge-tier since the 2025 audit: a
+		// library UA is not a conviction (monitors, webhooks, feed fetchers).
+		"python-requests/2.31.0":                  ClassUnknown,
+		"sqlmap/1.7":                              ClassBadBot,
+		"Mozilla/5.0 (compatible; ClaudeBot/1.0)": ClassAIAgent,
 	}
 	for ua, want := range cases {
 		sig, ok := d.MatchUA(ua)
@@ -58,6 +60,14 @@ func TestStaticReferrerAI(t *testing.T) {
 	}
 	if _, ok := d.MatchReferrerAI("google.com"); ok {
 		t.Fatal("plain google.com is search, not AI-assisted")
+	}
+	// Spoof resistance (2025 audit): a lookalike host that merely CONTAINS a
+	// real AI domain must never claim AI-assisted attribution.
+	if _, ok := d.MatchReferrerAI("chatgpt.com.evil.tld"); ok {
+		t.Fatal("lookalike host spoofing the AI-referrer ladder")
+	}
+	if _, ok := d.MatchReferrerAI("not-chatgpt.com"); ok {
+		t.Fatal("hyphen-lookalike host spoofing the AI-referrer ladder")
 	}
 }
 

@@ -139,6 +139,15 @@ func Score(in Input) Result {
 			return Result{BotScore: 0.95, ClientType: ct, Classification: botdb.ClassBadBot,
 				BotName: in.StaticMatch.Name, Authoritative: true,
 				Reasons: []string{"static bad-bot signature: " + in.StaticMatch.Name}}
+		case botdb.ClassUnknown:
+			// Challenge tier: a known automation CLIENT is not a known ATTACK.
+			// Generic HTTP libraries double as monitors and webhooks; score them
+			// into the solvable challenge band (>=0.40, below the 0.80 block)
+			// instead of convicting on sight — hostile behaviour among them is
+			// still caught by behaviour/inspect/learning (2025 audit).
+			return Result{BotScore: 0.6, ClientType: botdb.TypeUnknown, Classification: botdb.ClassUnknown,
+				BotName: in.StaticMatch.Name, Authoritative: false,
+				Reasons: []string{"known automation client (challenge tier): " + in.StaticMatch.Name}}
 		}
 	}
 

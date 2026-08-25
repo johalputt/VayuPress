@@ -101,8 +101,25 @@ var aiAgents = []Signature{
 	{Name: "Diffbot", Classification: ClassAIAgent, UAPatterns: []string{"diffbot"}, IPRangeHint: "Diffbot"},
 }
 
-// badBots are challenged or blocked: scraper frameworks, scanners, generic
-// automation clients that identify themselves in the User-Agent.
+// challengeBots are automation clients that are NOT presumed hostile: generic
+// HTTP libraries double as uptime monitors, webhook receivers, feed fetchers
+// and developer tooling. The old list convicted them as bad bots on sight —
+// instant block + IP jail + kernel ban + fleet-wide gossip with no solvable
+// recovery (a PoW page needs JavaScript a library will never run). They now
+// classify Unknown at challenge-tier score: hostile automation among them is
+// still caught by behaviour/inspect heuristics and the learning DB, while a
+// human behind curl gets a solvable path instead of a conviction (2025 audit:
+// accuracy fix that is also a speed win — fewer jail/offload/gossip writes).
+var challengeBots = []Signature{
+	{Name: "Go-http-client", Classification: ClassUnknown, UAPatterns: []string{"go-http-client"}},
+	{Name: "python-requests", Classification: ClassUnknown, UAPatterns: []string{"python-requests", "python-urllib", "aiohttp"}},
+	{Name: "libwww-perl", Classification: ClassUnknown, UAPatterns: []string{"libwww-perl", "lwp::simple"}},
+	{Name: "Java", Classification: ClassUnknown, UAPatterns: []string{"java/1.", "apache-httpclient"}},
+	{Name: "curl/wget", Classification: ClassUnknown, UAPatterns: []string{"curl/", "wget/"}},
+}
+
+// badBots are challenged or blocked: scraper frameworks, scanners, dedicated
+// hostile automation that identifies itself in the User-Agent.
 var badBots = []Signature{
 	{Name: "Scrapy", Classification: ClassBadBot, UAPatterns: []string{"scrapy"}},
 	{Name: "Headless Chrome", Classification: ClassBadBot, UAPatterns: []string{"headlesschrome", "headless"}},
@@ -117,11 +134,6 @@ var badBots = []Signature{
 	{Name: "WPScan", Classification: ClassBadBot, UAPatterns: []string{"wpscan"}},
 	{Name: "Nmap", Classification: ClassBadBot, UAPatterns: []string{"nmap scripting engine"}},
 	{Name: "Hydra", Classification: ClassBadBot, UAPatterns: []string{"hydra"}},
-	{Name: "Go-http-client", Classification: ClassBadBot, UAPatterns: []string{"go-http-client"}},
-	{Name: "python-requests", Classification: ClassBadBot, UAPatterns: []string{"python-requests", "python-urllib", "aiohttp"}},
-	{Name: "libwww-perl", Classification: ClassBadBot, UAPatterns: []string{"libwww-perl", "lwp::simple"}},
-	{Name: "Java", Classification: ClassBadBot, UAPatterns: []string{"java/1.", "apache-httpclient"}},
-	{Name: "curl/wget", Classification: ClassBadBot, UAPatterns: []string{"curl/", "wget/"}},
 }
 
 // aiReferrerDomains maps a referrer host substring to the AI system name. A
@@ -148,10 +160,11 @@ type StaticDB struct {
 
 // NewStaticDB builds the static classifier from the compiled-in signature lists.
 func NewStaticDB() *StaticDB {
-	all := make([]Signature, 0, len(goodBots)+len(aiAgents)+len(badBots))
+	all := make([]Signature, 0, len(goodBots)+len(aiAgents)+len(badBots)+len(challengeBots))
 	all = append(all, aiAgents...) // AI agents first: ChatGPT-User etc. before generic "bot"
 	all = append(all, goodBots...)
 	all = append(all, badBots...)
+	all = append(all, challengeBots...) // challenge tier: Unknown, not a conviction
 	return &StaticDB{all: all}
 }
 
@@ -180,7 +193,7 @@ func (d *StaticDB) MatchReferrerAI(referrerHost string) (string, bool) {
 		return "", false
 	}
 	for dom, name := range aiReferrerDomains {
-		if h == dom || strings.HasSuffix(h, "."+dom) || strings.Contains(h, dom) {
+		if h == dom || strings.HasSuffix(h, "."+dom) {
 			return name, true
 		}
 	}

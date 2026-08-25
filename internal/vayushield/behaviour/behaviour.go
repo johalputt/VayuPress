@@ -43,9 +43,12 @@ import (
 
 const (
 	// slots is a power of two so the index is a mask rather than a modulo.
-	// 4096 slots x 48 bytes is under 200 KiB, in the same budget as the L2
-	// sketch, and is a fixed cost rather than one an attacker can grow.
-	slots     = 4096
+	// 16384 slots x ~48 bytes is ~800 KiB fixed — the same order of budget as
+	// the L2 sketch, and a fixed cost rather than one an attacker can grow.
+	// Raised from 4096 (2025 audit): at >4k active clients per minute the old
+	// table's birthday collisions started indicting colliding readers, and
+	// CGNAT subscribers legitimately share one slot.
+	slots     = 16384
 	slotMask  = slots - 1
 	windowSec = 60
 )

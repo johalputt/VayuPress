@@ -1087,7 +1087,12 @@ func (m *Manager) Classify(r *http.Request) Verdict {
 	// assets, a broken link produces 404s — so a verdict from heuristics alone
 	// would be a verdict on the wrong person often enough to matter.
 	if m.behaviour != nil {
-		bs := m.behaviour.Observe(m.enforcementKey(ipOnly(m.cfg.ClientIP(r))), r.URL.Path, 0)
+		// The behaviour key splits NAT populations by UA family: an office or
+		// mobile carrier shares one IP, and blending a Chrome reader with the
+		// Python script two desks down convicted whoever hit the slot second
+		// (2025 audit). Same string-hash cost, materially better precision.
+		bkey := m.enforcementKey(ipOnly(m.cfg.ClientIP(r))) + "|" + uaFamily(sig.UserAgent)
+		bs := m.behaviour.Observe(bkey, r.URL.Path, 0)
 		in.BehaviourDelta, in.BehaviourReasons = bs.Score()
 	}
 
