@@ -108,6 +108,27 @@ func (s *Store) MarkPremiumGrantPaidByOrder(ctx context.Context, orderRef string
 	return err
 }
 
+// PremiumGrantByOrder returns the grant created for an order reference, or nil
+// when there is none. The refund path reads it BEFORE revoking so it can find
+// whether the purchase was already claimed and deactivate the live mailbox too
+// — revoking only the ledger row used to leave a refunded premium address
+// sending and receiving mail forever (audit).
+func (s *Store) PremiumGrantByOrder(ctx context.Context, orderRef string) (*PremiumGrant, error) {
+	orderRef = strings.TrimSpace(orderRef)
+	if orderRef == "" {
+		return nil, fmt.Errorf("order reference required")
+	}
+	g, err := scanPremiumGrant(s.db.QueryRowContext(ctx,
+		`SELECT `+premiumGrantCols+` FROM premium_mailid_grants WHERE order_ref=? ORDER BY created_at DESC LIMIT 1`, orderRef))
+	if err == sql.ErrNoRows {
+		return nil, nil //nolint:nilnil // no grant for this order is a normal answer
+	}
+	if err != nil {
+		return nil, err
+	}
+	return g, nil
+}
+
 // RevokePremiumGrantByOrder revokes the grant created for an order reference —
 // the mirror image of MarkPremiumGrantPaidByOrder, called when that order is
 // refunded or canceled after having been paid (audit: revoke-on-refund). A

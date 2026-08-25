@@ -245,11 +245,21 @@ func (p *SubprocessPlugin) Invoke(ctx context.Context, hook string, payload map[
 	}
 
 	// Read response with deadline.
+	// Capture the scanner LOCALLY before spawning: the timeout and ctx-cancel
+	// branches below run killSubprocess() on this same mutex-held struct,
+	// which re-points p.stdout to nil (and a restart re-points it at a fresh
+	// pipe). A goroutine that read p.stdout after that either panicked on the
+	// nil dereference — killing the whole single-binary process from an
+	// unrecoverable goroutine — or raced the NEXT invocation's scanner
+	// (bufio.Scanner is not concurrency-safe). With a local binding the
+	// orphaned reader scans only its own pipe and simply reports "closed"
+	// once the kill lands; the channels are buffered so it never leaks.
+	sc := p.stdout
 	respCh := make(chan []byte, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		if p.stdout.Scan() {
-			respCh <- p.stdout.Bytes()
+		if sc != nil && sc.Scan() {
+			respCh <- sc.Bytes()
 		} else {
 			errCh <- fmt.Errorf("sandbox: stdout closed (plugin crashed?)")
 		}

@@ -273,6 +273,19 @@ func (a *App) handleAssignMailbox(w http.ResponseWriter, r *http.Request) {
 	// Create the account, or update the password + role if it already exists.
 	if err := accts.Create(r.Context(), email, hash, u.Name, role); err != nil {
 		if strings.Contains(err.Error(), "already exists") {
+			// SEVERANCE (ADR-0152 D4). The re-password branch below is a direct
+			// store write that bypasses applyMailPasswordReset — the one funnel
+			// every OTHER operator password change goes through. On a
+			// handed-over mailbox it silently re-armed operator access: set a
+			// password here and sign in as the client, with no record in their
+			// access ledger. The holder mints their own credentials after
+			// handover; if an operator truly needs in, break-glass is the path
+			// that leaves the mark nobody can remove.
+			if accts.IsHandedOver(email) {
+				writeAPIError(w, r, http.StatusForbidden, "handed-over",
+					"this mailbox has been handed over to its owner; its password cannot be set from the console (use break-glass recovery if you must)", "")
+				return
+			}
 			if perr := accts.SetPasswordHash(r.Context(), email, hash); perr != nil {
 				writeAPIError(w, r, http.StatusBadRequest, "assign-failed", perr.Error(), "")
 				return

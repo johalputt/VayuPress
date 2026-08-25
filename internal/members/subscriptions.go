@@ -204,6 +204,13 @@ func (s *Store) ScheduleCancellation(ctx context.Context, memberID string) error
 
 // ActiveSubscription returns a member's current active subscription, or
 // (nil, nil) when they have none (i.e. a free member).
+//
+// A subscription whose paid period has ended is expired HERE, on read: Stripe
+// advances current_period_end at every renewal and its webhooks drive the other
+// transitions, but a PayPal/direct/generic-webhook order sets the timestamp once
+// and nothing ever moves it — so an entitlement bought once never lapsed (audit:
+// membership entitlements never lapse outside Stripe). The lazy check makes the
+// read path itself the enforcement point, so no caller can forget it.
 func (s *Store) ActiveSubscription(ctx context.Context, memberID string) (*Subscription, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id,member_id,tier_slug,status,cadence,amount_cents,currency,stripe_subscription,current_period_end,trial_end,cancel_at_period_end,started_at,canceled_at
@@ -213,7 +220,96 @@ func (s *Store) ActiveSubscription(ctx context.Context, memberID string) (*Subsc
 	if err != nil {
 		return nil, nil //nolint:nilerr // no active subscription is not an error
 	}
+	if sub.CurrentPeriodEnd != nil && time.Now().UTC().After(sub.CurrentPeriodEnd.UTC()) {
+		if s.expireOneLapsed(ctx, sub) {
+			return nil, nil // the paid period is over; they are free until they pay again
+		}
+	}
 	return sub, nil
+}
+
+// expireOneLapsed expires one subscription whose period has passed and drops
+// the member to free IF their tier column still names this subscription's tier
+// (an operator's manual comp or later upgrade must survive). Reports whether it
+// won the race.
+func (s *Store) expireOneLapsed(ctx context.Context, sub *Subscription) bool {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false
+	}
+	defer tx.Rollback() //nolint:errcheck
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	res, err := tx.ExecContext(ctx,
+		`UPDATE member_subscriptions SET status='expired',canceled_at=? WHERE id=? AND status=? AND current_period_end IS NOT NULL AND current_period_end<?`,
+		now, sub.ID, SubActive, now)
+	if err != nil {
+		return false
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return false // someone else renewed or expired it first
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE members SET tier=? WHERE id=? AND tier=?`, TierFree, sub.MemberID, sub.TierSlug); err != nil {
+		return false
+	}
+	if err := tx.Commit(); err != nil {
+		return false
+	}
+	s.recordEventTx(ctx, sub.MemberID, EventExpired, "", 0)
+	return true
+}
+
+// ExpireLapsedSubscriptions expires EVERY active subscription whose paid period
+// has ended and returns how many were closed. Runs on the hourly maintenance
+// tick so members who never log in are demoted too, not just those whose reads
+// trip the lazy check in ActiveSubscription.
+func (s *Store) ExpireLapsedSubscriptions(ctx context.Context) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id,member_id,tier_slug FROM member_subscriptions WHERE status=? AND current_period_end IS NOT NULL AND current_period_end<?`,
+		SubActive, now)
+	if err != nil {
+		return 0, err
+	}
+	type lapsed struct{ id, memberID, tier string }
+	var lapsedSubs []lapsed
+	for rows.Next() {
+		var l lapsed
+		if err := rows.Scan(&l.id, &l.memberID, &l.tier); err == nil {
+			lapsedSubs = append(lapsedSubs, l)
+		}
+	}
+	rows.Close()
+	if len(lapsedSubs) == 0 {
+		return 0, nil
+	}
+	var expired int64
+	for _, l := range lapsedSubs {
+		res, err := tx.ExecContext(ctx,
+			`UPDATE member_subscriptions SET status='expired',canceled_at=? WHERE id=? AND status=?`,
+			now, l.id, SubActive)
+		if err != nil {
+			continue
+		}
+		n, _ := res.RowsAffected()
+		expired += n
+		if n > 0 {
+			_, _ = tx.ExecContext(ctx,
+				`UPDATE members SET tier=? WHERE id=? AND tier=?`, TierFree, l.memberID, l.tier)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	for _, l := range lapsedSubs {
+		s.recordEventTx(ctx, l.memberID, EventExpired, "", 0)
+	}
+	return expired, nil
 }
 
 // syncSubscriptionForTier keeps subscription state consistent when an operator

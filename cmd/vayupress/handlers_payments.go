@@ -843,6 +843,14 @@ func (a *App) revokeOrderFulfilment(ctx context.Context, o *payments.Order) {
 	}
 	switch o.TierSlug {
 	case mailIDOrderTier:
+		// Read the grant BEFORE revoking it: if the buyer already claimed the
+		// address, the ledger row is not the only thing they hold — a live
+		// mailbox is. Revoking just the row used to leave a refunded premium
+		// address fully able to send and receive mail (audit).
+		grant, gerr := a.members.PremiumGrantByOrder(ctx, o.Reference)
+		if gerr != nil {
+			logging.LogError("payments", "grant lookup for revocation failed: "+o.Reference, gerr.Error())
+		}
 		revoked, err := a.members.RevokePremiumGrantByOrder(ctx, o.Reference)
 		if err != nil {
 			logging.LogError("payments", "grant revocation failed: "+o.Reference, err.Error())
@@ -851,6 +859,14 @@ func (a *App) revokeOrderFulfilment(ctx context.Context, o *payments.Order) {
 		if !revoked {
 			logging.LogInfo("payments", "no grant to revoke for order "+o.Reference)
 			return
+		}
+		if grant != nil && grant.Status == members.GrantClaimed && a.vayuMail != nil {
+			addr := strings.ToLower(grant.Address())
+			if derr := a.vayuMail.Accounts().SetActive(ctx, addr, false); derr != nil {
+				logging.LogError("payments", "mailbox deactivation after refund failed for "+addr+": "+o.Reference, derr.Error())
+			} else {
+				logging.LogInfo("payments", "refunded premium mailbox deactivated: "+addr+" ("+o.Reference+")")
+			}
 		}
 		logging.LogInfo("payments", "premium grant revoked for order "+o.Reference)
 	default:

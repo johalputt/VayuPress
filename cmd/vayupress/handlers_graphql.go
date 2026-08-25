@@ -23,11 +23,21 @@ import (
 // gqlResolver adapts App's data services to the graphqlapi.Resolver interface.
 type gqlResolver struct{ a *App }
 
+// The public GraphQL surface is anonymous (routes.go mounts it outside the
+// admin gate), so every resolver here enforces the same visibility rule as the
+// public HTML site: only published articles exist. Repo.Get deliberately
+// returns any status (operators need drafts); serving that raw leaked full
+// unpublished post bodies to anyone who asked by slug (red-team round 2).
+const gqlPublicStatus = "published"
+
 func (g gqlResolver) Article(ctx context.Context, slug string) (*dbpkg.Article, error) {
 	art, err := g.a.articles.Repo.Get(ctx, slug)
 	if err != nil {
 		// Not-found is a nil result, not an error, for GraphQL.
 		return nil, nil //nolint:nilerr
+	}
+	if art.Status != gqlPublicStatus {
+		return nil, nil //nolint:nilerr // drafts are invisible here
 	}
 	return &art, nil
 }
@@ -49,6 +59,15 @@ func (g gqlResolver) Articles(ctx context.Context, tag string, limit, offset int
 	if err != nil {
 		return nil, err
 	}
+	// Defence-in-depth: the public listing already excludes drafts, but filter
+	// again here so a repo change can never silently reopen the leak.
+	published := arts[:0]
+	for _, art := range arts {
+		if art.Status == gqlPublicStatus {
+			published = append(published, art)
+		}
+	}
+	arts = published
 	if offset >= len(arts) {
 		return nil, nil
 	}
@@ -70,7 +89,7 @@ func (g gqlResolver) Search(ctx context.Context, query string, limit int) ([]dbp
 	}
 	out := make([]dbpkg.Article, 0, len(res.Hits))
 	for _, h := range res.Hits {
-		if art, err := g.a.articles.Repo.Get(ctx, h.Slug); err == nil {
+		if art, err := g.a.articles.Repo.Get(ctx, h.Slug); err == nil && art.Status == gqlPublicStatus {
 			out = append(out, art)
 		}
 	}

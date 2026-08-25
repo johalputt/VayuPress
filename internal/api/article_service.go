@@ -152,6 +152,17 @@ func (s *ArticleService) BulkCreate(ctx context.Context, items []BulkCreateItem)
 			res.SkipReasons = append(res.SkipReasons, in.Slug+": "+err.Error())
 			continue
 		}
+		// Same storage-quota gate as Create: without it one bulk call — or a
+		// stream of them — filled the database past its ceiling while every
+		// single-article create was being refused (audit).
+		if s.StorageCheckFn != nil {
+			used, quota := s.StorageCheckFn()
+			if used >= quota {
+				res.Skipped++
+				res.SkipReasons = append(res.SkipReasons, in.Slug+": storage quota exceeded")
+				continue
+			}
+		}
 		exists, _ := s.Repo.SlugExists(ctx, in.Slug)
 		if exists {
 			res.Skipped++

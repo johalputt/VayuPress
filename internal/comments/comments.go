@@ -178,15 +178,18 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	return err
 }
 
-// UpdateBody replaces a comment's body text, leaving its status and thread
-// position unchanged so an edited comment stays exactly where it was. The caller
-// authorises ownership; an empty body is rejected. Not-found is reported so a
-// stale edit against a deleted comment fails cleanly rather than silently.
-func (s *Store) UpdateBody(ctx context.Context, id, body string) error {
+// UpdateBodyOwner replaces a comment's body on an OWNER edit and returns the
+// comment to the moderation queue (status='pending') in the SAME statement, so
+// there is no window in which rewritten text is publicly visible unreviewed
+// (audit: editing an APPROVED comment used to leave it approved — one benign
+// approval permanently converted the account into an unmoderated publisher).
+// Operator moderation keeps using Moderate, which sets status directly.
+func (s *Store) UpdateBodyOwner(ctx context.Context, id, body string) error {
 	if strings.TrimSpace(body) == "" {
 		return fmt.Errorf("comment body is empty")
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE comments SET body=? WHERE id=?`, body, id)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE comments SET body=?, status='pending' WHERE id=?`, body, id)
 	if err != nil {
 		return fmt.Errorf("comments update: %w", err)
 	}

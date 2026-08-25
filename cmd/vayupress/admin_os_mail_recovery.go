@@ -460,6 +460,21 @@ func (a *App) handleVayuOSRecoveryDecide(w http.ResponseWriter, r *http.Request)
 		})
 		return
 	}
+	// SEVERANCE (ADR-0152 D4). The approved link is a BEARER credential handed
+	// to the operator in this response — minting one for a handed-over mailbox
+	// re-armed operator access through the public recovery flow, bypassing the
+	// break-glass-with-ledger rule that governs every other way in after
+	// handover. The holder keeps their own recovery codes, trusted devices and
+	// app passwords; an operator who truly needs in must use break-glass, which
+	// writes the permanent client-visible record.
+	if accts.IsHandedOver(email) {
+		writeJSON(w, r, 200, map[string]interface{}{
+			"decision": decision, "email": email,
+			"warning": "That mailbox has been handed over to its owner, so no reset link was created. " +
+				"If access is genuinely required, use the break-glass emergency override — it records itself in the holder's access ledger.",
+		})
+		return
+	}
 	token, terr := accts.CreateRecoveryToken(r.Context(), email)
 	if terr != nil {
 		writeAPIError(w, r, 500, "token-failed", "could not create a reset link", "")

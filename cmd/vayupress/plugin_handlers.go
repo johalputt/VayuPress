@@ -303,8 +303,13 @@ func (a *App) handleCommentList(w http.ResponseWriter, r *http.Request) {
 // Edit the body of your OWN comment. Identity is taken from the session
 // (resolveCommenter), never the client payload, so no one can rewrite another
 // person's words — an operator's blanket moderation power extends to *deleting*
-// any comment, not silently editing what someone said. Status and thread
-// position are left unchanged so an edited comment stays in place.
+// any comment, not silently editing what someone said.
+//
+// An owner edit returns the comment to PENDING in the same statement
+// (UpdateBodyOwner): an edit after approval used to leave rewritten text live
+// and unreviewed forever, turning one benign approval into a permanent
+// moderation bypass (audit). The write is budgeted and body-capped exactly
+// like submission so the edit path cannot become the unmetered door.
 func (a *App) handleCommentEdit(w http.ResponseWriter, r *http.Request) {
 	if a.commentStore == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "comments-disabled", "Comments not initialised", "")
@@ -315,11 +320,17 @@ func (a *App) handleCommentEdit(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusUnauthorized, "members-only", "Please sign in to edit your comment", "")
 		return
 	}
+	if !commentIngest.allow(who.Email) {
+		writeAPIError(w, r, http.StatusTooManyRequests, "slow-down", "Too many comment edits — try again shortly", "")
+		return
+	}
 	id := chi.URLParam(r, "id")
 	var body struct {
 		Body string `json:"body"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	// Same 16 KB cap as submission: without it the edit path spooled the whole
+	// request body into memory first (audit).
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
@@ -332,11 +343,12 @@ func (a *App) handleCommentEdit(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusForbidden, "not-your-comment", "You can only edit your own comment", "")
 		return
 	}
-	if err := a.commentStore.UpdateBody(r.Context(), id, body.Body); err != nil {
+	if err := a.commentStore.UpdateBodyOwner(r.Context(), id, body.Body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "edit-error", err.Error(), "")
 		return
 	}
 	c.Body = strings.TrimSpace(body.Body)
+	c.Status = "pending" // honest response: the edited text awaits re-approval
 	pc := toPublicComment(c)
 	pc.Avatar = a.commenterAvatar(r.Context(), c.Email)
 	pc.CanEdit = true
