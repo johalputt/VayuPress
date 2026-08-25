@@ -463,6 +463,13 @@ func (a *App) handleVAEnter(w http.ResponseWriter, r *http.Request) {
 	lang := r.Header.Get("Accept-Language")
 	now := time.Now().UTC()
 
+	// Browser-level tracking opt-out (DNT:1 / Sec-GPC:1) drops measurement —
+	// the same rule the legacy /collect endpoint applies (2025 plan Wave 4).
+	if r.Header.Get("DNT") == "1" || strings.EqualFold(r.Header.Get("Sec-GPC"), "1") {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	verdict := a.vayuShield.Classify(r)
 	clientType := string(verdict.Result.ClientType)
 	isBot := verdict.Result.ClientType == botdb.TypeBadBot || verdict.Result.ClientType == botdb.TypeHeadless ||
@@ -1413,6 +1420,17 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Traffic sources</div><div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Views</th><th>Sessions</th><th>Avg time</th><th>Avg scroll</th><th>Engagement</th></tr></thead><tbody>`)
 		for _, s := range srcs {
 			b.WriteString(`<tr><td>` + html.EscapeString(s.Category) + `</td><td>` + vsBarCell(s.Views, maxV) + `</td><td>` + strconv.FormatInt(s.Sessions, 10) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `s</td><td>` + ftoa2(s.AvgScrollPct) + `%</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
+		}
+		b.WriteString(`</tbody></table></div></div>`)
+	}
+	// Bot-share trend (2025 plan Wave 3): Shield verdicts quantified per day —
+	// the operator sees what fraction of everything that hit the site was real.
+	if bs, err := a.vaEngagement.BotShare(ctx, days); err == nil && len(bs.Days) > 0 {
+		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Traffic quality — bot share</div>`)
+		b.WriteString(`<p class="muted text-sm"><strong>` + ftoa2(bs.BotPercent) + `%</strong> of recorded traffic over the last ` + strconv.Itoa(days) + ` days was bot traffic (` + strconv.FormatInt(bs.BotTotal, 10) + ` of ` + strconv.FormatInt(bs.HumanTotal+bs.BotTotal, 10) + ` requests). Humans are counted only; bots are excluded from every metric above.</p><div class="table-wrap"><table class="table"><thead><tr><th>Day</th><th>Human</th><th>GoodBot</th><th>AIAgent</th><th>Headless</th><th>BadBot</th><th>Avg score</th></tr></thead><tbody>`)
+		for i := len(bs.Days) - 1; i >= 0 && i >= len(bs.Days)-14; i-- {
+			d := bs.Days[i]
+			b.WriteString(`<tr><td>` + d.Date + `</td><td>` + strconv.FormatInt(d.Human, 10) + `</td><td>` + strconv.FormatInt(d.GoodBot, 10) + `</td><td>` + strconv.FormatInt(d.AIAgent, 10) + `</td><td>` + strconv.FormatInt(d.Headless, 10) + `</td><td>` + strconv.FormatInt(d.BadBot, 10) + `</td><td>` + ftoa2(d.BotScore) + `</td></tr>`)
 		}
 		b.WriteString(`</tbody></table></div></div>`)
 	}

@@ -129,6 +129,15 @@ func (a *App) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 
 // ── Public ingest (no auth) ──────────────────────────────────────────────────
 
+// dntHonored reports whether this beacon carries an explicit tracking
+// opt-out signal: DNT: 1 or Sec-GPC: 1. VayuPress is cookieless and stores no
+// PII, so honoring it is a courtesy rather than a legal necessity — but a
+// visitor who flipped either switch asked not to be measured, and "we are
+// privacy-friendly" should include the people who verify (2025 plan Wave 4).
+func dntHonored(r *http.Request) bool {
+	return r.Header.Get("DNT") == "1" || strings.EqualFold(r.Header.Get("Sec-GPC"), "1")
+}
+
 // POST /api/v1/analytics/collect
 //
 // Unauthenticated by design (it ingests visitor beacons). It is hardened with a
@@ -136,6 +145,12 @@ func (a *App) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 // identity server-side without persisting the IP or User-Agent.
 func (a *App) handleAnalyticsCollect(w http.ResponseWriter, r *http.Request) {
 	if a.analytics == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	// An explicit browser-level opt-out drops the measurement entirely rather
+	// than storing it differently.
+	if dntHonored(r) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

@@ -331,17 +331,38 @@ func (s *Store) flushBatch(batch []ingestEvent) {
 
 // ── GDPR retention ────────────────────────────────────────────────────────────
 
+// purgeChunk bounds each DELETE transaction. One giant DELETE on the single
+// SQLite writer held its lock (and rebuilt the rollback journal) for as long
+// as the expired range was deep — minutes on large tables — stalling every
+// beacon flush behind it (2025 audit). Chunked deletes keep each transaction
+// short so the writer interleaves with live ingest.
+const purgeChunk = 5000
+
 // Purge deletes engagement rows older than retainDays (measured from entry_time).
 // Returns the number of rows removed. A retainDays <= 0 is a no-op ("forever").
+// Deletion runs in rowid-bounded chunks; between chunks the writer lock is
+// released, WAL is checkpoint-truncated once at the end.
 func (s *Store) Purge(ctx context.Context, retainDays int) (int64, error) {
 	if s == nil || s.db == nil || retainDays <= 0 {
 		return 0, nil
 	}
 	cutoff := time.Now().UTC().AddDate(0, 0, -retainDays)
-	res, err := s.db.ExecContext(ctx, `DELETE FROM vayuanalytics_sessions WHERE entry_time<?`, cutoff)
-	if err != nil {
-		return 0, err
+	var total int64
+	for {
+		res, err := s.db.ExecContext(ctx,
+			`DELETE FROM vayuanalytics_sessions WHERE id IN (SELECT id FROM vayuanalytics_sessions WHERE entry_time<? LIMIT ?)`,
+			cutoff, purgeChunk)
+		if err != nil {
+			return total, err
+		}
+		n, _ := res.RowsAffected()
+		total += n
+		if n < purgeChunk {
+			break // range exhausted
+		}
 	}
-	n, _ := res.RowsAffected()
-	return n, nil
+	// Fold the WAL back after a big removal so readers do not churn through
+	// dead pages for hours afterwards.
+	_, _ = s.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`)
+	return total, nil
 }

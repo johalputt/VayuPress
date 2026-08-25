@@ -98,6 +98,14 @@ type SourceStat struct {
 	EngagementRate float64 `json:"engagement_rate"`
 }
 
+// kAnonymityFloor is the smallest segment size any grouped report may reveal.
+// A city/source/page with fewer distinct visitors than this is suppressed
+// rather than reported: a segment of 1-4 visitors can single someone out
+// (audit A4 — "no k-anonymity floor, including on exports"). Applied at the
+// query layer via HAVING so every consumer — dashboard AND CSV export —
+// inherits it for free.
+const kAnonymityFloor = 5
+
 // SourceBreakdown returns human traffic grouped by source category with the
 // engagement quality of each — the data behind the source pie + comparison.
 func (s *Store) SourceBreakdown(ctx context.Context, days int) ([]SourceStat, error) {
@@ -107,7 +115,8 @@ COUNT(1), COUNT(DISTINCT session_hash),
 COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0),
 COALESCE(SUM(engaged),0)
 FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+`
-GROUP BY source_category ORDER BY COUNT(1) DESC`, from)
+GROUP BY source_category HAVING COUNT(DISTINCT session_hash)>=?
+ORDER BY COUNT(1) DESC`, from, kAnonymityFloor)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +264,10 @@ func (s *Store) Realtime(ctx context.Context, windowMinutes int) (*Realtime, err
 	_ = s.readDB().QueryRowContext(ctx, `SELECT COUNT(DISTINCT session_hash) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+``, since).Scan(&rt.ActiveVisitors)
 	_ = s.readDB().QueryRowContext(ctx, `SELECT COUNT(DISTINCT session_hash) FROM vayuanalytics_sessions WHERE entry_time>=? AND NOT (`+human+`)`, since).Scan(&rt.BotsActive)
 
-	rt.ByCountry = s.groupCount(ctx, `SELECT COALESCE(NULLIF(country_code,''),'??'), COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY country_code`, since)
+	// Country is a small-segment re-identification risk (a lone visitor from
+	// an unusual country is identifiable), so it carries the same k-floor as
+	// every other grouped report.
+	rt.ByCountry = s.groupCount(ctx, `SELECT COALESCE(NULLIF(country_code,''),'??'), COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY country_code HAVING COUNT(DISTINCT session_hash)>=`+itoa(kAnonymityFloor)+``, since)
 	rt.BySource = s.groupCount(ctx, `SELECT source_category, COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY source_category`, since)
 
 	if rows, err := s.readDB().QueryContext(ctx, `SELECT page_path, COUNT(1), COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY page_path ORDER BY COUNT(1) DESC LIMIT 20`, since); err == nil {
@@ -296,6 +308,85 @@ func (s *Store) groupCount(ctx context.Context, query string, since time.Time) m
 	return out
 }
 
+// BotShare is the daily human-vs-bot split of recorded traffic — the
+// "how much of what hits my site is real" surface (2025 plan: Wave 3
+// cross-signal between VayuShield verdicts and Analytics reporting).
+type BotShare struct {
+	Days       []BotShareDay `json:"days"`
+	HumanTotal int64         `json:"human_total"`
+	BotTotal   int64         `json:"bot_total"`
+	BotPercent float64       `json:"bot_percent"` // bots / (human+bots) over the window
+}
+
+// BotShareDay is one UTC day's split.
+type BotShareDay struct {
+	Date     string  `json:"date"`
+	Human    int64   `json:"human"`
+	GoodBot  int64   `json:"good_bot"`
+	AIAgent  int64   `json:"ai_agent"`
+	Headless int64   `json:"headless"`
+	BadBot   int64   `json:"bad_bot"`
+	BotScore float64 `json:"avg_bot_score"` // mean score across ALL traffic that day
+}
+
+// BotShare returns per-day traffic quality for the trailing window. It reads
+// only the client_type/bot_score columns every enter already records, so it
+// costs one grouped scan — no new ingest path, no schema change.
+func (s *Store) BotShare(ctx context.Context, days int) (*BotShare, error) {
+	from := fromTime(days)
+	rows, err := s.readDB().QueryContext(ctx, `SELECT date(entry_time),
+COALESCE(SUM(CASE WHEN client_type NOT IN ('BadBot','GoodBot','AIAgent','Headless') THEN 1 ELSE 0 END),0),
+COALESCE(SUM(CASE WHEN client_type='GoodBot' THEN 1 ELSE 0 END),0),
+COALESCE(SUM(CASE WHEN client_type='AIAgent' THEN 1 ELSE 0 END),0),
+COALESCE(SUM(CASE WHEN client_type='Headless' THEN 1 ELSE 0 END),0),
+COALESCE(SUM(CASE WHEN client_type='BadBot' THEN 1 ELSE 0 END),0),
+COALESCE(AVG(bot_score),0)
+FROM vayuanalytics_sessions WHERE entry_time>=? GROUP BY date(entry_time) ORDER BY date(entry_time)`, from)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	rep := &BotShare{}
+	for rows.Next() {
+		var d BotShareDay
+		if err := rows.Scan(&d.Date, &d.Human, &d.GoodBot, &d.AIAgent, &d.Headless, &d.BadBot, &d.BotScore); err != nil {
+			return nil, err
+		}
+		rep.Days = append(rep.Days, d)
+		rep.HumanTotal += d.Human
+		rep.BotTotal += d.GoodBot + d.AIAgent + d.Headless + d.BadBot
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if tot := rep.HumanTotal + rep.BotTotal; tot > 0 {
+		rep.BotPercent = round2(float64(rep.BotTotal) / float64(tot) * 100)
+	}
+	return rep, nil
+}
+
 func round2(f float64) float64 {
 	return float64(int64(f*100+0.5)) / 100
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var b [20]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		b[i] = '-'
+	}
+	return string(b[i:])
 }
