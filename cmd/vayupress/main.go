@@ -913,6 +913,9 @@ func main() {
 	// written, so this line is pinned by a test: a recorder that counts into a
 	// buffer nobody drains is the same defect as a setting nobody reads.
 	a.analytics.StartCollector(context.Background())
+	// Start the /collect batch flusher. Without it every collected beacon is
+	// buffered and never written — same pinned-defect class as above.
+	a.analytics.StartEventCollector(context.Background())
 	a.webhooks = webhooks.New(dbpkg.DB, a.outboundClient)
 	a.social = social.New(social.MastodonConfig{
 		Instance: config.Cfg.MastodonInstance,

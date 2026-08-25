@@ -24,8 +24,9 @@ import (
 // Store aggregates page views in SQLite.
 type Store struct {
 	db     *sql.DB
-	reader *sql.DB    // dashboard/report read pool; falls back to db. Set via UseReader.
-	coll   *collector // in-memory view tally; see recorder.go
+	reader *sql.DB      // dashboard/report read pool; falls back to db. Set via UseReader.
+	coll   *collector   // in-memory view tally; see recorder.go
+	evq    *evCollector // batched /collect event queue; see collectqueue.go
 	// selfHosts reports every host this install answers for, so referrer lists
 	// exclude internal navigation on ALL of them. Nil is the single-domain
 	// shape; see UseSelfHosts.
@@ -39,7 +40,7 @@ type Store struct {
 // separate (StartCollector) because it needs a lifetime; a Store whose flusher
 // was never started reports Running:false on the panel rather than losing views
 // in silence.
-func New(db *sql.DB) *Store { return &Store{db: db, reader: db, coll: newCollector()} }
+func New(db *sql.DB) *Store { return &Store{db: db, reader: db, coll: newCollector(), evq: &evCollector{}} }
 
 // UseReader routes the report/dashboard read queries at a dedicated read pool
 // instead of the single writer connection. The admin Analytics panel runs many

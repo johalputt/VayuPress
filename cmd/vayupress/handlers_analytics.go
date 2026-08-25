@@ -188,10 +188,10 @@ func (a *App) handleAnalyticsCollect(w http.ResponseWriter, r *http.Request) {
 	// The domain is resolved by THIS INSTALL from the host it served, never from
 	// the beacon body. This endpoint is public and unauthenticated: a domain a
 	// visitor could name is a domain a visitor could write traffic into.
-	if err := a.analytics.Collect(r.Context(), req, ip, r.UserAgent(), a.contentScope(r)); err != nil {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
+	// Normalisation happens here (identity needs the request), then the event
+	// is queued in memory — the batched flusher owns every database write, so
+	// beacon volume no longer serialises on the single writer connection.
+	a.analytics.CollectAsync(req, ip, r.UserAgent(), a.contentScope(r))
 	w.WriteHeader(http.StatusNoContent)
 }
 
