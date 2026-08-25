@@ -107,3 +107,21 @@ func KeyInfoFromContext(ctx context.Context) (apikeys.KeyInfo, bool) {
 	ki, ok := ctx.Value(keyInfoCtxKey{}).(apikeys.KeyInfo)
 	return ki, ok
 }
+
+// APIKeyMayAccessDomain reports whether the request's authenticated key may act
+// on domainID. Rules:
+//
+//   - session-authenticated operators (no KeyInfo in context) pass — their RBAC
+//     is separate and broader;
+//   - a global key (empty KeyInfo.DomainID) passes everywhere;
+//   - a domain-scoped key (migration 092) passes only on its own domain.
+//
+// Handlers that resolve a target hosted domain SHOULD call this before serving,
+// so a leaked scoped key cannot read a second tenant's data.
+func APIKeyMayAccessDomain(r *http.Request, domainID string) bool {
+	ki, ok := KeyInfoFromContext(r.Context())
+	if !ok || ki.DomainID == "" {
+		return true
+	}
+	return ki.DomainID == domainID
+}

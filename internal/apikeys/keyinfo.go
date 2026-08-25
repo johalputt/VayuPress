@@ -17,6 +17,9 @@ type KeyInfo struct {
 	Perms      Permissions // fine-grained grant set
 	ExpiresAt  *time.Time  // hard expiry, or nil for never
 	RatePerMin int         // per-key request budget; 0 = use the global default
+	// DomainID binds the key to one hosted domain (migration 092). Empty means
+	// the key acts globally across every domain this install serves.
+	DomainID string
 }
 
 // SuperuserKeyInfo returns a KeyInfo that permits every capability, used for the

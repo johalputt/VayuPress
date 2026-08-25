@@ -51,10 +51,15 @@ var ErrInternalProtected = errors.New("apikeys: the internal system key cannot b
 // Key is the metadata view of an issued API key. The raw token and its hash are
 // never exposed through this type — only a short, non-sensitive display prefix.
 type Key struct {
-	ID         string     `json:"id"`
-	Label      string     `json:"label"`
-	Prefix     string     `json:"prefix"` // e.g. "vp_a1b2c3" — safe to display
-	Scope      string     `json:"scope"`  // "internal" or "external"
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	Prefix string `json:"prefix"` // e.g. "vp_a1b2c3" — safe to display
+	Scope  string `json:"scope"`  // "internal" or "external"
+	// DomainID binds the key to ONE hosted domain (migration 092). Empty means
+	// global: the key may act on every domain this install serves. A bound key
+	// must never read or mutate another domain's data — enforcement lives at
+	// the request layer via auth.APIKeyMayAccessDomain.
+	DomainID   string     `json:"domain_id,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	Revoked    bool       `json:"revoked"`
@@ -136,11 +141,27 @@ func (s *Store) CreateScoped(ctx context.Context, label, scope string) (Key, str
 	return s.CreateWithPermissions(ctx, "", label, Superuser(), nil, 0)
 }
 
+// CreateDomainScoped issues a new external key bound to ONE hosted domain
+// (migration 092): every request it authenticates must target that domain,
+// enforced by auth.APIKeyMayAccessDomain. An empty domainID is rejected — use
+// CreateWithPermissions for a global key so the two shapes cannot blur.
+func (s *Store) CreateDomainScoped(ctx context.Context, ownerID, label, domainID string, perms Permissions, expiresAt *time.Time, ratePerMin int) (Key, string, error) {
+	if strings.TrimSpace(domainID) == "" {
+		return Key{}, "", errors.New("apikeys: domain-scoped key requires a non-empty domain id")
+	}
+	return s.create(ctx, ownerID, label, perms, expiresAt, ratePerMin, strings.TrimSpace(domainID))
+}
+
 // CreateWithPermissions issues a new external key owned by ownerID (empty for an
 // operator/system-owned key) with exactly the given grant set, optional hard
 // expiry, and optional per-key rate budget. The raw token is returned once. This
 // is the constructor the scoped admin UI and the VCB provisioning flow use.
 func (s *Store) CreateWithPermissions(ctx context.Context, ownerID, label string, perms Permissions, expiresAt *time.Time, ratePerMin int) (Key, string, error) {
+	return s.create(ctx, ownerID, label, perms, expiresAt, ratePerMin, "")
+}
+
+// create is the single insert path behind every public constructor.
+func (s *Store) create(ctx context.Context, ownerID, label string, perms Permissions, expiresAt *time.Time, ratePerMin int, domainID string) (Key, string, error) {
 	raw, prefix, err := generateToken()
 	if err != nil {
 		return Key{}, "", err
@@ -161,9 +182,9 @@ func (s *Store) CreateWithPermissions(ctx context.Context, ownerID, label string
 		expPtr = &u
 	}
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO vayu_api_keys(id, label, prefix, key_hash, scope, created_at, revoked, permissions, expires_at, owner_user_id, rate_per_min, use_count, active)
-		 VALUES(?,?,?,?,?,?,0,?,?,?,?,0,1)`,
-		id, label, prefix, hashToken(raw), ScopeExternal, now, perms.MarshalString(), exp, ownerID, ratePerMin,
+		`INSERT INTO vayu_api_keys(id, label, prefix, key_hash, scope, created_at, revoked, permissions, expires_at, owner_user_id, rate_per_min, use_count, active, domain_id)
+		 VALUES(?,?,?,?,?,?,0,?,?,?,?,0,1,?)`,
+		id, label, prefix, hashToken(raw), ScopeExternal, now, perms.MarshalString(), exp, ownerID, ratePerMin, domainID,
 	); err != nil {
 		return Key{}, "", err
 	}
@@ -171,6 +192,7 @@ func (s *Store) CreateWithPermissions(ctx context.Context, ownerID, label string
 	return Key{
 		ID: id, Label: label, Prefix: prefix, Scope: ScopeExternal, CreatedAt: now,
 		Permissions: perms, ExpiresAt: expPtr, OwnerUserID: ownerID, RatePerMin: ratePerMin, Active: true,
+		DomainID: domainID,
 	}, raw, nil
 }
 
@@ -348,7 +370,7 @@ func (s *Store) ListByOwner(ctx context.Context, ownerUserID string) ([]Key, err
 // list is the shared query behind List/ListByOwner. whereExtra (if non-empty) is
 // appended to the WHERE clause and arg is bound when whereExtra references a "?".
 func (s *Store) list(ctx context.Context, whereExtra, arg string) ([]Key, error) {
-	q := `SELECT id, label, prefix, scope, created_at, last_used_at, revoked, permissions, expires_at, owner_user_id, rate_per_min, use_count, active
+	q := `SELECT id, label, prefix, scope, created_at, last_used_at, revoked, permissions, expires_at, owner_user_id, rate_per_min, use_count, active, domain_id
 	      FROM vayu_api_keys WHERE 1=1 ` + whereExtra + ` ORDER BY (scope='internal') DESC, created_at DESC`
 	var rows *sql.Rows
 	var err error
@@ -367,7 +389,7 @@ func (s *Store) list(ctx context.Context, whereExtra, arg string) ([]Key, error)
 		var last, exp sql.NullTime
 		var revoked, active int
 		var perms string
-		if err := rows.Scan(&k.ID, &k.Label, &k.Prefix, &k.Scope, &k.CreatedAt, &last, &revoked, &perms, &exp, &k.OwnerUserID, &k.RatePerMin, &k.UseCount, &active); err != nil {
+		if err := rows.Scan(&k.ID, &k.Label, &k.Prefix, &k.Scope, &k.CreatedAt, &last, &revoked, &perms, &exp, &k.OwnerUserID, &k.RatePerMin, &k.UseCount, &active, &k.DomainID); err != nil {
 			return nil, err
 		}
 		if last.Valid {
@@ -434,7 +456,7 @@ func (s *Store) Resolve(raw string) (KeyInfo, bool) {
 // immediately on any mutation, which invalidates the TTL).
 func (s *Store) refresh() error {
 	rows, err := s.db.Query(
-		`SELECT key_hash, id, label, scope, owner_user_id, permissions, expires_at, rate_per_min
+		`SELECT key_hash, id, label, scope, owner_user_id, permissions, expires_at, rate_per_min, domain_id
 		 FROM vayu_api_keys
 		 WHERE revoked=0 AND active=1 AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)`)
 	if err != nil {
@@ -446,12 +468,14 @@ func (s *Store) refresh() error {
 		var h, id, label, scope, owner, perms string
 		var exp sql.NullTime
 		var rate int
-		if rows.Scan(&h, &id, &label, &scope, &owner, &perms, &exp, &rate) != nil {
+		var domainID string
+		if rows.Scan(&h, &id, &label, &scope, &owner, &perms, &exp, &rate, &domainID) != nil {
 			continue
 		}
 		ki := KeyInfo{
 			ID: id, Label: label, Scope: scope, Owner: owner,
 			Perms: ParsePermissions(perms), RatePerMin: rate,
+			DomainID: domainID,
 		}
 		if exp.Valid {
 			t := exp.Time
