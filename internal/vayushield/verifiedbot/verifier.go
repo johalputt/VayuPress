@@ -86,6 +86,10 @@ type Config struct {
 	// reaching FCrDNS is loopback — whose PTR resolves from /etc/hosts. This is
 	// defence in depth and a corrected comment, not a live deanonymisation fix.
 	OnionMode bool
+
+	// PATAttest resolves a presented Personal Access Token to its registered
+	// crawler vendor (pat.go). Nil = the attestation channel is off.
+	PATAttest func(token string) (vendor string, class Class, ok bool)
 }
 
 // Verifier is the crawler-identity engine. Safe for concurrent use.
@@ -102,7 +106,10 @@ type Verifier struct {
 	// increment is a lock-free atomic add. Surfaced on the SEO/Optimize page so
 	// the operator can SEE that search engines and AI systems are crawling —
 	// proof the shield is not blocking indexing.
-	counts map[string]*atomic.Int64
+
+	patMu    sync.Mutex
+	patCache map[string]patEntry
+	counts   map[string]*atomic.Int64
 }
 
 // VendorStat is one crawler's served-request tally for the crawl-activity panel.
@@ -133,10 +140,11 @@ func New(cfg Config) *Verifier {
 			}
 			return cfg.Resolver
 		}(),
-		sets:   make(map[string]*atomicCIDRSet, len(registry)),
-		cache:  newVerdictCache(),
-		jobs:   make(chan fcrdnsJob, cfg.QueueLen),
-		counts: make(map[string]*atomic.Int64, len(registry)),
+		sets:     make(map[string]*atomicCIDRSet, len(registry)),
+		cache:    newVerdictCache(),
+		jobs:     make(chan fcrdnsJob, cfg.QueueLen),
+		counts:   make(map[string]*atomic.Int64, len(registry)),
+		patCache: make(map[string]patEntry),
 	}
 	for i := range registry {
 		if registry[i].tier == tierFeed {

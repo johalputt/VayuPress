@@ -33,6 +33,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/budget"
 	"github.com/johalputt/vayupress/internal/config"
@@ -159,6 +160,23 @@ func (a *App) bootVayuShield() {
 		Client:   &http.Client{Transport: safeOutboundTransport(), Timeout: 20 * time.Second},
 		CacheDir: filepath.Join(config.Cfg.CacheDir, "verifiedbot"),
 		Resolver: net.DefaultResolver,
+		// PAT attestation: an apikey labelled "bot:<vendor>" is a crawler
+		// credential. Resolve presented tokens through the same store that
+		// rate-limits them; anything else (or a dead store) never attests.
+		PATAttest: func(token string) (string, verifiedbot.Class, bool) {
+			ki, ok := a.apiKeys.Resolve(token)
+			if !ok || ki.Scope != apikeys.ScopeExternal {
+				return "", "", false
+			}
+			if !strings.HasPrefix(ki.Label, "bot:") {
+				return "", "", false
+			}
+			vendor := strings.TrimSpace(strings.TrimPrefix(ki.Label, "bot:"))
+			if vendor == "" {
+				return "", "", false
+			}
+			return vendor, "", true
+		},
 		// Onion mode blocks the DNS half of verification. safefetch already
 		// closes the HTTP feed half; a resolver call has no such switch and would
 		// go straight out through the system stack.
@@ -255,6 +273,19 @@ func (a *App) bootVayuShield() {
 			}
 			return int(g.Inflight()), int(g.Cap())
 		}, 2*time.Second).pressured,
+		// PAT attestation (2025 plan Wave 4): a crawler presenting an API key
+		// whose label is "bot:<vendor>" is attested by the credential itself.
+		// The apikeys store resolves it; gate 0 honours it before any network
+		// inference. Keys without the bot: label never attest crawlers.
+		VerifiedBotPATFn: func(r *http.Request) vayushield.BotFastPath {
+			if a.apiKeys == nil || a.verifiedBots == nil {
+				return vayushield.BotNotRecognised
+			}
+			if verdict, _, _ := a.verifiedBots.AttestByPAT(r); verdict == verifiedbot.Verified {
+				return vayushield.BotVerified
+			}
+			return vayushield.BotNotRecognised
+		},
 		// Spoof-proof crawler recognition for the gate-0 SEO fast path: a real
 		// Googlebot/Bingbot/GPTBot (IP-verified) is served content before every
 		// availability gate; a UA merely CLAIMING to be a crawler from an IP that
