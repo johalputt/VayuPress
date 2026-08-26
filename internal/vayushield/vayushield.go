@@ -141,6 +141,9 @@ type Config struct {
 	// fingerprint module). Empty disables the channel: an unnamed header is
 	// attacker-chosen input, so trust must be explicit.
 	JA4Header string
+	// VerifiedBotPATFn attests a crawler by a presented credential (PAT) before
+	// any network inference runs. Nil = the channel is off.
+	VerifiedBotPATFn func(r *http.Request) BotFastPath
 
 	// BypassPrefixes are path prefixes always allowed without a challenge
 	// (feeds, health, the admin panel, the shield's own endpoints).
@@ -1581,6 +1584,14 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// "block crawlers" (go-dark) switch runs in an OUTER middleware and still
 		// 403s crawlers when deliberately enabled, so this never overrides it.
 		if !verified {
+			// PAT attestation (2025 plan Wave 4): a crawler presenting a valid
+			// bot credential is attested by the token, not the network — the
+			// strongest identity evidence there is, so it outranks IP checks.
+			if fn := m.cfg.VerifiedBotPATFn; fn != nil && fn(r) == BotVerified {
+				m.onEvent(ActionAllow, 0)
+				next.ServeHTTP(w, r)
+				return
+			}
 			if fn := m.cfg.VerifiedBotFn; fn != nil {
 				// Spoof-proof path: identity is confirmed by published IP range /
 				// reverse DNS, not the UA string.
