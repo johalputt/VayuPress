@@ -6,6 +6,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.60] — 2026-08-26
+
+### Security
+
+- **Bumped `github.com/cloudflare/circl` v1.6.4 → v1.6.5** (indirect dep,
+  pulled in by the sigstore-go/boulder stack). Upstream is a hardening
+  release: signature and key unmarshaling now reject trailing data and
+  non-canonical encodings across ed25519/ed448, Dilithium/eddilithium,
+  BLS12-381, ristretto and zk/dleq; malformed HPKE opener/sealer buffers,
+  empty tss/rsa share lists, zero secret-sharing IDs and out-of-range
+  SLH-DSA prehashes no longer panic; fourq amd64 squaring and legacy
+  non-BMI2 multiplication were fixed; mlsbset `Encode` is constant-time.
+  No VayuPress source changes were required — build and vet pass against
+  the new version unchanged.
+
+---
+
 ## [3.17.59] — 2026-08-26
 
 ### Added
