@@ -14,7 +14,7 @@ import (
 	"net/http"
 
 	"github.com/johalputt/vayupress/internal/logging"
-"github.com/johalputt/vayupress/internal/theme"
+	"github.com/johalputt/vayupress/internal/theme"
 )
 
 func writeThemeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {

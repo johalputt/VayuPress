@@ -187,6 +187,7 @@ func ContrastRatio(fg, bg string) float64 {
 	}
 	return (l1 + 0.05) / (l2 + 0.05)
 }
+
 // NearestAccessible nudges a foreground toward the background until WCAG AA
 // (4.5:1) is met, stepping lightness away from the bg — used by the Studio's
 // inline contrast fix-it buttons.
