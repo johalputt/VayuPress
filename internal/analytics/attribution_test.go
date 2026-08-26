@@ -18,6 +18,9 @@ func newAttrStore(t *testing.T) *Store {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
+	// One connection ONLY: every extra pooled connection to :memory: opens a
+	// fresh empty database, silently scattering inserts across phantom stores.
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 	ddl := []string{
 		`CREATE TABLE analytics_sessions(id TEXT PRIMARY KEY, visitor_id TEXT NOT NULL, browser TEXT NOT NULL DEFAULT '', os TEXT NOT NULL DEFAULT '', device TEXT NOT NULL DEFAULT '', screen TEXT NOT NULL DEFAULT '', language TEXT NOT NULL DEFAULT '', country TEXT NOT NULL DEFAULT '', region TEXT NOT NULL DEFAULT '', city TEXT NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`,
