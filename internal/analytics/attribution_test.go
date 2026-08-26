@@ -67,18 +67,6 @@ func TestAttributionModels(t *testing.T) {
 		t.Fatalf("attribution: %v", err)
 	}
 
-	// Ground truth: dump exactly what Collect persisted before judging models.
-	var nSess int
-	_ = s.db.QueryRow(`SELECT COUNT(1) FROM analytics_sessions`).Scan(&nSess)
-	t.Logf("sessions=%d", nSess)
-	dump, _ := s.db.Query(`SELECT session_id,url_path,utm_source,utm_medium,event_type FROM analytics_pageviews ORDER BY created_at`)
-	for dump.Next() {
-		var ds, dp, dsrc, dmed string
-		var det int
-		_ = dump.Scan(&ds, &dp, &dsrc, &dmed, &det)
-		t.Logf("pv sess=%s path=%s utm=%s/%s et=%d", ds[:8], dp, dsrc, dmed, det)
-	}
-	dump.Close()
 	get := func(src string) AttributionRow {
 		for _, r := range rows {
 			if r.Source == src {
@@ -89,16 +77,21 @@ func TestAttributionModels(t *testing.T) {
 		return AttributionRow{}
 	}
 	gAd := get("google")
-	// Session A touches three distinct triples, so linear credit is ⅓ each;
-	// B contributes nothing to google.
+	// Session A: google is its FIRST touch; A splits linear credit ⅓ each
+	// across {google, newsletter, blank}; B contributes nothing to google.
 	if gAd.FirstTouch != 1 || gAd.LastTouch != 0 || gAd.Linear < 0.32 || gAd.Linear > 0.35 {
 		t.Fatalf("google credits wrong: %+v", gAd)
 	}
 	gNl := get("newsletter")
-	// newsletter: first touch in A and B (=2); last touch in both (=2);
-	// linear = ⅓ (A) + 1 (B).
-	if gNl.LastTouch != 2 || gNl.FirstTouch != 2 || gNl.Linear < 1.31 || gNl.Linear > 1.36 {
+	// newsletter: first touch of B (=1); last touch of B (=1 — A ends on its
+	// blank-UTM converter row); linear = ⅓ (A) + 1 (B).
+	if gNl.FirstTouch != 1 || gNl.LastTouch != 1 || gNl.Linear < 1.31 || gNl.Linear > 1.36 {
 		t.Fatalf("newsletter credits wrong: %+v", gNl)
+	}
+	b := get("")
+	// The blank triple is A's LAST touch (the converter row) and takes ⅓ of A.
+	if b.FirstTouch != 0 || b.LastTouch != 1 || b.Linear < 0.32 || b.Linear > 0.35 {
+		t.Fatalf("blank credits wrong: %+v", b)
 	}
 }
 

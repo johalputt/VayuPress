@@ -72,13 +72,13 @@ func (s *Store) Attribution(ctx context.Context, days int, goalID string) ([]Att
 	where, arg := goalPredicate(*goal)
 
 	rows, err := s.readDB().QueryContext(ctx, `
-		SELECT p.session_id, p.utm_source, p.utm_medium, p.utm_campaign
-		FROM analytics_pageviews p
-		WHERE p.created_at>=?
-		  AND p.session_id IN (
-		    SELECT DISTINCT p2.session_id FROM analytics_pageviews p2
-		    WHERE p2.created_at>=? AND `+where+`)
-		ORDER BY p.session_id, p.created_at`, from, from, arg)
+		SELECT q.session_id, q.utm_source, q.utm_medium, q.utm_campaign
+		FROM analytics_pageviews q
+		WHERE q.created_at>=?
+		  AND q.session_id IN (
+		    SELECT DISTINCT p.session_id FROM analytics_pageviews p
+		    WHERE p.created_at>=? AND `+where+`)
+		ORDER BY q.session_id, q.created_at`, from, from, arg)
 	if err != nil {
 		return nil, err
 	}
@@ -93,23 +93,30 @@ func (s *Store) Attribution(ctx context.Context, days int, goalID string) ([]Att
 		if err := rows.Scan(&sess, &src, &med, &camp); err != nil {
 			return nil, err
 		}
-		k := attributionKey{src, med, camp}
-		if _, seen := lastOfSession[sess]; !seen {
-			first[k]++ // this session's first touch
-		} else if lastOfSession[sess] != k {
-			// repeat touches of the same source don't change anything
-			_ = k
-		}
-		lastOfSession[sess] = k
-		if distinctPerSession[sess] == nil {
-			distinctPerSession[sess] = map[attributionKey]bool{}
-		}
-		distinctPerSession[sess][k] = true
+		creditTouch(first, lastOfSession, distinctPerSession, sess, attributionKey{src, med, camp})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	return aggregateAttribution(first, lastOfSession, distinctPerSession), nil
+}
 
+// creditTouch folds one ordered pageview (sess, k) into the first/last/distinct
+// accumulators. Pure and DB-free so it can be tested without CGO.
+func creditTouch(first map[attributionKey]float64, lastOfSession map[string]attributionKey, distinctPerSession map[string]map[attributionKey]bool, sess string, k attributionKey) {
+	if _, seen := lastOfSession[sess]; !seen {
+		first[k]++ // this session's first touch
+	}
+	lastOfSession[sess] = k
+	if distinctPerSession[sess] == nil {
+		distinctPerSession[sess] = map[attributionKey]bool{}
+	}
+	distinctPerSession[sess][k] = true
+}
+
+// aggregateAttribution turns the per-session accumulators into one row per UTM
+// triple carrying all three models' credit. Pure and DB-free.
+func aggregateAttribution(first map[attributionKey]float64, lastOfSession map[string]attributionKey, distinctPerSession map[string]map[attributionKey]bool) []AttributionRow {
 	linear := map[attributionKey]float64{}
 	for _, ks := range distinctPerSession {
 		share := 1 / float64(len(ks))
@@ -148,5 +155,5 @@ func (s *Store) Attribution(ctx context.Context, days int, goalID string) ([]Att
 		si, sj := out[i].FirstTouch+out[i].LastTouch+out[i].Linear, out[j].FirstTouch+out[j].LastTouch+out[j].Linear
 		return si > sj
 	})
-	return out, nil
+	return out
 }
