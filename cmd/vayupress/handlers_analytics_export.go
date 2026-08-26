@@ -96,8 +96,18 @@ func (a *App) buildAnalyticsExport(r *http.Request, report string, days int) (he
 			return nil, nil, nil, e
 		}
 		header = []string{"metric", "value"}
+		// Ladder rule (2025 plan Wave 4): beyond the cutoff, uniques merge
+		// daily HLL sketches — O(days) unions instead of a raw-table scan.
+		uniques := ov.UniqueVisitors
+		if days > analytics.RollupRawCutoffDays {
+			from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+			to := time.Now().UTC().Format("2006-01-02")
+			if u64, e := a.analytics.RollupUniques(ctx, from, to); e == nil && u64 > 0 {
+				uniques = int(u64)
+			}
+		}
 		rows = [][]string{
-			{"unique_visitors", strconv.Itoa(ov.UniqueVisitors)},
+			{"unique_visitors", strconv.Itoa(uniques)},
 			{"visits", strconv.Itoa(ov.TotalVisits)},
 			{"pageviews", strconv.Itoa(ov.TotalPageviews)},
 			{"bounce_rate", fmt.Sprintf("%.2f", ov.BounceRate)},

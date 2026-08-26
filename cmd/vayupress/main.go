@@ -919,6 +919,9 @@ func main() {
 	// Weekly analytics digest (2025 plan Wave 4): opt-in via VAYU_REPORT_EMAIL;
 	// disabled silently when unset.
 	a.startScheduledReports(context.Background())
+	// Daily rollup ladder (2025 plan Wave 4): rebuild yesterday+today every 6h
+	// so long-range uniques merge sketches instead of scanning raw pageviews.
+	a.analytics.StartRollupLadder(context.Background(), 6*time.Hour)
 	a.webhooks = webhooks.New(dbpkg.DB, a.outboundClient)
 	a.social = social.New(social.MastodonConfig{
 		Instance: config.Cfg.MastodonInstance,
