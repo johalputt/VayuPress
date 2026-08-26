@@ -136,6 +136,11 @@ type Config struct {
 
 	// TarpitEnabled turns Block into Tarpit for aggressive scrapers.
 	TarpitEnabled bool
+	// JA4Header names the trusted request header carrying the edge-computed
+	// JA4 TLS fingerprint (e.g. "X-JA4" when nginx terminates TLS with a
+	// fingerprint module). Empty disables the channel: an unnamed header is
+	// attacker-chosen input, so trust must be explicit.
+	JA4Header string
 
 	// BypassPrefixes are path prefixes always allowed without a challenge
 	// (feeds, health, the admin panel, the shield's own endpoints).
@@ -1443,6 +1448,7 @@ func (m *Manager) RewardProof(r *http.Request) {
 	ip := ipOnly(m.cfg.ClientIP(r))
 	m.brain.Observe(ip, brain.SignalProof)
 	m.rewardCampaign(r) // the campaign that carried the proof is rehabilitated too
+	m.rewardJA4(r)      // and the TLS fingerprint it rode in on
 	// The pardon also lifts the blocklist jail, so every browser and device
 	// behind that IP recovers the moment one of them proves human.
 	m.blocklist.Unblock(ip)
@@ -1877,6 +1883,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		action := m.Decide(r, v)
 		m.onEvent(action, v.Result.BotScore)
 		m.observeCampaign(r, action)
+		m.observeJA4(r, action)
 		if m.cfg.SIEM != nil {
 			m.cfg.SIEM(siemEventFor(action), ipKey,
 				fmt.Sprintf("score=%.2f client=%s path=%s", v.Result.BotScore, v.Result.ClientType, r.URL.Path))
