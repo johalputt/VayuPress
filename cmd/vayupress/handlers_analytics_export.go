@@ -22,6 +22,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/logging"
 )
 
 // analyticsExportReports lists the reports the export endpoint understands. It
@@ -29,6 +30,36 @@ import (
 var analyticsExportReports = []string{
 	"overview", "pages", "referrers", "browsers", "devices",
 	"os", "countries", "regions", "cities", "utm", "events", "sessions", "goals", "journey",
+}
+
+// handleAnalyticsParquetExport serves GET /os/api/analytics/export-parquet?days=
+// — the warehouse Parquet stream (2025 plan Wave 4). Same install-wide caveat
+// as the CSV/JSON export: domain-scoped keys are refused.
+func (a *App) handleAnalyticsParquetExport(w http.ResponseWriter, r *http.Request) {
+	if a.analytics == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "analytics-disabled", "Analytics not initialised", "")
+		return
+	}
+	if ki, isKey := auth.KeyInfoFromContext(r.Context()); isKey && ki.DomainID != "" {
+		writeAPIError(w, r, http.StatusForbidden, "key-scope-mismatch",
+			"domain-scoped API keys cannot read install-wide exports", "")
+		return
+	}
+	days := queryInt(r, "days", 30)
+	if days < 1 || days > 3650 {
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "days must be 1..3650", "")
+		return
+	}
+	to := time.Now().UTC()
+	from := to.AddDate(0, 0, -(days - 1))
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf("attachment; filename=\"vayupress-pageviews-%s-%s.parquet\"",
+			from.Format("20060102"), to.Format("20060102")))
+	if err := a.analytics.ExportPageviewsParquet(r.Context(), from.Format("2006-01-02"), to.Format("2006-01-02"), w); err != nil {
+		logging.LogWarn("vayuanalytics", "parquet export failed: "+err.Error())
+	}
 }
 
 // handleAnalyticsExport serves GET /api/v1/analytics/export?report=&format=&days=
