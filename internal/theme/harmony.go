@@ -197,7 +197,8 @@ func NearestAccessible(fg, bg string) (string, bool) {
 	if !ok1 || !ok2 {
 		return fg, false
 	}
-	step, dir := 0.04, 1.0
+	var dir float64 = 1.0
+	const step = 0.04
 	if bl > 0.5 {
 		dir = -1.0 // lighten a foreground on light backgrounds
 	} else {
