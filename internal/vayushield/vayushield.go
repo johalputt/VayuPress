@@ -345,6 +345,10 @@ type Manager struct {
 	// standings auto-jail with escalating sentences, decay/rehab/pardons make
 	// false positives self-heal, and only suspects are ever tracked.
 	brain *brain.Brain
+	// campaignBrain is the same engine keyed on the UTM campaign/source a
+	// request wears (campaign.go): IP rotation cannot shake a poisoned
+	// campaign, and reward proofs rehabilitate it.
+	campaignBrain *brain.Brain
 
 	// calib is the Aegis L4 feedback controller: it watches the challenge pass
 	// rate and, when almost everyone challenged proves to be a real browser,
@@ -506,6 +510,7 @@ func New(cfg Config) *Manager {
 	m.controller = &resilience.Controller{}
 	m.prefilter = prefilter.New()
 	m.brain = brain.New()
+	m.campaignBrain = brain.New()
 	m.calib = calibrate.New()
 	m.redeemer = challenge.NewRedeemer()
 	m.behaviour = behaviour.New()
@@ -1437,6 +1442,7 @@ func (m *Manager) HasVerifiedSession(r *http.Request) bool {
 func (m *Manager) RewardProof(r *http.Request) {
 	ip := ipOnly(m.cfg.ClientIP(r))
 	m.brain.Observe(ip, brain.SignalProof)
+	m.rewardCampaign(r) // the campaign that carried the proof is rehabilitated too
 	// The pardon also lifts the blocklist jail, so every browser and device
 	// behind that IP recovers the moment one of them proves human.
 	m.blocklist.Unblock(ip)
@@ -1870,6 +1876,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		}
 		action := m.Decide(r, v)
 		m.onEvent(action, v.Result.BotScore)
+		m.observeCampaign(r, action)
 		if m.cfg.SIEM != nil {
 			m.cfg.SIEM(siemEventFor(action), ipKey,
 				fmt.Sprintf("score=%.2f client=%s path=%s", v.Result.BotScore, v.Result.ClientType, r.URL.Path))
