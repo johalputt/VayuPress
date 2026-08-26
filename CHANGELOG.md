@@ -6,6 +6,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.61] — 2026-08-26
+
+### Added
+
+- **Theme Studio upgrade (Waves A–C).** The gallery now renders every preset as
+  a real miniature page — inline-SVG masthead, headline and accent button in
+  the preset's own palette — tagged by archetype and default scheme, with chip
+  filters and free-text search. Colour intelligence arrives server-side: one
+  accent plus a mood derives a full dark+light token set (`/os/api/theme/harmony`),
+  "Surprise me" seeds it randomly, and every foreground swatch carries a live
+  WCAG badge with click-to-fix through `/os/api/theme/nearest`. Flow polish:
+  Guided/Expert panel modes, Focus full-width preview, undo/redo with an
+  unsaved-changes pill, visual font-pair picker, resumable autosaved drafts
+  behind a Restore/Discard banner that never touches the live render pipeline,
+  and a mobile pass stacking controls above the preview.
+
+---
+
 ## [3.17.60] — 2026-08-26
 
 ### Security
