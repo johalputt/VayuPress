@@ -197,12 +197,12 @@ func NearestAccessible(fg, bg string) (string, bool) {
 	if !ok1 || !ok2 {
 		return fg, false
 	}
-	var dir float64 = 1.0
 	const step = 0.04
+	var dir float64 // +darkens on dark bgs, -lightens on light bgs
 	if bl > 0.5 {
-		dir = -1.0 // lighten a foreground on light backgrounds
+		dir = -1.0
 	} else {
-		dir = 1.0 // darken it on dark ones
+		dir = 1.0
 	}
 	for i := 0; i < 24; i++ {
 		cand := hslHex(fh, fs, clamp01(fl+dir*step*float64(i)))
