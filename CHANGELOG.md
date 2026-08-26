@@ -6,6 +6,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.59] — 2026-08-26
+
+### Added
+
+- **SIEM CEF export (opt-in).** Set `VAYU_SIEM_FILE` and every shield
+  enforcement decision lands as one ArcSight CEF line — pipe-escaped against
+  forged extensions, rotated at 10 MiB with one kept generation, severity per
+  event class. Unset means zero request-path cost.
+- **Scheduled weekly report (opt-in).** `VAYU_REPORT_EMAIL` mails a Monday
+  07:00 UTC digest: per-day human/bot split, source quality under the
+  k-anonymity floor, p75 Core Web Vitals.
+- **Domain-scoped API keys.** Migration 092 adds `domain_id`; keys created via
+  `CreateDomainScoped` act only on their own hosted domain, enforced at the
+  per-domain middleware and refused on install-wide exports. Existing keys are
+  unchanged (empty = global).
+- **Attribution models.** First-touch, last-touch, and linear credit over goal
+  conversions, computed in one ordered scan sharing goals.go matching rules.
+- **Campaign memory + EWMA scoring.** A second reputation brain keyed on the
+  UTM campaign/source: enforcement nudges it, reward proofs refund it, IP
+  rotation cannot shake a poisoned campaign.
+- **Rollup ladder + HLL uniques.** Migration 093 adds daily rollups with
+  HyperLogLog visitor sketches; a six-hour ladder rebuilds yesterday+today,
+  and ranges beyond 60 days answer from sketch unions instead of raw scans
+  (export overview included).
+- **Edge JA4 channel (opt-in).** Name the nginx-computed fingerprint header in
+  `Config.JA4Header`; classified decisions and proofs move that fingerprint's
+  standing across IP rotations.
+- **PAT attestation for crawlers.** An API key labelled `bot:<vendor>`
+  presented via `Authorization: Bearer` or `X-Bot-PAT` attests the crawler at
+  gate 0 before any network inference; negatives cache five minutes.
+- **Warehouse Parquet export.** `/os/api/analytics/export-parquet?days=N`
+  streams raw pageviews through parquet-go in batches — no IP/UA columns, so
+  the warehouse copy obeys the same no-PII contract as the product.
+
+---
+
 ## [3.17.58] — 2026-08-25
 
 ### Added
