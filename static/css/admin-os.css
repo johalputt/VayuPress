@@ -3133,22 +3133,23 @@
   height: 100px; padding: 10px;
   display: flex; flex-direction: column; gap: 6px;
 }
-.vp-os .theme-card__bar {
-  width: 100%; height: 8px; border-radius: 2px; opacity: 0.6;
+/* Wave A: cards carry a real inline-SVG mini page instead of abstract bars. */
+.vp-os .theme-card__art {
+  display: block; width: 100%; height: auto; border-radius: var(--r-md) var(--r-md) 0 0;
 }
-.vp-os .theme-card__body {
-  flex: 1; display: flex; flex-direction: column; gap: 6px;
-  padding: 0 4px;
+.vp-os .theme-card[hidden] { display: none; }
+.vp-os .theme-filter {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-bottom: 12px;
 }
-.vp-os .theme-card__line {
-  height: 6px; border-radius: 3px; opacity: 0.4; width: 100%;
+.vp-os .theme-filter__search { max-width: 220px; }
+.vp-os .theme-filter__chips {
+  display: flex; flex-wrap: wrap; gap: 6px;
 }
-.vp-os .theme-card__line--short { width: 60%; }
-.vp-os .theme-card__pills {
-  display: flex; gap: 6px; margin-top: auto;
-}
-.vp-os .theme-card__pills span {
-  width: 28px; height: 8px; border-radius: 4px;
+.vp-os .theme-filter__chip { cursor: pointer; opacity: 0.75; }
+.vp-os .theme-filter__chip.is-on {
+  opacity: 1;
+  box-shadow: 0 0 0 1px var(--brand) inset;
 }
 .vp-os .theme-card__name {
   font-size: 0.8rem; font-weight: 600; color: var(--text-1);

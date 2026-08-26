@@ -27,6 +27,10 @@ func ArchetypeChoices() []OptionChoice {
 	}
 }
 
+// ArchetypeForPreset is the exported lookup for callers outside the package
+// (the os Theme Studio tags each gallery card with its preset's archetype).
+func ArchetypeForPreset(name string) string { return archetypeForPreset(name) }
+
 // archetypeForPreset maps a colour preset to a layout archetype so applying it
 // transforms the layout, not just the palette. Design themes that ship their own
 // component CSS (Gale, Apex, …) return "" — their bespoke CSS owns the layout.

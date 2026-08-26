@@ -357,6 +357,17 @@
   });
   if (cssArea) cssArea.addEventListener('input', function () { markDirty(); schedulePreview(); });
 
+  // Wave A: the font-pair dropdown renders each option in its own stack
+  // (CSSOM write on the option elements — CSP-safe, no inline style attrs).
+  (function () {
+    var fp = root.querySelector('[data-font-pair]');
+    if (!fp) return;
+    Array.prototype.forEach.call(fp.options, function (o) {
+      var s = o.getAttribute('data-sans');
+      if (s) o.style.fontFamily = s;
+    });
+    if (fp.options[0]) fp.options[0].style.fontFamily = ''; // "Keep current" stays UI font
+  })();
   // Font pairing quick-set: applies a sans + mono stack to the FontSans/FontMono
   // tokens at once, updates their text inputs, and refreshes the preview.
   var fontPair = root.querySelector('[data-font-pair]');
@@ -735,7 +746,153 @@
   Promise.all([fetchTokens(), fetchPresets()])
     .then(function () {
       if (!applyLoadParam()) { highlightActiveCard(activePresetName); setStatus('Ready'); }
+      baseline = snapshot(); countDiff(); // seed the changes pill from saved state
       schedulePreview(); // first preview load
     })
     .catch(function () { setStatus('Could not load theme', 'danger'); });
+
+  Promise.all([fetchTokens(), fetchPresets()])
+    .then(function () {
+      if (!applyLoadParam()) { highlightActiveCard(activePresetName); setStatus('Ready'); }
+      baseline = snapshot(); countDiff(); // seed the changes pill from saved state
+      schedulePreview(); // first preview load
+    })
+    .catch(function () { setStatus('Could not load theme', 'danger'); });
+  // â”€â”€ Undo / redo + changes pill (2026 Wave A) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Every mutating interaction first snapshots the full editor state onto the
+  // undo stack (capture-phase, so it sees the value BEFORE the change lands).
+  // Ctrl+Z / Ctrl+Shift+Z walk the stacks; the header pill shows how many
+  // fields differ from the last saved state.
+  var undoStack = [];
+  var redoStack = [];
+  var baseline = '';
+  var pill = document.querySelector('[data-theme-changes]');
+
+  function snapshot() {
+    var css = cssArea ? cssArea.value : '';
+    return JSON.stringify({ m: model, o: options, c: css });
+  }
+  function countDiff() {
+    if (!baseline || !pill) return;
+    try {
+      var a = JSON.parse(baseline), b = JSON.parse(snapshot());
+      var n = 0, k;
+      for (k in a.m) { if (a.m[k] !== b.m[k]) n++; }
+      for (k in a.o) { if (a.o[k] !== b.o[k]) n++; }
+      if ((a.c || '') !== (b.c || '')) n++;
+      pill.textContent = n === 0 ? '' : n + (n === 1 ? ' change' : ' changes');
+      pill.hidden = n === 0;
+    } catch (_) { /* never block editing on a diff hiccup */ }
+  }
+  function pushHistory(prev) {
+    if (!prev || prev === snapshot()) return;
+    undoStack.push(prev);
+    if (undoStack.length > 100) undoStack.shift();
+    redoStack.length = 0;
+    countDiff();
+  }
+  function restore(s) {
+    try {
+      var st = JSON.parse(s);
+      Object.keys(st.m).forEach(function (f) {
+        model[f] = st.m[f];
+        if (inputs[f]) inputs[f].value = st.m[f];
+      });
+      Object.keys(st.o).forEach(function (k) {
+        options[k] = st.o[k];
+        if (optInputs[k]) optInputs[k].value = st.o[k];
+      });
+      if (cssArea) cssArea.value = st.c || '';
+      markDirty();
+      schedulePreview();
+      countDiff();
+    } catch (_) { /* ignore malformed entries */ }
+  }
+  function undo() {
+    if (!undoStack.length) return;
+    redoStack.push(snapshot());
+    restore(undoStack.pop());
+    setStatus('Undone');
+  }
+  function redo() {
+    if (!redoStack.length) return;
+    undoStack.push(snapshot());
+    restore(redoStack.pop());
+    setStatus('Redone');
+  }
+  document.addEventListener('keydown', function (e) {
+    if (!e.ctrlKey && !e.metaKey) return;
+    if (e.key !== 'z' && e.key !== 'Z' && e.key !== 'y' && e.key !== 'Y') return;
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') && t !== cssArea) {
+      // Native text fields keep their own undo; ours owns colour/option/CSS edits.
+      if (t.type && t.type !== 'color') return;
+    }
+    if ((e.shiftKey && e.key.toLowerCase() === 'z') || e.key.toLowerCase() === 'y') { redo(); }
+    else { undo(); }
+    e.preventDefault();
+  });
+  // Capture fires BEFORE the control handlers mutate model/DOM: remember that
+  // pre-change state; the bubble-phase pass then pushes it onto the stack.
+  var pendingSnap = null;
+  function preSnap() { if (pendingSnap === null) pendingSnap = snapshot(); }
+  function commitSnap() {
+    if (pendingSnap !== null && pendingSnap !== undefined) { pushHistory(pendingSnap); }
+    pendingSnap = null;
+  }
+  root.addEventListener('input', preSnap, true);
+  root.addEventListener('change', preSnap, true);
+  galleryEl.addEventListener('click', preSnap, true);
+  root.addEventListener('input', commitSnap, false);
+  root.addEventListener('change', commitSnap, false);
+  galleryEl.addEventListener('click', commitSnap, false);
+  // Baseline follows the last saved/applied/loaded state.
+  var _clearDirty = clearDirty;
+  clearDirty = function () { baseline = snapshot(); _clearDirty(); countDiff(); };
+
+  // â”€â”€ Gallery filter + search (2026 Wave A) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Server tags every card with data-archetype / data-scheme / data-search.
+  // One active chip + a free-text search narrow the gallery; counts stay live.
+  (function () {
+    var wrap = root.querySelector('[data-theme-filter]');
+    if (!wrap) return;
+    var cards = Array.prototype.slice.call(galleryEl.querySelectorAll('.theme-card'));
+    var search = wrap.querySelector('[data-theme-search]');
+    var count = wrap.querySelector('[data-theme-filter-count]');
+    var chips = Array.prototype.slice.call(wrap.querySelectorAll('[data-ffilter]'));
+    var activeFilter = 'all';
+
+    function apply() {
+      var q = (search && search.value || '').trim().toLowerCase();
+      var shown = 0;
+      cards.forEach(function (card) {
+        var hay = card.getAttribute('data-search') + ' ' + (card.getAttribute('data-preset') || '').toLowerCase();
+        var okF = activeFilter === 'all' ||
+          (activeFilter.indexOf('scheme:') === 0 && card.getAttribute('data-scheme') === activeFilter.slice(7)) ||
+          (activeFilter.indexOf('arch:') === 0 && card.getAttribute('data-archetype') === activeFilter.slice(5));
+        var okQ = !q || hay.indexOf(q) !== -1;
+        var show = okF && okQ;
+        card.hidden = !show;
+        if (show) shown++;
+      });
+      if (count) count.textContent = shown === cards.length ? '' : shown + ' of ' + cards.length + ' themes';
+    }
+
+    chips.forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        chips.forEach(function (c) { c.classList.remove('is-on'); });
+        chip.classList.add('is-on');
+        activeFilter = chip.getAttribute('data-ffilter') || 'all';
+        apply();
+      });
+    });
+    if (search) {
+      var t = null;
+      search.addEventListener('input', function () {
+        if (t) clearTimeout(t);
+        t = setTimeout(apply, 120);
+      });
+    }
+    apply();
+  })();
 })();

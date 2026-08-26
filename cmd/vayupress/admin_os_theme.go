@@ -23,6 +23,7 @@ import (
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,36 +55,72 @@ type themeHeadExport struct {
 	VerifyBing   string `json:"verify_bing"`
 }
 
-// themePresetCards renders the Tumblr-style theme gallery server-side. Each card
-// is a miniature visual preview of the preset — a coloured "page" (background)
-// with an accent bar, two body text lines, and a row of accent pills — so the
-// operator can recognise a theme at a glance rather than from raw swatches.
-//
-// CSP-safe: every colour is carried as a data-color attribute and applied to
-// the element's background via the CSSOM in JS (admin-os-theme.js #paintSwatches),
-// never as an inline style attribute. Every built-in preset — including Gale and
-// Zephyr — appears here, in AllPresets() display order.
+// themeCardSVG renders a miniature REAL page for a preset — masthead, display
+// headline in the preset's own palette, body lines and an accent button — as
+// inline SVG. Every colour is a presentational fill/text attribute (not a style
+// attribute), so strict CSP holds; every string is escaped.
+func themeCardSVG(p theme.Tokens) string {
+	esc := html.EscapeString
+	return `<svg class="theme-card__art" viewBox="0 0 120 84" width="120" height="84" role="img" aria-hidden="true">` +
+		`<rect x="0" y="0" width="120" height="84" rx="7" fill="` + esc(p.BgDark) + `"/>` +
+		// Masthead: brand dot + wordmark + nav dashes.
+		`<circle cx="12" cy="13" r="3" fill="` + esc(p.AccentDark) + `"/>` +
+		`<rect x="19" y="10.5" width="26" height="5" rx="2.5" fill="` + esc(p.TextDark) + `" opacity="0.9"/>` +
+		`<rect x="86" y="11" width="8" height="3.4" rx="1.7" fill="` + esc(p.MutedDark) + `"/>` +
+		`<rect x="97" y="11" width="8" height="3.4" rx="1.7" fill="` + esc(p.MutedDark) + `"/>` +
+		// Display headline — the actual type sample.
+		`<text x="10" y="42" font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="21" font-weight="700" letter-spacing="-0.6" fill="` + esc(p.TextDark) + `">Aa</text>` +
+		`<text x="44" y="41" font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="7.5" font-weight="600" fill="` + esc(p.AccentDark) + `">` + esc(p.Name) + `</text>` +
+		// Body copy lines.
+		`<rect x="10" y="50" width="100" height="4" rx="2" fill="` + esc(p.MutedDark) + `"/>` +
+		`<rect x="10" y="58" width="72" height="4" rx="2" fill="` + esc(p.MutedDark) + `" opacity="0.75"/>` +
+		// Accent button + secondary swatch dots (incl. light-mode hint).
+		`<rect x="10" y="68" width="30" height="9" rx="4.5" fill="` + esc(p.AccentDark) + `"/>` +
+		`<circle cx="98" cy="72.5" r="3" fill="` + esc(p.AccentLight) + `"/>` +
+		`<circle cx="107" cy="72.5" r="3" fill="` + esc(p.BgLight) + `" stroke="` + esc(p.MutedDark) + `" stroke-width="0.8"/>` +
+		`</svg>`
+}
+
+// hexLum is Rec.601-ish relative luminance on 0–255 RGB — enough to tell a
+// dark-first preset from a light-first one for gallery filtering.
+func hexLum(hex string) float64 {
+	h := strings.TrimPrefix(strings.TrimSpace(hex), "#")
+	if len(h) == 3 {
+		h = string([]byte{h[0], h[0], h[1], h[1], h[2], h[2]})
+	}
+	if len(h) != 6 {
+		return 0
+	}
+	v := make([]float64, 3)
+	for i := 0; i < 3; i++ {
+		n, err := strconv.ParseUint(h[i*2:i*2+2], 16, 8)
+		if err != nil {
+			return 0
+		}
+		v[i] = float64(n)
+	}
+	return 0.299*v[0] + 0.587*v[1] + 0.114*v[2]
+}
+
+// themePresetCards renders the Tumblr-style theme gallery server-side: each card
+// is a real miniature page (themeCardSVG) tagged with its archetype and default
+// scheme so the Studio's filter chips and search can narrow 30 presets fast.
 func themePresetCards() string {
 	out := ""
 	for _, p := range theme.AllPresets() {
 		name := html.EscapeString(p.Name)
-		// el renders a colour-bearing element. The colour is applied via CSSOM,
-		// so only the (escaped) hex string lands in the data-color attribute.
-		el := func(cls, color string) string {
-			return `<span class="` + cls + `" data-color="` + html.EscapeString(color) + `" aria-hidden="true"></span>`
+		scheme := "dark"
+		if hexLum(p.BgDark) > hexLum(p.BgLight) {
+			scheme = "light"
 		}
-		pill := func(color string) string {
-			return `<span data-color="` + html.EscapeString(color) + `" aria-hidden="true"></span>`
+		arch := theme.ArchetypeForPreset(p.Name)
+		if arch == "" {
+			arch = "design"
 		}
-		out += `<button type="button" class="theme-card" data-preset="` + name + `" aria-label="Apply the ` + name + ` theme">` +
-			`<span class="theme-card__preview" data-color="` + html.EscapeString(p.BgDark) + `" aria-hidden="true">` +
-			el("theme-card__bar", p.AccentDark) +
-			`<span class="theme-card__body">` +
-			el("theme-card__line", p.TextDark) +
-			el("theme-card__line theme-card__line--short", p.MutedDark) +
-			`</span>` +
-			`<span class="theme-card__pills">` + pill(p.AccentDark) + pill(p.Accent2Dark) + pill(p.HiDark) + `</span>` +
-			`</span>` +
+		out += `<button type="button" class="theme-card" data-preset="` + name +
+			`" data-archetype="` + arch + `" data-scheme="` + scheme +
+			`" data-search="` + strings.ToLower(name+" "+arch+" "+scheme) + `" aria-label="Apply the ` + name + ` theme">` +
+			themeCardSVG(p) +
 			`<span class="theme-card__name">` + name + `</span></button>`
 	}
 	return out
@@ -307,6 +344,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
   </div>
   <div class="page-actions">
     <span class="text-sm muted" data-theme-status>Loading…</span>
+    <span class="cz-chip" data-theme-changes hidden aria-live="polite"></span>
     <a class="btn btn--ghost btn--sm" href="/os/theme/store">Browse Theme Store</a>
     <button type="button" class="btn btn--ghost btn--sm" data-theme-revert>Revert</button>
     <button type="button" class="btn btn--primary btn--sm" data-theme-apply>Apply theme</button>
@@ -326,6 +364,21 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       </button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Pick a starting design, then fine-tune anything below. The preview updates as you go.</p>
+        <div class="theme-filter" data-theme-filter>
+          <input type="search" class="input theme-filter__search" data-theme-search placeholder="Search 30 themes…" aria-label="Search themes">
+          <div class="theme-filter__chips" role="group" aria-label="Filter themes">
+            <button type="button" class="cz-chip theme-filter__chip is-on" data-ffilter="all">All</button>
+            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="scheme:dark">Dark</button>
+            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="scheme:light">Light</button>
+            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="arch:minimal">Minimal</button>
+            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="arch:classic">Classic</button>
+            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="arch:magazine">Magazine</button>
+            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="arch:editorial">Editorial</button>
+            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="arch:bold">Bold</button>
+            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="arch:design">Design</button>
+          </div>
+          <span class="text-xs muted" data-theme-filter-count role="status" aria-live="polite"></span>
+        </div>
         <div class="theme-gallery" data-theme-presets aria-label="Theme presets">` + themePresetCards() + `</div>
       </div>
     </section>
