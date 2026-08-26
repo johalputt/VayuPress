@@ -40,19 +40,24 @@ func TestAttributionModels(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	mk := func(ip, url string) {
+	mk := func(ip string, path, src, med, camp string) {
 		t.Helper()
-		if err := s.Collect(ctx, CollectRequest{URL: url, Hostname: "t"}, ip, "UA-Chrome", ""); err != nil {
-			t.Fatalf("collect %s: %v", url, err)
+		// The browser beacon posts UTM as separate fields (the JS extracts
+		// them from location.search), which is exactly what Collect stores.
+		if err := s.Collect(ctx, CollectRequest{
+			URL: path, Hostname: "t", EventType: 1,
+			UTMSource: src, UTMMedium: med, UTMCampaign: camp,
+		}, ip, "UA-Chrome", ""); err != nil {
+			t.Fatalf("collect %s: %v", path, err)
 		}
 	}
 	// Session A (ip .1): ad → newsletter → converts on /welcome.
-	mk("203.0.113.1", "/?utm_source=google&utm_medium=cpc&utm_campaign=spring")
-	mk("203.0.113.1", "/blog?utm_source=newsletter&utm_medium=email&utm_campaign=april")
-	mk("203.0.113.1", "/welcome")
+	mk("203.0.113.1", "/", "google", "cpc", "spring")
+	mk("203.0.113.1", "/blog", "newsletter", "email", "april")
+	mk("203.0.113.1", "/welcome", "", "", "")
 	// Session B (ip .2): newsletter only → converts.
-	mk("203.0.113.2", "/?utm_source=newsletter&utm_medium=email&utm_campaign=april")
-	mk("203.0.113.2", "/welcome")
+	mk("203.0.113.2", "/", "newsletter", "email", "april")
+	mk("203.0.113.2", "/welcome", "newsletter", "email", "april")
 
 	rows, err := s.Attribution(ctx, 30, func() string { gs, _ := s.ListGoals(ctx); return gs[0].ID }())
 	if err != nil {
@@ -68,11 +73,15 @@ func TestAttributionModels(t *testing.T) {
 		return AttributionRow{}
 	}
 	gAd := get("google")
-	if gAd.FirstTouch != 1 || gAd.LastTouch != 0 || gAd.Linear < 0.49 || gAd.Linear > 0.51 {
+	// Session A touches three distinct triples, so linear credit is ⅓ each;
+	// B contributes nothing to google.
+	if gAd.FirstTouch != 1 || gAd.LastTouch != 0 || gAd.Linear < 0.32 || gAd.Linear > 0.35 {
 		t.Fatalf("google credits wrong: %+v", gAd)
 	}
 	gNl := get("newsletter")
-	if gNl.LastTouch != 2 || gNl.FirstTouch != 1 || gNl.Linear < 1.49 || gNl.Linear > 1.51 {
+	// newsletter: first touch in A and B (=2); last touch in both (=2);
+	// linear = ⅓ (A) + 1 (B).
+	if gNl.LastTouch != 2 || gNl.FirstTouch != 2 || gNl.Linear < 1.31 || gNl.Linear > 1.36 {
 		t.Fatalf("newsletter credits wrong: %+v", gNl)
 	}
 }
