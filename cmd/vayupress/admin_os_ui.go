@@ -385,6 +385,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/preview", a.handleThemePreview)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/preview-draft", a.handleOSThemePreviewDraft)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/apply", a.handleThemeApply)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/harmony", handleThemeHarmony)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/nearest", handleThemeNearest)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/draft", a.handleThemeDraftSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/code", a.handleOSThemeCode)
 		pr.Get("/os/api/theme/export", a.handleOSThemeExport)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/import", a.handleOSThemeImport)
@@ -712,6 +715,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/convert", a.handleOSEditorConvert)
 		pr.Get("/os/api/editor/versions/{slug}", a.handleOSEditorVersionList)
 		pr.Get("/os/api/editor/versions/{slug}/{id}", a.handleOSEditorVersionGet)
+		// Restore rewinds the article to a snapshot — a write, so CSRF-gated like
+		// the save it mirrors.
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/versions/{slug}/{id}/restore", a.handleOSEditorVersionRestore)
 
 		// Read-only APIs (no CSRF needed)
 		pr.Get("/os/api/activity", a.handleOSActivity)
@@ -4020,8 +4026,10 @@ func (a *App) handleOSQuickCreatePost(w http.ResponseWriter, r *http.Request) {
 	// Create the draft. Content must be non-empty to pass article validation, so
 	// we seed a single space: it trims to empty, so handleOSEditor treats the
 	// post as an empty draft and opens the block editor, and the placeholder is
-	// replaced by the rendered blocks on the first save.
-	if _, err := a.articles.Create(r.Context(), title, slug, " ", nil); err != nil {
+	// replaced by the rendered blocks on the first save. CreateDraft (Wave 1)
+	// makes the status travel inside the queued insert itself, so the post is
+	// never briefly live between enqueue and a follow-up UPDATE.
+	if _, err := a.articles.CreateDraft(r.Context(), title, slug, " ", nil); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "create-error", err.Error(), "")
 		return
 	}

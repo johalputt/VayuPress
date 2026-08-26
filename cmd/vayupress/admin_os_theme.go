@@ -345,6 +345,9 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
   <div class="page-actions">
     <span class="text-sm muted" data-theme-status>Loading…</span>
     <span class="cz-chip" data-theme-changes hidden aria-live="polite"></span>
+    <button type="button" class="btn btn--ghost btn--sm" data-studio-mode data-mode="guided" title="Show only the essentials">Guided</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-studio-mode data-mode="expert">Expert</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-studio-focus title="Full-width preview">Focus</button>
     <a class="btn btn--ghost btn--sm" href="/os/theme/store">Browse Theme Store</a>
     <button type="button" class="btn btn--ghost btn--sm" data-theme-revert>Revert</button>
     <button type="button" class="btn btn--primary btn--sm" data-theme-apply>Apply theme</button>
@@ -352,6 +355,11 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 </div>
 <p class="page-sub">Design your whole site live — pick a preset, fine-tune colours, type and layout, and watch the preview update as you go. Tap a section to expand it.</p>
 
+<div class="theme-draft-banner" data-theme-draft hidden data-has-draft="0">
+  <span>Resume your unsaved Theme Studio draft?</span>
+  <button type="button" class="btn btn--primary btn--sm" data-draft-resume>Restore draft</button>
+  <button type="button" class="btn btn--ghost btn--sm" data-draft-discard>Discard</button>
+</div>
 <div class="customizer" data-theme-studio>
   <aside class="customizer__panel" aria-label="Theme controls">
 
@@ -390,6 +398,21 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
         <span class="cz-chip">Identity</span>
       </button>
       <div class="cz-group__body">
+        <div class="cz-gen" data-studio-gen>
+          <span class="theme-field__label">Generate a palette</span>
+          <div class="vm-row mt-2">
+            <input type="color" class="theme-field__color" value="#e0562f" data-gen-accent aria-label="Seed accent">
+            <select class="input" data-gen-mood aria-label="Mood">
+              <option value="calm">Calm</option>
+              <option value="vivid">Vivid</option>
+              <option value="muted">Muted</option>
+            </select>
+            <button type="button" class="btn btn--primary btn--sm" data-gen-apply>Recolour from accent</button>
+            <button type="button" class="btn btn--sm" data-gen-surprise>Surprise me</button>
+          </div>
+          <span class="theme-field__hint">One accent becomes a full dark + light palette (server-side harmony maths). Surprise me picks a random seed.</span>
+          <span id="gen-status" class="text-xs muted" role="status" aria-live="polite"></span>
+        </div>
         <p class="text-sm muted mb-3">The essentials — logo, social share image and the Sign in / Sign up buttons. These stay fixed when you switch themes.</p>
         <div class="cz-logo">
           <img id="brand-favicon-img" class="cz-logo__img" src="` + brandMarkURL + `" alt="Current site mark" width="44" height="44">
@@ -639,6 +662,13 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 </div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-theme.js?v=` + assetVer("js/admin-os-theme.js") + `"></script>`
 
+	// Resumable draft (Wave C): surface the autosaved snapshot, if any, so the
+	// client banner can offer Restore/Discard. Payload is escaped; the banner
+	// stays hidden unless a draft exists.
+	if d := themeDraftFor(vals); d != "" {
+		body = strings.Replace(body, `data-has-draft="0"`,
+			`data-has-draft="1" data-draft-payload="`+html.EscapeString(d)+`"`, 1)
+	}
 	writeOSHTML(w, r, adminOSLayout(nonce, "Theme Studio", "theme", cfg, htmpl.HTML(body)))
 }
 

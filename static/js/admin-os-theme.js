@@ -850,6 +850,143 @@
   var _clearDirty = clearDirty;
   clearDirty = function () { baseline = snapshot(); _clearDirty(); countDiff(); };
 
+  // ── Wave B/C: harmony, badges, modes, focus, drafts ─────────────────────────
+  var GEN = root.querySelector('[data-studio-gen]');
+  function postJSON(url, payload) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+  }
+  if (GEN) {
+    var genAccent = GEN.querySelector('[data-gen-accent]');
+    var genMood = GEN.querySelector('[data-gen-mood]');
+    var genStatus = GEN.querySelector('#gen-status');
+    function applyPalette(p) {
+      var map = { BgDark: p.BgDark, SurfaceDark: p.SurfaceDark, TextDark: p.TextDark,
+        MutedDark: p.MutedDark, AccentDark: p.AccentDark, Accent2Dark: p.Accent2Dark,
+        BgLight: p.BgLight, SurfaceLight: p.SurfaceLight, TextLight: p.TextLight,
+        MutedLight: p.MutedLight, AccentLight: p.AccentLight, Accent2Light: p.Accent2Light };
+      Object.keys(map).forEach(function (f) {
+        if (!map[f] || !inputs[f]) return;
+        model[f] = map[f];
+        inputs[f].value = map[f];
+      });
+      markDirty(); schedulePreview();
+      if (genStatus) genStatus.textContent = 'Palette generated';
+    }
+    function generate(seedRandom) {
+      var accent = seedRandom
+        ? '#' + ('000000' + Math.floor(Math.random() * 0xffffff).toString(16)).slice(-6)
+        : genAccent.value;
+      if (seedRandom && genAccent) genAccent.value = accent;
+      postJSON('/os/api/theme/harmony', { accent: accent, mood: genMood ? genMood.value : 'calm' })
+        .then(function (p) { applyPalette(p); })
+        .catch(function () { if (genStatus) genStatus.textContent = 'Generation failed'; });
+    }
+    var genBtn = GEN.querySelector('[data-gen-apply]');
+    if (genBtn) genBtn.addEventListener('click', function () { generate(false); });
+    var surpriseBtn = GEN.querySelector('[data-gen-surprise]');
+    if (surpriseBtn) surpriseBtn.addEventListener('click', function () { generate(true); });
+  }
+
+  // Contrast badges: live WCAG ratio beside each fg swatch (vs its bg token).
+  var CONTRAST_PAIRS = { TextDark: 'BgDark', MutedDark: 'SurfaceDark', AccentDark: 'BgDark',
+    Accent2Dark: 'BgDark', HiDark: 'SurfaceDark',
+    TextLight: 'BgLight', MutedLight: 'SurfaceLight', AccentLight: 'BgLight',
+    Accent2Light: 'BgLight', HiLight: 'SurfaceLight' };
+  function lum(hex) {
+    var h = hex.replace('#', '');
+    if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    if (h.length !== 6) return NaN;
+    var v = [0,1,2].map(function (i) {
+      var n = parseInt(h.slice(i*2, i*2+2), 16) / 255;
+      return n <= 0.03928 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+  }
+  function ratio(fg, bg) {
+    var a = lum(fg), b = lum(bg);
+    if (isNaN(a) || isNaN(b)) return NaN;
+    return a < b ? (b + 0.05) / (a + 0.05) : (a + 0.05) / (b + 0.05);
+  }
+  var badgeEls = {};
+  Object.keys(CONTRAST_PAIRS).forEach(function (field) {
+    var el = inputs[field];
+    if (!el || !el.parentNode) return;
+    var b = document.createElement('span');
+    b.className = 'theme-badge';
+    b.setAttribute('role', 'status');
+    el.parentNode.appendChild(b);
+    badgeEls[field] = b;
+  });
+  function updateBadges() {
+    Object.keys(badgeEls).forEach(function (field) {
+      var bgTok = CONTRAST_PAIRS[field];
+      var r = ratio(inputs[field].value, inputs[bgTok].value);
+      var b = badgeEls[field];
+      if (isNaN(r)) { b.textContent=''; b.className='theme-badge'; b.removeAttribute('data-fix'); return; }
+      var ok = r >= 4.5;
+      b.textContent = ok ? '\u2713 ' + r.toFixed(1) : '\u26a0 ' + r.toFixed(1);
+      b.className = 'theme-badge ' + (ok ? 'theme-badge--ok' : 'theme-badge--warn');
+      b.title = 'Contrast vs ' + bgTok + ': ' + r.toFixed(2) + ':1' + (ok ? '' : ' — click to fix');
+      if (ok) b.removeAttribute('data-fix');
+      else b.setAttribute('data-fix', field + '|' + bgTok);
+    });
+  }
+  updateBadges();
+  root.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.classList || !t.classList.contains('theme-badge--warn')) return;
+    var fix = (t.getAttribute('data-fix') || '').split('|');
+    if (fix.length !== 2 || !inputs[fix[0]] || !inputs[fix[1]]) return;
+    postJSON('/os/api/theme/nearest', { fg: inputs[fix[0]].value, bg: inputs[fix[1]].value })
+      .then(function (out) {
+        model[fix[0]] = out.fg;
+        inputs[fix[0]].value = out.fg;
+        markDirty(); schedulePreview();
+      }).catch(function () {});
+  });
+
+  // Guided / Expert mode + Focus preview.
+  var modeBtns = Array.prototype.slice.call(root.querySelectorAll('[data-studio-mode]'));
+  var focusBtn = root.querySelector('[data-studio-focus]');
+  var GUIDED_SECTIONS = ['Presets', 'Brand colours', 'Typography & fonts', 'Hero section'];
+  function setMode(mode) {
+    modeBtns.forEach(function (btn) {
+      btn.classList.toggle('is-on', btn.getAttribute('data-mode') === mode);
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('.cz-group'), function (sec) {
+      var head = sec.querySelector('.cz-group__head');
+      var label = head ? head.getAttribute('data-cz-label') : '';
+      sec.hidden = (mode === 'guided') && GUIDED_SECTIONS.indexOf(label) === -1;
+    });
+    try { window.localStorage.setItem('vp-studio-mode', mode); } catch (_) {}
+  }
+  modeBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () { setMode(btn.getAttribute('data-mode')); });
+  });
+  try {
+    if (window.localStorage.getItem('vp-studio-mode') === 'guided') setMode('guided');
+  } catch (_) {}
+  if (focusBtn) focusBtn.addEventListener('click', function () {
+    var on = root.classList.toggle('is-focus');
+    focusBtn.classList.toggle('is-on', on);
+  });
+
+  // Resumable drafts: debounce-save editor state; server-rendered banner resumes.
+  var draftTimer = null;
+  function saveDraft() {
+    postJSON('/os/api/theme/draft', { draft: window.btoa(unescape(encodeURIComponent(snapshot()))) })
+      .catch(function () {});
+  }
+  var _markDirtyUD = markDirty;
+  markDirty = function () { _markDirtyUD(); if (draftTimer) clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 2500); };
   // â”€â”€ Gallery filter + search (2026 Wave A) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Server tags every card with data-archetype / data-scheme / data-search.
   // One active chip + a free-text search narrow the gallery; counts stay live.
