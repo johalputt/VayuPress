@@ -66,6 +66,19 @@ func TestAttributionModels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("attribution: %v", err)
 	}
+
+	// Ground truth: dump exactly what Collect persisted before judging models.
+	var nSess int
+	_ = s.db.QueryRow(`SELECT COUNT(1) FROM analytics_sessions`).Scan(&nSess)
+	t.Logf("sessions=%d", nSess)
+	dump, _ := s.db.Query(`SELECT session_id,url_path,utm_source,utm_medium,event_type FROM analytics_pageviews ORDER BY created_at`)
+	for dump.Next() {
+		var ds, dp, dsrc, dmed string
+		var det int
+		_ = dump.Scan(&ds, &dp, &dsrc, &dmed, &det)
+		t.Logf("pv sess=%s path=%s utm=%s/%s et=%d", ds[:8], dp, dsrc, dmed, det)
+	}
+	dump.Close()
 	get := func(src string) AttributionRow {
 		for _, r := range rows {
 			if r.Source == src {
