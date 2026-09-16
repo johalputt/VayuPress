@@ -24,7 +24,7 @@ require (
 	github.com/rs/cors v1.11.1
 	github.com/sigstore/sigstore-go v1.3.0
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib v1.6.0
-	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20260312101154-fc105a03c0e0
+	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20260806110331-2e288a7e60a3
 	golang.org/x/crypto v0.57.0
 	rsc.io/qr v0.2.0
 )
