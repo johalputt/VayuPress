@@ -20,7 +20,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/parquet-go/parquet-go v0.32.0
-	github.com/phuslu/iploc v1.0.20260901
+	github.com/phuslu/iploc v1.0.20260915
 	github.com/rs/cors v1.11.1
 	github.com/sigstore/sigstore-go v1.3.0
 	gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib v1.6.0
