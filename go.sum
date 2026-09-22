@@ -378,8 +378,8 @@ gitlab.com/yawning/edwards25519-extra v0.0.0-20231005122941-2149dcafc266 h1:Ivjs
 gitlab.com/yawning/edwards25519-extra v0.0.0-20231005122941-2149dcafc266/go.mod h1:K/3SQWdJL6udzwInHk1gaYaECYxMp9dDayniPq6gCSo=
 gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib v1.6.0 h1:KD9m+mRBwtEdqe94Sv72uiedMWeRdIr4sXbrRyzRiIo=
 gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/goptlib v1.6.0/go.mod h1:70bhd4JKW/+1HLfm+TMrgHJsUHG4coelMWwiVEJ2gAg=
-gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20260806110331-2e288a7e60a3 h1:Mbr6vaqOugIdjxZ2t4wUf1zLhgnvFyShEdJp7GIReew=
-gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20260806110331-2e288a7e60a3/go.mod h1:uCIr865SJMJ4LHn90G3+L/MmMCA8cix7ZAvV74HcWLo=
+gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20260921142919-75ef9b2c1f18 h1:yYIGFPSbU7zzI1HCwgIhTuYi5kiOg9JpvvC7WaQ5Xu4=
+gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/lyrebird v0.0.0-20260921142919-75ef9b2c1f18/go.mod h1:uCIr865SJMJ4LHn90G3+L/MmMCA8cix7ZAvV74HcWLo=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
 go.opentelemetry.io/auto/sdk v1.2.1/go.mod h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.67.0 h1:yI1/OhfEPy7J9eoa6Sj051C7n5dvpj0QX8g4sRchg04=
