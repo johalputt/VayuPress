@@ -6,6 +6,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.69] — 2026-09-23
+
+A sample-content warning the operator can act on, reported from the live
+install: it could not be cleared by saving the site, and said neither which
+site nor what to do.
+
+### Fixed
+
+- **"Sample content is live" could not be cleared from the console.** The
+  warning is correct — a site still publishing a design's sample business — but
+  the Website form opens filled with that sample, so opening it and saving
+  stored the sample as the site's own words and the warning stayed, with
+  nothing saying why or what would clear it. The strip now names the site; the
+  site's Website page explains that saving keeps the sample and offers the two
+  real ways out: **Start from your own details** (the site editor's quick
+  start) or **It is a demo — stop warning**, for a site that shows a sample on
+  purpose. A site marked as a demo leaves the attention strip and its home's
+  chip, `get_site` reports `sample_is_demo`, and **Warn me again** undoes it.
+  Marking is admin-only, like the Website save beside it.
+
+---
+
 ## [3.17.68] — 2026-09-23
 
 The website plan in one release. A template site becomes a document of pages
