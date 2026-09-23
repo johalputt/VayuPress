@@ -38,8 +38,8 @@ func TestAPeerCannotJailAnOperatorsOwnIPv6Network(t *testing.T) {
 	}
 
 	// A compromised peer names the operator's own networks by enforcement key.
-	v6key := m.enforcementKey("2001:db8::1")
-	v4key := m.enforcementKey("198.51.100.7")
+	v6key := m.EnforcementKey("2001:db8::1")
+	v4key := m.EnforcementKey("198.51.100.7")
 	if v6key == "2001:db8::1" {
 		t.Fatalf("setup: expected a prefix key for IPv6, got %q", v6key)
 	}

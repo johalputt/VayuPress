@@ -153,9 +153,18 @@ func CheckLatestChannel(ctx context.Context, client *http.Client, owner, repo st
 var errRateLimited = errors.New("update: GitHub API rate limit reached (60 requests/hour for unauthenticated checks). Wait an hour and try again, or set VAYU_UPDATE_TOKEN to a GitHub token to raise the limit")
 
 func githubGet(ctx context.Context, client *http.Client, url string) (*http.Response, error) {
+	return githubGetConditional(ctx, client, url, "")
+}
+
+// githubGetConditional is githubGet with an If-None-Match validator, so the
+// release mirror's hourly sync costs GitHub a 304 when nothing was published.
+func githubGetConditional(ctx context.Context, client *http.Client, url, etag string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("update: build request: %w", err)
+	}
+	if etag != "" {
+		req.Header.Set("If-None-Match", etag)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "vayupress-updater")

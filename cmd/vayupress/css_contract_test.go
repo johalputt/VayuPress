@@ -94,13 +94,13 @@ func assertClassesAreStyled(t *testing.T, label, css, markup string) {
 func TestTheSiteConsoleEmitsNoUnstyledClass(t *testing.T) {
 	css := loadAdminOSCSS(t)
 	d := isolationDomain()
-	assertClassesAreStyled(t, "the site console", css, scopedConsolePage(d, 3, 2, 1, true, nil, nil, nil, nil))
+	assertClassesAreStyled(t, "the site console", css, scopedConsolePage(d, 3, 2, 1, true, nil, nil, nil, nil, ""))
 }
 
 func TestTheSiteToolTilesMatchTheAdministrationRows(t *testing.T) {
 	css := loadAdminOSCSS(t)
 	page := scopedConsolePage(isolationDomain(), 3, 2, 1, true, nil, nil, nil,
-		map[string]scopedToolChip{"content": {On: true, Text: "3 items"}})
+		map[string]scopedToolChip{"content": {On: true, Text: "3 items"}}, "")
 
 	// The PROPERTY, not the implementation. These rows and the administration
 	// summaries are two bands on one page, one directly under the other, and they

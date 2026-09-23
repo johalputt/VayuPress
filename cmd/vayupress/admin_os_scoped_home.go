@@ -150,7 +150,7 @@ func (a *App) handleOSScopedHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := scopedConsolePage(d, posts, members, mailboxes, mailOn, clients, checks, logLines,
-		a.scopedToolChips(r, d, posts)) + domainManageScript(nonce) + domainServesScript(nonce)
+		a.scopedToolChips(r, d, posts), a.releaseMirrorAccordion(d)) + domainManageScript(nonce) + domainServesScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, d.Host, "optimize", cfg, htmpl.HTML(body)))
 }
 
@@ -158,7 +158,9 @@ func (a *App) handleOSScopedHome(w http.ResponseWriter, r *http.Request) {
 // header, four tiles answering "what is the state of this site", the site's own
 // tools, then administration folded into accordions so the page is scannable
 // rather than a wall of cards.
-func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bool, clients []users.User, checks []diagCheck, logLines []string, tools map[string]scopedToolChip) string {
+// mirrorAcc is the release-mirror accordion, rendered by the App because its
+// state lives there; "" leaves the row out.
+func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bool, clients []users.User, checks []diagCheck, logLines []string, tools map[string]scopedToolChip, mirrorAcc string) string {
 	esc := html.EscapeString
 	pending := isPendingTorSite(d.Host)
 	var b strings.Builder
@@ -281,6 +283,7 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 	}
 	b.WriteString(monAcc("✉️", "Mailbox allowance", "How many mailboxes this site may create",
 		allowanceChip, noAllowance, domainAllowanceCard(d, mailboxes, mailOn)))
+	b.WriteString(mirrorAcc)
 	b.WriteString(monAcc("🔧", "Lifecycle", "Provisioning, availability and removal",
 		chipFor(d.Status == domain.StatusActive, "active", "disabled"), false, scopedLifecycleBody(d)))
 	b.WriteString(monAcc("🏛", "What is shared, and always will be",

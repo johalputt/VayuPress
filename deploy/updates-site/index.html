@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VayuPress Updates — the official release mirror</title>
+  <meta name="description" content="The official VayuPress release mirror. Every release here was downloaded from GitHub and verified — Sigstore signature, release-key signature and checksum — before it was served. Installs that cannot reach GitHub update from here automatically.">
+  <meta name="theme-color" content="#04060d">
+  <meta property="og:title" content="VayuPress Updates — the official release mirror">
+  <meta property="og:description" content="Verified VayuPress releases for installs that cannot reach GitHub.">
+  <meta property="og:url" content="https://updates.vayupress.com/">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://updates.vayupress.com/">
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/site.css">
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="top">
+    <div class="wrap top__row">
+      <a class="brand" href="https://vayupress.com/" aria-label="VayuPress home">
+        <img src="assets/mark.svg" alt="" width="28" height="28">
+        <span>VayuPress <em>Updates</em></span>
+      </a>
+      <p class="pulse" id="pulse" role="status" aria-live="polite">
+        <span class="pulse__dot" aria-hidden="true"></span>
+        <span id="pulse-text">Reading the mirror…</span>
+      </p>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <p class="eyebrow">Official release mirror</p>
+      <h1 id="hero-title">Updates that arrive even when <span class="grad">GitHub doesn't.</span></h1>
+      <p class="lede">Some hosting networks cannot reach GitHub at all. VayuPress installs on them fall back to
+        this mirror automatically — and nothing here is taken on trust. Every release was downloaded,
+        signature-checked and checksum-verified <b>before</b> it was published below, and every install
+        verifies it again before it updates.</p>
+
+      <div class="release" id="release" aria-live="polite">
+        <div class="release__head">
+          <div>
+            <p class="release__label">Latest stable release</p>
+            <p class="release__version" id="latest-version">—</p>
+            <p class="release__meta" id="latest-meta">Loading the release this mirror holds…</p>
+          </div>
+          <div class="release__actions">
+            <a class="btn btn--primary" id="latest-download" href="#files" aria-disabled="true">Download binary</a>
+            <a class="btn" id="latest-notes-link" href="#notes">Release notes</a>
+          </div>
+        </div>
+        <ul class="checks" id="latest-checks" aria-label="Checks the binary passed"></ul>
+      </div>
+      <noscript><p class="note">This page reads the mirror's live status with a small script. Without it, the
+        same data is at <a href="/mirror/status.json">/mirror/status.json</a>.</p></noscript>
+    </section>
+
+    <section class="wrap band" aria-labelledby="verify-title">
+      <div class="band__head">
+        <h2 id="verify-title">Verified before it is held</h2>
+        <p>A mirror that stored whatever it was given could advertise an update no install would accept.
+          This one refuses a release unless every file passes the strongest check the release offers for it.</p>
+      </div>
+      <div class="grid">
+        <article class="card">
+          <span class="card__ic" aria-hidden="true">✦</span>
+          <h3>Sigstore signature</h3>
+          <p>The binary must be signed by the project's release workflow on <code>main</code> — the exact
+            identity every install pins. A signature from any other workflow, branch or fork is refused.</p>
+        </article>
+        <article class="card">
+          <span class="card__ic" aria-hidden="true">⚿</span>
+          <h3>Release key</h3>
+          <p>A second, independent Ed25519 signature whose private half never leaves the project's
+            repository secrets. Compromising the build pipeline alone does not produce it.</p>
+        </article>
+        <article class="card">
+          <span class="card__ic" aria-hidden="true">#</span>
+          <h3>Checksums</h3>
+          <p>Every file matches the SHA-256 GitHub recorded when it was uploaded, and the release's own
+            <code>.sha256</code> files where it ships them.</p>
+        </article>
+        <article class="card">
+          <span class="card__ic" aria-hidden="true">▣</span>
+          <h3>A real program</h3>
+          <p>The binary must be a Linux executable image. An archive or an error page that happens to carry
+            a valid signature is still refused.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="wrap band" id="files" aria-labelledby="files-title">
+      <div class="band__head">
+        <h2 id="files-title">Files in <span id="files-version">this release</span></h2>
+        <p>Served from this mirror. Sizes and hashes are the ones this mirror verified.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="files">
+          <thead><tr><th scope="col">File</th><th scope="col">Size</th><th scope="col">SHA-256</th><th scope="col">Verified by</th></tr></thead>
+          <tbody id="files-body"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="wrap band" id="notes" aria-labelledby="notes-title">
+      <div class="band__head">
+        <h2 id="notes-title">What changed</h2>
+        <p id="notes-source">The release notes, as published.</p>
+      </div>
+      <article class="notes" id="notes-body"><p class="muted">Loading…</p></article>
+    </section>
+
+    <section class="wrap band" aria-labelledby="held-title">
+      <div class="band__head">
+        <h2 id="held-title">Everything this mirror holds</h2>
+        <p>The newest stable release, the one before it — so an install that has to roll back still finds
+          its files — and a pre-release when one is ahead of both. Refreshed from GitHub every hour.</p>
+      </div>
+      <ul class="held" id="held-list"><li class="muted">Loading…</li></ul>
+    </section>
+
+    <section class="wrap band" aria-labelledby="how-title">
+      <div class="band__head">
+        <h2 id="how-title">How an install uses it</h2>
+        <p>Nothing to configure. Every install from 3.17.66 onwards knows this address.</p>
+      </div>
+      <ol class="steps">
+        <li><b>GitHub first.</b> The install checks GitHub directly, trying every address its resolver
+          offers and, if all fail, re-resolving over DNS-over-HTTPS.</li>
+        <li><b>Then this mirror.</b> Only when GitHub cannot be reached at all does it ask here, using the
+          same request it would have sent to GitHub.</li>
+        <li><b>Verified again.</b> The install checks the Sigstore signature, the release key and the
+          checksum itself. A mirror can serve nothing, or something old — never something that installs.</li>
+      </ol>
+      <p class="note">Running your own relay? Point an install at it with <code>VAYU_UPDATE_MIRROR</code>, or
+        switch the mirror on for one of your own hosted domains from its page in VayuOS.</p>
+    </section>
+
+    <section class="wrap band" aria-labelledby="diy-title">
+      <div class="band__head">
+        <h2 id="diy-title">Verify a download yourself</h2>
+        <p>Fetch the binary, its checksum and its signature bundle from the table above, then:</p>
+      </div>
+      <div class="code">
+        <button class="copy" type="button" data-copy="cmd-sha">Copy</button>
+        <pre id="cmd-sha"><code>sha256sum -c vayupress.sha256</code></pre>
+      </div>
+      <div class="code">
+        <button class="copy" type="button" data-copy="cmd-cosign">Copy</button>
+        <pre id="cmd-cosign"><code>cosign verify-blob vayupress \
+  --bundle vayupress.cosign.bundle \
+  --certificate-identity https://github.com/johalputt/VayuPress/.github/workflows/tag-release.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com</code></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot__row">
+      <p>VayuPress — one binary, ten products. Apache-2.0.</p>
+      <nav aria-label="Elsewhere">
+        <a href="https://vayupress.com/">vayupress.com</a>
+        <a href="https://github.com/johalputt/VayuPress/releases">Releases on GitHub</a>
+        <a href="/mirror/status.json">Mirror status (JSON)</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

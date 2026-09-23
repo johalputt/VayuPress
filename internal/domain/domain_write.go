@@ -292,6 +292,28 @@ func (r *Registry) SetLimits(ctx context.Context, id string, l Limits) error {
 	return err
 }
 
+// SetReleaseMirror switches the release mirror on or off for a secondary domain.
+//
+// The primary is refused: it is the console's own host, and a mirror answering
+// there would put public, unauthenticated download traffic on the address the
+// operator signs in at.
+func (r *Registry) SetReleaseMirror(ctx context.Context, id string, on bool) error {
+	cur, err := r.get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if cur.IsPrimary {
+		return fmt.Errorf("domain: the release mirror is served from a hosted domain, not the primary")
+	}
+	cfg, err := EncodeReleaseMirrorInto(cur.ConfigJSON, on)
+	if err != nil {
+		return err
+	}
+	defer r.invalidate()
+	_, err = r.db.ExecContext(ctx, `UPDATE domains SET config_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND is_primary=0`, cfg, id)
+	return err
+}
+
 // SetSite stores a secondary domain's website override — which mode its root
 // serves, and the business template and content that go with it.
 //

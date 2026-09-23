@@ -235,7 +235,7 @@ func (a *App) bootVayuShield() {
 		// an MCP client can. An interstitial there is silent: the engine replies
 		// 202 "key validation pending", never completes the validation, and drops
 		// every submitted URL with no error reported anywhere.
-		BypassFn:          a.isIndexNowKeyPath,
+		BypassFn:          a.shieldBypass,
 		SessionCookieName: "vayushield",
 		CountryFn:         requestCountry,
 		ClientIP:          auth.ClientIP,
@@ -411,6 +411,15 @@ var shieldChargeAt int64
 // vayuShieldOnEvent charges the bot-attack-intensity governance budget when a
 // request is hard-blocked or tarpitted, throttled so a flood does not exhaust
 // the budget on the first burst of requests.
+// shieldBypass is the shield's dynamic bypass: machine endpoints whose callers
+// can never solve a browser challenge and whose paths are not a fixed prefix —
+// the IndexNow key file, and the release mirror's paths on a domain the operator
+// switched it on for (its caller is an install's updater). The operator's DENY
+// verdicts are applied before any bypass.
+func (a *App) shieldBypass(r *http.Request) bool {
+	return a.isIndexNowKeyPath(r) || a.isReleaseMirrorRequest(r)
+}
+
 func (a *App) vayuShieldOnEvent(action vayushield.Action, score float64) {
 	if action != vayushield.ActionBlock && action != vayushield.ActionTarpit {
 		return

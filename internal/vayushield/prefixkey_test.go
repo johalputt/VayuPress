@@ -157,14 +157,14 @@ func TestEnforcementKeyShape(t *testing.T) {
 		{"", ""},
 	}
 	for _, c := range cases {
-		if got := m.enforcementKey(c.in); got != c.want {
-			t.Errorf("enforcementKey(%q) = %q, want %q", c.in, got, c.want)
+		if got := m.EnforcementKey(c.in); got != c.want {
+			t.Errorf("EnforcementKey(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 
 	m.ApplySettings(Settings{Enabled: true, GroupIPv4: true})
-	if got := m.enforcementKey("198.51.100.7"); got != "198.51.100.0/24" {
-		t.Errorf("with grouping on, enforcementKey(198.51.100.7) = %q, want 198.51.100.0/24", got)
+	if got := m.EnforcementKey("198.51.100.7"); got != "198.51.100.0/24" {
+		t.Errorf("with grouping on, EnforcementKey(198.51.100.7) = %q, want 198.51.100.0/24", got)
 	}
 }
 

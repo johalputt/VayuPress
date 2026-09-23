@@ -159,6 +159,10 @@ type domainConfig struct {
 	Brand  Brand      `json:"brand"`
 	Site   SiteConfig `json:"site,omitempty"`
 	Limits Limits     `json:"limits,omitempty"`
+	// ReleaseMirror makes this domain answer the release-mirror protocol
+	// (internal/update/mirror.go) ahead of whatever else it serves. Off by
+	// default; operator-set only, like Limits.
+	ReleaseMirror bool `json:"release_mirror,omitempty"`
 }
 
 // decodeConfig parses a config_json blob. Malformed JSON yields a zero envelope
@@ -179,7 +183,7 @@ func decodeConfig(raw string) domainConfig {
 // cleared override stores nothing rather than an empty object — which keeps the
 // short-circuits in Brand() and Site() intact.
 func encodeConfig(c domainConfig) (string, error) {
-	if c.Brand.Empty() && c.Site.Empty() && c.Limits.Empty() {
+	if c.Brand.Empty() && c.Site.Empty() && c.Limits.Empty() && !c.ReleaseMirror {
 		return "", nil
 	}
 	out, err := json.Marshal(c)
@@ -209,6 +213,17 @@ func (d Domain) Limits() Limits { return decodeConfig(d.ConfigJSON).Limits }
 func EncodeLimitsInto(existing string, l Limits) (string, error) {
 	c := decodeConfig(existing)
 	c.Limits = l
+	return encodeConfig(c)
+}
+
+// ReleaseMirror reports whether this domain serves the release mirror.
+func (d Domain) ReleaseMirror() bool { return decodeConfig(d.ConfigJSON).ReleaseMirror }
+
+// EncodeReleaseMirrorInto merges the release-mirror switch into an existing
+// config_json, preserving every sibling key.
+func EncodeReleaseMirrorInto(existing string, on bool) (string, error) {
+	c := decodeConfig(existing)
+	c.ReleaseMirror = on
 	return encodeConfig(c)
 }
 

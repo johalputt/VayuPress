@@ -189,7 +189,7 @@ type Config struct {
 	// unrelated subscribers, so one jailed scraper takes a town's worth of real
 	// readers with it. IPv6 /64 grouping is unconditional because an attacker
 	// there gets 2^64 free identities and the exact-address key is no defence at
-	// all — see enforcementKey.
+	// all — see EnforcementKey.
 	GroupIPv4 bool
 
 	// Injected side channels (all optional).
@@ -306,7 +306,7 @@ type Settings struct {
 	// exact-address key is no defence at all); IPv4 is opt-in because a /24
 	// behind carrier-grade NAT can be thousands of unrelated subscribers, so one
 	// jailed scraper would take a town's worth of real readers with it. See
-	// enforcementKey.
+	// EnforcementKey.
 	GroupIPv4 bool
 
 	// ObserveOnly turns every gate into a counter. Nothing is blocked, shed,
@@ -980,7 +980,7 @@ func ipOnly(s string) string {
 	return s
 }
 
-// enforcementKey is the identity the rate limiter, violation meter, blocklist and
+// EnforcementKey is the identity the rate limiter, violation meter, blocklist and
 // reputation brain count against. It is NOT always the exact address.
 //
 // IPv6 is the reason. A routed /64 is the standard allocation for one network,
@@ -1012,7 +1012,7 @@ func ipOnly(s string) string {
 //
 // The exact address is still used for the kernel offload and the L2 sketch — see
 // the call site.
-func (m *Manager) enforcementKey(ip string) string {
+func (m *Manager) EnforcementKey(ip string) string {
 	addr, err := netip.ParseAddr(ip)
 	if err != nil {
 		// Not an address at all. Pass it through verbatim rather than folding
@@ -1147,7 +1147,7 @@ func (m *Manager) ClassifyWithIntel(r *http.Request, knownIntel intel.Kind) Verd
 		// mobile carrier shares one IP, and blending a Chrome reader with the
 		// Python script two desks down convicted whoever hit the slot second
 		// (2025 audit). Same string-hash cost, materially better precision.
-		bkey := m.enforcementKey(ipOnly(m.cfg.ClientIP(r))) + "|" + uaFamily(sig.UserAgent)
+		bkey := m.EnforcementKey(ipOnly(m.cfg.ClientIP(r))) + "|" + uaFamily(sig.UserAgent)
 		bs := m.behaviour.Observe(bkey, r.URL.Path, 0)
 		in.BehaviourDelta, in.BehaviourReasons = bs.Score()
 	}
@@ -1459,7 +1459,7 @@ func (m *Manager) RewardProof(r *http.Request) {
 	// visitor happened to land on is a false positive that keeps recurring: the
 	// next request goes to a different node, gets challenged again, and the
 	// reader concludes the site is broken.
-	m.shareVerdict(gossip.KindPardon, m.enforcementKey(ip), 0)
+	m.shareVerdict(gossip.KindPardon, m.EnforcementKey(ip), 0)
 }
 
 // ctxKey carries the Verdict on the request context for downstream handlers
@@ -1558,7 +1558,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		//     ban, it would be rejected. Teaching the kernel path about prefixes
 		//     is a separate change (set redefinition, on-disk format, overlap
 		//     collapse), not a one-line substitution.
-		enfKey := m.enforcementKey(ipKey)
+		enfKey := m.EnforcementKey(ipKey)
 
 		// A verified visitor (signed PoW session, unspoofable) or a trusted
 		// operator (valid admin login session) is exempt from EVERY gate below —
@@ -2005,7 +2005,7 @@ func (m *Manager) serveJailed(w http.ResponseWriter, r *http.Request, ipKey, rea
 	// (assets, API calls, non-browser clients) and the whole carve-out collapses
 	// under attack, so a flood is still answered by the cheap rejection.
 	navigation := acceptsHTML(r)
-	if m.cfg.Signer != nil && !m.controller.UnderAttack() && (navigation || m.redeem.Allow(m.enforcementKey(ipKey))) {
+	if m.cfg.Signer != nil && !m.controller.UnderAttack() && (navigation || m.redeem.Allow(m.EnforcementKey(ipKey))) {
 		if m.serveChallenge(w, r, Verdict{}, challenge.DefaultDifficulty, false) {
 			return
 		}
@@ -2139,12 +2139,12 @@ func (m *Manager) jailBadActor(ctx context.Context, ipKey string, autoBlock bool
 	if autoBlock && ipKey != "" {
 		// The sentence is served by the enforcement key (the /64 for IPv6), the
 		// kernel offload below by the exact address — the nft banlist sets take
-		// no CIDR element. See enforcementKey.
-		m.blocklist.Block(m.enforcementKey(ipKey), m.jailTTL())
+		// no CIDR element. See EnforcementKey.
+		m.blocklist.Block(m.EnforcementKey(ipKey), m.jailTTL())
 		// Tell the fleet. This is the verdict most worth sharing: it is the one
 		// the shield is most confident about, and without it a swarm gets one
 		// free run at every node instead of one at the fleet.
-		m.shareVerdict(gossip.KindJail, m.enforcementKey(ipKey), 0)
+		m.shareVerdict(gossip.KindJail, m.EnforcementKey(ipKey), 0)
 		// L1 offload: a jailed confirmed bad actor is also dropped in-kernel, so
 		// its follow-up packets never even create a connection. Routed through
 		// m.offload so observe mode suppresses it — a kernel drop happens outside
@@ -2463,7 +2463,7 @@ func (m *Manager) VerifyPoW(r *http.Request, pow challenge.PoW, nonce string) (t
 		// qualifies. That is the honest limit: this excludes a source already
 		// observed misbehaving, and the calibrator's own diversity floor is what
 		// bounds a clean-slate farm.
-		key := m.enforcementKey(ipOnly(m.cfg.ClientIP(r)))
+		key := m.EnforcementKey(ipOnly(m.cfg.ClientIP(r)))
 		m.calib.Passed(m.brain.Standing(key) >= brain.Neutral, key)
 	}
 	// Arm the false-positive guard: a solved challenge is human proof, so if the

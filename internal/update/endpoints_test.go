@@ -186,8 +186,17 @@ func TestDownloadSourcedRetriesThroughMirror(t *testing.T) {
 	}
 }
 
+// The official mirror is a published hostname, written as a literal here: it is
+// the one host installs fall back to with no configuration, and 3.17.64–3.17.65
+// shipped a name that never resolved.
+func TestTheOfficialMirrorIsTheHostThatExists(t *testing.T) {
+	if OfficialMirror != "https://updates.vayupress.com" {
+		t.Fatalf("OfficialMirror = %q — installs would fall back to a host this project does not serve", OfficialMirror)
+	}
+}
+
 func TestMirrorAssetURLMapping(t *testing.T) {
-	mb := "https://updates.johal.in"
+	mb := "https://updates.vayupress.com"
 	cases := []struct{ url, want string }{
 		{
 			"https://github.com/johalputt/vayupress/releases/download/v9.9.9/vayupress",

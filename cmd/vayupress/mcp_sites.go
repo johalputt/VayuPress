@@ -18,6 +18,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -27,6 +28,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/bizsite"
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/customsite"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
@@ -150,6 +152,9 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 				// have to take on trust.
 				"allow_eval": site.AllowEval,
 				"content":    content,
+				// The mirror's state, including the operator-only error text, so a
+				// sync that is failing is visible here without a screenshot.
+				"release_mirror": a.mcpReleaseMirror(d),
 			}), nil
 		},
 	})
@@ -275,6 +280,42 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 				"status": "published", "host": d.Host, "serves": cfg.Mode,
 				"template": cfg.Template, "url": "https://" + d.Host + "/",
 			}), nil
+		},
+	})
+
+	srv.Register(mcp.Tool{
+		Name: "set_release_mirror",
+		Description: "Switch the VayuPress release mirror on or off for a hosted domain. On, the domain " +
+			"answers the update-fallback requests of installs that cannot reach GitHub, from releases this " +
+			"install has downloaded and verified; everything else on the domain is served as before. " +
+			"Switching it on (again) starts a sync; get_site reports what it holds.",
+		InputSchema: objSchema([]string{"host", "on"}, map[string]any{
+			"host": strProp("The hosted domain, exactly as list_sites reports it."),
+			"on":   map[string]any{"type": "boolean", "description": "true to serve the mirror, false to stop."},
+		}),
+		Visible: a.mcpVisible(apikeys.SectionDomains, apikeys.ActionWrite),
+		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+			var in struct {
+				Host string    `json:"host"`
+				On   *flexBool `json:"on"`
+			}
+			if err := json.Unmarshal(args, &in); err != nil {
+				return "", errBadArgs(err)
+			}
+			if in.On == nil {
+				return "", errBadArgs(errors.New("on is required"))
+			}
+			if a.relMirror == nil || config.Cfg.OnionMode {
+				return "", errors.New("the release mirror is not available on this install")
+			}
+			d, err := a.mcpSiteByHost(ctx, in.Host)
+			if err != nil {
+				return "", err
+			}
+			if err := a.setReleaseMirror(ctx, d, in.On.Bool(), mcpActor(ctx)); err != nil {
+				return "", err
+			}
+			return jsonStr(map[string]any{"status": "ok", "host": d.Host, "release_mirror": in.On.Bool()}), nil
 		},
 	})
 

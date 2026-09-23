@@ -108,6 +108,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	if a.vayuShield != nil {
 		r.Use(a.vayuShield.Middleware)
 	}
+	// The release mirror answers its three paths on the domain it is switched
+	// on for, ahead of routing — /download/… would otherwise fall through to a
+	// post-slug lookup or the uploaded bundle. After the shield, so the
+	// operator's own refusals still apply; its bypass predicate spares the
+	// fallback client a challenge it cannot solve.
+	r.Use(a.releaseMirrorMiddleware)
 	r.Use(cors.New(cors.Options{
 		AllowedOrigins:   []string{"https://" + config.Cfg.Domain},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},

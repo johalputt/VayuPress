@@ -111,7 +111,7 @@ func isolationDomain() domain.Domain {
 func TestTheSiteConsoleLinksNoInstallWideTool(t *testing.T) {
 	d := isolationDomain()
 	assertNoInstallWideLinks(t, "the site console", d.ID,
-		scopedConsolePage(d, 3, 2, 1, true, nil, nil, nil, nil))
+		scopedConsolePage(d, 3, 2, 1, true, nil, nil, nil, nil, ""))
 }
 
 func TestEveryPerSiteToolLinksNoInstallWideTool(t *testing.T) {
@@ -140,7 +140,7 @@ func TestEveryPerSiteToolLinksNoInstallWideTool(t *testing.T) {
 func TestEveryPerSitePageIsCheckedForInstallWideLinks(t *testing.T) {
 	d := isolationDomain()
 	for _, c := range []struct{ label, page string }{
-		{"the site console", scopedConsolePage(d, 3, 2, 1, true, nil, nil, nil, nil)},
+		{"the site console", scopedConsolePage(d, 3, 2, 1, true, nil, nil, nil, nil, "")},
 		{"the content page", scopedContentPage(d, []dbpkg.Article{
 			{Title: "Live one", Slug: "live-one", Status: "published", UpdatedAt: time.Unix(1, 0).UTC()},
 		})},
@@ -197,7 +197,7 @@ func TestThePerSiteThemeStudioIsRetiredRatherThanServed(t *testing.T) {
 
 	// The console must stop advertising it as this site's own, and must still
 	// NAME it — an operator needs to know what a hosted site does not get.
-	page := scopedConsolePage(d, 0, 0, 0, true, nil, nil, nil, nil)
+	page := scopedConsolePage(d, 0, 0, 0, true, nil, nil, nil, nil, "")
 	if strings.Contains(page, "/os/d/"+d.ID+"/theme") {
 		t.Error("the console still links the retired per-site Theme Studio")
 	}
@@ -249,7 +249,7 @@ func TestEveryScopedToolPathCarriesTheSite(t *testing.T) {
 // must be named. Silence there is how an operator sells a client something the
 // product does not do, and finds out in front of them.
 func TestTheConsoleNamesWhatIsStillInstallWide(t *testing.T) {
-	page := scopedConsolePage(isolationDomain(), 0, 0, 0, true, nil, nil, nil, nil)
+	page := scopedConsolePage(isolationDomain(), 0, 0, 0, true, nil, nil, nil, nil, "")
 	for _, want := range sharedTools {
 		if !strings.Contains(page, want) {
 			t.Errorf("the console never mentions that %s is still install-wide", want)
@@ -283,7 +283,7 @@ func TestAPendingCertificateCarriesTheControlThatFixesIt(t *testing.T) {
 	d := isolationDomain()
 	d.SyncState = domain.SyncApproved
 	d.TLSState = domain.TLSPending
-	page := scopedConsolePage(d, 0, 0, 0, true, nil, nil, nil, nil)
+	page := scopedConsolePage(d, 0, 0, 0, true, nil, nil, nil, nil, "")
 
 	if !strings.Contains(page, "data-site-provision") {
 		t.Fatal("the console reports a pending certificate with no way to act on it — the " +
@@ -302,7 +302,7 @@ func TestAPendingCertificateCarriesTheControlThatFixesIt(t *testing.T) {
 	ok := isolationDomain()
 	ok.SyncState = domain.SyncApproved
 	ok.TLSState = domain.TLSActive
-	if strings.Contains(scopedConsolePage(ok, 0, 0, 0, true, nil, nil, nil, nil), "data-site-provision") {
+	if strings.Contains(scopedConsolePage(ok, 0, 0, 0, true, nil, nil, nil, nil, ""), "data-site-provision") {
 		t.Error("a site with a live certificate is offered a provisioning run anyway")
 	}
 
@@ -312,7 +312,7 @@ func TestAPendingCertificateCarriesTheControlThatFixesIt(t *testing.T) {
 	held := isolationDomain()
 	held.SyncState = domain.SyncHold
 	held.TLSState = domain.TLSPending
-	if strings.Contains(scopedConsolePage(held, 0, 0, 0, true, nil, nil, nil, nil), "data-site-provision") {
+	if strings.Contains(scopedConsolePage(held, 0, 0, 0, true, nil, nil, nil, nil, ""), "data-site-provision") {
 		t.Error("a site on manual hold is offered a provisioning run that would skip it")
 	}
 }
@@ -438,7 +438,7 @@ func TestAnOnionSiteIsNotToldItsCertificateIsMissing(t *testing.T) {
 			"certificate diagnostic and tells the operator to point DNS at this server for a " +
 			"name the DNS system does not resolve")
 	}
-	page := scopedConsolePage(onion, 0, 0, 0, false, nil, nil, nil, nil)
+	page := scopedConsolePage(onion, 0, 0, 0, false, nil, nil, nil, nil, "")
 	for _, claim := range []string{"no certificate has been issued", "data-site-provision"} {
 		if strings.Contains(page, claim) {
 			t.Errorf("an onion site's console still carries %q", claim)

@@ -175,6 +175,10 @@ type App struct {
 	redirectMgr     *redirects.Manager
 	previewSigner   *preview.Signer
 	updateStore     *update.Store
+	// relMirror serves the release mirror on the domains it is switched on
+	// for (release_mirror.go). nil when the process has no data directory
+	// for it, which switches the mirror off everywhere.
+	relMirror *releaseMirrorServer
 
 	// Email delivery (Tier 1) — no-op when SMTP is unconfigured.
 	mailer *email.Sender

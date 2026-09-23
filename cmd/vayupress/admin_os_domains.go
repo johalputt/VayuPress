@@ -548,6 +548,50 @@ if(aSave)aSave.addEventListener('click',function(){
     .catch(function(e){aSave.disabled=false;set('site-allowance-status','Error: '+e);});
 });
 
+// Release mirror. A sync runs in the background (it can take minutes), so after
+// saving the switch on, or pressing Sync now, the status is polled until the
+// mirror's checked time moves past the one this page was rendered with.
+var mSave=document.querySelector('[data-release-mirror-save]');
+var mSync=document.querySelector('[data-release-mirror-sync]');
+function mirrorWait(){
+  var span=document.getElementById('release-mirror-status');
+  var before=span?span.getAttribute('data-checked')||'':'';
+  var n=0;
+  (function poll(){
+    fetch('/os/api/release-mirror',{credentials:'same-origin'})
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(j&&j.checked_at&&j.checked_at!==before){
+          set('release-mirror-status',j.last_error?'The sync did not complete — reloading':'In sync ✓ — reloading');
+          window.location.reload();return;}
+        if(++n<120){setTimeout(poll,5000);}else{set('release-mirror-status','Still syncing — reload later to see the result');}})
+      .catch(function(){if(++n<120)setTimeout(poll,5000);});
+  })();
+}
+function mirrorPost(path,body,busy){
+  if(mSave)mSave.disabled=true;if(mSync)mSync.disabled=true;
+  set('release-mirror-status',busy);
+  return post(path,body)
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){
+      if(!res.ok){if(mSave)mSave.disabled=false;if(mSync)mSync.disabled=false;
+        set('release-mirror-status',(res.j&&res.j.message)||'Could not reach the mirror controls');return null;}
+      return res.j;})
+    .catch(function(e){if(mSave)mSave.disabled=false;if(mSync)mSync.disabled=false;set('release-mirror-status','Error: '+e);return null;});
+}
+if(mSave)mSave.addEventListener('click',function(){
+  var box=document.getElementById('release-mirror-on');
+  var on=!!(box&&box.checked);
+  mirrorPost('/release-mirror',{on:on},'Saving…').then(function(j){
+    if(!j)return;
+    if(on){set('release-mirror-status','Switched on — syncing the first releases…');mirrorWait();}
+    else{set('release-mirror-status','Switched off ✓ — reloading');window.location.reload();}});
+});
+if(mSync)mSync.addEventListener('click',function(){
+  mirrorPost('/release-mirror/sync',null,'Starting…').then(function(j){
+    if(j){set('release-mirror-status','Syncing…');mirrorWait();}});
+});
+
 // Client login. The password is typed by the operator, sent once, and the
 // account is forced to change it at first sign-in.
 var cNew=document.querySelector('[data-client-create]');

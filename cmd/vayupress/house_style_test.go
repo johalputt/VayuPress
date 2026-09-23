@@ -196,7 +196,7 @@ func TestAnalyticsPageMeetsTheHouseStyle(t *testing.T) {
 // deviation was the tiles, which used a third markup idiom.
 func TestScopedHomePageMeetsTheHouseStyle(t *testing.T) {
 	d := domainWithAllowance(t, true, 0)
-	page := scopedConsolePage(d, 12, 3, 0, true, nil, nil, nil, nil)
+	page := scopedConsolePage(d, 12, 3, 0, true, nil, nil, nil, nil, "")
 	// Five, not six: one band renders only for an install with the mail product
 	// switched on, and a test that demanded six would be asserting a fixture
 	// rather than the page.
@@ -476,7 +476,7 @@ func TestEveryConvertedPageIsCSPSafe(t *testing.T) {
 			bizsiteContentForTest("Test"), true, customsiteManifestForTest(30))},
 		{"Visitors", scopedAnalyticsBody(1200, 340, 41.5, 62, []analytics.PageStat{
 			{Path: "/", Pageviews: 900, UniqueVisitors: 260}})},
-		{"Domain home", scopedConsolePage(d, 12, 3, 0, true, nil, nil, nil, nil)},
+		{"Domain home", scopedConsolePage(d, 12, 3, 0, true, nil, nil, nil, nil, "")},
 		{"SEO", scopedSEOBody("d1", "https://customer.example", map[string]string{})},
 		{"Content", scopedContentPage(d, []dbpkg.Article{
 			{Title: "Hello", Slug: "hello", Status: "published", UpdatedAt: time.Now()}})},
@@ -541,7 +541,7 @@ func TestHostileCustomerContentReachesThePanelEscaped(t *testing.T) {
 // for free from a zero value.
 func TestAToolRowWithNoReadableStateSaysSoRatherThanGuessing(t *testing.T) {
 	page := scopedConsolePage(isolationDomain(), 0, 0, 0, true, nil, nil, nil,
-		map[string]scopedToolChip{}) // every store unreachable
+		map[string]scopedToolChip{}, "") // every store unreachable
 	band := betweenMarkers(t, page, "This site's tools", "Site administration")
 
 	// Read the CHIPS, not the band. Searching the whole band for a word finds it
@@ -605,7 +605,7 @@ func TestAToolRowsChipToneMatchesItsState(t *testing.T) {
 		map[string]scopedToolChip{
 			"content":  {On: true, Text: "12 items"},
 			"settings": {Text: "nothing set"},
-		})
+		}, "")
 	band := betweenMarkers(t, page, "This site's tools", "Site administration")
 
 	on := toolRowIn(t, band, "Posts &amp; pages")

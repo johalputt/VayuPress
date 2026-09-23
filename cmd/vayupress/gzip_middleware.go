@@ -144,6 +144,13 @@ func (w *gzipResponseWriter) Flush() {
 	}
 }
 
+// Unwrap exposes the underlying writer to http.ResponseController. Without it,
+// SetWriteDeadline fails with ErrNotSupported through this wrapper — and every
+// handler that lifts the server's 30-second WriteTimeout for a large transfer
+// (the backup export, the release mirror) was cut off at 30 seconds from the
+// release that added this middleware, because each ignores that error.
+func (w *gzipResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 func gzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !acceptsGzip(r) || r.Header.Get("Range") != "" {

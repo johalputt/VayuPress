@@ -34,12 +34,15 @@ import (
 // automatic fallback safe to ship: the worst a hostile mirror can do is serve
 // bytes that are refused, not bytes that are installed.
 
-// OfficialMirror is the project-operated pass-through for GitHub release
-// traffic, served from a CDN edge (Cloudflare) that is reachable even when
-// GitHub's own edges are not. It relays the releases API JSON and streams the
-// release files; it cannot alter them undetected, because every install
-// verifies the Sigstore signature over the bytes it downloads.
-const OfficialMirror = "https://updates.johal.in"
+// OfficialMirror is the project-operated release mirror: a VayuPress install
+// serving the mirror protocol (mirror.go) for its recent, verified releases. It
+// cannot alter what an install accepts, because every install verifies the
+// Sigstore signature over the bytes it downloads.
+//
+// It was https://updates.johal.in in 3.17.64–3.17.65, a hostname that never
+// resolved: the Worker meant to answer there was never deployed, so those
+// builds fall back to nothing. This is the host that exists.
+const OfficialMirror = "https://updates.vayupress.com"
 
 // Release sources, recorded on Release.Source and shown in the console so an
 // operator can see which path answered.
@@ -97,7 +100,7 @@ func IsNetworkErr(err error) bool {
 // relay. The mirror answers with the same JSON shape GitHub does, so the
 // normal decode path is reused unchanged.
 func mirrorLatest(ctx context.Context, client *http.Client, mb, owner, repo string) (*Release, error) {
-	u := mb + "/api/github/repos/" + owner + "/" + repo + "/releases/latest"
+	u := mb + mirrorAPIPrefix + "repos/" + owner + "/" + repo + "/releases/latest"
 	rel, err := getRelease(ctx, client, u)
 	if err != nil {
 		return nil, err
@@ -111,7 +114,7 @@ func mirrorLatest(ctx context.Context, client *http.Client, mb, owner, repo stri
 // (the development channel's source), preserving the semantics of
 // latestFromListChannel.
 func mirrorReleasesList(ctx context.Context, client *http.Client, mb, owner, repo string, includePre bool) (*Release, error) {
-	u := mb + "/api/github/repos/" + owner + "/" + repo + "/releases?per_page=30"
+	u := mb + mirrorAPIPrefix + "repos/" + owner + "/" + repo + "/releases" + mirrorListQuery
 	rel, err := latestFromListURL(ctx, client, u, includePre)
 	if err != nil {
 		return nil, err
@@ -195,7 +198,7 @@ func mirrorAssetURL(mb, rawURL string) string {
 	if !strings.Contains(p, "/releases/download/") {
 		return ""
 	}
-	return mb + "/download/github/" + p
+	return mb + mirrorDownloadPrefix + p
 }
 
 // downloadSourced downloads a release file, retrying through the official

@@ -844,6 +844,7 @@ func main() {
 	previewSecret := config.EnvOr("VAYU_SECRET", config.EnvOr("VAYU_API_KEY", ""))
 	a.previewSigner = preview.New(previewSecret)
 	a.updateStore = update.New(dbpkg.DB)
+	a.relMirror = newReleaseMirrorServer(releaseMirrorRoot())
 
 	// Email delivery (Tier 1) — sovereign SMTP, no-op when unconfigured.
 	a.mailer = email.New(email.Config{
@@ -1227,6 +1228,7 @@ func main() {
 	a.startSearchReconciler(queue.DoneCh)
 	a.startScheduler(queue.DoneCh)
 	a.startUpdateWatcher(queue.DoneCh)
+	a.startReleaseMirror(queue.DoneCh)
 	a.startCacheWarmer(queue.DoneCh)
 
 	// Wire queue injections.
