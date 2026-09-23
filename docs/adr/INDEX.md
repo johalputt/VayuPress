@@ -9,6 +9,7 @@
 
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
+| [ADR-0161](ADR-0161-a-website-is-a-document.md) | A template website is a document of pages and typed sections, drafted, revised and published | Accepted | Core | 2026-09-23 |
 | [ADR-0160](ADR-0160-a-page-that-says-run-again-must-offer-it.md) | The certificate diagnostic gained Re-check now; copy that instructs must ship the control | Accepted | Core | 2026-08-06 |
 | [ADR-0159](ADR-0159-what-a-domain-serves-is-changeable.md) | Site type and mail are editable per domain; mail is a provisioning flag, not a delivery switch | Accepted | Core | 2026-08-06 |
 | [ADR-0158](ADR-0158-the-shield-must-never-ban-the-machine-it-protects.md) | A kernel ban must never include loopback; the ban chain exempts it first | Accepted | Core | 2026-08-06 |
