@@ -125,7 +125,8 @@ func (a *App) registerSiteDocumentTools(srv *mcp.Server) {
 	srv.Register(mcp.Tool{
 		Name: "publish_site_document",
 		Description: "Publish a hosted site's document: the one sent, or its saved draft when none is sent. It " +
-			"becomes the live website and the domain is switched to serve it (blog stays at /blog). Every " +
+			"becomes the live website; a domain serving its blog is switched to serve it (blog at /blog), and " +
+			"one serving an uploaded site keeps serving that until it is switched on its Website page. Every " +
 			"publish is kept in history; restore_site_revision brings an earlier one back. Every page is then " +
 			"fetched as a visitor would: verified is true only when each answered with the page just published " +
 			"and everything it loads.",
@@ -193,16 +194,20 @@ func (a *App) registerSiteDocumentTools(srv *mcp.Server) {
 	})
 }
 
-// mcpPublishSiteDoc publishes and, if the domain was serving something else,
-// switches it to serve its website — a publish the visitor cannot see would be
-// the assistant reporting success for a change nobody gets.
+// mcpPublishSiteDoc publishes and, if the domain was serving its blog,
+// switches it to serve its website with the blog at /blog — a publish the
+// visitor cannot see would be the assistant reporting success for a change
+// nobody gets. A domain serving a hand-built upload is left serving it: that
+// is a site someone built, and replacing it is the operator's decision on the
+// Website page, not a side effect of a publish. The reply's serves and
+// verified fields say what visitors still get.
 func (a *App) mcpPublishSiteDoc(ctx context.Context, d domain.Domain, doc sitedoc.Document, verb string) (string, error) {
 	id, checks, err := a.publishSite(ctx, d.ID, doc, mcpActor(ctx))
 	if err != nil {
 		return "", err
 	}
 	serves := scopedSiteMode(d)
-	if serves != "business" && serves != "business_subpath" {
+	if serves == "blog" {
 		site, _ := d.Site()
 		cfg, err := scopedWebsiteConfigPreserving(d, "business_subpath", site.Template)
 		if err != nil {

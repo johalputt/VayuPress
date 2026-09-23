@@ -119,6 +119,26 @@ func TestPublishingADocumentMakesTheDomainServeIt(t *testing.T) {
 	}
 }
 
+// A domain serving a hand-built upload is not switched by a publish: the
+// upload is a site someone built, and serving the document instead would take
+// it down without anyone deciding to. The document is kept, and the reply
+// says what the domain still serves.
+func TestPublishingADocumentLeavesAnUploadedSiteServing(t *testing.T) {
+	a := siteApp(t)
+	d := hostedSite(t, a, "harbour.example")
+	if err := a.domains.SetSite(context.Background(), d.ID, domain.SiteConfig{Mode: "custom", Template: "studio"}); err != nil {
+		t.Fatal(err)
+	}
+	j, err := runTool(t, a, "publish_site_document", `{"host":"harbour.example","doc":`+docArg(t, "Not Over The Upload")+`}`)
+	if err != nil || j["serves"] != "custom" || j["verified"] != false {
+		t.Fatalf("publish to a domain serving an upload: %v %v", err, j)
+	}
+	d, _ = a.domains.ByID(context.Background(), d.ID)
+	if site, _ := d.Site(); site.Mode != "custom" {
+		t.Errorf("the publish switched a domain serving an upload to %q", site.Mode)
+	}
+}
+
 // Once a site is a document, the flat content fields no longer reach its
 // page. update_site refuses them rather than store what no visitor sees, and
 // still changes what the domain serves.
