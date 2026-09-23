@@ -27,6 +27,10 @@ type Options struct {
 	// ContactScript is the <script> element of the contact-form widget,
 	// included only on a page that carries a form.
 	ContactScript string
+	// Stylesheet is the address of the site's stylesheet: its design and its
+	// brand. The caller versions it, so a change to either reaches a visitor
+	// whose browser cached the last one. Empty means /site.css for the design.
+	Stylesheet string
 }
 
 func esc(s string) string { return html.EscapeString(s) }
@@ -68,9 +72,11 @@ func Render(d Document, p Page, o Options) string {
 	b.WriteString(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">`)
 	b.WriteString(`<meta name="viewport" content="width=device-width, initial-scale=1">`)
 	writeHead(&b, d, p, hero, o)
-	// Versioned by design key so switching designs busts every cache at once:
-	// /site.css is cacheable and its content changes with the design.
-	b.WriteString(`<link rel="stylesheet" href="/site.css?v=` + esc(o.Template.Key) + `">`)
+	sheet := o.Stylesheet
+	if sheet == "" {
+		sheet = "/site.css?v=" + o.Template.Key
+	}
+	b.WriteString(`<link rel="stylesheet" href="` + esc(sheet) + `">`)
 	b.WriteString(`</head><body class="vb vb--` + esc(o.Template.Key) + `">`)
 
 	b.WriteString(`<nav class="vb-nav"><a class="vb-brand" href="/">` + esc(name) + `</a><div class="vb-nav-links">`)
@@ -95,9 +101,10 @@ func Render(d Document, p Page, o Options) string {
 		rest = rest[1:]
 	}
 	b.WriteString(`<main class="vb-main">`)
-	form := false
+	form, gallery := false, false
 	for _, s := range rest {
 		form = form || s.Form
+		gallery = gallery || (s.Kind == KindGallery && len(s.Images) > 0)
 		writeSection(&b, s)
 	}
 	b.WriteString(`</main>`)
@@ -109,6 +116,9 @@ func Render(d Document, p Page, o Options) string {
 	b.WriteString(`<span class="vb-powered">Powered by VayuPress</span></footer>`)
 	if form {
 		b.WriteString(o.ContactScript)
+	}
+	if gallery {
+		b.WriteString(GalleryScriptTag())
 	}
 	b.WriteString(`</body></html>`)
 	return b.String()
@@ -125,7 +135,7 @@ func navLabel(p Page) string {
 }
 
 func writeHero(b *strings.Builder, s Section, name string, t bizsite.Template) {
-	b.WriteString(`<header class="vb-hero" id="` + esc(s.ID) + `">`)
+	b.WriteString(`<header class="vb-hero` + variantClass("vb-hero", s) + `" id="` + esc(s.ID) + `">`)
 	if s.Image != nil {
 		// Not lazy: the hero is the first thing on screen, and lazy-loading the
 		// largest paint of the page delays it.
@@ -154,6 +164,15 @@ func writeHero(b *strings.Builder, s Section, name string, t bizsite.Template) {
 	b.WriteString(`</div></header>`)
 }
 
+// variantClass is the modifier class for a section's layout. The first
+// layout of each kind is the design's own and needs none.
+func variantClass(block string, s Section) string {
+	if s.Variant == "" || s.Variant == Variants[s.Kind][0] {
+		return ""
+	}
+	return " " + block + "--" + s.Variant
+}
+
 func writeSection(b *strings.Builder, s Section) {
 	class := "vb-section"
 	if s.Kind == KindContact {
@@ -167,7 +186,7 @@ func writeSection(b *strings.Builder, s Section) {
 	case KindText:
 		b.WriteString(paragraphs(s.Body))
 	case KindItems:
-		b.WriteString(`<div class="vb-services">`)
+		b.WriteString(`<div class="vb-services` + variantClass("vb-services", s) + `">`)
 		for _, it := range s.Items {
 			b.WriteString(`<div class="vb-service"><div class="vb-service-head"><h3>` + esc(it.Title) + `</h3>`)
 			if it.Price != "" {
@@ -181,9 +200,11 @@ func writeSection(b *strings.Builder, s Section) {
 		}
 		b.WriteString(`</div>`)
 	case KindGallery:
-		b.WriteString(`<div class="vb-gallery">`)
+		b.WriteString(`<div class="vb-gallery` + variantClass("vb-gallery", s) + `">`)
 		for _, img := range s.Images {
-			b.WriteString(`<img src="` + esc(img.Src) + `" alt="` + esc(img.Alt) + `" loading="lazy">`)
+			// Each picture links to itself: with no script it opens full size,
+			// and the gallery script turns that into a viewer on the page.
+			b.WriteString(`<a class="vb-zoom" href="` + esc(img.Src) + `"><img src="` + esc(img.Src) + `" alt="` + esc(img.Alt) + `" loading="lazy" decoding="async"></a>`)
 		}
 		b.WriteString(`</div>`)
 	case KindContact:

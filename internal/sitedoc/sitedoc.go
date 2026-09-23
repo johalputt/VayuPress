@@ -54,8 +54,22 @@ type Document struct {
 	// page's title.
 	Name string `json:"name"`
 	// ShowBlog links the blog from the nav and footer.
-	ShowBlog bool   `json:"show_blog,omitempty"`
-	Pages    []Page `json:"pages"`
+	ShowBlog bool `json:"show_blog,omitempty"`
+	// Style is the site's own brand over its design; nil keeps the design's.
+	Style *Style `json:"style,omitempty"`
+	Pages []Page `json:"pages"`
+}
+
+// Style is a site's brand: the few choices that make a design its own. Each
+// is a closed choice or a validated colour, never CSS, so the stylesheet
+// built from it (StyleCSS) cannot carry anything but these values.
+type Style struct {
+	// Accent is the brand colour, #rrggbb: buttons, links, prices.
+	Accent string `json:"accent,omitempty"`
+	// Font is a typeface family from Fonts; "" keeps the design's.
+	Font string `json:"font,omitempty"`
+	// Corners is a rounding from Corners; "" keeps the design's.
+	Corners string `json:"corners,omitempty"`
 }
 
 // Page is one address on the site. The home page has the empty slug; every
@@ -92,6 +106,19 @@ type Section struct {
 	Hours   string `json:"hours,omitempty"`
 	// Form shows a message form that posts to the install's contact endpoint.
 	Form bool `json:"form,omitempty"`
+
+	// Variant is the section's layout, from Variants[Kind]; "" is the first.
+	Variant string `json:"variant,omitempty"`
+}
+
+// Variants are the layouts each kind of section offers. The first is what an
+// empty Variant means.
+var Variants = map[Kind][]string{
+	KindHero:    {"center", "left", "split"},
+	KindText:    {"standard"},
+	KindItems:   {"grid", "list"},
+	KindGallery: {"grid", "wide"},
+	KindContact: {"standard"},
 }
 
 // Item is one offering: a dish, a product, a course, a treatment.
@@ -183,6 +210,11 @@ func Validate(d Document) error {
 	}
 	if err := line("name", d.Name, 120); err != nil {
 		return err
+	}
+	if d.Style != nil {
+		if err := validateStyle(*d.Style); err != nil {
+			return err
+		}
 	}
 	if len(d.Pages) == 0 {
 		return fail("pages", "a site needs a home page")
@@ -282,6 +314,10 @@ func validateSection(at string, s Section) error {
 		if used[f] && !contains(allowed, f) {
 			return fail(at+"."+f, "is not a field of a %s section", s.Kind)
 		}
+	}
+
+	if s.Variant != "" && !contains(Variants[s.Kind], s.Variant) {
+		return fail(at+".variant", "%q is not a layout of a %s section (%s)", s.Variant, s.Kind, strings.Join(Variants[s.Kind], ", "))
 	}
 
 	checks := []error{

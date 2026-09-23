@@ -26,6 +26,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   design — except that links and image sources the validator would refuse
   (`javascript:`, `data:`) are no longer drawn, and the nav no longer links
   sections that are not there.
+- **A site's own brand and layouts.** In the site editor: a brand colour, a
+  typeface (system stacks — nothing downloaded) and corner style over any
+  design, and a layout per section — header centred, left or split beside
+  its picture; offerings as a grid or a list; gallery tiles standard or
+  wide. The brand colour must carry white button text and read as link text
+  (WCAG 4.5:1, refused on the field otherwise); dark mode, and the always-
+  dark Forge design, use a lighter shade of it derived to read there, with
+  dark button text where that is what reads. The brand reaches the site as
+  part of `/site.css`, versioned by its content, and the editor's preview is
+  dressed in the draft's brand. Gallery pictures open full size; on the page
+  a small same-origin viewer shows them with their description, arrow keys
+  to step and Escape to close.
 - **The site editor.** Website → Open the site editor (primary and every
   hosted site) edits the document: pages with their address, title,
   description and menu entry; sections added, reordered, opened and removed;

@@ -14,6 +14,7 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/health"
+	"github.com/johalputt/vayupress/internal/sitedoc"
 	"github.com/johalputt/vayupress/internal/vayushield/gossip"
 )
 
@@ -184,6 +185,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/js/video-facade.js", a.handleVideoFacadeJS)
 	r.Get("/static/js/comments.js", a.handleCommentsJS)
 	r.Get("/static/js/contact.js", a.handleContactJS)
+	r.Get(sitedoc.GalleryJSPath, handleSiteGalleryJS)
 	r.Get("/static/js/post-card-media.js", a.handlePostCardMediaJS)
 	// Trending & pinned posts widget (hydrates [data-vayu-trending] from
 	// /api/trending). Same-origin → script-src 'self', no nonce.

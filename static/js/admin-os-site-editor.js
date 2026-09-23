@@ -44,7 +44,7 @@
     return b;
   }
 
-  var state = { doc: null, page: 0, dirty: false, saving: false, revisions: [], source: '' };
+  var state = { doc: null, page: 0, dirty: false, saving: false, revisions: [], source: '', choices: {} };
   var statusEl = document.getElementById('se-status');
   var errorEl = document.getElementById('se-error');
   var pagesEl = document.getElementById('se-pages');
@@ -196,6 +196,46 @@
     return wrap;
   }
 
+  // choice is a select over a closed list the server sent; '' keeps the
+  // design's own.
+  function choice(label, obj, key, path, options, emptyLabel) {
+    var wrap = el('label', 'se-field');
+    wrap.appendChild(el('span', 'se-label', label));
+    var sel = el('select', 'input');
+    if (emptyLabel) { var o0 = el('option', '', emptyLabel); o0.value = ''; sel.appendChild(o0); }
+    (options || []).forEach(function (v) { var o = el('option', '', v.charAt(0).toUpperCase() + v.slice(1)); o.value = v; sel.appendChild(o); });
+    sel.value = obj[key] || '';
+    sel.setAttribute('data-path', path ? path + '.' + key : key);
+    sel.addEventListener('change', function () { obj[key] = sel.value; changed(); });
+    wrap.appendChild(sel);
+    return wrap;
+  }
+
+  // The brand colour: a picker and its #rrggbb, with a way back to the
+  // design's own colour (a colour input cannot be empty).
+  function accentField(st) {
+    var wrap = el('div', 'se-field');
+    wrap.appendChild(el('span', 'se-label', 'Brand colour'));
+    var row = el('div', 'se-row');
+    var pick = el('input');
+    pick.type = 'color';
+    pick.value = st.accent || '#0f766e';
+    var hex = el('input', 'input');
+    hex.type = 'text';
+    hex.placeholder = 'The design\'s own';
+    hex.value = st.accent || '';
+    hex.maxLength = 7;
+    hex.setAttribute('data-path', 'style.accent');
+    pick.addEventListener('input', function () { st.accent = pick.value; hex.value = pick.value; changed(); });
+    hex.addEventListener('input', function () { st.accent = hex.value.trim(); if (/^#[0-9a-fA-F]{6}$/.test(st.accent)) pick.value = st.accent; changed(); });
+    row.appendChild(pick);
+    row.appendChild(hex);
+    row.appendChild(btn('Use the design\'s', 'btn--ghost', function () { st.accent = ''; hex.value = ''; changed(); }));
+    wrap.appendChild(row);
+    wrap.appendChild(el('span', 'se-hint', 'Dark enough for white text on a button; a lighter shade of it is used in dark mode automatically.'));
+    return wrap;
+  }
+
   function imageFields(img, path, needAlt, onRemove) {
     var box = el('div', 'se-image');
     var thumb = el('img', 'se-thumb');
@@ -230,6 +270,8 @@
     var b = el('div', 'se-section-body');
     b.appendChild(field('In the menu as', s, 'nav', path, { placeholder: 'Leave empty to keep it out of the menu', max: 40 }));
     b.appendChild(field('Anchor', s, 'id', path, { hint: 'The part after # in a link to this section. Lowercase letters, digits and hyphens.' }));
+    var layouts = (state.choices.variants || {})[s.kind] || [];
+    if (layouts.length > 1) b.appendChild(choice('Layout', s, 'variant', path, layouts));
     switch (s.kind) {
       case 'hero':
         b.appendChild(field('Title', s, 'heading', path, { placeholder: 'Defaults to the site name' }));
@@ -305,6 +347,10 @@
     siteEl.textContent = '';
     siteEl.appendChild(field('Business name', d, 'name', '', { max: 120 }));
     siteEl.appendChild(field('Link the blog from the menu and footer', d, 'show_blog', '', { checkbox: true }));
+    d.style = d.style || {};
+    siteEl.appendChild(accentField(d.style));
+    siteEl.appendChild(choice('Typeface', d.style, 'font', 'style', state.choices.fonts, 'The design\'s own'));
+    siteEl.appendChild(choice('Corners', d.style, 'corners', 'style', state.choices.corners, 'The design\'s own'));
 
     pagesEl.textContent = '';
     d.pages.forEach(function (p, i) {
@@ -442,6 +488,7 @@
 
   // ── Media picker ──────────────────────────────────────────────────────────
   var picker = document.getElementById('se-media');
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && picker && !picker.hidden) picker.hidden = true; });
   function pickMedia(onPick) {
     if (!picker) return;
     picker.textContent = '';
@@ -496,6 +543,7 @@
       state.doc.pages = state.doc.pages || [];
       state.doc.pages.forEach(function (p) { p.sections = p.sections || []; });
       state.revisions = r.j.revisions || [];
+      state.choices = r.j.choices || {};
       state.source = r.j.source;
       if (!keepPage) state.page = 0;
       var from = { draft: 'Editing your saved draft', published: 'Editing the live site', legacy: 'Editing the site as it is today' }[r.j.source] || '';

@@ -17,7 +17,11 @@ type Template struct {
 	Eyebrow       string `json:"eyebrow"` // small label above the hero title
 	ServicesLabel string `json:"servicesLabel"`
 	CSS           string `json:"-"`
-	Defaults      Content
+	// Dark is a design whose page is dark in both colour schemes. A site's
+	// brand accent is checked against a light page, so on a dark design the
+	// lighter shade derived for dark mode is used throughout.
+	Dark     bool `json:"-"`
+	Defaults Content
 }
 
 // ByKey returns the template with the given key, falling back to the first.
@@ -195,10 +199,10 @@ body.vb--salon .vb-nav-links{text-transform:uppercase;letter-spacing:.08em;font-
 			Key: "forge", Name: "Forge", Category: "Fitness",
 			Tagline: "Strong, high-contrast energy for gyms, boxes and coaches.",
 			Eyebrow: "Train with us", ServicesLabel: "Programmes",
-			CSS: `body.vb--forge{--vb-bg:#101010;--vb-surface:#181818;--vb-text:#f2f2ef;--vb-line:rgba(255,255,255,.12);--vb-accent:#f59e0b;--vb-radius:4px}
+			CSS: `body.vb--forge{--vb-bg:#101010;--vb-surface:#181818;--vb-text:#f2f2ef;--vb-line:rgba(255,255,255,.12);--vb-accent:#f59e0b;--vb-on-accent:#111;--vb-radius:4px}
 body.vb--forge .vb-hero h1{font-weight:800;text-transform:uppercase}
-body.vb--forge .vb-cta{color:#111 !important}
 @media(prefers-color-scheme:dark){body.vb--forge{--vb-bg:#0c0c0c}}`,
+			Dark: true,
 			Defaults: Content{
 				Name: "Forge Athletics", Tagline: "Strength first. Everything else follows.",
 				About: "Coached strength and conditioning in small groups. First session free.",

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -101,7 +102,11 @@ func (a *App) handleSiteDocGet(target siteDocTarget) http.HandlerFunc {
 		if _, ok := publishedSiteDoc(r.Context(), scope); ok {
 			source = "published"
 		}
-		resp := map[string]any{"template": tpl.Key}
+		// The closed choices come from the validator's own tables, so the
+		// editor never offers a value the server would refuse.
+		resp := map[string]any{"template": tpl.Key, "choices": map[string]any{
+			"variants": sitedoc.Variants, "fonts": sortedKeys(sitedoc.Fonts), "corners": sortedKeys(sitedoc.Corners),
+		}}
 		if d, at, ok := siteDraft(r.Context(), scope); ok {
 			current, source = d, "draft"
 			resp["draft_saved_at"] = at
@@ -232,9 +237,32 @@ func (a *App) handleSiteDocPreview(target siteDocTarget) http.HandlerFunc {
 			strings.Replace(render.BuildCSP(nonce, nil), "frame-ancestors 'none'", "frame-ancestors 'self'", 1))
 		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		w.Header().Set("Cache-Control", "no-store")
-		if !writeSitePage(w, doc, r.URL.Query().Get("page"), a.siteRenderOptions(view, mode, tpl)) {
+		o := a.siteRenderOptions(view, mode, tpl)
+		// The draft's brand is not the live site's, and /site.css on the
+		// console's host is not this site's at all: the preview links a
+		// stylesheet built from the same draft it renders.
+		o.Stylesheet = strings.TrimSuffix(r.URL.Path, "/preview") + "/preview.css?v=" + siteCSSVersion(tpl, doc)
+		if !writeSitePage(w, doc, r.URL.Query().Get("page"), o) {
 			writeAPIError(w, r, http.StatusNotFound, "unknown-page", "the document has no such page", "")
 		}
+	}
+}
+
+// handleSiteDocPreviewCSS is the stylesheet of the preview: the site's
+// design and its draft's brand.
+func (a *App) handleSiteDocPreviewCSS(target siteDocTarget) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		scope, view, ok := a.siteDocTargetOr404(w, r, target)
+		if !ok {
+			return
+		}
+		_, tpl, doc := a.siteDocument(view)
+		if d, _, ok := siteDraft(r.Context(), scope); ok {
+			doc = d
+		}
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write([]byte(siteCSS(tpl, doc)))
 	}
 }
 
@@ -242,8 +270,18 @@ func (a *App) handleSiteDocPreview(target siteDocTarget) http.HandlerFunc {
 func (a *App) registerSiteDocRoutes(r chi.Router, csrf func(http.Handler) http.Handler, base string, target siteDocTarget) {
 	r.Get(base, a.handleSiteDocGet(target))
 	r.Get(base+"/preview", a.handleSiteDocPreview(target))
+	r.Get(base+"/preview.css", a.handleSiteDocPreviewCSS(target))
 	r.Get(base+"/revisions/{rev}", a.handleSiteDocRevision(target))
 	r.With(csrf).Post(base+"/draft", a.handleSiteDocDraft(target))
 	r.With(csrf).Post(base+"/publish", a.handleSiteDocPublish(target))
 	r.With(csrf).Post(base+"/revisions/{rev}/restore", a.handleSiteDocRestore(target))
+}
+
+func sortedKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

@@ -7065,7 +7065,8 @@
 .vp-os .se-diff-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2); font-size: 12px; padding: 4px 0; border-bottom: 1px dashed var(--border); overflow-wrap: anywhere; }
 .vp-os .se-old { color: var(--danger); }
 .vp-os .se-new { color: var(--ok); }
-.vp-os .se-media { position: fixed; inset: 5vh 5vw; z-index: 50; overflow: auto; box-shadow: var(--sh-lg); }
+/* Above the sidebar (200), on the layer the console's other overlays use. */
+.vp-os .se-media { position: fixed; inset: 5vh 5vw; z-index: 300; overflow: auto; box-shadow: var(--sh-lg), 0 0 0 100vmax rgba(0, 0, 0, .45); }
 .vp-os .se-media-head { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; margin-bottom: var(--space-3); }
 .vp-os .se-media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--space-2); }
 .vp-os .se-media-item { padding: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: none; cursor: pointer; aspect-ratio: 4 / 3; }

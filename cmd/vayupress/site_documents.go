@@ -73,6 +73,7 @@ func (a *App) siteDocument(r *http.Request) (mode string, tpl bizsite.Template, 
 func (a *App) renderSitePage(w http.ResponseWriter, r *http.Request, slug string) bool {
 	mode, tpl, doc := a.siteDocument(r)
 	o := a.siteRenderOptions(r, mode, tpl)
+	o.Stylesheet = "/site.css?v=" + siteCSSVersion(o.Template, doc)
 	o.ContactScript = string(render.ContactJSLink())
 	return writeSitePage(w, doc, slug, o)
 }
@@ -118,4 +119,12 @@ func (a *App) serveSitePageIfActive(w http.ResponseWriter, r *http.Request) bool
 		return false
 	}
 	return a.renderSitePage(w, r, m[1])
+}
+
+// handleSiteGalleryJS serves the gallery viewer (sitedoc.GalleryJS). Its URL
+// carries a hash of its content, so it can be cached for a long time.
+func handleSiteGalleryJS(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write([]byte(sitedoc.GalleryJS))
 }

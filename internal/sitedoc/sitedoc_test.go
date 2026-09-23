@@ -5,6 +5,7 @@ package sitedoc
 import (
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -33,7 +34,11 @@ func visible(t *testing.T, page string) (texts, links []string) {
 				inBody = true
 			}
 			for _, a := range n.Attr {
-				if inBody && (a.Key == "href" || a.Key == "src") {
+				// A gallery picture's link to itself (a.vb-zoom) is new and
+				// deliberate — it is how the picture opens full size — and
+				// adds no destination: the same address is compared as the
+				// image's src.
+				if inBody && (a.Key == "href" || a.Key == "src") && !hasClass(n, "vb-zoom") {
 					links = append(links, n.Data+" "+a.Val)
 				}
 			}
@@ -49,6 +54,15 @@ func visible(t *testing.T, page string) (texts, links []string) {
 	}
 	walk(doc, false)
 	return texts, links
+}
+
+func hasClass(n *html.Node, c string) bool {
+	for _, a := range n.Attr {
+		if a.Key == "class" && contains(strings.Fields(a.Val), c) {
+			return true
+		}
+	}
+	return false
 }
 
 // fullLegacy is content with every section the old renderer can draw, so the
@@ -315,8 +329,12 @@ func TestEveryFieldIsEscaped(t *testing.T) {
 	if strings.Contains(out, "<script>alert") || strings.Contains(out, "<b ") || strings.Contains(out, "<b>") {
 		t.Errorf("markup from a field reached the page as markup:\n%s", out)
 	}
-	if n := strings.Count(out, "</script>"); n != 1 {
-		t.Errorf("the page has %d </script> tags, want exactly the structured data's own", n)
+	// Every script element is the structured data or a same-origin script
+	// file; none is made from a field.
+	for _, tag := range regexp.MustCompile(`<script[^>]*>`).FindAllString(out, -1) {
+		if tag != `<script type="application/ld+json">` && !strings.HasPrefix(tag, `<script src="/static/js/`) {
+			t.Errorf("unexpected script element %s", tag)
+		}
 	}
 }
 

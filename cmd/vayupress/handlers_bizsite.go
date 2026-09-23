@@ -15,6 +15,8 @@ package main
 // can build and polish it before flipping the switch.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -29,6 +31,7 @@ import (
 	"github.com/johalputt/vayupress/internal/customsite"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/sitedoc"
 )
 
 // bizSettings returns the current mode, active template and content.
@@ -132,6 +135,9 @@ func previewTemplate(r *http.Request) (bizsite.Template, bool) {
 		strings.TrimSpace(r.URL.Query().Get("preview")),
 		strings.TrimSpace(r.URL.Query().Get("v")),
 	} {
+		// The site's stylesheet link carries "<design>.<brand hash>", so a
+		// brand change busts caches too; the design is the part before the dot.
+		key, _, _ = strings.Cut(key, ".")
 		if key == "" {
 			continue
 		}
@@ -144,7 +150,7 @@ func previewTemplate(r *http.Request) (bizsite.Template, bool) {
 
 // handleBizSiteCSS serves the business site's stylesheet (base + template).
 func (a *App) handleBizSiteCSS(w http.ResponseWriter, r *http.Request) {
-	_, tpl, _ := a.bizSettings(r)
+	_, tpl, doc := a.siteDocument(r)
 	// Serve the previewed design's stylesheet when one is requested (the preview
 	// page links /site.css?v=<design>) so the preview's markup and CSS always
 	// match; otherwise the saved/active design.
@@ -153,7 +159,18 @@ func (a *App) handleBizSiteCSS(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=300")
-	_, _ = io.WriteString(w, bizsite.CSS(tpl))
+	_, _ = io.WriteString(w, siteCSS(tpl, doc))
+}
+
+// siteCSS is a site's whole stylesheet: its design, then its brand.
+func siteCSS(tpl bizsite.Template, doc sitedoc.Document) string {
+	return bizsite.CSS(tpl) + sitedoc.StyleCSS(doc.Style, tpl.Dark)
+}
+
+// siteCSSVersion names one stylesheet's content, for its cache-busting URL.
+func siteCSSVersion(tpl bizsite.Template, doc sitedoc.Document) string {
+	sum := sha256.Sum256([]byte(sitedoc.StyleCSS(doc.Style, tpl.Dark)))
+	return tpl.Key + "." + hex.EncodeToString(sum[:4])
 }
 
 // ── VayuOS Website studio ────────────────────────────────────────────────────

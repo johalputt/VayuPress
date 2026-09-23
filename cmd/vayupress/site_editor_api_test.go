@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -285,5 +286,37 @@ func TestTheSiteDocumentAPIIsAdminOnly(t *testing.T) {
 		if rec, _ := editorCall(t, h, c[0], c[1], withDoc(twoPageDoc("x"))); rec.Code != http.StatusForbidden {
 			t.Errorf("%s %s without an admin: %d", c[0], c[1], rec.Code)
 		}
+	}
+}
+
+// The preview's stylesheet carries the DRAFT's brand, not the live site's
+// and not the console host's.
+func TestThePreviewIsDressedInTheDraftsBrand(t *testing.T) {
+	a := siteApp(t)
+	d := hostedSite(t, a, "harbour.example")
+	h := editorRouter(a, d, true)
+	live := twoPageDoc("Live")
+	live.Style = &sitedoc.Style{Accent: "#1d4ed8"}
+	editorCall(t, h, http.MethodPost, "/sd/publish", withDoc(live))
+	draft := twoPageDoc("Draft")
+	draft.Style = &sitedoc.Style{Accent: "#7c2d12"}
+	editorCall(t, h, http.MethodPost, "/sd/draft", withDoc(draft))
+
+	rec, _ := editorCall(t, h, http.MethodGet, "/sd/preview?page=", nil)
+	m := regexp.MustCompile(`href="(/sd/preview\.css\?v=[^"]+)"`).FindStringSubmatch(rec.Body.String())
+	if m == nil {
+		t.Fatalf("the preview links no preview stylesheet:\n%s", rec.Body.String())
+	}
+	css, _ := editorCall(t, h, http.MethodGet, m[1], nil)
+	if !strings.Contains(css.Body.String(), "--vb-accent:#7c2d12") || strings.Contains(css.Body.String(), "#1d4ed8") {
+		t.Error("the preview stylesheet is not the draft's brand")
+	}
+}
+
+func TestTheGalleryViewerIsServed(t *testing.T) {
+	rec := httptest.NewRecorder()
+	handleSiteGalleryJS(rec, httptest.NewRequest(http.MethodGet, sitedoc.GalleryJSPath, nil))
+	if rec.Body.String() != sitedoc.GalleryJS || !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/javascript") {
+		t.Error("the gallery viewer is not served as JavaScript")
 	}
 }

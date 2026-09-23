@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -198,5 +199,35 @@ func TestAHostedSitesContactMessagesAreItsOwn(t *testing.T) {
 	}
 	if !strings.Contains(body, `href="https://harbour.example/"`) {
 		t.Error("the inbox links the message's page on the console's host instead of its site")
+	}
+}
+
+// A published brand reaches the site's stylesheet, and the page's link to it
+// changes when the brand does — a browser holding the old stylesheet must not
+// keep showing the old colours for five minutes.
+func TestTheBrandReachesTheStylesheetAndBustsItsCache(t *testing.T) {
+	a := siteApp(t)
+	d := hostedSite(t, a, "harbour.example")
+	sheetOf := func() string {
+		m := regexp.MustCompile(`href="(/site\.css\?v=[^"]+)"`).FindStringSubmatch(siteGet(a, d, d.Host, "/", a.handleHome).Body.String())
+		if m == nil {
+			t.Fatal("the page links no stylesheet")
+		}
+		return m[1]
+	}
+	before := sheetOf()
+	doc := twoPageDoc("Harbour")
+	doc.Style = &sitedoc.Style{Accent: "#1d4ed8", Font: "serif"}
+	publishRow(t, d.ID, docJSON(t, doc))
+	after := sheetOf()
+	if after == before || !strings.HasPrefix(after, "/site.css?v=bistro.") {
+		t.Errorf("stylesheet link %q → %q: a brand change must change it, and keep the design key first", before, after)
+	}
+	css := siteGet(a, d, d.Host, after, a.handleBizSiteCSS).Body.String()
+	if !strings.Contains(css, "body.vb--bistro") || !strings.Contains(css, "--vb-accent:#1d4ed8") {
+		t.Error("the site stylesheet lacks the design or the published brand")
+	}
+	if strings.Index(css, "--vb-accent:#1d4ed8") < strings.Index(css, "body.vb--bistro") {
+		t.Error("the brand comes before the design, so the design would win")
 	}
 }
