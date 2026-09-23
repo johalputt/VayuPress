@@ -493,9 +493,6 @@ window.vpRelTime = relativeTime;
 (function initActivityFeed() {
   var feed = $('#activity-feed');
   if (!feed) return;
-(function initActivityFeed() {
-  var feed = $('#activity-feed');
-  if (!feed) return;
   var feedTimer = null;
 
   function renderError() {
@@ -1055,5 +1052,4 @@ $$('[data-setting-key]').forEach(function (el) {
         break;
     }
   });
-})();
 })();
