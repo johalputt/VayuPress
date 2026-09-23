@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/bizsite"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/sitedoc"
@@ -124,6 +125,9 @@ func (a *App) handleSiteDocGet(target siteDocTarget) http.HandlerFunc {
 			return
 		}
 		resp["doc"], resp["source"], resp["revisions"] = current, source, revs
+		// Fields still holding a template's sample business: the editor offers
+		// to start from the operator's own details instead.
+		resp["sample"] = bizsite.DemoFields(sitedoc.Sample(current))
 		writeJSON(w, r, http.StatusOK, resp)
 	}
 }
@@ -153,7 +157,7 @@ func (a *App) handleSiteDocDraft(target siteDocTarget) http.HandlerFunc {
 // handleSiteDocPublish makes the sent document the live site.
 func (a *App) handleSiteDocPublish(target siteDocTarget) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		scope, _, ok := a.siteDocTargetOr404(w, r, target)
+		scope, view, ok := a.siteDocTargetOr404(w, r, target)
 		if !ok {
 			return
 		}
@@ -162,11 +166,16 @@ func (a *App) handleSiteDocPublish(target siteDocTarget) http.HandlerFunc {
 			writeSiteDocError(w, r, err)
 			return
 		}
-		a.publishAndAnswer(w, r, scope, d, "published")
+		a.publishAndAnswer(w, r, view, scope, d, "published")
 	}
 }
 
-func (a *App) publishAndAnswer(w http.ResponseWriter, r *http.Request, scope string, d sitedoc.Document, verb string) {
+// publishAndAnswer publishes d and says whether visitors see it. The editor
+// does not switch what a site serves: the site may be serving a hand-built
+// upload, and a publish that replaced it would be the editor taking a
+// decision the Website page asks the operator for. It reports instead, so a
+// publish to a site serving something else is never announced as live.
+func (a *App) publishAndAnswer(w http.ResponseWriter, r, view *http.Request, scope string, d sitedoc.Document, verb string) {
 	id, checks, err := a.publishSite(r.Context(), scope, d, siteDocAuthor(r))
 	if err != nil {
 		writeSiteDocError(w, r, err)
@@ -178,7 +187,9 @@ func (a *App) publishAndAnswer(w http.ResponseWriter, r *http.Request, scope str
 	}
 	dbpkg.AuditLog("website.document", dbpkg.AuditActor(r), target, verb+" revision "+itoaSafe(int(id)))
 	render.CachePurgeAll()
-	writeJSON(w, r, http.StatusOK, map[string]any{"status": verb, "revision": id, "checks": nonNilChecks(checks)})
+	mode, _, _ := a.bizSettings(view)
+	writeJSON(w, r, http.StatusOK, map[string]any{"status": verb, "revision": id, "checks": nonNilChecks(checks),
+		"serves": mode, "visible": strings.HasPrefix(mode, "business")})
 }
 
 // handleSiteDocRevision returns one published revision, for the history view.
@@ -206,7 +217,7 @@ func (a *App) handleSiteDocRevision(target siteDocTarget) http.HandlerFunc {
 // revision rather than a rewind, so restoring is itself undoable.
 func (a *App) handleSiteDocRestore(target siteDocTarget) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		scope, _, ok := a.siteDocTargetOr404(w, r, target)
+		scope, view, ok := a.siteDocTargetOr404(w, r, target)
 		if !ok {
 			return
 		}
@@ -220,7 +231,7 @@ func (a *App) handleSiteDocRestore(target siteDocTarget) http.HandlerFunc {
 			writeSiteDocError(w, r, err)
 			return
 		}
-		a.publishAndAnswer(w, r, scope, d, "restored")
+		a.publishAndAnswer(w, r, view, scope, d, "restored")
 	}
 }
 

@@ -86,6 +86,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   description written from what the page says. Both use the install's own
   provider and the assistant's existing no-new-facts operations; a suggestion
   appears under the field and changes nothing until **Use this**.
+- **Connector: change a site a section at a time, and a publish that is
+  checked from the visitor's side.** `edit_site_document` takes a list of
+  changes — set fields of a section or page, add or remove a section, add a
+  page — and applies it to the draft (or what is live) as one change: kept
+  only if every entry applies and the result is valid, a failure naming the
+  entry and why (an unknown section lists the ones there are; a misspelt
+  field is refused by name). It saves the draft or publishes. Every connector
+  publish (`edit_site_document`, `publish_site_document`,
+  `restore_site_revision`) then fetches each page from this server as a
+  visitor would and reports what they got: the status, whether it is the page
+  just published, and what `preview_site` finds wrong with what it loads;
+  `verified` is true only when every page passed.
+- **Start a site from your own details.** While a site still shows a design's
+  sample business, the site editor offers a short form — business name, a line
+  on what you do, phone, email, address, brand colour (or the logo's) — and
+  starts the draft from those alone: a header and a contact section, with the
+  sample's menu and hours left out. Nothing goes live until it is published.
 - **A hosted site's contact messages are its own.** Messages record the site
   they came from (migration 095), the inbox labels them and links their page
   on that site, and a hosted site's form is emailed to the address its contact
@@ -118,6 +135,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **The contact form's hidden spam trap no longer depends on a stylesheet.**
+  A message sent with the form's honeypot field filled is discarded as spam
+  while the sender is thanked, so a visible honeypot loses real messages. The
+  field was hidden only by a rule in the blog's stylesheet, and the contact
+  section of a template site (new in this release) loads its design's
+  stylesheet instead: there it showed as a blank box. The widget now moves it
+  off-screen itself, and the form is styled in every design, dark mode
+  included.
+- **Publishing from the site editor no longer says "live" when visitors
+  cannot see it.** A site serving its blog or an uploaded site kept showing
+  that after a publish or restore in the editor, which reported it live. The
+  editor now says that visitors still see the blog or the upload, and where to
+  switch; the editor itself does not switch it, since that would replace a
+  hand-built site.
+- **The scheduled screenshots job stopped at its pre-flight check** since
+  v3.17.67, whose bare `/os` redirects into the installed app's scope; it now
+  asks for `/os/`.
 - **Spacing restored on the first-run card, attention strip and confirm
   dialog.** Their styles used a `--space-N` scale that was never defined, so
   every one of those margins, gaps and paddings was dropped; it is now an

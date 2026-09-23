@@ -7033,6 +7033,8 @@
 .vp-os .se-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; position: sticky; top: 0; z-index: 5; }
 .vp-os .se-bar #se-status { flex: 1; min-width: 12ch; }
 .vp-os .se-error { margin: var(--space-3) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--danger); border-radius: var(--r-sm, 8px); color: var(--danger); overflow-wrap: anywhere; }
+.vp-os .se-start { margin: var(--space-3) 0; }
+.vp-os .se-start-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 var(--space-4); margin-bottom: var(--space-3); }
 .vp-os .se-checks { margin: var(--space-3) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--r-sm, 8px); background: var(--bg-surface); display: flex; flex-direction: column; gap: 4px; }
 .vp-os .se-check-row { display: flex; gap: var(--space-3); align-items: baseline; text-align: left; background: none; border: 0; padding: 4px 0; color: var(--text-1); font: inherit; font-size: var(--text-sm); cursor: pointer; overflow-wrap: anywhere; }
 .vp-os .se-check-row:hover { text-decoration: underline; }

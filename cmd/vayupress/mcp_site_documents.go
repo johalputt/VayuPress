@@ -11,6 +11,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"strings"
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/bizsite"
@@ -123,7 +126,9 @@ func (a *App) registerSiteDocumentTools(srv *mcp.Server) {
 		Name: "publish_site_document",
 		Description: "Publish a hosted site's document: the one sent, or its saved draft when none is sent. It " +
 			"becomes the live website and the domain is switched to serve it (blog stays at /blog). Every " +
-			"publish is kept in history; restore_site_revision brings an earlier one back.",
+			"publish is kept in history; restore_site_revision brings an earlier one back. Every page is then " +
+			"fetched as a visitor would: verified is true only when each answered with the page just published " +
+			"and everything it loads.",
 		InputSchema: docArgs([]string{"host"}),
 		Visible:     visibleWrite,
 		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
@@ -210,6 +215,46 @@ func (a *App) mcpPublishSiteDoc(ctx context.Context, d domain.Domain, doc sitedo
 	}
 	render.CachePurgeAll()
 	dbpkg.AuditLog("website.document", mcpActor(ctx), d.Host, verb+" revision "+itoaSafe(int(id))+" via=mcp")
+	visits, verified := a.visitSitePages(ctx, d, doc)
 	return jsonStr(map[string]any{"status": verb, "host": d.Host, "revision": id,
-		"url": "https://" + d.Host + "/", "serves": serves, "checks": nonNilChecks(checks)}), nil
+		"url": "https://" + d.Host + "/", "serves": serves, "checks": nonNilChecks(checks),
+		"verified": verified, "pages": visits}), nil
+}
+
+// sitePageVisit is what a visitor to one page of a site got.
+type sitePageVisit struct {
+	Path     string   `json:"path"`
+	Status   int      `json:"status"`
+	Problems []string `json:"problems,omitempty"`
+}
+
+// visitSitePages fetches every page of doc from this server as a visitor to
+// d would, straight after a publish: what each answered, whether it is the
+// page just published, and what preview_site finds wrong in what it loads.
+// It is the evidence that a publish reached visitors, rather than a report
+// that the database took it. The page is recognised by its title, taken from
+// the renderer rather than restated here.
+func (a *App) visitSitePages(ctx context.Context, d domain.Domain, doc sitedoc.Document) ([]sitePageVisit, bool) {
+	all := true
+	out := make([]sitePageVisit, 0, len(doc.Pages))
+	for _, p := range doc.Pages {
+		v := sitePageVisit{Path: "/" + p.Slug}
+		pv, err := a.previewSite(ctx, d, v.Path)
+		switch {
+		case err != nil:
+			v.Problems = []string{err.Error()}
+		case pv.Status != http.StatusOK:
+			v.Status = pv.Status
+			v.Problems = []string{fmt.Sprintf("a visitor gets HTTP %d", pv.Status)}
+		default:
+			v.Status = pv.Status
+			v.Problems = pv.Problems
+			if m := rePreviewTitle.FindStringSubmatch(sitedoc.Render(doc, p, sitedoc.Options{})); m != nil && strings.TrimSpace(m[1]) != pv.Title {
+				v.Problems = append(v.Problems, fmt.Sprintf("a visitor gets %q, not the page just published (%q)", pv.Title, strings.TrimSpace(m[1])))
+			}
+		}
+		all = all && len(v.Problems) == 0
+		out = append(out, v)
+	}
+	return out, all
 }

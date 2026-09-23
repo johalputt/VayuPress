@@ -26,6 +26,7 @@ func siteEditorShell(nonce, apiBase, back, backLabel string) string {
 </div>
 <p id="se-error" class="se-error" role="alert" hidden></p>
 <div id="se-checks" class="se-checks" aria-live="polite" hidden></div>
+<div id="se-start" class="card se-start" hidden></div>
 <div class="se-grid">
   <div class="se-edit">
     <div class="card"><div class="settings-block-title">Site</div><div id="se-site"></div></div>

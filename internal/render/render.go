@@ -922,7 +922,13 @@ const ContactJS = `(function(){` +
 	`var emailI=field('Your email','email',true);` +
 	`var msgI=field('Your message…','textarea',true);` +
 	// Honeypot: visually hidden, off the tab order, autocomplete disabled.
+	// The widget moves it off-screen itself, through the CSSOM, which no page
+	// policy governs. A filled honeypot is discarded as spam while the sender
+	// is thanked, so a visible one loses real messages without a trace, and
+	// that happened twice when the hiding lived only in a stylesheet: first on
+	// the blog, then on template sites, which load another.
 	`var hp=document.createElement('input');hp.type='text';hp.name='website';hp.className='vayu-contact-hp';hp.tabIndex=-1;hp.setAttribute('autocomplete','off');hp.setAttribute('aria-hidden','true');` +
+	`hp.style.position='absolute';hp.style.left='-9999px';hp.style.width='1px';hp.style.height='1px';hp.style.opacity='0';` +
 	`var btn=document.createElement('button');btn.type='submit';btn.className='vayu-contact-submit';btn.textContent='Send message';` +
 	`var status=document.createElement('span');status.className='vayu-contact-status';status.setAttribute('role','status');` +
 	`form.appendChild(nameI);form.appendChild(emailI);form.appendChild(msgI);form.appendChild(hp);` +

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/bizsite"
 	"github.com/johalputt/vayupress/internal/db"
 )
 
@@ -122,5 +123,27 @@ func TestAPageWithAContactFormLinksTheSheetThatHidesTheHoneypot(t *testing.T) {
 	if !strings.Contains(out, "/static/css/article.css") {
 		t.Error("a page carrying the contact form does not link article.css — the sheet holding " +
 			".vayu-contact-hp — so the honeypot is visible on it regardless of the rule")
+	}
+}
+
+// A template site's contact section carries the same widget, and a template
+// site loads its design's stylesheet, not the blog's: every class the widget
+// emits must be styled there too, in every design. The honeypot is the
+// exception — the widget hides that one itself (tests/e2e/contact.spec.js
+// holds it to that with no stylesheet at all).
+func TestTemplateSitesStyleTheContactWidget(t *testing.T) {
+	classes := map[string]bool{}
+	for _, m := range contactClassRe.FindAllStringSubmatch(ContactJS, -1) {
+		for _, cls := range strings.Fields(m[1]) {
+			classes[cls] = cls != "vayu-contact-hp"
+		}
+	}
+	for _, tpl := range bizsite.All() {
+		css := bizsite.CSS(tpl)
+		for cls, want := range classes {
+			if _, ok := cssRuleFor(css, cls); want && !ok {
+				t.Errorf("the %s design has no rule for the contact widget's %q, so it renders as a raw control", tpl.Key, cls)
+			}
+		}
 	}
 }

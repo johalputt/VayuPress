@@ -74,6 +74,49 @@ func TestTheEditorOpensOnTheLegacySite(t *testing.T) {
 	}
 }
 
+// The editor is told which fields still hold a template's sample business —
+// what it offers the quick start on — and, once the draft is the operator's
+// own, that none do.
+func TestTheEditorIsToldWhatIsStillSample(t *testing.T) {
+	a := siteApp(t)
+	d := hostedSite(t, a, "harbour.example")
+	h := editorRouter(a, d, true)
+	_, j := editorCall(t, h, http.MethodGet, "/sd", nil)
+	if fields, _ := j["sample"].([]any); len(fields) == 0 {
+		t.Fatalf("an untouched site reported no sample content: %v", j["sample"])
+	}
+	editorCall(t, h, http.MethodPost, "/sd/draft", withDoc(twoPageDoc("Harbour")))
+	if _, j := editorCall(t, h, http.MethodGet, "/sd", nil); j["sample"] != nil {
+		t.Errorf("the operator's own draft reported sample content: %v", j["sample"])
+	}
+}
+
+// A publish says whether visitors see it: a site serving its blog or an
+// uploaded site does not show its template website, and the editor is not
+// the place that switches it. Restore answers the same way.
+func TestAPublishSaysWhetherVisitorsSeeIt(t *testing.T) {
+	a := siteApp(t)
+	d := hostedSite(t, a, "harbour.example")
+	for _, c := range []struct {
+		mode    string
+		visible bool
+	}{{"business", true}, {"business_subpath", true}, {"blog", false}, {"custom", false}} {
+		if err := a.domains.SetSite(context.Background(), d.ID, domain.SiteConfig{Mode: c.mode, Template: "bistro"}); err != nil {
+			t.Fatal(err)
+		}
+		d, _ = a.domains.ByID(context.Background(), d.ID)
+		h := editorRouter(a, d, true)
+		_, j := editorCall(t, h, http.MethodPost, "/sd/publish", withDoc(twoPageDoc("Harbour")))
+		if j["visible"] != c.visible || j["serves"] != c.mode {
+			t.Errorf("publish while serving %s: visible=%v serves=%v", c.mode, j["visible"], j["serves"])
+		}
+		_, j = editorCall(t, h, http.MethodPost, "/sd/revisions/"+strconv.Itoa(int(j["revision"].(float64)))+"/restore", nil)
+		if j["visible"] != c.visible {
+			t.Errorf("restore while serving %s: visible=%v", c.mode, j["visible"])
+		}
+	}
+}
+
 // A draft is refused with the field that failed, is kept when valid, and is
 // what the editor reopens on; the public site does not change until publish.
 func TestADraftIsValidatedKeptAndNotPublic(t *testing.T) {

@@ -168,6 +168,15 @@
       return true;
     }, function () { state.saving = false; say('Draft not saved — connection lost; retrying'); timer = setTimeout(saveDraft, 3000); return false; });
   }
+  // A site serving its blog or an uploaded site does not show its template
+  // website, however often it is published; the server says which it serves,
+  // and a publish there is not announced as live.
+  function unseen(j) {
+    if (j.visible !== false) return '';
+    return 'Revision ' + j.revision + ' is saved, but visitors still see ' +
+      (j.serves === 'custom' ? 'the uploaded site' : 'the blog') +
+      ' — choose the template website on the Website page to show it';
+  }
   function publish() {
     clearTimeout(timer);
     say('Publishing…');
@@ -181,9 +190,9 @@
       state.dirty = false;
       showError('');
       renderChecks(r.j.checks);
-      if (window.vpToast) window.vpToast('Site published', 'ok');
+      if (window.vpToast && r.j.visible !== false) window.vpToast('Site published', 'ok');
       var notes = (r.j.checks || []).length;
-      load(true, 'Published ✓ — revision ' + r.j.revision + ' is live' + (notes ? ' (' + notes + ' note' + (notes > 1 ? 's' : '') + ' below)' : ''));
+      load(true, (unseen(r.j) || 'Published ✓ — revision ' + r.j.revision + ' is live') + (notes ? ' (' + notes + ' note' + (notes > 1 ? 's' : '') + ' below)' : ''));
     });
   }
 
@@ -562,7 +571,7 @@
         var go = function () {
           api('POST', '/revisions/' + rv.id + '/restore').then(function (r) {
             if (!r.ok) { showError(((r.j && r.j.error) || {}).message || 'Could not restore.'); return; }
-            load(true, 'Restored revision ' + rv.id + ' — it is live as revision ' + r.j.revision);
+            load(true, unseen(r.j) || 'Restored revision ' + rv.id + ' — it is live as revision ' + r.j.revision);
           });
         };
         if (window.vpConfirm) window.vpConfirm({ title: 'Restore revision', message: 'Publish revision ' + rv.id + ' again? It becomes the live site, and what is live now stays in History.', confirm: 'Restore' }, go);
@@ -619,6 +628,80 @@
   }
 
   // ── Load ──────────────────────────────────────────────────────────────────
+  // ── Quick start ───────────────────────────────────────────────────────────
+  // A site still showing a template's sample business is offered a start
+  // from the operator's own details: a header and a contact section, saved
+  // as the draft through the same endpoint as every other edit. The sample
+  // is not carried over — it is another business's menu and address.
+  var startEl = document.getElementById('se-start');
+  var startDismissed = false;
+  function renderStart(sample) {
+    if (!startEl) return;
+    startEl.textContent = '';
+    startEl.hidden = startDismissed || !sample.length;
+    if (startEl.hidden) return;
+    startEl.appendChild(el('div', 'settings-block-title', 'Start from your own details'));
+    startEl.appendChild(el('p', 'text-sm muted', 'This site still shows the design\'s sample business (' + sample.join(', ') +
+      '). Enter yours and the editor starts again from them: a header and your contact details, ready to add to. ' +
+      'It replaces the draft; nothing goes live until you publish.'));
+    var v = { accent: (state.doc.style || {}).accent || '' };
+    var grid = el('div', 'se-start-grid');
+    [['Business name', 'name', 'name', 120], ['What you do, in one line', 'tagline', 'pages[0].sections[0].body', 200],
+      ['Phone', 'phone', 'pages[0].sections[1].phone', 40], ['Email', 'email', 'pages[0].sections[1].email', 254],
+      ['Address', 'address', 'pages[0].sections[1].address', 300], ['Brand colour (#rrggbb, optional)', 'accent', 'style.accent', 7]
+    ].forEach(function (f) {
+      var wrap = el('label', 'se-field');
+      wrap.appendChild(el('span', 'se-label', f[0]));
+      var input = el('input', 'input');
+      input.type = f[1] === 'email' ? 'email' : 'text';
+      input.maxLength = f[3];
+      input.value = v[f[1]] || '';
+      input.setAttribute('data-path', f[2]);
+      input.addEventListener('input', function () { v[f[1]] = input.value.trim(); });
+      wrap.appendChild(input);
+      if (f[1] === 'accent') {
+        var note = el('span', 'se-hint');
+        wrap.appendChild(btn('Match my logo', 'btn--ghost', function () {
+          api('GET', '/suggest-accent').then(function (r) {
+            if (!r.ok) { note.textContent = ((r.j && r.j.error) || {}).message || 'No colour could be read.'; return; }
+            input.value = v.accent = r.j.accent;
+            note.textContent = 'Taken from your logo.';
+          });
+        }));
+        wrap.appendChild(note);
+      }
+      grid.appendChild(wrap);
+    });
+    startEl.appendChild(grid);
+    var row = el('div', 'se-row');
+    row.appendChild(btn('Start my site', 'btn--primary', function () {
+      if (!v.name) { showError('Enter the business name to start from.', 'name'); return; }
+      var home = [{ id: 'top', kind: 'hero', body: v.tagline }];
+      if (v.phone || v.email || v.address) {
+        home.push({ id: 'contact', kind: 'contact', nav: 'Contact', heading: 'Contact',
+          phone: v.phone, email: v.email, address: v.address, form: !!v.email });
+      }
+      var style = Object.assign({}, state.doc.style || {}, { accent: v.accent });
+      var doc = { v: 1, name: v.name, show_blog: state.doc.show_blog, style: style, pages: [{ slug: '', sections: home }] };
+      // A pending autosave of the sample would land after this and undo it.
+      clearTimeout(timer);
+      state.dirty = false;
+      say('Starting from your details…');
+      api('POST', '/draft', { doc: clean(doc) }).then(function (r) {
+        if (!r.ok) {
+          var e = (r.j && r.j.error) || {};
+          say('Not started');
+          showError(e.message || ('The server answered ' + r.status), e.path);
+          return;
+        }
+        showError('');
+        load(false, 'Started from your details — draft saved. Publish when it is ready.');
+      });
+    }));
+    row.appendChild(btn('Keep the sample for now', 'btn--ghost', function () { startDismissed = true; renderStart([]); }));
+    startEl.appendChild(row);
+  }
+
   // load reads the site back from the server. outcome, when given, is what
   // just happened (published, restored) and is shown instead of where the
   // editor's content came from — otherwise the reload would overwrite the one
@@ -637,6 +720,7 @@
       var from = { draft: 'Editing your saved draft', published: 'Editing the live site', legacy: 'Editing the site as it is today' }[r.j.source] || '';
       say(outcome || from);
       render();
+      renderStart(r.j.sample || []);
       renderHistory();
       reloadPreview();
     });
