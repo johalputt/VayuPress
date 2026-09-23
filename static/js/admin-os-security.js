@@ -69,15 +69,20 @@
 
   if (disableBtn) {
     disableBtn.addEventListener('click', function () {
-      if (!window.confirm('Disable two-factor authentication for your account?')) return;
-      post('/os/api/totp/disable')
-        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
-        .then(function (res) {
-          if (!res.ok) { toast(res.j.message || 'Could not disable', 'error'); return; }
-          toast('Two-factor authentication disabled', 'ok');
-          setTimeout(function () { window.location.reload(); }, 800);
-        })
-        .catch(function () { toast('Network error', 'error'); });
+      vpConfirm({
+        title: 'Disable two-factor authentication',
+        message: 'Disable two-factor authentication for your account? From then on, the password alone signs you in.',
+        confirm: 'Disable',
+      }, function () {
+        post('/os/api/totp/disable')
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (res) {
+            if (!res.ok) { toast(res.j.message || 'Could not disable', 'error'); return; }
+            toast('Two-factor authentication disabled', 'ok');
+            setTimeout(function () { window.location.reload(); }, 800);
+          })
+          .catch(function () { toast('Network error', 'error'); });
+      });
     });
   }
 })();

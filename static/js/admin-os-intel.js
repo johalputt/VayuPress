@@ -58,7 +58,7 @@
       var name = (form.querySelector('[data-goal-name]') || {}).value || '';
       var kind = (form.querySelector('[data-goal-kind]') || {}).value || 'path';
       var target = (form.querySelector('[data-goal-target]') || {}).value || '';
-      if (!name.trim() || !target.trim()) { window.alert('Name and target are required.'); return; }
+      if (!name.trim() || !target.trim()) { if (window.vpToast) window.vpToast('Name and target are required.', 'error'); return; }
       fetch('/os/api/analytics/goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
@@ -66,21 +66,26 @@
       })
         .then(function (r) { return r.ok ? r : Promise.reject(r); })
         .then(function () { window.location.reload(); })
-        .catch(function () { window.alert('Could not add goal. Check the name and target.'); });
+        .catch(function () { if (window.vpToast) window.vpToast('Could not add goal. Check the name and target.', 'error'); });
     });
   }
 
   document.querySelectorAll('[data-goal-delete]').forEach(function (b) {
     b.addEventListener('click', function () {
       var id = b.getAttribute('data-goal-delete');
-      if (!window.confirm('Delete this goal?')) return;
-      fetch('/os/api/analytics/goals/' + encodeURIComponent(id), {
-        method: 'DELETE',
-        headers: { 'X-CSRF-Token': csrf() }
-      })
-        .then(function (r) { return r.ok ? r : Promise.reject(r); })
-        .then(function () { window.location.reload(); })
-        .catch(function () { window.alert('Delete failed.'); });
+      vpConfirm({
+        title: 'Delete this goal',
+        message: 'Delete this goal? Its conversions stop being counted.',
+        confirm: 'Delete',
+      }, function () {
+        fetch('/os/api/analytics/goals/' + encodeURIComponent(id), {
+          method: 'DELETE',
+          headers: { 'X-CSRF-Token': csrf() }
+        })
+          .then(function (r) { return r.ok ? r : Promise.reject(r); })
+          .then(function () { window.location.reload(); })
+          .catch(function () { if (window.vpToast) window.vpToast('Delete failed.', 'error'); });
+      });
     });
   });
 })();

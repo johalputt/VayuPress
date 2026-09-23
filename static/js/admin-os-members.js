@@ -31,6 +31,21 @@
     return d.message || '';
   }
 
+  // The console's own feedback, not the browser's dialogs.
+  //
+  // alert() here is a deliberate LOCAL shim: it shadows the native one, so the many
+  // error paths below route to the shell's toast without editing each call site.
+  // window.prompt/confirm return a value and cannot be shimmed this way, so those
+  // are migrated to vpPrompt/vpConfirm individually.
+  function alert(msg) {
+    var text = String(msg == null ? '' : msg);
+    if (window.vpToast) { window.vpToast(text, 'error'); return; }
+    // Never fall back to the native dialog — it is the thing being replaced.
+    // Announce it in the shell's live region so the message is not simply lost.
+    var live = document.getElementById('vp-live');
+    if (live) { live.textContent = text; }
+  }
+
   // ── Tier editor modal ──────────────────────────────────────────────────
   var modal = document.getElementById('tier-modal');
   var form = document.getElementById('tier-form');
@@ -104,9 +119,14 @@
   // ── Archive a tier ─────────────────────────────────────────────────────
   document.querySelectorAll('[data-archive-tier]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      if (!window.confirm('Archive this tier? Existing members keep their plan.')) { return; }
-      api('DELETE', '/os/api/members/tiers/' + encodeURIComponent(btn.dataset.id)).then(function (r) {
-        if (r.ok) { reload(); } else { alert('Could not archive the tier.'); }
+      vpConfirm({
+        title: 'Archive this tier',
+        message: 'Existing members keep their plan.',
+        confirm: 'Archive',
+      }, function () {
+        api('DELETE', '/os/api/members/tiers/' + encodeURIComponent(btn.dataset.id)).then(function (r) {
+          if (r.ok) { reload(); } else { alert('Could not archive the tier.'); }
+        });
       });
     });
   });
@@ -125,10 +145,16 @@
   // ── Labels ─────────────────────────────────────────────────────────────
   document.querySelectorAll('[data-add-label]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      var label = window.prompt('Add a label for ' + btn.dataset.email);
-      if (!label) { return; }
-      api('POST', '/os/api/members/' + encodeURIComponent(btn.dataset.email) + '/labels', { label: label }).then(function (r) {
-        if (r.ok) { reload(); } else { alert('Could not add the label.'); }
+      vpPrompt({
+        title: 'Add a label',
+        message: 'Labels are private to the operator; members never see them.',
+        label: 'Label for ' + btn.dataset.email,
+        placeholder: 'vip',
+      }, function (label) {
+        if (!label) { return; }
+        api('POST', '/os/api/members/' + encodeURIComponent(btn.dataset.email) + '/labels', { label: label }).then(function (r) {
+          if (r.ok) { reload(); } else { alert('Could not add the label.'); }
+        });
       });
     });
   });
@@ -147,13 +173,17 @@
     btn.addEventListener('click', function (e) {
       var immediate = !!e.shiftKey;
       var email = btn.dataset.email;
-      var msg = immediate
-        ? 'Immediately cancel and revoke access for ' + email + '?'
-        : 'Cancel ' + email + ' at the end of their paid period? They keep access until then.\n\n(Hold Shift when clicking to cancel immediately.)';
-      if (!window.confirm(msg)) { return; }
-      api('PUT', '/os/api/members/' + encodeURIComponent(email) + '/cancel', { immediate: immediate }).then(function (r) {
-        if (r.ok) { reload(); } else { alert('Could not cancel the subscription.'); }
-      }).catch(function () { alert('Network error.'); });
+      vpConfirm({
+        title: immediate ? 'Cancel and revoke access now' : 'Cancel at period end',
+        message: immediate
+          ? 'Immediately cancel and revoke access for ' + email + '?'
+          : 'Cancel ' + email + ' at the end of their paid period? They keep access until then.',
+        confirm: immediate ? 'Revoke now' : 'Cancel at period end',
+      }, function () {
+        api('PUT', '/os/api/members/' + encodeURIComponent(email) + '/cancel', { immediate: immediate }).then(function (r) {
+          if (r.ok) { reload(); } else { alert('Could not cancel the subscription.'); }
+        }).catch(function () { alert('Network error.'); });
+      });
     });
   });
 
@@ -163,10 +193,15 @@
   document.querySelectorAll('[data-remove-member]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var email = btn.dataset.email;
-      if (!window.confirm('Remove ' + email + '?\n\nThis address was never confirmed. If the person is real they can still join later by opening a sign-in link.')) { return; }
-      api('DELETE', '/os/api/members/' + encodeURIComponent(email)).then(function (r) {
-        if (r.ok) { reload(); } else { alert('Could not remove that member.'); }
-      }).catch(function () { alert('Network error.'); });
+      vpConfirm({
+        title: 'Remove this unconfirmed address',
+        message: 'Remove ' + email + '? This address was never confirmed. If the person is real they can still join later by opening a sign-in link.',
+        confirm: 'Remove',
+      }, function () {
+        api('DELETE', '/os/api/members/' + encodeURIComponent(email)).then(function (r) {
+          if (r.ok) { reload(); } else { alert('Could not remove that member.'); }
+        }).catch(function () { alert('Network error.'); });
+      });
     });
   });
 
@@ -174,11 +209,16 @@
   document.querySelectorAll('[data-purge-unverified]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var n = btn.dataset.count || 'all';
-      if (!window.confirm('Remove ' + n + ' unconfirmed ' + (n === '1' ? 'address' : 'addresses') + '?\n\nVerified members are not affected.')) { return; }
-      btn.disabled = true;
-      api('POST', '/os/api/members/unverified/purge', {}).then(function (r) {
-        if (r.ok) { reload(); } else { btn.disabled = false; alert('Could not remove them.'); }
-      }).catch(function () { btn.disabled = false; alert('Network error.'); });
+      vpConfirm({
+        title: 'Remove unconfirmed addresses',
+        message: 'Remove ' + n + ' unconfirmed ' + (n === '1' ? 'address' : 'addresses') + '? Verified members are not affected.',
+        confirm: 'Remove',
+      }, function () {
+        btn.disabled = true;
+        api('POST', '/os/api/members/unverified/purge', {}).then(function (r) {
+          if (r.ok) { reload(); } else { btn.disabled = false; alert('Could not remove them.'); }
+        }).catch(function () { btn.disabled = false; alert('Network error.'); });
+      });
     });
   });
 
@@ -235,9 +275,14 @@
 
   document.querySelectorAll('[data-delete-user]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      if (!window.confirm('Remove ' + btn.dataset.email + '? Their account and access are revoked.')) { return; }
-      api('DELETE', '/os/api/users/' + encodeURIComponent(btn.dataset.email)).then(function (r) {
-        if (r.ok) { reload(); } else { alert('Could not remove the account.'); }
+      vpConfirm({
+        title: 'Remove this account',
+        message: 'Remove ' + btn.dataset.email + '? Their account and access are revoked.',
+        confirm: 'Remove',
+      }, function () {
+        api('DELETE', '/os/api/users/' + encodeURIComponent(btn.dataset.email)).then(function (r) {
+          if (r.ok) { reload(); } else { alert('Could not remove the account.'); }
+        });
       });
     });
   });
@@ -248,19 +293,37 @@
       var domain = btn.dataset.domain || '';
       var current = btn.dataset.current || '';
       var suggestion = current ? current.split('@')[0] : (btn.dataset.email || '').split('@')[0];
-      var local = window.prompt('Mailbox name for this member (the part before @' + domain + '):', suggestion);
-      if (local === null) { return; }
-      local = local.trim();
-      if (!local) { alert('Enter a mailbox name.'); return; }
-      var pass = window.prompt('Set a password for ' + local + '@' + domain + ' (min 8 characters):', '');
-      if (pass === null) { return; }
-      if (pass.length < 8) { alert('Password must be at least 8 characters.'); return; }
-      api('POST', '/os/api/users/' + encodeURIComponent(btn.dataset.email) + '/mailbox', { local: local, pass: pass }).then(function (r) {
-        return r.json().then(function (d) { return { ok: r.ok, d: d }; });
-      }).then(function (res) {
-        if (res.ok) { reload(); }
-        else { alert(errText(res.d) || 'Could not assign the mailbox.'); }
-      }).catch(function () { alert('Network error.'); });
+      // Two steps, both in the console's own dialog (window.prompt was the shortest
+      // way to ask twice; vpPrompt keeps the same contract — null when cancelled).
+      vpPrompt({
+        title: 'Mailbox for this member',
+        message: 'The part before @' + domain + '.',
+        label: 'Mailbox name',
+        value: suggestion,
+        placeholder: 'name',
+        confirm: 'Continue',
+      }, function (local) {
+        if (local === null) { return; }
+        local = (local || '').trim();
+        if (!local) { alert('Enter a mailbox name.'); return; }
+        vpPrompt({
+          title: 'Set the mailbox password',
+          message: 'For ' + local + '@' + domain + ' — at least 8 characters.',
+          label: 'Password',
+          type: 'password',
+          autocomplete: 'new-password',
+          confirm: 'Create mailbox',
+        }, function (pass) {
+          if (pass === null) { return; }
+          if ((pass || '').length < 8) { alert('Password must be at least 8 characters.'); return; }
+          api('POST', '/os/api/users/' + encodeURIComponent(btn.dataset.email) + '/mailbox', { local: local, pass: pass }).then(function (r) {
+            return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+          }).then(function (res) {
+            if (res.ok) { reload(); }
+            else { alert(errText(res.d) || 'Could not assign the mailbox.'); }
+          }).catch(function () { alert('Network error.'); });
+        });
+      });
     });
   });
 })();

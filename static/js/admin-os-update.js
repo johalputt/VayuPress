@@ -323,12 +323,18 @@
   function doApply() {
     var backupEl = document.querySelector('[data-update-backup]');
     var doBackup = !backupEl || backupEl.checked;
-    var prompt = doBackup
-      ? 'Install the latest release now? Your database will be backed up first, then the service restarts to finish. This usually takes under a minute (longer for very large databases).'
-      : 'Install the latest release now WITHOUT a database backup? A binary update does not change your database, and the previous binary is kept for rollback. The service will restart to finish.';
-    if (!window.confirm(prompt)) {
-      return;
-    }
+    // The house dialog: window.confirm cannot say which of the two very different
+    // things is about to happen (with or without a database backup).
+    vpConfirm({
+      title: 'Install the latest release',
+      message: doBackup
+        ? 'Install the latest release now? Your database will be backed up first, then the service restarts to finish. This usually takes under a minute (longer for very large databases).'
+        : 'Install the latest release now WITHOUT a database backup? A binary update does not change your database, and the previous binary is kept for rollback. The service will restart to finish.',
+      confirm: doBackup ? 'Back up and install' : 'Install without backup'
+    }, function () { applyNow(doBackup); });
+  }
+
+  function applyNow(doBackup) {
     if (applyBtn) applyBtn.disabled = true;
     if (checkBtn) checkBtn.disabled = true;
     setMsg(msgEl, doBackup ? 'Backing up, downloading and verifying the release… do not close this tab.' : 'Downloading and verifying the release… do not close this tab.', false);
@@ -368,9 +374,14 @@
 
   // ── Roll back to the previous binary ────────────────────────────────────────
   function doRollback() {
-    if (!window.confirm('Roll back to the previous binary and restart? This undoes the most recent update.')) {
-      return;
-    }
+    vpConfirm({
+      title: 'Roll back',
+      message: 'Roll back to the previous binary and restart? This undoes the most recent update.',
+      confirm: 'Roll back'
+    }, rollbackNow);
+  }
+
+  function rollbackNow() {
     if (rollbackBtn) rollbackBtn.disabled = true;
     setMsg(msgEl, 'Rolling back and restarting…', false);
     fetch('/os/api/update/rollback', {
@@ -416,9 +427,14 @@
   function doImport() {
     var f = fileInput && fileInput.files && fileInput.files[0];
     if (!f) { setMsg(backupMsg, 'Choose a backup file first.', true); return; }
-    if (!window.confirm('Restore from "' + f.name + '"? This REPLACES all current content and settings. Your current database is backed up automatically, then the service restarts.')) {
-      return;
-    }
+    vpConfirm({
+      title: 'Restore from a backup',
+      message: 'Restore from "' + f.name + '"? This REPLACES all current content and settings. Your current database is backed up automatically, then the service restarts.',
+      confirm: 'Restore'
+    }, function () { importNow(f); });
+  }
+
+  function importNow(f) {
     if (importBtn) importBtn.disabled = true;
     if (progWrap) progWrap.hidden = false;
     setBar(0);

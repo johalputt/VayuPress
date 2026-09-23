@@ -46,12 +46,17 @@
     b.addEventListener('click', function () {
       var path = b.getAttribute('data-path');
       var name = b.getAttribute('data-name') || 'this file';
-      if (!window.confirm('Delete "' + name + '"? This permanently removes the file and cannot be undone.')) return;
-      b.disabled = true;
-      deletePaths([path], function () {
-        var row = b.closest('[data-file-row]');
-        if (row) row.remove();
-        refreshBulk();
+      vpConfirm({
+        title: 'Delete this file',
+        message: 'Delete "' + name + '"? This permanently removes the file and cannot be undone.',
+        confirm: 'Delete',
+      }, function () {
+        b.disabled = true;
+        deletePaths([path], function () {
+          var row = b.closest('[data-file-row]');
+          if (row) row.remove();
+          refreshBulk();
+        });
       });
     });
   });
@@ -85,17 +90,22 @@
     bulkDelete.addEventListener('click', function () {
       var paths = selectedPaths();
       if (!paths.length) return;
-      if (!window.confirm('Delete ' + paths.length + ' selected file' + (paths.length > 1 ? 's' : '') + '? This cannot be undone.')) return;
-      bulkDelete.disabled = true;
-      deletePaths(paths, function () {
-        paths.forEach(function (p) {
-          var box = document.querySelector('[data-file-select][value="' + (window.CSS && CSS.escape ? CSS.escape(p) : p) + '"]');
-          var row = box && box.closest('[data-file-row]');
-          if (row) row.remove();
+      vpConfirm({
+        title: 'Delete selected files',
+        message: 'Delete ' + paths.length + ' selected file' + (paths.length > 1 ? 's' : '') + '? This cannot be undone.',
+        confirm: 'Delete',
+      }, function () {
+        bulkDelete.disabled = true;
+        deletePaths(paths, function () {
+          paths.forEach(function (p) {
+            var box = document.querySelector('[data-file-select][value="' + (window.CSS && CSS.escape ? CSS.escape(p) : p) + '"]');
+            var row = box && box.closest('[data-file-row]');
+            if (row) row.remove();
+          });
+          bulkDelete.disabled = false;
+          if (selectAll) selectAll.checked = false;
+          refreshBulk();
         });
-        bulkDelete.disabled = false;
-        if (selectAll) selectAll.checked = false;
-        refreshBulk();
       });
     });
   }

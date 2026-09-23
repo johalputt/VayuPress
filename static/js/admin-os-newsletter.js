@@ -69,14 +69,19 @@
   document.querySelectorAll('[data-sub-delete]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var email = btn.getAttribute('data-email');
-      if (!window.confirm('Permanently delete ' + email + '? This cannot be undone.')) { return; }
-      btn.disabled = true;
-      api('DELETE', '/os/api/newsletter/subscribers/' + encodeURIComponent(btn.getAttribute('data-id')))
-        .then(function (res) {
-          if (res.ok) { location.reload(); }
-          else { btn.disabled = false; show(errText(res.d), true); }
-        })
-        .catch(function (e) { btn.disabled = false; show('Error: ' + e, true); });
+      vpConfirm({
+        title: 'Delete this subscriber',
+        message: 'Permanently delete ' + email + '? This cannot be undone.',
+        confirm: 'Delete',
+      }, function () {
+        btn.disabled = true;
+        api('DELETE', '/os/api/newsletter/subscribers/' + encodeURIComponent(btn.getAttribute('data-id')))
+          .then(function (res) {
+            if (res.ok) { location.reload(); }
+            else { btn.disabled = false; show(errText(res.d), true); }
+          })
+          .catch(function (e) { btn.disabled = false; show('Error: ' + e, true); });
+      });
     });
   });
 
@@ -122,18 +127,23 @@
     sendBtn.addEventListener('click', function () {
       var p = payload();
       if (!validate(p)) { return; }
-      if (!window.confirm('Send this broadcast to all confirmed subscribers?')) { return; }
-      sendBtn.disabled = true;
-      show('Queuing broadcast…', false);
-      api('POST', '/os/api/newsletter/broadcast', p).then(function (res) {
-        if (res.ok) {
-          show('Broadcast queued to ' + (res.d.queued || 0) + ' subscribers. Refreshing…', false);
-          setTimeout(function () { location.reload(); }, 1200);
-        } else {
-          sendBtn.disabled = false;
-          show(errText(res.d), true);
-        }
-      }).catch(function (e) { sendBtn.disabled = false; show('Error: ' + e, true); });
+      vpConfirm({
+        title: 'Send this broadcast',
+        message: 'Send this broadcast to all confirmed subscribers?',
+        confirm: 'Send',
+      }, function () {
+        sendBtn.disabled = true;
+        show('Queuing broadcast…', false);
+        api('POST', '/os/api/newsletter/broadcast', p).then(function (res) {
+          if (res.ok) {
+            show('Broadcast queued to ' + (res.d.queued || 0) + ' subscribers. Refreshing…', false);
+            setTimeout(function () { location.reload(); }, 1200);
+          } else {
+            sendBtn.disabled = false;
+            show(errText(res.d), true);
+          }
+        }).catch(function (e) { sendBtn.disabled = false; show('Error: ' + e, true); });
+      });
     });
   }
 })();

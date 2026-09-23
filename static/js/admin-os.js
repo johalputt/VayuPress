@@ -51,17 +51,29 @@ function cookie(name) {
    per-page inline scripts have their own (ops-block) variant that reloads on
    success; this one takes callbacks and never reloads, so island-style
    handlers can update in place. Every error path toasts — a silent catch is a
-   lie by omission. */
+   lie by omission.
+
+   Two fixes worth naming: a body that is NOT JSON (a proxy error page, a 502,
+   an expired session redirect) is now reported as its HTTP status instead of
+   being dressed up as "Network error"; and an expired CSRF token says so,
+   because "reload the page" is the actual remedy. */
+window.vpCsrf = function () { return cookie('vp_csrf'); };
 window.vpPost = function (url, body, onok, onerr) {
   fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.vpCsrf() },
     body: JSON.stringify(body || {}),
   })
-    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+    .then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        return { ok: r.ok, d: d, status: r.status };
+      });
+    })
     .then(function (res) {
       if (res.ok) { if (onok) onok(res.d); return; }
-      var msg = (res.d && (res.d.detail || res.d.title || res.d.error || res.d.message)) || 'Request failed';
+      var msg = (res.d && (res.d.detail || res.d.title || res.d.error || res.d.message)) ||
+        (res.status === 403 ? 'session token expired — reload the page and try again'
+          : 'Request failed (' + res.status + ')');
       if (onerr) onerr(res.d, msg); else toast(msg, 'error');
     })
     .catch(function (e) {
@@ -71,7 +83,11 @@ window.vpPost = function (url, body, onok, onerr) {
 
 /* ── Toast system ────────────────────────────────────────────── */
 function toast(msg, kind) {
-  kind = kind || 'info';
+  // Only ok/error/info/warn have styles in admin-os.css. Call sites have passed
+  // 'success' and 'danger' too — those rendered an unstyled toast with no colour,
+  // which is a silent loss of the signal. Normalise the aliases here so no call
+  // site (including future ones) can drop its colour.
+  kind = ({ success: 'ok', danger: 'error', warning: 'warn' })[kind] || kind || 'info';
   var container = $('.toast-container');
   if (!container) {
     container = document.createElement('div');
@@ -856,7 +872,7 @@ $$('[data-setting-key]').forEach(function (el) {
   window.addEventListener('appinstalled', function () {
     deferred = null;
     btn.hidden = true;
-    if (window.vpToast) window.vpToast('VayuOS installed — find it on your home screen.', 'success');
+    if (window.vpToast) window.vpToast('VayuOS installed — find it on your home screen.', 'ok');
   });
   on(btn, 'click', function () {
     if (deferred) {

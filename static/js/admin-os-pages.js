@@ -50,15 +50,20 @@
   document.querySelectorAll('[data-page-delete]').forEach(function (b) {
     b.addEventListener('click', function () {
       var t = b.getAttribute('data-title') || 'this page';
-      if (!window.confirm('Delete "' + t + '"? This permanently removes the page and cannot be undone.')) return;
-      b.disabled = true;
-      fetch('/os/api/posts/' + encodeURIComponent(b.getAttribute('data-slug')), { method: 'DELETE', headers: { 'X-CSRF-Token': csrf() } })
-        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-        .then(function (res) {
-          if (res.ok) { var row = b.closest('tr'); if (row) row.remove(); }
-          else { b.disabled = false; setText(navStatus, (res.d && (res.d.detail || res.d.title)) || 'Could not delete'); }
-        })
-        .catch(function (e) { b.disabled = false; setText(navStatus, 'Network error: ' + e); });
+      vpConfirm({
+        title: 'Delete this page',
+        message: 'Delete "' + t + '"? This permanently removes the page and cannot be undone.',
+        confirm: 'Delete',
+      }, function () {
+        b.disabled = true;
+        fetch('/os/api/posts/' + encodeURIComponent(b.getAttribute('data-slug')), { method: 'DELETE', headers: { 'X-CSRF-Token': csrf() } })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+          .then(function (res) {
+            if (res.ok) { var row = b.closest('tr'); if (row) row.remove(); }
+            else { b.disabled = false; setText(navStatus, (res.d && (res.d.detail || res.d.title)) || 'Could not delete'); }
+          })
+          .catch(function (e) { b.disabled = false; setText(navStatus, 'Network error: ' + e); });
+      });
     });
   });
 

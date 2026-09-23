@@ -3106,20 +3106,28 @@
   var newPageBtn = root.querySelector('[data-editor-newpage]');
   if (newPageBtn) {
     newPageBtn.addEventListener('click', function () {
-      var title = (window.prompt('New page title', 'Untitled page') || '').trim();
-      if (!title) return;
-      newPageBtn.disabled = true;
-      fetch('/os/api/pages/quick-create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
-        body: JSON.stringify({ title: title }),
-      })
-        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-        .then(function (res) {
-          if (res.ok && res.d.slug) { window.location.href = '/os/editor/' + res.d.slug; }
-          else { newPageBtn.disabled = false; window.alert((res.d && (res.d.detail || res.d.title)) || 'Could not create page'); }
+      vpPrompt({
+        title: 'New page',
+        message: 'A standalone page, not a blog post — it appears at its own URL.',
+        label: 'Page title',
+        value: 'Untitled page',
+        confirm: 'Create page',
+      }, function (title) {
+        title = (title || '').trim();
+        if (!title) return;
+        newPageBtn.disabled = true;
+        fetch('/os/api/pages/quick-create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+          body: JSON.stringify({ title: title }),
         })
-        .catch(function () { newPageBtn.disabled = false; window.alert('Network error'); });
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+          .then(function (res) {
+            if (res.ok && res.d.slug) { window.location.href = '/os/editor/' + res.d.slug; }
+            else { newPageBtn.disabled = false; if (window.vpToast) window.vpToast((res.d && (res.d.detail || res.d.title)) || 'Could not create page', 'error'); }
+          })
+          .catch(function () { newPageBtn.disabled = false; if (window.vpToast) window.vpToast('Network error', 'error'); });
+      });
     });
   }
 

@@ -39,6 +39,32 @@ func (a *App) handleOSMailIDs(w http.ResponseWriter, r *http.Request) {
 	}
 	price := priceLabel(a.payCurrency(ctx), a.premiumMailIDPriceCents(ctx))
 
+	// The two management cards are also served on their own, so an approve /
+	// disapprove / add / remove refreshes THEM instead of reloading the whole
+	// console (M-17). The old script called location.reload() after every action,
+	// which threw away the page position and re-fetched every stat.
+	panel := `<div class="card">
+  <div class="settings-block-title">Sales &amp; grants</div>
+  <p class="text-sm muted mb-4">Every premium address a member has bought. <strong>Approve</strong> confirms an offline/pending order (the buyer can then activate it); <strong>Disapprove</strong> cancels a grant.</p>
+  ` + mailIDGrantsAdminTable(grants) + `
+</div>
+
+<div class="card">
+  <div class="settings-block-title">Premium names</div>
+  <p class="text-sm muted mb-4">Names listed here (plus ultra-short and well-known handles) are held back from the free member claim and sold at the premium price. Add any localpart you want to reserve as premium.</p>
+  <div class="vm-row vm-row--tight vm-row--end">
+    <label class="field vm-grow"><span class="field-label">Add a premium name</span>
+      <input id="mid-add-name" class="input" type="text" placeholder="founder" autocomplete="off" spellcheck="false" aria-label="Premium name to add"></label>
+    <button type="button" class="btn btn--primary btn--sm" id="mid-add-btn">Add</button>
+  </div>
+  ` + premiumNamesList(names) + `
+</div>`
+
+	if r.URL.Query().Get("fragment") == "1" {
+		writeOSFragment(w, panel)
+		return
+	}
+
 	body := `<div class="page-header">
   <h1>Premium Mail IDs</h1>
   <div class="page-actions"><a class="btn btn--ghost btn--sm" href="/os/growth">← Growth</a></div>
@@ -52,21 +78,8 @@ func (a *App) handleOSMailIDs(w http.ResponseWriter, r *http.Request) {
   <div class="stat-card"><div class="stat-card__label">Price per address</div><div class="stat-card__value">` + html.EscapeString(price) + `</div></div>
 </div>
 
-<div class="card">
-  <div class="settings-block-title">Sales &amp; grants</div>
-  <p class="text-sm muted mb-4">Every premium address a member has bought. <strong>Approve</strong> confirms an offline/pending order (the buyer can then activate it); <strong>Disapprove</strong> cancels a grant.</p>
-  ` + mailIDGrantsAdminTable(grants) + `
-</div>
-
-<div class="card">
-  <div class="settings-block-title">Premium names</div>
-  <p class="text-sm muted mb-4">Names listed here (plus ultra-short and well-known handles) are held back from the free member claim and sold at the premium price. Add any localpart you want to reserve as premium.</p>
-  <div class="field" style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap">
-    <div style="flex:1;min-width:12rem"><label class="field-label" for="mid-add-name">Add a premium name</label>
-    <input id="mid-add-name" class="input" type="text" placeholder="founder" autocomplete="off" spellcheck="false" style="text-transform:lowercase"></div>
-    <button type="button" class="btn btn--primary btn--sm" id="mid-add-btn">Add</button>
-  </div>
-  ` + premiumNamesList(names) + `
+<div id="mid-panel" hx-get="/os/monetization/mailids?fragment=1" hx-trigger="mid-refresh from:body" hx-swap="innerHTML">
+` + panel + `
 </div>
 
 <div id="mid-msg" role="status" aria-live="polite" class="action-msg"></div>
@@ -75,15 +88,26 @@ func (a *App) handleOSMailIDs(w http.ResponseWriter, r *http.Request) {
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var msg=document.getElementById('mid-msg');
 function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
-function jpost(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:body?JSON.stringify(body):null}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});});}
+function jpost(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:body?JSON.stringify(body):null}).then(function(r){return r.json().catch(function(){return{};}).then(function(d){return{ok:r.ok,d:d};});});}
+function refresh(){if(window.htmx){htmx.trigger(document.body,'mid-refresh');}}
+function reason(res){return (res.d.error&&res.d.error.message)||res.d.detail||'That did not work — please try again.';}
 document.querySelectorAll('[data-grant-action]').forEach(function(b){
   b.addEventListener('click',function(){
     var act=b.getAttribute('data-grant-action'),id=b.getAttribute('data-id');
-    if(act==='revoke'&&!confirm('Disapprove this premium address? The grant will be cancelled.'))return;
-    b.disabled=true;
-    jpost('/os/api/mailids/'+encodeURIComponent(id)+'/'+act).then(function(res){
-      if(res.ok){location.reload();}else{b.disabled=false;show((res.d.error&&res.d.error.message)||res.d.detail||'Error',true);}
-    });
+    function go(){
+      b.disabled=true;
+      jpost('/os/api/mailids/'+encodeURIComponent(id)+'/'+act).then(function(res){
+        b.disabled=false;
+        if(res.ok){show(act==='revoke'?'Grant cancelled.':'Grant approved.');refresh();}
+        else{show(reason(res),true);}
+      });
+    }
+    if(act==='revoke'){
+      // The house dialog, not the browser's: it can say what disapprove does.
+      vpConfirm({title:'Disapprove this premium address',message:'The grant will be cancelled. The buyer stops being able to activate this address.',confirm:'Disapprove'},go);
+      return;
+    }
+    go();
   });
 });
 var addBtn=document.getElementById('mid-add-btn');
@@ -91,12 +115,21 @@ if(addBtn)addBtn.addEventListener('click',function(){
   var inp=document.getElementById('mid-add-name'),v=(inp.value||'').trim().toLowerCase();
   if(!v){show('Enter a name first',true);return;}
   addBtn.disabled=true;
-  jpost('/os/api/mailids/premium-names/add',{localpart:v}).then(function(res){addBtn.disabled=false;if(res.ok){location.reload();}else{show((res.d.error&&res.d.error.message)||'Error',true);}});
+  jpost('/os/api/mailids/premium-names/add',{localpart:v}).then(function(res){
+    addBtn.disabled=false;
+    if(res.ok){if(inp)inp.value='';show('“'+v+'” is now a premium name.');refresh();}
+    else{show(reason(res),true);}
+  });
 });
 document.querySelectorAll('[data-remove-name]').forEach(function(b){
   b.addEventListener('click',function(){
+    var name=b.getAttribute('data-remove-name');
     b.disabled=true;
-    jpost('/os/api/mailids/premium-names/remove',{localpart:b.getAttribute('data-remove-name')}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show('Error',true);}});
+    jpost('/os/api/mailids/premium-names/remove',{localpart:name}).then(function(res){
+      b.disabled=false;
+      if(res.ok){show('“'+name+'” is available to members again.');refresh();}
+      else{show(reason(res),true);}
+    });
   });
 });
 })();
