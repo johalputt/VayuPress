@@ -3,10 +3,8 @@
 package mail
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"net/mail"
 	"os"
 	"path/filepath"
 	"sort"
@@ -107,15 +105,14 @@ func (m *Maildir) ListFolder(domain, username, folder string) ([]StoredMessage, 
 				Seen:    strings.ContainsRune(fl, 'S'),
 				Flagged: strings.ContainsRune(fl, 'F'),
 			}
-			if raw, err := os.ReadFile(filepath.Join(dir, sub, e.Name())); err == nil {
-				if msg, perr := mail.ReadMessage(bytes.NewReader(raw)); perr == nil {
-					sm.From = msg.Header.Get("From")
-					sm.To = msg.Header.Get("To")
-					sm.Subject = msg.Header.Get("Subject")
-					if d, derr := msg.Header.Date(); derr == nil {
-						sm.Date = d
-					}
-				}
+			// Headers come from the cache when the file is unchanged: listing is
+			// stat-bound, not read-bound.
+			path := filepath.Join(dir, sub, e.Name())
+			h := m.headersFor(path, info.Size(), info.ModTime())
+			sm.From, sm.To, sm.Subject = h.from, h.to, h.subject
+			sm.MessageID, sm.InReplyTo, sm.References = h.messageID, h.inReplyTo, h.refs
+			if h.hasDate {
+				sm.Date = h.date
 			}
 			out = append(out, sm)
 		}

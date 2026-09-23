@@ -56,6 +56,14 @@ type ReceiptPayload struct {
 	Status string `json:"status"` // "read" | "expired"
 }
 
+// PeerKeyPayload tells a subscriber that a peer's public key has become
+// available locally — a late over-Tor fetch completing, typically. It carries the
+// peer address and nothing else: no message content, no verification verdict. The
+// client re-checks its own already-received messages.
+type PeerKeyPayload struct {
+	Peer string `json:"peer"`
+}
+
 type subscriber struct {
 	ch  chan Event
 	seq uint64 // monotonic insertion order, so the oldest can be evicted first
@@ -171,6 +179,26 @@ func (h *Hub) PublishReceipt(user, id, status string) {
 		return
 	}
 	evt := Event{Type: "receipt", Payload: ReceiptPayload{ID: id, Status: status}}
+	for sub := range set {
+		select {
+		case sub.ch <- evt:
+		default:
+		}
+	}
+}
+
+// PublishPeerKey tells one identity's own streams that a peer's key has arrived
+// locally, so messages that could not be verified when they were received can be
+// re-checked without a reload (ADR-0142). Addressed to the identity that owns the
+// stream, because the reader is who needs to re-verify.
+func (h *Hub) PublishPeerKey(user, peer string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	set := h.subs[user]
+	if len(set) == 0 {
+		return
+	}
+	evt := Event{Type: "peerkey", Payload: PeerKeyPayload{Peer: peer}}
 	for sub := range set {
 		select {
 		case sub.ch <- evt:

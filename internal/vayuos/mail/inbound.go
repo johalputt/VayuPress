@@ -3,11 +3,9 @@
 package mail
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"net/mail"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,6 +23,13 @@ type StoredMessage struct {
 	Size    int64     `json:"size"`
 	Seen    bool      `json:"seen"`
 	Flagged bool      `json:"flagged"` // Maildir 'F' flag — surfaced as "pinned" in the panel
+	// Threading evidence (RFC 5322), de-bracketed and case-folded for comparison.
+	// MessageID identifies this message; InReplyTo/References identify its parent.
+	// The console groups a conversation on these when they are present and falls
+	// back to the subject when they are not.
+	MessageID  string   `json:"message_id,omitempty"`
+	InReplyTo  string   `json:"in_reply_to,omitempty"`
+	References []string `json:"references,omitempty"`
 }
 
 // List returns the messages in an account's mailbox (new + cur), newest first.
@@ -49,14 +54,12 @@ func (m *Maildir) List(domain, username string) ([]StoredMessage, error) {
 				continue
 			}
 			sm := StoredMessage{ID: sub + "/" + e.Name(), Size: info.Size(), Seen: sub == "cur", Date: info.ModTime()}
-			if raw, err := os.ReadFile(filepath.Join(dir, e.Name())); err == nil {
-				if msg, perr := mail.ReadMessage(bytes.NewReader(raw)); perr == nil {
-					sm.From = msg.Header.Get("From")
-					sm.Subject = msg.Header.Get("Subject")
-					if d, derr := msg.Header.Date(); derr == nil {
-						sm.Date = d
-					}
-				}
+			// Cached summary when the file is unchanged (see Maildir.headersFor).
+			h := m.headersFor(filepath.Join(dir, e.Name()), info.Size(), info.ModTime())
+			sm.From, sm.Subject = h.from, h.subject
+			sm.MessageID, sm.InReplyTo, sm.References = h.messageID, h.inReplyTo, h.refs
+			if h.hasDate {
+				sm.Date = h.date
 			}
 			out = append(out, sm)
 		}

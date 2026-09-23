@@ -3,10 +3,13 @@
 package mail
 
 import (
+	"bytes"
 	"fmt"
+	netmail "net/mail"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -16,6 +19,98 @@ import (
 type Maildir struct {
 	base    string
 	counter uint64
+
+	// hdrCache remembers one message file's parsed headers, validated by the
+	// file's (size, mtime). Listing a folder used to re-read and re-parse every
+	// message on every poll, folder switch and row action, so the console got
+	// slower exactly as the mailbox got more useful. The file identity is the
+	// cache key's integrity check: a rewritten message has a new mtime.
+	hdrMu    sync.Mutex
+	hdrCache map[string]cachedHeaders
+}
+
+// cachedHeaders is a message's parsed summary plus the file identity it came
+// from. hasDate is separate from date so an absent/unparseable Date header falls
+// back to the file mtime rather than to the zero time.
+type cachedHeaders struct {
+	size      int64
+	modTime   time.Time
+	from      string
+	to        string
+	subject   string
+	date      time.Time
+	hasDate   bool
+	messageID string   // Message-Id, de-bracketed (threading)
+	inReplyTo string   // In-Reply-To, de-bracketed
+	refs      []string // References, de-bracketed, in order
+}
+
+// cleanMessageID normalises a Message-Id / References token for comparison:
+// surrounding angle brackets removed, whitespace trimmed, lower-cased. Message
+// ids are case-sensitive per RFC 5322 in theory and case-insensitive in practice
+// across real mail servers, so grouping on the case-folded form matches what users
+// expect (one conversation) and never splits one over a case difference.
+func cleanMessageID(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "<")
+	s = strings.TrimSuffix(s, ">")
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+// splitMessageIDs parses a References header (a whitespace-separated list of
+// angle-bracketed ids) into clean ids.
+func splitMessageIDs(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	var out []string
+	for _, f := range strings.Fields(s) {
+		if id := cleanMessageID(f); id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// headersFor returns a message file's parsed headers, reading and caching them
+// only when the file is new or has changed since last time.
+func (m *Maildir) headersFor(path string, size int64, mod time.Time) cachedHeaders {
+	m.hdrMu.Lock()
+	if h, ok := m.hdrCache[path]; ok && h.size == size && h.modTime.Equal(mod) {
+		m.hdrMu.Unlock()
+		return h
+	}
+	m.hdrMu.Unlock()
+
+	h := cachedHeaders{size: size, modTime: mod}
+	if raw, err := os.ReadFile(path); err == nil {
+		if msg, perr := netmail.ReadMessage(bytes.NewReader(raw)); perr == nil {
+			h.from = msg.Header.Get("From")
+			h.to = msg.Header.Get("To")
+			h.subject = msg.Header.Get("Subject")
+			if d, derr := msg.Header.Date(); derr == nil {
+				h.date, h.hasDate = d, true
+			}
+			// Threading evidence travels with the cached summary, so grouping a
+			// folder costs nothing beyond the stat it already did.
+			h.messageID = cleanMessageID(msg.Header.Get("Message-Id"))
+			h.inReplyTo = cleanMessageID(msg.Header.Get("In-Reply-To"))
+			h.refs = splitMessageIDs(msg.Header.Get("References"))
+		}
+	}
+	m.hdrMu.Lock()
+	if m.hdrCache == nil {
+		m.hdrCache = make(map[string]cachedHeaders)
+	}
+	// Bound the cache. A summary is a few hundred bytes, but a long-lived
+	// process over a big install should not grow one without limit; a reset
+	// costs one re-read pass and nothing else.
+	if len(m.hdrCache) > 50000 {
+		m.hdrCache = make(map[string]cachedHeaders)
+	}
+	m.hdrCache[path] = h
+	m.hdrMu.Unlock()
+	return h
 }
 
 // NewMaildir returns a Maildir rooted at base.
