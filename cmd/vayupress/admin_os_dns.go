@@ -494,7 +494,7 @@ func (a *App) handleOSDNS(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	if !a.isAdminRequest(r) {
-		a.denyAccess(w, r, "/os")
+		a.denyAccess(w, r, osHome)
 		return
 	}
 

@@ -131,7 +131,7 @@ func readVeilHardenState() vayuveil.HardenState {
 // is not something an anonymous caller should have.
 func (a *App) handleOSVeilHardenRequest(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		a.denyAccess(w, r, "/os")
+		a.denyAccess(w, r, osHome)
 		return
 	}
 	if !veilHardenUnitsInstalled() {

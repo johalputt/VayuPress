@@ -355,7 +355,7 @@ func (a *App) serveWithAccess(w http.ResponseWriter, r *http.Request, next http.
 		}
 	case confineNone:
 		if level < osPathMinLevel(r.URL.Path) {
-			a.denyAccess(w, r, "/os")
+			a.denyAccess(w, r, osHome)
 			return
 		}
 	default:

@@ -245,9 +245,22 @@ func (a *App) setReleaseMirror(ctx context.Context, d domain.Domain, on bool, ac
 	return nil
 }
 
-// handleOSDomainReleaseMirrorSync starts a sync now.
+// handleOSDomainReleaseMirrorSync starts a sync now — only for a domain the
+// mirror is switched on for. A sync with the switch off downloads and verifies
+// ~120 MB that the domain does not serve, while the page it was pressed on went
+// on reading "off": it looked like an action and changed nothing visible.
 func (a *App) handleOSDomainReleaseMirrorSync(w http.ResponseWriter, r *http.Request) {
 	if !a.releaseMirrorAdminReady(w, r) {
+		return
+	}
+	d, err := a.domains.ByID(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "no such domain", "")
+		return
+	}
+	if !d.ReleaseMirror() {
+		writeAPIError(w, r, http.StatusConflict, "release-mirror-off",
+			"Switch the mirror on for this domain first — tick the box and press Save, which starts the first sync.", "")
 		return
 	}
 	a.kickReleaseMirrorSync()
@@ -381,16 +394,16 @@ func (a *App) releaseMirrorCard(d domain.Domain) string {
 </div>`)
 		return b.String()
 	}
-	checked := ""
+	checked, syncAttr := "", ` disabled title="Switch the mirror on and save first"`
 	if d.ReleaseMirror() {
-		checked = " checked"
+		checked, syncAttr = " checked", ""
 	}
 	b.WriteString(`
   <label class="field"><span class="field-label">
     <input type="checkbox" id="release-mirror-on"` + checked + `> Serve the release mirror on this domain</span></label>
   <div class="vm-row">
     <button type="button" class="btn btn--primary btn--sm" data-release-mirror-save>Save</button>
-    <button type="button" class="btn btn--sm" data-release-mirror-sync>Sync now</button>
+    <button type="button" class="btn btn--sm" data-release-mirror-sync` + syncAttr + `>Sync now</button>
     <span id="release-mirror-status" class="text-sm muted" role="status" aria-live="polite" data-checked="` +
 		esc(a.releaseMirrorCheckedStamp()) + `"></span>
   </div>`)

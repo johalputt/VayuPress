@@ -28,6 +28,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
@@ -349,5 +350,48 @@ func TestTheMirrorControlsRefuseAnyoneButTheOperator(t *testing.T) {
 				t.Errorf("%s by %s leaked the mirror's state", h.name, who.name)
 			}
 		}
+	}
+}
+
+// Sync now on a domain whose mirror is off used to download and verify ~120 MB
+// that nothing served, while the card went on reading "off". The server refuses
+// it with the reason, and the button renders disabled.
+func TestSyncNowIsRefusedWhileTheMirrorIsOff(t *testing.T) {
+	openMigratedDB(t)
+	s, _ := heldMirror(t, 16)
+	reg := domain.New(dbpkg.DB, dbpkg.RDB)
+	d, err := reg.Create(context.Background(), "updates.example.com", domain.SiteBlog, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &App{relMirror: s, domains: reg}
+
+	sync := func() *httptest.ResponseRecorder {
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("id", d.ID)
+		req := httptest.NewRequest(http.MethodPost, "/os/api/domains/"+d.ID+"/release-mirror/sync", nil)
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		req.Header.Set("X-API-Key", "test-key")
+		rec := httptest.NewRecorder()
+		a.handleOSDomainReleaseMirrorSync(rec, req)
+		return rec
+	}
+	rec := sync()
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "Switch the mirror on") {
+		t.Fatalf("sync with the mirror off → %d %s, want 409 naming the switch", rec.Code, rec.Body.String())
+	}
+	off, _ := reg.ByID(context.Background(), d.ID)
+	if card := a.releaseMirrorCard(off); !strings.Contains(card, `data-release-mirror-sync disabled`) {
+		t.Error("the Sync now button is live on a domain whose mirror is off")
+	}
+
+	if err := reg.SetReleaseMirror(context.Background(), d.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	// Accepting the sync with the switch on is not exercised here: it starts a
+	// real fetch from GitHub, which has no place in the unit suite.
+	on, _ := reg.ByID(context.Background(), d.ID)
+	if card := a.releaseMirrorCard(on); strings.Contains(card, `data-release-mirror-sync disabled`) {
+		t.Error("the Sync now button is disabled on a domain whose mirror is on")
 	}
 }

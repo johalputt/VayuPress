@@ -278,7 +278,14 @@ func searchSaveInterval() time.Duration {
 // primary host) to sitemap.xml. It is the single-domain / primary artefact and is
 // byte-identical to the pre-VayuDomains output; the per-domain variant is written
 // by writeSitemapScoped on the multi-domain serve path (ADR-0132 Stage 2c).
-func generateSitemap() { writeSitemapScoped(config.Cfg.Domain, "", false, "sitemap.xml") }
+//
+// Coalesced: every content write asks for a rebuild, and an assistant that
+// creates a post and then edits it three times asks four times within seconds.
+// Overlapping rebuilds each hold a read connection and walk every published
+// post, so however many arrive while one runs, exactly one more runs after it.
+var generateSitemap = render.Coalesce(func() {
+	writeSitemapScoped(config.Cfg.Domain, "", false, "sitemap.xml")
+})
 
 // writeSitemapScoped renders a sitemap for one host into rel. With scoped=false it
 // reproduces the historic global sitemap exactly (no domain filter, primary host).
@@ -294,6 +301,23 @@ func generateSitemap() { writeSitemapScoped(config.Cfg.Domain, "", false, "sitem
 // with a handful of rows instead of 45,000. The boundary is the whole point of
 // this code; a test that cannot reach it is testing the easy half.
 var sitemapChunk = 45000
+
+// The sitemap's two reads, served entirely from the covering indexes of
+// migration 094. Every column they touch — status, is_page, updated_at, slug,
+// tags — is stored AFTER content in each row, so a plan that leaves the index
+// reads every post's body: 5.25 GB per rebuild at 234,615 posts, after every
+// post write. sitemap_plan_test.go asserts both stay covered, with and without
+// the domain clause.
+//
+// status and is_page are NOT NULL (migrations 030, 045) and are compared bare:
+// wrapped in COALESCE they cannot use the index. is_page is a 0/1 flag, so
+// `is_page IN (0,1)` in the tag read selects every row exactly as no filter
+// would (tag pages count standalone pages too) while handing the planner the
+// index's leading column; without it SQLite picks idx_articles_status.
+const (
+	sitemapPostsSQL = `SELECT slug,updated_at FROM articles WHERE is_page=0 AND status='published'`
+	sitemapTagsSQL  = `SELECT tags FROM articles WHERE is_page IN (0,1) AND status='published' AND tags != ''`
+)
 
 // sitemapChildRel derives a child filename from the index's own name, so a
 // scoped index (sitemap_d_<domain>.xml) gets matching children. The caller's
@@ -324,7 +348,7 @@ func writeSitemapScoped(host, scope string, scoped bool, rel string) {
 		domClause = " AND domain_id=?"
 		domArgs = []any{scope}
 	}
-	rows, err := dbpkg.Reader().Query(`SELECT slug,updated_at FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0`+domClause+` ORDER BY updated_at DESC`, domArgs...)
+	rows, err := dbpkg.Reader().Query(sitemapPostsSQL+domClause+` ORDER BY updated_at DESC`, domArgs...)
 	if err != nil {
 		return
 	}
@@ -405,7 +429,7 @@ func sitemapAppendTagPages(sb *strings.Builder, host, scope string, scoped bool)
 		domClause = " AND domain_id=?"
 		domArgs = []any{scope}
 	}
-	rows, err := dbpkg.Reader().Query(`SELECT tags FROM articles WHERE tags != '' AND COALESCE(status,'published')='published'`+domClause, domArgs...)
+	rows, err := dbpkg.Reader().Query(sitemapTagsSQL+domClause, domArgs...)
 	if err != nil {
 		return
 	}

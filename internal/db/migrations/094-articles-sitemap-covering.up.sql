@@ -1,0 +1,3 @@
+-- Migration 094 (up): covering indexes for the sitemap. The sitemap filters on status and is_page and reads slug, updated_at and tags — all stored AFTER content in each row, so without these every rebuild read every post's full body: 5.25 GB per rebuild on a 234,615-post install, once after EVERY post write. With them the rebuild reads the index alone. The one-time build reads the table once per index. NOTE: runMigrations executes line-by-line, so keep each statement on ONE line.
+CREATE INDEX IF NOT EXISTS idx_articles_sitemap ON articles(is_page, status, updated_at DESC, slug, tags);
+CREATE INDEX IF NOT EXISTS idx_articles_sitemap_domain ON articles(domain_id, is_page, status, updated_at DESC, slug, tags);

@@ -73,8 +73,8 @@ func TestMemberMeRecognisesOperator(t *testing.T) {
 	if member["operator"] != true {
 		t.Errorf("member.operator = %v, want true", member["operator"])
 	}
-	if member["console_url"] != "/os" {
-		t.Errorf("member.console_url = %v, want /os", member["console_url"])
+	if member["console_url"] != "/os/" {
+		t.Errorf("member.console_url = %v, want /os/", member["console_url"])
 	}
 	if member["name"] != "Site Owner" {
 		t.Errorf("member.name = %v, want Site Owner", member["name"])

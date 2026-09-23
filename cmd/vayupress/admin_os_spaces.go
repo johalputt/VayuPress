@@ -68,7 +68,7 @@ func (a *App) handleOSSpaces(w http.ResponseWriter, r *http.Request) {
 	// enforces this; the explicit check is defense in depth, matching
 	// handleVayuOSPGP so the handler is safe even if the route were ever remounted.
 	if !a.isAdminRequest(r) {
-		a.denyAccess(w, r, "/os")
+		a.denyAccess(w, r, osHome)
 		return
 	}
 	nonce := render.CSPNonce(r)

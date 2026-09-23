@@ -169,7 +169,18 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/world", a.handleWorldSwitch)
 
 		// Pages
-		pr.Get("/os", a.handleOSDashboard)
+		//
+		// "/os" (no slash) is outside the installed app's scope, "/os/", so an
+		// installed app that navigated there left app mode and showed the address
+		// bar. It redirects into scope for old bookmarks; everything the console
+		// links to is osHome.
+		pr.Get("/os", func(w http.ResponseWriter, r *http.Request) {
+			dest := osHome
+			if r.URL.RawQuery != "" {
+				dest += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, dest, http.StatusFound)
+		})
 		// "/os/" serves the dashboard directly rather than redirecting to "/os".
 		// It is the installed app's start_url, and it has to be inside the service
 		// worker's "/os/" scope for the browser to mint a real app instead of a
@@ -757,7 +768,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 
 	// Redirect bare /os/* to dashboard if hitting unknown paths
 	r.Get("/os/*", func(w http.ResponseWriter, req *http.Request) {
-		http.Redirect(w, req, "/os", http.StatusSeeOther)
+		http.Redirect(w, req, osHome, http.StatusSeeOther)
 	})
 }
 
@@ -1164,7 +1175,7 @@ func torWorldNav(active string, lvl int, s *osSettings) string {
 	// Dashboard workspace grid now — the same premium hub the clearnet console uses
 	// — so the Tor sidebar stays a short, focused list. Theme (a design tool, not
 	// content) stays pinned here.
-	b.WriteString(gate(navItem("/os", "Dashboard", "dashboard", active, iconDashboard), "/os"))
+	b.WriteString(gate(navItem(osHome, "Dashboard", "dashboard", active, iconDashboard), osHome))
 	section("Design",
 		gate(navItem("/os/theme", "Theme", "theme", active, iconTheme), "/os/theme"),
 	)
@@ -1248,7 +1259,7 @@ func osSidebarNav(active string, s *osSettings) string {
 	// Website) now lives INSIDE the Dashboard as a premium workspace grid with live
 	// counts + notification badges, so the sidebar stays focused on the broader
 	// system areas. Only the Dashboard hub is pinned here.
-	b.WriteString(gate(navItem("/os", "Dashboard", "dashboard", active, iconDashboard), "/os"))
+	b.WriteString(gate(navItem(osHome, "Dashboard", "dashboard", active, iconDashboard), osHome))
 	// Audience (Members, Newsletter, Profile) and Monetization (Monetization,
 	// Advertising) are consolidated into ONE pinned Growth hub — a card grid with
 	// live counts, mirroring the Dashboard pattern — so the sidebar stays minimal.
@@ -1607,7 +1618,7 @@ window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type
 <!-- Bottom nav for mobile — quick links + a Menu button that opens the full,
      role-scoped drawer so every section is reachable like a native app. -->
 <nav class="bottom-nav" aria-label="Mobile navigation">
-  <a class="bottom-nav-item" href="/os" data-nav="/os">
+  <a class="bottom-nav-item" href="/os/" data-nav="/os/">
     ` + iconDashboard + `<span>Home</span>
   </a>
   <a class="bottom-nav-item" href="/os/posts" data-nav="/os/posts">
@@ -2053,7 +2064,7 @@ func (a *App) handleOSLogin(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, next, http.StatusSeeOther)
 			return
 		}
-		http.Redirect(w, r, "/os", http.StatusSeeOther)
+		http.Redirect(w, r, osHome, http.StatusSeeOther)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -2103,7 +2114,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	if !isLocalURL(next) {
 		next = ""
 	}
-	loginDest := "/os"
+	loginDest := osHome
 	if isLocalURL(next) {
 		loginDest = next
 	}
@@ -2228,7 +2239,7 @@ func (a *App) handleOSChangePasswordSubmit(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	dbpkg.AuditLog("user.password_change", u.Email, "", "forced first-login change")
-	http.Redirect(w, r, "/os", http.StatusSeeOther)
+	http.Redirect(w, r, osHome, http.StatusSeeOther)
 }
 
 // osChangePasswordPage renders the forced password-change form. Self-contained
@@ -2572,6 +2583,13 @@ if(btn)btn.addEventListener('click',function(){try{window.localStorage.setItem(K
 })();
 </script>`
 }
+
+// osHome is the console's address. It is the installed app's start_url and
+// sits inside its scope, "/os/" (handleOSManifest). Scope matching is a plain
+// prefix test, so "/os" is OUTSIDE it: every link to "/os" took an installed
+// app out of app mode and showed the address bar, which is how the Dashboard
+// link behaved. Every link and redirect to the console home uses this.
+const osHome = "/os/"
 
 func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
@@ -4403,7 +4421,7 @@ func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
 		{Label: "Media library", Icon: "🖼", Href: "/os/media"},
 		{Label: "Website", Icon: "🌐", Href: "/os/website"},
 		// Hubs
-		{Label: "Dashboard", Icon: "🏠", Href: "/os"},
+		{Label: "Dashboard", Icon: "🏠", Href: osHome},
 		{Label: "Growth hub", Icon: "📈", Href: "/os/growth"},
 		{Label: "Optimize hub", Icon: "🚀", Href: "/os/optimize"},
 		{Label: "Operations hub", Icon: "🛠", Href: "/os/operations"},

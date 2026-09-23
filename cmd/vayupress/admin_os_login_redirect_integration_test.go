@@ -65,8 +65,10 @@ func TestHandleOSLoginRedirectsWhenAuthed(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303 (redirect to dashboard when already signed in)", rec.Code)
 	}
-	if loc := rec.Header().Get("Location"); loc != "/os" {
-		t.Errorf("Location = %q, want /os", loc)
+	// osHome, "/os/": the installed app's scope is "/os/", and "/os" is outside
+	// it (os_app_scope_test.go).
+	if loc := rec.Header().Get("Location"); loc != "/os/" {
+		t.Errorf("Location = %q, want /os/", loc)
 	}
 	// The redirect itself must be uncacheable too — a cached 303 (or a cached
 	// 200 form from an earlier visit) would defeat the session-aware routing.

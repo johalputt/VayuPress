@@ -205,7 +205,7 @@ func provisionPending() bool {
 // (Let's Encrypt rate limits are a finite resource an attacker could burn).
 func (a *App) handleOSProvisionRequest(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		a.denyAccess(w, r, "/os")
+		a.denyAccess(w, r, osHome)
 		return
 	}
 	if !provisionUnitsInstalled() {
@@ -260,7 +260,7 @@ func (a *App) handleOSProvisionRequest(w http.ResponseWriter, r *http.Request) {
 // happened without anyone reading a log over SSH.
 func (a *App) handleOSProvisionStatus(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		a.denyAccess(w, r, "/os")
+		a.denyAccess(w, r, osHome)
 		return
 	}
 	res, have := readProvisionResult()

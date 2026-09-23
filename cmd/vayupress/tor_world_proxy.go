@@ -77,7 +77,7 @@ func (a *App) torWorldMiddleware(next http.Handler) http.Handler {
 // plain link from either console can switch worlds. Admin-only.
 func (a *App) handleWorldSwitch(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
-		a.denyAccess(w, r, "/os")
+		a.denyAccess(w, r, osHome)
 		return
 	}
 	if r.URL.Query().Get("target") == "tor" {
@@ -134,7 +134,7 @@ func (a *App) handleWorldSwitch(w http.ResponseWriter, r *http.Request) {
 		clearWorldCookie("/")
 		clearWorldCookie("/os")
 	}
-	http.Redirect(w, r, "/os", http.StatusSeeOther)
+	http.Redirect(w, r, osHome, http.StatusSeeOther)
 }
 
 // proxyToTorWorld reverse-proxies one admin request into the Tor-world instance on

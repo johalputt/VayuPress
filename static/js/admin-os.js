@@ -206,7 +206,9 @@ window.vpToast = toast;
     if (it.hidden) return;
     var href = it.getAttribute('data-nav');
     if (!href) return;
-    var match = path === href || (href !== '/os' && path.indexOf(href) === 0);
+    // The console home is a prefix of every console page; it is current only
+    // when it is the page itself.
+    var match = path === href || (href !== '/os/' && path.indexOf(href) === 0);
     if (match && href.length > bestLen) { best = it; bestLen = href.length; }
   });
   if (best) best.setAttribute('aria-current', 'page');

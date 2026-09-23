@@ -100,7 +100,7 @@ func operatorSnapshot(u *users.User) map[string]interface{} {
 		"email":       u.Email,
 		"name":        name,
 		"operator":    true,
-		"console_url": "/os",
+		"console_url": osHome,
 	}
 	if u.AvatarURL != "" {
 		m["avatar"] = u.AvatarURL

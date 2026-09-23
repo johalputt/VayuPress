@@ -21,8 +21,10 @@ func TestOperatorSnapshot(t *testing.T) {
 	if got["operator"] != true {
 		t.Errorf("operator = %v, want true", got["operator"])
 	}
-	if got["console_url"] != "/os" {
-		t.Errorf("console_url = %v, want /os", got["console_url"])
+	// "/os/", not "/os": the installed app's scope is "/os/", and "/os" is
+	// outside it (os_app_scope_test.go).
+	if got["console_url"] != "/os/" {
+		t.Errorf("console_url = %v, want /os/", got["console_url"])
 	}
 	if got["name"] != "Site Owner" {
 		t.Errorf("name = %v, want Site Owner", got["name"])

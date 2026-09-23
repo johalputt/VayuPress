@@ -113,7 +113,7 @@ self.addEventListener('notificationclick', function (e) {
   // console window and steer it there, or open a fresh one — so a single tap
   // lands on the mailbox, even from an installed PWA on mobile.
   e.notification.close();
-  var url = (e.notification.data && e.notification.data.url) || '/os';
+  var url = (e.notification.data && e.notification.data.url) || '/os/';
   e.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
       for (var i = 0; i < list.length; i++) {

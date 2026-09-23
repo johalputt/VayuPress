@@ -2570,6 +2570,47 @@ func CachePurge(slug string, tags []string, generateSitemap, generateRSS, genera
 	spawnPurge(generateRobots)
 }
 
+// Coalesce wraps fn so concurrent calls collapse without any caller being told
+// something that is not yet true.
+//
+// Every call returns only once a run of fn that STARTED AFTER the call has
+// finished, so a caller that reports "regenerated" is reporting a result that
+// includes its request. Calls that arrive while fn runs all wait for the same
+// single follow-up run: a burst of any size costs the run in progress plus one.
+func Coalesce(fn func()) func() {
+	var mu sync.Mutex
+	done := sync.NewCond(&mu)
+	var running, pending bool
+	var started, finished uint64
+	return func() {
+		mu.Lock()
+		defer mu.Unlock()
+		// The next run to start is the first one that postdates this call.
+		want := started + 1
+		if running {
+			pending = true
+			for finished < want {
+				done.Wait()
+			}
+			return
+		}
+		running = true
+		for {
+			started++
+			mu.Unlock()
+			fn()
+			mu.Lock()
+			finished++
+			done.Broadcast()
+			if !pending {
+				break
+			}
+			pending = false
+		}
+		running = false
+	}
+}
+
 // purgeWG tracks in-flight async cache regenerations spawned by CachePurge.
 var purgeWG sync.WaitGroup
 

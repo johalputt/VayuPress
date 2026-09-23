@@ -275,7 +275,7 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
 		}
 		consoleLink := ""
 		if console {
-			consoleLink = ` <a class="su-link" href="/os">Open VayuOS →</a>`
+			consoleLink = ` <a class="su-link" href="/os/">Open VayuOS →</a>`
 		}
 		mailCard = `<section class="ma-card">
     <h2>📮 Your VayuMail ID</h2>

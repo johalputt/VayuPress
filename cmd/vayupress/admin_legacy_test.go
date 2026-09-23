@@ -10,14 +10,14 @@ import (
 
 func TestLegacyToOSPathMapping(t *testing.T) {
 	cases := map[string]string{
-		"/admin":                   "/os",
-		"/admin/v2":                "/os",
+		"/admin":                   "/os/",
+		"/admin/v2":                "/os/",
 		"/admin/v2/posts":          "/os/posts",
 		"/admin/v2/editor":         "/os/editor",
 		"/admin/v2/editor/my-post": "/os/editor/my-post",
 		"/admin/v2/seo":            "/os/seo",
 		"/admin/v2/settings":       "/os/settings",
-		"/admin/v3":                "/os",
+		"/admin/v3":                "/os/",
 		"/admin/v3/posts":          "/os/posts",
 		"/admin/v3/editor/my-post": "/os/editor/my-post",
 		"/admin/v3/theme":          "/os/theme",
