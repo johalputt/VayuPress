@@ -758,7 +758,7 @@
       schedulePreview(); // first preview load
     })
     .catch(function () { setStatus('Could not load theme', 'danger'); });
-  // â”€â”€ Undo / redo + changes pill (2026 Wave A) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Undo / redo + changes pill (2026 Wave A) ─────────────────────────
   // Every mutating interaction first snapshots the full editor state onto the
   // undo stack (capture-phase, so it sees the value BEFORE the change lands).
   // Ctrl+Z / Ctrl+Shift+Z walk the stacks; the header pill shows how many
@@ -987,7 +987,7 @@
   }
   var _markDirtyUD = markDirty;
   markDirty = function () { _markDirtyUD(); if (draftTimer) clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 2500); };
-  // â”€â”€ Gallery filter + search (2026 Wave A) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Gallery filter + search (2026 Wave A) ──────────────────────────────
   // Server tags every card with data-archetype / data-scheme / data-search.
   // One active chip + a free-text search narrow the gallery; counts stay live.
   (function () {

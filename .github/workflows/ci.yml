@@ -153,6 +153,11 @@ jobs:
         # "proprietary". Enforced here because consistency across ~930 files
         # survives exactly as long as something checks it.
         run: python3 scripts/spdx-headers.py --check
+      - name: No double-encoded UTF-8 or byte-order marks
+        # A file saved through a Windows-1252 round-trip still builds and passes
+        # every test; the damage only shows as three stray characters on the rendered page. It
+        # shipped in 3.17.64 across every per-site console page.
+        run: python3 scripts/check-encoding.py --check
       - name: security.txt has not gone stale
         # RFC 9116 requires an Expires field, and an expired security.txt is
         # reported by scanners as the finding it exists to prevent. The date used

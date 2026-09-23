@@ -37,7 +37,7 @@ const (
 	wcagAANormal = 4.5 // WCAG 2.x AA contrast ratio for normal-size text/links
 )
 
-// srgbToLinear linearises one 0â€“255 sRGB channel (WCAG relative-luminance step).
+// srgbToLinear linearises one 0–255 sRGB channel (WCAG relative-luminance step).
 func srgbToLinear(c float64) float64 {
 	c /= 255.0
 	if c <= 0.03928 {
@@ -62,7 +62,7 @@ func relLuminance(hexColor string) float64 {
 	return 0.2126*ch(h[0:2]) + 0.7152*ch(h[2:4]) + 0.0722*ch(h[4:6])
 }
 
-// contrastRatio returns the WCAG contrast ratio (1.0â€“21.0) between two colours.
+// contrastRatio returns the WCAG contrast ratio (1.0–21.0) between two colours.
 func contrastRatio(a, b string) float64 {
 	la, lb := relLuminance(a), relLuminance(b)
 	if la < lb {
@@ -73,18 +73,18 @@ func contrastRatio(a, b string) float64 {
 
 // contrastWarnings returns advisory (non-blocking) WCAG AA warnings for the
 // primary palette colours against their page backgrounds. Primary is used as
-// the link/interactive-text colour, so failing AA hurts readability â€” but theme
+// the link/interactive-text colour, so failing AA hurts readability — but theme
 // sovereignty means we warn, not forbid.
 func contrastWarnings(primaryLight, primaryDark string) []string {
 	var out []string
 	if primaryLight != "" {
 		if cr := contrastRatio(primaryLight, lightModeBG); cr < wcagAANormal {
-			out = append(out, fmt.Sprintf("Light primary %s has low contrast (%.1f:1) on the light background â€” WCAG AA wants â‰¥ %.1f:1.", primaryLight, cr, wcagAANormal))
+			out = append(out, fmt.Sprintf("Light primary %s has low contrast (%.1f:1) on the light background — WCAG AA wants ≥ %.1f:1.", primaryLight, cr, wcagAANormal))
 		}
 	}
 	if primaryDark != "" {
 		if cr := contrastRatio(primaryDark, darkModeBG); cr < wcagAANormal {
-			out = append(out, fmt.Sprintf("Dark primary %s has low contrast (%.1f:1) on the dark background â€” WCAG AA wants â‰¥ %.1f:1.", primaryDark, cr, wcagAANormal))
+			out = append(out, fmt.Sprintf("Dark primary %s has low contrast (%.1f:1) on the dark background — WCAG AA wants ≥ %.1f:1.", primaryDark, cr, wcagAANormal))
 		}
 	}
 	return out
@@ -94,7 +94,7 @@ func contrastWarnings(primaryLight, primaryDark string) []string {
 // label is shown in the <select>; the value is what gets persisted and must be
 // a member of settings.RobotsOptions.
 var robotsChoices = []struct{ value, label string }{
-	{"", "Default (no directive â€” fully indexable)"},
+	{"", "Default (no directive — fully indexable)"},
 	{"index,follow", "index, follow"},
 	{"index,nofollow", "index, nofollow"},
 	{"noindex,follow", "noindex, follow"},
@@ -123,7 +123,7 @@ func robotsOptionsHTML(current string) string {
 func (a *App) handleThemeCSS(w http.ResponseWriter, r *http.Request) {
 	// VayuDomains per-domain branding: a secondary domain with its own accent
 	// serves a branded stylesheet (its own ETag); the primary and single-domain
-	// installs take the original path â€” same ETag, same bytes â€” byte-identical.
+	// installs take the original path — same ETag, same bytes — byte-identical.
 	// Each domain is a distinct origin (own Host), so browser caches never collide.
 	etag, css := render.ThemeCSSETag(), render.ThemeCSS()
 	if s, ok := a.brandForRequest(r); ok {
@@ -133,7 +133,7 @@ func (a *App) handleThemeCSS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", etag)
 	// Palette changes are infrequent; a short max-age lets browsers serve from
 	// cache without a round-trip, while the ETag still yields cheap 304s and
-	// caps propagation lag (â‰¤60 s) after a save. CachePurgeAll() already
+	// caps propagation lag (≤60 s) after a save. CachePurgeAll() already
 	// regenerates the HTML pages on save.
 	w.Header().Set("Cache-Control", "public, max-age=60")
 	if r.Header.Get("If-None-Match") == etag {
@@ -144,7 +144,7 @@ func (a *App) handleThemeCSS(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleThemeToggleJS serves the public sun/moon theme switcher script.
-// Same-origin static asset â†’ satisfies `script-src 'self'` without a nonce.
+// Same-origin static asset → satisfies `script-src 'self'` without a nonce.
 func (a *App) handleThemeToggleJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
@@ -152,7 +152,7 @@ func (a *App) handleThemeToggleJS(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleVideoFacadeJS serves the public click-to-load video facade script.
-// Same-origin static asset â†’ satisfies `script-src 'self'` without a nonce.
+// Same-origin static asset → satisfies `script-src 'self'` without a nonce.
 func (a *App) handleVideoFacadeJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
@@ -160,7 +160,7 @@ func (a *App) handleVideoFacadeJS(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCommentsJS serves the public comment widget script.
-// Same-origin static asset â†’ satisfies `script-src 'self'` without a nonce.
+// Same-origin static asset → satisfies `script-src 'self'` without a nonce.
 func (a *App) handleCommentsJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
@@ -177,7 +177,7 @@ func (a *App) handleContactJS(w http.ResponseWriter, r *http.Request) {
 
 // handlePostCardMediaJS serves the post-card cover-image fallback script, which
 // hides broken/expired cover images on the home and tag pages.
-// Same-origin static asset â†’ satisfies `script-src 'self'` without a nonce.
+// Same-origin static asset → satisfies `script-src 'self'` without a nonce.
 func (a *App) handlePostCardMediaJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
@@ -186,9 +186,9 @@ func (a *App) handlePostCardMediaJS(w http.ResponseWriter, r *http.Request) {
 
 // handleTrendingWidgetJS serves the public Trending & pinned posts widget script
 // that hydrates [data-vayu-trending] sections from /api/trending. Same-origin
-// static asset â†’ satisfies `script-src 'self'` without a nonce. This route was
+// static asset → satisfies `script-src 'self'` without a nonce. This route was
 // previously missing, so the bare /static/js/trending.js 404'd and the widget
-// never loaded â€” taking the trending AND pinned-posts lists down with it.
+// never loaded — taking the trending AND pinned-posts lists down with it.
 func (a *App) handleTrendingWidgetJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
@@ -231,7 +231,7 @@ func (a *App) handleHTMXJS(w http.ResponseWriter, r *http.Request) {
 // `font-src 'self'`: request it from this origin. Vendoring only the three faces
 // the default theme happens to use meant every operator building their own site
 // either shipped no real typography or reached for a font host and got a silent
-// CSP refusal â€” the freedom was theoretical. These are the display, body and
+// CSP refusal — the freedom was theoretical. These are the display, body and
 // mono families the product's own site uses, so a bundle can look finished
 // without leaving the origin. Every file is SIL OFL; the licences are vendored
 // beside them in static/fonts/.
@@ -274,11 +274,11 @@ func (a *App) handleStaticFont(w http.ResponseWriter, r *http.Request) {
 //
 // WHY THIS EXISTS. A hand-built site on this install serves under
 //
-//	script-src 'self' 'nonce-â€¦'; style-src 'self'; font-src 'self'
+//	script-src 'self' 'nonce-…'; style-src 'self'; font-src 'self'
 //
 // which is correct and is not going to be relaxed. But it left operators with a
 // choice between a plain page and a broken one: every mainstream way to build a
-// site â€” a utility CSS framework, a small reactive library, a real typeface â€”
+// site — a utility CSS framework, a small reactive library, a real typeface —
 // arrives from a third-party host, gets refused, and renders as unstyled text
 // with nothing saying why. The policy was doing its job and the product was
 // making creativity the thing you paid for it with.
@@ -293,7 +293,7 @@ func (a *App) handleStaticFont(w http.ResponseWriter, r *http.Request) {
 // and shipping it would have meant weakening the policy for every page on the
 // install to make one page interactive.
 // alpine.min.js is the STANDARD build and is useless without the per-domain
-// eval opt-in (SiteConfig.AllowEval) â€” it compiles the expression strings in
+// eval opt-in (SiteConfig.AllowEval) — it compiles the expression strings in
 // markup at runtime, which the baseline policy refuses. It is served anyway,
 // because the alternative is an operator who has taken that decision being told
 // to fetch the file from a third-party host, which trades a policy they chose to
@@ -327,7 +327,7 @@ func (a *App) handleVayuWebAsset(w http.ResponseWriter, r *http.Request) {
 
 // handleThemeGet was the /admin/theme theme-editor page. The route is gone:
 // the console's theme surface lives at /os/theme and the legacy path now
-// redirects there (admin_legacy.go), which left this handler with no caller â€”
+// redirects there (admin_legacy.go), which left this handler with no caller —
 // staticcheck's U1000 rightly flagged it as dead. themeEditorPage stays: the
 // theme-contrast tests render through it directly.
 
@@ -355,8 +355,8 @@ func (a *App) handleThemeExport(w http.ResponseWriter, r *http.Request) {
 	// Emit only what a THEME is, which is not the same as what is writable.
 	//
 	// This loop used to walk settings.AllKeys, and the doc comment above it
-	// promised "no secrets â€¦ safe to share". Both were wrong: the bundle carried
-	// tor.space_api_key â€” a live API key â€” plus the shield's allow and deny CIDR
+	// promised "no secrets … safe to share". Both were wrong: the bundle carried
+	// tor.space_api_key — a live API key — plus the shield's allow and deny CIDR
 	// lists, the cluster peers, payment configuration, contact addresses and the
 	// VayuKeep backup destination. The UI invites an operator to download this
 	// and "apply it everywhere", which is precisely the action that hands all of
@@ -385,7 +385,7 @@ func (a *App) handleThemeExport(w http.ResponseWriter, r *http.Request) {
 
 // handleThemeReset restores every setting to its compile-time default and
 // propagates the change through the render pipeline identically to a Save.
-// It is a CSRF-protected POST â€” idempotent on a clean install, but a
+// It is a CSRF-protected POST — idempotent on a clean install, but a
 // deliberate, irreversible write on a customised one. The operator must
 // explicitly confirm in the browser before the request is sent.
 func (a *App) handleThemeReset(w http.ResponseWriter, r *http.Request) {
@@ -595,7 +595,7 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 		Msg: "site settings updated", RequestID: getRequestID(r),
 	})
 
-	// Advisory WCAG AA contrast warnings â€” the save succeeds regardless; theme
+	// Advisory WCAG AA contrast warnings — the save succeeds regardless; theme
 	// sovereignty means we surface accessibility risks, not veto them.
 	warnings := contrastWarnings(
 		strings.TrimSpace(body.PrimaryLight),
