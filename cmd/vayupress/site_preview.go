@@ -170,10 +170,32 @@ func (a *App) previewSite(ctx context.Context, d domain.Domain, path string) (*S
 	return p, nil
 }
 
-// previewFetch runs one synthetic request through the handler.
+// visitorContext keeps ctx's cancellation and deadline and NONE of its values.
+//
+// The preview is called from inside another request — POST /mcp, or a console
+// page — and that request's context carries chi's route state, the signed-in
+// operator and the resolved domain. Handed to the synthetic request, the route
+// state made chi route the inner GET as the outer request: every preview on
+// every domain answered 405 with 0 bytes while browsers got 200. The identity
+// would have been worse: "what a visitor gets" rendered as the operator.
+func visitorContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	var fresh context.Context
+	var cancel context.CancelFunc
+	if dl, ok := ctx.Deadline(); ok {
+		fresh, cancel = context.WithDeadline(context.Background(), dl)
+	} else {
+		fresh, cancel = context.WithCancel(context.Background())
+	}
+	stop := context.AfterFunc(ctx, cancel)
+	return fresh, func() { stop(); cancel() }
+}
+
+// previewFetch runs one synthetic request through the handler, as a stranger.
 func previewFetch(ctx context.Context, h http.Handler, host, path string) (string, *httptest.ResponseRecorder) {
+	vctx, done := visitorContext(ctx)
+	defer done()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
-	req = req.WithContext(ctx)
+	req = req.WithContext(vctx)
 	req.Host = host
 	req.Header.Set("Host", host)
 	// A browser-shaped request, because a bare one is treated as a bot and the

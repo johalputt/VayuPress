@@ -10,6 +10,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **The site preview answered 405 with 0 bytes on every domain**, from the
+  connector's `preview_site` and from the console's checker alike, while real
+  browsers got 200 — so the one instrument for "is my site OK?" answered
+  nothing. The preview ran its synthetic visit with its CALLER's context, and
+  chi routes by the route state it finds there: the inner `GET /` was routed as
+  the outer `POST /mcp`. The same context carried the signed-in operator, so a
+  preview could also have shown what the operator sees rather than a visitor.
+  The visit now runs in a fresh context that keeps only the caller's
+  cancellation and deadline (`visitorContext`).
+
 - **The installed console signed out after the phone was switched off.**
   Reported on a Samsung phone with Edge and Brave, "Remember me" ticked. Chromium
   on Android treats an installed app's cold launch as a cross-site navigation
