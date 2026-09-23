@@ -6,6 +6,83 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.66] — 2026-09-23
+
+### Added
+
+- **The release mirror is part of VayuPress, and it is live at
+  `updates.vayupress.com`.** Any hosted domain can serve it: VayuOS → the
+  domain's page → Site administration → **Release mirror**. Switched on, the
+  install pulls the project's releases from GitHub every hour (a conditional
+  request, so a quiet hour costs one `304`), holds the newest stable release,
+  the one before it and a pre-release when one is ahead, and answers the exact
+  requests the update fallback sends — from what it holds, never by relaying.
+  Everything else on the domain is served as before, so an uploaded site stays
+  the page people see.
+- **Nothing is held that an install would refuse.** Before a release is served,
+  the binary passes what `ApplyVerified` demands, through the same functions:
+  checksum, Sigstore signature pinned to the release workflow on `main`, the
+  Ed25519 release-key signature, and a Linux executable image. Every other file
+  must match the SHA-256 GitHub recorded for it, plus its own `.sha256` and
+  signature where the release ships them. A release that fails is not
+  advertised, the mirror keeps what it held, and the exact refusal is on the
+  domain's page and in the connector's `get_site`.
+- **`set_release_mirror`** on the connector switches the mirror for a domain;
+  `get_site` reports what it holds and how the last sync went.
+- **The mirror's own page**, source in `deploy/updates-site/`: the latest
+  release with every file, size, hash and the checks each passed, the release
+  notes, and how to verify a download by hand. Static HTML, CSS and one script,
+  all same-origin, reading the mirror's live status.
+
+### Fixed
+
+- **The mirror that 3.17.64 shipped never existed.** Its fallback address,
+  `updates.johal.in`, never resolved — the Worker meant to answer there was
+  never deployed — so an install that could not reach GitHub fell back to
+  nothing, while the release notes described a working fallback. Installs now
+  fall back to `updates.vayupress.com`, which answers.
+- **Large downloads were cut off at 30 seconds.** The gzip middleware added in
+  3.17.62 wrapped the response writer without `Unwrap`, so the backup export's
+  attempt to lift the server's write deadline failed silently and any export
+  taking longer than 30 seconds was truncated. Proved under the real
+  conditions — a real server with a short write timeout and a client that
+  reads slowly: without the fix the transfer dies at about 4 MB.
+
+### Removed
+
+- `deploy/updates-worker.js`. It relayed any path under `/api/github/` to
+  GitHub — an open proxy — and was never deployed.
+
+### Security
+
+- The mirror's paths are exempt from the browser challenge only on a domain the
+  operator switched the mirror on for, because the updater cannot solve one; the
+  operator's country and address refusals still apply first. File downloads are
+  budgeted per client (20 an hour, IPv6 grouped by /64 through the shield's own
+  key) and capped at 8 concurrent transfers. A Tor Space neither syncs nor
+  serves the mirror.
+- **Pre-release audit.** Attacked: the public paths (traversal, other
+  repositories, other GitHub API paths, unheld tags and files, wrong owner,
+  methods), the verification rules one seed each, the retry and retention
+  logic, the console and connector controls from a client login and from no
+  login, and the claims on the page and in the docs. One finding, fixed here:
+  exempting the paths from the shield also exempted them from its rate limit,
+  and the status JSON was re-encoded — release notes and all — on every
+  request, an unmetered compute sink on a public path. The bodies are now
+  encoded once per state change. A real sync against GitHub's published
+  3.17.64 and 3.17.65 releases verified both with no stubs, and the shipped
+  `ApplyVerified` accepted 3.17.65 served by that mirror with GitHub
+  unreachable.
+
+### Upgrade Notes
+
+- Installs on 3.17.64 and 3.17.65 that cannot reach GitHub still have no
+  working mirror: those builds only know `updates.johal.in`. They update
+  normally the next time GitHub is reachable, and fall back here from this
+  release onwards.
+
+---
+
 ## [3.17.65] — 2026-09-23
 
 Shipped on its own under the hotfix exception: every per-site console page
