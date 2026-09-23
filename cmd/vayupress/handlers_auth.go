@@ -24,6 +24,7 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/totp"
 	"github.com/johalputt/vayupress/internal/users"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
@@ -301,8 +302,49 @@ func (a *App) requireSessionOrAPIKey(next http.Handler) http.Handler {
 			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", "login required", "")
 			return
 		}
+		if isStrictCookieWithheldLaunch(r) {
+			serveLaunchBounce(w, r)
+			return
+		}
 		http.Redirect(w, r, "/os/login", http.StatusSeeOther)
 	})
+}
+
+// isStrictCookieWithheldLaunch reports whether r is an installed console's
+// cold launch that arrived without its Strict session cookie (see
+// auth.LaunchMarkerCookie): the app's start page, loaded as a cross-site
+// top-level navigation, by a browser that has signed in before.
+//
+// Deliberately this narrow. The start page has no side effects; every other
+// page, every POST and every API call keeps the Strict posture of audit F-6
+// untouched. A request that is not cross-site never matches, so the same-origin
+// reload the bounce performs cannot bounce again.
+func isStrictCookieWithheldLaunch(r *http.Request) bool {
+	if r.Method != http.MethodGet || r.URL.Path != osHome ||
+		r.Header.Get("Sec-Fetch-Site") != "cross-site" ||
+		r.Header.Get("Sec-Fetch-Mode") != "navigate" {
+		return false
+	}
+	if _, err := r.Cookie(auth.SessionCookie); err == nil {
+		return false
+	}
+	c, err := r.Cookie(auth.LaunchMarkerCookie)
+	return err == nil && c.Value == "1"
+}
+
+// serveLaunchBounce reloads the same address from the page itself. A
+// navigation the document starts is same-origin, so the browser attaches the
+// Strict session cookie it withheld from the launch. If that session has
+// expired, the reload lands on the login page like any other signed-out visit.
+func serveLaunchBounce(w http.ResponseWriter, r *http.Request) {
+	nonce := render.CSPNonce(r)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(`<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+		`<meta name="viewport" content="width=device-width, initial-scale=1"><title>VayuOS</title>` +
+		`<meta name="color-scheme" content="dark light"></head><body>` +
+		`<noscript><p><a href="` + osHome + `">Open VayuOS</a></p></noscript>` +
+		`<script nonce="` + nonce + `">location.replace(location.href);</script></body></html>`))
 }
 
 // serveWithAccess enforces the role-scoped access policy for an authenticated

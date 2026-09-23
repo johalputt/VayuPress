@@ -187,22 +187,44 @@ func SetSessionCookieRemember(w http.ResponseWriter, token string, remember bool
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 	}
-	if remember {
-		c.MaxAge = int(DefaultSessionTTL.Seconds())
-	}
-	WriteSecureCookie(w, c)
-}
-
-// ClearSessionCookie expires the session cookie on the client.
-func ClearSessionCookie(w http.ResponseWriter) {
-	WriteSecureCookie(w, &http.Cookie{
-		Name:     SessionCookie,
-		Value:    "",
+	marker := &http.Cookie{
+		Name:     LaunchMarkerCookie,
+		Value:    "1",
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   -1,
-	})
+		SameSite: http.SameSiteLaxMode,
+	}
+	if remember {
+		c.MaxAge = int(DefaultSessionTTL.Seconds())
+		marker.MaxAge = c.MaxAge
+	}
+	WriteSecureCookie(w, c)
+	WriteSecureCookie(w, marker)
+}
+
+// LaunchMarkerCookie says only "this browser has signed in", so a console
+// launched from an Android home screen is not shown the login page.
+//
+// Chromium on Android treats an installed app's cold launch as a CROSS-SITE
+// top-level navigation (Sec-Fetch-Site: cross-site) and withholds the Strict
+// session cookie from that one request. The server saw no session and showed
+// the login page to an operator who was signed in — "the phone app logs me out
+// after the phone is switched off". This cookie is Lax, so it IS sent on that
+// launch, and lets the console answer with a same-origin reload that carries
+// the Strict cookie (osLaunchBounce). It is a fixed value and grants nothing:
+// the session cookie is still required on the reload, and F-6's Strict posture
+// is unchanged for every request.
+const LaunchMarkerCookie = "vp_launch"
+
+// ClearSessionCookie expires the session cookie and its launch marker.
+func ClearSessionCookie(w http.ResponseWriter) {
+	for _, c := range []*http.Cookie{
+		{Name: SessionCookie, SameSite: http.SameSiteStrictMode},
+		{Name: LaunchMarkerCookie, SameSite: http.SameSiteLaxMode},
+	} {
+		c.Path, c.HttpOnly, c.MaxAge = "/", true, -1
+		WriteSecureCookie(w, c)
+	}
 }
 
 // SessionTokenFromRequest extracts the raw session token from the request cookie.

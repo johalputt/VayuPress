@@ -66,18 +66,30 @@ func TestTheConsoleSessionCookieIsHostOnly(t *testing.T) {
 		// anywhere it was not set" — it is not sent on a cross-site navigation.
 		resp := http.Response{Header: rec.Header()}
 		cookies := resp.Cookies()
-		if len(cookies) != 1 {
-			t.Fatalf("%s: expected exactly one cookie, got %d", c.name, len(cookies))
+		// Login and logout write exactly two cookies: the session and its
+		// launch marker (LaunchMarkerCookie). Anything more is a cookie this
+		// test has not reasoned about; every one of them must be host-only.
+		if len(cookies) != 2 {
+			t.Fatalf("%s: expected the session cookie and its launch marker, got %d", c.name, len(cookies))
 		}
-		got := cookies[0]
-		if got.Name != SessionCookie {
-			t.Fatalf("%s: wrote %q, want %q", c.name, got.Name, SessionCookie)
+		var session *http.Cookie
+		for _, got := range cookies {
+			if got.Domain != "" {
+				t.Errorf("%s: %s Domain = %q, want empty (host-only)", c.name, got.Name, got.Domain)
+			}
+			switch got.Name {
+			case SessionCookie:
+				session = got
+			case LaunchMarkerCookie:
+			default:
+				t.Errorf("%s: wrote an unexpected cookie %q", c.name, got.Name)
+			}
 		}
-		if got.Domain != "" {
-			t.Errorf("%s: Domain = %q, want empty (host-only)", c.name, got.Domain)
+		if session == nil {
+			t.Fatalf("%s: the session cookie %q was not written", c.name, SessionCookie)
 		}
-		if got.SameSite != http.SameSiteStrictMode {
-			t.Errorf("%s: SameSite = %v, want Strict", c.name, got.SameSite)
+		if session.SameSite != http.SameSiteStrictMode {
+			t.Errorf("%s: SameSite = %v, want Strict", c.name, session.SameSite)
 		}
 	}
 }

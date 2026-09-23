@@ -6,6 +6,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **The installed console signed out after the phone was switched off.**
+  Reported on a Samsung phone with Edge and Brave, "Remember me" ticked. Chromium
+  on Android treats an installed app's cold launch as a cross-site navigation
+  (`Sec-Fetch-Site: cross-site`) and withholds the `SameSite=Strict` session
+  cookie from that one request, so the console showed the login page to an
+  operator whose session was valid. A `Lax` launch marker (`vp_launch`, fixed
+  value, grants nothing) now travels with the session cookie; when the app's
+  start page arrives cross-site without the session but with the marker, the
+  console answers with a same-origin reload that carries the Strict cookie.
+  One address, GET navigations, cross-site only — every other page, POST and API
+  call keeps the Strict posture of audit F-6, and the reload can never bounce
+  again. `os_launch_cookie_test.go` pins each condition with its own seed.
+
+---
+
 ## [3.17.67] — 2026-09-23
 
 Shipped on its own under the hotfix exception: publishing stalled the live
