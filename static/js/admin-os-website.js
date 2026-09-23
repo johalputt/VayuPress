@@ -112,18 +112,19 @@
   if (deployBtn && zipInput) deployBtn.addEventListener('click', function () {
     var f = zipInput.files && zipInput.files[0];
     if (!f) { setDeploy('Choose a .zip file first', false); return; }
-    var fd = new FormData();
-    fd.append('bundle', f);
-    setDeploy('Uploading & validating…', true);
-    fetch('/os/api/website/custom-upload', {
-      method: 'POST', headers: { 'X-CSRF-Token': csrf() }, body: fd
-    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
-      .then(function (res) {
-        if (!res.ok) { setDeploy(errMsg(res.j, 'Deploy failed'), false); return; }
-        setDeploy('Deployed ' + (res.j.files || '') + ' files \u2713 — select \u201CCustom uploaded website\u201D above, then Save & publish', true);
-        if (window.vpToast) window.vpToast('Custom build deployed', 'ok');
-      })
-      .catch(function () { setDeploy('Deploy failed (network)', false); });
+    deployBtn.disabled = true;
+    window.vpBundleUpload('/os/api/website/custom-bundle', f, csrf(), function (done, total, phase) {
+      setDeploy(window.vpBundleProgressText(done, total, phase), true);
+    }).then(function (j) {
+      deployBtn.disabled = false;
+      var msg = 'Deployed ' + (j.files || 0) + ' files \u2713';
+      if (j.skipped) msg += ' (' + j.skipped + ' system file(s) ignored)';
+      setDeploy(msg + ' \u2014 select \u201CCustom uploaded website\u201D above, then Save & publish', true);
+      if (window.vpToast) window.vpToast('Custom build deployed', 'ok');
+    }, function (e) {
+      deployBtn.disabled = false;
+      setDeploy('Not deployed \u2014 the live site is unchanged. ' + e.message, false);
+    });
   });
   var rollbackBtn = document.querySelector('[data-biz-rollback]');
   if (rollbackBtn) rollbackBtn.addEventListener('click', function () {

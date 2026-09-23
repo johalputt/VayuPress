@@ -58,7 +58,8 @@ func TestEveryPerDomainConsolePathIsAdminOnly(t *testing.T) {
 		"/os/d/abc/settings", "/os/d/abc/content", "/os/d/abc/website",
 		"/os/d/abc/theme", "/os/d/abc/seo", "/os/d/abc/analytics",
 		"/os/d/abc/api/settings", "/os/d/abc/api/theme/code",
-		"/os/d/abc/api/copy-from-primary", "/os/d/abc/api/website/bundle",
+		"/os/d/abc/api/copy-from-primary", "/os/d/abc/api/website/bundle/uploads",
+		"/os/d/abc/api/website/bundle/uploads/x/deploy", "/os/d/abc/api/website/bundle/download",
 		"/os/d/abc/api/website/bundle/rollback", "/os/d/abc/api/content/move",
 		"/os/d/abc/api/content/new", "/os/d/abc/api/website/preview",
 		// A route nobody has written yet. The rule has to hold for the NEXT

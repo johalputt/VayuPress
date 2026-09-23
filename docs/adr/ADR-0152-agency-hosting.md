@@ -48,7 +48,7 @@ ADR-0132 built the foundation across four stages, all shipped:
 | Per-domain mail | isolated receive, read isolation, per-domain DKIM signing, autoconfig |
 | Per-domain TLS + vhost | `scripts/setup-vayudomain.sh`, separate certificate lineage per host |
 | `HasSecondaries` gate | a single-domain install pays nothing for any of it |
-| `internal/customsite` | zip upload of a hand-built static site, zip-slip proof, extension allowlist, 50 MiB / 25 MiB / 3000-file caps, rollback |
+| `internal/customsite` | zip upload of a hand-built static site, zip-slip proof, extension allowlist, size bounded by free disk (ADR-0114 amendment), rollback, download |
 
 The `customsite` package in particular is better than it needed to be, and it is
 what makes the studio proposition credible: a site designed by hand, published

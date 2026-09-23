@@ -21,13 +21,12 @@ func TestBlogBaseForModeCustom(t *testing.T) {
 func TestCustomBuildGuideHasHardRules(t *testing.T) {
 	g := customBuildGuide("example.com")
 	for _, want := range []string{
-		"index.html",  // required entry point
-		"Relative",    // relative paths only
-		"50 MiB",      // total size cap
-		"25 MiB",      // per-file cap
-		"/blog",       // reserved blog path
-		"example.com", // domain interpolated
-		".php",        // disallowed example called out
+		"index.html",    // required entry point
+		"Relative",      // relative paths only
+		"No fixed size", // bounded by disk, not a number
+		"/blog",         // reserved blog path
+		"example.com",   // domain interpolated
+		".php",          // disallowed example called out
 	} {
 		if !strings.Contains(g, want) {
 			t.Errorf("build guide missing %q", want)

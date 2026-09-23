@@ -10,6 +10,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **A hand-built website has no fixed size limit, and can be downloaded.**
+  The 50 MiB / 25 MiB-a-file / 3000-file caps and the 60 MiB upload are gone;
+  a bundle may use the disk's free space less a reserve kept for the database
+  (5% of the volume or 1 GiB), and the upload card says how much room there is.
+  The console now sends the `.zip` in 8 MiB pieces, so the 50M body limit in
+  the shipped nginx and Caddy configurations and Cloudflare's 100 MB no longer
+  stop a large site, a dropped connection costs one piece, and the server's
+  15-second read timeout no longer cuts off a slow upload. An archive that
+  cannot fit is refused before its first piece (507, with the room there is).
+  The extension allowlist, traversal and symlink refusal, and atomic deploy with
+  rollback are unchanged. **Download .zip** on the primary's and every hosted
+  site's Website page returns the live site as a zip. The connector's
+  `build_site` deploys against the same disk bound.
 - **A template's sample content can no longer go live unnoticed.**
   vayupress.johal.in served Bistro's "Maison Olive" — menu, opening hours and
   "Reserve a table" — as a real business, and nothing said so.
@@ -24,6 +37,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **A refused site upload on a hosted domain now says why.** The page read the
+  reason from a field the API never sends, so every refusal — a `.php` in the
+  zip, a missing `index.html` — read "The server refused it without giving a
+  reason" while the reason sat in the response.
+- **Two deploys to one site at once could destroy each other.** Both used the
+  same staging directory, and the second deleted it under the first mid-
+  extraction. Deploy and rollback are now serialised.
 - **The site preview answered 405 with 0 bytes on every domain**, from the
   connector's `preview_site` and from the console's checker alike, while real
   browsers got 200 — so the one instrument for "is my site OK?" answered

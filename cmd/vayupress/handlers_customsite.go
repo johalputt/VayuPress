@@ -9,17 +9,12 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"path/filepath"
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/customsite"
 )
-
-// maxCustomUploadBytes caps the uploaded .zip request body. The decompressed
-// bundle is separately capped in customsite.Deploy; this bounds the transfer.
-const maxCustomUploadBytes = int64(60) << 20 // 60 MiB
 
 // customSiteRoot is the persistent directory holding deployed bundles. It sits
 // next to the media library (a sibling of MEDIA_DIR, i.e. under the data root),
@@ -90,50 +85,6 @@ func (a *App) serveCustomIfActive(w http.ResponseWriter, r *http.Request, urlPat
 	return customsite.Serve(w, r, a.customSiteDir(r), urlPath)
 }
 
-// handleOSWebsiteCustomUpload accepts a multipart .zip upload, validates and
-// deploys it. Admin-only + CSRF-protected. The uploaded bundle becomes live
-// only once the operator also selects the "custom" mode and saves; until then
-// it is staged as the current bundle (previewable by switching mode, revertible
-// by Rollback).
-func (a *App) handleOSWebsiteCustomUpload(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxCustomUploadBytes)
-	if err := r.ParseMultipartForm(8 << 20); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "upload_too_large", "The upload is too large or malformed (limit 60 MiB).", "")
-		return
-	}
-	file, hdr, err := r.FormFile("bundle")
-	if err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "no_file", "Attach a .zip file in the 'bundle' field.", "")
-		return
-	}
-	defer file.Close()
-	if filepath.Ext(hdr.Filename) != ".zip" {
-		writeAPIError(w, r, http.StatusBadRequest, "not_zip", "The uploaded file must be a .zip.", "")
-		return
-	}
-	data, err := io.ReadAll(file)
-	if err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "read_failed", "Could not read the uploaded file.", "")
-		return
-	}
-	m, err := customsite.Deploy(a.customSiteDir(r), data)
-	if err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "invalid_bundle", err.Error(), "")
-		return
-	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{
-		"status":      "deployed",
-		"files":       m.Files,
-		"bytes":       m.Bytes,
-		"deployed_at": m.DeployedAt,
-		"note":        "Select \u201cCustom uploaded website\u201d and Save & publish to make it live.",
-	})
-}
-
 // handleOSWebsiteCustomRollback swaps the current custom bundle for the previous
 // one. Admin-only + CSRF-protected.
 func (a *App) handleOSWebsiteCustomRollback(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +134,10 @@ A single **.zip** file containing a **static** website:
 - **Allowed file types only:** .html .htm .css .js .mjs .json .txt .xml .svg
   .png .jpg .jpeg .gif .webp .avif .ico .woff .woff2 .ttf .otf .pdf .mp4 .webm
   .mp3 .ogg .csv .webmanifest .map. Anything else (e.g. .php, .exe) is rejected.
-- **Size limits:** 25 MiB per file, 50 MiB total (decompressed), 3000 files max.
+- **No fixed size or file-count limit.** A bundle may use the server's free
+  disk, less a reserve kept for the database; the upload panel shows how much
+  room there is. Keep images and video sensibly compressed all the same —
+  visitors download them.
 - **Self-contained:** inline or bundle your CSS/JS and host fonts/images inside
   the zip. Avoid depending on external CDNs so the site works offline and under
   a strict content policy.

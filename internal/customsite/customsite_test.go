@@ -64,7 +64,7 @@ func TestDeployAndServeHappyPath(t *testing.T) {
 		"assets/app.css":   "body{color:red}",
 		"about/index.html": "<title>About</title>",
 	})
-	m, err := Deploy(base, z)
+	m, err := deployBytes(base, z)
 	if err != nil {
 		t.Fatalf("Deploy: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestDeployRejectsHostileBundles(t *testing.T) {
 	}
 	for name, files := range cases {
 		base := t.TempDir()
-		if _, err := Deploy(base, zipOf(t, files)); err == nil {
+		if _, err := deployBytes(base, zipOf(t, files)); err == nil {
 			t.Errorf("%s: Deploy accepted a bundle it should reject", name)
 		}
 		if Deployed(base) {
@@ -120,7 +120,7 @@ func TestDeployRejectsHostileBundles(t *testing.T) {
 
 func TestServeIsTraversalSafeAndMissesGracefully(t *testing.T) {
 	base := t.TempDir()
-	if _, err := Deploy(base, zipOf(t, map[string]string{"index.html": "home", "a.css": "css"})); err != nil {
+	if _, err := deployBytes(base, zipOf(t, map[string]string{"index.html": "home", "a.css": "css"})); err != nil {
 		t.Fatal(err)
 	}
 	// Nonexistent file → not served (caller 404s).
@@ -137,13 +137,13 @@ func TestServeIsTraversalSafeAndMissesGracefully(t *testing.T) {
 
 func TestRollback(t *testing.T) {
 	base := t.TempDir()
-	if _, err := Deploy(base, zipOf(t, map[string]string{"index.html": "V1"})); err != nil {
+	if _, err := deployBytes(base, zipOf(t, map[string]string{"index.html": "V1"})); err != nil {
 		t.Fatal(err)
 	}
 	if err := Rollback(base); err == nil {
 		t.Error("rollback with no previous deployment should error")
 	}
-	if _, err := Deploy(base, zipOf(t, map[string]string{"index.html": "V2"})); err != nil {
+	if _, err := deployBytes(base, zipOf(t, map[string]string{"index.html": "V2"})); err != nil {
 		t.Fatal(err)
 	}
 	if got := serveGet(t, base, "/"); got != "V2" {

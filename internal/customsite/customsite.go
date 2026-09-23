@@ -13,15 +13,18 @@
 //   - No symlinks, no directories-as-files, no device/irregular entries.
 //   - Extension allowlist (static web assets only) — no executables, and
 //     notably no .svg-as-markup surprises beyond what the allowlist permits.
-//   - Size + count + per-file caps, enforced against the DECLARED and the ACTUAL
-//     decompressed bytes (zip-bomb resistant via a hard copy limit).
+//   - A byte budget supplied by the caller (the disk the server can spare),
+//     checked against the archive's declared sizes before anything is written.
+//     Declared sizes are binding: archive/zip refuses an entry that decompresses
+//     past its header (TestALyingHeaderIsRefusedByTheReader pins that), so a
+//     zip bomb cannot write more than it admitted to. There is no fixed size or
+//     file-count ceiling: a site is as large as the machine has room for.
 //   - Serving is traversal-safe, never lists directories, sets nosniff, and only
 //     ever reads from the confined current/ directory.
 package customsite
 
 import (
 	"archive/zip"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,18 +36,31 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/net/html"
 )
 
-// Limits bound an upload. They are deliberately generous for an image-rich
-// marketing site but firmly cap abuse.
-const (
-	MaxTotalBytes = int64(50) << 20 // 50 MiB decompressed total
-	MaxFileBytes  = int64(25) << 20 // 25 MiB per file
-	MaxFiles      = 3000
-)
+// ErrNoSpace reports a bundle that would unpack to more than the byte budget
+// the caller allowed. Callers match it to answer "the disk is full" rather than
+// "your bundle is malformed" — the file is fine, and resending it will not help.
+//
+// The budget replaced fixed caps (50 MiB total, 25 MiB a file, 3000 files).
+// Those limited nothing the operator could not already do to their own disk,
+// and they turned away real sites — a video-heavy landing page, a docs site
+// with thousands of pages. What must not happen is an upload filling the
+// volume the database lives on, and that is a question about free space, not a
+// number chosen in advance. There is no file-count ceiling either: the zip's
+// central directory is what costs memory per entry, and it is part of an
+// archive the budget already bounds.
+var ErrNoSpace = errors.New("not enough free space for this bundle")
+
+// deployMu serialises Deploy and Rollback. Both reuse fixed directory names
+// under base (".staging", ".swap"), so two at once — two tabs, or an upload
+// racing a build_site — would delete each other's staging mid-extraction.
+// Uploads that take minutes made that overlap likely rather than theoretical.
+var deployMu sync.Mutex
 
 // allowedExt is the static-web-asset allowlist. Anything else in the zip is
 // rejected (the deploy fails) so an operator notices, rather than silently
@@ -135,16 +151,31 @@ func dirs(base string) (current, previous, staging string) {
 		filepath.Join(base, ".staging")
 }
 
-// Deploy validates zipData and atomically installs it as the live bundle under
-// base/current, preserving the prior deployment under base/previous for
-// one-click rollback. It never partially replaces the live site: extraction
-// happens in a staging dir and is swapped in only after full success.
-func Deploy(base string, zipData []byte) (Manifest, error) {
+// Deploy validates the archive zr and atomically installs it as the live
+// bundle under base/current, preserving the prior deployment under
+// base/previous for one-click rollback. It never partially replaces the live
+// site: extraction happens in a staging dir and is swapped in only after full
+// success. At most budget bytes are written; more is refused with ErrNoSpace.
+func Deploy(base string, zr *zip.Reader, budget int64) (Manifest, error) {
+	deployMu.Lock()
+	defer deployMu.Unlock()
 	current, previous, staging := dirs(base)
 
-	zr, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
-	if err != nil {
-		return Manifest{}, fmt.Errorf("not a valid .zip file: %w", err)
+	// Refuse on the archive's own declaration before writing a byte, so a bundle
+	// that cannot fit fails in a moment instead of after gigabytes of
+	// extraction. Trusting the header is safe only because the reader enforces
+	// it (see the package comment); a copy limit in extractOne as well could
+	// never fire, which is why there is not one.
+	//
+	// Subtracting from the room rather than summing the sizes: a hostile ZIP64
+	// archive can declare entries near 2^64 that wrap a sum back to something
+	// small.
+	room := uint64(max(budget, 0))
+	for _, f := range zr.File {
+		if f.UncompressedSize64 > room {
+			return Manifest{}, fmt.Errorf("%w: it unpacks to more than the %d bytes there is room for", ErrNoSpace, max(budget, 0))
+		}
+		room -= f.UncompressedSize64
 	}
 
 	// Clean any leftover staging from a previous failed attempt.
@@ -209,13 +240,7 @@ func Deploy(base string, zipData []byte) (Manifest, error) {
 			return Manifest{}, fmt.Errorf("rejected file %q: extension not allowed — "+
 				"a site bundle may contain only static web files, and this one entry stops the whole upload", rel)
 		}
-		if int64(f.UncompressedSize64) > MaxFileBytes {
-			return Manifest{}, fmt.Errorf("file %q exceeds the %d MiB per-file limit", rel, MaxFileBytes>>20)
-		}
 		fileCount++
-		if fileCount > MaxFiles {
-			return Manifest{}, fmt.Errorf("bundle has too many files (limit %d)", MaxFiles)
-		}
 
 		// Create parent directories and the file THROUGH the confined root, so
 		// containment is enforced by the OS regardless of the entry name.
@@ -224,14 +249,11 @@ func Deploy(base string, zipData []byte) (Manifest, error) {
 				return Manifest{}, fmt.Errorf("mkdir for %q: %w", rel, err)
 			}
 		}
-		written, err := extractOne(root, rel, f, MaxTotalBytes-total)
+		written, err := extractOne(root, rel, f)
 		if err != nil {
 			return Manifest{}, err
 		}
 		total += written
-		if total > MaxTotalBytes {
-			return Manifest{}, fmt.Errorf("bundle exceeds the %d MiB total limit", MaxTotalBytes>>20)
-		}
 		if rel == "index.html" {
 			sawIndex = true
 		}
@@ -275,11 +297,10 @@ func Deploy(base string, zipData []byte) (Manifest, error) {
 	return m, nil
 }
 
-// extractOne copies a single zip entry to rel within the confined root,
-// refusing to write more than remaining bytes (a hard stop against a lying
-// UncompressedSize64 / zip bomb). Writing via root.Create guarantees the file
-// cannot land outside the root, whatever rel resolves to.
-func extractOne(root *os.Root, rel string, f *zip.File, remaining int64) (int64, error) {
+// extractOne copies a single zip entry to rel within the confined root.
+// Writing via root.Create guarantees the file cannot land outside the root,
+// whatever rel resolves to.
+func extractOne(root *os.Root, rel string, f *zip.File) (int64, error) {
 	rc, err := f.Open()
 	if err != nil {
 		return 0, fmt.Errorf("open %q in zip: %w", f.Name, err)
@@ -292,17 +313,9 @@ func extractOne(root *os.Root, rel string, f *zip.File, remaining int64) (int64,
 	}
 	defer out.Close()
 
-	// +1 so we can detect an overrun past the remaining budget.
-	limit := remaining + 1
-	if limit < 1 {
-		limit = 1
-	}
-	n, err := io.Copy(out, io.LimitReader(rc, limit))
+	n, err := io.Copy(out, rc)
 	if err != nil {
 		return n, fmt.Errorf("write %q: %w", rel, err)
-	}
-	if n > remaining {
-		return n, errors.New("bundle exceeds the total size limit")
 	}
 	return n, nil
 }
@@ -340,6 +353,8 @@ func safeRel(name string) (string, error) {
 // Rollback swaps the current and previous deployments. It errors if there is no
 // previous deployment to restore.
 func Rollback(base string) error {
+	deployMu.Lock()
+	defer deployMu.Unlock()
 	current, previous, _ := dirs(base)
 	if !dirExists(previous) {
 		return errors.New("no previous deployment to roll back to")
@@ -365,6 +380,29 @@ func Rollback(base string) error {
 	m.HasPrev = dirExists(previous)
 	writeManifest(base, m)
 	return nil
+}
+
+// Export writes the live bundle to w as a .zip — the site exactly as it is
+// served, so an operator can take it elsewhere, edit it locally and upload it
+// again, or keep it as a backup.
+//
+// Read through the same confined root Serve uses: nothing outside current/ can
+// enter the archive, whatever a path inside it resolves to. No lock is taken.
+// The root holds the directory open, so a deploy that renames current/ mid-way
+// leaves this export reading the tree it started with; a download of a large
+// site must not stall every deploy behind it.
+func Export(w io.Writer, base string) error {
+	current, _, _ := dirs(base)
+	root, err := os.OpenRoot(current)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	zw := zip.NewWriter(w)
+	if err := zw.AddFS(root.FS()); err != nil {
+		return err
+	}
+	return zw.Close()
 }
 
 // Deployed reports whether a live custom bundle exists.

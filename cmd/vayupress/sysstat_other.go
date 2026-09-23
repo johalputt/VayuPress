@@ -58,6 +58,9 @@ func collectSysStats(dbPath, cacheDir, mediaDir, backupsDir string) sysStats {
 
 func startFootprintRefresher(cacheDir, mediaDir, backupsDir string) {}
 
+// diskUsage cannot be read without statfs; zero total means "unknown".
+func diskUsage(string) (total, free uint64) { return 0, 0 }
+
 func fileSize(path string) int64 {
 	fi, err := os.Stat(path)
 	if err != nil {

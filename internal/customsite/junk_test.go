@@ -36,7 +36,7 @@ func junkZip(t *testing.T, files map[string]string) []byte {
 // this change the whole upload was refused, which is how "upload your site"
 // failed for most people on their first try.
 func TestTheZipAPersonActuallyMakesCanBeDeployed(t *testing.T) {
-	m, err := Deploy(t.TempDir(), junkZip(t, map[string]string{
+	m, err := deployBytes(t.TempDir(), junkZip(t, map[string]string{
 		"index.html":            "<html><body>hi</body></html>",
 		"assets/style.css":      "body{}",
 		".DS_Store":             "\x00\x00binary junk",
@@ -64,7 +64,7 @@ func TestTheZipAPersonActuallyMakesCanBeDeployed(t *testing.T) {
 // quietly become that.
 func TestJunkIsDroppedRatherThanServed(t *testing.T) {
 	base := t.TempDir()
-	if _, err := Deploy(base, junkZip(t, map[string]string{
+	if _, err := deployBytes(base, junkZip(t, map[string]string{
 		"index.html": "<html></html>",
 		".DS_Store":  "secret-ish",
 	})); err != nil {
@@ -82,7 +82,7 @@ func TestJunkIsDroppedRatherThanServed(t *testing.T) {
 // site missing something its author believed they had published.
 func TestRealContentInTheWrongPlaceIsStillRefused(t *testing.T) {
 	for _, bad := range []string{"design.psd", "clip.mov", "data.yaml", "backup.zip"} {
-		_, err := Deploy(t.TempDir(), junkZip(t, map[string]string{
+		_, err := deployBytes(t.TempDir(), junkZip(t, map[string]string{
 			"index.html": "<html></html>",
 			bad:          "x",
 		}))
@@ -98,7 +98,7 @@ func TestRealContentInTheWrongPlaceIsStillRefused(t *testing.T) {
 
 // A bundle of nothing but junk is not a site, and must not deploy as an empty one.
 func TestAZipOfOnlyJunkIsRefused(t *testing.T) {
-	if _, err := Deploy(t.TempDir(), junkZip(t, map[string]string{
+	if _, err := deployBytes(t.TempDir(), junkZip(t, map[string]string{
 		".DS_Store": "x", "Thumbs.db": "y",
 	})); err == nil {
 		t.Fatal("a zip containing no site at all was deployed")

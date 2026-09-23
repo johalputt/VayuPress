@@ -73,6 +73,7 @@ func (a *App) handleOSScopedWebsite(w http.ResponseWriter, r *http.Request) {
 	content := bizsite.EffectiveContent(tpl, site.Content)
 	man := customsite.ReadManifest(scopedBundleDir(d))
 	body := scopedWebsitePage(d, tpl.Key, content, customsite.Deployed(scopedBundleDir(d)), man) +
+		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-bundle.js?v=` + assetVer("js/admin-os-bundle.js") + `"></script>` +
 		scopedWebsiteScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Website · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
 }
@@ -188,7 +189,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
   <div class="settings-block-title">Upload a website</div>
   <p class="text-sm muted">A <code>.zip</code> of a complete static site — <code>index.html</code> at its root,
     with whatever CSS, JavaScript, images and fonts it needs beside it. It is served exactly as authored, so a
-    hand-built page looks like a hand-built page. Up to 50&nbsp;MiB unpacked, 3000 files.</p>
+    hand-built page looks like a hand-built page.</p>` + bundleRoomLine() + `
   <p class="text-sm muted">Each deploy is atomic and keeps the one before it, so a bad publish is one click from
     being undone.</p>
   <div class="vm-row">
@@ -199,7 +200,12 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 				return ""
 			}
 			return `<button type="button" class="btn btn--ghost btn--sm" data-bundle-rollback>Restore previous</button>`
-		}() + `
+		}() + func() string {
+		if !bundled {
+			return ""
+		}
+		return `<a class="btn btn--ghost btn--sm" href="/os/d/` + esc(d.ID) + `/api/website/bundle/download" download>Download .zip</a>`
+	}() + `
     <span id="scoped-bundle-status" class="text-sm muted" role="status" aria-live="polite"></span>
   </div>
   <p id="scoped-bundle-outcome" class="text-sm" role="alert"></p>
@@ -425,25 +431,21 @@ if(up)up.addEventListener('click',function(){
     if(bo){bo.textContent=msg||''; bo.className='text-sm'+(bad?' upd-bad':' muted');} }
   var f=document.getElementById('scoped-bundle-file');
   if(!f||!f.files||!f.files.length){say('Choose a .zip first, then press Upload & deploy.',true);return;}
-  up.disabled=true; if(bs)bs.textContent='Uploading\u2026'; if(bo)bo.textContent='';
-  var fd=new FormData(); fd.append('bundle', f.files[0]);
-  fetch('/os/d/'+encodeURIComponent(ID)+'/api/website/bundle',{method:'POST',
-    headers:{'X-CSRF-Token':csrf()}, body:fd})
-    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-    .then(function(res){up.disabled=false;
-      if(res.ok){
-        var n=res.j.files||0, sk=res.j.skipped||0;
-        var msg='Deployed '+n+' file(s).';
-        if(sk)msg+=' '+sk+' system file(s) ignored'+(res.j.skipped_names?' ('+res.j.skipped_names.join(', ')+')':'')+'.';
-        if(bs)bs.textContent='Deployed \u2713';
-        if(bo){bo.textContent=msg+' Reloading so the count above is current\u2026'; bo.className='text-sm muted';}
-        window.setTimeout(function(){window.location.reload();},900);
-        return;
-      }
-      say('This bundle was NOT deployed, and the site above is unchanged. '+
-          ((res.j&&res.j.message)||'The server refused it without giving a reason.'),true);})
-    .catch(function(e){up.disabled=false;
-      say('This bundle was NOT deployed, and the site above is unchanged. '+e,true);});
+  up.disabled=true; if(bo)bo.textContent='';
+  // The server's refusal reason is shown verbatim. This used to read j.message,
+  // which the API never sends (it is j.error.message), so every refusal read
+  // "without giving a reason" while the reason sat in the response.
+  window.vpBundleUpload('/os/d/'+encodeURIComponent(ID)+'/api/website/bundle', f.files[0], csrf(),
+    function(done,total,phase){if(bs)bs.textContent=window.vpBundleProgressText(done,total,phase);})
+    .then(function(j){
+      var n=j.files||0, sk=j.skipped||0;
+      var msg='Deployed '+n+' file(s).';
+      if(sk)msg+=' '+sk+' system file(s) ignored'+(j.skipped_names?' ('+j.skipped_names.join(', ')+')':'')+'.';
+      if(bs)bs.textContent='Deployed \u2713';
+      if(bo){bo.textContent=msg+' Reloading so the count above is current\u2026'; bo.className='text-sm muted';}
+      window.setTimeout(function(){window.location.reload();},900);
+    },function(e){up.disabled=false;
+      say('This bundle was NOT deployed, and the site above is unchanged. '+e.message,true);});
 });
 var rb=document.querySelector('[data-bundle-rollback]');
 if(rb)rb.addEventListener('click',function(){

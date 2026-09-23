@@ -59,3 +59,33 @@ blog moves to `/blog` and posts keep their `/slug` URLs (reusing the
   the content they upload. Bundle storage is on the filesystem (not the SQLite
   backup set); it can be re-uploaded at any time and is covered by filesystem
   backups of the data root.
+
+## Amendment (2026-09) — bounded by the disk, sent in pieces, downloadable
+
+The fixed caps (50 MiB unpacked, 25 MiB a file, 3000 files, a 60 MiB request)
+are gone. They turned away real sites — video on a landing page, a
+documentation site with thousands of pages — and limited nothing an operator
+could not already do to their own disk.
+
+- **Bound.** `customsite.Deploy` takes a byte budget and refuses an archive
+  whose declared sizes exceed it (`ErrNoSpace`, answered as 507). The budget
+  is the free space on the volume holding the bundles, less a reserve of 5% or
+  1 GiB, whichever is more, so an upload cannot starve the database of the disk
+  it commits to (`bundleBudget`). Declared sizes are binding because
+  `archive/zip` refuses an entry that decompresses past its header; a test pins
+  that, and the separate copy limit — which could no longer fire — was removed.
+- **Transport.** The console sends the archive in 8 MiB pieces
+  (`static/js/admin-os-bundle.js` → `…/uploads`, `…/uploads/{id}?offset=N`,
+  `…/uploads/{id}/deploy`). One large request would still meet the 50M body
+  limit of the shipped nginx and Caddy configurations and Cloudflare's 100 MB;
+  pieces pass all three unchanged. Each piece must start at the offset the
+  server holds, so a resent piece is never appended twice. The archive's size
+  is declared when the upload opens, and one that cannot fit is refused before
+  its first piece.
+- **Unchanged.** The extension allowlist, zip-slip and symlink refusal,
+  `os.Root` confinement, `index.html` requirement and atomic swap with one
+  previous generation. `Deploy` and `Rollback` are now serialised per process,
+  since minutes-long uploads made two deploys racing on `.staging` likely.
+- **Download.** `…/bundle/download` streams the live bundle as a `.zip`
+  (`customsite.Export`, read through the same confined root as serving) from
+  the primary's and every hosted site's console.

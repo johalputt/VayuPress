@@ -114,6 +114,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-update.js", serveAdminOSAsset("js/admin-os-update.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-storage.js", serveAdminOSAsset("js/admin-os-storage.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-website.js", serveAdminOSAsset("js/admin-os-website.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-bundle.js", serveAdminOSAsset("js/admin-os-bundle.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/purify.min.js", serveAdminOSAsset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
 	// Fonts are NOT served from /os. This route used to allowlist three names —
@@ -239,7 +240,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			// A whole hand-built site for this domain (ADR-0154 D12). Both go
 			// through customsite.Deploy, which confines every write to an
 			// os.Root and refuses traversal in archive entries.
-			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle", a.handleOSScopedBundleUpload)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle/uploads", a.handleBundleUploadStart(scopedBundleSite))
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle/uploads/{upload}", a.handleBundleUploadChunk(scopedBundleSite))
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle/uploads/{upload}/deploy", a.handleBundleUploadDeploy(scopedBundleSite))
+			dr.Get("/api/website/bundle/download", a.handleBundleDownload(scopedBundleSite))
 			dr.Get("/api/website/preview", a.handleOSScopedWebsitePreview)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle/rollback", a.handleOSScopedBundleRollback)
 			// THEME STUDIO IS NO LONGER MOUNTED PER SITE, and the comment that
@@ -291,7 +295,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/api/torworld/sites", a.handleTorWorldSites)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/torworld/assign", a.handleTorWorldAssign)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/save", a.handleOSWebsiteSave)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-upload", a.handleOSWebsiteCustomUpload)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-bundle/uploads", a.handleBundleUploadStart(primaryBundleSite(a)))
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-bundle/uploads/{upload}", a.handleBundleUploadChunk(primaryBundleSite(a)))
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-bundle/uploads/{upload}/deploy", a.handleBundleUploadDeploy(primaryBundleSite(a)))
+		pr.Get("/os/api/website/custom-bundle/download", a.handleBundleDownload(primaryBundleSite(a)))
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-rollback", a.handleOSWebsiteCustomRollback)
 		pr.Get("/os/api/website/custom-guide", a.handleOSWebsiteCustomGuide)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/pages/quick-create", a.handleOSQuickCreatePage)

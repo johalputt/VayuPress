@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -231,23 +230,11 @@ func TestAnAuthoredSiteMustCarryAnEntryPoint(t *testing.T) {
 	}
 }
 
-// The limits are checked before the archive is built, so a caller cannot make
-// the server allocate its way out of memory constructing something Deploy would
-// have rejected anyway.
-func TestAnAuthoredSiteIsBoundedBeforeItIsBuilt(t *testing.T) {
+// An empty file set is refused before an archive is built: it could only
+// deploy as a site with nothing at its root.
+func TestAnAuthoredSiteWithNoFilesIsRefused(t *testing.T) {
 	if _, err := zipFromFiles(nil); err == nil {
 		t.Error("an empty file set was accepted")
-	}
-	huge := map[string]string{"index.html": strings.Repeat("x", int(customsite.MaxTotalBytes)+1)}
-	if _, err := zipFromFiles(huge); err == nil {
-		t.Error("a file set larger than the install's limit was zipped anyway")
-	}
-	many := map[string]string{"index.html": "x"}
-	for i := 0; i < customsite.MaxFiles+10; i++ {
-		many["f"+strconv.Itoa(i)+".html"] = "x"
-	}
-	if _, err := zipFromFiles(many); err == nil {
-		t.Error("a file set beyond the file-count limit was zipped anyway")
 	}
 }
 
@@ -346,7 +333,11 @@ func deployBundleForTest(t *testing.T, d domain.Domain) {
 	if err != nil {
 		t.Fatalf("zipFromFiles: %v", err)
 	}
-	if _, err := customsite.Deploy(scopedBundleDir(d), zipData); err != nil {
+	zr, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := customsite.Deploy(scopedBundleDir(d), zr, 1<<30); err != nil {
 		t.Fatalf("Deploy: %v", err)
 	}
 	if !customsite.Deployed(scopedBundleDir(d)) {

@@ -309,12 +309,16 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	customDeployed := customsite.Deployed(a.customSiteDir(r))
 	var zipBody strings.Builder
 	zipBody.WriteString(`<p class="text-sm muted">Upload a complete static website as a <span class="mono">.zip</span> — it must contain <span class="mono">index.html</span> at its root and reference assets with relative paths. It goes live at <span class="mono">` + he(domain) + `</span> once you choose <strong>Custom uploaded website</strong> above and Save &amp; publish. Building with an AI assistant? <a href="/os/api/website/custom-guide">Download the build guide ↓</a></p>`)
+	zipBody.WriteString(bundleRoomLine())
 	if customDeployed {
-		zipBody.WriteString(`<p class="text-sm">Current build: <strong>` + fmt.Sprintf("%d", cm.Files) + `</strong> files, ` + fmt.Sprintf("%.1f", float64(cm.Bytes)/(1024*1024)) + ` MiB` +
+		zipBody.WriteString(`<p class="text-sm">Current build: <strong>` + fmt.Sprintf("%d", cm.Files) + `</strong> files, ` + he(humanBytes(cm.Bytes)) +
 			`, deployed <span class="mono">` + he(config.FormatSiteStamp(cm.DeployedAt)) + `</span>.</p>`)
 	}
 	zipBody.WriteString(`<div class="biz-deploy"><input type="file" accept=".zip,application/zip" data-biz-zip class="input">` +
 		`<button type="button" class="btn btn--primary btn--sm" data-biz-deploy>Deploy .zip</button>`)
+	if customDeployed {
+		zipBody.WriteString(`<a class="btn btn--ghost btn--sm" href="/os/api/website/custom-bundle/download" download>Download .zip</a>`)
+	}
 	if cm.HasPrev {
 		zipBody.WriteString(`<button type="button" class="btn btn--ghost btn--sm" data-biz-rollback>Roll back</button>`)
 	}
@@ -332,6 +336,7 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	}{mode, activeTpl.Key, contentJSON})
 	b.Write(hydr)
 	b.WriteString(`</script>`)
+	b.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-bundle.js?v=` + assetVer("js/admin-os-bundle.js") + `"></script>`)
 	b.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-website.js?v=` + assetVer("js/admin-os-website.js") + `"></script>`)
 
 	writeOSHTML(w, r, adminOSLayout(nonce, "Website", "website", cfg, htmpl.HTML(b.String())))

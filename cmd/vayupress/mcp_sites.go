@@ -16,6 +16,8 @@ package main
 // The list tool marks it so an assistant does not try.
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -451,7 +453,11 @@ func (a *App) registerSiteBuilderTools(srv *mcp.Server) {
 			if err != nil {
 				return "", err
 			}
-			m, err := customsite.Deploy(scopedBundleDir(d), zipData)
+			zr, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+			if err != nil {
+				return "", err
+			}
+			m, err := customsite.Deploy(scopedBundleDir(d), zr, bundleBudget())
 			if err != nil {
 				return "", err
 			}

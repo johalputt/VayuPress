@@ -10,9 +10,9 @@ package main
 // and that is what a custom bundle already was, for the primary only.
 //
 // The storage layer needed nothing: customsite.Deploy confines every write to an
-// os.Root, refuses traversal in archive entries, caps decompressed size and file
-// count, keeps the previous release for rollback, and is tested against hostile
-// archives. customSiteDirFor already gives each domain its own directory with
+// os.Root, refuses traversal in archive entries, bounds decompressed size by
+// the disk, keeps the previous release for rollback, and is tested against
+// hostile archives. customSiteDirFor already gives each domain its own directory with
 // the scope validated as hex rather than trusted into a path.
 //
 // What was missing was the same thing missing everywhere else in this ADR: the
@@ -24,7 +24,6 @@ package main
 import (
 	"archive/zip"
 	"bytes"
-	"io"
 	"net/http"
 	"path"
 	"sort"
@@ -37,53 +36,6 @@ import (
 
 // scopedBundleDir is this site's own bundle directory, addressed by the path.
 func scopedBundleDir(d domain.Domain) string { return customSiteDirFor(d.ID) }
-
-// handleOSScopedBundleUpload deploys a zipped website for one hosted domain.
-func (a *App) handleOSScopedBundleUpload(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
-		return
-	}
-	d, ok := osScopedDomain(r)
-	if !ok {
-		writeAPIError(w, r, http.StatusNotFound, "unknown-domain", "no such site", "")
-		return
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxCustomUploadBytes)
-	if err := r.ParseMultipartForm(8 << 20); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "upload_too_large",
-			"The upload is too large or malformed (limit 60 MiB).", "")
-		return
-	}
-	file, hdr, err := r.FormFile("bundle")
-	if err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "no_file", "Attach a .zip file.", "")
-		return
-	}
-	defer file.Close()
-	if !strings.EqualFold(path.Ext(hdr.Filename), ".zip") {
-		writeAPIError(w, r, http.StatusBadRequest, "not_zip", "The uploaded file must be a .zip.", "")
-		return
-	}
-	data, err := io.ReadAll(file)
-	if err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "read_failed", "Could not read the uploaded file.", "")
-		return
-	}
-	m, err := customsite.Deploy(scopedBundleDir(d), data)
-	if err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "invalid_bundle", err.Error(), "")
-		return
-	}
-	dbpkg.AuditLog("vayudomains.website.bundle", dbpkg.AuditActor(r), d.Host,
-		"deployed "+itoaSafe(m.Files)+" file(s)")
-	writeJSON(w, r, http.StatusOK, map[string]any{
-		"status": "deployed", "files": m.Files, "bytes": m.Bytes, "entry": m.Entry,
-		// What was dropped, so the deploy never quietly differs from the zip.
-		"skipped": m.Skipped, "skipped_names": m.SkippedNames,
-		"note": "Choose “Uploaded website” above and Save & publish to serve it.",
-	})
-}
 
 // handleOSScopedBundleRollback restores this site's previous bundle.
 func (a *App) handleOSScopedBundleRollback(w http.ResponseWriter, r *http.Request) {
@@ -113,21 +65,13 @@ func (a *App) handleOSScopedBundleRollback(w http.ResponseWriter, r *http.Reques
 // disk here would have been a second implementation of the part that must never
 // be wrong.
 //
-// Bounded before the archive is even built, so a caller cannot make the server
-// allocate its way out of memory constructing something Deploy would reject.
+// It needs no size bound of its own: the files arrived in one connector
+// request, which the MCP transport caps (mcp.maxRequestBytes), so the archive
+// cannot outgrow what was already held in memory. Deploy applies the disk
+// budget.
 func zipFromFiles(files map[string]string) ([]byte, error) {
 	if len(files) == 0 {
 		return nil, bundleError("no files were supplied — send at least index.html")
-	}
-	if len(files) > customsite.MaxFiles {
-		return nil, bundleError("too many files in one deploy")
-	}
-	var total int64
-	for _, body := range files {
-		total += int64(len(body))
-	}
-	if total > customsite.MaxTotalBytes {
-		return nil, bundleError("the site is larger than this install allows")
 	}
 
 	// Sorted, so the same input always produces the same archive — a deploy that
