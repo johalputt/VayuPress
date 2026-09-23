@@ -6,6 +6,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.70] — 2026-09-23
+
+Shipped on its own under the hotfix exception: the console's own script was
+not running on any page but the Dashboard.
+
+### Fixed
+
+- **The Media library never loaded, and most console controls did nothing,
+  on every page except the Dashboard.** `admin-os.js` opened the activity
+  feed's block twice, so the first opening wrapped every block after it —
+  and on a page without the feed it returned before any of them ran. The
+  braces still balanced, so no browser reported an error: the Media page sat
+  on its loading tiles and its uploads did nothing, and the settings toggles,
+  the notification centre, the sign-in error shake, the install-app prompt,
+  new-mail notifications and the keyboard shortcuts were dead everywhere but
+  the Dashboard. The duplicate is removed. `tests/e2e/console.spec.js` loads
+  the Media page and waits for its list — against the broken script it fails.
+
+---
+
 ## [3.17.69] — 2026-09-23
 
 A sample-content warning the operator can act on, reported from the live
