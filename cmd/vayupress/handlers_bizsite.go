@@ -293,7 +293,7 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	formBody.WriteString(`</div><div class="biz-form-col">`)
 	formBody.WriteString(field("phone", "Phone", "+1 555 0100"))
 	formBody.WriteString(field("email", "Email", "hello@"+domain))
-	formBody.WriteString(field("address", "Address", "12 Main Street…"))
+	formBody.WriteString(area("address", "Address (one line per row)", "12 Main Street…", "2"))
 	formBody.WriteString(area("hours", "Hours (one line per range)", "Mon–Fri 09:00–18:00", "3"))
 	formBody.WriteString(area("services", "Offerings — one per line: Title | Description | Price", "Flat white | | £3.40", "6"))
 	formBody.WriteString(area("gallery", "Gallery image URLs (one per line)", "/media/one.jpg", "3"))

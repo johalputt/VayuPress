@@ -19,6 +19,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   preview could also have shown what the operator sees rather than a visitor.
   The visit now runs in a fresh context that keeps only the caller's
   cancellation and deadline (`visitorContext`).
+- **The primary website editor could still collapse a multi-line address.** A
+  single-line input strips line breaks, so the next save persisted every line
+  as one — how the live hours became "18:00–23:00Closed Mondays". The per-site
+  editor already used textareas; the primary editor's Address now does too, and
+  `website_multiline_test.go` checks every line-oriented field on the rendered
+  page.
 
 - **The installed console signed out after the phone was switched off.**
   Reported on a Samsung phone with Edge and Brave, "Remember me" ticked. Chromium
