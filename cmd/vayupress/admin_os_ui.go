@@ -589,6 +589,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Accounts redesign: HTMX list fragment + inline action swap (enable/disable,
 		// role, quota, retention, delete) so the page never full-reloads.
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts/fragment", a.handleVayuOSAccountsFragment)
+		// One mailbox's own page: every per-mailbox setting, on its own URL. The
+		// accounts list keeps a link to it instead of nesting seven sections.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts/settings", a.handleVayuOSMailboxSettings)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar", a.handleVayuOSAvatarUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar/remove", a.handleVayuOSAvatarRemove)
 		// Prebuilt cartoon avatars: pick one instead of uploading (POST sets it),
@@ -1421,6 +1424,45 @@ const vpConfirmScript = `window.vpConfirm=function(opts,onYes){
   ok.focus();
 };`
 
+// vpPromptScript is the shared single-field dialog: window.prompt's job, in the
+// console's own clothes.
+//
+// A native prompt is unstyled chrome that blocks the tab, cannot be themed, and
+// is forbidden by the same house rule that banned confirm() — but replacing it
+// needs a real dialog, so this exists rather than each app rolling its own.
+// Labels and values are plain text (set via textContent); the callback receives
+// the trimmed value, or null when the user cancels.
+const vpPromptScript = `window.vpPrompt=function(opts,onDone){
+  var lastFocus=document.activeElement;
+  var backdrop=document.createElement('div');backdrop.className='vp-confirm-backdrop';
+  var box=document.createElement('div');box.className='vp-confirm';box.setAttribute('role','dialog');box.setAttribute('aria-modal','true');
+  var t=document.createElement('div');t.className='vp-confirm__title';t.textContent=opts.title||'Enter a value';
+  box.appendChild(t);
+  if(opts.message){var m=document.createElement('div');m.className='vp-confirm__msg';m.textContent=opts.message;box.appendChild(m);}
+  var lab=document.createElement('label');lab.className='vp-confirm__label';lab.textContent=opts.label||'Value';
+  var inp=document.createElement('input');inp.className='input';inp.type=opts.type||'text';
+  if(opts.autocomplete)inp.setAttribute('autocomplete',opts.autocomplete);
+  if(opts.placeholder)inp.placeholder=opts.placeholder;
+  inp.value=opts.value||'';
+  lab.setAttribute('for','vp-prompt-input');inp.id='vp-prompt-input';
+  lab.appendChild(inp);box.appendChild(lab);
+  var row=document.createElement('div');row.className='vp-confirm__row';
+  var cancel=document.createElement('button');cancel.type='button';cancel.className='btn btn--ghost btn--sm';cancel.textContent=opts.cancel||'Cancel';
+  var ok=document.createElement('button');ok.type='button';ok.className='btn btn--primary btn--sm';ok.textContent=opts.confirm||'Save';
+  row.appendChild(cancel);row.appendChild(ok);box.appendChild(row);backdrop.appendChild(box);
+  function finish(v){if(backdrop.parentNode)backdrop.parentNode.removeChild(backdrop);document.removeEventListener('keydown',onKey);if(lastFocus&&lastFocus.focus)lastFocus.focus();if(onDone)onDone(v);}
+  function close(){finish(null);}
+  function submit(){finish((inp.value||'').trim());}
+  function onKey(e){if(e.key==='Escape'){e.preventDefault();close();}else if(e.key==='Tab'){var f=[inp,ok,cancel];var i=f.indexOf(document.activeElement);e.preventDefault();f[(i+1)%3].focus();}}
+  cancel.addEventListener('click',close);
+  backdrop.addEventListener('click',function(e){if(e.target===backdrop)close();});
+  ok.addEventListener('click',submit);
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();submit();}});
+  document.addEventListener('keydown',onKey);
+  document.body.appendChild(backdrop);
+  inp.focus();inp.select();
+};`
+
 // osThemeColorMetas renders the browser-chrome theme-colour meta for the
 // console's resolved theme (Wave 2.8 login polish). A fixed dark value lied to
 // light-theme and auto operators: the mobile browser chrome stayed near-black
@@ -1644,7 +1686,7 @@ window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type
   <a class="bottom-nav-item bottom-nav-item--accent" href="/os/editor" data-nav="/os/editor">
     ` + iconNewPost + `<span>Write</span>
   </a>
-  <a class="bottom-nav-item" href="/os/messages" data-nav="/os/messages">
+  <a class="bottom-nav-item" href="/os/vayumail/inbox" data-nav="/os/vayumail/inbox">
     ` + iconMessages + `<span>Inbox</span>
   </a>
   <button type="button" class="bottom-nav-item" data-action="toggle-sidebar" aria-controls="vp-sidebar" aria-expanded="false" aria-label="Open menu">
@@ -1732,11 +1774,15 @@ Array.prototype.forEach.call(document.querySelectorAll('.sidebar [data-copy], .w
   btn.addEventListener('click',function(){
     var v=btn.getAttribute('data-copy')||'',p=btn.textContent;
     var done=function(){btn.textContent='copied';setTimeout(function(){btn.textContent=p;},1400);};
-    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v).then(done,done);}else{done();}
+    // A rejected write — or no Clipboard API at all, which is the normal case on a
+    // plain-http .onion console — must not report success. Claiming "copied" when
+    // nothing reached the clipboard is how someone pastes an empty line later.
+    var fail=function(){btn.textContent='copy failed — select it';setTimeout(function(){btn.textContent=p;},2600);};
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v).then(done,function(){fail();});}else{fail();}
   });
 });
 })();
-` + vpConfirmScript + `
+` + vpConfirmScript + vpPromptScript + `
 </script>
 ` + alpine + `<!-- Bootstrap (nonce-gated, reads data-admin-theme from body) -->
 ` + purifyTag + `

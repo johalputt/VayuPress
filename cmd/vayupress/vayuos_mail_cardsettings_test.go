@@ -24,38 +24,112 @@ func postForm(h http.HandlerFunc, path, vals string, u *users.User) *httptest.Re
 	return rec
 }
 
-// TestAccountCardHasEverySetting pins the consolidation: expanding a mailbox
-// shows all of its own controls — forwarding, vacation, aliases and filters —
-// inside the one card, each wired to refresh the accounts list in place.
-func TestAccountCardHasEverySetting(t *testing.T) {
+// TestEveryPerMailboxSettingLivesOnItsOwnPage replaces the old "one card holds
+// everything" pin.
+//
+// The design changed deliberately: forwarding, vacation, aliases, recovery,
+// handover, PGP, filters and the picture picker moved to a routed page, because a
+// many-mailbox install was one very tall page whose every inline action re-rendered
+// the whole list. The guarantee that must survive the move is that NOTHING became
+// unreachable — so this asserts the card links out and the page carries it all.
+func TestEveryPerMailboxSettingLivesOnItsOwnPage(t *testing.T) {
 	a := appWithMailAccounts(t)
 	admin := &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin}
 
-	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/accounts/fragment", nil), admin)
-	rec := httptest.NewRecorder()
-	a.handleVayuOSAccountsFragment(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("fragment status = %d, want 200", rec.Code)
+	// The list card points at the page.
+	reqList := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/accounts/fragment", nil), admin)
+	recList := httptest.NewRecorder()
+	a.handleVayuOSAccountsFragment(recList, reqList)
+	if recList.Code != http.StatusOK {
+		t.Fatalf("fragment status = %d, want 200", recList.Code)
 	}
-	body := rec.Body.String()
+	if list := recList.Body.String(); !strings.Contains(list, "/os/vayumail/accounts/settings?user=") {
+		t.Error("the mailbox card must link to its settings page, or every setting below became unreachable")
+	}
+
+	// The page carries every setting.
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/accounts/settings?user=dana@example.com", nil), admin)
+	rec := httptest.NewRecorder()
+	a.handleVayuOSMailboxSettings(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("settings status = %d, want 200", rec.Code)
+	}
+	page := rec.Body.String()
 	for _, want := range []string{
+		`id="vm-mbox-settings"`,
 		"Auto-forward a copy to",                     // forwarding sub-section
 		"Vacation autoresponder",                     // vacation sub-section
 		"<span class=\"field-label\">Aliases</span>", // aliases sub-section
 		"Filter rules",                               // filters sub-section
-		`hx-post="/os/vayumail/aliases/action"`,      // per-card alias endpoint
-		`hx-post="/os/vayumail/filters/action"`,      // per-card filter endpoint
+		`hx-post="/os/vayumail/aliases/action"`,      // per-mailbox alias endpoint
+		`hx-post="/os/vayumail/filters/action"`,      // per-mailbox filter endpoint
 		`name="target" value="dana@example.com"`,     // alias target fixed to this mailbox
 	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("account card missing %q", want)
+		if !strings.Contains(page, want) {
+			t.Errorf("settings page missing %q", want)
 		}
 	}
-	// The standalone alias/filter cards are gone — no separate swap targets remain.
-	for _, gone := range []string{`id="vm-alias-card"`, `id="vm-filter-card"`} {
-		if strings.Contains(body, gone) {
-			t.Errorf("account list should not carry the removed standalone card %q", gone)
-		}
+	// The guard on the shared builders: every control on this page must come back
+	// to this page. A single missed target would silently swap the accounts list
+	// into the settings section.
+	if strings.Contains(page, `hx-target="#vm-accounts-list"`) {
+		t.Error("a control on the settings page still targets the accounts list — it would swap the wrong surface")
+	}
+	// This page hosts the recovery card, whose controls are driven by a separate
+	// script; without it they render and do nothing.
+	if !strings.Contains(page, "admin-os-mail-recovery.js") {
+		t.Error("the settings page must load the recovery script, or its recovery controls are dead buttons")
+	}
+}
+
+// TestASettingsControlComesBackToTheSettingsSurface pins the surface decision.
+func TestASettingsControlComesBackToTheSettingsSurface(t *testing.T) {
+	a := appWithMailAccounts(t)
+	admin := &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin}
+	body := "op=create&email=dana@example.com&field=from&contains=news&action=move:Junk"
+
+	// A control inside the settings page: HTMX names the element it is replacing.
+	req := httptest.NewRequest(http.MethodPost, "/os/vayumail/filters/action", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Target", "vm-mbox-settings")
+	req = withUser(req, admin)
+	rec := httptest.NewRecorder()
+	a.handleVayuOSFilterAction(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("settings-surface filter action = %d, want 200", rec.Code)
+	}
+	got := rec.Body.String()
+	if !strings.Contains(got, `id="vm-mbox-settings"`) {
+		t.Error("a control inside the settings page must get the settings section back")
+	}
+	if strings.Contains(got, `<details class="vm-acct`) {
+		t.Error("the settings page got the accounts list back — the two surfaces were confused")
+	}
+
+	// The same action without that header (the original list surface) is unchanged.
+	req2 := httptest.NewRequest(http.MethodPost, "/os/vayumail/filters/action", strings.NewReader(body))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req2 = withUser(req2, admin)
+	rec2 := httptest.NewRecorder()
+	a.handleVayuOSFilterAction(rec2, req2)
+	if got2 := rec2.Body.String(); !strings.Contains(got2, `<details class="vm-acct`) {
+		t.Error("a list-surface control must still receive the accounts list")
+	}
+}
+
+// TestTheSettingsPageSaysWhenAMailboxIsUnknown — an unknown address must say so
+// rather than render a page of empty controls.
+func TestTheSettingsPageSaysWhenAMailboxIsUnknown(t *testing.T) {
+	a := appWithMailAccounts(t)
+	admin := &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin}
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/accounts/settings?user=nobody@example.com", nil), admin)
+	rec := httptest.NewRecorder()
+	a.handleVayuOSMailboxSettings(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (a rendered explanation)", rec.Code)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "No mailbox with that address") {
+		t.Error("an unknown mailbox must be explained, not rendered blank")
 	}
 }
 

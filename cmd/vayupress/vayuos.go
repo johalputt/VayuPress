@@ -1230,14 +1230,16 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 		vmStatTile(itoaSafe(stats.Delivered), "Delivered", "") +
 		vmStatTile(itoaSafe(qs.Failed), "Failed", failTone) +
 		`</div>`)
-	// DNS tab (rebuilt for multi-domain — see vayuos_mail_dns.go): the records to
-	// publish per domain, the mail-host & networking records the old flat table
-	// never showed, and live verification of EVERY mail domain (primary + each
-	// secondary) with an HTMX re-check.
+	// DNS tab (rebuilt for multi-domain — see vayuos_mail_dns.go): a guided
+	// checklist first (are we done?), then the records to publish per domain and
+	// live verification of EVERY mail domain. The verdicts are computed once and
+	// shared, so the checklist and the tables below it cannot disagree.
+	health := a.vayuDNSHealth(r.Context())
+	body.WriteString(vayuDNSWizard(health))
 	body.WriteString(`<div class="section-head"><span class="section-head__title">DNS records</span><span class="section-head__hint">Publish these at your domain's DNS host</span></div>`)
 	body.WriteString(a.vayuDNSPublishSections(r, mc))
 	body.WriteString(`<div class="section-head"><span class="section-head__title">Live verification</span><span class="section-head__hint">Re-check every mail domain</span></div>`)
-	body.WriteString(a.vayuDNSVerifyFragment(r))
+	body.WriteString(vayuDNSVerifyFragmentWith(health))
 	body.WriteString(vayuDNSScript(nonce))
 	writeOSHTML(w, r, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
 }
@@ -1755,7 +1757,9 @@ func (a *App) folderUnread(rd vmail.Reader) map[string]int {
 	if a.vayuMail == nil {
 		return counts
 	}
-	for _, f := range []string{"Inbox", "Junk"} {
+	// Archive counts too: filing unread mail out of the inbox used to make it
+	// disappear from every badge, so "nothing is waiting" was not true.
+	for _, f := range []string{"Inbox", "Junk", "Archive"} {
 		msgs, err := a.vayuMail.ListFolder(rd, f)
 		if err != nil {
 			continue
@@ -1787,7 +1791,7 @@ func folderTabs(user, active string, counts map[string]int) string {
 		if n := counts[f]; n > 0 {
 			badge = ` <span class="vm-tab-badge">` + itoaSafe(n) + `</span>`
 		}
-		sb.WriteString(`<a class="` + cls + `" href="` + full + `" hx-get="` + frag + `" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-push-url="` + full + `">` + f + badge + `</a>`)
+		sb.WriteString(`<a class="` + cls + `" href="` + full + `" hx-get="` + frag + `" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin" hx-push-url="` + full + `">` + f + badge + `</a>`)
 	}
 	sb.WriteString(`</div>`)
 	return sb.String()
@@ -1874,9 +1878,13 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	// Rows load the message into #vm-readpane via HTMX; pane actions refresh the
 	// list via HX-Trigger. On narrow screens CSS collapses this to one column and
 	// the pane overlays the list (see admin-os.css .vm-split).
+	// Outside #vm-inbox-list on purpose: the fragment swaps that element's
+	// contents, so an indicator inside it would be replaced mid-request.
+	body.WriteString(`<span id="vm-inbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">loading…</span>`)
 	body.WriteString(`<div class="vm-split">`)
 	body.WriteString(`<div id="vm-inbox-list" class="vm-inbox-list">`)
-	body.WriteString(a.vayuInboxBody(rd, folder))
+	pageLimit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	body.WriteString(a.vayuInboxBody(rd, folder, pageLimit))
 	body.WriteString(`</div>`)
 	body.WriteString(`<div id="vm-readpane" class="vm-readpane">` + vayuReadpaneEmpty("") + `</div>`)
 	body.WriteString(`</div>`)
@@ -1996,21 +2004,37 @@ func (a *App) vayuMailboxDomainCard(dom, primaryDomain string, boxes []vmail.Mai
 </div>`
 }
 
+// inboxPageSize is how many messages a folder view renders at once. The list is
+// rendered newest-first and the rest are one click away: an unbounded render made
+// a big mailbox slow to open, slow to re-render after every row action, and made
+// the 90s poll re-emit thousands of rows. Older mail is not hidden — it is behind
+// "Load older", which widens the window.
+const inboxPageSize = 200
+
 // vayuInboxBody renders the folder view (toolbar + quota + tabs + message list)
 // as an HTMX fragment. It is returned on page load and swapped into
 // #vm-inbox-list on the new-mail poll, after any row/bulk action, and on folder
-// switch — so the mailbox never does a jarring full-page reload.
-func (a *App) vayuInboxBody(rd vmail.Reader, folder string) string {
+// switch — so the mailbox never does a jarring full-page reload. limit is the
+// visible window (?limit=); 0 means the default page.
+func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 	user := rd.Key()
 	domain := a.vayuMail.Config().Domain
 	mbox := mailAddrOf(user, domain)
+	if limit <= 0 {
+		limit = inboxPageSize
+	}
 	var b strings.Builder
 
 	// Live new-mail poll. It lives inside the fragment (re-rendered on every
 	// swap) so it always targets the folder currently in view — a poll bound to
 	// the outer wrapper would keep reloading the folder that was first opened.
+	// A widened window is carried in the poll URL so an idle refresh does not
+	// silently collapse the list back to the first page.
 	frag := "/os/vayumail/inbox/fragment?user=" + qparam(user) + "&folder=" + qparam(folder)
-	b.WriteString(`<div class="vm-poller" aria-hidden="true" hx-get="` + frag + `" hx-trigger="every 90s, vm-mail-changed from:body" hx-target="#vm-inbox-list" hx-swap="innerHTML"></div>`)
+	if limit > inboxPageSize {
+		frag += "&limit=" + itoaSafe(limit)
+	}
+	b.WriteString(`<div class="vm-poller" aria-hidden="true" hx-get="` + frag + `" hx-trigger="every 90s, vm-mail-changed from:body" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin"></div>`)
 
 	// Sticky toolbar: mailbox identity + Compose + search.
 	b.WriteString(`<div class="vm-toolbar">`)
@@ -2050,6 +2074,13 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string) string {
 		b.WriteString(`<div class="empty-state">Could not read folder: ` + html.EscapeString(err.Error()) + `</div>`)
 		return b.String()
 	}
+	// Window the list. Threading counts below are computed over what is rendered,
+	// so a thread whose older members fall outside the window shows a smaller
+	// badge rather than a wrong one.
+	total := len(msgs)
+	if len(msgs) > limit {
+		msgs = msgs[:limit]
+	}
 	isDrafts := strings.EqualFold(folder, "Drafts")
 	isSent := strings.EqualFold(folder, "Sent")
 	received := !isDrafts && !isSent
@@ -2059,7 +2090,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string) string {
 	// bulk bar) is managed by delegated JS that survives HTMX swaps.
 	b.WriteString(`<input type="hidden" name="user" value="` + html.EscapeString(user) + `" data-vm-scope><input type="hidden" name="folder" value="` + html.EscapeString(folder) + `" data-vm-scope>`)
 	if len(msgs) > 0 {
-		inc := ` hx-include="[data-vm-scope],[data-vm-check]:checked" hx-target="#vm-inbox-list" hx-swap="innerHTML"`
+		inc := ` hx-include="[data-vm-scope],[data-vm-check]:checked" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin"`
 		b.WriteString(`<div class="vm-bulk" data-vm-bulkbar hidden><span class="text-sm muted" data-vm-bulkcount>0 selected</span>`)
 		if received {
 			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"mark","mark":"read"}'` + inc + `>Mark read</button>`)
@@ -2087,7 +2118,19 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string) string {
 	}
 	b.WriteString(`<div class="table-wrap"><table class="table vm-list"><thead><tr><th class="vm-check"><input type="checkbox" data-vm-check-all aria-label="Select all"></th><th></th><th>` + fromLabel + `</th><th>Subject</th><th>Date</th><th></th></tr></thead><tbody>`)
 	if len(msgs) == 0 {
-		b.WriteString(`<tr><td colspan="6" class="muted">No messages in ` + html.EscapeString(folder) + `.</td></tr>`)
+		if strings.EqualFold(folder, "Inbox") {
+			// First-run: an empty inbox used to be one muted sentence. Point at the
+			// two things a new mailbox holder actually needs next.
+			b.WriteString(`<tr><td colspan="6"><div class="empty-state">` +
+				`<div class="empty-icon">📬</div>` +
+				`<div class="empty-title">Your inbox is empty</div>` +
+				`<div class="empty-sub">Mail sent to ` + html.EscapeString(mbox) + ` lands here. Write one, or connect a mail app so you can use this mailbox from your phone.</div>` +
+				`<div class="vm-row vm-row--tight"><a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">✎ Write your first email</a>` +
+				`<a class="btn btn--sm" href="/os/vayumail/connect?user=` + qparam(user) + `">Connect a mail app</a></div>` +
+				`</div></td></tr>`)
+		} else {
+			b.WriteString(`<tr><td colspan="6" class="muted">No messages in ` + html.EscapeString(folder) + `.</td></tr>`)
+		}
 	}
 	// Conversation threading: messages sharing a normalized subject (Re:/Fwd:
 	// prefixes stripped) group into one thread. The newest message is the
@@ -2117,14 +2160,14 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string) string {
 		if m.Flagged {
 			pinVal, pinIcon = "0", "📍"
 		}
-		pin := `<button type="button" class="btn btn--xs btn--ghost" title="Pin" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "pin", "pin", pinVal, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-list" hx-swap="innerHTML">` + pinIcon + `</button>`
+		pin := `<button type="button" class="btn btn--xs btn--ghost" title="Pin" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "pin", "pin", pinVal, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` + pinIcon + `</button>`
 		tick := ""
 		if received {
 			mark, label := "read", "Mark read"
 			if m.Seen {
 				mark, label = "unread", "✓ read"
 			}
-			tick = `<button type="button" class="btn btn--xs" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "mark", "mark", mark, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-list" hx-swap="innerHTML">` + label + `</button>`
+			tick = `<button type="button" class="btn btn--xs" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "mark", "mark", mark, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` + label + `</button>`
 		}
 		check := `<input type="checkbox" class="vm-check-row" name="id" value="` + html.EscapeString(m.ID) + `" data-vm-check aria-label="Select message">`
 		// Non-draft rows open in the split reading pane (HTMX); the href stays as a
@@ -2138,15 +2181,37 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string) string {
 		subjA += `>` + html.EscapeString(subj) + `</a>`
 		return `<tr class="` + rowCls + `" data-vm-row` + threadAttr + `><td class="vm-check">` + check + `</td><td>` + pin + `</td><td><div class="vm-from">` + mailAvatarImg(who, avSet) + `<span class="vm-name" title="` + html.EscapeString(who) + `">` + html.EscapeString(mailDisplay(who)) + `</span></div></td><td class="vm-subj">` + subjA + badge + `</td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td><td class="row-actions">` + tick + `</td></tr>`
 	}
-	// Pass 1: count thread members per normalized subject.
+	// Conversation threading. Evidence first, subject second:
+	//
+	//   - a message that answers another (In-Reply-To / References) joins THAT
+	//     conversation, even when the subject changed — which is precisely what a
+	//     References header exists to tell us; and
+	//   - two unrelated messages that merely share a subject ("Invoice") are no
+	//     longer merged, because each carries its own Message-Id.
+	//
+	// The subject stays the fallback for the (now rare) mail that carries no ids
+	// at all, which is also exactly how this behaved before.
+	parentOf := map[string]string{} // message-id -> the id it answers
+	knownID := map[string]bool{}    // ids present in this window
+	for _, m := range msgs {
+		if m.MessageID == "" {
+			continue
+		}
+		knownID[m.MessageID] = true
+		if ref := threadParent(m); ref != "" {
+			parentOf[m.MessageID] = ref
+		}
+	}
+	threadKey := mailThreadKeyer(parentOf, knownID)
+	// Pass 1: count thread members.
 	counts := map[string]int{}
 	for _, m := range msgs {
-		if k := normSubject(m.Subject); k != "" {
+		if k := threadKey(m); k != "" {
 			counts[k]++
 		}
 	}
 	for _, m := range msgs {
-		k := normSubject(m.Subject)
+		k := threadKey(m)
 		if k == "" || counts[k] < 2 {
 			b.WriteString(rowHTML(m, "", "", "")) // unthreaded row
 			continue
@@ -2162,7 +2227,72 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string) string {
 		b.WriteString(rowHTML(m, "", "", badge))
 	}
 	b.WriteString(`</tbody></table></div>`)
+	// Older mail is one click away, and the count says exactly how much is out of
+	// view — "the list just stopped" is the failure this avoids.
+	if total > len(msgs) {
+		next := len(msgs) + inboxPageSize
+		if next > total {
+			next = total
+		}
+		more := "/os/vayumail/inbox/fragment?user=" + qparam(user) + "&folder=" + qparam(folder) + "&limit=" + itoaSafe(next)
+		b.WriteString(`<div class="vm-more"><span class="muted text-sm">Showing the newest ` + itoaSafe(len(msgs)) + ` of ` + itoaSafe(total) + ` messages.</span><button type="button" class="btn btn--sm" hx-get="` + more + `" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">Load older</button></div>`)
+	}
 	return b.String()
+}
+
+// mailThreadKeyer builds the conversation-key function used by the folder view.
+//
+// Split out from the render loop so the grouping RULE is testable on its own: it
+// is the part with edge cases (a reply to a reply, a conversation whose root has
+// scrolled out of the window, two unrelated mails sharing a subject), and none of
+// those are visible in a rendered page.
+//
+// parentOf maps a message id to the id it answers; knownID is the set of ids in
+// this window, which is what lets resolve tell "the root" apart from "the parent
+// is simply not loaded".
+func mailThreadKeyer(parentOf map[string]string, knownID map[string]bool) func(vmail.StoredMessage) string {
+	// resolve walks to the conversation root, so a reply to a reply still lands
+	// with the original. Bounded: a malformed loop must not spin.
+	resolve := func(id string) string {
+		for hops := 0; hops < 32; hops++ {
+			next, ok := parentOf[id]
+			if !ok || next == "" || next == id {
+				return id
+			}
+			if !knownID[next] {
+				return next // the parent is outside this window; that id is the root
+			}
+			id = next
+		}
+		return id
+	}
+	return func(m vmail.StoredMessage) string {
+		if m.MessageID != "" {
+			return "t:" + resolve(m.MessageID)
+		}
+		if ref := threadParent(m); ref != "" {
+			return "t:" + ref
+		}
+		if k := normSubject(m.Subject); k != "" {
+			return "s:" + k
+		}
+		return ""
+	}
+}
+
+// threadParent returns the message id a message answers: its In-Reply-To, or the
+// first References entry when that is absent. Both arrive de-bracketed and
+// case-folded from the mail engine.
+func threadParent(m vmail.StoredMessage) string {
+	if m.InReplyTo != "" {
+		return m.InReplyTo
+	}
+	for _, r := range m.References {
+		if r != "" {
+			return r
+		}
+	}
+	return ""
 }
 
 // normSubject normalizes a subject for conversation grouping: reply/forward
@@ -2205,7 +2335,10 @@ func (a *App) handleVayuOSInboxFragment(w http.ResponseWriter, r *http.Request) 
 		writeOSFragment(w, `<div class="empty-state">No mailbox selected, and none is assigned to your account.</div>`)
 		return
 	}
-	writeOSFragment(w, a.vayuInboxBody(rd, folder))
+	// The window the client asked for rides along with the request, so "Load
+	// older" survives the poll and a folder switch.
+	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	writeOSFragment(w, a.vayuInboxBody(rd, folder, limit))
 }
 
 // handleVayuOSInboxAction applies a mark / pin / move / delete to one message
@@ -2278,12 +2411,26 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 			return fmt.Errorf("unknown action")
 		}
 	}
-	// Best-effort per message: a single stale id must not fail the whole batch;
-	// the refreshed fragment reflects whatever changed.
+	// Best-effort per message: a single stale id must not fail the whole batch —
+	// but a batch that half-worked must not look like one that completely worked
+	// either, so the failures are counted and reported to the shell as an event.
+	// The refreshed fragment still reflects whatever actually changed.
+	failed := 0
 	for _, id := range ids {
-		_ = apply(id)
+		if err := apply(id); err != nil {
+			failed++
+		}
 	}
-	writeOSFragment(w, a.vayuInboxBody(rd, folder))
+	if failed > 0 {
+		// HX-Trigger carries a JSON detail object (htmx turns it into a DOM event
+		// carrying that detail); admin-os-mail.js renders it as one toast. The
+		// header has to be set before the fragment body is written.
+		w.Header().Set("HX-Trigger",
+			fmt.Sprintf(`{"vm-inbox-result":{"done":%d,"failed":%d}}`, len(ids)-failed, failed))
+	}
+	// Re-render the window the operator was actually looking at, not page one.
+	limit, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("limit")))
+	writeOSFragment(w, a.vayuInboxBody(rd, folder, limit))
 }
 
 // handleVayuOSSearch runs a bounded full-text search across a mailbox's folders.
@@ -2319,7 +2466,7 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	if sf.unreadOnly {
 		unreadChecked = ` checked`
 	}
-	body.WriteString(`<form class="vm-search-form" hx-get="/os/vayumail/search/fragment" hx-target="#vm-search-results" hx-swap="innerHTML" hx-trigger="submit, input changed delay:400ms, change delay:150ms">
+	body.WriteString(`<form class="vm-search-form" hx-get="/os/vayumail/search/fragment" hx-target="#vm-search-results" hx-swap="innerHTML" hx-indicator="#vm-search-spin" hx-trigger="submit, input changed delay:600ms, change delay:150ms">
   <input type="hidden" name="user" value="` + html.EscapeString(user) + `">
   <div class="vm-search-row">
     <input class="input" type="search" name="q" value="` + html.EscapeString(sf.q) + `" placeholder="Search mail (from, subject, body)…" aria-label="Search mail" autofocus>
@@ -2333,6 +2480,9 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
     <label class="vm-filter-check"><input type="checkbox" name="unread" value="1"` + unreadChecked + `> Unread only</label>
   </div>
 </form>`)
+	// A mail search can scan thousands of messages; without this the page simply
+	// looks frozen while it does.
+	body.WriteString(`<span id="vm-search-spin" class="htmx-indicator vm-spin" aria-hidden="true">searching…</span>`)
 	body.WriteString(`<div id="vm-search-results">` + a.vayuSearchResults(rd, sf) + `</div>`)
 	body.WriteString(`</div>`)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -2366,7 +2516,15 @@ func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
 		b.WriteString(`<div class="empty-state">Type a search above to find mail across every folder — refine with the folder, sender, date and unread filters.</div>`)
 		return b.String()
 	}
+	// A one-character query makes the engine scan its whole bounded window for
+	// almost nothing, and the debounced input fires on the way to a real term.
+	// Two characters is the point where a search is worth its cost.
+	if len([]rune(strings.TrimSpace(sf.q))) < 2 {
+		b.WriteString(`<div class="empty-state">Keep typing — search starts at two characters.</div>`)
+		return b.String()
+	}
 	results, _ := a.vayuMail.Search(rd, sf.q, 200)
+	capped := len(results) >= 200
 	afterT, hasAfter := parseDay(sf.after)
 	beforeT, hasBefore := parseDay(sf.before)
 	fromLower := strings.ToLower(sf.from)
@@ -2389,7 +2547,14 @@ func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
 		}
 		matched = append(matched, m)
 	}
-	b.WriteString(`<div class="vm-search-count text-sm muted">` + itoaSafe(len(matched)) + ` result(s) for “` + html.EscapeString(sf.q) + `”</div>`)
+	b.WriteString(`<div class="vm-search-count text-sm muted">` + itoaSafe(len(matched)) + ` result(s) for “` + html.EscapeString(sf.q) + `”`)
+	if capped {
+		// The engine scans a bounded window and the refinement filters run after
+		// it, so the count here is a floor, not a total. Saying nothing would read
+		// as "that is all there is".
+		b.WriteString(` · the scan hit its limit — add a filter or a longer term to see the rest`)
+	}
+	b.WriteString(`</div>`)
 	b.WriteString(`<div class="table-wrap"><table class="table vm-list"><thead><tr><th>Folder</th><th>From</th><th>Subject</th><th>Date</th></tr></thead><tbody>`)
 	if len(matched) == 0 {
 		b.WriteString(`<tr><td colspan="4" class="muted">No matches. Try a different term or relax the filters.</td></tr>`)
@@ -2577,7 +2742,8 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	card, ok := a.vayuReaderCard(rd, folder, id, pane)
+	card, ok := a.vayuReaderCard(rd, folder, id, pane,
+		r.URL.Query().Get("html") == "1", r.URL.Query().Get("images") == "1")
 	if !ok {
 		if pane {
 			writeOSHTML(w, r, vayuReadpaneEmpty("Could not read this message."))
@@ -2616,7 +2782,7 @@ func vayuReadpaneEmpty(msg string) string {
 // reading pane (pane=true: HTMX nav/actions targeting #vm-readpane, native
 // <details> for raw — nothing depends on JS bound at page load). It reads the
 // message and marks it read (received folders only). ok is false on error.
-func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane bool) (string, bool) {
+func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView, images bool) (string, bool) {
 	user := rd.Key()
 	raw, err := a.vayuMail.ReadFolderMessage(rd, folder, id)
 	if err != nil {
@@ -2699,6 +2865,14 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane bool) (str
 	if pane {
 		paneVals := func(extra ...string) string {
 			args := append([]string{"user", user, "folder", folder, "id", id}, extra...)
+			// Carry the reader's view choice through every pane action, so marking
+			// a message read does not silently drop them back to plain text.
+			if htmlView {
+				args = append(args, "html", "1")
+			}
+			if images {
+				args = append(args, "images", "1")
+			}
 			return hxVals(args...)
 		}
 		hxPost := ` hx-post="/os/vayumail/message/pane-action" hx-target="#vm-readpane" hx-swap="innerHTML" `
@@ -2724,6 +2898,9 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane bool) (str
 		// Snooze: hide until later; the sweeper resurfaces it unread. Only for
 		// received folders (the engine rejects Sent/Drafts/Snoozed anyway).
 		if received && !strings.EqualFold(folder, "Snoozed") {
+			// "Later" (+4h) existed in the engine but had no button, so the fastest
+			// snooze the product could offer was "tomorrow".
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("snooze", "later") + ` title="Snooze for 4 hours">⏰ Later today</button>`)
 			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("snooze", "tomorrow") + ` title="Snooze until tomorrow 8:00">⏰ Tomorrow</button>`)
 			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("snooze", "nextweek") + ` title="Snooze until Monday 8:00">⏰ Next week</button>`)
 		}
@@ -2806,17 +2983,64 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane bool) (str
 		card.WriteString(`</div></div>`)
 	}
 
-	// Body: decoded text/plain (with collapsible quote) → sanitised HTML → raw.
+	// Body. Plain text stays the DEFAULT (it is what the sender's words actually
+	// are, and it is what a young sending domain delivers best), but rich mail is
+	// now genuinely readable: before this, any message carrying a text/plain
+	// alternative — which is nearly all real mail — rendered as text only and its
+	// HTML part was never shown anywhere.
+	hasHTML := strings.TrimSpace(pm.HTML) != ""
+	bodyURL := func(htmlOn, imagesOn bool) string {
+		u := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(id)
+		if pane {
+			u += "&pane=1"
+		}
+		if htmlOn {
+			u += "&html=1"
+		}
+		if imagesOn {
+			u += "&images=1"
+		}
+		return u
+	}
+	// The toggle is an ordinary link (middle-click / no-JS fallback) that HTMX
+	// upgrades to an in-pane swap, so it never leaves the reading pane.
+	viewToggle := func(label string, htmlOn, imagesOn bool) string {
+		u := bodyURL(htmlOn, imagesOn)
+		hx := ""
+		if pane {
+			hx = ` hx-get="` + u + `" hx-target="#vm-readpane" hx-swap="innerHTML"`
+		}
+		return `<a class="vm-html-toggle" href="` + u + `"` + hx + `>` + label + `</a>`
+	}
 	card.WriteString(`<div class="vm-msg-body">`)
 	switch {
+	case hasHTML && htmlView:
+		pol := mailHTMLNoImages
+		if images {
+			pol = mailHTMLPolicyImages.Sanitize
+		}
+		card.WriteString(`<div class="vm-html-bar">` + viewToggle("Show plain text", false, false))
+		if !images {
+			card.WriteString(viewToggle("Load images", true, true))
+			card.WriteString(`<span class="muted text-xs">Pictures stay off until you ask — loading one tells the sender you opened this message.</span>`)
+		}
+		card.WriteString(`</div>`)
+		card.WriteString(`<div class="vm-html">` + pol(pm.HTML) + `</div>`)
 	case strings.TrimSpace(pm.Text) != "":
 		main, quoted := splitQuoted(pm.Text)
 		card.WriteString(`<pre class="vm-pre">` + html.EscapeString(main) + `</pre>`)
 		if quoted != "" {
 			card.WriteString(`<details class="vm-quote"><summary>Show quoted text</summary><pre class="vm-pre vm-pre--quoted">` + html.EscapeString(quoted) + `</pre></details>`)
 		}
-	case strings.TrimSpace(pm.HTML) != "":
-		card.WriteString(`<div class="vm-html">` + mailHTMLPolicy.Sanitize(pm.HTML) + `</div>`)
+		if hasHTML {
+			card.WriteString(`<div class="vm-html-bar">` + viewToggle("Render HTML view", true, false) + `</div>`)
+		}
+	case hasHTML:
+		// No text alternative at all: show the sanitised HTML (still without
+		// images) rather than dumping raw MIME source on the reader.
+		card.WriteString(`<div class="vm-html-bar">` + viewToggle("Load images", true, true) +
+			`<span class="muted text-xs">Pictures stay off until you ask — loading one tells the sender you opened this message.</span></div>`)
+		card.WriteString(`<div class="vm-html">` + mailHTMLNoImages(pm.HTML) + `</div>`)
 	default:
 		card.WriteString(`<pre class="vm-pre">` + html.EscapeString(string(raw)) + `</pre>`)
 	}
@@ -2885,13 +3109,17 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 		if nid, err := a.vayuMail.SetPinned(rd, folder, id, r.FormValue("pin") == "1"); err == nil && nid != "" {
 			id = nid
 		}
-		if card, ok := a.vayuReaderCard(rd, folder, id, true); ok {
+		// The pane action carries the reader's view choice (see paneVals), so the
+		// card comes back in the rendering they were reading.
+		if card, ok := a.vayuReaderCard(rd, folder, id, true,
+			r.FormValue("html") == "1", r.FormValue("images") == "1"); ok {
 			writeOSHTML(w, r, card)
 		} else {
 			writeOSHTML(w, r, vayuReadpaneEmpty(""))
 		}
 	default:
-		if card, ok := a.vayuReaderCard(rd, folder, id, true); ok {
+		if card, ok := a.vayuReaderCard(rd, folder, id, true,
+			r.FormValue("html") == "1", r.FormValue("images") == "1"); ok {
 			writeOSHTML(w, r, card)
 		} else {
 			writeOSHTML(w, r, vayuReadpaneEmpty(""))

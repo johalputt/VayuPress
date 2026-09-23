@@ -186,8 +186,13 @@ func (a *App) handleVayuOSTalkPeer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, fp, err := a.vayuTalk.PubKey(email)
+	// Presence is advisory and one-sided: true only when this identity holds a
+	// live stream, so the UI may promise instant delivery. False means "no client
+	// connected right now", NOT "won't receive it" — a store-mode message still
+	// queues for them.
+	online := a.vayuTalk.Online(email)
 	if err != nil || fp == "" {
-		writeJSON(w, r, http.StatusOK, map[string]interface{}{"email": email, "found": false})
+		writeJSON(w, r, http.StatusOK, map[string]interface{}{"email": email, "found": false, "online": online})
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
@@ -195,6 +200,7 @@ func (a *App) handleVayuOSTalkPeer(w http.ResponseWriter, r *http.Request) {
 		"found":       true,
 		"fingerprint": fp,
 		"safety":      formatSafety(fp),
+		"online":      online,
 	})
 }
 
@@ -300,18 +306,52 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 		// another .onion is opt-in and experimental; surface its state and let the
 		// operator flip it.
 		fedOn := a.talkOnionFederationEnabled(r.Context())
-		fedNote := `<p class="text-sm muted">Onion-to-onion delivery is <strong>off</strong> — you can be reached on this .onion; messaging a code on a different .onion is disabled.</p>`
+		fedNote := `<p class="text-sm muted" id="vtalk-fed-note">Onion-to-onion delivery is <strong>off</strong> — you can be reached on this .onion; messaging a code on a different .onion is disabled.</p>`
 		fedBtn := `<button type="button" class="btn btn--sm btn--primary" id="vtalk-fed" data-on="0">Enable onion-to-onion</button>`
 		if fedOn {
-			fedNote = `<p class="text-sm muted">Onion-to-onion delivery is <strong>on</strong> (experimental). Set <code>VAYUOS_TOR_SOCKS_ADDR</code> to your tor's SOCKS address for sending to work.</p>`
+			fedNote = `<p class="text-sm muted" id="vtalk-fed-note">Onion-to-onion delivery is <strong>on</strong> (experimental). Set <code>VAYUOS_TOR_SOCKS_ADDR</code> to your tor's SOCKS address for sending to work.</p>`
 			fedBtn = `<button type="button" class="btn btn--sm btn--ghost" id="vtalk-fed" data-on="1">Disable onion-to-onion</button>`
 		}
-		body.WriteString(`<div class="vtalk-anon"><p class="text-sm muted">This is your anonymous code — share it so people can reach you.</p><div class="ak-cred-actions"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">Copy code</button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div>` + fedNote + `<div class="ak-cred-actions">` + fedBtn + `</div></div>`)
+		// Share link as well as the bare code: a 70-character handle is painful to
+		// paste into a chat, and a link that pre-fills the recipient's Start box
+		// removes the transcription step entirely.
+		shareURL := "https://" + strings.ToLower(strings.TrimSpace(config.Cfg.Domain)) + "/os/talk?t=" + qparam(self)
+		body.WriteString(`<div class="vtalk-anon"><p class="text-sm muted">This is your anonymous code — share it so people can reach you.</p><div class="ak-cred-actions"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">Copy code</button><button type="button" class="btn btn--sm" data-copy="` + esc(shareURL) + `">Copy share link</button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div>` + fedNote + `<div class="ak-cred-actions">` + fedBtn + `</div></div>`)
 	}
-	body.WriteString(`<form class="vtalk-newchat" id="vtalk-newchat"><input class="input input--sm" id="vtalk-peer" type="email" autocomplete="off" spellcheck="false" placeholder="name@domain" aria-label="Recipient address"><button class="btn btn--sm btn--primary" type="submit">Start</button></form>`)
+	// Share links (both worlds): /os/talk?t=<address-or-code> pre-fills the
+	// new-chat box, so an invitation can be sent as a link. The value is escaped
+	// into the attribute; the recipient still has to press Start, so a link can
+	// never silently open a conversation.
+	invite := strings.TrimSpace(r.URL.Query().Get("t"))
+	if invite != "" {
+		body.WriteString(`<div class="settings-callout">🔗 A code came with this link — press <strong>Start</strong> to open the chat with <code>` + esc(invite) + `</code>.</div>`)
+	}
+	// The Tor world's recipients are 70-character anonymous codes, not mail
+	// addresses: an email input with a "name@domain" placeholder invites the wrong
+	// thing and fights the paste.
+	peerType, peerPlaceholder := "email", "name@domain"
+	if config.Cfg.OnionMode {
+		peerType, peerPlaceholder = "text", "paste their anonymous code"
+	}
+	// Recipient suggestions: the mailboxes this session may chat as (an admin's
+	// whole server, a holder's own), minus yourself. Starting a chat used to
+	// require knowing the exact address by heart.
+	if len(idents) > 1 {
+		body.WriteString(`<datalist id="vtalk-directory">`)
+		for _, id := range idents {
+			if strings.EqualFold(id, self) {
+				continue
+			}
+			body.WriteString(`<option value="` + esc(id) + `"></option>`)
+		}
+		body.WriteString(`</datalist>`)
+	}
+	body.WriteString(`<form class="vtalk-newchat" id="vtalk-newchat"><input class="input input--sm" id="vtalk-peer" type="` + peerType + `" autocomplete="off" spellcheck="false" placeholder="` + peerPlaceholder + `" aria-label="Recipient address" list="vtalk-directory" value="` + esc(invite) + `"><button class="btn btn--sm btn--primary" type="submit">Start</button></form>`)
+	body.WriteString(`<p class="vtalk-newchat-note" id="vtalk-newchat-note" hidden></p>`)
 	body.WriteString(`<div class="vtalk-convos-head"><span class="vtalk-convos-title">Conversations</span></div>`)
 	body.WriteString(`<div class="vtalk-search-wrap"><svg class="vtalk-search-ico" viewBox="0 0 20 20" width="15" height="15" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="5.2" stroke="currentColor" stroke-width="1.5"/><path d="M13 13l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><input class="input input--sm vtalk-search" id="vtalk-search" type="search" placeholder="Search conversations…" aria-label="Search conversations" autocomplete="off"></div>`)
 	body.WriteString(`<ul class="vtalk-convos" id="vtalk-convos" aria-label="Conversations"></ul>`)
+	body.WriteString(`<p class="vtalk-search-none" id="vtalk-search-none" hidden>No conversations match that search.</p>`)
 	body.WriteString(`</aside>`)
 
 	// Right pane: thread header, message list, composer.
@@ -329,21 +369,59 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`</section>`)
 
 	body.WriteString(`</div>`) // .vtalk
+	// Polite live region: connection state and arriving messages are announced,
+	// not only drawn (the JS writes short lines into it).
+	body.WriteString(`<p class="vp-sr-only" id="vtalk-live-region" role="status" aria-live="polite"></p>`)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-talk.js?v=` + assetVer("js/admin-os-talk.js") + `"></script>`)
 	// Anonymous-code controls (Tor world): copy the code, or rotate to a fresh one.
-	// Same-origin, CSRF-checked; reload after a rotate to pick up the new identity.
+	// Same-origin, CSRF-checked. Rotate is irreversible — everyone holding the old
+	// code loses reach permanently — so it asks first (and, because the identity
+	// itself changes, still reloads to re-render it). The federation toggle is not
+	// destructive, so it is patched in place with no reload.
 	body.WriteString(`<script nonce="` + nonce + `">(function(){
 function csrfTok(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var rot=document.getElementById('vtalk-rotate');
-if(rot){rot.addEventListener('click',function(){rot.disabled=true;fetch('/os/talk/rotate',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrfTok()}}).then(function(r){if(r.ok){location.reload();}else{rot.disabled=false;}}).catch(function(){rot.disabled=false;});});}
-var fed=document.getElementById('vtalk-fed');
-if(fed){fed.addEventListener('click',function(){fed.disabled=true;fetch('/os/talk/federation',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrfTok()}}).then(function(r){if(r.ok){location.reload();}else{fed.disabled=false;}}).catch(function(){fed.disabled=false;});});}
-Array.prototype.forEach.call(document.querySelectorAll('.vtalk [data-copy]'),function(b){b.addEventListener('click',function(){var v=b.getAttribute('data-copy')||'',p=b.textContent;var d=function(){b.textContent='Copied';setTimeout(function(){b.textContent=p;},1400);};if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v).then(d,d);}else{d();}});});
+if(rot){rot.addEventListener('click',function(){
+  if(!window.confirm('Rotate your anonymous code?\n\nAnyone who has your current code will no longer be able to reach you, and the chats open in this tab are discarded. This cannot be undone.')){return;}
+  rot.disabled=true;fetch('/os/talk/rotate',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrfTok()}}).then(function(r){if(r.ok){location.reload();}else{rot.disabled=false;}}).catch(function(){rot.disabled=false;});});}
+var fed=document.getElementById('vtalk-fed'),fedNote=document.getElementById('vtalk-fed-note');
+function paintFed(on){
+  if(!fedNote)return;
+  fedNote.textContent='';
+  function t(s){fedNote.appendChild(document.createTextNode(s));}
+  t('Onion-to-onion delivery is ');
+  var b=document.createElement('strong');b.textContent=on?'on':'off';fedNote.appendChild(b);
+  if(on){t(' (experimental). Set ');var c=document.createElement('code');c.textContent='VAYUOS_TOR_SOCKS_ADDR';fedNote.appendChild(c);t(' to your tor\u2019s SOCKS address for sending to work.');}
+  else{t(' \u2014 you can be reached on this .onion; messaging a code on a different .onion is disabled.');}
+}
+if(fed){fed.addEventListener('click',function(){
+  fed.disabled=true;
+  fetch('/os/talk/federation',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrfTok()}}).then(function(r){
+    return r.json().then(function(j){return {ok:r.ok,j:j};},function(){return {ok:r.ok,j:null};});
+  }).then(function(res){
+    fed.disabled=false;
+    if(!res.ok){if(fedNote)fedNote.textContent='Could not change that setting \u2014 please try again.';return;}
+    var on=!!(res.j&&res.j.enabled);
+    fed.setAttribute('data-on',on?'1':'0');
+    fed.textContent=on?'Disable onion-to-onion':'Enable onion-to-onion';
+    fed.className='btn btn--sm '+(on?'btn--ghost':'btn--primary');
+    paintFed(on);
+  }).catch(function(){fed.disabled=false;if(fedNote)fedNote.textContent='Could not change that setting \u2014 please try again.';});
+});}
+// Copy buttons report the truth: a missing Clipboard API (plain-http .onion) or a
+// rejected write must not claim success, because "share my code" is the whole point
+// of that control.
+Array.prototype.forEach.call(document.querySelectorAll('.vtalk [data-copy]'),function(b){b.addEventListener('click',function(){
+  var v=b.getAttribute('data-copy')||'',p=b.textContent;
+  var done=function(){b.textContent='Copied';setTimeout(function(){b.textContent=p;},1400);};
+  var fail=function(){b.textContent='Copy failed \u2014 select it manually';setTimeout(function(){b.textContent=p;},2600);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v).then(done,function(){fail();});}else{fail();}
+});});
 // Client-side conversation filter: hide/show rows whose text does not match. The
 // list is filled/updated by admin-os-talk.js; re-running on each keystroke keeps
 // it in sync. Uses element.style (CSSOM), which strict CSP permits.
 var q=document.getElementById('vtalk-search'),cv=document.getElementById('vtalk-convos');
-if(q&&cv){q.addEventListener('input',function(){var t=q.value.trim().toLowerCase();Array.prototype.forEach.call(cv.children,function(li){var n=(li.textContent||'').toLowerCase();li.style.display=(!t||n.indexOf(t)>=0)?'':'none';});});}
+if(q&&cv){q.addEventListener('input',function(){var t=q.value.trim().toLowerCase();var shown=0;Array.prototype.forEach.call(cv.children,function(li){var n=(li.textContent||'').toLowerCase();var hit=(!t||n.indexOf(t)>=0);li.style.display=hit?'':'none';if(hit)shown++;});var none=document.getElementById('vtalk-search-none');if(none){if(t&&!shown){none.removeAttribute('hidden');}else{none.setAttribute('hidden','');}}});}
 })();</script>`)
 	writeOSHTML(w, r, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
 }
@@ -378,7 +456,7 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	queued, ch, cancel, err := a.vayuTalk.Subscribe(self)
+	queued, ch, cancel, err := a.vayuTalk.SubscribeWeb(self)
 	if err != nil {
 		http.Error(w, "too many streams", http.StatusTooManyRequests)
 		return
@@ -412,6 +490,14 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 			if !writeSSE(w, rc, "message", out) {
 				return
 			}
+		} else {
+			// The envelope is addressed to this identity but its plaintext could
+			// not be recovered. Report THAT much — sender, no content — because
+			// the alternative is a message that silently never appears, which is
+			// indistinguishable from a friend going quiet.
+			if !writeSSE(w, rc, "undecryptable", map[string]string{"from": env.From}) {
+				return
+			}
 		}
 	}
 	flusher.Flush()
@@ -438,6 +524,12 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 				}
 				txt, verified, ok := a.talkDecryptVerify(self, p.From, raw)
 				if !ok {
+					// Same honesty as the queued path: say a message arrived that
+					// could not be read, never pretending it was never sent.
+					if !writeSSE(w, rc, "undecryptable", map[string]string{"from": p.From}) {
+						return
+					}
+					flusher.Flush()
 					continue
 				}
 				a.maybeFetchSenderKey(self, p.From, verified)
@@ -451,6 +543,14 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 				// could flush it. See the function doc.
 			case "receipt":
 				if !writeSSE(w, rc, "receipt", evt.Payload) {
+					return
+				}
+				flusher.Flush()
+			case "peerkey":
+				// A peer's key arrived locally (late over-Tor fetch): the console
+				// re-checks the messages it already holds from that peer, so the
+				// "unverified" badge clears without a reload.
+				if !writeSSE(w, rc, "peerkey", evt.Payload) {
 					return
 				}
 				flusher.Flush()
@@ -553,12 +653,17 @@ func (a *App) handleVayuOSTalkSend(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleVayuOSTalkRead marks an incoming message as read from the web console. In
-// the clearnet world this is a no-op (the phone app is the authoritative reader
-// that read-destroys — the console must never steal its queued copy). In the Tor
-// world the console is the ONLY reader (web-only, ADR-0141), so it read-destroys
-// here and, when the sender is on another .onion, forwards a "read" receipt to
-// that onion over Tor (ADR-0142).
+// handleVayuOSTalkRead records that an incoming message has been read from the
+// web console.
+//
+// Clearnet: it sets this console's read cursor for the envelope (so a reconnect
+// does not re-flush a message the user already watched burn) and deliberately
+// does NOT read-destroy it — the phone app remains the authoritative reader that
+// read-destroys, and its own stream must still receive its copy.
+//
+// Tor world: the console is the ONLY reader (web-only, ADR-0141), so it
+// read-destroys here and, when the sender is on another .onion, forwards a "read"
+// receipt to that onion over Tor (ADR-0142).
 func (a *App) handleVayuOSTalkRead(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if !a.vayuTalkEnabled() {
@@ -577,15 +682,16 @@ func (a *App) handleVayuOSTalkRead(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "id is required", "")
 		return
 	}
-	// Clearnet: never read-destroy from the console (see doc). Report ok so the
-	// client's fire-and-forget call is a clean no-op.
-	if !config.Cfg.OnionMode {
-		writeJSON(w, r, http.StatusOK, map[string]bool{"ok": true})
-		return
-	}
 	self := a.talkIdentity(r)
 	if self == "" {
 		writeAPIError(w, r, http.StatusForbidden, "no-mailbox", "No chat identity", "")
+		return
+	}
+	// Clearnet: set this reader's cursor. Ownership-checked, idempotent, and
+	// non-destructive — see the doc comment.
+	if !config.Cfg.OnionMode {
+		marked := a.vayuTalk.MarkWebReadAs(id, self)
+		writeJSON(w, r, http.StatusOK, map[string]bool{"ok": true, "marked": marked})
 		return
 	}
 	sender, ok := a.vayuTalk.AckReturningSender(id)
@@ -656,11 +762,18 @@ func (a *App) talkDecryptVerify(email, sender string, ciphertext []byte) (text s
 // (its sender key is not yet local), kicks off a best-effort over-Tor fetch so
 // subsequent messages from that sender verify. Non-blocking; deduped inside
 // ensureOnionSenderKey. Driven only by the operator's own authenticated stream.
+// When the key does arrive, the stream is told (a peerkey event) so the badges on
+// messages already on screen are re-checked rather than left stale.
 func (a *App) maybeFetchSenderKey(self, from string, verified bool) {
 	if verified || !talkRecipientRemoteOnion(self, from) {
 		return
 	}
-	go a.ensureOnionSenderKey(from)
+	go func() {
+		a.ensureOnionSenderKey(from)
+		if _, err := a.vayuPGP.GetPublicKey(from); err == nil {
+			a.vayuTalk.PublishPeerKey(self, from)
+		}
+	}()
 }
 
 // ensureTalkKeypair mints a keypair for a local address on demand so a mailbox

@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	avatarpkg "github.com/johalputt/vayupress/internal/avatar"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	"github.com/johalputt/vayupress/internal/vayuos/pgp"
@@ -31,7 +30,10 @@ import (
 // page's single <script> carries the nonce, htmx.min.js is self-hosted, and the
 // shared inline glue mirrors vp_csrf into X-CSRF-Token on every hx request.
 
-const acctListHx = ` hx-target="#vm-accounts-list" hx-swap="innerHTML"`
+// acctListHx is the shared HTMX contract for every inline mailbox-card action:
+// swap the list in place, and show the page's "working…" indicator while it runs
+// (the whole list is re-rendered, which on a many-mailbox install takes a beat).
+const acctListHx = ` hx-target="#vm-accounts-list" hx-swap="innerHTML" hx-indicator="#vm-accounts-spin"`
 
 // vayuAccountsList renders the stats strip plus one collapsible card per mailbox.
 // It is the swap target for every account action and the create flow, so it is
@@ -455,6 +457,14 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 		retSel += `<option value="` + strconv.Itoa(opt.Days) + `"` + sel + `>` + opt.Label + `</option>`
 	}
 	retSel += `</select>`
+	// The setter has always accepted any day count, but the UI offered five
+	// presets and never said WHEN deletion happens — which is the part an operator
+	// needs before choosing. Both are one line each.
+	retID := vmFieldID("vm-ret-", ac.Email)
+	retField := retSel + `<input class="input input--sm vm-quota-input" id="` + retID + `" type="number" min="0" max="3650" step="1" name="retention_days" value="` +
+		strconv.Itoa(retDays) + `" aria-label="Custom retention in days (0 = off)">` +
+		`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/accounts/action"` +
+		hxVals("op", "retention", "email", ac.Email) + ` hx-include="#` + retID + `"` + acctListHx + `>Save</button>`
 
 	// Quota input + Save (HTMX; the button includes the sibling input).
 	quotaID := vmFieldID("vm-q-", ac.Email)
@@ -472,7 +482,7 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 		hxVals("op", "toggle", "email", ac.Email, "active", toggleTo) + acctListHx + `>` + toggleLabel + `</button>`
 	deleteBtn := `<button type="button" class="btn btn--sm btn--danger" hx-post="/os/vayumail/accounts/action"` +
 		hxVals("op", "delete", "email", ac.Email) + acctListHx +
-		` hx-confirm="Delete ` + email + `? Its mailbox and all stored mail are removed permanently.">Delete</button>`
+		` hx-confirm="Delete ` + email + `? The account is removed and its stored mail is moved out of the delivery tree and kept aside, so the address can be reissued without the new holder seeing it.">Delete</button>`
 
 	// Prompt-driven controls stay in admin-os-mail.js (they need a dialog), but the
 	// page no longer reloads — their JS refreshes #vm-accounts-list via htmx.ajax.
@@ -506,48 +516,18 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	c.WriteString(`<div class="vm-acct__body">`)
 	c.WriteString(`<div class="vm-acct__grid">`)
 	c.WriteString(`<label class="field"><span class="field-label">Role</span>` + roleSel + `</label>`)
-	c.WriteString(`<label class="field"><span class="field-label">Auto-delete read mail</span>` + retSel + `</label>`)
+	c.WriteString(`<label class="field"><span class="field-label">Auto-delete read mail</span><span class="vm-row">` + retField + `</span></label>`)
+	c.WriteString(`<p class="field-hint">Read mail older than this is deleted nightly. “Off” keeps everything.</p>`)
 	c.WriteString(`<label class="field"><span class="field-label">Quota (MB, 0 = unlimited)</span><span class="vm-row">` + quotaField + `</span></label>`)
 	c.WriteString(`</div>`)
-	// Per-mailbox forwarding, vacation, aliases and filters all live inside the
-	// mailbox's own card (all of an address's settings in one place). Each refreshes
-	// the whole list on save.
-	c.WriteString(`<div class="vm-acct__sub"><span class="field-label">Auto-forward a copy to</span>` + vayuCardForwarding(ac) + `</div>`)
-	c.WriteString(a.vayuCardVacation(ctx, ac))
-	c.WriteString(a.vayuCardAliases(ctx, ac))
-	c.WriteString(a.vayuCardRecovery(ctx, ac.Email))
-	c.WriteString(a.vayuCardHandover(ctx, ac))
-	c.WriteString(a.vayuCardPGP(ac))
-	c.WriteString(a.vayuCardFilters(ctx, ac))
-	// Profile picture: direct upload (≤500 KB) + optional remove. HTMX multipart,
-	// swapping the whole list so the new avatar shows immediately.
-	removeBtn := ""
-	if hasAvatar {
-		removeBtn = `<button class="btn btn--sm btn--ghost" type="button" hx-post="/os/vayumail/accounts/avatar/remove" ` + hxVals("email", ac.Email) + ` hx-target="#vm-accounts-list" hx-swap="innerHTML">Remove picture</button>`
-	}
-	c.WriteString(`<div class="vm-acct__avatar-edit"><span class="field-label">Profile picture</span>` +
-		`<form class="vm-row vm-avatar-form" hx-post="/os/vayumail/accounts/avatar" hx-encoding="multipart/form-data" hx-target="#vm-accounts-list" hx-swap="innerHTML">` +
-		`<input type="hidden" name="email" value="` + email + `">` +
-		`<input class="input input--sm" type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Profile picture">` +
-		`<button class="btn btn--sm" type="submit">Upload</button></form>` + removeBtn +
-		`<span class="text-xs muted">PNG, JPEG, GIF or WebP · up to 500 KB.</span></div>`)
-	// Prefer not to upload a file? Pick a prebuilt cartoon instead — each button
-	// sets it in one click (same as a member's avatar picker). Rendered from a
-	// same-origin preview endpoint so no external asset is fetched.
-	var cartoons strings.Builder
-	qEmail := qparam(ac.Email)
-	for n := 0; n < avatarpkg.CartoonCount; n++ {
-		ns := strconv.Itoa(n)
-		cartoons.WriteString(`<button type="button" class="vm-cartoon" title="Use this cartoon" ` +
-			`hx-post="/os/vayumail/accounts/avatar/cartoon" ` + hxVals("email", ac.Email, "n", ns) +
-			` hx-target="#vm-accounts-list" hx-swap="innerHTML">` +
-			`<img class="vm-cartoon__img" src="/os/vayumail/accounts/avatar/cartoon?email=` + qEmail + `&amp;n=` + ns +
-			`" alt="Cartoon ` + ns + `" width="40" height="40" loading="lazy"></button>`)
-	}
-	c.WriteString(`<div class="vm-acct__avatar-pick"><span class="field-label">Or choose an avatar</span>` +
-		`<div class="vm-cartoon-row">` + cartoons.String() + `</div></div>`)
+	// Everything that is a genuine SETTING lives on the mailbox's own page now
+	// (vayuos_mail_settings.go): forwarding, vacation, aliases, recovery, handover,
+	// PGP, filters and the picture picker. This card keeps what an operator scans
+	// ACROSS mailboxes — identity, quota, role, retention, enable/delete — and links
+	// out. The seven nested <details> that used to be here made a many-mailbox
+	// install a very tall page whose every inline action re-rendered the whole list.
 	c.WriteString(`<div class="vm-acct__meta muted text-sm">Created ` + ac.CreatedAt.Format("2006-01-02") + `</div>`)
-	c.WriteString(`<div class="vm-acct__actions">` + passBtn + twofaBtn + toggleBtn + deleteBtn + `</div>`)
+	c.WriteString(`<div class="vm-acct__actions"><a class="btn btn--sm" href="/os/vayumail/accounts/settings?user=` + qparam(ac.Email) + `">⚙ Mailbox settings</a>` + passBtn + twofaBtn + toggleBtn + deleteBtn + `</div>`)
 	c.WriteString(`</div>`)
 	c.WriteString(`</details>`)
 	return c.String()
@@ -596,6 +576,9 @@ func (a *App) handleVayuOSAccountsAction(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	var opErr error
+	// deleteNote carries the post-delete explanation (where the mail went) back to
+	// the operator; the list itself is rebuilt either way.
+	var deleteNote string
 	switch op {
 	case "toggle":
 		active := r.FormValue("active") == "true"
@@ -633,16 +616,27 @@ func (a *App) handleVayuOSAccountsAction(w http.ResponseWriter, r *http.Request)
 	case "handover":
 		opErr = a.handOverMailbox(r, email)
 	case "delete":
-		if opErr = accts.Delete(r.Context(), email); opErr == nil {
-			dbpkg.AuditLog("vayumail.account.delete", dbpkg.AuditActor(r), email, "")
+		// DeleteMailbox, NOT the store's Delete. The store clears SQLite rows only,
+		// and mail still sitting on disk is inherited whole by whoever is given the
+		// address next — the panel's button and the JSON endpoint must not disagree
+		// about that. The engine orders it (rows first, so nothing is still
+		// delivering, then the mail is set aside) and reports what was retained.
+		var retired string
+		if retired, opErr = a.vayuMail.DeleteMailbox(r.Context(), email); opErr == nil {
+			dbpkg.AuditLog("vayumail.account.delete", dbpkg.AuditActor(r), email, retired)
+			if retired != "" {
+				deleteNote = "The mailbox was deleted. Its messages were moved out of the delivery tree and kept aside, so the address can be reissued without the new holder seeing them."
+			}
 		}
 	default:
 		opErr = errors.New("unknown operation")
 	}
 
-	list := a.vayuAccountsList(r.Context())
+	list := a.acctRefresh(r, email)
 	if opErr != nil {
 		list = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + list
+	} else if deleteNote != "" {
+		list = `<div class="settings-callout" role="status">🗄 ` + html.EscapeString(deleteNote) + `</div>` + list
 	}
 	writeOSHTML(w, r, list)
 }

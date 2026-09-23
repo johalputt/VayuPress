@@ -23,6 +23,9 @@ import (
 	"time"
 
 	"github.com/microcosm-cc/bluemonday"
+	// Aliased: the stdlib "html" package (escaping) is already imported here.
+	xhtml "golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
@@ -35,10 +38,76 @@ import (
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
 
-// mailHTMLPolicy sanitises HTML mail bodies before they are rendered in the
-// reader view. UGCPolicy strips scripts, event handlers, and inline styles, so
-// the message can be shown without weakening the admin console's strict CSP.
-var mailHTMLPolicy = bluemonday.UGCPolicy()
+// mailHTMLPolicy sanitises HTML mail for the reader: bluemonday's UGCPolicy strips
+// scripts, event handlers and inline styles, so a message can never weaken the
+// console's strict CSP. Image SOURCES are removed separately, by
+// mailHTMLNoImages — bluemonday cannot take back an attribute a policy already
+// allows, so that pass walks the sanitised tree instead of pretending otherwise.
+var mailHTMLPolicy = func() *bluemonday.Policy {
+	p := bluemonday.UGCPolicy()
+	p.RequireNoReferrerOnLinks(true)
+	return p
+}()
+
+// mailHTMLPolicyImages is mailHTMLPolicy WITH image sources, used only when the
+// reader explicitly asks to load pictures for one message (?images=1). Still
+// script-free and handler-free; the difference is entirely about who gets told.
+var mailHTMLPolicyImages = func() *bluemonday.Policy {
+	p := bluemonday.UGCPolicy()
+	p.AllowAttrs("src", "srcset", "alt", "title", "width", "height").OnElements("img")
+	p.AllowURLSchemes("http", "https", "data", "cid")
+	p.RequireNoReferrerOnLinks(true)
+	return p
+}()
+
+// mailHTMLNoImages sanitises a message body and then strips every image source.
+//
+// This is a privacy boundary, not a safety one: fetching a remote image tells the
+// sender — and every tracker embedded in the message — that this mailbox opened
+// it, and roughly when. The alt text stays, so the layout still reads.
+func mailHTMLNoImages(raw string) string {
+	return stripImageSources(mailHTMLPolicy.Sanitize(raw))
+}
+
+// stripImageSources removes src/srcset/background from every <img> in already
+// sanitised HTML. It parses as a fragment in a <div> context so the result stays
+// a snippet (a full-document parse would wrap it in html/body and break nesting).
+func stripImageSources(sanitized string) string {
+	ctx := &xhtml.Node{Type: xhtml.ElementNode, Data: "div", DataAtom: atom.Div}
+	nodes, err := xhtml.ParseFragment(strings.NewReader(sanitized), ctx)
+	if err != nil {
+		// The input is already sanitised, so a parse failure is not a reason to
+		// drop the message — but it IS a reason not to trust image sources.
+		return ""
+	}
+	var out bytes.Buffer
+	for _, n := range nodes {
+		stripImgAttrs(n)
+		if err := xhtml.Render(&out, n); err != nil {
+			return ""
+		}
+	}
+	return out.String()
+}
+
+// stripImgAttrs walks a parsed subtree removing the attributes that make a browser
+// fetch a URL from an image element.
+func stripImgAttrs(n *xhtml.Node) {
+	if n.Type == xhtml.ElementNode && n.Data == "img" {
+		keep := n.Attr[:0]
+		for _, a := range n.Attr {
+			switch strings.ToLower(a.Key) {
+			case "src", "srcset", "background", "lowsrc", "dynsrc":
+				continue
+			}
+			keep = append(keep, a)
+		}
+		n.Attr = keep
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		stripImgAttrs(c)
+	}
+}
 
 // ── Compose ──────────────────────────────────────────────────────────────────
 
@@ -117,7 +186,30 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 
 	// Prefill (reply / forward / direct). Reply and forward load the original
 	// message server-side so URLs stay short and large bodies are handled.
-	prefillTo, prefillSubject, prefillBody := a.composePrefill(r)
+	prefillTo, prefillCc, prefillBcc, prefillSubject, prefillBody := a.composePrefill(r)
+
+	// Reopening a saved draft: show the files it is holding and carry its id, so
+	// pressing Send merges them instead of quietly sending a message without the
+	// attachments the sender put on it. Files cannot be re-materialised as file
+	// inputs, so the server keeps them and the send path picks them up by id.
+	draftID := strings.TrimSpace(r.URL.Query().Get("id"))
+	draftFilesHTML := ""
+	if r.URL.Query().Get("draft") != "" && draftID != "" {
+		draftFilesHTML = `<input type="hidden" data-c-draft-id value="` + html.EscapeString(draftID) + `">`
+		if rd := a.mailReader(r, mailUserParam(r)); rd.Key() != "" {
+			if files, derr := a.vayuMail.DraftAttachments(rd, draftID); derr == nil && len(files) > 0 {
+				var fb strings.Builder
+				fb.WriteString(`<div class="vm-row vm-row--tight"><span class="muted text-sm">📎 Saved with this draft — Send includes them:</span><span class="vm-attach-list">`)
+				for _, f := range files {
+					fb.WriteString(`<span class="vm-attach-chip"><span class="vm-attach-ico" aria-hidden="true">📄</span>` +
+						`<span class="vm-attach-name">` + html.EscapeString(f.Filename) + `</span>` +
+						`<span class="vm-attach-size">` + html.EscapeString(humanBytes(int64(len(f.Data)))) + `</span></span>`)
+				}
+				fb.WriteString(`</span></div>`)
+				draftFilesHTML += fb.String()
+			}
+		}
+	}
 
 	// Feedback mode (the VayuOS topbar "Report a bug / suggest an improvement"
 	// button links to ?feedback=1): address the feedback inbox, drop in a
@@ -174,10 +266,10 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 
   <label class="field" data-c-cc-field hidden><span class="field-label">Cc</span>
     <div class="vm-chips" data-c-chips="cc"><input type="text" class="vm-chip-input" data-c-chip-input list="vm-contacts" placeholder="cc@example.com" autocomplete="off" aria-label="Cc recipients"></div></label>
-  <input type="hidden" data-c-cc>
+  <input type="hidden" data-c-cc value="` + html.EscapeString(prefillCc) + `">
   <label class="field" data-c-bcc-field hidden><span class="field-label">Bcc</span>
     <div class="vm-chips" data-c-chips="bcc"><input type="text" class="vm-chip-input" data-c-chip-input list="vm-contacts" placeholder="bcc@example.com" autocomplete="off" aria-label="Bcc recipients"></div></label>
-  <input type="hidden" data-c-bcc>
+  <input type="hidden" data-c-bcc value="` + html.EscapeString(prefillBcc) + `">
   <label class="field" data-c-reply-field hidden><span class="field-label">Reply-To</span>
     <input class="input" type="text" data-c-reply placeholder="reply@example.com"></label>
 
@@ -221,6 +313,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
     <input type="file" data-c-files multiple hidden>
   </div>
   <div class="vm-attach-tray" data-c-attach-list></div>
+  ` + draftFilesHTML + `
 
   <div class="vm-sig" data-c-sig>
     <label class="vm-filter-check"><input type="checkbox" data-c-sig-toggle checked> Append signature</label>
@@ -256,7 +349,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	writeOSHTML(w, r, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
-// composePrefill derives the To/Subject/Body for the compose form from the
+// composePrefill derives the To/Cc/Bcc/Subject/Body for the compose form from the
 // request. It supports three modes:
 //
 //   - reply:   ?reply=1&user=&folder=&id=  → To=original From, "Re: ", quoted body
@@ -264,30 +357,32 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 //   - direct:  ?to=&subject=&body=          → verbatim prefill
 //
 // Reply/forward load the stored message (PGP-decrypted for the owner) so the
-// quoted text is readable.
-func (a *App) composePrefill(r *http.Request) (to, subject, bodyText string) {
+// quoted text is readable, and a reopened draft restores the Cc/Bcc it was saved
+// with rather than quietly dropping recipients.
+func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText string) {
 	q := r.URL.Query()
-	// Draft: reopen a saved draft verbatim (To/Subject/body) for editing.
+	// Draft: reopen a saved draft verbatim (To/Cc/Bcc/Subject/body) for editing.
 	if q.Get("draft") != "" {
 		rd := a.mailReader(r, q.Get("user"))
 		id := strings.TrimSpace(q.Get("id"))
 		if a.vayuMail == nil || rd.Key() == "" || id == "" {
-			return "", "", ""
+			return "", "", "", "", ""
 		}
 		raw, err := a.vayuMail.ReadFolderMessage(rd, "Drafts", id)
 		if err != nil {
-			return "", "", ""
+			return "", "", "", "", ""
 		}
 		if msg, perr := netmail.ReadMessage(bytes.NewReader(raw)); perr == nil {
 			b, _ := io.ReadAll(msg.Body)
-			return msg.Header.Get("To"), msg.Header.Get("Subject"), string(b)
+			return msg.Header.Get("To"), msg.Header.Get("Cc"), msg.Header.Get("Bcc"),
+				msg.Header.Get("Subject"), string(b)
 		}
-		return "", "", ""
+		return "", "", "", "", ""
 	}
 	reply := q.Get("reply") != ""
 	forward := q.Get("forward") != ""
 	if !reply && !forward {
-		return q.Get("to"), q.Get("subject"), q.Get("body")
+		return q.Get("to"), "", "", q.Get("subject"), q.Get("body")
 	}
 	rd := a.mailReader(r, q.Get("user"))
 	user := rd.Key()
@@ -297,38 +392,64 @@ func (a *App) composePrefill(r *http.Request) (to, subject, bodyText string) {
 	}
 	id := strings.TrimSpace(q.Get("id"))
 	if a.vayuMail == nil || user == "" || id == "" {
-		return "", "", ""
+		return "", "", "", "", ""
 	}
 	raw, err := a.vayuMail.ReadFolderMessage(rd, folder, id)
 	if err != nil {
-		return "", "", ""
+		return "", "", "", "", ""
 	}
-	origFrom, origSubject, origBody := parseForQuote(raw)
-	quoted := quoteBody(origFrom, origBody)
+	origFrom, origSubject, origBody, origDate := parseForQuote(raw)
+	quoted := quoteBody(origFrom, origDate, origBody)
 	if reply {
-		return origFrom, ensurePrefix(origSubject, "Re: "), "\r\n\r\n" + quoted
+		return origFrom, "", "", ensurePrefix(origSubject, "Re: "), "\r\n\r\n" + quoted
 	}
 	// forward
-	return "", ensurePrefix(origSubject, "Fwd: "), "\r\n\r\n---------- Forwarded message ----------\r\n" + quoted
+	return "", "", "", ensurePrefix(origSubject, "Fwd: "), "\r\n\r\n---------- Forwarded message ----------\r\n" + quoted
 }
 
-// parseForQuote extracts From, Subject and a plain-text body from a raw message.
-func parseForQuote(raw []byte) (from, subject, bodyText string) {
+// parseForQuote extracts From, Subject, Date and a plain-text body from a raw
+// message. The date is carried so the reply attribution can be dated the way
+// every other mail client dates it.
+func parseForQuote(raw []byte) (from, subject, bodyText, date string) {
 	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
-		return "", "", string(raw)
+		return "", "", string(raw), ""
 	}
 	from = msg.Header.Get("From")
 	subject = msg.Header.Get("Subject")
 	b, _ := io.ReadAll(msg.Body)
-	return from, subject, string(b)
+	return from, subject, string(b), humanMailDate(msg.Header.Get("Date"))
+}
+
+// humanMailDate renders a Date header for the reply attribution line. An
+// unparseable date returns "" so the quote falls back to the dateless wording
+// rather than pasting a raw RFC 5322 header into the middle of a sentence.
+func humanMailDate(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	for _, layout := range []string{
+		time.RFC1123Z, time.RFC1123, time.RFC822Z, time.RFC822,
+		"Mon, 2 Jan 2006 15:04:05 -0700", "2 Jan 2006 15:04:05 -0700",
+		"Mon, 2 Jan 2006 15:04 -0700", "2 Jan 2006 15:04 -0700",
+	} {
+		if t, perr := time.Parse(layout, raw); perr == nil {
+			return t.Format("2 Jan 2006")
+		}
+	}
+	return ""
 }
 
 // quoteBody prefixes each line of the original body with "> " (RFC 3676 style).
-func quoteBody(from, bodyText string) string {
+func quoteBody(from, date, bodyText string) string {
 	var sb strings.Builder
 	if from != "" {
-		sb.WriteString("On a previous message, " + from + " wrote:\r\n")
+		if date != "" {
+			sb.WriteString("On " + date + ", " + from + " wrote:\r\n")
+		} else {
+			sb.WriteString("On a previous message, " + from + " wrote:\r\n")
+		}
 	}
 	for _, line := range strings.Split(bodyText, "\n") {
 		sb.WriteString("> " + strings.TrimRight(line, "\r") + "\r\n")
@@ -352,6 +473,32 @@ func composeMaxAttachMB() int {
 		return n
 	}
 	return 1
+}
+
+// mailSendErrText turns an outbound failure into something an operator can act
+// on. The engine reports the real reason — "dial tcp: lookup mx.example: no such
+// host" is diagnostic gold in a log and meaningless in a form field. Anything
+// unrecognised keeps a plain sentence; the raw error is never shown.
+func mailSendErrText(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "no such host"), strings.Contains(msg, "no such domain"):
+		return "Couldn’t find the recipient’s mail server — check the address after the @ for a typo."
+	case strings.Contains(msg, "connection refused"), strings.Contains(msg, "timeout"), strings.Contains(msg, "timed out"):
+		return "The recipient’s mail server didn’t answer in time — try again in a moment."
+	case strings.Contains(msg, "no recipients"):
+		return "Add at least one recipient."
+	case strings.Contains(msg, "quota"), strings.Contains(msg, "mailbox full"):
+		return "Your mailbox is full (storage quota reached). Delete some mail or ask an administrator to raise your quota."
+	case strings.Contains(msg, "relay"), strings.Contains(msg, "auth"):
+		return "The outgoing relay refused the message. Check the smarthost settings under VayuMail → DNS."
+	case strings.Contains(msg, "disabled"), strings.Contains(msg, "domain not set"):
+		return "Outbound mail is not configured yet — set a DOMAIN and check VayuMail → DNS."
+	}
+	return "Could not send the message — it has not been delivered. Try again, and check Deliverability under VayuMail → DNS if it keeps failing."
 }
 
 // insertSignature places a plain-text signature after the freshly-written reply
@@ -428,6 +575,10 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		// same body. Off by default: a young sending IP scores worse with HTML than
 		// with plain text, so this must be a deliberate choice, not a default.
 		RichHTML *bool `json:"richHTML"`
+		// DraftID is the draft this message was written from, when the composer is
+		// finishing a saved draft. The files stored with that draft are merged into
+		// this send (see below) so the sender never has to attach them again.
+		DraftID string `json:"draft_id"`
 	}
 	var attachments []vmail.Attachment
 	appendSig := true // default: append the sender's signature when one is set
@@ -448,6 +599,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		in.ReplyTo = r.FormValue("replyTo")
 		in.Subject = r.FormValue("subject")
 		in.Body = r.FormValue("body")
+		in.DraftID = r.FormValue("draft_id")
 		if r.FormValue("appendSig") == "0" {
 			appendSig = false
 		}
@@ -521,6 +673,29 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, 400, "validation_error", "at least one recipient is required", "")
 		return
 	}
+	// Finishing a saved draft: carry the files it stored onto this message, so the
+	// sender does not have to find and attach them a second time. Drafts are read
+	// through the same authority the reader uses, so this can only ever move the
+	// sender's OWN attachments forward.
+	if draftID := strings.TrimSpace(in.DraftID); draftID != "" {
+		if rd := a.mailReader(r, from); rd.Key() != "" {
+			if extra, derr := a.vayuMail.DraftAttachments(rd, draftID); derr == nil && len(extra) > 0 {
+				carried := int64(0)
+				for _, f := range attachments {
+					carried += int64(len(f.Data))
+				}
+				for _, f := range extra {
+					carried += int64(len(f.Data))
+					if carried > maxAttachBytes {
+						writeAPIError(w, r, 400, "attach-too-large",
+							"This draft's saved attachments push the message over the "+strconv.FormatInt(maxAttachMB, 10)+" MB limit.", "")
+						return
+					}
+				}
+				attachments = append(attachments, extra...)
+			}
+		}
+	}
 	// Sending files a copy into the sender's Sent folder, so refuse when the
 	// mailbox is already at/over its storage quota.
 	if a.vayuMail.MailboxOverQuota(from) {
@@ -569,7 +744,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		Encrypt:      encrypt,
 	})
 	if err != nil {
-		writeAPIError(w, r, 500, "send-failed", err.Error(), "")
+		writeAPIError(w, r, 500, "send-failed", mailSendErrText(err), "")
 		return
 	}
 	writeJSON(w, r, 200, map[string]interface{}{"queued": true, "id": id, "attachments": len(attachments)})
@@ -585,10 +760,34 @@ func (a *App) handleVayuOSDraft(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		From    string `json:"from"`
 		To      string `json:"to"`
+		Cc      string `json:"cc"`
+		Bcc     string `json:"bcc"`
 		Subject string `json:"subject"`
 		Body    string `json:"body"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
+	var attachments []vmail.Attachment
+	// Accept multipart/form-data when the composer has files to store, or JSON
+	// (the no-attachment path) exactly as before.
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		maxAttachBytes := int64(composeMaxAttachMB()) << 20
+		r.Body = http.MaxBytesReader(w, r.Body, maxAttachBytes+(1<<20))
+		if err := r.ParseMultipartForm(8 << 20); err != nil {
+			writeAPIError(w, r, 400, "attach-too-large", "The draft (with attachments) exceeds the size limit.", "")
+			return
+		}
+		in.From = r.FormValue("from")
+		in.To = r.FormValue("to")
+		in.Cc = r.FormValue("cc")
+		in.Bcc = r.FormValue("bcc")
+		in.Subject = r.FormValue("subject")
+		in.Body = r.FormValue("body")
+		atts, errMsg := readComposeAttachments(r, maxAttachBytes)
+		if errMsg != "" {
+			writeAPIError(w, r, 400, "attach-read", errMsg, "")
+			return
+		}
+		attachments = atts
+	} else if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
 		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
 		return
 	}
@@ -606,6 +805,10 @@ func (a *App) handleVayuOSDraft(w http.ResponseWriter, r *http.Request) {
 		from = ownEmail
 	}
 	to := parseRecipientList(in.To)
+	// Cc/Bcc are part of the draft, not just the eventual send: a draft that
+	// silently forgets them sends the finished message to the wrong people.
+	cc := parseRecipientList(in.Cc)
+	bcc := parseRecipientList(in.Bcc)
 	// Saving a draft files it into the Drafts folder, so refuse when full.
 	if a.vayuMail.MailboxOverQuota(from) {
 		writeAPIError(w, r, 400, "over-quota", "Your mailbox is full (storage quota reached). Delete some mail or ask an administrator to raise your quota.", "")
@@ -615,12 +818,46 @@ func (a *App) handleVayuOSDraft(w http.ResponseWriter, r *http.Request) {
 	if name := a.senderDisplayName(r.Context(), from); name != "" {
 		fromHeader = (&netmail.Address{Name: name, Address: from}).String()
 	}
-	id, err := a.vayuMail.SaveDraft(fromHeader, to, in.Subject, in.Body)
+	id, err := a.vayuMail.SaveDraftWithAttachments(fromHeader, to, cc, bcc, in.Subject, in.Body, attachments)
 	if err != nil {
-		writeAPIError(w, r, 500, "draft-failed", err.Error(), "")
+		// The text is still in the composer, so say that rather than implying
+		// work was lost.
+		writeAPIError(w, r, 500, "draft-failed", "Could not save the draft — your message is still in the editor, so nothing is lost.", "")
 		return
 	}
 	writeJSON(w, r, 200, map[string]string{"saved": "Drafts", "id": id})
+}
+
+// readComposeAttachments lifts the "attachments" files out of an already-parsed
+// multipart request, enforcing the total budget. Shared by send and draft so the
+// two can never disagree about what a message is allowed to carry.
+func readComposeAttachments(r *http.Request, maxBytes int64) ([]vmail.Attachment, string) {
+	if r.MultipartForm == nil {
+		return nil, ""
+	}
+	var out []vmail.Attachment
+	var total int64
+	for _, fhs := range r.MultipartForm.File["attachments"] {
+		total += fhs.Size
+		if total > maxBytes {
+			return nil, "Attachments exceed the total size limit."
+		}
+		f, ferr := fhs.Open()
+		if ferr != nil {
+			return nil, "Could not read an attachment."
+		}
+		data, rerr := io.ReadAll(io.LimitReader(f, maxBytes+1))
+		f.Close()
+		if rerr != nil {
+			return nil, "Could not read an attachment."
+		}
+		out = append(out, vmail.Attachment{
+			Filename:    fhs.Filename,
+			ContentType: fhs.Header.Get("Content-Type"),
+			Data:        data,
+		})
+	}
+	return out, ""
 }
 
 // senderDisplayName returns the friendly name to put in the From: header for a
@@ -909,6 +1146,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	// place, and the create / 2FA / set-password flows refresh it via htmx.ajax, so
 	// the page never does a full reload.
 	body.WriteString(`<div class="section-head"><span class="section-head__title">Mailboxes</span><span class="section-head__hint">Every email ID on this install</span></div>`)
+	body.WriteString(`<span id="vm-accounts-spin" class="htmx-indicator vm-spin" aria-hidden="true">working…</span>`)
 	body.WriteString(`<div id="vm-accounts-list">` + a.vayuAccountsList(r.Context()) + `</div>`)
 
 	// Devices — approval-gated sync credentials (ADR-0129): pending devices
@@ -961,8 +1199,9 @@ func (a *App) handleVayuOSFilterAction(w http.ResponseWriter, r *http.Request) {
 	default:
 		opErr = errors.New("unknown operation")
 	}
-	// Filters are driven from inside each mailbox's card, so refresh the list.
-	card := a.vayuAccountsList(r.Context())
+	// Filters are driven from the mailbox's own card (list) or its settings page;
+	// acctRefresh returns whichever surface the control lives on.
+	card := a.acctRefresh(r, email)
 	if opErr != nil {
 		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
 	}
@@ -1013,9 +1252,9 @@ func (a *App) handleVayuOSAutoreplyAction(w http.ResponseWriter, r *http.Request
 			dbpkg.AuditLog("vayumail.autoreply.set", dbpkg.AuditActor(r), email, onOff)
 		}
 	}
-	// The vacation control now lives inside each mailbox's card, so refresh the
-	// whole accounts list in place.
-	card := a.vayuAccountsList(r.Context())
+	// The vacation control lives on the mailbox's card (list) or its settings page;
+	// acctRefresh returns whichever surface the control lives on.
+	card := a.acctRefresh(r, email)
 	if opErr != nil {
 		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
 	}
@@ -1037,10 +1276,16 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 	accts := a.vayuMail.Accounts()
 	fallbackDomain := a.vayuMail.Config().Domain
 	var opErr error
+	// The mailbox this change belongs to. The settings page has to know which one
+	// to re-render, so each operation names its own: a forward names the mailbox,
+	// an alias-create names its target, and an alias-delete names only the alias —
+	// which is resolved below, before the row disappears.
+	mailbox := strings.TrimSpace(r.FormValue("email"))
 	switch r.FormValue("op") {
 	case "alias-create":
 		local := strings.ToLower(strings.TrimSpace(r.FormValue("local")))
 		target := r.FormValue("target")
+		mailbox = strings.TrimSpace(target)
 		// The alias lives on the target mailbox's own domain, so a secondary-domain
 		// mailbox gets secondary-domain aliases (VayuDomains).
 		aliasDomain := emailDomain(target, fallbackDomain)
@@ -1054,12 +1299,22 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "alias-delete":
-		opErr = accts.DeleteAlias(r.Context(), r.FormValue("alias"))
+		alias := r.FormValue("alias")
+		if aliases, lerr := accts.ListAliases(r.Context()); lerr == nil {
+			for _, al := range aliases {
+				if strings.EqualFold(al.Alias, alias) {
+					mailbox = strings.TrimSpace(al.Target)
+					break
+				}
+			}
+		}
+		opErr = accts.DeleteAlias(r.Context(), alias)
 		if opErr == nil {
-			dbpkg.AuditLog("vayumail.alias.delete", dbpkg.AuditActor(r), r.FormValue("alias"), "")
+			dbpkg.AuditLog("vayumail.alias.delete", dbpkg.AuditActor(r), alias, "")
 		}
 	case "forward-set":
 		fwd := strings.TrimSpace(r.FormValue("forward"))
+		mailbox = strings.TrimSpace(r.FormValue("email"))
 		if fwd != "" {
 			if _, perr := netmail.ParseAddress(fwd); perr != nil {
 				opErr = errors.New("invalid forward address")
@@ -1074,9 +1329,9 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 	default:
 		opErr = errors.New("unknown operation")
 	}
-	// Aliases, forwarding and vacation are all driven from inside each mailbox's
-	// card now, so every action refreshes the accounts list in place.
-	card := a.vayuAccountsList(r.Context())
+	// Aliases, forwarding and vacation are driven from the mailbox's card (list) or
+	// its settings page; acctRefresh returns whichever surface the control lives on.
+	card := a.acctRefresh(r, mailbox)
 	if opErr != nil {
 		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
 	}
@@ -2081,11 +2336,19 @@ func (a *App) handleVayuOSAppPasswordCreate(w http.ResponseWriter, r *http.Reque
 		}
 		dbpkg.AuditLog("vayumail.apppassword.create", dbpkg.AuditActor(r), email, label)
 		// One-time reveal: the grouped form is easier to read out / retype; the
-		// dashes are optional at sign-in (the auth path strips them).
+		// dashes are optional at sign-in (the auth path strips them). Copy and
+		// save affordances match the recovery-code sheet — retyping a 20-character
+		// secret onto a phone is where this used to go wrong.
+		grouped := groupAppPasswordSecret(secret)
+		esc := html.EscapeString
 		banner = `<div class="card" style="border-left:4px solid #22c55e"><div class="card-title">App password created — copy it now</div>` +
 			`<p class="text-sm">This password is <strong>shown only once</strong>. It is stored only as a hash and can never be displayed again — if it is lost, revoke it and create a new one.</p>` +
-			`<pre class="mono text-sm" style="white-space:pre-wrap;background:var(--bg-surface-2);padding:10px;border-radius:8px">` + html.EscapeString(groupAppPasswordSecret(secret)) + `</pre>` +
-			`<p class="muted text-xs">Sign in to <span class="mono">` + html.EscapeString(email) + `</span> (label: ` + html.EscapeString(label) + `) with this as the password — in the VayuMail app or any IMAP/SMTP client. The dashes are optional.</p></div>`
+			`<pre class="mono text-sm" style="white-space:pre-wrap;background:var(--bg-surface-2);padding:10px;border-radius:8px">` + esc(grouped) + `</pre>` +
+			`<div class="vm-row vm-row--tight">` +
+			`<button type="button" class="btn btn--sm" data-apppw-copy="` + esc(grouped) + `">Copy password</button>` +
+			`<button type="button" class="btn btn--sm btn--ghost" data-apppw-save="` + esc(grouped) + `" data-apppw-label="` + esc(label) + `" data-apppw-email="` + esc(email) + `">Download .txt</button>` +
+			`</div>` +
+			`<p class="muted text-xs">Sign in to <span class="mono">` + esc(email) + `</span> (label: ` + esc(label) + `) with this as the password — in the VayuMail app or any IMAP/SMTP client. The dashes are optional.</p></div>`
 	}
 	card := a.vayuAppPasswordsCard(r)
 	if opErr != nil {

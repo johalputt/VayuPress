@@ -14,6 +14,7 @@ package main
 // verification in place. It is administrator-only, like the rest of the tab.
 
 import (
+	"context"
 	"html"
 	"net/http"
 	"strings"
@@ -21,6 +22,146 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/vayuos/mail"
 )
+
+// dnsDomainHealth is one mail domain's live record verdicts.
+type dnsDomainHealth struct {
+	Domain string
+	Health *mail.DomainHealth
+}
+
+// dnsHealth is one render's worth of DNS verdicts: every mail domain's records
+// plus the host-level deliverability self-check.
+//
+// It is computed ONCE per render and handed to both the checklist and the
+// reference tables, so the two can never tell different stories — and so a page
+// costs one round of lookups rather than one per section.
+type dnsHealth struct {
+	Domains        []dnsDomainHealth
+	Deliverability []mail.RecordHealth
+	AllOK          bool
+}
+
+// vayuDNSHealth runs the live checks for the primary domain, every mail_enabled
+// secondary, and the mail host itself.
+func (a *App) vayuDNSHealth(ctx context.Context) dnsHealth {
+	h := dnsHealth{AllOK: true}
+	mc := a.vayuMail.Config()
+	domains := append([]string{mc.Domain}, a.mailSecondaryHosts(ctx)...)
+	for _, d := range domains {
+		hc := a.vayuMail.HealthForDomain(ctx, d)
+		if !hc.AllOK {
+			h.AllOK = false
+		}
+		h.Domains = append(h.Domains, dnsDomainHealth{Domain: d, Health: hc})
+	}
+	for _, rh := range a.vayuMail.Deliverability(ctx) {
+		if !rh.OK {
+			h.AllOK = false
+		}
+		h.Deliverability = append(h.Deliverability, rh)
+	}
+	return h
+}
+
+// vayuDNSWizard is the guided checklist that sits above the reference tables:
+// what is already right, what is missing, and — as one named line — the next
+// thing to do.
+//
+// It exists because this tab was an excellent reference and a poor guide: an
+// operator could read every record, publish all of them, and still have no way to
+// tell whether they were finished. The reference view stays exactly as it was
+// below this card.
+func vayuDNSWizard(h dnsHealth) string {
+	var b strings.Builder
+	b.WriteString(`<div class="card vm-wizard" id="vm-dns-wizard">`)
+	b.WriteString(`<div class="vm-wizard-head"><h2 class="vm-wizard-title">Domain health — are we done?</h2>`)
+	if h.AllOK {
+		b.WriteString(`<span class="badge badge--ok">all checks pass</span>`)
+	} else {
+		b.WriteString(`<span class="badge badge--warn">action needed</span>`)
+	}
+	b.WriteString(`</div>`)
+	if h.AllOK {
+		b.WriteString(`<p class="muted text-sm">Every mail domain is aligned and the mail-host checks pass. Nothing to do here.</p>`)
+	} else {
+		b.WriteString(`<p class="muted text-sm">Each line below is a live check. Work down the list; the first unfinished one is the thing to fix next.</p>`)
+	}
+	b.WriteString(`<div class="vm-wizard-groups">`)
+	for _, d := range h.Domains {
+		if d.Health != nil {
+			b.WriteString(vayuWizardGroup("Mail domain · "+d.Domain, d.Health.Records))
+		}
+	}
+	b.WriteString(vayuWizardGroup("Mail host · deliverability", h.Deliverability))
+	b.WriteString(`</div>`)
+	if fix, ok := firstDNSUnfinished(h); ok {
+		b.WriteString(`<p class="vm-wizard-next"><strong>Next:</strong> ` + html.EscapeString(fix) + `</p>`)
+	}
+	b.WriteString(`</div>`)
+	return b.String()
+}
+
+// vayuWizardGroup renders one titled group of checks.
+func vayuWizardGroup(title string, rows []mail.RecordHealth) string {
+	var b strings.Builder
+	b.WriteString(`<div class="vm-wizard-group"><div class="vm-wizard-group-title">` + html.EscapeString(title) + `</div><ul class="vm-wizard-list">`)
+	if len(rows) == 0 {
+		b.WriteString(`<li class="vm-wizard-item"><span class="vm-wizard-check">no checks reported</span></li>`)
+	}
+	for _, r := range rows {
+		cls, mark := "vm-wizard-item--ok", "✓"
+		detail := r.Found
+		if !r.OK {
+			cls, mark = "vm-wizard-item--todo", "•"
+			if strings.TrimSpace(r.Message) != "" {
+				detail = r.Message
+			}
+		}
+		if strings.TrimSpace(detail) == "" {
+			detail = "—"
+		}
+		b.WriteString(`<li class="vm-wizard-item ` + cls + `">` +
+			`<span class="vm-wizard-mark" aria-hidden="true">` + mark + `</span>` +
+			`<span class="vm-wizard-check">` + html.EscapeString(r.Type) + `</span>` +
+			`<span class="vm-wizard-detail">` + html.EscapeString(detail) + `</span></li>`)
+	}
+	b.WriteString(`</ul></div>`)
+	return b.String()
+}
+
+// firstDNSUnfinished names the single next thing to fix, so the card ends with an
+// instruction rather than a verdict.
+func firstDNSUnfinished(h dnsHealth) (string, bool) {
+	describe := func(what string, r mail.RecordHealth) string {
+		if msg := strings.TrimSpace(r.Message); msg != "" {
+			return what + " — " + msg
+		}
+		return what
+	}
+	for _, d := range h.Domains {
+		if d.Health == nil {
+			continue
+		}
+		for _, r := range d.Health.Records {
+			if !r.OK {
+				return describe(r.Type+" for "+d.Domain, r), true
+			}
+		}
+	}
+	for _, r := range h.Deliverability {
+		if !r.OK {
+			return describe(r.Type+" on the mail host", r), true
+		}
+	}
+	return "", false
+}
+
+// vayuDNSWizardOOB renders the checklist for an out-of-band swap, so pressing
+// "Re-check" refreshes the summary as well as the tables — a summary still showing
+// the previous verdict beside fresh results is worse than no summary at all.
+func vayuDNSWizardOOB(h dnsHealth) string {
+	return strings.Replace(vayuDNSWizard(h), `id="vm-dns-wizard"`, `id="vm-dns-wizard" hx-swap-oob="true"`, 1)
+}
 
 // vayuDNSCollapsible wraps a titled, collapsible section (a <details> card). meta
 // is optional trailing HTML (a badge) shown in the header; open controls the
@@ -130,30 +271,27 @@ func vayuDNSVerifyDomainTable(domain string, hc *mail.DomainHealth) string {
 // domains). It is the HTMX swap target (#vm-dns-verify) and carries its own
 // Re-check control, so a refresh re-runs every lookup without a full-page reload.
 func (a *App) vayuDNSVerifyFragment(r *http.Request) string {
-	ctx := r.Context()
-	mc := a.vayuMail.Config()
+	return vayuDNSVerifyFragmentWith(a.vayuDNSHealth(r.Context()))
+}
 
-	domains := append([]string{mc.Domain}, a.mailSecondaryHosts(ctx)...)
-	allOK := true
+// vayuDNSVerifyFragmentWith renders the reference tables from an already-computed
+// verdict set, so the page pays for one round of lookups and the checklist above
+// can never disagree with the tables below.
+func vayuDNSVerifyFragmentWith(h dnsHealth) string {
 	var tables strings.Builder
-	for _, d := range domains {
-		hc := a.vayuMail.HealthForDomain(ctx, d)
-		if !hc.AllOK {
-			allOK = false
+	for _, d := range h.Domains {
+		if d.Health != nil {
+			tables.WriteString(vayuDNSVerifyDomainTable(d.Domain, d.Health))
 		}
-		tables.WriteString(vayuDNSVerifyDomainTable(d, hc))
 	}
 
 	var deliv strings.Builder
-	for _, rh := range a.vayuMail.Deliverability(ctx) {
-		if !rh.OK {
-			allOK = false
-		}
+	for _, rh := range h.Deliverability {
 		deliv.WriteString(vayuDNSVerifyRow(rh.Type, rh.OK, rh.Message))
 	}
 
 	pill := `<span class="badge badge--ok">all aligned</span>`
-	if !allOK {
+	if !h.AllOK {
 		pill = `<span class="badge badge--warn">action needed</span>`
 	}
 
@@ -203,5 +341,6 @@ func (a *App) handleVayuOSMailDNSVerify(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
 		return
 	}
-	writeOSFragment(w, a.vayuDNSVerifyFragment(r))
+	h := a.vayuDNSHealth(r.Context())
+	writeOSFragment(w, vayuDNSVerifyFragmentWith(h)+vayuDNSWizardOOB(h))
 }

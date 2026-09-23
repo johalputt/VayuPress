@@ -148,6 +148,58 @@ func (e *Engine) Subscribe(user string) (queued []*Envelope, ch <-chan Event, ca
 	return queued, ch, cancel, nil
 }
 
+// SubscribeWeb opens a stream for a WEB console on the same identity as the app.
+// It differs from Subscribe in exactly one way: envelopes this console has
+// already displayed are not re-flushed, so a reconnect cannot resurrect a burned
+// message. Nothing is destroyed — the app's stream still gets its copy and is
+// still the one that read-destroys it.
+func (e *Engine) SubscribeWeb(user string) (queued []*Envelope, ch <-chan Event, cancel func(), err error) {
+	ch, cancel, err = e.hub.Subscribe(user)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	queued = e.store.QueuedExcludingWebRead(user)
+	return queued, ch, cancel, nil
+}
+
+// Online reports whether this identity currently holds at least one live stream.
+//
+// Presence is ADVISORY and deliberately one-sided: "online" is true only when a
+// stream exists, so it is safe to promise instant delivery. Absence is NOT a
+// claim that nobody is there — it just means no client is connected right now,
+// which is exactly what decides between live delivery and queueing for
+// store-mode messages. The UI must phrase it that way.
+func (e *Engine) Online(user string) bool {
+	if e == nil || user == "" {
+		return false
+	}
+	return e.hub.Online(user)
+}
+
+// PublishPeerKey fans a peerkey event to one identity's own streams (see
+// Hub.PublishPeerKey). Nil-safe, so callers need no guards.
+func (e *Engine) PublishPeerKey(user, peer string) {
+	if e == nil || user == "" || peer == "" {
+		return
+	}
+	e.hub.PublishPeerKey(user, peer)
+}
+
+// MarkWebReadAs is the ownership-checked web cursor: the envelope is marked as
+// displayed by a console only when the claimant IS its recipient. Unknown ids and
+// foreign envelopes both return false with no side effects (the same boundary as
+// AckAs — one peer must not be able to silence another's notification).
+func (e *Engine) MarkWebReadAs(id, claimant string) bool {
+	if e == nil || id == "" || claimant == "" {
+		return false
+	}
+	to, existed := e.store.RecipientOf(id)
+	if !existed || to != claimant {
+		return false
+	}
+	return e.store.MarkWebRead(id)
+}
+
 // Send routes an envelope per its mode. live: deliver only if the recipient is
 // online now, never queue. store: deliver live if online, else queue until read
 // or the unread cap. burnSeconds is the burn-after-read timer carried to the

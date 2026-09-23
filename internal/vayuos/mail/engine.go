@@ -64,7 +64,25 @@ type Engine struct {
 	// an atomic rather than a copy of cfg.QueueRetentionDays.
 	queueRetention atomic.Int64
 	done           chan struct{}
+	// usageCache memoises MailboxUsage for a few seconds. The accounts page asks
+	// for every mailbox's size on every render, and every inline card action
+	// re-renders the whole list; each answer walks every folder of that mailbox,
+	// so the page cost grew with (mailboxes × messages) for a number that only
+	// needs to be roughly current. The quota-enforcement path never reads this.
+	usageMu    sync.Mutex
+	usageCache map[string]usageEntry
 }
+
+// usageEntry is one cached mailbox size with the moment it was measured.
+type usageEntry struct {
+	bytes int64
+	at    time.Time
+}
+
+// usageTTL is how long a displayed mailbox size may be reused. Short enough that
+// a delivery shows up almost immediately, long enough to collapse the burst of
+// per-mailbox calls a single accounts render makes.
+const usageTTL = 30 * time.Second
 
 // UseTOTPCodec installs an at-rest codec for mailbox TOTP seeds (audit: they
 // were stored as plaintext base32). Applied immediately if the account store
@@ -205,8 +223,15 @@ func (e *Engine) MarkUnread(rd Reader, folder, id string) (string, error) {
 }
 
 // MailboxUsage returns the total bytes a mailbox occupies across all folders,
-// for quota display in the admin panel.
+// for quota display in the admin panel. The answer is cached for a few seconds
+// (see usageTTL) because display callers ask for every mailbox at once.
 func (e *Engine) MailboxUsage(email string) int64 {
+	return e.mailboxUsage(email, true)
+}
+
+// mailboxUsage measures a mailbox, optionally reusing a recent measurement.
+// Caching is opt-in per caller so the quota gate below can stay exact.
+func (e *Engine) mailboxUsage(email string, cached bool) int64 {
 	if e.maildir == nil {
 		return 0
 	}
@@ -217,7 +242,23 @@ func (e *Engine) MailboxUsage(email string) int64 {
 	if local == "" {
 		return 0
 	}
-	return e.maildir.AccountSize(domain, local)
+	key := strings.ToLower(local + "@" + domain)
+	if cached {
+		e.usageMu.Lock()
+		ent, ok := e.usageCache[key]
+		e.usageMu.Unlock()
+		if ok && time.Since(ent.at) < usageTTL {
+			return ent.bytes
+		}
+	}
+	n := e.maildir.AccountSize(domain, local)
+	e.usageMu.Lock()
+	if e.usageCache == nil {
+		e.usageCache = make(map[string]usageEntry)
+	}
+	e.usageCache[key] = usageEntry{bytes: n, at: time.Now()}
+	e.usageMu.Unlock()
+	return n
 }
 
 // MailboxQuota returns an account's storage limit in bytes (0 = unlimited).
@@ -236,7 +277,9 @@ func (e *Engine) MailboxOverQuota(email string) bool {
 	if q <= 0 {
 		return false
 	}
-	return e.MailboxUsage(email) >= q
+	// Always measured fresh: a cached size could let a send slip past a quota
+	// that has just been reached. Only the display path trades accuracy for speed.
+	return e.mailboxUsage(email, false) >= q
 }
 
 // SetPinned flags (or unflags) a message with the Maildir 'F' flag, surfaced in
@@ -254,14 +297,13 @@ func (e *Engine) SetPinned(rd Reader, folder, id string, pinned bool) (string, e
 
 // SaveDraft files a composed message into the sender's Drafts folder and
 // returns its id, so it can be reopened in the composer and finished later.
-func (e *Engine) SaveDraft(from string, to []string, subject, body string) (string, error) {
-	if e.maildir == nil {
-		return "", errors.New("vayumail: not started")
-	}
-	local, _ := splitAddress(from)
-	raw := "From: " + from + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + subject +
-		"\r\nDate: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n\r\n" + body + "\r\n"
-	return e.maildir.DeliverTo(e.senderDomain(from), local, "Drafts", []byte(raw))
+// Cc and Bcc are written as real headers: a draft that silently forgets them
+// would send the finished message to the wrong set of people.
+//
+// Attachments require MIME assembly, which lives in SaveDraftWithAttachments
+// (drafts.go); delegating keeps the no-attachment path byte-identical.
+func (e *Engine) SaveDraft(from string, to, cc, bcc []string, subject, body string) (string, error) {
+	return e.SaveDraftWithAttachments(from, to, cc, bcc, subject, body, nil)
 }
 
 // Deliverability runs the live spam-prevention self-checks (DKIM published-key

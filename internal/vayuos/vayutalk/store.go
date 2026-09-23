@@ -77,6 +77,13 @@ type Envelope struct {
 	ExpiresAt   time.Time // server holding deadline (unread cap); GC only
 	BurnSeconds int       // burn-after-read timer, delivered to clients
 	Mode        string    // "live" | "store"
+	// WebRead records that a web console displayed this envelope. It is a
+	// per-reader cursor, NOT a destruction: the phone app remains the
+	// authoritative reader that read-destroys the envelope, and its own stream
+	// must keep receiving its copy. Without this the console had to either steal
+	// the app's copy (by acking) or re-flush already-burned messages on every
+	// reconnect — which is what made "disappears when read" a lie.
+	WebRead bool
 }
 
 // ExpiredReceipt names an envelope that a purge removed and the sender that
@@ -186,6 +193,42 @@ func (s *Store) Queued(user string) []*Envelope {
 	out := make([]*Envelope, len(pending))
 	copy(out, pending)
 	return out
+}
+
+// QueuedExcludingWebRead is Queued for a WEB reader: it omits envelopes this
+// reader has already displayed, so a console reconnect does not resurrect a
+// message the user just watched burn. The envelopes stay in the store, so the
+// app's own stream still receives its copy and still read-destroys on reveal.
+func (s *Store) QueuedExcludingWebRead(user string) []*Envelope {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	pending := s.byUser[user]
+	if len(pending) == 0 {
+		return nil
+	}
+	out := make([]*Envelope, 0, len(pending))
+	for _, env := range pending {
+		if env.WebRead {
+			continue
+		}
+		out = append(out, env)
+	}
+	return out
+}
+
+// MarkWebRead records that a web console displayed the envelope, returning
+// whether it existed. Idempotent, and deliberately not an ack: it never removes
+// anything. When the envelope is later read-destroyed (by the app, or by the
+// purge at its expiry) the mark goes with it.
+func (s *Store) MarkWebRead(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	env, ok := s.byID[id]
+	if !ok {
+		return false
+	}
+	env.WebRead = true
+	return true
 }
 
 // Delete removes an envelope by id (read-destruction). It returns the sender
