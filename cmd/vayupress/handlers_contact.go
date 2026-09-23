@@ -23,6 +23,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/sitedoc"
 )
 
 // contactLimiter caps each client IP to 5 contact submissions per minute — ample
@@ -87,11 +88,14 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 	// region/city (from trusted proxy headers, when present) at submit time and
 	// store only those; the IP above is used purely in-process for rate limiting.
 	geo := geoFromHeaders(r)
+	// Which site the form is on. Without it, a form on a hosted client's site
+	// landed in the operator's inbox with nothing to say whose it was.
+	scope, _ := a.siteScope(r)
 	persisted := false
 	if dbpkg.DB != nil {
 		if _, err := dbpkg.WDB.ExecContext(r.Context(),
-			`INSERT INTO contact_messages(id,name,email,message,page,country,region,city,is_read,created_at) VALUES(?,?,?,?,?,?,?,?,0,?)`,
-			newUUID(), name, from, message, firstNonEmptyContact(body.Page, contactPageRef(r)), geo.Country, geo.Region, geo.City, time.Now().UTC()); err != nil {
+			`INSERT INTO contact_messages(id,name,email,message,page,country,region,city,is_read,created_at,domain_id) VALUES(?,?,?,?,?,?,?,?,0,?,?)`,
+			newUUID(), name, from, message, firstNonEmptyContact(body.Page, contactPageRef(r)), geo.Country, geo.Region, geo.City, time.Now().UTC(), scope); err != nil {
 			logging.LogError("contact", "persist failed", err.Error())
 		} else {
 			persisted = true
@@ -100,10 +104,7 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 
 	// The operator's contact address + an enabled mailer are needed only to EMAIL
 	// the submission, not to accept it.
-	recipient := ""
-	if a.siteSettings != nil {
-		recipient = strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyContactEmail))
-	}
+	recipient, siteName := a.contactRecipient(r, scope)
 	mailReady := recipient != "" && a.mailer != nil && a.mailer.Enabled()
 
 	// If the message could be neither stored nor emailed it would simply be lost,
@@ -140,12 +141,6 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 		// Auto-reply to the visitor (best-effort; never fails their request).
 		// Enabled by default — only an explicit "off" suppresses it.
 		if a.siteSettings == nil || a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyContactAutoReply) != "off" {
-			siteName := r.Host
-			if a.siteSettings != nil {
-				if n := strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeySiteName)); n != "" {
-					siteName = n
-				}
-			}
 			// Per-page custom confirmation, if the page's marker carries one
 			// ([[contact-form: …]]); otherwise the default line. The page content is
 			// the single source of truth, re-parsed here at submit time.
@@ -179,6 +174,37 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 		Msg: "contact message " + outcome, RequestID: getRequestID(r),
 	})
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// contactRecipient is where a site's contact messages are emailed, and the
+// name its auto-reply signs with. A hosted site's go to the address its own
+// contact section publishes, under its own name; the primary's, or a hosted
+// site that publishes none, to the operator's configured contact address.
+func (a *App) contactRecipient(r *http.Request, scope string) (recipient, siteName string) {
+	siteName = r.Host
+	if a.siteSettings != nil {
+		recipient = strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyContactEmail))
+		if n := strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeySiteName)); n != "" {
+			siteName = n
+		}
+	}
+	if scope == "" {
+		return recipient, siteName
+	}
+	_, _, doc := a.siteDocument(r)
+	if n := strings.TrimSpace(doc.Name); n != "" {
+		siteName = n
+	} else {
+		siteName = r.Host
+	}
+	for _, p := range doc.Pages {
+		for _, s := range p.Sections {
+			if s.Kind == sitedoc.KindContact && s.Email != "" {
+				return s.Email, siteName
+			}
+		}
+	}
+	return recipient, siteName
 }
 
 // clientIPForContact returns the client IP used to key the public rate limiters

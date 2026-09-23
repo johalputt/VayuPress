@@ -10,6 +10,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **A template website is a document: pages of sections, drafted, published
+  and kept in history (ADR-0161).** `internal/sitedoc` models a site as pages
+  of typed sections (header, text, offerings, gallery, contact) under one
+  validator that names the field it refuses, and renders them in every
+  existing design's markup. Every page now carries a title, description,
+  canonical address, Open Graph and Twitter cards, LocalBusiness structured
+  data and the site icon; gallery pictures require alt text. Pages beyond the
+  home page are served at `/<slug>`; a slug the router or a post already owns
+  is refused at publish, asked of the real route table. Drafts, publishing,
+  and restore of any of the last 50 revisions are available at
+  `/os/api/site-doc` and `/os/d/{id}/api/site-doc`, with a preview the console
+  alone can frame. A site nobody has edited renders from its existing content,
+  held by a test to the same visible text and links as before for every
+  design — except that links and image sources the validator would refuse
+  (`javascript:`, `data:`) are no longer drawn, and the nav no longer links
+  sections that are not there.
+- **A hosted site's contact messages are its own.** Messages record the site
+  they came from (migration 095), the inbox labels them and links their page
+  on that site, and a hosted site's form is emailed to the address its contact
+  section publishes and signed with its name — no longer the operator's.
 - **A hand-built website has no fixed size limit, and can be downloaded.**
   The 50 MiB / 25 MiB-a-file / 3000-file caps and the 60 MiB upload are gone;
   a bundle may use the disk's free space less a reserve kept for the database

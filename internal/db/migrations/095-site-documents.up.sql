@@ -1,0 +1,5 @@
+-- Migration 095 (up): a template website as a document (ADR-0161). site_drafts holds the one unpublished draft per site; site_revisions keeps every publish, so the public page reads the newest row by index and restoring is publishing an older one again. domain_id is '' for the primary and a domain id otherwise, as on articles. contact_messages gains the site a message was sent from, so a hosted client's form stops landing unlabelled in the operator's inbox. NOTE: runMigrations executes line-by-line, so keep each statement on ONE line.
+CREATE TABLE IF NOT EXISTS site_drafts(domain_id TEXT PRIMARY KEY, doc TEXT NOT NULL, author TEXT NOT NULL DEFAULT '', updated_at DATETIME NOT NULL);
+CREATE TABLE IF NOT EXISTS site_revisions(id INTEGER PRIMARY KEY AUTOINCREMENT, domain_id TEXT NOT NULL DEFAULT '', doc TEXT NOT NULL, author TEXT NOT NULL DEFAULT '', published_at DATETIME NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_site_revisions_domain ON site_revisions(domain_id, id DESC);
+ALTER TABLE contact_messages ADD COLUMN domain_id TEXT NOT NULL DEFAULT '';

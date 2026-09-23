@@ -497,6 +497,12 @@ func (a *App) handleNotFound(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet && a.serveCustomIfActive(w, r, r.URL.Path) {
 		return
 	}
+	// A template website's other pages (/menu, /about) live here for the same
+	// reason: posts and reserved routes are matched first, and the editor
+	// refuses a page slug that one of them already owns.
+	if r.Method == http.MethodGet && a.serveSitePageIfActive(w, r) {
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
 	fmt.Fprint(w, render.Render404(config.Cfg.Domain, Version))

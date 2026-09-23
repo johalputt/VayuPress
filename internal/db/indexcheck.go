@@ -49,6 +49,7 @@ var hotQueries = []hotQuery{
 	{"tag-index-counts", `SELECT tag, COUNT(1) FROM article_tags GROUP BY tag`, nil},
 	{"contact-messages-list", `SELECT id,name,email,message,page,is_read,created_at FROM contact_messages ORDER BY created_at DESC LIMIT 500`, nil},
 	{"contact-unread-count", `SELECT COUNT(1) FROM contact_messages WHERE is_read=0`, nil},
+	{"site-published-doc", `SELECT doc FROM site_revisions WHERE domain_id=? ORDER BY id DESC LIMIT 1`, []any{""}},
 	{"comments-by-article", `SELECT id,article_id,status,created_at FROM comments WHERE article_id=? AND status='approved' ORDER BY created_at`, []any{"x"}},
 }
 

@@ -36,54 +36,11 @@ func TestCatalogue(t *testing.T) {
 	}
 }
 
-// TestRenderEscapes proves operator strings cannot break out of the HTML.
-func TestRenderEscapes(t *testing.T) {
-	tpl := All()[0]
-	c := Content{
-		Name:     `Evil<script>alert(1)</script>`,
-		Tagline:  `"><img src=x onerror=1>`,
-		About:    "<b>bold</b>",
-		Services: []Service{{Title: `<svg onload=1>`, Price: `<i>`}},
-		Gallery:  []string{`https://x/y.jpg" onerror="1`},
-		ShowBlog: true,
-	}
-	out := Render(tpl, c, "https://blog.example.com")
-	// Raw markup from operator input must never survive; only escaped text may.
-	for _, bad := range []string{"<script>alert", "<img src=x", "<svg onload", "<b>bold</b>", `.jpg" onerror`} {
-		if strings.Contains(out, bad) {
-			t.Errorf("unescaped operator input reached output: %q", bad)
-		}
-	}
-	if !strings.Contains(out, "https://blog.example.com") {
-		t.Error("blog link missing")
-	}
-}
-
-// TestRenderSections proves every content section renders when populated.
-func TestRenderSections(t *testing.T) {
+// TestCSSScopesToItsTemplate: each stylesheet styles only its own design.
+func TestCSSScopesToItsTemplate(t *testing.T) {
 	for _, tpl := range All() {
-		out := Render(tpl, tpl.Defaults, "/")
-		for _, want := range []string{"vb-nav", "vb-hero", "vb-service", "vb-contact", "vb-footer", "vb--" + tpl.Key} {
-			if !strings.Contains(out, want) {
-				t.Errorf("%s: rendered page missing %q", tpl.Key, want)
-			}
-		}
 		if css := CSS(tpl); !strings.Contains(css, "vb--"+tpl.Key) {
 			t.Errorf("%s: CSS does not scope to its template class", tpl.Key)
-		}
-	}
-}
-
-// TestStylesheetIsCacheBustedByTemplate proves the /site.css link is versioned
-// by the active template key, so switching designs busts the cached stylesheet
-// and the new look applies immediately (regression guard for the design-switch
-// bug where a cached /site.css kept the previous design).
-func TestStylesheetIsCacheBustedByTemplate(t *testing.T) {
-	for _, tpl := range All() {
-		out := Render(tpl, tpl.Defaults, "/")
-		want := `href="/site.css?v=` + tpl.Key + `"`
-		if !strings.Contains(out, want) {
-			t.Errorf("%s: stylesheet link not cache-busted by template key (want %q)", tpl.Key, want)
 		}
 	}
 }

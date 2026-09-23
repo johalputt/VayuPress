@@ -117,19 +117,10 @@ func bizBlogURL(mode string) string {
 	return "/"
 }
 
-// handleBizSite renders the business website page (also mounted at /site as an
-// always-available preview).
+// handleBizSite renders the business website's home page (also mounted at
+// /site as an always-available preview). See site_documents.go.
 func (a *App) handleBizSite(w http.ResponseWriter, r *http.Request) {
-	mode, tpl, content := a.bizSettings(r)
-	// Live preview: the VayuOS "Preview" button passes ?preview=<design> so an
-	// operator can see a design they have SELECTED but not yet saved. Unknown
-	// keys are ignored (fall back to the saved/active design).
-	if pv, ok := previewTemplate(r); ok {
-		tpl = pv
-	}
-	page := bizsite.Render(tpl, content, bizBlogURL(mode))
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = io.WriteString(w, page)
+	a.renderSitePage(w, r, "")
 }
 
 // previewTemplate returns a known design named by the request's ?preview= (or

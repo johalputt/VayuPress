@@ -912,7 +912,10 @@ func CommentsJSLink() template.HTML {
 // contact address over the built-in VayuMail SMTP sender.
 const ContactJS = `(function(){` +
 	`var root=document.getElementById('vayu-contact');if(!root)return;` +
-	`var h=document.createElement('h2');h.className='vayu-contact-heading';h.textContent='Contact us';root.appendChild(h);` +
+	// data-heading replaces the heading, and an empty one omits it: a site's
+	// contact section already has its own.
+	`var ht=root.getAttribute('data-heading');if(ht===null)ht='Contact us';` +
+	`if(ht){var h=document.createElement('h2');h.className='vayu-contact-heading';h.textContent=ht;root.appendChild(h);}` +
 	`var form=document.createElement('form');form.className='vayu-contact-form';form.setAttribute('novalidate','');` +
 	`function field(ph,type,req){var i=document.createElement(type==='textarea'?'textarea':'input');if(type!=='textarea')i.type=type;i.placeholder=ph;if(req)i.required=true;i.className='vayu-contact-input';return i;}` +
 	`var nameI=field('Your name','text',true);` +

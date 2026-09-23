@@ -13,6 +13,7 @@ package main
 // <script> carries the per-request nonce, every dynamic string is escaped.
 
 import (
+	"context"
 	"encoding/csv"
 	"html"
 	htmpl "html/template"
@@ -25,6 +26,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/seo"
 )
 
 func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +48,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 
 	type msgRow struct {
 		ID, Name, Email, Message, Page string
-		Country, City                  string
+		Country, City, DomainID        string
 		Read                           bool
 		Created                        time.Time
 	}
@@ -78,12 +80,12 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 			clause = " WHERE " + strings.Join(where, " AND ")
 		}
 		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
-			`SELECT id,name,email,message,page,country,city,is_read,created_at FROM contact_messages`+clause+` ORDER BY created_at DESC LIMIT 500`, args...); err == nil {
+			`SELECT id,name,email,message,page,country,city,is_read,created_at,domain_id FROM contact_messages`+clause+` ORDER BY created_at DESC LIMIT 500`, args...); err == nil {
 			defer rows.Close() //nolint:errcheck
 			for rows.Next() {
 				var m msgRow
 				var read int
-				if rows.Scan(&m.ID, &m.Name, &m.Email, &m.Message, &m.Page, &m.Country, &m.City, &read, &m.Created) == nil {
+				if rows.Scan(&m.ID, &m.Name, &m.Email, &m.Message, &m.Page, &m.Country, &m.City, &read, &m.Created, &m.DomainID) == nil {
 					m.Read = read != 0
 					msgs = append(msgs, m)
 				}
@@ -149,15 +151,28 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
   <div class="empty-sub">No messages match your search or filter. <a href="/os/messages">Clear filters</a>.</div></div>`
 	} else {
 		rows := ""
+		hosts := a.domainHosts(r.Context())
 		for _, m := range msgs {
 			rowCls := "row-title"
 			pill := ""
 			if !m.Read {
 				pill = `<span class="status-pill status-pill--draft">● New</span> `
 			}
+			// A message from a hosted site says which one, and its page link
+			// opens on that site rather than on the console's own host.
 			pageCell := ""
+			host := hosts[m.DomainID]
 			if m.Page != "" {
-				pageCell = `<a href="` + html.EscapeString(m.Page) + `" target="_blank" rel="noopener">` + html.EscapeString(m.Page) + `</a>`
+				href := m.Page
+				if host != "" && strings.HasPrefix(href, "/") {
+					href = seo.Origin(host) + href
+				}
+				pageCell = `<a href="` + html.EscapeString(href) + `" target="_blank" rel="noopener">` + html.EscapeString(m.Page) + `</a>`
+			}
+			if host != "" {
+				pageCell += `<div class="row-meta">` + html.EscapeString(host) + `</div>`
+			} else if m.DomainID != "" {
+				pageCell += `<div class="row-meta">a removed site</div>`
 			}
 			readBtn := ""
 			if !m.Read {
@@ -409,4 +424,21 @@ func (a *App) handleOSMessagesExportCSV(w http.ResponseWriter, r *http.Request) 
 		_ = cw.Write([]string{created.UTC().Format(time.RFC3339), name, eml, page, country, region, city, readStr, msg})
 	}
 	_ = rows.Err()
+}
+
+// domainHosts maps each hosted domain's id to its host, for labelling
+// messages by the site they were sent from.
+func (a *App) domainHosts(ctx context.Context) map[string]string {
+	hosts := map[string]string{}
+	if a.domains == nil {
+		return hosts
+	}
+	if list, err := a.domains.List(ctx); err == nil {
+		for _, d := range list {
+			if !d.IsPrimary {
+				hosts[d.ID] = d.Host
+			}
+		}
+	}
+	return hosts
 }

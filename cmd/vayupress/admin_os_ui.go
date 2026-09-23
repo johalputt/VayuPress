@@ -244,6 +244,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle/uploads/{upload}", a.handleBundleUploadChunk(scopedBundleSite))
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle/uploads/{upload}/deploy", a.handleBundleUploadDeploy(scopedBundleSite))
 			dr.Get("/api/website/bundle/download", a.handleBundleDownload(scopedBundleSite))
+			// The site as a document (ADR-0161): draft, publish, history.
+			a.registerSiteDocRoutes(dr, auth.CSRFTokenMiddleware, "/api/site-doc", scopedSiteDocTarget)
 			dr.Get("/api/website/preview", a.handleOSScopedWebsitePreview)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle/rollback", a.handleOSScopedBundleRollback)
 			// THEME STUDIO IS NO LONGER MOUNTED PER SITE, and the comment that
@@ -299,6 +301,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-bundle/uploads/{upload}", a.handleBundleUploadChunk(primaryBundleSite(a)))
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-bundle/uploads/{upload}/deploy", a.handleBundleUploadDeploy(primaryBundleSite(a)))
 		pr.Get("/os/api/website/custom-bundle/download", a.handleBundleDownload(primaryBundleSite(a)))
+		a.registerSiteDocRoutes(pr, auth.CSRFTokenMiddleware, "/os/api/site-doc", primarySiteDocTarget)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-rollback", a.handleOSWebsiteCustomRollback)
 		pr.Get("/os/api/website/custom-guide", a.handleOSWebsiteCustomGuide)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/pages/quick-create", a.handleOSQuickCreatePage)

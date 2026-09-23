@@ -8,13 +8,12 @@ package bizsite
 // design personality (layout + typography + accent styling) selected and edited
 // entirely from VayuOS — no code, no terminal.
 //
-// Rendering is CSP-strict: no inline styles or scripts; the stylesheet is
-// served same-origin at /site.css (base CSS + the active template's CSS).
-// Every operator string is HTML-escaped at this render barrier.
+// The page itself is drawn by internal/sitedoc from a site document; this
+// package keeps the designs (catalogue, stylesheets, sample content) and the
+// legacy flat content model that sitedoc.FromLegacy reads.
 
 import (
 	"encoding/json"
-	"html"
 	"strings"
 )
 
@@ -63,138 +62,6 @@ func EffectiveContent(t Template, raw string) Content {
 		return t.Defaults
 	}
 	return c
-}
-
-// esc is a short alias for the HTML-escape barrier.
-func esc(s string) string { return html.EscapeString(s) }
-
-// paragraphs renders newline-separated text as <p> blocks.
-func paragraphs(s string) string {
-	var b strings.Builder
-	for _, p := range strings.Split(s, "\n") {
-		if t := strings.TrimSpace(p); t != "" {
-			b.WriteString("<p>" + esc(t) + "</p>")
-		}
-	}
-	return b.String()
-}
-
-// Render returns the complete business-site HTML page. blogURL ("" hides the
-// blog link) and nonce feed the shared chrome; the template only shapes CSS.
-func Render(t Template, c Content, blogURL string) string {
-	name := strings.TrimSpace(c.Name)
-	if name == "" {
-		name = "Your Business"
-	}
-	servHead := strings.TrimSpace(c.SectionA)
-	if servHead == "" {
-		servHead = t.ServicesLabel
-	}
-
-	var b strings.Builder
-	b.WriteString(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">`)
-	b.WriteString(`<meta name="viewport" content="width=device-width, initial-scale=1">`)
-	b.WriteString(`<title>` + esc(name) + ` — ` + esc(c.Tagline) + `</title>`)
-	b.WriteString(`<meta name="description" content="` + esc(c.Tagline) + `">`)
-	// Version the stylesheet URL by the active template key so switching designs
-	// busts the browser/CDN cache immediately — /site.css is cacheable but its
-	// contents change with the template, and without this a design change would
-	// keep serving the previous design's CSS until the cache expired.
-	b.WriteString(`<link rel="stylesheet" href="/site.css?v=` + esc(t.Key) + `">`)
-	b.WriteString(`</head><body class="vb vb--` + esc(t.Key) + `">`)
-
-	// Nav
-	b.WriteString(`<nav class="vb-nav"><a class="vb-brand" href="/">` + esc(name) + `</a><div class="vb-nav-links">`)
-	b.WriteString(`<a href="#about">About</a><a href="#services">` + esc(servHead) + `</a>`)
-	if len(c.Gallery) > 0 {
-		b.WriteString(`<a href="#gallery">Gallery</a>`)
-	}
-	b.WriteString(`<a href="#contact">Contact</a>`)
-	if c.ShowBlog && blogURL != "" {
-		b.WriteString(`<a href="` + esc(blogURL) + `">Blog</a>`)
-	}
-	b.WriteString(`</div></nav>`)
-
-	// Hero
-	b.WriteString(`<header class="vb-hero">`)
-	if strings.TrimSpace(c.HeroImg) != "" {
-		b.WriteString(`<img class="vb-hero-img" src="` + esc(c.HeroImg) + `" alt="" loading="lazy">`)
-	}
-	b.WriteString(`<div class="vb-hero-inner"><span class="vb-eyebrow">` + esc(t.Eyebrow) + `</span>`)
-	b.WriteString(`<h1>` + esc(name) + `</h1>`)
-	if c.Tagline != "" {
-		b.WriteString(`<p class="vb-tagline">` + esc(c.Tagline) + `</p>`)
-	}
-	if c.CTA != "" {
-		link := strings.TrimSpace(c.CTALink)
-		if link == "" {
-			link = "#contact"
-		}
-		b.WriteString(`<a class="vb-cta" href="` + esc(link) + `">` + esc(c.CTA) + `</a>`)
-	}
-	b.WriteString(`</div></header><main class="vb-main">`)
-
-	// About
-	if strings.TrimSpace(c.About) != "" {
-		b.WriteString(`<section class="vb-section" id="about"><h2>About</h2>` + paragraphs(c.About) + `</section>`)
-	}
-
-	// Services / menu / programmes
-	if len(c.Services) > 0 {
-		b.WriteString(`<section class="vb-section" id="services"><h2>` + esc(servHead) + `</h2><div class="vb-services">`)
-		for _, s := range c.Services {
-			if strings.TrimSpace(s.Title) == "" {
-				continue
-			}
-			b.WriteString(`<div class="vb-service"><div class="vb-service-head"><h3>` + esc(s.Title) + `</h3>`)
-			if s.Price != "" {
-				b.WriteString(`<span class="vb-price">` + esc(s.Price) + `</span>`)
-			}
-			b.WriteString(`</div>`)
-			if s.Desc != "" {
-				b.WriteString(`<p>` + esc(s.Desc) + `</p>`)
-			}
-			b.WriteString(`</div>`)
-		}
-		b.WriteString(`</div></section>`)
-	}
-
-	// Gallery
-	if len(c.Gallery) > 0 {
-		b.WriteString(`<section class="vb-section" id="gallery"><h2>Gallery</h2><div class="vb-gallery">`)
-		for _, g := range c.Gallery {
-			if strings.TrimSpace(g) == "" {
-				continue
-			}
-			b.WriteString(`<img src="` + esc(g) + `" alt="" loading="lazy">`)
-		}
-		b.WriteString(`</div></section>`)
-	}
-
-	// Contact
-	b.WriteString(`<section class="vb-section vb-contact" id="contact"><h2>Contact</h2><div class="vb-contact-grid">`)
-	if c.Phone != "" {
-		b.WriteString(`<div><span class="vb-label">Phone</span><a href="tel:` + esc(strings.ReplaceAll(c.Phone, " ", "")) + `">` + esc(c.Phone) + `</a></div>`)
-	}
-	if c.Email != "" {
-		b.WriteString(`<div><span class="vb-label">Email</span><a href="mailto:` + esc(c.Email) + `">` + esc(c.Email) + `</a></div>`)
-	}
-	if c.Address != "" {
-		b.WriteString(`<div><span class="vb-label">Address</span><span>` + esc(c.Address) + `</span></div>`)
-	}
-	if c.Hours != "" {
-		b.WriteString(`<div><span class="vb-label">Hours</span><span class="vb-hours">` + esc(c.Hours) + `</span></div>`)
-	}
-	b.WriteString(`</div></section></main>`)
-
-	// Footer
-	b.WriteString(`<footer class="vb-footer"><span>` + esc(name) + `</span>`)
-	if c.ShowBlog && blogURL != "" {
-		b.WriteString(`<a href="` + esc(blogURL) + `">Blog</a>`)
-	}
-	b.WriteString(`<span class="vb-powered">Powered by VayuPress</span></footer>`)
-	b.WriteString(`</body></html>`)
-	return b.String()
 }
 
 // CSS returns the full stylesheet for a template: shared base + personality.
