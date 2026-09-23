@@ -6,6 +6,86 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.71] — 2026-09-23
+
+VayuMail and VayuTalk, reworked from the August UX audit
+(`docs/UX-AUDIT-2026-08-VAYUMAIL-VAYUTALK.md`), then reviewed on Linux and in
+Chromium against a built binary before release. The review's own fixes are
+listed under Fixed; the audit's appendix records both.
+
+### Added
+
+- **Mail reads like a mail client.** A folder view windowed at 200 rows with
+  "Load older", backed by a parsed-header cache in the Maildir (validated by
+  size and modification time, so a rewritten file is never served stale).
+  Conversations are grouped by In-Reply-To and References first and by subject
+  only as a fallback, so a reply joins its thread when the subject changes and
+  two unrelated "Invoice" mails no longer merge. A real empty inbox, an undo
+  window on Send, and search that says when it stopped at its limit.
+- **HTML mail, with remote images off by default.** Mail renders as plain text
+  unless you choose HTML; HTML renders with every remote image source removed —
+  `img`, `srcset`, backgrounds, CSS `url()`, `@import`, video posters and the
+  rest — until you choose to load them, because loading one tells the sender
+  the message was opened.
+- **Drafts keep everything.** Cc, Bcc and attachments are stored with the
+  draft, and Send carries the attachments over from it.
+- **A page per mailbox.** Forwarding, vacation, aliases, recovery, handover,
+  PGP, filters and the picture now live at
+  `/os/vayumail/accounts/settings?user=…`, instead of seven collapsing panels
+  inside one list card.
+- **Domain health checklist** above the DNS tables: what is right, what is
+  missing, and the one thing to fix next, from the same checks as the tables.
+- **VayuTalk:** a recipient picker, a phone layout that switches between the
+  list and the thread, a warning when a contact's safety number changes, and
+  `/os/talk?t=<address>` links that pre-fill a new chat.
+
+### Changed
+
+- **One dialog and one toast across the console.** No console script calls the
+  browser's `alert`, `confirm` or `prompt` any more, and `hx-confirm` prompts —
+  deleting mail, deleting a mailbox, the shield's release buttons — now use the
+  console's own dialog as well. `tests/e2e/console.spec.js` checks one in
+  Chromium.
+- **Send errors in plain words.** "dial tcp: lookup … no such host" becomes
+  "Couldn't find the recipient's mail server — check the address after the @".
+- **The console's theme follows you to the sign-in page**, and a theme change
+  that could not be saved now says so instead of reverting on the next page.
+- `docs/ADMIN-UI.md` now documents the `/os` console that ships, not the retired
+  `/admin/v2`.
+
+### Fixed
+
+- **A message that burned in VayuTalk came back on reload** whenever you were
+  chatting as a mailbox other than your default — which is every administrator.
+  The read mark was checked against the wrong identity and refused every time.
+- **Compose and Reply from a mailbox sent as `postmaster@`.** An administrator
+  answering mail in alice's mailbox now answers as alice.
+- **The list keyboard shortcuts (j, k, x, Enter, n) threw an error on every
+  keypress, on every console page.** They now work, and `n` opens the editor
+  only from a post list rather than from Mail or Talk.
+- **Leaving during the Send countdown could lose a message with an
+  attachment** in Firefox and Safari. The browser now asks before leaving.
+- **A colleague's full mailbox was reported as your own** ("Your mailbox is
+  full"). The error now names the recipient.
+- **Deleting a mailbox from the accounts list left its mail on disk** for the
+  next holder of the address. The list now uses the same delete as the API,
+  which moves the mail out of the delivery tree first.
+- **A bulk action that half-applied looked like it had worked.** It now reports
+  how many messages failed.
+- **A refused contact save cleared the form and said nothing.** It now explains
+  and keeps what was typed.
+- A mailbox listing could show a message with no sender or subject until the
+  file changed, after one failed read.
+
+### Security
+
+- **VayuTalk in the Tor world:** marking a message read deleted it by id alone.
+  It now checks that the reader is the recipient.
+- The per-mailbox settings page is administrator-only, and a test now proves
+  it for an editor who holds a mailbox of their own.
+
+---
+
 ## [3.17.70] — 2026-09-23
 
 Shipped on its own under the hotfix exception: the console's own script was
