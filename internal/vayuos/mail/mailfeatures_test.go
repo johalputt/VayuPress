@@ -109,7 +109,8 @@ func mustFirstID(t *testing.T, e *Engine, user, folder string) string {
 func TestSaveDraftFilesToDraftsFolder(t *testing.T) {
 	t.Parallel()
 	e := newLoopbackEngine(t, nil)
-	id, err := e.SaveDraft(`"Alice" <alice@example.com>`, []string{"bob@example.com"}, "Draft subject", "draft body")
+	id, err := e.SaveDraft(`"Alice" <alice@example.com>`, []string{"bob@example.com"},
+		[]string{"carol@example.com"}, []string{"dave@example.com"}, "Draft subject", "draft body")
 	if err != nil || id == "" {
 		t.Fatalf("save draft: id=%q err=%v", id, err)
 	}
@@ -123,6 +124,14 @@ func TestSaveDraftFilesToDraftsFolder(t *testing.T) {
 	raw, err := e.ReadFolderMessage(ReadAsSystem("alice", "test"), "Drafts", drafts[0].ID)
 	if err != nil || !strings.Contains(string(raw), "draft body") {
 		t.Errorf("draft body missing: %q (err %v)", raw, err)
+	}
+	// Cc/Bcc must survive into the stored draft: reopening a draft that dropped
+	// them would send the finished message to the wrong set of people.
+	if !strings.Contains(string(raw), "Cc: carol@example.com") {
+		t.Errorf("draft lost its Cc header:\n%s", raw)
+	}
+	if !strings.Contains(string(raw), "Bcc: dave@example.com") {
+		t.Errorf("draft lost its Bcc header:\n%s", raw)
 	}
 }
 

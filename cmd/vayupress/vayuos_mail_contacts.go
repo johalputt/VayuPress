@@ -11,9 +11,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"html"
 	"net/http"
 	"strings"
+
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
 // contactOwner resolves the mailbox that owns (and is scoped to) the contacts in
@@ -48,6 +51,14 @@ func (a *App) contactOwner(r *http.Request, userParam string) (string, bool) {
 // hx-swap="outerHTML". userKey is threaded through so an admin acting on another
 // mailbox stays scoped to it.
 func (a *App) vayuContactsPanel(ctx context.Context, owner, userKey string) string {
+	return a.vayuContactsPanelWith(ctx, owner, userKey, "", "", "")
+}
+
+// vayuContactsPanelWith is the panel plus an optional failure notice and the
+// values the operator typed. A rejected save used to re-render the panel
+// unchanged — their entry gone, nothing said — which reads as "the button is
+// broken" rather than "that address is not valid".
+func (a *App) vayuContactsPanelWith(ctx context.Context, owner, userKey, errMsg, typedEmail, typedName string) string {
 	esc := html.EscapeString
 	contacts, _ := a.vayuMail.Accounts().ListContacts(ctx, owner)
 	avSet := a.mailboxAvatarSet()
@@ -57,11 +68,14 @@ func (a *App) vayuContactsPanel(ctx context.Context, owner, userKey string) stri
 	b.WriteString(`<div class="vm-contacts-head"><h2 class="vm-contacts-title">Contacts</h2>` +
 		`<span class="muted text-sm">` + itoaSafe(len(contacts)) + ` saved · ` + esc(owner) + `</span></div>`)
 	b.WriteString(`<p class="muted text-sm vm-contacts-sub">Private to this mailbox. These power the recipient suggestions when you compose from here.</p>`)
+	if errMsg != "" {
+		b.WriteString(`<p class="vm-contacts-err" role="alert">⚠ ` + esc(errMsg) + `</p>`)
+	}
 
 	b.WriteString(`<form class="vm-contacts-add" hx-post="/os/vayumail/contacts/add" hx-target="#vm-contacts-panel" hx-swap="outerHTML">`)
 	b.WriteString(`<input type="hidden" name="user" value="` + esc(userKey) + `">`)
-	b.WriteString(`<input class="input input--sm" type="email" name="email" placeholder="name@example.com" required aria-label="Contact email">`)
-	b.WriteString(`<input class="input input--sm" type="text" name="name" placeholder="Name (optional)" aria-label="Contact name">`)
+	b.WriteString(`<input class="input input--sm" type="email" name="email" placeholder="name@example.com" required aria-label="Contact email" value="` + esc(typedEmail) + `">`)
+	b.WriteString(`<input class="input input--sm" type="text" name="name" placeholder="Name (optional)" aria-label="Contact name" value="` + esc(typedName) + `">`)
 	b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Save contact</button>`)
 	b.WriteString(`</form>`)
 
@@ -111,10 +125,23 @@ func (a *App) handleVayuOSContactAdd(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "no authorized mailbox", "")
 		return
 	}
-	// Best-effort save; a bad address just re-renders the panel unchanged so the
-	// operator sees their entry did not take rather than a hard error page.
-	_ = a.vayuMail.Accounts().AddContact(r.Context(), owner, r.FormValue("email"), r.FormValue("name"))
+	email, name := r.FormValue("email"), r.FormValue("name")
+	if err := a.vayuMail.Accounts().AddContact(r.Context(), owner, email, name); err != nil {
+		// Say what was wrong AND keep what they typed. The old silent re-render
+		// was indistinguishable from a dead button.
+		writeOSFragment(w, a.vayuContactsPanelWith(r.Context(), owner, userKey, contactErrText(err), email, name))
+		return
+	}
 	writeOSFragment(w, a.vayuContactsPanel(r.Context(), owner, userKey))
+}
+
+// contactErrText turns a failed address-book write into something a person can
+// act on; the store's own wording ("vayumail: invalid contact …") is for logs.
+func contactErrText(err error) string {
+	if errors.Is(err, vmail.ErrBadContact) {
+		return "That does not look like a valid email address — check it and try again."
+	}
+	return "Could not save that contact — please try again."
 }
 
 // handleVayuOSContactDelete removes a contact and returns the refreshed panel.
@@ -126,7 +153,11 @@ func (a *App) handleVayuOSContactDelete(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "no authorized mailbox", "")
 		return
 	}
-	_ = a.vayuMail.Accounts().DeleteContact(r.Context(), owner, r.FormValue("email"))
+	if err := a.vayuMail.Accounts().DeleteContact(r.Context(), owner, r.FormValue("email")); err != nil {
+		writeOSFragment(w, a.vayuContactsPanelWith(r.Context(), owner, userKey,
+			"Could not remove that contact — please try again.", "", ""))
+		return
+	}
 	writeOSFragment(w, a.vayuContactsPanel(r.Context(), owner, userKey))
 }
 

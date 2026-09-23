@@ -14,8 +14,10 @@ import (
 	"time"
 )
 
-// errBadContact is returned when a save is missing an owner or a usable address.
-var errBadContact = errors.New("vayumail: invalid contact (owner and a valid email are required)")
+// ErrBadContact is returned when a save is missing an owner or a usable address.
+// Exported so the console can tell the operator what was wrong with their entry
+// (and keep it on screen) instead of re-rendering the panel unchanged.
+var ErrBadContact = errors.New("vayumail: invalid contact (owner and a valid email are required)")
 
 // Contact is one saved address in a mailbox's private address book.
 type Contact struct {
@@ -37,7 +39,7 @@ func (s *AccountStore) AddContact(ctx context.Context, owner, email, name string
 		name = name[:200]
 	}
 	if owner == "" || email == "" || !strings.Contains(email, "@") {
-		return errBadContact
+		return ErrBadContact
 	}
 	// A mailbox saving itself as a contact is pointless noise — skip it silently.
 	if owner == email {

@@ -169,6 +169,48 @@
       bodyEl.setSelectionRange(pos, pos);
     }
 
+    // openLinkModal asks for a URL in the console's own dialog and hands it back
+    // through the callback (empty string when cancelled). The formatting toolbar
+    // used window.prompt, which is unstyled, blocks the whole tab, and ignores the
+    // console's Escape/focus conventions — the same reason the "set password"
+    // prompt was replaced.
+    function openLinkModal(done) {
+      var back = el('div', 'modal-backdrop');
+      var panel = el('div', 'modal-panel');
+      var head = el('div', 'modal-header');
+      head.appendChild(el('div', 'modal-title', 'Insert link'));
+      var x = el('button', 'modal-close', '×'); x.type = 'button';
+      head.appendChild(x);
+      var body = el('div', 'modal-body');
+      var f = el('div', 'field');
+      var l = el('label', 'field-label', 'Web address'); l.setAttribute('for', 'mb-link-url');
+      var i = document.createElement('input');
+      i.id = 'mb-link-url'; i.className = 'input'; i.type = 'url';
+      i.placeholder = 'https://'; i.value = 'https://';
+      f.appendChild(l); f.appendChild(i); body.appendChild(f);
+      body.appendChild(el('p', 'field-hint', 'The link is written into the message text so it reads the same in every mail client.'));
+      var foot = el('div', 'modal-footer');
+      var cancel = el('button', 'btn btn--ghost btn--sm', 'Cancel'); cancel.type = 'button';
+      var ok = el('button', 'btn btn--primary btn--sm', 'Insert'); ok.type = 'button';
+      foot.appendChild(cancel); foot.appendChild(ok);
+      panel.appendChild(head); panel.appendChild(body); panel.appendChild(foot);
+      back.appendChild(panel); document.body.appendChild(back);
+      i.focus(); i.select();
+      function close() {
+        document.removeEventListener('keydown', onKey);
+        if (back.parentNode) back.parentNode.removeChild(back);
+        if (bodyEl && bodyEl.focus) bodyEl.focus();
+      }
+      function onKey(ev) { if (ev.key === 'Escape') { ev.preventDefault(); close(); done(''); } }
+      document.addEventListener('keydown', onKey);
+      x.addEventListener('click', function () { close(); done(''); });
+      cancel.addEventListener('click', function () { close(); done(''); });
+      back.addEventListener('click', function (ev) { if (ev.target === back) { close(); done(''); } });
+      function submit() { var u = (i.value || '').trim(); close(); done(u); }
+      ok.addEventListener('click', submit);
+      i.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } });
+    }
+
     function applyFormat(kind) {
       if (!bodyEl) { return; }
       bodyEl.focus();
@@ -189,9 +231,13 @@
         case 'link': {
           var a = bodyEl.selectionStart, b = bodyEl.selectionEnd;
           var label = bodyEl.value.slice(a, b) || 'link text';
-          var url = window.prompt('Link URL', 'https://');
-          if (!url) { return; }
-          bodyEl.value = bodyEl.value.slice(0, a) + label + ' <' + url + '>' + bodyEl.value.slice(b);
+          // A real dialog rather than window.prompt: the prompt is unstyled, blocks
+          // the tab, and cannot be reached by the console's keyboard handling.
+          openLinkModal(function (url) {
+            if (!url) { return; }
+            bodyEl.value = bodyEl.value.slice(0, a) + label + ' <' + url + '>' + bodyEl.value.slice(b);
+            updateCount();
+          });
           break;
         }
         case 'rule': insertBlock('\n---\n\n'); break;
@@ -304,7 +350,13 @@
       input.addEventListener('blur', function () {
         if (input.value.trim()) { addFromText(input.value); input.value = ''; render(); sync(); }
       });
-      if (hidden.value.trim()) { addFromText(hidden.value); render(); sync(); } // prefill (reply/forward)
+      if (hidden.value.trim()) {
+        addFromText(hidden.value); render(); sync(); // prefill (reply/forward/draft)
+        // A prefilled Cc/Bcc means the draft HAS those recipients, so reveal the
+        // field instead of leaving them hidden behind the Cc/Bcc toggle.
+        var fieldWrap = compose.querySelector('[data-c-' + field + '-field]');
+        if (fieldWrap) fieldWrap.hidden = false;
+      }
     }
     setupChips('to'); setupChips('cc'); setupChips('bcc');
 
@@ -324,6 +376,10 @@
     function renderFiles() {
       if (!tray) return;
       tray.textContent = '';
+      // Say where the files go: they are stored with the draft, not autosaved.
+      if (composeFiles.length > 0 && cStatus && !cStatus.textContent) {
+        cStatus.textContent = 'Files are stored when you press “Save as draft”.';
+      }
       composeFiles.forEach(function (f, i) {
         var chip = document.createElement('span');
         chip.className = 'vm-attach-chip';
@@ -434,6 +490,10 @@
         replyTo: val(compose, '[data-c-reply]'),
         subject: val(compose, '[data-c-subject]'),
         body: val(compose, '[data-c-body]'),
+        // Present only when this composer was opened from a saved draft. The send
+        // path uses it to merge the files that draft is holding, so reopening a
+        // draft and pressing Send does not ship a message without its attachments.
+        draft_id: val(compose, '[data-c-draft-id]'),
       };
     };
 
@@ -442,36 +502,76 @@
     var draftId = '';
     var lastSavedSig = '';
     var autosaveTimer = null;
-    function saveDraft(silent) {
+    function saveDraft(silent, done) {
       var f = composeFields();
-      if (!f.to && !f.subject && !f.body) return;
-      var sig = f.to + '|' + f.subject + '|' + f.body;
+      if (!f.to && !f.subject && !f.body) { if (done) done(false, true); return; }
+      // The signature includes the file count, so attaching a file is itself a
+      // reason to save.
+      var sig = f.to + '|' + f.subject + '|' + f.body + '|' + composeFiles.length;
       if (silent && sig === lastSavedSig) return;
       lastSavedSig = sig;
       if (!silent && cStatus) cStatus.textContent = 'Saving draft…';
       var prev = draftId, user = localPart(f.from);
-      postJSON('/os/vayumail/draft', f).then(function (res) {
+      // With files attached the draft goes up as multipart so the FILES are stored
+      // too. A draft that silently dropped them lost work the sender could see on
+      // screen but not get back.
+      var req;
+      if (composeFiles.length > 0) {
+        var fd = new FormData();
+        Object.keys(f).forEach(function (k) { fd.append(k, f[k] || ''); });
+        composeFiles.forEach(function (file) { fd.append('attachments', file); });
+        req = fetch('/os/vayumail/draft', {
+          method: 'POST',
+          headers: { 'X-CSRF-Token': cookie('vp_csrf') },
+          body: fd,
+        }).then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (b) { return { ok: r.ok, status: r.status, body: b }; });
+        });
+      } else {
+        req = postJSON('/os/vayumail/draft', f);
+      }
+      req.then(function (res) {
         if (res.ok) {
           draftId = (res.body && res.body.id) || '';
           if (prev && user && prev !== draftId) {
             postJSON('/os/vayumail/message/action', { user: user, folder: 'Drafts', id: prev, delete: true });
           }
           if (cStatus) cStatus.textContent = silent ? 'Draft saved' : 'Saved to Drafts ✓';
-        } else if (!silent && cStatus) {
-          cStatus.textContent = 'Draft failed: ' + errText(res);
+          if (done) done(true);
+        } else {
+          if (!silent && cStatus) cStatus.textContent = 'Draft failed: ' + errText(res);
+          if (done) done(false);
         }
       });
     }
     function stopAutosave() { if (autosaveTimer) { clearInterval(autosaveTimer); autosaveTimer = null; } }
-    autosaveTimer = setInterval(function () { saveDraft(true); }, 20000);
+    // Autosave deliberately skips while files are attached: it would re-upload
+    // them on every text change. "Save as draft" still stores them, and the
+    // composer says so when a file is added.
+    function armAutosave() {
+      stopAutosave();
+      autosaveTimer = setInterval(function () { if (composeFiles.length === 0) saveDraft(true); }, 20000);
+    }
+    armAutosave();
 
     var draftBtn = compose.querySelector('[data-c-draft]');
     if (draftBtn) {
       draftBtn.addEventListener('click', function () {
         stopAutosave();
-        saveDraft(false);
+        draftBtn.disabled = true;
         var f = composeFields();
-        setTimeout(function () { window.location.href = '/os/vayumail/inbox?user=' + encodeURIComponent(localPart(f.from)) + '&folder=Drafts'; }, 700);
+        var draftsURL = '/os/vayumail/inbox?user=' + encodeURIComponent(localPart(f.from)) + '&folder=Drafts';
+        // Navigate only once the draft is actually stored. The old fixed 700ms
+        // timer left the operator staring at an empty Drafts folder whenever the
+        // save was slow or failed.
+        saveDraft(false, function (ok, nothing) {
+          draftBtn.disabled = false;
+          if (ok || nothing) {
+            window.location.href = draftsURL;
+          } else if (cStatus) {
+            cStatus.textContent = 'Could not save the draft — staying here so nothing is lost.';
+          }
+        });
       });
     }
 
@@ -542,7 +642,7 @@
       if (undoBar) undoBar.setAttribute('hidden', '');
       if (sendBtn) sendBtn.disabled = false;
       if (cStatus) cStatus.textContent = 'Cancelled — back to your draft.';
-      if (!autosaveTimer) autosaveTimer = setInterval(function () { saveDraft(true); }, 20000);
+      if (!autosaveTimer) armAutosave();
     }
     if (undoBtn) undoBtn.addEventListener('click', cancelHold);
 
@@ -576,8 +676,13 @@
   // Enterprise feedback: a non-blocking toast (from the admin shell) instead of
   // a blocking alert() dialog. Falls back to alert() only if the shell toast is
   // somehow unavailable.
-  function acctToast(msg, isErr) {
-    if (window.vpToast) { window.vpToast(msg, isErr ? 'error' : 'success'); }
+  //
+  // The second argument is either true/false (error/ok) or an explicit kind
+  // string, because vpToast only styles ok/error/info/warn — the 'success' kind
+  // this used to pass matched no CSS rule, so those toasts rendered unstyled.
+  function acctToast(msg, kindOrErr) {
+    var kind = typeof kindOrErr === 'string' ? kindOrErr : (kindOrErr ? 'error' : 'ok');
+    if (window.vpToast) { window.vpToast(msg, kind); }
     else { window.alert(msg); }
   }
   // A state change (create / 2FA / password) refreshes the collapsible account
@@ -678,6 +783,81 @@
     });
   }
 
+  // openMailboxPasswordModal replaces the old window.prompt for "Set password".
+  // A prompt showed the password in cleartext with no confirmation and no way to
+  // check what was typed; this is masked, confirmed, and closes on Escape with
+  // focus handed back to the button that opened it.
+  function openMailboxPasswordModal(email, trigger) {
+    var back = el('div', 'modal-backdrop');
+    var panel = el('div', 'modal-panel');
+    var head = el('div', 'modal-header');
+    head.appendChild(el('div', 'modal-title', 'Set password · ' + email));
+    var x = el('button', 'modal-close', '×'); x.type = 'button';
+    head.appendChild(x);
+
+    var body = el('div', 'modal-body');
+    body.appendChild(el('p', 'text-sm muted',
+      'Choose a new password for this mailbox (at least 8 characters). Mail apps already signed in with the old password stop working until they use the new one.'));
+
+    function pwField(label, id) {
+      var f = el('div', 'field');
+      var l = el('label', 'field-label', label); l.setAttribute('for', id);
+      var i = document.createElement('input');
+      i.id = id; i.className = 'input'; i.type = 'password';
+      i.setAttribute('autocomplete', 'new-password');
+      f.appendChild(l); f.appendChild(i);
+      return { field: f, input: i };
+    }
+    var p1 = pwField('New password', 'mb-pass-new');
+    var p2 = pwField('Confirm password', 'mb-pass-confirm');
+    body.appendChild(p1.field); body.appendChild(p2.field);
+
+    var showWrap = el('label', 'vm-filter-check');
+    var show = document.createElement('input'); show.type = 'checkbox';
+    showWrap.appendChild(show);
+    showWrap.appendChild(el('span', null, 'Show passwords'));
+    body.appendChild(showWrap);
+    show.addEventListener('change', function () {
+      var t = show.checked ? 'text' : 'password';
+      p1.input.type = t; p2.input.type = t;
+    });
+
+    var foot = el('div', 'modal-footer');
+    var cancel = el('button', 'btn btn--ghost btn--sm', 'Cancel'); cancel.type = 'button';
+    var save = el('button', 'btn btn--primary btn--sm', 'Update password'); save.type = 'button';
+    foot.appendChild(cancel); foot.appendChild(save);
+    panel.appendChild(head); panel.appendChild(body); panel.appendChild(foot);
+    back.appendChild(panel); document.body.appendChild(back);
+    p1.input.focus();
+
+    function close() {
+      document.removeEventListener('keydown', onKey);
+      if (back.parentNode) back.parentNode.removeChild(back);
+      if (trigger && typeof trigger.focus === 'function') { try { trigger.focus(); } catch (e) {} }
+    }
+    function onKey(ev) { if (ev.key === 'Escape') { ev.preventDefault(); close(); } }
+    document.addEventListener('keydown', onKey);
+    x.addEventListener('click', close);
+    cancel.addEventListener('click', close);
+    back.addEventListener('click', function (ev) { if (ev.target === back) close(); });
+
+    function submit() {
+      var v1 = p1.input.value, v2 = p2.input.value;
+      if (v1.length < 8) { acctToast('Password must be at least 8 characters.', true); p1.input.focus(); return; }
+      if (v1 !== v2) { acctToast('The two passwords do not match.', true); p2.input.focus(); return; }
+      save.disabled = true;
+      postJSON('/os/vayumail/accounts/update', { email: email, pass: v1 }).then(function (res) {
+        save.disabled = false;
+        if (res.ok) { close(); acctToast('Password updated for ' + email); acctReload(); }
+        else { acctToast('Update failed: ' + errText(res), true); }
+      });
+    }
+    save.addEventListener('click', submit);
+    [p1.input, p2.input].forEach(function (i) {
+      i.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } });
+    });
+  }
+
   // Inline mailbox actions (enable/disable, role, quota, retention, delete) are
   // now HTMX: each posts /os/vayumail/accounts/action and the server swaps the
   // #vm-accounts-list fragment in place — no per-element JS, no page reload.
@@ -690,13 +870,7 @@
 
     var pw = e.target.closest('[data-acct-pass]');
     if (pw) {
-      var pemail = pw.getAttribute('data-acct-pass');
-      var pass = window.prompt('New password for ' + pemail + ' (min 8 characters):');
-      if (pass === null) return;
-      if (pass.length < 8) { acctToast('Password must be at least 8 characters.', true); return; }
-      postJSON('/os/vayumail/accounts/update', { email: pemail, pass: pass }).then(function (res) {
-        acctToast(res.ok ? 'Password updated for ' + pemail : 'Update failed: ' + errText(res), !res.ok);
-      });
+      openMailboxPasswordModal(pw.getAttribute('data-acct-pass'), pw);
       return;
     }
 
@@ -713,10 +887,17 @@
     var dis = e.target.closest('[data-acct-2fa-disable]');
     if (dis) {
       var demail = dis.getAttribute('data-acct-2fa-disable');
-      if (!window.confirm('Turn OFF two-factor authentication for ' + demail + '?')) return;
-      postJSON('/os/vayumail/accounts/totp', { email: demail, action: 'disable' }).then(function (res) {
-        if (res.ok) { acctToast('Two-factor disabled for ' + demail); acctReload(); }
-        else acctToast('Update failed: ' + errText(res), true);
+      // The house modal, not window.confirm: it can say what turning 2FA off
+      // actually costs, and it keeps the rest of the console's look.
+      vpConfirm({
+        title: 'Turn off two-factor authentication',
+        message: 'Turn OFF two-factor authentication for ' + demail + '? After this, the password alone is enough to sign in to this mailbox.',
+        confirm: 'Turn off'
+      }, function () {
+        postJSON('/os/vayumail/accounts/totp', { email: demail, action: 'disable' }).then(function (res) {
+          if (res.ok) { acctToast('Two-factor disabled for ' + demail); acctReload(); }
+          else acctToast('Update failed: ' + errText(res), true);
+        });
       });
       return;
     }
@@ -796,11 +977,16 @@
     var del = actions.querySelector('[data-mail-delete]');
     if (del) {
       del.addEventListener('click', function () {
-        if (!window.confirm('Permanently delete this message?')) return;
-        del.disabled = true;
-        postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, delete: true }).then(function (res) {
-          if (res.ok) { acctToast('Deleted'); advance(); }
-          else { del.disabled = false; acctToast('Delete failed: ' + errText(res), true); }
+        vpConfirm({
+          title: 'Delete this message',
+          message: 'Permanently delete this message? This cannot be undone.',
+          confirm: 'Delete'
+        }, function () {
+          del.disabled = true;
+          postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, delete: true }).then(function (res) {
+            if (res.ok) { acctToast('Deleted'); advance(); }
+            else { del.disabled = false; acctToast('Delete failed: ' + errText(res), true); }
+          });
         });
       });
     }
@@ -844,6 +1030,54 @@
     });
     sync();
   })();
+
+  // A bulk action that only partly applied must not read as success. The server
+  // counts per-message failures and fires this event (via HX-Trigger); the shell
+  // shows one toast. Before this, every per-message error was swallowed
+  // (`_ = apply(id)`), so a half-done batch looked exactly like a clean one.
+  document.body.addEventListener('vm-inbox-result', function (e) {
+    var d = (e && e.detail) || {};
+    if (!d.failed) return;
+    var done = d.done || 0;
+    acctToast(done + ' applied, ' + d.failed + ' failed — those messages may already have been moved or deleted.', 'warn');
+  });
+
+  // One-time app-password reveal: copy and save. The value is already on screen,
+  // so this only saves retyping a 20-character secret onto another device — and
+  // it reports a failed clipboard write honestly (plain-http Tor consoles have no
+  // navigator.clipboard at all).
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    var cp = e.target.closest('[data-apppw-copy]');
+    if (cp) {
+      var v = cp.getAttribute('data-apppw-copy') || '';
+      var was = cp.textContent;
+      var done = function () { cp.textContent = 'Copied'; setTimeout(function () { cp.textContent = was; }, 1400); };
+      var fail = function () { cp.textContent = 'Copy failed — select it manually'; setTimeout(function () { cp.textContent = was; }, 2600); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(v).then(done, function () { fail(); });
+      } else { fail(); }
+      return;
+    }
+    var sv = e.target.closest('[data-apppw-save]');
+    if (sv) {
+      var text = 'VayuMail app password\r\n' +
+        'Mailbox:  ' + (sv.getAttribute('data-apppw-email') || '') + '\r\n' +
+        'Label:    ' + (sv.getAttribute('data-apppw-label') || '') + '\r\n' +
+        'Password: ' + (sv.getAttribute('data-apppw-save') || '') + '\r\n\r\n' +
+        'The dashes are optional when signing in.\r\n' +
+        'This password is shown only once — store it somewhere safe and revoke it if it leaks.\r\n';
+      var blob = new Blob([text], { type: 'text/plain' });
+      var link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'vayumail-app-password.txt';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(function () { URL.revokeObjectURL(link.href); }, 4000);
+      return;
+    }
+  });
 
   // ── Message raw-source toggle ────────────────────────────────────────────────
   var rawBtn = document.querySelector('[data-mail-raw-toggle]');
@@ -949,7 +1183,17 @@
       if (e.key === 'Escape' && helpOpen()) { toggleHelp(); return; }
       if (typing()) return;
       if (e.key === '?') { e.preventDefault(); toggleHelp(); return; }
-      if (e.key === 'c') { window.location.href = '/os/vayumail/compose'; return; }
+      if (e.key === 'c') {
+        // Keep the mailbox context: an admin reading someone's mailbox must not
+        // silently start composing as postmaster instead.
+        var mu = window.location.search.match(/[?&]user=([^&]*)/);
+        var who = '';
+        if (mu && mu[1]) {
+          try { who = encodeURIComponent(decodeURIComponent(mu[1])); } catch (err) { who = encodeURIComponent(mu[1]); }
+        }
+        window.location.href = '/os/vayumail/compose' + (who ? '?user=' + who : '');
+        return;
+      }
       if (e.key === '/') {
         var s = document.querySelector('input[type="search"][name="q"]');
         if (s) { e.preventDefault(); s.focus(); } else { window.location.href = '/os/vayumail/search'; }

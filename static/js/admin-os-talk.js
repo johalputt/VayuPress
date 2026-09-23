@@ -75,7 +75,15 @@
     var d = iso ? new Date(iso) : new Date();
     if (isNaN(d.getTime())) return '';
     var h = d.getHours(), m = d.getMinutes();
-    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+    var hm = (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+    // A bare HH:MM is ambiguous next to the server's 24h unread hold, so anything
+    // not from today carries its date.
+    var now = new Date();
+    if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) {
+      return hm;
+    }
+    var mm = d.getMonth() + 1, dd = d.getDate();
+    return (dd < 10 ? '0' : '') + dd + '/' + (mm < 10 ? '0' : '') + mm + ' ' + hm;
   }
   function elem(tag, cls, text) {
     var n = document.createElement(tag);
@@ -129,6 +137,7 @@
     if (lookingHere) return;
     unreadTotal++;
     document.title = '(' + unreadTotal + ') ' + baseTitle;
+    announce('New message from ' + displayName(peer));
     if (notifyReady && document.hidden && ('Notification' in window)) {
       try {
         var n = new Notification(displayName(peer), { body: 'New message', tag: 'vtalk:' + peer });
@@ -209,7 +218,17 @@
     item.appendChild(meta);
     item.appendChild(pin);
     item.appendChild(dot);
+    // A conversation row is the primary navigation of this page, so it has to be
+    // operable without a mouse: a real button role, a tab stop, and Enter/Space.
+    item.setAttribute('role', 'button');
+    item.tabIndex = 0;
     item.addEventListener('click', function () { activate(peer); });
+    item.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        activate(peer);
+      }
+    });
     els.convos.appendChild(item);
 
     var c = { peer: peer, messages: [], unread: 0, item: item, dot: dot, nameEl: nameEl, av: av, pin: pin };
@@ -222,11 +241,18 @@
     var c = getConvo(peer);
     if (!c) return;
     active = peer;
+    // Phone layout: opening a conversation switches to the thread view. The CSS
+    // only honours this under the mobile breakpoint, so desktop is unaffected.
+    root.setAttribute('data-view', 'thread');
     c.unread = 0;
     c.dot.hidden = true;
     c.dot.textContent = '';
     Object.keys(convos).forEach(function (k) {
-      convos[k].item.classList.toggle('vtalk-convo--active', k === peer);
+      var on = k === peer;
+      convos[k].item.classList.toggle('vtalk-convo--active', on);
+      // The keyboard user needs the selection announced, not just shaded.
+      if (on) convos[k].item.setAttribute('aria-current', 'true');
+      else convos[k].item.removeAttribute('aria-current');
     });
     els.main.removeAttribute('data-empty');
     buildHeader(peer);
@@ -243,9 +269,30 @@
     els.head.textContent = '';
     var name = displayName(peer);
     var av = avatarEl(peer, name);
+    // Back to the list. Only visible in the mobile thread view (see the CSS);
+    // on desktop both panes are on screen, so it stays hidden.
+    var back = elem('button', 'vtalk-head-btn vtalk-back');
+    back.type = 'button';
+    back.textContent = '← Chats';
+    back.setAttribute('aria-label', 'Back to conversations');
+    back.addEventListener('click', function () { root.setAttribute('data-view', 'list'); });
+    els.head.appendChild(back);
     var hmeta = elem('div', 'vtalk-head-meta');
     hmeta.appendChild(elem('strong', null, name));
     hmeta.appendChild(elem('span', 'text-sm muted', 'End-to-end encrypted · disappears when read'));
+    // Presence: a separate, honest line. See paintPresence for why the "offline"
+    // wording is about a connection, not about the person.
+    var presence = elem('span', 'vtalk-presence');
+    presence.id = 'vtalk-presence';
+    paintPresence(peer);
+    hmeta.appendChild(presence);
+    // Messages that arrived but could not be read: the sender is known (routing
+    // metadata), the content is not. Saying so beats a silent gap.
+    var convo = convos[peer];
+    if (convo && convo.undecryptable) {
+      hmeta.appendChild(elem('span', 'vtalk-undec',
+        '⚠ ' + convo.undecryptable + ' message' + (convo.undecryptable === 1 ? '' : 's') + ' couldn’t be decrypted'));
+    }
 
     var actions = elem('div', 'vtalk-head-actions');
 
@@ -271,6 +318,10 @@
     var vbtn = elem('button', 'vtalk-verify-btn');
     vbtn.type = 'button';
     setVerifyBtn(vbtn, peer);
+    // The shield opens a panel: assistive tech needs to know that, and whether
+    // it is currently open.
+    vbtn.setAttribute('aria-expanded', 'false');
+    vbtn.setAttribute('aria-controls', 'vtalk-verify');
     vbtn.addEventListener('click', function () { toggleVerify(peer); });
 
     actions.appendChild(rbtn);
@@ -289,15 +340,42 @@
   }
 
   // Rename / Keep mutate the contact store, persist, then refresh the row + header.
+  // Rename edits in place: window.prompt is an unstyled browser blob that blocks
+  // the tab and ignores the console's own look and keyboard idioms.
   function renameContact(peer) {
     peer = norm(peer);
-    var next = window.prompt('Name for this contact (leave blank to use the default)', displayName(peer));
-    if (next == null) return; // cancelled
-    var e = contactEntry(peer, true);
-    e.name = next.trim();
-    if (!e.name && !e.kept) delete contacts[peer];
-    saveContacts();
-    refreshContactUI(peer);
+    var open = document.getElementById('vtalk-rename');
+    if (open) { open.parentNode.removeChild(open); return; } // second click closes
+    var row = elem('div', 'vtalk-rename');
+    row.id = 'vtalk-rename';
+    var input = document.createElement('input');
+    input.className = 'input input--sm';
+    input.type = 'text';
+    input.value = (contacts[peer] && contacts[peer].name) || '';
+    input.placeholder = displayName(peer);
+    input.setAttribute('aria-label', 'Contact name');
+    var save = elem('button', 'btn btn--sm btn--primary', 'Save'); save.type = 'button';
+    var cancel = elem('button', 'btn btn--sm btn--ghost', 'Cancel'); cancel.type = 'button';
+    function closeRow() { if (row.parentNode) row.parentNode.removeChild(row); }
+    function commit() {
+      var next = input.value.trim();
+      var e = contactEntry(peer, true);
+      e.name = next;
+      if (!e.name && !e.kept) delete contacts[peer];
+      saveContacts();
+      closeRow();
+      refreshContactUI(peer);
+    }
+    save.addEventListener('click', commit);
+    cancel.addEventListener('click', closeRow);
+    input.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); closeRow(); }
+    });
+    row.appendChild(input); row.appendChild(save); row.appendChild(cancel);
+    els.head.appendChild(row);
+    input.focus();
+    input.select();
   }
   function toggleKeep(peer) {
     peer = norm(peer);
@@ -337,9 +415,15 @@
   function toggleVerify(peer) {
     var panel = document.getElementById('vtalk-verify');
     if (!panel) return;
-    if (!panel.hidden) { panel.hidden = true; return; }
+    var btn = els.head.querySelector('.vtalk-verify-btn');
+    if (!panel.hidden) {
+      panel.hidden = true;
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+      return;
+    }
     renderVerify(panel, peer);
     panel.hidden = false;
+    if (btn) btn.setAttribute('aria-expanded', 'true');
   }
 
   function safetyRow(label, value, muted) {
@@ -375,6 +459,32 @@
     }
   }
 
+  // paintPresence renders the presence line in the thread header.
+  //
+  // The claim is deliberately one-sided. "Online" is asserted only when the server
+  // reports a live stream for that identity, which is the only thing the data
+  // supports — and it is exactly what makes instant delivery a promise rather than
+  // a hope. The negative says "no client connected right now", NEVER "offline" or
+  // "won't get it": a store-mode message still queues and arrives when they
+  // connect. Guessing about someone else's phone is how a chat app loses trust.
+  function paintPresence(peer) {
+    var el = document.getElementById('vtalk-presence');
+    if (!el) return;
+    var info = peerInfo[peer];
+    if (!info) {
+      el.textContent = 'checking…';
+      el.className = 'vtalk-presence';
+      return;
+    }
+    if (info.online) {
+      el.textContent = '● online now — delivers instantly';
+      el.className = 'vtalk-presence vtalk-presence--on';
+      return;
+    }
+    el.textContent = '○ no client connected right now — store-mode messages queue';
+    el.className = 'vtalk-presence';
+  }
+
   // Verification is remembered across reloads, bound to the exact fingerprint
   // that was verified (fingerprints are public, so persisting them locally leaks
   // nothing). If the peer's key ever changes, the stored mark no longer matches
@@ -392,12 +502,26 @@
     fetch('/os/talk/peer?email=' + encodeURIComponent(peer), { headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.json(); })
       .then(function (j) {
-        peerInfo[peer] = { found: !!j.found, safety: j.safety || '', fingerprint: j.fingerprint || '' };
-        // Restore verification only if the fingerprint matches what was verified.
-        if (j.found && j.fingerprint && lsGet(verifyKey(peer)) === j.fingerprint) {
+        var stored = lsGet(verifyKey(peer));
+        peerInfo[peer] = {
+          found: !!j.found,
+          safety: j.safety || '',
+          fingerprint: j.fingerprint || '',
+          online: !!j.online // advisory, one-sided: see paintPresence
+        };
+        if (j.found && j.fingerprint && stored === j.fingerprint) {
+          // The same key we verified before — keep the mark, say nothing.
           setVerified(peer, true, false);
+        } else if (j.found && j.fingerprint && stored) {
+          // We verified a DIFFERENT key for this contact earlier. In an
+          // end-to-end-encrypted chat that is the one event that must never pass
+          // quietly, so the mark drops and a banner stays up until they compare
+          // safety numbers again.
+          peerInfo[peer].keyChanged = true;
+          setVerified(peer, false, false);
         }
         if (active === peer) {
+          paintPresence(peer);
           reachabilityBanner(peer);
           var btn = els.head.querySelector('.vtalk-verify-btn');
           if (btn) setVerifyBtn(btn, peer);
@@ -405,7 +529,12 @@
           if (panel && !panel.hidden) renderVerify(panel, peer);
         }
       })
-      .catch(function () { /* offline; send will report the real error */ });
+      .catch(function () {
+        // Offline: report that the CHECK failed rather than leaving a bare "—"
+        // that reads like a verdict about the peer's key.
+        peerInfo[peer] = { found: null, unknown: true };
+        if (active === peer) reachabilityBanner(peer);
+      });
   }
 
   // setVerified updates state, the conversation badge, and (when persist) the
@@ -416,20 +545,40 @@
     if (c) c.item.classList.toggle('vtalk-convo--verified', on);
     if (persist) {
       var info = peerInfo[peer];
-      if (on && info && info.fingerprint) lsSet(verifyKey(peer), info.fingerprint);
-      else lsDel(verifyKey(peer));
+      if (on && info && info.fingerprint) {
+        lsSet(verifyKey(peer), info.fingerprint);
+        // A fresh comparison supersedes the "their number changed" alarm.
+        delete info.keyChanged;
+        if (active === peer) reachabilityBanner(peer);
+      } else {
+        lsDel(verifyKey(peer));
+      }
     }
   }
 
+  // reachabilityBanner paints the thread's single warning strip: either "their
+  // safety number changed since you verified" (the loud one) or "no key yet, we
+  // can't reach them" (the actionable one). The two are mutually exclusive.
   function reachabilityBanner(peer) {
-    var existing = els.thread.querySelector('.vtalk-warn');
-    if (existing) existing.parentNode.removeChild(existing);
+    Array.prototype.forEach.call(els.thread.querySelectorAll('.vtalk-warn'), function (n) {
+      if (n.parentNode) n.parentNode.removeChild(n);
+    });
     var info = peerInfo[peer];
-    if (info && info.found === false) {
-      var warn = elem('div', 'vtalk-warn',
+    if (!info) return;
+    var warn = null;
+    if (info.keyChanged) {
+      warn = elem('div', 'vtalk-warn vtalk-warn--key',
+        '⚠ ' + displayName(peer) + '’s safety number has changed since you verified it. ' +
+        'That is what happens when the key is rebuilt — or when someone is in the middle. ' +
+        'Compare safety numbers again before trusting this chat.');
+    } else if (info.unknown) {
+      warn = elem('div', 'vtalk-warn vtalk-warn--unknown',
+        'Could not check whether ' + displayName(peer) + ' can receive messages just now — you may be offline. Sending will report the real result.');
+    } else if (info.found === false) {
+      warn = elem('div', 'vtalk-warn',
         '⚠ No VayuTalk key for ' + peer + ' yet. They need to open VayuMail (app or web) on this server once so a key exists — until then messages can’t be delivered.');
-      els.thread.insertBefore(warn, els.thread.firstChild);
     }
+    if (warn) els.thread.insertBefore(warn, els.thread.firstChild);
   }
 
   function renderThread(c) {
@@ -483,9 +632,11 @@
   }
 
   function addMessage(peer, m) {
-    // Dedupe by server id: the console no longer read-destroys on delivery (so
-    // the recipient's app keeps its queued copy), which means a stream reconnect
-    // re-flushes messages we've already shown. Skip anything already on screen.
+    // Dedupe by server id: the console marks messages it has shown as read for
+    // this reader (the server's cursor does the same on its side), but it never
+    // read-destroys them — the recipient's app keeps its queued copy, so a
+    // reconnect can still re-flush something we have shown. Skip anything already
+    // on screen.
     if (m.id && byId[m.id]) return;
     var c = getConvo(peer);
     if (!c) return;
@@ -528,12 +679,15 @@
   // how many messages are counting down.
   var burning = [];
   var burnTicker = null;
-  // signalRead tells the server an incoming message has been read. Only the Tor
-  // world console does this (it is the sole reader there); the server read-destroys
-  // and, for a message from another .onion, forwards a "read" receipt over Tor so
-  // the sender sees it. Fire-and-forget, once per message. (ADR-0142)
+  // signalRead tells the server that this console has displayed an incoming
+  // message, so a stream reconnect does not re-flush it (the server keeps a
+  // per-reader cursor). In the clearnet world that mark is non-destructive: the
+  // phone app is still the reader that destroys it, and its copy is untouched. In
+  // the Tor world the console is the sole reader, so there the same call
+  // read-destroys and forwards a "read" receipt over Tor. Fire-and-forget, once
+  // per message. (ADR-0141, ADR-0142)
   function signalRead(m) {
-    if (!onionWorld || !m || m.mine || !m.id || m.readSignaled) return;
+    if (!m || m.mine || !m.id || m.readSignaled) return;
     m.readSignaled = true;
     fetch('/os/talk/read', {
       method: 'POST',
@@ -582,7 +736,14 @@
     }
     var c = convos[m.peer];
     if (c) { var i = c.messages.indexOf(m); if (i >= 0) c.messages.splice(i, 1); }
-    if (m.id) delete byId[m.id];
+    // KEEP the id as a tombstone — do NOT delete byId[m.id].
+    //
+    // The server now keeps a per-reader cursor, so a reconnect should not re-flush
+    // this envelope. This is the client-side half of the same promise: a read
+    // signal lost in flight (offline, tab closed mid-request) must not be able to
+    // resurrect a message the user just watched burn. Belt and braces, because the
+    // product's headline claim depends on it. A few bytes, gone with the tab.
+    if (m.id) m.expired = true;
   }
   function setStatus(m, label, cls) {
     if (!m || !m.statusEl) return;
@@ -593,11 +754,27 @@
   // ── Stream ──────────────────────────────────────────────────────────────────
 
   var es = null;
+  var streamFails = 0;
   function connect() {
     if (es) es.close();
+    streamFails = 0;
     es = new EventSource('/os/talk/stream?as=' + encodeURIComponent(currentSelf));
-    es.addEventListener('open', function () { markStatus('online', 'Online'); });
-    es.addEventListener('error', function () { markStatus('offline', 'Reconnecting…'); });
+    es.addEventListener('open', function () { streamFails = 0; markStatus('online', 'Online'); });
+    es.addEventListener('error', function () {
+      // EventSource retries on its own forever. A server that keeps refusing —
+      // the per-identity stream cap, a revoked session — would otherwise leave
+      // the pill saying "Reconnecting…" for the rest of the session with no way
+      // to tell it apart from a slow network. Bound the retries and name the
+      // likely cause and the remedy.
+      streamFails++;
+      if (streamFails >= 5) {
+        markStatus('failed', 'Can’t connect — close VayuTalk on another device or tab, then reload');
+        if (es) es.close();
+        es = null;
+        return;
+      }
+      markStatus('offline', 'Reconnecting… (' + streamFails + ')');
+    });
     es.addEventListener('message', function (e) {
       var d = parse(e.data);
       if (!d || !d.from) return;
@@ -622,11 +799,49 @@
       }
     });
     es.addEventListener('ping', function () { markStatus('online', 'Online'); });
+    // A peer's key arrived locally after their message did (a late over-Tor
+    // fetch). Re-check the messages we already hold so the "unverified" badge
+    // tells the truth now, instead of staying stale until a reload.
+    es.addEventListener('peerkey', function (e) {
+      var d = parse(e.data);
+      if (!d || !d.peer) return;
+      var peer = norm(d.peer);
+      var c = convos[peer];
+      if (c) {
+        c.messages.forEach(function (m) { if (!m.mine) m.verified = true; });
+        if (active === peer) renderThread(c);
+      }
+      // Re-run the preflight too: it restores the verification mark when the
+      // fingerprint now matches what was verified, and refreshes the panel.
+      preflightPeer(peer);
+    });
+    // A message reached us but its plaintext could not be recovered. Report the
+    // shape of it (there is one, and who it came from) without content, so the
+    // gap is visible rather than looking like silence.
+    es.addEventListener('undecryptable', function (e) {
+      var d = parse(e.data);
+      if (!d || !d.from) return;
+      var peer = norm(d.from);
+      var c = getConvo(peer);
+      if (!c) return;
+      c.undecryptable = (c.undecryptable || 0) + 1;
+      if (active === peer) buildHeader(peer);
+      announce('A message from ' + displayName(peer) + ' could not be decrypted');
+    });
   }
   function markStatus(state, label) {
     if (!els.status) return;
     els.status.setAttribute('data-state', state);
     els.status.textContent = label;
+    announce(label);
+  }
+
+  // announce speaks a short line through the page's polite live region: the
+  // status pill and arriving messages are changes to a page a screen-reader user
+  // is otherwise never told about.
+  function announce(text) {
+    var region = document.getElementById('vtalk-live-region');
+    if (region) region.textContent = text;
   }
 
   // ── Sending ─────────────────────────────────────────────────────────────────
@@ -646,26 +861,57 @@
     addMessage(to, m);
     els.input.value = '';
     autogrow();
+    postSend(m, { to: to, text: text, burn: burn, mode: mode, live: live });
+  }
 
+  // postSend delivers one message and reflects the outcome on its bubble. Retry
+  // reuses it verbatim, so a failed send is one click from recovery and the text
+  // the user typed is never thrown away.
+  function postSend(m, p) {
     fetch('/os/talk/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
-      body: JSON.stringify({ to: to, text: text, ttl_seconds: burn, mode: mode, as: currentSelf })
+      body: JSON.stringify({ to: p.to, text: p.text, ttl_seconds: p.burn, mode: p.mode, as: currentSelf })
     }).then(function (r) {
       return r.json().then(function (j) { return { ok: r.ok, j: j }; }, function () { return { ok: r.ok, j: null }; });
     }).then(function (res) {
       if (!res.ok) {
-        var msg = (res.j && res.j.error && res.j.error.message) || 'Could not send';
-        setStatus(m, msg, 'is-error');
+        // The server's reason is the useful one (no key for that address, queue
+        // full, message too large) — fall back only when the body carried none.
+        setStatus(m, (res.j && res.j.error && res.j.error.message) || 'Could not send', 'is-error');
+        offerRetry(m, p);
         return;
       }
       if (res.j.id) { m.id = res.j.id; byId[m.id] = m; }
       // Outgoing messages do NOT start their countdown until the recipient reads
       // them (a 'read' receipt arms the burn). Live messages that couldn't be
       // delivered (recipient offline) are gone already.
-      if (live && !res.j.delivered) { setStatus(m, 'Not delivered — they’re offline', 'is-error'); return; }
+      if (p.live && !res.j.delivered) { setStatus(m, 'Not delivered — they’re offline', 'is-error'); return; }
       setStatus(m, res.j.delivered ? 'Delivered' : 'Sent');
-    }).catch(function () { setStatus(m, 'Network error — not sent', 'is-error'); });
+    }).catch(function () {
+      setStatus(m, 'Network error — not sent', 'is-error');
+      offerRetry(m, p);
+    });
+  }
+
+  // offerRetry attaches a single resend control to a failed bubble (the original
+  // text is already on it). Note the honest trade: when a response is lost after
+  // the server accepted it, retrying can deliver a duplicate — which beats
+  // silently dropping what someone wrote.
+  function offerRetry(m, p) {
+    if (!m.node || m.retryEl) return;
+    var b = elem('button', 'vtalk-bubble-retry', '↻ Retry');
+    b.type = 'button';
+    b.title = 'Send this message again';
+    b.addEventListener('click', function () {
+      if (b.parentNode) b.parentNode.removeChild(b);
+      m.retryEl = null;
+      setStatus(m, 'Sending…');
+      postSend(m, p);
+    });
+    var foot = m.node.querySelector('.vtalk-bubble-foot');
+    (foot || m.node).appendChild(b);
+    m.retryEl = b;
   }
 
   function autogrow() {
@@ -678,12 +924,26 @@
   els.newchat.addEventListener('submit', function (e) {
     e.preventDefault();
     var peer = norm(els.peer.value);
-    if (!peer || peer === currentSelf) { els.peer.value = ''; return; }
+    // Say why nothing happened. Silently clearing the box looked like a broken
+    // Start button — most often because someone typed their own address.
+    if (!peer) { newChatNote('Enter an address (or paste a code) to start a chat.'); return; }
+    if (peer === currentSelf) { newChatNote('That is your own address — start a chat with someone else.'); return; }
     els.peer.value = '';
     // Starting a chat is a user gesture — the right moment to ask to notify.
     ensureNotifyPermission();
     activate(peer);
   });
+
+  // newChatNote shows a short, self-clearing hint under the new-chat box.
+  function newChatNote(text) {
+    var n = document.getElementById('vtalk-newchat-note');
+    if (!n) return;
+    n.textContent = text;
+    n.hidden = false;
+    if (newChatNoteTimer) clearTimeout(newChatNoteTimer);
+    newChatNoteTimer = setTimeout(function () { n.hidden = true; }, 4500);
+  }
+  var newChatNoteTimer = null;
 
   // "Chat as" switcher: a different identity is a different inbox and a
   // different key, so we tear the session down and reconnect cleanly.
@@ -706,8 +966,16 @@
     loadContacts();
     restoreKeptContacts();
     els.main.setAttribute('data-empty', '1');
+    // A different identity has no open conversation, so the phone layout returns
+    // to the list rather than staring at an empty thread.
+    root.setAttribute('data-view', 'list');
     els.input.disabled = true;
     els.send.disabled = true;
+    // Drop the half-written message too: a draft belongs to the identity it was
+    // typed as, and sending it from another mailbox would be a leak, not a
+    // convenience.
+    els.input.value = '';
+    autogrow();
     var av = root.querySelector('.vtalk-identity .vm-av');
     if (av) av.textContent = initials(currentSelf);
     // Refresh our own safety number for the new identity, then reconnect.
@@ -729,6 +997,9 @@
   // reload brings back the ids you chose to keep (never their messages).
   loadContacts();
   restoreKeptContacts();
+  // Start on the conversation list: on a phone that is the only pane that makes
+  // sense before a chat is chosen (the CSS ignores this on desktop).
+  root.setAttribute('data-view', 'list');
   // Best-effort permission ask on load (browsers may defer it to a gesture — the
   // Start button also asks); the tab-title badge works regardless.
   ensureNotifyPermission();
