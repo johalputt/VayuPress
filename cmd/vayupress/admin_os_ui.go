@@ -50,6 +50,7 @@ import (
 	"github.com/johalputt/vayupress/internal/blockrender"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/users"
@@ -1876,6 +1877,19 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 				}
 			}
 			add("/os/domains", "Domains to sync", "waiting for approval", "domain", held)
+			// Sites publishing a template's sample content as if it were the
+			// real business (vayupress.johal.in served Bistro's "Maison Olive").
+			sample, href := 0, "/os/domains"
+			for _, d := range list {
+				if !d.IsPrimary && d.Status == domain.StatusActive && len(siteSampleFields(d)) > 0 {
+					sample++
+					href = "/os/d/" + d.ID + "/website"
+				}
+			}
+			if sample > 1 {
+				href = "/os/domains"
+			}
+			add(href, "Sample content is live", "a site is publishing a template's demo text", "domain", sample, "warn")
 		}
 	}
 	// A newer signed VayuPress release is ready to install (read from the cached

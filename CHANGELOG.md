@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **A template's sample content can no longer go live unnoticed.**
+  vayupress.johal.in served Bistro's "Maison Olive" — menu, opening hours and
+  "Reserve a table" — as a real business, and nothing said so.
+  `bizsite.DemoFields` names every field still holding ANY template's sample
+  (switching design keeps content, so one template's demo can sit under
+  another), and it is raised on the site's console ("sample content" on the
+  Website row), in the connector's `get_site` (`sample_content`) and in the
+  attention strip on every console page. The rule for what a site renders when
+  nothing is written — the template's sample — now lives once
+  (`bizsite.EffectiveContent`), shared by the public page, both editors and
+  this check.
+
 ### Fixed
 
 - **The site preview answered 405 with 0 bytes on every domain**, from the

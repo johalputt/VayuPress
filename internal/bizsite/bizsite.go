@@ -53,6 +53,18 @@ func ParseContent(raw string) Content {
 	return c
 }
 
+// EffectiveContent is the content a site actually renders: its stored content,
+// or — when neither a name nor a tagline has been written — the template's own
+// sample content. One rule, used by the public page, both editors and the
+// sample-content check, so none of them can describe a different site.
+func EffectiveContent(t Template, raw string) Content {
+	c := ParseContent(raw)
+	if c.Name == "" && c.Tagline == "" {
+		return t.Defaults
+	}
+	return c
+}
+
 // esc is a short alias for the HTML-escape barrier.
 func esc(s string) string { return html.EscapeString(s) }
 
@@ -227,3 +239,44 @@ body.vb{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,A
 @media(max-width:640px){.vb-nav{flex-direction:column;gap:.7rem}.vb-hero{padding:3.5rem 1.25rem 3rem}.vb-section{padding:2.8rem 0}}
 @media(prefers-color-scheme:dark){body.vb{--vb-bg:#101210;--vb-surface:#181b18;--vb-text:#eceee9;--vb-line:rgba(255,255,255,.1)}}
 `
+
+// DemoFields names the fields of c that still hold a template's sample content.
+//
+// Every template ships believable sample content so a new site is a complete
+// page to edit rather than an empty form — and nothing stopped that sample from
+// going live. vayupress.johal.in served Bistro's "Maison Olive", its menu and
+// its opening hours as the real business. Checked against EVERY template, not
+// just the active one: switching design keeps the content, so Bistro's sample
+// can sit under any template. The result is in a stable order.
+func DemoFields(c Content) []string {
+	same := func(a, b string) bool { a = strings.TrimSpace(a); return a != "" && a == strings.TrimSpace(b) }
+	seen := map[string]bool{}
+	for _, t := range All() {
+		d := t.Defaults
+		for field, hit := range map[string]bool{
+			"name":    same(c.Name, d.Name),
+			"tagline": same(c.Tagline, d.Tagline),
+			"about":   same(c.About, d.About),
+			"hours":   same(c.Hours, d.Hours),
+			"cta":     same(c.CTA, d.CTA),
+		} {
+			if hit {
+				seen[field] = true
+			}
+		}
+		for _, s := range c.Services {
+			for _, ds := range d.Services {
+				if same(s.Title, ds.Title) {
+					seen["services"] = true
+				}
+			}
+		}
+	}
+	var out []string
+	for _, f := range []string{"name", "tagline", "about", "hours", "cta", "services"} {
+		if seen[f] {
+			out = append(out, f)
+		}
+	}
+	return out
+}

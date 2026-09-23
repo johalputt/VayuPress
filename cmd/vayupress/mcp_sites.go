@@ -155,6 +155,9 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 				// The mirror's state, including the operator-only error text, so a
 				// sync that is failing is visible here without a screenshot.
 				"release_mirror": a.mcpReleaseMirror(d),
+				// Fields still publishing a template's sample content — a live
+				// page describing a business that does not exist.
+				"sample_content": siteSampleFields(d),
 			}), nil
 		},
 	})

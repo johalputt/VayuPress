@@ -36,11 +36,7 @@ func (a *App) bizSettings(r *http.Request) (mode string, tpl bizsite.Template, c
 	rawMode, rawTpl, rawContent := a.siteSourceFor(r)
 	mode = strings.TrimSpace(rawMode)
 	tpl = bizsite.ByKey(strings.TrimSpace(rawTpl))
-	content = bizsite.ParseContent(rawContent)
-	if content.Name == "" && content.Tagline == "" {
-		content = tpl.Defaults
-	}
-	return mode, tpl, content
+	return mode, tpl, bizsite.EffectiveContent(tpl, rawContent)
 }
 
 // siteSourceFor returns the raw website settings for the request's active

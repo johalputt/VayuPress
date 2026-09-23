@@ -69,15 +69,23 @@ func (a *App) handleOSScopedWebsite(w http.ResponseWriter, r *http.Request) {
 	csrfTokenFor(w, r)
 
 	site, _ := d.Site()
-	content := bizsite.ParseContent(site.Content)
 	tpl := bizsite.ByKey(site.Template)
-	if content.Name == "" && content.Tagline == "" {
-		content = tpl.Defaults
-	}
+	content := bizsite.EffectiveContent(tpl, site.Content)
 	man := customsite.ReadManifest(scopedBundleDir(d))
 	body := scopedWebsitePage(d, tpl.Key, content, customsite.Deployed(scopedBundleDir(d)), man) +
 		scopedWebsiteScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Website · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
+}
+
+// siteSampleFields names what a template-mode site is still publishing from a
+// template's sample content (bizsite.DemoFields). A blog or an uploaded bundle
+// has no template content to be a sample of, so it reports none.
+func siteSampleFields(d domain.Domain) []string {
+	if !strings.HasPrefix(scopedSiteMode(d), "business") {
+		return nil
+	}
+	site, _ := d.Site()
+	return bizsite.DemoFields(bizsite.EffectiveContent(bizsite.ByKey(site.Template), site.Content))
 }
 
 func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundled bool, man customsite.Manifest) string {

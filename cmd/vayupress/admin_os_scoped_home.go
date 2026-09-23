@@ -317,6 +317,10 @@ func (a *App) scopedToolChips(r *http.Request, d domain.Domain, posts int) map[s
 	switch s, ok := d.Site(); {
 	case ok && s.Mode == "custom":
 		c["website"] = scopedToolChip{On: true, Text: "uploaded site"}
+	case ok && strings.HasPrefix(s.Mode, "business") && len(siteSampleFields(d)) > 0:
+		// Chipped as a problem: the page is live and describes a business
+		// that does not exist.
+		c["website"] = scopedToolChip{Text: "sample content"}
 	case ok && strings.HasPrefix(s.Mode, "business"):
 		c["website"] = scopedToolChip{On: true, Text: "website"}
 	default:
