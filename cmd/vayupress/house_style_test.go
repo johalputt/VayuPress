@@ -145,7 +145,7 @@ func statCardIn(t *testing.T, page, label string) string {
 // so it is the helper's own first caller.
 func TestWebsitePageMeetsTheHouseStyle(t *testing.T) {
 	page := scopedWebsitePage(siteWithEval(t, true), "bistro",
-		bizsiteContentForTest("Test"), true, customsiteManifestForTest(30))
+		bizsiteContentForTest("Test"), true, customsiteManifestForTest(30), false)
 	assertHouseStyle(t, page, houseStyle{
 		Name:     "Website",
 		MinTiles: 4,
@@ -473,7 +473,7 @@ func TestEveryConvertedPageIsCSPSafe(t *testing.T) {
 		page string
 	}{
 		{"Website", scopedWebsitePage(siteWithEval(t, true), "bistro",
-			bizsiteContentForTest("Test"), true, customsiteManifestForTest(30))},
+			bizsiteContentForTest("Test"), true, customsiteManifestForTest(30), false)},
 		{"Visitors", scopedAnalyticsBody(1200, 340, 41.5, 62, []analytics.PageStat{
 			{Path: "/", Pageviews: 900, UniqueVisitors: 260}})},
 		{"Domain home", scopedConsolePage(d, 12, 3, 0, true, nil, nil, nil, nil, "")},

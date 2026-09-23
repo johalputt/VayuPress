@@ -96,6 +96,14 @@
   --sp-1: 0.25rem;  --sp-2: 0.5rem;   --sp-3: 0.75rem;
   --sp-4: 1rem;     --sp-5: 1.25rem;  --sp-6: 1.5rem;
   --sp-8: 2rem;     --sp-10: 2.5rem;  --sp-12: 3rem;
+  /* --space-N was used across later components (first-run card, attention
+     strip, confirm dialog, site editor) and never defined, so every one of
+     those declarations was silently dropped. Aliased rather than renamed at
+     each use: one definition, and the next component written against either
+     name gets the scale. */
+  --space-1: var(--sp-1); --space-2: var(--sp-2); --space-3: var(--sp-3);
+  --space-4: var(--sp-4); --space-5: var(--sp-5); --space-6: var(--sp-6);
+  --space-8: var(--sp-8);
 
   /* Radius */
   --r-sm: 6px;   --r: 10px;   --r-md: 14px;
@@ -7020,3 +7028,50 @@
 
 .vp-os .frc__action { display: inline-flex; align-items: center; gap: 6px; margin-top: var(--space-2, 8px); color: var(--brand); font-size: var(--text-sm, 13px); font-weight: var(--weight-medium, 500); }
 .vp-os .frc__action:hover { text-decoration: underline; }
+
+/* ── Site editor (ADR-0161) ─────────────────────────────────────────────── */
+.vp-os .se-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; position: sticky; top: 0; z-index: 5; }
+.vp-os .se-bar #se-status { flex: 1; min-width: 12ch; }
+.vp-os .se-error { margin: var(--space-3) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--danger); border-radius: var(--r-sm, 8px); color: var(--danger); overflow-wrap: anywhere; }
+.vp-os .se-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-5); align-items: start; margin-top: var(--space-4); }
+.vp-os .se-edit { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.vp-os .se-view { position: sticky; top: 64px; min-width: 0; }
+.vp-os .se-view-bar { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); }
+.vp-os #se-preview-wrap { border: 1px solid var(--border); border-radius: var(--r-md, 12px); overflow: hidden; background: var(--bg-surface); margin: 0 auto; transition: max-width .2s ease; }
+.vp-os #se-preview-wrap[data-device="desktop"] { max-width: 100%; }
+.vp-os #se-preview-wrap[data-device="phone"] { max-width: 390px; }
+.vp-os #se-preview { display: block; width: 100%; height: 72vh; border: 0; background: #fff; }
+.vp-os .se-pages { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.vp-os #se-sections { display: flex; flex-direction: column; gap: var(--space-3); }
+.vp-os .se-field { display: flex; flex-direction: column; gap: 4px; margin: 0 0 var(--space-3); }
+.vp-os .se-field.se-check { flex-direction: row-reverse; justify-content: flex-end; align-items: center; gap: var(--space-2); }
+.vp-os .se-label { font-size: var(--text-sm, 13px); color: var(--text-2); }
+.vp-os .se-hint { font-size: 12px; color: var(--text-3, var(--text-2)); }
+.vp-os .se-bad { outline: 2px solid var(--danger); outline-offset: 1px; }
+.vp-os .se-section-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.vp-os .se-section-head .se-toggle { flex: 1; justify-content: flex-start; text-align: left; overflow-wrap: anywhere; }
+.vp-os .se-section-body { margin-top: var(--space-3); }
+.vp-os .se-move { display: inline-flex; gap: 2px; }
+.vp-os .se-item { border: 1px solid var(--border); border-radius: var(--r-sm, 8px); padding: var(--space-3); margin: 0 0 var(--space-3); }
+.vp-os .se-image { display: flex; gap: var(--space-3); align-items: flex-start; border: 1px solid var(--border); border-radius: var(--r-sm, 8px); padding: var(--space-3); margin: 0 0 var(--space-3); }
+.vp-os .se-image-fields { flex: 1; min-width: 0; }
+.vp-os .se-thumb { width: 88px; height: 66px; object-fit: cover; border-radius: 6px; flex: none; background: var(--bg-muted, rgba(0,0,0,.05)); }
+.vp-os .se-row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.vp-os .se-add { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+.vp-os .se-add select { flex: 1; min-width: 12rem; }
+.vp-os .se-rev { border-top: 1px solid var(--border); padding: var(--space-3) 0; display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.vp-os .se-rev > .text-sm { flex: 1 1 100%; }
+.vp-os .se-diff { flex: 1 1 100%; }
+.vp-os .se-diff-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2); font-size: 12px; padding: 4px 0; border-bottom: 1px dashed var(--border); overflow-wrap: anywhere; }
+.vp-os .se-old { color: var(--danger); }
+.vp-os .se-new { color: var(--ok); }
+.vp-os .se-media { position: fixed; inset: 5vh 5vw; z-index: 50; overflow: auto; box-shadow: var(--sh-lg); }
+.vp-os .se-media-head { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; margin-bottom: var(--space-3); }
+.vp-os .se-media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--space-2); }
+.vp-os .se-media-item { padding: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: none; cursor: pointer; aspect-ratio: 4 / 3; }
+.vp-os .se-media-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (max-width: 960px) {
+  .vp-os .se-grid { grid-template-columns: minmax(0, 1fr); }
+  .vp-os .se-view { position: static; }
+  .vp-os #se-preview { height: 60vh; }
+}

@@ -72,7 +72,8 @@ func (a *App) handleOSScopedWebsite(w http.ResponseWriter, r *http.Request) {
 	tpl := bizsite.ByKey(site.Template)
 	content := bizsite.EffectiveContent(tpl, site.Content)
 	man := customsite.ReadManifest(scopedBundleDir(d))
-	body := scopedWebsitePage(d, tpl.Key, content, customsite.Deployed(scopedBundleDir(d)), man) +
+	_, published := publishedSiteDoc(r.Context(), d.ID)
+	body := scopedWebsitePage(d, tpl.Key, content, customsite.Deployed(scopedBundleDir(d)), man, published) +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-bundle.js?v=` + assetVer("js/admin-os-bundle.js") + `"></script>` +
 		scopedWebsiteScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Website · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
@@ -89,7 +90,7 @@ func siteSampleFields(d domain.Domain) []string {
 	return bizsite.DemoFields(bizsite.EffectiveContent(bizsite.ByKey(site.Template), site.Content))
 }
 
-func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundled bool, man customsite.Manifest) string {
+func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundled bool, man customsite.Manifest, published bool) string {
 	esc := html.EscapeString
 	mode := scopedSiteMode(d)
 	var b strings.Builder
@@ -298,6 +299,13 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 		`<span class="mon-chip mon-chip--on">`+esc(bizsite.ByKey(tplKey).Name)+`</span>`, false, dsn.String()))
 
 	// ── Content ───────────────────────────────────────────────────────────────
+	editor := "/os/d/" + d.ID + "/website/editor"
+	if published {
+		b.WriteString(monAcc("✍️", "Content", "Pages and sections, in the site editor",
+			`<span class="mon-chip mon-chip--on">site editor</span>`, false, siteEditorCard(editor, true)))
+		b.WriteString(`</div>`) // mon-stack
+		return b.String()
+	}
 	var con strings.Builder
 	field := func(id, label, hint, val string) string {
 		return `<label class="field"><span class="field-label">` + esc(label) + `</span>` +
@@ -344,10 +352,9 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 	con.WriteString(`</div></div>`)
 
 	// The honest note about what this page does not edit.
-	con.WriteString(`<div class="card"><p class="text-sm muted">Services and gallery are not edited here yet — ` +
-		`they are preserved exactly as they are when you save, so nothing you set elsewhere is lost. The ` +
-		`fastest way to build a whole site is to ask an AI assistant through <a href="/os/vayumcp">VayuMCP</a>: ` +
-		`it can read and write every field on this page for any site you host.</p></div>`)
+	// Services and gallery are not edited on this form; the site editor edits
+	// everything, and this form preserves them when it saves.
+	con.WriteString(siteEditorCard(editor, false))
 	contentChip := `<span class="mon-chip mon-chip--off">not set</span>`
 	if strings.TrimSpace(c.Name) != "" {
 		contentChip = `<span class="mon-chip mon-chip--on">` + esc(c.Name) + `</span>`
@@ -503,7 +510,16 @@ func (a *App) handleOSScopedWebsiteSave(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	cfg, err := scopedWebsiteConfig(d, body.Mode, body.Template, body.Content)
+	// A site published as a document renders from it; the flat content is kept
+	// as it is (its fallback) rather than overwritten by a form that no longer
+	// shows those fields.
+	var cfg domain.SiteConfig
+	var err error
+	if _, published := publishedSiteDoc(r.Context(), d.ID); published {
+		cfg, err = scopedWebsiteConfigPreserving(d, body.Mode, body.Template)
+	} else {
+		cfg, err = scopedWebsiteConfig(d, body.Mode, body.Template, body.Content)
+	}
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", err.Error(), "")
 		return

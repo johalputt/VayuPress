@@ -27,6 +27,9 @@ func hostedSite(t *testing.T, a *App, host string) domain.Domain {
 	if err := a.domains.SetSite(ctx, d.ID, domain.SiteConfig{Mode: "business", Template: "bistro"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := a.domains.SetSyncState(ctx, d.ID, domain.SyncApproved); err != nil {
+		t.Fatal(err)
+	}
 	d, err = a.domains.ByID(ctx, d.ID)
 	if err != nil {
 		t.Fatal(err)

@@ -153,7 +153,7 @@ func TestTheOtherPerSitePagesEmitNoUnstyledClass(t *testing.T) {
 		{Title: "One", Slug: "one", Status: "published"},
 		{Title: "Two", Slug: "two", Status: "draft"},
 	}))
-	assertClassesAreStyled(t, "the website page", css, scopedWebsitePage(d, "studio", bizsite.Content{Name: "X"}, false, customsite.Manifest{}))
+	assertClassesAreStyled(t, "the website page", css, scopedWebsitePage(d, "studio", bizsite.Content{Name: "X"}, false, customsite.Manifest{}, false))
 	assertClassesAreStyled(t, "the site list", css, domainsHeader([]domain.Domain{d}, ""))
 
 	// The three that were never passed to this gate — which is the other half of

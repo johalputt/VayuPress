@@ -26,6 +26,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   design — except that links and image sources the validator would refuse
   (`javascript:`, `data:`) are no longer drawn, and the nav no longer links
   sections that are not there.
+- **The site editor.** Website → Open the site editor (primary and every
+  hosted site) edits the document: pages with their address, title,
+  description and menu entry; sections added, reordered, opened and removed;
+  pictures chosen from Media, reusing the library's alt text. Every change is
+  saved as a draft after a pause, the preview beside it shows that draft at
+  desktop or phone width, and a refusal lands on the exact field it names.
+  History compares any revision with the editor field by field and restores
+  it. Once a site is published from the editor, its Website page stops
+  offering the old content form and its saves keep the stored content —
+  a form whose edits no longer reach the page was a control that did nothing.
+- **Connector tools for site documents:** `get_site_document`,
+  `save_site_draft`, `publish_site_document` (switching a domain that serves
+  its blog to serve the site, blog at `/blog`) and `restore_site_revision`,
+  through the same validator and publish path as the editor. `update_site`
+  refuses content fields for a site that is a document, naming the tools that
+  do reach its page.
 - **A hosted site's contact messages are its own.** Messages record the site
   they came from (migration 095), the inbox labels them and links their page
   on that site, and a hosted site's form is emailed to the address its contact
@@ -57,6 +73,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Spacing restored on the first-run card, attention strip and confirm
+  dialog.** Their styles used a `--space-N` scale that was never defined, so
+  every one of those margins, gaps and paddings was dropped; it is now an
+  alias of the console's `--sp-N` scale.
 - **A refused site upload on a hosted domain now says why.** The page read the
   reason from a field the API never sends, so every refusal — a `.php` in the
   zip, a missing `index.html` — read "The server refused it without giving a

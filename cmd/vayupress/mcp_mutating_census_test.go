@@ -36,7 +36,7 @@ var mutatingMCPTools = []string{
 	"create_post", "update_post", "delete_post", "create_page",
 	"update_site_settings", "apply_theme", "upload_media", "embed_url",
 	"update_site", "build_site", "restore_previous_site", "provision_certificates",
-	"set_release_mirror",
+	"set_release_mirror", "save_site_draft", "publish_site_document", "restore_site_revision",
 }
 
 // THE LIST MUST NOT FALL BEHIND THE REGISTRY.

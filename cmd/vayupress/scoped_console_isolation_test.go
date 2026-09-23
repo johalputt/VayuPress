@@ -146,7 +146,7 @@ func TestEveryPerSitePageIsCheckedForInstallWideLinks(t *testing.T) {
 		})},
 		{"the SEO page", scopedSEOBody(d.ID, "https://"+d.Host, map[string]string{"canonical": "https://" + d.Host})},
 		{"the settings page", scopedSettingsBody(d.ID, d.Host, map[string]string{}, presUnknown)},
-		{"the website page", scopedWebsitePage(d, "", bizsite.Content{}, false, customsite.Manifest{})},
+		{"the website page", scopedWebsitePage(d, "", bizsite.Content{}, false, customsite.Manifest{}, false)},
 		{"the analytics page", scopedAnalyticsBody(10, 5, 25.0, 42.0, nil)},
 	} {
 		assertNoInstallWideLinks(t, c.label, d.ID, c.page)

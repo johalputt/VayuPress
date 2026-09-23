@@ -82,7 +82,7 @@ func TestTheWebsitePageOffersTheEvalControlOnceABundleIsDeployed(t *testing.T) {
 	d := siteWithEval(t, true)
 	c := bizsite.Content{Name: "Test"}
 
-	withBundle := scopedWebsitePage(d, "bistro", c, true, customsite.Manifest{Files: 12, HasPrev: true})
+	withBundle := scopedWebsitePage(d, "bistro", c, true, customsite.Manifest{Files: 12, HasPrev: true}, false)
 	if !strings.Contains(withBundle, `id="web-alloweval"`) {
 		t.Fatal("no control for the eval opt-in on the Website page, so the only way to set it is " +
 			"through a tool call")
@@ -106,7 +106,7 @@ func TestTheWebsitePageOffersTheEvalControlOnceABundleIsDeployed(t *testing.T) {
 
 	// With no bundle deployed the setting changes nothing, and a control that
 	// does nothing is worse than an absent one.
-	noBundle := scopedWebsitePage(d, "bistro", c, false, customsite.Manifest{Files: 12, HasPrev: true})
+	noBundle := scopedWebsitePage(d, "bistro", c, false, customsite.Manifest{Files: 12, HasPrev: true}, false)
 	if strings.Contains(noBundle, `id="web-alloweval"`) {
 		t.Error("the control is offered on a template site, where it has no effect whatsoever")
 	}
@@ -116,7 +116,7 @@ func TestTheWebsitePageOffersTheEvalControlOnceABundleIsDeployed(t *testing.T) {
 // operator their site runs with a widened policy.
 func TestTheEvalControlRendersUncheckedWhenTheSettingIsOff(t *testing.T) {
 	d := siteWithEval(t, false)
-	page := scopedWebsitePage(d, "bistro", bizsite.Content{Name: "Test"}, true, customsite.Manifest{Files: 12, HasPrev: true})
+	page := scopedWebsitePage(d, "bistro", bizsite.Content{Name: "Test"}, true, customsite.Manifest{Files: 12, HasPrev: true}, false)
 	i := strings.Index(page, `id="web-alloweval"`)
 	if i < 0 {
 		t.Fatal("the control is missing")
@@ -146,7 +146,7 @@ func TestTheEvalControlRendersUncheckedWhenTheSettingIsOff(t *testing.T) {
 func TestTheWebsitePageOpensWithItsStateAndKeepsEveryControl(t *testing.T) {
 	d := siteWithEval(t, true)
 	page := scopedWebsitePage(d, "bistro", bizsite.Content{Name: "Test"}, true,
-		customsite.Manifest{Files: 30, HasPrev: true})
+		customsite.Manifest{Files: 30, HasPrev: true}, false)
 
 	for _, want := range []string{
 		`class="stat-grid"`,
@@ -180,7 +180,7 @@ func TestTheWebsitePageOpensWithItsStateAndKeepsEveryControl(t *testing.T) {
 // must say nothing at all when there is no uploaded site for it to apply to.
 func TestTheRuntimeCodeTileTellsTheTruthAboutThePolicy(t *testing.T) {
 	onTile := statCardIn(t, scopedWebsitePage(siteWithEval(t, true), "bistro",
-		bizsite.Content{Name: "T"}, true, customsite.Manifest{Files: 3}), "Runtime code")
+		bizsite.Content{Name: "T"}, true, customsite.Manifest{Files: 3}, false), "Runtime code")
 	if !strings.Contains(onTile, ">On<") {
 		t.Errorf("a site running with eval permitted does not say so: %s", onTile)
 	}
@@ -189,7 +189,7 @@ func TestTheRuntimeCodeTileTellsTheTruthAboutThePolicy(t *testing.T) {
 	}
 
 	offTile := statCardIn(t, scopedWebsitePage(siteWithEval(t, false), "bistro",
-		bizsite.Content{Name: "T"}, true, customsite.Manifest{Files: 3}), "Runtime code")
+		bizsite.Content{Name: "T"}, true, customsite.Manifest{Files: 3}, false), "Runtime code")
 	if !strings.Contains(offTile, ">Off<") {
 		t.Errorf("a site with eval off does not say so: %s", offTile)
 	}

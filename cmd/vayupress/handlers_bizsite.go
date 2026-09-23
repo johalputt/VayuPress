@@ -287,7 +287,13 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	formBody.WriteString(`<label class="vb-mode"><input type="checkbox" data-biz-f="showBlog"> Link the blog from the website</label>`)
 	formBody.WriteString(`</div></div>`)
 	formBody.WriteString(`<span class="text-sm muted" data-biz-status></span>`)
-	b.WriteString(monAcc("✍️", "Your content", "Name, tagline, contact details, hours, offerings &amp; gallery", "", false, formBody.String()))
+	if _, published := publishedSiteDoc(r.Context(), ""); published {
+		b.WriteString(monAcc("✍️", "Your content", "Pages and sections, in the site editor", "", false,
+			siteEditorCard("/os/website/editor", true)))
+	} else {
+		formBody.WriteString(siteEditorCard("/os/website/editor", false))
+		b.WriteString(monAcc("✍️", "Your content", "Name, tagline, contact details, hours, offerings &amp; gallery", "", false, formBody.String()))
+	}
 	// Whether this site installs as a REAL app. It lives here because it is a
 	// property of the public site, and it opens itself when something is failing.
 	b.WriteString(a.pwaHealthCardHTML(r, nonce))
@@ -371,11 +377,18 @@ func (a *App) handleOSWebsiteSave(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "settings-unavailable", "settings store not ready", "")
 		return
 	}
-	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
+	values := map[string]string{
 		settings.KeySiteMode:    body.Mode,
 		settings.KeyBizTemplate: tpl.Key,
 		settings.KeyBizContent:  string(raw),
-	}); err != nil {
+	}
+	// Published as a document: the page no longer offers the flat fields, so
+	// what arrives for them is empty, and the stored content (the fallback)
+	// is kept rather than overwritten with nothing.
+	if _, published := publishedSiteDoc(r.Context(), ""); published {
+		delete(values, settings.KeyBizContent)
+	}
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), values); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "save-failed", err.Error(), "")
 		return
 	}

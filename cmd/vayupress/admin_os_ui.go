@@ -115,6 +115,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-storage.js", serveAdminOSAsset("js/admin-os-storage.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-website.js", serveAdminOSAsset("js/admin-os-website.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-bundle.js", serveAdminOSAsset("js/admin-os-bundle.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-site-editor.js", serveAdminOSAsset("js/admin-os-site-editor.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/purify.min.js", serveAdminOSAsset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
 	// Fonts are NOT served from /os. This route used to allowlist three names —
@@ -205,6 +206,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// managed separately from the blog feed (Tumblr-style "Add a page").
 		pr.Get("/os/pages", a.handleOSPages)
 		pr.Get("/os/website", a.handleOSWebsite)
+		pr.Get("/os/website/editor", a.handleOSSiteEditor)
 		// VayuDomains registry (migration 059) — manage every hostname this
 		// install answers on. Writes are CSRF-protected session-friendly APIs.
 		pr.Get("/os/domains", a.handleOSDomains)
@@ -236,6 +238,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			// Website (ADR-0154 D9): what this domain serves at "/", and the
 			// content of that site when it serves a website.
 			dr.Get("/website", a.handleOSScopedWebsite)
+			dr.Get("/website/editor", a.handleOSScopedSiteEditor)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/website", a.handleOSScopedWebsiteSave)
 			// A whole hand-built site for this domain (ADR-0154 D12). Both go
 			// through customsite.Deploy, which confines every write to an

@@ -43,7 +43,7 @@ func TestABlankModeIsShownAsWhatItActuallyServes(t *testing.T) {
 	if got := scopedSiteMode(domain.Domain{ID: "s1", Host: "client.example"}); got != "blog" {
 		t.Errorf("a domain with no website override reports %q; it serves the blog", got)
 	}
-	page := scopedWebsitePage(domain.Domain{ID: "s1", Host: "client.example"}, "", bizsite.Content{}, false, customsite.Manifest{})
+	page := scopedWebsitePage(domain.Domain{ID: "s1", Host: "client.example"}, "", bizsite.Content{}, false, customsite.Manifest{}, false)
 	if !strings.Contains(page, `value="blog" checked`) {
 		t.Error("the mode picker has nothing selected for a site with no override, so it reads " +
 			"as serving nothing while it actually serves the blog")

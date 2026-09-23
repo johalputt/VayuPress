@@ -231,6 +231,16 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 			if err := mcpSiteWritable(d); err != nil {
 				return "", err
 			}
+			// A site published as a document renders from it, so these fields
+			// would be stored and never seen. Refused, naming the tools that do
+			// reach the page; serves, template and allow_eval still apply.
+			contentSent := in.Name != nil || in.Tagline != nil || in.About != nil || in.Phone != nil ||
+				in.Email != nil || in.Address != nil || in.Hours != nil || in.CTA != nil ||
+				in.CTALink != nil || in.HeroImg != nil || in.ShowBlog != nil
+			if _, published := publishedSiteDoc(ctx, d.ID); published && contentSent {
+				return "", siteLookupError(d.Host + " is edited as a document of pages and sections, so these " +
+					"content fields no longer reach its page — use get_site_document and publish_site_document")
+			}
 			prev, _ := d.Site()
 			c := bizsite.ParseContent(prev.Content)
 			mode, template := scopedSiteMode(d), prev.Template
