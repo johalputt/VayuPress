@@ -48,6 +48,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   conditions — a real server with a short write timeout and a client that
   reads slowly: without the fix the transfer dies at about 4 MB.
 
+- **A rate-limited lookup could fail a whole release.** Packaging the
+  VayuShield agent looks up cosign's latest release to pin its bootstrap — a
+  step documented as best-effort. The lookup was unauthenticated, so on a
+  shared runner GitHub answered `403`, and under `set -euo pipefail` that ended
+  the release before anything was published (this release's first attempt).
+  It is now authenticated with the workflow's token, and a failed lookup ships
+  the bundle without a pin, as the step always said it would.
+
 ### Removed
 
 - `deploy/updates-worker.js`. It relayed any path under `/api/github/` to
