@@ -6,6 +6,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.65] — 2026-09-23
+
+Shipped on its own under the hotfix exception: every per-site console page
+was visibly broken on live installs.
+
+### Fixed
+
+- **Stray "a-euro-degree" characters beside every console tool row.** Four
+  source files had been saved through a Windows-1252 round-trip, and the
+  console stylesheet also gained a byte-order mark. Every glyph the stylesheet
+  draws came out as three Latin-1 characters: the chevron on each row of a
+  site's tools, the sign-in page's authenticator-code disclosure, accordion
+  markers, the task tick. The files are reversed byte for byte, and every
+  CSS `content:` glyph is now a hex escape (`"\203A"`), which no re-encoding
+  can reach.
+
+### Added
+
+- **Encoding gate in CI** (`scripts/check-encoding.py --check`). Fails on any
+  tracked file carrying a byte-order mark or a run of characters that
+  re-encodes to valid UTF-8 through Windows-1252 — the exact signature of this
+  damage, which had already sat unnoticed in comments since before 3.17.61.
+  Genuine non-ASCII text (a lone dash, a PDF magic header in a test) does not
+  decode that way and is left alone. Seen failing on each seed separately: one
+  re-broken glyph, one added BOM, and its own example text before that was
+  reworded.
+
+### Changed
+
+- Dependency bumps since 3.17.64: lyrebird, `github.com/phuslu/iploc`
+  v1.0.20260915, and the go-minor-patch group.
+
+---
+
 ## [3.17.64] — 2026-09-08
 
 ### Added
