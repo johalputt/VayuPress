@@ -135,9 +135,11 @@ jobs:
           # Verify VayuOS pages are reachable through the proxy before
           # screenshotting. VayuOS is the only admin (mounted at /os); the
           # operator consoles now live under /os/* too.
-          echo "--- /os ---"
+          # /os/, not /os: the bare path redirects into the installed app's
+          # scope (302), and this check asks for the page itself.
+          echo "--- /os/ ---"
           STATUS=$(curl -sS -o /tmp/os-resp.txt -w "%{http_code}" \
-            -H "X-API-Key: $API_KEY" "$PROXY_URL/os")
+            -H "X-API-Key: $API_KEY" "$PROXY_URL/os/")
           echo "HTTP $STATUS"
           if [ "$STATUS" != "200" ]; then
             echo "BODY:"; cat /tmp/os-resp.txt
