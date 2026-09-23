@@ -31,6 +31,11 @@ type Options struct {
 	// brand. The caller versions it, so a change to either reaches a visitor
 	// whose browser cached the last one. Empty means /site.css for the design.
 	Stylesheet string
+	// InlineCSS, when set, is written into the page in place of the linked
+	// stylesheet. It is for the editor's preview: a frame sandboxed to an
+	// opaque origin, whose requests carry no session, so a stylesheet behind
+	// sign-in would never load there.
+	InlineCSS string
 }
 
 func esc(s string) string { return html.EscapeString(s) }
@@ -72,11 +77,19 @@ func Render(d Document, p Page, o Options) string {
 	b.WriteString(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">`)
 	b.WriteString(`<meta name="viewport" content="width=device-width, initial-scale=1">`)
 	writeHead(&b, d, p, hero, o)
-	sheet := o.Stylesheet
-	if sheet == "" {
-		sheet = "/site.css?v=" + o.Template.Key
+	switch sheet := o.Stylesheet; {
+	case o.InlineCSS != "":
+		// "</" would end the element and let what follows be read as markup.
+		// The stylesheet is built from validated values and never holds it;
+		// one that does is left out rather than let through.
+		if !strings.Contains(o.InlineCSS, "</") {
+			b.WriteString(`<style>` + o.InlineCSS + `</style>`)
+		}
+	case sheet == "":
+		b.WriteString(`<link rel="stylesheet" href="/site.css?v=` + esc(o.Template.Key) + `">`)
+	default:
+		b.WriteString(`<link rel="stylesheet" href="` + esc(sheet) + `">`)
 	}
-	b.WriteString(`<link rel="stylesheet" href="` + esc(sheet) + `">`)
 	b.WriteString(`</head><body class="vb vb--` + esc(o.Template.Key) + `">`)
 
 	b.WriteString(`<nav class="vb-nav"><a class="vb-brand" href="/">` + esc(name) + `</a><div class="vb-nav-links">`)

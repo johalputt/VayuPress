@@ -69,6 +69,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   through the same validator and publish path as the editor. `update_site`
   refuses content fields for a site that is a document, naming the tools that
   do reach its page.
+- **Problems on a live site are found after publishing, not only at it.**
+  The publish gate's checks are run again over every published site
+  document, because what it checked can break later — a post unpublished
+  under a button, a picture deleted from Media. A site with a problem that
+  would now stop a publish is counted in the console's attention strip
+  ("Website problems", linking the editor), marked "N to fix" on a hosted
+  site's home, and listed as `checks` in the connector's `get_site`. Sample
+  content on a site that is a document is read from its published document.
+- **A brand colour from the logo, and AI help in the site editor.** **Match my
+  logo** beside the brand colour takes the most common clear colour of the
+  uploaded mark — transparent, near-black and grey pixels are not a brand —
+  and darkens it only as far as white button text needs. Where an AI provider
+  is configured, the header's tagline, a text section and an offering's
+  description can be rewritten with **Improve with AI**, and a page's search
+  description written from what the page says. Both use the install's own
+  provider and the assistant's existing no-new-facts operations; a suggestion
+  appears under the field and changes nothing until **Use this**.
 - **A hosted site's contact messages are its own.** Messages record the site
   they came from (migration 095), the inbox labels them and links their page
   on that site, and a hosted site's form is emailed to the address its contact

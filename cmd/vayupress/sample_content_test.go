@@ -38,17 +38,17 @@ func siteServing(t *testing.T, mode string, c bizsite.Content) domain.Domain {
 
 func TestSampleContentIsReportedOnlyForTemplateSites(t *testing.T) {
 	demo := bizsite.ByKey("bistro").Defaults
-	if got := siteSampleFields(siteServing(t, "business", demo)); len(got) == 0 {
+	if got := siteSampleFields(context.Background(), siteServing(t, "business", demo)); len(got) == 0 {
 		t.Fatal("a template site publishing Bistro's sample reported nothing")
 	}
 	// No content written at all renders the template's sample — the same page.
-	if got := siteSampleFields(siteServing(t, "business", bizsite.Content{})); len(got) == 0 {
+	if got := siteSampleFields(context.Background(), siteServing(t, "business", bizsite.Content{})); len(got) == 0 {
 		t.Fatal("an empty template site renders the sample and reported nothing")
 	}
-	if got := siteSampleFields(siteServing(t, "business", bizsite.Content{Name: "Johal Studio", Tagline: "Websites"})); len(got) != 0 {
+	if got := siteSampleFields(context.Background(), siteServing(t, "business", bizsite.Content{Name: "Johal Studio", Tagline: "Websites"})); len(got) != 0 {
 		t.Fatalf("real content reported as sample: %v", got)
 	}
-	if got := siteSampleFields(siteServing(t, "custom", demo)); got != nil {
+	if got := siteSampleFields(context.Background(), siteServing(t, "custom", demo)); got != nil {
 		t.Fatalf("an uploaded bundle has no template content, yet reported %v", got)
 	}
 }

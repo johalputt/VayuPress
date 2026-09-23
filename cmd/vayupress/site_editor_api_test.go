@@ -5,6 +5,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -290,7 +292,9 @@ func TestTheSiteDocumentAPIIsAdminOnly(t *testing.T) {
 }
 
 // The preview's stylesheet carries the DRAFT's brand, not the live site's
-// and not the console host's.
+// and not the console host's. It is inline, because the editor frames the
+// preview sandboxed and its requests carry no session, and the page's policy
+// admits that stylesheet by its hash and no inline style besides.
 func TestThePreviewIsDressedInTheDraftsBrand(t *testing.T) {
 	a := siteApp(t)
 	d := hostedSite(t, a, "harbour.example")
@@ -303,13 +307,22 @@ func TestThePreviewIsDressedInTheDraftsBrand(t *testing.T) {
 	editorCall(t, h, http.MethodPost, "/sd/draft", withDoc(draft))
 
 	rec, _ := editorCall(t, h, http.MethodGet, "/sd/preview?page=", nil)
-	m := regexp.MustCompile(`href="(/sd/preview\.css\?v=[^"]+)"`).FindStringSubmatch(rec.Body.String())
-	if m == nil {
-		t.Fatalf("the preview links no preview stylesheet:\n%s", rec.Body.String())
+	body := rec.Body.String()
+	m := regexp.MustCompile(`(?s)<style>(.*?)</style>`).FindStringSubmatch(body)
+	if m == nil || strings.Contains(body, `rel="stylesheet"`) {
+		t.Fatalf("the preview does not carry its stylesheet inline:\n%s", body)
 	}
-	css, _ := editorCall(t, h, http.MethodGet, m[1], nil)
-	if !strings.Contains(css.Body.String(), "--vb-accent:#7c2d12") || strings.Contains(css.Body.String(), "#1d4ed8") {
+	if !strings.Contains(m[1], "--vb-accent:#7c2d12") || strings.Contains(m[1], "#1d4ed8") {
 		t.Error("the preview stylesheet is not the draft's brand")
+	}
+	sum := sha256.Sum256([]byte(m[1]))
+	csp := rec.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "style-src 'self' 'sha256-"+base64.StdEncoding.EncodeToString(sum[:])+"';") {
+		t.Errorf("the policy does not admit the preview's stylesheet: %s", csp)
+	}
+	// The one 'unsafe-inline' is the baseline's, for style attributes.
+	if strings.Count(csp, "'unsafe-inline'") != 1 {
+		t.Errorf("the preview admits inline styles in general: %s", csp)
 	}
 }
 

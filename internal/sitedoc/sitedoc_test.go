@@ -402,3 +402,19 @@ func TestTheContactScriptLoadsOnlyWithAForm(t *testing.T) {
 		t.Error("a page without a form loads the contact script")
 	}
 }
+
+// A document still carrying a design's sample is caught field by field, and
+// one that has replaced it is not.
+func TestSampleReadsWhatDemoFieldsCompares(t *testing.T) {
+	tpl := bizsite.All()[0]
+	d := FromLegacy(tpl, tpl.Defaults)
+	got := bizsite.DemoFields(Sample(d))
+	for _, want := range []string{"name", "tagline", "about", "hours", "cta", "services"} {
+		if !contains(got, want) {
+			t.Errorf("the design's own sample, as a document, does not flag %s: %v", want, got)
+		}
+	}
+	if f := bizsite.DemoFields(Sample(validDoc())); len(f) != 0 {
+		t.Errorf("a document with its own content is flagged as sample: %v", f)
+	}
+}

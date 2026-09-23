@@ -138,3 +138,33 @@ func TestLayoutsAreValidatedAndDrawn(t *testing.T) {
 		t.Error("a page without a gallery loads the gallery script")
 	}
 }
+
+// A colour taken from elsewhere comes back as the nearest shade of itself
+// that the validator accepts; one that already passes is left alone.
+func TestReadableAccent(t *testing.T) {
+	for _, c := range []string{"#f5d90a", "#22c55e", "#7dd3fc", "#ffffff"} {
+		got := ReadableAccent(c)
+		d := validDoc()
+		d.Style = &Style{Accent: got}
+		if err := Validate(d); err != nil {
+			t.Errorf("ReadableAccent(%s) = %s, which the validator refuses: %v", c, got, err)
+		}
+	}
+	if got := ReadableAccent("#1d4ed8"); got != "#1d4ed8" {
+		t.Errorf("a colour that already reads was changed to %s", got)
+	}
+}
+
+// An inline stylesheet replaces the link, and one that could end its element
+// is left out rather than written.
+func TestAnInlineStylesheetCannotEndItsElement(t *testing.T) {
+	d := Document{V: 1, Name: "Harbour", Pages: []Page{{Title: "Home", Sections: []Section{{ID: "top", Kind: KindHero}}}}}
+	out := Render(d, d.Pages[0], Options{InlineCSS: "body{color:red}"})
+	if !strings.Contains(out, "<style>body{color:red}</style>") || strings.Contains(out, `rel="stylesheet"`) {
+		t.Errorf("the inline stylesheet did not replace the link:\n%s", out)
+	}
+	out = Render(d, d.Pages[0], Options{InlineCSS: "body{}</style><img src=x>"})
+	if strings.Contains(out, "<img src=x>") {
+		t.Errorf("an inline stylesheet ended its element:\n%s", out)
+	}
+}

@@ -77,3 +77,35 @@ func FromLegacy(t bizsite.Template, c bizsite.Content) Document {
 func safeSrc(src string) bool {
 	return src != "" && image("", Image{Src: src}, false) == nil
 }
+
+// Sample reads back from a document the fields bizsite.DemoFields compares
+// with the designs' sample content: the name, the header's tagline and
+// button, the first text, the first opening hours and the offerings. It is
+// how a site published as a document is still caught publishing a design's
+// demo text — the flat content it came from is no longer what it serves.
+func Sample(d Document) bizsite.Content {
+	c := bizsite.Content{Name: d.Name}
+	for _, p := range d.Pages {
+		for _, s := range p.Sections {
+			switch s.Kind {
+			case KindHero:
+				if c.Tagline == "" {
+					c.Tagline, c.CTA = s.Body, s.CTA
+				}
+			case KindText:
+				if c.About == "" {
+					c.About = s.Body
+				}
+			case KindContact:
+				if c.Hours == "" {
+					c.Hours = s.Hours
+				}
+			case KindItems:
+				for _, it := range s.Items {
+					c.Services = append(c.Services, bizsite.Service{Title: it.Title})
+				}
+			}
+		}
+	}
+	return c
+}

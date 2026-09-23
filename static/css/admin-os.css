@@ -7085,3 +7085,7 @@
 .vp-os .bundle-history { margin-top: var(--space-3); }
 .vp-os .bundle-history__list { list-style: none; margin: var(--space-2) 0; padding: 0; }
 .vp-os .bundle-history__list li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 6px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.vp-os .se-ai { margin-top: 4px; }
+.vp-os .se-ai-out { font-size: var(--text-sm); color: var(--text-2); }
+.vp-os .se-ai-suggestion { margin-top: var(--space-2); padding: var(--space-3); border: 1px dashed var(--border-strong, var(--border)); border-radius: var(--r-sm, 8px); }
+.vp-os .se-ai-suggestion p { margin: 0 0 var(--space-2); color: var(--text-1); white-space: pre-line; }

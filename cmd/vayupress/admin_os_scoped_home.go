@@ -314,10 +314,14 @@ func (a *App) scopedToolChips(r *http.Request, d domain.Domain, posts int) map[s
 	// An empty mode means "inherit", which serves the blog — so it reports blog
 	// rather than "not set up", because "not set up" would be untrue of a domain
 	// that is serving perfectly well.
+	problems := errorCount(a.hostedSiteChecks(ctx, d))
 	switch s, ok := d.Site(); {
 	case ok && s.Mode == "custom":
 		c["website"] = scopedToolChip{On: true, Text: "uploaded site"}
-	case ok && strings.HasPrefix(s.Mode, "business") && len(siteSampleFields(d)) > 0:
+	case ok && strings.HasPrefix(s.Mode, "business") && problems > 0:
+		// A dead end on the live site outranks sample content: a visitor hits it.
+		c["website"] = scopedToolChip{Text: strconv.Itoa(problems) + " to fix"}
+	case ok && strings.HasPrefix(s.Mode, "business") && len(siteSampleFields(ctx, d)) > 0:
 		// Chipped as a problem: the page is live and describes a business
 		// that does not exist.
 		c["website"] = scopedToolChip{Text: "sample content"}

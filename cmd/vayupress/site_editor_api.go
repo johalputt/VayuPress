@@ -8,6 +8,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -109,7 +111,7 @@ func (a *App) handleSiteDocGet(target siteDocTarget) http.HandlerFunc {
 		}
 		// The closed choices come from the validator's own tables, so the
 		// editor never offers a value the server would refuse.
-		resp := map[string]any{"template": tpl.Key, "choices": map[string]any{
+		resp := map[string]any{"template": tpl.Key, "ai": a.siteAssistAvailable(r.Context()), "choices": map[string]any{
 			"variants": sitedoc.Variants, "fonts": sortedKeys(sitedoc.Fonts), "corners": sortedKeys(sitedoc.Corners),
 		}}
 		if d, at, ok := siteDraft(r.Context(), scope); ok {
@@ -238,37 +240,23 @@ func (a *App) handleSiteDocPreview(target siteDocTarget) http.HandlerFunc {
 		if d, _, ok := siteDraft(r.Context(), scope); ok {
 			doc = d
 		}
-		nonce := render.CSPNonce(r)
-		w.Header().Set("Content-Security-Policy",
-			strings.Replace(render.BuildCSP(nonce, nil), "frame-ancestors 'none'", "frame-ancestors 'self'", 1))
-		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
-		w.Header().Set("Cache-Control", "no-store")
 		o := a.siteRenderOptions(view, mode, tpl)
 		// The draft's brand is not the live site's, and /site.css on the
-		// console's host is not this site's at all: the preview links a
-		// stylesheet built from the same draft it renders.
-		o.Stylesheet = strings.TrimSuffix(r.URL.Path, "/preview") + "/preview.css?v=" + siteCSSVersion(tpl, doc)
+		// console's host is not this site's at all, so the preview carries a
+		// stylesheet built from the same draft it renders. Inline, because
+		// the frame is sandboxed to an opaque origin and its requests carry
+		// no session; admitted by its hash, so the policy grants that one
+		// stylesheet and not inline styles in general.
+		o.InlineCSS = siteCSS(tpl, doc)
+		sum := sha256.Sum256([]byte(o.InlineCSS))
+		csp := strings.Replace(render.BuildCSP(render.CSPNonce(r), nil), "frame-ancestors 'none'", "frame-ancestors 'self'", 1)
+		csp = strings.Replace(csp, "style-src 'self';", "style-src 'self' 'sha256-"+base64.StdEncoding.EncodeToString(sum[:])+"';", 1)
+		w.Header().Set("Content-Security-Policy", csp)
+		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		w.Header().Set("Cache-Control", "no-store")
 		if !writeSitePage(w, doc, r.URL.Query().Get("page"), o) {
 			writeAPIError(w, r, http.StatusNotFound, "unknown-page", "the document has no such page", "")
 		}
-	}
-}
-
-// handleSiteDocPreviewCSS is the stylesheet of the preview: the site's
-// design and its draft's brand.
-func (a *App) handleSiteDocPreviewCSS(target siteDocTarget) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		scope, view, ok := a.siteDocTargetOr404(w, r, target)
-		if !ok {
-			return
-		}
-		_, tpl, doc := a.siteDocument(view)
-		if d, _, ok := siteDraft(r.Context(), scope); ok {
-			doc = d
-		}
-		w.Header().Set("Content-Type", "text/css; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		_, _ = w.Write([]byte(siteCSS(tpl, doc)))
 	}
 }
 
@@ -276,7 +264,8 @@ func (a *App) handleSiteDocPreviewCSS(target siteDocTarget) http.HandlerFunc {
 func (a *App) registerSiteDocRoutes(r chi.Router, csrf func(http.Handler) http.Handler, base string, target siteDocTarget) {
 	r.Get(base, a.handleSiteDocGet(target))
 	r.Get(base+"/preview", a.handleSiteDocPreview(target))
-	r.Get(base+"/preview.css", a.handleSiteDocPreviewCSS(target))
+	r.Get(base+"/suggest-accent", a.handleSiteDocSuggestAccent(target))
+	r.With(csrf).Post(base+"/assist", a.handleSiteDocAssist(target))
 	r.Get(base+"/revisions/{rev}", a.handleSiteDocRevision(target))
 	r.With(csrf).Post(base+"/draft", a.handleSiteDocDraft(target))
 	r.With(csrf).Post(base+"/publish", a.handleSiteDocPublish(target))

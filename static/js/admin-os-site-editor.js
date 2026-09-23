@@ -224,7 +224,50 @@
     input.setAttribute('data-path', path ? path + '.' + key : key);
     wrap.appendChild(input);
     if (opts.hint) wrap.appendChild(el('span', 'se-hint', opts.hint));
+    if (opts.ai && state.ai) wrap.appendChild(aiHelp(opts.ai, input, obj, key, opts.source));
     return wrap;
+  }
+
+  // AI help beside a field, through the install's own provider. It only
+  // suggests: the text appears under the field, and nothing changes until
+  // "Use this" is pressed.
+  function aiHelp(op, input, obj, key, source) {
+    var box = el('div', 'se-ai');
+    var b = btn(op === 'describe' ? 'Write it from the page' : 'Improve with AI', 'btn--ghost', function () {
+      var text = source ? source() : input.value;
+      if (!text.trim()) { out.textContent = 'There is no text to work from yet.'; return; }
+      b.disabled = true;
+      out.textContent = 'Thinking…';
+      api('POST', '/assist', { op: op, text: text }).then(function (r) {
+        b.disabled = false;
+        out.textContent = '';
+        if (!r.ok) { out.textContent = ((r.j && r.j.error) || {}).message || 'The assistant did not answer.'; return; }
+        var sug = el('div', 'se-ai-suggestion');
+        sug.appendChild(el('p', '', r.j.result));
+        var row = el('div', 'se-row');
+        row.appendChild(btn('Use this', 'btn--primary', function () {
+          var v = input.maxLength > 0 ? r.j.result.slice(0, input.maxLength) : r.j.result;
+          obj[key] = v; input.value = v; out.textContent = ''; changed();
+        }));
+        row.appendChild(btn('Dismiss', 'btn--ghost', function () { out.textContent = ''; }));
+        sug.appendChild(row);
+        out.appendChild(sug);
+      }, function () { b.disabled = false; out.textContent = 'The assistant could not be reached.'; });
+    });
+    var out = el('div', 'se-ai-out');
+    box.appendChild(b);
+    box.appendChild(out);
+    return box;
+  }
+
+  // pageText is what a page says, for writing its description from it.
+  function pageText(p) {
+    var parts = [];
+    (p.sections || []).forEach(function (s) {
+      [s.heading, s.body].forEach(function (t) { if (t) parts.push(t); });
+      (s.items || []).forEach(function (it) { parts.push(it.title + (it.desc ? ': ' + it.desc : '')); });
+    });
+    return parts.join('\n');
   }
 
   // choice is a select over a closed list the server sent; '' keeps the
@@ -236,6 +279,8 @@
     if (emptyLabel) { var o0 = el('option', '', emptyLabel); o0.value = ''; sel.appendChild(o0); }
     (options || []).forEach(function (v) { var o = el('option', '', v.charAt(0).toUpperCase() + v.slice(1)); o.value = v; sel.appendChild(o); });
     sel.value = obj[key] || '';
+    // With no empty option, '' is the first choice (a section's layout).
+    if (sel.selectedIndex < 0) sel.selectedIndex = 0;
     sel.setAttribute('data-path', path ? path + '.' + key : key);
     sel.addEventListener('change', function () { obj[key] = sel.value; changed(); });
     wrap.appendChild(sel);
@@ -262,8 +307,19 @@
     row.appendChild(pick);
     row.appendChild(hex);
     row.appendChild(btn('Use the design\'s', 'btn--ghost', function () { st.accent = ''; hex.value = ''; changed(); }));
+    var note = el('span', 'se-hint');
+    row.appendChild(btn('Match my logo', 'btn--ghost', function () {
+      api('GET', '/suggest-accent').then(function (r) {
+        if (!r.ok) { note.textContent = ((r.j && r.j.error) || {}).message || 'No colour could be read.'; return; }
+        st.accent = r.j.accent; hex.value = r.j.accent; pick.value = r.j.accent;
+        note.textContent = r.j.accent === r.j.found ? 'Taken from your logo.' :
+          'From your logo (' + r.j.found + '), darkened until white text reads on it.';
+        changed();
+      });
+    }));
     wrap.appendChild(row);
     wrap.appendChild(el('span', 'se-hint', 'Dark enough for white text on a button; a lighter shade of it is used in dark mode automatically.'));
+    wrap.appendChild(note);
     return wrap;
   }
 
@@ -307,7 +363,7 @@
       case 'hero':
         b.appendChild(field('Title', s, 'heading', path, { placeholder: 'Defaults to the site name' }));
         b.appendChild(field('Small label above the title', s, 'eyebrow', path, { placeholder: 'Defaults to the design\'s label', max: 80 }));
-        b.appendChild(field('Tagline', s, 'body', path, { max: 300 }));
+        b.appendChild(field('Tagline', s, 'body', path, { max: 300, ai: 'improve' }));
         b.appendChild(field('Button label', s, 'cta', path, { max: 80 }));
         b.appendChild(field('Button link', s, 'cta_link', path, { placeholder: '#contact, /menu, https://…, mailto:, tel:' }));
         if (s.image) {
@@ -318,7 +374,7 @@
         break;
       case 'text':
         b.appendChild(field('Heading', s, 'heading', path));
-        b.appendChild(field('Text', s, 'body', path, { multi: true, rows: 6, hint: 'Each line becomes a paragraph.' }));
+        b.appendChild(field('Text', s, 'body', path, { multi: true, rows: 6, hint: 'Each line becomes a paragraph.', ai: 'improve' }));
         break;
       case 'items':
         b.appendChild(field('Heading', s, 'heading', path));
@@ -327,7 +383,7 @@
           var ip = path + '.items[' + k + ']';
           var card = el('div', 'se-item');
           card.appendChild(field('Name', it, 'title', ip));
-          card.appendChild(field('Description', it, 'desc', ip, { multi: true, rows: 2 }));
+          card.appendChild(field('Description', it, 'desc', ip, { multi: true, rows: 2, ai: 'improve' }));
           card.appendChild(field('Price', it, 'price', ip, { max: 40 }));
           card.appendChild(moveControls(s.items, k));
           card.appendChild(btn('Remove', 'btn--ghost', function () { s.items.splice(k, 1); changed(); render(); }));
@@ -410,7 +466,7 @@
       pageBox.appendChild(field('In the menu', p, 'in_nav', pp, { checkbox: true }));
     }
     pageBox.appendChild(field('Title', p, 'title', pp, { max: 120, placeholder: p.slug === '' ? 'Defaults to the business name and tagline' : '' }));
-    pageBox.appendChild(field('Description for search engines and link previews', p, 'description', pp, { multi: true, rows: 2, max: 300 }));
+    pageBox.appendChild(field('Description for search engines and link previews', p, 'description', pp, { multi: true, rows: 2, max: 300, ai: 'describe', source: function () { return pageText(p); } }));
     if (p.slug !== '') {
       pageBox.appendChild(btn('Delete this page', 'btn--ghost', function () {
         var go = function () { d.pages.splice(state.page, 1); state.page = 0; changed(); render(); reloadPreview(); };
@@ -575,6 +631,7 @@
       state.doc.pages.forEach(function (p) { p.sections = p.sections || []; });
       state.revisions = r.j.revisions || [];
       state.choices = r.j.choices || {};
+      state.ai = !!r.j.ai;
       state.source = r.j.source;
       if (!keepPage) state.page = 0;
       var from = { draft: 'Editing your saved draft', published: 'Editing the live site', legacy: 'Editing the site as it is today' }[r.j.source] || '';

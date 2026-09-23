@@ -1896,7 +1896,7 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 			// real business (vayupress.johal.in served Bistro's "Maison Olive").
 			sample, href := 0, "/os/domains"
 			for _, d := range list {
-				if !d.IsPrimary && d.Status == domain.StatusActive && len(siteSampleFields(d)) > 0 {
+				if !d.IsPrimary && d.Status == domain.StatusActive && len(siteSampleFields(ctx, d)) > 0 {
 					sample++
 					href = "/os/d/" + d.ID + "/website"
 				}
@@ -1905,6 +1905,23 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 				href = "/os/domains"
 			}
 			add(href, "Sample content is live", "a site is publishing a template's demo text", "domain", sample, "warn")
+			// Sites whose live pages now have a dead end in them: a picture
+			// deleted from Media, a post a button linked to taken down.
+			broken, bhref := 0, "/os/domains"
+			for _, d := range list {
+				if d.Status == domain.StatusActive && errorCount(a.hostedSiteChecks(ctx, d)) > 0 {
+					broken++
+					bhref = "/os/d/" + d.ID + "/website/editor"
+				}
+			}
+			if doc, ok := a.livePrimaryDocument(ctx); ok && errorCount(a.checkSite(ctx, "", doc)) > 0 {
+				broken++
+				bhref = "/os/website/editor"
+			}
+			if broken > 1 {
+				bhref = "/os/domains"
+			}
+			add(bhref, "Website problems", "a live site has a dead link or a missing picture", "domain", broken, "danger")
 		}
 	}
 	// A newer signed VayuPress release is ready to install (read from the cached

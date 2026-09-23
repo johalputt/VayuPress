@@ -160,3 +160,20 @@ func luminance(hex string) float64 {
 	}
 	return 0.2126*ch(r) + 0.7152*ch(g) + 0.0722*ch(b)
 }
+
+// ReadableAccent is c darkened, hue kept, until it passes as an accent: the
+// shade of a colour the validator accepts. It is how a colour taken from
+// somewhere else — a logo — becomes one the site can use.
+func ReadableAccent(c string) string {
+	r, g, b := rgb(c)
+	for i := 0; i <= 20; i++ {
+		t := 1 - float64(i)/20
+		mix := fmt.Sprintf("#%02x%02x%02x", scale(r, t), scale(g, t), scale(b, t))
+		if contrast(mix, lightPage) >= minContrast {
+			return mix
+		}
+	}
+	return "#000000"
+}
+
+func scale(v int, t float64) int { return int(math.Round(float64(v) * t)) }

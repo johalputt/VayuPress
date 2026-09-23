@@ -18,6 +18,7 @@ package main
 // scoping existed underneath and nothing surfaced it.
 
 import (
+	"context"
 	"encoding/json"
 	"html"
 	htmpl "html/template"
@@ -31,6 +32,7 @@ import (
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/seo"
+	"github.com/johalputt/vayupress/internal/sitedoc"
 )
 
 // scopedSiteModes is what a hosted domain can serve at "/".
@@ -81,10 +83,15 @@ func (a *App) handleOSScopedWebsite(w http.ResponseWriter, r *http.Request) {
 
 // siteSampleFields names what a template-mode site is still publishing from a
 // template's sample content (bizsite.DemoFields). A blog or an uploaded bundle
-// has no template content to be a sample of, so it reports none.
-func siteSampleFields(d domain.Domain) []string {
+// has no template content to be a sample of, so it reports none. A site
+// published as a document is read from what it publishes (sitedoc.Sample):
+// its flat content is no longer what a visitor sees.
+func siteSampleFields(ctx context.Context, d domain.Domain) []string {
 	if !strings.HasPrefix(scopedSiteMode(d), "business") {
 		return nil
+	}
+	if doc, ok := publishedSiteDoc(ctx, d.ID); ok {
+		return bizsite.DemoFields(sitedoc.Sample(doc))
 	}
 	site, _ := d.Site()
 	return bizsite.DemoFields(bizsite.EffectiveContent(bizsite.ByKey(site.Template), site.Content))
