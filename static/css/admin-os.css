@@ -7033,6 +7033,12 @@
 .vp-os .se-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; position: sticky; top: 0; z-index: 5; }
 .vp-os .se-bar #se-status { flex: 1; min-width: 12ch; }
 .vp-os .se-error { margin: var(--space-3) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--danger); border-radius: var(--r-sm, 8px); color: var(--danger); overflow-wrap: anywhere; }
+.vp-os .se-checks { margin: var(--space-3) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--r-sm, 8px); background: var(--bg-surface); display: flex; flex-direction: column; gap: 4px; }
+.vp-os .se-check-row { display: flex; gap: var(--space-3); align-items: baseline; text-align: left; background: none; border: 0; padding: 4px 0; color: var(--text-1); font: inherit; font-size: var(--text-sm); cursor: pointer; overflow-wrap: anywhere; }
+.vp-os .se-check-row:hover { text-decoration: underline; }
+.vp-os .se-check-level { flex: none; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: 1px 6px; border-radius: 4px; }
+.vp-os .se-check-row--error .se-check-level { color: var(--danger); border: 1px solid var(--danger); }
+.vp-os .se-check-row--warning .se-check-level { color: var(--text-2); border: 1px solid var(--border-strong, var(--border)); }
 .vp-os .se-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-5); align-items: start; margin-top: var(--space-4); }
 .vp-os .se-edit { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .vp-os .se-view { position: sticky; top: 64px; min-width: 0; }
@@ -7076,3 +7082,6 @@
   .vp-os .se-view { position: static; }
   .vp-os #se-preview { height: 60vh; }
 }
+.vp-os .bundle-history { margin-top: var(--space-3); }
+.vp-os .bundle-history__list { list-style: none; margin: var(--space-2) 0; padding: 0; }
+.vp-os .bundle-history__list li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 6px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }

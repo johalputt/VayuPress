@@ -54,6 +54,35 @@
   var historyEl = document.getElementById('se-history');
 
   function say(msg) { if (statusEl) statusEl.textContent = msg; }
+
+  // What the publish gate finds about the draft, after every save: errors
+  // would stop a publish, warnings would not. Each finding jumps to its field.
+  var checksEl = document.getElementById('se-checks');
+  function focusPath(path) {
+    var m = /^pages\[(\d+)\]/.exec(path);
+    if (m && +m[1] !== state.page) { state.page = +m[1]; render(); reloadPreview(); }
+    var sm = /^pages\[(\d+)\]\.sections\[(\d+)\]/.exec(path);
+    if (sm && !open[sm[1] + ':' + sm[2]]) { open[sm[1] + ':' + sm[2]] = true; render(); }
+    var f = document.querySelector('[data-path="' + path.replace(/"/g, '') + '"]');
+    if (f) { f.focus(); f.scrollIntoView({ block: 'center' }); }
+  }
+  function renderChecks(list) {
+    if (!checksEl) return;
+    checksEl.textContent = '';
+    list = list || [];
+    checksEl.hidden = !list.length;
+    if (!list.length) return;
+    var errors = list.filter(function (c) { return c.level === 'error'; }).length;
+    checksEl.appendChild(el('div', 'settings-block-title', errors ? errors + ' to fix before publishing' : 'Worth a look before publishing'));
+    list.forEach(function (c) {
+      var b = el('button', 'se-check-row se-check-row--' + c.level);
+      b.type = 'button';
+      b.appendChild(el('span', 'se-check-level', c.level === 'error' ? 'Fix' : 'Note'));
+      b.appendChild(el('span', '', c.message));
+      b.addEventListener('click', function () { focusPath(c.path); });
+      checksEl.appendChild(b);
+    });
+  }
   function showError(msg, path) {
     document.querySelectorAll('[data-path].se-bad').forEach(function (n) { n.classList.remove('se-bad'); });
     if (!errorEl) return;
@@ -61,10 +90,9 @@
     errorEl.hidden = !msg;
     if (!path) return;
     // A refusal names a field on some page; show that page and mark the field.
-    var m = /^pages\[(\d+)\]/.exec(path);
-    if (m && +m[1] !== state.page) { state.page = +m[1]; render(); }
+    focusPath(path);
     var field = document.querySelector('[data-path="' + path.replace(/"/g, '') + '"]');
-    if (field) { field.classList.add('se-bad'); field.focus(); }
+    if (field) field.classList.add('se-bad');
   }
 
   // ── Model helpers ─────────────────────────────────────────────────────────
@@ -134,6 +162,7 @@
       }
       state.dirty = false;
       showError('');
+      renderChecks(r.j.checks);
       say('Draft saved ' + new Date().toLocaleTimeString());
       reloadPreview();
       return true;
@@ -151,8 +180,10 @@
       }
       state.dirty = false;
       showError('');
+      renderChecks(r.j.checks);
       if (window.vpToast) window.vpToast('Site published', 'ok');
-      load(true, 'Published ✓ — revision ' + r.j.revision + ' is live');
+      var notes = (r.j.checks || []).length;
+      load(true, 'Published ✓ — revision ' + r.j.revision + ' is live' + (notes ? ' (' + notes + ' note' + (notes > 1 ? 's' : '') + ' below)' : ''));
     });
   }
 

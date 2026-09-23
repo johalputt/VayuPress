@@ -20,6 +20,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"html"
 	"io"
 	"net/http"
 	"os"
@@ -35,6 +36,7 @@ import (
 	"github.com/johalputt/vayupress/internal/customsite"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/render"
 )
 
 const (
@@ -46,6 +48,10 @@ const (
 	bundleChunkMax = 16 << 20
 	// bundleReserveFloor is the least free space an upload may leave behind.
 	bundleReserveFloor = int64(1) << 30
+	// bundleReserveCeiling bounds the reserve on a large disk: 5% of two
+	// terabytes is a hundred gigabytes held back for a database that needs a
+	// fraction of it, which would refuse uploads a machine has ample room for.
+	bundleReserveCeiling = int64(10) << 30
 	// bundleUploadMaxAge is how long an abandoned upload is kept before the
 	// next upload to any site deletes it.
 	bundleUploadMaxAge = 24 * time.Hour
@@ -61,7 +67,7 @@ var bundleDisk = diskUsage
 // The reserve is the point. The database, the mail store and the logs share
 // this volume, and SQLite cannot commit into a full disk — an upload allowed
 // to take the last byte would take the whole install down with it. The
-// reserve is 5% of the volume or 1 GiB, whichever is more.
+// reserve is 5% of the volume, at least 1 GiB and at most 10 GiB.
 //
 // STORAGE_QUOTA_GB was the other candidate and was rejected: it is
 // self-declared, counts only the database and the render cache, and is never
@@ -82,7 +88,10 @@ func bundleBudget() int64 {
 		return 1<<63 - 1
 	}
 	reserve := max(int64(total/20), bundleReserveFloor) //nolint:gosec // a volume size, far below 2^63
-	return max(int64(free)-reserve, 0)                  //nolint:gosec // as above
+	if reserve > bundleReserveCeiling {
+		reserve = bundleReserveCeiling
+	}
+	return max(int64(free)-reserve, 0) //nolint:gosec // as above
 }
 
 // bundleRoomLine is the upload card's statement of how large a bundle may be:
@@ -356,4 +365,52 @@ func (a *App) handleBundleDownload(site bundleSite) http.HandlerFunc {
 				Msg: "bundle download interrupted", Error: err.Error(), RequestID: getRequestID(r)})
 		}
 	}
+}
+
+// handleBundleRestore makes one earlier upload live again: POST
+// …/generations/{gen}/restore. What was live joins the history, so the
+// restore is itself undoable from the same list.
+func (a *App) handleBundleRestore(site bundleSite) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		dir, name, ok := a.bundleSiteOr404(w, r, site)
+		if !ok {
+			return
+		}
+		gen := chi.URLParam(r, "gen")
+		if err := customsite.Restore(dir, gen); err != nil {
+			writeAPIError(w, r, http.StatusNotFound, "unknown-generation", err.Error(), "")
+			return
+		}
+		render.CachePurgeAll()
+		dbpkg.AuditLog("vayudomains.website.bundle", dbpkg.AuditActor(r), name, "restored upload "+gen)
+		writeJSON(w, r, http.StatusOK, map[string]string{"status": "restored"})
+	}
+}
+
+// bundleHistoryHTML lists a site's earlier uploads with a restore button
+// each; restoreBase is the API base the buttons post to.
+func bundleHistoryHTML(dir, restoreBase string) string {
+	gens := customsite.History(dir)
+	if len(gens) == 0 {
+		return ""
+	}
+	esc := html.EscapeString
+	var b strings.Builder
+	b.WriteString(`<details class="bundle-history"><summary class="text-sm">Earlier uploads (` + itoaSafe(len(gens)) + `)</summary><ul class="bundle-history__list">`)
+	for _, g := range gens {
+		when := "earlier"
+		if !g.Manifest.DeployedAt.IsZero() {
+			when = config.FormatSiteStamp(g.Manifest.DeployedAt)
+		}
+		detail := ""
+		if g.Manifest.Files > 0 {
+			detail = " · " + itoaSafe(g.Manifest.Files) + " files, " + humanBytes(g.Manifest.Bytes)
+		}
+		b.WriteString(`<li><span class="text-sm">` + esc(when) + esc(detail) + `</span>` +
+			`<button type="button" class="btn btn--ghost btn--sm" data-bundle-restore="` +
+			esc(restoreBase+"/generations/"+g.ID+"/restore") + `">Restore</button></li>`)
+	}
+	b.WriteString(`</ul><p class="text-sm muted">The ` + itoaSafe(customsite.KeptGenerations) +
+		` most recent are kept. Restoring one keeps what is live now in this list.</p></details>`)
+	return b.String()
 }

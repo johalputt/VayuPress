@@ -114,7 +114,8 @@ func (a *App) registerSiteDocumentTools(srv *mcp.Server) {
 			if err != nil {
 				return "", err
 			}
-			return jsonStr(map[string]any{"status": "draft saved", "host": d.Host, "saved_at": at}), nil
+			return jsonStr(map[string]any{"status": "draft saved", "host": d.Host, "saved_at": at,
+				"checks": nonNilChecks(a.checkSite(ctx, d.ID, doc))}), nil
 		},
 	})
 
@@ -191,7 +192,7 @@ func (a *App) registerSiteDocumentTools(srv *mcp.Server) {
 // switches it to serve its website — a publish the visitor cannot see would be
 // the assistant reporting success for a change nobody gets.
 func (a *App) mcpPublishSiteDoc(ctx context.Context, d domain.Domain, doc sitedoc.Document, verb string) (string, error) {
-	id, err := a.publishSite(ctx, d.ID, doc, mcpActor(ctx))
+	id, checks, err := a.publishSite(ctx, d.ID, doc, mcpActor(ctx))
 	if err != nil {
 		return "", err
 	}
@@ -210,5 +211,5 @@ func (a *App) mcpPublishSiteDoc(ctx context.Context, d domain.Domain, doc sitedo
 	render.CachePurgeAll()
 	dbpkg.AuditLog("website.document", mcpActor(ctx), d.Host, verb+" revision "+itoaSafe(int(id))+" via=mcp")
 	return jsonStr(map[string]any{"status": verb, "host": d.Host, "revision": id,
-		"url": "https://" + d.Host + "/", "serves": serves}), nil
+		"url": "https://" + d.Host + "/", "serves": serves, "checks": nonNilChecks(checks)}), nil
 }

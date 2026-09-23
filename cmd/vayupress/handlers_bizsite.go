@@ -337,6 +337,7 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 		zipBody.WriteString(`<button type="button" class="btn btn--ghost btn--sm" data-biz-rollback>Roll back</button>`)
 	}
 	zipBody.WriteString(`<span class="text-sm muted" data-biz-deploy-status></span></div>`)
+	zipBody.WriteString(bundleHistoryHTML(a.customSiteDir(r), "/os/api/website/custom-bundle"))
 	b.WriteString(monAcc("📦", "Deploy a custom build", "Upload a .zip static site — with one-click rollback",
 		monChip(customDeployed, buildLabel+" deployed", "None uploaded"), false, zipBody.String()))
 	b.WriteString(`</div>`)

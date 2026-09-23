@@ -247,6 +247,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle/uploads/{upload}", a.handleBundleUploadChunk(scopedBundleSite))
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle/uploads/{upload}/deploy", a.handleBundleUploadDeploy(scopedBundleSite))
 			dr.Get("/api/website/bundle/download", a.handleBundleDownload(scopedBundleSite))
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/bundle/generations/{gen}/restore", a.handleBundleRestore(scopedBundleSite))
 			// The site as a document (ADR-0161): draft, publish, history.
 			a.registerSiteDocRoutes(dr, auth.CSRFTokenMiddleware, "/api/site-doc", scopedSiteDocTarget)
 			dr.Get("/api/website/preview", a.handleOSScopedWebsitePreview)
@@ -304,6 +305,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-bundle/uploads/{upload}", a.handleBundleUploadChunk(primaryBundleSite(a)))
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-bundle/uploads/{upload}/deploy", a.handleBundleUploadDeploy(primaryBundleSite(a)))
 		pr.Get("/os/api/website/custom-bundle/download", a.handleBundleDownload(primaryBundleSite(a)))
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-bundle/generations/{gen}/restore", a.handleBundleRestore(primaryBundleSite(a)))
 		a.registerSiteDocRoutes(pr, auth.CSRFTokenMiddleware, "/os/api/site-doc", primarySiteDocTarget)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-rollback", a.handleOSWebsiteCustomRollback)
 		pr.Get("/os/api/website/custom-guide", a.handleOSWebsiteCustomGuide)

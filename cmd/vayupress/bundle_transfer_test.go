@@ -51,6 +51,7 @@ func bundleRouter(site bundleSite, admin bool) http.Handler {
 	r.Post("/b/uploads/{upload}", a.handleBundleUploadChunk(site))
 	r.Post("/b/uploads/{upload}/deploy", a.handleBundleUploadDeploy(site))
 	r.Get("/b/download", a.handleBundleDownload(site))
+	r.Post("/b/generations/{gen}/restore", a.handleBundleRestore(site))
 	return r
 }
 
@@ -261,6 +262,7 @@ func TestBundleBudgetKeepsTheReserve(t *testing.T) {
 		{"5% of a large disk is kept", 100 << 30, 10 << 30, 5 << 30},
 		{"at least 1 GiB is kept on a small disk", 2 << 30, 3 << 29, 1 << 29},
 		{"less free than the reserve is no room, not negative", 100 << 30, 1 << 30, 0},
+		{"at most 10 GiB is kept on a large disk", 2000 << 30, 50 << 30, 40 << 30},
 		{"unknown disk is unbounded", 0, 0, 1<<63 - 1},
 	} {
 		bundleDisk = func(string) (uint64, uint64) { return c.total, c.free }
@@ -324,6 +326,7 @@ func TestBundleEndpointsAreAdminOnly(t *testing.T) {
 	for _, c := range [][2]string{
 		{http.MethodPost, "/b/uploads?size=0"}, {http.MethodPost, "/b/uploads/" + id + "?offset=0"},
 		{http.MethodPost, "/b/uploads/" + id + "/deploy"}, {http.MethodGet, "/b/download"},
+		{http.MethodPost, "/b/generations/01790000000000000000/restore"},
 	} {
 		if rec, _ := call(t, h, c[0], c[1], nil); rec.Code != http.StatusForbidden {
 			t.Errorf("%s %s without an admin: %d, want 403", c[0], c[1], rec.Code)
@@ -427,5 +430,39 @@ func TestMeasuringTheRoomCreatesNothing(t *testing.T) {
 	}
 	if measured != filepath.Dir(customSiteRoot()) {
 		t.Errorf("measured %q, want the data root %q", measured, filepath.Dir(customSiteRoot()))
+	}
+}
+
+// Earlier uploads are listed on the page and any one can be restored from
+// it; an id the history does not hold restores nothing.
+func TestAnEarlierUploadCanBeRestoredFromTheConsole(t *testing.T) {
+	bundleTestEnv(t, 1<<30)
+	dir := t.TempDir()
+	h := bundleRouter(dirSite(dir, "a.example"), true)
+	for _, v := range []string{"FIRST", "SECOND", "THIRD"} {
+		if rec, _ := sendAll(t, h, siteZip(t, map[string][]byte{"index.html": []byte(v)}, zip.Store), bundleChunkBytes); rec.Code != http.StatusOK {
+			t.Fatalf("deploy %s: %d", v, rec.Code)
+		}
+	}
+	list := bundleHistoryHTML(dir, "/b")
+	if n := strings.Count(list, "data-bundle-restore="); n != 2 {
+		t.Fatalf("the page lists %d earlier uploads, want 2:\n%s", n, list)
+	}
+	oldest := customsite.History(dir)[1].ID
+	if !strings.Contains(list, `data-bundle-restore="/b/generations/`+oldest+`/restore"`) {
+		t.Errorf("the list does not offer the oldest upload")
+	}
+	if rec, _ := call(t, h, http.MethodPost, "/b/generations/"+oldest+"/restore", nil); rec.Code != http.StatusOK {
+		t.Fatalf("restore: %d %s", rec.Code, rec.Body)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "current", "index.html"))
+	if string(b) != "FIRST" {
+		t.Errorf("after restoring the first upload the site holds %q", b)
+	}
+	if rec, j := call(t, h, http.MethodPost, "/b/generations/../../x/restore", nil); rec.Code != http.StatusNotFound && errCode(j) != "unknown-generation" {
+		t.Errorf("an id outside the history: %d", rec.Code)
+	}
+	if rec, j := call(t, h, http.MethodPost, "/b/generations/01790000000000000000/restore", nil); rec.Code != http.StatusNotFound || errCode(j) != "unknown-generation" {
+		t.Errorf("an id the history does not hold: %d %s", rec.Code, rec.Body)
 	}
 }

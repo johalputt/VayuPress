@@ -61,7 +61,12 @@ func siteDocAuthor(r *http.Request) string {
 func writeSiteDocError(w http.ResponseWriter, r *http.Request, err error) {
 	var fe *sitedoc.FieldError
 	var taken errSiteSlugTaken
+	var gate errSiteChecks
 	switch {
+	case errors.As(err, &gate):
+		writeJSON(w, r, http.StatusUnprocessableEntity, map[string]any{
+			"error": map[string]string{"code": "publish-check", "message": gate.Error(), "path": gate.first.Path},
+		})
 	case errors.As(err, &fe):
 		writeJSON(w, r, http.StatusUnprocessableEntity, map[string]any{
 			"error": map[string]string{"code": "invalid-document", "message": fe.Error(), "path": fe.Path},
@@ -138,7 +143,8 @@ func (a *App) handleSiteDocDraft(target siteDocTarget) http.HandlerFunc {
 			writeSiteDocError(w, r, err)
 			return
 		}
-		writeJSON(w, r, http.StatusOK, map[string]any{"status": "saved", "saved_at": at})
+		writeJSON(w, r, http.StatusOK, map[string]any{"status": "saved", "saved_at": at,
+			"checks": nonNilChecks(a.checkSite(r.Context(), scope, d))})
 	}
 }
 
@@ -159,7 +165,7 @@ func (a *App) handleSiteDocPublish(target siteDocTarget) http.HandlerFunc {
 }
 
 func (a *App) publishAndAnswer(w http.ResponseWriter, r *http.Request, scope string, d sitedoc.Document, verb string) {
-	id, err := a.publishSite(r.Context(), scope, d, siteDocAuthor(r))
+	id, checks, err := a.publishSite(r.Context(), scope, d, siteDocAuthor(r))
 	if err != nil {
 		writeSiteDocError(w, r, err)
 		return
@@ -170,7 +176,7 @@ func (a *App) publishAndAnswer(w http.ResponseWriter, r *http.Request, scope str
 	}
 	dbpkg.AuditLog("website.document", dbpkg.AuditActor(r), target, verb+" revision "+itoaSafe(int(id)))
 	render.CachePurgeAll()
-	writeJSON(w, r, http.StatusOK, map[string]any{"status": verb, "revision": id})
+	writeJSON(w, r, http.StatusOK, map[string]any{"status": verb, "revision": id, "checks": nonNilChecks(checks)})
 }
 
 // handleSiteDocRevision returns one published revision, for the history view.
@@ -284,4 +290,13 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// nonNilChecks is checks as a JSON array even when there are none, so a
+// client reads "[]" as "nothing found" rather than null as "not checked".
+func nonNilChecks(c []siteCheck) []siteCheck {
+	if c == nil {
+		return []siteCheck{}
+	}
+	return c
 }

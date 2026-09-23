@@ -69,9 +69,10 @@ could not already do to their own disk.
 
 - **Bound.** `customsite.Deploy` takes a byte budget and refuses an archive
   whose declared sizes exceed it (`ErrNoSpace`, answered as 507). The budget
-  is the free space on the volume holding the bundles, less a reserve of 5% or
-  1 GiB, whichever is more, so an upload cannot starve the database of the disk
-  it commits to (`bundleBudget`). Declared sizes are binding because
+  is the free space on the volume holding the bundles, less a reserve of 5% of
+  the volume — at least 1 GiB, at most 10 GiB — so an upload cannot starve the
+  database of the disk it commits to, and a large disk is not held back by
+  tens of gigabytes the database will never use (`bundleBudget`). Declared sizes are binding because
   `archive/zip` refuses an entry that decompresses past its header; a test pins
   that, and the separate copy limit — which could no longer fire — was removed.
 - **Transport.** The console sends the archive in 8 MiB pieces
@@ -83,9 +84,14 @@ could not already do to their own disk.
   is declared when the upload opens, and one that cannot fit is refused before
   its first piece.
 - **Unchanged.** The extension allowlist, zip-slip and symlink refusal,
-  `os.Root` confinement, `index.html` requirement and atomic swap with one
-  previous generation. `Deploy` and `Rollback` are now serialised per process,
+  `os.Root` confinement, `index.html` requirement and atomic swap. `Deploy` and `Rollback` are now serialised per process,
   since minutes-long uploads made two deploys racing on `.staging` likely.
 - **Download.** `…/bundle/download` streams the live bundle as a `.zip`
   (`customsite.Export`, read through the same confined root as serving) from
   the primary's and every hosted site's console.
+- **History.** The single `previous/` generation became a history of five
+  (`customsite.History`, `Restore`): a second bad upload in a row no longer
+  destroys the last good site. Each earlier upload is listed on the Website
+  page with its date and size and can be restored; what was live joins the
+  history, so a restore is undoable. An existing `previous/` joins the history
+  on the next deploy or rollback.

@@ -152,14 +152,14 @@ func dirs(base string) (current, previous, staging string) {
 }
 
 // Deploy validates the archive zr and atomically installs it as the live
-// bundle under base/current, preserving the prior deployment under
-// base/previous for one-click rollback. It never partially replaces the live
+// bundle under base/current, keeping the prior deployment in the history
+// (history.go) for restoring. It never partially replaces the live
 // site: extraction happens in a staging dir and is swapped in only after full
 // success. At most budget bytes are written; more is refused with ErrNoSpace.
 func Deploy(base string, zr *zip.Reader, budget int64) (Manifest, error) {
 	deployMu.Lock()
 	defer deployMu.Unlock()
-	current, previous, staging := dirs(base)
+	current, _, staging := dirs(base)
 
 	// Refuse on the archive's own declaration before writing a byte, so a bundle
 	// that cannot fit fails in a moment instead of after gigabytes of
@@ -266,21 +266,25 @@ func Deploy(base string, zr *zip.Reader, budget int64) (Manifest, error) {
 		return Manifest{}, errors.New("the bundle must contain an index.html at its root")
 	}
 
-	// Swap: move current→previous (replacing any older previous), staging→current.
+	// Swap: the live bundle joins the history, staging becomes live.
+	migratePrevious(base)
 	hadCurrent := dirExists(current)
+	archived := ""
 	if hadCurrent {
-		_ = os.RemoveAll(previous)
-		if err := os.Rename(current, previous); err != nil {
+		id, err := archiveCurrent(base)
+		if err != nil {
 			return Manifest{}, fmt.Errorf("archive current deployment: %w", err)
 		}
+		archived = id
 	}
 	if err := os.Rename(staging, current); err != nil {
-		// Best-effort restore of the previous live site.
-		if hadCurrent {
-			_ = os.Rename(previous, current)
+		// Put the live site back rather than leave the domain with none.
+		if archived != "" {
+			unarchive(base, archived)
 		}
 		return Manifest{}, fmt.Errorf("activate new deployment: %w", err)
 	}
+	pruneHistory(base)
 	success = true
 
 	m := Manifest{
@@ -288,7 +292,7 @@ func Deploy(base string, zr *zip.Reader, budget int64) (Manifest, error) {
 		Files:      fileCount,
 		Bytes:      total,
 		Entry:      "index.html",
-		HasPrev:    hadCurrent,
+		HasPrev:    len(History(base)) > 0,
 
 		Skipped:      skippedCount,
 		SkippedNames: skipped,
@@ -350,36 +354,17 @@ func safeRel(name string) (string, error) {
 	return cleaned, nil
 }
 
-// Rollback swaps the current and previous deployments. It errors if there is no
-// previous deployment to restore.
+// Rollback restores the most recent earlier deployment. The live one joins
+// the history first, so rolling back twice returns to where it started.
 func Rollback(base string) error {
 	deployMu.Lock()
 	defer deployMu.Unlock()
-	current, previous, _ := dirs(base)
-	if !dirExists(previous) {
+	migratePrevious(base)
+	gens := History(base)
+	if len(gens) == 0 {
 		return errors.New("no previous deployment to roll back to")
 	}
-	tmp := filepath.Join(base, ".swap")
-	_ = os.RemoveAll(tmp)
-	if dirExists(current) {
-		if err := os.Rename(current, tmp); err != nil {
-			return err
-		}
-	}
-	if err := os.Rename(previous, current); err != nil {
-		if dirExists(tmp) {
-			_ = os.Rename(tmp, current)
-		}
-		return err
-	}
-	if dirExists(tmp) {
-		_ = os.Rename(tmp, previous)
-	}
-	m := ReadManifest(base)
-	m.DeployedAt = time.Now().UTC()
-	m.HasPrev = dirExists(previous)
-	writeManifest(base, m)
-	return nil
+	return restoreLocked(base, gens[0].ID)
 }
 
 // Export writes the live bundle to w as a .zip — the site exactly as it is

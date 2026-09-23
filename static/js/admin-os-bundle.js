@@ -74,4 +74,22 @@
     var pct = total ? Math.floor(done * 100 / total) : 0;
     return 'Uploading ' + pct + '% (' + mb(done) + ' of ' + mb(total) + ')…';
   };
+
+  // Earlier uploads: restore one, then reload so the page shows what is live.
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-bundle-restore]');
+    if (!b) return;
+    var go = function () {
+      b.disabled = true;
+      var m = document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
+      post(b.getAttribute('data-bundle-restore'), m ? decodeURIComponent(m[1]) : '', null).then(function (r) {
+        if (r.ok) { window.location.reload(); return; }
+        b.disabled = false;
+        b.textContent = 'Could not restore';
+        b.title = reason(r);
+      });
+    };
+    if (window.vpConfirm) window.vpConfirm({ title: 'Restore this upload', message: 'Make this earlier upload the live site? What is live now is kept in the list.', confirm: 'Restore' }, go);
+    else go();
+  });
 })();

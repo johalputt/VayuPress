@@ -98,14 +98,28 @@ func siteDraft(ctx context.Context, scope string) (sitedoc.Document, time.Time, 
 // publishSite makes d the site's live document: a new revision, the draft
 // cleared, and revisions beyond siteRevisionsKept deleted — in one
 // transaction, so a failure leaves the site as it was.
-func (a *App) publishSite(ctx context.Context, scope string, d sitedoc.Document, author string) (int64, error) {
+//
+// The publish gate runs first: an error-level check stops the publish, and
+// the warnings are returned with the new revision.
+func (a *App) publishSite(ctx context.Context, scope string, d sitedoc.Document, author string) (int64, []siteCheck, error) {
 	raw, err := sitedoc.Marshal(d)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	if err := a.checkSiteSlugs(ctx, scope, d); err != nil {
-		return 0, err
+		return 0, nil, err
 	}
+	checks := a.checkSite(ctx, scope, d)
+	if first, bad := firstError(checks); bad {
+		return 0, checks, errSiteChecks{first}
+	}
+	id, err := a.commitRevision(ctx, scope, raw, author)
+	return id, checks, err
+}
+
+// commitRevision stores raw as scope's newest revision, clears the draft and
+// prunes old revisions, in one transaction.
+func (a *App) commitRevision(ctx context.Context, scope string, raw []byte, author string) (int64, error) {
 	tx, err := dbpkg.WDB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err

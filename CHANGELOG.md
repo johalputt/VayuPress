@@ -26,6 +26,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   design — except that links and image sources the validator would refuse
   (`javascript:`, `data:`) are no longer drawn, and the nav no longer links
   sections that are not there.
+- **A publish gate for site documents.** Before a publish the site is checked
+  against the install it will be served from. A button link that nothing
+  answers — no page, route or published post of that site — a `#section` that
+  is not on its page, or a `/media/` picture missing from the library stops
+  the publish, on the field. A page with no description, a page whose
+  pictures weigh over 3 MiB, another site's picture on a Tor install (whose
+  policy refuses it) and a message form with no address to send to are
+  reported and publish. Every draft save reports the same checks, listed
+  under the editor's status with each one jumping to its field; the
+  connector's `save_site_draft` and `publish_site_document` return them.
+- **Five earlier uploads kept, and any one restorable.** A hand-built site
+  used to keep one previous version, so a second bad upload in a row lost the
+  last good site. Now the five most recent are listed on the Website page with
+  date and size, and any one can be restored; what was live joins the list, so
+  a restore is undoable. An existing previous version joins the list.
 - **A site's own brand and layouts.** In the site editor: a brand colour, a
   typeface (system stacks — nothing downloaded) and corner style over any
   design, and a layout per section — header centred, left or split beside
@@ -61,7 +76,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **A hand-built website has no fixed size limit, and can be downloaded.**
   The 50 MiB / 25 MiB-a-file / 3000-file caps and the 60 MiB upload are gone;
   a bundle may use the disk's free space less a reserve kept for the database
-  (5% of the volume or 1 GiB), and the upload card says how much room there is.
+  (5% of the volume, at least 1 GiB and at most 10 GiB), and the upload card
+  says how much room there is.
   The console now sends the `.zip` in 8 MiB pieces, so the 50M body limit in
   the shipped nginx and Caddy configurations and Cloudflare's 100 MB no longer
   stop a large site, a dropped connection costs one piece, and the server's

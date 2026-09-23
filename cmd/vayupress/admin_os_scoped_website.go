@@ -209,7 +209,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 	}() + `
     <span id="scoped-bundle-status" class="text-sm muted" role="status" aria-live="polite"></span>
   </div>
-  <p id="scoped-bundle-outcome" class="text-sm" role="alert"></p>
+  <p id="scoped-bundle-outcome" class="text-sm" role="alert"></p>` + bundleHistoryHTML(scopedBundleDir(d), "/os/d/"+d.ID+"/api/website/bundle") + `
   <p class="text-sm muted">Or have one written for you: ask an assistant through <a href="/os/vayumcp">VayuMCP</a>
     to <em>build a site for ` + esc(d.Host) + `</em>. It authors the HTML and CSS itself and publishes it here —
     the same deploy path as an upload, with the same limits.</p>
