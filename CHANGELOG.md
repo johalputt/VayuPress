@@ -6,7 +6,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.68] — 2026-09-23
+
+The website plan in one release. A template site becomes a document of pages
+and sections, edited in a new site editor or section by section through the
+connector, published through a gate that checks what visitors would hit, kept
+in history, and checked again after publishing. A site has its own brand and
+layouts, can start from the owner's details rather than a design's sample
+business, and a hand-built site has no fixed size limit and can be
+downloaded. The pre-release audit closed an open mail relay in the contact
+form and a memory exhaustion through the logo.
 
 ### Added
 
@@ -30,8 +39,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   against the install it will be served from. A button link that nothing
   answers — no page, route or published post of that site — a `#section` that
   is not on its page, or a `/media/` picture missing from the library stops
-  the publish, on the field. A page with no description, a page whose
-  pictures weigh over 3 MiB, another site's picture on a Tor install (whose
+  the publish, on the field. A page with no description (and no header
+  tagline to stand in for one), a page whose pictures weigh over 3 MiB, another site's picture on a Tor install (whose
   policy refuses it) and a message form with no address to send to are
   reported and publish. Every draft save reports the same checks, listed
   under the editor's status with each one jumping to its field; the
@@ -65,7 +74,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   a form whose edits no longer reach the page was a control that did nothing.
 - **Connector tools for site documents:** `get_site_document`,
   `save_site_draft`, `publish_site_document` (switching a domain that serves
-  its blog to serve the site, blog at `/blog`) and `restore_site_revision`,
+  its blog to serve the site, blog at `/blog`; a domain serving an uploaded
+  site keeps serving it, and the reply says so) and `restore_site_revision`,
   through the same validator and publish path as the editor. `update_site`
   refuses content fields for a site that is a document, naming the tools that
   do reach its page.
@@ -192,8 +202,6 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   call keeps the Strict posture of audit F-6, and the reload can never bounce
   again. `os_launch_cookie_test.go` pins each condition with its own seed.
 
----
-
 ### Security
 
 - **The contact form's auto-reply was an open mail relay.** It went to the
@@ -213,7 +221,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   install. The app icon (released) and the new logo-colour suggestion decoded
   the uploaded mark without the dimension check the media pipeline already
   had. There is now one bounded decode, `imageproc.Decode`, used by all three.
-- **Pre-release audit.** Attacked besides the two above: script-element
+- **Pre-release audit.** Also found and fixed before release: a connector
+  publish switched a domain serving a hand-built upload to its template
+  website, taking the upload off the air as a side effect; it now switches
+  only a domain serving its blog, and says what the domain still serves. And
+  two claims in these notes that overstated their controls were corrected
+  against the code. Attacked and clean: script-element
   escaping of the structured data (held by an existing test); the disk
   reserve under concurrent uploads (every piece is re-checked against live
   free space under one lock, and an upload that would dip into the reserve is
@@ -225,6 +238,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   directory it reads (pinned with `os.OpenRoot`, which also refuses symlinks);
   and `..` in a picture path reaching the publish gate's file checks (names
   are matched against the stored-media pattern first).
+
+### Upgrade Notes
+
+- Migration 095 adds the site-document tables and a site column on contact
+  messages. It is additive: v3.17.67 was started against a database it had
+  migrated and served normally, so a rollback works. A site published from
+  the new editor or connector serves its previous content again under
+  v3.17.67, which does not read documents.
+- The contact form's confirmation email no longer quotes the visitor's name
+  or message (see Security). The operator's copy is unchanged.
+- Nothing to configure. The shipped nginx and Caddy body limits stay as they
+  are; the console now uploads a site in pieces beneath them.
+- Benchmarked on a 234,615-post copy of the live install, v3.17.67 against
+  this release on the same database: the same bytes read while serving the
+  dashboard and a post, idle and during writes (1,195 MiB and 1,294 MiB over
+  the same 120 requests), and the same latency (dashboard p50 24 ms, a post
+  1 ms). The website checks added to every console page cost about 65 µs per
+  hosted site, measured at 200 sites.
+
+---
 
 ## [3.17.67] — 2026-09-23
 
