@@ -144,3 +144,35 @@ func TestDevicesFragmentBacksPoller(t *testing.T) {
 		t.Fatalf("non-admin devices fragment = %d, want 403", rec2.Code)
 	}
 }
+
+// TestADeletedMailboxsMailIsNotInheritedByTheNextHolder is the privacy promise of
+// the panel's Delete, tested by what a person would see rather than by which
+// function the handler names: mail delivered to an address, the mailbox deleted
+// from the list, the address reissued — and the new holder's inbox is empty.
+//
+// Clearing only the account row (the store's Delete) passes every other test in
+// this file, because the row IS gone; the mail is what is left behind.
+func TestADeletedMailboxsMailIsNotInheritedByTheNextHolder(t *testing.T) {
+	a := appWithMailAccounts(t)
+	admin := &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin}
+	ctx := context.Background()
+
+	raw := []byte("From: bank@example.org\r\nTo: dana@example.com\r\nSubject: your statement\r\n\r\nprivate\r\n")
+	if _, err := a.vayuMail.DeliverInbound("bank@example.org", "dana@example.com", raw); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	if msgs, _ := a.vayuMail.Inbox("example.com", "dana"); len(msgs) != 1 {
+		t.Fatalf("seed: inbox holds %d messages, want 1", len(msgs))
+	}
+
+	if rec := postAcctAction(a, "op=delete&email=dana@example.com", admin); rec.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, want 200", rec.Code)
+	}
+	if err := a.vayuMail.Accounts().Create(ctx, "dana@example.com", "x", "Someone else", "mailbox"); err != nil {
+		t.Fatalf("reissue: %v", err)
+	}
+	msgs, _ := a.vayuMail.Inbox("example.com", "dana")
+	if len(msgs) != 0 {
+		t.Fatalf("the new holder of dana@example.com inherited %d message(s) from the deleted mailbox", len(msgs))
+	}
+}

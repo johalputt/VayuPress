@@ -668,8 +668,22 @@
     });
 
     // If the operator navigates away while a send is held, fire it best-effort.
-    window.addEventListener('beforeunload', function () {
-      if (holdSnapshot && !sending) { performSend(true); }
+    //
+    // keepalive is what lets that request outlive the page, and the Fetch spec
+    // caps a keepalive body at 64 KiB: Firefox and Safari reject anything larger,
+    // so a held message with an attachment was lost without a word. It is still
+    // fired (Chromium carries it), and past the cap the browser is also asked to
+    // confirm leaving, so no engine can drop it silently.
+    var KEEPALIVE_MAX = 64 * 1024;
+    function outlivesPage(snap) {
+      if (snap.files.length > 0) return false;
+      return new Blob([JSON.stringify(snap.fields)]).size < KEEPALIVE_MAX - 1024; // headroom for the flags
+    }
+    window.addEventListener('beforeunload', function (e) {
+      if (!holdSnapshot || sending) return;
+      var fits = outlivesPage(holdSnapshot);
+      performSend(true);
+      if (!fits) { e.preventDefault(); e.returnValue = ''; }
     });
   }
 

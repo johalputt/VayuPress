@@ -287,8 +287,9 @@ These come from the platform audit and are enforced partly by tests, partly by C
 
 ## Appendix — Implementation status (2026-09-13)
 
-What has actually been built and verified locally against this document. Nothing is
-committed; it all sits in the working tree.
+What was built against this document, as first verified on the author's Windows
+machine. It shipped in v3.17.71 after the Linux review recorded at the end of this
+appendix, which also lists what that review changed.
 
 **Verification method.** A baseline was captured on the current HEAD for the touched
 packages (`cmd/vayupress`, `internal/vayuos/{mail,vayutalk,pgp}`, `internal/render`,
@@ -299,11 +300,6 @@ need a Linux host, and Maildir tests whose flag filenames contain `:` (illegal o
 NTFS). Two loopback-listener tests (`TestSMTPReceiveDelivers`,
 `TestIMAPStableUIDsAcrossReconnect`) time out intermittently under full-suite load on
 this box and pass on re-run — both were verified individually before being dismissed.
-
-**Tree caveat.** This work was built on a checkout where another session had
-uncommitted, non-compiling "website v2" changes. Those were parked recoverably in
-`git stash@{0}` (*parked by vayumail/vayutalk UX session*) with the diff and untracked
-files also copied to `audit/parked-website-wip-2026-08-26/`.
 
 ### Phase 0 — Correctness & trust: 12/12 done
 
@@ -329,10 +325,8 @@ longer reloads the whole page after every approve/disapprove/add/remove, uses
 as a fragment.
 
 Partial: the shared-foundation item reused the existing `vpConfirm`/`vpPost`/`vpToast`
-instead of adding `admin-os-common.js`, and ~23 native dialogs remain in the eight apps
-outside this audit's scope (members, intel, editor, security, pages, newsletter, update,
-storage). Mail and Talk are clean, and a test forbids `prompt`/`confirm` from returning
-to either.
+instead of adding `admin-os-common.js`. No native dialog remains in any console script;
+a test scans every file.
 
 > Correction found while implementing: the console's empty-state variants are
 > `.empty-icon`/`.empty-title`/`.empty-sub`, not the `-state-` names one fix note in
@@ -377,8 +371,10 @@ to either.
 - **3.4 Domain-health checklist** — a guided card above the DNS reference tables, built
   from the same one-per-render verdict set (so the two can never disagree), ending in a
   named next step, refreshed out-of-band with the Re-check button. Five tests.
-- **3.6 Share links** for anonymous codes (minus QR): `/os/talk?t=<code>` pre-fills
-  Start and the anon block offers “Copy share link”.
+- **3.6 Share links** (minus QR): `/os/talk?t=<address>` pre-fills Start, for
+  people with mailboxes on the same install. The Tor world's “Copy share link”
+  was removed in review: it pointed at this install's console, where no outsider
+  can sign in and every insider already is that code, so it could not work.
 - **3.5 Per-mailbox settings page** — every per-mailbox setting (forwarding, vacation,
   aliases, recovery, handover, PGP, filters, picture picker) now lives on its own routed
   URL, `/os/vayumail/accounts/settings?user=…`. The accounts list keeps what an operator
@@ -412,9 +408,15 @@ a test forbids `window.prompt`/`window.confirm` from returning to either file
   translatable product, so it is better done as its own piece of work with the public
   tier's `internal/i18n` as the target.
 - **Phase 1 leftovers:** the shared client foundation was reused (existing
-  `vpConfirm`/`vpPost`/`vpToast`) rather than centralised, and ~23 native dialogs remain
-  in the eight apps outside this audit's scope (members, intel, editor, security, pages,
-  newsletter, update, storage). Mail and Talk are clean.
+  `vpConfirm`/`vpPost`/`vpToast`) rather than centralised. No native dialog remains
+  in any console script — `TestConsoleScriptsUseTheConsolesOwnDialogs` scans every
+  file — and `hx-confirm` now goes through `vpConfirm` too (see below).
+- **Full-page reloads** remain after state changes in Members, Newsletter, Intel and
+  Security, and after a self-update. The self-update reload is correct (the new
+  binary's assets must load) and so are the two-factor ones (the whole page changes
+  state). The rest change counts, tiers and labels across the page, which a reload
+  renders correctly by construction; replacing them needs a server fragment per app
+  and is its own piece of work, not a patch.
 - **3.4 nav badge** and **QR codes** for share links were not built: a badge needs a
   cached DNS verdict in settings, or every console page render would trigger DNS lookups.
 
@@ -429,6 +431,50 @@ a test forbids `window.prompt`/`window.confirm` from returning to either file
    being passed to a toast that only styles `ok`/`error`/`info`/`warn`. Fixed at the
    source, so no call site can lose its colour.
 
+### Review on Linux before release (v3.17.71)
+
+The work above was built on Windows. Before it shipped it was rebased onto `main`,
+run through every gate on Linux, driven in Chromium against a built binary, and read
+adversarially. On Linux the whole suite is green, including the integration suite
+under `-race`; the "63–64 failures" in the totals below were that Windows box, not
+the code. What the review found and fixed:
+
+1. **Burned Talk messages came back on reload** for anyone chatting *as* a mailbox
+   (every administrator). `/os/talk/read` resolved the reader as the session's
+   default identity, so the ownership check refused every mark. Found only in the
+   browser — the source-scan test passed with the bug in place. Now resolved by
+   `talkSelf(r, as)` like the stream and send; see the ADR-0131 amendment.
+2. **Compose and Reply from a mailbox sent as `postmaster@`.** The From select
+   ignored `?user=`, so an administrator answering in alice's mailbox answered from
+   a different address. The mailbox being viewed is now the selected sender.
+3. **The list keyboard layer threw on every keypress** on every console page: it sat
+   after `admin-os.js`'s closing line and called a helper that only exists inside it.
+   Moving it in would have made `n` jump to the post editor from Mail and Talk, so `n`
+   is now confined to post lists, as its own comment always said.
+4. **`hx-confirm` still used the native dialog** — eleven prompts, including bulk
+   mail delete. Answered once in the shell through `vpConfirm`.
+5. **A send held for Undo could vanish** if the sender left during the countdown with
+   an attachment: the Fetch spec caps a `keepalive` body at 64 KiB and Firefox and
+   Safari enforce it. Past the cap the browser now also asks before leaving.
+6. **A full local recipient was reported as the sender's own full mailbox.**
+7. **Tor-world Talk ack deleted by id alone**; it now checks the reader is the
+   recipient.
+8. **The header cache remembered a failed read**, listing a message with no sender
+   or subject until the file changed — never, for delivered mail.
+9. **Contact errors echo what was typed into `value="…"`** — correct, and now proven
+   escaped by a behaviour test rather than a source scan.
+10. **Thread grouping:** a reply with no Message-Id of its own landed on its
+    mid-thread parent instead of the root, and one branch of the keyer was dead code.
+
+Several source-scan tests were replaced by behaviour tests (mailbox delete, bulk
+partial failure, contact errors, the settings page's admin gate), and every fix
+above was mutation-tested: each test was seen to fail on the bug it guards.
+
+**Also corrected:** S-05 was already done (stable palette key, `vpActions`
+registry); S-10 is fixed (the console's theme is mirrored to the sign-in pages, and a
+failed save says so); S-11 is fixed (`docs/ADMIN-UI.md` rewritten against the live
+console); T-26 is fixed (ADR-0131 amendment).
+
 ### Totals
 
 **56 new test functions** across `cmd/vayupress` and `internal/vayuos/{mail,vayutalk}`,
@@ -436,5 +482,3 @@ plus one extended engine test. Final gate: `go build ./...` and `go vet` clean; 
 touched-package suite reports **63–64 failures, matching the pre-work baseline exactly —
 zero regressions** (the count moves by one only because two loopback-listener tests are
 flaky on this box).
-
-

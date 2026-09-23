@@ -692,7 +692,7 @@
     fetch('/os/talk/read', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
-      body: JSON.stringify({ id: m.id })
+      body: JSON.stringify({ id: m.id, as: currentSelf })
     }).catch(function () {});
   }
   function armBurn(m) {

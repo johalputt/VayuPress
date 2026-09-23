@@ -19,6 +19,11 @@ const on = (el, ev, fn) => el && el.addEventListener(ev, fn);
   // the OS). The toggle cycles light → dark → auto and persists to settings.
   const el = document.body;
   if (!el.dataset.theme) { el.dataset.theme = el.dataset.adminTheme || 'auto'; }
+  // The sign-in pages cannot read the saved setting (nobody is signed in yet), so
+  // they keep their own copy under this key (os-theme.js). Mirroring the console's
+  // choice into it means signing out does not flip the theme back.
+  const remember = function (t) { try { localStorage.setItem('vp-os-theme', t); } catch (e) {} };
+  remember(el.dataset.theme);
 
   const btn = $('.topbar-theme-btn');
   if (!btn) return;
@@ -29,13 +34,16 @@ const on = (el, ev, fn) => el && el.addEventListener(ev, fn);
     const next = themes[(cur + 1) % themes.length];
     el.dataset.theme = next;
     btn.title = 'Theme: ' + next;
-    // Persist via API (fire-and-forget)
-    const csrf = cookie('vp_csrf');
+    remember(next);
+    // Saved server-side so every device follows it. A failed save is said out
+    // loud: this page shows the new theme either way, so silence would read as
+    // saved until the next page load quietly reverted it.
+    const failed = function () { toast('Theme changed for this page only — it could not be saved.', 'warn'); };
     fetch('/os/api/settings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
       body: JSON.stringify({ key: 'admin.theme', value: next }),
-    }).catch(function () {});
+    }).then(function (r) { if (!r.ok) failed(); }, failed);
   });
 })();
 
@@ -270,6 +278,18 @@ window.vpToast = toast;
   document.body.addEventListener('htmx:afterSwap', function (e) {
     stackTablesIn(e.target || document);
   });
+
+/* ── hx-confirm in the console's own dialog ────────────────────
+   HTMX asks with the browser's native confirm() unless the htmx:confirm event
+   is answered, so every hx-confirm (deleting mail, deleting a mailbox, shield
+   actions) was still unstyled chrome that blocks the tab, while the scripts
+   beside it had all moved to vpConfirm. Answered here once, for all of them. */
+document.addEventListener('htmx:confirm', function (e) {
+  var q = e.detail && e.detail.question;
+  if (!q || typeof window.vpConfirm !== 'function') return; // no prompt asked, or no dialog to ask it with
+  e.preventDefault();
+  window.vpConfirm({ title: q }, function () { e.detail.issueRequest(true); });
+});
 
 /* ── Client-side action registry (Wave 1: palette actions moved off
      window[fn] string lookup into a small explicit map). */
@@ -1013,8 +1033,6 @@ $$('[data-setting-key]').forEach(function (el) {
   setInterval(poll, POLL_MS);
 })();
 
-})(); // end IIFE
-
 /* ── Keyboard layer (Wave 3.7) ────────────────────────────────
    j/k move through the post rows, x toggles the highlighted row's bulk select,
    Enter opens the highlighted row, n starts a new post (or focuses quick
@@ -1045,9 +1063,12 @@ $$('[data-setting-key]').forEach(function (el) {
     var hasList = list.length > 0;
     var composer = $('#quick-compose-input');
     if (e.key === 'n') {
-      // n = "new post": focus quick compose where it exists, otherwise open the editor.
+      // n = "new post": focus quick compose where it exists, otherwise open the
+      // editor — but only from a post list. This layer sat outside its wrapper and
+      // threw before reaching here for a long time; once it ran, an unscoped "n"
+      // would have thrown the operator out of Mail or Talk into the post editor.
       if (composer) { e.preventDefault(); composer.focus(); }
-      else { window.location.href = '/os/editor'; }
+      else if (hasList) { window.location.href = '/os/editor'; }
       return;
     }
     if (!hasList) return;
@@ -1069,3 +1090,5 @@ $$('[data-setting-key]').forEach(function (el) {
     }
   });
 })();
+
+})(); // end IIFE — the keyboard layer above uses its $$ helper, so it must stay inside

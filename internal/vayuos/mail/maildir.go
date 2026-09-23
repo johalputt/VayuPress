@@ -83,20 +83,25 @@ func (m *Maildir) headersFor(path string, size int64, mod time.Time) cachedHeade
 	m.hdrMu.Unlock()
 
 	h := cachedHeaders{size: size, modTime: mod}
-	if raw, err := os.ReadFile(path); err == nil {
-		if msg, perr := netmail.ReadMessage(bytes.NewReader(raw)); perr == nil {
-			h.from = msg.Header.Get("From")
-			h.to = msg.Header.Get("To")
-			h.subject = msg.Header.Get("Subject")
-			if d, derr := msg.Header.Date(); derr == nil {
-				h.date, h.hasDate = d, true
-			}
-			// Threading evidence travels with the cached summary, so grouping a
-			// folder costs nothing beyond the stat it already did.
-			h.messageID = cleanMessageID(msg.Header.Get("Message-Id"))
-			h.inReplyTo = cleanMessageID(msg.Header.Get("In-Reply-To"))
-			h.refs = splitMessageIDs(msg.Header.Get("References"))
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		// Not remembered: a read that failed once (a descriptor limit, a file
+		// mid-move) would otherwise list this message with no sender or subject
+		// until the file changed, which is never for a delivered message.
+		return h
+	}
+	if msg, perr := netmail.ReadMessage(bytes.NewReader(raw)); perr == nil {
+		h.from = msg.Header.Get("From")
+		h.to = msg.Header.Get("To")
+		h.subject = msg.Header.Get("Subject")
+		if d, derr := msg.Header.Date(); derr == nil {
+			h.date, h.hasDate = d, true
 		}
+		// Threading evidence travels with the cached summary, so grouping a
+		// folder costs nothing beyond the stat it already did.
+		h.messageID = cleanMessageID(msg.Header.Get("Message-Id"))
+		h.inReplyTo = cleanMessageID(msg.Header.Get("In-Reply-To"))
+		h.refs = splitMessageIDs(msg.Header.Get("References"))
 	}
 	m.hdrMu.Lock()
 	if m.hdrCache == nil {

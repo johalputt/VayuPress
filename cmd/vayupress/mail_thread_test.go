@@ -16,27 +16,12 @@ import (
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
-func threadKeyerFor(msgs []vmail.StoredMessage) func(vmail.StoredMessage) string {
-	parentOf := map[string]string{}
-	knownID := map[string]bool{}
-	for _, m := range msgs {
-		if m.MessageID == "" {
-			continue
-		}
-		knownID[m.MessageID] = true
-		if ref := threadParent(m); ref != "" {
-			parentOf[m.MessageID] = ref
-		}
-	}
-	return mailThreadKeyer(parentOf, knownID)
-}
-
 // TestAReplyJoinsItsParentEvenWhenTheSubjectChanged is the case References exist
 // for: "Re: Invoice 2026" must land with "Invoice".
 func TestAReplyJoinsItsParentEvenWhenTheSubjectChanged(t *testing.T) {
 	root := vmail.StoredMessage{ID: "1", MessageID: "root@x", Subject: "Invoice 2026"}
 	reply := vmail.StoredMessage{ID: "2", MessageID: "r1@x", InReplyTo: "root@x", Subject: "Re: Invoice 2026"}
-	key := threadKeyerFor([]vmail.StoredMessage{root, reply})
+	key := mailThreadKeyer([]vmail.StoredMessage{root, reply})
 	if key(root) != key(reply) {
 		t.Errorf("a reply with In-Reply-To must join its parent: %q vs %q", key(root), key(reply))
 	}
@@ -47,7 +32,7 @@ func TestAReplyToAReplyStillReachesTheRoot(t *testing.T) {
 	root := vmail.StoredMessage{ID: "1", MessageID: "root@x", Subject: "Trip"}
 	mid := vmail.StoredMessage{ID: "2", MessageID: "mid@x", InReplyTo: "root@x", Subject: "Re: Trip"}
 	deep := vmail.StoredMessage{ID: "3", MessageID: "deep@x", InReplyTo: "mid@x", Subject: "Re: Trip"}
-	key := threadKeyerFor([]vmail.StoredMessage{root, mid, deep})
+	key := mailThreadKeyer([]vmail.StoredMessage{root, mid, deep})
 	if key(root) != key(deep) {
 		t.Errorf("a reply to a reply must resolve to the original thread: %q vs %q", key(root), key(deep))
 	}
@@ -57,7 +42,7 @@ func TestAReplyToAReplyStillReachesTheRoot(t *testing.T) {
 func TestUnrelatedMailSharingASubjectIsNotMerged(t *testing.T) {
 	a := vmail.StoredMessage{ID: "1", MessageID: "a@x", Subject: "Invoice"}
 	b := vmail.StoredMessage{ID: "2", MessageID: "b@x", Subject: "Invoice"}
-	key := threadKeyerFor([]vmail.StoredMessage{a, b})
+	key := mailThreadKeyer([]vmail.StoredMessage{a, b})
 	if key(a) == key(b) {
 		t.Errorf("two unrelated messages that merely share a subject must not be merged (both keyed %q)", key(a))
 	}
@@ -68,7 +53,7 @@ func TestUnrelatedMailSharingASubjectIsNotMerged(t *testing.T) {
 func TestRepliesToAnAbsentParentGroupTogether(t *testing.T) {
 	r1 := vmail.StoredMessage{ID: "1", MessageID: "r1@x", InReplyTo: "gone@x", Subject: "Re: A"}
 	r2 := vmail.StoredMessage{ID: "2", MessageID: "r2@x", InReplyTo: "gone@x", Subject: "Re: A"}
-	key := threadKeyerFor([]vmail.StoredMessage{r1, r2})
+	key := mailThreadKeyer([]vmail.StoredMessage{r1, r2})
 	if key(r1) != key(r2) {
 		t.Errorf("siblings of an absent parent should group together: %q vs %q", key(r1), key(r2))
 	}
@@ -78,9 +63,23 @@ func TestRepliesToAnAbsentParentGroupTogether(t *testing.T) {
 func TestReferencesAreUsedWhenInReplyToIsMissing(t *testing.T) {
 	root := vmail.StoredMessage{ID: "1", MessageID: "root@x", Subject: "Plan"}
 	reply := vmail.StoredMessage{ID: "2", MessageID: "r@x", Subject: "Plan", References: []string{"root@x", "other@x"}}
-	key := threadKeyerFor([]vmail.StoredMessage{root, reply})
+	key := mailThreadKeyer([]vmail.StoredMessage{root, reply})
 	if key(root) != key(reply) {
 		t.Errorf("References must be used when In-Reply-To is absent: %q vs %q", key(root), key(reply))
+	}
+}
+
+// TestAReplyWithoutItsOwnIDStillJoinsTheConversation — some clients stamp
+// In-Reply-To but no Message-Id. Its subject differs here on purpose, so only the
+// reference can put it in the conversation, and its parent is a mid-thread reply,
+// so only walking that reference to the root puts it in the RIGHT one.
+func TestAReplyWithoutItsOwnIDStillJoinsTheConversation(t *testing.T) {
+	root := vmail.StoredMessage{ID: "1", MessageID: "root@x", Subject: "Budget"}
+	mid := vmail.StoredMessage{ID: "2", MessageID: "mid@x", InReplyTo: "root@x", Subject: "Re: Budget"}
+	idless := vmail.StoredMessage{ID: "3", InReplyTo: "mid@x", Subject: "numbers attached"}
+	key := mailThreadKeyer([]vmail.StoredMessage{root, mid, idless})
+	if key(idless) != key(root) {
+		t.Errorf("an id-less reply must join its conversation's root: %q vs %q", key(idless), key(root))
 	}
 }
 
@@ -89,7 +88,7 @@ func TestReferencesAreUsedWhenInReplyToIsMissing(t *testing.T) {
 func TestMailWithNoIDsStillGroupsBySubject(t *testing.T) {
 	a := vmail.StoredMessage{ID: "1", Subject: "Re: Newsletter"}
 	b := vmail.StoredMessage{ID: "2", Subject: "Newsletter"}
-	key := threadKeyerFor([]vmail.StoredMessage{a, b})
+	key := mailThreadKeyer([]vmail.StoredMessage{a, b})
 	if key(a) == "" || key(a) != key(b) {
 		t.Errorf("id-less mail must still group by subject: %q vs %q", key(a), key(b))
 	}
@@ -99,7 +98,7 @@ func TestMailWithNoIDsStillGroupsBySubject(t *testing.T) {
 func TestAMalformedReferenceLoopTerminates(t *testing.T) {
 	a := vmail.StoredMessage{ID: "1", MessageID: "a@x", InReplyTo: "b@x", Subject: "Loop"}
 	b := vmail.StoredMessage{ID: "2", MessageID: "b@x", InReplyTo: "a@x", Subject: "Loop"}
-	key := threadKeyerFor([]vmail.StoredMessage{a, b})
+	key := mailThreadKeyer([]vmail.StoredMessage{a, b})
 	if key(a) == "" || key(b) == "" {
 		t.Error("a reference loop must still produce a key")
 	}

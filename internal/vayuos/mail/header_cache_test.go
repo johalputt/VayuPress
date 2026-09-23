@@ -72,3 +72,67 @@ func TestListFolderServesFreshHeadersAfterAChange(t *testing.T) {
 		t.Errorf("from = %q after the file changed — stale from", third[0].From)
 	}
 }
+
+// One seed per check the cache makes. The test above changes both the size and
+// the mtime of the rewritten message, so either check alone passes it and
+// deleting one would go unnoticed; each seed here changes exactly one thing.
+func TestTheHeaderCacheChecksSizeAndTimeEachOnItsOwn(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	m := &Maildir{base: dir}
+	path := filepath.Join(dir, "msg")
+	write := func(subject string, mod time.Time) (int64, time.Time) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte("Subject: "+subject+"\r\n\r\nbody\r\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, mod, mod); err != nil {
+			t.Fatal(err)
+		}
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fi.Size(), fi.ModTime()
+	}
+	base := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	size, mod := write("Aaaa", base)
+	if h := m.headersFor(path, size, mod); h.subject != "Aaaa" {
+		t.Fatalf("first read: %q", h.subject)
+	}
+	// Same size, later time.
+	size, mod = write("Bbbb", base.Add(time.Second))
+	if h := m.headersFor(path, size, mod); h.subject != "Bbbb" {
+		t.Errorf("same size, new mtime served %q — the time check is not deciding", h.subject)
+	}
+	// Same time, different size.
+	size, mod = write("Cccccc", base.Add(time.Second))
+	if h := m.headersFor(path, size, mod); h.subject != "Cccccc" {
+		t.Errorf("same mtime, new size served %q — the size check is not deciding", h.subject)
+	}
+}
+
+// A read that fails is not remembered: the next listing reads again. Seeded by
+// asking for a file that is not there yet, then creating it with exactly the
+// size and time the first call was given.
+func TestAFailedHeaderReadIsNotRemembered(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	m := &Maildir{base: dir}
+	path := filepath.Join(dir, "msg")
+	content := []byte("Subject: Arrived\r\n\r\nbody\r\n")
+	mod := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	if h := m.headersFor(path, int64(len(content)), mod); h.subject != "" {
+		t.Fatalf("a missing file produced a subject: %q", h.subject)
+	}
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, mod, mod); err != nil {
+		t.Fatal(err)
+	}
+	if h := m.headersFor(path, int64(len(content)), mod); h.subject != "Arrived" {
+		t.Errorf("after a failed read the message lists with subject %q — the failure was cached", h.subject)
+	}
+}

@@ -265,16 +265,13 @@ func vayuDNSVerifyDomainTable(domain string, hc *mail.DomainHealth) string {
 		`<div class="table-wrap"><table class="table vm-dns-table"><thead><tr><th>Record</th><th>Status</th><th>Found</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>`
 }
 
-// vayuDNSVerifyFragment renders the "DNS verification — all domains" section: live
+// vayuDNSVerifyFragmentWith renders the "DNS verification — all domains" section: live
 // MX/SPF/DKIM/DMARC alignment for the primary AND every mail_enabled secondary,
 // plus the host-level deliverability self-check (HELO/DKIM-key/PTR, shared across
 // domains). It is the HTMX swap target (#vm-dns-verify) and carries its own
 // Re-check control, so a refresh re-runs every lookup without a full-page reload.
-func (a *App) vayuDNSVerifyFragment(r *http.Request) string {
-	return vayuDNSVerifyFragmentWith(a.vayuDNSHealth(r.Context()))
-}
-
-// vayuDNSVerifyFragmentWith renders the reference tables from an already-computed
+//
+// It renders the reference tables from an already-computed
 // verdict set, so the page pays for one round of lookups and the checklist above
 // can never disagree with the tables below.
 func vayuDNSVerifyFragmentWith(h dnsHealth) string {

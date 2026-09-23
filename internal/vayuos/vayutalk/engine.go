@@ -237,10 +237,19 @@ func (e *Engine) Ack(id string) {
 	}
 }
 
-// AckReturningSender is Ack that also reports the message's sender, so a caller
-// can forward the read receipt to a sender who is not on this instance (an
-// onion-to-onion peer, ADR-0142). Returns ok=false if the id was unknown.
-func (e *Engine) AckReturningSender(id string) (sender string, ok bool) {
+// AckAsReturningSender is AckAs that also reports the message's sender, so a
+// caller can forward the read receipt to a sender who is not on this instance
+// (an onion-to-onion peer, ADR-0142). Ownership-checked like AckAs: an unknown
+// id, or one addressed to someone else, returns ok=false and changes nothing —
+// otherwise one signed-in user could destroy another's unread message and send
+// its author a read receipt for it.
+func (e *Engine) AckAsReturningSender(id, claimant string) (sender string, ok bool) {
+	if e == nil || id == "" || claimant == "" {
+		return "", false
+	}
+	if to, known := e.store.RecipientOf(id); !known || !strings.EqualFold(to, claimant) {
+		return "", false
+	}
 	sender, existed := e.store.Delete(id)
 	if !existed {
 		return "", false

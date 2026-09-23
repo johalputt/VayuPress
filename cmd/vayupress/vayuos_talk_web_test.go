@@ -382,3 +382,37 @@ func TestTalkAPIStreamDisablesProxyBuffering(t *testing.T) {
 		t.Fatalf("X-Accel-Buffering = %q, want \"no\"", got)
 	}
 }
+
+// TestAMessageBurnedWhileChattingAsAMailboxStaysBurned — an administrator
+// chatting AS dana watches a message to dana burn, reloads, and it must not come
+// back. The read signal resolved its reader as the session's default identity,
+// which is not dana, so the ownership check refused the mark every time.
+func TestAMessageBurnedWhileChattingAsAMailboxStaysBurned(t *testing.T) {
+	a, _, _ := appWithTalkWeb(t) // dana@example.com is an active mailbox
+	id, _, _, err := a.vayuTalk.Send("alice@example.com", "dana@example.com", []byte("ct"), 5, "store")
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	admin := &users.User{ID: "ad", Email: "boss@example.com", Role: users.RoleAdmin, MailAddress: "boss@example.com"}
+	body, _ := json.Marshal(map[string]string{"id": id, "as": "dana@example.com"})
+	req := withUser(httptest.NewRequest(http.MethodPost, "/os/talk/read", strings.NewReader(string(body))), admin)
+	rec := httptest.NewRecorder()
+	a.handleVayuOSTalkRead(rec, req)
+	var got struct {
+		Marked bool `json:"marked"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || !got.Marked {
+		t.Fatalf("the read was not recorded for the identity being chatted as: %s", rec.Body.String())
+	}
+
+	queued, _, cancel, err := a.vayuTalk.SubscribeWeb("dana@example.com")
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	defer cancel()
+	for _, env := range queued {
+		if env.ID == id {
+			t.Fatal("a reconnect as dana re-delivered the message that already burned")
+		}
+	}
+}

@@ -15,3 +15,36 @@ test("the media library loads its list", async ({ page }) => {
   await expect(page.locator("[data-media-grid] .skeleton")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+// The same file once closed its wrapper too EARLY: the j/k/x/Enter/n keyboard
+// layer sat after the closing line and called a helper that only exists inside
+// it, so every one of those keys threw on every console page and did nothing.
+test("the list keyboard shortcuts run", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/os/posts");
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("j");
+  await page.keyboard.press("k");
+  expect(errors).toEqual([]);
+});
+
+// hx-confirm prompts go through the console's own dialog. HTMX falls back to the
+// browser's native confirm() unless its htmx:confirm event is answered, and for
+// a long time nothing answered it. Cancelled here, so the test changes nothing.
+test("an hx-confirm asks in the console's dialog, not the browser's", async ({ page }) => {
+  const errors = [];
+  let native = 0;
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("dialog", (d) => { native++; d.dismiss(); });
+  await page.goto("/os/shield");
+  await page.waitForLoadState("networkidle"); // HTMX must have processed the button
+  // It lives in a collapsed advanced row; what is under test is the prompt, so
+  // the click is dispatched to it directly.
+  await page.locator("button", { hasText: "Release all sentences now" }).dispatchEvent("click");
+  await expect(page.locator(".vp-confirm")).toBeVisible();
+  await page.locator(".vp-confirm").getByRole("button", { name: "Cancel" }).click();
+  await expect(page.locator(".vp-confirm")).toHaveCount(0);
+  expect(native).toBe(0);
+  expect(errors).toEqual([]);
+});

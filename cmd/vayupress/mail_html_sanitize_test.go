@@ -102,3 +102,35 @@ func TestMailReaderOffersTheViewToggle(t *testing.T) {
 		t.Error("the explicit image path must use the image policy")
 	}
 }
+
+// Every way HTML can make a browser fetch a URL, not just <img src>. The
+// console's policy allows https: images, so with images off nothing but the
+// sanitiser stands between a message and a tracking request. One vector per
+// entry, so a policy change that reopens one names it.
+func TestNoTrackingVectorSurvivesWithImagesOff(t *testing.T) {
+	for name, v := range map[string]string{
+		"img src":          `<img src="https://t.example/a.gif" alt="x">`,
+		"img uppercase":    `<IMG SRC="https://t.example/b.gif" alt="x">`,
+		"img srcset":       `<img srcset="https://t.example/c.gif 2x" alt="x">`,
+		"img lowsrc":       `<img lowsrc="https://t.example/d.gif" alt="x">`,
+		"img data-src":     `<img data-src="https://t.example/e.gif" alt="x">`,
+		"table background": `<table background="https://t.example/f.gif"><tr><td background="https://t.example/g.gif">x</td></tr></table>`,
+		"body background":  `<body background="https://t.example/h.gif">x</body>`,
+		"style url":        `<p style="background:url(https://t.example/i.gif)">x</p>`,
+		"style element":    `<style>@import url(https://t.example/j.css)</style>`,
+		"link stylesheet":  `<link rel="stylesheet" href="https://t.example/k.css">`,
+		"picture source":   `<picture><source srcset="https://t.example/l.gif"><img alt="x"></picture>`,
+		"video poster":     `<video poster="https://t.example/m.gif" src="https://t.example/n.mp4"></video>`,
+		"audio src":        `<audio src="https://t.example/o.mp3"></audio>`,
+		"input image":      `<input type="image" src="https://t.example/p.gif">`,
+		"svg image":        `<svg><image href="https://t.example/q.gif"/></svg>`,
+		"object data":      `<object data="https://t.example/r.swf"></object>`,
+		"a ping":           `<a href="https://ok.example" ping="https://t.example/s">x</a>`,
+		"base href":        `<base href="https://t.example/"><img src="u.gif" alt="x">`,
+		"meta refresh":     `<meta http-equiv="refresh" content="0;url=https://t.example/v">`,
+	} {
+		if out := mailHTMLNoImages(v); strings.Contains(out, "t.example") {
+			t.Errorf("%s reaches the reader with images off: %s", name, out)
+		}
+	}
+}

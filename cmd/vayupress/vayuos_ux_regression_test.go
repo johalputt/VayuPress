@@ -14,11 +14,15 @@ package main
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/users"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -201,32 +205,67 @@ func TestMailDraftKeepsCcAndBcc(t *testing.T) {
 
 // TestMailBulkActionReportsPartialFailure — every per-message error used to be
 // discarded, so a batch that half-applied looked exactly like one that worked.
+// Driven for real: one message that exists and one id that does not.
 func TestMailBulkActionReportsPartialFailure(t *testing.T) {
-	src := readFileString(t, "vayuos.go")
-	if !strings.Contains(src, "vm-inbox-result") || !strings.Contains(src, `"failed":%d`) {
-		t.Error("the inbox bulk endpoint must report how many messages failed")
+	a := appWithMailAccounts(t)
+	admin := &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin}
+	raw := []byte("From: a@example.org\r\nTo: dana@example.com\r\nSubject: hi\r\n\r\nx\r\n")
+	if _, err := a.vayuMail.DeliverInbound("a@example.org", "dana@example.com", raw); err != nil {
+		t.Fatalf("deliver: %v", err)
 	}
+	msgs, _ := a.vayuMail.Inbox("example.com", "dana")
+	if len(msgs) != 1 {
+		t.Fatalf("seed: %d messages, want 1", len(msgs))
+	}
+	post := func(ids ...string) *httptest.ResponseRecorder {
+		vals := url.Values{"user": {"dana"}, "folder": {"Inbox"}, "action": {"mark"}, "mark": {"read"}, "id": ids}
+		req := withUser(httptest.NewRequest(http.MethodPost, "/os/vayumail/inbox/action", strings.NewReader(vals.Encode())), admin)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		a.handleVayuOSInboxAction(rec, req)
+		return rec
+	}
+
+	if got := post(msgs[0].ID).Header().Get("HX-Trigger"); got != "" {
+		t.Errorf("a batch that fully applied must not warn, got HX-Trigger %q", got)
+	}
+	got := post(msgs[0].ID, "1700000000.gone.host").Header().Get("HX-Trigger")
+	if got != `{"vm-inbox-result":{"done":1,"failed":1}}` {
+		t.Errorf("a half-applied batch must say so, got HX-Trigger %q", got)
+	}
+
 	js := withoutComments(mailJS(t))
 	if !strings.Contains(js, "addEventListener('vm-inbox-result'") {
 		t.Error("the console must turn that event into a visible warning, or counting the failures changes nothing")
-	}
-	if !strings.Contains(js, "'warn'") {
-		t.Error("a partial failure is a warning, not a clean success")
 	}
 }
 
 // TestMailContactsExplainARefusedSave — an invalid address used to re-render the
 // panel unchanged with the typed value gone: indistinguishable from a dead button.
+// The fix echoes what was typed back into value="…", which makes the echo an
+// injection point, so each field gets its own seed that breaks out of the
+// attribute if, and only if, that field is left unescaped.
 func TestMailContactsExplainARefusedSave(t *testing.T) {
-	src := readFileString(t, "vayuos_mail_contacts.go")
-	if !strings.Contains(src, "vm-contacts-err") {
-		t.Error("a refused contact save must render a visible reason")
+	a := appWithMailAccounts(t)
+	admin := &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin}
+	vals := url.Values{"user": {"dana"}, "email": {`x"onfocus=alert(1)`}, "name": {`"autofocus x="`}}
+	req := withUser(httptest.NewRequest(http.MethodPost, "/os/vayumail/contacts/add", strings.NewReader(vals.Encode())), admin)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	a.handleVayuOSContactAdd(rec, req)
+	body := rec.Body.String()
+
+	if !strings.Contains(body, `role="alert"`) || !strings.Contains(body, "valid email address") {
+		t.Errorf("a refused save must say why, got: %s", body)
 	}
-	if !strings.Contains(src, "errors.Is(err, vmail.ErrBadContact)") {
-		t.Error("the handler must distinguish a bad address from a storage failure so the message can be actionable")
+	if !strings.Contains(body, "x&#34;onfocus=alert(1)") {
+		t.Error("the typed address must come back, so the operator can correct it rather than retype it")
 	}
-	if !strings.Contains(src, "typedEmail") || !strings.Contains(src, "typedName") {
-		t.Error("the panel must echo back what was typed, or the operator retypes it to see the same refusal")
+	if strings.Contains(body, `x"onfocus`) {
+		t.Error("the typed address broke out of its value attribute")
+	}
+	if strings.Contains(body, `"autofocus`) {
+		t.Error("the typed name broke out of its value attribute")
 	}
 }
 

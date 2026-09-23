@@ -30,8 +30,8 @@ import (
 
 	htmpl "html/template"
 
-	"github.com/johalputt/vayupress/internal/render"
 	avatarpkg "github.com/johalputt/vayupress/internal/avatar"
+	"github.com/johalputt/vayupress/internal/render"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 

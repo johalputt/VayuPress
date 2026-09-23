@@ -144,3 +144,28 @@ func TestWebCursorOnALiveMessageIsHarmless(t *testing.T) {
 		cancel()
 	}
 }
+
+// The Tor console's read acks the envelope and forwards a read receipt to its
+// sender. It must be the recipient's to ack: otherwise anyone signed in who
+// learns an id can destroy another identity's message before it is read and
+// tell the sender it was read.
+func TestOnlyTheRecipientCanAckAndLearnTheSender(t *testing.T) {
+	e := fakeEngine(t, true)
+	const alice, bob, mallory = "alice@x", "bob@x", "mallory@x"
+	id, _, _, err := e.Send(bob, alice, []byte("ct"), 300, "store")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sender, ok := e.AckAsReturningSender(id, mallory); ok || sender != "" {
+		t.Fatalf("a non-recipient acked the envelope (sender %q)", sender)
+	}
+	if _, still := e.store.RecipientOf(id); !still {
+		t.Fatal("a refused ack still destroyed the envelope")
+	}
+	if sender, ok := e.AckAsReturningSender(id, alice); !ok || sender != bob {
+		t.Fatalf("the recipient's ack: sender %q ok %v", sender, ok)
+	}
+	if _, still := e.store.RecipientOf(id); still {
+		t.Error("the recipient's ack left the envelope in place")
+	}
+}

@@ -2191,18 +2191,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 	//
 	// The subject stays the fallback for the (now rare) mail that carries no ids
 	// at all, which is also exactly how this behaved before.
-	parentOf := map[string]string{} // message-id -> the id it answers
-	knownID := map[string]bool{}    // ids present in this window
-	for _, m := range msgs {
-		if m.MessageID == "" {
-			continue
-		}
-		knownID[m.MessageID] = true
-		if ref := threadParent(m); ref != "" {
-			parentOf[m.MessageID] = ref
-		}
-	}
-	threadKey := mailThreadKeyer(parentOf, knownID)
+	threadKey := mailThreadKeyer(msgs)
 	// Pass 1: count thread members.
 	counts := map[string]int{}
 	for _, m := range msgs {
@@ -2247,20 +2236,28 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 // scrolled out of the window, two unrelated mails sharing a subject), and none of
 // those are visible in a rendered page.
 //
-// parentOf maps a message id to the id it answers; knownID is the set of ids in
-// this window, which is what lets resolve tell "the root" apart from "the parent
-// is simply not loaded".
-func mailThreadKeyer(parentOf map[string]string, knownID map[string]bool) func(vmail.StoredMessage) string {
+// It takes the window itself, not maps built from it, so the tests group exactly
+// what the folder view groups. parentOf maps each loaded message id to the id it
+// answers.
+func mailThreadKeyer(msgs []vmail.StoredMessage) func(vmail.StoredMessage) string {
+	parentOf := map[string]string{} // message-id -> the id it answers
+	for _, m := range msgs {
+		if m.MessageID == "" {
+			continue
+		}
+		if ref := threadParent(m); ref != "" {
+			parentOf[m.MessageID] = ref
+		}
+	}
 	// resolve walks to the conversation root, so a reply to a reply still lands
-	// with the original. Bounded: a malformed loop must not spin.
+	// with the original. A parent outside this window has no parentOf entry (only
+	// loaded messages are recorded), so the walk stops ON it and that id is the
+	// root. Bounded: a malformed loop must not spin.
 	resolve := func(id string) string {
 		for hops := 0; hops < 32; hops++ {
 			next, ok := parentOf[id]
 			if !ok || next == "" || next == id {
 				return id
-			}
-			if !knownID[next] {
-				return next // the parent is outside this window; that id is the root
 			}
 			id = next
 		}
@@ -2270,8 +2267,10 @@ func mailThreadKeyer(parentOf map[string]string, knownID map[string]bool) func(v
 		if m.MessageID != "" {
 			return "t:" + resolve(m.MessageID)
 		}
+		// No id of its own, so it cannot be anyone's parent — but it can still
+		// answer something, and that walks to the root like any other reply.
 		if ref := threadParent(m); ref != "" {
-			return "t:" + ref
+			return "t:" + resolve(ref)
 		}
 		if k := normSubject(m.Subject); k != "" {
 			return "s:" + k

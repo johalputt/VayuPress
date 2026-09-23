@@ -176,3 +176,18 @@ func TestCardFilterCreateRefreshesList(t *testing.T) {
 		t.Fatalf("filter rule not stored as expected: %+v", rules)
 	}
 }
+
+// The settings page holds forwarding, recovery and handover for ANY mailbox, so
+// it is an administrator's page. A mailbox user signed in to the console must be
+// turned away — even for their own address, which they manage elsewhere — and
+// see none of another mailbox's forwarding or recovery settings.
+func TestTheSettingsPageIsForAdministratorsOnly(t *testing.T) {
+	a := appWithMailAccounts(t)
+	user := &users.User{ID: "u1", Email: "erin@example.com", Role: users.RoleEditor, MailAddress: "erin@example.com"}
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/accounts/settings?user=dana@example.com", nil), user)
+	rec := httptest.NewRecorder()
+	a.handleVayuOSMailboxSettings(rec, req)
+	if body := rec.Body.String(); strings.Contains(body, `id="vm-mbox-settings"`) || strings.Contains(body, "Auto-forward a copy to") {
+		t.Errorf("a non-admin was shown another mailbox's settings (status %d)", rec.Code)
+	}
+}

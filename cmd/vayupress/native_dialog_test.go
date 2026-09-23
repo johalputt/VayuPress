@@ -21,12 +21,12 @@ import (
 
 // vendorJS is third-party code bundled into the console; it is not ours to police.
 var vendorJS = map[string]bool{
-	"htmx.min.js":         true,
-	"alpine-csp.min.js":   true,
-	"purify.min.js":       true,
-	"alpine-csp.LICENSE":  true,
-	"purify.LICENSE":      true,
-	"vayu-islands.js":     true, // references Alpine by name only, but keep the allowlist explicit
+	"htmx.min.js":            true,
+	"alpine-csp.min.js":      true,
+	"purify.min.js":          true,
+	"alpine-csp.LICENSE":     true,
+	"purify.LICENSE":         true,
+	"vayu-islands.js":        true, // references Alpine by name only, but keep the allowlist explicit
 	"theme-preview-frame.js": true,
 }
 

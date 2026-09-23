@@ -3,11 +3,15 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/users"
 )
 
 // withoutComments strips Go, CSS and HTML comments so a check cannot match the
@@ -148,5 +152,23 @@ func TestComposerFormattingStaysPlainText(t *testing.T) {
 	}
 	if strings.Contains(withoutComments(string(src)), "contenteditable") {
 		t.Error("no contenteditable in the composer — see the comment above the toolbar")
+	}
+}
+
+// TestComposeSendsFromTheMailboxItWasOpenedFrom — an administrator replying from
+// dana's mailbox must answer as dana. The select's first option is postmaster,
+// so without an explicit selection the reply left from a different address.
+func TestComposeSendsFromTheMailboxItWasOpenedFrom(t *testing.T) {
+	a := appWithMailAccounts(t)
+	admin := &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin}
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/compose?user=dana", nil), admin)
+	rec := httptest.NewRecorder()
+	a.handleVayuOSCompose(rec, req)
+	body := rec.Body.String()
+	if !strings.Contains(body, `<option value="dana@example.com" data-sig="" selected>`) {
+		t.Errorf("dana@example.com is not the selected sender")
+	}
+	if strings.Count(body, " selected>") != 1 {
+		t.Errorf("exactly one sender must be selected, found %d", strings.Count(body, " selected>"))
 	}
 }

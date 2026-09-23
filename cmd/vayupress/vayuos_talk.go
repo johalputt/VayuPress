@@ -312,14 +312,12 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 			fedNote = `<p class="text-sm muted" id="vtalk-fed-note">Onion-to-onion delivery is <strong>on</strong> (experimental). Set <code>VAYUOS_TOR_SOCKS_ADDR</code> to your tor's SOCKS address for sending to work.</p>`
 			fedBtn = `<button type="button" class="btn btn--sm btn--ghost" id="vtalk-fed" data-on="1">Disable onion-to-onion</button>`
 		}
-		// Share link as well as the bare code: a 70-character handle is painful to
-		// paste into a chat, and a link that pre-fills the recipient's Start box
-		// removes the transcription step entirely.
-		shareURL := "https://" + strings.ToLower(strings.TrimSpace(config.Cfg.Domain)) + "/os/talk?t=" + qparam(self)
-		body.WriteString(`<div class="vtalk-anon"><p class="text-sm muted">This is your anonymous code — share it so people can reach you.</p><div class="ak-cred-actions"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">Copy code</button><button type="button" class="btn btn--sm" data-copy="` + esc(shareURL) + `">Copy share link</button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div>` + fedNote + `<div class="ak-cred-actions">` + fedBtn + `</div></div>`)
+		// The code, not a link: a link would open this install's console, where
+		// nobody outside can sign in and everybody inside already IS this code.
+		body.WriteString(`<div class="vtalk-anon"><p class="text-sm muted">This is your anonymous code — share it so people can reach you.</p><div class="ak-cred-actions"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">Copy code</button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div>` + fedNote + `<div class="ak-cred-actions">` + fedBtn + `</div></div>`)
 	}
-	// Share links (both worlds): /os/talk?t=<address-or-code> pre-fills the
-	// new-chat box, so an invitation can be sent as a link. The value is escaped
+	// /os/talk?t=<address> pre-fills the new-chat box, so people with mailboxes
+	// on this install can send each other a link to start a chat. The value is escaped
 	// into the attribute; the recipient still has to press Start, so a link can
 	// never silently open a conversation.
 	invite := strings.TrimSpace(r.URL.Query().Get("t"))
@@ -672,6 +670,7 @@ func (a *App) handleVayuOSTalkRead(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		ID string `json:"id"`
+		As string `json:"as"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8*1024)).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
@@ -682,7 +681,11 @@ func (a *App) handleVayuOSTalkRead(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "id is required", "")
 		return
 	}
-	self := a.talkIdentity(r)
+	// The reader is the identity the page is chatting AS, resolved exactly as the
+	// stream and send resolve it. This used the session's default identity, so an
+	// administrator chatting as a mailbox had every mark refused by the ownership
+	// check — and every message they watched burn came back on the next reload.
+	self := a.talkSelf(r, body.As)
 	if self == "" {
 		writeAPIError(w, r, http.StatusForbidden, "no-mailbox", "No chat identity", "")
 		return
@@ -694,7 +697,7 @@ func (a *App) handleVayuOSTalkRead(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, r, http.StatusOK, map[string]bool{"ok": true, "marked": marked})
 		return
 	}
-	sender, ok := a.vayuTalk.AckReturningSender(id)
+	sender, ok := a.vayuTalk.AckAsReturningSender(id, self)
 	if ok && talkRecipientRemoteOnion(self, sender) {
 		go a.forwardReadReceiptOverOnion(id, sender, self)
 	}

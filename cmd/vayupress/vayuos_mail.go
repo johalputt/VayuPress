@@ -127,10 +127,22 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	// Sender selector. Admins may send as any configured account (or postmaster);
 	// non-admin staff may only send from their own assigned mailbox.
 	acctStore := a.vayuMail.Accounts()
+	// The mailbox the composer was opened from is the sender. Every Compose, Reply
+	// and Forward link carries ?user=, and without this an administrator working
+	// in alice's mailbox answered her correspondents from postmaster — the first
+	// option — which is a different person as far as the recipient can tell.
+	viewing := ""
+	if u := mailUserParam(r); u != "" {
+		viewing = mailAddrOf(u, domain)
+	}
 	// Each From option carries its account's signature (data-sig) so the composer
 	// can preview/append it and swap it live when the sender changes.
 	optSig := func(email, sig string) string {
-		return `<option value="` + html.EscapeString(email) + `" data-sig="` + html.EscapeString(sig) + `">` + html.EscapeString(email) + `</option>`
+		sel := ""
+		if viewing != "" && strings.EqualFold(email, viewing) {
+			sel = " selected"
+		}
+		return `<option value="` + html.EscapeString(email) + `" data-sig="` + html.EscapeString(sig) + `"` + sel + `>` + html.EscapeString(email) + `</option>`
 	}
 	fromOpts := ""
 	if a.isAdminRequest(r) {
@@ -484,6 +496,18 @@ func mailSendErrText(err error) string {
 		return ""
 	}
 	msg := strings.ToLower(err.Error())
+	// A full mailbox on THIS server that the message was addressed to. It must be
+	// matched before the generic quota case below, which is about the sender: the
+	// sender's own quota is refused before compose, so a quota error that reaches
+	// here names someone else, and "your mailbox is full" sent people deleting
+	// their own mail to fix a colleague's.
+	if rest, ok := strings.CutPrefix(msg, "vayumail: local delivery to "); ok && strings.Contains(rest, "quota") {
+		rcpt, _, _ := strings.Cut(rest, ":")
+		// The engine stops at the first local recipient it cannot deliver to,
+		// after the Sent copy is filed, so "not sent" would be false for anyone
+		// delivered before them and "sent" would be false for everyone after.
+		return "The mailbox of " + rcpt + " is full, so sending stopped there and some recipients may not have this message. Your copy is in Sent."
+	}
 	switch {
 	case strings.Contains(msg, "no such host"), strings.Contains(msg, "no such domain"):
 		return "Couldn’t find the recipient’s mail server — check the address after the @ for a typo."

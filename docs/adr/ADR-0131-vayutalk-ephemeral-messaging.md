@@ -256,3 +256,38 @@ the authoritative read-destroy to the app.
 
 Nothing is persisted; all new state (the burn timer, the unread window) lives in
 the same bounded in-memory structures and a restart still purges everything.
+
+## Amendment (v3.17.71): the console's read cursor
+
+This supersedes two statements above. The main body's stream "then `Ack`
+(read-destroy)" was reversed by the v1.6.0 fix, and "the web drops the toggle
+entirely" was reversed by the v3.13.56 amendment: the console ships the Live
+toggle.
+
+**What the console does now.** It still never read-destroys on the clearnet side
+— the app is the authoritative reader and its copy must survive. Instead, each
+envelope carries a per-reader mark, `Envelope.WebRead`:
+
+- `GET /os/talk/stream` subscribes with `SubscribeWeb`, whose initial flush is
+  `QueuedExcludingWebRead`, so a reconnect or reload does not bring back a
+  message the console already displayed and watched burn.
+- `POST /os/talk/read` sets the mark through `MarkWebReadAs(id, reader)`, which
+  refuses an envelope not addressed to the reader. The reader is resolved by
+  `talkSelf(r, as)` — the same "chat as" resolution the stream and send use. It
+  had used the session's default identity, so an administrator chatting as a
+  mailbox had every mark refused and every burned message returned on reload;
+  `TestAMessageBurnedWhileChattingAsAMailboxStaysBurned` pins the fix.
+
+The mark goes with the envelope when the app read-destroys it or the unread
+window purges it; nothing new is persisted.
+
+**Tor world.** There the console is the only reader, so the same endpoint
+read-destroys through `AckAsReturningSender(id, reader)`, which checks that the
+reader is the recipient before deleting. It had deleted by id alone, trusting
+that an id could only have come from the reader's own stream — a guarantee the
+endpoint never checked, and one that held only while every envelope in the relay
+belonged to the same code (`TestOnlyTheRecipientCanAckAndLearnTheSender`).
+
+**Consequence.** On the clearnet side a sender's copy shows "Delivered" until the
+app reads the message: the console's mark is deliberately not a read receipt,
+because it is not the read that destroys anything.
