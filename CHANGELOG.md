@@ -6,6 +6,67 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.67] — 2026-09-23
+
+Shipped on its own under the hotfix exception: publishing stalled the live
+install and could surface as a 502, and the installed console left app mode on
+its own Dashboard link.
+
+### Fixed
+
+- **Publishing a post stalled the whole site.** Every post write regenerates
+  the sitemap, and the sitemap filtered and read columns — `status`, `is_page`,
+  `updated_at`, `slug`, `tags` — that SQLite stores after each post's body. With
+  no index covering them, every rebuild read every post in full: measured on a
+  234,615-post copy of the live install, **5,255 MB per rebuild**, once for each
+  write. An assistant creating a post and then editing it paid that several
+  times over, in overlapping rebuilds, and on a host whose memory is smaller
+  than its database the page cache every other request relies on went with it.
+  Migration 094 adds two covering indexes, the sitemap's queries now compare
+  the `NOT NULL` columns bare (a `COALESCE` wrapper cannot use an index), and one
+  rebuild reads **32 MB**. The same post measured end to end went from reading
+  2,660 MB to 33 MB, and the dashboard's worst response while posting from
+  364 ms to 131 ms. `sitemap_plan_test.go` fails if either query leaves its
+  covering index, with or without a domain.
+- **Rebuilds no longer stack.** The global sitemap is coalesced
+  (`render.Coalesce`): however many writes arrive during a rebuild, exactly one
+  more rebuild runs after it — and no caller returns until a rebuild that
+  postdates its request has finished, so "Regenerate SEO artefacts" still
+  reports a sitemap that includes the change.
+- **The installed console dropped out of app mode on its Dashboard link.** The
+  app's scope is `/os/`, and scope matching is a prefix test, so every link to
+  `/os` — the sidebar's Dashboard, the phone's bottom bar, the post-login
+  redirect, the command palette — left the app and showed the address bar. The
+  console links to `/os/` everywhere, and `/os` redirects there for bookmarks.
+  `os_app_scope_test.go` checks every console link in the rendered chrome
+  against the scope read from the manifest.
+- **Sync now did nothing visible while the mirror was off.** It downloaded and
+  verified ~120 MB the domain did not serve, while the card went on reading
+  "off". The server now refuses it with the reason, and the button is disabled
+  until the mirror is switched on.
+
+### Upgrade Notes
+
+- The first start after this update builds the two sitemap indexes, reading the
+  articles table twice. Measured at 2 seconds on a warm copy of a 234,615-post
+  database; on a cold disk expect longer, once.
+
+### Security
+
+- **Pre-release audit.** Attacked: whether a slow first boot could trigger a
+  rollback (no — rollback is manual and the unit is `Type=simple`); whether
+  coalescing let any caller report a regeneration that had not happened (it
+  did, in the first version — the regenerate endpoint would have answered
+  "regenerated" mid-rebuild; fixed before release by making every call wait for
+  a run that postdates it); whether dropping `COALESCE` changes any result
+  (`status` and `is_page` are `NOT NULL`, and `is_page IN (0,1)` keeps the tag
+  list identical); and whether a unit test reached the network (one did, while
+  being written, and was cut back). Every control was mutation-tested: each
+  query plan, the coalescing (burst, follow-up, early return), the scope links
+  and the Sync-now refusal all fail on the fault they forbid.
+
+---
+
 ## [3.17.66] — 2026-09-23
 
 ### Added
