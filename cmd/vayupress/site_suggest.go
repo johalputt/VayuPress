@@ -9,7 +9,7 @@ package main
 // editor offers it; the operator decides.
 
 import (
-	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"  // decoders for the formats a mark is uploaded in
@@ -17,6 +17,7 @@ import (
 	_ "image/png"  //
 	"net/http"
 
+	"github.com/johalputt/vayupress/internal/imageproc"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/sitedoc"
 )
@@ -84,7 +85,12 @@ func (a *App) handleSiteDocSuggestAccent(target siteDocTarget) http.HandlerFunc 
 			writeAPIError(w, r, http.StatusNotFound, "no-logo", "Upload a logo under Branding first, then this reads its colour.", "")
 			return
 		}
-		img, _, err := image.Decode(bytes.NewReader(mark))
+		img, err := imageproc.Decode(mark)
+		if errors.Is(err, imageproc.ErrTooLarge) {
+			writeAPIError(w, r, http.StatusUnprocessableEntity, "logo-too-large",
+				"The logo is too large an image to read colours from; upload a smaller one under Branding.", "")
+			return
+		}
 		if err != nil {
 			writeAPIError(w, r, http.StatusUnprocessableEntity, "logo-unreadable",
 				"The logo is in a format this cannot read colours from (PNG, JPEG and GIF can be read).", "")

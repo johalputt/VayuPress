@@ -90,7 +90,7 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 	geo := geoFromHeaders(r)
 	// Which site the form is on. Without it, a form on a hosted client's site
 	// landed in the operator's inbox with nothing to say whose it was.
-	scope, _ := a.siteScope(r)
+	scope, host := a.siteScope(r)
 	persisted := false
 	if dbpkg.DB != nil {
 		if _, err := dbpkg.WDB.ExecContext(r.Context(),
@@ -104,7 +104,7 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 
 	// The operator's contact address + an enabled mailer are needed only to EMAIL
 	// the submission, not to accept it.
-	recipient, siteName := a.contactRecipient(r, scope)
+	recipient, siteName := a.contactRecipient(r, scope, host)
 	mailReady := recipient != "" && a.mailer != nil && a.mailer.Enabled()
 
 	// If the message could be neither stored nor emailed it would simply be lost,
@@ -148,10 +148,15 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 			if custom := a.pageContactReply(r.Context(), pageSlugFromPath(firstNonEmptyContact(body.Page, contactPageRef(r)))); custom != "" {
 				intro = custom
 			}
-			reply := "Hi " + name + ",\n\n" +
+			// The address was typed by the visitor and never confirmed, so the
+			// reply carries nothing they wrote — not their message, not their
+			// name. Quoting it made every form an open relay: any text to any
+			// address under this install's mail identity, rate-limited only per
+			// source address. The operator's copy above carries the message.
+			reply := "Hello,\n\n" +
 				intro + "\n\n" +
-				"For your records, here's what you sent:\n\n" +
-				message + "\n\n" +
+				"This address was entered in the contact form of " + siteName + ". If that was not you, " +
+				"there is nothing to do.\n\n" +
 				"— " + siteName + "\n"
 			if err := a.mailer.Send(email.Message{
 				To:      from,
@@ -180,8 +185,15 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 // name its auto-reply signs with. A hosted site's go to the address its own
 // contact section publishes, under its own name; the primary's, or a hosted
 // site that publishes none, to the operator's configured contact address.
-func (a *App) contactRecipient(r *http.Request, scope string) (recipient, siteName string) {
-	siteName = r.Host
+//
+// host is the site's registered host (siteScope), never the request's Host
+// header: an unknown host is answered as the primary, so the header is the
+// sender's own text, and the name goes into mail to an unconfirmed address.
+func (a *App) contactRecipient(r *http.Request, scope, host string) (recipient, siteName string) {
+	siteName = host
+	if siteName == "" {
+		siteName = "this site"
+	}
 	if a.siteSettings != nil {
 		recipient = strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyContactEmail))
 		if n := strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeySiteName)); n != "" {
@@ -195,7 +207,7 @@ func (a *App) contactRecipient(r *http.Request, scope string) (recipient, siteNa
 	if n := strings.TrimSpace(doc.Name); n != "" {
 		siteName = n
 	} else {
-		siteName = r.Host
+		siteName = host
 	}
 	for _, p := range doc.Pages {
 		for _, s := range p.Sections {

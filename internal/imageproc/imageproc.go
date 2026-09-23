@@ -14,6 +14,7 @@ package imageproc
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -30,6 +31,30 @@ func DefaultMaxWidthStr() string { return strconv.Itoa(DefaultMaxWidth) }
 // that OOM-kills the single-process binary (audit M11). 40 MP (~160 MB decoded)
 // is far above any legitimate web image and is checked cheaply via DecodeConfig.
 const maxDecodePixels = 40_000_000
+
+// ErrTooLarge is a decode refused for the size of the bitmap an image declares.
+var ErrTooLarge = errors.New("imageproc: image too large to decode")
+
+// Decode decodes an uploaded image after checking the dimensions its header
+// declares (audit M11). The decoder allocates the whole bitmap from that
+// declaration before reading any pixels, so a file of a few dozen bytes can ask
+// for gigabytes, and a failed allocation of that size is a fatal error rather
+// than a panic. Every decode of an uploaded image goes through here.
+func Decode(raw []byte) (image.Image, error) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("imageproc: decode: %w", err)
+	}
+	// int64: the product overflows int on 32-bit builds.
+	if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > maxDecodePixels {
+		return nil, fmt.Errorf("%w: %dx%d is over the %d-megapixel limit", ErrTooLarge, cfg.Width, cfg.Height, maxDecodePixels/1_000_000)
+	}
+	img, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("imageproc: decode: %w", err)
+	}
+	return img, nil
+}
 
 // DefaultMaxWidth is the width above which images are downscaled. 1600px covers
 // retina-quality article display while cutting multi-megabyte originals down to
@@ -66,18 +91,9 @@ func Optimize(raw []byte, ext string, maxWidth int) (Result, error) {
 		return Result{Data: raw}, nil
 	}
 
-	// Reject a decompression bomb BEFORE the full decode (audit M11): DecodeConfig
-	// reads only the header, so a tiny file declaring enormous dimensions is caught
-	// without allocating the multi-GB bitmap. int64 math avoids overflow.
-	if cfg, _, cerr := image.DecodeConfig(bytes.NewReader(raw)); cerr == nil {
-		if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > maxDecodePixels {
-			return Result{}, fmt.Errorf("imageproc: image dimensions %dx%d exceed the %d-megapixel limit", cfg.Width, cfg.Height, maxDecodePixels/1_000_000)
-		}
-	}
-
-	img, _, err := image.Decode(bytes.NewReader(raw))
+	img, err := Decode(raw)
 	if err != nil {
-		return Result{}, fmt.Errorf("imageproc: decode: %w", err)
+		return Result{}, err
 	}
 	b := img.Bounds()
 	w, h := b.Dx(), b.Dy()

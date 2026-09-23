@@ -183,11 +183,11 @@ func TestAHostedSitesContactMessagesAreItsOwn(t *testing.T) {
 	if got != d.ID {
 		t.Errorf("the message was stored for site %q, want %q", got, d.ID)
 	}
-	to, name := a.contactRecipient(r, d.ID)
+	to, name := a.contactRecipient(r, d.ID, d.Host)
 	if to != "owner@harbour.example" || name != "Harbour & Co" {
 		t.Errorf("hosted site's messages go to %q signed %q, want its own address and name", to, name)
 	}
-	if to, _ := a.contactRecipient(r, ""); to == "owner@harbour.example" {
+	if to, _ := a.contactRecipient(r, "", ""); to == "owner@harbour.example" {
 		t.Error("the primary's messages went to a hosted site's address")
 	}
 

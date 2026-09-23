@@ -46,6 +46,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/johalputt/vayupress/internal/imageproc"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -93,7 +94,7 @@ func (a *App) customAppIcon(ctx context.Context, size int, maskable bool) []byte
 	// working everywhere the raw bytes are served (the favicon routes pass them
 	// through untouched). Caching the nil keeps the failed decode from being
 	// retried on every request.
-	src, _, err := image.Decode(bytes.NewReader(raw))
+	src, err := imageproc.Decode(raw)
 	if err != nil {
 		appIconCache.Store(key, []byte(nil))
 		return nil

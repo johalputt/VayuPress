@@ -194,6 +194,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+### Security
+
+- **The contact form's auto-reply was an open mail relay.** It went to the
+  address a visitor typed, unconfirmed, and quoted their name and whole
+  message back — so anyone could send any text to any address under the
+  install's own mail identity, five a minute from each address they control,
+  at the cost of the operator's sending reputation. This release puts the form
+  on every hosted site, widening it. The reply now carries nothing the visitor
+  wrote, names the site from its registered host rather than the request's
+  Host header (an unknown host is answered as the primary, so that header is
+  the sender's text too), and tells the recipient that if they did not fill
+  in the form there is nothing to do. The operator's copy is unchanged.
+- **A small logo could exhaust the server's memory.** Go's image decoders
+  allocate the whole bitmap from the size a file declares, before reading any
+  pixels: a 60-byte PNG declaring 10000×10000 costs 381 MiB, and a larger
+  declaration is a fatal error that ends the process and every site on the
+  install. The app icon (released) and the new logo-colour suggestion decoded
+  the uploaded mark without the dimension check the media pipeline already
+  had. There is now one bounded decode, `imageproc.Decode`, used by all three.
+- **Pre-release audit.** Attacked besides the two above: script-element
+  escaping of the structured data (held by an existing test); the disk
+  reserve under concurrent uploads (every piece is re-checked against live
+  free space under one lock, and an upload that would dip into the reserve is
+  deleted); traversal through upload and restore ids (hex and 20-digit ids
+  checked before any path is built); domain-bound API keys on the new
+  connector tools (no code path issues such a key); the editor API's gating
+  and per-domain scope; the AI endpoint's bounds (64 KiB in, 60 s, admin
+  only, output inserted as text); the download's write deadline and the
+  directory it reads (pinned with `os.OpenRoot`, which also refuses symlinks);
+  and `..` in a picture path reaching the publish gate's file checks (names
+  are matched against the stored-media pattern first).
+
 ## [3.17.67] — 2026-09-23
 
 Shipped on its own under the hotfix exception: publishing stalled the live
