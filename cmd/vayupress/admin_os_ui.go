@@ -240,6 +240,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			dr.Get("/website", a.handleOSScopedWebsite)
 			dr.Get("/website/editor", a.handleOSScopedSiteEditor)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/website", a.handleOSScopedWebsiteSave)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/website/sample-demo", a.handleOSScopedSampleDemo)
 			// A whole hand-built site for this domain (ADR-0154 D12). Both go
 			// through customsite.Deploy, which confines every write to an
 			// os.Root and refuses traversal in archive entries.
@@ -1894,17 +1895,21 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 			add("/os/domains", "Domains to sync", "waiting for approval", "domain", held)
 			// Sites publishing a template's sample content as if it were the
 			// real business (vayupress.johal.in served Bistro's "Maison Olive").
-			sample, href := 0, "/os/domains"
+			// A site marked as a demo on its Website page is not counted.
+			sample, href, detail := 0, "/os/domains", ""
 			for _, d := range list {
-				if !d.IsPrimary && d.Status == domain.StatusActive && len(siteSampleFields(ctx, d)) > 0 {
+				if d.IsPrimary || d.Status != domain.StatusActive {
+					continue
+				}
+				if _, warn := a.sampleWarned(ctx, d); warn {
 					sample++
-					href = "/os/d/" + d.ID + "/website"
+					href, detail = "/os/d/"+d.ID+"/website", d.Host+" shows a design's sample business — replace it, or mark it a demo"
 				}
 			}
 			if sample > 1 {
-				href = "/os/domains"
+				href, detail = "/os/domains", "sites show a design's sample business as if it were real"
 			}
-			add(href, "Sample content is live", "a site is publishing a template's demo text", "domain", sample, "warn")
+			add(href, "Sample content is live", detail, "domain", sample, "warn")
 			// Sites whose live pages now have a dead end in them: a picture
 			// deleted from Media, a post a button linked to taken down.
 			broken, bhref := 0, "/os/domains"

@@ -65,6 +65,10 @@ const (
 	KeySiteMode    = "site.mode"
 	KeyBizTemplate = "biz.template" // active business template key
 	KeyBizContent  = "biz.content"  // business-site content (JSON)
+	// KeySampleIsDemo ("1") records that a site shows a design's sample
+	// business on purpose — a demo or showcase — so the console stops warning
+	// that sample content is live. Set and cleared from the site's Website page.
+	KeySampleIsDemo = "biz.sample_is_demo"
 
 	KeyThemePrimaryLight = "theme.primary_light"
 	KeyThemePrimaryDark  = "theme.primary_dark"
@@ -484,6 +488,7 @@ var NotPortable = map[string]bool{
 	KeySiteMode:                   true,
 	KeyBizTemplate:                true,
 	KeyBizContent:                 true,
+	KeySampleIsDemo:               true,
 	KeyAuthorBio:                  true,
 	KeyFeaturePayments:            true,
 	KeyFeatureAds:                 true,
@@ -621,6 +626,7 @@ var AllKeys = map[string]bool{
 	KeySiteMode:                true,
 	KeyBizTemplate:             true,
 	KeyBizContent:              true,
+	KeySampleIsDemo:            true,
 	// admin.theme is the operator's VayuOS console colour theme (light/dark/auto),
 	// persisted from the topbar theme toggle rather than the theme editor form.
 	"admin.theme": true,

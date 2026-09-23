@@ -32,6 +32,7 @@ import (
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/seo"
+	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/sitedoc"
 )
 
@@ -75,7 +76,12 @@ func (a *App) handleOSScopedWebsite(w http.ResponseWriter, r *http.Request) {
 	content := bizsite.EffectiveContent(tpl, site.Content)
 	man := customsite.ReadManifest(scopedBundleDir(d))
 	_, published := publishedSiteDoc(r.Context(), d.ID)
-	body := scopedWebsitePage(d, tpl.Key, content, customsite.Deployed(scopedBundleDir(d)), man, published) +
+	fields, _ := a.sampleWarned(r.Context(), d)
+	page := scopedWebsitePage(d, tpl.Key, content, customsite.Deployed(scopedBundleDir(d)), man, published)
+	// Above the tiles: it is the first thing on this page that needs doing.
+	page = strings.Replace(page, `<div class="stat-grid">`,
+		scopedSampleNotice(d, tpl.Name, fields, a.sampleIsDemo(r.Context(), d))+`<div class="stat-grid">`, 1)
+	body := page +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-bundle.js?v=` + assetVer("js/admin-os-bundle.js") + `"></script>` +
 		scopedWebsiteScript(nonce)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Website · "+d.Host, "optimize", cfg, htmpl.HTML(body)))
@@ -95,6 +101,88 @@ func siteSampleFields(ctx context.Context, d domain.Domain) []string {
 	}
 	site, _ := d.Site()
 	return bizsite.DemoFields(bizsite.EffectiveContent(bizsite.ByKey(site.Template), site.Content))
+}
+
+// sampleWarned is whether the console should warn that d is publishing a
+// design's sample business: it is, and its operator has not marked it a demo.
+// One rule for the attention strip, the site's home and its Website page, so
+// they cannot disagree about whether there is something to fix.
+func (a *App) sampleWarned(ctx context.Context, d domain.Domain) ([]string, bool) {
+	fields := siteSampleFields(ctx, d)
+	return fields, len(fields) > 0 && !a.sampleIsDemo(ctx, d)
+}
+
+func (a *App) sampleIsDemo(ctx context.Context, d domain.Domain) bool {
+	return a.siteSettings != nil && a.siteSettings.Get(ctx, settings.ForDomain(d.ID), settings.KeySampleIsDemo) == "1"
+}
+
+// scopedSampleNotice is the Website page's account of sample content, with
+// the two ways out: replace it, or say it is a demo on purpose. Saving the
+// form cannot clear it — the form opens filled with the sample, so a save
+// stores the sample as the site's own words — and a warning with no way to
+// act on it is one people learn to ignore.
+func scopedSampleNotice(d domain.Domain, tplName string, fields []string, demo bool) string {
+	esc := html.EscapeString
+	if len(fields) == 0 {
+		return ""
+	}
+	if demo {
+		return `<div class="settings-callout"><strong>Showing the ` + esc(tplName) + ` design's sample business on purpose.</strong> ` +
+			`<span class="text-sm muted">Marked as a demo, so the console does not warn about it.</span> ` +
+			`<div class="page-actions"><button type="button" class="btn btn--ghost btn--sm" data-sample-demo="0">Warn me again</button></div></div>`
+	}
+	words := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if w, ok := sampleFieldWords[f]; ok {
+			f = w
+		}
+		words = append(words, f)
+	}
+	return `<div class="settings-callout"><strong>This site is showing the ` + esc(tplName) + ` design's sample business.</strong> ` +
+		`<span class="text-sm muted">Visitors read it as a real business. Still the sample: ` + esc(strings.Join(words, ", ")) +
+		`. Saving this page keeps it — replace the text, or start from your own details in the site editor.</span>` +
+		`<div class="page-actions">` +
+		`<a class="btn btn--primary btn--sm" href="/os/d/` + esc(d.ID) + `/website/editor">Start from your own details</a>` +
+		`<button type="button" class="btn btn--ghost btn--sm" data-sample-demo="1">It is a demo — stop warning</button></div></div>`
+}
+
+// sampleFieldWords names bizsite.DemoFields' fields as the page labels them.
+var sampleFieldWords = map[string]string{
+	"name": "business name", "tagline": "tagline", "about": "about text",
+	"hours": "opening hours", "cta": "button text", "services": "menu or services",
+}
+
+// handleOSScopedSampleDemo records or clears "this site shows a sample on
+// purpose": POST {"demo": bool}.
+func (a *App) handleOSScopedSampleDemo(w http.ResponseWriter, r *http.Request) {
+	// Admin only, as the Website save beside it is: silencing a warning about a
+	// live site is not a lesser power than editing that site.
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	d, ok := osScopedDomain(r)
+	if !ok || a.siteSettings == nil {
+		writeAPIError(w, r, http.StatusNotFound, "unknown-domain", "no such site", "")
+		return
+	}
+	var body struct {
+		Demo bool `json:"demo"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "send {\"demo\": true|false}", "")
+		return
+	}
+	v := ""
+	if body.Demo {
+		v = "1"
+	}
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForDomain(d.ID), map[string]string{settings.KeySampleIsDemo: v}); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "save-failed", err.Error(), "")
+		return
+	}
+	dbpkg.AuditLog("vayudomains.website", dbpkg.AuditActor(r), d.Host, "sample content marked as demo: "+strconv.FormatBool(body.Demo))
+	writeJSON(w, r, http.StatusOK, map[string]bool{"demo": body.Demo})
 }
 
 func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundled bool, man customsite.Manifest, published bool) string {
@@ -382,6 +470,12 @@ var ID=node?node.getAttribute('data-id'):'';
 if(!ID)return;
 var st=document.getElementById('scoped-web-status');
 function v(id){var e=document.getElementById(id);return e?e.value.trim():'';}
+document.querySelectorAll('[data-sample-demo]').forEach(function(b){b.addEventListener('click',function(){
+  b.disabled=true;
+  fetch('/os/d/'+encodeURIComponent(ID)+'/api/website/sample-demo',{method:'POST',credentials:'same-origin',
+    headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({demo:b.getAttribute('data-sample-demo')==='1'})})
+  .then(function(r){if(r.ok){location.reload();}else{b.disabled=false;b.textContent='Could not save — try again';}});
+});});
 var btn=document.querySelector('[data-site-web-save]');
 if(!btn)return;
 btn.addEventListener('click',function(){

@@ -160,6 +160,8 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 				// Fields still publishing a template's sample content — a live
 				// page describing a business that does not exist.
 				"sample_content": siteSampleFields(ctx, d),
+				// Marked on its Website page as showing the sample on purpose.
+				"sample_is_demo": a.sampleIsDemo(ctx, d),
 				// What the publish gate finds about the live site now — a dead
 				// link or a picture deleted since it was published.
 				"checks": nonNilChecks(a.hostedSiteChecks(ctx, d)),
