@@ -5824,6 +5824,11 @@
 
 /* Kept pin in the conversation row (a chat you chose to preserve across reloads). */
 .vp-os .vtalk-convo-pin { flex: none; font-size: .8em; opacity: .85; line-height: 1; }
+/* Talk's line icons (admin-os-talk.js icon()): text-sized, currentColor, so they
+   take each control's colour and survive forced-colors mode. */
+.vp-os .vtalk-ico { width: 1.05em; height: 1.05em; vertical-align: -.15em; margin-right: .3em; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.vp-os .vtalk-convo-pin .vtalk-ico { margin-right: 0; }
 
 .vp-os .vtalk-verify {
   flex-basis: 100%; margin-top: var(--sp-3);

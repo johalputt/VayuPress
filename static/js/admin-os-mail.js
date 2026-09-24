@@ -780,12 +780,23 @@
     var verify = el('button', 'btn btn--primary btn--sm', 'Verify & enable'); verify.type = 'button';
     foot.appendChild(cancel); foot.appendChild(verify);
     panel.appendChild(head); panel.appendChild(body); panel.appendChild(foot);
-    back.appendChild(panel); document.body.appendChild(back);
+    back.appendChild(panel);
+    // Keyboard users get the same exits as the password dialog: Escape closes,
+    // Enter in the code field verifies, and focus goes back to whatever opened it.
+    var trigger = document.activeElement;
+    document.body.appendChild(back);
     inp.focus();
-    function close() { if (back.parentNode) back.parentNode.removeChild(back); }
+    function close() {
+      document.removeEventListener('keydown', onKey);
+      if (back.parentNode) back.parentNode.removeChild(back);
+      if (trigger && typeof trigger.focus === 'function') { try { trigger.focus(); } catch (e) {} }
+    }
+    function onKey(ev) { if (ev.key === 'Escape') { ev.preventDefault(); close(); } }
+    document.addEventListener('keydown', onKey);
     x.addEventListener('click', close);
     cancel.addEventListener('click', close);
     back.addEventListener('click', function (ev) { if (ev.target === back) close(); });
+    inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); verify.click(); } });
     verify.addEventListener('click', function () {
       var c = (inp.value || '').replace(/\D/g, '');
       if (c.length !== 6) { acctToast('Enter the 6-digit code.', true); return; }

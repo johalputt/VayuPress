@@ -18,9 +18,10 @@ const (
 	MaxStreamsPerUser = 5
 	// MaxGlobalStreams bounds concurrent live streams across all users.
 	MaxGlobalStreams = 500
-	// subscriberBuffer is the per-subscriber channel depth. A slow client that
-	// fills it drops further live events rather than blocking the publisher; the
-	// store-mode queue is the durable path for anything that must not be missed.
+	// subscriberBuffer is the per-subscriber channel depth. A stream that fills
+	// it is closed rather than left open and deaf (see sendLocked): its client
+	// reconnects, and the reconnect re-delivers every store-mode envelope still
+	// queued. Live-mode envelopes have no queue, so a stuck stream loses those.
 	subscriberBuffer = 64
 )
 
@@ -129,27 +130,48 @@ func (h *Hub) Subscribe(user string) (<-chan Event, func(), error) {
 // The caller holds h.mu; the evicted subscriber's own cancel becomes a no-op
 // because it checks membership before closing, so there is no double close.
 func (h *Hub) evictOldestLocked(user string) {
-	set := h.subs[user]
-	if len(set) == 0 {
-		return
-	}
 	var oldest *subscriber
-	for s := range set {
+	for s := range h.subs[user] {
 		if oldest == nil || s.seq < oldest.seq {
 			oldest = s
 		}
 	}
-	delete(set, oldest)
+	if oldest != nil {
+		h.removeLocked(user, oldest)
+	}
+}
+
+// removeLocked drops and closes one subscriber. Caller holds h.mu.
+func (h *Hub) removeLocked(user string, sub *subscriber) {
+	set := h.subs[user]
+	if _, ok := set[sub]; !ok {
+		return
+	}
+	delete(set, sub)
 	h.total--
 	if len(set) == 0 {
 		delete(h.subs, user)
 	}
-	close(oldest.ch)
+	close(sub.ch)
+}
+
+// sendLocked hands evt to one subscriber without blocking. A subscriber whose
+// buffer is full is closed instead of skipped: skipping left the stream open and
+// silent, so a message never reached it and nothing told the client to
+// reconnect and collect what was queued. Caller holds h.mu.
+func (h *Hub) sendLocked(user string, sub *subscriber, evt Event) bool {
+	select {
+	case sub.ch <- evt:
+		return true
+	default:
+		h.removeLocked(user, sub)
+		return false
+	}
 }
 
 // Publish delivers env to a live subscriber of env.To, returning true if at
-// least one subscriber received it now. Delivery is non-blocking: a full
-// subscriber buffer is skipped (store-mode queueing is the durable path).
+// least one subscriber received it now. Delivery is non-blocking: a subscriber
+// with a full buffer is closed (see sendLocked).
 func (h *Hub) Publish(env *Envelope) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -160,10 +182,8 @@ func (h *Hub) Publish(env *Envelope) bool {
 	evt := Event{Type: "envelope", Payload: envelopePayload(env)}
 	delivered := false
 	for sub := range set {
-		select {
-		case sub.ch <- evt:
+		if h.sendLocked(env.To, sub, evt) {
 			delivered = true
-		default:
 		}
 	}
 	return delivered
@@ -180,10 +200,7 @@ func (h *Hub) PublishReceipt(user, id, status string) {
 	}
 	evt := Event{Type: "receipt", Payload: ReceiptPayload{ID: id, Status: status}}
 	for sub := range set {
-		select {
-		case sub.ch <- evt:
-		default:
-		}
+		h.sendLocked(user, sub, evt)
 	}
 }
 
@@ -200,10 +217,7 @@ func (h *Hub) PublishPeerKey(user, peer string) {
 	}
 	evt := Event{Type: "peerkey", Payload: PeerKeyPayload{Peer: peer}}
 	for sub := range set {
-		select {
-		case sub.ch <- evt:
-		default:
-		}
+		h.sendLocked(user, sub, evt)
 	}
 }
 

@@ -91,6 +91,33 @@
     if (text != null) n.textContent = text;
     return n;
   }
+  // Line icons for Talk's controls and badges, drawn in currentColor like the
+  // rest of the console. Emoji rendered as colour pictograms that differ on every
+  // platform, beside the console's own monochrome icons.
+  var ICONS = {
+    pin: 'M9 4h6l-1 6 3 3H7l3-3zM12 13v7',
+    edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
+    shield: 'M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6z',
+    flame: 'M12 3c1 3 5 5.5 5 10a5 5 0 0 1-10 0c0-2.5 1.5-4 2.5-5.5.5 1.5 1.5 2.5 2.5 3 .3-2.5 0-5-0-7.5z',
+    alert: 'M12 4l9 16H3zM12 10v4M12 17.5v.01'
+  };
+  function icon(name) {
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('class', 'vtalk-ico');
+    svg.setAttribute('aria-hidden', 'true');
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', ICONS[name]);
+    svg.appendChild(path);
+    return svg;
+  }
+  // iconText replaces an element's content with an icon and a label.
+  function iconText(el, name, text) {
+    el.textContent = '';
+    el.appendChild(icon(name));
+    el.appendChild(document.createTextNode(text));
+    return el;
+  }
   function parse(s) { try { return JSON.parse(s); } catch (_) { return null; } }
 
   // avatarEl builds a round avatar chip that shows the address' real mailbox
@@ -123,12 +150,17 @@
   var baseTitle = document.title;
   var unreadTotal = 0;
   var notifyReady = false;
-  function ensureNotifyPermission() {
+  var notifyAsked = false;
+  // ask=false only picks up a permission already granted. The browser's prompt
+  // is shown only from a person's own action and at most once per visit: one
+  // that greeted every page load and came back with every new chat is the kind
+  // people learn to deny, which then can never be undone from this page.
+  function ensureNotifyPermission(ask) {
     if (!('Notification' in window)) return;
     if (Notification.permission === 'granted') { notifyReady = true; return; }
-    if (Notification.permission === 'default') {
-      try { Notification.requestPermission().then(function (p) { notifyReady = (p === 'granted'); }); } catch (_) {}
-    }
+    if (!ask || notifyAsked || Notification.permission !== 'default') return;
+    notifyAsked = true;
+    try { Notification.requestPermission().then(function (p) { notifyReady = (p === 'granted'); }); } catch (_) {}
   }
   function clearTitleBadge() { unreadTotal = 0; document.title = baseTitle; }
   function notifyIncoming(peer, m) {
@@ -208,7 +240,7 @@
     var meta = elem('span', 'vtalk-convo-meta');
     var nameEl = elem('span', 'vtalk-convo-name', name);
     meta.appendChild(nameEl);
-    var pin = elem('span', 'vtalk-convo-pin', '📌');
+    var pin = iconText(elem('span', 'vtalk-convo-pin'), 'pin', '');
     pin.title = 'Kept — stays in your list after reload';
     pin.hidden = !isKept(peer);
     if (isKept(peer)) item.classList.add('vtalk-convo--kept');
@@ -290,8 +322,8 @@
     // metadata), the content is not. Saying so beats a silent gap.
     var convo = convos[peer];
     if (convo && convo.undecryptable) {
-      hmeta.appendChild(elem('span', 'vtalk-undec',
-        '⚠ ' + convo.undecryptable + ' message' + (convo.undecryptable === 1 ? '' : 's') + ' couldn’t be decrypted'));
+      hmeta.appendChild(iconText(elem('span', 'vtalk-undec'), 'alert',
+        convo.undecryptable + ' message' + (convo.undecryptable === 1 ? '' : 's') + ' couldn’t be decrypted'));
     }
 
     var actions = elem('div', 'vtalk-head-actions');
@@ -300,7 +332,7 @@
     // never shown outside the verify panel once a chat is added).
     var rbtn = elem('button', 'vtalk-head-btn');
     rbtn.type = 'button';
-    rbtn.textContent = '✎ Rename';
+    iconText(rbtn, 'edit', 'Rename');
     rbtn.title = 'Show a name instead of the address';
     rbtn.addEventListener('click', function () { renameContact(peer); });
 
@@ -308,7 +340,7 @@
     // default — nothing but this flag and the chosen name is ever persisted).
     var kbtn = elem('button', 'vtalk-head-btn');
     kbtn.type = 'button';
-    kbtn.textContent = isKept(peer) ? '📌 Kept' : '📌 Keep';
+    iconText(kbtn, 'pin', isKept(peer) ? 'Kept' : 'Keep');
     kbtn.classList.toggle('is-on', isKept(peer));
     kbtn.title = isKept(peer)
       ? 'This contact stays in your list after reload'
@@ -408,7 +440,7 @@
   }
 
   function setVerifyBtn(btn, peer) {
-    btn.textContent = verified[peer] ? '🛡 Verified' : '🛡 Verify';
+    iconText(btn, 'shield', verified[peer] ? 'Verified' : 'Verify');
     btn.classList.toggle('is-verified', !!verified[peer]);
   }
 
@@ -567,16 +599,16 @@
     if (!info) return;
     var warn = null;
     if (info.keyChanged) {
-      warn = elem('div', 'vtalk-warn vtalk-warn--key',
-        '⚠ ' + displayName(peer) + '’s safety number has changed since you verified it. ' +
+      warn = iconText(elem('div', 'vtalk-warn vtalk-warn--key'), 'alert',
+        displayName(peer) + '’s safety number has changed since you verified it. ' +
         'That is what happens when the key is rebuilt — or when someone is in the middle. ' +
         'Compare safety numbers again before trusting this chat.');
     } else if (info.unknown) {
       warn = elem('div', 'vtalk-warn vtalk-warn--unknown',
         'Could not check whether ' + displayName(peer) + ' can receive messages just now — you may be offline. Sending will report the real result.');
     } else if (info.found === false) {
-      warn = elem('div', 'vtalk-warn',
-        '⚠ No VayuTalk key for ' + peer + ' yet. They need to open VayuMail (app or web) on this server once so a key exists — until then messages can’t be delivered.');
+      warn = iconText(elem('div', 'vtalk-warn'), 'alert',
+        'No VayuTalk key for ' + peer + ' yet. They need to open VayuMail (app or web) on this server once so a key exists — until then messages can’t be delivered.');
     }
     if (warn) els.thread.insertBefore(warn, els.thread.firstChild);
   }
@@ -616,7 +648,7 @@
     // the sender it claims (its signing key is not known here). Verified messages
     // stay unbadged to avoid noise.
     if (!m.mine && m.verified === false) {
-      var unv = elem('span', 'vtalk-bubble-unverified', '⚠ unverified');
+      var unv = iconText(elem('span', 'vtalk-bubble-unverified'), 'alert', 'unverified');
       unv.title = 'This message could not be verified as coming from the sender it claims.';
       foot.appendChild(unv);
     }
@@ -723,7 +755,7 @@
       }
       if (m.burnEl) {
         m.burnEl.hidden = false;
-        m.burnEl.textContent = '🔥 ' + fmtCountdown(remain);
+        iconText(m.burnEl, 'flame', fmtCountdown(remain));
       }
     }
     if (!burning.length && burnTicker) { clearInterval(burnTicker); burnTicker = null; }
@@ -930,7 +962,7 @@
     if (peer === currentSelf) { newChatNote('That is your own address — start a chat with someone else.'); return; }
     els.peer.value = '';
     // Starting a chat is a user gesture — the right moment to ask to notify.
-    ensureNotifyPermission();
+    ensureNotifyPermission(true);
     activate(peer);
   });
 
@@ -1011,9 +1043,9 @@
   // Start on the conversation list: on a phone that is the only pane that makes
   // sense before a chat is chosen (the CSS ignores this on desktop).
   root.setAttribute('data-view', 'list');
-  // Best-effort permission ask on load (browsers may defer it to a gesture — the
-  // Start button also asks); the tab-title badge works regardless.
-  ensureNotifyPermission();
+  // Notifications already allowed work from the first message; asking waits for
+  // Start. The tab-title badge works either way.
+  ensureNotifyPermission(false);
   connect();
   window.addEventListener('beforeunload', function () { if (es) es.close(); });
 })();

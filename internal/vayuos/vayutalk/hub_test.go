@@ -150,3 +150,44 @@ func TestCancelStopsDelivery(t *testing.T) {
 	// cancel is idempotent.
 	cancel()
 }
+
+// TestAStuckStreamIsClosedSoItsClientReconnects — a stream whose buffer is full
+// used to be skipped and left open: nothing reached it and nothing told its
+// client to reconnect and collect the queue. It is now closed, and another
+// stream for the same person still gets the message.
+func TestAStuckStreamIsClosedSoItsClientReconnects(t *testing.T) {
+	h := NewHub()
+	stuck, cancelStuck, err := h.Subscribe("bob@x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancelStuck()
+	for i := 0; i < subscriberBuffer; i++ {
+		if !h.Publish(&Envelope{ID: "fill", To: "bob@x"}) {
+			t.Fatalf("filling the buffer: publish %d was refused", i)
+		}
+	}
+	healthy, cancelHealthy, err := h.Subscribe("bob@x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancelHealthy()
+
+	if !h.Publish(&Envelope{ID: "next", To: "bob@x"}) {
+		t.Error("the healthy stream did not receive the message")
+	}
+	if got := (<-healthy); got.Type != "envelope" {
+		t.Errorf("healthy stream got %q", got.Type)
+	}
+	for i := 0; i < subscriberBuffer; i++ {
+		<-stuck
+	}
+	select {
+	case _, open := <-stuck:
+		if open {
+			t.Error("the stuck stream received a message it had no room for")
+		}
+	case <-time.After(time.Second):
+		t.Error("the stuck stream was left open, so its client never reconnects")
+	}
+}

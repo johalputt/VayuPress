@@ -424,6 +424,28 @@ a test forbids `window.prompt`/`window.confirm` from returning to either file
   the Tor world) as text, a Copy button and a QR code, served per identity through the
   same entitlement check as every Talk request.
 
+### Four findings no phase picked up (closed in v3.17.74)
+
+A check of every finding ID against the plan found four P3 rows that no phase
+ever assigned, so nothing tracked them:
+
+- **T-22** — VayuTalk asked for notification permission on every page load and
+  every Start. It now asks only from Start, at most once per visit, and on load
+  only picks up a permission already granted.
+- **T-23** — Talk's buttons and badges used colour emoji beside the console's
+  monochrome icons. They now use a small set of line icons in `currentColor`.
+  The page-wide callouts keep the console's callout style.
+- **T-25** — a live stream whose buffer was full was skipped and left open, so
+  it never reconnected to collect queued store-mode messages. It is now closed;
+  the client reconnects and the queue is re-delivered
+  (`TestAStuckStreamIsClosedSoItsClientReconnects`).
+- **M-21** — the mailbox two-factor dialog now closes on Escape, verifies on
+  Enter and returns focus to the button that opened it.
+
+With these, every finding in Part 2 is either fixed or settled by an ADR, and the
+only plan item not built is 3.7, which waits for a first language by design
+(ADR-0163).
+
 ### Corrections to this document found while implementing
 
 1. The console's empty-state variants are `.empty-icon`/`.empty-title`/`.empty-sub`, not
