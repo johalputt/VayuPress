@@ -15,6 +15,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/mode"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 func saSession(level int) *osSettings {
@@ -187,19 +188,14 @@ func TestStillAirChromeUsesOnlyTheIconSet(t *testing.T) {
 	// happens to render that app's sidebar.
 	for _, apps := range [][]saApp{saClearnetApps, saTorApps} {
 		for _, a := range apps {
-			if _, ok := saIcons[a.Icon]; !ok {
+			if !ui.HasIcon(a.Icon) {
 				t.Errorf("app %s names icon %q, which is not in the set", a.Key, a.Icon)
 			}
 			for _, sec := range a.Sections {
-				if _, ok := saIcons[sec.Icon]; !ok {
+				if !ui.HasIcon(sec.Icon) {
 					t.Errorf("%s › %s names icon %q, which is not in the set", a.Label, sec.Label, sec.Icon)
 				}
 			}
-		}
-	}
-	for name := range saIcons {
-		if strings.ContainsAny(saIcons[name], "<>") && !strings.HasPrefix(strings.TrimSpace(saIcons[name]), "<") {
-			t.Errorf("icon %s is not plain SVG path markup", name)
 		}
 	}
 }

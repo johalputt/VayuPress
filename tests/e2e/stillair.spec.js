@@ -2,7 +2,7 @@
 //
 // Two kinds of check. The design lint visits every app and section the rail
 // offers, at desktop and phone width, and fails on the faults this redesign
-// kept finding by eye: an emoji drawn as an icon, a page wider than the screen,
+// kept finding by eye: text escaped twice, an emoji drawn as an icon, a page wider than the screen,
 // a label in capitals, a colour written into the markup, a heading repeated by
 // the card beneath it, an icon rendered at the wrong size, a script error. They
 // are checked on the rendered page, not by comparing pixels, so a different
@@ -32,6 +32,11 @@ function lintPage() {
   const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   let n;
   while ((n = walk.nextNode())) {
+    // Text escaped twice shows its entity to the reader ("R&amp;D").
+    const ent = n.nodeValue.match(/&(?:amp|lt|gt|quot|#\d+);/);
+    if (ent && !n.parentElement.closest("script,style,code,pre,textarea")) {
+      out.push(`escaped twice: "${n.nodeValue.trim().slice(0, 40)}"`);
+    }
     const m = n.nodeValue.match(emoji);
     if (m && !typographic.test(m[0]) && !n.parentElement.closest("script,style")) {
       out.push(`emoji ${m[0]} in "${n.nodeValue.trim().slice(0, 40)}"`);
