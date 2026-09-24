@@ -6,6 +6,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.77] — 2026-09-24
+
+A fix release, shipped on its own because these controls do nothing on every
+install now.
+
+### Fixed
+
+- **Five operator buttons work again.** Transition and Force override on
+  System Modes, Simulate on Fault Engine, and Replay all / Replay on the
+  dead-letter queue were blocked by the console's own security policy, which
+  refuses inline click handlers. They looked clickable and did nothing.
+
+---
+
 ## [3.17.76] — 2026-09-24
 
 A fix release, shipped on its own because the command palette is broken on
