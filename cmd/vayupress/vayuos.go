@@ -34,6 +34,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
 	vkernel "github.com/johalputt/vayupress/internal/vayuos/kernel"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
@@ -1072,11 +1073,11 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 	snap := a.vayuHealth.Snapshot()
 	var rows strings.Builder
 	for _, c := range snap.Components {
-		badge := `<span class="badge badge--ok">OK</span>`
+		badge := ui.Tag("ok", "Healthy")
 		if !c.OK {
-			badge = `<span class="badge badge--warn">DEGRADED</span>`
+			badge = ui.Tag("warn", "Degraded")
 		}
-		rows.WriteString(`<tr><td>` + html.EscapeString(c.Name) + `</td><td>` + badge + `</td><td class="muted">` + html.EscapeString(c.Detail) + `</td></tr>`)
+		rows.WriteString(`<tr><td>` + html.EscapeString(c.Name) + `</td><td>` + string(badge) + `</td><td class="muted">` + html.EscapeString(c.Detail) + `</td></tr>`)
 	}
 	// Infrastructure cards (PGP keys, DKIM/DNS, security updates) and the
 	// subsystem-health table expose operational detail the four non-admin roles
