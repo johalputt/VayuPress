@@ -35,7 +35,7 @@
     msg.classList.add('visible');
   }
   function errText(d) {
-    return (d && (d.detail || d.title || d.error)) || 'Something went wrong';
+    return (d && (d.detail || d.title || d.error)) || 'The server refused this without saying why. Reload the page and try again.';
   }
   // After a change: confirm it in a toast (the page's own message line is about
   // to be re-rendered), then refresh in place.

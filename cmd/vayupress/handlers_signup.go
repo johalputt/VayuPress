@@ -41,7 +41,7 @@ func (a *App) handleMemberSignup(w http.ResponseWriter, r *http.Request) {
 	case "sent":
 		notice = `<div class="su-notice su-notice--ok" role="status">Check your inbox — we just emailed you a secure sign-in link. It is valid for 30 minutes.</div>`
 	case "error":
-		notice = `<div class="su-notice su-notice--err" role="alert">Something went wrong sending your link. Please try again.</div>`
+		notice = `<div class="su-notice su-notice--err" role="alert">Your sign-in link could not be sent. Check the email address and try again in a minute.</div>`
 	}
 
 	// A clear Free-vs-Premium comparison so a visitor sees exactly what a free

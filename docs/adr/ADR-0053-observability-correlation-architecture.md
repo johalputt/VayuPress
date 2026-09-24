@@ -29,6 +29,12 @@ same for causation chains. `trace.NewID()` generates crypto-random IDs.
 - echoed back in the `X-Correlation-ID` response header
 - included in every structured access log line
 
+A caller-supplied `X-Request-ID` or `X-Correlation-ID` is accepted only when
+it is 1–64 characters of letters, digits and `. _ : -` (`idShaped` in
+`cmd/vayupress/middleware.go`); anything else is replaced as if absent. The
+value reaches response headers, logs and `write_jobs`, which the console's
+Replay page prints, so a header a visitor controls must not carry markup.
+
 ### 3. Correlation ID propagation through the write queue
 
 `queue.SQLiteWriter.Enqueue` reads `trace.CorrelationID(ctx)` and persists it

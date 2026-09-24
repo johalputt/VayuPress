@@ -106,10 +106,28 @@ func realIPMiddleware(next http.Handler) http.Handler {
 
 type ctxKeyRequestID struct{}
 
+// idShaped reports whether a caller-supplied request or correlation ID looks
+// like one: 1–64 characters of letters, digits and . _ : -, which covers UUIDs,
+// W3C trace IDs and the IDs proxies mint. The value is echoed in a response
+// header, written to logs and stored on write jobs that the console prints, so
+// anything else is replaced rather than carried through.
+func idShaped(s string) bool {
+	if s == "" || len(s) > 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '_' || c == ':' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
+
 func requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqID := r.Header.Get("X-Request-ID")
-		if reqID == "" {
+		if !idShaped(reqID) {
 			b := make([]byte, 8)
 			if _, err := rand.Read(b); err != nil {
 				reqID = fmt.Sprintf("ts-%x", time.Now().UnixNano())
@@ -119,7 +137,7 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 		}
 		// Correlation ID: caller-supplied or derived from request ID.
 		corrID := r.Header.Get("X-Correlation-ID")
-		if corrID == "" {
+		if !idShaped(corrID) {
 			corrID = reqID
 		}
 		w.Header().Set("X-Request-ID", reqID)

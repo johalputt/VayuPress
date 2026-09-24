@@ -559,7 +559,7 @@ const PortalJS = `(function () {
         btn.disabled = true; btn.textContent = 'Sending your link...';
         postJSON('/api/v1/members/login', { email: email }).then(function (res) {
           if (res.ok) { msg('Check your inbox — we just emailed you a secure sign-in link. It is valid for 30 minutes.', 'ok'); magic.reset(); }
-          else { msg('Something went wrong. Please try again.', 'err'); }
+          else { msg((res.body && (res.body.detail || res.body.title)) || (res.status === 429 ? 'Too many attempts. Wait a minute, then try again.' : 'Your sign-in link could not be sent. Check the email address and try again in a minute.'), 'err'); }
           btn.disabled = false; btn.textContent = view === 'signin' ? 'Email me a sign-in link' : 'Sign up free';
         });
       });

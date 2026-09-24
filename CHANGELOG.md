@@ -51,6 +51,9 @@ The Still Air redesign of the VayuOS console.
 - **Mail**: unread mail is marked by weight and a dot instead of coloured
   subjects; the per-row button that read "✓ read" and marked a message unread
   now says what it does.
+- **Errors say what failed.** The sign-in form, the member portal and the
+  newsletter composer answered a failure with "Something went wrong"; they now
+  say what could not be done and what to try, and a test keeps the phrase out.
 
 ### Changed (performance)
 
@@ -126,7 +129,9 @@ The Still Air redesign of the VayuOS console.
 - **The Replay page printed job details as markup.** A job's correlation ID is
   whatever the request that caused it sent in X-Correlation-ID, and it, the
   operation and the failure reason went into the page unescaped, so a visitor
-  could put HTML in front of the administrator reading it. They are text now.
+  could put HTML in front of the administrator reading it. They are text now,
+  and a request or correlation ID is accepted only when it looks like one
+  (letters, digits and `. _ : -`, at most 64); anything else is replaced.
   The Topology page's status classes are likewise limited to the ones the
   stylesheet defines.
 - **A site's bundle could put a page inside the console.** The console serves
