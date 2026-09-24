@@ -45,6 +45,7 @@ func (m *Maildir) List(domain, username string) ([]StoredMessage, error) {
 			}
 			return nil, err
 		}
+		present := make(map[string]struct{}, len(entries))
 		for _, e := range entries {
 			if e.IsDir() {
 				continue
@@ -55,7 +56,9 @@ func (m *Maildir) List(domain, username string) ([]StoredMessage, error) {
 			}
 			sm := StoredMessage{ID: sub + "/" + e.Name(), Size: info.Size(), Seen: sub == "cur", Date: info.ModTime()}
 			// Cached summary when the file is unchanged (see Maildir.headersFor).
-			h := m.headersFor(filepath.Join(dir, e.Name()), info.Size(), info.ModTime())
+			path := filepath.Join(dir, e.Name())
+			present[path] = struct{}{}
+			h := m.headersFor(path, info.Size(), info.ModTime())
 			sm.From, sm.Subject = h.from, h.subject
 			sm.MessageID, sm.InReplyTo, sm.References = h.messageID, h.inReplyTo, h.refs
 			if h.hasDate {
@@ -63,6 +66,7 @@ func (m *Maildir) List(domain, username string) ([]StoredMessage, error) {
 			}
 			out = append(out, sm)
 		}
+		m.forgetMissing(dir, present)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Date.After(out[j].Date) })
 	return out, nil

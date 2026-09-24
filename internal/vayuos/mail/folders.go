@@ -91,6 +91,7 @@ func (m *Maildir) ListFolder(domain, username, folder string) ([]StoredMessage, 
 			}
 			return nil, err
 		}
+		present := make(map[string]struct{}, len(entries))
 		for _, e := range entries {
 			if e.IsDir() {
 				continue
@@ -108,6 +109,7 @@ func (m *Maildir) ListFolder(domain, username, folder string) ([]StoredMessage, 
 			// Headers come from the cache when the file is unchanged: listing is
 			// stat-bound, not read-bound.
 			path := filepath.Join(dir, sub, e.Name())
+			present[path] = struct{}{}
 			h := m.headersFor(path, info.Size(), info.ModTime())
 			sm.From, sm.To, sm.Subject = h.from, h.to, h.subject
 			sm.MessageID, sm.InReplyTo, sm.References = h.messageID, h.inReplyTo, h.refs
@@ -116,6 +118,7 @@ func (m *Maildir) ListFolder(domain, username, folder string) ([]StoredMessage, 
 			}
 			out = append(out, sm)
 		}
+		m.forgetMissing(filepath.Join(dir, sub), present)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Date.After(out[j].Date) })
 	return out, nil

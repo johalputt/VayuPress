@@ -3,7 +3,7 @@
 package mail
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
 	netmail "net/mail"
 	"os"
@@ -20,14 +20,34 @@ type Maildir struct {
 	base    string
 	counter uint64
 
-	// hdrCache remembers one message file's parsed headers, validated by the
-	// file's (size, mtime). Listing a folder used to re-read and re-parse every
-	// message on every poll, folder switch and row action, so the console got
-	// slower exactly as the mailbox got more useful. The file identity is the
-	// cache key's integrity check: a rewritten message has a new mtime.
-	hdrMu    sync.Mutex
-	hdrCache map[string]cachedHeaders
+	// hdrFolders remembers each message file's parsed headers, validated by the
+	// file's (size, mtime), grouped by the directory the file lives in. Listing a
+	// folder used to re-read and re-parse every message on every poll, folder
+	// switch and row action, so the console got slower exactly as the mailbox got
+	// more useful. The file identity is the entry's integrity check: a rewritten
+	// message has a new mtime. See ADR-0162 for why this is a cache and not an
+	// index, and for the numbers.
+	//
+	// Grouped by directory so the bound can evict what nobody is looking at. A
+	// single bound over every message on the install, reset whole when full, made
+	// a warm listing of a 60,000-message folder cost exactly as much as a cold one.
+	hdrMu      sync.Mutex
+	hdrFolders map[string]*folderHeaders
+	hdrClock   uint64 // advances on every lookup; the LRU order of folders
+	hdrTotal   int    // entries across every folder
+	hdrLimit   int    // 0 means maxHeaderEntries; set by tests on their own Maildir
 }
+
+// folderHeaders is one directory's cached message summaries.
+type folderHeaders struct {
+	byPath map[string]cachedHeaders
+	used   uint64
+}
+
+// maxHeaderEntries bounds the cache across the install (a summary is a few
+// hundred bytes, so this is tens of megabytes at most). Past it, whole folders
+// are dropped least-recently-listed first — never the one being listed.
+const maxHeaderEntries = 250000
 
 // cachedHeaders is a message's parsed summary plus the file identity it came
 // from. hasDate is separate from date so an absent/unparseable Date header falls
@@ -75,22 +95,95 @@ func splitMessageIDs(s string) []string {
 // headersFor returns a message file's parsed headers, reading and caching them
 // only when the file is new or has changed since last time.
 func (m *Maildir) headersFor(path string, size int64, mod time.Time) cachedHeaders {
+	dir := filepath.Dir(path)
 	m.hdrMu.Lock()
-	if h, ok := m.hdrCache[path]; ok && h.size == size && h.modTime.Equal(mod) {
-		m.hdrMu.Unlock()
-		return h
+	m.hdrClock++
+	if fh := m.hdrFolders[dir]; fh != nil {
+		fh.used = m.hdrClock
+		if h, ok := fh.byPath[path]; ok && h.size == size && h.modTime.Equal(mod) {
+			m.hdrMu.Unlock()
+			return h
+		}
 	}
 	m.hdrMu.Unlock()
 
-	h := cachedHeaders{size: size, modTime: mod}
-	raw, err := os.ReadFile(path)
-	if err != nil {
+	h, ok := readHeaders(path, size, mod)
+	if !ok {
 		// Not remembered: a read that failed once (a descriptor limit, a file
 		// mid-move) would otherwise list this message with no sender or subject
 		// until the file changed, which is never for a delivered message.
 		return h
 	}
-	if msg, perr := netmail.ReadMessage(bytes.NewReader(raw)); perr == nil {
+	m.hdrMu.Lock()
+	defer m.hdrMu.Unlock()
+	if m.hdrFolders == nil {
+		m.hdrFolders = make(map[string]*folderHeaders)
+	}
+	fh := m.hdrFolders[dir]
+	if fh == nil {
+		fh = &folderHeaders{byPath: make(map[string]cachedHeaders)}
+		m.hdrFolders[dir] = fh
+	}
+	fh.used = m.hdrClock
+	if _, had := fh.byPath[path]; !had {
+		m.hdrTotal++
+	}
+	fh.byPath[path] = h
+	m.evictFoldersLocked(dir)
+	return h
+}
+
+// evictFoldersLocked drops least-recently-listed folders until the cache is
+// within its bound, never the folder being listed. Caller holds hdrMu.
+func (m *Maildir) evictFoldersLocked(keep string) {
+	limit := m.hdrLimit
+	if limit <= 0 {
+		limit = maxHeaderEntries
+	}
+	for m.hdrTotal > limit {
+		oldest, oldestUsed := "", uint64(0)
+		for dir, fh := range m.hdrFolders {
+			if dir != keep && (oldest == "" || fh.used < oldestUsed) {
+				oldest, oldestUsed = dir, fh.used
+			}
+		}
+		if oldest == "" {
+			return // only the folder being listed is left; it may exceed the bound
+		}
+		m.hdrTotal -= len(m.hdrFolders[oldest].byPath)
+		delete(m.hdrFolders, oldest)
+	}
+}
+
+// forgetMissing drops cached entries for files no longer in dir. A flag change
+// renames a message file and a delete removes it; without this a long-lived
+// folder's cache would keep every name it ever had.
+func (m *Maildir) forgetMissing(dir string, present map[string]struct{}) {
+	m.hdrMu.Lock()
+	defer m.hdrMu.Unlock()
+	fh := m.hdrFolders[dir]
+	if fh == nil {
+		return
+	}
+	for path := range fh.byPath {
+		if _, ok := present[path]; !ok {
+			delete(fh.byPath, path)
+			m.hdrTotal--
+		}
+	}
+}
+
+// readHeaders parses a message file's header block. Only the header block is
+// read: net/mail stops at the blank line, so a message carrying a 20 MB
+// attachment costs a few kilobytes to list rather than 20 MB.
+func readHeaders(path string, size int64, mod time.Time) (cachedHeaders, bool) {
+	h := cachedHeaders{size: size, modTime: mod}
+	f, err := os.Open(path)
+	if err != nil {
+		return h, false
+	}
+	defer f.Close()
+	if msg, perr := netmail.ReadMessage(bufio.NewReader(f)); perr == nil {
 		h.from = msg.Header.Get("From")
 		h.to = msg.Header.Get("To")
 		h.subject = msg.Header.Get("Subject")
@@ -103,19 +196,7 @@ func (m *Maildir) headersFor(path string, size int64, mod time.Time) cachedHeade
 		h.inReplyTo = cleanMessageID(msg.Header.Get("In-Reply-To"))
 		h.refs = splitMessageIDs(msg.Header.Get("References"))
 	}
-	m.hdrMu.Lock()
-	if m.hdrCache == nil {
-		m.hdrCache = make(map[string]cachedHeaders)
-	}
-	// Bound the cache. A summary is a few hundred bytes, but a long-lived
-	// process over a big install should not grow one without limit; a reset
-	// costs one re-read pass and nothing else.
-	if len(m.hdrCache) > 50000 {
-		m.hdrCache = make(map[string]cachedHeaders)
-	}
-	m.hdrCache[path] = h
-	m.hdrMu.Unlock()
-	return h
+	return h, true
 }
 
 // NewMaildir returns a Maildir rooted at base.
