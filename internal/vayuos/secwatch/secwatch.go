@@ -48,7 +48,11 @@ type Component struct {
 	Current         string `json:"current"`
 	Latest          string `json:"latest"`
 	UpdateAvailable bool   `json:"update_available"`
-	Note            string `json:"note"`
+	// NewerMajor is the newest stable release of a later major version, when one
+	// exists. It is a different Go module (…/v2), reached by changing code, so
+	// it is reported beside Latest and never counted as an update.
+	NewerMajor string `json:"newer_major,omitempty"`
+	Note       string `json:"note"`
 }
 
 // Report is the result of a watcher run.
@@ -138,12 +142,12 @@ func (w *Watcher) runCheck(ctx context.Context) *Report {
 	rep := &Report{Enabled: true, CheckedAt: time.Now().UTC(), Components: w.Components()}
 	for i := range rep.Components {
 		c := &rep.Components[i]
-		latest, err := w.latestVersion(ctx, c.Repo)
+		latest, major, err := w.latestVersion(ctx, c.Repo, c.Current)
 		if err != nil {
 			c.Note = "check failed: " + err.Error()
 			continue
 		}
-		c.Latest = latest
+		c.Latest, c.NewerMajor = latest, major
 		if latest != "" && isNewer(latest, c.Current) {
 			c.UpdateAvailable = true
 			rep.UpdatesAvailable++
@@ -196,46 +200,72 @@ func isStableTag(name string) bool {
 	return !strings.ContainsAny(name, "-+")
 }
 
-// latestVersion returns the highest STABLE semantic-version TAG for a repo. Tags
+// latestVersion returns the highest STABLE semantic-version TAG on current's
+// major line, and the highest on any later major. A Go module's next major is a
+// different module path (…/v2): moving to it is a code change, not something a
+// VayuPress release applies, so it must not read as "behind". v0 and v1 share
+// one import path and count as one line. Tags
 // are the source of truth for Go modules: GitHub's "releases/latest" lags for
 // repos that tag versions without cutting a GitHub Release (e.g. mattn/go-sqlite3,
 // microcosm-cc/bluemonday), which made the panel show a "Latest" OLDER than the
 // built "Current". Pre-release tags are ignored (see isStableTag). When no stable
 // v-prefixed tag is found we fall back to the release.
-func (w *Watcher) latestVersion(ctx context.Context, repo string) (string, error) {
+func (w *Watcher) latestVersion(ctx context.Context, repo, current string) (line, newerMajor string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.apiBase+"/repos/"+repo+"/tags?per_page=100", nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "VayuPress-SecWatch")
 	resp, err := w.client.Do(req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode != http.StatusOK {
-		return w.latestRelease(ctx, repo) // fall back (e.g. rate-limit shape differs)
-	}
-	var tags []ghTag
-	if err := json.Unmarshal(body, &tags); err != nil {
-		return "", err
-	}
-	best := ""
-	for _, t := range tags {
-		name := strings.TrimSpace(t.Name)
-		if !isStableTag(name) {
-			continue // only stable vX.Y.Z tags — never pre-releases
+	var names []string
+	if resp.StatusCode == http.StatusOK {
+		var tags []ghTag
+		if err := json.Unmarshal(body, &tags); err != nil {
+			return "", "", err
 		}
-		if best == "" || isNewer(name, best) {
-			best = name
+		for _, t := range tags {
+			if name := strings.TrimSpace(t.Name); isStableTag(name) {
+				names = append(names, name) // only stable vX.Y.Z tags — never pre-releases
+			}
 		}
 	}
-	if best == "" {
-		return w.latestRelease(ctx, repo)
+	if len(names) == 0 {
+		// No usable tags (a rate-limit shape, or a repo that only cuts releases).
+		rel, err := w.latestRelease(ctx, repo)
+		if err != nil {
+			return "", "", err
+		}
+		names = []string{rel}
 	}
-	return best, nil
+	own := goMajor(current)
+	for _, name := range names {
+		switch m := goMajor(name); {
+		case m == own:
+			if line == "" || isNewer(name, line) {
+				line = name
+			}
+		case m > own:
+			if newerMajor == "" || isNewer(name, newerMajor) {
+				newerMajor = name
+			}
+		}
+	}
+	return line, newerMajor, nil
+}
+
+// goMajor is the major version as Go's import paths count it: v0 and v1 share
+// the unsuffixed path, v2 and later each have their own.
+func goMajor(v string) int {
+	if p := splitVer(v); len(p) > 0 && p[0] > 1 {
+		return p[0]
+	}
+	return 1
 }
 
 func (w *Watcher) latestRelease(ctx context.Context, repo string) (string, error) {

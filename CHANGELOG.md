@@ -56,8 +56,8 @@ The Still Air redesign of the VayuOS console.
 
 - **The console's stylesheets are served minified**: comments and indentation
   are stripped when the file is served, and the rules the old design left
-  behind are removed. The console downloads 53 KB of styles (gzipped, both
-  stylesheets) where the previous release sent 75 KB. The source keeps its
+  behind are removed. The console downloads 57 KB of styles (gzipped, both
+  stylesheets) where the previous release sent 79 KB. The source keeps its
   comments, and a test holds the two stylesheets to a size budget.
 
 ### Fixed
@@ -103,6 +103,12 @@ The Still Air redesign of the VayuOS console.
   failed backup, and a cancelled test restore was reported as "Test restore
   FAILED". Both now run to their own limit (10 and 5 minutes), and closing the
   tab no longer abandons a backup half written.
+- **The Security tab counted goldmark 2 as an update for goldmark 1.** A Go
+  library's next major version is a separate module that needs code changes,
+  so no release applies it, yet the page said installing the latest release
+  would. Each dependency is now compared with the newest release of its own
+  line (goldmark 1.8.6 is up to date), and a newer major is named beside it as
+  the migration it is.
 - **The backup cadence accepted values the page never offers.** The Backups
   page allows five cadences, but the same setting could be written through the
   settings API with any number, including one that backed up every minute or
@@ -110,11 +116,19 @@ The Still Air redesign of the VayuOS console.
 
 ### Security
 
+- **go-crypto 1.5.1** (ProtonMail/go-crypto, the OpenPGP library behind
+  VayuMail's encryption and signatures), up from 1.4.1.
 - **Clear caches deleted any old file in the temp directory**, not only
   VayuPress's own. With TMP_DIR pointed at a shared or data directory, it
   would have deleted a database or another program's files untouched for an
   hour. It now removes only the export archives and write probes VayuPress
   writes there.
+- **The Replay page printed job details as markup.** A job's correlation ID is
+  whatever the request that caused it sent in X-Correlation-ID, and it, the
+  operation and the failure reason went into the page unescaped, so a visitor
+  could put HTML in front of the administrator reading it. They are text now.
+  The Topology page's status classes are likewise limited to the ones the
+  stylesheet defines.
 - **A site's bundle could put a page inside the console.** The console serves
   a hosted site's declared icon from its own address, and a bundle declaring
   a web page or script as its icon had it served there, where the console's

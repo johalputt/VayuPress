@@ -1343,7 +1343,13 @@ func buildComponentTable(comps []secwatch.Component) string {
 		if latest == "" {
 			latest = "—"
 		}
-		sb.WriteString(`<tr><td>` + html.EscapeString(c.Name) + `</td><td class="mono text-sm">` + html.EscapeString(c.Current) + `</td><td class="mono text-sm">` + html.EscapeString(latest) + `</td><td>` + status + `</td></tr>`)
+		// A later major is a separate module reached by changing code; no release
+		// applies it, so it is named here rather than counted as an update.
+		major := ""
+		if c.NewerMajor != "" {
+			major = `<span class="field-hint">` + html.EscapeString(c.NewerMajor) + ` is a new major version: a code migration, not a patch</span>`
+		}
+		sb.WriteString(`<tr><td>` + html.EscapeString(c.Name) + `</td><td class="mono text-sm">` + html.EscapeString(c.Current) + `</td><td class="mono text-sm">` + html.EscapeString(latest) + major + `</td><td>` + status + `</td></tr>`)
 	}
 	sb.WriteString(`</tbody></table></div></div>`)
 	return sb.String()

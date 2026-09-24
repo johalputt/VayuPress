@@ -122,7 +122,7 @@ func TestLatestVersionSkipsPrerelease(t *testing.T) {
 	defer srv.Close()
 	w := New(true)
 	w.apiBase = srv.URL
-	got, err := w.latestVersion(context.Background(), "yuin/goldmark")
+	got, _, err := w.latestVersion(context.Background(), "yuin/goldmark", "v1.8.2")
 	if err != nil {
 		t.Fatalf("latestVersion: %v", err)
 	}
@@ -142,5 +142,38 @@ func TestNormalizeVer(t *testing.T) {
 	}
 	if normalizeVer("v1.4.1-rc1") != "1.4.1" {
 		t.Fatalf("prerelease should strip")
+	}
+}
+
+// A Go module's next major is a different module: github.com/yuin/goldmark/v2
+// is not an update to github.com/yuin/goldmark. Comparing across the line told
+// operators that goldmark v1.8.6 was behind v2.1.5 and that installing the
+// latest VayuPress release would apply it — no release ever would, because the
+// move is a code migration. The line's own newest release is what "Latest"
+// means; a newer major is reported beside it. One seed per rule.
+func TestANewerMajorIsReportedNotCountedAsAnUpdate(t *testing.T) {
+	t.Parallel()
+	tags := `[{"name":"v2.1.5"},{"name":"v2.0.0"},{"name":"v1.8.6"},{"name":"v1.8.5"},{"name":"v1.5.1-proton"},{"name":"v1.5.1"},{"name":"v1.4.1"}]`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(tags))
+	}))
+	defer srv.Close()
+	w := New(true)
+	w.apiBase = srv.URL
+
+	for _, c := range []struct{ current, line, major string }{
+		{"v1.8.6", "v1.8.6", "v2.1.5"}, // newest on its line; v2 is a migration
+		{"v1.4.1", "v1.8.6", "v2.1.5"}, // behind on its own line
+		{"v2.0.0", "v2.1.5", ""},       // already on v2: no newer major
+		{"v0.9.0", "v1.8.6", "v2.1.5"}, // v0 and v1 share the import path
+	} {
+		line, major, err := w.latestVersion(context.Background(), "x/y", c.current)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if line != c.line || major != c.major {
+			t.Errorf("built %s: latest %q, newer major %q; want %q, %q", c.current, line, major, c.line, c.major)
+		}
 	}
 }
