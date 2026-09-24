@@ -4540,9 +4540,25 @@ func (a *App) handleOSActivity(w http.ResponseWriter, r *http.Request) {
 // too. Actions are dispatched client-side through the vpActions registry
 // (static/js/admin-os.js), not window[fn] string lookup.
 func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
-	type cmdPost struct{ Label, Slug string }
-	type cmdAction struct{ Label, Icon, Hint, Fn string }
-	type cmdSetting struct{ Label, Icon, Href string }
+	// The keys are the ones admin-os.js reads (item.label, item.slug, item.fn,
+	// item.href …). Without tags they marshalled as "Label", "Slug" and so on,
+	// so every palette row rendered blank, every link went to
+	// /os/editor/undefined, no action ran, and typing a query threw.
+	type cmdPost struct {
+		Label string `json:"label"`
+		Slug  string `json:"slug"`
+	}
+	type cmdAction struct {
+		Label string `json:"label"`
+		Icon  string `json:"icon"`
+		Hint  string `json:"hint"`
+		Fn    string `json:"fn"`
+	}
+	type cmdSetting struct {
+		Label string `json:"label"`
+		Icon  string `json:"icon"`
+		Href  string `json:"href"`
+	}
 
 	posts := []cmdPost{}
 	if res, err := a.articles.List(r.Context(), 1, 50, ""); err == nil {
