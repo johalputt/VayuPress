@@ -22,6 +22,9 @@ import (
 func (a *App) handleOSGrowth(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	if saHubRedirect(w, r, cfg, saAppHref(cfg, "audience", osHome)) {
+		return
+	}
 	ctx := r.Context()
 
 	memberCount, subscribers, paid := 0, 0, 0

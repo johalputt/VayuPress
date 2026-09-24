@@ -329,6 +329,11 @@ const (
 	// spread, not the best of them.
 	KeyStartupMillis = "runtime.startup_ms"
 
+	// KeyAdminUI chooses the console's design: "still-air" or "classic". A
+	// personal preference of the operator, like admin.theme, so it is not
+	// carried in a site bundle.
+	KeyAdminUI = "admin.ui"
+
 	// KeyTalkHost is the hostname advertised for the VayuTalk relay (ADR-0155 P2).
 	//
 	// It lives here rather than in the environment for one reason, and the reason
@@ -548,6 +553,7 @@ var NotPortable = map[string]bool{
 	// the topbar toggle. A personal preference for THIS operator, not a property
 	// of the site's look.
 	"admin.theme": true,
+	KeyAdminUI:    true,
 	// A VayuShield enforcement gate, like the rest of the shield block above.
 	KeyShieldGroupIPv4: true,
 }
@@ -630,6 +636,7 @@ var AllKeys = map[string]bool{
 	// admin.theme is the operator's VayuOS console colour theme (light/dark/auto),
 	// persisted from the topbar theme toggle rather than the theme editor form.
 	"admin.theme": true,
+	KeyAdminUI:    true,
 	// VayuShield + VayuAnalytics runtime toggles.
 	KeyShieldEnabled:              true,
 	KeyShieldPoW:                  true,

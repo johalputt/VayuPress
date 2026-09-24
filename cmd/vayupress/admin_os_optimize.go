@@ -38,6 +38,9 @@ type optimizeSite struct {
 func (a *App) handleOSOptimize(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	if saHubRedirect(w, r, cfg, saAppHref(cfg, "site", osHome)) {
+		return
+	}
 
 	// Each secondary domain becomes a "Your websites" card linking to its per-site
 	// manager, so the operator controls every registered site from the Optimize hub.

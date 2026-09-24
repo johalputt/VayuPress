@@ -51,6 +51,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
+	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/users"
@@ -77,6 +78,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	// Public static assets (served same-origin so CSP 'self' covers them).
 	r.Get("/os/static/css/admin-os.css", serveAdminOSAsset("css/admin-os.css", "text/css; charset=utf-8"))
 	r.Get("/os/static/js/admin-os.js", serveAdminOSAsset("js/admin-os.js", "application/javascript; charset=utf-8"))
+	// The Still Air design (admin.ui): its stylesheet layers over admin-os.css,
+	// and its script adds only what the new shell introduces.
+	r.Get("/os/static/css/vayuos.css", serveAdminOSAsset("css/vayuos.css", "text/css; charset=utf-8"))
+	r.Get("/os/static/js/vayuos.js", serveAdminOSAsset("js/vayuos.js", "application/javascript; charset=utf-8"))
 	// VayuOS installable app (PWA): manifest, service worker (scoped /os/), and app
 	// icons. Served here without auth — like the other /os/static assets — so the
 	// browser can fetch them to offer + keep the install; they carry no user data.
@@ -1145,7 +1150,9 @@ func osNotifBell(s *osSettings) string {
 		activeCls = " topbar-notif__btn--active"
 	}
 	var list strings.Builder
-	if len(notifs) == 0 {
+	if len(notifs) == 0 && s.stillAir() {
+		list.WriteString(`<div class="topbar-notif__empty">Nothing needs you right now.</div>`)
+	} else if len(notifs) == 0 {
 		list.WriteString(`<div class="topbar-notif__empty">✨ You're all caught up</div>`)
 	} else {
 		for _, n := range notifs {
@@ -1484,6 +1491,9 @@ func osThemeColorMetas(theme string) string {
 }
 
 func adminOSShellHead(nonce, title, active string, settings *osSettings) string {
+	if settings.stillAir() {
+		return stillAirShellHead(nonce, title, active, settings)
+	}
 	et := html.EscapeString(title)
 	theme := "auto" // follow the operating system by default (clean/light on light OS)
 	if settings != nil && settings.AdminTheme != "" {
@@ -1795,6 +1805,20 @@ Array.prototype.forEach.call(document.querySelectorAll('.sidebar [data-copy], .w
 type osSettings struct {
 	SiteName   string
 	AdminTheme string
+	// UI is the console design (admin.ui): uiStillAir or classic.
+	UI string
+	// Route is the matched route pattern (chi), which the Still Air shell uses to
+	// find the current app section without every page naming it.
+	Route string
+	// Mode and ModeSince drive the Still Air status area and state strip.
+	Mode      mode.Mode
+	ModeSince time.Time
+	// UnreadMail is the mail count already gathered for the bell; the Still Air
+	// rail shows it on Mail rather than counting again.
+	UnreadMail int
+	// MailDNSAttention marks the Mail app's DNS section (the stored verdict,
+	// never a live lookup).
+	MailDNSAttention bool
 	// Signed-in user, surfaced in the sidebar footer card.
 	UserID     string
 	UserName   string
@@ -1882,6 +1906,22 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 	// Notification centre (topbar bell): computed last, once the access level is
 	// known, so each item can be gated to what the viewer can actually open.
 	s.Notifications = a.osNotifications(ctx, s)
+	for _, n := range s.Notifications {
+		if n.Kind == "mail" {
+			s.UnreadMail += n.Count
+		}
+	}
+	if a.siteSettings != nil {
+		s.UI = a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAdminUI)
+	}
+	if rc := chi.RouteContext(ctx); rc != nil {
+		s.Route = rc.RoutePattern()
+	}
+	s.Mode = mode.Global.Current()
+	if h := mode.Global.History(); len(h) > 0 {
+		s.ModeSince = h[len(h)-1].OccurredAt
+	}
+	_, s.MailDNSAttention = a.mailDNSNeedsAttention()
 	return s
 }
 

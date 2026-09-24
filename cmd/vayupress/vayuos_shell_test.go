@@ -1,0 +1,422 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+import (
+	"fmt"
+	"math"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"regexp"
+	"strings"
+	"testing"
+	"unicode"
+
+	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/mode"
+)
+
+func saSession(level int) *osSettings {
+	return &osSettings{UI: uiStillAir, AccessLevel: level, UserName: "Ankush Johal", SiteName: "johal.in"}
+}
+
+// Shown means reachable. The rail and every app sidebar are judged against the
+// route guard itself, so a registry entry that outruns the guard fails here
+// whichever way the registry was built.
+func TestStillAirShowsOnlyWhatTheSessionCanOpen(t *testing.T) {
+	type session struct {
+		name  string
+		s     *osSettings
+		guard func(string) bool
+	}
+	var sessions []session
+	for _, lvl := range []int{accessAuthor, accessEditor, accessAdmin} {
+		l := lvl
+		sessions = append(sessions, session{"level " + string(rune('0'+l)), saSession(l), func(h string) bool { return l >= osPathMinLevel(h) }})
+	}
+	mailbox := saSession(accessMailOnly)
+	mailbox.MailOnly = true
+	sessions = append(sessions, session{"mailbox-only", mailbox, mailOnlyPathAllowed})
+	client := saSession(accessMailOnly)
+	client.UserRole = roleClientName
+	sessions = append(sessions, session{"agency client", client, clientPathAllowed})
+	for _, c := range sessions {
+		apps := saVisibleApps(c.s)
+		if len(apps) == 0 {
+			t.Errorf("%s: an empty rail", c.name)
+		}
+		for _, app := range apps {
+			if !c.guard(app.Href) {
+				t.Errorf("%s: app %s lands on %s, which the guard refuses", c.name, app.Key, app.Href)
+			}
+			for _, sec := range app.Sections {
+				if !c.guard(sec.Href) {
+					t.Errorf("%s: %s › %s links %s, which the guard refuses", c.name, app.Label, sec.Label, sec.Href)
+				}
+			}
+		}
+	}
+}
+
+// One seed per rule the registry applies on top of the guard.
+func TestStillAirRailPerRole(t *testing.T) {
+	keys := func(s *osSettings) string {
+		var k []string
+		for _, a := range saVisibleApps(s) {
+			k = append(k, a.Key)
+		}
+		return strings.Join(k, ",")
+	}
+	if got := keys(saSession(accessAdmin)); got != "home,content,audience,mail,talk,site,shield,system,settings" {
+		t.Errorf("administrator rail = %s", got)
+	}
+	author := keys(saSession(accessAuthor))
+	for _, adminOnly := range []string{"system", "shield", "audience"} {
+		if strings.Contains(","+author+",", ","+adminOnly+",") {
+			t.Errorf("an author's rail offers %s: %s", adminOnly, author)
+		}
+	}
+	// VayuMail's infrastructure tabs are guarded by the administrator flag, not
+	// by osPathMinLevel, so the registry carries that rule itself.
+	for _, a := range saVisibleApps(saSession(accessEditor)) {
+		for _, sec := range a.Sections {
+			if sec.AdminOnly {
+				t.Errorf("an editor sees the administrator-only %s", sec.Href)
+			}
+		}
+	}
+	mo := saSession(accessMailOnly)
+	mo.MailOnly = true
+	if got := keys(mo); got != "mail,settings" {
+		t.Errorf("a mailbox-only session's rail = %s, want mail and profile only", got)
+	}
+	client := saSession(accessMailOnly)
+	client.UserRole = roleClientName
+	if got := keys(client); got != "mysite,mail,settings" {
+		t.Errorf("an agency client's rail = %s, want their own site first", got)
+	}
+}
+
+// Every link in the registry leads to a route that exists. A section pointing
+// at a page that was renamed would otherwise be a dead end in the chrome.
+func TestEveryStillAirLinkIsARealRoute(t *testing.T) {
+	have := map[string]bool{}
+	for _, r := range osRoutes(t) {
+		have[r] = true
+	}
+	check := func(href string) {
+		if !have[strings.TrimSuffix(href, "/")] {
+			t.Errorf("%s is linked from the Still Air chrome but is not a route", href)
+		}
+	}
+	for _, apps := range [][]saApp{saClearnetApps, saTorApps} {
+		for _, a := range apps {
+			check(a.Href)
+			for _, s := range a.Sections {
+				check(s.Href)
+			}
+		}
+	}
+}
+
+// The current section comes from the route: the longest section that the route
+// is, or is below. A prefix is not a match on its own (/os/theme is not the
+// Theme store, /os/vayumail is not the Mailbox).
+func TestStillAirFindsTheCurrentSection(t *testing.T) {
+	apps := saVisibleApps(saSession(accessAdmin))
+	for _, c := range []struct{ route, active, app, sec string }{
+		{"/os/vayumail/dns", "vayuos", "mail", "DNS records"},
+		{"/os/vayumail", "vayuos", "mail", "Overview"},
+		{"/os/vayumail/inbox", "vayuos", "mail", "Mailbox"},
+		{"/os/theme/store", "theme-store", "site", "Theme store"},
+		{"/os/theme", "theme", "site", "Theme"},
+		{"/os/", "dashboard", "home", ""},
+		{"/os/talk", "talk", "talk", ""},
+		{"/os/d/{id}/website", "website", "site", ""}, // a hosted site's page: the app, no section
+		{"/os/posts/{id}/edit", "editor", "content", "Posts"},
+	} {
+		app, sec := saLocate(apps, c.active, c.route)
+		gotApp, gotSec := "", ""
+		if app != nil {
+			gotApp = app.Key
+		}
+		if sec != nil {
+			gotSec = sec.Label
+		}
+		if gotApp != c.app || gotSec != c.sec {
+			t.Errorf("route %s: located %q › %q, want %q › %q", c.route, gotApp, gotSec, c.app, c.sec)
+		}
+	}
+}
+
+// pictograph finds a character standing in for an icon: any "other symbol"
+// (emoji, dingbats, technical symbols such as ⏸) or an emoji variation
+// selector. ⌘ is allowed: it is the key's name on the keyboard, not a picture.
+func pictograph(s string) string {
+	for _, r := range s {
+		if r == '⌘' {
+			continue
+		}
+		if unicode.Is(unicode.So, r) || r == '\uFE0F' {
+			return string(r)
+		}
+	}
+	return ""
+}
+
+// The chrome draws every icon from the one set and never uses an emoji in its
+// place, in both worlds and for every role.
+func TestStillAirChromeUsesOnlyTheIconSet(t *testing.T) {
+	defer func(v bool) { config.Cfg.OnionMode = v }(config.Cfg.OnionMode)
+	for _, onion := range []bool{false, true} {
+		config.Cfg.OnionMode = onion
+		for _, lvl := range []int{accessAuthor, accessEditor, accessAdmin} {
+			s := saSession(lvl)
+			s.Mode = mode.ModeReadOnly
+			out := stillAirShellHead("n", "Page", "dashboard", s)
+			if strings.Contains(out, "sa-ico--missing") {
+				t.Errorf("onion=%v level %d: the chrome names an icon that is not in the set", onion, lvl)
+			}
+			if m := pictograph(out); m != "" {
+				t.Errorf("onion=%v level %d: the chrome uses the emoji %q as an icon", onion, lvl, m)
+			}
+		}
+	}
+	// Every icon the registry names exists, whether or not the page under test
+	// happens to render that app's sidebar.
+	for _, apps := range [][]saApp{saClearnetApps, saTorApps} {
+		for _, a := range apps {
+			if _, ok := saIcons[a.Icon]; !ok {
+				t.Errorf("app %s names icon %q, which is not in the set", a.Key, a.Icon)
+			}
+			for _, sec := range a.Sections {
+				if _, ok := saIcons[sec.Icon]; !ok {
+					t.Errorf("%s › %s names icon %q, which is not in the set", a.Label, sec.Label, sec.Icon)
+				}
+			}
+		}
+	}
+	for name := range saIcons {
+		if strings.ContainsAny(saIcons[name], "<>") && !strings.HasPrefix(strings.TrimSpace(saIcons[name]), "<") {
+			t.Errorf("icon %s is not plain SVG path markup", name)
+		}
+	}
+}
+
+// Text from settings reaches the chrome escaped exactly once.
+func TestStillAirChromeEscapesOnce(t *testing.T) {
+	s := saSession(accessAdmin)
+	s.SiteName = `Rock & "Roll" <b>`
+	s.UserName = `Dr. <script>`
+	out := stillAirShellHead("n", `A & B`, "dashboard", s)
+	if strings.Contains(out, "<b>") || strings.Contains(out, "<script>") {
+		t.Error("a setting reached the chrome as markup")
+	}
+	if strings.Contains(out, "&amp;amp;") || strings.Contains(out, "&amp;lt;") {
+		t.Error("a setting was escaped twice")
+	}
+	if !strings.Contains(out, "Rock &amp; &#34;Roll&#34; &lt;b&gt;") {
+		t.Error("the site name should appear, escaped once")
+	}
+}
+
+// The state strip appears for the modes that change what an action does, and
+// only for those: a banner for a state that changes nothing teaches people to
+// ignore banners.
+func TestStillAirStripOnlyWhenActionsChange(t *testing.T) {
+	for m, want := range map[mode.Mode]bool{
+		mode.ModeNormal: false, mode.ModeDegraded: false, mode.ModeMaintenance: false,
+		mode.ModeReadOnly: true, mode.ModeRecovery: true, mode.ModeQuarantined: true,
+	} {
+		s := saSession(accessAdmin)
+		s.Mode = m
+		got := strings.Contains(stillAirShellHead("n", "P", "dashboard", s), `class="sa-strip`)
+		if got != want {
+			t.Errorf("mode %s: strip shown = %v, want %v", m, got, want)
+		}
+	}
+}
+
+// The classic console is untouched while both designs exist.
+func TestClassicShellIsTheDefault(t *testing.T) {
+	out := adminOSShellHead("n", "P", "dashboard", &osSettings{AccessLevel: accessAdmin})
+	if strings.Contains(out, "data-ui=") || strings.Contains(out, "vayuos.css") {
+		t.Error("an unset admin.ui rendered the Still Air shell")
+	}
+	if !strings.Contains(adminOSShellHead("n", "P", "dashboard", saSession(accessAdmin)), `data-ui="still-air"`) {
+		t.Error("admin.ui=still-air did not render the Still Air shell")
+	}
+}
+
+// Hub URLs redirect to their app in Still Air, so a bookmark still lands.
+func TestStillAirHubURLsRedirectToTheirApp(t *testing.T) {
+	for _, c := range []struct{ key, want string }{{"system", "/os/modes"}, {"site", "/os/website"}, {"audience", "/os/members"}} {
+		rec := httptest.NewRecorder()
+		if !saHubRedirect(rec, httptest.NewRequest(http.MethodGet, "/os/x", nil), saSession(accessAdmin), saAppHref(saSession(accessAdmin), c.key, osHome)) {
+			t.Fatalf("%s: no redirect in Still Air", c.key)
+		}
+		if loc := rec.Header().Get("Location"); rec.Code != http.StatusSeeOther || loc != c.want {
+			t.Errorf("%s hub → %d %s, want 303 %s", c.key, rec.Code, loc, c.want)
+		}
+	}
+	if saHubRedirect(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/os/x", nil), &osSettings{}, "/os/modes") {
+		t.Error("the classic console redirected a hub")
+	}
+	// An editor cannot open Members, so the Audience hub lands where they can.
+	if got := saAppHref(saSession(accessEditor), "audience", osHome); got != "/os/analytics" {
+		t.Errorf("an editor's Audience lands on %s, want /os/analytics", got)
+	}
+}
+
+const stillAirCSSPath = "../../static/css/vayuos.css"
+
+func readStillAirCSS(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(stillAirCSSPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", stillAirCSSPath, err)
+	}
+	return string(b)
+}
+
+var colourLiteralRe = regexp.MustCompile(`#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(`)
+
+// Components read tokens; only a token declaration may name a colour. This is
+// what keeps a later "just this once" hex from starting a second palette.
+func TestStillAirComponentsNameNoColour(t *testing.T) {
+	css := regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(readStillAirCSS(t), "")
+	for i, line := range strings.Split(css, "\n") {
+		for _, decl := range strings.Split(line, ";") {
+			d := strings.TrimSpace(decl)
+			if d == "" || strings.HasPrefix(d, "--") {
+				continue
+			}
+			// A selector line with a declaration on it: judge the declaration.
+			if j := strings.LastIndex(d, "{"); j >= 0 {
+				d = strings.TrimSpace(d[j+1:])
+				if strings.HasPrefix(d, "--") {
+					continue
+				}
+			}
+			if colourLiteralRe.MatchString(d) {
+				t.Errorf("vayuos.css line %d names a colour outside a token: %s", i+1, d)
+			}
+		}
+	}
+}
+
+var rgbaTokenRe = regexp.MustCompile(`(--[a-z0-9-]+):\s*(rgba\([^)]*\))`)
+
+// blend composites an rgba() token over an opaque hex one, as the browser paints
+// a tint over the surface under it.
+func blend(t *testing.T, rgba, under string) string {
+	t.Helper()
+	var r, g, b int
+	var a float64
+	if _, err := fmt.Sscanf(strings.ReplaceAll(rgba, " ", ""), "rgba(%d,%d,%d,%g)", &r, &g, &b, &a); err != nil {
+		t.Fatalf("cannot read %q as rgba: %v", rgba, err)
+	}
+	var ur, ug, ub int
+	if _, err := fmt.Sscanf(under, "#%02x%02x%02x", &ur, &ug, &ub); err != nil {
+		t.Fatalf("cannot read %q as hex: %v", under, err)
+	}
+	mix := func(c, u int) int { return int(math.Round(float64(c)*a + float64(u)*(1-a))) }
+	return fmt.Sprintf("#%02x%02x%02x", mix(r, ur), mix(g, ug), mix(b, ub))
+}
+
+func stillAirTokens(t *testing.T) (dark, light map[string]string) {
+	t.Helper()
+	css := readStillAirCSS(t)
+	darkAt := strings.Index(css, `.vp-os[data-ui="still-air"] {`)
+	lightAt := strings.Index(css, `.vp-os[data-ui="still-air"][data-theme="light"] {`)
+	if darkAt < 0 || lightAt < darkAt {
+		t.Fatal("vayuos.css has no dark and light token blocks in that order")
+	}
+	dark, light = sectionTokens(css[darkAt:lightAt]), sectionTokens(css[lightAt:])
+	for _, part := range []struct {
+		m   map[string]string
+		css string
+	}{{dark, css[darkAt:lightAt]}, {light, css[lightAt:]}} {
+		for _, m := range rgbaTokenRe.FindAllStringSubmatch(part.css, -1) {
+			if _, ok := part.m[m[1]]; !ok {
+				part.m[m[1]] = m[2]
+			}
+		}
+	}
+	return dark, light
+}
+
+// The palette as shipped, measured on every surface it sits on. Each text
+// colour must clear AA against the canvas, both workspace tones and the
+// floating surface; ink must clear it on the fills it labels.
+func TestStillAirPaletteClearsAA(t *testing.T) {
+	dark, light := stillAirTokens(t)
+	surfaces := []string{"--color-canvas", "--surface-1", "--surface-2", "--surface-overlay", "--surface-sunken"}
+	texts := []string{"--text-1", "--text-2", "--text-3", "--accent", "--ok", "--warn", "--danger"}
+	for _, theme := range []struct {
+		name string
+		tok  map[string]string
+	}{{"graphite", dark}, {"paper", light}} {
+		for _, fg := range texts {
+			for _, bg := range surfaces {
+				f, b := theme.tok[fg], theme.tok[bg]
+				if f == "" || b == "" {
+					t.Fatalf("%s: token %s or %s missing", theme.name, fg, bg)
+				}
+				if r := contrastRatio(f, b); r < wcagAANormal {
+					t.Errorf("%s: %s %s on %s %s is %.2f:1, below %.1f", theme.name, fg, f, bg, b, r, wcagAANormal)
+				}
+			}
+		}
+		// Text on the blended surfaces it really sits on: a selected row, and a
+		// tag on its own tint. These are where the first draft failed.
+		for _, base := range []string{"--color-canvas", "--surface-1", "--surface-2"} {
+			sel := blend(t, theme.tok["--surface-select"], theme.tok[base])
+			for _, fg := range []string{"--text-1", "--text-2", "--text-3"} {
+				if r := contrastRatio(theme.tok[fg], sel); r < wcagAANormal {
+					t.Errorf("%s: %s on a selected row over %s is %.2f:1", theme.name, fg, base, r)
+				}
+			}
+			for _, tone := range [][2]string{{"--accent", "--accent-soft"}, {"--ok", "--ok-soft"}, {"--warn", "--warn-soft"}, {"--danger", "--danger-soft"}} {
+				tint := blend(t, theme.tok[tone[1]], theme.tok[base])
+				if r := contrastRatio(theme.tok[tone[0]], tint); r < wcagAANormal {
+					t.Errorf("%s: a %s tag over %s is %.2f:1", theme.name, tone[0], base, r)
+				}
+			}
+		}
+		for _, p := range [][2]string{{"--on-accent", "--accent"}, {"--on-danger", "--danger"}} {
+			if r := contrastRatio(theme.tok[p[0]], theme.tok[p[1]]); r < wcagAANormal {
+				t.Errorf("%s: %s on %s is %.2f:1", theme.name, p[0], p[1], r)
+			}
+		}
+	}
+}
+
+// Reduced motion is honoured by one rule over the whole design, not remembered
+// per component.
+func TestStillAirHonoursReducedMotion(t *testing.T) {
+	css := readStillAirCSS(t)
+	at := strings.Index(css, "@media (prefers-reduced-motion: reduce)")
+	if at < 0 {
+		t.Fatal("vayuos.css has no reduced-motion rule")
+	}
+	block := css[at:]
+	if end := strings.Index(block, "\n}\n"); end > 0 {
+		block = block[:end]
+	}
+	for _, need := range []string{`.vp-os[data-ui="still-air"] *`, "animation-duration: 80ms", "animation-iteration-count: 1", "transition-duration: 80ms"} {
+		if !strings.Contains(block, need) {
+			t.Errorf("the reduced-motion rule does not contain %q", need)
+		}
+	}
+}
+
+// Sanity for the helper the chrome relies on.
+func TestSaInitials(t *testing.T) {
+	for in, want := range map[string]string{"Ankush Choudhary Johal": "AC", "élan": "É", "  ": "", "42 Labs": "4L"} {
+		if got := saInitials(in); got != want {
+			t.Errorf("saInitials(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
