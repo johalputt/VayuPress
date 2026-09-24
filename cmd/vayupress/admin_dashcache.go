@@ -20,6 +20,8 @@ package main
 import (
 	"context"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -115,6 +117,33 @@ func (c *adminFragmentCache) get(key string, ttl time.Duration, compute func(ctx
 // startup/interval warmer so the default-window fragments are always hot).
 func (c *adminFragmentCache) warm(key string, compute func(ctx context.Context) string) {
 	c.get(key, 0, compute)
+}
+
+// keys lists the cached fragment keys that start with prefix.
+func (c *adminFragmentCache) keys(prefix string) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []string
+	for k := range c.m {
+		if strings.HasPrefix(k, prefix) {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// refreshAnalyticsReports recomputes every cached Analytics report now, in the
+// background. A goal is part of that report, and without this a goal added or
+// deleted stayed out of (or in) the page for up to the fragment's TTL.
+func (a *App) refreshAnalyticsReports() {
+	for _, key := range adminDash.keys("analytics:") {
+		days, err := strconv.Atoi(strings.TrimPrefix(key, "analytics:"))
+		if err != nil {
+			continue
+		}
+		label := analyticsLabelForDays(days)
+		adminDash.warm(key, func(ctx context.Context) string { return a.renderAnalyticsBody(ctx, days, label) })
+	}
 }
 
 // startDashboardWarmer keeps the default-window (30-day) Analytics and Bot

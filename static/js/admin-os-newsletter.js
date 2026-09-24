@@ -2,8 +2,10 @@
  *
  * CSP-safe: no inline handlers, no innerHTML with untrusted data. All server
  * calls carry the vp_csrf token. Search/segment filtering is client-side over
- * the server-rendered table; delete/broadcast reload the page so the stats,
- * history and table reflect the new state.
+ * the server-rendered table; delete/broadcast re-render the page in place
+ * (vpRefresh) so the stats, history and table reflect the new state. Listeners
+ * are delegated and elements looked up when used, because that refresh replaces
+ * them; the search text and segment survive it.
  */
 (function () {
   'use strict';
@@ -25,8 +27,8 @@
     });
   }
 
-  var msg = document.getElementById('nl-compose-msg');
   function show(text, isErr) {
+    var msg = document.getElementById('nl-compose-msg');
     if (!msg) { return; }
     msg.textContent = text;
     msg.classList.toggle('is-error', !!isErr);
@@ -35,54 +37,48 @@
   function errText(d) {
     return (d && (d.detail || d.title || d.error)) || 'Something went wrong';
   }
+  // After a change: confirm it in a toast (the page's own message line is about
+  // to be re-rendered), then refresh in place.
+  function done(text) {
+    if (window.vpToast) { window.vpToast(text, 'ok'); }
+    if (window.vpRefresh) { window.vpRefresh(); } else { location.reload(); }
+  }
 
   // ── Subscriber search + segment filter (client-side) ─────────────────────
-  var search = document.querySelector('[data-sub-search]');
-  var rows = Array.prototype.slice.call(document.querySelectorAll('[data-sub-row]'));
-  var emptyEl = document.querySelector('[data-subs-empty]');
   var activeSeg = 'all';
+  var query = '';
 
   function applyFilter() {
-    var q = (search && search.value ? search.value : '').trim().toLowerCase();
+    var rows = document.querySelectorAll('[data-sub-row]');
     var shown = 0;
     rows.forEach(function (row) {
       var segOk = activeSeg === 'all' || row.getAttribute('data-seg') === activeSeg;
-      var qOk = !q || (row.getAttribute('data-search') || '').indexOf(q) !== -1;
+      var qOk = !query || (row.getAttribute('data-search') || '').indexOf(query) !== -1;
       var hit = segOk && qOk;
       row.hidden = !hit;
       if (hit) { shown++; }
     });
+    var emptyEl = document.querySelector('[data-subs-empty]');
     if (emptyEl) { emptyEl.hidden = shown !== 0 || rows.length === 0; }
   }
+  function markSegment() {
+    document.querySelectorAll('[data-sub-filter]').forEach(function (x) {
+      x.classList.toggle('is-active', x.getAttribute('data-sub-filter') === activeSeg);
+    });
+  }
 
-  if (search) { search.addEventListener('input', applyFilter); }
-  document.querySelectorAll('[data-sub-filter]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      document.querySelectorAll('[data-sub-filter]').forEach(function (x) { x.classList.remove('is-active'); });
-      btn.classList.add('is-active');
-      activeSeg = btn.getAttribute('data-sub-filter');
+  document.addEventListener('input', function (e) {
+    if (e.target && e.target.matches && e.target.matches('[data-sub-search]')) {
+      query = e.target.value.trim().toLowerCase();
       applyFilter();
-    });
+    }
   });
-
-  // ── Delete a subscriber ──────────────────────────────────────────────────
-  document.querySelectorAll('[data-sub-delete]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var email = btn.getAttribute('data-email');
-      vpConfirm({
-        title: 'Delete this subscriber',
-        message: 'Permanently delete ' + email + '? This cannot be undone.',
-        confirm: 'Delete',
-      }, function () {
-        btn.disabled = true;
-        api('DELETE', '/os/api/newsletter/subscribers/' + encodeURIComponent(btn.getAttribute('data-id')))
-          .then(function (res) {
-            if (res.ok) { location.reload(); }
-            else { btn.disabled = false; show(errText(res.d), true); }
-          })
-          .catch(function (e) { btn.disabled = false; show('Error: ' + e, true); });
-      });
-    });
+  // A refreshed table arrives unfiltered: put back what the operator was looking at.
+  document.addEventListener('vp:refreshed', function () {
+    var search = document.querySelector('[data-sub-search]');
+    if (search) { search.value = query; }
+    markSegment();
+    applyFilter();
   });
 
   // ── Compose: gather + validate ───────────────────────────────────────────
@@ -102,48 +98,72 @@
     return true;
   }
 
-  // ── Send test ────────────────────────────────────────────────────────────
-  var testBtn = document.getElementById('nl-send-test');
-  if (testBtn) {
-    testBtn.addEventListener('click', function () {
-      var p = payload();
-      if (!validate(p)) { return; }
-      var toEl = document.getElementById('nl-test-to');
-      var to = toEl ? toEl.value.trim() : '';
-      if (!to) { show('Enter a test recipient address first.', true); return; }
-      p.to = to;
-      testBtn.disabled = true;
-      show('Sending test…', false);
-      api('POST', '/os/api/newsletter/test', p).then(function (res) {
-        testBtn.disabled = false;
-        show(res.ok ? ('Test sent to ' + to) : errText(res.d), !res.ok);
-      }).catch(function (e) { testBtn.disabled = false; show('Error: ' + e, true); });
+  function deleteSubscriber(btn) {
+    var email = btn.getAttribute('data-email');
+    var id = btn.getAttribute('data-id');
+    vpConfirm({
+      title: 'Delete this subscriber',
+      message: 'Permanently delete ' + email + '? This cannot be undone.',
+      confirm: 'Delete',
+    }, function () {
+      btn.disabled = true;
+      api('DELETE', '/os/api/newsletter/subscribers/' + encodeURIComponent(id))
+        .then(function (res) {
+          if (res.ok) { done('Deleted ' + email + '.'); }
+          else { btn.disabled = false; show(errText(res.d), true); }
+        })
+        .catch(function (e) { btn.disabled = false; show('Error: ' + e, true); });
     });
   }
 
-  // ── Send broadcast ───────────────────────────────────────────────────────
-  var sendBtn = document.getElementById('nl-send-broadcast');
-  if (sendBtn) {
-    sendBtn.addEventListener('click', function () {
-      var p = payload();
-      if (!validate(p)) { return; }
-      vpConfirm({
-        title: 'Send this broadcast',
-        message: 'Send this broadcast to all confirmed subscribers?',
-        confirm: 'Send',
-      }, function () {
-        sendBtn.disabled = true;
-        show('Queuing broadcast…', false);
-        api('POST', '/os/api/newsletter/broadcast', p).then(function (res) {
-          if (res.ok) {
-            show('Broadcast queued to ' + (res.d.queued || 0) + ' subscribers. Refreshing…', false);
-            setTimeout(function () { location.reload(); }, 1200);
-          } else {
-            sendBtn.disabled = false;
-            show(errText(res.d), true);
-          }
-        }).catch(function (e) { sendBtn.disabled = false; show('Error: ' + e, true); });
-      });
+  function sendTest(testBtn) {
+    var p = payload();
+    if (!validate(p)) { return; }
+    var toEl = document.getElementById('nl-test-to');
+    var to = toEl ? toEl.value.trim() : '';
+    if (!to) { show('Enter a test recipient address first.', true); return; }
+    p.to = to;
+    testBtn.disabled = true;
+    show('Sending test…', false);
+    api('POST', '/os/api/newsletter/test', p).then(function (res) {
+      testBtn.disabled = false;
+      show(res.ok ? ('Test sent to ' + to) : errText(res.d), !res.ok);
+    }).catch(function (e) { testBtn.disabled = false; show('Error: ' + e, true); });
+  }
+
+  function sendBroadcast(sendBtn) {
+    var p = payload();
+    if (!validate(p)) { return; }
+    vpConfirm({
+      title: 'Send this broadcast',
+      message: 'Send this broadcast to all confirmed subscribers?',
+      confirm: 'Send',
+    }, function () {
+      sendBtn.disabled = true;
+      show('Queuing broadcast…', false);
+      api('POST', '/os/api/newsletter/broadcast', p).then(function (res) {
+        if (res.ok) {
+          done('Broadcast queued to ' + (res.d.queued || 0) + ' subscribers.');
+        } else {
+          sendBtn.disabled = false;
+          show(errText(res.d), true);
+        }
+      }).catch(function (e) { sendBtn.disabled = false; show('Error: ' + e, true); });
     });
   }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) { return; }
+    var btn;
+    if ((btn = t.closest('[data-sub-filter]'))) {
+      activeSeg = btn.getAttribute('data-sub-filter');
+      markSegment();
+      applyFilter();
+      return;
+    }
+    if ((btn = t.closest('[data-sub-delete]'))) { deleteSubscriber(btn); return; }
+    if ((btn = t.closest('#nl-send-test'))) { sendTest(btn); return; }
+    if ((btn = t.closest('#nl-send-broadcast'))) { sendBroadcast(btn); }
+  });
 })();

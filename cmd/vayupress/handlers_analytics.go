@@ -597,6 +597,7 @@ func (a *App) handleAnalyticsCreateGoal(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, 400, "validation_error", err.Error(), "")
 		return
 	}
+	a.refreshAnalyticsReports()
 	writeJSON(w, r, 201, map[string]string{"id": id, "name": in.Name})
 }
 
@@ -610,6 +611,7 @@ func (a *App) handleAnalyticsDeleteGoal(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, 404, "not_found", err.Error(), "")
 		return
 	}
+	a.refreshAnalyticsReports()
 	writeJSON(w, r, 200, map[string]bool{"deleted": true})
 }
 

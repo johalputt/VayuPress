@@ -279,6 +279,41 @@ window.vpToast = toast;
     stackTablesIn(e.target || document);
   });
 
+/* ── In-place refresh after a change ──────────────────────────
+   Re-renders the page's content without reloading the page: the same URL is
+   fetched and #main-content's children replaced. A reload threw away the toast
+   that reported the change, the scroll position and the focus, so an operator
+   saw a flash and had to trust it had worked. Scripts in the new markup are
+   dropped — the page's own already ran, and they listen by delegation, so the
+   new controls work. Any failure falls back to a reload: the change happened on
+   the server, and a page that does not show it is worse than a flash. */
+window.vpRefresh = function () {
+  var main = document.getElementById('main-content');
+  if (!main || !window.DOMParser) { location.reload(); return Promise.resolve(); }
+  var focusId = document.activeElement && document.activeElement.id;
+  // Sections the operator had open stay open: the new markup carries the
+  // server's defaults, and a goal added inside a collapsed-by-default section
+  // would otherwise vanish from view the moment it was saved.
+  var summaryText = function (d) { var s = d.querySelector('summary'); return s ? s.textContent.trim() : ''; };
+  var wasOpen = $$('details[open]', main).map(summaryText);
+  return fetch(location.href, { credentials: 'same-origin', headers: { 'Accept': 'text/html' } })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+    .then(function (html) {
+      var next = new DOMParser().parseFromString(html, 'text/html').getElementById('main-content');
+      if (!next) throw new Error('no content'); // e.g. the session ended and this is the sign-in page
+      $$('script', next).forEach(function (s) { s.remove(); });
+      var frag = document.createDocumentFragment();
+      Array.prototype.forEach.call(next.childNodes, function (n) { frag.appendChild(document.importNode(n, true)); });
+      main.replaceChildren(frag);
+      $$('details', main).forEach(function (d) { if (wasOpen.indexOf(summaryText(d)) !== -1) d.open = true; });
+      if (window.htmx) window.htmx.process(main);
+      var f = focusId && document.getElementById(focusId);
+      if (f) f.focus({ preventScroll: true });
+      document.dispatchEvent(new CustomEvent('vp:refreshed'));
+    })
+    .catch(function () { location.reload(); });
+};
+
 /* ── hx-confirm in the console's own dialog ────────────────────
    HTMX asks with the browser's native confirm() unless the htmx:confirm event
    is answered, so every hx-confirm (deleting mail, deleting a mailbox, shield

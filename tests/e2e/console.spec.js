@@ -48,3 +48,30 @@ test("an hx-confirm asks in the console's dialog, not the browser's", async ({ p
   expect(native).toBe(0);
   expect(errors).toEqual([]);
 });
+
+// A change re-renders the page in place (vpRefresh) instead of reloading it: a
+// reload threw away the toast that confirmed the change. And the controls in
+// the re-rendered markup must still work, which is what delegated listeners
+// are for — so the second action here is on the refreshed list.
+test("a change refreshes the page in place, and the new controls work", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/os/members");
+  await page.waitForLoadState("networkidle"); // a first visit without a session cookie loads itself once more
+  let navigations = 0;
+  page.on("framenavigated", (f) => { if (f === page.mainFrame()) navigations++; });
+
+  const name = "E2E tier " + Date.now();
+  await page.locator("[data-new-tier]").click();
+  await page.locator("#tier-name").fill(name);
+  await page.locator("#tier-save").click();
+  await expect(page.locator(".toast", { hasText: "Tier created." })).toBeVisible();
+  const row = page.locator(`[data-edit-tier][data-name="${name}"]`);
+  await expect(row).toHaveCount(1);
+
+  await row.click();
+  await expect(page.locator("#tier-modal")).toBeVisible();
+  await expect(page.locator("#tier-name")).toHaveValue(name);
+  expect(navigations).toBe(0);
+  expect(errors).toEqual([]);
+});

@@ -847,7 +847,7 @@ func osGeoSetupNote(full bool) string {
 // of each goal's completions and conversion rate over the selected window.
 func (a *App) osGoalsSection(ctx context.Context, days int) string {
 	results, _ := a.analytics.GoalResults(ctx, days)
-	rows := `<tr><td colspan="5" class="muted">No goals yet. Add one above (e.g. a "/thank-you" path view or a "signup" custom event).</td></tr>`
+	rows := `<tr><td colspan="6" class="muted">No goals yet. Add one above (e.g. a "/thank-you" path view or a "signup" custom event).</td></tr>`
 	if len(results) > 0 {
 		rows = ""
 		for _, g := range results {
