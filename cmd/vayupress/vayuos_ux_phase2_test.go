@@ -67,7 +67,7 @@ func TestAnEmptyInboxPointsAtTheNextStep(t *testing.T) {
 	// fail the build, so this documents the intent next to the markup).
 	for _, cls := range []string{"empty-icon", "empty-title", "empty-sub"} {
 		if !strings.Contains(adminOSCSS(t), ".vp-os ."+cls+" ") && !strings.Contains(adminOSCSS(t), ".vp-os ."+cls+"{") {
-			t.Errorf(".%s is rendered but has no rule in admin-os.css", cls)
+			t.Errorf(".%s is rendered but has no rule in vayuos.css", cls)
 		}
 	}
 }

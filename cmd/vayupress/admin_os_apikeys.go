@@ -893,7 +893,7 @@ func (a *App) handleOSCredentialDelete(w http.ResponseWriter, r *http.Request) {
 // already in scope.
 const osAPIKeysScript = `
 var akStatus=document.getElementById('ak-status');
-function akSet(t,isErr){if(akStatus){akStatus.textContent=t;akStatus.style.color=isErr?'var(--color-danger,#ef4444)':'var(--color-success,#22c55e)';}}
+function akSet(t,isErr){if(akStatus){akStatus.textContent=t;akStatus.style.color=isErr?'var(--danger)':'var(--ok)';}}
 function jpost(url,payload){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify(payload||{})}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});});}
 
 // ── Token reveal banner (shown once after create/rotate) ──
@@ -948,31 +948,36 @@ document.addEventListener('click',function(ev){
   var b=ev.target.closest('[data-action]');if(!b)return;
   var act=b.getAttribute('data-action');var id=b.getAttribute('data-id');
   if(act==='ak-rotate'){
-    if(!confirm('Rotate this key? The current value stops working immediately.'))return;
+    vpConfirm({title:'Rotate this key?',message:'The current value stops working immediately.',confirm:'Rotate'},function(){
     b.disabled=true;jpost('/os/api/apikeys/rotate',{id:id}).then(function(res){b.disabled=false;if(res.ok){showToken(res.d.token);akSet('Key rotated',false);}else{akSet(res.d.detail||'Error',true);}});
+    });
   }else if(act==='ak-activate'){
     b.disabled=true;jpost('/os/api/apikeys/activate',{id:id}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;akSet(res.d.detail||'Error',true);}});
   }else if(act==='ak-deactivate'){
-    if(!confirm('Deactivate this key? It stops authenticating until you re-activate it.'))return;
+    vpConfirm({title:'Deactivate this key?',message:'It stops authenticating until you re-activate it.',confirm:'Deactivate'},function(){
     b.disabled=true;jpost('/os/api/apikeys/deactivate',{id:id}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;akSet(res.d.detail||'Error',true);}});
+    });
   }else if(act==='ak-revoke'){
-    if(!confirm('Revoke this key? It can no longer authenticate.'))return;
+    vpConfirm({title:'Revoke this key?',message:'It can no longer authenticate.',confirm:'Revoke'},function(){
     b.disabled=true;jpost('/os/api/apikeys/revoke',{id:id}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;akSet(res.d.detail||'Error',true);}});
+    });
   }else if(act==='ak-delete'){
-    if(!confirm('Delete this key permanently?'))return;
+    vpConfirm({title:'Delete this key permanently?',confirm:'Delete'},function(){
     b.disabled=true;jpost('/os/api/apikeys/delete',{id:id}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;akSet(res.d.detail||'Error',true);}});
+    });
   }else if(act==='cred-save'){
     saveCred(b);
   }else if(act==='cred-reveal'){
     revealCred(b,id);
   }else if(act==='cred-delete'){
-    if(!confirm('Delete this credential? The stored secret is erased.'))return;
+    vpConfirm({title:'Delete this credential?',message:'The stored secret is erased.',confirm:'Delete'},function(){
     b.disabled=true;jpost('/os/api/credentials/delete',{id:id}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;akSet(res.d.detail||'Error',true);}});
+    });
   }
 });
 
 function cardOf(el){return el.closest('[data-cred-card]');}
-function cardStatus(card,t,isErr){var s=card.querySelector('[data-cred-status]');if(s){s.textContent=t;s.style.color=isErr?'var(--color-danger,#ef4444)':'var(--color-success,#22c55e)';}}
+function cardStatus(card,t,isErr){var s=card.querySelector('[data-cred-status]');if(s){s.textContent=t;s.style.color=isErr?'var(--danger)':'var(--ok)';}}
 
 function saveCred(btn){
   var card=cardOf(btn);if(!card)return;

@@ -760,7 +760,7 @@
     if (data.qr) {
       var img = document.createElement('img');
       img.alt = '2FA setup QR code'; img.width = 188; img.height = 188; img.src = data.qr;
-      img.style.background = '#fff'; img.style.padding = '8px'; img.style.borderRadius = '10px';
+      img.style.background = 'var(--paper)'; img.style.padding = '8px'; img.style.borderRadius = '10px';
       img.style.display = 'block'; img.style.margin = '4px auto 14px';
       body.appendChild(img);
     }

@@ -31,9 +31,9 @@ func withoutComments(src string) string {
 
 func adminOSCSS(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "static", "css", "admin-os.css"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "static", "css", "vayuos.css"))
 	if err != nil {
-		t.Fatalf("read admin-os.css: %v", err)
+		t.Fatalf("read vayuos.css: %v", err)
 	}
 	return string(b)
 }

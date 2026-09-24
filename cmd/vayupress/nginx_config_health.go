@@ -213,42 +213,41 @@ func nginxConfigHealthCard(h NginxConfigHealth) string {
 		`decides which server block answers for a hostname.</div></div>`)
 
 	if !h.Checked {
-		b.WriteString(`<div class="card mb-6"><div class="settings-block-title">Not checked</div>` +
-			`<p class="text-sm muted">` + htmlEscape(h.Reason) + `. This is normal on a container or ` +
-			`non-Debian layout. It means these checks did not run — not that the configuration is clean.</p></div>`)
+		b.WriteString(saCallout("info", `<strong>Not checked.</strong> `+htmlEscape(h.Reason)+`. This is normal on a container or `+
+			`non-Debian layout. It means these checks did not run — not that the configuration is clean.`))
 		return b.String()
 	}
 
 	if len(h.Strays) > 0 {
-		b.WriteString(`<div class="card mb-6"><div class="settings-block-title">A backup file is being served as configuration</div>`)
-		b.WriteString(`<p class="text-sm muted">nginx includes this directory with a plain <code>*</code> ` +
-			`glob and does not skip backup extensions, so each file below is a live server block that ` +
-			`nobody deployed on purpose. VayuShield moves these out automatically on its next pass; ` +
-			`they are listed here so the change is visible rather than silent.</p><ul class="text-sm muted">`)
+		var list strings.Builder
 		for _, s := range h.Strays {
-			b.WriteString(`<li><code>` + htmlEscape(filepath.Join(h.Dir, s)) + `</code></li>`)
+			list.WriteString(`<li><code>` + htmlEscape(filepath.Join(h.Dir, s)) + `</code></li>`)
 		}
-		b.WriteString(`</ul></div>`)
+		b.WriteString(saCallout("warn", `<strong>A backup file is being served as configuration.</strong> `+
+			`nginx includes this directory with a plain <code>*</code> glob and does not skip backup extensions, `+
+			`so each file below is a live server block that nobody deployed on purpose. VayuShield moves these `+
+			`out automatically on its next pass; they are listed here so the change is visible rather than silent.`+
+			`<ul>`+list.String()+`</ul>`))
 	}
 
 	if len(h.Duplicates) > 0 {
-		b.WriteString(`<div class="card mb-6"><div class="settings-block-title">A hostname is declared more than once</div>`)
-		b.WriteString(`<p class="text-sm muted">Two files claim the same hostname. nginx keeps whichever ` +
-			`it loads first and discards the other, choosing by filename order — so one of these two ` +
-			`server blocks is not serving anything, and which one is not obvious from either file.</p>`)
-		b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Hostname</th>` +
-			`<th>Declared by</th></tr></thead><tbody>`)
+		var rows strings.Builder
 		for _, d := range h.Duplicates {
-			b.WriteString(`<tr><td class="row-title">` + htmlEscape(d.Host) + `</td><td class="muted text-sm">`)
+			rows.WriteString(`<tr><td class="row-title">` + htmlEscape(d.Host) + `</td><td class="muted text-sm">`)
 			for i, f := range d.Files {
 				if i > 0 {
-					b.WriteString(` &middot; `)
+					rows.WriteString(` &middot; `)
 				}
-				b.WriteString(`<code>` + htmlEscape(f) + `</code>`)
+				rows.WriteString(`<code>` + htmlEscape(f) + `</code>`)
 			}
-			b.WriteString(`</td></tr>`)
+			rows.WriteString(`</td></tr>`)
 		}
-		b.WriteString(`</tbody></table></div></div>`)
+		b.WriteString(saCallout("warn", `<strong>A hostname is declared more than once.</strong> Two files claim the `+
+			`same hostname. nginx keeps whichever it loads first and discards the other, choosing by filename `+
+			`order — so one of these two server blocks is not serving anything, and which one is not obvious `+
+			`from either file.`))
+		b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Hostname</th>` +
+			`<th>Declared by</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div>`)
 	}
 	return b.String()
 }

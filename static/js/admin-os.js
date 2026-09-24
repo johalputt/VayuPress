@@ -91,7 +91,7 @@ window.vpPost = function (url, body, onok, onerr) {
 
 /* ── Toast system ────────────────────────────────────────────── */
 function toast(msg, kind) {
-  // Only ok/error/info/warn have styles in admin-os.css. Call sites have passed
+  // Only ok/error/info/warn have styles in vayuos.css. Call sites have passed
   // 'success' and 'danger' too — those rendered an unstyled toast with no colour,
   // which is a silent loss of the signal. Normalise the aliases here so no call
   // site (including future ones) can drop its colour.

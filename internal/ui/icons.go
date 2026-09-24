@@ -133,9 +133,6 @@ func IconSized(name string, px int) HTML {
 	return HTML(`<svg width="` + sz + `" height="` + sz + `" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` + icons[name] + `</svg>`)
 }
 
-// HasIcon reports whether name is in the set.
-func HasIcon(name string) bool { _, ok := icons[name]; return ok }
-
 // IconNames lists the set, sorted.
 func IconNames() []string {
 	names := make([]string, 0, len(icons))

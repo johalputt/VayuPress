@@ -13,7 +13,7 @@ package main
 //   font-src 'self'; img-src 'self' data:; form-action 'self'
 //
 // Rules honoured:
-//   - No inline <style> or style="" attributes. All CSS lives in admin-os.css.
+//   - No inline <style> or style="" attributes. All CSS lives in vayuos.css.
 //   - The only inline <script> block carries the per-request CSP nonce.
 //   - No external CDNs. All assets served same-origin under /os/static/.
 //   - All user-originated strings escaped with html.EscapeString before HTML emit.
@@ -76,10 +76,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Handle("/admin/v3/*", osRedirect)
 
 	// Public static assets (served same-origin so CSP 'self' covers them).
-	r.Get("/os/static/css/admin-os.css", serveAdminOSAsset("css/admin-os.css", "text/css; charset=utf-8"))
 	r.Get("/os/static/js/admin-os.js", serveAdminOSAsset("js/admin-os.js", "application/javascript; charset=utf-8"))
-	// The Still Air design: its stylesheet layers over admin-os.css, and its
-	// script adds only what the shell introduces.
+	// The console's one stylesheet, and the script for what the Still Air
+	// shell adds.
 	r.Get("/os/static/css/vayuos.css", serveAdminOSAsset("css/vayuos.css", "text/css; charset=utf-8"))
 	r.Get("/os/static/js/vayuos.js", serveAdminOSAsset("js/vayuos.js", "application/javascript; charset=utf-8"))
 	// VayuOS installable app (PWA): manifest, service worker (scoped /os/), and app
@@ -126,16 +125,16 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	// Fonts are NOT served from /os. This route used to allowlist three names —
 	// space-grotesk.woff2, inter.woff2, jetbrains-mono.woff2 — and read them from
 	// STATIC_DIR on disk. None of those files exists in this repository or in any
-	// binary, so the route could only ever 404, and admin-os.css referenced all
-	// three: every console page load fired three failed requests and silently fell
+	// binary, so the route could only ever 404, and the console stylesheet
+	// referenced all three: every console page load fired three failed requests and silently fell
 	// back to the system font stack.
 	//
 	// Unlike serveAdminOSAsset it had no embedded fallback, which is why the CSS
 	// and JS survived a binary-only update and the fonts did not. Rather than ship
 	// ~200 KB of typefaces inside a single-binary product to fix cosmetics that
-	// already looked right, admin-os.css now points at the Space Grotesk weights
-	// the public theme already embeds (/static/fonts, handleStaticFont) and leaves
-	// the rest to the system stack.
+	// already looked right, the console stylesheet names only weights the binary
+	// already embeds (/static/fonts, handleStaticFont) and leaves the rest to the
+	// system stack.
 
 	// Country flag SVGs (flag-icons, MIT) compiled into the binary and served
 	// on demand from /os/static/flags/<cc>.svg. Path-traversal is impossible:
@@ -1240,13 +1239,12 @@ func adminOSShellFoot(nonce, pageScript string, needsAlpine bool, needsPurify ..
 	}
 	ops := ""
 	if pageScript != "" {
-		ops = `<div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
-<script nonce="` + nonce + `">
+		// A page script uses admin-os.js's vpPost(url, body, onok, onerr). The shell
+		// used to define a second vpPost(url, onok) here; admin-os.js loads later
+		// and replaced it, so every page written against this one got no
+		// confirmation and no refresh after its action succeeded.
+		ops = `<script nonce="` + nonce + `">
 (function(){'use strict';
-var msg=document.getElementById('action-msg');
-function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
-function show(text,isErr){if(!msg)return;msg.textContent=text;msg.classList.toggle('is-error',!!isErr);msg.classList.add('visible');}
-window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()}}).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});}).then(function(res){show(res.ok?(onok?onok(res.d):'ok'):(res.d.detail||res.d.title||'error'),!res.ok);if(res.ok)setTimeout(function(){location.reload();},650);}).catch(function(e){show('Error: '+e,true);});};
 ` + pageScript + `
 })();
 </script>`
@@ -2016,7 +2014,7 @@ func authPageShell(title, inner string) string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>` + html.EscapeString(title) + `</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
+<link rel="stylesheet" href="/os/static/css/vayuos.css?v=` + assetVer("css/vayuos.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 <!-- Installable app (PWA): manifest + icons so the browser offers "Install VayuOS"
      on desktop and mobile, and the installed app opens straight into the console. -->
@@ -2028,7 +2026,7 @@ func authPageShell(title, inner string) string {
 <meta name="apple-mobile-web-app-title" content="VayuOS">
 <link rel="apple-touch-icon" href="/os/static/icons/vayuos-apple-180.png">
 </head>
-<body class="vp-os auth-page" data-theme="auto">
+<body class="vp-os auth-page" data-ui="still-air" data-theme="auto">
   <div class="theme-switch" role="group" aria-label="Colour theme">
     <button type="button" class="theme-opt" data-set-theme="light" aria-label="Light" title="Light">` + saIcon("sun") + `</button>
     <button type="button" class="theme-opt" data-set-theme="dark" aria-label="Dark" title="Dark">` + saIcon("moon") + `</button>
@@ -3329,7 +3327,7 @@ var saveBtnBar=document.getElementById('settings-save-bar-btn');
 var statusEl=document.getElementById('settings-status');
 var statusBar=document.getElementById('settings-status-bar');
 function setStatus(t,isErr){
-  var c=isErr?'var(--color-danger,#ef4444)':'var(--color-success,#22c55e)';
+  var c=isErr?'var(--danger)':'var(--ok)';
   if(statusEl){statusEl.textContent=t;statusEl.style.color=c;}
   if(statusBar){statusBar.textContent=t;statusBar.style.color=c;}
 }
@@ -3431,7 +3429,7 @@ var favRm=document.getElementById('brand-favicon-remove');
 var favStatus=document.getElementById('brand-favicon-status');
 var favImg=document.getElementById('brand-favicon-img');
 var favState=document.getElementById('brand-favicon-state');
-function favSet(t,isErr){if(favStatus){favStatus.textContent=t;favStatus.style.color=isErr?'var(--color-danger,#ef4444)':'var(--color-success,#22c55e)';}}
+function favSet(t,isErr){if(favStatus){favStatus.textContent=t;favStatus.style.color=isErr?'var(--danger)':'var(--ok)';}}
 // The endpoint and the preview both follow the page's scope, taken from the
 // image the server already rendered. Hard-coding /os/api/branding/favicon here
 // is what made a hosted domain's Theme Studio save the install-wide mark while
@@ -3481,7 +3479,7 @@ if(footerInput){
   }
   function fColCard(title,links){
     var card=document.createElement('div');card.setAttribute('data-f-col','');
-    card.style.cssText='border:1px solid var(--border,#2a2a2a);border-radius:8px;padding:.75rem;margin-bottom:.75rem';
+    card.style.cssText='border:1px solid var(--border-1);border-radius:8px;padding:.75rem;margin-bottom:.75rem';
     var head=document.createElement('div');head.style.cssText='display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem';
     var ti=document.createElement('input');ti.className='input';ti.type='text';ti.placeholder='Column title (e.g. Company)';ti.value=title||'';ti.setAttribute('data-f-col-title','');ti.style.flex='1';
     ti.addEventListener('input',footerSync);
@@ -3684,7 +3682,7 @@ func osSettingsDesign(ctx context.Context, ss *settings.Store) string {
   <div class="field">
     <label class="field-label">Logo &amp; favicon</label>
     <div class="settings-row" style="align-items:center;gap:1rem">
-      <img id="brand-favicon-img" src="/favicon.ico?t=` + strconv.FormatInt(time.Now().Unix(), 10) + `" alt="Current favicon" width="40" height="40" style="border-radius:6px;background:var(--surface-2,#1a1a1a)">
+      <img id="brand-favicon-img" src="/favicon.ico?t=` + strconv.FormatInt(time.Now().Unix(), 10) + `" alt="Current favicon" width="40" height="40" style="border-radius:6px;background:var(--surface-2)">
       <div class="settings-row-info">
         <div class="settings-row-label">Site mark</div>
         <div class="settings-row-hint" id="brand-favicon-state">` + html.EscapeString(faviconState) + `</div>

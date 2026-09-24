@@ -35,7 +35,7 @@ var resolvedDynamicClasses = map[string]bool{
 // to be defined in the static sheet that page links, or it styles nothing.
 //
 // This has bitten twice. The checkout page reached for the CONSOLE grammar
-// (.login-form, .field, .field-label, .input) which lives in admin-os.css and is
+// (.login-form, .field, .field-label, .input) which lives in vayuos.css and is
 // not loaded there, so the two inputs a customer types their name and email into
 // rendered as raw browser controls, and the payment error banner rendered as
 // bare text. Separately, markup asked for a `su-muted` class when only the
@@ -49,7 +49,7 @@ var resolvedDynamicClasses = map[string]bool{
 //	           the next person styles around something that was never there.
 //
 // Scoping is by FUNCTION, not by file. A single file serves two surfaces —
-// handlers_team.go renders both handleOSProfile (console, admin-os.css) and
+// handlers_team.go renders both handleOSProfile (console, vayuos.css) and
 // handlePublicAuthor (public, signup.css) — and mapping stylesheets per-file
 // reports the console's grammar as broken on the public page. An earlier pass
 // did exactly that and produced 38 findings, every one of them false.

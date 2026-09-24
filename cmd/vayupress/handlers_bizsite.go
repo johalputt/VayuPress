@@ -253,7 +253,7 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	}
 	b2.WriteString(`> <strong>Custom uploaded website</strong> <span class="muted text-sm">— serve your own static site (built by hand or with AI, uploaded below) at ` + he(domain) + `; the blog stays at ` + he(domain) + `/blog and posts keep their ` + he(domain) + `/slug URLs</span></label>`)
 	b2.WriteString(`<p class="muted text-xs mt-2">The subdomain option points <span class="mono">` + he(domain) + `</span>, <span class="mono">blog.` + he(domain) + `</span> and <span class="mono">mail.` + he(domain) + `</span> at this server; the installer issues and renews Let&#39;s Encrypt certificates for all three automatically. The <span class="mono">/blog</span> and custom options need only <span class="mono">` + he(domain) + `</span>.</p>`)
-	b.WriteString(monAcc(saIcon("globe"), "What does "+he(domain)+" show?", "Blog, business site, /blog or your own upload",
+	b.WriteString(monAcc(saIcon("globe"), "What does "+domain+" show?", "Blog, business site, /blog or your own upload",
 		`<span class="mon-chip mon-chip--on">● `+he(bizModeLabel(mode))+`</span>`, true, hostBody.String()))
 	b.WriteString(`</div>`)
 
@@ -275,7 +275,7 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 			`<span class="biz-card-tag text-sm muted">` + he(t.Tagline) + `</span></button>`)
 	}
 	galBody.WriteString(`</div><p class="muted text-xs mt-2">Selecting a design keeps your content — only the look changes. Empty fields fall back to the design&#39;s sample content.</p>`)
-	b.WriteString(monAcc(saIcon("palette"), "Choose a design", fmt.Sprintf("%d ready-made looks — %s is active", len(bizsite.All()), he(activeTpl.Name)),
+	b.WriteString(monAcc(saIcon("palette"), "Choose a design", fmt.Sprintf("%d ready-made looks — %s is active", len(bizsite.All()), activeTpl.Name),
 		`<span class="mon-chip mon-chip--on">● `+he(activeTpl.Name)+`</span>`, false, galBody.String()))
 
 	// Content editor.
@@ -309,7 +309,7 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 			siteEditorCard("/os/website/editor", true)))
 	} else {
 		formBody.WriteString(siteEditorCard("/os/website/editor", false))
-		b.WriteString(monAcc(saIcon("pencil"), "Your content", "Name, tagline, contact details, hours, offerings &amp; gallery", "", false, formBody.String()))
+		b.WriteString(monAcc(saIcon("pencil"), "Your content", "Name, tagline, contact details, hours, offerings & gallery", "", false, formBody.String()))
 	}
 	// Whether this site installs as a REAL app. It lives here because it is a
 	// property of the public site, and it opens itself when something is failing.

@@ -18,7 +18,7 @@ import (
 )
 
 // embeddedStaticFS is the repository static/ tree compiled into the binary,
-// re-rooted so lookups use web-relative paths like "css/admin-os.css" and
+// re-rooted so lookups use web-relative paths like "css/vayuos.css" and
 // "js/admin-os.js" (matching the serveAdminOSAsset rel argument).
 var embeddedStaticFS = staticSub()
 
@@ -55,7 +55,7 @@ func adrSub() fs.FS {
 // It MUST run before render.Init, which writes the authoritative minified
 // public-site CSS (article/admin/high-contrast/custom). Running first lets
 // render.Init win for those four files while this refreshes everything else —
-// notably admin-os.css and every admin-os-*.js.
+// notably vayuos.css and every admin-os-*.js.
 func syncEmbeddedStatic(staticDir string) {
 	if staticDir == "" {
 		return

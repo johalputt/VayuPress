@@ -29,6 +29,7 @@ import (
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/totp"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // verifyTOTPForLogin decides whether a login may proceed. It returns required=true
@@ -323,7 +324,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
           <div class="field"><label class="field-label" for="tier-stripe-yearly">Stripe yearly price ID</label>
             <input class="input" id="tier-stripe-yearly" type="text" maxlength="80" placeholder="price_…"></div>
         </div>
-        <div class="field mt-3" style="border-top:1px solid var(--border,#333);padding-top:.75rem">
+        <div class="field mt-3" style="border-top:1px solid var(--border-1);padding-top:12px">
           <label class="field-label" style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
             <input type="checkbox" id="tier-mail-enabled"> Include a VayuMail mailbox with this tier</label>
           <p class="field-hint">Paid members on this tier can claim a private mailbox (with PGP + WKD). They pick their address separately.</p></div>
@@ -358,7 +359,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 		`<div class="mon-stack">` +
 		monAcc(saIcon("trend"), "Recent activity", "Sign-ups, upgrades and cancellations",
 			`<span class="mon-chip mon-chip--off">○ Log</span>`, false, activityCard) +
-		monAcc(saIcon("audience"), "Team &amp; roles", "Staff accounts for your workspace",
+		monAcc(saIcon("audience"), "Team & roles", "Staff accounts for your workspace",
 			`<span class="mon-chip mon-chip--off">○ Staff</span>`, false, teamCard) +
 		unconfirmedAcc +
 		`</div>` +
@@ -406,24 +407,14 @@ func (a *App) handleOSSecurity(w http.ResponseWriter, r *http.Request) {
 
 	var section string
 	if enabled {
-		section = `<div class="settings-row">
-    <div class="settings-row-info">
-      <div class="settings-row-label">Two-factor authentication</div>
-      <div class="settings-row-hint">Active — a code from your authenticator is required at sign-in.</div>
-    </div>
-    <span class="badge badge--ok">Enabled</span>
-  </div>
+		section = string(ui.Rows(ui.Row{Label: "Two-factor authentication",
+			Hint: "Active — a code from your authenticator is required at sign-in.", Control: ui.Tag("ok", "Enabled")})) + `
   <div class="mt-4">
     <button type="button" class="btn btn--danger btn--sm" data-totp-disable>Disable 2FA</button>
   </div>`
 	} else {
-		section = `<div class="settings-row">
-    <div class="settings-row-info">
-      <div class="settings-row-label">Two-factor authentication</div>
-      <div class="settings-row-hint">Add a time-based one-time code (TOTP) from any authenticator app.</div>
-    </div>
-    <span class="badge badge--warn">Disabled</span>
-  </div>
+		section = string(ui.Rows(ui.Row{Label: "Two-factor authentication",
+			Hint: "Add a time-based one-time code (TOTP) from any authenticator app.", Control: ui.Tag("warn", "Disabled")})) + `
   <div class="mt-4">
     <button type="button" class="btn btn--primary btn--sm" data-totp-begin>Set up 2FA</button>
   </div>
@@ -431,7 +422,7 @@ func (a *App) handleOSSecurity(w http.ResponseWriter, r *http.Request) {
     <div class="section-divider"></div>
     <div class="settings-block-title">Scan this QR with your authenticator app</div>
     <p class="text-sm muted">Open Google Authenticator, Aegis, 1Password, etc., tap “add / scan QR”, point it at the code below, then enter the 6-digit code to confirm. Can't scan? Enter the key manually.</p>
-    <img data-totp-qr alt="2FA setup QR code" width="180" height="180" style="background:#fff;padding:8px;border-radius:8px;display:none">
+    <img data-totp-qr alt="2FA setup QR code" width="180" height="180" style="background:var(--paper);padding:8px;border-radius:6px;display:none">
     <div class="totp-key mt-2">Manual key: <code data-totp-key class="font-mono"></code></div>
     <div class="totp-uri text-xs muted"><a data-totp-uri href="#" rel="noopener">Open in authenticator app ↗</a></div>
     <div class="field mt-3">
@@ -556,7 +547,7 @@ func sparklineSVG(series []members.DayCount) string {
 		x := float64(i) * bw
 		y := 40.0 - h
 		bars += fmt.Sprintf(
-			`<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" rx="0.5" fill="#7c83ff" opacity="0.85"><title>%s: %d</title></rect>`,
+			`<rect class="mem-bar" x="%.2f" y="%.2f" width="%.2f" height="%.2f" rx="0.5"><title>%s: %d</title></rect>`,
 			x+bw*0.15, y, bw*0.7, h, html.EscapeString(d.Day), d.Count)
 	}
 	return `<svg viewBox="0 0 100 40" preserveAspectRatio="none" width="100%" height="84" role="img" aria-label="New members per day">` +
@@ -584,8 +575,8 @@ func revenueByTierHTML(rev []members.TierRevenue, currency string, totalMRR int)
     <span>` + esc(t.Name) + `</span>
     <span class="row-meta">` + priceLabel(cur, t.MRRCents) + ` · ` + strconv.Itoa(t.Members) + ` members</span>
   </div>
-  <div style="background:rgba(124,131,255,.15);border-radius:4px;height:8px;overflow:hidden;margin-top:4px">
-    <div style="height:100%;background:#7c83ff;width:` + fmt.Sprintf("%.1f", pct) + `%"></div>
+  <div style="background:var(--accent-soft);border-radius:4px;height:8px;overflow:hidden;margin-top:4px">
+    <div style="height:100%;background:var(--chart-1);width:` + fmt.Sprintf("%.1f", pct) + `%"></div>
   </div>
 </div>`
 	}
@@ -638,7 +629,7 @@ func activityFeedHTML(events []members.Event, currency string) string {
 			amt = ` <span class="row-meta">(` + priceLabel(currency, e.AmountCents) + `/mo)</span>`
 		}
 		when := config.FormatSite(e.CreatedAt, "2 Jan 15:04")
-		out += `<li style="display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px solid rgba(127,127,127,.12)">
+		out += `<li style="display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px solid var(--border-1)">
   <span style="flex:none;width:8px;height:8px;border-radius:50%;background:` + dot + `"></span>
   <span style="flex:1;font-size:.9rem"><strong>` + esc(who) + `</strong> ` + esc(label) + amt + `</span>
   <span class="row-meta">` + esc(when) + `</span>

@@ -215,7 +215,7 @@ func TestTheVayuVeilPageMeetsTheHouseStyle(t *testing.T) {
 		Hooks: []string{"data-veil-toggle"},
 	})
 	assertCSPSafe(t, "VayuVeil", page)
-	assertClassesAreStyled(t, "the VayuVeil page", loadAdminOSCSS(t), page)
+	assertClassesAreStyled(t, "the VayuVeil page", loadConsoleCSS(t), page)
 }
 
 // The registry table has to show the actual obligations, or the page is a list

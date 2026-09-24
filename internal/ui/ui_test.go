@@ -47,6 +47,10 @@ func TestEveryPrimitiveEscapesTextOnce(t *testing.T) {
 	escapedOnce(t, "Table empty", Table([]string{"A"}, nil, hostile))
 	escapedOnce(t, "Empty title", Empty("info", hostile, "", ""))
 	escapedOnce(t, "Empty sub", Empty("info", "T", hostile, ""))
+	escapedOnce(t, "Tag text", Tag("ok", hostile))
+	escapedOnce(t, "Step mark", Steps(Step{Mark: hostile}))
+	escapedOnce(t, "Step title", Steps(Step{Title: hostile}))
+	escapedOnce(t, "Step detail", Steps(Step{Title: "T", Detail: hostile}))
 }
 
 // Markup the caller vouches for passes through untouched: a primitive that
@@ -77,6 +81,12 @@ func TestToneClassesAreOnlyTheDefinedOnes(t *testing.T) {
 	}
 	if s := string(Figures(Figure{Tone: `x" onclick="y`})); strings.Contains(s, "onclick") {
 		t.Errorf("an unknown figure tone reached the markup: %s", s)
+	}
+	if s := string(Tag(`x" onclick="y`, "T")); strings.Contains(s, "onclick") || !strings.Contains(s, "badge--muted") {
+		t.Errorf("an unknown tag tone reached the markup: %s", s)
+	}
+	if s := string(Steps(Step{Title: "T", Now: true})); !strings.Contains(s, "sa-step--now") {
+		t.Error("the current step is not marked")
 	}
 	if s := string(Rows(Row{Label: "L", Changed: true})); !strings.Contains(s, "is-changed") {
 		t.Error("a changed row is not marked")

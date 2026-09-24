@@ -245,7 +245,7 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
     <span class="text-sm muted">Current version <strong>v` + html.EscapeString(Version) + `</strong> · mode <strong>` + html.EscapeString(curMode) + `</strong></span>
   </div>
 </div>
-<p class="page-sub">Keep VayuPress current and your data safe — one-click updates that refuse anything not signed by this project, and full, checksummed database backups. Tap a card to expand it.</p>
+<p class="page-sub">Keep VayuPress current and your data safe — one-click updates that refuse anything not signed by this project, and full, checksummed database backups..</p>
 ` + banner + `
 <div class="section-head"><span class="section-head__title">Install an update</span><span class="section-head__hint">Signature checked · auto-backup · atomic swap</span></div>
 <div class="upd-hero" data-update-card>

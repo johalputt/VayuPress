@@ -425,7 +425,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	if m == "" {
 		m = mode.ModeNormal
 	}
-	_, _, modeDesc := modeVisual(m)
+	modeDesc := modeDescription(m)
 	modeHTML := `<span class="sa-dot sa-dot--` + saModeTone(m) + `"></span>` + html.EscapeString(saModeLabel(m))
 	if admin {
 		modeHTML = `<a class="sa-state sa-state--` + saModeTone(m) + `" href="/os/modes" title="` + html.EscapeString(modeDesc) + `">` + modeHTML + `</a>`
@@ -505,7 +505,6 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 <title>` + et + ` — ` + html.EscapeString(siteName) + ` · VayuOS</title>
 <meta name="robots" content="noindex, nofollow">
 <meta name="htmx-config" content='{"includeIndicatorStyles":false,"globalViewTransitions":true}'>
-<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 <link rel="stylesheet" href="/os/static/css/vayuos.css?v=` + assetVer("css/vayuos.css") + `">
 <link rel="preload" href="/static/fonts/inter-latin-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/static/fonts/inter-latin-500.woff2" as="font" type="font/woff2" crossorigin>

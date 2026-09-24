@@ -26,6 +26,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/secrets"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // handleOSMonetization renders the Monetization console.
@@ -163,7 +164,7 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
   <h1>Monetization</h1>
   <div class="page-actions"><span id="mon-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
 </div>
-<p class="page-sub">Your whole revenue engine in one place — payments, membership plans, the premium mail-ID marketplace, paid posts and every order. Tap a card to expand it.</p>
+<p class="page-sub">Your whole revenue engine in one place — payments, membership plans, the premium mail-ID marketplace, paid posts and every order..</p>
 ` + statusBanner + `
 <div class="stat-grid">
   <div class="stat-card"><div class="stat-card__label">Revenue collected</div><div class="stat-card__value">` + html.EscapeString(priceLabel(revCurrency, stats.RevenueCents)) + `</div></div>
@@ -174,7 +175,7 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 
 <div class="section-head"><span class="section-head__title">Payment methods</span><span class="section-head__hint">Cards, PayPal, crypto (anonymous-friendly) — or take payments directly. Funds always settle into your own accounts.</span></div>
 <div class="mon-stack">` +
-		monAcc(saIcon("card"), "Card payments · Stripe", "Cards, Apple&nbsp;Pay &amp; Google&nbsp;Pay via a hosted checkout", monChip(stripeConnected, "Connected", "Not set up"), false, a.paymentGatewaysCard(nonce, ctx)) +
+		monAcc(saIcon("card"), "Card payments · Stripe", "Cards, Apple\u00a0Pay & Google\u00a0Pay via a hosted checkout", monChip(stripeConnected, "Connected", "Not set up"), false, a.paymentGatewaysCard(nonce, ctx)) +
 		monAcc(saIcon("coin"), "PayPal", "Auto-renewing subscriptions", monChip(paypalConnected, "Connected", "Not set up"), false, a.paypalConnectCard(nonce, ctx)) +
 		monAcc(saIcon("coin"), "Crypto · BTCPay Server", "BTC · XMR · ETH · USDT — for anonymous / Tor buyers", monChip(btcpayConnected, "Connected", "Not set up"), false, a.btcpayConnectCard(nonce, ctx)) +
 		monAcc(saIcon("columns"), "Direct / offline payment", "Bank transfer, UPI or any link — no gateway", `<span class="mon-chip mon-chip--on">● Always on</span>`, false, directCard) +
@@ -184,7 +185,7 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 <div class="section-head"><span class="section-head__title">Products &amp; pricing</span><span class="section-head__hint">Everything you sell — mail-IDs, paid posts, plans</span></div>
 <div class="mon-stack">` +
 		monAcc(saIcon("mail"), "Premium mail-ID marketplace", strconv.Itoa(premiumSold)+" sold · "+strconv.Itoa(gPending)+" awaiting payment", monChip(premiumSold > 0, "Live", "No sales yet"), false, mailidMarketCard) +
-		monAcc(saIcon("tag"), "VayuMail address marketplace", "Price &amp; terms for vanity addresses", `<span class="mon-chip mon-chip--on">● `+html.EscapeString(priceLabel(currency, a.premiumMailIDPriceCents(ctx)))+`</span>`, false, addrMarketCard) +
+		monAcc(saIcon("tag"), "VayuMail address marketplace", "Price & terms for vanity addresses", `<span class="mon-chip mon-chip--on">● `+html.EscapeString(priceLabel(currency, a.premiumMailIDPriceCents(ctx)))+`</span>`, false, addrMarketCard) +
 		monAcc(saIcon("doc"), "Paid posts", "One-time access pricing, per post", monChip(len(pricedPosts) > 0, strconv.Itoa(len(pricedPosts))+" priced", "None yet"), false, paidPostsCard) +
 		`</div>
 
@@ -204,13 +205,16 @@ function jsave(key,val){return fetch('/os/api/settings',{method:'POST',headers:{
 document.querySelectorAll('[data-order-action]').forEach(function(b){
   b.addEventListener('click',function(){
     var act=b.getAttribute('data-order-action');var id=b.getAttribute('data-id');
-    if(act==='paid'&&!confirm('Confirm payment received for this order? The member will be upgraded and emailed a receipt.'))return;
-    if(act==='cancel'&&!confirm('Cancel this order?'))return;
-    b.disabled=true;
-    jpost('/os/api/orders/'+encodeURIComponent(id)+'/'+act).then(function(res){
-      if(res.ok){show(act==='paid'?'Payment confirmed':'Order canceled',false);setTimeout(function(){location.reload();},600);}
-      else{b.disabled=false;show(res.d.detail||res.d.title||'Error',true);}
-    }).catch(function(e){b.disabled=false;show('Error: '+e,true);});
+    var go=function(){
+      b.disabled=true;
+      jpost('/os/api/orders/'+encodeURIComponent(id)+'/'+act).then(function(res){
+        if(res.ok){show(act==='paid'?'Payment confirmed':'Order canceled',false);setTimeout(function(){location.reload();},600);}
+        else{b.disabled=false;show(res.d.detail||res.d.title||'Error',true);}
+      }).catch(function(e){b.disabled=false;show('Error: '+e,true);});
+    };
+    if(act==='paid'){vpConfirm({title:'Confirm payment received for this order?',message:'The member will be upgraded and emailed a receipt.',confirm:'Confirm payment'},go);}
+    else if(act==='cancel'){vpConfirm({title:'Cancel this order?',confirm:'Cancel order'},go);}
+    else{go();}
   });
 });
 var saveBtn=document.getElementById('mon-save-btn');
@@ -364,7 +368,7 @@ func orderStatusPill(status string) string {
 
 func webhookStatus(configured bool) string {
 	if configured {
-		return `<strong style="color:var(--color-success,#22c55e)">A signing secret is configured.</strong>`
+		return `<strong class="tone-ok">A signing secret is configured.</strong>`
 	}
 	return `<strong>No signing secret set yet.</strong>`
 }
@@ -400,18 +404,9 @@ func osStatTile(label, value, tone string) string {
 		`</div><div class="stat-card__value">` + html.EscapeString(value) + `</div></div>`
 }
 
+// monAcc is the console's disclosure for the pages that build their markup as
+// strings: icon, chip and body are markup; title and subtitle are text, which
+// ui.Disclosure escapes once.
 func monAcc(icon, title, subtitle, chip string, open bool, body string) string {
-	openAttr := ""
-	if open {
-		openAttr = " open"
-	}
-	return `<details class="mon-acc"` + openAttr + `>
-  <summary class="mon-acc__sum">
-    <span class="mon-acc__ic" aria-hidden="true">` + icon + `</span>
-    <span class="mon-acc__head"><span class="mon-acc__title">` + title + `</span><span class="mon-acc__sub">` + subtitle + `</span></span>
-    ` + chip + `
-    <svg class="mon-acc__chev" viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-  </summary>
-  <div class="mon-acc__body">` + body + `</div>
-</details>`
+	return string(ui.Disclosure(ui.HTML(icon), title, subtitle, ui.HTML(chip), open, ui.HTML(body)))
 }

@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"html"
@@ -19,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,6 +51,7 @@ import (
 	"github.com/johalputt/vayupress/internal/seo"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/severity"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 const vacuumWriteThreshold = 10
@@ -1078,6 +1081,9 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 			number = parts[0]
 			title = strings.ReplaceAll(strings.SplitN(base, "-", 2)[1], "-", " ")
 		}
+		if t := adrHeading(adrDir, name); t != "" {
+			title = t
+		}
 		adrs = append(adrs, adrEntry{name, number, title})
 	}
 	// Newest first so the most recent decisions are at the top.
@@ -1094,35 +1100,70 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
-		if match == nil {
-			a.handleNotFound(w, r)
-			return
+		var raw []byte
+		rerr := errors.New("no such record")
+		if match != nil {
+			raw, rerr = readADRFile(adrDir, match.Filename)
 		}
-		raw, rerr := readADRFile(adrDir, match.Filename)
 		if rerr != nil {
-			a.handleNotFound(w, r)
+			// Still inside the console: the public site's 404 took the operator
+			// out of VayuOS for a link that was merely stale.
+			nonce := a.writeConsoleShellHeadStatus(w, r, "adrs", "Decisions", http.StatusNotFound)
+			fmt.Fprint(w, ui.Join(
+				ui.Page("Decisions", "", ""),
+				ui.Empty("doc", "No such decision", "This install has no record by that name.", `<a class="btn" href="/os/adr">All decisions</a>`),
+			))
+			writeConsoleShellFoot(w, nonce, "")
 			return
 		}
-		nonce := a.writeConsoleShellHead(w, r, "adrs", match.Number, match.Title)
-		fmt.Fprint(w, `<div class="adr-doc-actions"><a class="btn btn--ghost" href="/os/adr">&larr; Back to ADR Registry</a></div>`)
-		fmt.Fprintf(w, `<article class="adr-doc card">%s</article>`, renderMarkdownDocument(raw))
+		// The page header carries the record's title, so its own heading line
+		// is not rendered a second time underneath.
+		if first, rest, ok := strings.Cut(string(raw), "\n"); ok && strings.HasPrefix(first, "# ") {
+			raw = []byte(rest)
+		}
+		nonce := a.writeConsoleShellHead(w, r, "adrs", match.Number)
+		fmt.Fprint(w, ui.Join(
+			ui.Page(match.Title, match.Number, `<a class="btn btn--ghost" href="/os/adr">All decisions</a>`),
+			`<article class="adr-doc">`+renderMarkdownDocument(raw)+`</article>`,
+		))
 		writeConsoleShellFoot(w, nonce, "")
 		return
 	}
 
-	nonce := a.writeConsoleShellHead(w, r, "adrs", "ADR Registry", fmt.Sprintf("%d architecture decision records", len(adrs)))
-	fmt.Fprintf(w, `<div class="adr-list">`)
+	nonce := a.writeConsoleShellHead(w, r, "adrs", "Decisions")
+	rows := make([][]ui.HTML, 0, len(adrs))
 	for _, adr := range adrs {
-		fmt.Fprintf(w, `<a class="adr-row" href="/os/adr?doc=%s"><span class="adr-number">%s</span><span class="adr-title">%s</span><span class="adr-badge s-ok">Read</span></a>`,
-			template.HTMLEscapeString(url.QueryEscape(adr.Filename)),
-			template.HTMLEscapeString(adr.Number), template.HTMLEscapeString(adr.Title))
+		rows = append(rows, []ui.HTML{
+			`<span class="mono">` + ui.Text(adr.Number) + `</span>`,
+			`<a href="/os/adr?doc=` + ui.Text(url.QueryEscape(adr.Filename)) + `">` + ui.Text(adr.Title) + `</a>`,
+		})
 	}
-	if len(adrs) == 0 {
-		fmt.Fprint(w, `<div class="empty-state"><div class="empty-title">No ADR files found</div></div>`)
-	}
-	fmt.Fprint(w, `</div>`)
+	fmt.Fprint(w, ui.Join(
+		ui.Page("Decisions", "The architecture decision records behind this install, newest first. Each says what was decided and why.", ""),
+		ui.Section("Records", strconv.Itoa(len(adrs))+" decisions",
+			ui.Table([]string{"Record", "Decision"}, rows, "No decision records were found.")),
+	))
 	writeConsoleShellFoot(w, nonce, "")
 }
+
+// adrHeading is the title an ADR gives itself on its first line ("# ADR-0150 —
+// VayuVeil: observation control…"), which keeps the capitals a filename slug
+// loses. Empty when the file has no such heading.
+func adrHeading(adrDir, filename string) string {
+	raw, err := readADRFile(adrDir, filename)
+	if err != nil {
+		return ""
+	}
+	line, _, _ := strings.Cut(string(raw), "\n")
+	line, ok := strings.CutPrefix(strings.TrimSpace(line), "# ")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(adrNumberPrefix.ReplaceAllString(line, ""))
+}
+
+// adrNumberPrefix is the "ADR-0150 — " or "ADR-0001: " a heading starts with.
+var adrNumberPrefix = regexp.MustCompile(`^(?i:ADR)-\d+\s*(?::|—|–|-)\s*`)
 
 // renderMarkdownDocument converts an ADR markdown file to sanitised HTML for the
 // read view. goldmark (GFM) renders the markdown; bluemonday's UGC policy then

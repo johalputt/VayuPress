@@ -1105,7 +1105,7 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 		if failed > 0 {
 			failTone = "warn"
 		}
-		statStrip = `<div class="vm-stats">` +
+		statStrip = `<div class="stat-grid">` +
 			vmStatTile(itoaSafe(mailboxes), "Mailboxes", "") +
 			vmStatTile(itoaSafe(domains), "Mail domains", "") +
 			vmStatTile(itoaSafe(pending), "Queued", "") +
@@ -1216,7 +1216,7 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	mc := a.vayuMail.Config()
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>VayuMail · DNS</h1></div>`)
-	body.WriteString(`<p class="page-sub">Native outbound mail sovereignty — publish these records, then verify every mail domain. Tap a card to expand it.</p>`)
+	body.WriteString(`<p class="page-sub">Native outbound mail sovereignty — publish these records, then verify every mail domain..</p>`)
 	body.WriteString(a.vayuosNav(r, "mail"))
 	if !mc.Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set your domain (DOMAIN env / first-boot wizard) to activate DKIM signing and outbound delivery.</div>`)
@@ -1228,7 +1228,7 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	if qs.Failed > 0 {
 		failTone = "warn"
 	}
-	body.WriteString(`<div class="vm-stats">` +
+	body.WriteString(`<div class="stat-grid">` +
 		vmStatTile(itoaSafe(qs.Pending), "Pending", "") +
 		vmStatTile(itoaSafe(stats.Delivered), "Delivered", "") +
 		vmStatTile(itoaSafe(qs.Failed), "Failed", failTone) +
@@ -1890,7 +1890,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	// Split reading pane: the message list (left) and an in-place reader (right).
 	// Rows load the message into #vm-readpane via HTMX; pane actions refresh the
 	// list via HX-Trigger. On narrow screens CSS collapses this to one column and
-	// the pane overlays the list (see admin-os.css .vm-split).
+	// the pane overlays the list (see vayuos.css .vm-split).
 	// Outside #vm-inbox-list on purpose: the fragment swaps that element's
 	// contents, so an indicator inside it would be replaced mid-request.
 	body.WriteString(`<span id="vm-inbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">loading…</span>`)
@@ -1908,7 +1908,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 // vayuMailboxTabs renders the mailbox directory as one tab per mail domain
 // (VayuDomains): a tab strip on top, and only the selected domain's mailboxes
 // showing beneath it. The primary domain is the first, selected tab. Pure CSS
-// (hidden radio + label + :checked sibling rules in admin-os.css) so it stays
+// (hidden radio + label + :checked sibling rules in vayuos.css) so it stays
 // CSP-safe — no inline styles, no JavaScript. A single-domain install renders
 // just that domain's card with no tab chrome.
 func (a *App) vayuMailboxTabs(primaryDom string, primary []vmail.MailboxSummary, secHosts []string) string {

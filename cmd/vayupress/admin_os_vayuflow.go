@@ -278,7 +278,7 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 		strconv.Itoa(pass) + ` ok, ` + strconv.Itoa(ctxRows) + ` noted</span></div>`)
 	b.WriteString(`<div class="mon-stack">`)
 	for i, c := range checks {
-		b.WriteString(monAcc(flowCheckIcon(c.Status), esc(c.Title), "", flowCheckChip(c.Status),
+		b.WriteString(monAcc(flowCheckIcon(c.Status), c.Title, "", flowCheckChip(c.Status),
 			i == 0 && c.Status != flowaudit.Pass,
 			`<div class="card"><p class="text-sm muted">`+esc(c.Detail)+`</p></div>`))
 	}
@@ -366,7 +366,7 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 		body.WriteString(`</div>`)
 
 		sub := vayuflow.TriggerSummary(f.Trigger) + " · v" + strconv.Itoa(f.Version)
-		b.WriteString(monAcc(saIcon("settings"), esc(f.Name), esc(sub), flowModeChip(f), i == 0, body.String()))
+		b.WriteString(monAcc(saIcon("settings"), f.Name, sub, flowModeChip(f), i == 0, body.String()))
 	}
 	b.WriteString(`</div>`)
 
@@ -425,7 +425,7 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 		}
 		body.WriteString(`</div>`)
 		when := run.StartedAt.Format("2006-01-02 15:04")
-		b.WriteString(monAcc(saIcon("play"), esc(when), esc(run.FlowID), runStatusChip(run.Status), false, body.String()))
+		b.WriteString(monAcc(saIcon("play"), when, run.FlowID, runStatusChip(run.Status), false, body.String()))
 	}
 	b.WriteString(`</div>`)
 

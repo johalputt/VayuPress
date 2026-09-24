@@ -15,6 +15,7 @@ import (
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/ui"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	"github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
@@ -62,7 +63,7 @@ func (a *App) vayuAccountsList(ctx context.Context) string {
 
 	var b strings.Builder
 	// Stats strip — an at-a-glance enterprise summary that refreshes on every swap.
-	b.WriteString(`<div class="vm-stats">`)
+	b.WriteString(`<div class="stat-grid">`)
 	b.WriteString(vmStatTile(strconv.Itoa(len(accs)), "Mailboxes", ""))
 	b.WriteString(vmStatTile(strconv.Itoa(active), "Active", ""))
 	b.WriteString(vmStatTile(strconv.Itoa(twofa), "2FA on", ""))
@@ -271,15 +272,10 @@ func (a *App) vayuCardFilters(ctx context.Context, ac vmail.Account) string {
 	return b.String()
 }
 
-// vmStatTile renders one summary tile. tone "" is neutral, "warn" highlights a
-// value that wants operator attention (e.g. devices awaiting approval).
+// vmStatTile renders one figure (ui.Figure). tone "" is neutral, "warn" marks
+// a value that wants operator attention (e.g. devices awaiting approval).
 func vmStatTile(value, label, tone string) string {
-	cls := "vm-stat"
-	if tone != "" {
-		cls += " vm-stat--" + tone
-	}
-	return `<div class="` + cls + `"><span class="vm-stat__v">` + html.EscapeString(value) +
-		`</span><span class="vm-stat__l">` + html.EscapeString(label) + `</span></div>`
+	return string(ui.Figure{Value: value, Label: label, Tone: tone}.Cell())
 }
 
 // vayuAccountCard renders one mailbox as a collapsible <details> card: a scannable

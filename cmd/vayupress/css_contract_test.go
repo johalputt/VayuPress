@@ -37,7 +37,7 @@ import (
 var classAttrRe = regexp.MustCompile(`class="([^"]*)"`)
 
 // cssIgnoredClasses are utility and state tokens defined elsewhere than
-// admin-os.css (the shared admin stylesheet, Pico, or set by script), listed
+// vayuos.css (the shared admin stylesheet, Pico, or set by script), listed
 // explicitly so the gate stays a real check rather than a permissive one.
 var cssIgnoredClasses = map[string]bool{
 	"mono": true, "muted": true, "hidden": true,
@@ -45,11 +45,13 @@ var cssIgnoredClasses = map[string]bool{
 	"mb-6": true, "mt-4": true,
 }
 
-func loadAdminOSCSS(t *testing.T) string {
+// loadConsoleCSS returns vayuos.css, the one stylesheet every console page
+// loads.
+func loadConsoleCSS(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Clean("../../static/css/admin-os.css"))
+	b, err := os.ReadFile(filepath.Clean("../../static/css/vayuos.css"))
 	if err != nil {
-		t.Skipf("admin-os.css not readable from here: %v", err)
+		t.Fatalf("vayuos.css not readable from here: %v", err)
 	}
 	return string(b)
 }
@@ -84,7 +86,7 @@ func assertClassesAreStyled(t *testing.T, label, css, markup string) {
 	}
 	if len(missing) > 0 {
 		sort.Strings(missing)
-		t.Errorf("%s emits %d class(es) with NO rule in admin-os.css: %s\n"+
+		t.Errorf("%s emits %d class(es) with NO rule in the console stylesheets: %s\n"+
 			"Every element carrying one renders unstyled — inline, run together, and "+
 			"underlined on hover by the browser default. This is what shipped.",
 			label, len(missing), strings.Join(missing, ", "))
@@ -92,13 +94,13 @@ func assertClassesAreStyled(t *testing.T, label, css, markup string) {
 }
 
 func TestTheSiteConsoleEmitsNoUnstyledClass(t *testing.T) {
-	css := loadAdminOSCSS(t)
+	css := loadConsoleCSS(t)
 	d := isolationDomain()
 	assertClassesAreStyled(t, "the site console", css, scopedConsolePage(d, 3, 2, 1, true, nil, nil, nil, nil, ""))
 }
 
 func TestTheSiteToolTilesMatchTheAdministrationRows(t *testing.T) {
-	css := loadAdminOSCSS(t)
+	css := loadConsoleCSS(t)
 	page := scopedConsolePage(isolationDomain(), 3, 2, 1, true, nil, nil, nil,
 		map[string]scopedToolChip{"content": {On: true, Text: "3 items"}}, "")
 
@@ -147,7 +149,7 @@ func TestTheSiteToolTilesMatchTheAdministrationRows(t *testing.T) {
 }
 
 func TestTheOtherPerSitePagesEmitNoUnstyledClass(t *testing.T) {
-	css := loadAdminOSCSS(t)
+	css := loadConsoleCSS(t)
 	d := isolationDomain()
 	assertClassesAreStyled(t, "the content page", css, scopedContentPage(d, []dbpkg.Article{
 		{Title: "One", Slug: "one", Status: "published"},

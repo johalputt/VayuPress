@@ -633,7 +633,7 @@ func osConnectorManageCard(keys []apikeys.Key) string {
   <p class="field-hint mt-2"><strong>Pause</strong> stops this connector immediately and can be undone — the same key works again on Resume. <strong>Disconnect</strong> is permanent: the key stops working for good and the record is kept for the audit log. <strong>Remove</strong> also deletes the record.</p>
 </div>`
 
-		panels += monAcc(icon, html.EscapeString(k.Label), html.EscapeString(activity), chip, false, body)
+		panels += monAcc(icon, k.Label, activity, chip, false, body)
 	}
 
 	hint := `<p class="text-sm muted mb-4">Every client that has connected, and what it can reach. Each action is written to the audit log.</p>`
@@ -658,7 +658,7 @@ func osConnectorManageCard(keys []apikeys.Key) string {
 // bootstrap IIFE (adminOSShellFoot), so csrf() is already in scope.
 const osConnectorScript = `
 var cxStatus=document.getElementById('cx-status');
-function cxSet(t,isErr){if(cxStatus){cxStatus.textContent=t;cxStatus.style.color=isErr?'var(--color-danger,#ef4444)':'var(--color-success,#22c55e)';}}
+function cxSet(t,isErr){if(cxStatus){cxStatus.textContent=t;cxStatus.style.color=isErr?'var(--danger)':'var(--ok)';}}
 function cxPost(url,payload){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify(payload||{})}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});});}
 function cxCopy(text){if(navigator.clipboard){navigator.clipboard.writeText(text);}return true;}
 
@@ -707,12 +707,13 @@ document.addEventListener('click',function(ev){
   }
   var revBtn=ev.target.closest('[data-revoke]');
   if(revBtn){
-    if(!confirm('Disconnect this connector permanently? Its key stops working immediately and cannot be re-enabled. To stop it temporarily, use Pause instead.'))return;
+    vpConfirm({title:'Disconnect this connector permanently?',message:'Its key stops working immediately and cannot be re-enabled. To stop it temporarily, use Pause instead.',confirm:'Disconnect'},function(){
     var id=revBtn.getAttribute('data-revoke');
     revBtn.disabled=true;
     cxPost('/os/api/apikeys/revoke',{id:id}).then(function(res){
       if(res.ok){location.reload();}else{revBtn.disabled=false;cxSet(res.d.detail||'Could not disconnect',true);}
     }).catch(function(e){revBtn.disabled=false;cxSet('Error: '+e,true);});
+    });
     return;
   }
   // Pause / Resume. Reversible, so no confirm on the way in -- the cost of an
@@ -738,12 +739,13 @@ document.addEventListener('click',function(ev){
   }
   var rmBtn=ev.target.closest('[data-cx-remove]');
   if(rmBtn){
-    if(!confirm('Remove this connector and delete its record? The client is disconnected and the entry disappears from this list. This cannot be undone.'))return;
+    vpConfirm({title:'Remove this connector and delete its record?',message:'The client is disconnected and the entry disappears from this list. This cannot be undone.',confirm:'Remove'},function(){
     var mid=rmBtn.getAttribute('data-cx-remove');
     rmBtn.disabled=true;
     cxPost('/os/api/apikeys/delete',{id:mid}).then(function(res){
       if(res.ok){location.reload();}else{rmBtn.disabled=false;cxSet(res.d.detail||'Could not remove',true);}
     }).catch(function(e){rmBtn.disabled=false;cxSet('Error: '+e,true);});
+    });
     return;
   }
 });

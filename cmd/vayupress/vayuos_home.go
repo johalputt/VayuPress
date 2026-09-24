@@ -22,6 +22,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/mode"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // saHomeVisitorDays is the window Home reports. Two weeks shows a trend and
@@ -261,8 +262,9 @@ func saHomeInstall(cfg *osSettings, snap *adminMetricsSnapshot, m mode.Mode) str
 	if cfg.AccessLevel >= osPathMinLevel("/os/modes") {
 		link = `<a class="section-head__hint" href="/os/modes">System</a>`
 	}
-	b.WriteString(`<section class="sa-home__sec" aria-labelledby="sa-install"><div class="section-head"><span class="section-head__title" id="sa-install">This install</span>` + link + `</div><dl class="sa-facts">`)
-	row := func(k, v string) { b.WriteString(`<div class="sa-fact"><dt>` + k + `</dt><dd>` + v + `</dd></div>`) }
+	b.WriteString(`<section class="sa-home__sec" aria-labelledby="sa-install"><div class="section-head"><span class="section-head__title" id="sa-install">This install</span>` + link + `</div>`)
+	var facts []ui.Fact
+	row := func(k, v string) { facts = append(facts, ui.Fact{Key: k, Value: ui.HTML(v)}) }
 	row("Mode", `<span class="sa-dot sa-dot--`+saModeTone(m)+`"></span>`+html.EscapeString(saModeLabel(m)))
 	world := "Clearnet"
 	if config.Cfg.OnionMode {
@@ -299,7 +301,7 @@ func saHomeInstall(cfg *osSettings, snap *adminMetricsSnapshot, m mode.Mode) str
 			row("Storage", html.EscapeString(humanBytes(free))+` free of `+html.EscapeString(humanBytes(snap.QuotaBytes))+bar)
 		}
 	}
-	b.WriteString(`</dl></section>`)
+	b.WriteString(string(ui.Facts(facts...)) + `</section>`)
 	return b.String()
 }
 

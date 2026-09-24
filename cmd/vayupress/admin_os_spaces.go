@@ -232,11 +232,9 @@ document.querySelectorAll('[data-space-toggle]').forEach(function(btn){
   btn.addEventListener('click',function(){
     var enable=btn.getAttribute('data-space-toggle')==='on';
     btn.disabled=true;
-    // vpPost reloads the page ~650ms after a successful POST, so this re-enable
-    // only ever fires when the POST FAILED (403/500/network) and the page stayed
-    // put — letting the operator retry instead of being stuck with a dead button.
-    setTimeout(function(){btn.disabled=false;},4000);
-    if(window.vpPost){window.vpPost('/os/spaces/toggle?enable='+(enable?'1':'0'),function(){return enable?'Anonymous Tor Space starting…':'Tor Space stopping…';});}
+    // Success reloads into the new state; a failure says why and gives the
+    // button back so the operator can retry.
+    if(window.vpPost){window.vpPost('/os/spaces/toggle?enable='+(enable?'1':'0'),{},function(){vpToast(enable?'Anonymous Tor Space starting…':'Tor Space stopping…','ok');setTimeout(function(){location.reload();},650);},function(d,msg){btn.disabled=false;vpToast(msg,'error');});}
     else{btn.disabled=false;}
   });
 });`

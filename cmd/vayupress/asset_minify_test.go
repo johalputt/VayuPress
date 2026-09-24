@@ -35,28 +35,26 @@ func TestMinifyCSSKeepsWhatCSSMeans(t *testing.T) {
 // number of blocks and declarations is the same before and after.
 func TestMinifiedStylesheetsKeepEveryRule(t *testing.T) {
 	comment := regexp.MustCompile(`(?s)/\*.*?\*/`)
-	for _, f := range []string{"../../static/css/admin-os.css", "../../static/css/vayuos.css"} {
-		src, err := os.ReadFile(f) // #nosec G304 -- repository file
-		if err != nil {
-			t.Fatal(err)
+	src, err := os.ReadFile("../../static/css/vayuos.css") // #nosec G304 -- repository file
+	if err != nil {
+		t.Fatal(err)
+	}
+	min := string(minifyCSS(src))
+	plain := comment.ReplaceAllString(string(src), "")
+	for _, ch := range []string{"{", "}", ";"} {
+		if a, b := strings.Count(plain, ch), strings.Count(min, ch); a != b {
+			t.Errorf("%d %q before minifying, %d after", a, ch, b)
 		}
-		min := string(minifyCSS(src))
-		plain := comment.ReplaceAllString(string(src), "")
-		for _, ch := range []string{"{", "}", ";"} {
-			if a, b := strings.Count(plain, ch), strings.Count(min, ch); a != b {
-				t.Errorf("%s: %d %q before minifying, %d after", f, a, ch, b)
-			}
-		}
-		if strings.Contains(min, "/*") {
-			t.Errorf("%s: a comment survived minifying", f)
-		}
+	}
+	if strings.Contains(min, "/*") {
+		t.Error("a comment survived minifying")
 	}
 }
 
 // The console is SERVED the minified stylesheet: the control is the handler,
 // not the function.
 func TestConsoleStylesheetIsServedMinified(t *testing.T) {
-	src, err := os.ReadFile("../../static/css/admin-os.css") // #nosec G304 -- repository file
+	src, err := os.ReadFile("../../static/css/vayuos.css") // #nosec G304 -- repository file
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,13 +64,13 @@ func TestConsoleStylesheetIsServedMinified(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(disk, "css"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(disk, "css", "admin-os.css"), src, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(disk, "css", "vayuos.css"), src, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	for name, dir := range map[string]string{"from disk": disk, "from the binary": filepath.Join(disk, "absent")} {
 		t.Setenv("STATIC_DIR", dir)
 		w := httptest.NewRecorder()
-		serveAdminOSAsset("css/admin-os.css", "text/css; charset=utf-8")(w, httptest.NewRequest(http.MethodGet, "/os/static/css/admin-os.css", nil))
+		serveAdminOSAsset("css/vayuos.css", "text/css; charset=utf-8")(w, httptest.NewRequest(http.MethodGet, "/os/static/css/vayuos.css", nil))
 		if w.Code != http.StatusOK {
 			t.Fatalf("%s: status %d", name, w.Code)
 		}
@@ -82,29 +80,22 @@ func TestConsoleStylesheetIsServedMinified(t *testing.T) {
 	}
 }
 
-// Every console page downloads both stylesheets before it can paint, so their
-// size is a budget, not an accident. The budget is on the minified bytes, the
-// part the source controls. Not on gzip output: the same files compress to
-// 54 KB under Go 1.26 and 58 KB under Go 1.27, so a gzip budget measured the
+// Every console page downloads the stylesheet before it can paint, so its size
+// is a budget, not an accident. The budget is on the minified bytes, the part
+// the source controls. Not on gzip output: the same file compresses to
+// different sizes under Go 1.26 and Go 1.27, so a gzip budget measured the
 // toolchain as much as the CSS, and went red on CI's newer Go with nothing
-// changed. Today the two files minify to 329,764 bytes; the budget leaves
-// about 4 KB for ordinary work, and the rules the classic console left behind
-// (344,105 bytes with them) would not fit if they came back. Raise it on
-// purpose, in this line.
-const consoleCSSBudget = 334_000
+// changed. Today the sheet minifies to 311,232 bytes; the budget leaves about
+// 4 KB for ordinary work, and the classic sheet's decoration (335,629 bytes
+// with it) would not fit if it came back. Raise it on purpose, in this line.
+const consoleCSSBudget = 315_000
 
-func TestConsoleStylesheetsFitTheirBudget(t *testing.T) {
-	total := 0
-	for _, f := range []string{"../../static/css/admin-os.css", "../../static/css/vayuos.css"} {
-		src, err := os.ReadFile(f) // #nosec G304 -- repository file
-		if err != nil {
-			t.Fatal(err)
-		}
-		n := len(minifyCSS(src))
-		t.Logf("%s: %d bytes minified", filepath.Base(f), n)
-		total += n
+func TestConsoleStylesheetFitsItsBudget(t *testing.T) {
+	src, err := os.ReadFile("../../static/css/vayuos.css") // #nosec G304 -- repository file
+	if err != nil {
+		t.Fatal(err)
 	}
-	if total > consoleCSSBudget {
-		t.Errorf("the console's stylesheets are %d bytes minified, over the %d-byte budget", total, consoleCSSBudget)
+	if n := len(minifyCSS(src)); n > consoleCSSBudget {
+		t.Errorf("the console's stylesheet is %d bytes minified, over the %d-byte budget", n, consoleCSSBudget)
 	}
 }

@@ -213,13 +213,13 @@ func (a *App) renderTorWorldUnavailable(w http.ResponseWriter, r *http.Request) 
 	_, _ = w.Write([]byte(`<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="refresh" content="4">
 <title>Tor world starting…</title>
-<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
-</head><body class="vp-os" data-space="tor">
-<div style="max-width:34rem;margin:14vh auto;padding:0 1.5rem;text-align:center">
-<h1>Starting your Tor world…</h1>
-<p class="text-sm muted">Your anonymous world is booting and publishing its <code>.onion</code> — this can take a couple of minutes the first time. This page refreshes itself.</p>
-<p><a class="btn btn--ghost" href="/os/world?target=clearnet">← Back to Clearnet</a></p>
-</div>
+<link rel="stylesheet" href="/os/static/css/vayuos.css?v=` + assetVer("css/vayuos.css") + `">
+</head><body class="vp-os auth-page" data-ui="still-air" data-theme="auto" data-space="tor">
+<main class="auth-col"><div class="login-card">
+<h1 class="login-title">Starting your Tor world…</h1>
+<p class="login-sub">Your anonymous world is booting and publishing its <code>.onion</code>. The first time, this can take a couple of minutes. This page refreshes itself.</p>
+<p class="login-recover"><a href="/os/world?target=clearnet">Back to Clearnet</a></p>
+</div></main>
 <script nonce="` + nonce + `">setTimeout(function(){location.reload();},4000);</script>
 </body></html>`))
 }

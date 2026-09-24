@@ -10,7 +10,7 @@ package main
 // `.page-header` on a substring test.
 //
 // This gate reads the SOURCE of every file that renders into the VayuOS shell
-// and holds it against admin-os.css — the one stylesheet that shell loads. It is
+// and holds it against vayuos.css — the one stylesheet that shell loads. It is
 // the deadcode gate's shape: a frozen baseline of what is already wrong, and a
 // failure for anything added to it. Forty-three classes render unstyled today;
 // each needs a design decision rather than a mechanical fix, and pretending
@@ -66,7 +66,7 @@ var goClassLiteralRe = regexp.MustCompile(`class="([a-zA-Z0-9_\- ]+)"`)
 var consoleShellCall = regexp.MustCompile(`adminOSShellHead|writeOSHTML`)
 
 // ownStylesheetRe marks a chunk that links its OWN stylesheet, so it belongs to
-// some other surface and admin-os.css says nothing about it. handlers_team.go
+// some other surface and vayuos.css says nothing about it. handlers_team.go
 // renders BOTH a console page and a public author page; judging the whole file
 // against the console's sheet would report the public page's entire grammar as
 // unstyled.
@@ -78,7 +78,7 @@ var consoleShellCall = regexp.MustCompile(`adminOSShellHead|writeOSHTML`)
 var ownStylesheetRe = regexp.MustCompile(`["']/static/css/`)
 
 // consoleSourceFiles are the files that render into the VayuOS shell, and so are
-// styled by admin-os.css and nothing else. The theme store renders a PUBLIC page
+// styled by vayuos.css and nothing else. The theme store renders a PUBLIC page
 // with the site's own stylesheet, so it is not one of them.
 func consoleSourceFiles(t *testing.T) []string {
 	t.Helper()
@@ -86,7 +86,17 @@ func consoleSourceFiles(t *testing.T) []string {
 	if err != nil {
 		t.Fatalf("glob: %v", err)
 	}
+	// The primitives emit classes for every page that uses them.
+	prims, err := filepath.Glob(filepath.Join("..", "..", "internal", "ui", "*.go"))
+	if err != nil {
+		t.Fatalf("glob: %v", err)
+	}
 	var out []string
+	for _, f := range prims {
+		if !strings.HasSuffix(f, "_test.go") {
+			out = append(out, f)
+		}
+	}
 	for _, f := range all {
 		b := filepath.Base(f)
 		if strings.HasSuffix(b, "_test.go") || strings.Contains(b, "theme_store") {
@@ -126,14 +136,7 @@ func consoleChunks(src string) []string {
 }
 
 func TestNoNewUnstyledClassInTheVayuOSConsole(t *testing.T) {
-	css := loadAdminOSCSS(t)
-	// The Still Air shell's own classes (sa-*) render only in that design, so
-	// they answer to its stylesheet; everything else still answers to
-	// admin-os.css, which both designs load.
-	stillAir, err := os.ReadFile(filepath.Clean("../../static/css/vayuos.css"))
-	if err != nil {
-		t.Fatalf("vayuos.css: %v", err)
-	}
+	css := loadConsoleCSS(t)
 	seen := map[string]string{}
 	for _, f := range consoleSourceFiles(t) {
 		src, err := os.ReadFile(f) // #nosec G304 -- walking this repository
@@ -143,11 +146,7 @@ func TestNoNewUnstyledClassInTheVayuOSConsole(t *testing.T) {
 		for _, chunk := range consoleChunks(string(src)) {
 			for _, m := range goClassLiteralRe.FindAllStringSubmatch(chunk, -1) {
 				for _, cls := range strings.Fields(m[1]) {
-					sheet := css
-					if strings.HasPrefix(cls, "sa-") {
-						sheet = string(stillAir)
-					}
-					if consoleUtilityClasses[cls] || consoleUnstyledBaseline[cls] || cssDefines(sheet, cls) {
+					if consoleUtilityClasses[cls] || consoleUnstyledBaseline[cls] || cssDefines(css, cls) {
 						continue
 					}
 					if _, dup := seen[cls]; !dup {
@@ -164,7 +163,7 @@ func TestNoNewUnstyledClassInTheVayuOSConsole(t *testing.T) {
 	if len(novel) > 0 {
 		sort.Strings(novel)
 		t.Errorf("%d class(es) render unstyled in the VayuOS console and are not in the known "+
-			"baseline:\n  %s\nAdd a rule to static/css/admin-os.css (vayuos.css for a Still Air sa-* class). An element carrying a class "+
+			"baseline:\n  %s\nAdd a rule to static/css/vayuos.css. An element carrying a class "+
 			"with no rule renders as bare inline text, and every test about its content still passes.",
 			len(novel), strings.Join(novel, "\n  "))
 	}
@@ -174,7 +173,7 @@ func TestNoNewUnstyledClassInTheVayuOSConsole(t *testing.T) {
 // removed from the list, so the list keeps meaning "still unstyled" rather than
 // drifting into a permanent allowlist nobody rereads.
 func TestTheUnstyledBaselineCarriesNothingAlreadyFixed(t *testing.T) {
-	css := loadAdminOSCSS(t)
+	css := loadConsoleCSS(t)
 	for cls := range consoleUnstyledBaseline {
 		if cssDefines(css, cls) {
 			t.Errorf("%q has a rule now — remove it from consoleUnstyledBaseline so the list keeps "+

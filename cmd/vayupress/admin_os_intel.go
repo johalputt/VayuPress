@@ -194,7 +194,7 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
   <h1>SEO</h1>
   <div class="page-actions"><button type="button" class="btn btn--primary btn--sm" data-seo-regenerate>Regenerate artefacts</button></div>
 </div>
-<p class="page-sub">Search visibility, instant indexing and content health — plus live proof search engines and AI systems are crawling your content. Tap a card to expand it.</p>
+<p class="page-sub">Search visibility, instant indexing and content health — plus live proof search engines and AI systems are crawling your content..</p>
 
 <div class="stat-grid mb-6">
   <div class="stat-card"><div class="stat-card__label">SEO-healthy</div><div class="stat-card__value">` + num(healthy) + `</div><div class="stat-card__bottom"><span class="muted text-xs">good title + depth</span></div></div>
@@ -205,8 +205,8 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 
 <div class="section-head"><span class="section-head__title">Indexing</span><span class="section-head__hint">Get crawled fast &amp; see who is crawling</span></div>
 <div class="mon-stack">` +
-		monAcc(saIcon("bot"), "Search engine &amp; AI crawl activity", "Live per-crawler counts — proof indexing works", a.seoCrawlChip(), true, a.seoCrawlActivityCard()) +
-		monAcc(saIcon("bolt"), "Instant indexing (IndexNow)", "One-click auto-connect to Bing, Yandex &amp; more", inChip, false,
+		monAcc(saIcon("bot"), "Search engine & AI crawl activity", "Live per-crawler counts — proof indexing works", a.seoCrawlChip(), true, a.seoCrawlActivityCard()) +
+		monAcc(saIcon("bolt"), "Instant indexing (IndexNow)", "One-click auto-connect to Bing, Yandex & more", inChip, false,
 			`<p class="text-sm muted">IndexNow tells Bing, Yandex and other participating engines the moment you publish or update a post, so changes get crawled in minutes instead of days. It is fully automatic — one click creates your key, hosts the verification file at your domain root and verifies it with IndexNow. After that, every post you publish is submitted for you.</p>
   <p class="text-sm mt-2">`+indexNowStatus+`</p>
   <div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-indexnow-test>Connect &amp; verify IndexNow</button></div>
@@ -215,7 +215,7 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 
 <div class="section-head"><span class="section-head__title">Site health</span><span class="section-head__hint">Artefacts &amp; on-page SEO checks</span></div>
 <div class="mon-stack">` +
-		monAcc(saIcon("doc"), "Artefacts", "Sitemap, RSS &amp; robots.txt freshness", artChip, false,
+		monAcc(saIcon("doc"), "Artefacts", "Sitemap, RSS & robots.txt freshness", artChip, false,
 			`<div class="table-wrap"><table class="table">
     <thead><tr><th>Artefact</th><th>Status</th></tr></thead>
     <tbody>
@@ -225,7 +225,7 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
     </tbody>
   </table></div>
   <div class="seo-status mt-3" data-seo-status hidden></div>`) +
-		monAcc(saIcon("check-c"), "Health checks", "On-page SEO &amp; crawlability", "", false,
+		monAcc(saIcon("check-c"), "Health checks", "On-page SEO & crawlability", "", false,
 			`<div class="table-wrap"><table class="table">
     <thead><tr><th>Check</th><th>Result</th></tr></thead>
     <tbody>`+checksRows+`</tbody>
@@ -664,16 +664,16 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 
 <div class="section-head"><span class="section-head__title">Content &amp; audience</span><span class="section-head__hint">What they read, on what device, and from where</span></div>
 <div class="mon-stack">` +
-		monAcc(saIcon("doc"), "Top pages &amp; referrers", "Most-viewed content and where visitors come from", countChip(len(sum.TopPages), "pages"), false, pagesPanel) +
-		monAcc(saIcon("monitor"), "Audience", "Channels, devices, browsers &amp; operating systems", "", false, audiencePanel) +
-		monAcc(saIcon("globe"), "Geography", "Countries, regions &amp; cities — coarse geo only", countChip(len(countries), "countries"), false, osGeoSection(countries, regions, cities)) +
+		monAcc(saIcon("doc"), "Top pages & referrers", "Most-viewed content and where visitors come from", countChip(len(sum.TopPages), "pages"), false, pagesPanel) +
+		monAcc(saIcon("monitor"), "Audience", "Channels, devices, browsers & operating systems", "", false, audiencePanel) +
+		monAcc(saIcon("globe"), "Geography", "Countries, regions & cities — coarse geo only", countChip(len(countries), "countries"), false, osGeoSection(countries, regions, cities)) +
 		`</div>
 
 <div class="section-head"><span class="section-head__title">Acquisition &amp; actions</span><span class="section-head__hint">Campaigns, custom events, goals and visitor journeys</span></div>
 <div class="mon-stack">` +
-		monAcc(saIcon("megaphone"), "Campaigns (UTM)", "Which shared links &amp; campaigns bring visitors", countChip(len(utm), "campaigns"), false, campaignsPanel) +
+		monAcc(saIcon("megaphone"), "Campaigns (UTM)", "Which shared links & campaigns bring visitors", countChip(len(utm), "campaigns"), false, campaignsPanel) +
 		monAcc(saIcon("sparkle"), "Custom events", "Actions you track with data-vp-event / VayuPress.track()", countChip(len(events), "events"), false, eventsPanel) +
-		monAcc(saIcon("target"), "Goals &amp; funnels", "Conversions and multi-step funnels", "", false, a.osGoalsSection(ctx, days)) +
+		monAcc(saIcon("target"), "Goals & funnels", "Conversions and multi-step funnels", "", false, a.osGoalsSection(ctx, days)) +
 		monAcc(saIcon("compass"), "Visitor journey", "Common entry pages and paths through your site", "", false, a.osJourneySection(ctx, days)) +
 		`</div>
 
@@ -687,7 +687,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		strconv.FormatInt(sum.TotalViews, 10) + ` page requests · ` + periodLabel +
 		` · updated ` + config.FormatSiteStamp(now) + `</span>
 </div>
-<p class="page-sub">Privacy-first, cookieless analytics — audience, engagement, geography and campaigns, all computed on your own server. Tap a card to expand it.</p>` +
+<p class="page-sub">Privacy-first, cookieless analytics — audience, engagement, geography and campaigns, all computed on your own server..</p>` +
 		a.analyticsScopeNote(ctx) +
 		osPeriodSelector(days) + kpiHeader + sections + osPrivacyNote()
 

@@ -39,7 +39,7 @@ func TestAccountsListFragmentRendersCollapsibleCards(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		`class="vm-stats"`,             // enterprise stat strip
+		`class="stat-grid"`,            // the figures
 		`<details class="vm-acct`,      // collapsible card
 		"dana@example.com",             // the seeded mailbox
 		"/os/vayumail/accounts/action", // inline HTMX action target

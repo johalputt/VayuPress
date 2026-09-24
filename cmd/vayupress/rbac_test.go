@@ -148,7 +148,7 @@ func TestOSPathMinLevelFailClosed(t *testing.T) {
 func TestMailOnlyPathAllowed(t *testing.T) {
 	allowed := []string{
 		"/os/vayumail/inbox", "/os/vayumail/message", "/os/profile",
-		"/os/logout", "/os/static/css/admin-os.css",
+		"/os/logout", "/os/static/css/vayuos.css",
 		// The ADR-0144 recovery endpoints a confined mailbox genuinely needs.
 		"/os/api/vayuos/mail/recovery/status", "/os/api/vayuos/mail/recovery/codes",
 	}

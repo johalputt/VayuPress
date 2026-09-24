@@ -173,7 +173,7 @@ func mcpSnippet(id, tpl string) string {
 // freshly minted key.
 const mcpClientScript = `
 var mxStatus=document.getElementById('` + mcpStatusID + `');
-function mxSet(t,isErr){if(mxStatus){mxStatus.textContent=t;mxStatus.style.color=isErr?'var(--color-danger,#ef4444)':'var(--color-success,#22c55e)';}}
+function mxSet(t,isErr){if(mxStatus){mxStatus.textContent=t;mxStatus.style.color=isErr?'var(--danger)':'var(--ok)';}}
 function mxPost(url,payload){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify(payload||{})}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});});}
 function mxCopy(text){if(navigator.clipboard){navigator.clipboard.writeText(text);}return true;}
 

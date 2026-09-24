@@ -21,9 +21,9 @@ import (
 var cssFontURL = regexp.MustCompile(`url\("([^"]+\.woff2?)"\)`)
 
 func TestConsoleCSSFontsAreActuallyServed(t *testing.T) {
-	css, err := os.ReadFile("../../static/css/admin-os.css")
+	css, err := os.ReadFile("../../static/css/vayuos.css")
 	if err != nil {
-		t.Fatalf("read admin-os.css: %v", err)
+		t.Fatalf("read vayuos.css: %v", err)
 	}
 	matches := cssFontURL.FindAllStringSubmatch(string(css), -1)
 	if len(matches) == 0 {
@@ -39,32 +39,31 @@ func TestConsoleCSSFontsAreActuallyServed(t *testing.T) {
 		case strings.HasPrefix(ref, "/static/fonts/"):
 			name := strings.TrimPrefix(ref, "/static/fonts/")
 			if !fontAllowlist[name] {
-				t.Errorf("admin-os.css requests %s, which handleStaticFont does not allowlist — it will 404", ref)
+				t.Errorf("vayuos.css requests %s, which handleStaticFont does not allowlist — it will 404", ref)
 			}
 		// This prefix is what broke: it was served from STATIC_DIR on disk with no
 		// embedded fallback, so a binary-only update left it 404ing forever.
 		case strings.HasPrefix(ref, "/os/static/fonts/"):
-			t.Errorf("admin-os.css requests %s, but /os serves no fonts — use /static/fonts/ "+
+			t.Errorf("vayuos.css requests %s, but /os serves no fonts — use /static/fonts/ "+
 				"(embedded in the binary) so a binary-only update cannot break it", ref)
 		default:
-			t.Errorf("admin-os.css requests %s from an unrecognised path; verify a route serves it", ref)
+			t.Errorf("vayuos.css requests %s from an unrecognised path; verify a route serves it", ref)
 		}
 	}
 }
 
 // TestConsoleFontStacksHaveSystemFallbacks — every family the console names must
-// degrade to something real. Inter and JetBrains Mono are deliberately NOT shipped
-// (adding ~200 KB of typefaces to a single-binary product to restyle an admin
-// panel is the wrong trade), so the stacks behind them have to carry the design.
+// degrade to something real. The binary embeds only Latin subsets of Inter and
+// JetBrains Mono, so any other script, and a font that fails to load, falls to
+// the stacks behind them.
 func TestConsoleFontStacksHaveSystemFallbacks(t *testing.T) {
-	css, err := os.ReadFile("../../static/css/admin-os.css")
+	css, err := os.ReadFile("../../static/css/vayuos.css")
 	if err != nil {
-		t.Fatalf("read admin-os.css: %v", err)
+		t.Fatalf("read vayuos.css: %v", err)
 	}
 	for _, v := range []struct{ name, fallback string }{
-		{"--font-head", "system-ui"},
-		{"--font-body", "system-ui"},
-		{"--font-mono", "ui-monospace"},
+		{"--font-ui", "system-ui"},
+		{"--font-code", "ui-monospace"},
 	} {
 		i := strings.Index(string(css), v.name+":")
 		if i < 0 {

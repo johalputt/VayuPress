@@ -132,7 +132,7 @@ func (a *App) paymentGatewaysCard(nonce string, ctx context.Context) string {
 	saveLabel := "Save &amp; connect"
 	disconnect := ""
 	if connected {
-		statusLine = `<strong style="color:var(--color-success,#22c55e)">● Connected</strong> <span class="text-sm muted font-mono">` + html.EscapeString(hint) + `</span>`
+		statusLine = `<strong class="tone-ok">● Connected</strong> <span class="text-sm muted font-mono">` + html.EscapeString(hint) + `</span>`
 		saveLabel = "Update key"
 		disconnect = `<button type="button" class="btn btn--ghost btn--sm" id="pay-stripe-disconnect">Disconnect</button>`
 	}
@@ -160,7 +160,7 @@ func (a *App) paymentGatewaysCard(nonce string, ctx context.Context) string {
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var msg=document.getElementById('pay-stripe-msg');
-function show(t,e){if(!msg)return;msg.textContent=t;msg.style.color=e?'#ef4444':'';}
+function show(t,e){if(!msg)return;msg.textContent=t;msg.style.color=e?'var(--danger)':'';}
 function jpost(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:body?JSON.stringify(body):null}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});});}
 function errMsg(d){return d&&(d.detail||(d.error&&(d.error.message||d.error))||d.title)||'Error';}
 var saveBtn=document.getElementById('pay-stripe-save');
@@ -183,9 +183,10 @@ if(testBtn)testBtn.addEventListener('click',function(){
 });
 var dcBtn=document.getElementById('pay-stripe-disconnect');
 if(dcBtn)dcBtn.addEventListener('click',function(){
-  if(!confirm('Disconnect Stripe? Card checkout stops; your key is kept so you can reconnect.'))return;
+  vpConfirm({title:'Disconnect Stripe?',message:'Card checkout stops; your key is kept so you can reconnect.',confirm:'Disconnect'},function(){
   dcBtn.disabled=true;
   jpost('/os/api/payments/stripe/disconnect',null).then(function(res){if(res.ok){location.reload();}else{dcBtn.disabled=false;show('Error',true);}});
+  });
 });
 })();
 </script>`
@@ -299,7 +300,7 @@ func (a *App) paypalConnectCard(nonce string, ctx context.Context) string {
 		if sandbox {
 			env = "Sandbox"
 		}
-		statusLine = `<strong style="color:var(--color-success,#22c55e)">● Connected</strong> <span class="text-sm muted font-mono">` + html.EscapeString(hint) + `</span> <span class="text-xs muted">· ` + env + `</span>`
+		statusLine = `<strong class="tone-ok">● Connected</strong> <span class="text-sm muted font-mono">` + html.EscapeString(hint) + `</span> <span class="text-xs muted">· ` + env + `</span>`
 		saveLabel = "Update credentials"
 		disconnect = `<button type="button" class="btn btn--ghost btn--sm" id="pay-pp-disconnect">Disconnect</button>`
 	}
@@ -334,7 +335,7 @@ func (a *App) paypalConnectCard(nonce string, ctx context.Context) string {
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var msg=document.getElementById('pay-pp-msg');
-function show(t,e){if(!msg)return;msg.textContent=t;msg.style.color=e?'#ef4444':'';}
+function show(t,e){if(!msg)return;msg.textContent=t;msg.style.color=e?'var(--danger)':'';}
 function jpost(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:body?JSON.stringify(body):null}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});});}
 function errMsg(d){return d&&(d.detail||(d.error&&(d.error.message||d.error))||d.title)||'Error';}
 var saveBtn=document.getElementById('pay-pp-save');
@@ -358,9 +359,10 @@ if(testBtn)testBtn.addEventListener('click',function(){
 });
 var dcBtn=document.getElementById('pay-pp-disconnect');
 if(dcBtn)dcBtn.addEventListener('click',function(){
-  if(!confirm('Disconnect PayPal? New PayPal checkouts will stop.'))return;
+  vpConfirm({title:'Disconnect PayPal?',message:'New PayPal checkouts will stop.',confirm:'Disconnect'},function(){
   dcBtn.disabled=true;
   jpost('/os/api/payments/paypal/disconnect',null).then(function(res){if(res.ok){location.reload();}else{dcBtn.disabled=false;show('Error',true);}});
+  });
 });
 })();
 </script>`
@@ -485,7 +487,7 @@ func (a *App) btcpayConnectCard(nonce string, ctx context.Context) string {
 	saveLabel := "Save &amp; connect"
 	disconnect := ""
 	if connected {
-		statusLine = `<strong style="color:var(--color-success,#22c55e)">● Connected</strong> <span class="text-sm muted font-mono">` + html.EscapeString(url) + `</span>`
+		statusLine = `<strong class="tone-ok">● Connected</strong> <span class="text-sm muted font-mono">` + html.EscapeString(url) + `</span>`
 		saveLabel = "Update settings"
 		disconnect = `<button type="button" class="btn btn--ghost btn--sm" id="pay-btc-disconnect">Disconnect</button>`
 	}
@@ -532,7 +534,7 @@ func (a *App) btcpayConnectCard(nonce string, ctx context.Context) string {
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var msg=document.getElementById('pay-btc-msg');
-function show(t,e){if(!msg)return;msg.textContent=t;msg.style.color=e?'#ef4444':'';}
+function show(t,e){if(!msg)return;msg.textContent=t;msg.style.color=e?'var(--danger)':'';}
 function jpost(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:body?JSON.stringify(body):null}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});});}
 function errMsg(d){return d&&(d.detail||(d.error&&(d.error.message||d.error))||d.title)||'Error';}
 var saveBtn=document.getElementById('pay-btc-save');
@@ -557,9 +559,10 @@ if(testBtn)testBtn.addEventListener('click',function(){
 });
 var dcBtn=document.getElementById('pay-btc-disconnect');
 if(dcBtn)dcBtn.addEventListener('click',function(){
-  if(!confirm('Disconnect BTCPay? New crypto checkouts will stop.'))return;
+  vpConfirm({title:'Disconnect BTCPay?',message:'New crypto checkouts will stop.',confirm:'Disconnect'},function(){
   dcBtn.disabled=true;
   jpost('/os/api/payments/btcpay/disconnect',null).then(function(res){if(res.ok){location.reload();}else{dcBtn.disabled=false;show('Error',true);}});
+  });
 });
 })();
 </script>`

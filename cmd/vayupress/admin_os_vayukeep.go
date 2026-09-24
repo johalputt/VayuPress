@@ -431,7 +431,7 @@ func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vay
   <h1>Backup &amp; Recovery <span class="badge badge--` + bannerTone + `">` + html.EscapeString(v.Chip) + `</span></h1>
   <div class="page-actions"><span id="vk-page-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
 </div>
-<p class="page-sub">Automatic, encrypted copies of your entire site — database, media, mailboxes and settings — checked on a schedule so you know they actually restore. Tap a card to expand it.</p>
+<p class="page-sub">Automatic, encrypted copies of your entire site — database, media, mailboxes and settings — checked on a schedule so you know they actually restore..</p>
 <div class="card"><p class="text-sm">` + v.Headline + `</p></div>
 ` + osVayuKeepStats(st, now)
 
@@ -448,7 +448,7 @@ func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vay
 		chip := `<span class="` + chipCls + `">● ` + html.EscapeString(v.Chip) + `</span>`
 		body += `<div class="section-head"><span class="section-head__title">Protection</span><span class="section-head__hint">What is saved, and proof that it restores</span></div>
 <div class="mon-stack">` +
-			monAcc(iconKeep, "Status &amp; controls", "Back up now, or prove a restore works", chip, true, keepStatusCard(st, now)) +
+			monAcc(iconKeep, "Status & controls", "Back up now, or prove a restore works", chip, true, keepStatusCard(st, now)) +
 			monAcc(iconVCB, "Restore points", strconv.Itoa(len(gens))+" saved · "+humanBytes(st.TotalBytes), "", false, keepPointsCard(gens, now)) +
 			`</div>`
 	}
@@ -456,14 +456,14 @@ func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vay
 	body += `<div class="section-head"><span class="section-head__title">Recovery</span><span class="section-head__hint">Exactly what to do when you need it</span></div>
 <div class="mon-stack">` +
 		monAcc(iconVCB, "How to restore", "One click here, or from a shell if the site will not start", "", false, keepRestoreCard(st)) +
-		monAcc(iconArchive, "Manual backup &amp; restore", "Download a copy, or restore one you already have", "", false, keepManualCard()) +
+		monAcc(iconArchive, "Manual backup & restore", "Download a copy, or restore one you already have", "", false, keepManualCard()) +
 		`</div>
 
 <div class="section-head"><span class="section-head__title">How it works</span><span class="section-head__hint">The guarantees, stated plainly</span></div>
 <div class="mon-stack">` +
-		monAcc(iconKey, "Encryption &amp; safety", "What is protected, and what deliberately is not", "", false, keepSpecCard(st)) +
+		monAcc(iconKey, "Encryption & safety", "What is protected, and what deliberately is not", "", false, keepSpecCard(st)) +
 		monAcc(iconVCB, "How the schedule works", "When backups happen and what is kept", "", false, keepScheduleCard(prefs)) +
-		monAcc(iconArchive, "Schedule &amp; housekeeping", "How often to back up, and how long copies are kept", "", false,
+		monAcc(iconArchive, "Schedule & housekeeping", "How often to back up, and how long copies are kept", "", false,
 			keepRetentionCard(prefs)) +
 		`</div>
 

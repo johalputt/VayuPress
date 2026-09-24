@@ -178,7 +178,7 @@ func TestHardeningActionsAreNotHiddenByCSS(t *testing.T) {
 // while the buttons vanish again — the two halves live in different files and
 // nothing else connects them.
 func TestVsAdvOpenIsAlwaysVisible(t *testing.T) {
-	css, err := os.ReadFile("../../static/css/admin-os.css")
+	css, err := os.ReadFile("../../static/css/vayuos.css")
 	if err != nil {
 		t.Skipf("stylesheet not readable here: %v", err)
 	}

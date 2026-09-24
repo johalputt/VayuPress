@@ -222,7 +222,7 @@ func TestAPIKeyStatsCountOnlyUsableGrants(t *testing.T) {
 // carry the flex column too, and min-height:0 is what actually permits a flex
 // child to shrink below its content — without it the body never scrolls.
 func TestModalPanelCanScroll(t *testing.T) {
-	css, err := os.ReadFile("../../static/css/admin-os.css")
+	css, err := os.ReadFile("../../static/css/vayuos.css")
 	if err != nil {
 		t.Skipf("stylesheet not readable: %v", err)
 	}

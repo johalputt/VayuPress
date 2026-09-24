@@ -29,7 +29,7 @@ func Section(title, hint string, body HTML) HTML {
 	if hint != "" {
 		h = `<span class="section-head__hint">` + string(Text(hint)) + `</span>`
 	}
-	return HTML(`<section class="ui-sec"><div class="section-head"><h2 class="section-head__title">` +
+	return HTML(`<section><div class="section-head"><h2 class="section-head__title">` +
 		string(Text(title)) + `</h2>` + h + `</div>` + string(body) + `</section>`)
 }
 
@@ -45,7 +45,7 @@ type Row struct {
 // Rows renders settings as rows with the control on the right.
 func Rows(rows ...Row) HTML {
 	var b strings.Builder
-	b.WriteString(`<div class="ui-rows">`)
+	b.WriteString(`<div>`)
 	for _, r := range rows {
 		cls := "settings-row"
 		if r.Changed {
@@ -92,40 +92,50 @@ type Figure struct {
 
 // Figures renders the few numbers that answer "what is the state of this".
 func Figures(figs ...Figure) HTML {
-	var b strings.Builder
-	b.WriteString(`<div class="stat-grid">`)
-	for _, f := range figs {
-		cls := "stat-card"
-		switch f.Tone {
-		case "warn", "danger":
-			cls += " stat-card--" + f.Tone
-		}
-		b.WriteString(`<div class="` + cls + `"><div class="stat-card__label">` + string(Text(f.Label)) +
-			`</div><div class="stat-card__value">` + string(Text(f.Value)) + `</div>`)
-		if f.Note != "" {
-			b.WriteString(`<div class="stat-card__note">` + string(Text(f.Note)) + `</div>`)
-		}
-		b.WriteString(`</div>`)
+	cells := make([]HTML, len(figs))
+	for i, f := range figs {
+		cells[i] = f.Cell()
 	}
-	b.WriteString(`</div>`)
-	return HTML(b.String())
+	return FigureRow(cells...)
 }
 
-// Disclosure is a row that opens to show more: an icon, a title, one line
-// under it, a state label on the right, and the body. No script: <details>.
-func Disclosure(icon, title, sub string, state HTML, open bool, body HTML) HTML {
+// FigureRow lays out figure cells built one at a time, for a page that
+// decides each figure's tone between them.
+func FigureRow(cells ...HTML) HTML {
+	return HTML(`<div class="stat-grid">` + string(Join(cells...)) + `</div>`)
+}
+
+// Cell renders one figure.
+func (f Figure) Cell() HTML {
+	cls := "stat-card"
+	switch f.Tone {
+	case "warn", "danger":
+		cls += " stat-card--" + f.Tone
+	}
+	s := `<div class="` + cls + `"><div class="stat-card__label">` + string(Text(f.Label)) +
+		`</div><div class="stat-card__value">` + string(Text(f.Value)) + `</div>`
+	if f.Note != "" {
+		s += `<div class="stat-card__note">` + string(Text(f.Note)) + `</div>`
+	}
+	return HTML(s + `</div>`)
+}
+
+// Disclosure is a row that opens to show more: an icon (already drawn, so any
+// icon helper can supply it), a title, one line under it, a state label on the
+// right, and the body. No script: <details>. The chevron turns when it opens.
+func Disclosure(icon HTML, title, sub string, state HTML, open bool, body HTML) HTML {
 	o := ""
 	if open {
 		o = " open"
 	}
 	ic := ""
 	if icon != "" {
-		ic = `<span class="mon-acc__ic" aria-hidden="true">` + string(Icon(icon)) + `</span>`
+		ic = `<span class="mon-acc__ic" aria-hidden="true">` + string(icon) + `</span>`
 	}
 	return HTML(`<details class="mon-acc"` + o + `><summary class="mon-acc__sum">` + ic +
 		`<span class="mon-acc__head"><span class="mon-acc__title">` + string(Text(title)) + `</span>` +
 		`<span class="mon-acc__sub">` + string(Text(sub)) + `</span></span>` + string(state) +
-		string(Icon("chev-d")) + `</summary><div class="mon-acc__body">` + string(body) + `</div></details>`)
+		`<span class="mon-acc__chev" aria-hidden="true">` + string(Icon("chev-d")) + `</span></summary><div class="mon-acc__body">` + string(body) + `</div></details>`)
 }
 
 // Table renders a table with its header row. Cells are trusted markup; a
@@ -178,4 +188,43 @@ func Empty(icon, title, sub string, action HTML) HTML {
 	}
 	return HTML(`<div class="empty-state"><div class="empty-icon">` + string(Icon(icon)) + `</div><div class="empty-title">` +
 		string(Text(title)) + `</div>` + s + string(action) + `</div>`)
+}
+
+// Tag is a short status label on its tone's tint: ok, warn, danger, info or
+// muted. Anything else is muted, so a caller cannot put a class of its own
+// choosing into the markup.
+func Tag(tone, text string) HTML {
+	switch tone {
+	case "ok", "warn", "danger", "info":
+	default:
+		tone = "muted"
+	}
+	return HTML(`<span class="badge badge--` + tone + `">` + string(Text(text)) + `</span>`)
+}
+
+// Step is one stage of a process: a short mark on the left (a time, a count),
+// what happens, and what it means. Now marks the stage the system is in.
+type Step struct {
+	Mark, Title, Detail string
+	Now                 bool
+}
+
+// Steps renders a process in order, one stage per line.
+func Steps(steps ...Step) HTML {
+	var b strings.Builder
+	b.WriteString(`<ol class="sa-steps">`)
+	for _, s := range steps {
+		cls := "sa-step"
+		if s.Now {
+			cls += " sa-step--now"
+		}
+		b.WriteString(`<li class="` + cls + `"><span class="sa-step__t">` + string(Text(s.Mark)) +
+			`</span><span class="sa-step__n" aria-hidden="true"></span><span class="sa-step__d"><b>` + string(Text(s.Title)) + `</b>`)
+		if s.Detail != "" {
+			b.WriteString(`<br><span class="muted">` + string(Text(s.Detail)) + `</span>`)
+		}
+		b.WriteString(`</span></li>`)
+	}
+	b.WriteString(`</ol>`)
+	return HTML(b.String())
 }

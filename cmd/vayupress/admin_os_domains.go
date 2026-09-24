@@ -203,7 +203,7 @@ func domainsHeader(domains []domain.Domain, viewingHost string) string {
 	// of page views (ADR-0157).
 	b.WriteString(nginxConfigHealthCard(inspectNginxSitesEnabled(nginxSitesEnabled)))
 
-	b.WriteString(`<div class="vm-stats">`)
+	b.WriteString(`<div class="stat-grid">`)
 	b.WriteString(vmStatTile(strconv.Itoa(total), "Sites", ""))
 	b.WriteString(vmStatTile(strconv.Itoa(live), "Enabled", ""))
 	heldTone := ""

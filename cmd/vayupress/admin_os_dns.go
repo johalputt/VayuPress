@@ -539,7 +539,7 @@ func (a *App) handleOSDNS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Stats strip, matching the Mail accounts / Monetization language.
-	body.WriteString(`<div class="vm-stats">`)
+	body.WriteString(`<div class="stat-grid">`)
 	body.WriteString(vmStatTile(strconv.Itoa(len(views)), "Domains hosted", ""))
 	body.WriteString(vmStatTile(strconv.Itoa(pointed+unverified), "Resolving", ""))
 	proxTone := ""

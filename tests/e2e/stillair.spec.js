@@ -37,6 +37,13 @@ function lintPage() {
     if (ent && !n.parentElement.closest("script,style,code,pre,textarea")) {
       out.push(`escaped twice: "${n.nodeValue.trim().slice(0, 40)}"`);
     }
+    // Capitals written into the text rather than applied by CSS: a label in
+    // capitals reads as shouting. Protocol names are written that way.
+    const shouted = n.nodeValue.match(/\b[A-Z]{5,}\b/g);
+    if (shouted && n.nodeValue.trim() === n.nodeValue.trim().toUpperCase() && !n.parentElement.closest("script,style,code,pre,kbd,textarea,.mono,.font-mono") &&
+        shouted.some((w) => !["STARTTLS", "DMARC"].includes(w))) {
+      out.push(`written in capitals: "${n.nodeValue.trim().slice(0, 40)}"`);
+    }
     const m = n.nodeValue.match(emoji);
     if (m && !typographic.test(m[0]) && !n.parentElement.closest("script,style")) {
       out.push(`emoji ${m[0]} in "${n.nodeValue.trim().slice(0, 40)}"`);
@@ -70,6 +77,118 @@ function lintPage() {
   });
   return [...new Set(out)];
 }
+
+// The Still Air scale, judged on what the browser rendered rather than on what
+// the stylesheet says: a rule can be on the scale and still lose to another, a
+// class can be emitted that no rule on the scale reaches, and the browser's
+// own defaults (a <strong> is 700) never appear in the sheet at all. Every
+// element with a box is held to plan §6: a colour that is a token's value, a
+// type size on the scale, weights 400/500/600, Inter or JetBrains Mono, radii
+// 4/6/10 (pills only on things that are physically round), elevation shadows
+// or state rings, and none of the decoration the classic console wore.
+async function scaleLint(colourTokens) {
+  // Judge settled values: a colour caught in the middle of a transition (a
+  // status flipping from offline to online) is neither token.
+  await Promise.all(document.getAnimations().filter((a) => a instanceof CSSTransition).map((a) => a.finished.catch(() => {})));
+  const probe = document.createElement("i");
+  probe.style.setProperty("transition", "none", "important"); // the reduced-motion rule animates colour
+  document.body.appendChild(probe);
+  const resolve = (value, prop) => {
+    probe.style[prop] = "";
+    probe.style[prop] = value;
+    return getComputedStyle(probe)[prop];
+  };
+  const palette = new Set(["rgba(0, 0, 0, 0)"]);
+  for (const t of colourTokens) palette.add(resolve(`var(${t})`, "color"));
+  const elevation = new Set(["none", ...["--shadow-3", "--shadow-4", "--shadow-5"].map((t) => resolve(`var(${t})`, "boxShadow"))]);
+  probe.remove();
+  const sizes = new Set(["12px", "12.5px", "13px", "14px", "15px", "20px", "28px"]);
+  // A theme's own colours and type are shown on purpose where a theme is
+  // previewed or its swatches are picked.
+  const showsATheme = ".theme-card__art, .store-card__preview, .theme-card__preview, .cz-a11y, [data-swatch], .customizer__frame, .store-preview, .vp-flag, .sa-mark";
+  const out = [];
+  const name = (e) => `<${e.tagName.toLowerCase()} class="${typeof e.className === "string" ? e.className : ""}">`;
+  // A state ring (0 0 0 Npx) or an inset bar, in palette colours, marks a
+  // selected or active thing; anything blurred is a glow.
+  const isStateMark = (shadow) =>
+    shadow.split(/,(?![^(]*\))/).every((part) => {
+      const m = part.trim().match(/^(rgba?\([^)]*\)) -?[\d.]+px -?[\d.]+px ([\d.]+)px -?[\d.]+px( inset)?$/);
+      return m && palette.has(m[1]) && m[2] === "0";
+    });
+  const painted = new Set(["rect", "circle", "ellipse", "path", "polygon", "polyline", "text", "tspan"]);
+  for (const e of document.body.querySelectorAll("*")) {
+    if (!e.getClientRects().length || e.closest(showsATheme) || e.closest("script, style, template")) continue;
+    const cs = getComputedStyle(e);
+    if (cs.visibility === "hidden") continue;
+    const flag = (what) => out.push(`${what} on ${name(e)}`);
+    if ([...e.childNodes].some((n) => n.nodeType === 3 && n.nodeValue.trim())) {
+      if (!palette.has(cs.color)) flag(`text colour ${cs.color}`);
+      if (!sizes.has(cs.fontSize)) flag(`type size ${cs.fontSize}`);
+      if (!["400", "500", "600"].includes(cs.fontWeight)) flag(`weight ${cs.fontWeight}`);
+      const family = cs.fontFamily.split(",")[0].replace(/["']/g, "").trim();
+      if (family !== "Inter" && family !== "JetBrains Mono") flag(`typeface ${family}`);
+      if (parseFloat(cs.letterSpacing) > 0) flag(`tracking ${cs.letterSpacing}`);
+      if (cs.textShadow !== "none") flag("text shadow");
+    }
+    if (!palette.has(cs.backgroundColor)) flag(`background ${cs.backgroundColor}`);
+    for (const side of ["Top", "Right", "Bottom", "Left"]) {
+      if (parseFloat(cs[`border${side}Width`]) > 0 && cs[`border${side}Style`] !== "none" && !palette.has(cs[`border${side}Color`])) {
+        flag(`border ${cs[`border${side}Color`]}`);
+        break;
+      }
+    }
+    if (painted.has(e.tagName.toLowerCase())) {
+      for (const p of ["fill", "stroke"]) {
+        if (cs[p] !== "none" && !cs[p].startsWith("url") && !palette.has(cs[p])) flag(`${p} ${cs[p]}`);
+      }
+    }
+    if (/gradient\(/.test(cs.backgroundImage)) flag("gradient");
+    if (cs.backdropFilter && cs.backdropFilter !== "none") flag("backdrop blur");
+    if (cs.filter !== "none" && e.tagName !== "IMG") flag(`filter ${cs.filter}`);
+    if (!elevation.has(cs.boxShadow) && !isStateMark(cs.boxShadow)) flag(`shadow ${cs.boxShadow}`);
+    const box = e.getBoundingClientRect();
+    // Physically round: a circle, or the one toggle track Still Air draws
+    // (30 x 18, radius 9). A toggle at any other size is not the Still Air one.
+    const round = Math.abs(box.width - box.height) < 2 || (Math.round(box.width) === 30 && Math.round(box.height) === 18);
+    for (const corner of ["TopLeft", "TopRight", "BottomRight", "BottomLeft"]) {
+      const r = parseFloat(cs[`border${corner}Radius`]);
+      if (!r || [4, 6, 10].includes(r) || (round && r >= Math.min(box.width, box.height) / 2 - 0.5)) continue;
+      flag(`radius ${cs[`border${corner}Radius`]}`);
+      break;
+    }
+  }
+  return [...new Set(out)];
+}
+
+// The colour tokens, read from the stylesheet the server under test ships (it
+// is served minified). The first Still Air block is the dark one and names
+// every colour token; the light blocks redefine the same names.
+async function colourTokens(page) {
+  const css = await page.evaluate(() => fetch("/os/static/css/vayuos.css").then((r) => r.text()));
+  const start = css.indexOf('.vp-os[data-ui="still-air"]{');
+  const block = css.slice(start, css.indexOf("}", start));
+  return [...block.matchAll(/(--[a-z0-9-]+):\s*(?:#|rgba?\()/g)].map((m) => m[1]);
+}
+
+test("every element of every page is on the Still Air scale, in both schemes", async ({ page }) => {
+  test.setTimeout(600000);
+  await openConsole(page);
+  const tokens = await colourTokens(page);
+  expect(tokens.length).toBeGreaterThan(30); // an empty palette would fail everything for the wrong reason
+  const hrefs = await page.evaluate(() => [...new Set([...document.querySelectorAll("[data-sa-index] a")].map((a) => a.getAttribute("href")))]);
+  expect(hrefs.length).toBeGreaterThan(30);
+  const findings = [];
+  for (const [scheme, width] of [["dark", 1280], ["light", 1280], ["dark", 390]]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.setViewportSize({ width, height: 900 });
+    for (const href of hrefs) {
+      await page.goto(href);
+      await page.waitForLoadState("load");
+      for (const f of await page.evaluate(scaleLint, tokens)) findings.push(`${scheme} ${width}px ${href}: ${f}`);
+    }
+  }
+  expect(findings).toEqual([]);
+});
 
 test("every app and section passes the design lint, on a desktop and a phone", async ({ page }) => {
   test.setTimeout(300000);

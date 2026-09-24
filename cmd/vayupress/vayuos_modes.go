@@ -181,7 +181,7 @@ func (a *App) stillAirModesPage(w http.ResponseWriter, r *http.Request, cfg *osS
 		b.WriteString(`<p class="sa-mode__rest">The Fault Engine and the Replay Explorer, under Diagnostics, show what can move the system between modes on its own.</p></section>`)
 	}
 
-	script := `window.vpMode=function(to,force){vpPost('/admin/mode/transition?to='+encodeURIComponent(to)+(force?'&force=true':''),function(d){return 'Mode changed to '+(d.mode||to)+'.';});};
+	script := `window.vpMode=function(to,force){vpPost('/admin/mode/transition?to='+encodeURIComponent(to)+(force?'&force=true':''),{},function(d){vpToast('Mode changed to '+(d.mode||to)+'.','ok');setTimeout(function(){location.reload();},650);});};
 document.addEventListener('click',function(e){var btn=e.target.closest('[data-mode-to]');if(btn)vpMode(btn.getAttribute('data-mode-to'),btn.hasAttribute('data-mode-force'));});`
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "noindex")

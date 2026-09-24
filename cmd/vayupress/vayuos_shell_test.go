@@ -16,6 +16,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/ui"
+	"github.com/johalputt/vayupress/internal/vayuos/torspace"
 )
 
 func saSession(level int) *osSettings {
@@ -188,11 +189,11 @@ func TestStillAirChromeUsesOnlyTheIconSet(t *testing.T) {
 	// happens to render that app's sidebar.
 	for _, apps := range [][]saApp{saClearnetApps, saTorApps} {
 		for _, a := range apps {
-			if !ui.HasIcon(a.Icon) {
+			if strings.Contains(string(ui.Icon(a.Icon)), "sa-ico--missing") {
 				t.Errorf("app %s names icon %q, which is not in the set", a.Key, a.Icon)
 			}
 			for _, sec := range a.Sections {
-				if !ui.HasIcon(sec.Icon) {
+				if strings.Contains(string(ui.Icon(sec.Icon)), "sa-ico--missing") {
 					t.Errorf("%s › %s names icon %q, which is not in the set", a.Label, sec.Label, sec.Icon)
 				}
 			}
@@ -306,6 +307,20 @@ func blend(t *testing.T, rgba, under string) string {
 	return fmt.Sprintf("#%02x%02x%02x", mix(r, ur), mix(g, ug), mix(b, ub))
 }
 
+var consoleTokenRe = regexp.MustCompile(`(--[a-z0-9-]+):\s*(#[0-9a-fA-F]{3,8})`)
+
+// sectionTokens reads the hex tokens of one block. The first declaration wins:
+// later ones are the media-query mirror of the same values.
+func sectionTokens(section string) map[string]string {
+	out := map[string]string{}
+	for _, m := range consoleTokenRe.FindAllStringSubmatch(section, -1) {
+		if _, ok := out[m[1]]; !ok {
+			out[m[1]] = strings.ToLower(m[2])
+		}
+	}
+	return out
+}
+
 func stillAirTokens(t *testing.T) (dark, light map[string]string) {
 	t.Helper()
 	css := readStillAirCSS(t)
@@ -374,19 +389,60 @@ func TestStillAirPaletteClearsAA(t *testing.T) {
 	}
 }
 
+// Every page that links the console stylesheet carries the scope its tokens
+// live under. Without data-ui="still-air" on the body the sheet still loads,
+// but every var() it reads is unset and the page paints in browser defaults.
+func TestEveryConsolePageCarriesTheStillAirScope(t *testing.T) {
+	a := &App{torSpace: torspace.New("", t.TempDir()+"/vayupress.db", "", 0)}
+	tor := httptest.NewRecorder()
+	a.renderTorWorldUnavailable(tor, httptest.NewRequest(http.MethodGet, "/os", nil))
+	body := regexp.MustCompile(`<body[^>]*>`)
+	for name, page := range map[string]string{
+		"console shell": adminOSLayout("N", "Home", "home", saSession(3), "<p>x</p>"),
+		"sign-in":       authPageShell("Sign in", "<p>x</p>"),
+		"Tor holding":   tor.Body.String(),
+	} {
+		if !strings.Contains(page, `href="/os/static/css/vayuos.css?v=`) {
+			t.Errorf("%s: does not link vayuos.css", name)
+		}
+		if tag := body.FindString(page); !strings.Contains(tag, `data-ui="still-air"`) {
+			t.Errorf("%s: body %s has no data-ui=\"still-air\"; none of the sheet's tokens apply", name, tag)
+		}
+	}
+}
+
+// Every custom property the sheet reads is one it defines. A var() with no
+// definition and no fallback is not an error to the browser: the declaration
+// silently computes to its inherited or initial value. Two carried classic
+// rules read --text-md and --ico-glow, which nothing defined.
+func TestConsoleCSSReadsOnlyDefinedProperties(t *testing.T) {
+	css := regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(readStillAirCSS(t), "")
+	defined := map[string]bool{}
+	for _, m := range regexp.MustCompile(`(--[\w-]+)\s*:`).FindAllStringSubmatch(css, -1) {
+		defined[m[1]] = true
+	}
+	for _, m := range regexp.MustCompile(`var\(\s*(--[\w-]+)\s*\)`).FindAllStringSubmatch(css, -1) {
+		if !defined[m[1]] {
+			t.Errorf("vayuos.css reads %s, which it never defines", m[1])
+		}
+	}
+}
+
 // Reduced motion is honoured by one rule over the whole design, not remembered
 // per component.
 func TestStillAirHonoursReducedMotion(t *testing.T) {
 	css := readStillAirCSS(t)
-	at := strings.Index(css, "@media (prefers-reduced-motion: reduce)")
+	// The carried classic rules have reduced-motion blocks of their own for one
+	// component each; the one this test holds is the block over everything.
+	at := strings.Index(css, "@media (prefers-reduced-motion: reduce) {\n  .vp-os[data-ui=\"still-air\"] *,")
 	if at < 0 {
-		t.Fatal("vayuos.css has no reduced-motion rule")
+		t.Fatal("vayuos.css has no reduced-motion rule over the whole design")
 	}
 	block := css[at:]
 	if end := strings.Index(block, "\n}\n"); end > 0 {
 		block = block[:end]
 	}
-	for _, need := range []string{`.vp-os[data-ui="still-air"] *`, "animation-duration: 80ms", "animation-iteration-count: 1", "transition-duration: 80ms"} {
+	for _, need := range []string{"animation-duration: 80ms", "animation-iteration-count: 1", "transition-duration: 80ms"} {
 		if !strings.Contains(block, need) {
 			t.Errorf("the reduced-motion rule does not contain %q", need)
 		}

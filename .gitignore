@@ -1,5 +1,7 @@
 # Compiled binaries (anchored to repo root so cmd/vayupress/ source is NOT ignored)
 /vayupress
+# `go build` run inside the package directory writes its binary there.
+/cmd/vayupress/vayupress
 vayupress.exe
 *.exe
 *.dll

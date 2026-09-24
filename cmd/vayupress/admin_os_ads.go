@@ -137,16 +137,18 @@ function val(id){var el=document.getElementById(id);return el?el.value:'';}
 document.querySelectorAll('[data-ad-action]').forEach(function(b){
   b.addEventListener('click',function(){
     var act=b.getAttribute('data-ad-action');var id=b.getAttribute('data-id');
-    if(act==='delete'){if(!confirm('Delete this ad slot?'))return;b.disabled=true;jfetch('DELETE','/os/api/ads/'+encodeURIComponent(id)).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||'Error',true);}});}
+    if(act==='delete'){vpConfirm({title:'Delete this ad slot?',confirm:'Delete'},function(){b.disabled=true;jfetch('DELETE','/os/api/ads/'+encodeURIComponent(id)).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||'Error',true);}});});}
     else if(act==='toggle'){b.disabled=true;jfetch('POST','/os/api/ads/'+encodeURIComponent(id)+'/toggle',{enabled:b.getAttribute('data-to')==='1'}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||'Error',true);}});}
   });
 });
 document.querySelectorAll('[data-adreview-action]').forEach(function(b){
   b.addEventListener('click',function(){
     var act=b.getAttribute('data-adreview-action');var id=b.getAttribute('data-id');
-    if(act==='reject'&&!confirm('Reject this member ad? It will not be published.'))return;
-    b.disabled=true;
-    jfetch('POST','/os/api/ads/'+encodeURIComponent(id)+'/'+act).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||(res.d.error&&res.d.error.message)||'Error',true);}});
+    var go=function(){
+      b.disabled=true;
+      jfetch('POST','/os/api/ads/'+encodeURIComponent(id)+'/'+act).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||(res.d.error&&res.d.error.message)||'Error',true);}});
+    };
+    if(act==='reject'){vpConfirm({title:'Reject this member ad?',message:'It will not be published.',confirm:'Reject'},go);}else{go();}
   });
 });
 var priceBtn=document.getElementById('ad-price-save');
@@ -263,7 +265,7 @@ func adsPlacementOptions() string {
 func adsGoogleStatus(moduleOn bool, client string) string {
 	switch {
 	case moduleOn && client != "":
-		return `<strong style="color:var(--color-success,#22c55e)">AdSense is active.</strong>`
+		return `<strong class="tone-ok">AdSense is active.</strong>`
 	case moduleOn:
 		return `<strong>Module on — set a publisher id to start serving units.</strong>`
 	default:

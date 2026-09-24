@@ -6,7 +6,7 @@ package main
 // console. Everything here emits static SVG/HTML with CSS classes (no inline
 // styles, no external JS, no CDNs), so the strict admin CSP (style-src 'self',
 // script-src 'self') is preserved. Percentages snap to the shared w-N width
-// classes; colours come from the --chart-N palette in admin-os.css. GDPR posture
+// classes; colours come from the --chart-N palette in vayuos.css. GDPR posture
 // is unchanged — these only visualise the existing aggregate, no-PII queries.
 
 import (

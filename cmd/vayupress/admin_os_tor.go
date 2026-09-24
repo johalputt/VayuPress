@@ -48,7 +48,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 
 	esc := htmpl.HTMLEscapeString
 	body := `<div class="page-header"><h1>VayuTor</h1></div>`
-	body += `<p class="page-sub">Publish every hosted domain as a Tor onion service — a private, un-trackable way in that works alongside the normal address. No provider, network, or observer can see who visits. Tap a card to expand it.</p>`
+	body += `<p class="page-sub">Publish every hosted domain as a Tor onion service — a private, un-trackable way in that works alongside the normal address. No provider, network, or observer can see who visits..</p>`
 
 	if a.vayuTor == nil || !st.Available {
 		body += `<div class="empty-state">VayuTor is switched off at the environment level (<code>VAYUOS_TOR=off</code>). Remove that to make it available, then reload.</div>`
@@ -223,12 +223,12 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	body += `<div class="mon-stack">` +
 		monAcc(saIcon("topology"), "Bridges", "For networks that block Tor", monChip(bridgesConfigured, "Configured", "Not set"), false, a.osTorBridgesCard(r, esc, st)) +
 		monAcc(saIcon("sparkle"), "Custom (vanity) address", "A .onion that starts with letters you choose", vanityChip, false, a.osTorVanityCard(esc, st, r.URL.Query().Get("vanity_err"))) +
-		monAcc(saIcon("shield"), "Onion-Location &amp; hardening", "How Tor Browser auto-discovers your onion", "", false, a.osTorHardeningCard(r)) +
+		monAcc(saIcon("shield"), "Onion-Location & hardening", "How Tor Browser auto-discovers your onion", "", false, a.osTorHardeningCard(r)) +
 		`</div>`
 
 	body += `<div class="section-head"><span class="section-head__title">Health &amp; privacy</span><span class="section-head__hint">Uptime alerts, opt-in page counts, and exactly what is (never) recorded</span></div>`
 	body += `<div class="mon-stack">` +
-		monAcc(saIcon("pulse"), "Health &amp; alerts", "Onion uptime + signed outage webhooks", healthChip, false, osTorHealthCard(esc, st)) +
+		monAcc(saIcon("pulse"), "Health & alerts", "Onion uptime + signed outage webhooks", healthChip, false, osTorHealthCard(esc, st)) +
 		monAcc(saIcon("doc"), "Popular pages", "Private, opt-in aggregate counts", monChip(st.PageStatsOn, "On", "Off"), false, a.osTorPageStatsCard(esc, st)) +
 		monAcc(saIcon("lock"), "Privacy posture", "Exactly what VayuTor records — and doesn't", `<span class="mon-chip mon-chip--on">● Count-only</span>`, false, osTorPrivacyNote(st)) +
 		`</div>`

@@ -5,7 +5,7 @@ package main
 // asset_minify.go — the console's stylesheets are served without their comments.
 //
 // The source keeps its comments, because they say why a rule exists, and they
-// were a third of what every operator downloaded: admin-os.css was 77 KB
+// were a third of what every operator downloaded: the classic sheet was 77 KB
 // gzipped on the wire, 27 KB of it prose. Minifying at serve time keeps one
 // source of truth and needs no build step.
 //

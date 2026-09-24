@@ -29,9 +29,9 @@ func TestOSLoginPageLinksToRecovery(t *testing.T) {
 	}
 	// The link needs a rule to render as a link; .login-footer has no anchor
 	// styling, which is why it got its own class rather than being tacked on.
-	css := repoFile(t, "static/css/admin-os.css")
+	css := repoFile(t, "static/css/vayuos.css")
 	if !strings.Contains(css, ".login-recover a") {
-		t.Error("static/css/admin-os.css has no .login-recover a rule; the recovery link renders unstyled")
+		t.Error("static/css/vayuos.css has no .login-recover a rule; the recovery link renders unstyled")
 	}
 }
 

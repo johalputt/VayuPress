@@ -117,7 +117,7 @@ func TestTheShellProvidesBothDialogs(t *testing.T) {
 	}
 	// vpPrompt's styling hook must exist (its field is wrapped in this class).
 	if !strings.Contains(adminOSCSS(t), ".vp-os .vp-confirm__label") {
-		t.Error("vpPrompt renders .vp-confirm__label with no rule in admin-os.css")
+		t.Error("vpPrompt renders .vp-confirm__label with no rule in vayuos.css")
 	}
 }
 
@@ -141,6 +141,13 @@ func TestConsoleInlineScriptsUseTheConsolesOwnDialogs(t *testing.T) {
 		for _, banned := range []string{"window.confirm(", "window.prompt(", "window.alert("} {
 			if strings.Contains(src, banned) {
 				t.Errorf("%s serves a script that calls %s — use vpConfirm/vpPrompt/vpToast", f, banned)
+			}
+		}
+		// The bare call is the same native dialog. Checking only the window.
+		// form let fifteen confirm() calls through on five pages.
+		for _, fn := range []string{"alert", "confirm", "prompt"} {
+			if containsCall(src, fn) {
+				t.Errorf("%s serves a script that calls the native %s() — use vpConfirm/vpPrompt/vpToast", f, fn)
 			}
 		}
 	}

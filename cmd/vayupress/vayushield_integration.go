@@ -43,6 +43,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/siemsink"
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
 	vagdpr "github.com/johalputt/vayupress/internal/vayuanalytics/gdpr"
 	vasession "github.com/johalputt/vayupress/internal/vayuanalytics/session"
@@ -685,7 +686,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 		days = v
 	}
 
-	// Styles live in the external admin-os.css (served same-origin) so they
+	// Styles live in the external vayuos.css (served same-origin) so they
 	// satisfy the strict admin CSP (style-src 'self', ADR-0036). Every section
 	// below the status hero is a native <details> disclosure (collapsed until
 	// clicked); each section body carries a stable id and is refreshed in place
@@ -721,14 +722,14 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	enabled := a.shieldCurrentSettings().Enabled
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Protection</span><span class="section-head__hint">How unproven traffic is screened — verified crawlers always pass</span></div>`)
 	b.WriteString(`<div class="mon-stack">`)
-	b.WriteString(monAcc(saIcon("shield"), "Protection &amp; settings", "Challenge thresholds, rate-limit, surge &amp; the resilience gates", monChip(enabled, "On", "Off"), false,
+	b.WriteString(monAcc(saIcon("shield"), "Protection & settings", "Challenge thresholds, rate-limit, surge & the resilience gates", monChip(enabled, "On", "Off"), false,
 		`<form hx-post="/os/api/shield/settings" hx-swap="none"><div id="vs-body-protection" hx-get="/os/shield/section/protection" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+a.shieldProtectionBody(r.Context(), a.shieldGeoIsBlind(r))+`</div></form>`))
 	// Live self-test: proves, against the CURRENT settings, that real readers and
 	// crawlers are served content. It answers the two questions an operator cannot
 	// otherwise verify without leaving the panel — "am I hurdling my own visitors?"
 	// and "am I hurting indexing?" — so the answer is evidence, not a promise.
 	selfTest := a.cachedShieldCanary()
-	b.WriteString(monAcc(saIcon("pulse"), "Visitor &amp; crawler check", "Live proof that real readers and search engines get through",
+	b.WriteString(monAcc(saIcon("pulse"), "Visitor & crawler check", "Live proof that real readers and search engines get through",
 		shieldSelfTestChip(selfTest), selfTest.readers != len(canaryReaders) || !selfTest.ok(),
 		`<div id="vs-body-selftest" hx-get="/os/shield/section/selftest" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+shieldSelfTestBody(selfTest)+`</div>`))
 	b.WriteString(`</div>`)
@@ -752,7 +753,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	// also listen for vs-refresh-sig (fired after a Confirm/Dismiss) so their
 	// counts update in place without touching the rest of the page. ───────────
 	if a.vayuShield != nil && a.vayuShield.BotStore() != nil {
-		b.WriteString(monAcc(saIcon("bot"), "Bot signatures", "Learned client signatures &amp; the community knowledge base", "", false,
+		b.WriteString(monAcc(saIcon("bot"), "Bot signatures", "Learned client signatures & the community knowledge base", "", false,
 			`<div id="vs-body-signatures" hx-get="/os/shield/section/signatures" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`+a.shieldSignaturesBody(r.Context())+`</div>`))
 		b.WriteString(monAcc(saIcon("search"), "Review queue", "Auto-learned candidates awaiting your verdict", "", false,
 			`<div id="vs-body-queue" hx-get="/os/shield/section/queue" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`+a.shieldQueueBody(r.Context())+`</div>`))
@@ -774,7 +775,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	if a.vaEngagement != nil {
 		b.WriteString(`<div class="section-head"><span class="section-head__title">Analytics</span><span class="section-head__hint">Cookieless, GDPR-by-design engagement</span></div>`)
 		b.WriteString(`<div class="mon-stack">`)
-		b.WriteString(monAcc(saIcon("chart"), "Engagement analytics", "Time-on-page, scroll depth &amp; traffic sources", "", false,
+		b.WriteString(monAcc(saIcon("chart"), "Engagement analytics", "Time-on-page, scroll depth & traffic sources", "", false,
 			`<div id="vs-body-engagement">`+a.shieldEngagementBody(r.Context(), days)+`</div>`))
 		b.WriteString(`</div>`)
 	}
@@ -1368,7 +1369,7 @@ func (a *App) shieldSignaturesBody(ctx context.Context) string {
 	// protocol version. That is enough to tell a scripted client from a browser
 	// and not enough to tell two browsers apart.
 	b.WriteString(`<p class="muted text-sm">A signature here is derived from HTTP-layer signals — client family and protocol version — not from a TLS handshake. When a reverse proxy terminates TLS, which is the normal setup, this process never sees a ClientHello, so transport-level fingerprinting is unavailable by construction rather than switched off. Signatures distinguish a scripted client from a browser; they do not distinguish two browsers.</p>`)
-	b.WriteString(`<div class="vs-stats">`)
+	b.WriteString(`<div class="stat-grid">`)
 	b.WriteString(vsStat(strconv.FormatInt(s.Total, 10), "Total signatures"))
 	b.WriteString(vsStat(strconv.FormatInt(s.LearnedLast24h, 10), "Learned (24h)"))
 	b.WriteString(vsStat(strconv.FormatInt(s.PendingReview, 10), "Pending review"))
@@ -1488,7 +1489,7 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 	}
 	var b strings.Builder
 	if ov, err := a.vaEngagement.Overview(ctx, days); err == nil {
-		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Engagement — last ` + strconv.Itoa(days) + ` days</div><div class="vs-stats">`)
+		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Engagement — last ` + strconv.Itoa(days) + ` days</div><div class="stat-grid">`)
 		b.WriteString(vsStat(strconv.FormatInt(ov.Views, 10), "Human views"))
 		b.WriteString(vsStat(strconv.FormatInt(ov.UniqueVisitors, 10), "Unique visitors"))
 		b.WriteString(vsStat(strconv.FormatInt(ov.UniqueSessions, 10), "Sessions"))
@@ -1815,9 +1816,9 @@ func vsArea(id, label, hint, placeholder, val string) string {
 		`<p class="muted text-xs">` + hint + `</p></div>`
 }
 
-// vsStat renders a stat card (big number + label).
+// vsStat renders one figure (ui.Figure).
 func vsStat(n, label string) string {
-	return `<div class="vs-stat"><div class="n">` + html.EscapeString(n) + `</div><div class="l">` + html.EscapeString(label) + `</div></div>`
+	return string(ui.Figure{Value: n, Label: label}.Cell())
 }
 
 // vsMetric renders a compact hero metric (big number + label).
@@ -2154,7 +2155,7 @@ func shieldPageChrome() string {
 		`</div></div>` +
 		`<p class="page-sub">Enterprise-grade, self-hosted bot protection — verified search &amp; AI ` +
 		`crawlers always pass, real readers are never challenged, and every defense layer is live ` +
-		`below. Tap a card to expand it.</p>`
+		`below..</p>`
 }
 
 // shieldThroughputBand wraps the per-layer counters in their own section.

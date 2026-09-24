@@ -50,7 +50,7 @@ embedded one when the directory is missing or read-only. URLs carry
 
 | File | Role |
 |------|------|
-| `static/css/admin-os.css` | The console stylesheet: tokens, shell, components |
+| `static/css/vayuos.css` | The console stylesheet, Still Air: tokens, shell, components |
 | `static/js/admin-os.js` | Shell bootstrap: theme, toasts, command palette, list keyboard layer, shared helpers |
 | `static/js/admin-os-<app>.js` | One script per app (mail, talk, members, editor, website, …), loaded only by that app's page |
 | `static/js/htmx.min.js` | Vendored HTMX |
@@ -83,20 +83,25 @@ Native `alert`/`confirm`/`prompt` are forbidden in console scripts;
 
 ## Design tokens
 
-Tokens are CSS custom properties on `.vp-os`, redefined for the light theme and
-for `prefers-color-scheme` when the theme is `auto`. The authoritative values
-are in `static/css/admin-os.css`; the ones most code needs:
+Tokens are CSS custom properties on `.vp-os[data-ui="still-air"]`, redefined
+for the light theme and for `prefers-color-scheme` when the theme is `auto`.
+Hex values appear only in those token blocks; a rule never names a colour. The
+authoritative values are in `static/css/vayuos.css`; the ones most code needs:
 
 | Token | Role |
 |-------|------|
-| `--bg-base`, `--bg-surface`, `--bg-surface-2`, `--bg-surface-3` | Page and layered surfaces |
-| `--text`, `--text-2`, `--text-3` | Primary, secondary and helper copy |
-| `--brand`, `--on-brand` | Primary actions and the text on them |
-| `--accent` | Secondary emphasis |
-| `--ok`, `--warn`, `--danger`, `--info` (each with `-dim`) | Status colours and their tinted backgrounds |
-| `--border`, `--border-strong` | Hairlines |
+| `--color-canvas`, `--surface-1`, `--surface-2`, `--surface-float` | Page and layered surfaces |
+| `--text-1`, `--text-2`, `--text-3` | Primary, secondary and helper copy |
+| `--accent`, `--on-accent` | Primary actions and the text on them |
+| `--ok`, `--warn`, `--danger` (each with `-soft`) | Status colours and their tinted backgrounds |
+| `--border-1`, `--border-2` | Hairlines |
+| `--space-1` … `--space-10`, `--radius-*`, `--type-*` | Space, shape and type |
 
-Contrast is enforced, not hoped for: `admin_os_contrast_gate_test.go` fails when
+The classic names (`--brand`, `--bg-surface`, `--sp-4`, …) are aliases onto
+these, kept for the rules carried from the classic sheet; new rules use the
+Still Air names.
+
+Contrast is enforced, not hoped for: `TestStillAirPaletteClearsAA` fails when
 a reading pairing drops below its WCAG bar in either theme. The console also
 carries its own `prefers-contrast` and `forced-colors` rules.
 

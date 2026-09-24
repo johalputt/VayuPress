@@ -36,10 +36,10 @@ func TestTheSiteListCountsWhatAnOperatorCameToCheck(t *testing.T) {
 	// One held (parked), one approved-but-uncertified (waiting). The held site is
 	// NOT counted as missing a certificate: not provisioning it is the point of
 	// the hold, and counting it twice would make the hold look like a fault.
-	if !strings.Contains(head, `>1</span><span class="vm-stat__l">On hold`) {
+	if !strings.Contains(head, `<div class="stat-card stat-card--warn"><div class="stat-card__label">On hold</div><div class="stat-card__value">1<`) {
 		t.Errorf("the on-hold tile does not read 1:\n%s", head)
 	}
-	if !strings.Contains(head, `>1</span><span class="vm-stat__l">No certificate`) {
+	if !strings.Contains(head, `<div class="stat-card stat-card--warn"><div class="stat-card__label">No certificate</div><div class="stat-card__value">1<`) {
 		t.Errorf("the certificate tile does not read 1 — a held site must not be counted as "+
 			"missing a certificate, because not issuing one is what the hold does:\n%s", head)
 	}
@@ -52,7 +52,7 @@ func TestAHealthyInstallShowsNothingToWorryAbout(t *testing.T) {
 		{ID: "", Host: "example.test", IsPrimary: true, Status: domain.StatusActive, TLSState: domain.TLSPrimary},
 		{ID: "s1", Host: "live.example", Status: domain.StatusActive, SyncState: domain.SyncApproved, TLSState: domain.TLSActive},
 	}, "")
-	if strings.Contains(head, "vm-stat--warn") {
+	if strings.Contains(head, "stat-card--warn") {
 		t.Errorf("an install with nothing wrong still shows a warning tile:\n%s", head)
 	}
 }

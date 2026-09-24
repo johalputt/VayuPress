@@ -13,7 +13,7 @@
   function setStatus(msg, ok) {
     if (!statusEl) return;
     statusEl.textContent = msg;
-    statusEl.style.color = ok ? '' : 'var(--color-danger, #ef4444)';
+    statusEl.style.color = ok ? '' : 'var(--danger)';
   }
   function csrf() {
     var m = document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
@@ -102,7 +102,7 @@
   function setDeploy(msg, ok) {
     if (!deployStatus) return;
     deployStatus.textContent = msg;
-    deployStatus.style.color = ok ? '' : 'var(--color-danger, #ef4444)';
+    deployStatus.style.color = ok ? '' : 'var(--danger)';
   }
   function errMsg(j, fallback) {
     return (j && j.error && j.error.message) ? j.error.message : fallback;

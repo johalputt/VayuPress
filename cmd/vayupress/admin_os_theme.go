@@ -368,7 +368,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       <button type="button" class="cz-group__head" aria-expanded="true" data-cz-label="Presets">
         <span class="cz-group__ic" aria-hidden="true">` + saIcon("palette") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Presets</span><span class="cz-group__sub">Start from a ready-made design, then fine-tune</span></span>
-        <span class="cz-chip cz-chip--go">START HERE</span>
+        <span class="cz-chip cz-chip--go">Start here</span>
       </button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Pick a starting design, then fine-tune anything below. The preview updates as you go.</p>

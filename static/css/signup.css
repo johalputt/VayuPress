@@ -694,7 +694,7 @@ html[data-theme="light"] {
    anything. Each secondary section now collapses to one summary row — icon tile ·
    title · one-line subtitle · status chip · rotating chevron — and expanding
    reveals the existing card, chromeless, with a short reveal. This mirrors
-   .mon-acc in admin-os.css deliberately: the console and the member pages should
+   .mon-acc in vayuos.css deliberately: the console and the member pages should
    read as one design.
 
    Native <details>, so it needs no JavaScript: nothing to break under a strict

@@ -24,6 +24,7 @@ import (
 	htmpl "html/template"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/budget"
@@ -112,7 +113,7 @@ func (a *App) handleOSGovernance(w http.ResponseWriter, r *http.Request) {
 		budgetRows += `<tr>
   <td class="row-title">` + html.EscapeString(b.Name) + `<div class="row-meta">tracks ` + html.EscapeString(b.Tracks) + ` · window ` + html.EscapeString(window) + `</div></td>
   <td class="muted text-sm">` + strconv.Itoa(b.Consumed) + ` / ` + strconv.Itoa(b.Limit) + `</td>
-  <td class="muted text-sm">` + html.EscapeString(b.OnExhaust) + `</td>
+  <td class="muted text-sm">` + html.EscapeString(sentenceWord(strings.ToLower(b.OnExhaust))) + `</td>
   <td><span class="tool-status ` + budgetStateClass(b.State) + `">` + html.EscapeString(b.State) + `</span></td>
 </tr>`
 	}

@@ -122,7 +122,7 @@ func TestAIPanelUsesTheMonetizationGrammar(t *testing.T) {
 			t.Errorf("the panel's %s wiring is missing, so a chip would be decorative", want)
 		}
 	}
-	css := repoFile(t, "static/css/admin-os.css")
+	css := repoFile(t, "static/css/vayuos.css")
 	for _, want := range []string{".ai-grid", ".ai-status", ".ai-status--err", ".pm-help"} {
 		if !strings.Contains(css, want) {
 			t.Errorf("missing style %s — the panel renders it", want)
@@ -238,7 +238,7 @@ func TestJobResultsAreOwnerScoped(t *testing.T) {
 // own fields (measured: a 261px body inside a 121px box, with the Language and
 // Creativity controls cut off entirely).
 func TestAIPanelSectionsCannotBeShrunkBelowTheirContent(t *testing.T) {
-	css := repoFile(t, "static/css/admin-os.css")
+	css := repoFile(t, "static/css/vayuos.css")
 	i := strings.Index(css, ".ai-panel .mon-acc {")
 	if i < 0 {
 		t.Fatal("the AI panel accordion rule is missing")

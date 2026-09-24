@@ -5,8 +5,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"html"
 	"html/template"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,6 +18,7 @@ import (
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/policy"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // =============================================================================
@@ -27,59 +28,41 @@ import (
 // becomes observable from operator action.
 // =============================================================================
 
-// modeVisual maps a runtime mode to its banner class, label, and description.
-func modeVisual(m mode.Mode) (cls, label, desc string) {
+// modeDescription says in one line what a runtime mode means for the install.
+func modeDescription(m mode.Mode) string {
 	switch m {
 	case mode.ModeNormal:
-		return "mode-normal", "NORMAL", "All subsystems operational · write queue active · policy engine enforcing · fault escalation armed"
+		return "All subsystems operational · write queue active · policy engine enforcing · fault escalation armed"
 	case mode.ModeDegraded:
-		return "mode-degraded", "DEGRADED", "Partial functionality · non-critical paths disabled · escalation monitoring active"
+		return "Partial functionality · non-critical paths disabled · escalation monitoring active"
 	case mode.ModeReadOnly:
-		return "mode-readonly", "READ-ONLY", "Write queue paused · read path fully operational · WAL writes blocked"
+		return "Write queue paused · read path fully operational · WAL writes blocked"
 	case mode.ModeRecovery:
-		return "mode-recovery", "RECOVERY", "Automated recovery in progress · reduced capacity · monitoring elevated"
+		return "Automated recovery in progress · reduced capacity · monitoring elevated"
 	case mode.ModeMaintenance:
-		return "mode-maintenance", "MAINTENANCE", "Scheduled maintenance window · writes paused · external traffic may be restricted"
+		return "Scheduled maintenance window · writes paused · external traffic may be restricted"
 	case mode.ModeQuarantined:
-		return "mode-quarantined", "QUARANTINED", "Plugin invocations denied · sandbox execution blocked · immediate attention required"
+		return "Plugin invocations denied · sandbox execution blocked · immediate attention required"
 	}
-	return "mode-normal", strings.ToUpper(string(m)), ""
+	return ""
 }
 
-// modeShortClass returns the m-* accent class for a mode tile/badge.
-func modeShortClass(m mode.Mode) string {
-	switch m {
-	case mode.ModeNormal:
-		return "m-normal"
-	case mode.ModeDegraded:
-		return "m-degraded"
-	case mode.ModeReadOnly:
-		return "m-readonly"
-	case mode.ModeRecovery:
-		return "m-recovery"
-	case mode.ModeMaintenance:
-		return "m-maintenance"
-	case mode.ModeQuarantined:
-		return "m-quarantined"
-	}
-	return "m-normal"
+// writeConsoleShellHead emits the VayuOS shell through the opening <main>. The
+// operator consoles (Faults, Topology, Replay, Policy, Decisions) render inside
+// the one shell and open with ui.Page. active selects the rail section.
+func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, active, pageTitle string) string {
+	return a.writeConsoleShellHeadStatus(w, r, active, pageTitle, http.StatusOK)
 }
 
-// writeConsoleShellHead emits the VayuOS shell through the opening <main> and a
-// VayuOS-styled page header. The operator consoles (System Modes, Policy,
-// Topology, Replay, Faults, ADRs) all render inside the single VayuOS shell —
-// there is no separate admin panel. active selects the highlighted sidebar item
-// (one of: modes, policy, topology, replay, faults, adrs).
-func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, active, pageTitle, pageSub string) string {
+// writeConsoleShellHeadStatus is writeConsoleShellHead for a page that answers
+// with another status (a 404 that stays inside the console).
+func (a *App) writeConsoleShellHeadStatus(w http.ResponseWriter, r *http.Request, active, pageTitle string, status int) string {
 	csrfTokenFor(w, r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "noindex")
+	w.WriteHeader(status)
 	nonce := render.CSPNonce(r)
-
-	cfg := a.getOSSettings(r.Context())
-	fmt.Fprint(w, adminOSShellHead(nonce, pageTitle, active, cfg))
-	fmt.Fprintf(w, `<div class="os-page-head"><div><h1 class="os-page-title">%s</h1><p class="os-page-sub">%s</p></div></div>`,
-		html.EscapeString(pageTitle), html.EscapeString(pageSub))
+	fmt.Fprint(w, adminOSShellHead(nonce, pageTitle, active, a.getOSSettings(r.Context())))
 	return nonce
 }
 
@@ -104,44 +87,69 @@ func (a *App) handleModesPage(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleFaultPage(w http.ResponseWriter, r *http.Request) {
 	cur := mode.Global.Current()
 	rules := fault.DefaultRules()
+	nonce := a.writeConsoleShellHead(w, r, "faults", "Faults")
 
-	nonce := a.writeConsoleShellHead(w, r, "faults", "Fault Engine",
-		fmt.Sprintf("fault injection & escalation lineage · %d rules armed · current mode: %s", len(rules), cur))
-
-	fmt.Fprint(w, `<div class="console-note">Simulating a fault increments its escalation counter. When a fault crosses its threshold within the window, the runtime auto-escalates to the target mode — visible on the Overview timeline and the System Modes lineage. This is live: it mutates real runtime state.</div>
-<div class="section-title">Fault points and escalation rules</div>
-<table class="fe-table"><thead><tr><th>Fault Point</th><th>Triggers</th><th>Threshold</th><th>Window</th><th>Escalates To</th><th>Action</th></tr></thead><tbody>`)
-
+	rows := make([][]ui.HTML, 0, len(rules))
+	var example fault.EscalationRule
 	for _, rule := range rules {
+		if rule.FaultName == fault.FaultWALWrite {
+			example = rule
+		}
 		count := fault.Global.TriggerCount(rule.FaultName)
-		countCls := "fe-count"
-		if count > 0 && count < rule.Threshold {
-			countCls = "fe-count hot"
-		} else if rule.Threshold > 0 && count >= rule.Threshold {
-			countCls = "fe-count crit"
+		fired := ui.Text(strconv.FormatInt(count, 10))
+		switch {
+		case rule.Threshold > 0 && count >= rule.Threshold:
+			fired = ui.Tag("danger", strconv.FormatInt(count, 10)+" · escalated")
+		case count > 0:
+			fired = ui.Tag("warn", strconv.FormatInt(count, 10))
 		}
-		window := "∞ (lifetime)"
-		if rule.Window > 0 {
-			window = humanizeWindow(rule.Window)
-		}
-		tgtCls := "fe-target " + strings.ReplaceAll(modeShortClass(rule.TargetMode), "m-", "t-")
-		fmt.Fprintf(w, `<tr id="fe-%s"><td class="fe-name">%s</td><td><span class="%s">%d</span></td><td>×%d</td><td>%s</td><td><span class="%s">%s</span></td><td><button class="fe-sim-btn" data-fault="%s">Simulate</button></td></tr>`,
-			template.HTMLEscapeString(rule.FaultName), rule.FaultName, countCls, count, rule.Threshold, window, tgtCls, saModeLabel(rule.TargetMode), rule.FaultName)
+		rows = append(rows, []ui.HTML{
+			`<span class="mono">` + ui.Text(rule.FaultName) + `</span>`,
+			fired,
+			ui.Text(strconv.FormatInt(rule.Threshold, 10)),
+			ui.Text(faultWindow(rule.Window)),
+			ui.Tag(saModeTone(rule.TargetMode), saModeLabel(rule.TargetMode)),
+			`<button type="button" class="btn btn--sm" data-fault="` + ui.Text(rule.FaultName) + `">Fire</button>`,
+		})
 	}
-	fmt.Fprint(w, `</tbody></table>`)
 
-	// Escalation chain visualization for the canonical WAL-write path.
-	fmt.Fprint(w, `<div class="section-title">Escalation chain — an example</div>
-<div class="card"><div class="esc-chain">
-  <span class="esc-step">fault: db.wal.write</span><span class="esc-arrow">→</span>
-  <span class="esc-step">counter ×3 / 5min</span><span class="esc-arrow">→</span>
-  <span class="esc-step">threshold exceeded</span><span class="esc-arrow">→</span>
-  <span class="esc-step esc-step--danger">mode: normal → read-only</span><span class="esc-arrow">→</span>
-  <span class="esc-step">refusals begin (see System state)</span>
-</div></div>`)
+	// The example is the write-ahead log's own rule, so its numbers are the ones
+	// the escalator uses, not a description of them.
+	steps := ui.Steps(
+		ui.Step{Mark: "1", Title: "A fault fires", Detail: example.FaultName + " is recorded and its counter goes up by one."},
+		ui.Step{Mark: "2", Title: "Its counter reaches the threshold",
+			Detail: strconv.FormatInt(example.Threshold, 10) + " times " + faultWindowPhrase(example.Window) + "."},
+		ui.Step{Mark: "3", Title: "The install changes mode",
+			Detail: saModeLabel(mode.ModeNormal) + " to " + saModeLabel(example.TargetMode) + "."},
+		ui.Step{Mark: "4", Title: "Refusals begin", Detail: "System state lists what the new mode refuses."},
+	)
 
-	writeConsoleShellFoot(w, nonce, `window.vpFault=function(name){vpPost('/admin/fault/simulate?name='+encodeURIComponent(name),function(d){var m=(d.current_mode||'').toUpperCase();return 'Fired '+name+' ×'+d.trigger_count+(d.escalated?(' → escalated to '+m):'');});};
+	fmt.Fprint(w, ui.Join(
+		ui.Page("Faults", "Fire a fault point to see how the runtime escalates, and how close each one is to its threshold.", ""),
+		ui.Callout("warn", ui.Text("Firing a fault changes live runtime state. A fault that reaches its threshold within its window moves the whole install into the mode it escalates to. The install is "+saModeLabel(cur)+" now.")),
+		ui.Section("Fault points", strconv.Itoa(len(rules))+" rules armed",
+			ui.Table([]string{"Fault point", "Fired", "Threshold", "Window", "Escalates to", ""}, rows, "No fault points are defined.")),
+		ui.Section("How a fault escalates", "", steps),
+	))
+
+	writeConsoleShellFoot(w, nonce, `window.vpFault=function(name){vpPost('/admin/fault/simulate?name='+encodeURIComponent(name),{},function(d){vpToast('Fired '+name+' ('+d.trigger_count+')'+(d.escalated?(', now '+d.current_mode):''),d.escalated?'warn':'ok');setTimeout(function(){location.reload();},650);});};
 document.addEventListener('click',function(e){var b=e.target.closest('[data-fault]');if(b)vpFault(b.getAttribute('data-fault'));});`)
+}
+
+// faultWindow and faultWindowPhrase say an escalation window as a column value
+// ("5 min") and inside a sentence ("within 5 min"); 0 is the fault's lifetime.
+func faultWindow(d time.Duration) string {
+	if d <= 0 {
+		return "Lifetime"
+	}
+	return humanizeWindow(d)
+}
+
+func faultWindowPhrase(d time.Duration) string {
+	if d <= 0 {
+		return "over its lifetime"
+	}
+	return "within " + humanizeWindow(d)
 }
 
 // =============================================================================
@@ -244,24 +252,27 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 	modeStatus := "mode-" + string(cur)
 	modeLabel := saModeLabel(cur)
 
+	// Names in sentence case. Every sub-line is either measured or says what the
+	// subsystem is; none is a figure written in. There is no signing node: no
+	// code path in the running binary signs anything with an Ed25519 key, and
+	// the node said one was loaded.
 	nodes := []topoNode{
-		{"ingress", "HTTP Ingress", "chi router · TLS", "ok", "write", 30, 70},
-		{"auth", "Auth / CSRF", "API-key · rate-limit", "ok", "write", 250, 70},
-		{"queue", "Write Queue", fmt.Sprintf("%d pending · %d workers", snap.PendingJobs, snap.WorkersAlive), queueStatus, "write", 470, 70},
-		{"wal", "WAL · SQLite", "WAL+journal · PRAGMAs", "ok", "write", 690, 70},
+		{"ingress", "HTTP ingress", "chi router · TLS", "ok", "write", 30, 70},
+		{"auth", "Auth and CSRF", "API key · rate limit", "ok", "write", 250, 70},
+		{"queue", "Write queue", fmt.Sprintf("%d pending · %d workers", snap.PendingJobs, snap.WorkersAlive), queueStatus, "write", 470, 70},
+		{"wal", "WAL · SQLite", "WAL journal · PRAGMAs", "ok", "write", 690, 70},
 		{"search", "Search", searchSub, searchStatus, "read", 30, 185},
-		{"cache", "Render Cache", fmt.Sprintf("%.0f%% hit ratio", snap.CacheHitRatio*100), "ok", "read", 250, 185},
-		{"replay", "Replay Store", "dead-letter · quarantine", "ok", "read", 470, 185},
-		{"signing", "Signing", "Ed25519 loaded", "ok", "write", 690, 185},
-		{"outbox", "Outbox Relay", "transactional events", "ok", "read", 470, 300},
-		{"federation", "Federation", "ActivityPub deliver", fedStatus, "read", 690, 300},
-		{"policy", "Policy Engine", fmt.Sprintf("%d of %d pass", polPass, polTotal), polStatus, "govern", 30, 415},
-		{"mode", "Mode Engine", modeLabel, modeStatus, "govern", 250, 415},
-		{"escalator", "Escalation Engine", fmt.Sprintf("%d rules armed", len(fault.DefaultRules())), escStatus, "govern", 470, 415},
-		{"faults", "Fault Points", fmt.Sprintf("%d fired", faultTotal), faultStatus, "govern", 690, 415},
+		{"cache", "Render cache", fmt.Sprintf("%.0f%% hit ratio", snap.CacheHitRatio*100), "ok", "read", 250, 185},
+		{"replay", "Replay store", "dead letter · quarantine", "ok", "read", 470, 185},
+		{"outbox", "Outbox relay", "transactional events", "ok", "read", 690, 185},
+		{"federation", "Federation", "ActivityPub delivery", fedStatus, "read", 690, 300},
+		{"policy", "Policy engine", fmt.Sprintf("%d of %d pass", polPass, polTotal), polStatus, "govern", 30, 415},
+		{"mode", "Mode engine", modeLabel, modeStatus, "govern", 250, 415},
+		{"escalator", "Escalation engine", fmt.Sprintf("%d rules armed", len(fault.DefaultRules())), escStatus, "govern", 470, 415},
+		{"faults", "Fault points", fmt.Sprintf("%d fired", faultTotal), faultStatus, "govern", 690, 415},
 		{"tracing", "Tracing", "correlation spans", "ok", "observe", 250, 525},
 		{"metrics", "Metrics", "Prometheus", "ok", "observe", 470, 525},
-		{"health", "Health", "12 contracts", "ok", "observe", 690, 525},
+		{"health", "Health", "liveness · readiness", "ok", "observe", 690, 525},
 	}
 	idx := map[string]topoNode{}
 	for _, n := range nodes {
@@ -277,12 +288,11 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 		{"ingress", "auth", 'r', 'l', "flow"},
 		{"auth", "queue", 'r', 'l', "flow"},
 		{"queue", "wal", 'r', 'l', "flow"},
-		{"wal", "signing", 'r', 'l', "flow"},
 		{"ingress", "search", 'b', 't', ""},
 		{"auth", "cache", 'b', 't', ""},
 		{"queue", "replay", 'b', 't', ""},
 		{"wal", "outbox", 'b', 't', "flow"},
-		{"outbox", "federation", 'r', 'l', "flow"},
+		{"outbox", "federation", 'b', 't', "flow"},
 		{"policy", "mode", 'r', 'l', "ctrl"},
 		{"faults", "escalator", 'l', 'r', "ctrl"},
 		{"escalator", "mode", 'l', 'r', "ctrl"},
@@ -292,11 +302,12 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 		{"faults", "health", 'b', 't', ""},
 	}
 
-	nonce := a.writeConsoleShellHead(w, r, "topology", "Runtime Topology",
-		fmt.Sprintf("live subsystem graph · write path · governance overlay · current mode: %s", cur))
-
-	fmt.Fprint(w, `<div class="console-note">A live map of the runtime. Solid edges trace the write/read data path; dashed purple edges are the governance control plane — faults feed the escalator, which drives the mode engine, which constrains the write path. Node colour reflects current health.</div>
-<div class="topo-wrap"><svg class="topo-svg" viewBox="0 0 1000 600" role="img" aria-label="Runtime topology graph">
+	nonce := a.writeConsoleShellHead(w, r, "topology", "Topology")
+	fmt.Fprint(w, ui.Join(
+		ui.Page("Topology", "How a request moves through the runtime, and what governs it. Each subsystem shows its state as of this page load.", ""),
+		`<p class="page-sub">Solid lines are the data path. Dashed lines are the control plane: fault points feed the escalation engine, which drives the mode engine, which constrains the write path. The install is `+ui.Text(saModeLabel(cur))+` now.</p>`,
+	))
+	fmt.Fprint(w, `<div class="topo-wrap"><svg class="topo-svg" viewBox="0 0 1000 600" role="img" aria-label="Runtime topology graph">
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="topo-arrow" d="M0,0 L10,5 L0,10 z"/></marker></defs>`)
 
 	// Band labels.
@@ -353,11 +364,11 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Fprint(w, `</svg></div>
 <div class="topo-legend">
-  <span class="tl-leg"><span class="tl-leg-dot tl-leg-dot--ok"></span>healthy</span>
-  <span class="tl-leg"><span class="tl-leg-dot tl-leg-dot--warn"></span>degraded</span>
-  <span class="tl-leg"><span class="tl-leg-dot tl-leg-dot--danger"></span>blocked / fault</span>
-  <span class="tl-leg"><span class="tl-leg-line"></span>data path</span>
-  <span class="tl-leg"><span class="tl-leg-line ctrl"></span>control plane</span>
+  <span class="tl-leg"><span class="tl-leg-dot tl-leg-dot--ok"></span>Healthy</span>
+  <span class="tl-leg"><span class="tl-leg-dot tl-leg-dot--warn"></span>Degraded</span>
+  <span class="tl-leg"><span class="tl-leg-dot tl-leg-dot--danger"></span>Blocked or faulted</span>
+  <span class="tl-leg"><span class="tl-leg-line"></span>Data path</span>
+  <span class="tl-leg"><span class="tl-leg-line ctrl"></span>Control plane</span>
 </div>`)
 
 	writeConsoleShellFoot(w, nonce, ``)
@@ -426,81 +437,86 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 	quarantined := queueCount("quarantined")
 	deadJobs := loadJobs("dead_letter", 60)
 	poisonJobs := loadJobs("quarantined", 30)
+	maxReplay, batch := config.Cfg.MaxReplayCount, config.Cfg.ReplayBatchLimit
 
-	nonce := a.writeConsoleShellHead(w, r, "replay", "Replay Explorer",
-		fmt.Sprintf("write-job lifecycle · dead-letter & poison queue · %d dead-letter · %d quarantined", deadLetter, quarantined))
+	nonce := a.writeConsoleShellHead(w, r, "replay", "Replay")
 
-	fmt.Fprintf(w, `<div class="console-note">Jobs that exhaust 3 retries enter the dead-letter queue. Replaying requeues them (replay_count++); a job that crosses MAX_REPLAY_COUNT=%d is quarantined as poison. Batch replay processes up to REPLAY_BATCH_LIMIT=%d per call. Actions mutate the live write queue.</div>
-<div class="q-strip">
-  <div class="q-stat"><div class="q-stat-val" style="color:var(--accent2)">%d</div><div class="q-stat-label">Pending</div></div>
-  <div class="q-stat"><div class="q-stat-val" style="color:var(--cyan)">%d</div><div class="q-stat-label">Processing</div></div>
-  <div class="q-stat"><div class="q-stat-val" style="color:var(--green)">%d</div><div class="q-stat-label">Completed</div></div>
-  <div class="q-stat"><div class="q-stat-val" style="color:var(--gold)">%d</div><div class="q-stat-label">Failed</div></div>
-  <div class="q-stat"><div class="q-stat-val" style="color:var(--error)">%d</div><div class="q-stat-label">Dead-letter</div></div>
-  <div class="q-stat"><div class="q-stat-val" style="color:var(--red)">%d</div><div class="q-stat-label">Quarantined</div></div>
-</div>
-<div class="section-title">Job lifecycle</div>
-<div class="card"><div class="esc-chain">
-  <span class="esc-step">pending</span><span class="esc-arrow">→</span>
-  <span class="esc-step">processing</span><span class="esc-arrow">→</span>
-  <span class="esc-step esc-step--ok">completed</span>
-  <span class="esc-arrow" style="margin:0 4px">⟲</span>
-  <span class="esc-step esc-step--warn">retry ×3</span><span class="esc-arrow">→</span>
-  <span class="esc-step esc-step--danger">dead-letter</span><span class="esc-arrow">→</span>
-  <span class="esc-step">replay ×%d</span><span class="esc-arrow">→</span>
-  <span class="esc-step esc-step--danger">quarantined</span>
-</div></div>`,
-		config.Cfg.MaxReplayCount, config.Cfg.ReplayBatchLimit,
-		pending, processing, completed, failed, deadLetter, quarantined,
-		config.Cfg.MaxReplayCount)
-
-	// Dead-letter table.
-	fmt.Fprintf(w, `<div class="section-title">Dead-letter queue (%d)</div>`, deadLetter)
+	actions := ui.HTML("")
 	if deadLetter > 0 {
-		fmt.Fprintf(w, `<div class="action-row"><button class="btn btn--primary" data-replay-all>⟲ Replay all dead-letter (≤%d)</button></div>`, config.Cfg.ReplayBatchLimit)
+		actions = `<button type="button" class="btn btn--primary" data-replay-all>Replay dead letters</button>`
 	}
-	if len(deadJobs) == 0 {
-		fmt.Fprint(w, `<div class="console-note">Dead-letter queue is empty — no jobs have exhausted their retries.</div>`)
-	} else {
-		fmt.Fprint(w, `<table class="fe-table"><thead><tr><th>Job</th><th>Op</th><th>Reason</th><th>Retries</th><th>Replays</th><th>Correlation</th><th>Created</th><th>Action</th></tr></thead><tbody>`)
-		for _, j := range deadJobs {
-			reasonCls := "fe-target t-degraded"
-			if j.DeadReason == "parse_error" || j.DeadReason == "unknown_op" {
-				reasonCls = "fe-target t-readonly"
-			}
-			corr := j.CorrelationID
-			if corr == "" {
-				corr = "—"
-			} else if len(corr) > 12 {
-				corr = corr[:12]
-			}
-			fmt.Fprintf(w, `<tr><td class="fe-name">#%d %s</td><td>%s</td><td><span class="%s">%s</span></td><td>%d</td><td>%d/%d</td><td style="color:var(--muted)">%s</td><td>%s</td><td><button class="fe-sim-btn" data-replay-job="%d">⟲ Replay</button></td></tr>`,
-				j.ID, template.HTMLEscapeString(j.Slug), template.HTMLEscapeString(j.Op), reasonCls, template.HTMLEscapeString(j.DeadReason), j.Retries, j.ReplayCount, config.Cfg.MaxReplayCount, template.HTMLEscapeString(corr), template.HTMLEscapeString(j.CreatedAt), j.ID)
+	tone := func(n int, t string) string {
+		if n > 0 {
+			return t
 		}
-		fmt.Fprint(w, `</tbody></table>`)
+		return ""
+	}
+	count := strconv.Itoa
+
+	// Every field of a job arrives from outside (the correlation ID is whatever
+	// the request sent), so each cell is text.
+	corr := func(c string) ui.HTML {
+		if c == "" {
+			return ui.Text("—")
+		}
+		if len(c) > 12 {
+			c = c[:12]
+		}
+		return `<span class="mono">` + ui.Text(c) + `</span>`
+	}
+	job := func(j replayJob) ui.HTML {
+		return `<span class="mono">#` + ui.Text(strconv.FormatInt(j.ID, 10)) + `</span> ` + ui.Text(j.Slug)
+	}
+	var deadRows [][]ui.HTML
+	for _, j := range deadJobs {
+		reasonTone := "warn"
+		if j.DeadReason == "parse_error" || j.DeadReason == "unknown_op" {
+			reasonTone = "danger"
+		}
+		deadRows = append(deadRows, []ui.HTML{
+			job(j), ui.Text(j.Op), ui.Tag(reasonTone, j.DeadReason), ui.Text(count(j.Retries)),
+			ui.Text(count(j.ReplayCount) + " of " + count(maxReplay)), corr(j.CorrelationID), ui.Text(j.CreatedAt),
+			`<button type="button" class="btn btn--sm" data-replay-job="` + ui.Text(strconv.FormatInt(j.ID, 10)) + `">Replay</button>`,
+		})
+	}
+	var poisonRows [][]ui.HTML
+	for _, j := range poisonJobs {
+		poisonRows = append(poisonRows, []ui.HTML{
+			job(j), ui.Text(j.Op), ui.Tag("danger", j.DeadReason), ui.Text(count(j.ReplayCount)), corr(j.CorrelationID), ui.Text(j.CreatedAt),
+		})
+	}
+	deadBody := ui.Empty("check-c", "No dead letters", "No job has used up its retries.", "")
+	if len(deadRows) > 0 {
+		deadBody = ui.Table([]string{"Job", "Operation", "Reason", "Retries", "Replays", "Correlation", "Created", ""}, deadRows, "")
+	}
+	poisonBody := ui.Empty("check-c", "Nothing quarantined", "No job has been replayed past the ceiling.", "")
+	if len(poisonRows) > 0 {
+		poisonBody = ui.Table([]string{"Job", "Operation", "Reason", "Replays", "Correlation", "Created"}, poisonRows, "")
 	}
 
-	// Quarantined (poison) table.
-	fmt.Fprintf(w, `<div class="section-title">Quarantined as poison (%d)</div>`, quarantined)
-	if len(poisonJobs) == 0 {
-		fmt.Fprint(w, `<div class="console-note">No quarantined jobs — nothing has crossed the replay ceiling.</div>`)
-	} else {
-		fmt.Fprint(w, `<table class="fe-table"><thead><tr><th>Job</th><th>Op</th><th>Reason</th><th>Replays</th><th>Correlation</th><th>Created</th></tr></thead><tbody>`)
-		for _, j := range poisonJobs {
-			corr := j.CorrelationID
-			if corr == "" {
-				corr = "—"
-			} else if len(corr) > 12 {
-				corr = corr[:12]
-			}
-			fmt.Fprintf(w, `<tr><td class="fe-name">#%d %s</td><td>%s</td><td><span class="fe-target t-readonly">%s</span></td><td>%d</td><td style="color:var(--muted)">%s</td><td style="color:var(--muted)">%s</td></tr>`,
-				j.ID, template.HTMLEscapeString(j.Slug), template.HTMLEscapeString(j.Op), template.HTMLEscapeString(j.DeadReason), j.ReplayCount, template.HTMLEscapeString(corr), template.HTMLEscapeString(j.CreatedAt))
-		}
-		fmt.Fprint(w, `</tbody></table>`)
-	}
+	fmt.Fprint(w, ui.Join(
+		ui.Page("Replay", "Write jobs that still fail after three retries wait here. Replay them once the cause is fixed; a job replayed "+count(maxReplay)+" times is set aside as poison.", actions),
+		ui.Figures(
+			ui.Figure{Value: count(pending), Label: "Pending"},
+			ui.Figure{Value: count(processing), Label: "Processing"},
+			ui.Figure{Value: count(completed), Label: "Completed"},
+			ui.Figure{Value: count(failed), Label: "Failed", Tone: tone(failed, "warn")},
+			ui.Figure{Value: count(deadLetter), Label: "Dead letters", Tone: tone(deadLetter, "warn")},
+			ui.Figure{Value: count(quarantined), Label: "Quarantined", Tone: tone(quarantined, "danger")},
+		),
+		ui.Section("How a job moves", "", ui.Steps(
+			ui.Step{Mark: "1", Title: "Pending, then processing", Detail: "A worker takes the job from the queue."},
+			ui.Step{Mark: "2", Title: "Completed, or retried", Detail: "A failed job is retried up to three times, waiting longer each time."},
+			ui.Step{Mark: "3", Title: "Dead letter", Detail: "If it fails once more it waits here for you. A job the queue cannot read or run comes straight here."},
+			ui.Step{Mark: "4", Title: "Replayed", Detail: "Replay sends it back to pending. Replay dead letters takes up to " + count(batch) + " at a time."},
+			ui.Step{Mark: "5", Title: "Quarantined", Detail: "A job replayed " + count(maxReplay) + " times is poison and is not replayed again."},
+		)),
+		ui.Section("Dead letters", count(deadLetter)+" jobs", deadBody),
+		ui.Section("Quarantined as poison", count(quarantined)+" jobs", poisonBody),
+	))
 
-	writeConsoleShellFoot(w, nonce, `window.vpReplay=function(id){vpPost('/admin/replay/job?id='+id,function(d){return d.replayed?('Requeued job #'+id):'Job not replayable';});};
-window.vpReplayAll=function(){vpPost('/api/v1/queue/replay',function(d){return 'Replayed '+d.replayed+' · quarantined '+d.skipped_quarantined;});};
+	writeConsoleShellFoot(w, nonce, `window.vpReplay=function(id){vpPost('/admin/replay/job?id='+id,{},function(d){vpToast(d.replayed?('Requeued job #'+id):'Job #'+id+' is no longer a dead letter',d.replayed?'ok':'warn');setTimeout(function(){location.reload();},650);});};
+window.vpReplayAll=function(){vpPost('/api/v1/queue/replay',{},function(d){vpToast('Replayed '+d.replayed+', quarantined '+d.skipped_quarantined,'ok');setTimeout(function(){location.reload();},650);});};
 document.addEventListener('click',function(e){var b=e.target.closest('[data-replay-job],[data-replay-all]');if(!b)return;if(b.hasAttribute('data-replay-all'))vpReplayAll();else vpReplay(b.getAttribute('data-replay-job'));});`)
 }
 
@@ -586,9 +602,9 @@ func (a *App) handleFaultSimulate(w http.ResponseWriter, r *http.Request) {
 // humanizeWindow formats an escalation rolling window compactly.
 func humanizeWindow(d time.Duration) string {
 	if d >= time.Minute {
-		return fmt.Sprintf("%dmin", int(d.Minutes()))
+		return fmt.Sprintf("%d min", int(d.Minutes()))
 	}
-	return fmt.Sprintf("%ds", int(d.Seconds()))
+	return fmt.Sprintf("%d s", int(d.Seconds()))
 }
 
 // =============================================================================
@@ -597,137 +613,106 @@ func humanizeWindow(d time.Duration) string {
 // =============================================================================
 
 func (a *App) handlePolicyPage(w http.ResponseWriter, r *http.Request) {
-	nonce := a.writeConsoleShellHead(w, r, "policy", "Policy Provenance Inspector",
-		"governance rules · evaluation history · provenance lineage")
+	nonce := a.writeConsoleShellHead(w, r, "policy", "Policy")
 
-	// Live evaluation for current display.
 	live := policy.Global.EvaluateAll(policy.Context{})
-	pass := len(live.Passed)
-	warn := len(live.Warnings)
-	fail := len(live.Failed)
-	total := pass + warn + fail
-
-	// Historical data from journal.
+	pass, warn, fail := len(live.Passed), len(live.Warnings), len(live.Failed)
 	var rows []policy.EvalRow
 	var runs []policy.RunSummary
 	if policy.GlobalJournal != nil {
 		rows, _ = policy.GlobalJournal.History(120)
 		runs, _ = policy.GlobalJournal.RunHistory(20)
 	}
-
-	sb := &strings.Builder{}
-	sb.WriteString(`<div style="padding:18px 22px 0">`)
-
-	// Live status strip.
-	statusCls := "ps-pass"
-	if fail > 0 {
-		statusCls = "ps-fail"
-	} else if warn > 0 {
-		statusCls = "ps-warn"
-	}
-	sb.WriteString(`<div class="policy-strip">`)
-	sb.WriteString(fmt.Sprintf(`<div class="policy-stat"><div class="policy-stat-val %s">%d/%d</div><div class="policy-stat-label">Pass</div></div>`, statusCls, pass, total))
-	sb.WriteString(fmt.Sprintf(`<div class="policy-stat"><div class="policy-stat-val ps-warn">%d</div><div class="policy-stat-label">Warn</div></div>`, warn))
-	sb.WriteString(fmt.Sprintf(`<div class="policy-stat"><div class="policy-stat-val ps-fail">%d</div><div class="policy-stat-label">Fail</div></div>`, fail))
-	sb.WriteString(fmt.Sprintf(`<div class="policy-stat"><div class="policy-stat-val" style="color:var(--text2)">%d</div><div class="policy-stat-label">Run history</div></div>`, len(runs)))
-
-	// Trend sparkline from run history.
-	if len(runs) > 0 {
-		sb.WriteString(`<div class="policy-stat" style="padding-top:6px"><div class="policy-stat-label">Recent trend</div><div class="policy-trend">`)
-		maxTotal := 1
-		for _, rs := range runs {
-			if t := rs.Pass + rs.Warn + rs.Fail; t > maxTotal {
-				maxTotal = t
-			}
+	clean := 0
+	for _, rs := range runs {
+		if rs.Warn == 0 && rs.Fail == 0 {
+			clean++
 		}
-		// Show newest on right — reverse.
-		for i := len(runs) - 1; i >= 0; i-- {
-			rs := runs[i]
-			t := rs.Pass + rs.Warn + rs.Fail
-			if t == 0 {
-				t = 1
-			}
-			h := 36 * t / maxTotal
-			if h < 3 {
-				h = 3
-			}
-			cls := "tb-pass"
-			if rs.Fail > 0 {
-				cls = "tb-fail"
-			} else if rs.Warn > 0 {
-				cls = "tb-warn"
-			}
-			sb.WriteString(fmt.Sprintf(`<div class="trend-bar %s" style="height:%dpx" title="%s: %dp %dw %df"></div>`, cls, h, rs.EvaluatedAt.UTC().Format("15:04"), rs.Pass, rs.Warn, rs.Fail))
-		}
-		sb.WriteString(`</div></div>`)
 	}
-	sb.WriteString(`</div>`) // end policy-strip
-
-	// Live policy results section.
-	sb.WriteString(`<div class="section-head"><span class="section-head__title">Live evaluation</span><span class="section-head__hint">`)
-	sb.WriteString(time.Now().UTC().Format("15:04:05Z"))
-	sb.WriteString(`</span></div>`)
-	sb.WriteString(`<table class="policy-history"><thead><tr>`)
-	for _, h := range []string{"Result", "Policy", "Category", "Severity", "Detail"} {
-		sb.WriteString(`<th>` + h + `</th>`)
+	resultTag := func(res string) ui.HTML {
+		return ui.Tag(map[string]string{"pass": "ok", "warn": "warn", "fail": "danger"}[res], sentenceWord(res))
 	}
-	sb.WriteString(`</tr></thead><tbody>`)
 
-	allLive := append(append(live.Passed, live.Warnings...), live.Failed...)
-	for _, r := range allLive {
+	liveRows := make([][]ui.HTML, 0, pass+warn+fail)
+	for _, r := range append(append(live.Failed, live.Warnings...), live.Passed...) {
 		res := "pass"
 		if !r.Passed {
+			res = "fail"
 			if r.Severity == policy.SeverityWarning || r.Severity == policy.SeverityAdvisory {
 				res = "warn"
-			} else {
-				res = "fail"
 			}
 		}
-		badge := fmt.Sprintf(`<span class="pol-badge pol-%s">%s</span>`, res, sentenceWord(res))
-		sb.WriteString(`<tr>`)
-		sb.WriteString(`<td>` + badge + `</td>`)
-		sb.WriteString(`<td><span class="pol-name">` + html.EscapeString(r.Name) + `</span></td>`)
-		sb.WriteString(`<td><span class="pol-cat">` + html.EscapeString(string(r.Category)) + `</span></td>`)
-		sb.WriteString(`<td><span class="pol-cat">` + html.EscapeString(string(r.Severity)) + `</span></td>`)
-		sb.WriteString(`<td><span class="pol-detail">` + html.EscapeString(r.Message) + `</span></td>`)
-		sb.WriteString(`</tr>`)
+		liveRows = append(liveRows, []ui.HTML{resultTag(res), `<span class="mono">` + ui.Text(r.Name) + `</span>`,
+			ui.Text(sentenceWord(string(r.Category))), ui.Text(sentenceWord(string(r.Severity))), ui.Text(sentenceWord(r.Message))})
 	}
-	sb.WriteString(`</tbody></table>`)
-
-	// Historical evaluation log.
-	if len(rows) > 0 {
-		sb.WriteString(`<div class="section-head"><span class="section-head__title">Evaluation history</span><span class="section-head__hint">last `)
-		sb.WriteString(fmt.Sprintf("%d", len(rows)))
-		sb.WriteString(` entries</span></div>`)
-		sb.WriteString(`<table class="policy-history"><thead><tr>`)
-		for _, h := range []string{"Timestamp", "Run ID", "Result", "Policy", "Category", "Detail"} {
-			sb.WriteString(`<th>` + h + `</th>`)
+	historyRows := make([][]ui.HTML, 0, len(rows))
+	for _, row := range rows {
+		run := row.RunID
+		if len(run) > 12 {
+			run = run[:12] + "…"
 		}
-		sb.WriteString(`</tr></thead><tbody>`)
-		for _, row := range rows {
-			badge := fmt.Sprintf(`<span class="pol-badge pol-%s">%s</span>`, row.Result, sentenceWord(row.Result))
-			ts := row.EvaluatedAt.UTC().Format("2006-01-02 15:04:05Z")
-			runShort := row.RunID
-			if len(runShort) > 12 {
-				runShort = runShort[:12] + "…"
-			}
-			sb.WriteString(`<tr>`)
-			sb.WriteString(`<td><span class="pol-ts">` + ts + `</span></td>`)
-			sb.WriteString(`<td><span class="pol-runid">` + html.EscapeString(runShort) + `</span></td>`)
-			sb.WriteString(`<td>` + badge + `</td>`)
-			sb.WriteString(`<td><span class="pol-name">` + html.EscapeString(row.PolicyName) + `</span></td>`)
-			sb.WriteString(`<td><span class="pol-cat">` + html.EscapeString(row.Category) + `</span></td>`)
-			sb.WriteString(`<td><span class="pol-detail">` + html.EscapeString(row.Detail) + `</span></td>`)
-			sb.WriteString(`</tr>`)
-		}
-		sb.WriteString(`</tbody></table>`)
-	} else {
-		sb.WriteString(`<div style="margin:22px 0;color:var(--muted);font:400 12px var(--mono)">No evaluation history yet — first run records on startup.</div>`)
+		historyRows = append(historyRows, []ui.HTML{`<span class="mono">` + ui.Text(row.EvaluatedAt.UTC().Format("2006-01-02 15:04:05Z")) + `</span>`,
+			`<span class="mono">` + ui.Text(run) + `</span>`, resultTag(row.Result), `<span class="mono">` + ui.Text(row.PolicyName) + `</span>`,
+			ui.Text(sentenceWord(row.Category)), ui.Text(sentenceWord(row.Detail))})
+	}
+	failTone, warnTone := "", ""
+	if fail > 0 {
+		failTone = "danger"
+	}
+	if warn > 0 {
+		warnTone = "warn"
 	}
 
-	sb.WriteString(`</div>`) // end padding wrapper
-	fmt.Fprint(w, sb.String())
+	fmt.Fprint(w, ui.Join(
+		ui.Page("Policy", "The rules this install holds itself to, how each did just now, and how past evaluations went. Failures come first.", ""),
+		ui.Figures(
+			ui.Figure{Value: strconv.Itoa(pass) + " of " + strconv.Itoa(pass+warn+fail), Label: "Passing"},
+			ui.Figure{Value: strconv.Itoa(warn), Label: "Warnings", Tone: warnTone},
+			ui.Figure{Value: strconv.Itoa(fail), Label: "Failures", Tone: failTone},
+			ui.Figure{Value: strconv.Itoa(clean) + " of " + strconv.Itoa(len(runs)), Label: "Clean runs", Note: "Recent evaluations with no warning or failure"},
+		),
+		ui.Section("Recent runs", "Oldest to newest", policyRunBars(runs)),
+		ui.Section("Live evaluation", time.Now().UTC().Format("15:04:05Z"),
+			ui.Table([]string{"Result", "Policy", "Category", "Severity", "Detail"}, liveRows, "No policies are registered.")),
+		ui.Section("Evaluation history", "Last "+strconv.Itoa(len(rows))+" entries",
+			ui.Table([]string{"Evaluated", "Run", "Result", "Policy", "Category", "Detail"}, historyRows, "No evaluation has been recorded yet. The first runs when the install starts.")),
+	))
 	writeConsoleShellFoot(w, nonce, "")
+}
+
+// policyRunBars draws the recorded evaluation runs oldest to newest, one bar
+// each, as tall as the number of policies it evaluated and in the tone of its
+// worst result. SVG attributes, not inline styles, carry the geometry.
+func policyRunBars(runs []policy.RunSummary) ui.HTML {
+	if len(runs) == 0 {
+		return ui.Empty("chart", "No runs recorded yet", "The first evaluation is recorded when the install starts.", "")
+	}
+	most := 1
+	for _, rs := range runs {
+		if t := rs.Pass + rs.Warn + rs.Fail; t > most {
+			most = t
+		}
+	}
+	slot := 100.0 / float64(len(runs))
+	var b strings.Builder
+	b.WriteString(`<svg class="pol-runs" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="Policy evaluation runs, oldest to newest">`)
+	for i := len(runs) - 1; i >= 0; i-- { // runs arrive newest first
+		rs := runs[i]
+		h := math.Max(2, 38*float64(rs.Pass+rs.Warn+rs.Fail)/float64(most))
+		tone := "ok"
+		switch {
+		case rs.Fail > 0:
+			tone = "fail"
+		case rs.Warn > 0:
+			tone = "warn"
+		}
+		x := float64(len(runs)-1-i) * slot
+		fmt.Fprintf(&b, `<rect class="pol-run pol-run--%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f"><title>%s</title></rect>`,
+			tone, x+slot*0.2, 40-h, slot*0.6, h,
+			ui.Text(fmt.Sprintf("%s: %d passed, %d warned, %d failed", rs.EvaluatedAt.UTC().Format("2006-01-02 15:04Z"), rs.Pass, rs.Warn, rs.Fail)))
+	}
+	b.WriteString(`</svg>`)
+	return ui.HTML(b.String())
 }
 
 // sentenceWord capitalises the first letter of a machine word ("pass" →

@@ -62,7 +62,7 @@ func TestClientCanReachTheThreeThingsTheyPayFor(t *testing.T) {
 		"/os/vayumail/inbox", "/os/vayumail/message/abc", "/os/vayumail/compose",
 		"/os/vayumail/sent", "/os/vayumail/connect",
 		"/os/api/vayuos/mail/recovery/status",
-		"/os/profile", "/os/logout", "/os/static/css/admin-os.css",
+		"/os/profile", "/os/logout", "/os/static/css/vayuos.css",
 	}
 	for _, p := range allowed {
 		if !clientPathAllowed(p) {

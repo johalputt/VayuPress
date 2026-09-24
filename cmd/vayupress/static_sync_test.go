@@ -12,7 +12,7 @@ import (
 // TestEmbeddedStaticHasAdminAssets proves the admin CSS/JS the panel serves are
 // actually compiled into the binary, so a one-click self-update ships them.
 func TestEmbeddedStaticHasAdminAssets(t *testing.T) {
-	for _, p := range []string{"css/admin-os.css", "js/admin-os.js", "js/admin-os-update.js"} {
+	for _, p := range []string{"css/vayuos.css", "js/admin-os.js", "js/admin-os-update.js"} {
 		if _, err := fs.Stat(embeddedStaticFS, p); err != nil {
 			t.Errorf("embedded static is missing %q: %v", p, err)
 		}
@@ -26,12 +26,12 @@ func TestSyncEmbeddedStaticWritesAndSkips(t *testing.T) {
 	dir := t.TempDir()
 	syncEmbeddedStatic(dir)
 
-	css := filepath.Join(dir, "css", "admin-os.css")
+	css := filepath.Join(dir, "css", "vayuos.css")
 	fi, err := os.Stat(css)
 	if err != nil {
-		t.Fatalf("admin-os.css not written: %v", err)
+		t.Fatalf("vayuos.css not written: %v", err)
 	}
-	want, err := fs.ReadFile(embeddedStaticFS, "css/admin-os.css")
+	want, err := fs.ReadFile(embeddedStaticFS, "css/vayuos.css")
 	if err != nil {
 		t.Fatalf("read embedded css: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestSyncEmbeddedStaticWritesAndSkips(t *testing.T) {
 		t.Fatalf("read written css: %v", err)
 	}
 	if string(got) != string(want) {
-		t.Fatal("written admin-os.css does not match the embedded copy")
+		t.Fatal("written vayuos.css does not match the embedded copy")
 	}
 
 	// Second sync must be a no-op for the unchanged file (mtime preserved).
