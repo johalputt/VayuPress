@@ -70,7 +70,12 @@ var consoleShellCall = regexp.MustCompile(`adminOSShellHead|writeOSHTML`)
 // renders BOTH a console page and a public author page; judging the whole file
 // against the console's sheet would report the public page's entire grammar as
 // unstyled.
-var ownStylesheetRe = regexp.MustCompile(`/static/css/`)
+//
+// Only a PUBLIC stylesheet link counts ("/static/css/…" straight after the
+// quote). The console's own sheets live under /os/static/css/, and matching
+// those too dropped both shell heads from this gate: the chunk that renders
+// the console's chrome was the one chunk never checked.
+var ownStylesheetRe = regexp.MustCompile(`["']/static/css/`)
 
 // consoleSourceFiles are the files that render into the VayuOS shell, and so are
 // styled by admin-os.css and nothing else. The theme store renders a PUBLIC page
@@ -122,6 +127,13 @@ func consoleChunks(src string) []string {
 
 func TestNoNewUnstyledClassInTheVayuOSConsole(t *testing.T) {
 	css := loadAdminOSCSS(t)
+	// The Still Air shell's own classes (sa-*) render only in that design, so
+	// they answer to its stylesheet; everything else still answers to
+	// admin-os.css, which both designs load.
+	stillAir, err := os.ReadFile(filepath.Clean("../../static/css/vayuos.css"))
+	if err != nil {
+		t.Fatalf("vayuos.css: %v", err)
+	}
 	seen := map[string]string{}
 	for _, f := range consoleSourceFiles(t) {
 		src, err := os.ReadFile(f) // #nosec G304 -- walking this repository
@@ -131,7 +143,11 @@ func TestNoNewUnstyledClassInTheVayuOSConsole(t *testing.T) {
 		for _, chunk := range consoleChunks(string(src)) {
 			for _, m := range goClassLiteralRe.FindAllStringSubmatch(chunk, -1) {
 				for _, cls := range strings.Fields(m[1]) {
-					if consoleUtilityClasses[cls] || consoleUnstyledBaseline[cls] || cssDefines(css, cls) {
+					sheet := css
+					if strings.HasPrefix(cls, "sa-") {
+						sheet = string(stillAir)
+					}
+					if consoleUtilityClasses[cls] || consoleUnstyledBaseline[cls] || cssDefines(sheet, cls) {
 						continue
 					}
 					if _, dup := seen[cls]; !dup {
@@ -148,7 +164,7 @@ func TestNoNewUnstyledClassInTheVayuOSConsole(t *testing.T) {
 	if len(novel) > 0 {
 		sort.Strings(novel)
 		t.Errorf("%d class(es) render unstyled in the VayuOS console and are not in the known "+
-			"baseline:\n  %s\nAdd a rule to static/css/admin-os.css. An element carrying a class "+
+			"baseline:\n  %s\nAdd a rule to static/css/admin-os.css (vayuos.css for a Still Air sa-* class). An element carrying a class "+
 			"with no rule renders as bare inline text, and every test about its content still passes.",
 			len(novel), strings.Join(novel, "\n  "))
 	}

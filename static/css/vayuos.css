@@ -275,6 +275,8 @@
   width: 16px; height: 16px; flex: none;
   stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
 }
+/* A name missing from the icon set: loud on purpose, and a test fails on it. */
+.vp-os[data-ui="still-air"] .sa-ico--missing { outline: 1px dashed var(--danger); outline-offset: 1px; }
 .vp-os[data-ui="still-air"] .sa-iconbtn {
   width: 30px; height: 30px; display: inline-grid; place-items: center; flex: none;
   border-radius: var(--radius-control); color: var(--text-2);
