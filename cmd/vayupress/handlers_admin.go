@@ -43,6 +43,7 @@ import (
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
+	"github.com/johalputt/vayupress/internal/policy"
 	"github.com/johalputt/vayupress/internal/provenance"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/seo"
@@ -1482,9 +1483,13 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 	// ── Current posture: steady (NORMAL, no faults) or active monitoring ───
 	cur := mode.Global.Current()
 	if cur == mode.ModeNormal && !anyFault {
+		// The policy figure is evaluated, not written in: it read "6/6 PASS"
+		// whatever the policies said.
+		live := policy.Global.EvaluateAll(policy.Context{})
+		polTotal := len(live.Passed) + len(live.Warnings) + len(live.Failed)
 		out = append(out, tlEntry{
 			clock(snap.SnapshotAt.UTC()), rel(time.Since(boot)), "steady", "tl-cat-ok", "tl-ok",
-			fmt.Sprintf("mode.steady — NORMAL holding %s · 0 escalations · policy 6/6 PASS", rel(time.Since(boot))[1:]),
+			fmt.Sprintf("mode.steady — NORMAL holding %s · 0 escalations · policy %d/%d pass", rel(time.Since(boot))[1:], len(live.Passed), polTotal),
 			"",
 			tlProvenance{Source: "governance", Actor: "system", Confidence: confDerived, PolicyRev: config.ConfigVersion},
 		})

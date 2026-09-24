@@ -108,7 +108,7 @@ func (a *App) handleModesPage(w http.ResponseWriter, r *http.Request) {
 	// Current mode banner.
 	fmt.Fprintf(w, `<div class="mode-banner %s"><div class="mode-banner-pulse"><div class="mode-banner-pulse-dot"></div></div><div class="mode-banner-info"><span class="mode-banner-state">%s</span><span class="mode-banner-desc">%s</span></div></div>
 <div class="console-note">Transitions follow the permitted graph. Reachable targets are actionable; blocked targets require an intermediate transition or operator override. Every transition is journaled and appears on the Overview timeline.</div>
-<div class="section-title">Mode State Machine</div>
+<div class="section-title">Mode state machine</div>
 <div class="mode-grid">`, curCls, html.EscapeString(curLabel), html.EscapeString(curDesc))
 
 	for _, m := range mode.AllModes() {
@@ -138,7 +138,7 @@ func (a *App) handleModesPage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `</div>`)
 
 	// Transition lineage rendered with the operational timeline component.
-	fmt.Fprint(w, `<div class="section-title">Transition Lineage</div>`)
+	fmt.Fprint(w, `<div class="section-title">Transition lineage</div>`)
 	if len(history) == 0 {
 		fmt.Fprint(w, `<div class="console-note">No transitions yet — the runtime has held NORMAL since boot. Trigger a transition above or simulate faults in the Fault Engine to populate the lineage.</div>`)
 	} else {
@@ -185,7 +185,7 @@ func (a *App) handleFaultPage(w http.ResponseWriter, r *http.Request) {
 		fmt.Sprintf("fault injection & escalation lineage · %d rules armed · current mode: %s", len(rules), cur))
 
 	fmt.Fprint(w, `<div class="console-note">Simulating a fault increments its escalation counter. When a fault crosses its threshold within the window, the runtime auto-escalates to the target mode — visible on the Overview timeline and the System Modes lineage. This is live: it mutates real runtime state.</div>
-<div class="section-title">Fault Points & Escalation Rules</div>
+<div class="section-title">Fault points and escalation rules</div>
 <table class="fe-table"><thead><tr><th>Fault Point</th><th>Triggers</th><th>Threshold</th><th>Window</th><th>Escalates To</th><th>Action</th></tr></thead><tbody>`)
 
 	for _, rule := range rules {
@@ -207,13 +207,13 @@ func (a *App) handleFaultPage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `</tbody></table>`)
 
 	// Escalation chain visualization for the canonical WAL-write path.
-	fmt.Fprint(w, `<div class="section-title">Escalation Chain — Example</div>
+	fmt.Fprint(w, `<div class="section-title">Escalation chain — an example</div>
 <div class="card"><div class="esc-chain">
   <span class="esc-step">fault: db.wal.write</span><span class="esc-arrow">→</span>
   <span class="esc-step">counter ×3 / 5min</span><span class="esc-arrow">→</span>
   <span class="esc-step">threshold exceeded</span><span class="esc-arrow">→</span>
   <span class="esc-step esc-step--danger">mode: normal → read-only</span><span class="esc-arrow">→</span>
-  <span class="esc-step">write queue paused</span>
+  <span class="esc-step">refusals begin (see System state)</span>
 </div></div>`)
 
 	writeConsoleShellFoot(w, nonce, `window.vpFault=function(name){vpPost('/admin/fault/simulate?name='+encodeURIComponent(name),function(d){var m=(d.current_mode||'').toUpperCase();return 'Fired '+name+' ×'+d.trigger_count+(d.escalated?(' → escalated to '+m):'');});};
@@ -255,10 +255,9 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 	if snap.FailedJobs > 0 {
 		queueStatus = "warn"
 	}
-	walStatus := "ok"
-	if cur == mode.ModeReadOnly {
-		walStatus = "err"
-	}
+	// The WAL node is not turned red in read-only mode: read-only does not stop
+	// WAL writes (System state lists what it does refuse), and a red node here
+	// said it did.
 	fedStatus := "ok"
 	if cur == mode.ModeDegraded {
 		fedStatus = "warn"
@@ -278,23 +277,34 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 	if faultTotal > 0 {
 		escStatus, faultStatus = "warn", "warn"
 	}
+	// Every figure on a node is measured; none is a constant that happens to
+	// read like one ("6/6 PASS" and "3 workers" were).
+	live := policy.Global.EvaluateAll(policy.Context{})
+	polPass, polTotal := len(live.Passed), len(live.Passed)+len(live.Warnings)+len(live.Failed)
+	polStatus := "ok"
+	switch {
+	case len(live.Failed) > 0:
+		polStatus = "err"
+	case len(live.Warnings) > 0:
+		polStatus = "warn"
+	}
 	modeStatus := "mode-" + string(cur)
-	_, modeLabel, _ := modeVisual(cur)
+	modeLabel := saModeLabel(cur)
 
 	nodes := []topoNode{
 		{"ingress", "HTTP Ingress", "chi router · TLS", "ok", "write", 30, 70},
 		{"auth", "Auth / CSRF", "API-key · rate-limit", "ok", "write", 250, 70},
-		{"queue", "Write Queue", fmt.Sprintf("%d pending · 3 workers", snap.PendingJobs), queueStatus, "write", 470, 70},
-		{"wal", "WAL · SQLite", "WAL+journal · PRAGMAs", walStatus, "write", 690, 70},
+		{"queue", "Write Queue", fmt.Sprintf("%d pending · %d workers", snap.PendingJobs, snap.WorkersAlive), queueStatus, "write", 470, 70},
+		{"wal", "WAL · SQLite", "WAL+journal · PRAGMAs", "ok", "write", 690, 70},
 		{"search", "Search", searchSub, searchStatus, "read", 30, 185},
 		{"cache", "Render Cache", fmt.Sprintf("%.0f%% hit ratio", snap.CacheHitRatio*100), "ok", "read", 250, 185},
 		{"replay", "Replay Store", "dead-letter · quarantine", "ok", "read", 470, 185},
 		{"signing", "Signing", "Ed25519 loaded", "ok", "write", 690, 185},
 		{"outbox", "Outbox Relay", "transactional events", "ok", "read", 470, 300},
 		{"federation", "Federation", "ActivityPub deliver", fedStatus, "read", 690, 300},
-		{"policy", "Policy Engine", "6/6 PASS", "ok", "govern", 30, 415},
+		{"policy", "Policy Engine", fmt.Sprintf("%d of %d pass", polPass, polTotal), polStatus, "govern", 30, 415},
 		{"mode", "Mode Engine", modeLabel, modeStatus, "govern", 250, 415},
-		{"escalator", "Escalation Engine", "6 rules armed", escStatus, "govern", 470, 415},
+		{"escalator", "Escalation Engine", fmt.Sprintf("%d rules armed", len(fault.DefaultRules())), escStatus, "govern", 470, 415},
 		{"faults", "Fault Points", fmt.Sprintf("%d fired", faultTotal), faultStatus, "govern", 690, 415},
 		{"tracing", "Tracing", "correlation spans", "ok", "observe", 250, 525},
 		{"metrics", "Metrics", "Prometheus", "ok", "observe", 470, 525},
@@ -334,15 +344,17 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprint(w, `<div class="console-note">A live map of the runtime. Solid edges trace the write/read data path; dashed purple edges are the governance control plane — faults feed the escalator, which drives the mode engine, which constrains the write path. Node colour reflects current health.</div>
 <div class="topo-wrap"><svg class="topo-svg" viewBox="0 0 1000 600" role="img" aria-label="Runtime topology graph">
-<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2b3a52"/></marker></defs>`)
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="topo-arrow" d="M0,0 L10,5 L0,10 z"/></marker></defs>`)
 
 	// Band labels.
 	bands := []struct {
 		y     float64
 		label string
-	}{{96, "WRITE PATH"}, {211, "DELIVERY / READ"}, {441, "GOVERNANCE"}, {551, "OBSERVABILITY"}}
+	}{{96, "Write path"}, {211, "Delivery and read"}, {441, "Governance"}, {551, "Observability"}}
 	for _, b := range bands {
-		fmt.Fprintf(w, `<text class="topo-band" x="6" y="%.0f">%s</text>`, b.y, b.label)
+		// Above the row, aligned with its first node: to the left of it the label
+		// had six units and was clipped to "Writ".
+		fmt.Fprintf(w, `<text class="topo-band" x="30" y="%.0f">%s</text>`, b.y-32, b.label)
 	}
 
 	// Edges first (under nodes).
@@ -368,27 +380,24 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 			cls, x1, y1, c1x, c1y, c2x, c2y, x2, y2, marker)
 	}
 
-	// Nodes.
-	dotColor := map[string]string{"ok": "#10b981", "warn": "#f59e0b", "err": "#ef4444"}
-	strokeColor := map[string]string{"ok": "#1f3a30", "warn": "#3a3010", "err": "#3a1818"}
-	bandColor := map[string]string{"write": "#6366f1", "read": "#06b6d4", "govern": "#8b5cf6", "observe": "#10b981"}
+	// Nodes. Health and band are classes, so each scheme colours them; the dots
+	// no longer pulse — an animation nobody can switch off, on every node,
+	// saying nothing the colour does not.
 	for _, n := range nodes {
-		dc := dotColor[n.Status]
-		sc := strokeColor[n.Status]
+		tone := n.Status // ok · warn · err
 		if strings.HasPrefix(n.Status, "mode-") {
-			mc := map[mode.Mode]string{mode.ModeNormal: "#10b981", mode.ModeDegraded: "#f59e0b", mode.ModeReadOnly: "#ef4444", mode.ModeRecovery: "#06b6d4", mode.ModeMaintenance: "#8b5cf6", mode.ModeQuarantined: "#ef4444"}[cur]
-			dc, sc = mc, "#2a2150"
+			tone = map[string]string{"ok": "ok", "warn": "warn", "danger": "err"}[saModeTone(cur)]
 		}
 		fmt.Fprintf(w, `<g class="topo-node">
-<rect class="topo-rect" x="%.0f" y="%.0f" width="%.0f" height="%.0f" rx="7" style="stroke:%s"/>
-<rect x="%.0f" y="%.0f" width="3" height="%.0f" rx="1.5" fill="%s"/>
-<circle cx="%.0f" cy="%.0f" r="4" fill="%s"><animate attributeName="opacity" values="1;.35;1" dur="2.6s" repeatCount="indefinite"/></circle>
+<rect class="topo-rect topo-rect--%s" x="%.0f" y="%.0f" width="%.0f" height="%.0f" rx="7"/>
+<rect class="topo-bar topo-bar--%s" x="%.0f" y="%.0f" width="3" height="%.0f" rx="1.5"/>
+<circle class="topo-dot topo-dot--%s" cx="%.0f" cy="%.0f" r="4"/>
 <text class="topo-label" x="%.0f" y="%.0f">%s</text>
 <text class="topo-sub" x="%.0f" y="%.0f">%s</text>
 </g>`,
-			n.X, n.Y, topoNodeW, topoNodeH, sc,
-			n.X, n.Y, topoNodeH, bandColor[n.Band],
-			n.X+topoNodeW-16, n.Y+16, dc,
+			tone, n.X, n.Y, topoNodeW, topoNodeH,
+			n.Band, n.X, n.Y, topoNodeH,
+			tone, n.X+topoNodeW-16, n.Y+16,
 			n.X+14, n.Y+22, template.HTMLEscapeString(n.Label),
 			n.X+14, n.Y+38, template.HTMLEscapeString(n.Sub))
 	}
@@ -480,7 +489,7 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
   <div class="q-stat"><div class="q-stat-val" style="color:var(--error)">%d</div><div class="q-stat-label">Dead-letter</div></div>
   <div class="q-stat"><div class="q-stat-val" style="color:var(--red)">%d</div><div class="q-stat-label">Quarantined</div></div>
 </div>
-<div class="section-title">Job Lifecycle</div>
+<div class="section-title">Job lifecycle</div>
 <div class="card"><div class="esc-chain">
   <span class="esc-step">pending</span><span class="esc-arrow">→</span>
   <span class="esc-step">processing</span><span class="esc-arrow">→</span>
@@ -496,7 +505,7 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 		config.Cfg.MaxReplayCount)
 
 	// Dead-letter table.
-	fmt.Fprintf(w, `<div class="section-title">Dead-Letter Queue (%d)</div>`, deadLetter)
+	fmt.Fprintf(w, `<div class="section-title">Dead-letter queue (%d)</div>`, deadLetter)
 	if deadLetter > 0 {
 		fmt.Fprintf(w, `<div class="action-row"><button class="btn btn--primary" data-replay-all>⟲ Replay all dead-letter (≤%d)</button></div>`, config.Cfg.ReplayBatchLimit)
 	}
@@ -522,7 +531,7 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Quarantined (poison) table.
-	fmt.Fprintf(w, `<div class="section-title">Poison / Quarantined (%d)</div>`, quarantined)
+	fmt.Fprintf(w, `<div class="section-title">Quarantined as poison (%d)</div>`, quarantined)
 	if len(poisonJobs) == 0 {
 		fmt.Fprint(w, `<div class="console-note">No quarantined jobs — nothing has crossed the replay ceiling.</div>`)
 	} else {

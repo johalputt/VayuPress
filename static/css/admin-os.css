@@ -2664,7 +2664,11 @@
 @media (max-width: 900px) {
   /* On small screens let the page scroll naturally rather than locking the
      editor to the viewport height. */
-  .vp-os .editor-shell { grid-template-columns: 1fr; height: auto; min-height: 0; }
+  /* minmax(0, …): a bare 1fr track grows to its widest child, and the
+     toolbar's unwrapped buttons made the editor 956px wide on a phone. */
+  .vp-os .editor-shell { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; }
+  .vp-os .editor-topbar,
+  .vp-os .editor-topbar-actions { flex-wrap: wrap; }
   .vp-os .editor-main { overflow: visible; }
   .vp-os .editor-canvas { overflow-y: visible; padding-bottom: var(--sp-10); }
   .vp-os .editor-workspace { flex-direction: column; overflow: visible; }
@@ -3523,7 +3527,7 @@
 .tl-leg-dot{width:7px;height:7px;border-radius:50%}
 .tl-leg-line{width:18px;height:0;border-top:1.5px solid var(--border-strong)}
 .tl-leg-line.ctrl{border-top:1.5px dashed #8b5cf6}
-.policy-strip{display:flex;gap:10px;margin-bottom:18px}
+.policy-strip{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px}
 .policy-stat{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:10px 16px 8px;min-width:90px}
 .policy-stat-val{font:700 26px/1 var(--font-mono);color:var(--text)}
 .policy-stat-val.ps-pass{color:var(--ok)}
@@ -7291,3 +7295,8 @@
 .tl-leg-dot--ok { background: var(--ok); }
 .tl-leg-dot--warn { background: var(--warn); }
 .tl-leg-dot--danger { background: var(--danger); }
+/* Topology tones (classic colours; Still Air maps them to tokens). */
+.topo-arrow{fill:#2b3a52}
+.topo-rect--ok{stroke:#1f3a30}.topo-rect--warn{stroke:#3a3010}.topo-rect--err{stroke:#3a1818}
+.topo-bar--write{fill:#6366f1}.topo-bar--read{fill:#06b6d4}.topo-bar--govern{fill:#8b5cf6}.topo-bar--observe{fill:#10b981}
+.topo-dot--ok{fill:#10b981}.topo-dot--warn{fill:#f59e0b}.topo-dot--err{fill:#ef4444}

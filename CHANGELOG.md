@@ -54,6 +54,16 @@ The Still Air redesign of the VayuOS console, built behind a switch
   until one has, nothing is deleted.
 - **The Backups page showed the default retention, not the one you saved**, so
   the form reverted after every save.
+- **Topology and the overview timeline showed figures that were never
+  measured.** The policy engine always read "6/6 PASS", the write queue always
+  had "3 workers" and the escalation engine "6 rules armed"; they are now
+  evaluated each time. The WAL node no longer turns red in read-only mode,
+  which does not stop WAL writes, and the Fault Engine's example chain no
+  longer ends in "write queue paused" for the same reason.
+- **Pages overflowed a phone screen**: the editor was 956 px wide on a
+  390 px screen, wide tables pushed Policy, Faults and VayuFlow sideways, and
+  Settings' tabs ran off the edge. The mailbox list is two lines per message on
+  a phone instead of six columns.
 - **The Storage page counted the pre-update backups as cache**, so the cache
   looked larger than it was and the backups were counted twice.
 - **The cache purge API left pages behind**: per-domain home and tag pages and

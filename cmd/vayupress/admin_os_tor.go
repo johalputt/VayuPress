@@ -169,13 +169,13 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Onion address table ──
-	body += `<div class="section-head"><span class="section-head__title">` + saIcon("tor") + ` Onion addresses</span><span class="section-head__hint">One <code>.onion</code> per hosted domain — same site, a private way in</span></div>`
+	body += `<div class="section-head"><span class="section-head__title">Onion addresses</span><span class="section-head__hint">One <code>.onion</code> per hosted domain — same site, a private way in</span></div>`
 	body += `<div class="card">`
 	if len(st.Onions) == 0 {
 		if st.Active {
 			body += `<div class="empty-state">No onion addresses yet — they appear here within a minute of activation, one per hosted domain.</div>`
 		} else {
-			body += `<div class="empty-state">Activate above to publish an onion address for every hosted domain. Both the normal URL and its <code>.onion</code> keep working at the same time, with no speed or quality trade-off.</div>`
+			body += `<div class="empty-state"><div class="empty-sub">Activate above to publish an onion address for every hosted domain. Both the normal URL and its <code>.onion</code> keep working at the same time, with no speed or quality trade-off.</div></div>`
 		}
 	} else {
 		body += `<p class="muted text-sm mb-3">Each domain has its own <code>.onion</code>. It serves the exact same site as the clearnet URL — both work simultaneously. Share the <code>.onion</code> with privacy-focused visitors; Tor Browser also discovers it automatically (via the <code>Onion-Location</code> header).</p>`
