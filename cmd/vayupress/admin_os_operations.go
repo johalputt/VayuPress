@@ -48,7 +48,7 @@ func osOperationsGrid(current mode.Mode, storagePct int, maintenanceOn bool, kee
 	if maintenanceOn {
 		powerBadge = "Offline"
 	}
-	b.WriteString(osWorkCard("/os/power", "Power &amp; Maintenance", "Maintenance page, restart &amp; shutdown", iconModes, 0, powerBadge, true))
+	b.WriteString(osWorkCard("/os/power", "Power & Maintenance", "Maintenance page, restart & shutdown", iconModes, 0, powerBadge, true))
 	modeBadge := ""
 	if current != "" && current != mode.ModeNormal {
 		modeBadge = string(current)
@@ -56,14 +56,14 @@ func osOperationsGrid(current mode.Mode, storagePct int, maintenanceOn bool, kee
 	// Backup sits beside Power because it answers the other half of "can I
 	// recover from this" — and its badge is the only place an operator finds out
 	// that their backups are not actually working.
-	b.WriteString(osWorkCard("/os/vayukeep", "Backup &amp; Recovery", "Automatic encrypted copies, proven restorable", iconKeep, 0, keepBadge, true))
+	b.WriteString(osWorkCard("/os/vayukeep", "Backup & Recovery", "Automatic encrypted copies, proven restorable", iconKeep, 0, keepBadge, true))
 	b.WriteString(osWorkCard("/os/modes", "System Modes", "Normal · read-only · quarantine", iconModes, 0, modeBadge, true))
 	b.WriteString(osWorkCard("/os/policy", "Policy Inspector", "Effective policy & guardrails", iconPolicy, 0, "", false))
-	b.WriteString(osWorkCard("/os/vayuflow", "VayuFlow", "Automations, their ceilings &amp; what they did", iconModes, 0, "", true))
+	b.WriteString(osWorkCard("/os/vayuflow", "VayuFlow", "Automations, their ceilings & what they did", iconModes, 0, "", true))
 	b.WriteString(osWorkCard("/os/topology", "Topology", "Services & connections map", iconTopology, 0, "", false))
 	// Sits beside Topology because it answers the same class of question — what
 	// this install is wired to, and whether the wiring is actually live.
-	b.WriteString(osWorkCard("/os/dns", "Domains &amp; DNS", "Records to point &amp; live status", iconDNS, 0, "", false))
+	b.WriteString(osWorkCard("/os/dns", "Domains & DNS", "Records to point & live status", iconDNS, 0, "", false))
 	b.WriteString(osWorkCard("/os/replay", "Replay Explorer", "Inspect & replay requests", iconReplay, 0, "", false))
 	b.WriteString(osWorkCard("/os/faults", "Fault Engine", "Inject & observe failures", iconFaults, 0, "", false))
 	b.WriteString(osWorkCard("/os/adr", "ADR Registry", "Architecture decisions", iconADR, 0, "", false))

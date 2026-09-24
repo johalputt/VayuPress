@@ -1218,8 +1218,11 @@
   width: 20px; height: 20px; object-fit: contain; border-radius: 2px; display: block;
 }
 .vp-os .work-card__body { flex: 1; min-width: 0; }
+/* The title row wraps and its badge never shrinks: a badge squeezed into the
+   space left by a long title broke "Not set up" over three lines on top of the
+   title. Wrapping moves the badge under the title instead. */
 .vp-os .work-card__title {
-  display: flex; align-items: center; gap: var(--sp-2);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--sp-2);
   font-size: var(--text-sm); font-weight: 600; color: var(--text);
 }
 .vp-os .work-card__count {
@@ -1228,6 +1231,7 @@
 }
 .vp-os .work-card__desc { margin-top: 2px; font-size: var(--text-xs); color: var(--text-3); }
 .vp-os .work-card__badge {
+  flex: none; white-space: nowrap;
   min-width: 18px; height: 18px; padding: 0 6px; border-radius: var(--r-full);
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 0.66rem; font-weight: 700; line-height: 1; color: #fff; background: var(--accent);
@@ -2151,6 +2155,9 @@
 /* ── Settings forms ──────────────────────────────────────────── */
 .vp-os .settings-grid { display: grid; grid-template-columns: 280px 1fr; gap: var(--sp-8); align-items: start; }
 .vp-os .settings-section { display: flex; flex-direction: column; gap: var(--sp-6); }
+/* Consecutive sections are separate groups; without this the time-zone hint ran
+   straight into the next section's title. */
+.vp-os .settings-section + .settings-section { margin-top: var(--sp-8); }
 .vp-os .settings-save-bar {
   display: flex;
   align-items: center;
