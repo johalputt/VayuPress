@@ -6,11 +6,20 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 )
 
 // TestMessagesSurfaceRendersWithoutDB guards the contact inbox against a nil DB
 // (worst-case startup): it must render the empty-state shell, not panic.
+//
+// "Without a DB" is set here, not assumed: the database is a package global,
+// and a contact test that ran first left its message in it. Under -shuffle
+// that made this test fail whenever the order put the two together.
 func TestMessagesSurfaceRendersWithoutDB(t *testing.T) {
+	prev := dbpkg.DB
+	dbpkg.DB = nil
+	t.Cleanup(func() { dbpkg.DB = prev })
 	a := &App{}
 	req := httptest.NewRequest("GET", "/os/messages", nil)
 	rec := httptest.NewRecorder()

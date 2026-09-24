@@ -3,8 +3,6 @@
 package main
 
 import (
-	"bytes"
-	"compress/gzip"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -85,12 +83,15 @@ func TestConsoleStylesheetIsServedMinified(t *testing.T) {
 }
 
 // Every console page downloads both stylesheets before it can paint, so their
-// size is a budget, not an accident. The figure is what the wire carries: the
-// minified file, gzipped the way gzipMiddleware does it. The budget sits about
-// 1.5 KB above today's 53 KB: ordinary work fits, and the rules the classic
-// console left behind (2 KB of selectors nothing renders, removed with it)
-// would not fit if they came back. Raise it on purpose, in this line.
-const consoleCSSBudget = 54<<10 + 512
+// size is a budget, not an accident. The budget is on the minified bytes, the
+// part the source controls. Not on gzip output: the same files compress to
+// 54 KB under Go 1.26 and 58 KB under Go 1.27, so a gzip budget measured the
+// toolchain as much as the CSS, and went red on CI's newer Go with nothing
+// changed. Today the two files minify to 329,764 bytes; the budget leaves
+// about 4 KB for ordinary work, and the rules the classic console left behind
+// (344,105 bytes with them) would not fit if they came back. Raise it on
+// purpose, in this line.
+const consoleCSSBudget = 334_000
 
 func TestConsoleStylesheetsFitTheirBudget(t *testing.T) {
 	total := 0
@@ -99,18 +100,11 @@ func TestConsoleStylesheetsFitTheirBudget(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var buf bytes.Buffer
-		zw := gzip.NewWriter(&buf)
-		if _, err := zw.Write(minifyCSS(src)); err != nil {
-			t.Fatal(err)
-		}
-		if err := zw.Close(); err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("%s: %d bytes on the wire", filepath.Base(f), buf.Len())
-		total += buf.Len()
+		n := len(minifyCSS(src))
+		t.Logf("%s: %d bytes minified", filepath.Base(f), n)
+		total += n
 	}
 	if total > consoleCSSBudget {
-		t.Errorf("the console's stylesheets are %d bytes gzipped, over the %d-byte budget", total, consoleCSSBudget)
+		t.Errorf("the console's stylesheets are %d bytes minified, over the %d-byte budget", total, consoleCSSBudget)
 	}
 }
