@@ -6,6 +6,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.73] — 2026-09-24
+
+### Added
+
+- **Links in comments are clickable.** A web address a reader or you post in
+  a comment becomes a link. Links to other sites open in a new tab and are
+  marked as a visitor's link (`rel="ugc nofollow"`), so a spammer gains
+  nothing from posting one, while the linked site still sees the visit came
+  from your site. Links to your own site stay ordinary internal links. Only
+  `http` and `https` addresses are linked, and nothing typed in a comment can
+  become markup.
+
+---
+
 ## [3.17.72] — 2026-09-24
 
 The four items the mail/talk audit left open, closed.
