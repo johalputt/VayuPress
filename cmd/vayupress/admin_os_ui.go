@@ -352,8 +352,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/delete", a.handleOSVayuKeepDelete)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/retention", a.handleOSVayuKeepRetention)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/prune", a.handleOSVayuKeepPrune)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/backup", a.handleOSVayuKeepBackup)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/drill", a.handleOSVayuKeepDrill)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/clear-older", a.handleOSVayuKeepClearOlder)
 		pr.Get("/os/power/preview", a.handleOSPowerPreview)
 		// Optimize hub: consolidates SEO / Analytics / VayuShield / Theme Studio /
 		// Theme Store + Tools / Domains / Settings / VayuAPI / VayuMCP into one

@@ -169,6 +169,16 @@ type Engine struct {
 	drillNowCh  chan struct{}
 	initialised bool
 	verify      Verifier
+	// writing serialises generation writes. Names have one-second resolution,
+	// so the loop and a "Back up now" landing in the same second would
+	// otherwise race for one file name.
+	writing sync.Mutex
+	// provenGen is the name of the newest generation that passed a restore
+	// drill. Retention never removes it or anything newer, so the last backup
+	// known to restore can only be replaced by a newer one known to restore.
+	// Held in memory: after a restart nothing is pruned until the next drill
+	// passes, which errs toward keeping more.
+	provenGen string
 }
 
 // fingerprint is the cheap change detector: size and modification time of the
@@ -349,7 +359,7 @@ func (e *Engine) Run(ctx context.Context) {
 	// its first generation.
 	e.refreshFromTarget()
 
-	nextDrill := e.cfg.Now().Add(e.cfg.DrillInterval)
+	nextDrill := e.firstDrillAt()
 	timer := time.NewTimer(e.cfg.MinInterval)
 	defer timer.Stop()
 
@@ -371,6 +381,20 @@ func (e *Engine) Run(ctx context.Context) {
 		}
 		timer.Reset(e.nextInterval())
 	}
+}
+
+// bootDrillDelay is how soon after start the first restore drill runs. Which
+// generation last passed a drill is held in memory, so after every restart —
+// every update restarts — the status reads "unverified" and retention deletes
+// nothing until a drill passes. Waiting the full drill interval (twelve hours
+// by default) for that would leave both states stale for half a day; ten
+// minutes lets the site settle first, and the drill still yields to a busy
+// public lane.
+const bootDrillDelay = 10 * time.Minute
+
+// firstDrillAt is when the first drill after start is due.
+func (e *Engine) firstDrillAt() time.Time {
+	return e.cfg.Now().Add(min(e.cfg.DrillInterval, bootDrillDelay))
 }
 
 // nextInterval reports how long to sleep before the next check.
@@ -409,7 +433,9 @@ func (e *Engine) cycle(ctx context.Context, force bool) {
 	}
 
 	e.setStatus(func(s *Status) { s.LastAttempt = e.cfg.Now() })
+	e.writing.Lock()
 	size, err := e.writeGeneration(ctx)
+	e.writing.Unlock()
 	if err != nil {
 		e.noteFailure(err)
 		return

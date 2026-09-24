@@ -97,6 +97,17 @@ func (a *App) keepInt(ctx context.Context, key string, def int) int {
 	return def
 }
 
+// keepEveryChoices are the backup cadences the console offers, in minutes.
+var keepEveryChoices = []int{5, 15, 60, 360, 1440}
+
+// keepEveryMin is how often a backup is taken while the site is changing: the
+// console's choice, else VAYUKEEP_MIN_MINUTES. The engine still backs off while
+// nothing changes, so a slower choice never means fewer backups of real work
+// than it says, and a faster one costs nothing on an idle site.
+func (a *App) keepEveryMin(ctx context.Context) int {
+	return a.keepInt(ctx, settings.KeyVayuKeepEveryMin, config.Cfg.VayuKeepMinMin)
+}
+
 // buildKeepConfig assembles the engine configuration from every source.
 func (a *App) buildKeepConfig(ctx context.Context) vayukeep.Config {
 	return vayukeep.Config{
@@ -105,8 +116,8 @@ func (a *App) buildKeepConfig(ctx context.Context) vayukeep.Config {
 		DBPath:            config.Cfg.DBPath,
 		TargetDir:         a.resolveKeepTarget(ctx),
 		Passphrase:        a.resolveKeepPassphrase(ctx),
-		MinInterval:       time.Duration(config.Cfg.VayuKeepMinMin) * time.Minute,
-		MaxInterval:       time.Duration(config.Cfg.VayuKeepMaxMin) * time.Minute,
+		MinInterval:       time.Duration(a.keepEveryMin(ctx)) * time.Minute,
+		MaxInterval:       time.Duration(max(config.Cfg.VayuKeepMaxMin, a.keepEveryMin(ctx))) * time.Minute,
 		DrillInterval:     time.Duration(config.Cfg.VayuKeepDrillMin) * time.Minute,
 		RetainGenerations: a.keepInt(ctx, settings.KeyVayuKeepRetainGen, config.Cfg.VayuKeepRetainGen),
 		RetainDays:        a.keepInt(ctx, settings.KeyVayuKeepRetainDays, config.Cfg.BackupRetainDays),

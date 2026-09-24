@@ -13,6 +13,14 @@ The Still Air redesign of the VayuOS console, built behind a switch
 
 ### Added
 
+- **Back up now tests the backup it makes.** It saves a restore point, restores
+  it into a scratch folder and checks the database inside, and tells you the
+  result. When it passes, one button removes the older restore points; the
+  server refuses that unless a restore point has actually passed a test
+  restore.
+- **Choose how often backups run** (every 5 or 15 minutes, hourly, every 6
+  hours or daily, while the site is changing) from the Backups page instead of
+  an environment variable.
 - **Clear caches, in one click** (System › Storage). Deletes every rendered
   page, for every domain, and temporary files untouched for an hour, rebuilds
   the sitemap, feed and robots.txt, and says how much space it freed. With
@@ -40,6 +48,12 @@ The Still Air redesign of the VayuOS console, built behind a switch
 
 ### Fixed
 
+- **Automatic clean-up could delete the last good backup.** Old restore points
+  were removed after every new one whether or not the new one restored. They
+  are now removed only when a newer restore point has passed a test restore;
+  until one has, nothing is deleted.
+- **The Backups page showed the default retention, not the one you saved**, so
+  the form reverted after every save.
 - **The Storage page counted the pre-update backups as cache**, so the cache
   looked larger than it was and the backups were counted twice.
 - **The cache purge API left pages behind**: per-domain home and tag pages and

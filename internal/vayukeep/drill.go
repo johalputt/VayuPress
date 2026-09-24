@@ -26,6 +26,9 @@ import (
 	"github.com/johalputt/vayupress/internal/backup"
 )
 
+// DrillBusy is the error of a drill refused because another is running.
+const DrillBusy = "a restore drill is already running"
+
 // DrillResult is one verification of one generation.
 type DrillResult struct {
 	Generation string
@@ -61,11 +64,21 @@ func (e *Engine) SetVerifier(v Verifier) {
 // could stack them without the guard.
 func (e *Engine) Drill(ctx context.Context) DrillResult {
 	if !e.drilling.CompareAndSwap(false, true) {
-		return DrillResult{At: e.cfg.Now(), Err: "a restore drill is already running"}
+		return DrillResult{At: e.cfg.Now(), Err: DrillBusy}
 	}
 	defer e.drilling.Store(false)
 
 	res := e.drill(ctx)
+	if res.OK {
+		e.mu.Lock()
+		// Names sort by time, so an older generation never takes the proof from
+		// a newer one — unless that newer one has since been deleted by hand, in
+		// which case the proof is about a file that no longer exists.
+		if res.Generation > e.provenGen || !e.exists(e.provenGen) {
+			e.provenGen = res.Generation
+		}
+		e.mu.Unlock()
+	}
 	e.setStatus(func(s *Status) {
 		s.LastDrill = res.At
 		s.LastDrillOK = res.OK

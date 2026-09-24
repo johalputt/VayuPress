@@ -205,12 +205,22 @@ func (e *Engine) prune() error {
 		return err
 	}
 	cutoff := e.cfg.Now().Add(-time.Duration(e.cfg.RetainDays) * 24 * time.Hour)
+	proven := e.ProvenGeneration()
+	if !e.exists(proven) {
+		proven = "" // the proven generation was deleted by hand: no proof left
+	}
 	var removed int
 	for i, g := range gens { // newest first
 		if i < e.cfg.RetainGenerations {
 			continue
 		}
 		if g.Taken.After(cutoff) {
+			continue
+		}
+		// Only what is older than a backup known to restore may go. Without
+		// one, nothing does: a run of unreadable generations must never push
+		// out the last good copy.
+		if proven == "" || g.Name >= proven {
 			continue
 		}
 		if err := os.Remove(g.Path); err != nil {
@@ -284,3 +294,93 @@ func (e *Engine) Prune() error {
 	e.refreshFromTarget()
 	return nil
 }
+
+// exists reports whether a generation by this name is on the target.
+func (e *Engine) exists(name string) bool {
+	if name == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(e.cfg.TargetDir, name))
+	return err == nil
+}
+
+// ProvenGeneration names the newest generation that passed a restore drill, or
+// "" when none has since this process started.
+func (e *Engine) ProvenGeneration() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.provenGen
+}
+
+// BackupNow writes a generation immediately and drills it, so the operator is
+// told whether the copy restores rather than that one was requested. The drill
+// is the whole check: it restores into scratch space and verifies the database
+// inside, which a corrupt source database would fail even though its archive
+// authenticates perfectly.
+func (e *Engine) BackupNow(ctx context.Context) DrillResult {
+	if !e.cfg.Enabled {
+		return DrillResult{At: e.cfg.Now(), Err: ErrDisabled.Error()}
+	}
+	e.setStatus(func(s *Status) { s.LastAttempt = e.cfg.Now() })
+	e.writing.Lock()
+	size, err := e.writeGeneration(ctx)
+	e.writing.Unlock()
+	if err != nil {
+		e.noteFailure(err)
+		return DrillResult{At: e.cfg.Now(), Err: "the backup could not be written: " + err.Error()}
+	}
+	now := e.cfg.Now()
+	e.mu.Lock()
+	e.lastFP = statFingerprint(e.cfg.DBPath)
+	e.initialised = true
+	e.failures = 0
+	e.mu.Unlock()
+	e.setStatus(func(s *Status) {
+		s.LastSuccess, s.NewestGen, s.LastError, s.LastGenBytes = now, now, "", size
+		s.ConsecutiveNG, s.Paused, s.PauseWhy = 0, false, ""
+	})
+	e.refreshFromTarget()
+	return e.Drill(ctx)
+}
+
+// RemoveOlderThanProven deletes every generation older than the proven one and
+// returns what went. It refuses when no generation has passed a drill: "clear
+// the old backups" is only safe once a newer one is known to restore.
+func (e *Engine) RemoveOlderThanProven() (removed []Generation, err error) {
+	proven := e.ProvenGeneration()
+	if proven == "" {
+		return nil, ErrNotProven
+	}
+	gens, err := e.List()
+	if err != nil {
+		return nil, err
+	}
+	found := false
+	for _, g := range gens {
+		if g.Name == proven {
+			found = true
+		}
+	}
+	if !found {
+		return nil, ErrNotProven
+	}
+	for _, g := range gens {
+		if g.Name >= proven {
+			continue
+		}
+		if err := os.Remove(g.Path); err != nil {
+			e.refreshFromTarget()
+			return removed, err
+		}
+		removed = append(removed, g)
+	}
+	if len(removed) > 0 {
+		e.cfg.Log("info", fmt.Sprintf("removed %d generation(s) older than %s, which passed a restore drill", len(removed), proven))
+	}
+	e.refreshFromTarget()
+	return removed, nil
+}
+
+// ErrNotProven is returned when an operation needs a generation that has passed
+// a restore drill and none has.
+var ErrNotProven = errors.New("vayukeep: no restore point has passed a test restore yet")

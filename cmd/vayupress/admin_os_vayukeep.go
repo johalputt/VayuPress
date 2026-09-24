@@ -17,10 +17,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"html"
 	htmpl "html/template"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -127,8 +129,8 @@ func osVayuKeepStats(st vayukeep.Status, now time.Time) string {
 
 // detailRow is one label/value line, reusing the connector panel's markup.
 func detailRow(label, value string) string {
-	return `<div class="cx-detail"><span class="cx-cap">` + html.EscapeString(label) +
-		`</span><span>` + html.EscapeString(value) + `</span></div>`
+	return `<div class="cx-detail"><span class="cx-detail__k">` + html.EscapeString(label) +
+		`</span><span class="cx-detail__v">` + html.EscapeString(value) + `</span></div>`
 }
 
 // drillSummary renders the test-restore outcome as one honest phrase.
@@ -141,7 +143,7 @@ func drillSummary(st vayukeep.Status, now time.Time) string {
 	}
 	s := "passed " + humanAgo(st.LastDrill, now)
 	if st.LastDrillRows > 0 {
-		s += " (" + strconv.FormatInt(st.LastDrillRows, 10) + " posts read back)"
+		s += " (" + strconv.FormatInt(st.LastDrillRows, 10) + " post" + plural(int(st.LastDrillRows)) + " read back)"
 	}
 	return s
 }
@@ -210,12 +212,12 @@ func keepStatusCard(st vayukeep.Status, now time.Time) string {
 	}
 	return `<div class="cx-details">` + rows + `</div>
 <div class="mt-3" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-  <button type="button" class="btn btn--primary btn--sm" data-vk-drill>Test restore now</button>
-  <button type="button" class="btn btn--sm" data-vk-backup>Back up now</button>
+  <button type="button" class="btn btn--primary btn--sm" data-vk-backup>Back up now</button>
+  <button type="button" class="btn btn--sm" data-vk-drill>Test restore now</button>
   <button type="button" class="btn btn--ghost btn--sm" data-vk-disable>Turn off</button>
   <span id="vk-status" role="status" aria-live="polite" class="text-xs muted"></span>
 </div>
-<p class="text-xs muted mt-2"><strong>Test restore</strong> takes your newest backup, unpacks it into a temporary folder, opens the database inside it and checks every page, then deletes it. It never touches your live site. This is the only control on this page that proves a backup actually works.</p>`
+<p class="text-xs muted mt-2"><strong>Back up now</strong> saves a restore point and test-restores it straight away; once it passes you can remove the older ones. <strong>Test restore</strong> takes your newest backup, unpacks it into a temporary folder, opens the database inside it and checks every page, then deletes it. It never touches your live site. This is the only control on this page that proves a backup actually works.</p>`
 }
 
 // keepPointsCard lists the restore points with a per-row integrity check.
@@ -260,24 +262,57 @@ func keepManualCard() string {
 <div class="progress mt-3" data-restore-progress hidden><div class="progress__bar progress__bar--ok w-0" data-restore-bar></div></div>`
 }
 
-// keepRetentionCard lets the operator set how much history is kept, so
-// "auto-delete old backups" is a control rather than an environment variable.
-func keepRetentionCard(gens, days int) string {
-	return `<p class="text-sm">Old restore points are deleted automatically. A point survives if it is within <strong>either</strong> limit, so a quiet month cannot age out your only copy.</p>
+// keepEveryLabel names a cadence in minutes the way the schedule menu does.
+func keepEveryLabel(m int) string {
+	switch {
+	case m >= 1440 && m%1440 == 0:
+		if m == 1440 {
+			return "once a day"
+		}
+		return "every " + strconv.Itoa(m/1440) + " days"
+	case m >= 60 && m%60 == 0:
+		if m == 60 {
+			return "every hour"
+		}
+		return "every " + strconv.Itoa(m/60) + " hours"
+	}
+	return "every " + strconv.Itoa(m) + " minutes"
+}
+
+// keepRetentionCard sets how often backups are taken and how much history is
+// kept, so both are controls rather than environment variables.
+func keepRetentionCard(p keepPrefs) string {
+	opts := ""
+	listed := false
+	for _, m := range keepEveryChoices {
+		sel := ""
+		if m == p.EveryMin {
+			sel, listed = " selected", true
+		}
+		opts += `<option value="` + strconv.Itoa(m) + `"` + sel + `>` + keepEveryLabel(m) + `</option>`
+	}
+	if !listed { // a value set through VAYUKEEP_MIN_MINUTES stays selectable
+		opts = `<option value="` + strconv.Itoa(p.EveryMin) + `" selected>` + keepEveryLabel(p.EveryMin) + `</option>` + opts
+	}
+	return `<div class="field">
+  <label class="field-label" for="vk-every">Back up automatically</label>
+  <select id="vk-every" class="input" style="max-width:14rem">` + opts + `</select>
+  <span class="field-hint">Only when something changed since the last backup, so a quiet site does no work.</span>
+</div>
 <div class="field">
   <label class="field-label" for="vk-keep-n">Always keep at least this many</label>
-  <input id="vk-keep-n" class="input" type="number" min="1" max="500" value="` + strconv.Itoa(gens) + `" style="max-width:9rem">
+  <input id="vk-keep-n" class="input" type="number" min="1" max="500" value="` + strconv.Itoa(p.RetainGens) + `" style="max-width:9rem">
 </div>
 <div class="field">
   <label class="field-label" for="vk-keep-d">And anything from the last (days)</label>
-  <input id="vk-keep-d" class="input" type="number" min="1" max="3650" value="` + strconv.Itoa(days) + `" style="max-width:9rem">
+  <input id="vk-keep-d" class="input" type="number" min="1" max="3650" value="` + strconv.Itoa(p.RetainDays) + `" style="max-width:9rem">
 </div>
 <div class="mt-3" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
   <button type="button" class="btn btn--sm" data-vk-retention>Save</button>
   <button type="button" class="btn btn--ghost btn--sm" data-vk-prune>Clean up now</button>
   <span id="vk-retention-status" role="status" aria-live="polite" class="text-xs muted"></span>
 </div>
-<p class="text-xs muted mt-2">Deleting a restore point is permanent — the copy is gone, not moved to a bin.</p>`
+<p class="text-xs muted mt-2">Old restore points are deleted automatically after each new backup, but only those older than a restore point that has passed a test restore: a run of backups that do not restore can never push out the last one that did. A point also survives while it is within <strong>either</strong> limit above. Deleting is permanent — the copy is gone, not moved to a bin.</p>`
 }
 
 // keepRestoreCard is the recovery runbook. It leads with the buttons, because an
@@ -322,29 +357,52 @@ func keepSpecCard(st vayukeep.Status) string {
 	return `<div class="cx-details">` + rows + `</div>`
 }
 
-// keepScheduleCard explains when it runs and what it keeps.
-func keepScheduleCard() string {
+// keepScheduleCard explains when it runs and what it keeps, from the values in
+// force rather than the environment defaults.
+func keepScheduleCard(p keepPrefs) string {
 	hrs := func(m int) string {
 		if m >= 60 && m%60 == 0 {
 			return strconv.Itoa(m/60) + " h"
 		}
 		return strconv.Itoa(m) + " min"
 	}
+	idle := max(config.Cfg.VayuKeepMaxMin, p.EveryMin)
 	return `<div class="cx-details">` +
-		detailRow("While you are writing", "A new restore point at most every "+hrs(config.Cfg.VayuKeepMinMin)+", and only when something actually changed.") +
-		detailRow("While nothing changes", "It backs off to "+hrs(config.Cfg.VayuKeepMaxMin)+", so an idle site does no work at all.") +
-		detailRow("Test restore", "Automatically every "+hrs(config.Cfg.VayuKeepDrillMin)+", plus whenever you press the button.") +
+		detailRow("While you are writing", "A new restore point "+keepEveryLabel(p.EveryMin)+" at most, and only when something actually changed.") +
+		detailRow("While nothing changes", "It backs off to "+hrs(idle)+", so an idle site does no work at all.") +
+		detailRow("Test restore", "Automatically every "+hrs(config.Cfg.VayuKeepDrillMin)+", after every Back up now, and whenever you press the button.") +
 		detailRow("Before an update", "A restore point is taken automatically before an in-place update, so you can roll back to the moment before it.") +
-		detailRow("How many are kept", strconv.Itoa(config.Cfg.VayuKeepRetainGen)+" restore points OR "+strconv.Itoa(config.Cfg.BackupRetainDays)+" days — whichever keeps more, so a quiet month cannot age out your only copy.") +
+		detailRow("How many are kept", strconv.Itoa(p.RetainGens)+" restore points OR "+strconv.Itoa(p.RetainDays)+" days — whichever keeps more — and never anything newer than the last restore point that passed a test restore.") +
 		detailRow("If the target breaks", "After repeated failures it stops trying and says so here, rather than retrying into a full disk. A failing backup never slows or blocks your site.") +
 		`</div>
-<p class="text-xs muted mt-2">Tune with <code>VAYUKEEP_MIN_MINUTES</code>, <code>VAYUKEEP_MAX_MINUTES</code>, <code>VAYUKEEP_DRILL_MINUTES</code>, <code>VAYUKEEP_RETAIN_GENERATIONS</code>. Turn it off with <code>VAYUKEEP_OFF=true</code>.</p>`
+<p class="text-xs muted mt-2">The schedule and retention are set under <em>Schedule &amp; housekeeping</em>. <code>VAYUKEEP_DRILL_MINUTES</code> sets the test-restore interval; <code>VAYUKEEP_OFF=true</code> turns backup off.</p>`
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 // osVayuKeepBody builds the whole Backup & Recovery console.
-func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vayukeep.Generation, now time.Time, currentTarget string, envManaged bool) string {
+// keepPrefs are the console-set values the page shows: what is saved, not the
+// environment default, so a form reloads with what the operator chose.
+type keepPrefs struct {
+	RetainGens, RetainDays, EveryMin int
+}
+
+// withDefaults fills anything unset from the environment configuration.
+func (p keepPrefs) withDefaults() keepPrefs {
+	if p.RetainGens <= 0 {
+		p.RetainGens = config.Cfg.VayuKeepRetainGen
+	}
+	if p.RetainDays <= 0 {
+		p.RetainDays = config.Cfg.BackupRetainDays
+	}
+	if p.EveryMin <= 0 {
+		p.EveryMin = config.Cfg.VayuKeepMinMin
+	}
+	return p
+}
+
+func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vayukeep.Generation, now time.Time, currentTarget string, envManaged bool, prefs keepPrefs) string {
+	prefs = prefs.withDefaults()
 	v := keepStatusVerdict(st, bootErr, now)
 	bannerTone := "ok"
 	if v.Tone == "warn" {
@@ -385,9 +443,9 @@ func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vay
 <div class="section-head"><span class="section-head__title">How it works</span><span class="section-head__hint">The guarantees, stated plainly</span></div>
 <div class="mon-stack">` +
 		monAcc(iconKey, "Encryption &amp; safety", "What is protected, and what deliberately is not", "", false, keepSpecCard(st)) +
-		monAcc(iconVCB, "Schedule &amp; retention", "When it runs and how much it keeps", "", false, keepScheduleCard()) +
-		monAcc(iconArchive, "Housekeeping", "How long copies are kept, and deleting them", "", false,
-			keepRetentionCard(config.Cfg.VayuKeepRetainGen, config.Cfg.BackupRetainDays)) +
+		monAcc(iconVCB, "How the schedule works", "When backups happen and what is kept", "", false, keepScheduleCard(prefs)) +
+		monAcc(iconArchive, "Schedule &amp; housekeeping", "How often to back up, and how long copies are kept", "", false,
+			keepRetentionCard(prefs)) +
 		`</div>
 
 <script nonce="` + nonce + `">
@@ -397,7 +455,7 @@ function toast(msg,kind){if(window.vpToast){window.vpToast(msg,kind);}}
 // Every control reports the real outcome. The test restore is synchronous on
 // purpose: an operator asking whether their backups work is owed the answer they
 // waited for, not an optimistic "started" that a later failure never corrects.
-function vkPost(url,payload,btn,working,outId){
+function vkPost(url,payload,btn,working,outId,then){
   var out=document.getElementById(outId||'vk-status');
   var label=btn?btn.textContent:'';
   if(btn){btn.disabled=true;btn.textContent=working;}
@@ -407,6 +465,7 @@ function vkPost(url,payload,btn,working,outId){
     .then(function(d){
       if(out){out.textContent=d.detail||'';}
       toast(d.detail||'Done',d.ok?'success':'error');
+      if(then){then(d);}
       if(d.restart){
         setTimeout(function(){
           fetch('/os/api/power/restart',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:'{}'})
@@ -422,7 +481,23 @@ function vkPost(url,payload,btn,working,outId){
     .finally(function(){ if(btn){btn.disabled=false;btn.textContent=label;} });
 }
 var b=document.querySelector('[data-vk-backup]');
-if(b){b.addEventListener('click',function(){vkPost('/os/api/vayukeep/backup',{},b,'Saving…');});}
+// Back up now writes a restore point and test-restores it. Only when that
+// passes is the operator offered the older ones to remove, and the server
+// refuses the removal unless a tested point exists anyway.
+if(b){b.addEventListener('click',function(){vkPost('/os/api/vayukeep/backup',{},b,'Backing up and testing…','vk-status',function(d){
+  if(!d.ok||!d.older){return;}
+  var out=document.getElementById('vk-status'); if(!out){return;}
+  var clr=document.createElement('button');
+  clr.type='button'; clr.className='btn btn--danger btn--sm';
+  clr.textContent='Remove '+d.older+' older restore point'+(d.older===1?'':'s')+' ('+d.older_size+')';
+  clr.addEventListener('click',function(){
+    vpConfirm({title:'Remove older restore points',message:'Delete the '+d.older+' restore point'+(d.older===1?'':'s')+' older than '+d.generation+'? '+d.generation+' passed its test restore and is kept. This cannot be undone.',confirm:'Remove'},function(){
+      vkPost('/os/api/vayukeep/clear-older',{},clr,'Removing…','vk-status');
+    });
+  });
+  out.appendChild(document.createTextNode(' '));
+  out.appendChild(clr);
+});});}
 var d=document.querySelector('[data-vk-drill]');
 if(d){d.addEventListener('click',function(){vkPost('/os/api/vayukeep/drill',{},d,'Restoring…');});}
 Array.prototype.forEach.call(document.querySelectorAll('[data-vk-verify]'),function(el){
@@ -462,8 +537,8 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-vk-delete]'),funct
 });
 var retBtn=document.querySelector('[data-vk-retention]');
 if(retBtn){retBtn.addEventListener('click',function(){
-  var n=document.getElementById('vk-keep-n'), d=document.getElementById('vk-keep-d');
-  vkPost('/os/api/vayukeep/retention',{generations:parseInt(n?n.value:'0',10),days:parseInt(d?d.value:'0',10)},retBtn,'Saving…','vk-retention-status');
+  var n=document.getElementById('vk-keep-n'), d=document.getElementById('vk-keep-d'), ev=document.getElementById('vk-every');
+  vkPost('/os/api/vayukeep/retention',{generations:parseInt(n?n.value:'0',10),days:parseInt(d?d.value:'0',10),every_minutes:parseInt(ev?ev.value:'0',10)},retBtn,'Saving…','vk-retention-status');
 });}
 var pruneBtn=document.querySelector('[data-vk-prune]');
 if(pruneBtn){pruneBtn.addEventListener('click',function(){
@@ -511,7 +586,11 @@ func (a *App) handleOSVayuKeep(w http.ResponseWriter, r *http.Request) {
 	envManaged := strings.TrimSpace(config.Cfg.VayuKeepTarget) != ""
 	writeOSHTML(w, r, adminOSLayout(nonce, "Backup & Recovery", "operations", cfg,
 		htmpl.HTML(osVayuKeepBody(nonce, st, a.vayuKeepErr, gens, time.Now().UTC(),
-			a.resolveKeepTarget(r.Context()), envManaged))))
+			a.resolveKeepTarget(r.Context()), envManaged, keepPrefs{
+				RetainGens: a.keepInt(r.Context(), settings.KeyVayuKeepRetainGen, config.Cfg.VayuKeepRetainGen),
+				RetainDays: a.keepInt(r.Context(), settings.KeyVayuKeepRetainDays, config.Cfg.BackupRetainDays),
+				EveryMin:   a.keepEveryMin(r.Context()),
+			}))))
 }
 
 // ── Endpoints ────────────────────────────────────────────────────────────────
@@ -534,12 +613,75 @@ func (a *App) handleOSVayuKeepBackup(w http.ResponseWriter, r *http.Request) {
 	if !a.keepGuard(w, r) {
 		return
 	}
-	a.vayuKeep.TriggerNow()
+	// Written and test-restored while the operator waits: "requested" is not an
+	// answer to "is my site backed up".
+	if rc := http.NewResponseController(w); rc != nil {
+		_ = rc.SetWriteDeadline(time.Now().Add(11 * time.Minute))
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	defer cancel()
+	res := a.vayuKeep.BackupNow(ctx)
+	switch {
+	case res.Err == vayukeep.DrillBusy:
+		newest, _ := a.vayuKeep.Newest()
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "reload": true,
+			"detail": newest.Name + " was saved, but a test restore was already running, so it is not tested yet. Press Test restore now in a minute."})
+		return
+	case !res.OK && res.Generation == "":
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "reload": true, "detail": "No backup was made: " + res.Err})
+		return
+	case !res.OK:
+		dbpkg.AuditLog("vayukeep.backup", dbpkg.AuditActor(r), res.Generation, "FAILED its test restore")
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "reload": true,
+			"detail": res.Generation + " was saved but did NOT pass its test restore — " + res.Err + ". Your older restore points are untouched and nothing will be deleted on its strength."})
+		return
+	}
+	dbpkg.AuditLog("vayukeep.backup", dbpkg.AuditActor(r), res.Generation, "passed its test restore")
+	detail := res.Generation + " saved and tested: it restores, and the database inside checks out clean."
+	if res.Rows > 0 {
+		detail += " " + strconv.FormatInt(res.Rows, 10) + " post" + plural(int(res.Rows)) + " read back."
+	}
+	gens, _ := a.vayuKeep.List()
+	older, olderBytes := 0, int64(0)
+	for _, g := range gens {
+		if g.Name < res.Generation {
+			older++
+			olderBytes += g.Bytes
+		}
+	}
 	writeJSON(w, r, http.StatusOK, map[string]any{
-		"ok":     true,
-		"reload": true,
-		"detail": "A new restore point was requested — it appears in the list once written.",
+		"ok": true, "detail": detail, "generation": res.Generation,
+		"older": older, "older_size": humanBytes(olderBytes), "reload": older == 0,
 	})
+}
+
+// handleOSVayuKeepClearOlder deletes every restore point older than the newest
+// one that passed a test restore. The engine refuses without such a point, so
+// this can never leave the site with only backups that do not restore.
+func (a *App) handleOSVayuKeepClearOlder(w http.ResponseWriter, r *http.Request) {
+	if !a.keepGuard(w, r) {
+		return
+	}
+	removed, err := a.vayuKeep.RemoveOlderThanProven()
+	if errors.Is(err, vayukeep.ErrNotProven) {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false,
+			"detail": "Nothing was removed: no restore point has passed a test restore yet. Press Back up now or Test restore now first."})
+		return
+	}
+	var freed int64
+	for _, g := range removed {
+		freed += g.Bytes
+	}
+	if len(removed) > 0 {
+		dbpkg.AuditLog("vayukeep.clear-older", dbpkg.AuditActor(r), strconv.Itoa(len(removed))+" restore points",
+			"older than "+a.vayuKeep.ProvenGeneration()+"; "+humanBytes(freed)+" freed")
+	}
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "vayukeep-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": true,
+		"detail": "Removed " + strconv.Itoa(len(removed)) + " older restore point" + plural(len(removed)) + " (" + humanBytes(freed) + " freed). Kept " + a.vayuKeep.ProvenGeneration() + ", which passed a test restore."})
 }
 
 // handleOSVayuKeepDrill runs a test restore synchronously and reports the real
@@ -553,7 +695,7 @@ func (a *App) handleOSVayuKeepDrill(w http.ResponseWriter, r *http.Request) {
 	res := a.vayuKeep.Drill(ctx)
 	detail := "Test restore PASSED — your newest backup unpacked and its database checked out clean."
 	if res.Rows > 0 {
-		detail += " " + strconv.FormatInt(res.Rows, 10) + " posts were read back."
+		detail += " " + strconv.FormatInt(res.Rows, 10) + " post" + plural(int(res.Rows)) + " read back."
 	}
 	if !res.OK {
 		detail = "Test restore FAILED — " + res.Err
@@ -837,6 +979,7 @@ func (a *App) handleOSVayuKeepRetention(w http.ResponseWriter, r *http.Request) 
 	var body struct {
 		Generations int `json:"generations"`
 		Days        int `json:"days"`
+		Every       int `json:"every_minutes"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 	// Both bounds must be at least one. Zero would mean "keep nothing", which no
@@ -846,18 +989,28 @@ func (a *App) handleOSVayuKeepRetention(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": "Both limits must be at least 1."})
 		return
 	}
-	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{
+	vals := map[string]string{
 		settings.KeyVayuKeepRetainGen:  strconv.Itoa(body.Generations),
 		settings.KeyVayuKeepRetainDays: strconv.Itoa(body.Days),
-	}); err != nil {
+	}
+	if body.Every != 0 {
+		// Only the cadences the menu offers: a one-minute schedule would take a
+		// full backup on every edit.
+		if !slices.Contains(keepEveryChoices, body.Every) {
+			writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": "Choose a schedule from the list."})
+			return
+		}
+		vals[settings.KeyVayuKeepEveryMin] = strconv.Itoa(body.Every)
+	}
+	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), vals); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "settings-error", err.Error(), "")
 		return
 	}
 	dbpkg.AuditLog("vayukeep.retention", dbpkg.AuditActor(r),
-		strconv.Itoa(body.Generations)+" generations", strconv.Itoa(body.Days)+" days")
+		strconv.Itoa(body.Generations)+" generations", strconv.Itoa(body.Days)+" days; backup "+keepEveryLabel(a.keepEveryMin(r.Context())))
 	_ = a.applyKeepConfig(r.Context())
 	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": true,
-		"detail": "Saved — keeping at least " + strconv.Itoa(body.Generations) + " restore points, and anything from the last " + strconv.Itoa(body.Days) + " days."})
+		"detail": "Saved — backing up " + keepEveryLabel(a.keepEveryMin(r.Context())) + " while the site changes, keeping at least " + strconv.Itoa(body.Generations) + " restore points and anything from the last " + strconv.Itoa(body.Days) + " days."})
 }
 
 // handleOSVayuKeepPrune applies retention immediately instead of at the next cycle.
@@ -873,6 +1026,9 @@ func (a *App) handleOSVayuKeepPrune(w http.ResponseWriter, r *http.Request) {
 	after, _ := a.vayuKeep.List()
 	removed := len(before) - len(after)
 	detail := "Nothing to clean up — every restore point is still within your limits."
+	if removed == 0 && a.vayuKeep.ProvenGeneration() == "" {
+		detail = "Nothing removed: old restore points are only deleted once a newer one has passed a test restore, and none has since VayuPress started. Press Test restore now first."
+	}
 	if removed > 0 {
 		detail = strconv.Itoa(removed) + " restore point(s) removed."
 		dbpkg.AuditLog("vayukeep.prune", dbpkg.AuditActor(r), strconv.Itoa(removed), "")

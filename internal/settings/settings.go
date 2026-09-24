@@ -57,6 +57,8 @@ const (
 	// control an operator can see and change rather than an environment variable.
 	KeyVayuKeepRetainGen  = "vayukeep.retain_generations"
 	KeyVayuKeepRetainDays = "vayukeep.retain_days"
+	// How often a backup is taken while the site is changing, in minutes.
+	KeyVayuKeepEveryMin = "vayukeep.every_minutes"
 
 	// Business-website mode (VayuOS → Website). KeySiteMode selects what the
 	// root domain serves: "" / "blog" keeps the blog at the root (the historic
@@ -546,6 +548,7 @@ var NotPortable = map[string]bool{
 	KeyVayuKeepTarget:             true,
 	KeyVayuKeepRetainDays:         true,
 	KeyVayuKeepRetainGen:          true,
+	KeyVayuKeepEveryMin:           true,
 	KeyMailQueueRetentionDays:     true,
 	KeyTalkHost:                   true,
 	KeyStartupMillis:              true,
@@ -574,6 +577,7 @@ var AllKeys = map[string]bool{
 	KeyVayuKeepTarget:          true,
 	KeyVayuKeepRetainDays:      true,
 	KeyVayuKeepRetainGen:       true,
+	KeyVayuKeepEveryMin:        true,
 	KeyMailQueueRetentionDays:  true,
 	KeyContactEmail:            true,
 	KeyContactAutoReply:        true,

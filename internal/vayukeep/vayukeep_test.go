@@ -315,9 +315,14 @@ func TestRetentionKeepsNewestOrRecent(t *testing.T) {
 		h.engine.cycle(ctx, true)
 		h.advance(6 * time.Hour) // 8 generations spanning two days
 	}
-	// Prune once more at the final clock. Each cycle above pruned against the
-	// cutoff of its own moment, so asserting against the end-of-test cutoff
-	// without this checks a state retention was never asked to produce.
+	// Prove the newest generation restores (retention removes nothing until one
+	// has), then prune once more at the final clock. Each cycle above pruned
+	// against the cutoff of its own moment, so asserting against the
+	// end-of-test cutoff without this checks a state retention was never asked
+	// to produce.
+	if res := h.engine.Drill(ctx); !res.OK {
+		t.Fatalf("drill: %s", res.Err)
+	}
 	if err := h.engine.prune(); err != nil {
 		t.Fatal(err)
 	}
@@ -640,5 +645,183 @@ func TestDeleteAndPruneAreOperatorControls(t *testing.T) {
 	}
 	if st := h.engine.Status(); st.Generations != len(pruned) {
 		t.Errorf("status not refreshed after prune: %d vs %d", st.Generations, len(pruned))
+	}
+}
+
+// corruptibleVerifier passes while the restored database starts with the
+// fixture's header, and fails once the source has been overwritten.
+func corruptibleVerifier(_ context.Context, dbPath string) (int64, error) {
+	b, err := os.ReadFile(dbPath) //nolint:gosec // test fixture
+	if err != nil {
+		return 0, err
+	}
+	if !strings.HasPrefix(string(b), "SQLITE PAGES") {
+		return 0, errors.New("integrity_check failed")
+	}
+	return 7, nil
+}
+
+// eightGenerations writes eight generations six hours apart, every one of them
+// outside tight retention bounds by the end.
+func eightGenerations(t *testing.T, h *harness) {
+	t.Helper()
+	for i := 0; i < 8; i++ {
+		h.engine.cycle(context.Background(), true)
+		h.advance(6 * time.Hour)
+	}
+}
+
+// Without a restore point that has passed a drill, retention deletes nothing,
+// however far past both bounds the old ones are: a run of backups that do not
+// restore must never push out the last one that did.
+func TestRetentionWaitsForAProvenBackup(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.RetainGenerations, c.RetainDays = 1, 1 })
+	eightGenerations(t, h)
+	if err := h.engine.prune(); err != nil {
+		t.Fatal(err)
+	}
+	if gens, _ := h.engine.List(); len(gens) != 8 {
+		t.Fatalf("retention removed %d generations with none proven to restore", 8-len(gens))
+	}
+}
+
+// The proven generation and everything newer survive retention even outside
+// both bounds; only what is older than the proof goes.
+func TestRetentionKeepsTheProvenAndNewer(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.RetainGenerations, c.RetainDays = 1, 1 })
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		h.engine.cycle(ctx, true)
+		h.advance(6 * time.Hour)
+	}
+	res := h.engine.Drill(ctx) // proves the third
+	if !res.OK {
+		t.Fatalf("drill: %s", res.Err)
+	}
+	proven := res.Generation
+	eightGenerations(t, h) // eight more, all newer than the proof
+	h.advance(10 * 24 * time.Hour)
+	if err := h.engine.prune(); err != nil {
+		t.Fatal(err)
+	}
+	gens, _ := h.engine.List()
+	for _, g := range gens {
+		if g.Name < proven {
+			t.Errorf("%s is older than the proven %s and outside both bounds, yet survived", g.Name, proven)
+		}
+	}
+	if len(gens) != 9 {
+		t.Errorf("kept %d generations; want the proven one and the 8 newer (9)", len(gens))
+	}
+}
+
+// Deleting the proven generation by hand withdraws the proof: retention must
+// not keep pruning against a file that no longer exists.
+func TestDeletingTheProvenBackupWithdrawsTheProof(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.RetainGenerations, c.RetainDays = 1, 1 })
+	ctx := context.Background()
+	eightGenerations(t, h)
+	res := h.engine.Drill(ctx)
+	if !res.OK {
+		t.Fatalf("drill: %s", res.Err)
+	}
+	newest, _ := h.engine.Newest()
+	if err := h.engine.Delete(newest); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := h.engine.List()
+	if err := h.engine.prune(); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := h.engine.List(); len(after) != len(before) {
+		t.Errorf("retention removed %d generations after the proven one was deleted", len(before)-len(after))
+	}
+	if removed, err := h.engine.RemoveOlderThanProven(); !errors.Is(err, ErrNotProven) || len(removed) != 0 {
+		t.Errorf("clearing against a deleted proof removed %d (err %v); want ErrNotProven", len(removed), err)
+	}
+	// A drill of what is now the newest takes the proof over.
+	if res := h.engine.Drill(ctx); !res.OK || h.engine.ProvenGeneration() != res.Generation {
+		t.Errorf("the next passing drill did not take over the proof: proven=%q drilled=%q", h.engine.ProvenGeneration(), res.Generation)
+	}
+}
+
+// Back up now writes a generation and drills it, and says which.
+func TestBackupNowProvesWhatItWrote(t *testing.T) {
+	h := newHarness(t, nil)
+	h.engine.SetVerifier(corruptibleVerifier)
+	res := h.engine.BackupNow(context.Background())
+	newest, ok := h.engine.Newest()
+	if !ok || !res.OK || res.Generation != newest.Name || res.Rows != 7 {
+		t.Fatalf("BackupNow = ok %v gen %q rows %d; want ok, the newest generation (%q), 7 rows", res.OK, res.Generation, res.Rows, newest.Name)
+	}
+	if h.engine.ProvenGeneration() != newest.Name {
+		t.Errorf("the generation BackupNow drilled is not recorded as proven")
+	}
+}
+
+// A backup of a corrupt database is written, fails its drill, and proves
+// nothing — so the older good copies cannot be cleared on its strength.
+func TestBackupNowOfACorruptDatabaseProvesNothing(t *testing.T) {
+	h := newHarness(t, nil)
+	h.engine.SetVerifier(corruptibleVerifier)
+	good := h.engine.BackupNow(context.Background())
+	if !good.OK {
+		t.Fatalf("first backup: %s", good.Err)
+	}
+	if err := os.WriteFile(h.dbPath, []byte("NOT A DATABASE"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	h.advance(time.Minute)
+	bad := h.engine.BackupNow(context.Background())
+	if bad.OK || !strings.Contains(bad.Err, "verification") {
+		t.Fatalf("a backup of a corrupt database passed or failed for the wrong reason: ok=%v err=%q", bad.OK, bad.Err)
+	}
+	if h.engine.ProvenGeneration() != good.Generation {
+		t.Errorf("proof moved to %q, which failed its drill", h.engine.ProvenGeneration())
+	}
+	removed, err := h.engine.RemoveOlderThanProven()
+	if err != nil || len(removed) != 0 {
+		t.Errorf("clearing older backups removed %d (err %v); the good copy is the oldest, nothing is older than it", len(removed), err)
+	}
+	if gens, _ := h.engine.List(); len(gens) != 2 {
+		t.Errorf("%d generations left; want both", len(gens))
+	}
+}
+
+// Clearing old backups needs a proven one, and then removes exactly the older.
+func TestRemoveOlderThanProven(t *testing.T) {
+	h := newHarness(t, nil)
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		h.engine.cycle(ctx, true)
+		h.advance(time.Minute)
+	}
+	if _, err := h.engine.RemoveOlderThanProven(); !errors.Is(err, ErrNotProven) {
+		t.Fatalf("with nothing proven, clearing returned %v; want ErrNotProven", err)
+	}
+	res := h.engine.BackupNow(ctx)
+	if !res.OK {
+		t.Fatalf("BackupNow: %s", res.Err)
+	}
+	removed, err := h.engine.RemoveOlderThanProven()
+	if err != nil || len(removed) != 3 {
+		t.Fatalf("removed %d (err %v); want the 3 older generations", len(removed), err)
+	}
+	gens, _ := h.engine.List()
+	if len(gens) != 1 || gens[0].Name != res.Generation {
+		t.Errorf("left %v; want only the proven %s", gens, res.Generation)
+	}
+}
+
+// The first drill after a restart comes within minutes, not a full drill
+// interval: the proof retention depends on does not survive a restart.
+func TestFirstDrillComesSoonAfterStart(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.DrillInterval = 12 * time.Hour })
+	if got := h.engine.firstDrillAt().Sub(h.now); got > 10*time.Minute {
+		t.Errorf("first drill due %v after start; want at most 10m", got)
+	}
+	short := newHarness(t, func(c *Config) { c.DrillInterval = 3 * time.Minute })
+	if got := short.engine.firstDrillAt().Sub(short.now); got != 3*time.Minute {
+		t.Errorf("with a 3m drill interval the first drill is due after %v; want 3m", got)
 	}
 }

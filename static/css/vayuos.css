@@ -762,6 +762,11 @@
 .vp-os[data-ui="still-air"] .media-dropzone__icon { display: flex; justify-content: center; color: var(--text-3); }
 .vp-os[data-ui="still-air"] .media-dropzone__link { color: var(--accent); }
 
+/* Label/value facts (backup status, connector details). */
+.vp-os[data-ui="still-air"] .cx-detail { border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .cx-detail__k { font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .cx-detail__v { font: var(--type-body); color: var(--text-1); overflow-wrap: anywhere; }
+
 /* Fields */
 .vp-os[data-ui="still-air"] .field { gap: 6px; }
 .vp-os[data-ui="still-air"] .field-label { font: var(--type-strong); font-size: 13px; color: var(--text-1); }

@@ -30,7 +30,7 @@ func TestPanelWarnsWhenNothingHasBeenRestored(t *testing.T) {
 		NewestGen: vkNow.Add(-5 * time.Minute), LastSuccess: vkNow.Add(-5 * time.Minute),
 		// LastDrill deliberately zero.
 	}
-	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false)
+	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{})
 	if !strings.Contains(got, "badge--warn") {
 		t.Error("a never-verified replica rendered without a warning badge")
 	}
@@ -54,7 +54,7 @@ func TestPanelSurfacesAFailedDrill(t *testing.T) {
 		LastDrill: vkNow.Add(-time.Hour), LastDrillOK: false,
 		LastDrillError: "integrity_check reported \"malformed database\"",
 	}
-	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false)
+	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{})
 	for _, want := range []string{"Test restore FAILED", "badge--warn", "malformed database"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("a failed drill must surface %q:\n%s", want, got)
@@ -72,7 +72,7 @@ func TestPanelReportsVerifiedOnlyWhenEarned(t *testing.T) {
 		NewestGen: vkNow.Add(-3 * time.Minute), LastSuccess: vkNow.Add(-3 * time.Minute),
 		LastDrill: vkNow.Add(-20 * time.Minute), LastDrillOK: true, LastDrillRows: 431,
 	}
-	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false)
+	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{})
 	if !strings.Contains(got, "badge--ok") || !strings.Contains(got, "Protected") {
 		t.Errorf("a healthy, drilled replica should read as protected:\n%s", got)
 	}
@@ -92,7 +92,7 @@ func TestPanelFlagsAStaleReplica(t *testing.T) {
 		NewestGen: vkNow.Add(-72 * time.Hour),
 		LastDrill: vkNow.Add(-time.Hour), LastDrillOK: true,
 	}
-	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false)
+	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{})
 	if !strings.Contains(got, "Stale") || !strings.Contains(got, "badge--warn") {
 		t.Errorf("a three-day-old newest generation must be flagged stale:\n%s", got)
 	}
@@ -101,7 +101,7 @@ func TestPanelFlagsAStaleReplica(t *testing.T) {
 // TestPanelDistinguishesOffFromRefused — "I never set this up" and "I set this
 // up and it is not running" need different answers.
 func TestPanelDistinguishesOffFromRefused(t *testing.T) {
-	off := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false)
+	off := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false, keepPrefs{})
 	if !strings.Contains(off, "Not set up") {
 		t.Errorf("an unconfigured install should say so:\n%s", off)
 	}
@@ -109,7 +109,7 @@ func TestPanelDistinguishesOffFromRefused(t *testing.T) {
 		t.Error("an unconfigured install must not claim it refused to start")
 	}
 
-	refused := osVayuKeepBody("n", vayukeep.Status{}, "the target /var/lib/vayupress/backups is inside the data directory", nil, vkNow, "", false)
+	refused := osVayuKeepBody("n", vayukeep.Status{}, "the target /var/lib/vayupress/backups is inside the data directory", nil, vkNow, "", false, keepPrefs{})
 	if !strings.Contains(refused, "Refused to start") {
 		t.Errorf("a refused configuration must say so:\n%s", refused)
 	}
@@ -130,7 +130,7 @@ func TestPanelReportsPaused(t *testing.T) {
 		LastError: "no space left on device",
 		LastDrill: vkNow.Add(-time.Hour), LastDrillOK: true,
 	}
-	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false)
+	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{})
 	for _, want := range []string{"Paused", "badge--warn", "no space left on device", "Nothing new is being saved"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("a paused engine must surface %q:\n%s", want, got)
@@ -149,7 +149,7 @@ func TestPanelEscapesUntrustedText(t *testing.T) {
 		LastDrillError: `<img src=x onerror="alert(2)">`,
 		LastError:      `<b>boom</b>`,
 	}
-	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false)
+	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{})
 	// Assert on the injected VALUES, not on generic markup. Two traps here:
 	// a bare `onerror=` carries no HTML-special character so it survives escaping
 	// as inert text, and the page legitimately contains its own `<script>` block —
@@ -163,7 +163,7 @@ func TestPanelEscapesUntrustedText(t *testing.T) {
 		t.Error("the target should appear escaped rather than dropped")
 	}
 
-	refused := osVayuKeepBody("n", vayukeep.Status{}, `<script>alert(3)</script>`, nil, vkNow, "", false)
+	refused := osVayuKeepBody("n", vayukeep.Status{}, `<script>alert(3)</script>`, nil, vkNow, "", false, keepPrefs{})
 	if strings.Contains(refused, "<script>alert(3)") {
 		t.Errorf("the boot error was not escaped:\n%s", refused)
 	}
@@ -216,7 +216,7 @@ func TestConsoleIsReachableAndOperable(t *testing.T) {
 		LastDrill: vkNow, LastDrillOK: true,
 	}, "", []vayukeep.Generation{
 		{Name: "vk-20260727-120000.vpbk", Taken: vkNow, Bytes: 4 << 20},
-	}, vkNow, "/mnt/replica", false)
+	}, vkNow, "/mnt/replica", false, keepPrefs{})
 	for _, want := range []string{
 		"data-vk-backup>", "data-vk-drill>", `data-vk-verify="`, `data-vk-restore="`, "data-vk-disable>",
 		"/os/api/vayukeep/backup", "/os/api/vayukeep/drill", "/os/api/vayukeep/verify",
@@ -243,7 +243,7 @@ func TestConsoleIsReachableAndOperable(t *testing.T) {
 // must be able to turn backups on without opening a terminal, because the ones
 // who never open a terminal are exactly the ones running without backups.
 func TestSetupIsClickableNotTypable(t *testing.T) {
-	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false)
+	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false, keepPrefs{})
 	// Match the BUTTON, not the selector string. The page's own script contains
 	// '[data-vk-setup]' unconditionally, so asserting on the bare attribute name
 	// passes even when no form was rendered — which is precisely the bug this
@@ -273,7 +273,7 @@ func TestSetupIsClickableNotTypable(t *testing.T) {
 
 	// An env-managed install must be told the console will not override it,
 	// rather than being shown a form whose Save button silently does nothing.
-	env := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "/mnt/x", true)
+	env := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "/mnt/x", true, keepPrefs{})
 	if strings.Contains(env, "data-vk-setup>") {
 		t.Error("an env-managed install was shown a setup form the console cannot apply")
 	}
@@ -287,7 +287,7 @@ func TestSetupIsClickableNotTypable(t *testing.T) {
 // the operator to invent it is how installs end up with "backup123" or with no
 // backups at all.
 func TestOperatorCanObtainAPassphrase(t *testing.T) {
-	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false)
+	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false, keepPrefs{})
 	for _, want := range []string{"data-vk-gen>", "data-vk-copy>", "Generate one", "getRandomValues"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the setup form is missing %q — it demands a strong passphrase without offering one", want)
@@ -316,7 +316,7 @@ func TestOperatorCanObtainAPassphrase(t *testing.T) {
 // instruction to edit a file or restart a service contradicts the button sitting
 // next to it, and a page that argues with itself is worse than either version.
 func TestNoTerminalEraCopyRemains(t *testing.T) {
-	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false)
+	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false, keepPrefs{})
 	for _, stale := range []string{
 		"Two lines and a restart",
 		"systemctl restart vayupress",
@@ -338,7 +338,7 @@ func TestEverythingBackupRelatedIsOnOnePage(t *testing.T) {
 		LastDrill: vkNow, LastDrillOK: true,
 	}, "", []vayukeep.Generation{
 		{Name: "vk-20260727-120000.vpbk", Taken: vkNow, Bytes: 4 << 20},
-	}, vkNow, "/mnt/replica", false)
+	}, vkNow, "/mnt/replica", false, keepPrefs{})
 
 	for _, want := range []string{
 		// Manual export / import, moved from Update & Backup.
