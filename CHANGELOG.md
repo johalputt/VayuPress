@@ -54,8 +54,10 @@ The Still Air redesign of the VayuOS console.
 ### Changed (performance)
 
 - **The console's stylesheets are served minified**: comments and indentation
-  are stripped when the file is served, so the console downloads 45 KB of
-  styles instead of 78 KB (gzipped). The source keeps its comments.
+  are stripped when the file is served, so the console downloads 53 KB of
+  styles instead of 91 KB (gzipped, both stylesheets). The source keeps its
+  comments. The rules the old design left behind are removed, and a test
+  holds the two stylesheets to a size budget.
 
 ### Fixed
 

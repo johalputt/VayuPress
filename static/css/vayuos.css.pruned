@@ -599,6 +599,7 @@
 .vp-os[data-ui="still-air"] .btn--danger:hover { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
 .vp-os[data-ui="still-air"] .btn--sm { height: 26px; padding: 0 9px; font-size: 12.5px; }
 .vp-os[data-ui="still-air"] .btn--xs { height: 22px; padding: 0 7px; font-size: 12px; }
+
 .vp-os[data-ui="still-air"] .btn--icon { width: 30px; height: 30px; padding: 0; border-color: transparent; background: none; color: var(--text-2); }
 .vp-os[data-ui="still-air"] .btn--icon:hover { background: var(--surface-hover); color: var(--text-1); box-shadow: none; filter: none; transform: none; }
 .vp-os[data-ui="still-air"] .btn:disabled,
@@ -613,6 +614,7 @@
 }
 .vp-os[data-ui="still-air"] .card::before,
 .vp-os[data-ui="still-air"] .card::after { display: none; }
+
 .vp-os[data-ui="still-air"] .card-title { font: var(--type-heading); color: var(--text-1); margin-bottom: var(--space-4); }
 .vp-os[data-ui="still-air"] .card-subtitle { font: var(--type-small); color: var(--text-3); }
 
@@ -715,6 +717,7 @@
 .vp-os[data-ui="still-air"] .card--danger { box-shadow: inset 3px 0 0 var(--danger); }
 .vp-os[data-ui="still-air"] .card--ok { box-shadow: inset 3px 0 0 var(--ok); }
 .vp-os[data-ui="still-air"] .tone-warn { color: var(--warn); }
+
 .vp-os[data-ui="still-air"] .tone-ok { color: var(--ok); }
 .vp-os[data-ui="still-air"] .code-block--wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] :is(.card-title, .section-head__title, .vs-tier-head) > .sa-ico { color: var(--text-3); }

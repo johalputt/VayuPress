@@ -318,7 +318,7 @@ func domainsCards(domains []domain.Domain, counts, mailCounts, memberCounts map[
 		// gets no <img> at all: a mark route that 404s draws a broken image.
 		icon := iconDomains
 		if marks[d.ID] {
-			icon = `<img class="work-card__mark" src="/os/d/` + html.EscapeString(d.ID) + `/branding/mark" alt="" width="20" height="20">`
+			icon = `<img class="domain-card__mark" src="/os/d/` + html.EscapeString(d.ID) + `/branding/mark" alt="" width="20" height="20">`
 		}
 		cards.WriteString(`<div class="` + cardCls + `" data-dom-row>
   <div class="domain-card__head">
