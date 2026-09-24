@@ -155,6 +155,35 @@ type topoNode struct {
 
 const topoNodeW, topoNodeH = 162.0, 52.0
 
+// topoTone and topoBand turn a node's status and band into the class suffixes
+// the stylesheet defines, and only those: the result is always one of the
+// literals below, so nothing reaches a class attribute that this code did not
+// write, whatever a node carries.
+func topoTone(status string, cur mode.Mode) string {
+	if strings.HasPrefix(status, "mode-") {
+		status = map[string]string{"warn": "warn", "danger": "err"}[saModeTone(cur)]
+	}
+	switch status {
+	case "warn":
+		return "warn"
+	case "err":
+		return "err"
+	}
+	return "ok"
+}
+
+func topoBand(band string) string {
+	switch band {
+	case "read":
+		return "read"
+	case "govern":
+		return "govern"
+	case "observe":
+		return "observe"
+	}
+	return "write"
+}
+
 func topoAnchor(n topoNode, side byte) (float64, float64) {
 	cx, cy := n.X+topoNodeW/2, n.Y+topoNodeH/2
 	switch side {
@@ -308,10 +337,7 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 	// no longer pulse — an animation nobody can switch off, on every node,
 	// saying nothing the colour does not.
 	for _, n := range nodes {
-		tone := n.Status // ok · warn · err
-		if strings.HasPrefix(n.Status, "mode-") {
-			tone = map[string]string{"ok": "ok", "warn": "warn", "danger": "err"}[saModeTone(cur)]
-		}
+		tone, band := topoTone(n.Status, cur), topoBand(n.Band)
 		fmt.Fprintf(w, `<g class="topo-node">
 <rect class="topo-rect topo-rect--%s" x="%.0f" y="%.0f" width="%.0f" height="%.0f" rx="7"/>
 <rect class="topo-bar topo-bar--%s" x="%.0f" y="%.0f" width="3" height="%.0f" rx="1.5"/>
@@ -320,7 +346,7 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 <text class="topo-sub" x="%.0f" y="%.0f">%s</text>
 </g>`,
 			tone, n.X, n.Y, topoNodeW, topoNodeH,
-			n.Band, n.X, n.Y, topoNodeH,
+			band, n.X, n.Y, topoNodeH,
 			tone, n.X+topoNodeW-16, n.Y+16,
 			n.X+14, n.Y+22, template.HTMLEscapeString(n.Label),
 			n.X+14, n.Y+38, template.HTMLEscapeString(n.Sub))
@@ -449,7 +475,7 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 				corr = corr[:12]
 			}
 			fmt.Fprintf(w, `<tr><td class="fe-name">#%d %s</td><td>%s</td><td><span class="%s">%s</span></td><td>%d</td><td>%d/%d</td><td style="color:var(--muted)">%s</td><td>%s</td><td><button class="fe-sim-btn" data-replay-job="%d">⟲ Replay</button></td></tr>`,
-				j.ID, template.HTMLEscapeString(j.Slug), j.Op, reasonCls, j.DeadReason, j.Retries, j.ReplayCount, config.Cfg.MaxReplayCount, corr, template.HTMLEscapeString(j.CreatedAt), j.ID)
+				j.ID, template.HTMLEscapeString(j.Slug), template.HTMLEscapeString(j.Op), reasonCls, template.HTMLEscapeString(j.DeadReason), j.Retries, j.ReplayCount, config.Cfg.MaxReplayCount, template.HTMLEscapeString(corr), template.HTMLEscapeString(j.CreatedAt), j.ID)
 		}
 		fmt.Fprint(w, `</tbody></table>`)
 	}
@@ -468,7 +494,7 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 				corr = corr[:12]
 			}
 			fmt.Fprintf(w, `<tr><td class="fe-name">#%d %s</td><td>%s</td><td><span class="fe-target t-readonly">%s</span></td><td>%d</td><td style="color:var(--muted)">%s</td><td style="color:var(--muted)">%s</td></tr>`,
-				j.ID, template.HTMLEscapeString(j.Slug), j.Op, j.DeadReason, j.ReplayCount, corr, template.HTMLEscapeString(j.CreatedAt))
+				j.ID, template.HTMLEscapeString(j.Slug), template.HTMLEscapeString(j.Op), template.HTMLEscapeString(j.DeadReason), j.ReplayCount, template.HTMLEscapeString(corr), template.HTMLEscapeString(j.CreatedAt))
 		}
 		fmt.Fprint(w, `</tbody></table>`)
 	}
