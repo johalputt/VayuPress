@@ -2399,7 +2399,11 @@
   border-radius: var(--r-md);
   gap: var(--sp-3);
 }
-.vp-os .editor-topbar-actions { display: flex; align-items: center; gap: var(--sp-2); }
+.vp-os .editor-topbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+/* The toolbar wraps at every width: it spans the whole grid, so an unwrapped
+   row of buttons set the editor's minimum width (979px inside an 828px
+   workspace on a 1280px laptop). */
+.vp-os .editor-topbar { flex-wrap: wrap; }
 .vp-os .editor-topbar-status { font-size: var(--text-xs); color: var(--text-2); }
 .vp-os .editor-topbar-status--ok   { color: var(--color-success, #22c55e); }
 .vp-os .editor-topbar-status--warn { color: var(--color-warn, #f59e0b); }
@@ -2667,8 +2671,6 @@
   /* minmax(0, …): a bare 1fr track grows to its widest child, and the
      toolbar's unwrapped buttons made the editor 956px wide on a phone. */
   .vp-os .editor-shell { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; }
-  .vp-os .editor-topbar,
-  .vp-os .editor-topbar-actions { flex-wrap: wrap; }
   .vp-os .editor-main { overflow: visible; }
   .vp-os .editor-canvas { overflow-y: visible; padding-bottom: var(--sp-10); }
   .vp-os .editor-workspace { flex-direction: column; overflow: visible; }

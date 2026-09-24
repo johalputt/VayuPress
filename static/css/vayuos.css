@@ -1155,6 +1155,8 @@
   .vp-os[data-ui="still-air"] :is(.tabs, .tab-list) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .vp-os[data-ui="still-air"] :is(.tabs, .tab-list) .tab { flex: none; }
   .vp-os[data-ui="still-air"] .seg-filter { max-width: 100%; overflow-x: auto; margin-left: 0; }
+  .vp-os[data-ui="still-air"] .page-header { flex-wrap: wrap; }
+  .vp-os[data-ui="still-air"] .page-actions { flex-wrap: wrap; max-width: 100%; }
   .vp-os[data-ui="still-air"] .sa-shell { grid-template-columns: minmax(0, 1fr); }
   /* A message is two lines on a phone — sender and time, then the subject —
      rather than six columns that leave the subject one word wide. Pin and

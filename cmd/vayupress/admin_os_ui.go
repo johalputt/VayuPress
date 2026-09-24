@@ -803,15 +803,25 @@ func serveAdminOSAsset(rel, contentType string) http.HandlerFunc {
 		w.Header().Set("Content-Type", contentType)
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		diskPath := filepath.Join(adminOSStaticDir(), filepath.FromSlash(rel))
-		if _, err := os.Stat(diskPath); err == nil {
-			http.ServeFile(w, req, diskPath)
-			return
+		css := strings.HasPrefix(contentType, "text/css")
+		if fi, err := os.Stat(diskPath); err == nil {
+			if !css {
+				http.ServeFile(w, req, diskPath)
+				return
+			}
+			if data, err := os.ReadFile(diskPath); err == nil { //nolint:gosec // rel is a fixed route literal, joined onto the static dir
+				http.ServeContent(w, req, filepath.Base(rel), fi.ModTime(), bytes.NewReader(minifiedCSSFor(data)))
+				return
+			}
 		}
 		// The on-disk copy is missing — e.g. STATIC_DIR was never provisioned, or
 		// is read-only under a hardened service sandbox so syncEmbeddedStatic
 		// could not write it. Serve the copy compiled into the binary so the
 		// panel always works, even immediately after a one-click self-update.
 		if data, err := fs.ReadFile(embeddedStaticFS, rel); err == nil {
+			if css {
+				data = minifiedCSSFor(data)
+			}
 			http.ServeContent(w, req, filepath.Base(rel), time.Time{}, bytes.NewReader(data))
 			return
 		}

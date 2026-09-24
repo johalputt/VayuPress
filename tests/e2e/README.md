@@ -1,14 +1,22 @@
 # VayuPress E2E tests (Playwright)
 
-End-to-end browser tests for the public site and the Admin v2 panel.
+End-to-end browser tests for the public site and the VayuOS console.
 
 ## What's covered
 
 - **public.spec.js** — homepage + article render, the **sovereignty invariant**
   (no off-host requests), and sitemap/feed availability.
-- **admin.spec.js** — Admin v2 dashboard, posts search/empty-state, the editor
-  (live preview + word count), the slash-command palette, the SEO dashboard,
-  the update checker, and the **strict CSP** (no `unsafe-eval`).
+- **console.spec.js** — console pages run their scripts: the media library
+  loads, list keyboard shortcuts run, confirmations use the console's own
+  dialog, and a change refreshes the page in place.
+- **comments.spec.js** — web addresses in reader comments become links, safely.
+- **contact.spec.js** — the contact widget's spam honeypot stays hidden even on a
+  page with no stylesheet.
+- **stillair.spec.js** — the Still Air console: a design lint over every app and
+  section at desktop and phone width (no emoji icons, nothing wider than the
+  screen, no capitals, no hand-written colours, no doubled headings, no script
+  errors), and the command bar, account menu and confirmation dialog operated
+  by keyboard alone.
 
 ## Running locally
 

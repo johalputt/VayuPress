@@ -46,8 +46,17 @@ The Still Air redesign of the VayuOS console, built behind a switch
   subjects; the per-row button that read "✓ read" and marked a message unread
   now says what it does.
 
+### Changed (performance)
+
+- **The console's stylesheets are served minified**: comments and indentation
+  are stripped when the file is served, so the console downloads 45 KB of
+  styles instead of 78 KB (gzipped). The source keeps its comments.
+
 ### Fixed
 
+- **The post editor was wider than the screen on a 1280 px laptop**: its
+  toolbar never wrapped, so the page scrolled sideways. Theme's header actions
+  did the same on a phone.
 - **Automatic clean-up could delete the last good backup.** Old restore points
   were removed after every new one whether or not the new one restored. They
   are now removed only when a newer restore point has passed a test restore;
