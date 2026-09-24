@@ -6,6 +6,51 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.72] — 2026-09-24
+
+The four items the mail/talk audit left open, closed.
+
+### Added
+
+- **A mail domain that is not set up properly is flagged** in the
+  notification bell and on the VayuMail DNS tab, with the next thing to fix.
+  The check is stored — made by the DNS tab, its Re-check button and a
+  background check every six hours — so no page runs DNS lookups to show it.
+  Administrators only.
+- **Share a link to chat with me** (VayuTalk): your chat link as text, a Copy
+  button and a QR code; in the Tor world, a QR of your anonymous code. It
+  follows the "chat as" switcher, and nobody can draw the QR for a mailbox
+  they cannot chat as.
+
+### Changed
+
+- **Changes no longer reload the page.** Members, Newsletter, Analytics, SEO
+  and Security re-render in place after a change, so the confirmation stays on
+  screen and the scroll position, focus and open sections are kept.
+- **Mail folders list faster at scale.** Only each message's headers are read
+  (a cold listing of 5,000 × 64 KB messages: 271 → 115 ms), and the header
+  cache now evicts whole folders nobody is looking at instead of resetting
+  itself — a warm listing of a 60,000-message folder: 1.11 s → 326 ms.
+  [ADR-0162](docs/adr/ADR-0162-mail-listing-is-a-cache-not-an-index.md)
+  records why this is a cache and not a SQLite index.
+- The backup Restore prompt and the Tor Rotate confirmation use the console's
+  own dialog; no console page uses the browser's pop-ups any more, and a test
+  now checks Go-served scripts as well as script files.
+- Console translation is designed in
+  [ADR-0163](docs/adr/ADR-0163-translating-the-console.md), to be built when a
+  first language exists.
+
+### Fixed
+
+- **A goal added on the Analytics page did not appear for up to 90 seconds**
+  (and a deleted one stayed): the page is served from a background cache that
+  nothing refreshed. Goal changes now rebuild it, and the table updates at
+  once.
+- "Regenerating…" was shown with a success tick before anything had happened.
+- The empty goals row spanned five of the table's six columns.
+
+---
+
 ## [3.17.71] — 2026-09-23
 
 VayuMail and VayuTalk, reworked from the August UX audit
