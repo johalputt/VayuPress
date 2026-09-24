@@ -8,8 +8,9 @@ package main
 // What it removes, and only this:
 //   - rendered pages (render.CacheClear's allow-list; the pre-update backups,
 //     search index and VayuShield lists beside them in CACHE_DIR stay);
-//   - files in TMP_DIR untouched for an hour (an export still being written is
-//     younger than that, so it is never cut off).
+//   - VayuPress's own files in TMP_DIR (export archives, write probes)
+//     untouched for an hour: an export still being written is younger than
+//     that, and nothing else in TMP_DIR is ours, whatever directory it names.
 //
 // Optionally it also asks Cloudflare to drop its copies, when Cloudflare is
 // configured and this is not a Tor world. Media, backups, logs and the database
@@ -32,17 +33,37 @@ import (
 // run, so an hour without a write means nobody is coming back for it.
 const staleTempAge = time.Hour
 
-// staleTemp finds the regular files directly in dir whose last write is older
-// than maxAge and, with remove set, deletes them. It returns the files and
-// bytes found (or, removing, the ones actually deleted). Directories and
-// symlinks are left alone.
+// The names VayuPress gives the files it writes into TMP_DIR. The writers
+// create them from these patterns and staleTemp deletes only what matches, so
+// the two cannot drift apart.
+const (
+	exportTempPattern = "vp-backup-*.tar.gz"
+	probeTempPattern  = ".vp-probe-*"
+)
+
+// ownTempFile reports whether name is a file VayuPress writes into TMP_DIR.
+// TMP_DIR is an operator setting and can name a shared or a data directory;
+// anything else in it is not ours to delete.
+func ownTempFile(name string) bool {
+	for _, p := range []string{exportTempPattern, probeTempPattern} {
+		if ok, _ := filepath.Match(p, name); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// staleTemp finds VayuPress's own regular files directly in dir whose last
+// write is older than maxAge and, with remove set, deletes them. It returns the
+// files and bytes found (or, removing, the ones actually deleted). Directories,
+// symlinks and every file VayuPress did not name are left alone.
 func staleTemp(dir string, maxAge time.Duration, now time.Time, remove bool) (files int, bytes int64) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return 0, 0
 	}
 	for _, e := range entries {
-		if !e.Type().IsRegular() {
+		if !e.Type().IsRegular() || !ownTempFile(e.Name()) {
 			continue
 		}
 		info, err := e.Info()

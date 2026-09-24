@@ -26,6 +26,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -105,7 +106,23 @@ var keepEveryChoices = []int{5, 15, 60, 360, 1440}
 // nothing changes, so a slower choice never means fewer backups of real work
 // than it says, and a faster one costs nothing on an idle site.
 func (a *App) keepEveryMin(ctx context.Context) int {
-	return a.keepInt(ctx, settings.KeyVayuKeepEveryMin, config.Cfg.VayuKeepMinMin)
+	saved := ""
+	if a.siteSettings != nil {
+		saved = a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyVayuKeepEveryMin)
+	}
+	return keepEveryFrom(saved, config.Cfg.VayuKeepMinMin)
+}
+
+// keepEveryFrom is the saved cadence when it is one the console offers, else
+// def. The allowlist is applied here, where the value is read, because the
+// Backups handler is not the only writer of the key: the generic settings API
+// stores it too, and a value outside the list either backs up every minute or
+// wraps time.Duration.
+func keepEveryFrom(saved string, def int) int {
+	if n, err := strconv.Atoi(strings.TrimSpace(saved)); err == nil && slices.Contains(keepEveryChoices, n) {
+		return n
+	}
+	return def
 }
 
 // buildKeepConfig assembles the engine configuration from every source.

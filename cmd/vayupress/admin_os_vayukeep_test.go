@@ -12,10 +12,17 @@ package main
 // only when they are earned.
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/users"
 	"github.com/johalputt/vayupress/internal/vayukeep"
 )
 
@@ -375,5 +382,88 @@ func TestEverythingBackupRelatedIsOnOnePage(t *testing.T) {
 	}
 	if !strings.Contains(live, "will not start") {
 		t.Error("the shell fallback does not say when it is actually needed")
+	}
+}
+
+// The Backups page offers five cadences and its handler refuses any other, but
+// the generic settings API writes the same key. A saved "1" would back up every
+// minute; a saved 10^12 wraps time.Duration into an interval of nanoseconds.
+// Whatever wrote it, only an offered cadence reaches the engine. One seed per
+// way of being wrong.
+func TestOnlyAnOfferedCadenceReachesTheEngine(t *testing.T) {
+	for saved, want := range map[string]int{
+		"15":            15,
+		"":              7, // unset: the environment's value
+		"1":             7, // positive, but not offered
+		"1000000000000": 7, // wraps a Duration
+		"0":             7,
+		"-60":           7,
+		"sixty":         7,
+	} {
+		if got := keepEveryFrom(saved, 7); got != want {
+			t.Errorf("saved %q: cadence %d minutes, want %d", saved, got, want)
+		}
+	}
+}
+
+// Every request carries the router's 30-second deadline (coreMiddleware). A
+// backup and its test restore that take longer than that on a real site were
+// cancelled half way: the cancellation counted as a failed backup, and a
+// cancelled drill was reported as "Test restore FAILED" — a false alarm about
+// the recovery path, raised on Home. Seeded with a request whose deadline has
+// already passed, as it has by the time a slow backup reaches its drill; the
+// snapshot and the check both honour cancellation, as the real ones do.
+func TestBackupAndTestRestoreOutliveTheRequestDeadline(t *testing.T) {
+	prev := config.Cfg
+	t.Cleanup(func() { config.Cfg = prev })
+	config.Cfg.VayuKeepEnabled = true
+
+	root := t.TempDir()
+	dbPath := filepath.Join(root, "data", "vayupress.db")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dbPath, []byte("SQLITE PAGES v1"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	e, err := vayukeep.New(vayukeep.Config{
+		Enabled: true, DataDir: filepath.Dir(dbPath), DBPath: dbPath,
+		TargetDir: filepath.Join(root, "replica"), Passphrase: "a test passphrase",
+		Snapshot: func(ctx context.Context, src, dst string) error {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			b, err := os.ReadFile(src) // #nosec G304 -- test fixture
+			if err != nil {
+				return err
+			}
+			return os.WriteFile(dst, b, 0o600)
+		},
+		Log: func(string, string) {},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.SetVerifier(func(ctx context.Context, _ string) (int64, error) { return 1, ctx.Err() })
+	a := &App{vayuKeep: e}
+
+	expired := func(path string) *http.Request {
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		t.Cleanup(cancel)
+		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`)).WithContext(ctx)
+		return withUser(r, &users.User{Role: users.RoleAdmin})
+	}
+	w := httptest.NewRecorder()
+	a.handleOSVayuKeepBackup(w, expired("/os/api/vayukeep/backup"))
+	if !strings.Contains(w.Body.String(), "saved and tested") {
+		t.Errorf("Back up now, past the request deadline: %s", w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	a.handleOSVayuKeepDrill(w, expired("/os/api/vayukeep/drill"))
+	if !strings.Contains(w.Body.String(), "PASSED") {
+		t.Errorf("Test restore now, past the request deadline: %s", w.Body.String())
+	}
+	if st := e.Status(); !st.LastDrillOK {
+		t.Errorf("a cancelled request left the status reading a failed test restore: %q", st.LastDrillError)
 	}
 }

@@ -34,8 +34,8 @@ func TestStaleTempRemovesOnlyAbandonedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("abandoned.tar", 300, old)
-	write("export-in-progress.tar", 500, now.Add(-10*time.Minute))
+	write("vp-backup-1.tar.gz", 300, old)
+	write("vp-backup-2.tar.gz", 500, now.Add(-10*time.Minute))
 	if err := os.Mkdir(filepath.Join(dir, "staging"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -46,23 +46,23 @@ func TestStaleTempRemovesOnlyAbandonedFiles(t *testing.T) {
 	if err := os.WriteFile(target, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(target, filepath.Join(dir, "link.db")); err != nil {
+	if err := os.Symlink(target, filepath.Join(dir, "vp-backup-3.tar.gz")); err != nil {
 		t.Skip("symlinks unavailable:", err)
 	}
 	// The link itself is old too, so only the symlink rule can keep it: a young
 	// link would survive on the age rule alone and prove nothing about this one.
 	oldTV := []unix.Timeval{unix.NsecToTimeval(old.UnixNano()), unix.NsecToTimeval(old.UnixNano())}
-	if err := unix.Lutimes(filepath.Join(dir, "link.db"), oldTV); err != nil {
+	if err := unix.Lutimes(filepath.Join(dir, "vp-backup-3.tar.gz"), oldTV); err != nil {
 		t.Fatal(err)
 	}
 
 	if n, b := staleTemp(dir, time.Hour, now, false); n != 1 || b != 300 {
-		t.Fatalf("found %d files, %d bytes; want only abandoned.tar (1, 300)", n, b)
+		t.Fatalf("found %d files, %d bytes; want only vp-backup-1.tar.gz (1, 300)", n, b)
 	}
 	if n, b := staleTemp(dir, time.Hour, now, true); n != 1 || b != 300 {
 		t.Errorf("removed %d files, %d bytes; want 1, 300", n, b)
 	}
-	for _, keep := range []string{"export-in-progress.tar", "staging", "link.db"} {
+	for _, keep := range []string{"vp-backup-2.tar.gz", "staging", "vp-backup-3.tar.gz"} {
 		if _, err := os.Lstat(filepath.Join(dir, keep)); err != nil {
 			t.Errorf("%s must survive the clear: %v", keep, err)
 		}
@@ -70,8 +70,38 @@ func TestStaleTempRemovesOnlyAbandonedFiles(t *testing.T) {
 	if _, err := os.Stat(target); err != nil {
 		t.Errorf("the clear deleted a symlink's target: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "abandoned.tar")); !os.IsNotExist(err) {
-		t.Errorf("abandoned.tar survived the clear")
+	if _, err := os.Stat(filepath.Join(dir, "vp-backup-1.tar.gz")); !os.IsNotExist(err) {
+		t.Errorf("vp-backup-1.tar.gz survived the clear")
+	}
+}
+
+// TMP_DIR is an operator setting. Point it at the data directory, or at a
+// shared /tmp, and a clear that deletes "every old file in TMP_DIR" deletes a
+// database that has not been written for an hour, or another program's files —
+// while the Storage page promises the database is never touched. Only the
+// files VayuPress itself writes there are candidates.
+func TestClearingCachesDeletesNothingVayuPressDidNotWrite(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-2 * time.Hour)
+	for _, name := range []string{"vayupress.db", "vayupress.db-wal", "photo.jpg", "backup.tar.gz", ".vp-probe-7", "vp-backup-9.tar.gz"} {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	staleTemp(dir, time.Hour, time.Now(), true)
+	for _, keep := range []string{"vayupress.db", "vayupress.db-wal", "photo.jpg", "backup.tar.gz"} {
+		if _, err := os.Stat(filepath.Join(dir, keep)); err != nil {
+			t.Errorf("clearing caches deleted %s, which VayuPress did not write to TMP_DIR", keep)
+		}
+	}
+	for _, gone := range []string{".vp-probe-7", "vp-backup-9.tar.gz"} {
+		if _, err := os.Stat(filepath.Join(dir, gone)); !os.IsNotExist(err) {
+			t.Errorf("an abandoned %s survived the clear", gone)
+		}
 	}
 }
 

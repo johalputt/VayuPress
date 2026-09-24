@@ -5,6 +5,8 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -256,5 +258,55 @@ func deployBundleWithFiles(t *testing.T, id string, files map[string]string) {
 		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// A bundle's <link rel="icon"> is the bundle's word, and a bundle is often a
+// template bought elsewhere. The console serves that icon from its own origin,
+// where script-src 'self' trusts whatever it finds, so a template declaring
+// rel="icon" href="page.html" (or app.js) put a document of its choosing inside
+// the console. Only an image is served there; an SVG, which is also a document,
+// is sandboxed so opening its URL runs nothing. One seed per rule.
+func TestABundleIconIsServedToTheConsoleOnlyAsAnInertImage(t *testing.T) {
+	a := resetSessionApp(t)
+	a.siteSettings = settings.New(dbpkg.DB)
+	isolateBundleRoot(t)
+
+	mark := func(host, declared, body string) (*httptest.ResponseRecorder, bool) {
+		d := seedSiteWithMark(t, a, host, nil)
+		deployBundleWithFiles(t, d.ID, map[string]string{
+			"index.html": `<!doctype html><html><head><link rel="icon" href="` + declared + `"></head></html>`,
+			declared:     body,
+		})
+		r := httptest.NewRequest(http.MethodGet, "/os/d/"+d.ID+"/branding/mark", nil)
+		r = r.WithContext(context.WithValue(r.Context(), ctxScopedDomainKey, d))
+		w := httptest.NewRecorder()
+		a.handleOSScopedBrandMark(w, r)
+		return w, a.siteHasOwnMark(context.Background(), d.ID)
+	}
+
+	for _, c := range []struct{ host, file, body string }{
+		{"page.example", "page.html", "<script>fetch('/os/api/users')</script>"},
+		{"script.example", "app.js", "fetch('/os/api/users')"},
+	} {
+		w, has := mark(c.host, c.file, c.body)
+		if w.Code == http.StatusOK {
+			t.Errorf("the console served a bundle's %s as its mark (%s)", c.file, w.Header().Get("Content-Type"))
+		}
+		if has {
+			t.Errorf("%s is reported as having a mark, so its card draws an <img> of %s", c.host, c.file)
+		}
+	}
+
+	w, has := mark("vector.example", "icon.svg", `<svg xmlns="http://www.w3.org/2000/svg"><script>fetch('/os/api/users')</script></svg>`)
+	if w.Code != http.StatusOK || !has {
+		t.Fatalf("an SVG icon is an image and must still be drawn: %d, has=%v", w.Code, has)
+	}
+	if csp := w.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox") || !strings.Contains(csp, "default-src 'none'") {
+		t.Errorf("an SVG mark is served without a sandbox, so opening it runs its script: CSP %q", csp)
+	}
+
+	if w, has := mark("raster.example", "icon.png", "\x89PNG\r\n\x1a\nicon"); w.Code != http.StatusOK || !has {
+		t.Errorf("a PNG icon must still be drawn: %d, has=%v", w.Code, has)
 	}
 }

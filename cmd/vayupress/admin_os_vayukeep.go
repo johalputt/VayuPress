@@ -627,6 +627,17 @@ func (a *App) keepGuard(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+// keepWorkContext bounds a backup or test restore the operator started and is
+// waiting for. It keeps the request's values but not its cancellation: every
+// request carries the router's 30-second deadline (coreMiddleware), and a
+// backup cut off there is recorded as a failed backup, a drill cut off there
+// as a failed test restore. Neither is true, and the second raises an alarm
+// about the recovery path. A closed tab must not abandon a half-written
+// backup either.
+func keepWorkContext(r *http.Request, d time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(r.Context()), d)
+}
+
 // handleOSVayuKeepBackup takes a restore point on demand.
 func (a *App) handleOSVayuKeepBackup(w http.ResponseWriter, r *http.Request) {
 	if !a.keepGuard(w, r) {
@@ -637,7 +648,7 @@ func (a *App) handleOSVayuKeepBackup(w http.ResponseWriter, r *http.Request) {
 	if rc := http.NewResponseController(w); rc != nil {
 		_ = rc.SetWriteDeadline(time.Now().Add(11 * time.Minute))
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	ctx, cancel := keepWorkContext(r, 10*time.Minute)
 	defer cancel()
 	res := a.vayuKeep.BackupNow(ctx)
 	switch {
@@ -709,7 +720,7 @@ func (a *App) handleOSVayuKeepDrill(w http.ResponseWriter, r *http.Request) {
 	if !a.keepGuard(w, r) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	ctx, cancel := keepWorkContext(r, 5*time.Minute)
 	defer cancel()
 	res := a.vayuKeep.Drill(ctx)
 	detail := "Test restore PASSED — your newest backup unpacked and its database checked out clean."

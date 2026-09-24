@@ -765,7 +765,7 @@ func snapshotTmpDir() string {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			continue
 		}
-		probe, err := os.CreateTemp(d, ".vp-probe-*")
+		probe, err := os.CreateTemp(d, probeTempPattern)
 		if err != nil {
 			continue
 		}
@@ -790,7 +790,7 @@ func (a *App) handleOSBackupExport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tmpDir := snapshotTmpDir()
-	archive, err := os.CreateTemp(tmpDir, "vp-backup-*.tar.gz")
+	archive, err := os.CreateTemp(tmpDir, exportTempPattern)
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "tmp-error",
 			"Could not create a temporary file for the backup: "+err.Error(), "")

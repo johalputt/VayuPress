@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path"
+	"strings"
 
 	"github.com/johalputt/vayupress/internal/customsite"
 	"github.com/johalputt/vayupress/internal/logging"
@@ -275,9 +277,25 @@ func (a *App) siteHasOwnMark(ctx context.Context, id string) bool {
 	if !ok {
 		return false
 	}
-	_, has := customsite.IconPath(dir)
-	return has
+	p, has := customsite.IconPath(dir)
+	return has && consoleIconType(p)
 }
+
+// consoleIconTypes are the files the console will serve as a site's mark from
+// its own origin. A bundle's <link rel="icon"> is the bundle's word, often a
+// template bought elsewhere, and the console's CSP trusts script-src 'self':
+// rel="icon" href="page.html" would put a document of the template's choosing
+// inside the console. The site's own domain still serves whatever it declares.
+var consoleIconTypes = map[string]bool{".png": true, ".ico": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".svg": true}
+
+func consoleIconType(p string) bool {
+	return consoleIconTypes[strings.ToLower(path.Ext(p))]
+}
+
+// inertImageCSP is set on a mark served from the console. An SVG is a document
+// as well as an image, so opening its URL directly would otherwise run what it
+// carries; sandboxed with nothing allowed, it only draws.
+const inertImageCSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
 
 // hasBrandMark reports whether a scope has a mark WITHOUT decoding it.
 //
@@ -332,8 +350,11 @@ func (a *App) handleOSScopedBrandMark(w http.ResponseWriter, r *http.Request) {
 	// Then the icon the site's own bundle declares. An uploaded mark wins because
 	// it is the more recent, more deliberate statement of what this logo is.
 	if dir, ok := siteBundleDir(d.ID); ok {
-		if p, has := customsite.IconPath(dir); has && customsite.Serve(w, r, dir, p) {
-			return
+		if p, has := customsite.IconPath(dir); has && consoleIconType(p) {
+			w.Header().Set("Content-Security-Policy", inertImageCSP)
+			if customsite.Serve(w, r, dir, p) {
+				return
+			}
 		}
 	}
 	http.NotFound(w, r)

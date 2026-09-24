@@ -21,7 +21,8 @@ The Still Air redesign of the VayuOS console.
   hours or daily, while the site is changing) from the Backups page instead of
   an environment variable.
 - **Clear caches, in one click** (System › Storage). Deletes every rendered
-  page, for every domain, and temporary files untouched for an hour, rebuilds
+  page, for every domain, and its own temporary files untouched for an hour
+  (nothing else in the temp directory, whatever it is set to), rebuilds
   the sitemap, feed and robots.txt, and says how much space it freed. With
   Cloudflare configured it can also purge Cloudflare's copies; a Tor world never
   contacts Cloudflare. Media, backups, logs and the database are never touched,
@@ -54,10 +55,10 @@ The Still Air redesign of the VayuOS console.
 ### Changed (performance)
 
 - **The console's stylesheets are served minified**: comments and indentation
-  are stripped when the file is served, so the console downloads 53 KB of
-  styles instead of 91 KB (gzipped, both stylesheets). The source keeps its
-  comments. The rules the old design left behind are removed, and a test
-  holds the two stylesheets to a size budget.
+  are stripped when the file is served, and the rules the old design left
+  behind are removed. The console downloads 53 KB of styles (gzipped, both
+  stylesheets) where the previous release sent 75 KB. The source keeps its
+  comments, and a test holds the two stylesheets to a size budget.
 
 ### Fixed
 
@@ -96,6 +97,29 @@ The Still Air redesign of the VayuOS console.
   links to Backups and Storage, where those actions are.
 - **An agency client's or mailbox user's logo link led to a page they cannot
   open**, and bounced them.
+- **Back up now and Test restore now were cut off after 30 seconds.** Every
+  request carries a 30-second limit; a backup and its test restore that took
+  longer on a large site were cancelled, the cancellation was recorded as a
+  failed backup, and a cancelled test restore was reported as "Test restore
+  FAILED". Both now run to their own limit (10 and 5 minutes), and closing the
+  tab no longer abandons a backup half written.
+- **The backup cadence accepted values the page never offers.** The Backups
+  page allows five cadences, but the same setting could be written through the
+  settings API with any number, including one that backed up every minute or
+  overflowed the interval. Only an offered cadence is used now.
+
+### Security
+
+- **Clear caches deleted any old file in the temp directory**, not only
+  VayuPress's own. With TMP_DIR pointed at a shared or data directory, it
+  would have deleted a database or another program's files untouched for an
+  hour. It now removes only the export archives and write probes VayuPress
+  writes there.
+- **A site's bundle could put a page inside the console.** The console serves
+  a hosted site's declared icon from its own address, and a bundle declaring
+  a web page or script as its icon had it served there, where the console's
+  security policy trusts it. Only images are served now, and an SVG is served
+  sandboxed so opening it runs nothing.
 
 ---
 
