@@ -18,7 +18,8 @@
       status.textContent = msg;
       status.className = 'seo-status mt-3' + (kind ? ' editor-status--' + kind : '');
     }
-    if (window.vpToast) window.vpToast(msg, kind === 'danger' ? 'error' : 'ok');
+    // No kind is progress, not success: a tick before anything happened is a claim.
+    if (window.vpToast) window.vpToast(msg, kind === 'danger' ? 'error' : (kind === 'ok' ? 'ok' : 'info'));
   }
 
   document.addEventListener('click', function (e) {

@@ -235,9 +235,12 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 <script nonce="` + nonce + `">
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
-var btn=document.querySelector('[data-indexnow-test]');
-var out=document.querySelector('[data-indexnow-result]');
-if(btn&&out){btn.addEventListener('click',function(){
+// Delegated, and looked up per click: Regenerate re-renders this page in place
+// (vpRefresh), which replaces the button a direct listener would be bound to.
+document.addEventListener('click',function(e){
+  var btn=e.target&&e.target.closest?e.target.closest('[data-indexnow-test]'):null;
+  var out=document.querySelector('[data-indexnow-result]');
+  if(!btn||!out)return;
   btn.disabled=true;out.hidden=false;out.className='seo-status mt-3';out.textContent='Testing IndexNow…';
   fetch('/os/api/seo/indexnow-test',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:'{}'})
    .then(function(r){return r.json();})
@@ -248,7 +251,7 @@ if(btn&&out){btn.addEventListener('click',function(){
      out.textContent=(ok?'✓ ':'✕ ')+((j&&j.detail)||(j&&j.error&&j.error.message)||'Test failed.');
    })
    .catch(function(){btn.disabled=false;out.className='seo-status mt-3 editor-status--danger';out.textContent='✕ Network error running the test.';});
-});}
+});
 })();
 </script>`
 
