@@ -92,7 +92,7 @@ func TestTheDisplayedMailboxSizeIsCachedButTheQuotaGateIsNot(t *testing.T) {
 // folder parsed every message file on every call.
 func TestFolderListingDoesNotRereadEveryMessage(t *testing.T) {
 	md := readFileString(t, "../../internal/vayuos/mail/maildir.go")
-	if !strings.Contains(md, "hdrCache") || !strings.Contains(md, "func (m *Maildir) headersFor(") {
+	if !strings.Contains(md, "hdrFolders") || !strings.Contains(md, "func (m *Maildir) headersFor(") {
 		t.Error("the maildir needs a parsed-header cache")
 	}
 	// The cache must be validated by the file's identity, not just its path.
