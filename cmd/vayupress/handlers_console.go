@@ -123,10 +123,10 @@ func (a *App) handleModesPage(w http.ResponseWriter, r *http.Request) {
 			btn = `<button class="mode-tile-btn" disabled>current state</button>`
 		case reachable:
 			badge = `<span class="mode-tile-badge reach">Reachable</span>`
-			btn = fmt.Sprintf(`<button class="mode-tile-btn" onclick="vpMode('%s',false)">Transition →</button>`, m)
+			btn = fmt.Sprintf(`<button class="mode-tile-btn" data-mode-to="%s">Transition →</button>`, m)
 		default:
 			badge = `<span class="mode-tile-badge block">Blocked</span>`
-			btn = fmt.Sprintf(`<button class="mode-tile-btn" onclick="vpMode('%s',true)">Force override</button>`, m)
+			btn = fmt.Sprintf(`<button class="mode-tile-btn" data-mode-to="%s" data-mode-force>Force override</button>`, m)
 		}
 		fmt.Fprintf(w, `<div class="mode-tile %s"><div class="mode-tile-top"><span class="mode-tile-name">%s</span>%s</div><div class="mode-tile-desc">%s</div>%s</div>`,
 			strings.TrimPrefix(tileCls, "mode-tile "), label, badge, desc, btn)
@@ -162,7 +162,11 @@ func (a *App) handleModesPage(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<div class="timeline-panel">%s</div>`, renderTimelineBody(entries))
 	}
 
-	writeConsoleShellFoot(w, nonce, `window.vpMode=function(to,force){vpPost('/admin/mode/transition?to='+encodeURIComponent(to)+(force?'&force=true':''),function(d){return 'Mode → '+(d.mode||to).toUpperCase();});};`)
+	// Bound by delegation from this nonce'd script: an onclick attribute is an
+	// inline handler, which the console's CSP refuses, so these buttons did
+	// nothing but file a CSP report.
+	writeConsoleShellFoot(w, nonce, `window.vpMode=function(to,force){vpPost('/admin/mode/transition?to='+encodeURIComponent(to)+(force?'&force=true':''),function(d){return 'Mode → '+(d.mode||to).toUpperCase();});};
+document.addEventListener('click',function(e){var b=e.target.closest('[data-mode-to]');if(b)vpMode(b.getAttribute('data-mode-to'),b.hasAttribute('data-mode-force'));});`)
 }
 
 // =============================================================================
@@ -193,7 +197,7 @@ func (a *App) handleFaultPage(w http.ResponseWriter, r *http.Request) {
 			window = humanizeWindow(rule.Window)
 		}
 		tgtCls := "fe-target " + strings.ReplaceAll(modeShortClass(rule.TargetMode), "m-", "t-")
-		fmt.Fprintf(w, `<tr id="fe-%s"><td class="fe-name">%s</td><td><span class="%s">%d</span></td><td>×%d</td><td>%s</td><td><span class="%s">%s</span></td><td><button class="fe-sim-btn" onclick="vpFault('%s')">Simulate ⚡</button></td></tr>`,
+		fmt.Fprintf(w, `<tr id="fe-%s"><td class="fe-name">%s</td><td><span class="%s">%d</span></td><td>×%d</td><td>%s</td><td><span class="%s">%s</span></td><td><button class="fe-sim-btn" data-fault="%s">Simulate ⚡</button></td></tr>`,
 			template.HTMLEscapeString(rule.FaultName), rule.FaultName, countCls, count, rule.Threshold, window, tgtCls, strings.ToUpper(string(rule.TargetMode)), rule.FaultName)
 	}
 	fmt.Fprint(w, `</tbody></table>`)
@@ -208,7 +212,8 @@ func (a *App) handleFaultPage(w http.ResponseWriter, r *http.Request) {
   <span class="esc-step">write queue paused</span>
 </div></div>`)
 
-	writeConsoleShellFoot(w, nonce, `window.vpFault=function(name){vpPost('/admin/fault/simulate?name='+encodeURIComponent(name),function(d){var m=(d.current_mode||'').toUpperCase();return 'Fired '+name+' ×'+d.trigger_count+(d.escalated?(' → escalated to '+m):'');});};`)
+	writeConsoleShellFoot(w, nonce, `window.vpFault=function(name){vpPost('/admin/fault/simulate?name='+encodeURIComponent(name),function(d){var m=(d.current_mode||'').toUpperCase();return 'Fired '+name+' ×'+d.trigger_count+(d.escalated?(' → escalated to '+m):'');});};
+document.addEventListener('click',function(e){var b=e.target.closest('[data-fault]');if(b)vpFault(b.getAttribute('data-fault'));});`)
 }
 
 // =============================================================================
@@ -489,7 +494,7 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 	// Dead-letter table.
 	fmt.Fprintf(w, `<div class="section-title">Dead-Letter Queue (%d)</div>`, deadLetter)
 	if deadLetter > 0 {
-		fmt.Fprintf(w, `<div class="action-row"><button class="btn btn--primary" onclick="vpReplayAll()">⟲ Replay all dead-letter (≤%d)</button></div>`, config.Cfg.ReplayBatchLimit)
+		fmt.Fprintf(w, `<div class="action-row"><button class="btn btn--primary" data-replay-all>⟲ Replay all dead-letter (≤%d)</button></div>`, config.Cfg.ReplayBatchLimit)
 	}
 	if len(deadJobs) == 0 {
 		fmt.Fprint(w, `<div class="console-note">Dead-letter queue is empty — no jobs have exhausted their retries.</div>`)
@@ -506,7 +511,7 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 			} else if len(corr) > 12 {
 				corr = corr[:12]
 			}
-			fmt.Fprintf(w, `<tr><td class="fe-name">#%d %s</td><td>%s</td><td><span class="%s">%s</span></td><td>%d</td><td>%d/%d</td><td style="color:var(--muted)">%s</td><td>%s</td><td><button class="fe-sim-btn" onclick="vpReplay(%d)">⟲ Replay</button></td></tr>`,
+			fmt.Fprintf(w, `<tr><td class="fe-name">#%d %s</td><td>%s</td><td><span class="%s">%s</span></td><td>%d</td><td>%d/%d</td><td style="color:var(--muted)">%s</td><td>%s</td><td><button class="fe-sim-btn" data-replay-job="%d">⟲ Replay</button></td></tr>`,
 				j.ID, template.HTMLEscapeString(j.Slug), j.Op, reasonCls, j.DeadReason, j.Retries, j.ReplayCount, config.Cfg.MaxReplayCount, corr, template.HTMLEscapeString(j.CreatedAt), j.ID)
 		}
 		fmt.Fprint(w, `</tbody></table>`)
@@ -532,7 +537,8 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeConsoleShellFoot(w, nonce, `window.vpReplay=function(id){vpPost('/admin/replay/job?id='+id,function(d){return d.replayed?('Requeued job #'+id):'Job not replayable';});};
-window.vpReplayAll=function(){vpPost('/api/v1/queue/replay',function(d){return 'Replayed '+d.replayed+' · quarantined '+d.skipped_quarantined;});};`)
+window.vpReplayAll=function(){vpPost('/api/v1/queue/replay',function(d){return 'Replayed '+d.replayed+' · quarantined '+d.skipped_quarantined;});};
+document.addEventListener('click',function(e){var b=e.target.closest('[data-replay-job],[data-replay-all]');if(!b)return;if(b.hasAttribute('data-replay-all'))vpReplayAll();else vpReplay(b.getAttribute('data-replay-job'));});`)
 }
 
 // handleReplayJob requeues a single dead-letter job back to pending.
