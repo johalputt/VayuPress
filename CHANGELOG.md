@@ -6,6 +6,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.74] — 2026-09-24
+
+The last four findings of the mail/talk audit, and the eight open
+code-scanning alerts.
+
+### Fixed
+
+- **VayuTalk asks for notification permission once, when you start a chat**,
+  not on every page load and every Start.
+- **VayuTalk's buttons use the console's line icons** instead of colour emoji.
+- **A chat that stopped receiving reconnects by itself.** A live connection
+  that fell behind was left open and silent, so new messages never reached it
+  until the page was reloaded. It is now closed, and the page reconnects and
+  collects everything waiting for it.
+- **The mailbox two-factor dialog** closes on Escape, verifies on Enter and
+  returns you to the button that opened it.
+- **The site editor explains a site that is no longer there** (removed while
+  its editor was open) instead of staying on "Opening…".
+
+### Security
+
+- **Code scanning is clear.** Eight alerts were open. None was an exploitable
+  hole: every value was already escaped or checked. They were reported because
+  the scanner could not see the check. Each is now written so the scanner can
+  see it, and a test fails if the check is removed:
+  - Text typed into the app-password and contact forms, and a Talk invite
+    link, is escaped where it is written into the page. Before, an escaping
+    helper was called through a short local name that the scanner does not
+    follow.
+  - A static-site upload's id is checked with a single pattern before it
+    becomes part of a file path. Uppercase, a trailing newline, an id longer
+    than 64 characters, a dot and a slash are each refused.
+  - The site editor builds its own API address on a fixed `/os` prefix. It
+    reads only the site's id from the page, so nothing in the page can point
+    its preview frame anywhere else.
+
+---
+
 ## [3.17.73] — 2026-09-24
 
 ### Added
