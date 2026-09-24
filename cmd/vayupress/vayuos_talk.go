@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	htmpl "html/template"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -300,6 +301,21 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
   </div>
 </details>`)
 	}
+	// A link (clearnet) that opens a chat with this identity, as text and as a QR
+	// code, for a colleague to open on their own phone or console. The QR is an
+	// image served per identity so the "chat as" switcher can repoint it.
+	if !config.Cfg.OnionMode {
+		link := talkShareLink(self)
+		body.WriteString(`<details class="vtalk-safety vtalk-share">
+  <summary class="vtalk-safety__sum">Share a link to chat with me</summary>
+  <div class="vtalk-safety__body">
+    <img class="vtalk-share__qr" data-share-qr src="/os/talk/qr?as=` + qparam(self) + `" width="164" height="164" alt="QR code of the link below">
+    <code class="vtalk-safety__num" data-share-link>` + esc(link) + `</code>
+    <p class="text-xs muted">Anyone with a mailbox on this server can open it to start a chat with you. It carries no password and no key.</p>
+    <button type="button" class="btn btn--sm" data-copy="` + esc(link) + `" data-share-copy>Copy link</button>
+  </div>
+</details>`)
+	}
 	// Tor world: the identity is an anonymous, rotatable code — offer copy + rotate.
 	if config.Cfg.OnionMode {
 		// Onion-to-onion federation status + toggle (ADR-0142): reaching a code on
@@ -314,7 +330,9 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 		}
 		// The code, not a link: a link would open this install's console, where
 		// nobody outside can sign in and everybody inside already IS this code.
-		body.WriteString(`<div class="vtalk-anon"><p class="text-sm muted">This is your anonymous code — share it so people can reach you.</p><div class="ak-cred-actions"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">Copy code</button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div>` + fedNote + `<div class="ak-cred-actions">` + fedBtn + `</div></div>`)
+		body.WriteString(`<div class="vtalk-anon"><p class="text-sm muted">This is your anonymous code — share it so people can reach you.</p>` +
+			`<img class="vtalk-share__qr" src="/os/talk/qr" width="164" height="164" alt="QR code of your anonymous code">` +
+			`<div class="ak-cred-actions"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">Copy code</button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div>` + fedNote + `<div class="ak-cred-actions">` + fedBtn + `</div></div>`)
 	}
 	// /os/talk?t=<address> pre-fills the new-chat box, so people with mailboxes
 	// on this install can send each other a link to start a chat. The value is escaped
@@ -322,7 +340,11 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	// never silently open a conversation.
 	invite := strings.TrimSpace(r.URL.Query().Get("t"))
 	if invite != "" {
-		body.WriteString(`<div class="settings-callout">🔗 A code came with this link — press <strong>Start</strong> to open the chat with <code>` + esc(invite) + `</code>.</div>`)
+		what := "An address"
+		if config.Cfg.OnionMode {
+			what = "A code"
+		}
+		body.WriteString(`<div class="settings-callout">🔗 ` + what + ` came with this link — press <strong>Start</strong> to open the chat with <code>` + esc(invite) + `</code>.</div>`)
 	}
 	// The Tor world's recipients are 70-character anonymous codes, not mail
 	// addresses: an email input with a "name@domain" placeholder invites the wrong
@@ -380,8 +402,8 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 function csrfTok(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var rot=document.getElementById('vtalk-rotate');
 if(rot){rot.addEventListener('click',function(){
-  if(!window.confirm('Rotate your anonymous code?\n\nAnyone who has your current code will no longer be able to reach you, and the chats open in this tab are discarded. This cannot be undone.')){return;}
-  rot.disabled=true;fetch('/os/talk/rotate',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrfTok()}}).then(function(r){if(r.ok){location.reload();}else{rot.disabled=false;}}).catch(function(){rot.disabled=false;});});}
+  window.vpConfirm({title:'Rotate your anonymous code?',message:'Anyone who has your current code will no longer be able to reach you, and the chats open in this tab are discarded. This cannot be undone.',confirm:'Rotate'},function(){
+  rot.disabled=true;fetch('/os/talk/rotate',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrfTok()}}).then(function(r){if(r.ok){location.reload();}else{rot.disabled=false;}}).catch(function(){rot.disabled=false;});});});}
 var fed=document.getElementById('vtalk-fed'),fedNote=document.getElementById('vtalk-fed-note');
 function paintFed(on){
   if(!fedNote)return;
@@ -702,6 +724,43 @@ func (a *App) handleVayuOSTalkRead(w http.ResponseWriter, r *http.Request) {
 		go a.forwardReadReceiptOverOnion(id, sender, self)
 	}
 	writeJSON(w, r, http.StatusOK, map[string]bool{"ok": true, "acked": ok})
+}
+
+// talkShareLink is the link that opens a new chat with self on this install's
+// console. Built from the configured domain, not the request's Host header,
+// which the client chooses.
+func talkShareLink(self string) string {
+	return "https://" + config.Cfg.Domain + "/os/talk?t=" + url.QueryEscape(self)
+}
+
+// handleVayuOSTalkQR serves the share panel's QR code: the chat link in the
+// clearnet world, the anonymous code itself in the Tor world. The identity goes
+// through talkSelf like every other Talk request, so an "as" this session may
+// not chat as falls back to its own identity rather than drawing someone else's.
+func (a *App) handleVayuOSTalkQR(w http.ResponseWriter, r *http.Request) {
+	if !a.vayuTalkEnabled() {
+		http.NotFound(w, r)
+		return
+	}
+	self := a.talkSelf(r, r.URL.Query().Get("as"))
+	if self == "" {
+		http.Error(w, "no chat identity", http.StatusForbidden)
+		return
+	}
+	text := talkShareLink(self)
+	if config.Cfg.OnionMode {
+		text = self
+	}
+	png := qrPNG(text)
+	if png == nil {
+		http.Error(w, "could not encode", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	// no-store: a Tor code rotates, and a cached image would keep showing the
+	// code that no longer reaches anyone.
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(png)
 }
 
 // handleTalkOnionReceipt accepts a "read" (or similar) receipt delivered from a

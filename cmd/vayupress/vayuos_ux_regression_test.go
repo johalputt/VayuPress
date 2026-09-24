@@ -118,7 +118,7 @@ func TestTalkConversationRowsAreKeyboardReachable(t *testing.T) {
 // holding the old code loses reach) and it used to happen on a single click.
 func TestTalkRotateAsksBeforeDestroyingTheCode(t *testing.T) {
 	page := withoutComments(readFileString(t, "vayuos_talk.go"))
-	if !strings.Contains(page, "window.confirm(") || !strings.Contains(page, "cannot be undone") {
+	if !strings.Contains(page, "window.vpConfirm({title:'Rotate your anonymous code?'") || !strings.Contains(page, "cannot be undone") {
 		t.Error("rotating the anonymous code must confirm first and say the change is irreversible")
 	}
 }

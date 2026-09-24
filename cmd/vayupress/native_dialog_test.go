@@ -120,3 +120,28 @@ func TestTheShellProvidesBothDialogs(t *testing.T) {
 		t.Error("vpPrompt renders .vp-confirm__label with no rule in admin-os.css")
 	}
 }
+
+// TestConsoleInlineScriptsUseTheConsolesOwnDialogs — the scan above reads
+// static/js only, and three native dialogs lived in scripts the Go code serves
+// inline: the Tor-world Rotate confirm and the backup Restore prompt among them.
+// Every non-test Go file is read here, comments stripped.
+func TestConsoleInlineScriptsUseTheConsolesOwnDialogs(t *testing.T) {
+	// The members' own account page is the public site, not the console: it has
+	// no vpConfirm/vpPrompt to call.
+	outsideConsole := map[string]bool{"handlers_member_account_script.go": true}
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) < 50 {
+		t.Fatalf("read the package: %v (%d files)", err, len(files))
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") || outsideConsole[f] {
+			continue
+		}
+		src := withoutComments(readFileString(t, f))
+		for _, banned := range []string{"window.confirm(", "window.prompt(", "window.alert("} {
+			if strings.Contains(src, banned) {
+				t.Errorf("%s serves a script that calls %s — use vpConfirm/vpPrompt/vpToast", f, banned)
+			}
+		}
+	}
+}

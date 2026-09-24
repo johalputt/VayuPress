@@ -630,6 +630,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/talk", a.handleVayuOSTalk)
 		pr.Get("/os/talk/stream", a.handleVayuOSTalkStream)
 		pr.Get("/os/talk/peer", a.handleVayuOSTalkPeer)
+		pr.Get("/os/talk/qr", a.handleVayuOSTalkQR)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/talk/send", a.handleVayuOSTalkSend)
 		// Tor world: mint a fresh anonymous chat handle (ADR-0141).
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/talk/rotate", a.handleVayuOSTalkRotate)

@@ -978,6 +978,17 @@
     autogrow();
     var av = root.querySelector('.vtalk-identity .vm-av');
     if (av) av.textContent = initials(currentSelf);
+    // The share panel belongs to the identity too: its link and QR would
+    // otherwise invite people to chat with the mailbox just switched away from.
+    var shareQR = root.querySelector('[data-share-qr]');
+    var shareLink = root.querySelector('[data-share-link]');
+    var shareCopy = root.querySelector('[data-share-copy]');
+    if (shareLink) {
+      var link = shareLink.textContent.replace(/\?t=.*$/, '?t=' + encodeURIComponent(currentSelf));
+      shareLink.textContent = link;
+      if (shareCopy) shareCopy.setAttribute('data-copy', link);
+    }
+    if (shareQR) shareQR.src = '/os/talk/qr?as=' + encodeURIComponent(currentSelf);
     // Refresh our own safety number for the new identity, then reconnect.
     selfFp = '';
     fetch('/os/talk/peer?email=' + encodeURIComponent(currentSelf), { headers: { 'Accept': 'application/json' } })

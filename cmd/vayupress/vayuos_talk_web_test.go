@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/base64"
@@ -414,5 +415,35 @@ func TestAMessageBurnedWhileChattingAsAMailboxStaysBurned(t *testing.T) {
 		if env.ID == id {
 			t.Fatal("a reconnect as dana re-delivered the message that already burned")
 		}
+	}
+}
+
+// TestTheShareQRIsOnlyEverForAnIdentityYouMayChatAs — the QR endpoint takes the
+// same "as" the switcher sends, so it must go through the same entitlement: a
+// holder asking for someone else's code gets their own, never the other's.
+func TestTheShareQRIsOnlyEverForAnIdentityYouMayChatAs(t *testing.T) {
+	a, _, _ := appWithTalkWeb(t) // dana@example.com is an active mailbox
+	qrFor := func(u *users.User, as string) []byte {
+		req := withUser(httptest.NewRequest(http.MethodGet, "/os/talk/qr?as="+as, nil), u)
+		rec := httptest.NewRecorder()
+		a.handleVayuOSTalkQR(rec, req)
+		if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" {
+			t.Fatalf("qr as %q = %d %s", as, rec.Code, rec.Header().Get("Content-Type"))
+		}
+		return rec.Body.Bytes()
+	}
+	dana := qrPNG(talkShareLink("dana@example.com"))
+
+	admin := &users.User{ID: "ad", Email: "boss@example.com", Role: users.RoleAdmin, MailAddress: "boss@example.com"}
+	if !bytes.Equal(qrFor(admin, "dana@example.com"), dana) {
+		t.Error("an administrator chatting as dana did not get dana's link")
+	}
+	holder := &users.User{ID: "h", Email: "holder@example.com", Role: users.RoleAuthor, MailAddress: "holder@example.com"}
+	got := qrFor(holder, "dana@example.com")
+	if bytes.Equal(got, dana) {
+		t.Fatal("a mailbox holder was given dana's chat link")
+	}
+	if !bytes.Equal(got, qrPNG(talkShareLink("holder@example.com"))) {
+		t.Error("a refused identity must fall back to the holder's own link")
 	}
 }

@@ -7,7 +7,9 @@ package main
 // The admin CSP allows `img-src 'self' data:`, so a base64 PNG data URI embeds
 // directly in an <img> with no external request and no extra route. Used for
 // TOTP (2FA) enrolment — the otpauth:// URI as a scannable code — and for the
-// mail "scan to view settings" convenience on the Connect tab.
+// mail "scan to view settings" convenience on the Connect tab. VayuTalk's share
+// panel serves the PNG itself (/os/talk/qr), because its identity can change
+// without a page load.
 
 import (
 	"encoding/base64"
@@ -20,12 +22,22 @@ import (
 // simply omit the image. Medium error correction (qr.M) balances density and
 // scan reliability for typical otpauth/settings payloads.
 func qrDataURI(text string) string {
-	if text == "" {
+	png := qrPNG(text)
+	if png == nil {
 		return ""
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
+}
+
+// qrPNG encodes text as a QR code PNG, or returns nil for empty text or an
+// encode error.
+func qrPNG(text string) []byte {
+	if text == "" {
+		return nil
 	}
 	code, err := qr.Encode(text, qr.M)
 	if err != nil {
-		return ""
+		return nil
 	}
-	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(code.PNG())
+	return code.PNG()
 }

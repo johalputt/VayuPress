@@ -3855,6 +3855,11 @@
 }
 .vmtabs .tab { border-radius: 9px 9px 0 0; transition: color .14s ease, background .14s ease; }
 .vmtabs .tab:hover { background: var(--bg-surface-2); }
+/* VayuTalk share panel: the QR of the chat link (or, in the Tor world, of the
+   anonymous code). Always on white — a scanner needs the contrast in dark mode. */
+.vp-os .vtalk-share__qr { display: block; width: 164px; height: 164px; margin: .25rem 0 .6rem;
+  padding: 6px; background: #fff; border-radius: 8px; image-rendering: pixelated; }
+.vp-os .vtalk-share .vtalk-safety__num { word-break: break-all; }
 /* A mail domain whose DNS is not finished (read from the stored verdict). A
    border, not just a fill, so it survives forced-colors mode. */
 .vp-os .vmtabs__attn { display: inline-block; width: .5rem; height: .5rem; margin-left: .3rem; vertical-align: .1em;

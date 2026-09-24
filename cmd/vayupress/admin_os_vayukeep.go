@@ -486,9 +486,10 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-vk-restore]'),func
   el.addEventListener('click',function(){
     var name=el.getAttribute('data-vk-restore');
     // Typed confirmation, not a click. This replaces the live database.
-    var typed=window.prompt('This puts your site back to '+name+' and restarts.\n\nYour current database is copied aside first, so it is reversible.\n\nType RESTORE to confirm:');
-    if(typed!=='RESTORE')return;
-    vkPost('/os/api/vayukeep/restore',{name:name,confirm:typed},el,'Restoring…','vk-verify-status');
+    vpPrompt({title:'Restore '+name+'?',message:'This puts your site back to '+name+' and restarts. Your current database is copied aside first, so it is reversible.',label:'Type RESTORE to confirm',placeholder:'RESTORE',confirm:'Restore'},function(typed){
+      if(typed!=='RESTORE')return;
+      vkPost('/os/api/vayukeep/restore',{name:name,confirm:typed},el,'Restoring…','vk-verify-status');
+    });
   });
 });
 })();
