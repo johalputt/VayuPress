@@ -2047,8 +2047,8 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 	b.WriteString(`<div class="vm-toolbar">`)
 	b.WriteString(`<div class="vm-toolbar-id">` + mailAvatarImg(mbox, a.mailboxAvatarSet()) + `<div class="vm-toolbar-meta"><strong>` + html.EscapeString(mbox) + `</strong><a class="text-sm muted" href="/os/vayumail/inbox">All mailboxes</a></div></div>`)
 	b.WriteString(`<div class="vm-toolbar-actions">`)
-	b.WriteString(`<a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">✎ Compose</a>`)
-	b.WriteString(`<button type="button" class="btn btn--sm" hx-get="/os/vayumail/contacts?user=` + qparam(user) + `" hx-target="#vm-readpane" hx-swap="innerHTML" title="This mailbox's saved contacts">👥 Contacts</button>`)
+	b.WriteString(`<a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">` + saIcon("pencil") + ` Compose</a>`)
+	b.WriteString(`<button type="button" class="btn btn--sm" hx-get="/os/vayumail/contacts?user=` + qparam(user) + `" hx-target="#vm-readpane" hx-swap="innerHTML" title="This mailbox's saved contacts">` + saIcon("audience") + ` Contacts</button>`)
 	b.WriteString(`<form class="vm-search" method="get" action="/os/vayumail/search"><input type="hidden" name="user" value="` + html.EscapeString(user) + `"><input class="input input--sm" type="search" name="q" placeholder="Search mail…" aria-label="Search mail"><button class="btn btn--sm" type="submit">Search</button></form>`)
 	b.WriteString(`</div></div>`)
 
@@ -2068,7 +2068,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 		}
 		b.WriteString(`<div class="vm-quota"><div class="vm-quota-meta text-sm muted">Storage: ` + html.EscapeString(humanBytes(used)) + ` of ` + html.EscapeString(humanBytes(quota)) + ` used (` + itoaSafe(pct) + `%)</div><div class="vm-quota-track"><div class="vm-quota-fill vm-quota-fill--` + level + `" data-quota-pct="` + itoaSafe(pct) + `"></div></div>`)
 		if pct >= 100 {
-			b.WriteString(`<div class="vm-quota-full text-sm">⚠ Your mailbox is full — incoming mail may be rejected and you can't send until you free space.</div>`)
+			b.WriteString(`<div class="vm-quota-full text-sm">` + saIcon("warn") + ` Your mailbox is full — incoming mail may be rejected and you can't send until you free space.</div>`)
 		}
 		b.WriteString(`</div>`)
 	}
@@ -2102,7 +2102,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 		if received {
 			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"mark","mark":"read"}'` + inc + `>Mark read</button>`)
 			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"mark","mark":"unread"}'` + inc + `>Mark unread</button>`)
-			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"pin","pin":"1"}'` + inc + `>📌 Pin</button>`)
+			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"pin","pin":"1"}'` + inc + `>` + saIcon("pin") + ` Pin</button>`)
 			b.WriteString(`<span class="vm-move"><select class="input input--sm" name="to" aria-label="Move selected to folder" hx-post="/os/vayumail/inbox/action" hx-trigger="change" hx-vals='{"action":"move"}'` + inc + `><option value="">Move to…</option>`)
 			for _, f := range vmail.StandardFolders {
 				// Snoozed is excluded: only the snooze action files there (a
@@ -2129,10 +2129,10 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 			// First-run: an empty inbox used to be one muted sentence. Point at the
 			// two things a new mailbox holder actually needs next.
 			b.WriteString(`<tr><td colspan="6"><div class="empty-state">` +
-				`<div class="empty-icon">📬</div>` +
+				`<div class="empty-icon">` + saIcon("inbox") + `</div>` +
 				`<div class="empty-title">Your inbox is empty</div>` +
 				`<div class="empty-sub">Mail sent to ` + html.EscapeString(mbox) + ` lands here. Write one, or connect a mail app so you can use this mailbox from your phone.</div>` +
-				`<div class="vm-row vm-row--tight"><a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">✎ Write your first email</a>` +
+				`<div class="vm-row vm-row--tight"><a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">` + saIcon("pencil") + ` Write your first email</a>` +
 				`<a class="btn btn--sm" href="/os/vayumail/connect?user=` + qparam(user) + `">Connect a mail app</a></div>` +
 				`</div></td></tr>`)
 		} else {
@@ -2163,18 +2163,22 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 		if !m.Seen && received {
 			rowCls += " vm-unread"
 		}
-		pinVal, pinIcon := "1", "📌"
+		// One pin button whose pressed state says whether the message is pinned,
+		// rather than two glyphs a reader has to tell apart.
+		pinVal, pinLabel, pressed := "1", "Pin", "false"
 		if m.Flagged {
-			pinVal, pinIcon = "0", "📍"
+			pinVal, pinLabel, pressed = "0", "Unpin", "true"
 		}
-		pin := `<button type="button" class="btn btn--xs btn--ghost" title="Pin" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "pin", "pin", pinVal, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` + pinIcon + `</button>`
+		pin := `<button type="button" class="btn btn--xs btn--ghost vm-pin" title="` + pinLabel + `" aria-label="` + pinLabel + `" aria-pressed="` + pressed + `" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "pin", "pin", pinVal, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` + saIcon("pin") + `</button>`
 		tick := ""
 		if received {
-			mark, label := "read", "Mark read"
+			// The button names what it does. It used to read "✓ read" on a read
+			// message, which described the state and then marked it unread.
+			mark, label, icon := "read", "Mark read", "check"
 			if m.Seen {
-				mark, label = "unread", "✓ read"
+				mark, label, icon = "unread", "Mark unread", "mail"
 			}
-			tick = `<button type="button" class="btn btn--xs" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "mark", "mark", mark, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` + label + `</button>`
+			tick = `<button type="button" class="btn btn--xs btn--ghost" title="` + label + `" aria-label="` + label + `" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "mark", "mark", mark, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` + saIcon(icon) + `</button>`
 		}
 		check := `<input type="checkbox" class="vm-check-row" name="id" value="` + html.EscapeString(m.ID) + `" data-vm-check aria-label="Select message">`
 		// Non-draft rows open in the split reading pane (HTMX); the href stays as a
@@ -2711,7 +2715,7 @@ func mailPGPBadge(raw []byte) string {
 		// The second form is the marker left after transparent server-side
 		// decryption (inline or PGP/MIME) — the message WAS end-to-end
 		// encrypted even though the served copy is readable.
-		return ` <span class="vm-pgp vm-pgp--enc" title="PGP-encrypted message">🔒 Encrypted</span>`
+		return ` <span class="vm-pgp vm-pgp--enc" title="PGP-encrypted message">` + saIcon("lock") + ` Encrypted</span>`
 	case strings.Contains(rs, "-----BEGIN PGP SIGNED MESSAGE-----"), strings.Contains(rs, "-----BEGIN PGP SIGNATURE-----"):
 		return ` <span class="vm-pgp vm-pgp--sig" title="Carries a PGP signature">✓ Signed</span>`
 	}
@@ -2780,7 +2784,7 @@ func vayuReadpaneEmpty(msg string) string {
 	if msg == "" {
 		msg = "Select a message to read it here."
 	}
-	return `<div class="vm-readpane-empty"><div class="vm-readpane-empty-ico">✉</div><p class="muted">` + html.EscapeString(msg) + `</p></div>`
+	return `<div class="vm-readpane-empty"><div class="vm-readpane-empty-ico">` + saIcon("mail") + `</div><p class="muted">` + html.EscapeString(msg) + `</p></div>`
 }
 
 // vayuReaderCard renders the message reader card for both the standalone
@@ -2837,7 +2841,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView,
 	// Top bar: back/close + prev/next navigation.
 	card.WriteString(`<div class="vm-reader-top">`)
 	if pane {
-		card.WriteString(`<button type="button" class="btn btn--ghost btn--sm" hx-get="/os/vayumail/inbox/readpane" hx-target="#vm-readpane" hx-swap="innerHTML" title="Close">✕ Close</button>`)
+		card.WriteString(`<button type="button" class="btn btn--ghost btn--sm" hx-get="/os/vayumail/inbox/readpane" hx-target="#vm-readpane" hx-swap="innerHTML" title="Close">` + saIcon("x") + ` Close</button>`)
 	} else {
 		card.WriteString(`<a class="btn btn--ghost btn--sm" href="` + back + `">← ` + html.EscapeString(folder) + `</a>`)
 	}
@@ -2847,9 +2851,9 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView,
 	// delegated window.print with @media print rules that emit only the
 	// open reader). CSP-safe: data-attributes, no inline handlers.
 	if pane {
-		card.WriteString(`<button type="button" class="btn btn--xs" data-vm-expand title="Toggle full view" aria-label="Toggle full view">⛶</button>`)
+		card.WriteString(`<button type="button" class="btn btn--xs" data-vm-expand title="Toggle full view" aria-label="Toggle full view">` + saIcon("expand") + `</button>`)
 	}
-	card.WriteString(`<button type="button" class="btn btn--xs" data-vm-print title="Print message" aria-label="Print message">🖨</button>`)
+	card.WriteString(`<button type="button" class="btn btn--xs" data-vm-print title="Print message" aria-label="Print message">` + saIcon("print") + `</button>`)
 	navBtn := func(mid, glyph, label string) {
 		if mid == "" {
 			card.WriteString(`<span class="btn btn--xs" aria-disabled="true">` + glyph + `</span>`)
@@ -2883,34 +2887,34 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView,
 		}
 		hxPost := ` hx-post="/os/vayumail/message/pane-action" hx-target="#vm-readpane" hx-swap="innerHTML" `
 		card.WriteString(`<div class="vm-actions">`)
-		card.WriteString(`<a class="btn btn--primary btn--sm" href="` + replyLink + `">↩ Reply</a>`)
-		card.WriteString(`<a class="btn btn--sm" href="` + forwardLink + `">↪ Forward</a>`)
+		card.WriteString(`<a class="btn btn--primary btn--sm" href="` + replyLink + `">` + saIcon("reply") + ` Reply</a>`)
+		card.WriteString(`<a class="btn btn--sm" href="` + forwardLink + `">` + saIcon("forward") + ` Forward</a>`)
 		if received {
-			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("mark", "unread") + `>✉ Mark unread</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("mark", "unread") + `>` + saIcon("mail") + ` Mark unread</button>`)
 		}
 		if pinned {
-			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("pin", "0") + `>📌 Unpin</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("pin", "0") + `>` + saIcon("pin") + ` Unpin</button>`)
 		} else {
-			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("pin", "1") + `>📌 Pin</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("pin", "1") + `>` + saIcon("pin") + ` Pin</button>`)
 		}
 		if !strings.EqualFold(folder, "Junk") {
-			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Junk") + `>⚠ Junk</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Junk") + `>` + saIcon("spam") + ` Junk</button>`)
 		}
 		if !strings.EqualFold(folder, "Trash") {
-			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Trash") + `>🗑 Trash</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Trash") + `>` + saIcon("trash") + ` Trash</button>`)
 		} else {
-			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Inbox") + `>↧ Restore</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Inbox") + `>` + saIcon("inbox") + ` Restore</button>`)
 		}
 		// Snooze: hide until later; the sweeper resurfaces it unread. Only for
 		// received folders (the engine rejects Sent/Drafts/Snoozed anyway).
 		if received && !strings.EqualFold(folder, "Snoozed") {
 			// "Later" (+4h) existed in the engine but had no button, so the fastest
 			// snooze the product could offer was "tomorrow".
-			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("snooze", "later") + ` title="Snooze for 4 hours">⏰ Later today</button>`)
-			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("snooze", "tomorrow") + ` title="Snooze until tomorrow 8:00">⏰ Tomorrow</button>`)
-			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("snooze", "nextweek") + ` title="Snooze until Monday 8:00">⏰ Next week</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("snooze", "later") + ` title="Snooze for 4 hours">` + saIcon("timer") + ` Later today</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("snooze", "tomorrow") + ` title="Snooze until tomorrow 8:00">` + saIcon("timer") + ` Tomorrow</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("snooze", "nextweek") + ` title="Snooze until Monday 8:00">` + saIcon("timer") + ` Next week</button>`)
 		}
-		card.WriteString(`<button type="button" class="btn btn--sm btn--danger"` + hxPost + paneVals("delete", "1") + ` hx-confirm="Permanently delete this message?">🗑 Delete</button>`)
+		card.WriteString(`<button type="button" class="btn btn--sm btn--danger"` + hxPost + paneVals("delete", "1") + ` hx-confirm="Permanently delete this message?">` + saIcon("trash") + ` Delete</button>`)
 		card.WriteString(`</div>`)
 	} else {
 		// Emit only the raw next-message id (not a full URL): the client rebuilds
@@ -2923,23 +2927,23 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView,
 			nextAttr = `" data-next-id="` + html.EscapeString(nextID)
 		}
 		card.WriteString(`<div class="vm-actions" data-mail-actions data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(id) + nextAttr + `">`)
-		card.WriteString(`<a class="btn btn--primary btn--sm" href="` + replyLink + `">↩ Reply</a>`)
-		card.WriteString(`<a class="btn btn--sm" href="` + forwardLink + `">↪ Forward</a>`)
+		card.WriteString(`<a class="btn btn--primary btn--sm" href="` + replyLink + `">` + saIcon("reply") + ` Reply</a>`)
+		card.WriteString(`<a class="btn btn--sm" href="` + forwardLink + `">` + saIcon("forward") + ` Forward</a>`)
 		if received {
-			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-mark="unread">✉ Mark unread</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-mark="unread">` + saIcon("mail") + ` Mark unread</button>`)
 		}
 		if pinned {
-			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-pin="0">📌 Unpin</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-pin="0">` + saIcon("pin") + ` Unpin</button>`)
 		} else {
-			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-pin="1">📌 Pin</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-pin="1">` + saIcon("pin") + ` Pin</button>`)
 		}
 		if !strings.EqualFold(folder, "Junk") {
-			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Junk">⚠ Junk</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Junk">` + saIcon("spam") + ` Junk</button>`)
 		}
 		if !strings.EqualFold(folder, "Trash") {
-			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Trash">🗑 Trash</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Trash">` + saIcon("trash") + ` Trash</button>`)
 		} else {
-			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Inbox">↧ Restore</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Inbox">` + saIcon("inbox") + ` Restore</button>`)
 		}
 		card.WriteString(`<span class="vm-move"><select class="input input--sm" data-mail-move-select aria-label="Move to folder"><option value="">Move to…</option>`)
 		for _, f := range vmail.StandardFolders {
@@ -2950,8 +2954,8 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView,
 			card.WriteString(`<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`)
 		}
 		card.WriteString(`</select></span>`)
-		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-print>🖨 Print</button>`)
-		card.WriteString(`<button type="button" class="btn btn--sm btn--danger" data-mail-delete>🗑 Delete</button></div>`)
+		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-print>` + saIcon("print") + ` Print</button>`)
+		card.WriteString(`<button type="button" class="btn btn--sm btn--danger" data-mail-delete>` + saIcon("trash") + ` Delete</button></div>`)
 	}
 
 	// Header card: subject + PGP badge, sender avatar, addresses and date.
@@ -2981,10 +2985,10 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView,
 
 	// Attachments.
 	if len(pm.Attachments) > 0 {
-		card.WriteString(`<div class="vm-attach"><div class="text-sm muted">📎 ` + itoaSafe(len(pm.Attachments)) + ` attachment(s)</div><div class="vm-attach-list">`)
+		card.WriteString(`<div class="vm-attach"><div class="text-sm muted">` + saIcon("clip") + itoaSafe(len(pm.Attachments)) + ` attachment(s)</div><div class="vm-attach-list">`)
 		for _, att := range pm.Attachments {
 			dl := "/os/vayumail/attachment?user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(id) + "&idx=" + itoaSafe(att.Index)
-			card.WriteString(`<a class="vm-attach-chip" href="` + dl + `" download><span class="vm-attach-ico">📄</span><span class="vm-attach-name">` + html.EscapeString(att.Filename) + `</span><span class="vm-attach-size">` + html.EscapeString(humanBytes(att.Size)) + `</span></a>`)
+			card.WriteString(`<a class="vm-attach-chip" href="` + dl + `" download><span class="vm-attach-ico">` + saIcon("doc") + `</span><span class="vm-attach-name">` + html.EscapeString(att.Filename) + `</span><span class="vm-attach-size">` + html.EscapeString(humanBytes(att.Size)) + `</span></a>`)
 		}
 		card.WriteString(`</div></div>`)
 	}

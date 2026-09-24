@@ -205,12 +205,14 @@ func (a *App) handleOSStorage(w http.ResponseWriter, r *http.Request) {
     <thead><tr><th>Component</th><th>Path</th><th>Size</th></tr></thead>
     <tbody>
       <tr><td>Database (+ WAL/SHM)</td><td class="mono text-sm">` + html.EscapeString(config.Cfg.DBPath) + `</td><td>` + humanBytes(st.DBSize) + `</td></tr>
-      <tr><td>Render cache</td><td class="mono text-sm">` + html.EscapeString(config.Cfg.CacheDir) + `</td><td>` + humanBytes(st.CacheSize) + `</td></tr>
+      <tr><td>Rendered pages</td><td class="mono text-sm">` + html.EscapeString(config.Cfg.CacheDir) + `</td><td>` + humanBytes(st.CacheSize) + `</td></tr>
       <tr><td>Media library</td><td class="mono text-sm">` + html.EscapeString(config.Cfg.MediaDir) + `</td><td>` + humanBytes(st.MediaSize) + `</td></tr>
       <tr><td>Pre-update backups</td><td class="mono text-sm">` + html.EscapeString(updateBackupDir()) + `</td><td>` + humanBytes(st.BackupsSize) + `</td></tr>
     </tbody>
   </table></div>
 </div>
+
+` + cacheCardHTML(st.CacheSize) + `
 
 <div class="card" data-storage-card>
   <div class="card-title">Managed files <span class="count-pill">` + strconv.Itoa(len(files)) + `</span></div>
@@ -222,6 +224,30 @@ func (a *App) handleOSStorage(w http.ResponseWriter, r *http.Request) {
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-storage.js?v=` + assetVer("js/admin-os-storage.js") + `"></script>`
 
 	writeOSHTML(w, r, adminOSLayout(nonce, "Storage & System", "storage", cfg, htmpl.HTML(body)))
+}
+
+// cacheCardHTML is the one-click clear: what it would free, what it never
+// touches, and the Cloudflare purge when there is a Cloudflare to purge.
+// pageBytes comes from the background footprint, never a walk on this request.
+func cacheCardHTML(pageBytes int64) string {
+	tempFiles, tempBytes := staleTemp(config.Cfg.TmpDir, staleTempAge, time.Now(), false)
+	cdn := ""
+	if cloudflareConfigured() {
+		cdn = `<label class="upd-check mt-3"><input type="checkbox" data-cache-cdn checked> Also purge Cloudflare's copy of every page</label>`
+	}
+	return `<div class="card mb-6" data-cache-card>
+  <div class="card-head"><div><h2 class="card-title">Caches</h2><p class="card-subtitle">Data VayuPress rebuilds on its own. Pages are rendered again as visitors ask for them, so expect a short rise in CPU after a clear.</p></div>
+    <button type="button" class="btn btn--primary btn--sm" data-cache-clear>Clear caches</button></div>
+  <div class="table-wrap"><table class="table">
+    <tbody>
+      <tr><td>Rendered pages</td><td class="muted text-sm">Home, post and tag pages, for every domain</td><td>` + humanBytes(pageBytes) + `</td></tr>
+      <tr><td>Temporary files</td><td class="muted text-sm">Untouched for an hour or more</td><td>` + humanBytes(tempBytes) + ` · ` + itoaSafe(tempFiles) + ` file` + plural(tempFiles) + `</td></tr>
+    </tbody>
+  </table></div>
+  ` + cdn + `
+  <p class="text-xs muted mt-3">Never touched: media, backups, logs and the database.</p>
+  <div data-cache-msg role="status" aria-live="polite" class="action-msg"></div>
+</div>`
 }
 
 // storageFilesTable renders the managed-files table with per-row download +

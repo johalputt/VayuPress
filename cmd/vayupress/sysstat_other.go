@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/johalputt/vayupress/internal/render"
 )
 
 // sysStats is a point-in-time snapshot of resource usage.
@@ -50,13 +52,15 @@ func collectSysStats(dbPath, cacheDir, mediaDir, backupsDir string) sysStats {
 	return sysStats{
 		DiskPath:    dbPath,
 		DBSize:      fileSize(dbPath),
-		CacheSize:   dirSize(cacheDir),
+		CacheSize:   renderedBytes(cacheDir),
 		MediaSize:   dirSize(mediaDir),
 		BackupsSize: dirSize(backupsDir),
 	}
 }
 
 func startFootprintRefresher(cacheDir, mediaDir, backupsDir string) {}
+
+func refreshFootprint(cacheDir, mediaDir, backupsDir string) {}
 
 // diskUsage cannot be read without statfs; zero total means "unknown".
 func diskUsage(string) (total, free uint64) { return 0, 0 }
@@ -99,4 +103,9 @@ func humanBytes(n int64) string {
 	}
 	val := float64(n) / float64(div)
 	return strconv.FormatFloat(val, 'f', 1, 64) + " " + string("KMGTPE"[exp]) + "iB"
+}
+
+func renderedBytes(cacheDir string) int64 {
+	_, b := render.CacheUsage(cacheDir)
+	return b
 }

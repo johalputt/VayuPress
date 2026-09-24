@@ -291,11 +291,10 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 </div>
 
 ` + provisionCardHTML() + `
-<div class="section-head"><span class="section-head__title">Update history</span><span class="section-head__hint">Every check, install and rollback</span></div>
-<div class="mon-stack">` +
+<div class="mon-stack mt-6">` +
 		monAcc(iconHistory, "Update history", "Every check, install and rollback, newest first", "", false, historyBody) +
 		`</div>
-<p class="text-sm muted mt-4">Backups moved to <a href="/os/vayukeep">Operations → Backup &amp; Recovery</a> — automatic copies, manual export and import, and restore, all in one place.</p>
+<p class="text-sm muted mt-4">Backups live in <a href="/os/vayukeep">System › Backups</a> — automatic copies, manual export and import, and restore, all in one place.</p>
 
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-update.js?v=` + assetVer("js/admin-os-update.js") + `"></script>`
 

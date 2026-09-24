@@ -721,14 +721,14 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	enabled := a.shieldCurrentSettings().Enabled
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Protection</span><span class="section-head__hint">How unproven traffic is screened — verified crawlers always pass</span></div>`)
 	b.WriteString(`<div class="mon-stack">`)
-	b.WriteString(monAcc("🛡️", "Protection &amp; settings", "Challenge thresholds, rate-limit, surge &amp; the resilience gates", monChip(enabled, "On", "Off"), false,
+	b.WriteString(monAcc(saIcon("shield"), "Protection &amp; settings", "Challenge thresholds, rate-limit, surge &amp; the resilience gates", monChip(enabled, "On", "Off"), false,
 		`<form hx-post="/os/api/shield/settings" hx-swap="none"><div id="vs-body-protection" hx-get="/os/shield/section/protection" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+a.shieldProtectionBody(r.Context(), a.shieldGeoIsBlind(r))+`</div></form>`))
 	// Live self-test: proves, against the CURRENT settings, that real readers and
 	// crawlers are served content. It answers the two questions an operator cannot
 	// otherwise verify without leaving the panel — "am I hurdling my own visitors?"
 	// and "am I hurting indexing?" — so the answer is evidence, not a promise.
 	selfTest := a.cachedShieldCanary()
-	b.WriteString(monAcc("🩺", "Visitor &amp; crawler check", "Live proof that real readers and search engines get through",
+	b.WriteString(monAcc(saIcon("pulse"), "Visitor &amp; crawler check", "Live proof that real readers and search engines get through",
 		shieldSelfTestChip(selfTest), selfTest.readers != len(canaryReaders) || !selfTest.ok(),
 		`<div id="vs-body-selftest" hx-get="/os/shield/section/selftest" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+shieldSelfTestBody(selfTest)+`</div>`))
 	b.WriteString(`</div>`)
@@ -742,22 +742,22 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	// this page reports what the operator switched on; this one reports what is
 	// actually enforcing, which is the only one of the two that would have caught
 	// a tier reading "Active" while doing no work.
-	b.WriteString(monAcc("🔎", "Posture report", "What is actually enforcing — verified, not assumed",
+	b.WriteString(monAcc(saIcon("search"), "Posture report", "What is actually enforcing — verified, not assumed",
 		a.shieldAuditChip(r), true,
 		`<div id="vs-body-audit" hx-get="/os/shield/section/audit" hx-trigger="every 30s" hx-swap="innerHTML">`+a.shieldAuditBody(r)+`</div>`))
-	b.WriteString(monAcc("🧱", "Network hardening", "Tier 2 nftables · Tier 3 nginx edge — server-level", `<span class="mon-chip mon-chip--on">● Live</span>`, false,
+	b.WriteString(monAcc(saIcon("wall"), "Network hardening", "Tier 2 nftables · Tier 3 nginx edge — server-level", `<span class="mon-chip mon-chip--on">● Live</span>`, false,
 		`<div id="vs-body-hardening" hx-get="/os/shield/section/hardening" hx-trigger="every 10s" hx-swap="innerHTML">`+a.shieldHardeningBody(r)+`</div>`))
 
 	// ── Bot intelligence — collapsible + individually refreshable. Both bodies
 	// also listen for vs-refresh-sig (fired after a Confirm/Dismiss) so their
 	// counts update in place without touching the rest of the page. ───────────
 	if a.vayuShield != nil && a.vayuShield.BotStore() != nil {
-		b.WriteString(monAcc("🧬", "Bot signatures", "Learned client signatures &amp; the community knowledge base", "", false,
+		b.WriteString(monAcc(saIcon("bot"), "Bot signatures", "Learned client signatures &amp; the community knowledge base", "", false,
 			`<div id="vs-body-signatures" hx-get="/os/shield/section/signatures" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`+a.shieldSignaturesBody(r.Context())+`</div>`))
-		b.WriteString(monAcc("🔍", "Review queue", "Auto-learned candidates awaiting your verdict", "", false,
+		b.WriteString(monAcc(saIcon("search"), "Review queue", "Auto-learned candidates awaiting your verdict", "", false,
 			`<div id="vs-body-queue" hx-get="/os/shield/section/queue" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`+a.shieldQueueBody(r.Context())+`</div>`))
 	}
-	b.WriteString(monAcc("📈", "Recorded history", "Blocks and challenges over time — the trail the panel never read", "", false,
+	b.WriteString(monAcc(saIcon("trend"), "Recorded history", "Blocks and challenges over time — the trail the panel never read", "", false,
 		`<div id="vs-body-trail" hx-get="/os/shield/section/trail" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+a.shieldTrailBody(r)+`</div>`))
 	b.WriteString(`</div>`) // close the Defense & intelligence mon-stack
 
@@ -774,7 +774,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	if a.vaEngagement != nil {
 		b.WriteString(`<div class="section-head"><span class="section-head__title">Analytics</span><span class="section-head__hint">Cookieless, GDPR-by-design engagement</span></div>`)
 		b.WriteString(`<div class="mon-stack">`)
-		b.WriteString(monAcc("📊", "Engagement analytics", "Time-on-page, scroll depth &amp; traffic sources", "", false,
+		b.WriteString(monAcc(saIcon("chart"), "Engagement analytics", "Time-on-page, scroll depth &amp; traffic sources", "", false,
 			`<div id="vs-body-engagement">`+a.shieldEngagementBody(r.Context(), days)+`</div>`))
 		b.WriteString(`</div>`)
 	}
@@ -1524,11 +1524,11 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 	if wv, err := a.vaEngagement.WebVitalsP75(ctx, days); err == nil && wv.Samples > 0 {
 		good := func(v, threshold int) string {
 			if v > 0 && v <= threshold {
-				return `<span style="color:var(--ok,#1a7f37)">`
+				return `<span class="tone-ok">`
 			}
 			return `<span>`
 		}
-		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Real-user experience (p75)</div><p class="muted text-sm">Largest Contentful Paint <strong>` + good(wv.P75LCPMs, 2500) + strconv.Itoa(wv.P75LCPMs) + ` ms</strong></span> · Interaction to Next Paint <strong>` + good(wv.P75INPMs, 200) + strconv.Itoa(wv.P75INPMs) + ` ms</strong></span> · Layout Shift <strong>` + good(wv.P75CLSX100, 10) + ftoa2(float64(wv.P75CLSX100)/100) + `</strong></span> · <span class="muted">` + strconv.FormatInt(wv.Samples, 10) + ` sampled visits</span></p></div>`)
+		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Real-user experience (p75)</div><p class="muted text-sm">Largest Contentful Paint <strong>` + good(wv.P75LCPMs, 2500) + strconv.Itoa(wv.P75LCPMs) + ` ms</span></strong> · Interaction to Next Paint <strong>` + good(wv.P75INPMs, 200) + strconv.Itoa(wv.P75INPMs) + ` ms</span></strong> · Layout Shift <strong>` + good(wv.P75CLSX100, 10) + ftoa2(float64(wv.P75CLSX100)/100) + `</span></strong> · <span class="muted">` + strconv.FormatInt(wv.Samples, 10) + ` sampled visits</span></p></div>`)
 	}
 	if ai, err := a.vaEngagement.AITraffic(ctx, days); err == nil {
 		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">AI-assisted discovery vs organic search</div>`)
@@ -2166,7 +2166,7 @@ func shieldThroughputBand(body string) string {
 	return `<div class="section-head"><span class="section-head__title">Live throughput</span>` +
 		`<span class="section-head__hint">Per-layer counters — cumulative since this process started</span></div>` +
 		`<div class="mon-stack">` +
-		monAcc("📟", "Layer counters", "In-flight, shed, challenges, jails, inspection and peers", "", false,
+		monAcc(saIcon("pulse"), "Layer counters", "In-flight, shed, challenges, jails, inspection and peers", "", false,
 			`<div id="vs-body-throughput" hx-get="/os/shield/section/throughput" `+
 				`hx-trigger="every 10s, vs-refresh from:body" hx-swap="innerHTML">`+body+`</div>`) +
 		`</div>`

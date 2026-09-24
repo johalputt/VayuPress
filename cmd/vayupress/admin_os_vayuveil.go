@@ -190,7 +190,7 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 	if enabled {
 		btnLabel, btnAction, chip = "Deactivate", "0", `<span class="mon-chip mon-chip--on">reporting</span>`
 	}
-	b.WriteString(monAcc("🛡", "VayuVeil", "Inventory the observation channels on this host and report",
+	b.WriteString(monAcc(saIcon("shield"), "VayuVeil", "Inventory the observation channels on this host and report",
 		chip, true,
 		`<div class="card"><div class="settings-block-title">What this switch controls</div>`+
 			`<p class="text-sm muted">Activating VayuVeil makes this install <b>look at itself</b>: it `+
@@ -213,7 +213,7 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 	case self.Known:
 		selfChip = `<span class="mon-chip mon-chip--off">dumpable</span>`
 	}
-	b.WriteString(monAcc("🔐", "This process refuses to be dumped",
+	b.WriteString(monAcc(saIcon("lock"), "This process refuses to be dumped",
 		"The one control VayuVeil enforces, and its exact size", selfChip, true,
 		`<div class="card"><p class="text-sm muted">`+esc(self.Describe())+`</p>`+
 			`<p class="text-sm muted">It is applied before the configuration is read and before the `+
@@ -283,7 +283,7 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 		}
 		suite.WriteString(`</tbody></table></div></div>`)
 	}
-	b.WriteString(monAcc("🗡", "Capture suite", "Techniques actually run against this host, judged on bytes",
+	b.WriteString(monAcc(saIcon("target"), "Capture suite", "Techniques actually run against this host, judged on bytes",
 		suiteChip, false, suite.String()))
 
 	// ── The registry ──────────────────────────────────────────────────────────
@@ -306,7 +306,7 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 			`</td><td class="text-xs muted">` + esc(veilNeedsLabel(c.Needs)) + `</td></tr>`)
 	}
 	reg.WriteString(`</tbody></table></div></div>`)
-	b.WriteString(monAcc("📋", "The Observation Contract", "Every channel, and the four questions it must answer",
+	b.WriteString(monAcc(saIcon("list"), "The Observation Contract", "Every channel, and the four questions it must answer",
 		regChip, false, reg.String()))
 
 	// ── The posture report ────────────────────────────────────────────────────
@@ -328,11 +328,11 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 		post.WriteString(`<br><span class="text-sm muted">` + esc(c.Detail) + `</span></p>`)
 	}
 	post.WriteString(`</div>`)
-	b.WriteString(monAcc("🔎", "Posture report", "What is actually true on this machine right now",
+	b.WriteString(monAcc(saIcon("search"), "Posture report", "What is actually true on this machine right now",
 		postureChip, true, post.String()))
 
 	// ── What this will never claim ────────────────────────────────────────────
-	b.WriteString(monAcc("🚧", "What VayuVeil will never claim",
+	b.WriteString(monAcc(saIcon("warn"), "What VayuVeil will never claim",
 		"The boundary, stated so no future wording quietly moves it",
 		`<span class="mon-chip mon-chip--off">by construction</span>`, false,
 		`<div class="card"><p class="text-sm muted">Not &ldquo;screenshot-proof&rdquo;. Not protection `+

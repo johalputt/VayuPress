@@ -119,7 +119,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 		if st.LastError != "" {
 			hint += `<div class="text-xs muted mt-2">last error: ` + esc(st.LastError) + `</div>`
 		}
-		body += `<div class="card vt-warn"><div class="card-title">⏳ Bringing onions up…</div><p class="text-sm">` + hint + `</p></div>`
+		body += `<div class="card vt-warn"><div class="card-title">` + saIcon("hourglass") + ` Bringing onions up…</div><p class="text-sm">` + hint + `</p></div>`
 	} else if st.Active && st.Connected && st.BootstrapPct < 100 {
 		// Connected to our tor, but it is still joining the Tor network. Onions
 		// cannot be reached until bootstrap completes — this is the usual reason a
@@ -141,7 +141,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 		if st.LogPath != "" {
 			note += ` Diagnostic log: <code>` + esc(st.LogPath) + `</code>.`
 		}
-		card := `<div class="card vt-warn"><div class="card-title">⏳ Publishing to the Tor network…</div><p class="text-sm">` + note + `</p>`
+		card := `<div class="card vt-warn"><div class="card-title">` + saIcon("hourglass") + ` Publishing to the Tor network…</div><p class="text-sm">` + note + `</p>`
 		if st.LogTail != "" {
 			card += `<pre class="vt-log text-xs muted mt-2">` + esc(st.LogTail) + `</pre>`
 			// Targeted remediation for the most common hard failures we can
@@ -169,7 +169,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Onion address table ──
-	body += `<div class="section-head"><span class="section-head__title">🧅 Onion addresses</span><span class="section-head__hint">One <code>.onion</code> per hosted domain — same site, a private way in</span></div>`
+	body += `<div class="section-head"><span class="section-head__title">` + saIcon("tor") + ` Onion addresses</span><span class="section-head__hint">One <code>.onion</code> per hosted domain — same site, a private way in</span></div>`
 	body += `<div class="card">`
 	if len(st.Onions) == 0 {
 		if st.Active {
@@ -221,16 +221,16 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 
 	body += `<div class="section-head"><span class="section-head__title">Setup &amp; network</span><span class="section-head__hint">Reach Tor from anywhere, and personalise your address</span></div>`
 	body += `<div class="mon-stack">` +
-		monAcc("🌉", "Bridges", "For networks that block Tor", monChip(bridgesConfigured, "Configured", "Not set"), false, a.osTorBridgesCard(r, esc, st)) +
-		monAcc("✨", "Custom (vanity) address", "A .onion that starts with letters you choose", vanityChip, false, a.osTorVanityCard(esc, st, r.URL.Query().Get("vanity_err"))) +
-		monAcc("🛡️", "Onion-Location &amp; hardening", "How Tor Browser auto-discovers your onion", "", false, a.osTorHardeningCard(r)) +
+		monAcc(saIcon("topology"), "Bridges", "For networks that block Tor", monChip(bridgesConfigured, "Configured", "Not set"), false, a.osTorBridgesCard(r, esc, st)) +
+		monAcc(saIcon("sparkle"), "Custom (vanity) address", "A .onion that starts with letters you choose", vanityChip, false, a.osTorVanityCard(esc, st, r.URL.Query().Get("vanity_err"))) +
+		monAcc(saIcon("shield"), "Onion-Location &amp; hardening", "How Tor Browser auto-discovers your onion", "", false, a.osTorHardeningCard(r)) +
 		`</div>`
 
 	body += `<div class="section-head"><span class="section-head__title">Health &amp; privacy</span><span class="section-head__hint">Uptime alerts, opt-in page counts, and exactly what is (never) recorded</span></div>`
 	body += `<div class="mon-stack">` +
-		monAcc("🩺", "Health &amp; alerts", "Onion uptime + signed outage webhooks", healthChip, false, osTorHealthCard(esc, st)) +
-		monAcc("📄", "Popular pages", "Private, opt-in aggregate counts", monChip(st.PageStatsOn, "On", "Off"), false, a.osTorPageStatsCard(esc, st)) +
-		monAcc("🔒", "Privacy posture", "Exactly what VayuTor records — and doesn't", `<span class="mon-chip mon-chip--on">● Count-only</span>`, false, osTorPrivacyNote(st)) +
+		monAcc(saIcon("pulse"), "Health &amp; alerts", "Onion uptime + signed outage webhooks", healthChip, false, osTorHealthCard(esc, st)) +
+		monAcc(saIcon("doc"), "Popular pages", "Private, opt-in aggregate counts", monChip(st.PageStatsOn, "On", "Off"), false, a.osTorPageStatsCard(esc, st)) +
+		monAcc(saIcon("lock"), "Privacy posture", "Exactly what VayuTor records — and doesn't", `<span class="mon-chip mon-chip--on">● Count-only</span>`, false, osTorPrivacyNote(st)) +
 		`</div>`
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-tor.js?v=` + assetVer("js/admin-os-tor.js") + `"></script>`
 	writeOSHTML(w, r, adminOSLayout(nonce, "VayuTor", "tor", cfg, htmpl.HTML(body)))
@@ -246,17 +246,17 @@ func osTorLogRemedy(log string) string {
 		strings.Contains(low, "certificate") && strings.Contains(low, "expired"):
 		// Tor rejected the network consensus. Overwhelmingly this is a wrong
 		// server clock, or a tor package too old to know the current authorities.
-		return `⚠ <strong>Tor can't validate the network consensus.</strong> This is almost always the <strong>server clock being off</strong> — even a few minutes of skew breaks it. Enable time sync: <code>sudo timedatectl set-ntp true</code> (check with <code>timedatectl</code>), then it recovers within a minute. If the clock is correct, your <code>tor</code> package may be too old — check <code>tor --version</code> and update it.`
+		return saIcon("warn") + ` <strong>Tor can't validate the network consensus.</strong> This is almost always the <strong>server clock being off</strong> — even a few minutes of skew breaks it. Enable time sync: <code>sudo timedatectl set-ntp true</code> (check with <code>timedatectl</code>), then it recovers within a minute. If the clock is correct, your <code>tor</code> package may be too old — check <code>tor --version</code> and update it.`
 	case strings.Contains(low, "obfs4proxy") ||
 		strings.Contains(low, "pluggable transport") ||
 		strings.Contains(low, "managed proxy"):
-		return `⚠ <strong>The obfs4 bridge transport isn't installed.</strong> Run <code>sudo apt-get install -y obfs4proxy</code> (or re-run the VayuPress updater), then reload — VayuTor picks it up within a minute.`
+		return saIcon("warn") + ` <strong>The obfs4 bridge transport isn't installed.</strong> Run <code>sudo apt-get install -y obfs4proxy</code> (or re-run the VayuPress updater), then reload — VayuTor picks it up within a minute.`
 	case strings.Contains(low, "no route to host") ||
 		strings.Contains(low, "noroute"):
-		return `⚠ <strong>Your network blocks Tor at the IP level</strong> (common on some VPS/mail hosts). Your firewall is fine — the provider is null-routing Tor relays. VayuTor auto-escalates to <strong>Tor bridges</strong> to route around this. If it stays stuck, get obfs4 bridges from <code>https://bridges.torproject.org</code> (or email <code>bridges@torproject.org</code>) and set <code>VAYUOS_TOR_BRIDGES</code> to those lines, then reload.`
+		return saIcon("warn") + ` <strong>Your network blocks Tor at the IP level</strong> (common on some VPS/mail hosts). Your firewall is fine — the provider is null-routing Tor relays. VayuTor auto-escalates to <strong>Tor bridges</strong> to route around this. If it stays stuck, get obfs4 bridges from <code>https://bridges.torproject.org</code> (or email <code>bridges@torproject.org</code>) and set <code>VAYUOS_TOR_BRIDGES</code> to those lines, then reload.`
 	case strings.Contains(low, "connection refused") ||
 		strings.Contains(low, "connection timed out"):
-		return `⚠ <strong>The server can't reach the Tor network.</strong> Allow <strong>outbound</strong> connections in your firewall / cloud security group (inbound stays closed). VayuTor also auto-retries using only ports 80/443, then bridges, after a stall.`
+		return saIcon("warn") + ` <strong>The server can't reach the Tor network.</strong> Allow <strong>outbound</strong> connections in your firewall / cloud security group (inbound stays closed). VayuTor also auto-retries using only ports 80/443, then bridges, after a stall.`
 	}
 	return ""
 }
@@ -270,13 +270,13 @@ func (a *App) osTorBridgesCard(r *http.Request, esc func(string) string, st vtor
 		current = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyTorBridges)
 	}
 	needsObfs4 := strings.Contains(strings.ToLower(current), "obfs4")
-	card := `<div class="card mt-4"><div class="card-title">🌉 Bridges — for networks that block Tor</div>`
+	card := `<div class="card mt-4"><div class="card-title">` + saIcon("topology") + ` Bridges — for networks that block Tor</div>`
 	// The obfs4 transport binary is required to USE obfs4 bridges. If it's missing,
 	// the bridges are configured but inert (tor falls back to a direct, blocked
 	// connection) — say so loudly, since it's the #1 "I pasted bridges but nothing
 	// happens" cause.
 	if needsObfs4 && !st.Obfs4Available {
-		card += `<div class="vt-bridges__warn text-sm mb-3">⚠ The obfs4 transport is unavailable on this server, so these obfs4 bridges can't be used yet. VayuPress normally provides obfs4 built-in — reload the page; if it persists, re-run the VayuPress updater.</div>`
+		card += `<div class="vt-bridges__warn text-sm mb-3">` + saIcon("warn") + ` The obfs4 transport is unavailable on this server, so these obfs4 bridges can't be used yet. VayuPress normally provides obfs4 built-in — reload the page; if it persists, re-run the VayuPress updater.</div>`
 	}
 	card += `<p class="muted text-sm mb-3">If your host or ISP blocks Tor (bootstrap stalls with “no route to host” or a consensus error), paste <strong>obfs4 bridge lines</strong> here and VayuTor routes around the block automatically — no server access needed. Get free bridges at <code>https://bridges.torproject.org</code> (choose <strong>obfs4</strong>), or email <code>bridges@torproject.org</code> from Gmail/Riseup with <code>get transport obfs4</code> in the body. Use <strong>IPv4</strong> bridges (addresses like <code>1.2.3.4:443</code>) unless your server has working IPv6 — most don't. One bridge per line.</p>`
 	card += `<form method="post" action="/os/tor/bridges" data-tor-form>
@@ -284,7 +284,7 @@ func (a *App) osTorBridgesCard(r *http.Request, esc func(string) string, st vtor
   <input type="hidden" name="csrf_token" value="">
   <div class="vt-bridges__row"><button type="submit" class="btn btn--primary">Save bridges</button>`
 	if bridgesLookIPv6Only(current) {
-		card += ` <span class="vt-bridges__warn text-xs">⚠ These are <strong>IPv6</strong> bridges (addresses in <code>[…]</code>). They only connect if your server has working IPv6 — most VPS don't, which shows as “connections died in state connect()ing.” Get <strong>IPv4</strong> obfs4 bridges instead.</span>`
+		card += ` <span class="vt-bridges__warn text-xs">` + saIcon("warn") + ` These are <strong>IPv6</strong> bridges (addresses in <code>[…]</code>). They only connect if your server has working IPv6 — most VPS don't, which shows as “connections died in state connect()ing.” Get <strong>IPv4</strong> obfs4 bridges instead.</span>`
 	} else if strings.TrimSpace(current) != "" {
 		card += ` <span class="vt-bridges__on muted text-xs">✓ Bridges configured — used automatically when a direct connection is blocked. Clear the box and save to stop using them.</span>`
 	}
@@ -338,7 +338,7 @@ func (a *App) osTorHardeningCard(r *http.Request) string {
 		next, label, cls = "on", "Advertise the onion to Tor Browser", "btn--primary"
 		state = `<span class="muted text-xs">Off — clearnet responses don't announce the onion. Visitors can still use the <code>.onion</code> directly.</span>`
 	}
-	card := `<div class="card mt-4"><div class="card-title">🛡 Hardening</div>`
+	card := `<div class="card mt-4"><div class="card-title">` + saIcon("shield") + ` Hardening</div>`
 	card += `<p class="muted text-sm mb-3"><strong>Onion-Location.</strong> When on, every clearnet page advertises its <code>.onion</code> so Tor Browser can offer or automatically switch to it. Turn it off to keep onions live without announcing them.</p>`
 	card += `<form method="post" action="/os/tor/hardening" data-tor-form>
   <input type="hidden" name="onion_location" value="` + next + `">
@@ -440,7 +440,7 @@ func osTorPrivacyNote(st vtor.Status) string {
 // over an onion service (the server never sees the client IP), so it is stated
 // as absent rather than offered.
 func (a *App) osTorPageStatsCard(esc func(string) string, st vtor.Status) string {
-	card := `<div class="card mt-4"><div class="card-title">📄 Popular pages — private, opt-in</div>`
+	card := `<div class="card mt-4"><div class="card-title">` + saIcon("doc") + ` Popular pages — private, opt-in</div>`
 	if !st.PageStatsOn {
 		card += `<p class="muted text-sm mb-3">Off by default. When enabled, VayuTor keeps an <strong>aggregate count per page</strong> (a running total of views) so you can see which posts are popular over Tor. It stays privacy-safe: <strong>no IP</strong> (Tor provides none), no time, no session, no ordering — so it can never identify, locate, or correlate a visitor. <strong>Visitor country isn't shown because it's impossible</strong>: an onion service never sees the visitor's IP.</p>`
 		card += `<form method="post" action="/os/tor/pagestats" data-tor-form>
@@ -484,15 +484,15 @@ func (a *App) osTorVanityCard(esc func(string) string, st vtor.Status, startErr 
 		return ""
 	}
 	vs := a.vayuTor.VanityStatus()
-	card := `<div class="card mt-4" data-vanity` + boolAttr(" data-vanity-active", vs.Active) + `><div class="card-title">✨ Custom (vanity) address</div>`
+	card := `<div class="card mt-4" data-vanity` + boolAttr(" data-vanity-active", vs.Active) + `><div class="card-title">` + saIcon("sparkle") + ` Custom (vanity) address</div>`
 	card += `<p class="muted text-sm mb-3">Give a domain a recognisable <code>.onion</code> that starts with letters you choose, instead of a random one. VayuTor searches for a matching key in the background on this server — nothing leaves the box. Each extra character is ~32× more work: <strong>1–4</strong> is seconds, <strong>5</strong> a few minutes, <strong>6–7</strong> can take hours. Allowed characters: <code>a–z</code> and <code>2–7</code>.</p>`
 
 	if vs.Active {
-		card += `<div class="vt-vanity__run"><div class="vt-health__badge vt-health__badge--warn">⏳ Searching</div> `
+		card += `<div class="vt-vanity__run"><div class="vt-health__badge vt-health__badge--warn">` + saIcon("hourglass") + ` Searching</div> `
 		card += `<span class="text-sm">prefix <code>` + esc(vs.Prefix) + `</code> for <strong>` + esc(vs.Host) + `</strong></span></div>`
 		card += `<p class="text-sm muted mt-2">Attempts: <strong data-vanity-tries>` + strconv.FormatInt(vs.Tries, 10) + `</strong> &middot; elapsed <span data-vanity-elapsed>` + fmtDur(vs.Elapsed) + `</span>. You can leave this page — it keeps running.</p>`
 		if vs.Warn {
-			card += `<p class="vt-bridges__warn text-xs mt-1">⚠ A ` + strconv.Itoa(len(vs.Prefix)) + `-character prefix can take a long time (averaging ~` + pow32(len(vs.Prefix)) + ` attempts).</p>`
+			card += `<p class="vt-bridges__warn text-xs mt-1">` + saIcon("warn") + ` A ` + strconv.Itoa(len(vs.Prefix)) + `-character prefix can take a long time (averaging ~` + pow32(len(vs.Prefix)) + ` attempts).</p>`
 		}
 		card += `<form method="post" action="/os/tor/vanity" data-tor-form class="mt-2">
   <input type="hidden" name="action" value="cancel">
@@ -580,8 +580,8 @@ func pow32(n int) string {
 // and how outage alerts are delivered (via subscribed webhooks).
 func osTorHealthCard(esc func(string) string, st vtor.Status) string {
 	cls, label, icon := torHealthBadge(st.Health)
-	card := `<div class="card mt-4"><div class="card-title">🩺 Health &amp; alerts</div>`
-	card += `<div class="vt-health__now"><span class="vt-health__badge ` + cls + `">` + icon + ` ` + label + `</span>`
+	card := `<div class="card mt-4"><div class="card-title">` + saIcon("pulse") + ` Health &amp; alerts</div>`
+	card += `<div class="vt-health__now"><span class="vt-health__badge ` + cls + `">` + saIcon(icon) + " " + label + `</span>`
 	if st.Health != vtor.HealthOff {
 		if d := torRelDur(st.HealthSince); d != "" {
 			card += ` <span class="muted text-sm">for ` + d + `</span>`
@@ -597,7 +597,7 @@ func osTorHealthCard(esc func(string) string, st vtor.Status) string {
 		for i := len(st.HealthLog) - 1; i >= 0; i-- { // newest first
 			ev := st.HealthLog[i]
 			c, l, ic := torHealthBadge(ev.State)
-			card += `<div class="vt-health__row"><span class="vt-health__badge vt-health__badge--sm ` + c + `">` + ic + ` ` + l + `</span>`
+			card += `<div class="vt-health__row"><span class="vt-health__badge vt-health__badge--sm ` + c + `">` + saIcon(ic) + " " + l + `</span>`
 			if ev.Reason != "" {
 				card += ` <span class="muted text-xs">` + esc(ev.Reason) + `</span>`
 			}
@@ -612,19 +612,20 @@ func osTorHealthCard(esc func(string) string, st vtor.Status) string {
 	return card
 }
 
-// torHealthBadge maps a health state to its CSS class, label, and icon.
+// torHealthBadge maps a health state to its CSS class, label, and icon (a
+// name from the Still Air set).
 func torHealthBadge(state string) (cls, label, icon string) {
 	switch state {
 	case vtor.HealthHealthy:
-		return "vt-health__badge--ok", "Healthy", "✓"
+		return "vt-health__badge--ok", "Healthy", "check-c"
 	case vtor.HealthStarting:
-		return "vt-health__badge--warn", "Starting", "⏳"
+		return "vt-health__badge--warn", "Starting", "hourglass"
 	case vtor.HealthDegraded:
-		return "vt-health__badge--warn", "Degraded", "⚠"
+		return "vt-health__badge--warn", "Degraded", "warn"
 	case vtor.HealthDown:
-		return "vt-health__badge--err", "Down", "✕"
+		return "vt-health__badge--err", "Down", "error"
 	default:
-		return "vt-health__badge--off", "Off", "○"
+		return "vt-health__badge--off", "Off", "power"
 	}
 }
 

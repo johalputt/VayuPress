@@ -33,8 +33,8 @@
     }
   });
 
-  // Reading-pane comfort controls: ⛶ toggles a full-screen overlay for the
-  // open message (ESC collapses), 🖨 prints just the reader (see the
+  // Reading-pane comfort controls: expand toggles a full-screen overlay for
+  // the open message (ESC collapses), print prints just the reader (see the
   // @media print rules). Delegated so they survive HTMX swaps.
   document.addEventListener('click', function (e) {
     if (e.target && e.target.closest && e.target.closest('[data-vm-print]')) {
@@ -383,7 +383,7 @@
       composeFiles.forEach(function (f, i) {
         var chip = document.createElement('span');
         chip.className = 'vm-attach-chip';
-        var ico = document.createElement('span'); ico.className = 'vm-attach-ico'; ico.textContent = '📄';
+        var ico = document.createElement('span'); ico.className = 'vm-attach-ico'; ico.appendChild(window.vpIcon('doc'));
         var name = document.createElement('span'); name.className = 'vm-attach-name'; name.textContent = f.name;
         var size = document.createElement('span'); size.className = 'vm-attach-size'; size.textContent = humanSize(f.size);
         var x = document.createElement('button');
@@ -419,7 +419,7 @@
       if (!pgpHint) return;
       var to = countAddrs(val(compose, '[data-c-to]')), cc = countAddrs(val(compose, '[data-c-cc]')), bcc = countAddrs(val(compose, '[data-c-bcc]'));
       if (to + cc + bcc === 0) { pgpHint.textContent = ''; pgpHint.className = 'vm-pgp-hint'; return; }
-      pgpHint.textContent = '🔒 Tick “Encrypt with PGP” to encrypt the message and any attachments for every recipient whose key is known';
+      pgpHint.textContent = 'Tick “Encrypt with PGP” to encrypt the message and any attachments for every recipient whose key is known';
       pgpHint.className = 'vm-pgp-hint vm-pgp-hint--enc';
     }
     updatePGP();
@@ -979,7 +979,8 @@
           if (res.ok) {
             acctToast(pin ? 'Pinned' : 'Unpinned');
             btn.setAttribute('data-mail-pin', pin ? '0' : '1');
-            btn.textContent = pin ? '📌 Unpin' : '📌 Pin';
+            // Only the words change; the icon the server drew stays.
+            btn.lastChild.textContent = pin ? 'Unpin' : 'Pin';
           } else acctToast('Pin failed: ' + errText(res), true);
         });
       });

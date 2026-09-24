@@ -503,6 +503,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/storage", a.handleOSStorage)
 		pr.Get("/os/api/storage/download", a.handleOSStorageDownload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/storage/delete", a.handleOSStorageDelete)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/storage/clear-cache", a.handleOSStorageClearCache)
 		pr.Get("/os/seo", a.handleOSSEONative)
 		pr.Get("/os/analytics", a.handleOSAnalytics)
 		// VayuAnalytics: export downloads + goal management (session-authed).
@@ -1153,7 +1154,7 @@ func osNotifBell(s *osSettings) string {
 	if len(notifs) == 0 && s.stillAir() {
 		list.WriteString(`<div class="topbar-notif__empty">Nothing needs you right now.</div>`)
 	} else if len(notifs) == 0 {
-		list.WriteString(`<div class="topbar-notif__empty">✨ You're all caught up</div>`)
+		list.WriteString(`<div class="topbar-notif__empty">You're all caught up</div>`)
 	} else {
 		for _, n := range notifs {
 			list.WriteString(osNotifItem(n))
@@ -1432,6 +1433,18 @@ const vpConfirmScript = `window.vpConfirm=function(opts,onYes){
   ok.focus();
 };`
 
+// vpIconScript gives scripts the server's icon set: an <svg> that uses the
+// page's sprite (saSprite), so a row or chip built in the browser carries the
+// same icon as one rendered in Go. Both shells define it beside the sprite, at
+// the top of the body, because some page scripts (the editor's) build their
+// toolbars before the foot's bootstrap has run.
+const vpIconScript = `window.vpIcon=function(name){
+  var ns='http://www.w3.org/2000/svg';
+  var svg=document.createElementNS(ns,'svg');svg.setAttribute('class','sa-ico');svg.setAttribute('viewBox','0 0 20 20');svg.setAttribute('aria-hidden','true');
+  var use=document.createElementNS(ns,'use');use.setAttribute('href','#sa-i-'+name);svg.appendChild(use);
+  return svg;
+};`
+
 // vpPromptScript is the shared single-field dialog: window.prompt's job, in the
 // console's own clothes.
 //
@@ -1536,7 +1549,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
         <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="M10 2.4a5.2 5.2 0 00-3.1 9.36c.44.33.7.86.72 1.42l.02.62h4.72l.02-.62c.02-.56.28-1.09.72-1.42A5.2 5.2 0 0010 2.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 16.4h4M8.6 18h2.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
       </a>
       <div class="topbar-feedback__pop" role="tooltip">
-        <div class="topbar-feedback__title">💡 Help improve VayuPress</div>
+        <div class="topbar-feedback__title">Help improve VayuPress</div>
         <p class="topbar-feedback__desc">Found a bug, want an improvement, or have a feature idea? Tell us — it opens a PGP-encrypted email (attachments included) where you can add screenshots or files.</p>
         <span class="topbar-feedback__cta">Report a bug · request a feature →</span>
       </div>
@@ -1582,7 +1595,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 </head>
 <body class="vp-os" data-theme="` + html.EscapeString(theme) + `" data-admin-theme="` + html.EscapeString(theme) + `"` + spaceAttr + `>
 <a href="#main-content" class="skip-link">Skip to main content</a>
-
+` + saSprite + `<script nonce="` + nonce + `">` + vpIconScript + `</script>
 <!-- Sidebar overlay for mobile tap-to-close -->
 <div class="sidebar-overlay" aria-hidden="true"></div>
 
@@ -2536,8 +2549,8 @@ func authPageShell(title, inner string) string {
 </head>
 <body class="vp-os auth-page" data-theme="auto">
   <div class="theme-switch" role="group" aria-label="Colour theme">
-    <button type="button" class="theme-opt" data-set-theme="light" aria-label="Light" title="Light">☀</button>
-    <button type="button" class="theme-opt" data-set-theme="dark" aria-label="Dark" title="Dark">☾</button>
+    <button type="button" class="theme-opt" data-set-theme="light" aria-label="Light" title="Light">` + saIcon("sun") + `</button>
+    <button type="button" class="theme-opt" data-set-theme="dark" aria-label="Dark" title="Dark">` + saIcon("moon") + `</button>
     <button type="button" class="theme-opt" data-set-theme="auto" aria-label="Auto (match system)" title="Auto">◐</button>
   </div>
   <main class="auth-col">` + inner + `
@@ -2783,7 +2796,7 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 
 	body := `<!-- Quick compose -->
 <div class="quick-compose" role="search">
-  <span class="quick-compose-icon" aria-hidden="true">✍</span>
+  <span class="quick-compose-icon" aria-hidden="true">` + saIcon("pencil") + `</span>
   <input id="quick-compose-input" class="quick-compose-input"
     type="text" placeholder="Start a new post… (press Enter)" autocomplete="off"
     aria-label="Quick compose: type a title and press Enter">
@@ -2886,15 +2899,15 @@ func osPostStatusButton(slugEsc, status string) string {
 // id scheme as the accordion copy — data-src="face" tells the fragment endpoint
 // which copy to return in place so BOTH copies flip on a single click.
 func osPostStatusFaceButton(slugEsc, status string) string {
-	glyph, label, to := "↥", "Publish", "published"
+	icon, label, to := "send", "Publish", "published"
 	if status != "draft" {
-		glyph, label, to = "↧", "Unpublish", "draft"
+		icon, label, to = "draft", "Unpublish", "draft"
 	}
 	return `<button type="button" id="post-pubface-` + slugEsc + `" data-src="face" class="btn btn--ghost btn--sm post-acc__face-btn"` +
 		` title="` + label + ` (opens nothing — toggles right here)" aria-label="` + label + ` post"` +
 		` hx-post="/os/api/posts/` + slugEsc + `/status-fragment"` +
 		` hx-vals='{"status":"` + to + `","src":"face"}'` +
-		` hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this"><span aria-hidden="true">` + glyph + `</span></button>`
+		` hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this">` + saIcon(icon) + `</button>`
 }
 
 // osPostStatusButtonOOB renders the accordion publish toggle as an out-of-band
@@ -2936,15 +2949,15 @@ func osPostPinButton(slugEsc string, featured bool) string {
 // osPostPinFaceButton is the Wave 3.5 row-face copy of the pin toggle: one click
 // pins or unpins from the summary row, without opening the card.
 func osPostPinFaceButton(slugEsc string, featured bool) string {
-	label, glyph, to := "Pin", "📌", "1"
+	label, pressed, to := "Pin", "false", "1"
 	if featured {
-		label, glyph, to = "Unpin", "📍", "0"
+		label, pressed, to = "Unpin", "true", "0"
 	}
 	return `<button type="button" id="post-pinface-` + slugEsc + `" data-src="face" class="btn btn--ghost btn--sm post-acc__face-btn"` +
-		` title="` + label + ` (toggles right here)" aria-label="` + label + ` post"` +
+		` title="` + label + ` (toggles right here)" aria-label="` + label + ` post" aria-pressed="` + pressed + `"` +
 		` hx-post="/os/api/posts/` + slugEsc + `/pin-fragment"` +
 		` hx-vals='{"pinned":"` + to + `","src":"face"}'` +
-		` hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this"><span aria-hidden="true">` + glyph + `</span></button>`
+		` hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this">` + saIcon("pin") + `</button>`
 }
 
 // osPostPinButtonOOB renders the accordion pin toggle as an out-of-band swap
@@ -2967,7 +2980,7 @@ func osPostPinFaceButtonOOB(slugEsc string, featured bool) string {
 func osPostPinBadge(slugEsc string, featured, oob bool) string {
 	inner := ""
 	if featured {
-		inner = ` <span class="chip" title="Pinned to the homepage and trending widget">📌 Pinned</span>`
+		inner = ` <span class="chip" title="Pinned to the homepage and trending widget">` + saIcon("pin") + ` Pinned</span>`
 	}
 	oobAttr := ""
 	if oob {
@@ -2987,7 +3000,7 @@ func osIndexNowBadge(slugEsc string, st dbpkg.IndexNowStatus, ok, isDraft bool) 
 		inner = `<span class="chip" title="Drafts are not public, so nothing is submitted to IndexNow until you publish.">IndexNow: —</span>`
 	case ok && st.State == dbpkg.IndexNowSubmitted:
 		when := st.SubmittedAt.Format("2 Jan 2006 15:04 UTC")
-		inner = `<span class="chip chip--brand" title="Submitted to IndexNow on ` + html.EscapeString(when) + `">✓ IndexNow</span>`
+		inner = `<span class="chip chip--brand" title="Submitted to IndexNow on ` + html.EscapeString(when) + `">` + saIcon("check") + ` IndexNow</span>`
 	case ok && st.State == dbpkg.IndexNowPending:
 		// HTTP 202 — received, but the engine has not yet validated the key file.
 		// Shown distinctly on purpose: if that validation fails the URL is dropped
@@ -2997,9 +3010,9 @@ func osIndexNowBadge(slugEsc string, st dbpkg.IndexNowStatus, ok, isDraft bool) 
 		if title == "" {
 			title = "The engine received this URL but has not finished validating your key file."
 		}
-		inner = `<span class="chip" style="color:#f59e0b" title="` + html.EscapeString(title+" Sent "+when) + `">◌ IndexNow pending</span>`
+		inner = `<span class="chip chip--warn" title="` + html.EscapeString(title+" Sent "+when) + `">` + saIcon("hourglass") + ` IndexNow pending</span>`
 	case ok && st.State == dbpkg.IndexNowFailed:
-		inner = `<span class="chip" style="color:#f59e0b" title="` + html.EscapeString(st.Detail) + `">⚠ IndexNow failed</span>`
+		inner = `<span class="chip chip--warn" title="` + html.EscapeString(st.Detail) + `">` + saIcon("warn") + ` IndexNow failed</span>`
 	default:
 		inner = `<span class="chip" title="Not yet submitted to IndexNow. Use “Ping IndexNow” to submit it now.">IndexNow: not sent</span>`
 	}
@@ -3201,7 +3214,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	if allCount == 0 && !filtersActive && !loadErr {
 		body = `<div class="page-header"><h1>Posts</h1></div>
 <div class="card empty-state">
-  <div class="empty-icon">✍️</div>
+  <div class="empty-icon">` + saIcon("pencil") + `</div>
   <div class="empty-title">No posts yet</div>
   <div class="empty-sub">Your articles will appear here. Write your first one — it only takes a minute.</div>
   <a class="btn btn--primary mt-4" href="/os/editor">Write your first post</a>
@@ -3469,7 +3482,7 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 	var body string
 	if a.commentStore == nil {
 		body = `<div class="page-header"><h1>Comments</h1></div>
-<div class="card empty-state"><div class="empty-icon">💬</div>
+<div class="card empty-state"><div class="empty-icon">` + saIcon("talk") + `</div>
 <div class="empty-title">Comments unavailable</div>
 <div class="empty-sub">The comment store is not initialised.</div></div>`
 		writeOSHTML(w, r, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(body)))
@@ -3536,7 +3549,7 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 
 	if len(all) == 0 {
 		body = `<div class="page-header"><h1>Comments</h1></div>
-<div class="card empty-state"><div class="empty-icon">💬</div>
+<div class="card empty-state"><div class="empty-icon">` + saIcon("talk") + `</div>
 <div class="empty-title">No comments yet</div>
 <div class="empty-sub">When readers comment on your articles, they appear here for moderation before going public.</div></div>`
 	} else {
@@ -4510,7 +4523,7 @@ func (a *App) handleOSActivity(w http.ResponseWriter, r *http.Request) {
 					}
 					items = append(items, activityItem{
 						Kind: "post",
-						Icon: "✍",
+						Icon: "pencil",
 						Text: verb + ": " + title,
 						Time: created.UTC().Format(time.RFC3339),
 						Href: "/os/editor/" + slug,
@@ -4529,7 +4542,7 @@ func (a *App) handleOSActivity(w http.ResponseWriter, r *http.Request) {
 			for _, m := range list {
 				items = append(items, activityItem{
 					Kind: "member",
-					Icon: "👤",
+					Icon: "user",
 					Text: "Member joined: " + m.Email,
 					Time: m.CreatedAt.UTC().Format(time.RFC3339),
 					Href: "/os/members",
@@ -4592,64 +4605,64 @@ func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	actions := []cmdAction{
-		{Label: "New Post", Icon: "✍", Hint: "Open the block editor", Fn: "newPost"},
-		{Label: "SEO Dashboard", Icon: "🔍", Hint: "Indexing and search health", Fn: "goSEO"},
-		{Label: "Regenerate SEO artefacts", Icon: "⟳", Hint: "Rebuild sitemap, RSS & robots.txt", Fn: "regenSEO"},
+		{Label: "New Post", Icon: "pencil", Hint: "Open the block editor", Fn: "newPost"},
+		{Label: "SEO Dashboard", Icon: "search", Hint: "Indexing and search health", Fn: "goSEO"},
+		{Label: "Regenerate SEO artefacts", Icon: "refresh", Hint: "Rebuild sitemap, RSS & robots.txt", Fn: "regenSEO"},
 	}
 
 	allPages := []cmdSetting{
 		// Content workspace
-		{Label: "Posts", Icon: "📝", Href: "/os/posts"},
-		{Label: "Pages", Icon: "📄", Href: "/os/pages"},
-		{Label: "Comments", Icon: "💬", Href: "/os/comments"},
-		{Label: "Messages", Icon: "✉️", Href: "/os/messages"},
-		{Label: "Media library", Icon: "🖼", Href: "/os/media"},
-		{Label: "Website", Icon: "🌐", Href: "/os/website"},
+		{Label: "Posts", Icon: "pencil", Href: "/os/posts"},
+		{Label: "Pages", Icon: "doc", Href: "/os/pages"},
+		{Label: "Comments", Icon: "talk", Href: "/os/comments"},
+		{Label: "Messages", Icon: "mail", Href: "/os/messages"},
+		{Label: "Media library", Icon: "image", Href: "/os/media"},
+		{Label: "Website", Icon: "globe", Href: "/os/website"},
 		// Hubs
-		{Label: "Dashboard", Icon: "🏠", Href: osHome},
-		{Label: "Growth hub", Icon: "📈", Href: "/os/growth"},
-		{Label: "Optimize hub", Icon: "🚀", Href: "/os/optimize"},
-		{Label: "Operations hub", Icon: "🛠", Href: "/os/operations"},
+		{Label: "Dashboard", Icon: "home", Href: osHome},
+		{Label: "Growth hub", Icon: "trend", Href: "/os/growth"},
+		{Label: "Optimize hub", Icon: "bolt", Href: "/os/optimize"},
+		{Label: "Operations hub", Icon: "wrench", Href: "/os/operations"},
 		// Growth family
-		{Label: "Members", Icon: "👥", Href: "/os/members"},
-		{Label: "Newsletter", Icon: "📰", Href: "/os/newsletter"},
-		{Label: "Monetization", Icon: "💰", Href: "/os/monetization"},
-		{Label: "Advertising", Icon: "📣", Href: "/os/ads"},
-		{Label: "My Profile", Icon: "🙋", Href: "/os/profile"},
+		{Label: "Members", Icon: "audience", Href: "/os/members"},
+		{Label: "Newsletter", Icon: "mail", Href: "/os/newsletter"},
+		{Label: "Monetization", Icon: "coin", Href: "/os/monetization"},
+		{Label: "Advertising", Icon: "megaphone", Href: "/os/ads"},
+		{Label: "My Profile", Icon: "user", Href: "/os/profile"},
 		// Optimize family
-		{Label: "SEO Dashboard", Icon: "🔍", Href: "/os/seo"},
-		{Label: "Analytics", Icon: "📊", Href: "/os/analytics"},
-		{Label: "VayuShield", Icon: "🛡", Href: "/os/shield"},
-		{Label: "Theme Studio", Icon: "🎨", Href: "/os/theme"},
-		{Label: "Theme Store", Icon: "🛍", Href: "/os/theme/store"},
-		{Label: "Tools & Plugins", Icon: "🧩", Href: "/os/tools"},
-		{Label: "Domains", Icon: "🌍", Href: "/os/domains"},
-		{Label: "API Keys", Icon: "🔑", Href: "/os/apikeys"},
-		{Label: "Connector", Icon: "🔌", Href: "/os/connector"},
-		{Label: "General settings", Icon: "⚙", Href: "/os/settings/general"},
-		{Label: "Design & theme settings", Icon: "🎨", Href: "/os/settings/design"},
-		{Label: "Email settings", Icon: "✉", Href: "/os/settings/email"},
-		{Label: "Members settings", Icon: "👥", Href: "/os/settings/members"},
-		{Label: "Security settings", Icon: "🔒", Href: "/os/settings/security"},
+		{Label: "SEO Dashboard", Icon: "search", Href: "/os/seo"},
+		{Label: "Analytics", Icon: "chart", Href: "/os/analytics"},
+		{Label: "VayuShield", Icon: "shield", Href: "/os/shield"},
+		{Label: "Theme Studio", Icon: "palette", Href: "/os/theme"},
+		{Label: "Theme Store", Icon: "palette", Href: "/os/theme/store"},
+		{Label: "Tools & Plugins", Icon: "plug", Href: "/os/tools"},
+		{Label: "Domains", Icon: "globe", Href: "/os/domains"},
+		{Label: "API Keys", Icon: "key", Href: "/os/apikeys"},
+		{Label: "Connector", Icon: "plug", Href: "/os/connector"},
+		{Label: "General settings", Icon: "settings", Href: "/os/settings/general"},
+		{Label: "Design & theme settings", Icon: "palette", Href: "/os/settings/design"},
+		{Label: "Email settings", Icon: "mail", Href: "/os/settings/email"},
+		{Label: "Members settings", Icon: "audience", Href: "/os/settings/members"},
+		{Label: "Security settings", Icon: "lock", Href: "/os/settings/security"},
 		// Operations family
-		{Label: "Monitoring", Icon: "📉", Href: "/os/monitoring"},
-		{Label: "Storage & System", Icon: "💾", Href: "/os/storage"},
-		{Label: "Security posture", Icon: "🔒", Href: "/os/security"},
-		{Label: "System modes", Icon: "🧭", Href: "/os/modes"},
-		{Label: "Policy", Icon: "📜", Href: "/os/policy"},
-		{Label: "Topology", Icon: "🔗", Href: "/os/topology"},
-		{Label: "VayuFlow automations", Icon: "⚡", Href: "/os/vayuflow"},
-		{Label: "Backup & Recovery", Icon: "🗄", Href: "/os/vayukeep"},
-		{Label: "Governance", Icon: "⚖", Href: "/os/governance"},
-		{Label: "Update & Migration", Icon: "⬆", Href: "/os/update"},
-		{Label: "Architecture decisions", Icon: "📚", Href: "/os/adr"},
-		{Label: "DNS", Icon: "🌐", Href: "/os/dns"},
-		{Label: "System hub", Icon: "🧱", Href: "/os/system"},
+		{Label: "Monitoring", Icon: "chart", Href: "/os/monitoring"},
+		{Label: "Storage & System", Icon: "disk", Href: "/os/storage"},
+		{Label: "Security posture", Icon: "lock", Href: "/os/security"},
+		{Label: "System modes", Icon: "compass", Href: "/os/modes"},
+		{Label: "Policy", Icon: "doc", Href: "/os/policy"},
+		{Label: "Topology", Icon: "link", Href: "/os/topology"},
+		{Label: "VayuFlow automations", Icon: "bolt", Href: "/os/vayuflow"},
+		{Label: "Backup & Recovery", Icon: "archive", Href: "/os/vayukeep"},
+		{Label: "Governance", Icon: "columns", Href: "/os/governance"},
+		{Label: "Update & Migration", Icon: "upload", Href: "/os/update"},
+		{Label: "Architecture decisions", Icon: "book", Href: "/os/adr"},
+		{Label: "DNS", Icon: "globe", Href: "/os/dns"},
+		{Label: "System hub", Icon: "wall", Href: "/os/system"},
 		// Products & spaces
-		{Label: "VayuMail inbox", Icon: "📮", Href: "/os/vayumail/inbox"},
-		{Label: "VayuTalk", Icon: "🗨", Href: "/os/talk"},
-		{Label: "Tor space", Icon: "🧅", Href: "/os/tor"},
-		{Label: "Spaces (worlds)", Icon: "🌗", Href: "/os/spaces"},
+		{Label: "VayuMail inbox", Icon: "inbox", Href: "/os/vayumail/inbox"},
+		{Label: "VayuTalk", Icon: "talk", Href: "/os/talk"},
+		{Label: "Tor space", Icon: "tor", Href: "/os/tor"},
+		{Label: "Spaces (worlds)", Icon: "tor", Href: "/os/spaces"},
 	}
 
 	// Same predicate the sidebar uses: an entry only reaches the palette when

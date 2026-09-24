@@ -266,7 +266,7 @@ are talking to first: this is the step an attacker would try to talk you through
 	b.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail-recovery.js?v=` +
 		assetVer("js/admin-os-mail-recovery.js") + `"></script>`)
 
-	return monAcc("🔑", "Account recovery", "Who could get back in if they forgot their password", chip,
+	return monAcc(saIcon("key"), "Account recovery", "Who could get back in if they forgot their password", chip,
 		len(stuck) > 0, b.String())
 }
 
@@ -325,7 +325,7 @@ while you still can.</p>`)
 	b.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail-recovery.js?v=` +
 		assetVer("js/admin-os-mail-recovery.js") + `"></script>`)
 
-	return monAcc("🔑", "Recover my mailbox", "Set this up before you need it", chip, !st.Ready, b.String())
+	return monAcc(saIcon("key"), "Recover my mailbox", "Set this up before you need it", chip, !st.Ready, b.String())
 }
 
 // vayuCardRecovery renders one mailbox's recovery controls INSIDE its own card,

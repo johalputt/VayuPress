@@ -229,7 +229,7 @@ func (a *App) handleOSMedia(w http.ResponseWriter, r *http.Request) {
 
 <div class="media-dropzone" data-media-dropzone tabindex="0" role="button"
      aria-label="Upload media — click or drop files">
-  <div class="media-dropzone__icon" aria-hidden="true">⬆</div>
+  <div class="media-dropzone__icon" aria-hidden="true">` + saIcon("upload") + `</div>
   <div class="media-dropzone__text">Drop an image or PDF here, or <span class="media-dropzone__link">browse</span></div>
   <div class="media-dropzone__hint text-xs muted">PNG · JPEG · GIF · WebP · SVG · PDF — up to 32 MB. SVG is cleaned on upload: script, styles and off-site references are stripped before the file is stored.</div>
   <input type="file" data-media-input accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,application/pdf" hidden>
@@ -242,7 +242,7 @@ func (a *App) handleOSMedia(w http.ResponseWriter, r *http.Request) {
     <button type="button" class="seg-btn" data-media-filter="image">Images</button>
     <button type="button" class="seg-btn" data-media-filter="pdf">PDFs</button>
   </div>
-  <button type="button" class="btn btn--ghost btn--sm" data-media-delete-selected disabled>Delete selected (<span data-media-sel-count>0</span>)</button>
+  <button type="button" class="btn btn--ghost btn--sm" data-media-delete-selected disabled><span>Delete selected (<span data-media-sel-count>0</span>)</span></button>
 </div>
 <div class="text-sm muted" data-media-empty hidden>No media match your search.</div>
 

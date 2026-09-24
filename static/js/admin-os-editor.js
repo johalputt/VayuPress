@@ -58,14 +58,14 @@
     { type: 'heading', label: 'Heading', icon: 'H', hint: 'Section heading', cat: 'Basic' },
     { type: 'list', label: 'Bullet list', icon: '•', hint: 'Unordered list', cat: 'Basic' },
     { type: 'ordered', label: 'Numbered list', icon: '1.', hint: 'Ordered list', cat: 'Basic' },
-    { type: 'tasklist', label: 'Task list', icon: '☑', hint: 'Checklist with done states', cat: 'Basic' },
+    { type: 'tasklist', label: 'Task list', icon: '✓', hint: 'Checklist with done states', cat: 'Basic' },
     { type: 'quote', label: 'Quote', icon: '"', hint: 'Block quote', cat: 'Basic' },
     { type: 'divider', label: 'Divider', icon: '―', hint: 'Horizontal rule', cat: 'Basic' },
-    { type: 'image', label: 'Image', icon: '🖼', hint: 'Upload, drag & drop, or paste any image link (Unsplash, Pixabay, …)', cat: 'Media' },
+    { type: 'image', label: 'Image', icon: '▣', hint: 'Upload, drag & drop, or paste any image link (Unsplash, Pixabay, …)', cat: 'Media' },
     { type: 'gallery', label: 'Gallery', icon: '▦', hint: 'Responsive image gallery (up to 9)', cat: 'Media' },
-    { type: 'audio', label: 'Audio', icon: '♪', hint: 'Self-hosted audio player', cat: 'Media' },
-    { type: 'embed', label: 'Embed / Link card', icon: '🔗', hint: 'Unfurl a URL (privacy-first)', cat: 'Embeds' },
-    { type: 'diagram', label: 'Diagram', icon: '🔀', hint: 'Mermaid flowchart / sequence → SVG', cat: 'Embeds' },
+    { type: 'audio', label: 'Audio', icon: '∿', hint: 'Self-hosted audio player', cat: 'Media' },
+    { type: 'embed', label: 'Embed / Link card', icon: '↗', hint: 'Unfurl a URL (privacy-first)', cat: 'Embeds' },
+    { type: 'diagram', label: 'Diagram', icon: '⇄', hint: 'Mermaid flowchart / sequence → SVG', cat: 'Embeds' },
     { type: 'markdown', label: 'Markdown', icon: 'M↓', hint: 'Write a block in Markdown', cat: 'Advanced' },
     { type: 'html', label: 'HTML', icon: '<>', hint: 'Custom HTML (sanitised on save)', cat: 'Advanced' },
     { type: 'code', label: 'Code', icon: '</>', hint: 'Code block with language hint', cat: 'Advanced' },
@@ -449,7 +449,7 @@
         url.addEventListener('input', function () { block.url = url.value; touch(); fillAltFromLibrary(url.value, alt, block); });
         var uprow = document.createElement('div');
         uprow.className = 'eblock__row';
-        var upBtn = mkSmallBtn('⬆ Upload', function () { upFile.click(); });
+        var upBtn = mkSmallBtn('Upload', function () { upFile.click(); });
         var upFile = document.createElement('input');
         upFile.type = 'file';
         upFile.accept = 'image/*';
@@ -1029,7 +1029,7 @@
       addUrl.value = '';
       structural();
     });
-    var upBtn = mkSmallBtn('⬆ Upload', function () { gFile.click(); });
+    var upBtn = mkSmallBtn('Upload', function () { gFile.click(); });
     var gFile = document.createElement('input');
     gFile.type = 'file';
     gFile.accept = 'image/*';
@@ -2562,14 +2562,15 @@
       { label: 'i', title: 'Italic', cls: 'fmt-bar__btn--i', fn: function (el) { wrapSelection(el, '*', '*'); } },
       { label: '</>', title: 'Inline code', cls: '', fn: function (el) { wrapSelection(el, '`', '`'); } },
       { label: 'S', title: 'Strikethrough', cls: 'fmt-bar__btn--s', fn: function (el) { wrapSelection(el, '~~', '~~'); } },
-      { label: '🔗', title: 'Link', cls: '', fn: function (el) { applyLink(el); } }
+      { icon: 'link', title: 'Link', cls: '', fn: function (el) { applyLink(el); } }
     ];
     defs.forEach(function (d) {
       var b = document.createElement('button');
       b.type = 'button';
       b.className = 'fmt-bar__btn ' + d.cls;
       b.title = d.title;
-      b.textContent = d.label;
+      if (d.icon) b.appendChild(window.vpIcon(d.icon));
+      else b.textContent = d.label;
       b.addEventListener('mousedown', function (e) { e.preventDefault(); });
       b.addEventListener('click', function (e) {
         e.preventDefault();
@@ -2721,14 +2722,15 @@
         b.setAttribute('aria-pressed', b.getAttribute('data-device') === d ? 'true' : 'false');
       });
     };
-    [['desktop', '🖥', 'Desktop'], ['tablet', '▭', 'Tablet'], ['mobile', '▯', 'Phone']].forEach(function (d) {
+    [['desktop', 'monitor', 'Desktop'], ['tablet', 'tablet', 'Tablet'], ['mobile', 'phone', 'Phone']].forEach(function (d) {
       var b = document.createElement('button');
       b.type = 'button';
       b.className = 'editor-devices__btn';
       b.setAttribute('data-device', d[0]);
       b.setAttribute('aria-pressed', d[0] === 'desktop' ? 'true' : 'false');
       b.title = 'Preview at ' + d[2].toLowerCase() + ' width';
-      b.textContent = d[1];
+      b.setAttribute('aria-label', d[2]);
+      b.appendChild(window.vpIcon(d[1]));
       b.addEventListener('click', function () { setDevice(d[0]); });
       devWrap.appendChild(b);
     });

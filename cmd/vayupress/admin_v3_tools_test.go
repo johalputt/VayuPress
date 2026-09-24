@@ -12,7 +12,7 @@ import (
 func TestToolCardHTMLCSPSafe(t *testing.T) {
 	on := toolCardHTML(toolState{
 		ID: "comments", Name: "Comments", Desc: "Reader comments",
-		Category: "Engagement", Icon: "💬", Toggleable: true, Enabled: true, Ready: true,
+		Category: "Engagement", Icon: "talk", Toggleable: true, Enabled: true, Ready: true,
 	})
 	assertCSPSafe(t, "toolCardHTML", on)
 	if !strings.Contains(on, `data-tool-toggle="comments"`) {

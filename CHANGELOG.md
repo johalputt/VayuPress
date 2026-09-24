@@ -6,6 +6,50 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+The Still Air redesign of the VayuOS console, built behind a switch
+(Settings › General › Console design) until it becomes the default.
+
+### Added
+
+- **Clear caches, in one click** (System › Storage). Deletes every rendered
+  page, for every domain, and temporary files untouched for an hour, rebuilds
+  the sitemap, feed and robots.txt, and says how much space it freed. With
+  Cloudflare configured it can also purge Cloudflare's copies; a Tor world never
+  contacts Cloudflare. Media, backups, logs and the database are never touched,
+  and neither are the update backups, search index and VayuShield lists that
+  share the cache directory.
+- **Still Air**: a new console design — eight apps in a rail, each with its own
+  sections, a system bar that shows the system mode and the world, a command
+  bar that finds any page, and a Home that lists what needs attention.
+- **System state** says what the current mode refuses, taken from the checks
+  the code actually makes, with the recent mode changes and a way to switch.
+
+### Changed
+
+- **One icon set everywhere.** Pages drew emoji as icons, which follow neither
+  the colour scheme nor forced colours and look different on every device; they
+  now use the console's own icons, and a test keeps emoji out of the console.
+- **Warnings and failures are styled, not hand-coloured.** Error banners,
+  certificate warnings and status chips used fixed colours that ignored the
+  colour scheme; they now follow it.
+- **Mail**: unread mail is marked by weight and a dot instead of coloured
+  subjects; the per-row button that read "✓ read" and marked a message unread
+  now says what it does.
+
+### Fixed
+
+- **The Storage page counted the pre-update backups as cache**, so the cache
+  looked larger than it was and the backups were counted twice.
+- **The cache purge API left pages behind**: per-domain home and tag pages and
+  post security sidecars survived a full purge.
+- **Analytics showed each headline figure inside a box** meant for a different
+  widget.
+- **Members showed each section's title twice.**
+
+---
+
 ## [3.17.77] — 2026-09-24
 
 A fix release, shipped on its own because these controls do nothing on every

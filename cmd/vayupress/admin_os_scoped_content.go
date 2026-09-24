@@ -145,7 +145,7 @@ func scopedContentPage(d domain.Domain, items []dbpkg.Article) string {
 	if len(items) > 0 {
 		ownedChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(len(items)) + ` items</span>`
 	}
-	b.WriteString(monAcc("📚", "Owned by this site", "Newest first", ownedChip, true, owned.String()))
+	b.WriteString(monAcc(saIcon("book"), "Owned by this site", "Newest first", ownedChip, true, owned.String()))
 
 	// Moving a post IN. The counterpart ("move to primary") is per-row above.
 	moveBody := `<div class="card">
@@ -158,7 +158,7 @@ func scopedContentPage(d domain.Domain, items []dbpkg.Article) string {
   </div>
   <div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-scoped-assign>Move to ` + esc(d.Host) + `</button></div>
 </div>`
-	b.WriteString(monAcc("↔️", "Move a post to this site", "Ownership decides which site serves it",
+	b.WriteString(monAcc(saIcon("swap"), "Move a post to this site", "Ownership decides which site serves it",
 		`<span class="mon-chip mon-chip--on">by slug</span>`, false, moveBody))
 
 	b.WriteString(`</div>`) // mon-stack

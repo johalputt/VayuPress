@@ -509,9 +509,9 @@ starts_with(http.request.uri.path, "/.well-known/")</pre>
 
 	return `<div class="section-head"><span class="section-head__title">Connect a client</span><span class="section-head__hint">A granted key is filled in automatically</span></div>
 <div class="mon-stack">` +
-		monAcc("🔌", "Any MCP client", "URL plus a header — the standard shape", `<span class="mon-chip mon-chip--on">● Start here</span>`, true, generic) +
-		monAcc("🧭", "Guided setup for a specific client", "Claude Code · Buzz", `<span class="mon-chip mon-chip--off">○ Own pages</span>`, false, clients) +
-		monAcc("🛡️", "Behind a proxy or WAF?", "The most common reason Connect fails", `<span class="mon-chip mon-chip--off">○ Reference</span>`, false, proxy) +
+		monAcc(saIcon("plug"), "Any MCP client", "URL plus a header — the standard shape", `<span class="mon-chip mon-chip--on">● Start here</span>`, true, generic) +
+		monAcc(saIcon("compass"), "Guided setup for a specific client", "Claude Code · Buzz", `<span class="mon-chip mon-chip--off">○ Own pages</span>`, false, clients) +
+		monAcc(saIcon("shield"), "Behind a proxy or WAF?", "The most common reason Connect fails", `<span class="mon-chip mon-chip--off">○ Reference</span>`, false, proxy) +
 		`</div>`
 }
 
@@ -573,12 +573,12 @@ func osConnectorManageCard(keys []apikeys.Key) string {
 		// Status. Expiry is checked before the active flag: an expired key is
 		// already refused by the auth cache, so calling it "Paused" would invite an
 		// operator to press Resume and watch nothing change.
-		state, chip, icon := "active", `<span class="mon-chip mon-chip--on">● Active</span>`, "🔌"
+		state, chip, icon := "active", `<span class="mon-chip mon-chip--on">● Active</span>`, saIcon("plug")
 		switch {
 		case k.ExpiresAt != nil && k.ExpiresAt.Before(time.Now()):
-			state, chip, icon = "expired", `<span class="mon-chip mon-chip--off">○ Expired</span>`, "⌛"
+			state, chip, icon = "expired", `<span class="mon-chip mon-chip--off">○ Expired</span>`, saIcon("hourglass")
 		case !k.Active:
-			state, chip, icon = "paused", `<span class="mon-chip mon-chip--off">⏸ Paused</span>`, "⏸️"
+			state, chip, icon = "paused", `<span class="mon-chip mon-chip--off">○ Paused</span>`, saIcon("power")
 		}
 
 		// The subtitle carries the one fact that tells two connectors apart.

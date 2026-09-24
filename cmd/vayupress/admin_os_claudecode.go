@@ -138,9 +138,9 @@ func osClaudeCodeSetupCards(endpoint, apex string, dedicated bool, blockedHost s
 </div>`
 
 	return `<div class="mon-stack">` +
-		monAcc("✨", "One-click Connect on claude.ai", "Easiest — no key to copy or store", `<span class="mon-chip mon-chip--on">● Recommended</span>`, true, oneClick) +
-		monAcc("⌨️", "Claude Code (CLI)", "One command", `<span class="mon-chip mon-chip--off">○ Needs a key</span>`, false, cliCard) +
-		monAcc("🖥️", "Claude Desktop (config file)", "Paste a config block", `<span class="mon-chip mon-chip--off">○ Needs a key</span>`, false, desktopCard) +
+		monAcc(saIcon("sparkle"), "One-click Connect on claude.ai", "Easiest — no key to copy or store", `<span class="mon-chip mon-chip--on">● Recommended</span>`, true, oneClick) +
+		monAcc(saIcon("keyboard"), "Claude Code (CLI)", "One command", `<span class="mon-chip mon-chip--off">○ Needs a key</span>`, false, cliCard) +
+		monAcc(saIcon("monitor"), "Claude Desktop (config file)", "Paste a config block", `<span class="mon-chip mon-chip--off">○ Needs a key</span>`, false, desktopCard) +
 		`</div>`
 }
 
@@ -192,7 +192,7 @@ starts_with(http.request.uri.path, "/.well-known/")</pre>
 </div>`
 
 	return `<div class="mon-stack">` +
-		monAcc("🛡️", "Behind a proxy or WAF?", "The most common reason Connect fails", `<span class="mon-chip mon-chip--off">○ Reference</span>`, false, proxy) +
-		monAcc("🔌", "Manage connected clients", "Pause, disconnect or remove a grant", `<span class="mon-chip mon-chip--off">○ On VayuMCP</span>`, false, manage) +
+		monAcc(saIcon("shield"), "Behind a proxy or WAF?", "The most common reason Connect fails", `<span class="mon-chip mon-chip--off">○ Reference</span>`, false, proxy) +
+		monAcc(saIcon("plug"), "Manage connected clients", "Pause, disconnect or remove a grant", `<span class="mon-chip mon-chip--off">○ On VayuMCP</span>`, false, manage) +
 		`</div>`
 }

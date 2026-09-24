@@ -127,12 +127,12 @@ func scopedSEOBody(domainID, origin string, declared map[string]string) string {
 	if set > 0 {
 		headChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(set) + ` set</span>`
 	}
-	b.WriteString(monAcc("🏷", "This site's head directives", "Edited in this site's Theme Studio",
+	b.WriteString(monAcc(saIcon("tag"), "This site's head directives", "Edited in this site's Theme Studio",
 		headChip, true, head.String()))
 
 	// This domain's own live artefacts, linked so they can be checked rather
 	// than asserted.
-	b.WriteString(monAcc("📄", "This site's live files",
+	b.WriteString(monAcc(saIcon("doc"), "This site's live files",
 		"Served per host — open them to see what a crawler sees",
 		`<span class="mon-chip mon-chip--on">3 files</span>`, false,
 		`<div class="card"><div class="vm-row">`+
@@ -142,7 +142,7 @@ func scopedSEOBody(domainID, origin string, declared map[string]string) string {
 			`</div><p class="text-sm muted">These are generated for this hostname from this domain's own posts.</p></div>`))
 
 	// The honest limit, on the page rather than in a commit message.
-	b.WriteString(monAcc("🏛", "What is still install-level", "Not per-domain, and not claimed to be",
+	b.WriteString(monAcc(saIcon("columns"), "What is still install-level", "Not per-domain, and not claimed to be",
 		`<span class="mon-chip mon-chip--off">by construction</span>`, false,
 		`<div class="card"><p class="text-sm muted">The install-wide SEO health report checks cached `+
 			`artefacts and the install's canonical hostname, so it describes the primary site. It is not shown `+

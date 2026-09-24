@@ -37,7 +37,7 @@ type toolModule struct {
 	Name     string // human label
 	Desc     string // one-line description
 	Category string // grouping header
-	Icon     string // emoji glyph (rendered as text, never as markup)
+	Icon     string // a name from the Still Air icon set (saIcons)
 
 	// FlagKey is the settings key that toggles this module. Empty means the
 	// module is built in and always on (no operator switch).
@@ -53,106 +53,106 @@ type toolModule struct {
 func (a *App) toolRegistry() []toolModule {
 	return []toolModule{
 		{
-			ID: "comments", Name: "Comments", Category: "Engagement", Icon: "💬",
+			ID: "comments", Name: "Comments", Category: "Engagement", Icon: "talk",
 			Desc:    "Reader comments with moderation queue and approval emails.",
 			FlagKey: settings.KeyFeatureComments,
 			ready:   func(a *App) bool { return a.commentStore != nil },
 		},
 		{
-			ID: "newsletter", Name: "Newsletter", Category: "Engagement", Icon: "✉️",
+			ID: "newsletter", Name: "Newsletter", Category: "Engagement", Icon: "mail",
 			Desc:    "Double opt-in subscriptions and one-off broadcasts.",
 			FlagKey: settings.KeyFeatureNewsletter,
 			ready:   func(a *App) bool { return a.newsletterStore != nil },
 		},
 		{
-			ID: "webmentions", Name: "Webmentions", Category: "Engagement", Icon: "🔗",
+			ID: "webmentions", Name: "Webmentions", Category: "Engagement", Icon: "link",
 			Desc:    "W3C inbound webmention receiver with a moderation queue.",
 			FlagKey: settings.KeyFeatureWebmentions,
 			ready:   func(a *App) bool { return a.webmentionStore != nil },
 		},
 		{
-			ID: "trending", Name: "Trending & pinned posts", Category: "Engagement", Icon: "🔥",
+			ID: "trending", Name: "Trending & pinned posts", Category: "Engagement", Icon: "timer",
 			Desc:    "Show a trending-posts widget (most-viewed over the last 7/30 days, from the built-in analytics) plus your pinned posts on the homepage and under every post. Pin a post with “Feature this post” in the editor.",
 			FlagKey: settings.KeyFeatureTrending,
 			ready:   func(a *App) bool { return a.analytics != nil },
 		},
 		{
-			ID: "collections", Name: "Collections", Category: "Content", Icon: "📚",
+			ID: "collections", Name: "Collections", Category: "Content", Icon: "book",
 			Desc:  "Group posts into ordered series and reading lists.",
 			ready: func(a *App) bool { return a.collectionStore != nil },
 		},
 		{
-			ID: "versions", Name: "Version history", Category: "Content", Icon: "🕘",
+			ID: "versions", Name: "Version history", Category: "Content", Icon: "timer",
 			Desc:  "Automatic per-save snapshots with point-in-time restore.",
 			ready: func(a *App) bool { return a.versionStore != nil },
 		},
 		{
-			ID: "redirects", Name: "Redirects", Category: "Content", Icon: "↪️",
+			ID: "redirects", Name: "Redirects", Category: "Content", Icon: "forward",
 			Desc:  "Operator-managed 301/302 rules served before routing.",
 			ready: func(a *App) bool { return a.redirectMgr != nil },
 		},
 		{
-			ID: "analytics", Name: "Privacy analytics", Category: "Insight", Icon: "📈",
+			ID: "analytics", Name: "Privacy analytics", Category: "Insight", Icon: "trend",
 			Desc:  "Cookieless, self-hosted pageview and referrer analytics.",
 			ready: func(a *App) bool { return a.analytics != nil },
 		},
 		{
-			ID: "search", Name: "Search", Category: "Insight", Icon: "🔍",
+			ID: "search", Name: "Search", Category: "Insight", Icon: "search",
 			Desc:    "VayuFind — the built-in, instant site search. A Ctrl/⌘-K search box opens a fast, typo-friendly overlay that filters a cached index entirely in the browser. Zero external services. Turn off to hide the search box and the /search page.",
 			FlagKey: settings.KeyFeatureSearch,
 			ready:   func(a *App) bool { return a.search != nil },
 		},
 		{
-			ID: "members", Name: "Memberships", Category: "Insight", Icon: "👥",
+			ID: "members", Name: "Memberships", Category: "Insight", Icon: "audience",
 			Desc:  "Free and paid reader accounts with paywalled content.",
 			ready: func(a *App) bool { return a.members != nil },
 		},
 		{
-			ID: "ai", Name: "AI assistant", Category: "Authoring", Icon: "🤖",
+			ID: "ai", Name: "AI assistant", Category: "Authoring", Icon: "bot",
 			Desc:  "Local-only writing assistant (Ollama) — never leaves the box.",
 			ready: func(a *App) bool { return a.aiAssist != nil },
 		},
 		{
-			ID: "diagrams", Name: "Diagrams", Category: "Authoring", Icon: "📐",
+			ID: "diagrams", Name: "Diagrams", Category: "Authoring", Icon: "grid",
 			Desc:  "Pure-Go Mermaid→SVG rendering — no reader-side JavaScript.",
 			ready: func(a *App) bool { return true },
 		},
 		{
-			ID: "theme-studio", Name: "Theme Studio", Category: "Authoring", Icon: "🎨",
+			ID: "theme-studio", Name: "Theme Studio", Category: "Authoring", Icon: "palette",
 			Desc:  "Live design-token editor compiled to strict-CSP CSS.",
 			ready: func(a *App) bool { return a.siteSettings != nil },
 		},
 		{
-			ID: "webhooks", Name: "Outbound webhooks", Category: "Integrations", Icon: "🪝",
+			ID: "webhooks", Name: "Outbound webhooks", Category: "Integrations", Icon: "link",
 			Desc:  "Signed event delivery to external endpoints with retries.",
 			ready: func(a *App) bool { return a.webhooks != nil },
 		},
 		{
-			ID: "payments", Name: "Payments & subscriptions", Category: "Monetization", Icon: "💳",
+			ID: "payments", Name: "Payments & subscriptions", Category: "Monetization", Icon: "card",
 			Desc:    "Accept paid memberships via a built-in direct gateway or any connected processor — with emailed receipts.",
 			FlagKey: settings.KeyFeaturePayments,
 			ready:   func(a *App) bool { return a.payments != nil && a.members != nil },
 		},
 		{
-			ID: "ads", Name: "Advertising", Category: "Monetization", Icon: "📣",
+			ID: "ads", Name: "Advertising", Category: "Monetization", Icon: "megaphone",
 			Desc:    "Show operator-managed ad slots on your posts — header, in-article, sidebar, or footer. Off until you enable it.",
 			FlagKey: settings.KeyFeatureAds,
 			ready:   func(a *App) bool { return a.ads != nil },
 		},
 		{
-			ID: "googleads", Name: "Google AdSense", Category: "Monetization", Icon: "🟢",
+			ID: "googleads", Name: "Google AdSense", Category: "Monetization", Icon: "pulse",
 			Desc:    "Optional: serve Google AdSense units in your ad slots. Requires a publisher id set in the Ads console.",
 			FlagKey: settings.KeyFeatureGoogleAds,
 			ready:   func(a *App) bool { return a.adsenseConfigured() },
 		},
 		{
-			ID: "affiliate", Name: "Affiliate disclosure", Category: "Monetization", Icon: "🔖",
+			ID: "affiliate", Name: "Affiliate disclosure", Category: "Monetization", Icon: "tag",
 			Desc:    "Show an FTC-style affiliate-links disclosure banner above your posts. Edit the text in the Ads console.",
 			FlagKey: settings.KeyFeatureAffiliate,
 			ready:   func(a *App) bool { return a.siteSettings != nil },
 		},
 		{
-			ID: "sponsors", Name: "Sponsor banner", Category: "Monetization", Icon: "🤝",
+			ID: "sponsors", Name: "Sponsor banner", Category: "Monetization", Icon: "audience",
 			Desc:    "Promote a sponsor using a dedicated header ad slot. Pairs with the Advertising module's sponsor placement.",
 			FlagKey: settings.KeyFeatureSponsors,
 			ready:   func(a *App) bool { return a.ads != nil },
@@ -306,7 +306,7 @@ func toolCardHTML(s toolState) string {
 
 	return `<div class="tool-card" data-tool-card="` + html.EscapeString(s.ID) + `">
   <div class="tool-card__head">
-    <span class="tool-card__icon" aria-hidden="true">` + html.EscapeString(s.Icon) + `</span>
+    <span class="tool-card__icon" aria-hidden="true">` + saIcon(s.Icon) + `</span>
     <div class="tool-card__title">` + html.EscapeString(s.Name) + `</div>
     ` + control + `
   </div>

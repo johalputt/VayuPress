@@ -289,7 +289,7 @@ function offlinePage() {
     '<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">' +
     '<title>Offline</title>' +
     '<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0f1a;color:#eef2f8;font:16px/1.5 system-ui,sans-serif">' +
-    '<div style="text-align:center;padding:24px"><div style="font-size:44px">&#128244;</div>' +
+    '<div style="text-align:center;padding:24px">' +
     '<h1 style="font-size:20px;margin:.5em 0">You are offline</h1>' +
     '<p style="color:#b8c6dd;max-width:22rem">Reconnect to load this page.</p></div>',
     { headers: { 'Content-Type': 'text/html; charset=utf-8' }, status: 503 });

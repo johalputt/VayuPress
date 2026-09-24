@@ -204,7 +204,7 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 	if set > 0 {
 		identChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(set) + ` of ` + strconv.Itoa(total) + `</span>`
 	}
-	b.WriteString(monAcc("🪪", "Identity", "Name, tagline, description and by-line for this site alone",
+	b.WriteString(monAcc(saIcon("idcard"), "Identity", "Name, tagline, description and by-line for this site alone",
 		identChip, true, ident.String()))
 
 	// Colour, which used to live on the per-site Theme Studio — a page whose
@@ -234,7 +234,7 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 		colourChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(colourSet) +
 			` of ` + strconv.Itoa(len(scopedColourKeys)) + `</span>`
 	}
-	b.WriteString(monAcc("🎨", "Colour", "This site's own accents and browser tint",
+	b.WriteString(monAcc(saIcon("palette"), "Colour", "This site's own accents and browser tint",
 		colourChip, false, colour.String()))
 
 	styleChip := `<span class="mon-chip mon-chip--off">not known</span>`
@@ -244,7 +244,7 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 	case presCustom:
 		styleChip = `<span class="mon-chip mon-chip--on">custom</span>`
 	}
-	b.WriteString(monAcc("🎨", "Start from your house style",
+	b.WriteString(monAcc(saIcon("palette"), "Start from your house style",
 		"Copies theme, navigation and footer across — once", styleChip, false,
 		`<div class="card"><div class="settings-block-title">Copy presentation from your own site</div>`+
 			`<p class="text-sm muted">Theme colours, custom CSS, head defaults, navigation, footer and the home `+

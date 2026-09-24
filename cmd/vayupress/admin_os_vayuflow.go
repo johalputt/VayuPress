@@ -314,7 +314,7 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 			`you decide otherwise.</p></div>`)
 	}
 	b.WriteString(`<div class="mon-stack">` +
-		monAcc("✚", "Create a flow", "Starts switched off, in dry-run", "", len(flows) == 0,
+		monAcc(saIcon("plus"), "Create a flow", "Starts switched off, in dry-run", "", len(flows) == 0,
 			flowEditorCard()) + `</div>`)
 	b.WriteString(`<div class="mon-stack">`)
 	for i, f := range flows {
@@ -366,7 +366,7 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 		body.WriteString(`</div>`)
 
 		sub := vayuflow.TriggerSummary(f.Trigger) + " · v" + strconv.Itoa(f.Version)
-		b.WriteString(monAcc("⚙", esc(f.Name), esc(sub), flowModeChip(f), i == 0, body.String()))
+		b.WriteString(monAcc(saIcon("settings"), esc(f.Name), esc(sub), flowModeChip(f), i == 0, body.String()))
 	}
 	b.WriteString(`</div>`)
 
@@ -425,7 +425,7 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 		}
 		body.WriteString(`</div>`)
 		when := run.StartedAt.Format("2006-01-02 15:04")
-		b.WriteString(monAcc("▷", esc(when), esc(run.FlowID), runStatusChip(run.Status), false, body.String()))
+		b.WriteString(monAcc(saIcon("play"), esc(when), esc(run.FlowID), runStatusChip(run.Status), false, body.String()))
 	}
 	b.WriteString(`</div>`)
 

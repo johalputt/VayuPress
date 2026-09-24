@@ -20,6 +20,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/render"
 )
 
 // footprintCache holds the last computed directory-tree sizes for the on-disk
@@ -37,7 +39,10 @@ var footprintCache struct {
 // refreshFootprint recomputes the cached directory sizes (blocking; call from a
 // goroutine).
 func refreshFootprint(cacheDir, mediaDir, backupsDir string) {
-	atomic.StoreInt64(&footprintCache.cache, dirSize(cacheDir))
+	// Rendered pages only: the pre-update backups live under CACHE_DIR too, and
+	// counting them here reported them twice and called them cache.
+	_, pages := render.CacheUsage(cacheDir)
+	atomic.StoreInt64(&footprintCache.cache, pages)
 	atomic.StoreInt64(&footprintCache.media, dirSize(mediaDir))
 	atomic.StoreInt64(&footprintCache.backups, dirSize(backupsDir))
 	atomic.StoreInt64(&footprintCache.at, time.Now().Unix())

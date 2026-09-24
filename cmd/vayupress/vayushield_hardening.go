@@ -915,7 +915,7 @@ func (a *App) shieldHardeningBody(r *http.Request) string {
 	b.WriteString(`<p class="muted text-sm">The toggles above are <strong>Tier 1</strong> — VayuShield's in-binary defenses. <strong>Tier 2</strong> (kernel firewall) and <strong>Tier 3</strong> (nginx edge) sit below and in front of the app; they drop abuse before it reaches VayuPress, so they <strong>improve</strong> performance under attack rather than degrade it, with no cost to legitimate visitors.</p>`)
 
 	if shieldAgentAlive() {
-		b.WriteString(`<p class="muted text-xs">✅ Privileged helper installed — you can switch these on and off right here, no terminal needed. VayuPress itself stays unprivileged; a separate root agent applies only the vetted scripts.</p>`)
+		b.WriteString(`<p class="muted text-xs">` + saIcon("check-c") + ` Privileged helper installed — you can switch these on and off right here, no terminal needed. VayuPress itself stays unprivileged; a separate root agent applies only the vetted scripts.</p>`)
 		b.WriteString(shieldAgentStaleNotice())
 		// The upgrade control belongs on the HEALTHY path too, not only inside the
 		// stale-agent warning.
@@ -927,8 +927,8 @@ func (a *App) shieldHardeningBody(r *http.Request) string {
 		// good. "There is nothing to upgrade right now" and "there is no way to
 		// upgrade" are different states and looked identical.
 		b.WriteString(shieldAgentUpgradeRow())
-		b.WriteString(shieldTierRow(2, "🛡️ Tier 2 · Kernel firewall (nftables)", "Per-IP connection/packet rate limits + SYN-flood cookies, enforced in the Linux kernel. Turning this on also activates the L1 live offload below."))
-		b.WriteString(shieldTierRow(3, "🌐 Tier 3 · Edge shaping (nginx)", "Per-IP request/connection shaping + slow-loris timeouts at the reverse proxy."))
+		b.WriteString(shieldTierRow(2, "Tier 2 · Kernel firewall (nftables)", "Per-IP connection/packet rate limits + SYN-flood cookies, enforced in the Linux kernel. Turning this on also activates the L1 live offload below."))
+		b.WriteString(shieldTierRow(3, "Tier 3 · Edge shaping (nginx)", "Per-IP request/connection shaping + slow-loris timeouts at the reverse proxy."))
 		b.WriteString(a.shieldOffloadRow())
 		// The two posture rows an operator could previously only fix by hand. They
 		// sit here rather than on the posture report because this is where every
@@ -1018,7 +1018,7 @@ func (a *App) shieldCDNAdvisory(r *http.Request) string {
 	}
 
 	if !declared {
-		b.WriteString(`<p class="muted text-xs">⚠️ <strong>“Behind Cloudflare / a CDN” is switched off above.</strong> VayuShield is therefore treating each proxy edge address as if it were one visitor, so your whole audience looks like a handful of IPs — which trips the rate limit and can show everyone a challenge page. Turn that switch on: it reads the real visitor from the proxy's header, and only genuine edge addresses are trusted, so it cannot be spoofed.</p>`)
+		b.WriteString(`<p class="muted text-xs">` + saIcon("warn") + ` <strong>“Behind Cloudflare / a CDN” is switched off above.</strong> VayuShield is therefore treating each proxy edge address as if it were one visitor, so your whole audience looks like a handful of IPs — which trips the rate limit and can show everyone a challenge page. Turn that switch on: it reads the real visitor from the proxy's header, and only genuine edge addresses are trusted, so it cannot be spoofed.</p>`)
 	} else if config.IsCloudflareIP(net.ParseIP(auth.ClientIP(r))) {
 		// The switch is on, but the address this request resolves to is itself an
 		// edge address — so the visitor was never recovered and every reader is
@@ -1031,9 +1031,9 @@ func (a *App) shieldCDNAdvisory(r *http.Request) string {
 		// it cannot distinguish a header the edge set from one a visitor typed,
 		// and trusting it there let any client choose its own identity. nginx can
 		// tell, because it sees the real peer, so nginx has to do the resolving.
-		b.WriteString(`<p class="muted text-xs">⚠️ <strong>The switch is on, but this request still resolves to an edge address</strong> — so your readers are being counted as a handful of proxy nodes, which is exactly what trips the rate limit for everyone. Your reverse proxy needs to recover the visitor before VayuPress sees the request: add <code>set_real_ip_from</code> for your proxy's ranges plus <code>real_ip_header</code> to nginx (the generator command is in <code>deploy/nginx-vayupress.conf</code>), then reload. VayuPress will not read the edge header across a local proxy hop itself, because at that point it cannot tell a header your CDN set from one a visitor typed.</p>`)
+		b.WriteString(`<p class="muted text-xs">` + saIcon("warn") + ` <strong>The switch is on, but this request still resolves to an edge address</strong> — so your readers are being counted as a handful of proxy nodes, which is exactly what trips the rate limit for everyone. Your reverse proxy needs to recover the visitor before VayuPress sees the request: add <code>set_real_ip_from</code> for your proxy's ranges plus <code>real_ip_header</code> to nginx (the generator command is in <code>deploy/nginx-vayupress.conf</code>), then reload. VayuPress will not read the edge header across a local proxy hop itself, because at that point it cannot tell a header your CDN set from one a visitor typed.</p>`)
 	} else {
-		b.WriteString(`<p class="muted text-xs">✅ Tier 1 is reading the real visitor address, so in-binary rate limiting applies per reader rather than per edge node.</p>`)
+		b.WriteString(`<p class="muted text-xs">` + saIcon("check-c") + ` Tier 1 is reading the real visitor address, so in-binary rate limiting applies per reader rather than per edge node.</p>`)
 	}
 
 	b.WriteString(`<p class="muted text-xs"><strong>Tier 2 is different, and no switch fixes it.</strong> The kernel firewall runs before any HTTP header exists, so its per-IP limits always see the proxy's addresses — a busy edge node easily exceeds a per-visitor connection cap and gets dropped, which reads as intermittent failures you cannot reproduce. The fix is to allowlist the edge ranges, which also sharpens the firewall: anything arriving from outside them skipped the proxy and still meets the full ruleset.</p>`)
@@ -1141,9 +1141,9 @@ func (a *App) shieldOffloadRow() string {
 	// more switch to flip and one who believes the layer is working.
 	note := ``
 	if !a.shieldAutoBlockOn() {
-		note = `<p class="muted text-xs">⚠️ Nothing reaches this layer yet: it is fed by <strong>Auto-block abusive IPs</strong>, which is switched off above. Tier 2 alone does not populate it.</p>`
+		note = `<p class="muted text-xs">` + saIcon("warn") + ` Nothing reaches this layer yet: it is fed by <strong>Auto-block abusive IPs</strong>, which is switched off above. Tier 2 alone does not populate it.</p>`
 	}
-	return `<div class="vs-tier"><div class="vs-hard-row"><div><div class="vs-tier-head">⚡ L1 · Live kernel offload (Aegis)</div><p class="muted text-sm">VayuShield's own jail verdicts (confirmed bad actors, reputation sentences) are pushed into a kernel nftables timeout-set — and an XDP filter where available — so a banned attacker's packets are dropped before a connection even exists. Bans expire on their own.</p>` + note + `</div><div class="vs-hard-ctl">` + pill + `</div></div></div>`
+	return `<div class="vs-tier"><div class="vs-hard-row"><div><div class="vs-tier-head">` + saIcon("bolt") + ` L1 · Live kernel offload (Aegis)</div><p class="muted text-sm">VayuShield's own jail verdicts (confirmed bad actors, reputation sentences) are pushed into a kernel nftables timeout-set — and an XDP filter where available — so a banned attacker's packets are dropped before a connection even exists. Bans expire on their own.</p>` + note + `</div><div class="vs-hard-ctl">` + pill + `</div></div></div>`
 }
 
 // shieldTierRow renders one tier's status pill + enable/disable toggle button.
@@ -1208,7 +1208,7 @@ func shieldAgentStaleNotice() string {
 	if readShieldDigest().Present {
 		return ""
 	}
-	return `<div class="vs-tier"><div class="vs-tier-head">⚠️ The helper is running, but it is an older build</div>` +
+	return `<div class="vs-tier"><div class="vs-tier-head">` + saIcon("warn") + ` The helper is running, but it is an older build</div>` +
 		`<p class="muted text-sm">It applies Tier 2 and Tier 3 correctly — the switches above work — but it predates the ` +
 		`<strong>enforcement digest</strong>, so it cannot report back what is actually in force. That is why the posture ` +
 		`report marks the tier rows <em>unverified</em> rather than green: absent evidence is never counted as a pass. ` +

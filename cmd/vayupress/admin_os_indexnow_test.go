@@ -44,7 +44,7 @@ func TestIndexNowStatusHint(t *testing.T) {
 func TestOSIndexNowBadgeStates(t *testing.T) {
 	sub := osIndexNowBadge("hello-world",
 		dbpkg.IndexNowStatus{State: dbpkg.IndexNowSubmitted, HTTPCode: 200, SubmittedAt: time.Unix(1700000000, 0).UTC()}, true, false)
-	if !strings.Contains(sub, `id="post-indexnow-hello-world"`) || !strings.Contains(sub, "✓ IndexNow") {
+	if !strings.Contains(sub, `id="post-indexnow-hello-world"`) || !strings.Contains(sub, saIcon("check")+" IndexNow") {
 		t.Errorf("submitted badge wrong:\n%s", sub)
 	}
 

@@ -979,10 +979,10 @@ var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
       <button type="button" class="btn btn--ghost btn--sm" data-editor-md-btn title="Edit the whole post as Markdown (Ctrl/Cmd+Shift+M)" aria-pressed="false">Markdown</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-html-btn title="Edit HTML source (Ctrl/Cmd+Shift+H)" aria-pressed="false">HTML</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-preview-btn>Preview</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-share-btn title="Copy a 48-hour preview link for this draft — it stays a draft">🔗 Share draft</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-image-btn title="Upload an image and insert it here">🖼 Image</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-ai-btn title="Write a draft from a prompt with AI">✨ AI</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-settings-btn title="Post settings (Ctrl/Cmd+Shift+P)" aria-pressed="false">⚙ Settings</button>
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-share-btn title="Copy a 48-hour preview link for this draft — it stays a draft">` + saIcon("link") + ` Share draft</button>
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-image-btn title="Upload an image and insert it here">` + saIcon("image") + ` Image</button>
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-ai-btn title="Write a draft from a prompt with AI">` + saIcon("sparkle") + ` AI</button>
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-settings-btn title="Post settings (Ctrl/Cmd+Shift+P)" aria-pressed="false">` + saIcon("settings") + ` Settings</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-newpage title="Create a new standalone page">＋ Page</button>
       <span class="editor-pubstate" data-editor-pubstate hidden></span>
       <button type="button" class="btn btn--accent btn--sm" data-editor-publish-btn hidden title="Publish to the live site"></button>
@@ -1081,7 +1081,7 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
     <div class="text-xs muted mt-2">Reorder blocks by dragging <kbd>⋮⋮</kbd> or with the <kbd>↑</kbd>/<kbd>↓</kbd> buttons. <kbd>⌘.</kbd> toggles focus mode.</div>
     <div class="text-xs muted mt-2"><kbd>Enter</kbd> new block · <kbd>Shift+Enter</kbd> line break · <kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> to save.</div>
     <div class="text-xs muted mt-2"><kbd>Markdown</kbd> (<kbd>⌘⇧M</kbd>) edits the whole post as Markdown; <kbd>HTML</kbd> (<kbd>⌘⇧H</kbd>) as raw HTML — both round-trip back to blocks losslessly.</div>
-    <div class="text-xs muted mt-2"><kbd>⚙ Settings</kbd> (<kbd>⌘⇧P</kbd>) opens post settings: feature image, URL, publish date, excerpt, tags, SEO &amp; social cards.</div>
+    <div class="text-xs muted mt-2"><kbd>` + saIcon("settings") + ` Settings</kbd> (<kbd>⌘⇧P</kbd>) opens post settings: feature image, URL, publish date, excerpt, tags, SEO &amp; social cards.</div>
   </aside>
   <div class="editor-preview-modal" data-editor-preview hidden role="dialog" aria-modal="true" aria-label="Preview">
     <div class="editor-preview-panel">
@@ -1107,7 +1107,7 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
   <div class="editor-history-modal" data-editor-ai-modal hidden role="dialog" aria-modal="true" aria-label="Write with AI">
     <div class="editor-history-panel">
       <div class="editor-history-head">
-        <span>✨ Write with AI</span>
+        <span>` + saIcon("sparkle") + ` Write with AI</span>
         <button type="button" class="btn--icon" data-ai-close aria-label="Close">✕</button>
       </div>
       <div class="editor-settings-body ai-panel">
@@ -1119,7 +1119,7 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
         <!-- Shape: the controls most authors change per draft, open by default. -->
         <details class="mon-acc" open>
           <summary class="mon-acc__sum">
-            <span class="mon-acc__ic" aria-hidden="true">&#9998;</span>
+            <span class="mon-acc__ic" aria-hidden="true">` + saIcon("pencil") + `</span>
             <span class="mon-acc__head"><span class="mon-acc__title">Shape the draft</span><span class="mon-acc__sub">Format, tone, length and who it is for</span></span>
             <span class="mon-chip mon-chip--off" data-ai-shape-chip>○ defaults</span>
             <svg class="mon-acc__chev" viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1182,7 +1182,7 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
         <!-- Engine: set once and rarely touched, so it starts collapsed. -->
         <details class="mon-acc">
           <summary class="mon-acc__sum">
-            <span class="mon-acc__ic" aria-hidden="true">&#9881;</span>
+            <span class="mon-acc__ic" aria-hidden="true">` + saIcon("settings") + `</span>
             <span class="mon-acc__head"><span class="mon-acc__title">Model &amp; provider</span><span class="mon-acc__sub" data-ai-engine-sub>Which model writes it</span></span>
             <span class="mon-chip mon-chip--off" data-ai-engine-chip>○ checking</span>
             <svg class="mon-acc__chev" viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>

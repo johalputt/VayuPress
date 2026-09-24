@@ -190,7 +190,7 @@ func osSpacesTorSpaceCard(st torSpaceStatus) string {
 	}
 	if st.LastErr != "" {
 		extra += `
-  <p class="text-sm mt-2" role="status">⚠ ` + html.EscapeString(st.LastErr) + `</p>`
+  <p class="text-sm mt-2" role="status">` + saIcon("warn") + html.EscapeString(st.LastErr) + `</p>`
 	}
 
 	return `<div class="card">

@@ -41,7 +41,7 @@ func TestOSPostPinControls(t *testing.T) {
 		t.Errorf("unpinned badge should be an empty keyed span:\n%s", empty)
 	}
 	full := osPostPinBadge("hello-world", true, true)
-	for _, want := range []string{`id="ppin-hello-world"`, `hx-swap-oob="true"`, "📌 Pinned", "chip"} {
+	for _, want := range []string{`id="ppin-hello-world"`, `hx-swap-oob="true"`, "</svg> Pinned</span>", "chip"} {
 		if !strings.Contains(full, want) {
 			t.Errorf("pinned OOB badge missing %q in:\n%s", want, full)
 		}

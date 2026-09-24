@@ -41,6 +41,46 @@
       .catch(function (e) { show('Error: ' + e, true); });
   }
 
+  // ── Clear caches ────────────────────────────────────────────────────────
+  var clearBtn = document.querySelector('[data-cache-clear]');
+  var cacheMsg = document.querySelector('[data-cache-msg]');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function () {
+      var cdnBox = document.querySelector('[data-cache-cdn]');
+      var purgeCDN = !!(cdnBox && cdnBox.checked);
+      vpConfirm({
+        title: 'Clear caches',
+        message: 'Delete every rendered page and temporary files unused for an hour' + (purgeCDN ? ', and purge Cloudflare' : '') + '? Pages are rebuilt as visitors ask for them. Media, backups and the database are not touched.',
+        confirm: 'Clear caches'
+      }, function () {
+        clearBtn.disabled = true;
+        fetch('/os/api/storage/clear-cache', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+          body: JSON.stringify({ purge_cdn: purgeCDN })
+        })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+          .then(function (res) {
+            clearBtn.disabled = false;
+            if (!res.ok) { say((res.d && (res.d.detail || res.d.title)) || 'The caches could not be cleared.', true); return; }
+            var d = res.d;
+            var text = 'Freed ' + d.freed + ' — ' + d.pages + ' page' + (d.pages === 1 ? '' : 's') + ' and ' + d.temp_files + ' temporary file' + (d.temp_files === 1 ? '' : 's') + '.';
+            if (d.cdn === 'purged') text += ' Cloudflare purged.';
+            else if (d.cdn && d.cdn.indexOf('failed') === 0) text += ' Cloudflare purge ' + d.cdn + '.';
+            say(text, d.cdn && d.cdn.indexOf('failed') === 0);
+          })
+          .catch(function (e) { clearBtn.disabled = false; say('Error: ' + e, true); });
+      });
+    });
+  }
+  function say(text, isErr) {
+    if (cacheMsg) {
+      cacheMsg.textContent = text;
+      cacheMsg.classList.toggle('is-error', !!isErr);
+      cacheMsg.classList.add('visible');
+    }
+  }
+
   // ── Per-row delete ──────────────────────────────────────────────────────
   document.querySelectorAll('[data-file-delete]').forEach(function (b) {
     b.addEventListener('click', function () {

@@ -159,7 +159,7 @@ func (a *App) handleModesPage(w http.ResponseWriter, r *http.Request) {
 			}
 			entries = append(entries, tlEntry{
 				Clock: t.OccurredAt.UTC().Format("15:04:05"), Cat: "mode", CatClass: "tl-cat-mode", Sev: sev,
-				Msg:    fmt.Sprintf("%s → %s · %s", strings.ToUpper(string(t.From)), strings.ToUpper(string(t.To)), t.Reason),
+				Msg:    fmt.Sprintf("%s → %s · %s", saModeLabel(t.From), saModeLabel(t.To), t.Reason),
 				Causal: causal,
 			})
 		}
@@ -201,8 +201,8 @@ func (a *App) handleFaultPage(w http.ResponseWriter, r *http.Request) {
 			window = humanizeWindow(rule.Window)
 		}
 		tgtCls := "fe-target " + strings.ReplaceAll(modeShortClass(rule.TargetMode), "m-", "t-")
-		fmt.Fprintf(w, `<tr id="fe-%s"><td class="fe-name">%s</td><td><span class="%s">%d</span></td><td>×%d</td><td>%s</td><td><span class="%s">%s</span></td><td><button class="fe-sim-btn" data-fault="%s">Simulate ⚡</button></td></tr>`,
-			template.HTMLEscapeString(rule.FaultName), rule.FaultName, countCls, count, rule.Threshold, window, tgtCls, strings.ToUpper(string(rule.TargetMode)), rule.FaultName)
+		fmt.Fprintf(w, `<tr id="fe-%s"><td class="fe-name">%s</td><td><span class="%s">%d</span></td><td>×%d</td><td>%s</td><td><span class="%s">%s</span></td><td><button class="fe-sim-btn" data-fault="%s">Simulate</button></td></tr>`,
+			template.HTMLEscapeString(rule.FaultName), rule.FaultName, countCls, count, rule.Threshold, window, tgtCls, saModeLabel(rule.TargetMode), rule.FaultName)
 	}
 	fmt.Fprint(w, `</tbody></table>`)
 
@@ -212,7 +212,7 @@ func (a *App) handleFaultPage(w http.ResponseWriter, r *http.Request) {
   <span class="esc-step">fault: db.wal.write</span><span class="esc-arrow">→</span>
   <span class="esc-step">counter ×3 / 5min</span><span class="esc-arrow">→</span>
   <span class="esc-step">threshold exceeded</span><span class="esc-arrow">→</span>
-  <span class="esc-step" style="border-color:rgba(239,68,68,.4);color:var(--error)">mode: NORMAL → READ-ONLY</span><span class="esc-arrow">→</span>
+  <span class="esc-step esc-step--danger">mode: normal → read-only</span><span class="esc-arrow">→</span>
   <span class="esc-step">write queue paused</span>
 </div></div>`)
 
@@ -394,9 +394,9 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Fprint(w, `</svg></div>
 <div class="topo-legend">
-  <span class="tl-leg"><span class="tl-leg-dot" style="background:#10b981"></span>healthy</span>
-  <span class="tl-leg"><span class="tl-leg-dot" style="background:#f59e0b"></span>degraded</span>
-  <span class="tl-leg"><span class="tl-leg-dot" style="background:#ef4444"></span>blocked / fault</span>
+  <span class="tl-leg"><span class="tl-leg-dot tl-leg-dot--ok"></span>healthy</span>
+  <span class="tl-leg"><span class="tl-leg-dot tl-leg-dot--warn"></span>degraded</span>
+  <span class="tl-leg"><span class="tl-leg-dot tl-leg-dot--danger"></span>blocked / fault</span>
   <span class="tl-leg"><span class="tl-leg-line"></span>data path</span>
   <span class="tl-leg"><span class="tl-leg-line ctrl"></span>control plane</span>
 </div>`)
@@ -484,12 +484,12 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 <div class="card"><div class="esc-chain">
   <span class="esc-step">pending</span><span class="esc-arrow">→</span>
   <span class="esc-step">processing</span><span class="esc-arrow">→</span>
-  <span class="esc-step" style="border-color:rgba(16,185,129,.4);color:var(--green)">completed</span>
+  <span class="esc-step esc-step--ok">completed</span>
   <span class="esc-arrow" style="margin:0 4px">⟲</span>
-  <span class="esc-step" style="border-color:rgba(245,158,11,.4);color:var(--gold)">retry ×3</span><span class="esc-arrow">→</span>
-  <span class="esc-step" style="border-color:rgba(239,68,68,.4);color:var(--error)">dead-letter</span><span class="esc-arrow">→</span>
+  <span class="esc-step esc-step--warn">retry ×3</span><span class="esc-arrow">→</span>
+  <span class="esc-step esc-step--danger">dead-letter</span><span class="esc-arrow">→</span>
   <span class="esc-step">replay ×%d</span><span class="esc-arrow">→</span>
-  <span class="esc-step" style="border-color:rgba(248,113,113,.4);color:var(--red)">quarantined</span>
+  <span class="esc-step esc-step--danger">quarantined</span>
 </div></div>`,
 		config.Cfg.MaxReplayCount, config.Cfg.ReplayBatchLimit,
 		pending, processing, completed, failed, deadLetter, quarantined,
@@ -705,9 +705,9 @@ func (a *App) handlePolicyPage(w http.ResponseWriter, r *http.Request) {
 	sb.WriteString(`</div>`) // end policy-strip
 
 	// Live policy results section.
-	sb.WriteString(`<div style="margin:18px 0 8px 0;font:600 9px var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">LIVE EVALUATION — `)
+	sb.WriteString(`<div class="section-head"><span class="section-head__title">Live evaluation</span><span class="section-head__hint">`)
 	sb.WriteString(time.Now().UTC().Format("15:04:05Z"))
-	sb.WriteString(`</div><div style="border-top:1px solid var(--border);margin-bottom:14px"></div>`)
+	sb.WriteString(`</span></div>`)
 	sb.WriteString(`<table class="policy-history"><thead><tr>`)
 	for _, h := range []string{"Result", "Policy", "Category", "Severity", "Detail"} {
 		sb.WriteString(`<th>` + h + `</th>`)
@@ -724,7 +724,7 @@ func (a *App) handlePolicyPage(w http.ResponseWriter, r *http.Request) {
 				res = "fail"
 			}
 		}
-		badge := fmt.Sprintf(`<span class="pol-badge pol-%s">%s</span>`, res, strings.ToUpper(res))
+		badge := fmt.Sprintf(`<span class="pol-badge pol-%s">%s</span>`, res, sentenceWord(res))
 		sb.WriteString(`<tr>`)
 		sb.WriteString(`<td>` + badge + `</td>`)
 		sb.WriteString(`<td><span class="pol-name">` + html.EscapeString(r.Name) + `</span></td>`)
@@ -737,16 +737,16 @@ func (a *App) handlePolicyPage(w http.ResponseWriter, r *http.Request) {
 
 	// Historical evaluation log.
 	if len(rows) > 0 {
-		sb.WriteString(`<div style="margin:22px 0 8px;font:600 9px var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">EVALUATION HISTORY (last `)
+		sb.WriteString(`<div class="section-head"><span class="section-head__title">Evaluation history</span><span class="section-head__hint">last `)
 		sb.WriteString(fmt.Sprintf("%d", len(rows)))
-		sb.WriteString(` entries)</div><div style="border-top:1px solid var(--border);margin-bottom:14px"></div>`)
+		sb.WriteString(` entries</span></div>`)
 		sb.WriteString(`<table class="policy-history"><thead><tr>`)
 		for _, h := range []string{"Timestamp", "Run ID", "Result", "Policy", "Category", "Detail"} {
 			sb.WriteString(`<th>` + h + `</th>`)
 		}
 		sb.WriteString(`</tr></thead><tbody>`)
 		for _, row := range rows {
-			badge := fmt.Sprintf(`<span class="pol-badge pol-%s">%s</span>`, row.Result, strings.ToUpper(row.Result))
+			badge := fmt.Sprintf(`<span class="pol-badge pol-%s">%s</span>`, row.Result, sentenceWord(row.Result))
 			ts := row.EvaluatedAt.UTC().Format("2006-01-02 15:04:05Z")
 			runShort := row.RunID
 			if len(runShort) > 12 {
@@ -769,4 +769,13 @@ func (a *App) handlePolicyPage(w http.ResponseWriter, r *http.Request) {
 	sb.WriteString(`</div>`) // end padding wrapper
 	fmt.Fprint(w, sb.String())
 	writeConsoleShellFoot(w, nonce, "")
+}
+
+// sentenceWord capitalises the first letter of a machine word ("pass" →
+// "Pass"); the console reads in sentence case, not in capitals.
+func sentenceWord(w string) string {
+	if w == "" {
+		return w
+	}
+	return strings.ToUpper(w[:1]) + w[1:]
 }

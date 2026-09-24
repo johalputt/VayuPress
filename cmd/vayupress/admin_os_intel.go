@@ -205,8 +205,8 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 
 <div class="section-head"><span class="section-head__title">Indexing</span><span class="section-head__hint">Get crawled fast &amp; see who is crawling</span></div>
 <div class="mon-stack">` +
-		monAcc("🤖", "Search engine &amp; AI crawl activity", "Live per-crawler counts — proof indexing works", a.seoCrawlChip(), true, a.seoCrawlActivityCard()) +
-		monAcc("⚡", "Instant indexing (IndexNow)", "One-click auto-connect to Bing, Yandex &amp; more", inChip, false,
+		monAcc(saIcon("bot"), "Search engine &amp; AI crawl activity", "Live per-crawler counts — proof indexing works", a.seoCrawlChip(), true, a.seoCrawlActivityCard()) +
+		monAcc(saIcon("bolt"), "Instant indexing (IndexNow)", "One-click auto-connect to Bing, Yandex &amp; more", inChip, false,
 			`<p class="text-sm muted">IndexNow tells Bing, Yandex and other participating engines the moment you publish or update a post, so changes get crawled in minutes instead of days. It is fully automatic — one click creates your key, hosts the verification file at your domain root and verifies it with IndexNow. After that, every post you publish is submitted for you.</p>
   <p class="text-sm mt-2">`+indexNowStatus+`</p>
   <div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-indexnow-test>Connect &amp; verify IndexNow</button></div>
@@ -215,7 +215,7 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 
 <div class="section-head"><span class="section-head__title">Site health</span><span class="section-head__hint">Artefacts &amp; on-page SEO checks</span></div>
 <div class="mon-stack">` +
-		monAcc("📄", "Artefacts", "Sitemap, RSS &amp; robots.txt freshness", artChip, false,
+		monAcc(saIcon("doc"), "Artefacts", "Sitemap, RSS &amp; robots.txt freshness", artChip, false,
 			`<div class="table-wrap"><table class="table">
     <thead><tr><th>Artefact</th><th>Status</th></tr></thead>
     <tbody>
@@ -225,7 +225,7 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
     </tbody>
   </table></div>
   <div class="seo-status mt-3" data-seo-status hidden></div>`) +
-		monAcc("✅", "Health checks", "On-page SEO &amp; crawlability", "", false,
+		monAcc(saIcon("check-c"), "Health checks", "On-page SEO &amp; crawlability", "", false,
 			`<div class="table-wrap"><table class="table">
     <thead><tr><th>Check</th><th>Result</th></tr></thead>
     <tbody>`+checksRows+`</tbody>
@@ -618,7 +618,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
   <div class="card"><div class="card-title">Referrers</div>` + refs + `</div>
 </div>`
 
-	audiencePanel := `<div class="card mb-4"><div class="card-title">📈 Traffic channels</div>` +
+	audiencePanel := `<div class="card mb-4"><div class="card-title">` + saIcon("trend") + ` Traffic channels</div>` +
 		osBarList(osBarsFromAudience(channels), osShareOfListed(), "No traffic yet. Once visitors arrive, this groups them into Direct, Organic search, Social and Referral.") +
 		`<p class="muted text-xs mt-2">How visitors reached you — <strong>Direct</strong> (typed / bookmarked) · <strong>Organic search</strong> (Google, Bing, DuckDuckGo…) · <strong>Social</strong> (X, Reddit, LinkedIn…) · <strong>Referral</strong> (other sites). Derived from the referrer host only — cookieless, no-PII.</p></div>` +
 		`<div class="grid grid-3">
@@ -658,28 +658,28 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 	// mon-stack groups of animated <details> accordions (pure CSS, no JS).
 	sections := `<div class="section-head"><span class="section-head__title">Traffic</span><span class="section-head__hint">How many people visit &amp; who is on your site right now</span></div>
 <div class="mon-stack">` +
-		monAcc("📈", "Traffic over time", "Server-side page requests, day by day — crawlers included", `<span class="mon-chip" title="`+osRequestsVsPageviewsHint+`">`+strconv.FormatInt(sum.TotalViews, 10)+` requests</span>`, true, trafficBody) +
-		monAcc("🟢", "Live visitors", "Who is on your site right now — refreshes every 10s", `<span class="mon-chip mon-chip--on">● Live</span>`, false, osLiveCard()) +
+		monAcc(saIcon("trend"), "Traffic over time", "Server-side page requests, day by day — crawlers included", `<span class="mon-chip" title="`+osRequestsVsPageviewsHint+`">`+strconv.FormatInt(sum.TotalViews, 10)+` requests</span>`, true, trafficBody) +
+		monAcc(saIcon("pulse"), "Live visitors", "Who is on your site right now — refreshes every 10s", `<span class="mon-chip mon-chip--on">● Live</span>`, false, osLiveCard()) +
 		`</div>
 
 <div class="section-head"><span class="section-head__title">Content &amp; audience</span><span class="section-head__hint">What they read, on what device, and from where</span></div>
 <div class="mon-stack">` +
-		monAcc("📄", "Top pages &amp; referrers", "Most-viewed content and where visitors come from", countChip(len(sum.TopPages), "pages"), false, pagesPanel) +
-		monAcc("🖥️", "Audience", "Channels, devices, browsers &amp; operating systems", "", false, audiencePanel) +
-		monAcc("🌍", "Geography", "Countries, regions &amp; cities — coarse geo only", countChip(len(countries), "countries"), false, osGeoSection(countries, regions, cities)) +
+		monAcc(saIcon("doc"), "Top pages &amp; referrers", "Most-viewed content and where visitors come from", countChip(len(sum.TopPages), "pages"), false, pagesPanel) +
+		monAcc(saIcon("monitor"), "Audience", "Channels, devices, browsers &amp; operating systems", "", false, audiencePanel) +
+		monAcc(saIcon("globe"), "Geography", "Countries, regions &amp; cities — coarse geo only", countChip(len(countries), "countries"), false, osGeoSection(countries, regions, cities)) +
 		`</div>
 
 <div class="section-head"><span class="section-head__title">Acquisition &amp; actions</span><span class="section-head__hint">Campaigns, custom events, goals and visitor journeys</span></div>
 <div class="mon-stack">` +
-		monAcc("📣", "Campaigns (UTM)", "Which shared links &amp; campaigns bring visitors", countChip(len(utm), "campaigns"), false, campaignsPanel) +
-		monAcc("✨", "Custom events", "Actions you track with data-vp-event / VayuPress.track()", countChip(len(events), "events"), false, eventsPanel) +
-		monAcc("🎯", "Goals &amp; funnels", "Conversions and multi-step funnels", "", false, a.osGoalsSection(ctx, days)) +
-		monAcc("🧭", "Visitor journey", "Common entry pages and paths through your site", "", false, a.osJourneySection(ctx, days)) +
+		monAcc(saIcon("megaphone"), "Campaigns (UTM)", "Which shared links &amp; campaigns bring visitors", countChip(len(utm), "campaigns"), false, campaignsPanel) +
+		monAcc(saIcon("sparkle"), "Custom events", "Actions you track with data-vp-event / VayuPress.track()", countChip(len(events), "events"), false, eventsPanel) +
+		monAcc(saIcon("target"), "Goals &amp; funnels", "Conversions and multi-step funnels", "", false, a.osGoalsSection(ctx, days)) +
+		monAcc(saIcon("compass"), "Visitor journey", "Common entry pages and paths through your site", "", false, a.osJourneySection(ctx, days)) +
 		`</div>
 
 <div class="section-head"><span class="section-head__title">Export</span><span class="section-head__hint">Take your data with you</span></div>
 <div class="mon-stack">` +
-		monAcc("⬇️", "Export data", "Download the raw analytics for this period", "", false, osExportSection(days)) +
+		monAcc(saIcon("download"), "Export data", "Download the raw analytics for this period", "", false, osExportSection(days)) +
 		`</div>`
 
 	body := `<div class="page-header"><h1>Analytics</h1>
@@ -755,13 +755,13 @@ func osLiveCard() string {
     <div class="vm-live-rings" aria-hidden="true"><span></span><span></span><span></span></div>
   </div>
   <div class="grid grid-3 vm-live-grid">
-    <div class="card"><div class="card-title">🌍 Top countries</div>
+    <div class="card"><div class="card-title">` + saIcon("globe") + ` Top countries</div>
       <div class="vp-bars vm-live-list" data-live-countries><div class="empty-state">Waiting for live data…</div></div>
     </div>
-    <div class="card"><div class="card-title">📄 Active pages</div>
+    <div class="card"><div class="card-title">` + saIcon("doc") + ` Active pages</div>
       <div class="vp-bars vm-live-list" data-live-pages><div class="empty-state">Waiting for live data…</div></div>
     </div>
-    <div class="card"><div class="card-title">🔗 Referrers</div>
+    <div class="card"><div class="card-title">` + saIcon("link") + ` Referrers</div>
       <div class="vp-bars vm-live-list" data-live-referrers><div class="empty-state">Waiting for live data…</div></div>
     </div>
   </div>
@@ -774,7 +774,7 @@ func osLiveCard() string {
 // absent it shows a precise, premium setup card rather than a blank panel.
 func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 	if len(countries) == 0 && len(regions) == 0 && len(cities) == 0 {
-		return `<div class="card"><div class="card-title">🌍 Locations</div>` + osGeoSetupNote(true) + `</div>`
+		return `<div class="card"><div class="card-title">` + saIcon("globe") + ` Locations</div>` + osGeoSetupNote(true) + `</div>`
 	}
 	// Countries as a colour bar list with full country names + flags.
 	countryBars := make([]osChartBar, 0, len(countries))
@@ -800,15 +800,15 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 	sort.SliceStable(continentBars, func(i, j int) bool { return continentBars[i].Value > continentBars[j].Value })
 
 	top := `<div class="grid grid-2">
-  <div class="card"><div class="card-title">🌍 Countries</div><div class="vp-geo-scroll">` + osBarList(countryBars, osShareOfListed(), "No country data yet.") + `</div></div>
-  <div class="card"><div class="card-title">🗺️ Continents</div>` + osBarList(continentBars, osShareOfListed(), "No continent data yet.") + `</div>
+  <div class="card"><div class="card-title">` + saIcon("globe") + ` Countries</div><div class="vp-geo-scroll">` + osBarList(countryBars, osShareOfListed(), "No country data yet.") + `</div></div>
+  <div class="card"><div class="card-title">` + saIcon("where") + ` Continents</div>` + osBarList(continentBars, osShareOfListed(), "No continent data yet.") + `</div>
 </div>`
 
 	// Regions & cities need proxy headers. When both are absent, show one setup
 	// card spanning the row; otherwise show whichever populated bar lists exist.
 	var detail string
 	if len(regions) == 0 && len(cities) == 0 {
-		detail = `<div class="card mt-4"><div class="card-title">📍 Regions &amp; cities</div>` + osGeoSetupNote(false) + `</div>`
+		detail = `<div class="card mt-4"><div class="card-title">` + saIcon("pin") + ` Regions &amp; cities</div>` + osGeoSetupNote(false) + `</div>`
 	} else {
 		regionCard := osGeoSetupNote(false)
 		if len(regions) > 0 {
@@ -819,8 +819,8 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 			cityCard = `<div class="vp-geo-scroll">` + osBarList(osBarsFromAudience(cities), osShareOfListed(), "") + `</div>`
 		}
 		detail = `<div class="grid grid-2 mt-4">
-  <div class="card"><div class="card-title">📍 Regions</div>` + regionCard + `</div>
-  <div class="card"><div class="card-title">🏙️ Cities</div>` + cityCard + `</div>
+  <div class="card"><div class="card-title">` + saIcon("pin") + ` Regions</div>` + regionCard + `</div>
+  <div class="card"><div class="card-title">` + saIcon("where") + ` Cities</div>` + cityCard + `</div>
 </div>`
 	}
 	return top + detail
@@ -926,7 +926,7 @@ func osExportSection(days int) string {
 // period change badge (deltaHTML may be empty).
 func osStatCardDelta(label, val, deltaHTML string) string {
 	return `<div class="card"><div class="card-title">` + html.EscapeString(label) + `</div>` +
-		`<div class="vm-stat-row"><span class="vm-stat">` + html.EscapeString(val) + `</span>` + deltaHTML + `</div></div>`
+		`<div class="vm-stat-row"><span class="vm-stat__v">` + html.EscapeString(val) + `</span>` + deltaHTML + `</div></div>`
 }
 
 // osDeltaPct renders a relative percentage-change badge comparing the current
@@ -1031,5 +1031,5 @@ const osRequestsVsPageviewsHint = "Server-side count of page requests, including
 	"browser beacon, so it is lower — the difference is roughly your machine traffic."
 
 func osPrivacyNote() string {
-	return `<p class="vm-privacy-note muted text-sm">🔒 All analytics are computed and stored locally on your own server. No cookies, no PII, no third-party requests — your data never leaves this instance.</p>`
+	return `<p class="vm-privacy-note muted text-sm">` + saIcon("lock") + ` All analytics are computed and stored locally on your own server. No cookies, no PII, no third-party requests — your data never leaves this instance.</p>`
 }

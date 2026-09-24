@@ -242,7 +242,7 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	// Say so plainly so "the app and website can't message each other" is never a
 	// mystery: switch to Clearnet in the sidebar to use mailbox chat with the app.
 	if config.Cfg.OnionMode {
-		body.WriteString(`<div class="settings-callout">🧅 <strong>This is the Tor world's chat.</strong> It is separate from your Clearnet mailbox chat and the mobile app — they run on a different relay. To message your mailbox contacts or the app, switch to <a href="/os/world?target=clearnet"><strong>Clearnet</strong></a>.</div>`)
+		body.WriteString(`<div class="settings-callout">` + saIcon("tor") + ` <strong>This is the Tor world's chat.</strong> It is separate from your Clearnet mailbox chat and the mobile app — they run on a different relay. To message your mailbox contacts or the app, switch to <a href="/os/world?target=clearnet"><strong>Clearnet</strong></a>.</div>`)
 	}
 
 	if !a.vayuTalkEnabled() {
@@ -346,7 +346,7 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 		if config.Cfg.OnionMode {
 			what = "A code"
 		}
-		body.WriteString(`<div class="settings-callout">🔗 ` + what + ` came with this link — press <strong>Start</strong> to open the chat with <code>` + htmpl.HTMLEscapeString(invite) + `</code>.</div>`)
+		body.WriteString(`<div class="settings-callout">` + saIcon("link") + what + ` came with this link — press <strong>Start</strong> to open the chat with <code>` + htmpl.HTMLEscapeString(invite) + `</code>.</div>`)
 	}
 	// The Tor world's recipients are 70-character anonymous codes, not mail
 	// addresses: an email input with a "name@domain" placeholder invites the wrong
@@ -379,12 +379,12 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	// Right pane: thread header, message list, composer.
 	body.WriteString(`<section class="vtalk-main" id="vtalk-main" data-empty="1">`)
 	body.WriteString(`<div class="vtalk-thread-head" id="vtalk-thread-head"></div>`)
-	body.WriteString(`<div class="vtalk-thread" id="vtalk-thread"><div class="vtalk-hint"><div class="vtalk-hint-badge">🔒</div><p>Pick a conversation or start a new one. Messages are end-to-end encrypted and self-destruct on a timer once they're read. Turn on 🔥 Live to keep nothing on the server at all.</p></div></div>`)
+	body.WriteString(`<div class="vtalk-thread" id="vtalk-thread"><div class="vtalk-hint"><div class="vtalk-hint-badge">` + saIcon("lock") + `</div><p>Pick a conversation or start a new one. Messages are end-to-end encrypted and self-destruct on a timer once they're read. Turn on Live to keep nothing on the server at all.</p></div></div>`)
 	body.WriteString(`<form class="vtalk-composer" id="vtalk-composer">`)
 	body.WriteString(`<textarea class="vtalk-input" id="vtalk-input" rows="1" placeholder="Write a message…" aria-label="Message" disabled></textarea>`)
 	body.WriteString(`<div class="vtalk-composer-actions">`)
 	body.WriteString(`<label class="vtalk-opt"><span class="text-sm muted">Disappears</span><select class="input input--sm" id="vtalk-ttl" aria-label="Self-destruct timer (after reading)"><option value="5">5 sec after read</option><option value="60">1 min after read</option><option value="300" selected>5 min after read</option><option value="900">15 min after read</option><option value="1800">30 min after read</option><option value="3600">1 hour after read</option></select></label>`)
-	body.WriteString(`<label class="vtalk-opt vtalk-live" title="Live mode: not stored on the server; vanishes the instant it is read. Both of you must be online."><input type="checkbox" id="vtalk-live"><span class="text-sm">🔥 Live</span></label>`)
+	body.WriteString(`<label class="vtalk-opt vtalk-live" title="Live mode: not stored on the server; vanishes the instant it is read. Both of you must be online."><input type="checkbox" id="vtalk-live"><span class="text-sm">` + saIcon("timer") + ` Live</span></label>`)
 	body.WriteString(`<span class="vtalk-opt--spacer"></span>`)
 	body.WriteString(`<button class="btn btn--primary btn--sm" type="submit" id="vtalk-send" disabled>Send</button>`)
 	body.WriteString(`</div></form>`)

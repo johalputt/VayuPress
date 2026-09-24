@@ -48,7 +48,7 @@ func TestOSPostPinFragment(t *testing.T) {
 	if !strings.Contains(body, ">Unpin</button>") {
 		t.Errorf("expected flipped Unpin button:\n%s", body)
 	}
-	if !strings.Contains(body, `hx-swap-oob="true"`) || !strings.Contains(body, "📌 Pinned") {
+	if !strings.Contains(body, `hx-swap-oob="true"`) || !strings.Contains(body, "</svg> Pinned</span>") {
 		t.Errorf("expected out-of-band pinned badge:\n%s", body)
 	}
 

@@ -171,10 +171,10 @@ self.addEventListener('fetch', function (e) {
       return new Response(
         '<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">' +
         '<title>VayuOS — offline</title>' +
-        '<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#080e1a;color:#eef2f8;font:16px/1.5 system-ui,sans-serif">' +
-        '<div style="text-align:center;padding:24px"><div style="font-size:44px">📴</div>' +
+        '<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f0f0e;color:#ecebe7;font:16px/1.5 system-ui,sans-serif">' +
+        '<div style="text-align:center;padding:24px">' +
         '<h1 style="font-size:20px;margin:.5em 0">You are offline</h1>' +
-        '<p style="color:#b8c6dd;max-width:22rem">VayuOS needs a connection to load your console. Reconnect and try again.</p></div>',
+        '<p style="color:#b3b1aa;max-width:22rem">VayuOS needs a connection to load your console. Reconnect and try again.</p></div>',
         { headers: { 'Content-Type': 'text/html; charset=utf-8' }, status: 503 });
   })());
 });

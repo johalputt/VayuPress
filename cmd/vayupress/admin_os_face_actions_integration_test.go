@@ -58,7 +58,7 @@ func TestFaceStatusFragmentParity(t *testing.T) {
 	}
 	body := rec.Body.String()
 	// In-place element: the flipped face copy (icon-only, face id, no OOB marker).
-	if !strings.Contains(body, `id="post-pubface-face-status"`) || !strings.Contains(body, `>↧</span></button>`) {
+	if !strings.Contains(body, `id="post-pubface-face-status"`) || !strings.Contains(body, `aria-label="Unpublish post"`) {
 		t.Errorf("expected flipped face copy in place, got:\n%s", body)
 	}
 	// The body copy and the pill ride out-of-band.
@@ -96,13 +96,13 @@ func TestFacePinFragmentParity(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, `id="post-pinface-face-pin"`) || !strings.Contains(body, `>📍</span></button>`) {
+	if !strings.Contains(body, `id="post-pinface-face-pin"`) || !strings.Contains(body, `aria-pressed="true"`) {
 		t.Errorf("expected flipped face pin copy in place, got:\n%s", body)
 	}
 	if !strings.Contains(body, `id="post-pin-face-pin" data-src="body" hx-swap-oob="true"`) {
 		t.Errorf("expected the body pin copy as an out-of-band swap, got:\n%s", body)
 	}
-	if !strings.Contains(body, `id="ppin-face-pin" hx-swap-oob="true"`) || !strings.Contains(body, "📌 Pinned") {
+	if !strings.Contains(body, `id="ppin-face-pin" hx-swap-oob="true"`) || !strings.Contains(body, "</svg> Pinned</span>") {
 		t.Errorf("expected the pinned badge as an out-of-band swap, got:\n%s", body)
 	}
 	var feat int

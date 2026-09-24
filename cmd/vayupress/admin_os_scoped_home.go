@@ -55,15 +55,15 @@ type scopedTool struct {
 // read as the same component as one whose subtitle is six words, and that was
 // half of why this band looked foreign on its own page.
 var scopedTools = []scopedTool{
-	{Key: "content", Path: "/os/d/%s/content", Icon: "📝", Title: "Posts & pages", Live: true,
+	{Key: "content", Path: "/os/d/%s/content", Icon: "pencil", Title: "Posts & pages", Live: true,
 		Desc: "This site's own writing, listed and published"},
-	{Key: "website", Path: "/os/d/%s/website", Icon: "🌐", Title: "Website", Live: true,
+	{Key: "website", Path: "/os/d/%s/website", Icon: "globe", Title: "Website", Live: true,
 		Desc: "Serve this domain as a blog or as a website"},
-	{Key: "settings", Path: "/os/d/%s/settings", Icon: "⚙️", Title: "Site settings", Live: true,
+	{Key: "settings", Path: "/os/d/%s/settings", Icon: "settings", Title: "Site settings", Live: true,
 		Desc: "Name, tagline and description for this site"},
-	{Key: "seo", Path: "/os/d/%s/seo", Icon: "🔍", Title: "SEO", Live: true,
+	{Key: "seo", Path: "/os/d/%s/seo", Icon: "search", Title: "SEO", Live: true,
 		Desc: "Head directives, tokens, sitemap and robots"},
-	{Key: "analytics", Path: "/os/d/%s/analytics", Icon: "📈", Title: "Visitors", Live: true,
+	{Key: "analytics", Path: "/os/d/%s/analytics", Icon: "trend", Title: "Visitors", Live: true,
 		Desc: "This site's own traffic, counted server-side"},
 }
 
@@ -233,7 +233,7 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 		// The inner grammar is the accordion summary's, class for class, so the two
 		// bands on this page cannot drift apart again. Only the frame and the
 		// affordance differ: a link leans, a disclosure rotates.
-		head := `<span class="mon-acc__ic" aria-hidden="true">` + t.Icon + `</span>` +
+		head := `<span class="mon-acc__ic" aria-hidden="true">` + saIcon(t.Icon) + `</span>` +
 			`<span class="mon-acc__head"><span class="mon-acc__title">` + esc(t.Title) + `</span>` +
 			`<span class="mon-acc__sub">` + esc(t.Desc) + `</span></span>`
 		if t.Live {
@@ -244,7 +244,7 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 		// The reason stays on the row. A tool listed without one reads as broken
 		// rather than as deliberately not linked yet.
 		b.WriteString(`<div class="scoped-tool scoped-tool--soon">` +
-			`<span class="mon-acc__ic" aria-hidden="true">` + t.Icon + `</span>` +
+			`<span class="mon-acc__ic" aria-hidden="true">` + saIcon(t.Icon) + `</span>` +
 			`<span class="mon-acc__head"><span class="mon-acc__title">` + esc(t.Title) + `</span>` +
 			`<span class="mon-acc__sub">Not scoped yet — it would edit the primary site, so it is ` +
 			`not linked from here</span></span>` +
@@ -266,9 +266,9 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 		servesChip = `<span class="mon-chip mon-chip--on">` +
 			html.EscapeString(siteTypeLabel(d.EffectiveSiteType())) + ` + mail</span>`
 	}
-	b.WriteString(monAcc("🌐", "What this domain serves", "Blog, website, or both — and whether it carries mail",
+	b.WriteString(monAcc(saIcon("globe"), "What this domain serves", "Blog, website, or both — and whether it carries mail",
 		servesChip, false, domainServesCard(d, mailOn)))
-	b.WriteString(monAcc("👤", "Client access", "Who can sign in and see only this site",
+	b.WriteString(monAcc(saIcon("user"), "Client access", "Who can sign in and see only this site",
 		chipFor(len(clients) > 0, strconv.Itoa(len(clients))+" login(s)", "no logins"),
 		len(clients) == 0, domainClientAccessCard(d, clients)))
 	// Always rendered, including when mail is off install-wide. Hiding it then
@@ -281,12 +281,12 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 	if noAllowance {
 		allowanceChip = `<span class="mon-chip mon-chip--off">none granted</span>`
 	}
-	b.WriteString(monAcc("✉️", "Mailbox allowance", "How many mailboxes this site may create",
+	b.WriteString(monAcc(saIcon("mail"), "Mailbox allowance", "How many mailboxes this site may create",
 		allowanceChip, noAllowance, domainAllowanceCard(d, mailboxes, mailOn)))
 	b.WriteString(mirrorAcc)
-	b.WriteString(monAcc("🔧", "Lifecycle", "Provisioning, availability and removal",
+	b.WriteString(monAcc(saIcon("wrench"), "Lifecycle", "Provisioning, availability and removal",
 		chipFor(d.Status == domain.StatusActive, "active", "disabled"), false, scopedLifecycleBody(d)))
-	b.WriteString(monAcc("🏛", "What is shared, and always will be",
+	b.WriteString(monAcc(saIcon("columns"), "What is shared, and always will be",
 		"One binary, one machine — some things cannot be per-site",
 		`<span class="mon-chip mon-chip--off">by construction</span>`, false, scopedSharedBody()))
 	b.WriteString(`</div>`)
@@ -491,12 +491,12 @@ func scopedCertificateSection(d domain.Domain, checks []diagCheck, logLines []st
 	if blocking > 0 {
 		certSub = "Blocked — the diagnosis below names what is stopping it, and waiting will not clear it"
 	}
-	b.WriteString(monAcc("🔒", "Certificate", certSub,
+	b.WriteString(monAcc(saIcon("lock"), "Certificate", certSub,
 		`<span class="mon-chip mon-chip--off">`+html.EscapeString(certChip)+`</span>`,
 		true, scopedCertificateBody(d)))
 
 	if len(checks) > 0 {
-		b.WriteString(monAcc("🩺", "What this console checked",
+		b.WriteString(monAcc(saIcon("pulse"), "What this console checked",
 			"Run here, now, against this install — not a description of where to go and look",
 			chipFor(blocking == 0, "nothing blocking", strconv.Itoa(blocking)+" blocking"),
 			blocking > 0, scopedDiagnosticPanel(d.ID, checks, logLines, d.Host, time.Now())))

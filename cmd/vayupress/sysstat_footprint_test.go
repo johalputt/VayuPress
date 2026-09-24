@@ -18,13 +18,17 @@ func TestFootprintCacheIsServed(t *testing.T) {
 	cache := filepath.Join(dir, "cache")
 	media := filepath.Join(dir, "media")
 	backups := filepath.Join(dir, "backups")
-	for _, d := range []string{cache, media, backups} {
+	pages := filepath.Join(cache, "posts")
+	for _, d := range []string{pages, media, backups, filepath.Join(cache, "update-backups")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	writeN(t, filepath.Join(cache, "page1"), 4096)
-	writeN(t, filepath.Join(cache, "page2"), 2048)
+	writeN(t, filepath.Join(pages, "page1.html"), 4096)
+	writeN(t, filepath.Join(pages, "page2.html"), 2048)
+	// A pre-update backup lives under CACHE_DIR but is not cache: it must not be
+	// counted as one (it used to be, and so was counted twice).
+	writeN(t, filepath.Join(cache, "update-backups", "vp.db.bak"), 70000)
 	writeN(t, filepath.Join(media, "img"), 500)
 	db := filepath.Join(dir, "vayupress.db")
 	writeN(t, db, 10)
@@ -45,7 +49,7 @@ func TestFootprintCacheIsServed(t *testing.T) {
 
 	// A new file added AFTER the last refresh is NOT reflected until the next
 	// background refresh — proving the read path does not re-walk.
-	writeN(t, filepath.Join(cache, "page3"), 9999)
+	writeN(t, filepath.Join(pages, "page3.html"), 9999)
 	s2 := collectSysStats(db, cache, media, backups)
 	if s2.CacheSize != 6144 {
 		t.Errorf("CacheSize changed to %d without a refresh — the read path is walking the tree", s2.CacheSize)

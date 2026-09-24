@@ -401,38 +401,46 @@ func (a *App) FireHook(event string, payload map[string]interface{}) {
 // =============================================================================
 
 func (a *App) purgeCloudflare(slug string) {
-	// Tor/anonymous mode (ADR-0141): a Tor Space has no clearnet CDN in front of
-	// it, and must never call the Cloudflare API (an outbound clearnet request).
-	if config.Cfg.OnionMode {
+	if !cloudflareConfigured() {
 		return
 	}
-	if config.Cfg.CFZoneID == "" || config.Cfg.CFAPIToken == "" {
-		return
+	if err := a.cloudflarePurge(map[string]any{"files": []string{"https://" + config.Cfg.Domain + "/" + slug}}); err != nil {
+		logging.LogError("cloudflare", "purge failed: "+slug, err.Error())
 	}
+}
+
+// cloudflareConfigured reports whether a Cloudflare purge may be sent at all.
+// Tor/anonymous mode (ADR-0141): a Tor Space has no clearnet CDN in front of
+// it, and must never call the Cloudflare API (an outbound clearnet request).
+func cloudflareConfigured() bool {
+	return !config.Cfg.OnionMode && config.Cfg.CFZoneID != "" && config.Cfg.CFAPIToken != ""
+}
+
+// cloudflarePurge sends one purge_cache request: {"files": [...]} for pages,
+// {"purge_everything": true} for the whole zone.
+func (a *App) cloudflarePurge(payload map[string]any) error {
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/purge_cache", config.Cfg.CFZoneID)
-	body, err := json.Marshal(map[string][]string{"files": {"https://" + config.Cfg.Domain + "/" + slug}})
+	body, err := json.Marshal(payload)
 	if err != nil {
-		logging.LogError("cloudflare", "marshal failed: "+slug, err.Error())
-		return
+		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
-		logging.LogError("cloudflare", "build request failed: "+slug, err.Error())
-		return
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+config.Cfg.CFAPIToken)
 	resp, err := a.outboundClient.Do(req)
 	if err != nil {
-		logging.LogError("cloudflare", "purge failed: "+slug, err.Error())
-		return
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		logging.LogError("cloudflare", "purge rejected: "+slug, fmt.Sprintf("status %d", resp.StatusCode))
+		return fmt.Errorf("cloudflare answered %d", resp.StatusCode)
 	}
+	return nil
 }
 
 // indexNowKey resolves the active IndexNow key, preferring a credential managed

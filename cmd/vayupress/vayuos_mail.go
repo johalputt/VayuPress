@@ -211,9 +211,9 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 		if rd := a.mailReader(r, mailUserParam(r)); rd.Key() != "" {
 			if files, derr := a.vayuMail.DraftAttachments(rd, draftID); derr == nil && len(files) > 0 {
 				var fb strings.Builder
-				fb.WriteString(`<div class="vm-row vm-row--tight"><span class="muted text-sm">📎 Saved with this draft — Send includes them:</span><span class="vm-attach-list">`)
+				fb.WriteString(`<div class="vm-row vm-row--tight"><span class="muted text-sm">` + saIcon("clip") + ` Saved with this draft — Send includes them:</span><span class="vm-attach-list">`)
 				for _, f := range files {
-					fb.WriteString(`<span class="vm-attach-chip"><span class="vm-attach-ico" aria-hidden="true">📄</span>` +
+					fb.WriteString(`<span class="vm-attach-chip"><span class="vm-attach-ico" aria-hidden="true">` + saIcon("doc") + `</span>` +
 						`<span class="vm-attach-name">` + html.EscapeString(f.Filename) + `</span>` +
 						`<span class="vm-attach-size">` + html.EscapeString(humanBytes(int64(len(f.Data)))) + `</span></span>`)
 				}
@@ -247,7 +247,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	}
 	feedbackBanner := ""
 	if feedback {
-		feedbackBanner = `<div class="vm-feedback-banner">💡 <strong>Help improve VayuPress.</strong> Tell us about a bug, an improvement or a feature you'd like — attach screenshots or files if they help. Your report is <strong>PGP-encrypted end-to-end, attachments included</strong>. Just add your details and hit Send.</div>`
+		feedbackBanner = `<div class="vm-feedback-banner">` + saIcon("info") + ` <strong>Help improve VayuPress.</strong> Tell us about a bug, an improvement or a feature you'd like — attach screenshots or files if they help. Your report is <strong>PGP-encrypted end-to-end, attachments included</strong>. Just add your details and hit Send.</div>`
 	}
 
 	// Recipient autocomplete is scoped to the SENDING mailbox's own address book
@@ -308,7 +308,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
       <button class="vm-ed-btn" type="button" data-c-fmt="quote" title="Quote" aria-label="Quote">&rdquo;</button>
       <span class="vm-ed-sep" aria-hidden="true"></span>
       <button class="vm-ed-btn" type="button" data-c-fmt="code" title="Code block" aria-label="Code block">&lt;/&gt;</button>
-      <button class="vm-ed-btn" type="button" data-c-fmt="link" title="Link (Ctrl+K)" aria-label="Insert link">&#128279;</button>
+      <button class="vm-ed-btn" type="button" data-c-fmt="link" title="Link (Ctrl+K)" aria-label="Insert link">` + saIcon("link") + `</button>
       <button class="vm-ed-btn" type="button" data-c-fmt="rule" title="Divider" aria-label="Divider">&mdash;</button>
       <span class="vm-ed-spacer"></span>
       <button class="vm-ed-btn vm-ed-btn--wide" type="button" data-c-preview title="Preview how the message will look" aria-pressed="false">Preview</button>
@@ -341,11 +341,11 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
   </div>
 
   <div class="vm-row vm-row--tight">
-    <label class="vm-filter-check"><input type="checkbox" data-c-rich> &#127912; Also send an HTML version</label>
+    <label class="vm-filter-check"><input type="checkbox" data-c-rich> Also send an HTML version</label>
     <span class="vm-pgp-hint">Off &mdash; the message goes as plain text, which is what a young sending domain delivers best. Turn on to add an HTML rendering of the same words alongside it; clients that prefer HTML show that one, the rest see your text unchanged.</span>
   </div>
   <div class="vm-row vm-row--tight">
-    <label class="vm-filter-check"><input type="checkbox" data-c-encrypt` + encAttr + `> 🔒 Encrypt with PGP</label>
+    <label class="vm-filter-check"><input type="checkbox" data-c-encrypt` + encAttr + `> Encrypt with PGP</label>
     <span class="vm-pgp-hint" data-c-encrypt-hint aria-live="polite">Off — the message is sent as readable text. Turn on to PGP-encrypt the message and attachments (RFC 3156) for recipients whose keys are known.</span>
   </div>
   <div class="vm-row vm-compose-actions">
@@ -1227,7 +1227,7 @@ func (a *App) handleVayuOSFilterAction(w http.ResponseWriter, r *http.Request) {
 	// acctRefresh returns whichever surface the control lives on.
 	card := a.acctRefresh(r, email)
 	if opErr != nil {
-		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
+		card = saCallout("danger", html.EscapeString(opErr.Error())) + card
 	}
 	writeOSHTML(w, r, card)
 }
@@ -1280,7 +1280,7 @@ func (a *App) handleVayuOSAutoreplyAction(w http.ResponseWriter, r *http.Request
 	// acctRefresh returns whichever surface the control lives on.
 	card := a.acctRefresh(r, email)
 	if opErr != nil {
-		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
+		card = saCallout("danger", html.EscapeString(opErr.Error())) + card
 	}
 	writeOSHTML(w, r, card)
 }
@@ -1357,7 +1357,7 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 	// its settings page; acctRefresh returns whichever surface the control lives on.
 	card := a.acctRefresh(r, mailbox)
 	if opErr != nil {
-		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
+		card = saCallout("danger", html.EscapeString(opErr.Error())) + card
 	}
 	writeOSHTML(w, r, card)
 }
@@ -1648,7 +1648,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	// certificate. Surface this prominently with the exact remediation.
 	acmeErr := a.vayuMail.ACMEChallengeError()
 	if a.vayuMail.TLSActive() && !a.vayuMail.TLSTrusted() {
-		body.WriteString(`<div class="card" style="border-left:4px solid #d9534f"><div class="card-title">⚠ Mail apps will reject this connection</div>`)
+		body.WriteString(`<div class="card card--danger"><div class="card-title">` + saIcon("error") + ` Mail apps will reject this connection</div>`)
 		body.WriteString(`<p class="text-sm">VayuMail is serving a <strong>self-signed TLS certificate</strong>, so mobile and desktop mail apps ` +
 			`(the Gmail app, Apple Mail, Thunderbird, Outlook) report <em>"Couldn't open connection to server"</em> — even though the ports above are online.</p>`)
 		// Surface the exact reason the engine recorded, so the operator isn't guessing.
@@ -1660,7 +1660,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 				` — port 80 is almost certainly already used by your website's nginx, so VayuMail cannot answer the Let's Encrypt challenge itself.</p>`)
 		}
 		body.WriteString(`<p class="text-sm"><strong>This is a one-time step and is SEPARATE from updating VayuPress</strong> — the update command only swaps the binary; it never provisions the mail certificate. Run this once on the server (it issues a real Let's Encrypt certificate for <code>` + hHost + `</code> through nginx, makes it readable by the mail service, and wires it in):</p>`)
-		body.WriteString(`<pre class="mono text-sm" style="white-space:pre-wrap;background:var(--bg-surface-2);padding:10px;border-radius:8px">cd /tmp/VayuPress &amp;&amp; git pull origin main &amp;&amp; sudo bash deploy/vayumail-setup.sh</pre>`)
+		body.WriteString(`<pre class="code-block code-block--wrap">cd /tmp/VayuPress &amp;&amp; git pull origin main &amp;&amp; sudo bash deploy/vayumail-setup.sh</pre>`)
 		body.WriteString(`<p class="text-sm">Then reload this page. It auto-renews and is auto-discovered on restart (no env vars needed). If the script reports a DNS or port-80 problem, fix that and re-run it. Alternatives:</p>`)
 		body.WriteString(`<ul class="text-sm">` +
 			`<li><strong>Built-in ACME (only if port 80 is free):</strong> set <code>VAYUOS_MAIL_TLS_ACME=on</code> and <code>VAYUOS_MAIL_ACME_EMAIL=you@` + html.EscapeString(mc.Domain) + `</code>, then restart. On this box nginx owns port 80, so use the script above instead — or point a free port via <code>VAYUOS_MAIL_ACME_HTTP_ADDR=127.0.0.1:8081</code> and proxy <code>` + hHost + `/.well-known/acme-challenge/</code> to it in nginx.</li>` +
@@ -1677,7 +1677,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 		// Gmail app (validating from Google's servers) and Thunderbird for Android
 		// silently refuse. Surface the mismatch and the exact connect hostname.
 		if covered := a.vayuMail.TLSCertHosts(); len(covered) > 0 && !a.vayuMail.TLSCertCovers(host) {
-			body.WriteString(`<p class="text-sm" style="color:#d9844f">⚠ The certificate does <strong>not</strong> cover <code>` + hHost + `</code>, the server your apps are told to connect to. Desktop apps let you accept this, but the <strong>Gmail app and Thunderbird for Android refuse it</strong> — which is why mobile won't sync.</p>`)
+			body.WriteString(`<p class="text-sm tone-warn">` + saIcon("warn") + ` The certificate does <strong>not</strong> cover <code>` + hHost + `</code>, the server your apps are told to connect to. Desktop apps let you accept this, but the <strong>Gmail app and Thunderbird for Android refuse it</strong> — which is why mobile won't sync.</p>`)
 			body.WriteString(`<p class="text-sm">This certificate is valid for: <code>` + html.EscapeString(strings.Join(covered, "</code>, <code>")) + `</code>.</p>`)
 			body.WriteString(`<p class="text-sm"><strong>Fix it one of two ways:</strong></p><ul class="text-sm">`)
 			body.WriteString(`<li>Set the mail hostname to a name the certificate already covers — e.g. <code>VAYUOS_MAIL_HOSTNAME=` + html.EscapeString(covered[0]) + `</code> — and restart, so Connect/Autoconfig hand clients the matching name; or</li>`)
@@ -1687,7 +1687,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 		// Even in ACME mode, warn if the challenge responder can't bind — renewals
 		// will eventually fail and the cert will expire back into self-signed.
 		if acmeErr != "" {
-			body.WriteString(`<p class="text-sm" style="color:#d9844f">⚠ Auto-renewal may fail: ` + html.EscapeString(acmeErr) +
+			body.WriteString(`<p class="text-sm tone-warn">` + saIcon("warn") + ` Auto-renewal may fail: ` + html.EscapeString(acmeErr) +
 				` (port 80 is held by another service). Switch to the guided script (<code>sudo bash deploy/vayumail-setup.sh</code>), which renews through nginx, to avoid the certificate expiring.</p>`)
 		}
 		body.WriteString(`</div>`)
@@ -1696,7 +1696,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	// ── Recommended app: VayuMail Mobile ──────────────────────────────────────
 	// VayuPress's own official mobile client. Plain external links only —
 	// CSP-safe (no third-party assets are loaded).
-	body.WriteString(`<div class="card"><div class="card-title">📱 VayuMail — the official mobile app</div>`)
+	body.WriteString(`<div class="card"><div class="card-title">` + saIcon("phone") + ` VayuMail — the official mobile app</div>`)
 	body.WriteString(`<p class="text-sm">The easiest way to use your mailboxes on the go. <strong>VayuMail Mobile</strong> is VayuPress's own open-source app — connecting it takes about 30 seconds:</p>`)
 	body.WriteString(`<ol class="text-sm">` +
 		`<li><strong>Install the app</strong> (links below).</li>` +
@@ -2367,9 +2367,9 @@ func (a *App) handleVayuOSAppPasswordCreate(w http.ResponseWriter, r *http.Reque
 		// html.EscapeString called directly, not through a local alias: the label
 		// and address come from the form, and CodeQL credits the escaper only
 		// when it can see the call (go/reflected-xss).
-		banner = `<div class="card" style="border-left:4px solid #22c55e"><div class="card-title">App password created — copy it now</div>` +
+		banner = `<div class="card card--ok"><div class="card-title">` + saIcon("check-c") + ` App password created — copy it now</div>` +
 			`<p class="text-sm">This password is <strong>shown only once</strong>. It is stored only as a hash and can never be displayed again — if it is lost, revoke it and create a new one.</p>` +
-			`<pre class="mono text-sm" style="white-space:pre-wrap;background:var(--bg-surface-2);padding:10px;border-radius:8px">` + html.EscapeString(grouped) + `</pre>` +
+			`<pre class="code-block code-block--wrap">` + html.EscapeString(grouped) + `</pre>` +
 			`<div class="vm-row vm-row--tight">` +
 			`<button type="button" class="btn btn--sm" data-apppw-copy="` + html.EscapeString(grouped) + `">Copy password</button>` +
 			`<button type="button" class="btn btn--sm btn--ghost" data-apppw-save="` + html.EscapeString(grouped) + `" data-apppw-label="` + html.EscapeString(label) + `" data-apppw-email="` + html.EscapeString(email) + `">Download .txt</button>` +
@@ -2378,7 +2378,7 @@ func (a *App) handleVayuOSAppPasswordCreate(w http.ResponseWriter, r *http.Reque
 	}
 	card := a.vayuAppPasswordsCard(r)
 	if opErr != nil {
-		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
+		card = saCallout("danger", html.EscapeString(opErr.Error())) + card
 	}
 	writeOSHTML(w, r, banner+card)
 }
@@ -2408,7 +2408,7 @@ func (a *App) handleVayuOSAppPasswordDelete(w http.ResponseWriter, r *http.Reque
 	}
 	card := a.vayuAppPasswordsCard(r)
 	if opErr != nil {
-		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
+		card = saCallout("danger", html.EscapeString(opErr.Error())) + card
 	}
 	writeOSHTML(w, r, card)
 }
@@ -2563,7 +2563,7 @@ func (a *App) handleVayuOSDeviceAction(w http.ResponseWriter, r *http.Request) {
 	}
 	card := a.vayuDevicesCard(r.Context())
 	if opErr != nil {
-		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
+		card = saCallout("danger", html.EscapeString(opErr.Error())) + card
 	}
 	writeOSHTML(w, r, card)
 }

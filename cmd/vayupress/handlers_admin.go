@@ -195,29 +195,9 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, 429, "rate_limited", "full cache purge rate-limited", "/docs/api/cache")
 			return
 		}
-		postsDir := filepath.Join(config.Cfg.CacheDir, "posts")
-		if files, err := os.ReadDir(postsDir); err == nil {
-			for _, f := range files {
-				if !f.IsDir() && strings.HasSuffix(f.Name(), ".html") {
-					fpath := filepath.Join(postsDir, f.Name())
-					if fi, infoErr := f.Info(); infoErr == nil {
-						dbpkg.UpdateStorageDelta(-fi.Size())
-					}
-					if err := os.Remove(fpath); err == nil {
-						purged++
-					}
-				}
-			}
-		}
-		os.Remove(filepath.Join(config.Cfg.CacheDir, "home", "index.html"))
-		if files, err := os.ReadDir(filepath.Join(config.Cfg.CacheDir, "tags")); err == nil {
-			for _, f := range files {
-				if !f.IsDir() && strings.HasSuffix(f.Name(), ".html") {
-					os.Remove(filepath.Join(config.Cfg.CacheDir, "tags", f.Name()))
-					purged++
-				}
-			}
-		}
+		// The same clear as System › Storage: every rendered page, per-domain
+		// copies included, and nothing else under CACHE_DIR.
+		purged, _ = render.CacheClear()
 		go generateSitemap()
 		go generateRSS()
 		go generateRobots()

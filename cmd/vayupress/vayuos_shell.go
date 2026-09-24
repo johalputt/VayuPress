@@ -20,7 +20,6 @@ package main
 import (
 	"html"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -462,13 +461,13 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	account := `<details class="sa-pop"><summary class="sa-account__btn" aria-label="Account and preferences">` + avatar + `</summary>
 <div class="sa-pop__panel sa-menu" role="menu">
   <div class="sa-menu__who"><div class="sa-menu__name">` + html.EscapeString(saDisplayName(s)) + `</div><div class="sa-menu__role">` + html.EscapeString(role) + `</div></div>
-  <a class="sa-menu__item" role="menuitem" href="/os/profile">` + saIcon("audience") + `My profile</a>
+  <a class="sa-menu__item" role="menuitem" href="/os/profile">` + saIcon("audience") + ` My profile</a>
   <div class="sa-menu__row"><span>Appearance</span><span class="sa-seg" role="group" aria-label="Colour scheme">` +
 		saSeg("light", "Light", theme) + saSeg("dark", "Dark", theme) + saSeg("auto", "System", theme) + `</span></div>
   <div class="sa-menu__sep"></div>
-  <button type="button" class="sa-menu__item" role="menuitem" data-pwa-install hidden>` + saIcon("download") + `Install the app</button>
-  <a class="sa-menu__item" role="menuitem" href="/os/vayumail/compose?feedback=1">` + saIcon("send") + `Send feedback</a>
-  <button type="button" class="sa-menu__item" role="menuitem" data-sa-ui="classic">` + saIcon("refresh") + `Use the classic design</button>
+  <button type="button" class="sa-menu__item" role="menuitem" data-pwa-install hidden>` + saIcon("download") + ` Install the app</button>
+  <a class="sa-menu__item" role="menuitem" href="/os/vayumail/compose?feedback=1">` + saIcon("send") + ` Send feedback</a>
+  <button type="button" class="sa-menu__item" role="menuitem" data-sa-ui="classic">` + saIcon("refresh") + ` Use the classic design</button>
   <div class="sa-menu__sep"></div>
   <form method="POST" action="/os/logout"><button type="submit" class="sa-menu__item sa-menu__item--quiet" role="menuitem">Sign out</button></form>
 </div></details>`
@@ -488,7 +487,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 			tabs.WriteString(tab(a.Key, a.Href, a.Label, a.Icon))
 		}
 	}
-	tabs.WriteString(`<button type="button" class="sa-tab" data-action="toggle-sidebar" aria-controls="vp-sidebar" aria-expanded="false">` + saIcon("more") + `<span>More</span></button>`)
+	tabs.WriteString(`<button type="button" class="sa-tab" data-action="toggle-sidebar" aria-controls="vp-sidebar" aria-expanded="false">` + saIcon("more") + ` <span>More</span></button>`)
 
 	spaceAttr := ""
 	if config.Cfg.OnionMode {
@@ -529,7 +528,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 <header class="sa-sysbar" role="banner">
   <button type="button" class="menu-toggle sa-iconbtn" data-action="toggle-sidebar" aria-label="Show or hide the app list" aria-controls="vp-sidebar" aria-expanded="true">` + saIcon("list") + `</button>
   <a class="sa-mark" href="` + osHome + `" aria-label="VayuOS home">` + saMark + `<span class="sa-mark__site">` + html.EscapeString(siteName) + `</span></a>
-  <button type="button" class="topbar-cmd sa-search" aria-label="Search or run a command">` + saIcon("search") + `<span class="sa-search__text">Search or run a command</span><kbd>⌘K</kbd></button>
+  <button type="button" class="topbar-cmd sa-search" aria-label="Search or run a command">` + saIcon("search") + ` <span class="sa-search__text">Search or run a command</span><kbd>⌘K</kbd></button>
   <div class="sa-status" role="status" aria-label="System status">` + modeHTML + `<span class="sa-sep" aria-hidden="true"></span>` + worldHTML + `</div>
   ` + osNotifBell(s) + `
   ` + account + `
@@ -540,7 +539,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
   <div class="sa-rail__foot">` + settingsItem + `<div class="sa-rail__version"><span>VayuOS</span><span>` + html.EscapeString(Version) + `</span></div></div>
 </aside>
 <nav class="sa-tabbar" aria-label="Apps">` + tabs.String() + `</nav>
-` + saPaletteIndex(apps) + `
+` + saPaletteIndex(apps) + saSprite + `<script nonce="` + nonce + `">` + vpIconScript + `</script>
 <div class="main sa-main` + sideCls + `">
 ` + side.String() + `
 <main id="main-content" class="content sa-content">
@@ -607,38 +606,22 @@ func saCanOpen(s *osSettings, href string) bool {
 }
 
 // saPaletteIndex is what the command bar searches before anything else: every
-// app and section this session can open, as plain links, plus a sprite of the
-// icons it draws beside them. Hidden, and gated like the rail, so the command
-// bar can never offer a page the rail would not.
+// app and section this session can open, as plain links, each naming its icon.
+// Hidden, and gated like the rail, so the command bar can never offer a page
+// the rail would not.
 func saPaletteIndex(apps []saApp) string {
-	used := map[string]bool{"content": true, "flow": true, "settings": true, "chev-r": true}
 	var idx strings.Builder
 	idx.WriteString(`<nav hidden data-sa-index aria-hidden="true">`)
 	for _, a := range apps {
-		used[a.Icon] = true
 		idx.WriteString(`<a href="` + a.Href + `" data-icon="` + a.Icon + `">` + html.EscapeString(a.Label) + `</a>`)
 		for _, sec := range a.Sections {
 			if sec.Label == a.Label || sec.Href == a.Href && len(a.Sections) == 1 {
 				continue
 			}
-			used[sec.Icon] = true
 			idx.WriteString(`<a href="` + sec.Href + `" data-icon="` + sec.Icon + `">` +
 				html.EscapeString(a.Label+" › "+sec.Label) + `</a>`)
 		}
 	}
 	idx.WriteString(`</nav>`)
-	names := make([]string, 0, len(used))
-	for n := range used {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	var sprite strings.Builder
-	sprite.WriteString(`<svg class="sa-sprite" aria-hidden="true" focusable="false"><defs>`)
-	for _, n := range names {
-		if p, ok := saIcons[n]; ok {
-			sprite.WriteString(`<symbol id="sa-i-` + n + `" viewBox="0 0 20 20">` + p + `</symbol>`)
-		}
-	}
-	sprite.WriteString(`</defs></svg>`)
-	return idx.String() + sprite.String()
+	return idx.String()
 }

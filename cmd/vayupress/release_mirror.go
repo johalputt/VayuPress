@@ -347,7 +347,7 @@ func (a *App) mcpReleaseMirror(d domain.Domain) map[string]any {
 
 // releaseMirrorAccordion is the site console's row for the mirror.
 func (a *App) releaseMirrorAccordion(d domain.Domain) string {
-	return monAcc("📦", "Release mirror", "Serve verified VayuPress updates to installs that cannot reach GitHub",
+	return monAcc(saIcon("package"), "Release mirror", "Serve verified VayuPress updates to installs that cannot reach GitHub",
 		a.releaseMirrorChip(d), false, a.releaseMirrorCard(d))
 }
 

@@ -127,7 +127,7 @@ func maintenancePageHTML(message string) string {
 <main style="margin:auto;max-width:34rem;padding:2.5rem 1.5rem;text-align:center">
   <div style="position:relative;width:96px;height:96px;margin:0 auto 1.75rem">
     <div style="position:absolute;inset:0;border-radius:9999px;background:radial-gradient(circle,rgba(45,212,191,.35),transparent 70%);filter:blur(8px);animation:vp-pulse 2.6s ease-in-out infinite"></div>
-    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:3rem" aria-hidden="true">🛠️</div>
+    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#5eead4" aria-hidden="true">` + saIconSized("wrench", 44) + `</div>
   </div>
   <h1 style="font-family:'Space Grotesk',system-ui,sans-serif;font-size:1.9rem;font-weight:700;letter-spacing:-.02em;margin:0 0 .6rem;background:linear-gradient(108deg,#5eead4,#2dd4bf 40%,#818cf8 110%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">We’ll be right back</h1>
   <p style="color:#94a3b8;font-size:1.02rem;line-height:1.6;margin:0 auto 1.75rem;max-width:28rem">` + msg + `</p>
@@ -240,7 +240,7 @@ func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedba
 
 <div class="card">
   <div class="settings-block-title">Feedback &amp; bug reports</div>
-  <p class="text-sm muted">The 💡 button in the top bar lets you and your team report a bug, request an improvement or suggest a feature — it opens a PGP-encrypted email to the inbox below (screenshots and files supported). By default it reaches the <strong>VayuPress team at feedback@vayupress.com</strong>; change it here to collect reports in your own inbox instead.</p>
+  <p class="text-sm muted"><strong>Send feedback</strong>, in the account menu, lets you and your team report a bug, request an improvement or suggest a feature — it opens a PGP-encrypted email to the inbox below (screenshots and files supported). By default it reaches the <strong>VayuPress team at feedback@vayupress.com</strong>; change it here to collect reports in your own inbox instead.</p>
   <div class="field">
     <label class="field-label" for="fb-addr">Feedback inbox</label>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">

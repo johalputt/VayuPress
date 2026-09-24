@@ -20,7 +20,7 @@ func TestWebsitePageAccordionStructure(t *testing.T) {
 		}
 	}
 	// monAcc must produce a balanced details/summary frame.
-	out := monAcc("🌐", "T", "S", monChip(true, "on", "off"), true, `<div class="x"></div>`)
+	out := monAcc(saIcon("globe"), "T", "S", monChip(true, "on", "off"), true, `<div class="x"></div>`)
 	if strings.Count(out, "<details") != 1 || strings.Count(out, "</details>") != 1 {
 		t.Error("monAcc must emit exactly one details element")
 	}

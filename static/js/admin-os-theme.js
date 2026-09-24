@@ -932,7 +932,7 @@
       var b = badgeEls[field];
       if (isNaN(r)) { b.textContent=''; b.className='theme-badge'; b.removeAttribute('data-fix'); return; }
       var ok = r >= 4.5;
-      b.textContent = ok ? '\u2713 ' + r.toFixed(1) : '\u26a0 ' + r.toFixed(1);
+      b.textContent = ok ? '\u2713 ' + r.toFixed(1) : 'Low ' + r.toFixed(1);
       b.className = 'theme-badge ' + (ok ? 'theme-badge--ok' : 'theme-badge--warn');
       b.title = 'Contrast vs ' + bgTok + ': ' + r.toFixed(2) + ':1' + (ok ? '' : ' — click to fix');
       if (ok) b.removeAttribute('data-fix');

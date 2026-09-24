@@ -646,7 +646,7 @@ func oauthConsentPage(client oauth.Client, redirectURI, challenge, state, consen
   <div class="login-card oauth-consent">
     <h1 class="login-title">Connect ` + escName + `?</h1>
     <p class="login-sub"><strong>` + escName + `</strong> is asking to connect to your VayuPress site. Choose how much access to grant. You can revoke it anytime from <a href="/os/apikeys">API&nbsp;Keys</a>.</p>
-    <p class="login-sub oauth-dest" role="note">⚠️ Approving sends your authorization code to <strong>` + html.EscapeString(destHost) + `</strong>. This app registered itself and its name is <em>not verified</em> by VayuPress — approve only if that address is where you expect <strong>` + escName + `</strong> to receive it.</p>
+    <p class="login-sub oauth-dest" role="note">Approving sends your authorization code to <strong>` + html.EscapeString(destHost) + `</strong>. This app registered itself and its name is <em>not verified</em> by VayuPress — approve only if that address is where you expect <strong>` + escName + `</strong> to receive it.</p>
     <form method="POST" action="/oauth/authorize/consent" class="oauth-form">
       <input type="hidden" name="client_id" value="` + html.EscapeString(client.ID) + `">
       <input type="hidden" name="redirect_uri" value="` + html.EscapeString(redirectURI) + `">

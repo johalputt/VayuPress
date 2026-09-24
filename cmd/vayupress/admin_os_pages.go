@@ -82,7 +82,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	create := `<div class="quick-compose" role="search">
-  <span class="quick-compose-icon" aria-hidden="true">📄</span>
+  <span class="quick-compose-icon" aria-hidden="true">` + saIcon("doc") + `</span>
   <input id="page-compose-input" class="quick-compose-input" type="text"
     placeholder="Add a page… type a title and press Enter" autocomplete="off"
     aria-label="Add a page: type a title and press Enter">
@@ -116,7 +116,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 <p class="page-sub">Standalone pages like About, Contact or Privacy — no date, tags or comments. Add them to your menu or footer and publish in a click.</p>` +
 			create + `
 <div class="card empty-state">
-  <div class="empty-icon">📄</div>
+  <div class="empty-icon">` + saIcon("doc") + `</div>
   <div class="empty-title">No pages yet</div>
   <div class="empty-sub">Create an About or Contact page above. Pages render cleanly, without the blog post furniture.</div>
 </div>`

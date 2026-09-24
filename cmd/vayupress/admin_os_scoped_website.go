@@ -277,7 +277,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 			`.</span></label>`)
 	}
 	srv.WriteString(`</div></div>`)
-	b.WriteString(monAcc("🌐", "What this domain serves", "Blog, website, or the site you uploaded",
+	b.WriteString(monAcc(saIcon("globe"), "What this domain serves", "Blog, website, or the site you uploaded",
 		`<span class="mon-chip mon-chip--on">`+esc(servesLabel)+`</span>`, true, srv.String()))
 
 	// ── A whole site of your own ─────────────────────────────────────────────
@@ -313,7 +313,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 	if bundled {
 		uploadChip = `<span class="mon-chip mon-chip--on">` + esc(itoaSafe(man.Files)) + ` files</span>`
 	}
-	b.WriteString(monAcc("📦", "A whole site of your own", "Upload a .zip, or have one built for you",
+	b.WriteString(monAcc(saIcon("package"), "A whole site of your own", "Upload a .zip, or have one built for you",
 		uploadChip, !bundled, uploadBody))
 
 	// ── What this domain actually serves ─────────────────────────────────────
@@ -336,7 +336,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
   </div>
   <div id="preview-out" class="text-sm"></div>
 </div>`
-	b.WriteString(monAcc("🔎", "Check what this domain serves", "Asks this server, not your browser",
+	b.WriteString(monAcc(saIcon("search"), "Check what this domain serves", "Asks this server, not your browser",
 		`<span class="mon-chip mon-chip--on">on demand</span>`, false, checkBody))
 
 	// ── The eval opt-in ───────────────────────────────────────────────────────
@@ -373,7 +373,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 		if checked != "" {
 			evalChip = `<span class="mon-chip mon-chip--on">on</span>`
 		}
-		b.WriteString(monAcc("⚡", "Scripts that build their own code",
+		b.WriteString(monAcc(saIcon("bolt"), "Scripts that build their own code",
 			"Needed by some page frameworks; off by default", evalChip, false, evalBody))
 	}
 
@@ -390,13 +390,13 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 	}
 	dsn.WriteString(`</select><span class="field-hint">Each template is a complete design. Switching one keeps ` +
 		`your content.</span></label></div>`)
-	b.WriteString(monAcc("🎨", "Design", "Used when this domain serves a website",
+	b.WriteString(monAcc(saIcon("palette"), "Design", "Used when this domain serves a website",
 		`<span class="mon-chip mon-chip--on">`+esc(bizsite.ByKey(tplKey).Name)+`</span>`, false, dsn.String()))
 
 	// ── Content ───────────────────────────────────────────────────────────────
 	editor := "/os/d/" + d.ID + "/website/editor"
 	if published {
-		b.WriteString(monAcc("✍️", "Content", "Pages and sections, in the site editor",
+		b.WriteString(monAcc(saIcon("pencil"), "Content", "Pages and sections, in the site editor",
 			`<span class="mon-chip mon-chip--on">site editor</span>`, false, siteEditorCard(editor, true)))
 		b.WriteString(`</div>`) // mon-stack
 		return b.String()
@@ -454,7 +454,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 	if strings.TrimSpace(c.Name) != "" {
 		contentChip = `<span class="mon-chip mon-chip--on">` + esc(c.Name) + `</span>`
 	}
-	b.WriteString(monAcc("✍️", "Content", "What the website says",
+	b.WriteString(monAcc(saIcon("pencil"), "Content", "What the website says",
 		contentChip, false, con.String()))
 
 	b.WriteString(`</div>`) // mon-stack

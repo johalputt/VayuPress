@@ -420,7 +420,7 @@ func osAPIKeysCreateCard() string {
 	// control on the page, and needed only while actually issuing a key. Folded,
 	// it stops standing between the operator and the key list they came to read.
 	return `<div class="mon-stack">` +
-		monAcc("🔑", "Create a scoped key", "Grant exactly the sections and actions you choose",
+		monAcc(saIcon("key"), "Create a scoped key", "Grant exactly the sections and actions you choose",
 			`<span class="mon-chip mon-chip--off">○ Issue a key</span>`, false, createBody) +
 		`</div>`
 }
@@ -430,7 +430,7 @@ func osAPIKeysCreateCard() string {
 // where the full contract lives, and how to validate a plugin/theme before
 // trusting it. Every action is a same-origin link — CSP-safe, no inline style.
 func osAPIKeysVCBCard() string {
-	return `<div class="mon-stack">` + monAcc("📘", "Vayu Compatibility Bible (VCB)",
+	return `<div class="mon-stack">` + monAcc(saIcon("book"), "Vayu Compatibility Bible (VCB)",
 		"Validate a plugin or theme against the contract this API enforces",
 		`<span class="mon-chip mon-chip--off">○ Reference</span>`, false, `<div class="card">
   <p class="text-sm muted mb-4">Before you trust a plugin or theme, validate it against the <strong>same contract this API enforces</strong>. An extension declares the hooks, capabilities and <code>section:action</code> permissions it needs; VCB checks them and you mint a key granting <strong>only</strong> those — never more. Themes that fetch from another host, plugins that over-ask, or manifests built against a hook that doesn't exist are refused with a plain, exact reason.</p>

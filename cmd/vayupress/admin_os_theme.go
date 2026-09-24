@@ -366,7 +366,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <div class="cz-sec"><span class="cz-sec__title">Start here</span><span class="cz-sec__hint">Pick a design, then make it yours</span></div>
     <section class="cz-group cz-group--open">
       <button type="button" class="cz-group__head" aria-expanded="true" data-cz-label="Presets">
-        <span class="cz-group__ic" aria-hidden="true">🎨</span>
+        <span class="cz-group__ic" aria-hidden="true">` + saIcon("palette") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Presets</span><span class="cz-group__sub">Start from a ready-made design, then fine-tune</span></span>
         <span class="cz-chip cz-chip--go">START HERE</span>
       </button>
@@ -393,7 +393,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 
     <section class="cz-group cz-group--open">
       <button type="button" class="cz-group__head" aria-expanded="true" data-cz-label="Appearance">
-        <span class="cz-group__ic" aria-hidden="true">🖼️</span>
+        <span class="cz-group__ic" aria-hidden="true">` + saIcon("image") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Appearance</span><span class="cz-group__sub">Logo, favicon, share image &amp; nav buttons</span></span>
         <span class="cz-chip">Identity</span>
       </button>
@@ -452,7 +452,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <div class="cz-sec"><span class="cz-sec__title">Colour</span><span class="cz-sec__hint">Palette, schemes &amp; accessibility</span></div>
     <section class="cz-group cz-group--open">
       <button type="button" class="cz-group__head" aria-expanded="true" data-cz-label="Brand colours">
-        <span class="cz-group__ic" aria-hidden="true">🌈</span>
+        <span class="cz-group__ic" aria-hidden="true">` + saIcon("palette") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Brand colours</span><span class="cz-group__sub">Accent colours &amp; colour scheme</span></span>
         ` + a11yChip + `
       </button>
@@ -467,7 +467,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <div class="cz-sec"><span class="cz-sec__title">Layout &amp; type</span><span class="cz-sec__hint">Structure, spacing and typography</span></div>
     <section class="cz-group">
       <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Layout">
-        <span class="cz-group__ic" aria-hidden="true">📐</span>
+        <span class="cz-group__ic" aria-hidden="true">` + saIcon("grid") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Layout</span><span class="cz-group__sub">Width, corners, feed, header, cards &amp; density</span></span>
         
       </button>
@@ -479,7 +479,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 
     <section class="cz-group">
       <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Hero section">
-        <span class="cz-group__ic" aria-hidden="true">⭐</span>
+        <span class="cz-group__ic" aria-hidden="true">` + saIcon("star") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Hero section</span><span class="cz-group__sub">Homepage hero — style, height &amp; background</span></span>
         
       </button>
@@ -509,7 +509,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 
     <section class="cz-group">
       <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Typography &amp; fonts">
-        <span class="cz-group__ic" aria-hidden="true">🔤</span>
+        <span class="cz-group__ic" aria-hidden="true">` + saIcon("rename") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Typography &amp; fonts</span><span class="cz-group__sub">Font pairing, scale, drop caps &amp; metrics</span></span>
         
       </button>
@@ -521,7 +521,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 
     <section class="cz-group">
       <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Article pages">
-        <span class="cz-group__ic" aria-hidden="true">📄</span>
+        <span class="cz-group__ic" aria-hidden="true">` + saIcon("doc") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Article pages</span><span class="cz-group__sub">Post layout, meta line, related &amp; author box</span></span>
         
       </button>
@@ -539,7 +539,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <div class="cz-sec"><span class="cz-sec__title">Fine detail</span><span class="cz-sec__hint">Every individual surface colour</span></div>
     <section class="cz-group">
       <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Colours — dark mode">
-        <span class="cz-group__ic" aria-hidden="true">🌙</span>
+        <span class="cz-group__ic" aria-hidden="true">` + saIcon("moon") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Colours — dark mode</span><span class="cz-group__sub">Every surface &amp; text colour, dark</span></span>
         
       </button>
@@ -550,7 +550,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 
     <section class="cz-group">
       <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Colours — light mode">
-        <span class="cz-group__ic" aria-hidden="true">☀️</span>
+        <span class="cz-group__ic" aria-hidden="true">` + saIcon("sun") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Colours — light mode</span><span class="cz-group__sub">Every surface &amp; text colour, light</span></span>
         
       </button>
@@ -562,7 +562,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <div class="cz-sec"><span class="cz-sec__title">Advanced</span><span class="cz-sec__hint">Menu, custom CSS, meta &amp; portability</span></div>
     <section class="cz-group">
       <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Navigation">
-        <span class="cz-group__ic" aria-hidden="true">🧭</span>
+        <span class="cz-group__ic" aria-hidden="true">` + saIcon("compass") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Navigation</span><span class="cz-group__sub">The public site menu</span></span>
         <span class="cz-chip cz-chip--live">● Saves live</span>
       </button>
@@ -580,7 +580,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 
     <section class="cz-group">
       <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Custom CSS">
-        <span class="cz-group__ic" aria-hidden="true">✒️</span>
+        <span class="cz-group__ic" aria-hidden="true">` + saIcon("pencil") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Custom CSS</span><span class="cz-group__sub">Your own CSS, served same-origin</span></span>
         
       </button>
@@ -596,7 +596,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 
     <section class="cz-group">
       <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Head &amp; SEO (meta)">
-        <span class="cz-group__ic" aria-hidden="true">🔎</span>
+        <span class="cz-group__ic" aria-hidden="true">` + saIcon("search") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Head &amp; SEO (meta)</span><span class="cz-group__sub">Keywords, theme colour, robots &amp; verification</span></span>
         
       </button>
@@ -619,7 +619,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 
     <section class="cz-group">
       <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Import / Export">
-        <span class="cz-group__ic" aria-hidden="true">📦</span>
+        <span class="cz-group__ic" aria-hidden="true">` + saIcon("package") + `</span>
         <span class="cz-group__text"><span class="cz-group__title">Import / Export</span><span class="cz-group__sub">Move a theme between installs as JSON</span></span>
         
       </button>
@@ -645,8 +645,8 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
         <button type="button" class="cz-device" data-theme-device="mobile" aria-pressed="false" title="Mobile">Mobile</button>
       </div>
       <div class="cz-devices" role="group" aria-label="Preview colour scheme">
-        <button type="button" class="cz-device cz-device--active" data-theme-scheme="dark" aria-pressed="true" title="Preview the dark palette">🌙 Dark</button>
-        <button type="button" class="cz-device" data-theme-scheme="light" aria-pressed="false" title="Preview the light palette">☀️ Light</button>
+        <button type="button" class="cz-device cz-device--active" data-theme-scheme="dark" aria-pressed="true" title="Preview the dark palette">` + saIcon("moon") + ` Dark</button>
+        <button type="button" class="cz-device" data-theme-scheme="light" aria-pressed="false" title="Preview the light palette">` + saIcon("sun") + ` Light</button>
       </div>
       <span class="cz-toolbar-spacer"></span>
       <span class="text-xs muted" data-theme-preview-status>Live preview</span>

@@ -527,7 +527,7 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	// out. The seven nested <details> that used to be here made a many-mailbox
 	// install a very tall page whose every inline action re-rendered the whole list.
 	c.WriteString(`<div class="vm-acct__meta muted text-sm">Created ` + ac.CreatedAt.Format("2006-01-02") + `</div>`)
-	c.WriteString(`<div class="vm-acct__actions"><a class="btn btn--sm" href="/os/vayumail/accounts/settings?user=` + qparam(ac.Email) + `">⚙ Mailbox settings</a>` + passBtn + twofaBtn + toggleBtn + deleteBtn + `</div>`)
+	c.WriteString(`<div class="vm-acct__actions"><a class="btn btn--sm" href="/os/vayumail/accounts/settings?user=` + qparam(ac.Email) + `">` + saIcon("settings") + ` Mailbox settings</a>` + passBtn + twofaBtn + toggleBtn + deleteBtn + `</div>`)
 	c.WriteString(`</div>`)
 	c.WriteString(`</details>`)
 	return c.String()
@@ -634,9 +634,9 @@ func (a *App) handleVayuOSAccountsAction(w http.ResponseWriter, r *http.Request)
 
 	list := a.acctRefresh(r, email)
 	if opErr != nil {
-		list = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + list
+		list = saCallout("danger", html.EscapeString(opErr.Error())) + list
 	} else if deleteNote != "" {
-		list = `<div class="settings-callout" role="status">🗄 ` + html.EscapeString(deleteNote) + `</div>` + list
+		list = saCallout("info", html.EscapeString(deleteNote)) + list
 	}
 	writeOSHTML(w, r, list)
 }
@@ -712,7 +712,7 @@ func (a *App) vayuCardHandover(ctx context.Context, ac vmail.Account) string {
 		hxVals("op", "handover", "email", ac.Email) + ` hx-include="#` + hoID + `"` + acctListHx +
 		` hx-confirm="Hand ` + email + ` to its holder? You will not be able to open this mailbox again, and this cannot be undone.">Hand over</button>`
 	if blocked {
-		warn = `<p class="muted text-xs">⚠ Set and verify a <b>recovery address</b> for this mailbox first
+		warn = `<p class="muted text-xs">` + saIcon("warn") + ` Set and verify a <b>recovery address</b> for this mailbox first
       (the card above). Without one, the emergency-override notice can only be filed into the mailbox
       itself — where whoever used the override can delete it, which is the opposite of a record.</p>`
 		confirmField, button = "", ""

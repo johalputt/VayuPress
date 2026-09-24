@@ -141,12 +141,12 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 	if len(msgs) == 0 && !filtersActive {
 		body = `<div class="page-header"><h1>Messages</h1>
   <p class="text-sm muted">Submissions from your contact form land here — a durable record, even if email delivery fails.</p></div>
-<div class="card empty-state"><div class="empty-icon">📨</div>
+<div class="card empty-state"><div class="empty-icon">` + saIcon("mail") + `</div>
   <div class="empty-title">No messages yet</div>
   <div class="empty-sub">When a visitor sends a message through a page's contact form, it appears here. Add a contact form from the Pages section.</div></div>`
 	} else if len(msgs) == 0 {
 		body = messagesHeader(0, unread) + filterBar +
-			`<div class="card empty-state"><div class="empty-icon">🔍</div>
+			`<div class="card empty-state"><div class="empty-icon">` + saIcon("search") + `</div>
   <div class="empty-title">No matching messages</div>
   <div class="empty-sub">No messages match your search or filter. <a href="/os/messages">Clear filters</a>.</div></div>`
 	} else {
@@ -267,7 +267,7 @@ func (a *App) handleOSMessageDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	if !found {
 		body := `<div class="page-header"><h1>Message</h1></div>
-<div class="card empty-state"><div class="empty-icon">🔍</div>
+<div class="card empty-state"><div class="empty-icon">` + saIcon("search") + `</div>
   <div class="empty-title">Message not found</div>
   <div class="empty-sub">It may have been deleted. <a href="/os/messages">Back to inbox</a>.</div></div>`
 		writeOSHTML(w, r, adminOSLayout(nonce, "Message", "messages", cfg, htmpl.HTML(body)))

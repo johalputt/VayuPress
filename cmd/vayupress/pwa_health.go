@@ -283,5 +283,5 @@ full app list, not only on the home screen.</p>
 	// Always expanded. A diagnostic that hides itself when the server-side checks
 	// look fine is precisely how the browser-side failure goes unnoticed — which is
 	// the failure still in play once the origin is correct.
-	return monAcc("📱", "Install health", "Whether this site installs as a real app", chip, true, body)
+	return monAcc(saIcon("phone"), "Install health", "Whether this site installs as a real app", chip, true, body)
 }

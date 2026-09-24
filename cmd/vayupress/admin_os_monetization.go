@@ -174,23 +174,23 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 
 <div class="section-head"><span class="section-head__title">Payment methods</span><span class="section-head__hint">Cards, PayPal, crypto (anonymous-friendly) — or take payments directly. Funds always settle into your own accounts.</span></div>
 <div class="mon-stack">` +
-		monAcc("💳", "Card payments · Stripe", "Cards, Apple&nbsp;Pay &amp; Google&nbsp;Pay via a hosted checkout", monChip(stripeConnected, "Connected", "Not set up"), false, a.paymentGatewaysCard(nonce, ctx)) +
-		monAcc("🅿️", "PayPal", "Auto-renewing subscriptions", monChip(paypalConnected, "Connected", "Not set up"), false, a.paypalConnectCard(nonce, ctx)) +
-		monAcc("🪙", "Crypto · BTCPay Server", "BTC · XMR · ETH · USDT — for anonymous / Tor buyers", monChip(btcpayConnected, "Connected", "Not set up"), false, a.btcpayConnectCard(nonce, ctx)) +
-		monAcc("🏦", "Direct / offline payment", "Bank transfer, UPI or any link — no gateway", `<span class="mon-chip mon-chip--on">● Always on</span>`, false, directCard) +
-		monAcc("🔌", "Connected gateway (webhook)", "Any external processor via a signed webhook", monChip(webhookConfigured, "Configured", "Not set up"), false, connectedCard) +
+		monAcc(saIcon("card"), "Card payments · Stripe", "Cards, Apple&nbsp;Pay &amp; Google&nbsp;Pay via a hosted checkout", monChip(stripeConnected, "Connected", "Not set up"), false, a.paymentGatewaysCard(nonce, ctx)) +
+		monAcc(saIcon("coin"), "PayPal", "Auto-renewing subscriptions", monChip(paypalConnected, "Connected", "Not set up"), false, a.paypalConnectCard(nonce, ctx)) +
+		monAcc(saIcon("coin"), "Crypto · BTCPay Server", "BTC · XMR · ETH · USDT — for anonymous / Tor buyers", monChip(btcpayConnected, "Connected", "Not set up"), false, a.btcpayConnectCard(nonce, ctx)) +
+		monAcc(saIcon("columns"), "Direct / offline payment", "Bank transfer, UPI or any link — no gateway", `<span class="mon-chip mon-chip--on">● Always on</span>`, false, directCard) +
+		monAcc(saIcon("plug"), "Connected gateway (webhook)", "Any external processor via a signed webhook", monChip(webhookConfigured, "Configured", "Not set up"), false, connectedCard) +
 		`</div>
 
 <div class="section-head"><span class="section-head__title">Products &amp; pricing</span><span class="section-head__hint">Everything you sell — mail-IDs, paid posts, plans</span></div>
 <div class="mon-stack">` +
-		monAcc("✉️", "Premium mail-ID marketplace", strconv.Itoa(premiumSold)+" sold · "+strconv.Itoa(gPending)+" awaiting payment", monChip(premiumSold > 0, "Live", "No sales yet"), false, mailidMarketCard) +
-		monAcc("🏷️", "VayuMail address marketplace", "Price &amp; terms for vanity addresses", `<span class="mon-chip mon-chip--on">● `+html.EscapeString(priceLabel(currency, a.premiumMailIDPriceCents(ctx)))+`</span>`, false, addrMarketCard) +
-		monAcc("📄", "Paid posts", "One-time access pricing, per post", monChip(len(pricedPosts) > 0, strconv.Itoa(len(pricedPosts))+" priced", "None yet"), false, paidPostsCard) +
+		monAcc(saIcon("mail"), "Premium mail-ID marketplace", strconv.Itoa(premiumSold)+" sold · "+strconv.Itoa(gPending)+" awaiting payment", monChip(premiumSold > 0, "Live", "No sales yet"), false, mailidMarketCard) +
+		monAcc(saIcon("tag"), "VayuMail address marketplace", "Price &amp; terms for vanity addresses", `<span class="mon-chip mon-chip--on">● `+html.EscapeString(priceLabel(currency, a.premiumMailIDPriceCents(ctx)))+`</span>`, false, addrMarketCard) +
+		monAcc(saIcon("doc"), "Paid posts", "One-time access pricing, per post", monChip(len(pricedPosts) > 0, strconv.Itoa(len(pricedPosts))+" priced", "None yet"), false, paidPostsCard) +
 		`</div>
 
 <div class="section-head"><span class="section-head__title">Orders</span><span class="section-head__hint">Every payment — memberships, mail-IDs &amp; paid posts</span></div>
 <div class="mon-stack">` +
-		monAcc("🧾", "Order ledger", "Confirm offline payments · full history", monChip(stats.Pending > 0, strconv.Itoa(stats.Pending)+" pending", "All settled"), true, ordersCard) +
+		monAcc(saIcon("receipt"), "Order ledger", "Confirm offline payments · full history", monChip(stats.Pending > 0, strconv.Itoa(stats.Pending)+" pending", "All settled"), true, ordersCard) +
 		`</div>
 
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>

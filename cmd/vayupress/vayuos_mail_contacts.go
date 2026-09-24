@@ -71,7 +71,7 @@ func (a *App) vayuContactsPanelWith(ctx context.Context, owner, userKey, errMsg,
 		`<span class="muted text-sm">` + itoaSafe(len(contacts)) + ` saved · ` + html.EscapeString(owner) + `</span></div>`)
 	b.WriteString(`<p class="muted text-sm vm-contacts-sub">Private to this mailbox. These power the recipient suggestions when you compose from here.</p>`)
 	if errMsg != "" {
-		b.WriteString(`<p class="vm-contacts-err" role="alert">⚠ ` + html.EscapeString(errMsg) + `</p>`)
+		b.WriteString(saCallout("danger", html.EscapeString(errMsg)))
 	}
 
 	b.WriteString(`<form class="vm-contacts-add" hx-post="/os/vayumail/contacts/add" hx-target="#vm-contacts-panel" hx-swap="outerHTML">`)

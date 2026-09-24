@@ -318,6 +318,6 @@ func veilHardenCard(st vayuveil.HardenState, sb vayuveil.SandboxState, processSt
 		`root-side service watches. No argument is passed and its contents are never read, so this ` +
 		`console can ask for hardening and cannot influence which directives root writes.</p></div>`)
 
-	return monAcc("🧱", "Unit hardening", "Ask root for the directives this process can verify afterwards",
+	return monAcc(saIcon("wall"), "Unit hardening", "Ask root for the directives this process can verify afterwards",
 		veilHardenChip(v), v != vayuveil.HardenInForce, b.String())
 }

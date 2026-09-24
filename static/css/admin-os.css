@@ -7265,3 +7265,29 @@
     border: 2px solid ButtonBorder !important;
   }
 }
+
+/* Still Air icons in page bodies. The classic console renders the same bodies
+   until cutover, so it sizes them too; the full look lives in vayuos.css. */
+.vp-os .sa-ico { width: 1.1em; height: 1.1em; flex: none; vertical-align: -0.18em; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.vp-os .sa-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+.vp-os .callout { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-3) var(--sp-4); margin: 0 0 var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-surface-2); }
+.vp-os .callout--warn { border-color: var(--warn); }
+.vp-os .callout--danger { border-color: var(--danger); }
+.vp-os .callout--ok { border-color: var(--ok); }
+.vp-os .callout__body { min-width: 0; }
+.vp-os .card--danger { border-left: 4px solid var(--danger); }
+.vp-os .card--ok { border-left: 4px solid var(--ok); }
+.vp-os .tone-warn, .vp-os .chip--warn { color: var(--warn); }
+.vp-os .tone-danger { color: var(--danger); }
+.vp-os .tone-ok { color: var(--ok); }
+.vp-os .code-block--wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.vp-os .vm-pin[aria-pressed="true"] { color: var(--accent); }
+/* An empty library says so across the whole grid, not in its first cell. */
+.vp-os .media-grid > .empty-state { grid-column: 1 / -1; }
+.vp-os .media-dropzone__icon { display: flex; justify-content: center; }
+.esc-step--ok { border-color: var(--ok); color: var(--ok); }
+.esc-step--warn { border-color: var(--warn); color: var(--warn); }
+.esc-step--danger { border-color: var(--danger); color: var(--danger); }
+.tl-leg-dot--ok { background: var(--ok); }
+.tl-leg-dot--warn { background: var(--warn); }
+.tl-leg-dot--danger { background: var(--danger); }

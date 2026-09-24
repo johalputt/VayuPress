@@ -133,7 +133,7 @@ function toast(msg, kind) {
   el.className = 'toast toast--' + kind;
 
   var icon = document.createElement('span');
-  icon.textContent = kind === 'ok' ? '✓' : kind === 'error' ? '✕' : kind === 'warn' ? '⚠' : 'ℹ';
+  icon.appendChild(window.vpIcon(kind === 'ok' ? 'check-c' : kind === 'error' ? 'error' : kind === 'warn' ? 'warn' : 'info'));
   icon.setAttribute('aria-hidden', 'true');
 
   var text = document.createElement('span');
@@ -451,17 +451,7 @@ window.vpActions = {
     // text marked, and a "Go to" group first, built from the shell's own gated
     // index of apps and sections. The classic palette is unchanged.
     var sa = document.body.dataset.ui === 'still-air';
-    function saIcon(name) {
-      var ns = 'http://www.w3.org/2000/svg';
-      var svg = document.createElementNS(ns, 'svg');
-      svg.setAttribute('class', 'sa-ico');
-      svg.setAttribute('viewBox', '0 0 20 20');
-      svg.setAttribute('aria-hidden', 'true');
-      var use = document.createElementNS(ns, 'use');
-      use.setAttribute('href', '#sa-i-' + name);
-      svg.appendChild(use);
-      return svg;
-    }
+    var saIcon = window.vpIcon;
     function labelFor(text) {
       var lbl = document.createElement('div');
       lbl.className = 'cmd-item__label';
@@ -500,9 +490,9 @@ window.vpActions = {
     }
 
     var sections = [
-      { label: 'Posts', key: 'posts', icon: '✍', saIcon: 'content', href: function(i){ return '/os/editor/' + i.slug; } },
-      { label: 'Quick Actions', key: 'actions', icon: '⚡', saIcon: 'flow', fn: function(i){ return i.fn; } },
-      { label: 'Settings', key: 'settings', icon: '⚙', saIcon: 'settings', href: function(i){ return i.href; } },
+      { label: 'Posts', key: 'posts', icon: 'content', href: function(i){ return '/os/editor/' + i.slug; } },
+      { label: 'Quick Actions', key: 'actions', icon: 'flow', fn: function(i){ return i.fn; } },
+      { label: 'Settings', key: 'settings', icon: 'settings', href: function(i){ return i.href; } },
     ];
 
     sections.forEach(function (sec) {
@@ -525,8 +515,7 @@ window.vpActions = {
 
         var icon = document.createElement('div');
         icon.className = 'cmd-item__icon';
-        if (sa) icon.appendChild(saIcon(sec.saIcon));
-        else icon.textContent = item.icon || sec.icon;
+        icon.appendChild(saIcon(item.icon || sec.icon));
 
         var lbl = labelFor(item.label || item.title || '');
 
@@ -673,7 +662,7 @@ window.vpRelTime = relativeTime;
 
           var icon = document.createElement('div');
           icon.className = 'activity-icon activity-icon--' + (item.kind || 'system');
-          icon.textContent = item.icon || '·';
+          icon.appendChild(window.vpIcon(item.icon || 'pulse'));
           icon.setAttribute('aria-hidden', 'true');
 
           var body = document.createElement('div');

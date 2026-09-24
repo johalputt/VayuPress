@@ -112,7 +112,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 
 	// ── Insights: growth sparkline + revenue by tier ──────────────────────────
 	insightsCard := `<div class="card mb-6">
-  <div class="card-head"><h2 class="card-title">Growth &amp; revenue</h2>
+  <div class="card-head"><div><h2 class="card-title">Growth &amp; revenue</h2><p class="card-subtitle">New members and recurring revenue over the last 30 days</p></div>
     <a class="btn btn--sm btn--ghost" href="/os/api/members/export.csv" download>Export CSV</a></div>
   <div class="grid grid-2 gap-4">
     <div>
@@ -180,7 +180,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	tiersCard := `<div class="card mb-6">
   <div class="card-head">
-    <h2 class="card-title">Membership tiers</h2>
+    <div><h2 class="card-title">Membership tiers</h2><p class="card-subtitle">What people can buy, and what each tier unlocks</p></div>
     <button class="btn btn--primary btn--sm" type="button" data-new-tier>+ New tier</button>
   </div>
   ` + tierTable + `
@@ -284,7 +284,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 			chip = `<span class="mon-chip mon-chip--off">○ ` + strconv.Itoa(unverifiedCount) + ` waiting</span>`
 			sub = "Added as members before their sign-in link was used"
 		}
-		unconfirmedAcc = monAcc("✉️", "Unconfirmed addresses", sub, chip, unverifiedCount > 0, unconfirmedCard)
+		unconfirmedAcc = monAcc(saIcon("mail"), "Unconfirmed addresses", sub, chip, unverifiedCount > 0, unconfirmedCard)
 	}
 
 	// ── Team & roles (admin-only; staff accounts, not readers) ────────────────
@@ -344,9 +344,9 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 	body := `<div class="page-header"><h1>Members</h1></div>
 <p class="page-sub">Everyone in your community — memberships, tiers, your team and activity, with growth insights, all owned by you.</p>` +
 		statGrid +
-		`<div class="section-head"><span class="section-head__title">Growth &amp; revenue</span><span class="section-head__hint">New members and recurring revenue over the last 30 days</span></div>` +
+		// Each card names itself; a section head above it said the same words
+		// again.
 		insightsCard +
-		`<div class="section-head"><span class="section-head__title">Membership tiers</span><span class="section-head__hint">What people can buy, and what each tier unlocks</span></div>` +
 		tiersCard +
 		`<div class="section-head"><span class="section-head__title">People</span><span class="section-head__hint">Everyone who has joined — search, label and manage</span></div>` +
 		membersCard +
@@ -356,9 +356,9 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 		// state needing a decision rather than a section to browse.
 		`<div class="section-head"><span class="section-head__title">Community operations</span><span class="section-head__hint">Activity, your team, and addresses awaiting confirmation</span></div>` +
 		`<div class="mon-stack">` +
-		monAcc("📈", "Recent activity", "Sign-ups, upgrades and cancellations",
+		monAcc(saIcon("trend"), "Recent activity", "Sign-ups, upgrades and cancellations",
 			`<span class="mon-chip mon-chip--off">○ Log</span>`, false, activityCard) +
-		monAcc("👥", "Team &amp; roles", "Staff accounts for your workspace",
+		monAcc(saIcon("audience"), "Team &amp; roles", "Staff accounts for your workspace",
 			`<span class="mon-chip mon-chip--off">○ Staff</span>`, false, teamCard) +
 		unconfirmedAcc +
 		`</div>` +

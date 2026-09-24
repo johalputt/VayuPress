@@ -132,10 +132,10 @@ func osBuzzSetupCards(endpoint string) string {
 </div>`
 
 	return `<div class="mon-stack">` +
-		monAcc("🔑", "Step 1 · Grant a key", "Choose how much the agent may do", `<span class="mon-chip mon-chip--on">● Start here</span>`, true, step1) +
-		monAcc("🔗", "Step 2 · Point the agent at this site", "Copy the endpoint and config", `<span class="mon-chip mon-chip--off">○ Copy &amp; paste</span>`, false, step2) +
-		monAcc("🐝", "Step 3 · Run the agent in Buzz", "It joins the channel with these tools", `<span class="mon-chip mon-chip--off">○ In Buzz</span>`, false, step3) +
-		monAcc("✅", "Step 4 · Verify", "One question proves it works", `<span class="mon-chip mon-chip--off">○ Check</span>`, false, step4) +
+		monAcc(saIcon("key"), "Step 1 · Grant a key", "Choose how much the agent may do", `<span class="mon-chip mon-chip--on">● Start here</span>`, true, step1) +
+		monAcc(saIcon("link"), "Step 2 · Point the agent at this site", "Copy the endpoint and config", `<span class="mon-chip mon-chip--off">○ Copy &amp; paste</span>`, false, step2) +
+		monAcc(saIcon("talk"), "Step 3 · Run the agent in Buzz", "It joins the channel with these tools", `<span class="mon-chip mon-chip--off">○ In Buzz</span>`, false, step3) +
+		monAcc(saIcon("check-c"), "Step 4 · Verify", "One question proves it works", `<span class="mon-chip mon-chip--off">○ Check</span>`, false, step4) +
 		`</div>`
 }
 
@@ -185,7 +185,7 @@ func osBuzzAboutCard() string {
 </div>`
 
 	return `<div class="mon-stack">` +
-		monAcc("📖", "What Buzz is", "Open-source workspace on Nostr, by Block", `<span class="mon-chip mon-chip--off">○ Reference</span>`, false, about) +
-		monAcc("🧭", "What this connector does", "Agents in — not posts out", `<span class="mon-chip mon-chip--off">○ Scope</span>`, false, scope) +
+		monAcc(saIcon("book"), "What Buzz is", "Open-source workspace on Nostr, by Block", `<span class="mon-chip mon-chip--off">○ Reference</span>`, false, about) +
+		monAcc(saIcon("compass"), "What this connector does", "Agents in — not posts out", `<span class="mon-chip mon-chip--off">○ Scope</span>`, false, scope) +
 		`</div>`
 }

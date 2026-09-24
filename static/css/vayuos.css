@@ -227,6 +227,13 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+/* Sentence case everywhere (plan §10): the classic console set 47 labels in
+   spaced capitals. The case reset matches the classic rules' specificity and
+   loads later, so it wins; the tracking reset is :where, so any Still Air rule
+   below that sets letter-spacing still wins over it. Initials and inputs keep
+   their own case. */
+.vp-os[data-ui="still-air"] :where(*) { letter-spacing: normal; }
+.vp-os[data-ui="still-air"] *:not(.vm-av, .vm-acct__avatar, input) { text-transform: none; }
 .vp-os[data-ui="still-air"] h1,
 .vp-os[data-ui="still-air"] h2,
 .vp-os[data-ui="still-air"] h3,
@@ -272,7 +279,7 @@
   position: relative; z-index: 60;
 }
 .vp-os[data-ui="still-air"] .sa-ico {
-  width: 16px; height: 16px; flex: none;
+  width: 16px; height: 16px; flex: none; vertical-align: -3px;
   stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
 }
 /* A name missing from the icon set: loud on purpose, and a test fails on it. */
@@ -616,20 +623,22 @@
 
 /* Stat rows: one instrument panel of cells, not a row of floating tiles. */
 .vp-os[data-ui="still-air"] .stat-grid {
-  /* As many columns as the page has figures: a fixed four left an empty cell
-     showing the hairline colour. */
+  /* As many columns as fit. Each cell draws its own right and bottom hairline
+     (the outer ones are clipped by the frame), so a short last row ends in
+     plain panel rather than a block of hairline colour. */
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 1px; background: var(--border-1);
+  gap: 0; background: var(--surface-2);
   border: 1px solid var(--border-1); border-radius: var(--radius-surface); overflow: hidden;
   margin-bottom: var(--space-7);
 }
 .vp-os[data-ui="still-air"] .stat-card {
-  background: var(--surface-2); border: 0; border-radius: 0; box-shadow: none; transform: none;
+  background: var(--surface-2); border: 0; border-radius: 0; transform: none;
+  box-shadow: 1px 0 0 var(--border-1), 0 1px 0 var(--border-1);
   padding: var(--space-5) var(--space-6); gap: var(--space-2); transition: none;
 }
 .vp-os[data-ui="still-air"] .stat-card::before,
 .vp-os[data-ui="still-air"] .stat-card::after { display: none; animation: none; content: none; }
-.vp-os[data-ui="still-air"] .stat-card:hover { transform: none; box-shadow: none; border-color: transparent; }
+.vp-os[data-ui="still-air"] .stat-card:hover { transform: none; box-shadow: 1px 0 0 var(--border-1), 0 1px 0 var(--border-1); border-color: transparent; }
 .vp-os[data-ui="still-air"] .stat-card__label { font: var(--type-meta); color: var(--text-3); text-transform: none; letter-spacing: 0; }
 .vp-os[data-ui="still-air"] .stat-card__value { font: 600 24px/30px var(--font-ui); letter-spacing: -0.01em; color: var(--text-1); }
 .vp-os[data-ui="still-air"] .stat-card__value--sm { font: 600 17px/24px var(--font-ui); }
@@ -684,6 +693,74 @@
 .vp-os[data-ui="still-air"] .badge--muted,
 .vp-os[data-ui="still-air"] .badge--free,
 .vp-os[data-ui="still-air"] .mon-chip--off { color: var(--text-3); background: var(--surface-press); }
+
+.vp-os[data-ui="still-air"] .chip--warn { color: var(--warn); background: var(--warn-soft); }
+.vp-os[data-ui="still-air"] .chip--brand { color: var(--accent); background: var(--accent-soft); }
+.vp-os[data-ui="still-air"] :is(.badge, .chip, .mon-chip, .status-pill) .sa-ico { width: 12px; height: 12px; }
+
+/* Callouts and tones. A page says "this failed" or "careful" with a tone class,
+   never an inline colour, so every scheme, the Tor accent and forced colours
+   decide what the tone looks like. */
+.vp-os[data-ui="still-air"] .callout {
+  display: flex; gap: var(--space-4); align-items: flex-start;
+  padding: var(--space-4) var(--space-5); margin: 0 0 var(--space-5);
+  border: 1px solid var(--border-1); border-radius: var(--radius-surface);
+  background: var(--surface-2); color: var(--text-1); font: var(--type-body);
+}
+.vp-os[data-ui="still-air"] .callout > .sa-ico { margin-top: 2px; color: var(--accent); }
+.vp-os[data-ui="still-air"] .callout__body { min-width: 0; }
+.vp-os[data-ui="still-air"] .callout__body > :first-child { margin-top: 0; }
+.vp-os[data-ui="still-air"] .callout__body > :last-child { margin-bottom: 0; }
+.vp-os[data-ui="still-air"] .callout--warn { background: var(--warn-soft); border-color: transparent; }
+.vp-os[data-ui="still-air"] .callout--warn > .sa-ico { color: var(--warn); }
+.vp-os[data-ui="still-air"] .callout--danger { background: var(--danger-soft); border-color: transparent; }
+.vp-os[data-ui="still-air"] .callout--danger > .sa-ico { color: var(--danger); }
+.vp-os[data-ui="still-air"] .callout--ok { background: var(--ok-soft); border-color: transparent; }
+.vp-os[data-ui="still-air"] .callout--ok > .sa-ico { color: var(--ok); }
+.vp-os[data-ui="still-air"] .card--danger { box-shadow: inset 3px 0 0 var(--danger); }
+.vp-os[data-ui="still-air"] .card--ok { box-shadow: inset 3px 0 0 var(--ok); }
+.vp-os[data-ui="still-air"] .tone-warn { color: var(--warn); }
+.vp-os[data-ui="still-air"] .tone-danger { color: var(--danger); }
+.vp-os[data-ui="still-air"] .tone-ok { color: var(--ok); }
+.vp-os[data-ui="still-air"] .code-block--wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] :is(.card-title, .section-head__title, .vs-tier-head) > .sa-ico { color: var(--text-3); }
+.vp-os[data-ui="still-air"] :is(.card--danger .card-title, .tone-danger) > .sa-ico { color: var(--danger); }
+.vp-os[data-ui="still-air"] :is(.card--ok .card-title, .tone-ok) > .sa-ico { color: var(--ok); }
+.vp-os[data-ui="still-air"] :is(.empty-icon, .media-dropzone__icon, .vm-readpane-empty-ico, .vtalk-hint-badge) .sa-ico { width: 28px; height: 28px; stroke-width: 1.25; }
+
+/* Lists and their filters: one row of controls that wraps as a row, a
+   segmented status filter, and status carried by a dot and a word. */
+.vp-os[data-ui="still-air"] .toolbar-row {
+  display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; justify-content: space-between;
+  padding-bottom: var(--space-4); margin-bottom: var(--space-4); border-bottom: 1px solid var(--border-1);
+}
+.vp-os[data-ui="still-air"] .posts-filter { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; flex: 1 1 520px; min-width: 0; }
+.vp-os[data-ui="still-air"] .posts-filter .search-input { flex: 1 1 220px; min-width: 180px; }
+.vp-os[data-ui="still-air"] .posts-filter-date { display: inline-flex; align-items: center; gap: var(--space-3); font: var(--type-meta); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .seg-filter {
+  display: inline-flex; gap: 2px; padding: 2px; margin-left: auto;
+  background: var(--surface-press); border: 0; border-radius: var(--radius-control);
+}
+.vp-os[data-ui="still-air"] .seg-btn {
+  display: inline-flex; align-items: center; gap: var(--space-3); height: 26px; padding: 0 var(--space-4);
+  border-radius: var(--radius-small); font: var(--type-label); color: var(--text-2); background: none;
+}
+.vp-os[data-ui="still-air"] .seg-btn:hover { color: var(--text-1); }
+.vp-os[data-ui="still-air"] .seg-btn.is-active { background: var(--surface-float); color: var(--text-1); box-shadow: var(--shadow-3); }
+.vp-os[data-ui="still-air"] .seg-btn .muted { margin: 0; opacity: 1; font-weight: 400; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .status-pill--live { color: var(--ok); background: var(--ok-soft); }
+.vp-os[data-ui="still-air"] .status-pill--draft { color: var(--warn); background: var(--warn-soft); }
+.vp-os[data-ui="still-air"] .post-list-head { font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .post-acc__face-btn { height: 26px; min-height: 0; padding: 0 7px; border-color: transparent; background: none; color: var(--text-3); }
+.vp-os[data-ui="still-air"] .post-acc__face-btn:hover { background: var(--surface-press); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .post-acc__face-btn[aria-pressed="true"] { color: var(--accent); }
+.vp-os[data-ui="still-air"] .bulk-bar { background: var(--surface-float); border: 1px solid var(--border-2); border-radius: var(--radius-control); box-shadow: var(--shadow-3); }
+
+.vp-os[data-ui="still-air"] .posts-filter :is(.input, .select) { height: 30px; }
+.vp-os[data-ui="still-air"] .posts-filter .input[type="date"] { width: 140px; }
+.vp-os[data-ui="still-air"] .media-dropzone { border: 1px dashed var(--border-2); border-radius: var(--radius-surface); background: var(--surface-1); }
+.vp-os[data-ui="still-air"] .media-dropzone__icon { display: flex; justify-content: center; color: var(--text-3); }
+.vp-os[data-ui="still-air"] .media-dropzone__link { color: var(--accent); }
 
 /* Fields */
 .vp-os[data-ui="still-air"] .field { gap: 6px; }
@@ -936,6 +1013,76 @@
 .vp-os[data-ui="still-air"] .sa-opt__t { display: flex; align-items: center; gap: var(--space-3); font: var(--type-strong); }
 .vp-os[data-ui="still-air"] .sa-opt__d { grid-column: 1; font: var(--type-small); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .sa-opt > .btn { grid-column: 2; grid-row: 1 / span 2; }
+
+/* ── Mail ──────────────────────────────────────────────────────────────── */
+/* Unread is weight and a dot, not colour: subjects are text, and the accent is
+   kept for the one thing that is new. Row controls wait for the pointer or
+   focus, except a pin that is on, which is state the reader needs to see. */
+.vp-os[data-ui="still-air"] .vm-toolbar {
+  position: sticky; top: 0; z-index: 6;
+  background: var(--surface-2); backdrop-filter: none;
+  border: 1px solid var(--border-1); border-radius: var(--radius-surface);
+  padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4);
+}
+.vp-os[data-ui="still-air"] .vm-toolbar-meta strong { font: var(--type-strong); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .vm-toolbar-meta a { font: var(--type-meta); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .vm-av {
+  width: 28px; height: 28px; font: 600 11px/1 var(--font-ui); letter-spacing: 0.02em; color: var(--text-1);
+}
+.vp-os[data-ui="still-air"] .vm-av--0 { background: color-mix(in srgb, var(--chart-1) 24%, var(--surface-float)); }
+.vp-os[data-ui="still-air"] .vm-av--1 { background: color-mix(in srgb, var(--chart-6) 24%, var(--surface-float)); }
+.vp-os[data-ui="still-air"] .vm-av--2 { background: color-mix(in srgb, var(--chart-2) 24%, var(--surface-float)); }
+.vp-os[data-ui="still-air"] .vm-av--3 { background: color-mix(in srgb, var(--chart-3) 24%, var(--surface-float)); }
+.vp-os[data-ui="still-air"] .vm-av--4 { background: color-mix(in srgb, var(--chart-5) 24%, var(--surface-float)); }
+.vp-os[data-ui="still-air"] .vm-av--5 { background: color-mix(in srgb, var(--chart-4) 24%, var(--surface-float)); }
+.vp-os[data-ui="still-air"] .vm-av--img { background: none; }
+.vp-os[data-ui="still-air"] .vm-msg-from-row .vm-av { width: 36px; height: 36px; font-size: 12px; }
+
+.vp-os[data-ui="still-air"] .vm-list tbody td { padding-top: var(--space-3); padding-bottom: var(--space-3); }
+.vp-os[data-ui="still-air"] .vm-list tbody tr:hover > td { background: var(--surface-hover); }
+.vp-os[data-ui="still-air"] tr.vm-unread > td:first-child { box-shadow: none; }
+.vp-os[data-ui="still-air"] .vm-name { color: var(--text-2); }
+.vp-os[data-ui="still-air"] .vm-subj a,
+.vp-os[data-ui="still-air"] .vm-subj-link { color: var(--text-2); font-weight: 400; }
+.vp-os[data-ui="still-air"] .vm-subj-link:hover { color: var(--text-1); }
+.vp-os[data-ui="still-air"] tr.vm-unread .vm-name,
+.vp-os[data-ui="still-air"] tr.vm-unread .vm-subj a { color: var(--text-1); font-weight: 600; }
+.vp-os[data-ui="still-air"] tr.vm-unread .vm-subj a::before { width: 6px; height: 6px; margin-right: var(--space-3); }
+.vp-os[data-ui="still-air"] tr.vm-active > td { background: var(--surface-select); }
+.vp-os[data-ui="still-air"] tr.vm-active .vm-subj a { text-decoration: none; }
+.vp-os[data-ui="still-air"] .vm-date { color: var(--text-3); font: var(--type-meta); }
+.vp-os[data-ui="still-air"] .vm-list .row-actions .btn,
+.vp-os[data-ui="still-air"] .vm-pin { border-color: transparent; background: none; color: var(--text-3); }
+.vp-os[data-ui="still-air"] .vm-list .row-actions .btn:hover,
+.vp-os[data-ui="still-air"] .vm-pin:hover { background: var(--surface-press); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .vm-list tbody tr:not(:hover):not(:focus-within) .row-actions .btn,
+.vp-os[data-ui="still-air"] .vm-list tbody tr:not(:hover):not(:focus-within) .vm-pin[aria-pressed="false"] { opacity: 0; }
+.vp-os[data-ui="still-air"] .vm-pin[aria-pressed="true"] { color: var(--accent); }
+.vp-os[data-ui="still-air"] .vm-list :is(th, td):nth-child(-n+2) { width: 1%; padding-right: 0; }
+.vp-os[data-ui="still-air"] [data-mail-compose] { display: grid; gap: var(--space-5); }
+.vp-os[data-ui="still-air"] [data-mail-compose] > .vm-row--tight { margin-top: calc(-1 * var(--space-3)); }
+.vp-os[data-ui="still-air"] .vm-ed-area { font: var(--type-body); font-size: 14.5px; line-height: 23px; }
+.vp-os[data-ui="still-air"] .vm-tab-badge { color: var(--on-accent); background: var(--accent); font: 600 11px/18px var(--font-ui); }
+.vp-os[data-ui="still-air"] .vm-msg-subject { font: var(--type-title); letter-spacing: -0.01em; }
+.vp-os[data-ui="still-air"] .vm-actions .btn .sa-ico,
+.vp-os[data-ui="still-air"] .vm-toolbar .btn .sa-ico { width: 14px; height: 14px; }
+
+/* ── Shield ────────────────────────────────────────────────────────────── */
+/* A live layer is the normal case, so it is quiet: state shows on the layer
+   tag, and only a layer under pressure (hot) raises its border. */
+.vp-os[data-ui="still-air"] .vs-title { font: var(--type-heading); }
+.vp-os[data-ui="still-air"] .vs-lead { margin: var(--space-2) 0 var(--space-5); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .vs-layer { background: var(--surface-1); border-color: var(--border-1); border-radius: var(--radius-control); }
+.vp-os[data-ui="still-air"] .vs-layer-tag { font: 600 11px/16px var(--font-code); color: var(--text-3); border: 0; background: var(--surface-press); border-radius: var(--radius-small); }
+.vp-os[data-ui="still-air"] .vs-layer.is-live,
+.vp-os[data-ui="still-air"] .vs-layer.is-tuned { border-color: var(--border-1); }
+.vp-os[data-ui="still-air"] .vs-layer.is-live .vs-layer-tag { color: var(--ok); background: var(--ok-soft); }
+.vp-os[data-ui="still-air"] .vs-layer.is-tuned .vs-layer-tag { color: var(--accent); background: var(--accent-soft); }
+.vp-os[data-ui="still-air"] .vs-layer.is-hot { border-color: var(--warn); }
+.vp-os[data-ui="still-air"] .vs-layer.is-hot .vs-layer-tag { color: var(--warn); background: var(--warn-soft); }
+.vp-os[data-ui="still-air"] .vs-layer-name { font: var(--type-strong); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .vs-layer-desc { font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .vs-layer-stats span { font: var(--type-mono); font-size: 11.5px; color: var(--text-2); background: var(--surface-press); }
 
 /* ── Phone ─────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {

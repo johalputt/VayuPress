@@ -158,7 +158,7 @@ func TestIndexNowKeyFileVerdict(t *testing.T) {
 func TestIndexNowPendingIsNotShownAsSubmitted(t *testing.T) {
 	pending := dbpkg.IndexNowStatus{State: dbpkg.IndexNowPending, HTTPCode: http.StatusAccepted, Detail: "validating your key file"}
 	badge := osIndexNowBadge("hello-world", pending, true, false)
-	if strings.Contains(badge, "✓ IndexNow") {
+	if strings.Contains(badge, saIcon("check")+" IndexNow") {
 		t.Errorf("a pending (HTTP 202) submission must not render the confirmed tick: %s", badge)
 	}
 	if !strings.Contains(badge, "pending") {
@@ -166,7 +166,7 @@ func TestIndexNowPendingIsNotShownAsSubmitted(t *testing.T) {
 	}
 
 	submitted := dbpkg.IndexNowStatus{State: dbpkg.IndexNowSubmitted, HTTPCode: http.StatusOK}
-	if !strings.Contains(osIndexNowBadge("hello-world", submitted, true, false), "✓ IndexNow") {
+	if !strings.Contains(osIndexNowBadge("hello-world", submitted, true, false), saIcon("check")+" IndexNow") {
 		t.Error("a confirmed (HTTP 200) submission must still render the tick")
 	}
 	if dbpkg.IndexNowPending == dbpkg.IndexNowSubmitted {

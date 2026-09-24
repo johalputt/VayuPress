@@ -99,12 +99,12 @@ func scopedAnalyticsBody(views, visits int, bounce, avgDur float64, top []analyt
 	if len(top) > 0 {
 		pagesChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(len(top)) + ` pages</span>`
 	}
-	b.WriteString(monAcc("📈", "Busiest pages", "Where this site's visits landed", pagesChip, true, pages.String()))
+	b.WriteString(monAcc(saIcon("trend"), "Busiest pages", "Where this site's visits landed", pagesChip, true, pages.String()))
 
 	// What these numbers are and are not. The visitor count is deliberately the
 	// distinct-session count, and saying so is cheaper than being asked why it
 	// differs from the install-wide page.
-	b.WriteString(monAcc("📐", "What these numbers mean", "And what they cannot be compared with",
+	b.WriteString(monAcc(saIcon("grid"), "What these numbers mean", "And what they cannot be compared with",
 		`<span class="mon-chip mon-chip--on">read this once</span>`, false,
 		`<div class="card"><p class="text-sm muted">"Visits" counts distinct sessions on this `+
 			`hostname. The install-wide Analytics page counts unique visitors from a session table that `+

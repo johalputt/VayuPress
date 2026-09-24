@@ -48,7 +48,7 @@ func (a *App) handleOSNewsletter(w http.ResponseWriter, r *http.Request) {
 
 	if a.newsletterStore == nil {
 		body := `<div class="page-header"><h1>Newsletter</h1></div>
-<div class="card empty-state"><div class="empty-icon">✉️</div>
+<div class="card empty-state"><div class="empty-icon">` + saIcon("mail") + `</div>
 <div class="empty-title">Newsletter unavailable</div>
 <div class="empty-sub">The newsletter store is not initialised.</div></div>`
 		writeOSHTML(w, r, adminOSLayout(nonce, "Newsletter", "newsletter", cfg, htmpl.HTML(body)))
