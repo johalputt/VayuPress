@@ -75,6 +75,15 @@ jobs:
           go-version: 'stable'
           cache: true
 
+      - name: Pin the Go toolchain to go.mod
+        if: steps.exists.outputs.skip != 'true'
+        # go.mod's toolchain line is the one source for the compiler that tests,
+        # scans and builds releases. `stable` moved under us: CI measured Go 1.27
+        # while go.mod said 1.26, and a release was built by whichever Go was newest.
+        run: |
+          TC=$(sed -n 's/^toolchain //p' go.mod)
+          [ -n "$TC" ] || { echo "::error::go.mod has no toolchain directive"; exit 1; }
+          echo "GOTOOLCHAIN=$TC" >> "$GITHUB_ENV"
       - name: Build binary
         if: steps.exists.outputs.skip != 'true'
         run: |
@@ -88,7 +97,7 @@ jobs:
           # in-app one-click updates that download this binary. netgo+osusergo
           # use Go's pure-Go DNS/user resolvers (no glibc NSS at runtime), and
           # -extldflags=-static links libc/sqlite statically.
-          CGO_ENABLED=1 GOTOOLCHAIN=auto go build \
+          CGO_ENABLED=1 go build \
             -trimpath -tags "netgo osusergo sqlite_omit_load_extension" \
             -ldflags="-s -w -linkmode external -extldflags '-static' -X main.Version=${VERSION#v}" \
             -o dist/vayupress ./cmd/vayupress

@@ -38,6 +38,14 @@ jobs:
         with:
           go-version: "stable"
           cache: true
+      - name: Pin the Go toolchain to go.mod
+        # go.mod's toolchain line is the one source for the compiler that tests,
+        # scans and builds releases. `stable` moved under us: CI measured Go 1.27
+        # while go.mod said 1.26, and a release was built by whichever Go was newest.
+        run: |
+          TC=$(sed -n 's/^toolchain //p' go.mod)
+          [ -n "$TC" ] || { echo "::error::go.mod has no toolchain directive"; exit 1; }
+          echo "GOTOOLCHAIN=$TC" >> "$GITHUB_ENV"
       - name: Report outdated Go modules
         run: |
           chmod +x scripts/dep-freshness.sh

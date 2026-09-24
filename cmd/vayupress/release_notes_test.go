@@ -153,25 +153,43 @@ func TestProvisioningHelperVersionStampIsWired(t *testing.T) {
 // get the published binary".
 //
 // v3.17.47 was built with go1.26.5 while the workflow asked setup-go for
-// "stable" — so the compiler was decided by whatever the runner had that day,
-// and nothing in the repository recorded it. Two builds a month apart could
-// then differ for a reason no diff shows. tag-release.yml builds with
-// GOTOOLCHAIN=auto, so this directive is what actually decides.
-//
-// It also closed a gap in the other direction: local gates were running
-// go1.25.8 against a CI that had moved to 1.26, so "green locally" and "green
-// in CI" were statements about different compilers.
+// "stable", so the compiler was decided by whatever the runner had that day.
+// The fix then was a toolchain line in go.mod plus GOTOOLCHAIN=auto, and this
+// test asserted that auto made the line binding. It does not: auto runs the
+// NEWER of the installed Go and go.mod's, so with "stable" at 1.27 the pinned
+// 1.26.6 was never used — releases, CI's size budget and govulncheck all ran
+// 1.27 while go.mod said otherwise. The control is an exact GOTOOLCHAIN, read
+// from go.mod, exported after every Go setup in every workflow; that is what
+// this test holds, per step.
 func TestReleaseToolchainIsPinned(t *testing.T) {
 	mod := repoFile(t, "go.mod")
 	if !strings.Contains(mod, "\ntoolchain go1.") {
 		t.Fatal("go.mod carries no toolchain directive; the release compiler is then " +
 			"whatever the runner happens to have, and the build is not reproducible from the tag")
 	}
-	// GOTOOLCHAIN=auto is what makes the directive binding rather than advisory.
-	wf := repoFile(t, ".github/workflows/tag-release.yml")
-	if !strings.Contains(wf, "GOTOOLCHAIN=auto") {
-		t.Error("tag-release.yml must build with GOTOOLCHAIN=auto, or the go.mod toolchain " +
-			"directive is ignored and the pin means nothing")
+	files, err := filepath.Glob("../../.github/workflows/*.yml")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no workflows found: %v", err)
+	}
+	const pin = `echo "GOTOOLCHAIN=$TC" >> "$GITHUB_ENV"`
+	for _, f := range files {
+		wf, err := os.ReadFile(f) // #nosec G304 -- repository file
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := string(wf)
+		if strings.Contains(src, "GOTOOLCHAIN=auto") || strings.Contains(src, "GOTOOLCHAIN: auto") {
+			t.Errorf("%s sets GOTOOLCHAIN=auto, which runs the newer of the installed Go and "+
+				"go.mod's, so the pin decides nothing", filepath.Base(f))
+		}
+		// Every Go setup is followed by the pin before the next setup: a job
+		// that sets Go up and never pins it builds with "stable".
+		parts := strings.Split(src, "actions/setup-go@")
+		for i, after := range parts[1:] {
+			if !strings.Contains(after, pin) {
+				t.Errorf("%s: Go setup #%d is never pinned to go.mod's toolchain", filepath.Base(f), i+1)
+			}
+		}
 	}
 }
 
