@@ -94,6 +94,10 @@ func writeConsoleShellFoot(w http.ResponseWriter, nonce, script string) {
 // =============================================================================
 
 func (a *App) handleModesPage(w http.ResponseWriter, r *http.Request) {
+	if cfg := a.getOSSettings(r.Context()); cfg.stillAir() {
+		a.stillAirModesPage(w, r, cfg)
+		return
+	}
 	cur := mode.Global.Current()
 	curCls, curLabel, curDesc := modeVisual(cur)
 	history := mode.Global.History()

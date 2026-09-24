@@ -2,8 +2,8 @@
    Loaded only by the Still Air shell. Everything the classic shell also does
    (drawer, command bar, bell, PWA install, world switch) stays in admin-os.js
    and reaches this shell through the same hooks; this file adds only what the
-   new shell introduces: popover menus, the colour-scheme control and the design
-   switch. No inline handlers, nothing evaluated: CSP script-src 'self'. */
+   new shell introduces: popover menus and the colour-scheme control. The design
+   switch lives in admin-os.js, because the classic console offers it too. No inline handlers, nothing evaluated: CSP script-src 'self'. */
 (function () {
   'use strict';
 
@@ -94,18 +94,4 @@
     });
   });
 
-  /* ── Design switch ─────────────────────────────────────────────────────
-     Saved first, then the page reloads into the other shell; a failed save
-     leaves the operator where they are and says why. */
-  Array.prototype.forEach.call(document.querySelectorAll('[data-sa-ui]'), function (b) {
-    b.addEventListener('click', function () {
-      b.setAttribute('aria-disabled', 'true');
-      saveSetting('admin.ui', b.getAttribute('data-sa-ui')).then(function () {
-        location.reload();
-      }, function () {
-        b.removeAttribute('aria-disabled');
-        say('The design could not be changed — the setting was not saved.', 'error');
-      });
-    });
-  });
 })();

@@ -227,7 +227,7 @@ func TestStillAirChromeEscapesOnce(t *testing.T) {
 func TestStillAirStripOnlyWhenActionsChange(t *testing.T) {
 	for m, want := range map[mode.Mode]bool{
 		mode.ModeNormal: false, mode.ModeDegraded: false, mode.ModeMaintenance: false,
-		mode.ModeReadOnly: true, mode.ModeRecovery: true, mode.ModeQuarantined: true,
+		mode.ModeReadOnly: true, mode.ModeRecovery: false, mode.ModeQuarantined: true,
 	} {
 		s := saSession(accessAdmin)
 		s.Mode = m
@@ -418,5 +418,46 @@ func TestSaInitials(t *testing.T) {
 		if got := saInitials(in); got != want {
 			t.Errorf("saInitials(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// Every refusal the System state page and the strip describe is enforced by a
+// mode check in each file the table names. Remove a guard and the page would
+// be describing a control that is not there; this fails first.
+func TestEveryModeRefusalNamesItsGuard(t *testing.T) {
+	constName := map[mode.Mode]string{
+		mode.ModeNormal: "ModeNormal", mode.ModeDegraded: "ModeDegraded", mode.ModeReadOnly: "ModeReadOnly",
+		mode.ModeRecovery: "ModeRecovery", mode.ModeMaintenance: "ModeMaintenance", mode.ModeQuarantined: "ModeQuarantined",
+	}
+	for _, e := range saModeEffects {
+		if len(e.Guards) == 0 {
+			t.Errorf("%q names no guard", e.What)
+		}
+		for _, g := range e.Guards {
+			src, err := os.ReadFile("../../" + g)
+			if err != nil {
+				t.Errorf("%q: guard file %s: %v", e.What, g, err)
+				continue
+			}
+			code := string(src)
+			for _, m := range e.Modes {
+				want := "== mode." + constName[m]
+				if e.AllBut {
+					want = "!= mode." + constName[m]
+				}
+				is := "Is(mode." + constName[m] + ")"
+				if !strings.Contains(code, want) && !strings.Contains(code, `case "`+string(m)+`"`) && (e.AllBut || !strings.Contains(code, is)) {
+					t.Errorf("%q claims a %s check in %s, but it has no %q", e.What, m, g, want)
+				}
+			}
+		}
+	}
+	// And the read-only list carries what the code actually refuses, not the
+	// classic page's "WAL writes blocked", which nothing enforces.
+	if got := saModeRefusals(mode.ModeReadOnly); len(got) != 9 {
+		t.Errorf("read-only refuses %d things in the table, want 9: %v", len(got), got)
+	}
+	if got := saModeRefusals(mode.ModeNormal); len(got) != 0 {
+		t.Errorf("normal mode refuses %v", got)
 	}
 }

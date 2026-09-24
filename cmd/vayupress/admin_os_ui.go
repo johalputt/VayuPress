@@ -2740,6 +2740,10 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	snap := a.getAdminSnapshot()
+	if cfg.stillAir() {
+		writeOSHTML(w, r, adminOSLayout(nonce, "Home", "dashboard", cfg, htmpl.HTML(a.stillAirHomeBody(r.Context(), cfg, snap))))
+		return
+	}
 
 	// Content workspace (dashboard redesign): the content areas that used to live in
 	// the sidebar (Posts, Pages, Comments, Messages, Media, New Post, Website) are
@@ -3954,6 +3958,10 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 	default:
 		groupBody = osSettingsGeneral(r.Context(), ss)
 	}
+	designRow := ""
+	if (group == "" || group == "general") && cfg.AccessLevel >= accessAdmin {
+		designRow = osConsoleDesignRow(cfg.stillAir())
+	}
 
 	body := `<div class="page-header">
   <h1>Settings</h1>
@@ -3963,6 +3971,7 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>
 <nav class="tab-list" aria-label="Settings sections">` + tabHTML + `</nav>
+` + designRow + `
 <div class="card">
   ` + groupBody + `
   <div class="settings-save-bar">
@@ -4191,6 +4200,21 @@ if(footerInput){
 		renderTrustedHTML(htmpl.HTML(body)) +
 		adminOSShellFoot(nonce, saveScript, pageUsesAlpine(body))
 	writeOSHTML(w, r, fullHTML)
+}
+
+// osConsoleDesignRow is the one place the console's design is chosen, in both
+// designs, so a switch is never a hidden preference. It saves admin.ui and
+// reloads (admin-os.js, [data-sa-ui]).
+func osConsoleDesignRow(stillAir bool) string {
+	hint := `Still Air is the redesigned console: one app per area, the system's state always in view, and less on every page. You can switch back here at any time.`
+	btn := `<button type="button" class="btn btn--primary btn--sm" data-sa-ui="still-air">Try Still Air</button>`
+	if stillAir {
+		hint = `You are using Still Air, the redesigned console. The classic design stays available here until Still Air becomes the default.`
+		btn = `<button type="button" class="btn btn--sm" data-sa-ui="classic">Use the classic design</button>`
+	}
+	return `<div class="card mb-3"><div class="settings-row"><div class="settings-row-info">
+  <div class="settings-row-label">Console design</div>
+  <div class="settings-row-hint">` + hint + `</div></div>` + btn + `</div></div>`
 }
 
 func osSettingsGeneral(ctx context.Context, ss *settings.Store) string {

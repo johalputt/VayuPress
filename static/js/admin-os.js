@@ -47,6 +47,33 @@ const on = (el, ev, fn) => el && el.addEventListener(ev, fn);
   });
 })();
 
+/* ── Console design switch ─────────────────────────────────────
+   [data-sa-ui] buttons (Settings › General, and the Still Air account menu)
+   choose the console design. Saved first, then the page reloads into the other
+   shell; a failed save leaves the operator where they are and says why. Bound
+   here rather than in vayuos.js because the classic console offers it too, and
+   binding it in both would post twice. */
+(function initDesignSwitch() {
+  Array.prototype.forEach.call(document.querySelectorAll('[data-sa-ui]'), function (b) {
+    b.addEventListener('click', function () {
+      if (b.getAttribute('aria-disabled') === 'true') return;
+      b.setAttribute('aria-disabled', 'true');
+      fetch('/os/api/settings', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
+        body: JSON.stringify({ key: 'admin.ui', value: b.getAttribute('data-sa-ui') })
+      }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        location.reload();
+      }).catch(function () {
+        b.removeAttribute('aria-disabled');
+        toast('The design could not be changed — the setting was not saved.', 'error');
+      });
+    });
+  });
+})();
+
 /* ── Cookies ─────────────────────────────────────────────────── */
 function cookie(name) {
   // Take everything after the first '=' so base64 values keep any '=' padding.
@@ -420,10 +447,62 @@ window.vpActions = {
       return;
     }
 
+    // Still Air: icons from the page's sprite instead of emoji, the matched
+    // text marked, and a "Go to" group first, built from the shell's own gated
+    // index of apps and sections. The classic palette is unchanged.
+    var sa = document.body.dataset.ui === 'still-air';
+    function saIcon(name) {
+      var ns = 'http://www.w3.org/2000/svg';
+      var svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('class', 'sa-ico');
+      svg.setAttribute('viewBox', '0 0 20 20');
+      svg.setAttribute('aria-hidden', 'true');
+      var use = document.createElementNS(ns, 'use');
+      use.setAttribute('href', '#sa-i-' + name);
+      svg.appendChild(use);
+      return svg;
+    }
+    function labelFor(text) {
+      var lbl = document.createElement('div');
+      lbl.className = 'cmd-item__label';
+      var at = sa && q ? text.toLowerCase().indexOf(q) : -1;
+      if (at < 0) { lbl.textContent = text; return lbl; }
+      lbl.appendChild(document.createTextNode(text.slice(0, at)));
+      var mark = document.createElement('mark');
+      mark.textContent = text.slice(at, at + q.length);
+      lbl.appendChild(mark);
+      lbl.appendChild(document.createTextNode(text.slice(at + q.length)));
+      return lbl;
+    }
+    if (sa) {
+      var goTo = Array.prototype.slice.call(document.querySelectorAll('[data-sa-index] a')).filter(function (a) {
+        return !q || a.textContent.toLowerCase().indexOf(q) >= 0;
+      }).slice(0, q ? 8 : 6);
+      if (goTo.length) {
+        var gl = document.createElement('div');
+        gl.className = 'cmd-group-label';
+        gl.textContent = 'Go to';
+        results.appendChild(gl);
+        goTo.forEach(function (a) {
+          var el = document.createElement('a');
+          el.className = 'cmd-item';
+          el.href = a.getAttribute('href');
+          var ic = document.createElement('div');
+          ic.className = 'cmd-item__icon';
+          ic.appendChild(saIcon(a.getAttribute('data-icon')));
+          el.appendChild(ic);
+          el.appendChild(labelFor(a.textContent));
+          el.addEventListener('click', close);
+          results.appendChild(el);
+          items.push(el);
+        });
+      }
+    }
+
     var sections = [
-      { label: 'Posts', key: 'posts', icon: '✍', href: function(i){ return '/os/editor/' + i.slug; } },
-      { label: 'Quick Actions', key: 'actions', icon: '⚡', fn: function(i){ return i.fn; } },
-      { label: 'Settings', key: 'settings', icon: '⚙', href: function(i){ return i.href; } },
+      { label: 'Posts', key: 'posts', icon: '✍', saIcon: 'content', href: function(i){ return '/os/editor/' + i.slug; } },
+      { label: 'Quick Actions', key: 'actions', icon: '⚡', saIcon: 'flow', fn: function(i){ return i.fn; } },
+      { label: 'Settings', key: 'settings', icon: '⚙', saIcon: 'settings', href: function(i){ return i.href; } },
     ];
 
     sections.forEach(function (sec) {
@@ -446,11 +525,10 @@ window.vpActions = {
 
         var icon = document.createElement('div');
         icon.className = 'cmd-item__icon';
-        icon.textContent = item.icon || sec.icon;
+        if (sa) icon.appendChild(saIcon(sec.saIcon));
+        else icon.textContent = item.icon || sec.icon;
 
-        var lbl = document.createElement('div');
-        lbl.className = 'cmd-item__label';
-        lbl.textContent = item.label || item.title || '';
+        var lbl = labelFor(item.label || item.title || '');
 
         el.appendChild(icon);
         el.appendChild(lbl);

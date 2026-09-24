@@ -20,6 +20,7 @@ package main
 import (
 	"html"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -297,24 +298,18 @@ func saModeTone(m mode.Mode) string {
 	return "warn"
 }
 
-// saModeStrip is the one-line strip for the modes that change what an action
-// does. Every other mode stays in the status area: a banner for a state that
-// changes nothing trains people to ignore banners.
+// saModeStrip is the one-line strip for the modes that refuse a meaningful set
+// of actions (read-only, quarantined), worded from saModeEffects so it can only
+// name refusals the code enforces. Every other mode stays in the status area:
+// a banner for a state that changes little teaches people to ignore banners.
 func saModeStrip(m mode.Mode, since time.Time, admin bool) string {
-	var what string
-	switch m {
-	case mode.ModeReadOnly:
-		what = "Publishing and edits are paused while the database is checked. The site, mail and reading in the console carry on."
-	case mode.ModeRecovery:
-		what = "VayuOS is recovering. Changes are paused until it finishes; the site keeps serving."
-	case mode.ModeQuarantined:
-		what = "Plugins and federation are suspended until the cause is cleared. The site and mail keep working."
-	default:
+	if m != mode.ModeReadOnly && m != mode.ModeQuarantined {
 		return ""
 	}
+	what := saModeStripText(m)
 	when := ""
 	if !since.IsZero() {
-		when = " since " + since.Format("15:04")
+		when = " since " + config.InSite(since).Format("15:04")
 	}
 	details := ""
 	if admin {
@@ -545,6 +540,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
   <div class="sa-rail__foot">` + settingsItem + `<div class="sa-rail__version"><span>VayuOS</span><span>` + html.EscapeString(Version) + `</span></div></div>
 </aside>
 <nav class="sa-tabbar" aria-label="Apps">` + tabs.String() + `</nav>
+` + saPaletteIndex(apps) + `
 <div class="main sa-main` + sideCls + `">
 ` + side.String() + `
 <main id="main-content" class="content sa-content">
@@ -608,4 +604,41 @@ func saCanOpen(s *osSettings, href string) bool {
 		return mailOnlyPathAllowed(href)
 	}
 	return s.AccessLevel >= osPathMinLevel(href)
+}
+
+// saPaletteIndex is what the command bar searches before anything else: every
+// app and section this session can open, as plain links, plus a sprite of the
+// icons it draws beside them. Hidden, and gated like the rail, so the command
+// bar can never offer a page the rail would not.
+func saPaletteIndex(apps []saApp) string {
+	used := map[string]bool{"content": true, "flow": true, "settings": true, "chev-r": true}
+	var idx strings.Builder
+	idx.WriteString(`<nav hidden data-sa-index aria-hidden="true">`)
+	for _, a := range apps {
+		used[a.Icon] = true
+		idx.WriteString(`<a href="` + a.Href + `" data-icon="` + a.Icon + `">` + html.EscapeString(a.Label) + `</a>`)
+		for _, sec := range a.Sections {
+			if sec.Label == a.Label || sec.Href == a.Href && len(a.Sections) == 1 {
+				continue
+			}
+			used[sec.Icon] = true
+			idx.WriteString(`<a href="` + sec.Href + `" data-icon="` + sec.Icon + `">` +
+				html.EscapeString(a.Label+" › "+sec.Label) + `</a>`)
+		}
+	}
+	idx.WriteString(`</nav>`)
+	names := make([]string, 0, len(used))
+	for n := range used {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	var sprite strings.Builder
+	sprite.WriteString(`<svg class="sa-sprite" aria-hidden="true" focusable="false"><defs>`)
+	for _, n := range names {
+		if p, ok := saIcons[n]; ok {
+			sprite.WriteString(`<symbol id="sa-i-` + n + `" viewBox="0 0 20 20">` + p + `</symbol>`)
+		}
+	}
+	sprite.WriteString(`</defs></svg>`)
+	return idx.String() + sprite.String()
 }
