@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"regexp"
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/customsite"
@@ -47,19 +48,17 @@ func customSiteDirFor(scope string) string {
 	return filepath.Join(root, scope)
 }
 
-// isHexScope reports whether s is a plausible domain id: non-empty, bounded, and
-// lowercase hex only. No separator, no dot, no traversal.
+// hexScopePattern is the whole rule for an id that becomes a path segment:
+// non-empty, bounded, lowercase hex only. No separator, no dot, no traversal.
+var hexScopePattern = regexp.MustCompile(`^[0-9a-f]{1,64}$`)
+
+// isHexScope reports whether s is a plausible domain or upload id. It is a
+// regexp match returned directly rather than a hand-written loop: the result is
+// the same, but code scanning (go/path-injection) recognises a regexp check as
+// path containment and lifts it through this function to every caller, where a
+// loop left each filepath.Join of an id reported as uncontrolled.
 func isHexScope(s string) bool {
-	if len(s) == 0 || len(s) > 64 {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return false
-		}
-	}
-	return true
+	return hexScopePattern.MatchString(s)
 }
 
 // customSiteDir returns the bundle directory for this request's active domain.

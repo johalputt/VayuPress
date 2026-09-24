@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -445,5 +446,22 @@ func TestTheShareQRIsOnlyEverForAnIdentityYouMayChatAs(t *testing.T) {
 	}
 	if !bytes.Equal(got, qrPNG(talkShareLink("holder@example.com"))) {
 		t.Error("a refused identity must fall back to the holder's own link")
+	}
+}
+
+// /os/talk?t= pre-fills the new-chat box from a link anyone can send, and the
+// value is echoed twice: in the notice and in the input's value attribute.
+func TestATalkInviteLinkIsEchoedAsText(t *testing.T) {
+	a, _, _ := appWithTalkWeb(t)
+	u := &users.User{ID: "u1", Email: "dana@example.com", Role: users.RoleAdmin}
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/talk?t="+url.QueryEscape(`"><img src=x>`), nil), u)
+	rec := httptest.NewRecorder()
+	a.handleVayuOSTalk(rec, req)
+	body := rec.Body.String()
+	if strings.Contains(body, `<img src=x>`) {
+		t.Error("the invite reached the page as markup")
+	}
+	if n := strings.Count(body, `&#34;&gt;&lt;img src=x&gt;`); n != 2 {
+		t.Errorf("the invite should be shown escaped in the notice and the box; found %d", n)
 	}
 }

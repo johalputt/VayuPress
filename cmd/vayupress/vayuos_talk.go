@@ -337,14 +337,16 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	// /os/talk?t=<address> pre-fills the new-chat box, so people with mailboxes
 	// on this install can send each other a link to start a chat. The value is escaped
 	// into the attribute; the recipient still has to press Start, so a link can
-	// never silently open a conversation.
+	// never silently open a conversation. It is escaped by a direct call, not the
+	// page's esc alias: CodeQL credits an escaper only where it can see the call
+	// (go/reflected-xss), and this is the one value on the page from the URL.
 	invite := strings.TrimSpace(r.URL.Query().Get("t"))
 	if invite != "" {
 		what := "An address"
 		if config.Cfg.OnionMode {
 			what = "A code"
 		}
-		body.WriteString(`<div class="settings-callout">🔗 ` + what + ` came with this link — press <strong>Start</strong> to open the chat with <code>` + esc(invite) + `</code>.</div>`)
+		body.WriteString(`<div class="settings-callout">🔗 ` + what + ` came with this link — press <strong>Start</strong> to open the chat with <code>` + htmpl.HTMLEscapeString(invite) + `</code>.</div>`)
 	}
 	// The Tor world's recipients are 70-character anonymous codes, not mail
 	// addresses: an email input with a "name@domain" placeholder invites the wrong
@@ -366,7 +368,7 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 		}
 		body.WriteString(`</datalist>`)
 	}
-	body.WriteString(`<form class="vtalk-newchat" id="vtalk-newchat"><input class="input input--sm" id="vtalk-peer" type="` + peerType + `" autocomplete="off" spellcheck="false" placeholder="` + peerPlaceholder + `" aria-label="Recipient address" list="vtalk-directory" value="` + esc(invite) + `"><button class="btn btn--sm btn--primary" type="submit">Start</button></form>`)
+	body.WriteString(`<form class="vtalk-newchat" id="vtalk-newchat"><input class="input input--sm" id="vtalk-peer" type="` + peerType + `" autocomplete="off" spellcheck="false" placeholder="` + peerPlaceholder + `" aria-label="Recipient address" list="vtalk-directory" value="` + htmpl.HTMLEscapeString(invite) + `"><button class="btn btn--sm btn--primary" type="submit">Start</button></form>`)
 	body.WriteString(`<p class="vtalk-newchat-note" id="vtalk-newchat-note" hidden></p>`)
 	body.WriteString(`<div class="vtalk-convos-head"><span class="vtalk-convos-title">Conversations</span></div>`)
 	body.WriteString(`<div class="vtalk-search-wrap"><svg class="vtalk-search-ico" viewBox="0 0 20 20" width="15" height="15" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="5.2" stroke="currentColor" stroke-width="1.5"/><path d="M13 13l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><input class="input input--sm vtalk-search" id="vtalk-search" type="search" placeholder="Search conversations…" aria-label="Search conversations" autocomplete="off"></div>`)

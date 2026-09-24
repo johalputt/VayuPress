@@ -15,10 +15,14 @@ import (
 )
 
 // siteEditorShell is the editor's markup. The script builds everything inside
-// from the API; the page carries only where that API is and where "back" is.
-func siteEditorShell(nonce, apiBase, back, backLabel string) string {
+// from the API; the page carries only which site (scope: a hosted domain's id,
+// empty for the primary site) and where "back" is. It carries the scope, not an
+// API URL: the script builds the URL on a fixed "/os" prefix, so an attribute
+// can never point the preview frame at another origin or a javascript: URL
+// (js/xss-through-dom).
+func siteEditorShell(nonce, scope, back, backLabel string) string {
 	esc := html.EscapeString
-	return `<div id="site-editor" data-base="` + esc(apiBase) + `">
+	return `<div id="site-editor" data-scope="` + esc(scope) + `">
 <div class="card se-bar">
   <a class="btn btn--ghost btn--sm" href="` + esc(back) + `">← ` + esc(backLabel) + `</a>
   <span id="se-status" class="text-sm muted" role="status" aria-live="polite">Opening…</span>
@@ -52,7 +56,7 @@ func siteEditorShell(nonce, apiBase, back, backLabel string) string {
 func (a *App) handleOSSiteEditor(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	csrfTokenFor(w, r)
-	body := siteEditorShell(nonce, "/os/api/site-doc", "/os/website", "Website")
+	body := siteEditorShell(nonce, "", "/os/website", "Website")
 	writeOSHTML(w, r, adminOSLayout(nonce, "Site editor", "website", a.getOSSettings(r.Context()), htmpl.HTML(body)))
 }
 
@@ -66,7 +70,7 @@ func (a *App) handleOSScopedSiteEditor(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	csrfTokenFor(w, r)
 	base := "/os/d/" + d.ID
-	body := siteEditorShell(nonce, base+"/api/site-doc", base+"/website", "Website · "+d.Host)
+	body := siteEditorShell(nonce, d.ID, base+"/website", "Website · "+d.Host)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Site editor · "+d.Host, "optimize", a.getOSSettings(r.Context()), htmpl.HTML(body)))
 }
 

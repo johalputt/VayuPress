@@ -13,7 +13,10 @@
   'use strict';
   var root = document.getElementById('site-editor');
   if (!root) return;
-  var BASE = root.getAttribute('data-base');
+  // Built here on a constant same-origin prefix, never read whole from the
+  // page: BASE also becomes the preview frame's src.
+  var scope = root.getAttribute('data-scope');
+  var BASE = '/os' + (scope ? '/d/' + encodeURIComponent(scope) : '') + '/api/site-doc';
 
   function csrf() {
     var m = document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
@@ -708,7 +711,10 @@
   // message the operator is waiting for.
   function load(keepPage, outcome) {
     return api('GET', '').then(function (r) {
-      if (!r.ok) { say('Could not open the site'); showError(((r.j && r.j.error) || {}).message); return; }
+      // A reply without a document is a failure too: a site removed while this
+      // tab was open answers with the redirect to the domain list, which fetch
+      // follows to an HTML 200.
+      if (!r.ok || !r.j || !r.j.doc) { say('Could not open the site'); showError(((r.j && r.j.error) || {}).message || (r.ok ? 'This site is no longer on the install' : '')); return; }
       state.doc = r.j.doc;
       state.doc.pages = state.doc.pages || [];
       state.doc.pages.forEach(function (p) { p.sections = p.sections || []; });

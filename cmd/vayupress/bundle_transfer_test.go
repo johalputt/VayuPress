@@ -275,7 +275,12 @@ func TestBundleBudgetKeepsTheReserve(t *testing.T) {
 // The id becomes part of a path, so anything that could leave the site's
 // directory is refused before a path is built — whatever the router allows.
 func TestAnUploadIdCannotNameAPathOutsideTheSite(t *testing.T) {
-	for _, id := range []string{"../../../../etc/cron.d/x", "..", "a/b", ""} {
+	for _, id := range []string{
+		"../../../../etc/cron.d/x", "..", "a/b", "", // separators, dots, empty
+		"ABCDEF",                // uppercase is not the id alphabet
+		strings.Repeat("a", 65), // past the bound
+		"abc\n",                 // a trailing newline is not the end of the id
+	} {
 		if p, ok := uploadPath("/srv/site", id); ok {
 			t.Errorf("uploadPath accepted %q as %q", id, p)
 		}

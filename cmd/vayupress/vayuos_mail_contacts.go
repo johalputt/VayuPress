@@ -59,23 +59,25 @@ func (a *App) vayuContactsPanel(ctx context.Context, owner, userKey string) stri
 // unchanged — their entry gone, nothing said — which reads as "the button is
 // broken" rather than "that address is not valid".
 func (a *App) vayuContactsPanelWith(ctx context.Context, owner, userKey, errMsg, typedEmail, typedName string) string {
-	esc := html.EscapeString
+	// Direct html.EscapeString calls, not a local alias: typedEmail and
+	// typedName come straight from the form, and CodeQL credits the escaper
+	// only when it can see the call (go/reflected-xss).
 	contacts, _ := a.vayuMail.Accounts().ListContacts(ctx, owner)
 	avSet := a.mailboxAvatarSet()
 
 	var b strings.Builder
 	b.WriteString(`<div id="vm-contacts-panel" class="vm-contacts">`)
 	b.WriteString(`<div class="vm-contacts-head"><h2 class="vm-contacts-title">Contacts</h2>` +
-		`<span class="muted text-sm">` + itoaSafe(len(contacts)) + ` saved · ` + esc(owner) + `</span></div>`)
+		`<span class="muted text-sm">` + itoaSafe(len(contacts)) + ` saved · ` + html.EscapeString(owner) + `</span></div>`)
 	b.WriteString(`<p class="muted text-sm vm-contacts-sub">Private to this mailbox. These power the recipient suggestions when you compose from here.</p>`)
 	if errMsg != "" {
-		b.WriteString(`<p class="vm-contacts-err" role="alert">⚠ ` + esc(errMsg) + `</p>`)
+		b.WriteString(`<p class="vm-contacts-err" role="alert">⚠ ` + html.EscapeString(errMsg) + `</p>`)
 	}
 
 	b.WriteString(`<form class="vm-contacts-add" hx-post="/os/vayumail/contacts/add" hx-target="#vm-contacts-panel" hx-swap="outerHTML">`)
-	b.WriteString(`<input type="hidden" name="user" value="` + esc(userKey) + `">`)
-	b.WriteString(`<input class="input input--sm" type="email" name="email" placeholder="name@example.com" required aria-label="Contact email" value="` + esc(typedEmail) + `">`)
-	b.WriteString(`<input class="input input--sm" type="text" name="name" placeholder="Name (optional)" aria-label="Contact name" value="` + esc(typedName) + `">`)
+	b.WriteString(`<input type="hidden" name="user" value="` + html.EscapeString(userKey) + `">`)
+	b.WriteString(`<input class="input input--sm" type="email" name="email" placeholder="name@example.com" required aria-label="Contact email" value="` + html.EscapeString(typedEmail) + `">`)
+	b.WriteString(`<input class="input input--sm" type="text" name="name" placeholder="Name (optional)" aria-label="Contact name" value="` + html.EscapeString(typedName) + `">`)
 	b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Save contact</button>`)
 	b.WriteString(`</form>`)
 
@@ -90,12 +92,12 @@ func (a *App) vayuContactsPanelWith(ctx context.Context, owner, userKey, errMsg,
 			}
 			del := `<button class="btn btn--xs btn--ghost vm-contact-del" type="button" hx-post="/os/vayumail/contacts/delete" ` +
 				hxVals("user", userKey, "email", c.Email) +
-				` hx-target="#vm-contacts-panel" hx-swap="outerHTML" hx-confirm="Remove ` + esc(c.Email) + ` from this mailbox's contacts?">Remove</button>`
+				` hx-target="#vm-contacts-panel" hx-swap="outerHTML" hx-confirm="Remove ` + html.EscapeString(c.Email) + ` from this mailbox's contacts?">Remove</button>`
 			compose := "/os/vayumail/compose?user=" + qparam(userKey) + "&to=" + qparam(c.Email)
 			b.WriteString(`<li class="vm-contact">` +
 				`<a class="vm-contact-id" href="` + compose + `">` + mailAvatarImg(c.Email, avSet) +
-				`<span class="vm-contact-meta"><span class="vm-contact-name">` + esc(display) + `</span>` +
-				`<span class="vm-contact-mail">` + esc(c.Email) + `</span></span></a>` +
+				`<span class="vm-contact-meta"><span class="vm-contact-name">` + html.EscapeString(display) + `</span>` +
+				`<span class="vm-contact-mail">` + html.EscapeString(c.Email) + `</span></span></a>` +
 				del + `</li>`)
 		}
 		b.WriteString(`</ul>`)

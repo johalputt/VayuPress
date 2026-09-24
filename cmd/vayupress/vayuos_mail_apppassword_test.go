@@ -322,3 +322,22 @@ func TestGroupAppPasswordSecret(t *testing.T) {
 		t.Fatalf("grouping must be presentation-only: %q vs %q", grouped, secret)
 	}
 }
+
+// The label is typed by whoever creates the password and is echoed on the
+// reveal banner, in text and in attributes. It must come back as text.
+func TestAppPasswordLabelIsEchoedAsText(t *testing.T) {
+	a := appWithMailAccounts(t)
+	admin := &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin}
+	rec := postAppPwForm(a.handleVayuOSAppPasswordCreate, "/os/vayumail/accounts/apppassword",
+		url.Values{"email": {"dana@example.com"}, "label": {`"><img src=x>`}}, admin)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, `<img src=x>`) {
+		t.Error("the label reached the page as markup")
+	}
+	if !strings.Contains(body, `&#34;&gt;&lt;img src=x&gt;`) {
+		t.Error("the label should be shown, escaped")
+	}
+}

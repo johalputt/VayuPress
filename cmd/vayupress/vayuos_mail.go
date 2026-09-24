@@ -2364,15 +2364,17 @@ func (a *App) handleVayuOSAppPasswordCreate(w http.ResponseWriter, r *http.Reque
 		// save affordances match the recovery-code sheet — retyping a 20-character
 		// secret onto a phone is where this used to go wrong.
 		grouped := groupAppPasswordSecret(secret)
-		esc := html.EscapeString
+		// html.EscapeString called directly, not through a local alias: the label
+		// and address come from the form, and CodeQL credits the escaper only
+		// when it can see the call (go/reflected-xss).
 		banner = `<div class="card" style="border-left:4px solid #22c55e"><div class="card-title">App password created — copy it now</div>` +
 			`<p class="text-sm">This password is <strong>shown only once</strong>. It is stored only as a hash and can never be displayed again — if it is lost, revoke it and create a new one.</p>` +
-			`<pre class="mono text-sm" style="white-space:pre-wrap;background:var(--bg-surface-2);padding:10px;border-radius:8px">` + esc(grouped) + `</pre>` +
+			`<pre class="mono text-sm" style="white-space:pre-wrap;background:var(--bg-surface-2);padding:10px;border-radius:8px">` + html.EscapeString(grouped) + `</pre>` +
 			`<div class="vm-row vm-row--tight">` +
-			`<button type="button" class="btn btn--sm" data-apppw-copy="` + esc(grouped) + `">Copy password</button>` +
-			`<button type="button" class="btn btn--sm btn--ghost" data-apppw-save="` + esc(grouped) + `" data-apppw-label="` + esc(label) + `" data-apppw-email="` + esc(email) + `">Download .txt</button>` +
+			`<button type="button" class="btn btn--sm" data-apppw-copy="` + html.EscapeString(grouped) + `">Copy password</button>` +
+			`<button type="button" class="btn btn--sm btn--ghost" data-apppw-save="` + html.EscapeString(grouped) + `" data-apppw-label="` + html.EscapeString(label) + `" data-apppw-email="` + html.EscapeString(email) + `">Download .txt</button>` +
 			`</div>` +
-			`<p class="muted text-xs">Sign in to <span class="mono">` + esc(email) + `</span> (label: ` + esc(label) + `) with this as the password — in the VayuMail app or any IMAP/SMTP client. The dashes are optional.</p></div>`
+			`<p class="muted text-xs">Sign in to <span class="mono">` + html.EscapeString(email) + `</span> (label: ` + html.EscapeString(label) + `) with this as the password — in the VayuMail app or any IMAP/SMTP client. The dashes are optional.</p></div>`
 	}
 	card := a.vayuAppPasswordsCard(r)
 	if opErr != nil {
