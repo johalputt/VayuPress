@@ -52,6 +52,10 @@
   --paper:          #ffffff;   /* what a QR code and a previewed site sit on, in both schemes */
   --knob-off:       #cfcdc6;   /* a toggle's knob when off; on, it is --paper */
   --shadow-knob:    0 1px 2px rgba(0, 0, 0, 0.25);
+  /* Icons drawn by the stylesheet, stroked in --text-3: an inline SVG cannot
+     read a token, so each scheme carries its own. */
+  --icon-chevron:   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2396948c' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  --icon-globe:     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2396948c' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18'/%3E%3C/svg%3E");
   --shadow-3:       0 0 0 1px rgba(255, 248, 235, 0.06), 0 10px 28px -6px rgba(0, 0, 0, 0.6);
   --shadow-4:       0 0 0 1px rgba(255, 248, 235, 0.08), 0 16px 40px -8px rgba(0, 0, 0, 0.7);
   --shadow-5:       0 0 0 1px rgba(255, 248, 235, 0.09), 0 30px 80px -12px rgba(0, 0, 0, 0.8);
@@ -162,6 +166,8 @@
   --focus:          #2d5bd7;
   --scrim:          rgba(27, 26, 24, 0.28);
   --knob-off:       #ffffff;
+  --icon-chevron:   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2367655f' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  --icon-globe:     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2367655f' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18'/%3E%3C/svg%3E");
   --shadow-3:       0 1px 2px rgba(27, 26, 24, 0.06), 0 8px 24px -6px rgba(27, 26, 24, 0.16);
   --shadow-4:       0 1px 2px rgba(27, 26, 24, 0.08), 0 14px 36px -8px rgba(27, 26, 24, 0.24);
   --shadow-5:       0 2px 4px rgba(27, 26, 24, 0.08), 0 28px 72px -12px rgba(27, 26, 24, 0.34);
@@ -201,6 +207,8 @@
     --focus:          #2d5bd7;
     --scrim:          rgba(27, 26, 24, 0.28);
     --knob-off:       #ffffff;
+    --icon-chevron:   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2367655f' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    --icon-globe:     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2367655f' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18'/%3E%3C/svg%3E");
     --shadow-3:       0 1px 2px rgba(27, 26, 24, 0.06), 0 8px 24px -6px rgba(27, 26, 24, 0.16);
     --shadow-4:       0 1px 2px rgba(27, 26, 24, 0.08), 0 14px 36px -8px rgba(27, 26, 24, 0.24);
     --shadow-5:       0 2px 4px rgba(27, 26, 24, 0.08), 0 28px 72px -12px rgba(27, 26, 24, 0.34);
@@ -972,7 +980,7 @@
 
 .vp-os .textarea { resize: vertical; min-height: 100px; }
 
-.vp-os .select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238ba4c4' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 0.75rem center; padding-right: 2.25rem; cursor: pointer; }
+.vp-os .select { background-image: var(--icon-chevron); background-repeat: no-repeat; background-position: right 0.75rem center; padding-right: 2.25rem; cursor: pointer; }
 
 /* Toggle switch (CSS-only) */
 .vp-os .toggle { -webkit-appearance: none; appearance: none; width: 40px; height: 22px; background: var(--bg-surface-3); border: 1px solid var(--border); border-radius: var(--r-full); cursor: pointer; position: relative; transition: background var(--t), border-color var(--t); flex-shrink: 0; }
@@ -3236,7 +3244,7 @@
 .vp-os .vp-flag-img { display: inline-block; width: 1.33em; height: 1em; object-fit: cover; border-radius: var(--radius-small); vertical-align: -0.12em; margin-right: 0.45em; box-shadow: 0 0 0 1px var(--scrim); background: var(--bg-surface-2); }
 
 /* Neutral globe placeholder for visitors with no known country (no GeoIP). */
-.vp-os .vp-flag-unknown { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2399a' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18'/%3E%3C/svg%3E"); background-size: cover; background-position: center; box-shadow: none; }
+.vp-os .vp-flag-unknown { background-image: var(--icon-globe); background-size: cover; background-position: center; box-shadow: none; }
 
 /* Geography — long country/region/city lists scroll inside their card so the
    page never becomes one endless column. */
@@ -6651,6 +6659,22 @@
 .vp-os[data-ui="still-air"] .topo-rect--err { stroke: var(--danger); }
 .vp-os[data-ui="still-air"] .topo-bar--write { fill: var(--accent); }
 .vp-os[data-ui="still-air"] .topo-bar--read { fill: var(--chart-6); }
+/* Every single-choice select is the Still Air select: its own chevron (a
+   token, so it follows the scheme) and room for it. Some had appearance:none
+   and no arrow, so they did not look like dropdowns; Talk's was the browser's.
+   Placed after the input rule, whose background shorthand clears images. */
+.vp-os[data-ui="still-air"] select:not([multiple]):not([size]),
+.vp-os[data-ui="still-air"] select.input:not([multiple]):not([size]) {
+  appearance: none; -webkit-appearance: none;
+  background-image: var(--icon-chevron); background-repeat: no-repeat;
+  background-position: right 10px center; padding-right: 30px;
+}
+
+/* The maintenance page visitors see (admin_os_power.go): the sign-in card,
+   one status line and the site's name under it. */
+.vp-os[data-ui="still-air"] .maint-status { margin: var(--space-5) 0 0; text-align: center; font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .maint-status .sa-dot { display: inline-block; margin-right: var(--space-3); vertical-align: middle; }
+.vp-os[data-ui="still-air"] .maint-foot { margin: var(--space-6) 0 0; text-align: center; font: var(--type-meta); color: var(--text-3); }
 /* A settings row's control keeps its size and sits on the right (plan §4). */
 .vp-os[data-ui="still-air"] .settings-row-control { flex: none; display: flex; align-items: center; gap: var(--space-3); }
 .vp-os[data-ui="still-air"] .mem-bar { fill: var(--chart-1); }

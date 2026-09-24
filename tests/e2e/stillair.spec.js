@@ -105,7 +105,7 @@ async function scaleLint(colourTokens) {
   const sizes = new Set(["12px", "12.5px", "13px", "14px", "15px", "20px", "28px"]);
   // A theme's own colours and type are shown on purpose where a theme is
   // previewed or its swatches are picked.
-  const showsATheme = ".theme-card__art, .store-card__preview, .theme-card__preview, .cz-a11y, [data-swatch], .customizer__frame, .store-preview, .vp-flag, .sa-mark";
+  const showsATheme = ".theme-card__art, .store-card__preview, .theme-card__preview, .cz-a11y, [data-swatch], .customizer__frame, .store-preview, .vp-flag-img, .sa-mark";
   const out = [];
   const name = (e) => `<${e.tagName.toLowerCase()} class="${typeof e.className === "string" ? e.className : ""}">`;
   // A state ring (0 0 0 Npx) or an inset bar, in palette colours, marks a
@@ -143,6 +143,12 @@ async function scaleLint(colourTokens) {
       }
     }
     if (/gradient\(/.test(cs.backgroundImage)) flag("gradient");
+    // A dropdown looks like one: the Still Air chevron, never the browser's
+    // own select and never none at all.
+    if (e.tagName === "SELECT" && !e.multiple && e.size <= 1) {
+      if (cs.appearance !== "none") flag("a native select");
+      else if (!cs.backgroundImage.startsWith('url("data:image/svg+xml')) flag("a select with no arrow");
+    }
     if (cs.backdropFilter && cs.backdropFilter !== "none") flag("backdrop blur");
     if (cs.filter !== "none" && e.tagName !== "IMG") flag(`filter ${cs.filter}`);
     if (!elevation.has(cs.boxShadow) && !isStateMark(cs.boxShadow)) flag(`shadow ${cs.boxShadow}`);

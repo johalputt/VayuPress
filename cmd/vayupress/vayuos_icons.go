@@ -15,9 +15,6 @@ import (
 // saIcon renders one icon from the set (ui.Icon).
 func saIcon(name string) string { return string(ui.Icon(name)) }
 
-// saIconSized draws a self-styled icon for a page with no console stylesheet.
-func saIconSized(name string, px int) string { return string(ui.IconSized(name, px)) }
-
 // saSprite is the set as one hidden sprite, emitted once per page.
 var saSprite = string(ui.Sprite)
 

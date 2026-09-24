@@ -262,7 +262,9 @@ func readStillAirCSS(t *testing.T) string {
 	return string(b)
 }
 
-var colourLiteralRe = regexp.MustCompile(`#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(`)
+// %23 is "#" inside a data: URL, where an inline SVG hid a slate-blue
+// select arrow from the first form of this check.
+var colourLiteralRe = regexp.MustCompile(`#[0-9a-fA-F]{3,8}\b|%23[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(`)
 
 // Components read tokens; only a token declaration may name a colour. This is
 // what keeps a later "just this once" hex from starting a second palette.

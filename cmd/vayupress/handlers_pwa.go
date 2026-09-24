@@ -155,7 +155,10 @@ func (a *App) handleServiceWorker(w http.ResponseWriter, r *http.Request) {
 // through reloads, because a reload goes through the worker too. Deriving the cache
 // name from the version means every release ships a different worker, which
 // activates, drops the previous cache and re-primes it from the network.
-var serviceWorkerJS = strings.ReplaceAll(serviceWorkerJSTemplate, "__BUILD__", Version)
+var serviceWorkerJS = strings.NewReplacer(
+	"__BUILD__", Version,
+	"__OFFLINE__", jsString(stillAirOfflineHTML("Offline", "You are offline", "Reconnect to load this page.")),
+).Replace(serviceWorkerJSTemplate)
 
 const serviceWorkerJSTemplate = `// VayuPress service worker — offline fallback for a real installed app.
 //
@@ -285,13 +288,7 @@ self.addEventListener('fetch', event => {
 });
 
 function offlinePage() {
-  return new Response(
-    '<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">' +
-    '<title>Offline</title>' +
-    '<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0f1a;color:#eef2f8;font:16px/1.5 system-ui,sans-serif">' +
-    '<div style="text-align:center;padding:24px">' +
-    '<h1 style="font-size:20px;margin:.5em 0">You are offline</h1>' +
-    '<p style="color:#b8c6dd;max-width:22rem">Reconnect to load this page.</p></div>',
+  return new Response(__OFFLINE__,
     { headers: { 'Content-Type': 'text/html; charset=utf-8' }, status: 503 });
 }
 `

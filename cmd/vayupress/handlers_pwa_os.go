@@ -16,6 +16,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 //go:embed assets/vayuos-192.png
@@ -91,7 +92,10 @@ func (a *App) handleOSServiceWorker(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(osServiceWorkerJS))
 }
 
-const osServiceWorkerJS = `// VayuOS console service worker — ZERO-CACHE, always live.
+var osServiceWorkerJS = strings.ReplaceAll(osServiceWorkerJSTemplate, "__OFFLINE__",
+	jsString(stillAirOfflineHTML("VayuOS — offline", "You are offline", "VayuOS needs a connection to load your console. Reconnect and try again.")))
+
+const osServiceWorkerJSTemplate = `// VayuOS console service worker — ZERO-CACHE, always live.
 // It never caches a console response, so no device can ever show a stale VayuOS.
 
 self.addEventListener('install', function () { self.skipWaiting(); });
@@ -168,13 +172,7 @@ self.addEventListener('fetch', function (e) {
   // for a console that can actually be signed into.
   if (navigator.onLine !== false) return;
   e.respondWith((function () {
-      return new Response(
-        '<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">' +
-        '<title>VayuOS — offline</title>' +
-        '<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f0f0e;color:#ecebe7;font:16px/1.5 system-ui,sans-serif">' +
-        '<div style="text-align:center;padding:24px">' +
-        '<h1 style="font-size:20px;margin:.5em 0">You are offline</h1>' +
-        '<p style="color:#b3b1aa;max-width:22rem">VayuOS needs a connection to load your console. Reconnect and try again.</p></div>',
+      return new Response(__OFFLINE__,
         { headers: { 'Content-Type': 'text/html; charset=utf-8' }, status: 503 });
   })());
 });

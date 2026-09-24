@@ -3,6 +3,7 @@
 package main
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -18,14 +19,26 @@ func TestMaintenancePageHTML(t *testing.T) {
 	if !strings.Contains(page, "&lt;script&gt;") {
 		t.Error("expected the message to be escaped")
 	}
-	for _, want := range []string{"We’ll be right back", "http-equiv=\"refresh\"", "powered by VayuPress"} {
+	for _, want := range []string{"We’ll be right back", "http-equiv=\"refresh\"", "by VayuPress"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("maintenance page missing %q", want)
 		}
 	}
-	// Self-contained: no external stylesheet/script the maintenance gate would block.
-	if strings.Contains(page, "/static/") || strings.Contains(page, "/theme.css") || strings.Contains(page, "<script src") {
-		t.Error("maintenance page must be fully self-contained")
+	// Every asset the page loads, and every file its stylesheet names, must be
+	// one the maintenance gate lets through, or the page renders unstyled for
+	// exactly the visitors it exists for.
+	for _, m := range regexp.MustCompile(`(?:href|src)="([^"?]+)`).FindAllStringSubmatch(page, -1) {
+		if !maintenancePathExempt(m[1]) {
+			t.Errorf("the maintenance page loads %s, which maintenance blocks", m[1])
+		}
+	}
+	for _, m := range regexp.MustCompile(`url\("([^"]+)"\)`).FindAllStringSubmatch(repoFile(t, "static/css/vayuos.css"), -1) {
+		if !strings.HasPrefix(m[1], "data:") && !maintenancePathExempt(m[1]) { // data: is inline, never fetched
+			t.Errorf("the stylesheet names %s, which maintenance blocks", m[1])
+		}
+	}
+	if !strings.Contains(page, `data-ui="still-air"`) {
+		t.Error("the maintenance page does not carry the Still Air scope")
 	}
 	// Default (empty) message falls back to the friendly copy.
 	if !strings.Contains(maintenancePageHTML(""), "back online shortly") {

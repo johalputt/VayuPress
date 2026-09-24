@@ -10,7 +10,6 @@ package ui
 
 import (
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -123,14 +122,6 @@ func Icon(name string) HTML {
 		return `<svg class="sa-ico sa-ico--missing" viewBox="0 0 20 20" aria-hidden="true"></svg>`
 	}
 	return HTML(`<svg class="sa-ico" viewBox="0 0 20 20" aria-hidden="true">` + p + `</svg>`)
-}
-
-// IconSized draws an icon that styles itself, for a page that carries no
-// console stylesheet (the maintenance page, the offline page, the connector
-// consent screen): the look Icon gets from CSS is spelled out as attributes.
-func IconSized(name string, px int) HTML {
-	sz := strconv.Itoa(px)
-	return HTML(`<svg width="` + sz + `" height="` + sz + `" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` + icons[name] + `</svg>`)
 }
 
 // IconNames lists the set, sorted.

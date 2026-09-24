@@ -41,6 +41,9 @@ import (
 // working. Mirrors (a subset of) the shield's bypass list.
 var maintenanceExemptPrefixes = []string{
 	"/os", "/__vayushield", "/__vayuanalytics", "/.well-known", "/mcp", "/oauth", "/health",
+	// The typefaces the console stylesheet names, so the maintenance page and
+	// the sign-in page set in Inter rather than falling back. Font files only.
+	"/static/fonts",
 }
 
 // maintenancePathExempt reports whether a path stays reachable while the site is
@@ -110,10 +113,16 @@ func (a *App) serveMaintenance(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(maintenancePageHTML(msg)))
 }
 
-// maintenancePageHTML is the self-contained (no external CSS/JS — those are
-// blocked in maintenance) premium "under maintenance" page shown to visitors.
+// maintenancePageHTML is the page visitors see while the site is down for
+// maintenance: a Still Air notice on the console's own stylesheet, the way the
+// sign-in page is. Every asset it names stays reachable in maintenance
+// (maintenancePathExempt), which TestMaintenancePageHTML checks.
 func maintenancePageHTML(message string) string {
 	brand := html.EscapeString(config.Cfg.Domain)
+	title, foot := "Under maintenance", "Powered by VayuPress"
+	if brand != "" {
+		title, foot = brand+" — under maintenance", brand+" · powered by VayuPress"
+	}
 	msg := "We’re making things better behind the scenes and will be back online shortly. Thanks for your patience."
 	if m := strings.TrimSpace(message); m != "" {
 		msg = html.EscapeString(m)
@@ -121,27 +130,17 @@ func maintenancePageHTML(message string) string {
 	return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="30">
-<title>` + brand + ` — under maintenance</title>
+<title>` + title + `</title>
 <meta name="robots" content="noindex">
-</head><body style="margin:0;min-height:100vh;display:flex;background:#05070d;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
-<main style="margin:auto;max-width:34rem;padding:2.5rem 1.5rem;text-align:center">
-  <div style="position:relative;width:96px;height:96px;margin:0 auto 1.75rem">
-    <div style="position:absolute;inset:0;border-radius:9999px;background:radial-gradient(circle,rgba(45,212,191,.35),transparent 70%);filter:blur(8px);animation:vp-pulse 2.6s ease-in-out infinite"></div>
-    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#5eead4" aria-hidden="true">` + saIconSized("wrench", 44) + `</div>
-  </div>
-  <h1 style="font-family:'Space Grotesk',system-ui,sans-serif;font-size:1.9rem;font-weight:700;letter-spacing:-.02em;margin:0 0 .6rem;background:linear-gradient(108deg,#5eead4,#2dd4bf 40%,#818cf8 110%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">We’ll be right back</h1>
-  <p style="color:#94a3b8;font-size:1.02rem;line-height:1.6;margin:0 auto 1.75rem;max-width:28rem">` + msg + `</p>
-  <div style="display:inline-flex;align-items:center;gap:.6rem;padding:.55rem 1.1rem;border:1px solid rgba(255,255,255,.09);border-radius:9999px;background:rgba(255,255,255,.03);color:#cbd5e1;font-size:.85rem">
-    <span style="width:.55rem;height:.55rem;border-radius:9999px;background:#2dd4bf;box-shadow:0 0 0 0 rgba(45,212,191,.6);animation:vp-dot 1.8s ease-out infinite"></span>
-    Upgrading the system — this page refreshes itself
-  </div>
-  <p style="color:#475569;font-size:.75rem;margin-top:2rem"><strong style="color:#64748b">` + brand + `</strong> · powered by VayuPress</p>
+<link rel="stylesheet" href="/os/static/css/vayuos.css?v=` + assetVer("css/vayuos.css") + `">
+</head><body class="vp-os auth-page" data-ui="still-air" data-theme="auto">
+<main class="auth-col"><div class="login-card">
+<h1 class="login-title">We’ll be right back</h1>
+<p class="login-sub">` + msg + `</p>
+<p class="maint-status"><span class="sa-dot sa-dot--warn" aria-hidden="true"></span>Down for maintenance. This page checks again every 30 seconds.</p>
+</div>
+<p class="maint-foot">` + foot + `</p>
 </main>
-<style>
-@keyframes vp-pulse{0%,100%{transform:scale(1);opacity:.75}50%{transform:scale(1.12);opacity:1}}
-@keyframes vp-dot{0%{box-shadow:0 0 0 0 rgba(45,212,191,.55)}70%{box-shadow:0 0 0 9px rgba(45,212,191,0)}100%{box-shadow:0 0 0 0 rgba(45,212,191,0)}}
-@media (prefers-reduced-motion:reduce){*{animation:none!important}}
-</style>
 </body></html>`
 }
 
