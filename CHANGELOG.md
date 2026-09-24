@@ -6,6 +6,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.76] — 2026-09-24
+
+A fix release, shipped on its own because the command palette is broken on
+every install now.
+
+### Fixed
+
+- **The command palette (⌘K / Ctrl+K) works again.** Its rows showed no
+  names, choosing a post opened a page that does not exist, the quick actions
+  did nothing, and typing a search stopped the palette with an error. The
+  palette's list and the script that reads it disagreed on the spelling of
+  every field.
+
+---
+
 ## [3.17.75] — 2026-09-24
 
 A fix release for three display faults, shipped on its own because they are
