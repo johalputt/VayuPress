@@ -206,29 +206,29 @@ func TestAClientReachingTheNewEndpointsStillCannotTouchAnotherMailbox(t *testing
 }
 
 // The same finding, one layer up: the confinement was never checked from the
-// client's side, so the sidebar was never given a client branch. A client is a
-// console session (not a mail-only one), so it fell through to the operator
-// sidebar, where every gated item closed against its floor access level and the
-// two ungated product links pointed at pages the confinement refuses.
+// client's side, so the navigation was never given a client branch. A client is
+// a console session (not a mail-only one), so it fell through to the operator
+// navigation, where every gated item closed against its floor access level and
+// the two ungated product links pointed at pages the confinement refuses.
 //
 // A customer therefore had no link to their own site anywhere in the console.
 // /os/mysite — the one page ADR-0152 exists to deliver — was reachable only by
 // typing the URL, or by clicking something forbidden and being bounced there.
-func TestAClientsSidebarLeadsToTheirOwnPagesAndNowhereElse(t *testing.T) {
-	nav := osSidebarNav("mysite", &osSettings{UserRole: users.RoleClient, AccessLevel: accessMailOnly})
+func TestAClientsNavigationLeadsToTheirOwnPagesAndNowhereElse(t *testing.T) {
+	nav := stillAirShellHead("n", "My site", "mysite", &osSettings{UserRole: users.RoleClient, AccessLevel: accessMailOnly, UserName: "Client"})
 
 	for _, want := range []string{"/os/mysite", "/os/vayumail/inbox", "/os/profile"} {
 		if !strings.Contains(nav, `href="`+want+`"`) {
-			t.Errorf("a client's sidebar has no link to %q.\n\n"+
+			t.Errorf("a client's console has no link to %q.\n\n"+
 				"That is a page they were sold. A console whose only route to it is "+
-				"typing the URL has not delivered it.\n%s", want, nav)
+				"typing the URL has not delivered it.", want)
 		}
 	}
-	// Derived, so a link added to this branch later cannot quietly point somewhere
-	// the client is refused: every href it emits must be reachable.
-	for _, m := range regexp.MustCompile(`href="(/os/[^"?#]*)`).FindAllStringSubmatch(nav, -1) {
+	// Derived, so a link added to the chrome later cannot quietly point somewhere
+	// the client is refused: every page it links must be reachable.
+	for _, m := range regexp.MustCompile(`<a [^>]*href="(/os/[^"?#]*)`).FindAllStringSubmatch(nav, -1) {
 		if !clientPathAllowed(m[1]) {
-			t.Errorf("a client's sidebar offers %q, which the confinement refuses — "+
+			t.Errorf("a client's console offers %q, which the confinement refuses — "+
 				"clicking it bounces them with no explanation", m[1])
 		}
 	}

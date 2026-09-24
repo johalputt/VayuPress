@@ -86,6 +86,14 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 			domains = list
 		}
 	}
+	// Each site's own mark, or none — never the primary's. One cheap read per
+	// site (the stored type key, not the image).
+	marks := map[string]bool{}
+	for _, d := range domains {
+		if !d.IsPrimary {
+			marks[d.ID] = a.siteHasOwnMark(r.Context(), d.ID)
+		}
+	}
 
 	// Per-domain article counts (VayuDomains Stage 2 — content ownership).
 	counts := map[string]int{}
@@ -146,7 +154,7 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 	// editing moved to each site's own console (/os/d/{id}), surfaced from
 	// the Optimize hub, so this page stays a clean add / list / remove surface.
 	body := domainsHeader(domains, viewingHost) +
-		domainsCards(domains, counts, mailCounts, memberCounts, mailOn) +
+		domainsCards(domains, counts, mailCounts, memberCounts, marks, mailOn) +
 		addForm +
 		domainsScript(nonce) +
 		torSitesScript(nonce, onion, pending)
@@ -239,7 +247,7 @@ func domainsHeader(domains []domain.Domain, viewingHost string) string {
 // also surfaced from the Optimize hub, so the operator controls every part of a
 // site from one place. Shared by both worlds — in the Tor world the hosts are
 // .onion addresses and the same cards render unchanged.
-func domainsCards(domains []domain.Domain, counts, mailCounts, memberCounts map[string]int, mailOn bool) string {
+func domainsCards(domains []domain.Domain, counts, mailCounts, memberCounts map[string]int, marks map[string]bool, mailOn bool) string {
 	if len(domains) == 0 {
 		return `<div class="card"><div class="empty-title">No domains registered yet</div>
 <div class="empty-sub">The primary domain is seeded automatically once DOMAIN is configured. Add a secondary domain below.</div></div>`
@@ -306,9 +314,15 @@ func domainsCards(domains []domain.Domain, counts, mailCounts, memberCounts map[
 				`<button type="button" class="btn btn--danger btn--sm" data-dom-delete data-id="` + html.EscapeString(d.ID) + `" data-host="` + html.EscapeString(d.Host) + `">Remove</button>`
 		}
 
+		// A site's own uploaded mark stands in for the globe. A site without one
+		// gets no <img> at all: a mark route that 404s draws a broken image.
+		icon := iconDomains
+		if marks[d.ID] {
+			icon = `<img class="work-card__mark" src="/os/d/` + html.EscapeString(d.ID) + `/branding/mark" alt="" width="20" height="20">`
+		}
 		cards.WriteString(`<div class="` + cardCls + `" data-dom-row>
   <div class="domain-card__head">
-    <span class="domain-card__icon">` + iconDomains + `</span>
+    <span class="domain-card__icon">` + icon + `</span>
     <span class="domain-card__id">` + hostText + `
       <span class="domain-card__serves">` + html.EscapeString(siteTypeLabel(d.EffectiveSiteType())) + `</span>
     </span>

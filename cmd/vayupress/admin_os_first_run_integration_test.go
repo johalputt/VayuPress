@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"html"
 	"strings"
 	"testing"
 
@@ -44,11 +45,11 @@ func TestFirstRunChecklistHonestLifecycle(t *testing.T) {
 	if it, ok := byLabel["Review DNS & HTTPS"]; !ok || !it.Review || it.Done {
 		t.Errorf("'Review DNS & HTTPS' = %#v, want a neutral review step", it)
 	}
-	// Dismissal markup: the card carries the data hook and the localStorage key.
-	card := osFirstRunCard(items, "test-nonce")
-	for _, want := range []string{`data-first-run`, `data-first-run-dismiss`, `vayuOS.firstRun.dismissed`} {
-		if !strings.Contains(card, want) {
-			t.Errorf("first-run card missing %q", want)
+	// Home lists every step still to do, each linking to where it is done.
+	card := saHomeSetup(items)
+	for _, it := range items {
+		if !it.Done && !strings.Contains(card, `href="`+html.EscapeString(it.Href)+`"`) {
+			t.Errorf("Home's setup list does not link %q to %s", it.Label, it.Href)
 		}
 	}
 

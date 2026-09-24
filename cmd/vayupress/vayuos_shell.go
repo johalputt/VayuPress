@@ -28,12 +28,6 @@ import (
 	"github.com/johalputt/vayupress/internal/mode"
 )
 
-// uiStillAir is the admin.ui value that selects this shell.
-const uiStillAir = "still-air"
-
-// stillAir reports whether this request renders the Still Air shell.
-func (s *osSettings) stillAir() bool { return s != nil && s.UI == uiStillAir }
-
 type saSection struct {
 	Label, Href, Icon string
 	// Group starts a labelled group at this section.
@@ -364,6 +358,12 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 
 	apps := saVisibleApps(s)
 	app, sec := saLocate(apps, active, s.Route)
+	// The mark leads to the session's first app: /os/ itself is outside an agency
+	// client's and a mailbox's confinement, and would bounce them.
+	home := osHome
+	if len(apps) > 0 {
+		home = apps[0].Href
+	}
 
 	// ── Rail ──
 	var rail strings.Builder
@@ -467,7 +467,6 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
   <div class="sa-menu__sep"></div>
   <button type="button" class="sa-menu__item" role="menuitem" data-pwa-install hidden>` + saIcon("download") + ` Install the app</button>
   <a class="sa-menu__item" role="menuitem" href="/os/vayumail/compose?feedback=1">` + saIcon("send") + ` Send feedback</a>
-  <button type="button" class="sa-menu__item" role="menuitem" data-sa-ui="classic">` + saIcon("refresh") + ` Use the classic design</button>
   <div class="sa-menu__sep"></div>
   <form method="POST" action="/os/logout"><button type="submit" class="sa-menu__item sa-menu__item--quiet" role="menuitem">Sign out</button></form>
 </div></details>`
@@ -527,7 +526,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 <div class="shell sa-shell">
 <header class="sa-sysbar" role="banner">
   <button type="button" class="menu-toggle sa-iconbtn" data-action="toggle-sidebar" aria-label="Show or hide the app list" aria-controls="vp-sidebar" aria-expanded="true">` + saIcon("list") + `</button>
-  <a class="sa-mark" href="` + osHome + `" aria-label="VayuOS home">` + saMark + `<span class="sa-mark__site">` + html.EscapeString(siteName) + `</span></a>
+  <a class="sa-mark" href="` + home + `" aria-label="VayuOS home">` + saMark + `<span class="sa-mark__site">` + html.EscapeString(siteName) + `</span></a>
   <button type="button" class="topbar-cmd sa-search" aria-label="Search or run a command">` + saIcon("search") + ` <span class="sa-search__text">Search or run a command</span><kbd>⌘K</kbd></button>
   <div class="sa-status" role="status" aria-label="System status">` + modeHTML + `<span class="sa-sep" aria-hidden="true"></span>` + worldHTML + `</div>
   ` + osNotifBell(s) + `
@@ -564,17 +563,6 @@ func saDisplayName(s *osSettings) string {
 		return n
 	}
 	return "API key session"
-}
-
-// saHubRedirect sends a classic hub URL to its app in Still Air, where hubs do
-// not exist: each hub's cards are an app's sections. Returns true when it
-// redirected. Bookmarks and links into the hubs keep working.
-func saHubRedirect(w http.ResponseWriter, r *http.Request, s *osSettings, to string) bool {
-	if !s.stillAir() {
-		return false
-	}
-	http.Redirect(w, r, to, http.StatusSeeOther)
-	return true
 }
 
 // saAppHref is where an app lands for this session: its first reachable page,
@@ -624,4 +612,13 @@ func saPaletteIndex(apps []saApp) string {
 	}
 	idx.WriteString(`</nav>`)
 	return idx.String()
+}
+
+// hubRedirect answers a hub URL (/os/growth, /os/optimize, /os/operations,
+// /os/system). The hubs are gone — each one's cards are an app's sections — so
+// old links and bookmarks land on that app, as far as this session can see it.
+func (a *App) hubRedirect(app string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, saAppHref(a.getOSSettings(r.Context()), app, osHome), http.StatusSeeOther)
+	}
 }

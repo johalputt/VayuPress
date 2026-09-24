@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/vayukeep"
 )
 
@@ -228,14 +227,25 @@ func TestConsoleIsReachableAndOperable(t *testing.T) {
 		}
 	}
 
-	// The hub links to it, and badges it only when something is wrong.
-	healthy := osOperationsGrid(mode.ModeNormal, 40, false, "")
-	if !strings.Contains(healthy, `href="/os/vayukeep"`) {
-		t.Error("the Operations hub does not link to the Backup & Recovery console")
-	}
-	broken := osOperationsGrid(mode.ModeNormal, 40, false, "Test restore FAILED")
-	if !strings.Contains(broken, "Test restore FAILED") {
-		t.Error("the Operations hub hides a broken recovery path instead of badging it")
+	// Home and the bell raise it only when something is wrong, and as danger
+	// only when there is no recovery path at all. One seed per verdict rule.
+	for _, c := range []struct {
+		name, bootErr, want, sev string
+		st                       vayukeep.Status
+	}{
+		{"proven", "", "", "", vayukeep.Status{Enabled: true, NewestGen: vkNow, LastDrill: vkNow, LastDrillOK: true}},
+		{"off", "", "Not set up", "warn", vayukeep.Status{}},
+		{"unverified", "", "Unverified", "warn", vayukeep.Status{Enabled: true, NewestGen: vkNow}},
+		{"failed restore", "", "Test restore FAILED", "danger", vayukeep.Status{Enabled: true, NewestGen: vkNow, LastDrill: vkNow}},
+		{"refused", "bad passphrase", "Refused to start", "danger", vayukeep.Status{}},
+	} {
+		n, ok := backupNotification(c.st, c.bootErr, vkNow)
+		if ok != (c.want != "") || n.Detail != c.want || n.Severity != c.sev {
+			t.Errorf("%s: notification = %v %q %q, want %q %q", c.name, ok, n.Detail, n.Severity, c.want, c.sev)
+		}
+		if ok && n.Href != "/os/vayukeep" {
+			t.Errorf("%s: the notification opens %s, not the backups page", c.name, n.Href)
+		}
 	}
 }
 

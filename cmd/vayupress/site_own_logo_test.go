@@ -114,12 +114,14 @@ func TestABlankDomainIDResolvesToNoMarkRatherThanTheOperatorsOwn(t *testing.T) {
 	}
 }
 
-// The page itself: one site with a logo, one without, rendered together.
-func TestTheOptimizePageDrawsEachSitesOwnMarkAndAGlobeForTheRest(t *testing.T) {
-	withLogo := optimizeSite{ID: "aaaaaaaaaaaaaaaaaaaaaaaa", Host: "haslogo.example", Label: "Business site", HasMark: true}
-	without := optimizeSite{ID: "bbbbbbbbbbbbbbbbbbbbbbbb", Host: "nologo.example", Label: "Business site"}
+// The page itself: one site with a logo, one without, listed together on
+// Site › Domains (the Optimize hub that drew them is gone).
+func TestTheDomainsPageDrawsEachSitesOwnMarkAndAGlobeForTheRest(t *testing.T) {
+	withLogo := domain.Domain{ID: "aaaaaaaaaaaaaaaaaaaaaaaa", Host: "haslogo.example", Status: domain.StatusActive}
+	without := domain.Domain{ID: "bbbbbbbbbbbbbbbbbbbbbbbb", Host: "nologo.example", Status: domain.StatusActive}
 
-	got := osOptimizeGrid(accessAdmin, []optimizeSite{withLogo, without})
+	got := domainsCards([]domain.Domain{withLogo, without}, map[string]int{}, map[string]int{}, map[string]int{},
+		map[string]bool{withLogo.ID: true}, false)
 
 	if !strings.Contains(got, `src="/os/d/`+withLogo.ID+`/branding/mark"`) {
 		t.Errorf("the site with its own logo does not render it.\n\npage:\n%s", got)

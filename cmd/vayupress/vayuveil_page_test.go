@@ -235,56 +235,31 @@ func TestTheRegistryTableShowsEveryChannelsObligations(t *testing.T) {
 	}
 }
 
-// VayuVeil is reached from the Operations hub, not from the sidebar.
+// VayuVeil is reached from the Shield app, and only by an administrator.
 //
 // It is install-scoped — this host's device nodes, display sockets and kernel
-// tunables, plus what this process enforces about its own memory — so it belongs
-// with the other install-level diagnostics under Health & governance. Optimize
-// is where a SITE's reach and protection live, and filing it there would have
-// implied it protects a site, which is the one thing this subsystem must never
-// imply.
-func TestVayuVeilIsReachedFromOperationsAndNotTheSidebar(t *testing.T) {
-	nav := osSidebarNav("operations", &osSettings{AccessLevel: accessAdmin})
-	if strings.Contains(nav, `/os/vayuveil`) {
-		t.Error("VayuVeil is still pinned in the sidebar; it was asked to live under a hub instead")
+// tunables, plus what this process enforces about its own memory — and it
+// enumerates things no editor should see. The rail is judged against the route
+// guard elsewhere; this pins where it lives and that the guard itself is admin,
+// so opening Shield to editors fails here rather than quietly showing them a
+// map of the host.
+func TestVayuVeilIsReachedFromShieldByAnAdministratorOnly(t *testing.T) {
+	offers := func(s *osSettings) string {
+		for _, app := range saVisibleApps(s) {
+			for _, sec := range app.Sections {
+				if sec.Href == "/os/vayuveil" {
+					return app.Key
+				}
+			}
+		}
+		return ""
 	}
-	ops := osOperationsGrid("", 0, false, "")
-	if !strings.Contains(ops, `href="/os/vayuveil"`) {
-		t.Fatal("the Operations hub does not link to VayuVeil, so it is now unreachable from any " +
-			"navigation at all — a page with a route and no way in")
+	if got := offers(saSession(accessAdmin)); got != "shield" {
+		t.Errorf("an administrator reaches VayuVeil from %q, want the Shield app", got)
 	}
-	// Under Health & governance rather than Controls & diagnostics: it reports a
-	// posture, it does not run or recover anything.
-	i := strings.Index(ops, "Health &amp; governance")
-	if i < 0 {
-		i = strings.Index(ops, "Health & governance")
+	if got := offers(saSession(accessEditor)); got != "" {
+		t.Errorf("an editor is offered VayuVeil from %q", got)
 	}
-	if i < 0 {
-		t.Fatal("the Health & governance band is gone from the Operations hub")
-	}
-	if strings.Index(ops, `href="/os/vayuveil"`) < i {
-		t.Error("VayuVeil sits above the Health & governance band, among the controls that run and " +
-			"recover things; it reports a posture and does neither")
-	}
-}
-
-// The hub that carries the VayuVeil card must itself be admin-only.
-//
-// Found during the pre-release pass, from a mistake rather than a defect: the
-// card was added with osWorkCard's last argument set to true in the belief that
-// it gated access. It does not — it accents the icon. The placement is safe only
-// because /os/operations is admin-gated in its own right, and nothing was
-// holding that. Now something is.
-//
-// If Operations were ever opened to editors, this fails rather than quietly
-// showing every editor a link to a page enumerating the host's device nodes.
-func TestTheHubCarryingTheVayuVeilCardIsAdminOnly(t *testing.T) {
-	if got := osPathMinLevel("/os/operations"); got != accessAdmin {
-		t.Errorf("/os/operations requires level %d, not admin (%d) — it renders a link to VayuVeil, "+
-			"which maps this host's device nodes and kernel tunables", got, accessAdmin)
-	}
-	// Belt and braces: the destination is gated on its own, so a card rendered
-	// somewhere unexpected still cannot open the page.
 	if got := osPathMinLevel("/os/vayuveil"); got != accessAdmin {
 		t.Errorf("/os/vayuveil requires level %d, not admin (%d)", got, accessAdmin)
 	}

@@ -78,8 +78,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	// Public static assets (served same-origin so CSP 'self' covers them).
 	r.Get("/os/static/css/admin-os.css", serveAdminOSAsset("css/admin-os.css", "text/css; charset=utf-8"))
 	r.Get("/os/static/js/admin-os.js", serveAdminOSAsset("js/admin-os.js", "application/javascript; charset=utf-8"))
-	// The Still Air design (admin.ui): its stylesheet layers over admin-os.css,
-	// and its script adds only what the new shell introduces.
+	// The Still Air design: its stylesheet layers over admin-os.css, and its
+	// script adds only what the shell introduces.
 	r.Get("/os/static/css/vayuos.css", serveAdminOSAsset("css/vayuos.css", "text/css; charset=utf-8"))
 	r.Get("/os/static/js/vayuos.js", serveAdminOSAsset("js/vayuos.js", "application/javascript; charset=utf-8"))
 	// VayuOS installable app (PWA): manifest, service worker (scoped /os/), and app
@@ -335,10 +335,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/import", a.handleMediaImport)
 		// Growth hub: consolidates Members / Newsletter / Monetization / Advertising
 		// (+ My Profile) into one dashboard-style card page (admin-only).
-		pr.Get("/os/growth", a.handleOSGrowth)
+		pr.Get("/os/growth", a.hubRedirect("audience"))
 		// Operations hub: consolidates System Modes / Policy / Topology / Replay /
 		// Fault Engine / ADR Registry into one dashboard-style card page (admin-only).
-		pr.Get("/os/operations", a.handleOSOperations)
+		pr.Get("/os/operations", a.hubRedirect("system"))
 		// Power & Maintenance: take the public site offline behind a premium
 		// maintenance page, restart, or shut down. Preview renders that page.
 		pr.Get("/os/power", a.handleOSPower)
@@ -357,10 +357,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Optimize hub: consolidates SEO / Analytics / VayuShield / Theme Studio /
 		// Theme Store + Tools / Domains / Settings / VayuAPI / VayuMCP into one
 		// dashboard-style card page (editor+; admin-only cards hidden from editors).
-		pr.Get("/os/optimize", a.handleOSOptimize)
+		pr.Get("/os/optimize", a.hubRedirect("site"))
 		// System hub: Storage & System / Settings / My Profile as a card page —
 		// gives the Tor-world console the same minimal hub treatment (ADR-0141).
-		pr.Get("/os/system", a.handleOSSystem)
+		pr.Get("/os/system", a.hubRedirect("system"))
 		pr.Get("/os/members", a.handleOSMembers)
 		// HTMX fragment: live-refresh the Members "Recent activity" feed.
 		pr.Get("/os/members/activity", a.handleOSMembersActivityFragment)
@@ -858,36 +858,6 @@ func assetVer(rel string) string {
 
 // ── Shared layout ────────────────────────────────────────────────────────────
 
-// navItem builds a sidebar nav link with an inline SVG icon.
-func navItem(href, label, key, active, iconSVG string) string {
-	return navItemBadge(href, label, key, active, iconSVG, 0)
-}
-
-// navItemBadge is navItem with an optional unread-count pill. A count <= 0
-// renders no badge; counts over 99 cap at "99+" so the pill stays compact.
-func navItemBadge(href, label, key, active, iconSVG string, count int) string {
-	cls := "nav-link"
-	if key == active {
-		cls += " active"
-	}
-	badge := ""
-	if count > 0 {
-		txt := intToStr(count)
-		if count > 99 {
-			txt = "99+"
-		}
-		badge = `<span class="nav-badge" aria-label="` + txt + ` unread">` + txt + `</span>`
-	}
-	// data-nav carries the section key so the stylesheet can give each item its
-	// own premium accent colour (icon-shaped glow on hover). key is an internal
-	// constant, but escape it anyway — defence in depth for the attribute context.
-	return `<a class="` + cls + `" href="` + href + `" data-nav="` + html.EscapeString(key) + `">` +
-		`<span class="nav-link__ico">` + iconSVG + `</span>` +
-		`<span class="nav-link__label">` + html.EscapeString(label) + `</span>` +
-		badge +
-		`</a>`
-}
-
 // spaceSwitch renders the one-click Clearnet⟷Tor world switch pinned to the top
 // of the sidebar (ADR-0141). Admin-only — returns "" for every lower role. On a
 // clearnet install it is interactive: clicking the inactive segment enables or
@@ -957,130 +927,6 @@ func osGroupInt(n int) string {
 	return neg + string(out)
 }
 
-// osBadgeCount renders a compact notification count, capping over 99 at "99+".
-func osBadgeCount(n int) string {
-	if n > 99 {
-		return "99+"
-	}
-	return strconv.Itoa(n)
-}
-
-// osWorkCard renders one clickable workspace tile for the dashboard: an icon, a
-// title with an optional count, a short description and an optional notification
-// badge (pending comments / unread messages). These tiles ARE the content
-// navigation — the areas that used to sit in the sidebar are reached from here.
-func osWorkCard(href, title, desc, iconSVG string, count int, badge string, accent bool) string {
-	iconCls := "work-card__icon"
-	if accent {
-		iconCls += " work-card__icon--accent"
-	}
-	countHTML := ""
-	if count > 0 {
-		countHTML = ` <span class="work-card__count">` + osGroupInt(count) + `</span>`
-	}
-	badgeHTML := ""
-	if badge != "" {
-		badgeHTML = ` <span class="work-card__badge">` + html.EscapeString(badge) + `</span>`
-	}
-	return `<a class="work-card" href="` + href + `">
-  <span class="` + iconCls + `">` + iconSVG + `</span>
-  <span class="work-card__body">
-    <span class="work-card__title">` + html.EscapeString(title) + countHTML + badgeHTML + `</span>
-    <span class="work-card__desc">` + html.EscapeString(desc) + `</span>
-  </span>
-  <svg class="work-card__arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-</a>`
-}
-
-// osWorkspaceGrid renders the dashboard's content workspace — the Posts, Pages,
-// Comments, Messages, Media and New Post tiles (plus Website on clearnet) that
-// used to live in the sidebar — each with its live count and, where relevant, a
-// notification badge. The clearnet-only Website tile is omitted in the Tor world.
-//
-// accessLevel gates every tile the same way the sidebar gates its items
-// (lvl < osPathMinLevel(href) ⇒ hidden): showing a tile the viewer cannot open
-// was a silent-denial loop waiting to happen — RBAC shown==reachable parity.
-func osWorkspaceGrid(onion bool, blogPosts, pages, pendingComments, unread, media, accessLevel int) string {
-	gate := func(item, href string) string {
-		if accessLevel < osPathMinLevel(href) {
-			return ""
-		}
-		return item
-	}
-	var b strings.Builder
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Workspace</span><span class="section-head__hint">Everything you manage, in one place</span></div>`)
-	b.WriteString(`<div class="work-grid">`)
-	b.WriteString(gate(osWorkCard("/os/editor", "New Post", "Start writing a new story", iconNewPost, 0, "", true), "/os/editor"))
-	b.WriteString(gate(osWorkCard("/os/posts", "Posts", "Manage & edit your posts", iconPosts, blogPosts, "", false), "/os/posts"))
-	b.WriteString(gate(osWorkCard("/os/pages", "Pages", "Standalone pages", iconPages, pages, "", false), "/os/pages"))
-	cBadge := ""
-	if pendingComments > 0 {
-		cBadge = osBadgeCount(pendingComments)
-	}
-	b.WriteString(gate(osWorkCard("/os/comments", "Comments", "Moderate reader comments", iconComments, 0, cBadge, false), "/os/comments"))
-	mBadge := ""
-	if unread > 0 {
-		mBadge = osBadgeCount(unread)
-	}
-	b.WriteString(gate(osWorkCard("/os/messages", "Messages", "Contact-form inbox", iconMessages, 0, mBadge, false), "/os/messages"))
-	b.WriteString(gate(osWorkCard("/os/media", "Media", "Images & uploads", iconMedia, media, "", false), "/os/media"))
-	if !onion {
-		b.WriteString(gate(osWorkCard("/os/website", "Website", "Site identity & layout", iconPages, 0, "", false), "/os/website"))
-	}
-	b.WriteString(`</div>`)
-	return b.String()
-}
-
-// osWorldCard surfaces the Anonymous Tor world's live status + .onion on the
-// dashboard (moved off the sidebar toggle). On the clearnet console a running
-// Space shows its address with a copy button + an "Enter Tor world" link, and a
-// booting Space shows a "starting" state. In the Tor world itself (onion) it shows
-// "you're in the Tor world" with this install's own .onion. Returns "" when there
-// is nothing to show (clearnet with the Space off).
-func osWorldCard(onion, torOn, running bool, addr string) string {
-	if onion {
-		if addr == "" {
-			return ""
-		}
-		esc := html.EscapeString(addr)
-		return `<div class="world-card">
-  <span class="world-card__dot"></span>
-  <span class="world-card__text">
-    <span class="world-card__title">You're in the Anonymous Tor world</span>
-    <span class="world-card__addr">` + esc + `</span>
-  </span>
-  <span class="world-card__actions">
-    <button type="button" class="btn btn--ghost btn--sm" data-copy="http://` + esc + `">Copy .onion</button>
-    <a class="btn btn--ghost btn--sm" href="/os/world?target=clearnet">Back to Clearnet →</a>
-  </span>
-</div>`
-	}
-	if !torOn {
-		return ""
-	}
-	if running && addr != "" {
-		esc := html.EscapeString(addr)
-		return `<div class="world-card">
-  <span class="world-card__dot"></span>
-  <span class="world-card__text">
-    <span class="world-card__title">Anonymous Tor world is live</span>
-    <span class="world-card__addr">` + esc + `</span>
-  </span>
-  <span class="world-card__actions">
-    <button type="button" class="btn btn--ghost btn--sm" data-copy="http://` + esc + `">Copy .onion</button>
-    <a class="btn btn--ghost btn--sm" href="/os/world?target=tor">Enter Tor world →</a>
-  </span>
-</div>`
-	}
-	return `<div class="world-card">
-  <span class="world-card__dot world-card__dot--warn"></span>
-  <span class="world-card__text">
-    <span class="world-card__title">Starting your anonymous world…</span>
-    <span class="world-card__addr">Publishing its .onion — this can take a minute.</span>
-  </span>
-</div>`
-}
-
 // notifCap clamps a badge count to a compact "99+" so a large backlog never
 // blows out the bell badge or a row's count chip.
 func notifCap(n int) string {
@@ -1110,15 +956,23 @@ func notifIcon(kind string) string {
 	}
 }
 
+// line is what a notification says under its title. A tally reads "<count>
+// <detail>" (e.g. "3 unread in your inbox"); a state's detail stands alone;
+// storage is a percentage.
+func (n osNotification) line() string {
+	switch {
+	case n.State:
+		return n.Detail
+	case n.Kind == "storage":
+		return notifCap(n.Count) + "% " + n.Detail
+	}
+	return notifCap(n.Count) + " " + n.Detail
+}
+
 // osNotifItem renders one notification as a clickable row that navigates straight
 // to the page which clears it (a plain <a>, so no JS is needed for the jump).
 func osNotifItem(n osNotification) string {
-	// Most items read "<count> <detail>" (e.g. "3 unread in your inbox"); the
-	// update notice is a single event, so it shows its detail verbatim.
-	detail := n.Detail
-	if n.Kind != "update" {
-		detail = notifCap(n.Count) + " " + n.Detail
-	}
+	detail := n.line()
 	return `<a class="notif-item" href="` + n.Href + `">
   <span class="notif-item__icon notif-item__icon--` + n.Kind + `">` + notifIcon(n.Kind) + `</span>
   <span class="notif-item__body">
@@ -1142,7 +996,13 @@ func osNotifBell(s *osSettings) string {
 	total := 0
 	hasDanger := false
 	for _, n := range notifs {
-		total += n.Count
+		// Storage's count is a percentage, not a number of things to clear:
+		// adding it made a disk at 80% read as eighty notifications.
+		if n.Kind == "storage" {
+			total++
+		} else {
+			total += n.Count
+		}
 		if n.Severity == "danger" {
 			hasDanger = true
 		}
@@ -1160,10 +1020,8 @@ func osNotifBell(s *osSettings) string {
 		activeCls = " topbar-notif__btn--active"
 	}
 	var list strings.Builder
-	if len(notifs) == 0 && s.stillAir() {
+	if len(notifs) == 0 {
 		list.WriteString(`<div class="topbar-notif__empty">Nothing needs you right now.</div>`)
-	} else if len(notifs) == 0 {
-		list.WriteString(`<div class="topbar-notif__empty">You're all caught up</div>`)
 	} else {
 		for _, n := range notifs {
 			list.WriteString(osNotifItem(n))
@@ -1180,144 +1038,6 @@ func osNotifBell(s *osSettings) string {
 </div>`
 }
 
-// torWorldNav is the sidebar for the Tor world (OnionMode): a Tor-only console
-// showing just the blog, the anonymous services (VayuMail·Tor, VayuTalk·Tor) and
-// its onion Domains — no clearnet sections. Access-gated like the main nav.
-func torWorldNav(active string, lvl int, s *osSettings) string {
-	var b strings.Builder
-	// Static "Tor world" indicator + copyable .onion at the top (spaceSwitch
-	// renders the non-switchable indicator in OnionMode).
-	b.WriteString(spaceSwitch(lvl, s))
-	gate := func(item, href string) string {
-		if lvl < osPathMinLevel(href) {
-			return ""
-		}
-		return item
-	}
-	section := func(label string, items ...string) {
-		shown := make([]string, 0, len(items))
-		for _, it := range items {
-			if it != "" {
-				shown = append(shown, it)
-			}
-		}
-		if len(shown) == 0 {
-			return
-		}
-		b.WriteString(`<div class="sidebar-section-label">` + label + `</div>`)
-		for _, it := range shown {
-			b.WriteString(it)
-		}
-	}
-	// Blog content (Posts, New Post, Pages, Comments, Media) lives INSIDE the
-	// Dashboard workspace grid now — the same premium hub the clearnet console uses
-	// — so the Tor sidebar stays a short, focused list. Theme (a design tool, not
-	// content) stays pinned here.
-	b.WriteString(gate(navItem(osHome, "Dashboard", "dashboard", active, iconDashboard), osHome))
-	section("Design",
-		gate(navItem("/os/theme", "Theme", "theme", active, iconTheme), "/os/theme"),
-	)
-	// Tor analytics: the visit count and which pages were visited — privacy-
-	// preserving (aggregate counts only, no per-visitor data), served entirely from
-	// the Tor world's own database. The /os/analytics handler already works in
-	// OnionMode; it was only missing from this sidebar.
-	section("Insights",
-		gate(navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics), "/os/analytics"),
-	)
-	section("Anonymous services",
-		navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity),
-		navItem("/os/talk", "VayuTalk", "talk", active, iconTalk),
-		gate(navItem("/os/domains", "Domains", "domains", active, iconDomains), "/os/domains"),
-	)
-	// System (Storage & System, Settings, My Profile) is consolidated into ONE
-	// pinned hub tab too — the same card-hub treatment the clearnet console uses —
-	// so both worlds share the identical minimal pattern (design parity, ADR-0141).
-	b.WriteString(gate(navItem("/os/system", "System", "system", active, iconSettings), "/os/system"))
-	return b.String()
-}
-
-// osSidebarNav builds the role-scoped sidebar. A mail-only session (mailbox /
-// reviewer role) sees only its Mailbox and Profile; console sessions see only
-// the sections their access level permits. The visibility rule is exactly the
-// route guard (osPathMinLevel) so what is shown is precisely what is reachable —
-// hidden items are also blocked server-side.
-func osSidebarNav(active string, s *osSettings) string {
-	lvl := accessAdmin
-	mailOnly := false
-	if s != nil {
-		lvl = s.AccessLevel
-		mailOnly = s.MailOnly
-	}
-	// An agency client (ADR-0152) is a console session, not a mail-only one, so
-	// it fell through to the operator sidebar below — where every gate() closed
-	// against its floor access level and the two ungated product links pointed at
-	// pages the confinement refuses. The result was a customer with no link to
-	// their own site at all: /os/mysite was reachable only by typing it.
-	if s != nil && s.UserRole == roleClientName {
-		return `<div class="sidebar-section-label">Your account</div>` +
-			navItem("/os/mysite", "My site", "mysite", active, iconDomains) +
-			navItem("/os/mysite/traffic", "Visitors", "mysite-traffic", active, iconAnalytics) +
-			navItem("/os/vayumail/inbox", "Mailbox", "vayuos", active, iconSecurity) +
-			navItem("/os/profile", "My Profile", "profile", active, iconMembers)
-	}
-	if mailOnly {
-		return `<div class="sidebar-section-label">Mail</div>` +
-			navItem("/os/vayumail/inbox", "Mailbox", "vayuos", active, iconSecurity) +
-			navItem("/os/profile", "My Profile", "profile", active, iconMembers)
-	}
-
-	// The Tor world (OnionMode) is its OWN system — a separate database and
-	// identity — so its console shows ONLY what belongs in the anonymous world:
-	// the blog, VayuMail·Tor, VayuTalk·Tor and its onion Domains. Every
-	// clearnet-only section (monetization, ads, newsletter, members, SEO/IndexNow,
-	// VayuMCP, analytics, the ops panels…) is hidden, so it reads as a clean,
-	// standalone Tor system (ADR-0141). The clearnet console is unchanged.
-	if config.Cfg.OnionMode {
-		return torWorldNav(active, lvl, s)
-	}
-
-	var b strings.Builder
-	// One-click world switch pinned to the TOP of the sidebar (ADR-0141): flip the
-	// install between the public Clearnet world and the Anonymous Tor Space in a
-	// single click, from anywhere, with the live status + .onion shown inline (no
-	// separate page). Admin-only (matches the /os/spaces guard).
-	b.WriteString(spaceSwitch(lvl, s))
-	// gate returns the item only when this access level can reach its href. The
-	// clearnet sidebar is now a flat, label-less list of hub tabs + a few pinned
-	// items (no "Products"/"System" section headings) — every grouping lives inside
-	// a hub page (Dashboard, Growth, Optimize, Operations).
-	gate := func(item, href string) string {
-		if lvl < osPathMinLevel(href) {
-			return ""
-		}
-		return item
-	}
-
-	// Content management (Posts, Pages, Comments, Messages, Media, New Post,
-	// Website) now lives INSIDE the Dashboard as a premium workspace grid with live
-	// counts + notification badges, so the sidebar stays focused on the broader
-	// system areas. Only the Dashboard hub is pinned here.
-	b.WriteString(gate(navItem(osHome, "Dashboard", "dashboard", active, iconDashboard), osHome))
-	// Audience (Members, Newsletter, Profile) and Monetization (Monetization,
-	// Advertising) are consolidated into ONE pinned Growth hub — a card grid with
-	// live counts, mirroring the Dashboard pattern — so the sidebar stays minimal.
-	// (My Profile also remains reachable from the sidebar footer avatar.)
-	b.WriteString(gate(navItem("/os/growth", "Growth", "growth", active, iconGrowth), "/os/growth"))
-	// Optimize hub. SEO, Analytics, VayuShield, Theme Studio, Theme Store AND the
-	// everyday config surfaces (Tools & Plugins, Domains, Settings, VayuAPI, VayuMCP)
-	// all live inside this one card page now.
-	b.WriteString(gate(navItem("/os/optimize", "Optimize", "optimize", active, iconOptimize), "/os/optimize"))
-	// Operations hub (ops/diagnostics + health/governance).
-	b.WriteString(gate(navItem("/os/operations", "Operations", "operations", active, iconOperations), "/os/operations"))
-	// Pinned, label-less: the products (opened often) and Update & Backup (the one
-	// system surface kept a click away). Everything else folded into the hubs.
-	b.WriteString(navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity))
-	b.WriteString(navItem("/os/talk", "VayuTalk", "talk", active, iconTalk))
-	b.WriteString(gate(navItem("/os/tor", "VayuTor", "tor", active, iconTor), "/os/tor"))
-	b.WriteString(gate(navItem("/os/update", "Update & Backup", "update", active, iconUpdate), "/os/update"))
-	return b.String()
-}
-
 // svgIcon returns a minimal inline SVG for the sidebar.
 // Using path data keeps us CDN-free and avoids an extra HTTP round-trip.
 func svgIcon(path string) string {
@@ -1332,46 +1052,12 @@ const iconWorldClearnet = `<svg class="space-switch__ico" viewBox="0 0 16 16" wi
 const iconWorldTor = `<svg class="space-switch__ico" viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><path d="M8 1.7c-.8.9-.8 1.8 0 2.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M8 4c-2.9 0-4.9 2.5-4.9 5.3 0 2.6 2.2 4.9 4.9 4.9s4.9-2.3 4.9-4.9C12.9 6.5 10.9 4 8 4z" stroke="currentColor" stroke-width="1.2"/><path d="M8 4.3c-1.3 1.4-2 3.2-2 5s.7 3.4 2 4.8M8 4.3c1.3 1.4 2 3.2 2 5s-.7 3.4-2 4.8" stroke="currentColor" stroke-width="1"/></svg>`
 
 var (
-	iconDashboard  = svgIcon("M3 10.5L10 3l7 7.5M5 8.5V17h3.5v-4h3v4H15V8.5")
-	iconPosts      = svgIcon("M4 4h12v2H4V4zm0 4h12v2H4V8zm0 4h8v2H4v-2z")
-	iconComments   = svgIcon("M3 4h14v9H7l-4 3V4zm3 3h8M6 10h5")
-	iconPages      = svgIcon("M5 2h7l3 3v13H5V2zm7 0v3h3M7 9h6M7 12h6M7 15h4")
-	iconMessages   = svgIcon("M2 4h16v10H6l-4 3V4zm3 4h10M5 11h7")
-	iconTalk       = svgIcon("M4 3h9a3 3 0 013 3v4a3 3 0 01-3 3H8l-4 3v-3a3 3 0 01-3-3V6a3 3 0 013-3zm2 4h7M6 9.5h4")
-	iconDNS        = svgIcon("M10 2.5a7.5 7.5 0 100 15 7.5 7.5 0 000-15zM2.5 10h15M10 2.5c2 2.4 3 4.9 3 7.5s-1 5.1-3 7.5c-2-2.4-3-4.9-3-7.5s1-5.1 3-7.5z")
-	iconTor        = svgIcon("M10 2.5a7.5 7.5 0 100 15 7.5 7.5 0 000-15zM10 6.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM10 9.2a.8.8 0 100 1.6.8.8 0 000-1.6z")
-	iconNewPost    = svgIcon("M10 4v12m-6-6h12")
-	iconMedia      = svgIcon("M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm0 8l4-4 3 3 2-2 4 4")
-	iconMembers    = svgIcon("M13 6a3 3 0 11-6 0 3 3 0 016 0zm-9 10a6 6 0 1112 0H4z")
-	iconNewsletter = svgIcon("M3 8l7-4 7 4v8a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm7-1v9m-4-6h8")
-	iconSEO        = svgIcon("M8 15A7 7 0 108 1a7 7 0 000 14zm5-1l4 4")
-	iconAnalytics  = svgIcon("M3 17l4-8 4 4 4-6 4 4")
-	iconGrowth     = svgIcon("M3 15l4-4 3 2 6-7m0 0h-3m3 0v3")
-	iconOperations = svgIcon("M6 4v4M6 12v4M14 4v2M14 10v6M6 8a2 2 0 100 4 2 2 0 000-4zM14 6a2 2 0 100 4 2 2 0 000-4z")
-	iconOptimize   = svgIcon("M10 3l1.8 4.2L16 9l-4.2 1.8L10 15l-1.8-4.2L4 9l4.2-1.8L10 3z")
-	iconSettings   = svgIcon("M10 13a3 3 0 100-6 3 3 0 000 6zm0 0v1m0-8V5M4.2 4.2l.7.7m10-.7l-.7.7M3 10H2m16 0h-1M4.9 15.8l.7-.7m9.5.7l-.7-.7")
-	iconSecurity   = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3z")
-	iconTools      = svgIcon("M12.5 3.5a3 3 0 00-3.9 3.9l-5.1 5.1 2 2 5.1-5.1a3 3 0 003.9-3.9l-2 2-2-2 2-2z")
-	iconUpdate     = svgIcon("M3 10a7 7 0 0112-4.9L17 7m0 0V3m0 4h-4M17 10a7 7 0 01-12 4.9L3 13m0 0v4m0-4h4")
-	iconStorage    = svgIcon("M3 5a2 2 0 012-2h10a2 2 0 012 2v2H3V5zm0 4h14v6a2 2 0 01-2 2H5a2 2 0 01-2-2V9zm3 3h2")
-	iconDomains    = svgIcon("M10 2a8 8 0 100 16 8 8 0 000-16zM2 10h16M10 2c2.2 2 3.3 4.9 3.3 8s-1.1 6-3.3 8c-2.2-2-3.3-4.9-3.3-8s1.1-6 3.3-8z")
-	iconMonitoring = svgIcon("M2 10h3l2-5 3 11 3-8 2 2h3")
-	iconGovernance = svgIcon("M10 2l7 3v5c0 3.5-2.8 6.8-7 8-4.2-1.2-7-4.5-7-8V5l7-3zm0 5v6m-3-3h6")
-	iconTheme      = svgIcon("M10 2a8 8 0 100 16c1 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H14a4 4 0 004-4c0-3.6-3.6-6.5-8-6.5zM5.5 10a1 1 0 110-2 1 1 0 010 2zm3-3a1 1 0 110-2 1 1 0 010 2zm5 0a1 1 0 110-2 1 1 0 010 2z")
-	iconThemeStore = svgIcon("M3 7l1.5-3h11L17 7M3 7h14M3 7v9a1 1 0 001 1h12a1 1 0 001-1V7M8 7v3a2 2 0 004 0V7")
-	iconModes      = svgIcon("M10 2l7 4v8l-7 4-7-4V6l7-4zm0 2.3L5 7v6l5 2.7L15 13V7l-5-2.7z")
-	iconPolicy     = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3zm-1 9l4-4-1.4-1.4L9 8.2 7.4 6.6 6 8l3 3z")
-	iconTopology   = svgIcon("M10 3a2 2 0 100 4 2 2 0 000-4zM4 13a2 2 0 100 4 2 2 0 000-4zm12 0a2 2 0 100 4 2 2 0 000-4zM10 7v3m0 0l-4 3m4-3l4 3")
-	iconReplay     = svgIcon("M4 10a6 6 0 116 6m-6-6l-2-2m2 2l2-2m-2 8v-2")
-	iconFaults     = svgIcon("M10 2l8 14H2L10 2zm0 5v4m0 3h.01")
-	iconADR        = svgIcon("M5 3h7l3 3v11H5V3zm7 0v3h3M7 9h6m-6 3h6m-6 3h4")
-	iconMoney      = svgIcon("M10 2v16M6.5 6.5h5a2 2 0 010 4h-3a2 2 0 000 4h5")
-	iconAds        = svgIcon("M3 5h14v8H3V5zm2 11h6M6 8h6m-6 2.5h4")
-	iconBell       = svgIcon("M10 3a4 4 0 00-4 4c0 4-2 5-2 5h12s-2-1-2-5a4 4 0 00-4-4zm-1.5 13a1.5 1.5 0 003 0")
-	iconMail       = svgIcon("M3 5h14v10H3V5zm0 1l7 5 7-5")
-	// iconApps is the mobile bottom-nav "Menu" affordance — a 2x2 grid that
-	// reads as "all sections", opening the full role-scoped drawer.
-	iconApps = svgIcon("M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z")
+	iconComments = svgIcon("M3 4h14v9H7l-4 3V4zm3 3h8M6 10h5")
+	iconMessages = svgIcon("M2 4h16v10H6l-4 3V4zm3 4h10M5 11h7")
+	iconUpdate   = svgIcon("M3 10a7 7 0 0112-4.9L17 7m0 0V3m0 4h-4M17 10a7 7 0 01-12 4.9L3 13m0 0v4m0-4h4")
+	iconDomains  = svgIcon("M10 2a8 8 0 100 16 8 8 0 000-16zM2 10h16M10 2c2.2 2 3.3 4.9 3.3 8s-1.1 6-3.3 8c-2.2-2-3.3-4.9-3.3-8s1.1-6 3.3-8z")
+	iconBell     = svgIcon("M10 3a4 4 0 00-4 4c0 4-2 5-2 5h12s-2-1-2-5a4 4 0 00-4-4zm-1.5 13a1.5 1.5 0 003 0")
+	iconMail     = svgIcon("M3 5h14v10H3V5zm0 1l7 5 7-5")
 )
 
 // renderTrustedHTML emits a pre-constructed, server-side HTML fragment verbatim.
@@ -1513,145 +1199,7 @@ func osThemeColorMetas(theme string) string {
 }
 
 func adminOSShellHead(nonce, title, active string, settings *osSettings) string {
-	if settings.stillAir() {
-		return stillAirShellHead(nonce, title, active, settings)
-	}
-	et := html.EscapeString(title)
-	theme := "auto" // follow the operating system by default (clean/light on light OS)
-	if settings != nil && settings.AdminTheme != "" {
-		theme = settings.AdminTheme
-	}
-	siteName := "VayuPress"
-	if settings != nil && settings.SiteName != "" {
-		siteName = html.EscapeString(settings.SiteName)
-	}
-	// data-space="tor" repaints the shell in the Tor (purple) palette ONLY when the
-	// console being shown IS the Tor world (OnionMode) — i.e. when you are VIEWING
-	// Tor. The clearnet console keeps its own colour even while the Tor world is
-	// enabled/running in the background; entering the Tor world proxies to that
-	// instance, which renders purple itself. Tying the colour to "Tor is enabled"
-	// (rather than "viewing Tor") wrongly painted the clearnet console purple
-	// (ADR-0141).
-	spaceAttr := ""
-	if config.Cfg.OnionMode {
-		spaceAttr = ` data-space="tor"`
-	}
-
-	cmdHint := `<button class="topbar-cmd" aria-label="Command palette" title="Open command palette">
-      <svg viewBox="0 0 20 20" fill="none" width="14" height="14" aria-hidden="true"><path d="M8 15A7 7 0 108 1a7 7 0 000 14zm5-1l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      <span class="topbar-cmd-text">Search or jump…</span>
-      <kbd>⌘K</kbd>
-    </button>`
-
-	// The topbar's primary affordance is now the notification centre (bell +
-	// expandable panel), not a New Post button: every actionable signal in the
-	// system surfaces here, each a direct link to the page that clears it. New Post
-	// still lives on the dashboard workspace and the command palette.
-	notifBell := osNotifBell(settings)
-
-	// Feedback affordance: a topbar button that opens the VayuMail composer in
-	// feedback mode (recipient pre-filled, structured template, PGP pre-enabled).
-	// On hover/focus a small premium popover explains what it's for. Rendered in
-	// the shared shell, so it appears identically in the clearnet and Tor consoles.
-	feedbackBtn := `<div class="topbar-feedback" data-feedback>
-      <a class="btn--icon topbar-feedback__btn" href="/os/vayumail/compose?feedback=1" aria-label="Report a bug or suggest an improvement" title="Report a bug · request a feature">
-        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="M10 2.4a5.2 5.2 0 00-3.1 9.36c.44.33.7.86.72 1.42l.02.62h4.72l.02-.62c.02-.56.28-1.09.72-1.42A5.2 5.2 0 0010 2.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 16.4h4M8.6 18h2.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-      </a>
-      <div class="topbar-feedback__pop" role="tooltip">
-        <div class="topbar-feedback__title">Help improve VayuPress</div>
-        <p class="topbar-feedback__desc">Found a bug, want an improvement, or have a feature idea? Tell us — it opens a PGP-encrypted email (attachments included) where you can add screenshots or files.</p>
-        <span class="topbar-feedback__cta">Report a bug · request a feature →</span>
-      </div>
-    </div>`
-
-	// Space-mode indicator (ADR-0141): every admin page carries an unmistakable
-	// badge for the world this whole install controls — a CLEARNET Space (public
-	// HTTPS domain) or a TOR Space (anonymous .onion, clearnet callbacks off) — so
-	// the two are never confused. The mode is fixed per install by VAYUOS_MODE, so
-	// this is a read-only status label, not a toggle.
-	spaceBadge := `<span class="space-badge space-badge--clearnet" title="Clearnet Space — served over HTTPS on your public domain">Clearnet</span>`
-	if config.Cfg.OnionMode {
-		spaceBadge = `<span class="space-badge space-badge--tor" title="Tor Space — anonymous .onion world; clearnet callbacks disabled">Tor</span>`
-	}
-
-	return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>` + et + ` — ` + siteName + ` · VayuOS</title>
-<meta name="robots" content="noindex, nofollow">
-<!-- HTMX runtime config: skip the injected indicator <style> so we never need
-     style-src 'unsafe-inline' — the strict admin CSP (style-src 'self') stays intact. -->
-<meta name="htmx-config" content='{"includeIndicatorStyles":false,"globalViewTransitions":true}'>
-<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
-    <!-- Wave 1: preload the Body and Mono fonts so the console typeset
-         with its designed typefaces from the first paint instead of
-         falling back to system-ui while the @font-face fetches resolve. -->
-    <link rel="preload" href="/static/fonts/inter-latin-400.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="/static/fonts/inter-latin-500.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="/static/fonts/jetbrains-mono-latin-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="icon" type="image/png" href="/static/favicon-light.png">
-<!-- Installable app (PWA): manifest + icons so the browser offers "Install VayuOS"
-     on desktop and mobile, and the installed app opens straight into the console. -->
-<link rel="manifest" href="/os/manifest.webmanifest">
-` + osThemeColorMetas(theme) + `
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="VayuOS">
-<link rel="apple-touch-icon" href="/os/static/icons/vayuos-apple-180.png">
-</head>
-<body class="vp-os" data-theme="` + html.EscapeString(theme) + `" data-admin-theme="` + html.EscapeString(theme) + `"` + spaceAttr + `>
-<a href="#main-content" class="skip-link">Skip to main content</a>
-` + saSprite + `<script nonce="` + nonce + `">` + vpIconScript + `</script>
-<!-- Sidebar overlay for mobile tap-to-close -->
-<div class="sidebar-overlay" aria-hidden="true"></div>
-
-<div class="shell">
-<!-- ── Sidebar ──────────────────────────────────────────────── -->
-<aside id="vp-sidebar" class="sidebar" aria-label="Admin navigation">
-  <div class="sidebar-brand">
-    <img src="/static/favicon-light.png" alt="" width="28" height="28">
-    <span class="sidebar-brand-name">` + siteName + `</span>
-    <span class="sidebar-brand-os">VayuOS</span>
-  </div>
-  <nav class="sidebar-nav" aria-label="Primary">
-    ` + osSidebarNav(active, settings) + `
-    <div class="sidebar-spacer"></div>
-  </nav>
-  <div class="sidebar-footer">
-    ` + osSidebarUser(settings) + `
-  </div>
-</aside>
-
-<!-- ── Main ─────────────────────────────────────────────────── -->
-<div class="main">
-  <header class="topbar" role="banner">
-    <button type="button" class="menu-toggle btn--icon" data-action="toggle-sidebar" aria-label="Toggle navigation menu" aria-controls="vp-sidebar" aria-expanded="false">
-      <svg viewBox="0 0 20 20" fill="none" width="20" height="20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-    </button>
-    <span class="topbar-title">` + et + `</span>
-    ` + spaceBadge + `
-    <span class="topbar-spacer"></span>
-    ` + cmdHint + `
-    ` + feedbackBtn + `
-    ` + notifBell + `
-    <button type="button" class="btn--icon topbar-install-btn" data-pwa-install hidden aria-label="Install VayuOS as an app" title="Install VayuOS app">
-      <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="M10 3v9m0 0l-3.2-3.2M10 12l3.2-3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15.5h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-    </button>
-    <button type="button" class="btn--icon topbar-theme-btn" aria-label="Toggle colour theme (light / dark / auto)" title="Colour theme">
-      <svg class="theme-ico theme-ico--light" viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="3.6" stroke="currentColor" stroke-width="1.6"/><path d="M10 1.6v2.2M10 16.2v2.2M1.6 10h2.2M16.2 10h2.2M4.1 4.1l1.5 1.5M14.4 14.4l1.5 1.5M15.9 4.1l-1.5 1.5M5.6 14.4l-1.5 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-      <svg class="theme-ico theme-ico--dark" viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="M16.2 11.8A6.6 6.6 0 118.2 3.8a5.2 5.2 0 008 8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-      <svg class="theme-ico theme-ico--auto" viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/><path d="M10 2a8 8 0 010 16z" fill="currentColor"/></svg>
-    </button>
-    <form method="POST" action="/os/logout">
-      <button type="submit" class="btn btn--ghost btn--sm">Sign out</button>
-    </form>
-  </header>
-
-  <main id="main-content" class="content">
-`
+	return stillAirShellHead(nonce, title, active, settings)
 }
 
 // adminOSShellFoot closes the content/main/shell, renders the mobile bottom nav,
@@ -1707,26 +1255,6 @@ window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type
 </div><!-- .main -->
 </div><!-- .shell -->
 ` + ops + `
-<!-- Bottom nav for mobile — quick links + a Menu button that opens the full,
-     role-scoped drawer so every section is reachable like a native app. -->
-<nav class="bottom-nav" aria-label="Mobile navigation">
-  <a class="bottom-nav-item" href="/os/" data-nav="/os/">
-    ` + iconDashboard + `<span>Home</span>
-  </a>
-  <a class="bottom-nav-item" href="/os/posts" data-nav="/os/posts">
-    ` + iconPosts + `<span>Posts</span>
-  </a>
-  <a class="bottom-nav-item bottom-nav-item--accent" href="/os/editor" data-nav="/os/editor">
-    ` + iconNewPost + `<span>Write</span>
-  </a>
-  <a class="bottom-nav-item" href="/os/vayumail/inbox" data-nav="/os/vayumail/inbox">
-    ` + iconMessages + `<span>Inbox</span>
-  </a>
-  <button type="button" class="bottom-nav-item" data-action="toggle-sidebar" aria-controls="vp-sidebar" aria-expanded="false" aria-label="Open menu">
-    ` + iconApps + `<span>Menu</span>
-  </button>
-</nav>
-
 <!-- Command palette -->
 <div id="cmd-backdrop" class="cmd-backdrop" hidden role="dialog" aria-modal="true" aria-label="Command palette">
   <div class="cmd-panel">
@@ -1827,8 +1355,6 @@ Array.prototype.forEach.call(document.querySelectorAll('.sidebar [data-copy], .w
 type osSettings struct {
 	SiteName   string
 	AdminTheme string
-	// UI is the console design (admin.ui): uiStillAir or classic.
-	UI string
 	// Route is the matched route pattern (chi), which the Still Air shell uses to
 	// find the current app section without every page naming it.
 	Route string
@@ -1877,12 +1403,16 @@ type osNotification struct {
 	Detail string
 	Href   string
 	Count  int
-	Kind   string // "mail" | "comment" | "message" | "domain" | "update" | "jobs" | "storage" | "mode"
+	Kind   string // "mail" | "comment" | "message" | "domain" | "update" | "backup" | "jobs" | "storage" | "mode"
 	// Severity (Wave 2.2): "" / "info" is a todo, "warn" needs attention soon,
 	// "danger" is something failing NOW. Drives the badge colour on the bell and
 	// the dashboard attention strip, so "3 pending comments" never screams the
 	// way "10 failed jobs" must.
 	Severity string
+	// State marks a notice that is a condition rather than a tally (an update
+	// ready, a mail domain half set up, backups unproven): its detail is a whole
+	// statement and reads without a count in front of it.
+	State bool
 }
 
 // getOSSettings loads settings needed for layout rendering.
@@ -1933,9 +1463,6 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 			s.UnreadMail += n.Count
 		}
 	}
-	if a.siteSettings != nil {
-		s.UI = a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyAdminUI)
-	}
 	if rc := chi.RouteContext(ctx); rc != nil {
 		s.Route = rc.RoutePattern()
 	}
@@ -1965,12 +1492,25 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 		}
 		out = append(out, osNotification{Title: title, Detail: detail, Href: href, Count: count, Kind: kind, Severity: sev})
 	}
+	state := func(href, title, detail, kind, severity string) {
+		n := len(out)
+		add(href, title, detail, kind, 1, severity)
+		if len(out) > n {
+			out[n].State = true
+		}
+	}
 	// A mail domain whose DNS is not finished, from the last stored check —
 	// never a lookup here (vayuos_mail_dns_watch.go). The DNS tab is
 	// administrator-only while /os/vayumail is open to authors, so the path gate
 	// in add() is not enough on its own.
 	if next, bad := a.mailDNSNeedsAttention(); bad && s.AccessLevel >= accessAdmin {
-		add("/os/vayumail/dns", "Mail domain needs attention", next, "mail", 1, "warn")
+		state("/os/vayumail/dns", "Mail domain needs attention", next, "mail", "warn")
+	}
+	// Backups that are not proven. This verdict used to sit on the Operations
+	// hub; Home and the bell are where an operator looks without being sent, and
+	// a broken recovery path is otherwise silent until the day it is needed.
+	if n, ok := backupNotification(a.vayuKeepStatus(), a.vayuKeepErr, time.Now().UTC()); ok {
+		state(n.Href, n.Title, n.Detail, n.Kind, n.Severity)
 	}
 	if dbpkg.DB == nil {
 		return out
@@ -2049,7 +1589,7 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	// update-check history, refreshed by the background watcher). Admin-only via
 	// the /os/update gate in add(); silent in a Tor Space.
 	if v, ok := a.latestUpdateNotice(ctx); ok {
-		add("/os/update", "VayuOS update ready", "Install "+v+" in one click", "update", 1)
+		state("/os/update", "VayuOS update ready", "Install "+v+" in one click", "update", "")
 	}
 	// Wave 2.2 — the operational signals the bell used to ignore. All three come
 	// from the metrics snapshot (an atomic load; collectAdminMetrics is already
@@ -2076,54 +1616,10 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 		// Maintenance mode on: deliberate, but visible — an install parked in
 		// maintenance "for a moment" three days ago deserves a bell entry.
 		if config.Cfg.MaintenanceMode {
-			add("/os/modes", "Maintenance mode on", "the public site is offline behind a maintenance page", "mode", 1, "info")
+			state("/os/modes", "Maintenance mode on", "The public site is offline behind a maintenance page", "mode", "info")
 		}
 	}
 	return out
-}
-
-// osAttentionStrip renders the dashboard's attention strip (Wave 2.2): the
-// bell's actionable signals surfaced inline where the operator actually looks,
-// sorted danger → warn → info. Empty when there is nothing needing eyes — an
-// all-clear strip that always renders is wallpaper, not signal.
-func osAttentionStrip(notifs []osNotification) string {
-	weight := func(sev string) int {
-		switch sev {
-		case "danger":
-			return 0
-		case "warn":
-			return 1
-		default:
-			return 2
-		}
-	}
-	sorted := append([]osNotification(nil), notifs...)
-	for i := 1; i < len(sorted); i++ {
-		for j := i; j > 0 && weight(sorted[j].Severity) < weight(sorted[j-1].Severity); j-- {
-			sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
-		}
-	}
-	var b strings.Builder
-	b.WriteString(`<div class="attention-strip" data-attention-strip role="region" aria-label="Needs attention">`)
-	for _, n := range sorted {
-		sev := n.Severity
-		if sev == "" {
-			sev = "info"
-		}
-		detail := n.Detail
-		if n.Kind != "update" && n.Kind != "storage" && n.Count > 0 {
-			detail = notifCap(n.Count) + " " + n.Detail
-		}
-		if n.Kind == "storage" {
-			detail = notifCap(n.Count) + "% " + n.Detail
-		}
-		b.WriteString(`<a class="attention-chip attention-chip--` + sev + `" href="` + n.Href + `">` +
-			`<span class="attention-chip__dot" aria-hidden="true"></span>` +
-			`<span class="attention-chip__title">` + html.EscapeString(n.Title) + `</span>` +
-			`<span class="attention-chip__detail">` + html.EscapeString(detail) + `</span></a>`)
-	}
-	b.WriteString(`</div>`)
-	return b.String()
 }
 
 // roleDisplay returns a human label for a role slug.
@@ -2140,30 +1636,6 @@ func roleDisplay(role string) string {
 	default:
 		return strings.ToUpper(role[:1]) + role[1:]
 	}
-}
-
-// osSidebarUser renders the signed-in user card (avatar + name + role) shown at
-// the foot of the sidebar. It links to the self-service profile editor.
-func osSidebarUser(s *osSettings) string {
-	name, role, avatarURL := "Admin", "Administrator", ""
-	if s != nil {
-		if s.UserName != "" {
-			name = s.UserName
-		}
-		role = roleDisplay(s.UserRole)
-		avatarURL = s.UserAvatar
-	}
-	avatar := `<div class="avatar avatar--sm avatar--brand">` + html.EscapeString(initials(name, "")) + `</div>`
-	if avatarURL != "" {
-		avatar = `<img class="avatar avatar--sm" src="` + html.EscapeString(avatarURL) + `" alt="" width="28" height="28">`
-	}
-	return `<a class="sidebar-user" href="/os/profile" title="Edit your profile">
-      ` + avatar + `
-      <div class="sidebar-user-info">
-        <div class="sidebar-user-name">` + html.EscapeString(name) + `</div>
-        <div class="sidebar-user-role">` + html.EscapeString(role) + `</div>
-      </div>
-    </a>`
 }
 
 // writeOSHTML writes HTML with the standard os response headers and CSRF cookie.
@@ -2708,49 +2180,6 @@ func (a *App) osFirstRunChecklist(ctx context.Context, accessLevel int) []osChec
 	return nil
 }
 
-// osFirstRunCard renders the dismissable checklist card. Dismissal lives in
-// localStorage (vayuOS.firstRun.dismissed): a per-browser "seen it" is exactly
-// right for an orientation card, and it needs no schema, no write endpoint and
-// no per-user column.
-func osFirstRunCard(items []osChecklistItem, nonce string) string {
-	var rows string
-	for _, it := range items {
-		state := `<a class="frc__action btn btn--ghost btn--sm" href="` + it.Href + `">Open<span aria-hidden="true"> →</span></a>`
-		mark := `<span class="frc__mark frc__mark--todo" aria-hidden="true">○</span>`
-		if it.Done {
-			state = `<span class="frc__done-label">Done</span>`
-			mark = `<span class="frc__mark frc__mark--done" aria-hidden="true">✓</span>`
-		} else if it.Review {
-			state = `<a class="frc__action btn btn--ghost btn--sm" href="` + it.Href + `">Review<span aria-hidden="true"> →</span></a>`
-		}
-		rows += `<li class="frc__item` + map[bool]string{true: " frc__item--done", false: ""}[it.Done] + `">` +
-			mark +
-			`<span class="frc__text"><span class="frc__label">` + it.Label + `</span>` +
-			`<span class="frc__detail">` + it.Detail + `</span></span>` +
-			state + `</li>`
-	}
-	return `<section class="card first-run" data-first-run role="region" aria-label="First-run checklist">
-  <div class="frc__head">
-    <span class="frc__title">Get set up</span>
-    <span class="frc__hint">The short path from install to a live site</span>
-    <button type="button" class="btn btn--ghost btn--sm" data-first-run-dismiss aria-label="Dismiss the first-run checklist">Dismiss</button>
-  </div>
-  <ul class="frc__list">` + rows + `</ul>
-</section>
-<script nonce="` + nonce + `">
-(function(){'use strict';
-var KEY='vayuOS.firstRun.dismissed';
-var card=document.querySelector('[data-first-run]');
-if(!card)return;
-function seen(){try{return window.localStorage.getItem(KEY)==='1';}catch(e){return false;}}
-function hide(){card.hidden=true;}
-if(seen())hide();
-var btn=card.querySelector('[data-first-run-dismiss]');
-if(btn)btn.addEventListener('click',function(){try{window.localStorage.setItem(KEY,'1');}catch(e){}hide();});
-})();
-</script>`
-}
-
 // osHome is the console's address. It is the installed app's start_url and
 // sits inside its scope, "/os/" (handleOSManifest). Scope matching is a plain
 // prefix test, so "/os" is OUTSIDE it: every link to "/os" took an installed
@@ -2761,109 +2190,8 @@ const osHome = "/os/"
 func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	snap := a.getAdminSnapshot()
-	if cfg.stillAir() {
-		writeOSHTML(w, r, adminOSLayout(nonce, "Home", "dashboard", cfg, htmpl.HTML(a.stillAirHomeBody(r.Context(), cfg, snap))))
-		return
-	}
+	writeOSHTML(w, r, adminOSLayout(nonce, "Home", "dashboard", cfg, htmpl.HTML(a.stillAirHomeBody(r.Context(), cfg, a.getAdminSnapshot()))))
 
-	// Content workspace (dashboard redesign): the content areas that used to live in
-	// the sidebar (Posts, Pages, Comments, Messages, Media, New Post, Website) are
-	// surfaced here as premium tiles with live counts and notification badges. Counts
-	// are cheap on-demand reads, so the 30s metrics collector is left untouched.
-	onionMode := config.Cfg.OnionMode
-	blogPosts := snap.TotalArticles - snap.TotalPages
-	if blogPosts < 0 {
-		blogPosts = 0
-	}
-	pendingComments := 0
-	if dbpkg.DB != nil {
-		_ = dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COUNT(1) FROM comments WHERE status='pending'`).Scan(&pendingComments)
-	}
-	mediaCount := countMediaItems()
-	// The Tor world's .onion is shown ONLY inside the Tor console itself — the
-	// clearnet dashboard must never surface the anonymous address (ADR-0141
-	// anti-correlation: the onion never appears alongside the clearnet identity).
-	// Entering the Tor world is done from the sidebar world switch.
-	worldCardHTML := ""
-	if onionMode {
-		worldCardHTML = osWorldCard(true, cfg.TorSpaceOn, cfg.TorSpaceRunning, config.Cfg.Domain)
-	}
-	workspaceHTML := osWorkspaceGrid(onionMode, blogPosts, snap.TotalPages, pendingComments, snap.UnreadMessages, mediaCount, cfg.AccessLevel)
-	// First-run checklist (Wave 2.5): the short path from install to a live
-	// site, assembled from cheap server-known facts and dismissed per browser.
-	// Nil for operators who are past it — and never rendered for roles that
-	// could not open the pages it links to.
-	firstRunHTML := ""
-	if items := a.osFirstRunChecklist(r.Context(), cfg.AccessLevel); len(items) > 0 {
-		firstRunHTML = osFirstRunCard(items, nonce)
-	}
-
-	// Attention strip (Wave 2.2): the bell's warn/danger signals surfaced on the
-	// dashboard itself, before the checklist and the world card.
-	attentionHTML := osAttentionStrip(cfg.Notifications)
-
-	body := `<!-- Quick compose -->
-<div class="quick-compose" role="search">
-  <span class="quick-compose-icon" aria-hidden="true">` + saIcon("pencil") + `</span>
-  <input id="quick-compose-input" class="quick-compose-input"
-    type="text" placeholder="Start a new post… (press Enter)" autocomplete="off"
-    aria-label="Quick compose: type a title and press Enter">
-</div>
-` + attentionHTML + firstRunHTML + worldCardHTML + workspaceHTML + `
-<!-- System health -->
-<div class="section-head"><span class="section-head__title">System health</span><span class="section-head__hint">Background jobs &amp; queue</span></div>
-<div class="stat-grid">
-  <div class="stat-card">
-    <div class="stat-card__top">
-      <div class="stat-card__label">Pending jobs</div>
-      <div class="stat-card__icon stat-card__icon--accent">
-        <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true"><path d="M8 3v5l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2"/></svg>
-      </div>
-    </div>
-    <div class="stat-card__value">` + strconv.Itoa(snap.PendingJobs) + `</div>
-    <div class="stat-card__bottom">
-      <span class="muted text-xs">In queue</span>
-    </div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-card__top">
-      <div class="stat-card__label">Failed jobs</div>
-      <div class="stat-card__icon stat-card__icon--warn">
-        <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true"><path d="M8 5v4m0 2.5v.5M3 13h10L8 3 3 13z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </div>
-    </div>
-    <div class="stat-card__value">` + strconv.Itoa(snap.FailedJobs) + `</div>
-    <div class="stat-card__bottom">
-      <span class="muted text-xs">Needs attention</span>
-    </div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-card__top">
-      <div class="stat-card__label">Completed</div>
-      <div class="stat-card__icon stat-card__icon--ok">
-        <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true"><path d="M4 8l3 3 5-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2"/></svg>
-      </div>
-    </div>
-    <div class="stat-card__value">` + strconv.Itoa(snap.CompletedJobs) + `</div>
-    <div class="stat-card__bottom">
-      <span class="muted text-xs">All time</span>
-    </div>
-  </div>
-</div>
-
-<!-- Activity feed (full-width) -->
-<div class="card">
-  <div class="card-title">Recent activity</div>
-  <div id="activity-feed" class="activity-list">
-    <!-- Populated by admin-os.js via GET /os/api/activity -->
-    <div class="skeleton skeleton--text mb-3"></div>
-    <div class="skeleton skeleton--text mb-3 w-80"></div>
-    <div class="skeleton skeleton--text w-65"></div>
-  </div>
-</div>`
-
-	writeOSHTML(w, r, adminOSLayout(nonce, "Dashboard", "dashboard", cfg, htmpl.HTML(body)))
 }
 
 // ── Posts ────────────────────────────────────────────────────────────────────
@@ -3980,11 +3308,6 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 	default:
 		groupBody = osSettingsGeneral(r.Context(), ss)
 	}
-	designRow := ""
-	if (group == "" || group == "general") && cfg.AccessLevel >= accessAdmin {
-		designRow = osConsoleDesignRow(cfg.stillAir())
-	}
-
 	body := `<div class="page-header">
   <h1>Settings</h1>
   <div class="page-actions">
@@ -3993,7 +3316,6 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>
 <nav class="tab-list" aria-label="Settings sections">` + tabHTML + `</nav>
-` + designRow + `
 <div class="card">
   ` + groupBody + `
   <div class="settings-save-bar">
@@ -4222,21 +3544,6 @@ if(footerInput){
 		renderTrustedHTML(htmpl.HTML(body)) +
 		adminOSShellFoot(nonce, saveScript, pageUsesAlpine(body))
 	writeOSHTML(w, r, fullHTML)
-}
-
-// osConsoleDesignRow is the one place the console's design is chosen, in both
-// designs, so a switch is never a hidden preference. It saves admin.ui and
-// reloads (admin-os.js, [data-sa-ui]).
-func osConsoleDesignRow(stillAir bool) string {
-	hint := `Still Air is the redesigned console: one app per area, the system's state always in view, and less on every page. You can switch back here at any time.`
-	btn := `<button type="button" class="btn btn--primary btn--sm" data-sa-ui="still-air">Try Still Air</button>`
-	if stillAir {
-		hint = `You are using Still Air, the redesigned console. The classic design stays available here until Still Air becomes the default.`
-		btn = `<button type="button" class="btn btn--sm" data-sa-ui="classic">Use the classic design</button>`
-	}
-	return `<div class="card mb-3"><div class="settings-row"><div class="settings-row-info">
-  <div class="settings-row-label">Console design</div>
-  <div class="settings-row-hint">` + hint + `</div></div>` + btn + `</div></div>`
 }
 
 func osSettingsGeneral(ctx context.Context, ss *settings.Store) string {
@@ -4484,9 +3791,9 @@ func osSettingsAdvanced(_ context.Context, _ *settings.Store) string {
     <code class="font-mono text-xs muted">` + html.EscapeString(config.Cfg.CacheDir) + `</code>
   </div>
   <div class="section-divider"></div>
-  <div class="settings-block-title">Danger zone</div>
-  <p class="text-sm muted">Destructive actions and data export are available in the classic console.</p>
-  <a class="btn btn--ghost btn--sm mt-3" href="/admin" target="_blank">Open classic console ↗</a>
+  <div class="settings-block-title">Export and restore</div>
+  <p class="text-sm muted">Exports, imports and restores are in Backups; clearing the caches is in Storage.</p>
+  <div class="flex gap-2 mt-3"><a class="btn btn--ghost btn--sm" href="/os/vayukeep">Open Backups</a><a class="btn btn--ghost btn--sm" href="/os/storage">Open Storage</a></div>
 </div>`
 }
 

@@ -146,8 +146,6 @@ var saMark = strings.Join([]string{
 
 // saSprite carries the whole set once per page, so script-built markup draws
 // the same icons as the server (vpIcon in admin-os.js) instead of an emoji.
-// Both shells emit it: the classic console renders the same page bodies until
-// cutover.
 var saSprite = func() string {
 	names := make([]string, 0, len(saIcons))
 	for n := range saIcons {

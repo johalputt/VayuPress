@@ -8,8 +8,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-The Still Air redesign of the VayuOS console, built behind a switch
-(Settings › General › Console design) until it becomes the default.
+The Still Air redesign of the VayuOS console.
 
 ### Added
 
@@ -30,7 +29,13 @@ The Still Air redesign of the VayuOS console, built behind a switch
   share the cache directory.
 - **Still Air**: a new console design — eight apps in a rail, each with its own
   sections, a system bar that shows the system mode and the world, a command
-  bar that finds any page, and a Home that lists what needs attention.
+  bar that finds any page, and a Home that lists what needs attention. It is
+  the only design: the old sidebar, dashboard and the Growth, Optimize,
+  Operations and System hub pages are gone, and their addresses open the app
+  that took their place.
+- **Backups that are not proven show on Home and in the notifications**: off,
+  paused, never test-restored, stale, or — as a failure — refusing to start or
+  failing a test restore. This used to be visible only on the Operations hub.
 - **System state** says what the current mode refuses, taken from the checks
   the code actually makes, with the recent mode changes and a way to switch.
 
@@ -80,6 +85,15 @@ The Still Air redesign of the VayuOS console, built behind a switch
 - **Analytics showed each headline figure inside a box** meant for a different
   widget.
 - **Members showed each section's title twice.**
+- **A storage warning counted as eighty notifications**: the bell added the
+  disk's percentage to its badge. It counts as one.
+- **Notices that are a statement read with a "1" in front of them** ("1 the
+  public site is offline…", "1 MX for … — missing").
+- **Settings › Advanced sent you to a "classic console"** for exports and
+  destructive actions; that address has only ever redirected back. It now
+  links to Backups and Storage, where those actions are.
+- **An agency client's or mailbox user's logo link led to a page they cannot
+  open**, and bounced them.
 
 ---
 

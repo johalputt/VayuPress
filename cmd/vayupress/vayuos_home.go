@@ -4,10 +4,10 @@ package main
 
 // vayuos_home.go — Home in the Still Air design.
 //
-// The classic dashboard is a quick-compose box, an attention strip, a setup
-// card, a grid of workspace cards and a row of job counters. Home keeps what an
-// operator acts on and drops what the rail already offers: the workspace cards
-// were a second copy of the Content app's sidebar. What remains reads top to
+// The dashboard it replaced was a quick-compose box, an attention strip, a
+// setup card, a grid of workspace cards and a row of job counters. Home keeps
+// what an operator acts on and drops what the rail already offers: the
+// workspace cards were a second copy of the Content app's sidebar. What remains reads top to
 // bottom as a document: what needs you, how the site is doing, the state of
 // this install, what just happened.
 
@@ -110,19 +110,9 @@ func saHomeNeeds(notifs []osNotification) string {
 		case "warn":
 			tone = "warn"
 		}
-		detail := n.Detail
-		switch n.Kind {
-		case "update":
-		case "storage":
-			detail = notifCap(n.Count) + "% " + n.Detail
-		default:
-			if n.Count > 0 {
-				detail = notifCap(n.Count) + " " + n.Detail
-			}
-		}
 		b.WriteString(`<a class="sa-need sa-need--` + tone + `" href="` + html.EscapeString(n.Href) + `">` + saIcon(icon) +
 			`<span class="sa-need__t">` + html.EscapeString(n.Title) + `</span>` +
-			`<span class="sa-need__d">` + html.EscapeString(detail) + `</span>` +
+			`<span class="sa-need__d">` + html.EscapeString(n.line()) + `</span>` +
 			`<span class="sa-need__go">Open` + saIcon("arrow-r") + `</span></a>`)
 	}
 	b.WriteString(`</section>`)
@@ -142,6 +132,8 @@ func saNotifIcon(kind string) string {
 		return "globe"
 	case "update":
 		return "refresh"
+	case "backup":
+		return "archive"
 	case "jobs":
 		return "flow"
 	case "storage":

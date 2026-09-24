@@ -18,7 +18,7 @@ import (
 )
 
 func saSession(level int) *osSettings {
-	return &osSettings{UI: uiStillAir, AccessLevel: level, UserName: "Ankush Johal", SiteName: "johal.in"}
+	return &osSettings{AccessLevel: level, UserName: "Ankush Johal", SiteName: "johal.in"}
 }
 
 // Shown means reachable. The rail and every app sidebar are judged against the
@@ -238,30 +238,15 @@ func TestStillAirStripOnlyWhenActionsChange(t *testing.T) {
 	}
 }
 
-// The classic console is untouched while both designs exist.
-func TestClassicShellIsTheDefault(t *testing.T) {
-	out := adminOSShellHead("n", "P", "dashboard", &osSettings{AccessLevel: accessAdmin})
-	if strings.Contains(out, "data-ui=") || strings.Contains(out, "vayuos.css") {
-		t.Error("an unset admin.ui rendered the Still Air shell")
-	}
-	if !strings.Contains(adminOSShellHead("n", "P", "dashboard", saSession(accessAdmin)), `data-ui="still-air"`) {
-		t.Error("admin.ui=still-air did not render the Still Air shell")
-	}
-}
-
-// Hub URLs redirect to their app in Still Air, so a bookmark still lands.
-func TestStillAirHubURLsRedirectToTheirApp(t *testing.T) {
-	for _, c := range []struct{ key, want string }{{"system", "/os/modes"}, {"site", "/os/website"}, {"audience", "/os/members"}} {
+// Hub URLs redirect to their app, so a bookmark still lands.
+func TestHubURLsRedirectToTheirApp(t *testing.T) {
+	a := &App{}
+	for _, c := range []struct{ hub, want string }{{"system", "/os/modes"}, {"site", "/os/website"}, {"audience", "/os/members"}} {
 		rec := httptest.NewRecorder()
-		if !saHubRedirect(rec, httptest.NewRequest(http.MethodGet, "/os/x", nil), saSession(accessAdmin), saAppHref(saSession(accessAdmin), c.key, osHome)) {
-			t.Fatalf("%s: no redirect in Still Air", c.key)
-		}
+		a.hubRedirect(c.hub)(rec, httptest.NewRequest(http.MethodGet, "/os/x", nil))
 		if loc := rec.Header().Get("Location"); rec.Code != http.StatusSeeOther || loc != c.want {
-			t.Errorf("%s hub → %d %s, want 303 %s", c.key, rec.Code, loc, c.want)
+			t.Errorf("%s hub → %d %s, want 303 %s", c.hub, rec.Code, loc, c.want)
 		}
-	}
-	if saHubRedirect(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/os/x", nil), &osSettings{}, "/os/modes") {
-		t.Error("the classic console redirected a hub")
 	}
 	// An editor cannot open Members, so the Audience hub lands where they can.
 	if got := saAppHref(saSession(accessEditor), "audience", osHome); got != "/os/analytics" {
@@ -459,5 +444,58 @@ func TestEveryModeRefusalNamesItsGuard(t *testing.T) {
 	}
 	if got := saModeRefusals(mode.ModeNormal); len(got) != 0 {
 		t.Errorf("normal mode refuses %v", got)
+	}
+}
+
+// Home puts what is failing now ahead of what needs attention soon, and both
+// ahead of a todo, whatever order the sources were read in. One seed per step.
+func TestHomeNeedsSortsWorstFirst(t *testing.T) {
+	out := saHomeNeeds([]osNotification{
+		{Title: "Comments to review", Detail: "awaiting moderation", Href: "/os/comments", Count: 3, Kind: "comment"},
+		{Title: "Storage filling up", Detail: "of your storage quota is in use", Href: "/os/storage", Count: 80, Kind: "storage", Severity: "warn"},
+		{Title: "Failed jobs", Detail: "failed", Href: "/os/monitoring", Count: 12, Kind: "jobs", Severity: "danger"},
+	})
+	danger, warn, todo := strings.Index(out, "Failed jobs"), strings.Index(out, "Storage filling up"), strings.Index(out, "Comments to review")
+	if danger < 0 || warn < 0 || todo < 0 {
+		t.Fatalf("an item is missing from Home:\n%s", out)
+	}
+	if danger > warn {
+		t.Error("danger must come ahead of warn")
+	}
+	if warn > todo {
+		t.Error("warn must come ahead of a todo")
+	}
+	if !strings.Contains(out, "80% of your storage quota") {
+		t.Error("storage reads as a percentage")
+	}
+	if got := saHomeNeeds(nil); !strings.Contains(got, "Nothing needs you right now.") || strings.Contains(got, "sa-need ") {
+		t.Error("an empty list says so plainly and draws no rows")
+	}
+}
+
+// The Tor world has its own database and identity; a clearnet section offered
+// there opens a page about an install the operator is not in (ADR-0141).
+func TestTheTorWorldRailOffersNoClearnetSection(t *testing.T) {
+	defer func(v bool) { config.Cfg.OnionMode = v }(config.Cfg.OnionMode)
+	config.Cfg.OnionMode = true
+	have := map[string]bool{}
+	for _, app := range saVisibleApps(saSession(accessAdmin)) {
+		have[app.Href] = true
+		for _, sec := range app.Sections {
+			have[sec.Href] = true
+		}
+	}
+	for _, want := range []string{"/os/posts", "/os/analytics", "/os/vayumail/inbox", "/os/talk", "/os/domains", "/os/theme"} {
+		if !have[want] {
+			t.Errorf("the Tor world rail lost %s", want)
+		}
+	}
+	for _, deny := range []string{
+		"/os/monetization", "/os/ads", "/os/newsletter", "/os/members", "/os/connector", "/os/seo",
+		"/os/shield", "/os/tor", "/os/website", "/os/governance", "/os/faults",
+	} {
+		if have[deny] {
+			t.Errorf("the Tor world rail offers the clearnet-only %s", deny)
+		}
 	}
 }

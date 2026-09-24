@@ -33,9 +33,6 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 )
 
-// iconClaudeCode is a terminal prompt — the glyph for the Claude Code page.
-var iconClaudeCode = svgIcon("M3 4.5h14v11H3v-11zM6 8l2.5 2L6 12M10.5 12.5h4")
-
 // claudeKeyLabelPrefix marks the keys this page mints, so its stat strip counts
 // Claude clients rather than every connector on the install.
 const claudeKeyLabelPrefix = "Claude"

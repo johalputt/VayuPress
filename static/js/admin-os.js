@@ -47,33 +47,6 @@ const on = (el, ev, fn) => el && el.addEventListener(ev, fn);
   });
 })();
 
-/* ── Console design switch ─────────────────────────────────────
-   [data-sa-ui] buttons (Settings › General, and the Still Air account menu)
-   choose the console design. Saved first, then the page reloads into the other
-   shell; a failed save leaves the operator where they are and says why. Bound
-   here rather than in vayuos.js because the classic console offers it too, and
-   binding it in both would post twice. */
-(function initDesignSwitch() {
-  Array.prototype.forEach.call(document.querySelectorAll('[data-sa-ui]'), function (b) {
-    b.addEventListener('click', function () {
-      if (b.getAttribute('aria-disabled') === 'true') return;
-      b.setAttribute('aria-disabled', 'true');
-      fetch('/os/api/settings', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
-        body: JSON.stringify({ key: 'admin.ui', value: b.getAttribute('data-sa-ui') })
-      }).then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        location.reload();
-      }).catch(function () {
-        b.removeAttribute('aria-disabled');
-        toast('The design could not be changed — the setting was not saved.', 'error');
-      });
-    });
-  });
-})();
-
 /* ── Cookies ─────────────────────────────────────────────────── */
 function cookie(name) {
   // Take everything after the first '=' so base64 values keep any '=' padding.
@@ -229,40 +202,6 @@ window.vpToast = toast;
   };
   if (desktop.addEventListener) desktop.addEventListener('change', onChange);
   else if (desktop.addListener) desktop.addListener(onChange);
-})();
-
-/* ── Bottom bar: active state + role-aware quick links ───────
-   The drawer is already role-scoped server-side; mirror that on the bottom bar
-   by hiding any quick link whose destination isn't present in the sidebar for
-   this session. Then highlight the item matching the current route. The "Menu"
-   button (no data-nav) is always kept. */
-(function initBottomNav() {
-  var nav = $('.bottom-nav');
-  if (!nav) return;
-  var items = $$('.bottom-nav-item[data-nav]', nav);
-  if (!items.length) return;
-
-  var sideHrefs = $$('.sidebar .nav-link').map(function (a) { return a.getAttribute('href'); });
-  // Only filter when we actually have a sidebar to compare against.
-  if (sideHrefs.length) {
-    items.forEach(function (it) {
-      var href = it.getAttribute('data-nav');
-      if (href && sideHrefs.indexOf(href) === -1) it.hidden = true;
-    });
-  }
-
-  var path = location.pathname;
-  var best = null, bestLen = -1;
-  items.forEach(function (it) {
-    if (it.hidden) return;
-    var href = it.getAttribute('data-nav');
-    if (!href) return;
-    // The console home is a prefix of every console page; it is current only
-    // when it is the page itself.
-    var match = path === href || (href !== '/os/' && path.indexOf(href) === 0);
-    if (match && href.length > bestLen) { best = it; bestLen = href.length; }
-  });
-  if (best) best.setAttribute('aria-current', 'page');
 })();
 
 /* ── Responsive data tables → cards ──────────────────────────

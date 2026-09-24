@@ -28,9 +28,6 @@ import (
 	"github.com/johalputt/vayupress/internal/safefetch"
 )
 
-// iconConnector is the sidebar/plug glyph for the VayuMCP page.
-var iconConnector = svgIcon("M7 10.5V7a3 3 0 016 0v3.5M5.5 10.5h9l-.7 5A2 2 0 0111.8 17H8.2a2 2 0 01-2-1.5l-.7-5zM10 17v1.5")
-
 // publicMCPEndpoint returns the absolute URL of this site's MCP connector
 // endpoint as seen by the operator's browser — scheme + Host + /mcp. Scheme
 // resolution: a terminating proxy's X-Forwarded-Proto wins (first hop); else a

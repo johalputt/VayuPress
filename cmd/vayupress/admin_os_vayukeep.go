@@ -64,32 +64,51 @@ type keepVerdict struct {
 	Tone     string // "ok" | "warn"
 	Chip     string
 	Headline string
+	// Down marks the two states in which there is no recovery path at all — a
+	// refused start and a failed test restore — as against one that is merely
+	// unproven or off. The notification raised from this verdict is danger
+	// only then.
+	Down bool
 }
 
 func keepStatusVerdict(st vayukeep.Status, bootErr string, now time.Time) keepVerdict {
 	switch {
 	case bootErr != "":
 		return keepVerdict{"warn", "Refused to start",
-			"VayuKeep declined the settings it was given, so <strong>nothing is being backed up automatically</strong>. Your site is unaffected."}
+			"VayuKeep declined the settings it was given, so <strong>nothing is being backed up automatically</strong>. Your site is unaffected.", true}
 	case !st.Enabled:
 		return keepVerdict{"warn", "Not set up",
-			"Automatic backup is <strong>off</strong>. Your only copies are the ones you take by hand. Turning it on takes a folder, a passphrase and one button."}
+			"Automatic backup is <strong>off</strong>. Your only copies are the ones you take by hand. Turning it on takes a folder, a passphrase and one button.", false}
 	case st.Paused:
 		return keepVerdict{"warn", "Paused",
-			"Backups are <strong>paused</strong>: " + html.EscapeString(st.PauseWhy) + ". Nothing new is being saved."}
+			"Backups are <strong>paused</strong>: " + html.EscapeString(st.PauseWhy) + ". Nothing new is being saved.", false}
 	case st.LastDrill.IsZero():
 		return keepVerdict{"warn", "Unverified",
-			"Backups are being written, but <strong>none has been restored yet</strong>. Until a test restore passes, these are files rather than proven backups."}
+			"Backups are being written, but <strong>none has been restored yet</strong>. Until a test restore passes, these are files rather than proven backups.", false}
 	case !st.LastDrillOK:
 		return keepVerdict{"warn", "Test restore FAILED",
-			"The last test restore <strong>failed</strong>: " + html.EscapeString(st.LastDrillError) + ". Treat this as an outage of your recovery path."}
+			"The last test restore <strong>failed</strong>: " + html.EscapeString(st.LastDrillError) + ". Treat this as an outage of your recovery path.", true}
 	case st.RPO(now) > 24*time.Hour:
 		return keepVerdict{"warn", "Stale",
-			"The newest backup is <strong>" + html.EscapeString(humanAgo(st.NewestGen, now)) + "</strong>. Check that writes are reaching the target."}
+			"The newest backup is <strong>" + html.EscapeString(humanAgo(st.NewestGen, now)) + "</strong>. Check that writes are reaching the target.", false}
 	}
 	return keepVerdict{"ok", "Protected",
 		"Backups are running and the last test restore <strong>passed</strong>. You would lose at most " +
-			html.EscapeString(humanAgo(st.NewestGen, now)) + " of work."}
+			html.EscapeString(humanAgo(st.NewestGen, now)) + " of work.", false}
+}
+
+// backupNotification is the verdict as a notification: none while backups are
+// proven, danger when there is no recovery path at all, warn otherwise.
+func backupNotification(st vayukeep.Status, bootErr string, now time.Time) (osNotification, bool) {
+	v := keepStatusVerdict(st, bootErr, now)
+	if v.Tone == "ok" {
+		return osNotification{}, false
+	}
+	sev := "warn"
+	if v.Down {
+		sev = "danger"
+	}
+	return osNotification{Title: "Backups", Detail: v.Chip, Href: "/os/vayukeep", Count: 1, Kind: "backup", Severity: sev}, true
 }
 
 // osVayuKeepStats is the at-a-glance strip, in the Monetization idiom.

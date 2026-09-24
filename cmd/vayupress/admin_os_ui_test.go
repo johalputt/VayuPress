@@ -65,10 +65,9 @@ func TestOSLayoutCSPSafe(t *testing.T) {
 	}
 }
 
-// TestOSTopbarSpaceBadge verifies the ADR-0141 Space-mode indicator in the admin
-// topbar: a clearnet install shows a "Clearnet" badge, a Tor install shows a
-// "Tor" badge, exactly one is ever present, and neither breaks the strict admin
-// CSP (no inline style / external host).
+// TestOSTopbarSpaceBadge verifies the ADR-0141 world indicator in the status
+// area: a clearnet install says Clearnet, a Tor install says Tor, exactly one is
+// ever present, and neither breaks the strict admin CSP.
 func TestOSTopbarSpaceBadge(t *testing.T) {
 	prev := config.Cfg.OnionMode
 	defer func() { config.Cfg.OnionMode = prev }()
@@ -77,11 +76,11 @@ func TestOSTopbarSpaceBadge(t *testing.T) {
 		config.Cfg.OnionMode = false
 		out := adminOSLayout("N", "Dashboard", "dashboard", &osSettings{SiteName: "Demo"}, htmpl.HTML("<p>x</p>"))
 		assertCSPSafe(t, "spaceBadge/clearnet", out)
-		if !strings.Contains(out, `class="space-badge space-badge--clearnet"`) {
-			t.Error("clearnet install must render the clearnet Space badge")
+		if !strings.Contains(out, `sa-dot--accent"></span>Clearnet<`) {
+			t.Error("clearnet install must say Clearnet in the status area")
 		}
-		if strings.Contains(out, "space-badge--tor") {
-			t.Error("clearnet install must not render the Tor Space badge")
+		if strings.Contains(out, `sa-dot--accent"></span>Tor<`) {
+			t.Error("clearnet install must not say Tor in the status area")
 		}
 	})
 
@@ -89,11 +88,11 @@ func TestOSTopbarSpaceBadge(t *testing.T) {
 		config.Cfg.OnionMode = true
 		out := adminOSLayout("N", "Dashboard", "dashboard", &osSettings{SiteName: "Demo"}, htmpl.HTML("<p>x</p>"))
 		assertCSPSafe(t, "spaceBadge/tor", out)
-		if !strings.Contains(out, `class="space-badge space-badge--tor"`) {
-			t.Error("Tor install must render the Tor Space badge")
+		if !strings.Contains(out, `sa-dot--accent"></span>Tor<`) {
+			t.Error("Tor install must say Tor in the status area")
 		}
-		if strings.Contains(out, "space-badge--clearnet") {
-			t.Error("Tor install must not render the clearnet Space badge")
+		if strings.Contains(out, `sa-dot--accent"></span>Clearnet<`) {
+			t.Error("Tor install must not say Clearnet in the status area")
 		}
 	})
 }
@@ -123,7 +122,7 @@ func TestHTMXAssetServed(t *testing.T) {
 // TestOSLayoutEscapesTitle ensures a hostile page title cannot break out of the
 // HTML context (defence against reflected XSS in the chrome).
 func TestOSLayoutEscapesTitle(t *testing.T) {
-	out := adminOSLayout("N", `</title><script>alert(1)</script>`, "dashboard", nil, htmpl.HTML(""))
+	out := adminOSLayout("N", `</title><script>alert(1)</script>`, "dashboard", &osSettings{}, htmpl.HTML(""))
 	if strings.Contains(out, "<script>alert(1)") {
 		t.Error("os layout did not escape the page title")
 	}

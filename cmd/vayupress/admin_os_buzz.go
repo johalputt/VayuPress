@@ -38,9 +38,6 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 )
 
-// iconBuzz is a hive cell — the sidebar/hub glyph for the Buzz connector.
-var iconBuzz = svgIcon("M10 2.6l6 3.45v6.9l-6 3.45-6-3.45v-6.9l6-3.45zM10 7.4a2.6 2.6 0 100 5.2 2.6 2.6 0 000-5.2z")
-
 // buzzKeyLabelPrefix marks the keys this page mints, so the stat strip can count
 // "agents granted access from here" without confusing them with keys granted to
 // Claude or anything else. It is a label convention, not a permission: the key

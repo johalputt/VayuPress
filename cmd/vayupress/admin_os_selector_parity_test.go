@@ -24,7 +24,7 @@ func TestSelectorParity(t *testing.T) {
 		"data-setting-key", "data-media-grid", "data-media-dropzone", "data-media-input",
 		"data-media-search", "data-media-empty", "data-media-filter", "data-media-delete-selected",
 		"data-media-sel-count", "data-notif-toggle",
-		"data-space-switch", "data-copy", "data-first-run-dismiss",
+		"data-space-switch", "data-copy",
 	}
 	for _, hook := range boundInJS {
 		if !strings.Contains(goSrc, hook) {

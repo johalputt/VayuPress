@@ -1621,34 +1621,6 @@ func linkCausalLineage(entries []tlEntry) {
 	}
 }
 
-// renderTimelineBody emits just the timeline spine + entries (no panel chrome),
-// so it can be embedded under custom section headers (e.g. mode lineage).
-func renderTimelineBody(entries []tlEntry) template.HTML {
-	var b strings.Builder
-	b.WriteString(`<div class="timeline">`)
-	for i, e := range entries {
-		last := ""
-		if i == len(entries)-1 {
-			last = " tl-last"
-		}
-		rel := ""
-		if e.Rel != "" {
-			rel = `<span class="tl-rel">` + e.Rel + `</span>`
-		}
-		causal := ""
-		if e.Causal != "" {
-			causal = `<div class="tl-causal">` + template.HTMLEscapeString(e.Causal) + `</div>`
-		}
-		fmt.Fprintf(&b, `<div class="tl-entry%s">
-  <div class="tl-time"><span class="tl-clock">%s</span>%s</div>
-  <div class="tl-node %s"></div>
-  <div class="tl-body"><div class="tl-msg"><span class="tl-cat %s">%s</span>%s</div>%s</div>
-</div>`, last, e.Clock, rel, e.Sev, e.CatClass, e.Cat, template.HTMLEscapeString(e.Msg), causal)
-	}
-	b.WriteString(`</div>`)
-	return template.HTML(b.String())
-}
-
 // =============================================================================
 // Mode & fault status API  (Ω5/Ω6)
 // =============================================================================

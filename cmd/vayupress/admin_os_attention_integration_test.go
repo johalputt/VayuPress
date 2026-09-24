@@ -11,7 +11,6 @@ package main
 
 import (
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
@@ -72,28 +71,5 @@ func TestAttentionSignalsReachTheBell(t *testing.T) {
 		if n.Kind == "jobs" && n.Severity != "danger" {
 			t.Errorf("12 failed jobs severity = %q, want danger", n.Severity)
 		}
-	}
-}
-
-func TestAttentionStripSortsDangerFirst(t *testing.T) {
-	strip := osAttentionStrip([]osNotification{
-		{Title: "Comments to review", Detail: "3 awaiting moderation", Href: "/os/comments", Count: 3, Kind: "comment"},
-		{Title: "Failed jobs", Detail: "12 failed", Href: "/os/monitoring", Count: 12, Kind: "jobs", Severity: "danger"},
-		{Title: "Storage filling up", Detail: "80% of your storage quota is in use", Href: "/os/storage", Count: 80, Kind: "storage", Severity: "warn"},
-	})
-	assertCSPSafe(t, "attention strip", strip)
-	if strings.Index(strip, "Failed jobs") > strings.Index(strip, "Comments to review") {
-		t.Error("danger must sort ahead of info in the attention strip")
-	}
-	if strings.Index(strip, "Failed jobs") > strings.Index(strip, "Storage filling up") {
-		t.Error("danger must sort ahead of warn in the attention strip")
-	}
-	for _, want := range []string{`data-attention-strip`, `attention-chip--danger`, `attention-chip--warn`, `attention-chip--info`, `href="/os/monitoring"`} {
-		if !strings.Contains(strip, want) {
-			t.Errorf("attention strip missing %q", want)
-		}
-	}
-	if got := osAttentionStrip(nil); strings.Contains(got, "attention-chip") {
-		t.Error("an empty attention list must render an empty strip, not wallpaper")
 	}
 }

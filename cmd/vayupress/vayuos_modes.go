@@ -5,7 +5,7 @@ package main
 // vayuos_modes.go — System state in the Still Air design, and the one table
 // that says what each system mode refuses.
 //
-// The classic page describes read-only as "write queue paused · WAL writes
+// The page it replaced described read-only as "write queue paused · WAL writes
 // blocked", which nothing enforces: saving and publishing a post go through in
 // read-only mode. So this design says only what the code does. saModeEffects
 // lists every refusal with the files whose guard enforces it, and

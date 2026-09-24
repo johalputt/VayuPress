@@ -249,35 +249,29 @@ func TestVayuFlowIsAdminOnly(t *testing.T) {
 
 // Placement, decided deliberately and pinned so it does not drift.
 //
-// VayuFlow is install-scoped work an operator ARMS and INSPECTS, which is what
-// the Operations hub's "Controls & diagnostics" band is for. Optimize is
-// site-scoped — it fronts "Your websites" — so filing it there would imply an
-// automation belongs to one site. And it stays OUT of the sidebar: the sidebar
-// is the short list of daily surfaces, and an automation console is not one.
-func TestVayuFlowIsUnderOperationsAndNotInTheSidebar(t *testing.T) {
-	ops := repoFile(t, "cmd/vayupress/admin_os_operations.go")
-	if !strings.Contains(ops, `"/os/vayuflow"`) {
-		t.Error("VayuFlow has no card on the Operations hub")
+// VayuFlow is install-scoped work an operator ARMS and INSPECTS, so it lives in
+// the System app beside the other install controls. Site is site-scoped, so
+// filing it there would imply an automation belongs to one site; and an editor
+// is never offered it, whatever the rail is judged against elsewhere.
+func TestVayuFlowIsReachedFromTheSystemApp(t *testing.T) {
+	offers := func(s *osSettings) string {
+		for _, app := range saVisibleApps(s) {
+			for _, sec := range app.Sections {
+				if sec.Href == "/os/vayuflow" {
+					return app.Key
+				}
+			}
+		}
+		return ""
 	}
-	// It must sit in the FIRST band (Controls & diagnostics), not in Health &
-	// governance where posture pages live.
-	controls := strings.Index(ops, "Controls &amp; diagnostics")
-	health := strings.Index(ops, "Health &amp; governance")
-	card := strings.Index(ops, `"/os/vayuflow"`)
-	if controls < 0 || health < 0 || card < 0 {
-		t.Fatalf("could not locate the bands or the card (controls=%d health=%d card=%d)", controls, health, card)
+	if got := offers(saSession(accessAdmin)); got != "system" {
+		t.Errorf("an administrator reaches VayuFlow from %q, want the System app", got)
 	}
-	if !(card > controls && card < health) {
-		t.Error("the VayuFlow card is not in the Controls & diagnostics band")
+	if got := offers(saSession(accessEditor)); got != "" {
+		t.Errorf("an editor is offered VayuFlow from %q", got)
 	}
-
-	ui := repoFile(t, "cmd/vayupress/admin_os_ui.go")
-	if strings.Contains(ui, `navItem("/os/vayuflow"`) {
-		t.Error("VayuFlow is in the sidebar; it belongs under Operations only")
-	}
-	// The route must still exist — "not in the sidebar" must not become
-	// "unreachable".
-	if !strings.Contains(ui, `Get("/os/vayuflow"`) {
+	// The route must still exist — a rail entry with no page is a dead end.
+	if !strings.Contains(repoFile(t, "cmd/vayupress/admin_os_ui.go"), `Get("/os/vayuflow"`) {
 		t.Error("the /os/vayuflow route is missing")
 	}
 }

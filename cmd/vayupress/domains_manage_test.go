@@ -114,29 +114,3 @@ func TestDomainManagePendingTorSite(t *testing.T) {
 		t.Error("a pending Tor site should show the minting state")
 	}
 }
-
-// TestOptimizeWebsitesCards verifies the Optimize hub surfaces one "Your
-// websites" card per secondary domain, each linking to that site's manager, and
-// shows nothing when there are no secondary sites.
-func TestOptimizeWebsitesCards(t *testing.T) {
-	sites := []optimizeSite{
-		{ID: "s1", Host: "shop.example", Label: "Blog"},
-		{ID: "s2", Host: "docs.example", Label: "Business site"},
-	}
-	grid := osOptimizeGrid(accessAdmin, sites)
-	assertCSPSafe(t, "osOptimizeGrid/sites", grid)
-	for _, want := range []string{
-		"Your websites", `href="/os/d/s1"`, `href="/os/d/s2"`,
-		"shop.example", "docs.example",
-	} {
-		if !strings.Contains(grid, want) {
-			t.Errorf("Optimize hub missing %q", want)
-		}
-	}
-
-	// No secondary sites → no "Your websites" section at all.
-	empty := osOptimizeGrid(accessAdmin, nil)
-	if strings.Contains(empty, "Your websites") {
-		t.Error("Optimize hub must not show the websites row when there are no sites")
-	}
-}

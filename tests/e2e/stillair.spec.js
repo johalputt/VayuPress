@@ -12,25 +12,13 @@
 // confirmation dialog without a pointer.
 const { test, expect } = require("@playwright/test");
 
-// Still Air is chosen per install until it becomes the default; each test
-// chooses it first so the specs do not depend on the order they run in.
-async function useStillAir(page) {
+// Opens the console and waits until the first visit has settled: without a
+// session it loads itself once more before the CSRF cookie exists, and a test
+// that acts before then is refused.
+async function openConsole(page) {
   await page.goto("/os");
-  // A first visit without a session loads itself once more before the CSRF
-  // cookie exists; posting before then is refused.
   await page.waitForLoadState("networkidle");
   await page.waitForFunction(() => /(?:^|;\s*)vp_csrf=/.test(document.cookie));
-  const ok = await page.evaluate(async () => {
-    const m = document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
-    const r = await fetch("/os/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": m ? decodeURIComponent(m[1]) : "" },
-      body: JSON.stringify({ key: "admin.ui", value: "still-air" }),
-    });
-    return r.ok;
-  });
-  expect(ok).toBe(true);
-  await page.goto("/os");
   await expect(page.locator("body[data-ui='still-air']")).toHaveCount(1);
 }
 
@@ -80,7 +68,7 @@ function lintPage() {
 
 test("every app and section passes the design lint, on a desktop and a phone", async ({ page }) => {
   test.setTimeout(300000);
-  await useStillAir(page);
+  await openConsole(page);
   const hrefs = await page.evaluate(() => [...new Set([...document.querySelectorAll("[data-sa-index] a")].map((a) => a.getAttribute("href")))]);
   expect(hrefs.length).toBeGreaterThan(30); // the index is the rail's, so an empty one means the walk checked nothing
 
@@ -102,7 +90,7 @@ test("every app and section passes the design lint, on a desktop and a phone", a
 });
 
 test("the command bar is operated by keyboard alone", async ({ page }) => {
-  await useStillAir(page);
+  await openConsole(page);
   await page.keyboard.press("Control+k");
   const input = page.locator(".cmd-input");
   await expect(input).toBeFocused();
@@ -121,7 +109,7 @@ test("the command bar is operated by keyboard alone", async ({ page }) => {
 });
 
 test("the account menu is operated by keyboard alone", async ({ page }) => {
-  await useStillAir(page);
+  await openConsole(page);
   const menu = page.locator("details.sa-pop").last();
   const summary = menu.locator("summary");
   await summary.focus();
@@ -140,7 +128,7 @@ test("the account menu is operated by keyboard alone", async ({ page }) => {
 });
 
 test("a confirmation dialog keeps focus and gives it back", async ({ page }) => {
-  await useStillAir(page);
+  await openConsole(page);
   await page.goto("/os/storage");
   const opener = page.locator("[data-cache-clear]");
   await opener.focus();
