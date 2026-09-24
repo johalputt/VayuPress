@@ -3855,6 +3855,11 @@
 }
 .vmtabs .tab { border-radius: 9px 9px 0 0; transition: color .14s ease, background .14s ease; }
 .vmtabs .tab:hover { background: var(--bg-surface-2); }
+/* A mail domain whose DNS is not finished (read from the stored verdict). A
+   border, not just a fill, so it survives forced-colors mode. */
+.vp-os .vmtabs__attn { display: inline-block; width: .5rem; height: .5rem; margin-left: .3rem; vertical-align: .1em;
+  border-radius: 50%; background: var(--warn); border: 1px solid var(--warn); }
+@media (forced-colors: active) { .vp-os .vmtabs__attn { border-color: CanvasText; background: Mark; } }
 
 /* Narrow screens: single column. The pane hides until a message is opened,
    then it shows above the list as a full-width reader with a Close button. */

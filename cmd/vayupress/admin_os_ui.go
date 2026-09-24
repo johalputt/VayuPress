@@ -1902,6 +1902,13 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 		}
 		out = append(out, osNotification{Title: title, Detail: detail, Href: href, Count: count, Kind: kind, Severity: sev})
 	}
+	// A mail domain whose DNS is not finished, from the last stored check —
+	// never a lookup here (vayuos_mail_dns_watch.go). The DNS tab is
+	// administrator-only while /os/vayumail is open to authors, so the path gate
+	// in add() is not enough on its own.
+	if next, bad := a.mailDNSNeedsAttention(); bad && s.AccessLevel >= accessAdmin {
+		add("/os/vayumail/dns", "Mail domain needs attention", next, "mail", 1, "warn")
+	}
 	if dbpkg.DB == nil {
 		return out
 	}

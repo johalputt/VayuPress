@@ -917,6 +917,9 @@ func (a *App) bootVayuOS() {
 	// got a mailbox but no key). Runs in the background so boot is never blocked;
 	// EnsureKeypair is idempotent so this is a no-op once every account has a key.
 	go a.backfillPGPKeys(context.Background())
+
+	// Keep the mail-domain verdict current for the notification bell.
+	a.startMailDNSWatch()
 }
 
 // vayuTorHealth reports the state of the onion engine for the Subsystem health
@@ -1399,7 +1402,11 @@ func (a *App) vayuosNav(r *http.Request, active string) string {
 		if it.key == active {
 			cls = "tab tab--active"
 		}
-		sb.WriteString(`<a class="` + cls + `" href="` + it.href + `">` + html.EscapeString(it.label) + `</a>`)
+		mark := ""
+		if _, bad := a.mailDNSNeedsAttention(); bad && it.key == "mail" {
+			mark = ` <span class="vmtabs__attn" role="img" aria-label="needs attention" title="A mail domain's DNS is not finished"></span>`
+		}
+		sb.WriteString(`<a class="` + cls + `" href="` + it.href + `">` + html.EscapeString(it.label) + mark + `</a>`)
 	}
 	sb.WriteString(`</div>`)
 	return sb.String()

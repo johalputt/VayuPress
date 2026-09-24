@@ -243,10 +243,13 @@ type App struct {
 	vayuHealth *vkernel.HealthMonitor
 	vayuPGP    *vpgp.Engine
 	vayuMail   *vmail.Engine
-	vayuTalk   *vtalk.Engine
-	vayuTor    *vtor.Engine
-	torSpace   *torspace.Supervisor // Anonymous Tor Space child supervisor (ADR-0141); nil in a child
-	vayuSec    *secwatch.Watcher
+	// mailDNS is the last completed mail-domain DNS check (vayuos_mail_dns_watch.go),
+	// read by the notification bell so no page render has to ask DNS.
+	mailDNS  atomic.Pointer[mailDNSVerdict]
+	vayuTalk *vtalk.Engine
+	vayuTor  *vtor.Engine
+	torSpace *torspace.Supervisor // Anonymous Tor Space child supervisor (ADR-0141); nil in a child
+	vayuSec  *secwatch.Watcher
 
 	// avatarCache memoises the set of mailbox addresses that have an uploaded
 	// profile picture, so rendering a mailbox/message list shows photos without

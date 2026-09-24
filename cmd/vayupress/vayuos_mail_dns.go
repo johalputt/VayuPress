@@ -60,6 +60,7 @@ func (a *App) vayuDNSHealth(ctx context.Context) dnsHealth {
 		}
 		h.Deliverability = append(h.Deliverability, rh)
 	}
+	a.recordMailDNS(h)
 	return h
 }
 
