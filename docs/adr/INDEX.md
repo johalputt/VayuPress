@@ -9,6 +9,7 @@
 
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
+| [ADR-0163](ADR-0163-translating-the-console.md) | Console translation: per-user language, own catalog, whole-sentence keys, plurals, escaped data; built when a first language exists | Accepted | Core | 2026-09-24 |
 | [ADR-0162](ADR-0162-mail-listing-is-a-cache-not-an-index.md) | No SQLite header index: the Maildir header cache reads headers only, evicts by folder and prunes on listing | Accepted | Core | 2026-09-24 |
 | [ADR-0161](ADR-0161-a-website-is-a-document.md) | A template website is a document of pages and typed sections, drafted, revised and published | Accepted | Core | 2026-09-23 |
 | [ADR-0160](ADR-0160-a-page-that-says-run-again-must-offer-it.md) | The certificate diagnostic gained Re-check now; copy that instructs must ship the control | Accepted | Core | 2026-08-06 |

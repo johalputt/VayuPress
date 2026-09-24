@@ -391,34 +391,38 @@ was the last `window.prompt` in the Mail/Talk surfaces — it is now a console m
 a test forbids `window.prompt`/`window.confirm` from returning to either file
 (`window.alert` is allowed exactly once, as the documented toast fallback).
 
-### Still open
+### Still open — and how each was closed (v3.17.72)
 
-- **3.1 SQLite message-header index.** Deliberately deferred, and this is a considered
-  call rather than a shortage of time: the header cache shipped in 2.1 already removed
-  the per-message read cost, so the remaining work is directory stat + sort. An index
-  adds a second source of truth that must be invalidated on delivery, move, flag flip,
-  delete, IMAP mutation and the retention sweep — and a missed invalidation shows the
-  *wrong mail*, which is far worse than a slow list. It needs its own ADR and its own
-  test strategy before it is worth having.
+- **3.1 SQLite message-header index.** Measured, then settled by
+  [ADR-0162](adr/ADR-0162-mail-listing-is-a-cache-not-an-index.md): no index. The
+  listing was slow for two other reasons, now fixed — a cold listing read every message
+  whole, and one install-wide cache bound reset whole at 50,000 entries, so a warm
+  listing of a 60,000-message folder cost 1.11 s. Headers-only reads and per-folder
+  eviction bring that to 326 ms, without a second copy of the mail to keep right.
 - **3.5 Per-mailbox settings page.** Done — see above. `TestAccountCardHasEverySetting`
   was retired deliberately: it pinned the nested-in-one-card design, and the replacement
   test asserts the stronger property (nothing became unreachable).
-- **3.7 String extraction / i18n prep.** Not started. A partial extraction (a table used
-  by only the strings this pass touched) would add indirection without delivering a
-  translatable product, so it is better done as its own piece of work with the public
-  tier's `internal/i18n` as the target.
+- **3.7 String extraction / i18n prep.** Designed in
+  [ADR-0163](adr/ADR-0163-translating-the-console.md) and deliberately not extracted:
+  with no target language, extraction adds a lookup to every sentence and translates
+  nothing. The ADR fixes how it is done when the first language arrives.
 - **Phase 1 leftovers:** the shared client foundation was reused (existing
   `vpConfirm`/`vpPost`/`vpToast`) rather than centralised. No native dialog remains
-  in any console script — `TestConsoleScriptsUseTheConsolesOwnDialogs` scans every
-  file — and `hx-confirm` now goes through `vpConfirm` too (see below).
-- **Full-page reloads** remain after state changes in Members, Newsletter, Intel and
-  Security, and after a self-update. The self-update reload is correct (the new
-  binary's assets must load) and so are the two-factor ones (the whole page changes
-  state). The rest change counts, tiers and labels across the page, which a reload
-  renders correctly by construction; replacing them needs a server fragment per app
-  and is its own piece of work, not a patch.
-- **3.4 nav badge** and **QR codes** for share links were not built: a badge needs a
-  cached DNS verdict in settings, or every console page render would trigger DNS lookups.
+  in the console — `TestConsoleScriptsUseTheConsolesOwnDialogs` scans every script
+  file and `TestConsoleInlineScriptsUseTheConsolesOwnDialogs` every Go-served one — and
+  `hx-confirm` goes through `vpConfirm` too.
+- **Full-page reloads** after a change in Members, Newsletter, Analytics, SEO and
+  Security are gone: `vpRefresh` re-renders the page in place, keeping the toast,
+  scroll, focus and open sections, and the scripts listen by delegation so the new
+  controls work. Analytics goals update from the confirmed reply, because that page is
+  served from a background cache, which a goal change now rebuilds. The self-update
+  reload stays: the new binary's assets must load.
+- **3.4 nav badge:** a failing mail domain is raised in the notification bell and on
+  the DNS tab, from a verdict stored by every live check and a six-hourly background
+  watch — no page render asks DNS.
+- **QR codes:** VayuTalk's new share panel shows the chat link (the anonymous code in
+  the Tor world) as text, a Copy button and a QR code, served per identity through the
+  same entitlement check as every Talk request.
 
 ### Corrections to this document found while implementing
 
