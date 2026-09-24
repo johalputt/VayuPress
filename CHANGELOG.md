@@ -6,6 +6,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.75] — 2026-09-24
+
+A fix release for three display faults, shipped on its own because they are
+visible on every install now.
+
+### Fixed
+
+- **The Operations hub showed `&amp;` in four card titles** ("Power &amp;
+  Maintenance", "Backup &amp; Recovery", "Domains &amp; DNS") instead of "&".
+- **The "Not set up" badge** on Backup & Recovery no longer breaks over three
+  lines on top of the card title; it sits under the title instead.
+- **Settings › General:** the time-zone hint no longer runs into the "Site
+  identity" heading below it.
+
+---
+
 ## [3.17.74] — 2026-09-24
 
 The last four findings of the mail/talk audit, and the eight open
