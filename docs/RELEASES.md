@@ -6,20 +6,29 @@
 
 ---
 
-## Versioning policy — patch/micro only
+## Versioning policy — micro by default, roll over at 99
 
-**Current policy (owner directive): every release is a micro/patch bump.** Bump
-only the third version segment (e.g. `v3.13.0` → `v3.13.1`), regardless of how
-large the change is — no minor (`v3.14.0`) or major (`v4.0.0`) bumps. This is
-also recorded in `AGENTS.md` for AI agents.
+Every release bumps the third (micro) segment, however large the change:
+`v3.13.96` → `v3.13.97`. Size never decides the bump; only the rollover does.
+Each segment counts 0–99:
+
+- micro at 99 → the next release bumps the minor and resets micro:
+  `v3.13.99` → `v3.14.0`;
+- minor at 99 as micro rolls over → the next release bumps the major and
+  resets both: `v3.99.99` → `v4.0.0`.
+
+A release changes three files in one commit, so they always agree:
+`.release-version` (which starts the tag-release workflow),
+`var Version` in `cmd/vayupress/main.go` (no `v` prefix), and a matching
+section in `CHANGELOG.md`.
 
 ## Release Types
 
 | Type | Trigger | Examples | Branch |
 |------|---------|---------|--------|
-| Patch | Any change (current policy) | v3.13.1, v3.13.2 | main |
-| Minor | (not used under the current patch-only policy) | — | — |
-| Major | (not used under the current patch-only policy) | — | — |
+| Micro | Every release | v3.13.1, v3.13.2 | main |
+| Minor | Micro rolls over from 99 | v3.13.99 → v3.14.0 | main |
+| Major | Minor rolls over from 99 | v3.99.99 → v4.0.0 | main |
 
 Security patches skip RFC and go directly to release after Security Lead review.
 
