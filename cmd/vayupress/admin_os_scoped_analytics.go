@@ -95,7 +95,7 @@ func scopedAnalyticsBody(views, visits int, bounce, avgDur float64, top []analyt
 		pages.WriteString(`</tbody></table>`)
 	}
 	pages.WriteString(`</div>`)
-	pagesChip := `<span class="mon-chip mon-chip--off">nothing yet</span>`
+	pagesChip := `<span class="mon-chip mon-chip--off">Nothing yet</span>`
 	if len(top) > 0 {
 		pagesChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(len(top)) + ` pages</span>`
 	}
@@ -105,7 +105,7 @@ func scopedAnalyticsBody(views, visits int, bounce, avgDur float64, top []analyt
 	// distinct-session count, and saying so is cheaper than being asked why it
 	// differs from the install-wide page.
 	b.WriteString(monAcc(saIcon("grid"), "What these numbers mean", "And what they cannot be compared with",
-		`<span class="mon-chip mon-chip--on">read this once</span>`, false,
+		`<span class="mon-chip mon-chip--on">Read this once</span>`, false,
 		`<div class="card"><p class="text-sm muted">"Visits" counts distinct sessions on this `+
 			`hostname. The install-wide Analytics page counts unique visitors from a session table that `+
 			`carries no domain, so its visitor figure spans every site here — the two are different `+

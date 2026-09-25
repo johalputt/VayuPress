@@ -291,7 +291,7 @@ func (a *App) shieldIntelBand(ctx context.Context) string {
 	if a.vayuShield != nil {
 		if hostile, datacenter := a.vayuShield.IntelHits(); hostile+datacenter > 0 {
 			b.WriteString(`<p class="muted text-xs">Since the last restart: ` +
-				strconv.FormatInt(datacenter, 10) + ` request(s) came from a datacenter range and ` +
+				strconv.FormatInt(datacenter, 10) + ` request` + plural(datacenter) + ` came from a datacenter range and ` +
 				strconv.FormatInt(hostile, 10) + ` from a listed hostile network.</p>`)
 		}
 	}

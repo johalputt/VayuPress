@@ -340,10 +340,6 @@
 
 .vp-os .space-switch__status[hidden] { display: none; }
 
-.vp-os .space-switch__copy { padding: 0; font: inherit; color: var(--brand); background: none; border: 0; cursor: pointer; text-decoration: underline; }
-
-.vp-os .space-switch__copy:hover { color: var(--text); }
-
 .vp-os .nav-link { --nav-accent: var(--brand); position: relative; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: 500; color: var(--text-2); transition: background var(--t), color var(--t), transform var(--t-spring); text-decoration: none; }
 
 .vp-os .nav-link[data-nav="dashboard"] { --nav-accent: var(--accent); }
@@ -364,23 +360,12 @@
  /* blue    */
 .vp-os .nav-link[data-nav="profile"] { --nav-accent: var(--danger); }
  /* rose    */
-.vp-os .nav-link__ico { display: inline-flex; flex: 0 0 auto; color: var(--text-2); transition: transform var(--t-spring), filter var(--t), color var(--t); }
-
-.vp-os .nav-link__label { flex: 1; min-width: 0; }
 
 .vp-os .nav-link svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.85; }
 
 .vp-os .nav-link:hover { background: var(--bg-surface-2); color: var(--text); text-decoration: none; }
 
-.vp-os .nav-link:hover .nav-link__ico { color: var(--nav-accent); }
-
-.vp-os .nav-link:hover .nav-link__ico svg { opacity: 1; }
-
 .vp-os .nav-link.active { background: var(--bg-surface-2); color: var(--text); }
-
-.vp-os .nav-link.active .nav-link__ico { color: var(--nav-accent); }
-
-.vp-os .nav-link.active .nav-link__ico svg { opacity: 1; }
 
 .vp-os .nav-link.active::before { content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 3px; height: 62%; border-radius: 0 var(--radius-small) var(--radius-small) 0; background: var(--nav-accent); }
 
@@ -770,30 +755,12 @@
 
 .vp-os .stat-card__label { font-size: var(--text-xs); font-weight: 600; color: var(--text-3); }
 
-.vp-os .stat-card__icon { width: 32px; height: 32px; border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; transition: transform var(--t); }
-
-.vp-os .stat-card__icon--brand { background: var(--brand-dim); color: var(--brand); }
-
-.vp-os .stat-card__icon--accent { background: var(--accent-dim); color: var(--accent); }
-
-.vp-os .stat-card__icon--ok { background: var(--ok-dim); color: var(--ok); }
-
-.vp-os .stat-card__icon--warn { background: var(--warn-dim); color: var(--warn); }
-
 .vp-os .stat-card__value { font-family: var(--font-head); font-size: var(--text-3xl); font-weight: 600; color: var(--text); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 
 /* Word-valued stat (e.g. an active theme name) — smaller so a long name fits. */
 .vp-os .stat-card__value--sm { font-size: var(--text-xl); line-height: 1.15; word-break: break-word; }
 
 .vp-os .stat-card__bottom { display: flex; align-items: center; justify-content: space-between; }
-
-.vp-os .stat-card__trend { font-size: var(--text-xs); font-weight: 600; }
-
-.vp-os .stat-card__trend--up { color: var(--ok); }
-
-.vp-os .stat-card__trend--down { color: var(--danger); }
-
-.vp-os .stat-card__sparkline { display: block; }
 
 /* ── Dashboard workspace (ADR-0141 dashboard redesign) ─────────────────
    The content areas — Posts, Pages, Comments, Messages, Media, New Post,
@@ -820,32 +787,13 @@
 @media (max-width: 900px) { .vp-os .domain-grid { grid-template-columns: 1fr; }
  }
 
-.vp-os .domain-card { position: relative; display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-5); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; opacity: 0; transition: border-color var(--t), box-shadow var(--t), transform var(--t); }
+.vp-os .domain-card { position: relative; display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-5); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; transition: border-color var(--t), box-shadow var(--t), transform var(--t); }
 
 .vp-os .domain-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; opacity: 0.6; }
 
 .vp-os .domain-card:hover { border-color: var(--border-strong); }
 
 .vp-os .domain-card--primary { border-color: var(--border-strong); }
-
-.vp-os .domain-card:nth-child(1) { animation-delay: 0.02s; }
-
-.vp-os .domain-card:nth-child(2) { animation-delay: 0.07s; }
-
-.vp-os .domain-card:nth-child(3) { animation-delay: 0.12s; }
-
-.vp-os .domain-card:nth-child(4) { animation-delay: 0.17s; }
-
-.vp-os .domain-card:nth-child(5) { animation-delay: 0.22s; }
-
-.vp-os .domain-card:nth-child(6) { animation-delay: 0.27s; }
-
-.vp-os .domain-card:nth-child(n+7) { animation-delay: 0.3s; }
-
-@media (prefers-reduced-motion: reduce) {
-  .vp-os .domain-card { opacity: 1; }
-
-}
 
 .vp-os .domain-card__head { display: flex; align-items: flex-start; gap: var(--sp-3); }
 
@@ -1143,10 +1091,6 @@
 /* ── Dropdown ────────────────────────────────────────────────── */
 .vp-os .dropdown { position: relative; display: inline-block; }
 
-.vp-os .dropdown-menu { position: absolute; top: calc(100% + var(--sp-2)); right: 0; min-width: 180px; background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: var(--r); box-shadow: var(--sh-lg); z-index: 300; padding: var(--sp-2) 0; }
-
-.vp-os .dropdown-menu[hidden] { display: none; }
-
 /* ── Toast ───────────────────────────────────────────────────── */
 
 .vp-os .toast-container { position: fixed; bottom: var(--sp-6); right: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); z-index: 900; pointer-events: none; }
@@ -1313,6 +1257,10 @@
 .vp-os .quick-compose-input { flex: 1; background: none; border: none; outline: none; font-size: var(--text-base); color: var(--text); }
 
 .vp-os .quick-compose-input::placeholder { color: var(--text-3); }
+/* The template picker keeps its own width; the title field takes what is left
+   and may shrink, so on a phone the picker is not crushed to its arrow. */
+.vp-os .quick-compose-input { min-width: 0; }
+.vp-os .quick-compose > select { flex: 0 0 auto; width: auto; }
 
 /* ── Health / onboarding checklist ───────────────────────────── */
 .vp-os .checklist { display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -1354,7 +1302,6 @@
 .vp-os .auth-col { width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: stretch; }
 
 .vp-os .login-brandline { display: flex; align-items: center; justify-content: center; gap: 0.55rem; font-family: var(--font-head); font-weight: 600; font-size: 20px; color: var(--text); margin-bottom: 1.4rem; letter-spacing: -0.01em; }
-
 
 .vp-os .login-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-surface); padding: 2.25rem 2rem; box-shadow: var(--shadow-3); }
 
@@ -1529,17 +1476,47 @@
 
 .vp-os .editor-canvas { display: flex; flex-direction: column; gap: var(--sp-2); }
 
-.vp-os .eblock { display: grid; grid-template-columns: 32px 1fr; gap: var(--sp-2); align-items: start; border-radius: var(--r-sm); padding: var(--sp-1); transition: background var(--t-fast); }
+.vp-os .eblock { position: relative; display: grid; grid-template-columns: 32px 1fr; gap: var(--sp-2); align-items: start; border-radius: var(--r-sm); padding: var(--sp-1); transition: background var(--t-fast); }
 
 .vp-os .eblock:hover { background: var(--bg-surface-2); }
 
-.vp-os .eblock__ctrl { display: flex; flex-direction: column; gap: 2px; opacity: 0; transition: opacity var(--t-fast); }
+/* The block being pointed at or edited shows its controls. Focus is what
+   reveals them to the keyboard, and on a touch screen, where nothing hovers,
+   tapping into a block is what focuses it. */
+.vp-os .eblock__ctrl { display: flex; opacity: 0; transition: opacity var(--t-fast); }
 
-.vp-os .eblock:hover .eblock__ctrl { opacity: 1; }
+.vp-os .eblock:hover .eblock__ctrl, .vp-os .eblock:focus-within .eblock__ctrl { opacity: 1; }
 
-.vp-os .eblock__btn { width: 24px; height: 24px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-surface); color: var(--text-2); cursor: pointer; line-height: 1; font-size: var(--text-sm); }
+/* The actions float over the block's corner rather than stacking in the
+   gutter, where their height set the height of every block. Hidden, they sit
+   over the block above, so they must not take its clicks. */
+.vp-os .eblock__acts { position: absolute; z-index: 2; right: var(--sp-1); bottom: calc(100% - var(--sp-1)); display: flex; gap: 2px; padding: 2px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-sm); box-shadow: var(--sh-sm); pointer-events: none; }
+
+.vp-os .eblock:hover .eblock__acts, .vp-os .eblock:focus-within .eblock__acts { pointer-events: auto; }
+
+.vp-os .eblock__btn.is-up .sa-ico { transform: rotate(180deg); }
+
+.vp-os .eblock__btn { display: inline-flex; align-items: center; justify-content: center; padding: 0; width: 24px; height: 24px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-surface); color: var(--text-2); cursor: pointer; line-height: 1; font-size: var(--text-sm); }
 
 .vp-os .eblock__btn:hover { background: var(--bg-surface-3); color: var(--text); }
+
+/* On a touch screen the actions join the flow under the block being edited:
+   floating, they covered the block above, where a tap meant for its text could
+   land on Delete. The grip goes too; a finger reorders with Move up and down. */
+@media (pointer: coarse) {
+  .vp-os .eblock { grid-template-columns: minmax(0, 1fr); }
+
+  .vp-os .eblock__ctrl { display: contents; }
+
+  .vp-os .eblock__drag { display: none; }
+
+  .vp-os .eblock__acts { position: static; grid-column: 1; grid-row: 2; justify-self: end; display: none; pointer-events: auto; box-shadow: none; }
+
+  .vp-os .eblock:focus-within .eblock__acts { display: flex; }
+
+  .vp-os .eblock__acts .eblock__btn { width: 36px; height: 36px; }
+
+}
 
 .vp-os .eblock__field { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 
@@ -1619,6 +1596,22 @@
      can't run. Neutralise it — mobile browsers already keep the caret above the
      on-screen keyboard, which gives the same "line stays in view" comfort. */
   .vp-os .editor-shell.is-focus .editor-canvas { padding-top: var(--sp-6); padding-bottom: var(--sp-10); }
+
+}
+
+/* The rail and section list keep 440px of a desktop window, so below 1440px a
+   280px sidebar beside the writing left a column of 150–450px, narrow enough to
+   break words. There the sidebar follows the writing, as on a phone, and the
+   page scrolls. Focus mode has no sidebar and keeps the canvas as its own
+   scroller, which its typewriter scrolling needs. */
+@media (min-width: 901px) and (max-width: 1439px) {
+  .vp-os .editor-shell:not(.is-focus) { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; }
+
+  .vp-os .editor-shell:not(.is-focus) .editor-main { overflow: visible; }
+
+  .vp-os .editor-shell:not(.is-focus) .editor-canvas { overflow-y: visible; padding-bottom: var(--sp-10); }
+
+  .vp-os .editor-shell:not(.is-focus) .editor-sidebar { overflow: visible; }
 
 }
 
@@ -2417,6 +2410,12 @@
 .vm-grow { flex: 1 1 12rem; }
 
 .vm-suffix { color: var(--text-3); font-size: 14px; margin-left: .35rem; }
+/* An address is typed as one thing: the local part and its domain on one line,
+   so the field is as tall as the fields beside it. */
+.vp-os .vm-addr { display: flex; align-items: center; gap: var(--space-2); }
+.vp-os .vm-addr > .input:first-child { flex: 1 1 auto; min-width: 0; }
+.vp-os .vm-addr > select.input { flex: 0 1 auto; width: auto; }
+.vp-os .vm-addr > .vm-suffix { margin-left: 0; white-space: nowrap; }
 
 /* The message body must NOT be its own scroll container. It used to carry
    max-height: 65vh + overflow: auto, which put a scrollbar inside the reading
@@ -2928,8 +2927,6 @@
 .vp-os .editor-outline__item--l4 { padding-left: calc(var(--sp-2) + var(--sp-8)); }
 
 /* ── Block control rail (drag, move, insert, delete) ────────────────────── */
-.vp-os .eblock__ctrl { flex-direction: column; gap: 2px; }
-
 .vp-os .eblock__drag { cursor: grab; }
 
 .vp-os .eblock__drag:active { cursor: grabbing; }
@@ -3017,10 +3014,6 @@
   .vp-os .editor-shell.is-focus .editor-canvas { padding-top: 40vh; padding-bottom: 40vh; }
 
 }
-
-.vp-os .editor-shell.is-focus .eblock__ctrl { opacity: 0; }
-
-.vp-os .editor-shell.is-focus .eblock:hover .eblock__ctrl { opacity: 1; }
 
 @media (max-width: 900px) {
   .vp-os .editor-workspace { flex-direction: column; }
@@ -3710,14 +3703,13 @@
 
 .vp-os .vb-mode { display: block; padding: var(--sp-2) 0; cursor: pointer; }
 
-.vp-os .biz-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-5); }
+/* Two columns only when each has room to write in: the width left beside the
+   console's navigation, not the window's, decides. */
+.vp-os .biz-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: var(--sp-5); }
 
 .vp-os .biz-form-col { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 
 .vp-os .biz-form .pm-label { margin-top: var(--sp-2); }
-
-@media (max-width: 768px) { .vp-os .biz-form { grid-template-columns: 1fr; }
- }
 
 /* The .zip deploy row: file picker, Deploy, optional Roll back, status. It was
    the div's only class and had no rule, so the controls ran together with no
@@ -3834,9 +3826,6 @@
 .vp-os .vs-save { display: flex; align-items: center; gap: var(--sp-4); padding-top: var(--sp-5); margin-top: var(--sp-4); border-top: 1px solid var(--border); flex-wrap: wrap; }
 
 /* ── Network hardening <details> ─────────────────────────────── */
-.vp-os .vs-summary { cursor: pointer; margin-bottom: 0; -webkit-user-select: none; user-select: none; }
-
-.vp-os details[open] .vs-summary { margin-bottom: var(--sp-4); }
 
 /* Per-section HTMX "Refresh" control — a right-aligned pill at the top of a
    refreshable section body; its icon spins while the fetch is in flight. */
@@ -4118,8 +4107,6 @@
 .vp-os .vt-state--warn { color: var(--warn); }
 
 .vp-os .vt-state--off { color: var(--text-3); }
-
-.vp-os .vt-hero__count { display: flex; align-items: baseline; gap: 0.4em; }
 
 .vp-os .vt-hero__action { margin: 0; }
 
@@ -4553,36 +4540,18 @@
 .vp-os .vm-outbox-table td.vm-oc-act .btn { margin: 0 2px 2px 0; }
 
 /* Primary-only (7 col) widths. */
-.vp-os .vm-outbox-table .vm-ocw-to { width: 19%; }
-
-.vp-os .vm-outbox-table .vm-ocw-subj { width: 24%; }
-
-.vp-os .vm-outbox-table .vm-ocw-status { width: 9%; }
-
-.vp-os .vm-outbox-table .vm-ocw-tries { width: 7%; }
-
-.vp-os .vm-outbox-table .vm-ocw-err { width: 17%; }
-
-.vp-os .vm-outbox-table .vm-ocw-when { width: 13%; }
-
-.vp-os .vm-outbox-table .vm-ocw-act { width: 11%; }
-
-/* Multi-domain (8 col) widths — sizes the From column too. */
-.vp-os .vm-outbox-table--multi .vm-ocw-from { width: 12%; }
-
-.vp-os .vm-outbox-table--multi .vm-ocw-to { width: 15%; }
-
-.vp-os .vm-outbox-table--multi .vm-ocw-subj { width: 19%; }
-
-.vp-os .vm-outbox-table--multi .vm-ocw-status { width: 8%; }
-
-.vp-os .vm-outbox-table--multi .vm-ocw-tries { width: 6%; }
-
-.vp-os .vm-outbox-table--multi .vm-ocw-err { width: 15%; }
-
-.vp-os .vm-outbox-table--multi .vm-ocw-when { width: 13%; }
-
-.vp-os .vm-outbox-table--multi .vm-ocw-act { width: 12%; }
+.vp-os .vm-outbox-table .vm-ocw-to { width: 24%; }
+.vp-os .vm-outbox-table .vm-ocw-subj { width: 44%; }
+.vp-os .vm-outbox-table .vm-ocw-status { width: 11%; }
+.vp-os .vm-outbox-table .vm-ocw-when { width: 11%; }
+.vp-os .vm-outbox-table .vm-ocw-act { width: 10%; }
+.vp-os .vm-outbox-table--multi .vm-ocw-from { width: 14%; }
+.vp-os .vm-outbox-table--multi .vm-ocw-to { width: 20%; }
+.vp-os .vm-outbox-table--multi .vm-ocw-subj { width: 36%; }
+.vp-os .vm-outbox-table--multi .vm-ocw-status { width: 10%; }
+.vp-os .vm-outbox-table--multi .vm-ocw-when { width: 10%; }
+.vp-os .vm-outbox-table--multi .vm-ocw-act { width: 10%; }
+.vp-os .vm-outbox-table .vm-oc-detail { margin-top: 2px; overflow-wrap: anywhere; }
 
 /* Outbox auto-clear control. */
 .vp-os .vm-retention { display: inline-flex; align-items: center; gap: var(--sp-2); }
@@ -5527,6 +5496,12 @@
 .vp-os[data-ui="still-air"] .mono,
 .vp-os[data-ui="still-air"] .font-mono,
 .vp-os[data-ui="still-air"] code { font-family: var(--font-code); }
+/* The identifier that names a table row is one token: ADR-0163 set as "ADR-"
+   over "0163" reads as two. On a phone the rows stack and a long one may wrap. */
+@media (min-width: 600px) {
+  .vp-os[data-ui="still-air"] :is(td, th):first-child :is(code, kbd, .mono),
+  .vp-os[data-ui="still-air"] :is(td, th):first-child:is(.mono, code) { white-space: nowrap; }
+}
 .vp-os[data-ui="still-air"] .muted { color: var(--text-3); }
 .vp-os[data-ui="still-air"] .text-sm { font-size: 13px; }
 .vp-os[data-ui="still-air"] .text-xs { font-size: 12px; }
@@ -5544,7 +5519,6 @@
   min-height: 0;
   overflow: hidden;
 }
-.vp-os[data-ui="still-air"].nav-collapsed .sa-shell { grid-template-columns: var(--rail-w-collapsed) minmax(0, 1fr); }
 
 /* System bar */
 .vp-os[data-ui="still-air"] .sa-sysbar {
@@ -5784,11 +5758,25 @@
   display: flex; justify-content: space-between; padding: var(--space-3) 10px 0;
   font: var(--type-meta); color: var(--text-4); font-variant-numeric: tabular-nums;
 }
+/* Collapsed to icons: by the toggle, or by default where the rail and an app's
+   section list together would take 440px of a laptop screen and leave tables
+   scrolling sideways. The label stays readable to assistive technology, as it
+   is the link's only name; the title shows it on hover. The toggle's choice,
+   either way, wins (nav-collapsed / nav-expanded, admin-os.js). */
+.vp-os[data-ui="still-air"].nav-collapsed .sa-shell { grid-template-columns: var(--rail-w-collapsed) minmax(0, 1fr); }
 .vp-os[data-ui="still-air"].nav-collapsed .sa-rail { padding-inline: 8px; }
 .vp-os[data-ui="still-air"].nav-collapsed .sa-rail__item { justify-content: center; padding: 0; }
-.vp-os[data-ui="still-air"].nav-collapsed .sa-rail__label,
+.vp-os[data-ui="still-air"].nav-collapsed .sa-rail__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .vp-os[data-ui="still-air"].nav-collapsed .sa-count,
 .vp-os[data-ui="still-air"].nav-collapsed .sa-rail__version { display: none; }
+@media (min-width: 769px) and (max-width: 1279px) {
+  .vp-os[data-ui="still-air"]:not(.nav-expanded) .sa-shell { grid-template-columns: var(--rail-w-collapsed) minmax(0, 1fr); }
+  .vp-os[data-ui="still-air"]:not(.nav-expanded) .sa-rail { padding-inline: 8px; }
+  .vp-os[data-ui="still-air"]:not(.nav-expanded) .sa-rail__item { justify-content: center; padding: 0; }
+  .vp-os[data-ui="still-air"]:not(.nav-expanded) .sa-rail__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .vp-os[data-ui="still-air"]:not(.nav-expanded) .sa-count,
+  .vp-os[data-ui="still-air"]:not(.nav-expanded) .sa-rail__version { display: none; }
+}
 
 /* Workspace: the app sidebar and the content column. */
 .vp-os[data-ui="still-air"] .sa-main {
@@ -5840,7 +5828,10 @@
 /* ── 4. Core components ─────────────────────────────────────────────────── */
 
 /* Page header and section heads */
-.vp-os[data-ui="still-air"] .page-header { margin-bottom: var(--space-5); gap: var(--space-4); }
+/* Actions that do not fit beside the title wrap under it, at any width: the
+   room beside the console's navigation, not the window, is what runs out. */
+.vp-os[data-ui="still-air"] .page-header { margin-bottom: var(--space-5); gap: var(--space-4); flex-wrap: wrap; }
+.vp-os[data-ui="still-air"] .page-actions { flex-wrap: wrap; max-width: 100%; }
 .vp-os[data-ui="still-air"] .page-header h1 { font: var(--type-title); letter-spacing: -0.01em; color: var(--text-1); }
 .vp-os[data-ui="still-air"] .page-sub { font: 400 14px/21px var(--font-ui); color: var(--text-2); max-width: 70ch; margin: 0 0 var(--space-7); }
 .vp-os[data-ui="still-air"] .page-header:has(+ .page-sub) { margin-bottom: var(--space-2); }
@@ -5906,6 +5897,7 @@
 .vp-os[data-ui="still-air"] .card::before,
 .vp-os[data-ui="still-air"] .card::after { display: none; }
 .vp-os[data-ui="still-air"] .card-title { font: var(--type-heading); color: var(--text-1); margin-bottom: var(--space-4); }
+.vp-os[data-ui="still-air"] .card-title > .sa-ico:first-child { display: inline-block; width: 16px; height: 16px; margin-right: var(--space-2); vertical-align: -2px; color: var(--text-2); }
 .vp-os[data-ui="still-air"] .card-subtitle { font: var(--type-small); color: var(--text-3); }
 
 /* Figures: the few numbers that answer "what is the state of this", set as
@@ -5926,17 +5918,15 @@
 .vp-os[data-ui="still-air"] .stat-card::before,
 .vp-os[data-ui="still-air"] .stat-card::after { display: none; animation: none; content: none; }
 .vp-os[data-ui="still-air"] .stat-card:hover { transform: none; box-shadow: none; border-color: transparent; }
-.vp-os[data-ui="still-air"] .stat-card__value { order: -1; font: 600 28px/34px var(--font-ui); letter-spacing: -0.015em; color: var(--text-1); font-variant-numeric: tabular-nums; }
-.vp-os[data-ui="still-air"] .stat-card__value--sm { font: 600 20px/28px var(--font-ui); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .stat-card__value { order: -1; font: 600 28px/34px var(--font-ui); letter-spacing: -0.015em; color: var(--text-1); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vp-os[data-ui="still-air"] .stat-card__value--sm { font: 600 20px/28px var(--font-ui); }
+.vp-os[data-ui="still-air"] .stat-card__unit { margin-left: 4px; font: 500 15px/20px var(--font-ui); letter-spacing: 0; color: var(--text-2); }
 .vp-os[data-ui="still-air"] .stat-card__label { font: var(--type-small); color: var(--text-3); text-transform: none; letter-spacing: 0; }
 .vp-os[data-ui="still-air"] .stat-card__note,
 .vp-os[data-ui="still-air"] .stat-card__bottom { font: var(--type-meta); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .stat-card--warn { border: 0; }
 .vp-os[data-ui="still-air"] .stat-card--warn .stat-card__value { color: var(--warn); }
 .vp-os[data-ui="still-air"] .stat-card--danger .stat-card__value { color: var(--danger); }
-.vp-os[data-ui="still-air"] .stat-card__icon { width: 28px; height: 28px; border-radius: var(--radius-control); background: var(--surface-press); color: var(--text-2); }
-.vp-os[data-ui="still-air"] .stat-card:hover .stat-card__icon { transform: none; }
-.vp-os[data-ui="still-air"] .stat-card__trend { font: var(--type-meta); font-weight: 500; }
 
 /* Accordions become one grouped list: rows, hairlines, one frame. */
 .vp-os[data-ui="still-air"] .mon-stack {
@@ -6117,6 +6107,9 @@
   padding: 12px 14px; border-radius: var(--radius-surface); border: 1px solid var(--border-1);
   background: var(--surface-sunken); color: var(--text-2); font: var(--type-small); box-shadow: none;
 }
+/* The callout is a column, which stretched its action into a bar across the
+   block; an action is a button its own width. */
+.vp-os[data-ui="still-air"] .settings-callout > .btn { align-self: flex-start; }
 .vp-os[data-ui="still-air"] .settings-row-label { font: var(--type-strong); color: var(--text-1); }
 .vp-os[data-ui="still-air"] .settings-row-hint { font: var(--type-small); color: var(--text-3); }
 
@@ -6528,8 +6521,6 @@
   .vp-os[data-ui="still-air"] :is(.tabs, .tab-list) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .vp-os[data-ui="still-air"] :is(.tabs, .tab-list) .tab { flex: none; }
   .vp-os[data-ui="still-air"] .seg-filter { max-width: 100%; overflow-x: auto; margin-left: 0; }
-  .vp-os[data-ui="still-air"] .page-header { flex-wrap: wrap; }
-  .vp-os[data-ui="still-air"] .page-actions { flex-wrap: wrap; max-width: 100%; }
   .vp-os[data-ui="still-air"] .sa-shell { grid-template-columns: minmax(0, 1fr); }
   /* A message is two lines on a phone — sender and time, then the subject —
      rather than six columns that leave the subject one word wide. Pin and
@@ -6651,6 +6642,11 @@
 .vp-os[data-ui="still-air"] .settings-rows .settings-row:last-child { border-bottom: 0; }
 .vp-os[data-ui="still-air"] .settings-rows .settings-row-control { justify-content: flex-end; min-width: 0; }
 .vp-os[data-ui="still-air"] .settings-rows .settings-row-control > :is(.input, .textarea, select) { width: 100%; }
+/* A text box is written in, not set: its row stacks, label above, the box the
+   row's full width. In the 300px control column custom CSS was edited through a
+   slot. */
+.vp-os[data-ui="still-air"] .settings-rows .settings-row:has(.settings-row-control > .textarea) { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+.vp-os[data-ui="still-air"] .settings-rows .settings-row:has(.settings-row-control > .textarea) .settings-row-control { justify-content: flex-start; }
 .vp-os[data-ui="still-air"] .settings-row-hint { margin-top: 2px; }
 /* An editor that is more than a row marks its band's heading instead. */
 .vp-os[data-ui="still-air"] .settings-row.is-changed .settings-row-label::after,
@@ -6688,13 +6684,15 @@
 .vp-os[data-ui="still-air"] .settings-mark__img { width: 40px; height: 40px; border-radius: var(--radius-control); border: 1px solid var(--border-1); background: var(--surface-1); object-fit: contain; }
 .vp-os[data-ui="still-air"] .settings-mark__state { flex: 1 1 100%; text-align: right; font: var(--type-meta); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .settings-mark__file { flex: 1 1 100%; font: var(--type-small); color: var(--text-2); }
-/* The browser draws its own grey button in a file input; this one is a
-   Still Air button like its neighbours. */
-.vp-os[data-ui="still-air"] .settings-mark__file::file-selector-button {
+/* The browser draws its own grey button in a file input; every one in the
+   console is a Still Air button like its neighbours, with the chosen file's
+   name beside it in the small type. */
+.vp-os[data-ui="still-air"] input[type=file] { font: var(--type-small); color: var(--text-2); max-width: 100%; }
+.vp-os[data-ui="still-air"] input[type=file]::file-selector-button {
   margin-right: var(--space-3); padding: 4px 10px; font: var(--type-small); color: var(--text-1);
   background: var(--surface-2); border: 1px solid var(--border-2); border-radius: var(--radius-control); cursor: pointer;
 }
-.vp-os[data-ui="still-air"] .settings-mark__file::file-selector-button:hover { background: var(--surface-hover); }
+.vp-os[data-ui="still-air"] input[type=file]::file-selector-button:hover { background: var(--surface-hover); }
 .vp-os[data-ui="still-air"] .settings-page section > .settings-panel__lead { margin-top: var(--space-4); }
 .vp-os[data-ui="still-air"] .settings-mark__status:empty { display: none; }
 .vp-os[data-ui="still-air"] .settings-mark__status { font: var(--type-meta); color: var(--text-3); }

@@ -194,7 +194,7 @@ func TestThePageNamesEveryThingItWillNeverClaim(t *testing.T) {
 // A channel open on this host is the actionable finding. It must reach the page.
 func TestAnOpenChannelIsVisibleOnThePage(t *testing.T) {
 	page := veilPageFor(t, true, vayuveil.PresentReachable)
-	if !strings.Contains(page, "open</span>") {
+	if !strings.Contains(page, ">Open</span>") {
 		t.Error("no row is chipped as open on a host where every channel is reachable")
 	}
 	tile := statCardIn(t, page, "Open on this host")

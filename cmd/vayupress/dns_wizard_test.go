@@ -35,13 +35,13 @@ func okDNSHealth() dnsHealth {
 
 func TestTheWizardSaysWhenThereIsNothingToDo(t *testing.T) {
 	out := vayuDNSWizard(okDNSHealth())
-	if !strings.Contains(out, "all checks pass") {
+	if !strings.Contains(out, ">All checks pass<") {
 		t.Error("an aligned install must say so plainly")
 	}
 	if strings.Contains(out, "Next:") {
 		t.Error("there is no next step when every check passes")
 	}
-	if strings.Contains(out, "action needed") {
+	if strings.Contains(out, "Action needed") {
 		t.Error("a passing install must not be labelled as needing action")
 	}
 	// Every check is still shown, so the operator can see WHAT passed.
@@ -59,7 +59,7 @@ func TestTheWizardNamesTheNextThingToFix(t *testing.T) {
 	h.Domains[0].Health.Records[2] = vmail.RecordHealth{Type: "DKIM", OK: false, Message: "no key found at selector._domainkey.example.com"}
 
 	out := vayuDNSWizard(h)
-	if !strings.Contains(out, "action needed") {
+	if !strings.Contains(out, ">Action needed<") {
 		t.Error("a failing check must be labelled as needing action")
 	}
 	if !strings.Contains(out, "Next:") {

@@ -273,7 +273,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 		srv.WriteString(`<label class="field field--check"><input type="radio" name="scoped-site-mode" ` +
 			`value="custom"` + checked + `> <span class="field-label">Uploaded website</span>` +
 			`<span class="field-hint">The site you uploaded or had built — served exactly as authored, at /. ` +
-			`` + esc(itoaSafe(man.Files)) + ` file(s), deployed ` + esc(man.DeployedAt.Format("2006-01-02 15:04")) +
+			`` + esc(itoaSafe(man.Files)) + ` file` + plural(man.Files) + `, deployed ` + esc(man.DeployedAt.Format("2006-01-02 15:04")) +
 			`.</span></label>`)
 	}
 	srv.WriteString(`</div></div>`)
@@ -309,7 +309,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
     to <em>build a site for ` + esc(d.Host) + `</em>. It authors the HTML and CSS itself and publishes it here —
     the same deploy path as an upload, with the same limits.</p>
 </div>`
-	uploadChip := `<span class="mon-chip mon-chip--off">nothing uploaded</span>`
+	uploadChip := `<span class="mon-chip mon-chip--off">Nothing uploaded</span>`
 	if bundled {
 		uploadChip = `<span class="mon-chip mon-chip--on">` + esc(itoaSafe(man.Files)) + ` files</span>`
 	}
@@ -337,7 +337,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
   <div id="preview-out" class="text-sm"></div>
 </div>`
 	b.WriteString(monAcc(saIcon("search"), "Check what this domain serves", "Asks this server, not your browser",
-		`<span class="mon-chip mon-chip--on">on demand</span>`, false, checkBody))
+		`<span class="mon-chip mon-chip--on">On demand</span>`, false, checkBody))
 
 	// ── The eval opt-in ───────────────────────────────────────────────────────
 	//
@@ -369,9 +369,9 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
     <span class="field-hint">Applies on Save &amp; publish. Off is the safe default and the one to keep unless a
       page you uploaded needs it.</span></label>
 </div>`
-		evalChip := `<span class="mon-chip mon-chip--off">off</span>`
+		evalChip := `<span class="mon-chip mon-chip--off">Off</span>`
 		if checked != "" {
-			evalChip = `<span class="mon-chip mon-chip--on">on</span>`
+			evalChip = `<span class="mon-chip mon-chip--on">On</span>`
 		}
 		b.WriteString(monAcc(saIcon("bolt"), "Scripts that build their own code",
 			"Needed by some page frameworks; off by default", evalChip, false, evalBody))
@@ -397,7 +397,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 	editor := "/os/d/" + d.ID + "/website/editor"
 	if published {
 		b.WriteString(monAcc(saIcon("pencil"), "Content", "Pages and sections, in the site editor",
-			`<span class="mon-chip mon-chip--on">site editor</span>`, false, siteEditorCard(editor, true)))
+			`<span class="mon-chip mon-chip--on">Site editor</span>`, false, siteEditorCard(editor, true)))
 		b.WriteString(`</div>`) // mon-stack
 		return b.String()
 	}
@@ -450,7 +450,7 @@ func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundle
 	// Services and gallery are not edited on this form; the site editor edits
 	// everything, and this form preserves them when it saves.
 	con.WriteString(siteEditorCard(editor, false))
-	contentChip := `<span class="mon-chip mon-chip--off">not set</span>`
+	contentChip := `<span class="mon-chip mon-chip--off">Not set</span>`
 	if strings.TrimSpace(c.Name) != "" {
 		contentChip = `<span class="mon-chip mon-chip--on">` + esc(c.Name) + `</span>`
 	}
@@ -547,8 +547,8 @@ if(up)up.addEventListener('click',function(){
     function(done,total,phase){if(bs)bs.textContent=window.vpBundleProgressText(done,total,phase);})
     .then(function(j){
       var n=j.files||0, sk=j.skipped||0;
-      var msg='Deployed '+n+' file(s).';
-      if(sk)msg+=' '+sk+' system file(s) ignored'+(j.skipped_names?' ('+j.skipped_names.join(', ')+')':'')+'.';
+      var msg='Deployed '+n+' file'+(n===1?'':'s')+'.';
+      if(sk)msg+=' '+sk+' system file'+(sk===1?'':'s')+' ignored'+(j.skipped_names?' ('+j.skipped_names.join(', ')+')':'')+'.';
       if(bs)bs.textContent='Deployed \u2713';
       if(bo){bo.textContent=msg+' Reloading so the count above is current\u2026'; bo.className='text-sm muted';}
       window.setTimeout(function(){window.location.reload();},900);

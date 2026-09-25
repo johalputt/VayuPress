@@ -37,19 +37,23 @@ func renderScoped(d domain.Domain, mailOn bool) string {
 	return scopedConsolePage(d, 0, 0, 0, mailOn, nil, nil, nil, nil, "")
 }
 
+// zeroGranted is the mailbox tile's figure when the allowance is zero, as the
+// tile draws it: the count, then its unit.
+const zeroGranted = `>0<span class="stat-card__unit">granted<`
+
 // The state that costs a customer their first hour.
 func TestASiteWithMailOnAndNoAllowanceSaysSoWithoutBeingOpened(t *testing.T) {
 	page := renderScoped(domainWithAllowance(t, true, 0), true)
 
 	tile := statCardIn(t, page, "Mailboxes")
-	if !strings.Contains(tile, "0 granted") {
+	if !strings.Contains(tile, zeroGranted) {
 		t.Errorf("the mailbox tile does not say the allowance is zero; \"0\" alone reads as "+
 			"\"nobody has made a mailbox yet\", not \"nobody can\". Tile: %s", tile)
 	}
 	if !strings.Contains(tile, "stat-card--warn") {
 		t.Errorf("the mailbox tile is not toned as a problem, so nothing draws the eye to it: %s", tile)
 	}
-	if !strings.Contains(page, "none granted") {
+	if !strings.Contains(page, ">None granted<") {
 		t.Error("the allowance card's chip does not flag the state while collapsed")
 	}
 	// The card explains exactly this and is useless shut.
@@ -66,7 +70,7 @@ func TestASiteWithMailOnAndNoAllowanceSaysSoWithoutBeingOpened(t *testing.T) {
 // who sees a warning on a healthy site stops reading warnings.
 func TestASiteWithAnAllowanceIsNotFlagged(t *testing.T) {
 	page := renderScoped(domainWithAllowance(t, true, 5), true)
-	if strings.Contains(page, "0 granted") || strings.Contains(page, "none granted") {
+	if strings.Contains(page, zeroGranted) || strings.Contains(page, ">None granted<") {
 		t.Fatal("a site with mailboxes granted was flagged as having none")
 	}
 	if strings.Contains(statCardIn(t, page, "Mailboxes"), "stat-card--warn") {
@@ -87,7 +91,7 @@ func TestMailBeingOffIsNotReportedAsAMissingAllowance(t *testing.T) {
 		{"off both ways", false, false},
 	} {
 		page := renderScoped(domainWithAllowance(t, c.domainOn, 0), c.mailOn)
-		if strings.Contains(page, "0 granted") || strings.Contains(page, "none granted") {
+		if strings.Contains(page, zeroGranted) || strings.Contains(page, ">None granted<") {
 			t.Errorf("%s: reported as a missing allowance, which sends the operator to grant "+
 				"mailboxes that still could not be created", c.name)
 		}

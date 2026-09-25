@@ -36,7 +36,7 @@ func TestEscalationWindowReset(t *testing.T) {
 	mgr := mode.New()
 	e := NewEscalator(mgr)
 	e.AddRule(EscalationRule{
-		FaultName:  FaultSigningSign,
+		FaultName:  FaultOutboxCommit,
 		Threshold:  2,
 		Window:     50 * time.Millisecond,
 		TargetMode: mode.ModeDegraded,
@@ -44,9 +44,9 @@ func TestEscalationWindowReset(t *testing.T) {
 		Cause:      "test",
 	})
 
-	e.Record(FaultSigningSign) // count=1
+	e.Record(FaultOutboxCommit) // count=1
 	time.Sleep(60 * time.Millisecond)
-	e.Record(FaultSigningSign) // window expired → reset to 1
+	e.Record(FaultOutboxCommit) // window expired → reset to 1
 	if mgr.Current() != mode.ModeNormal {
 		t.Fatal("should not have escalated — window reset between triggers")
 	}
@@ -120,8 +120,6 @@ func TestDefaultRulesCoversAllFaultConstants(t *testing.T) {
 	allFaults := []string{
 		FaultWALWrite,
 		FaultMigrationApply,
-		FaultSigningSign,
-		FaultFederationDeliver,
 		FaultPluginInvoke,
 		FaultOutboxCommit,
 	}

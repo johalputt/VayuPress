@@ -125,7 +125,7 @@ func (a *App) handleOSVayuFlowSave(w http.ResponseWriter, r *http.Request) {
 		verb = "vayuflow.create"
 	}
 	dbpkg.AuditLog(verb, dbpkg.AuditActor(r), f.ID,
-		fmt.Sprintf("%s · %s · %d step(s) · v%d", f.Name, vayuflow.DescribeTrigger(f.Trigger), len(f.Steps), f.Version))
+		fmt.Sprintf("%s · %s · %d step%s · v%d", f.Name, vayuflow.DescribeTrigger(f.Trigger), len(f.Steps), plural(len(f.Steps)), f.Version))
 
 	writeJSON(w, r, http.StatusOK, map[string]any{
 		"status": "ok", "id": f.ID, "version": f.Version, "created": creating,
@@ -334,6 +334,6 @@ func (a *App) handleOSVayuFlowDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dbpkg.AuditLog("vayuflow.delete", dbpkg.AuditActor(r), id,
-		f.Name+" · "+strconv.Itoa(len(f.Steps))+" step(s) · runs kept")
+		f.Name+" · "+strconv.Itoa(len(f.Steps))+" step"+plural(len(f.Steps))+" · runs kept")
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok", "deleted": id})
 }

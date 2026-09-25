@@ -75,7 +75,7 @@ func (a *App) seoCrawlActivityCard() string {
 		if rows == "" {
 			return ""
 		}
-		return `<div class="mb-4"><div class="settings-block-title">` + title + ` <span class="muted text-sm">— ` + fmtN(total) + ` requests served</span></div>
+		return `<div class="mb-4"><div class="settings-block-title">` + title + ` <span class="muted text-sm">— ` + fmtN(total) + ` request` + plural(total) + ` served</span></div>
   <div class="table-wrap"><table class="table">
     <thead><tr><th>Crawler</th><th>Requests served</th></tr></thead>
     <tbody>` + rows + `</tbody></table></div></div>`
@@ -194,7 +194,7 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
   <h1>SEO</h1>
   <div class="page-actions"><button type="button" class="btn btn--primary btn--sm" data-seo-regenerate>Regenerate artefacts</button></div>
 </div>
-<p class="page-sub">Search visibility, instant indexing and content health — plus live proof search engines and AI systems are crawling your content..</p>
+<p class="page-sub">Search visibility, instant indexing and content health — plus live proof search engines and AI systems are crawling your content.</p>
 
 <div class="stat-grid mb-6">
   <div class="stat-card"><div class="stat-card__label">SEO-healthy</div><div class="stat-card__value">` + num(healthy) + `</div><div class="stat-card__bottom"><span class="muted text-xs">good title + depth</span></div></div>
@@ -687,7 +687,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		strconv.FormatInt(sum.TotalViews, 10) + ` page requests · ` + periodLabel +
 		` · updated ` + config.FormatSiteStamp(now) + `</span>
 </div>
-<p class="page-sub">Privacy-first, cookieless analytics — audience, engagement, geography and campaigns, all computed on your own server..</p>` +
+<p class="page-sub">Privacy-first, cookieless analytics — audience, engagement, geography and campaigns, all computed on your own server.</p>` +
 		a.analyticsScopeNote(ctx) +
 		osPeriodSelector(days) + kpiHeader + sections + osPrivacyNote()
 

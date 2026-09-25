@@ -951,7 +951,7 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 		ids = []string{in.ID}
 	}
 	if in.User == "" || len(ids) == 0 {
-		writeAPIError(w, r, 400, "validation_error", "user and id(s) are required", "")
+		writeAPIError(w, r, 400, "validation_error", "user and at least one id are required", "")
 		return
 	}
 	if len(ids) > 500 {
@@ -1145,8 +1145,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 <form data-acct-create>
   <div class="vm-row vm-row--end">
     <label class="field vm-grow"><span class="field-label">Address</span>
-      <input class="input" type="text" data-a-local placeholder="name" required>
-      ` + addrSuffix + `</label>
+      <span class="vm-addr"><input class="input" type="text" data-a-local placeholder="name" required>` + addrSuffix + `</span></label>
     <label class="field vm-grow"><span class="field-label">Full name (optional)</span>
       <input class="input" type="text" data-a-name placeholder="Display name"></label>
     <label class="field"><span class="field-label">Role</span>
@@ -1635,9 +1634,9 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	// ── Live service status ──────────────────────────────────────────────────
 	badge := func(up bool) string {
 		if up {
-			return `<span class="badge badge--ok">online</span>`
+			return `<span class="badge badge--ok">Online</span>`
 		}
-		return `<span class="badge badge--warn">offline</span>`
+		return `<span class="badge badge--warn">Offline</span>`
 	}
 	body.WriteString(`<div class="section-head"><span class="section-head__title">Service status</span><span class="section-head__hint">Live mail listener health</span></div>`)
 	body.WriteString(`<div class="card">`)
@@ -1744,10 +1743,10 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	// ── Recommended settings ─────────────────────────────────────────────────
 	body.WriteString(`<div class="card"><div class="card-title">Recommended settings</div>`)
 	body.WriteString(`<div class="table-wrap"><table class="table"><tbody>`)
-	body.WriteString(`<tr><th>Incoming · IMAP (recommended)</th><td class="mono text-sm">` + hHost + `</td><td>port ` + imapsPort + ` · SSL/TLS</td></tr>`)
-	body.WriteString(`<tr><th>Incoming · IMAP (alternative)</th><td class="mono text-sm">` + hHost + `</td><td>port ` + imapPort + ` · STARTTLS</td></tr>`)
-	body.WriteString(`<tr><th>Incoming · POP3</th><td class="mono text-sm">` + hHost + `</td><td>port ` + pop3sPort + ` SSL · or ` + pop3Port + ` STLS</td></tr>`)
-	body.WriteString(`<tr><th>Outgoing · SMTP</th><td class="mono text-sm">` + hHost + `</td><td>port ` + subPort + ` · STARTTLS · authentication required</td></tr>`)
+	body.WriteString(`<tr><th>Incoming · IMAP (recommended)</th><td class="mono text-sm">` + hHost + `</td><td>Port ` + imapsPort + ` · SSL/TLS</td></tr>`)
+	body.WriteString(`<tr><th>Incoming · IMAP (alternative)</th><td class="mono text-sm">` + hHost + `</td><td>Port ` + imapPort + ` · STARTTLS</td></tr>`)
+	body.WriteString(`<tr><th>Incoming · POP3</th><td class="mono text-sm">` + hHost + `</td><td>Port ` + pop3sPort + ` SSL · or ` + pop3Port + ` STLS</td></tr>`)
+	body.WriteString(`<tr><th>Outgoing · SMTP</th><td class="mono text-sm">` + hHost + `</td><td>Port ` + subPort + ` · STARTTLS · authentication required</td></tr>`)
 	body.WriteString(`<tr><th>Username</th><td colspan="2">your full email address (e.g. <span class="mono">you@` + html.EscapeString(mc.Domain) + `</span>)</td></tr>`)
 	body.WriteString(`<tr><th>Password</th><td colspan="2">an <a href="#vm-apppw-card">app password</a> (recommended for devices) or your mailbox password (set under <a href="/os/vayumail/accounts">Accounts</a>)</td></tr>`)
 	body.WriteString(`</tbody></table></div>`)
@@ -1768,7 +1767,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body.WriteString(`<div class="card"><div class="card-title">Per-mailbox setup</div>`)
-	body.WriteString(`<p class="muted text-sm">The username is the full address; the password is the mailbox's own.</p>`)
+	body.WriteString(`<p class="muted text-sm">Every mailbox connects to <span class="mono">` + hHost + `</span>. The username is the full address; the password is the mailbox's own.</p>`)
 	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox (username)</th><th>IMAP</th><th>POP3</th><th>SMTP (send)</th></tr></thead><tbody>`)
 	if len(emails) == 0 {
 		body.WriteString(`<tr><td colspan="4" class="muted">No active mailboxes yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>.</td></tr>`)
@@ -1776,9 +1775,9 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	for _, em := range emails {
 		e := html.EscapeString(em)
 		body.WriteString(`<tr><td class="mono">` + e + `</td>` +
-			`<td class="text-sm">` + hHost + `:` + imapsPort + ` SSL</td>` +
-			`<td class="text-sm">` + hHost + `:` + pop3sPort + ` SSL</td>` +
-			`<td class="text-sm">` + hHost + `:` + subPort + ` STARTTLS</td></tr>`)
+			`<td class="text-sm">Port ` + imapsPort + ` · SSL/TLS</td>` +
+			`<td class="text-sm">Port ` + pop3sPort + ` · SSL/TLS</td>` +
+			`<td class="text-sm">Port ` + subPort + ` · STARTTLS</td></tr>`)
 	}
 	body.WriteString(`</tbody></table></div></div>`)
 
@@ -2444,11 +2443,11 @@ func (a *App) handleVayuOSAppPasswordDelete(w http.ResponseWriter, r *http.Reque
 func deviceStatusChip(status string) string {
 	switch status {
 	case vmail.DeviceStatusApproved:
-		return `<span class="badge badge--ok">approved</span>`
+		return `<span class="badge badge--ok">Approved</span>`
 	case vmail.DeviceStatusBlocked:
-		return `<span class="badge badge--danger">blocked</span>`
+		return `<span class="badge badge--danger">Blocked</span>`
 	default:
-		return `<span class="badge badge--pending">pending approval</span>`
+		return `<span class="badge badge--pending">Pending approval</span>`
 	}
 }
 
@@ -2517,7 +2516,7 @@ func (a *App) vayuDevicesCard(ctx context.Context) string {
 		b.WriteString(`<tr><td colspan="3" class="muted">No mail accounts yet.</td></tr>`)
 	}
 	for _, ac := range accs {
-		state := `<span class="badge badge--ok">required</span>`
+		state := `<span class="badge badge--ok">Required</span>`
 		btn := `<button type="button" class="btn btn--sm"` + post + hxVals("op", "require-set", "email", ac.Email, "on", "0") + ` hx-confirm="Allow the mailbox password to sync mail from ANY device without approval?">Turn off</button>`
 		if !ac.RequireDeviceApproval {
 			state = `<span class="badge badge--warn">off — password syncs anywhere</span>`

@@ -200,7 +200,7 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 	ident.WriteString(`</div><div class="vm-row">` +
 		`<button type="button" class="btn btn--primary btn--sm" data-scoped-save>Save</button></div></div>`)
 
-	identChip := `<span class="mon-chip mon-chip--off">nothing set</span>`
+	identChip := `<span class="mon-chip mon-chip--off">Nothing set</span>`
 	if set > 0 {
 		identChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(set) + ` of ` + strconv.Itoa(total) + `</span>`
 	}
@@ -229,7 +229,7 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 	// "no colour set", NOT "product default": the Presentation band already uses
 	// that phrase for a different question, and two chips saying the same words
 	// about different things is how a reader stops trusting either.
-	colourChip := `<span class="mon-chip mon-chip--off">no colour set</span>`
+	colourChip := `<span class="mon-chip mon-chip--off">No colour set</span>`
 	if colourSet > 0 {
 		colourChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(colourSet) +
 			` of ` + strconv.Itoa(len(scopedColourKeys)) + `</span>`
@@ -237,12 +237,12 @@ func scopedSettingsBody(domainID, host string, values map[string]string, pres pr
 	b.WriteString(monAcc(saIcon("palette"), "Colour", "This site's own accents and browser tint",
 		colourChip, false, colour.String()))
 
-	styleChip := `<span class="mon-chip mon-chip--off">not known</span>`
+	styleChip := `<span class="mon-chip mon-chip--off">Not known</span>`
 	switch pres {
 	case presDefault:
-		styleChip = `<span class="mon-chip mon-chip--off">product default</span>`
+		styleChip = `<span class="mon-chip mon-chip--off">Product default</span>`
 	case presCustom:
-		styleChip = `<span class="mon-chip mon-chip--on">custom</span>`
+		styleChip = `<span class="mon-chip mon-chip--on">Custom</span>`
 	}
 	b.WriteString(monAcc(saIcon("palette"), "Start from your house style",
 		"Copies theme, navigation and footer across — once", styleChip, false,
@@ -297,7 +297,7 @@ if(cpy)cpy.addEventListener('click',function(){
       if(!cst)return;
       if(!res.ok){cst.textContent=(res.j&&res.j.message)||'Could not copy';return;}
       var n=(res.j&&typeof res.j.copied==='number')?res.j.copied:0;
-      cst.textContent=n?(n+' setting(s) copied — reload to see them'):'Nothing to copy: your own site is still on the defaults';})
+      cst.textContent=n?(n+' setting'+(n===1?'':'s')+' copied — reload to see them'):'Nothing to copy: your own site is still on the defaults';})
     .catch(function(e){cpy.disabled=false; if(cst)cst.textContent='Error: '+e;});
 });
 })();
@@ -419,6 +419,6 @@ func (a *App) handleOSScopedCopyFromPrimary(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	dbpkg.AuditLog("vayudomains.settings.copy_from_primary", dbpkg.AuditActor(r), d.Host,
-		strconv.Itoa(len(kv))+" presentational setting(s) copied")
+		strconv.Itoa(len(kv))+" presentational setting"+plural(len(kv))+" copied")
 	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "copied": len(kv), "host": d.Host})
 }

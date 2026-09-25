@@ -221,7 +221,7 @@ func domainsHeader(domains []domain.Domain, viewingHost string) string {
 	// The reference material, available and not shouting.
 	b.WriteString(`<div class="mon-stack">`)
 	b.WriteString(monAcc(saIcon("book"), "How adding a site works", "Register, point DNS, approve, provision",
-		`<span class="mon-chip mon-chip--off">read once</span>`, false,
+		`<span class="mon-chip mon-chip--off">Read once</span>`, false,
 		`<div class="card"><p class="text-sm muted">Adding a site only <strong>registers</strong> it — nothing is
     provisioned automatically, and a registered site serves nothing until it has a certificate. The order is:
     add it here, point its DNS at this server, approve it (<strong>Sync now</strong>, or the switch on the site's
@@ -645,7 +645,7 @@ function watch(n){
         var res=(j&&j.result)||{},d=res.details||'';
         if(d.indexOf('nginx-config-broken')>=0){pv.disabled=false;
           set('site-cert-status','nginx config was already invalid, so nothing ran.');return;}
-        if(res.failed>0){pv.disabled=false;set('site-cert-status','Finished with '+res.failed+' problem(s): '+d);return;}
+        if(res.failed>0){pv.disabled=false;set('site-cert-status','Finished with '+res.failed+' problem'+(res.failed===1?'':'s')+': '+d);return;}
         if(res.ran===0){pv.disabled=false;set('site-cert-status','Finished, but provisioned nothing: '+d);return;}
         set('site-cert-status','Provisioned ✓ — reloading');
         window.location.reload();})

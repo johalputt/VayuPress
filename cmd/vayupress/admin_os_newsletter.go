@@ -129,17 +129,17 @@ func (a *App) handleOSNewsletter(w http.ResponseWriter, r *http.Request) {
 	rows := ""
 	for _, s := range subs {
 		seg := "active"
-		statusBadge := `<span class="badge badge--ok">active</span>`
+		statusBadge := `<span class="badge badge--ok">Active</span>`
 		if s.Status == "inactive" {
 			seg = "unsubscribed"
-			statusBadge = `<span class="badge badge--muted">unsubscribed</span>`
+			statusBadge = `<span class="badge badge--muted">Unsubscribed</span>`
 		} else if !s.Confirmed {
 			seg = "pending"
-			statusBadge = `<span class="badge badge--warn">pending</span>`
+			statusBadge = `<span class="badge badge--warn">Pending</span>`
 		}
-		confirmed := `<span class="badge badge--muted">no</span>`
+		confirmed := `<span class="badge badge--muted">No</span>`
 		if s.Confirmed {
-			confirmed = `<span class="badge badge--ok">yes</span>`
+			confirmed = `<span class="badge badge--ok">Yes</span>`
 		}
 		rows += `<tr data-sub-row data-seg="` + seg + `" data-search="` + esc(strings.ToLower(s.Email)) + `">
   <td class="row-title">` + esc(s.Email) + `</td>
@@ -206,9 +206,9 @@ func nlBroadcastsTable(list []newsletter.Broadcast) string {
 	esc := html.EscapeString
 	rows := ""
 	for _, b := range list {
-		status := `<span class="badge badge--warn">sending</span>`
+		status := `<span class="badge badge--warn">Sending</span>`
 		if b.Status == "complete" {
-			status = `<span class="badge badge--ok">complete</span>`
+			status = `<span class="badge badge--ok">Complete</span>`
 		}
 		failed := strconv.Itoa(b.Failed)
 		if b.Failed > 0 {

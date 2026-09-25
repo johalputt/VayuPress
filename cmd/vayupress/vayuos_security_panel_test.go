@@ -17,7 +17,7 @@ func TestANewerMajorReadsAsAMigrationNotAnUpdate(t *testing.T) {
 	out := buildComponentTable([]secwatch.Component{
 		{Name: "goldmark", Current: "v1.8.6", Latest: "v1.8.6", NewerMajor: "v2.1.5"},
 	})
-	if strings.Contains(out, "update available") || !strings.Contains(out, "up to date") {
+	if strings.Contains(out, "Update available") || !strings.Contains(out, "Up to date") {
 		t.Errorf("a module at the newest release of its line is not up to date:\n%s", out)
 	}
 	if !strings.Contains(out, "v2.1.5 is a new major version") {

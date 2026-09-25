@@ -144,7 +144,7 @@ func runDomainsCLI(args []string, out io.Writer) error {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "%d domain(s) set sync_state=%s\n", n, state)
+			fmt.Fprintf(out, "%d domain%s set sync_state=%s\n", n, plural(n), state)
 			return nil
 		}
 		host := strings.TrimSpace(args[1])

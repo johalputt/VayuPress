@@ -281,22 +281,22 @@ func provisionCardHTML() string {
 	var status string
 	switch {
 	case !installed:
-		status = `<span class="badge badge--warn">helper not installed</span>`
+		status = `<span class="badge badge--warn">Helper not installed</span>`
 	case provisionPending():
 		status = `<span class="badge badge--info">running…</span>`
 	case haveRun && res.Failed > 0:
-		status = `<span class="badge badge--warn">last run had ` + strconv.Itoa(res.Failed) + ` problem(s)</span>`
+		status = `<span class="badge badge--warn">last run had ` + strconv.Itoa(res.Failed) + ` problem` + plural(res.Failed) + `</span>`
 	case haveRun && res.Ran == 0:
 		// Nothing was provisioned. Previously this rendered as "clean", which is
 		// how a run that did absolutely nothing came to look like success.
-		status = `<span class="badge badge--warn">last run provisioned nothing</span>`
+		status = `<span class="badge badge--warn">Last run provisioned nothing</span>`
 	case haveRun && res.Skipped > 0:
 		status = `<span class="badge badge--ok">` + strconv.Itoa(res.Ran) + ` provisioned, ` +
 			strconv.Itoa(res.Skipped) + ` skipped</span>`
 	case haveRun:
-		status = `<span class="badge badge--ok">last run clean</span>`
+		status = `<span class="badge badge--ok">Last run clean</span>`
 	default:
-		status = `<span class="badge badge--muted">never run</span>`
+		status = `<span class="badge badge--muted">Never run</span>`
 	}
 
 	var detail string

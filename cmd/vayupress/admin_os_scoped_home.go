@@ -217,7 +217,7 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 
 	// A site nobody can reach is the one fact that outranks everything below it.
 	if !d.IsPrimary && !d.IsSyncApproved() {
-		b.WriteString(`<div class="card"><p class="text-sm"><span class="badge badge--warn">on hold</span> ` +
+		b.WriteString(`<div class="card"><p class="text-sm"><span class="badge badge--warn">On hold</span> ` +
 			`<strong>This site is on manual hold.</strong> No certificate or vhost is issued for it, so it ` +
 			`does not serve. Approve it under <b>Lifecycle</b> below, then run <b>Provision subdomains</b> on ` +
 			`<a href="/os/dns">Domains &amp; DNS</a>.</p></div>`)
@@ -247,7 +247,7 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 			`<span class="mon-acc__head"><span class="mon-acc__title">` + esc(t.Title) + `</span>` +
 			`<span class="mon-acc__sub">Not scoped yet — it would edit the primary site, so it is ` +
 			`not linked from here</span></span>` +
-			`<span class="mon-chip mon-chip--off">` + esc(t.Soon) + `</span></div>`)
+			`<span class="mon-chip mon-chip--off">` + esc(titleFirst(t.Soon)) + `</span></div>`)
 	}
 	b.WriteString(`</div>`)
 
@@ -268,7 +268,7 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 	b.WriteString(monAcc(saIcon("globe"), "What this domain serves", "Blog, website, or both — and whether it carries mail",
 		servesChip, false, domainServesCard(d, mailOn)))
 	b.WriteString(monAcc(saIcon("user"), "Client access", "Who can sign in and see only this site",
-		chipFor(len(clients) > 0, strconv.Itoa(len(clients))+" login(s)", "no logins"),
+		chipFor(len(clients) > 0, strconv.Itoa(len(clients))+" login"+plural(len(clients)), "no logins"),
 		len(clients) == 0, domainClientAccessCard(d, clients)))
 	// Always rendered, including when mail is off install-wide. Hiding it then
 	// would leave the "—" on the mailbox tile unexplained; the card itself says
@@ -278,7 +278,7 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 	// is the difference between a working customer and a confused one.
 	allowanceChip := chipFor(mailReady, strconv.Itoa(mailboxes)+" in use", "mail off")
 	if noAllowance {
-		allowanceChip = `<span class="mon-chip mon-chip--off">none granted</span>`
+		allowanceChip = `<span class="mon-chip mon-chip--off">None granted</span>`
 	}
 	b.WriteString(monAcc(saIcon("mail"), "Mailbox allowance", "How many mailboxes this site may create",
 		allowanceChip, noAllowance, domainAllowanceCard(d, mailboxes, mailOn)))
@@ -287,7 +287,7 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 		chipFor(d.Status == domain.StatusActive, "active", "disabled"), false, scopedLifecycleBody(d)))
 	b.WriteString(monAcc(saIcon("columns"), "What is shared, and always will be",
 		"One binary, one machine — some things cannot be per-site",
-		`<span class="mon-chip mon-chip--off">by construction</span>`, false, scopedSharedBody()))
+		`<span class="mon-chip mon-chip--off">By construction</span>`, false, scopedSharedBody()))
 	b.WriteString(`</div>`)
 	return b.String()
 }
@@ -395,15 +395,16 @@ func scopedToolChipHTML(c scopedToolChip) string {
 	if c.On {
 		cls = "mon-chip mon-chip--on"
 	}
-	return `<span class="` + cls + `">` + html.EscapeString(c.Text) + `</span>`
+	return `<span class="` + cls + `">` + html.EscapeString(titleFirst(c.Text)) + `</span>`
 }
 
-// chipFor renders a monAcc summary chip in the on/off styles.
+// chipFor renders a monAcc summary chip in the on/off styles. A chip is a
+// status label, set in sentence case whatever its caller passed.
 func chipFor(on bool, onText, offText string) string {
 	if on {
-		return `<span class="mon-chip mon-chip--on">` + html.EscapeString(onText) + `</span>`
+		return `<span class="mon-chip mon-chip--on">` + html.EscapeString(titleFirst(onText)) + `</span>`
 	}
-	return `<span class="mon-chip mon-chip--off">` + html.EscapeString(offText) + `</span>`
+	return `<span class="mon-chip mon-chip--off">` + html.EscapeString(titleFirst(offText)) + `</span>`
 }
 
 // scopedNeedsCertificate reports whether a CA certificate is something this site
@@ -491,7 +492,7 @@ func scopedCertificateSection(d domain.Domain, checks []diagCheck, logLines []st
 		certSub = "Blocked — the diagnosis below names what is stopping it, and waiting will not clear it"
 	}
 	b.WriteString(monAcc(saIcon("lock"), "Certificate", certSub,
-		`<span class="mon-chip mon-chip--off">`+html.EscapeString(certChip)+`</span>`,
+		`<span class="mon-chip mon-chip--off">`+html.EscapeString(titleFirst(certChip))+`</span>`,
 		true, scopedCertificateBody(d)))
 
 	if len(checks) > 0 {
@@ -520,7 +521,7 @@ func scopedCertificateBody(d domain.Domain) string {
 	}
 	return `<div class="card">
   <div class="settings-block-title">Certificate pending</div>
-  <p class="text-sm"><span class="badge badge--warn">no certificate</span> ` + headline + `, so a visitor is
+  <p class="text-sm"><span class="badge badge--warn">No certificate</span> ` + headline + `, so a visitor is
     served the primary domain's certificate and the browser refuses the page
     (<code>ERR_CERT_COMMON_NAME_INVALID</code>).</p>
   <p class="text-sm muted">This is not instant by design. Obtaining a certificate and reloading nginx needs

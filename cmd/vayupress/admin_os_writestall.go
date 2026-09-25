@@ -86,7 +86,7 @@ func writeStallStats(st dbpkg.WriteStallState, rec analytics.CollectorState) str
 			strconv.FormatInt(st.WaitCount, 10)+" callers waited, since boot") +
 		monStat("View counting", countValue, countLabel) +
 		monStat("Views per write", ratio,
-			strconv.FormatInt(rec.Flushed, 10)+" counted · "+strconv.FormatInt(rec.Writes, 10)+" statements") +
+			strconv.FormatInt(rec.Flushed, 10)+" counted · "+strconv.FormatInt(rec.Writes, 10)+" statement"+plural(rec.Writes)) +
 		`</div>`
 }
 
@@ -151,8 +151,7 @@ func writeStallCard(st dbpkg.WriteStallState, rec analytics.CollectorState) stri
 	// content site and the one most likely to be misconfigured into silence.
 	dropNote := ""
 	if rec.Dropped > 0 {
-		dropNote = ` <strong>` + strconv.FormatInt(rec.Dropped, 10) + `</strong> view(s) were dropped because
-		the buffer was full — the buffer is bounded on purpose, since losing a view count is a rounding error
+		dropNote = ` Dropped because the buffer was full: <strong>` + strconv.FormatInt(rec.Dropped, 10) + `</strong> view` + plural(rec.Dropped) + `. The buffer is bounded on purpose, since losing a view count is a rounding error
 		and losing the site is an outage.`
 	}
 	errNote := ""
@@ -171,7 +170,7 @@ func writeStallCard(st dbpkg.WriteStallState, rec analytics.CollectorState) stri
   <div class="flex justify-between mt-3"><span class="text-sm muted">Buffered now</span><span>` +
 		strconv.Itoa(rec.Buffered) + ` / ` + strconv.Itoa(rec.BufferedHi) + ` keys</span></div>
   <div class="flex justify-between mt-2"><span class="text-sm muted">Awaiting the next write</span><span>` +
-		strconv.FormatInt(rec.Pending, 10) + ` view(s)</span></div>
+		strconv.FormatInt(rec.Pending, 10) + ` view` + plural(rec.Pending) + `</span></div>
   <div class="flex justify-between mt-2"><span class="text-sm muted">Last written</span><span>` +
 		html.EscapeString(last) + `</span></div>
   ` + errNote + `

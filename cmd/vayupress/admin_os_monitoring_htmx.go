@@ -61,14 +61,14 @@ func monBudgetID(name string) string {
 // response so HTMX replaces it by id.
 func monModePill(cur mode.Mode, oob bool) string {
 	return `<span id="mon-mode" class="tool-status ` + modeStateClass(cur) + `"` + oobAttr(oob) + `>` +
-		html.EscapeString(string(cur)) + `</span>`
+		html.EscapeString(saModeLabel(cur)) + `</span>`
 }
 
 // monBudgetStatePill renders one governance budget's state pill, keyed by a
 // stable per-budget id so the poller can update it out-of-band.
 func monBudgetStatePill(name, state string, oob bool) string {
 	return `<span id="` + monBudgetID(name) + `" class="tool-status ` + budgetStateClass(state) + `"` + oobAttr(oob) + `>` +
-		html.EscapeString(state) + `</span>`
+		html.EscapeString(budgetStateLabel(state)) + `</span>`
 }
 
 // monUpdatedStamp renders the "updated HH:MM:SS" liveness stamp with an honest

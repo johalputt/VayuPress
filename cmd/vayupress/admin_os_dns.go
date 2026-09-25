@@ -400,21 +400,21 @@ func (a *App) hostedDomainViews(ctx context.Context, primary string) []dnsDomain
 func dnsStatusBadge(c dnsCheck) string {
 	switch {
 	case c.State == dnsPointedHere:
-		return `<span class="badge badge--ok">pointed here</span>`
+		return `<span class="badge badge--ok">Pointed here</span>`
 	case c.State == dnsProxied:
 		// The real misconfiguration, and the only one worth a warning: a
 		// machine-to-machine host sitting behind the same proxy as the apex. It
 		// resolves, a certificate may even issue, and the service still fails —
 		// because the client cannot answer a bot challenge.
-		return `<span class="badge badge--warn">behind the proxy</span>`
+		return `<span class="badge badge--warn">Behind the proxy</span>`
 	case c.State == dnsUnverified:
-		return `<span class="badge badge--ok">resolving</span>`
+		return `<span class="badge badge--ok">Resolving</span>`
 	case c.State == dnsUnknown:
-		return `<span class="badge badge--muted">not checked</span>`
+		return `<span class="badge badge--muted">Not checked</span>`
 	case c.Required:
-		return `<span class="badge badge--warn">not pointed</span>`
+		return `<span class="badge badge--warn">Not pointed</span>`
 	default:
-		return `<span class="badge badge--muted">not pointed</span>`
+		return `<span class="badge badge--muted">Not pointed</span>`
 	}
 }
 
@@ -422,19 +422,19 @@ func dnsStatusBadge(c dnsCheck) string {
 func dnsDomainSection(v dnsDomainView) string {
 	var b strings.Builder
 
-	role := `<span class="badge badge--muted">secondary</span>`
+	role := `<span class="badge badge--muted">Secondary</span>`
 	if v.IsPrimary {
-		role = `<span class="badge badge--ok">primary</span>`
+		role = `<span class="badge badge--ok">Primary</span>`
 	}
 	flags := role
 	if !v.IsPrimary && !v.SyncApproved {
-		flags += ` <span class="badge badge--warn">on hold</span>`
+		flags += ` <span class="badge badge--warn">On hold</span>`
 	}
 	if !v.IsPrimary && v.MailEnabled {
-		flags += ` <span class="badge badge--muted">mail</span>`
+		flags += ` <span class="badge badge--muted">Mail</span>`
 	}
 	if v.NeedsCertificate() {
-		flags += ` <span class="badge badge--warn">no certificate</span>`
+		flags += ` <span class="badge badge--warn">No certificate</span>`
 	}
 
 	open := ""
@@ -462,7 +462,7 @@ func dnsDomainSection(v dnsDomainView) string {
 		if v.TLSState == domain.TLSFailed {
 			reason = `the last attempt to issue its certificate <strong>failed</strong>`
 		}
-		b.WriteString(`<p class="text-sm"><span class="badge badge--warn">no certificate</span> ` +
+		b.WriteString(`<p class="text-sm"><span class="badge badge--warn">No certificate</span> ` +
 			`<strong>` + html.EscapeString(v.Host) + ` resolves here, but ` + reason + `.</strong> ` +
 			`Until one exists there is no vhost for this host, so a visitor is served the primary ` +
 			`domain's certificate and the browser refuses the page ` +
@@ -565,7 +565,7 @@ func (a *App) handleOSDNS(w http.ResponseWriter, r *http.Request) {
 		if held != 1 {
 			heldTone += "s"
 		}
-		body.WriteString(`<div class="card"><p class="text-sm"><span class="badge badge--warn">on hold</span> <strong>` + heldTone +
+		body.WriteString(`<div class="card"><p class="text-sm"><span class="badge badge--warn">On hold</span> <strong>` + heldTone +
 			` on manual hold.</strong> Held domains are skipped by every provisioning helper, so no certificate is issued and key discovery for them stays dead. Approve them under <a href="/os/domains">Domains</a>, then provision below.</p></div>`)
 	}
 

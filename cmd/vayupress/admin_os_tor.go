@@ -48,7 +48,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 
 	esc := htmpl.HTMLEscapeString
 	body := `<div class="page-header"><h1>VayuTor</h1></div>`
-	body += `<p class="page-sub">Publish every hosted domain as a Tor onion service — a private, un-trackable way in that works alongside the normal address. No provider, network, or observer can see who visits..</p>`
+	body += `<p class="page-sub">Publish every hosted domain as a Tor onion service — a private, un-trackable way in that works alongside the normal address. No provider, network, or observer can see who visits.</p>`
 
 	if a.vayuTor == nil || !st.Available {
 		body += `<div class="empty-state">VayuTor is switched off at the environment level (<code>VAYUOS_TOR=off</code>). Remove that to make it available, then reload.</div>`

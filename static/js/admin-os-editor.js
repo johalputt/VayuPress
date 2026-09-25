@@ -320,14 +320,16 @@
     wrap.className = 'eblock eblock--' + (block.type || 'paragraph');
     wrap.setAttribute('data-block-idx', String(idx));
 
-    // Control rail (drag handle, move up/down, insert, delete).
+    // Block controls: the grip in the gutter, the other actions in a toolbar
+    // over the block's corner. Six buttons stacked in the gutter set every
+    // block's height, so a one-line paragraph stood 162px tall.
     var ctrl = document.createElement('div');
     ctrl.className = 'eblock__ctrl';
 
     var drag = document.createElement('button');
     drag.type = 'button';
     drag.className = 'eblock__btn eblock__drag';
-    drag.textContent = '⋮⋮';
+    drag.appendChild(window.vpIcon('grip'));
     drag.title = 'Drag to reorder';
     drag.setAttribute('draggable', 'true');
     drag.setAttribute('aria-label', 'Drag to reorder block');
@@ -381,18 +383,20 @@
       if (grabbedIdx === idx) { grabbedIdx = -1; wrap.classList.remove('is-grabbed'); drag.setAttribute('aria-grabbed', 'false'); }
     });
 
-    var up = mkCtrlBtn('↑', 'Move up', function () { nudge(idx, -1); });
-    var down = mkCtrlBtn('↓', 'Move down', function () { nudge(idx, 1); });
-    var addBtn = mkCtrlBtn('+', 'Insert block below', function () { openPalette(idx + 1, idx); });
-    var dupBtn = mkCtrlBtn('⧉', 'Duplicate block', function () { duplicateBlock(idx); });
-    var delBtn = mkCtrlBtn('×', 'Delete block', function () { removeBlock(idx); });
+    var up = mkCtrlBtn('chev-d', 'Move up', function () { nudge(idx, -1); });
+    up.classList.add('is-up');
+    var acts = document.createElement('div');
+    acts.className = 'eblock__acts';
+    acts.setAttribute('role', 'toolbar');
+    acts.setAttribute('aria-label', 'Block actions');
+    acts.appendChild(up);
+    acts.appendChild(mkCtrlBtn('chev-d', 'Move down', function () { nudge(idx, 1); }));
+    acts.appendChild(mkCtrlBtn('plus', 'Insert block below', function () { openPalette(idx + 1, idx); }));
+    acts.appendChild(mkCtrlBtn('copy', 'Duplicate block', function () { duplicateBlock(idx); }));
+    acts.appendChild(mkCtrlBtn('trash', 'Delete block', function () { removeBlock(idx); }));
 
     ctrl.appendChild(drag);
-    ctrl.appendChild(up);
-    ctrl.appendChild(down);
-    ctrl.appendChild(addBtn);
-    ctrl.appendChild(dupBtn);
-    ctrl.appendChild(delBtn);
+    ctrl.appendChild(acts);
     wrap.appendChild(ctrl);
 
     // Drop-target behaviour for reordering.
@@ -422,12 +426,13 @@
     return wrap;
   }
 
-  function mkCtrlBtn(label, title, onClick) {
+  function mkCtrlBtn(icon, title, onClick) {
     var b = document.createElement('button');
     b.type = 'button';
     b.className = 'eblock__btn';
-    b.textContent = label;
+    b.appendChild(window.vpIcon(icon));
     b.title = title;
+    b.setAttribute('aria-label', title);
     b.addEventListener('click', onClick);
     return b;
   }
@@ -699,7 +704,7 @@
                 blocks = blocks.slice(0, idx).concat(hparsed, blocks.slice(idx + 1));
                 structural();
                 var hlast = idx + hparsed.length - 1;
-                setTimeout(function () { focusBlock(hlast, true); }, 0);
+                focusBlock(hlast, true);
                 return;
               }
             }
@@ -715,7 +720,7 @@
                 blocks = blocks.slice(0, idx).concat(parsed, blocks.slice(idx + 1));
                 structural();
                 var last = idx + parsed.length - 1;
-                setTimeout(function () { focusBlock(last, true); }, 0);
+                focusBlock(last, true);
               }
             }
           });
@@ -838,7 +843,7 @@
       });
       var ctlTd = document.createElement('td');
       ctlTd.className = 'eblock__table-rowctl';
-      var del = mkCtrlBtn('×', 'Delete row', function () { block.rows.splice(r, 1); structural(); });
+      var del = mkCtrlBtn('x', 'Delete row', function () { block.rows.splice(r, 1); structural(); });
       ctlTd.appendChild(del);
       tr.appendChild(ctlTd);
       tbody.appendChild(tr);
@@ -1092,6 +1097,9 @@
     t.style.height = (t.scrollHeight) + 'px';
   }
 
+  // Called straight after a synchronous re-render, never deferred: until it
+  // runs, the field that had focus is gone and keys typed land on the page. A
+  // letter typed within a frame of Enter was lost that way.
   function focusBlock(idx, atEnd) {
     var wrap = canvas.querySelector('[data-block-idx="' + idx + '"]');
     if (!wrap) return;
@@ -1106,7 +1114,7 @@
   function convertBlock(idx, newBlock) {
     blocks[idx] = newBlock;
     structural();
-    setTimeout(function () { focusBlock(idx, true); }, 0);
+    focusBlock(idx, true);
   }
 
   // tryParagraphShortcut turns leading Markdown markers in a paragraph into the
@@ -1143,7 +1151,7 @@
       blocks[idx] = { type: 'divider' };
       blocks.splice(idx + 1, 0, { type: 'paragraph', text: '' });
       structural();
-      setTimeout(function () { focusBlock(idx + 1, true); }, 0);
+      focusBlock(idx + 1, true);
       return true;
     }
     return false;
@@ -1334,7 +1342,7 @@
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         insertBlock(idx + 1, { type: 'paragraph', text: '' });
-        setTimeout(function () { focusBlock(idx + 1, true); }, 0);
+        focusBlock(idx + 1, true);
         return;
       }
       if (e.key === 'Backspace' && el.selectionStart === 0 && el.selectionEnd === 0 &&
@@ -1342,7 +1350,7 @@
         e.preventDefault();
         var prev = idx - 1;
         removeBlock(idx);
-        if (prev >= 0) setTimeout(function () { focusBlock(prev, true); }, 0);
+        if (prev >= 0) focusBlock(prev, true);
         return;
       }
     };
@@ -1392,7 +1400,7 @@
     catch (e) { return; } // never corrupt the doc on an unexpected shape
     blocks.splice(idx + 1, 0, copy);
     structural();
-    setTimeout(function () { focusBlock(idx + 1, true); }, 0);
+    focusBlock(idx + 1, true);
   }
 
   // nudge swaps a block with its neighbour (keyboard / button reorder).

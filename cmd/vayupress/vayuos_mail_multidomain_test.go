@@ -57,7 +57,7 @@ func TestVayuMailboxDomainCard(t *testing.T) {
 	a := &App{}
 	sec := a.vayuMailboxDomainCard("vayupress.com", "example.test",
 		[]vmail.MailboxSummary{{Username: "hello", Domain: "vayupress.com", Total: 3, Unseen: 1}}, false)
-	for _, want := range []string{"vayupress.com", "secondary", "hello@vayupress.com", "user=hello%40vayupress.com", "1 unseen"} {
+	for _, want := range []string{"vayupress.com", `badge--muted">Secondary<`, "hello@vayupress.com", "user=hello%40vayupress.com", "1 unseen"} {
 		if !strings.Contains(sec, want) {
 			t.Errorf("secondary card missing %q\n%s", want, sec)
 		}
@@ -67,7 +67,7 @@ func TestVayuMailboxDomainCard(t *testing.T) {
 	if !strings.Contains(prim, `user=admin"`) {
 		t.Errorf("primary card should link the bare local part:\n%s", prim)
 	}
-	if !strings.Contains(prim, "primary") {
+	if !strings.Contains(prim, ">Primary</span>") {
 		t.Errorf("primary card missing the primary badge")
 	}
 }

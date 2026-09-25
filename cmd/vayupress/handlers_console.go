@@ -587,12 +587,3 @@ func humanizeWindow(d time.Duration) string {
 	}
 	return fmt.Sprintf("%d s", int(d.Seconds()))
 }
-
-// sentenceWord capitalises the first letter of a machine word ("pass" →
-// "Pass"); the console reads in sentence case, not in capitals.
-func sentenceWord(w string) string {
-	if w == "" {
-		return w
-	}
-	return strings.ToUpper(w[:1]) + w[1:]
-}

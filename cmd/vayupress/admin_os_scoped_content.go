@@ -121,9 +121,9 @@ func scopedContentPage(d domain.Domain, items []dbpkg.Article) string {
 			if it.IsPage {
 				kind = "Page"
 			}
-			state := `<span class="badge badge--ok">published</span>`
+			state := `<span class="badge badge--ok">Published</span>`
 			if it.Status == "draft" {
-				state = `<span class="badge badge--warn">draft</span>`
+				state = `<span class="badge badge--warn">Draft</span>`
 			}
 			live := ""
 			if it.Status != "draft" {
@@ -141,7 +141,7 @@ func scopedContentPage(d domain.Domain, items []dbpkg.Article) string {
 		owned.WriteString(`</tbody></table></div></div>`)
 	}
 
-	ownedChip := `<span class="mon-chip mon-chip--off">nothing yet</span>`
+	ownedChip := `<span class="mon-chip mon-chip--off">Nothing yet</span>`
 	if len(items) > 0 {
 		ownedChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(len(items)) + ` items</span>`
 	}
@@ -159,7 +159,7 @@ func scopedContentPage(d domain.Domain, items []dbpkg.Article) string {
   <div class="vm-row"><button type="button" class="btn btn--primary btn--sm" data-scoped-assign>Move to ` + esc(d.Host) + `</button></div>
 </div>`
 	b.WriteString(monAcc(saIcon("swap"), "Move a post to this site", "Ownership decides which site serves it",
-		`<span class="mon-chip mon-chip--on">by slug</span>`, false, moveBody))
+		`<span class="mon-chip mon-chip--on">By slug</span>`, false, moveBody))
 
 	b.WriteString(`</div>`) // mon-stack
 	return b.String()

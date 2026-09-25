@@ -41,7 +41,7 @@ func insertImported(posts []importedPost, dryRun, skipDrafts bool) error {
 			}
 			fmt.Printf("[%3d/%d] %q  slug=%s  tags=%d%s\n", i+1, len(posts), p.Title, p.Slug, len(p.Tags), flag)
 		}
-		fmt.Printf("\nDry run: %d post(s) would be imported.\n", len(posts))
+		fmt.Printf("\nDry run: %d post%s would be imported.\n", len(posts), plural(len(posts)))
 		return nil
 	}
 	db := dbpkg.DB
@@ -105,7 +105,7 @@ func runMigrateGhost(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Parsed %d Ghost post(s) from %s\n\n", len(posts), file)
+	fmt.Printf("Parsed %d Ghost post%s from %s\n\n", len(posts), plural(len(posts)), file)
 	return insertImported(posts, dryRun, skipDrafts)
 }
 
@@ -191,7 +191,7 @@ func runMigrateWordPress(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Parsed %d WordPress post(s) from %s\n\n", len(posts), file)
+	fmt.Printf("Parsed %d WordPress post%s from %s\n\n", len(posts), plural(len(posts)), file)
 	return insertImported(posts, dryRun, skipDrafts)
 }
 

@@ -74,8 +74,8 @@ func runMailCLI(ctx context.Context, args []string, out io.Writer, accts *mail.A
 		}
 
 		fmt.Fprintf(out, "password reset for %s\n", addr)
-		fmt.Fprintf(out, "  %d app password(s) revoked — every mail app must be set up again\n",
-			res.AppPasswordsRevoked)
+		fmt.Fprintf(out, "  %d app password%s revoked — every mail app must be set up again\n",
+			res.AppPasswordsRevoked, plural(res.AppPasswordsRevoked))
 		fmt.Fprintln(out, "  outstanding recovery links invalidated")
 		for _, p := range res.Problems {
 			fmt.Fprintf(out, "  WARNING: %s\n", p)

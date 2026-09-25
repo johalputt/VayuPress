@@ -228,7 +228,7 @@ func TestTheContentPageListsDrafts(t *testing.T) {
 		t.Fatal("a draft owned by this site is not listed, so the console shows a client's site " +
 			"as emptier than it is and the item nobody has finished is the one hidden")
 	}
-	if !strings.Contains(page, "draft") {
+	if !strings.Contains(page, `<span class="badge badge--warn">Draft</span>`) {
 		t.Error("the draft is listed without being marked as one, so it reads as live")
 	}
 }
@@ -900,7 +900,7 @@ func TestTheCollapsedCertificatePanelsStillTellTheTruth(t *testing.T) {
 	if !ok {
 		t.Fatal("the accordion has no body, so its markup is not what this asserts against")
 	}
-	if !strings.Contains(sum, "pending") {
+	if !strings.Contains(sum, ">Pending<") {
 		t.Error("the certificate accordion's collapsed summary does not say the certificate is " +
 			"pending, so folding the panel hid the state it existed to show")
 	}
@@ -931,7 +931,7 @@ func TestTheCollapsedCertificatePanelsStillTellTheTruth(t *testing.T) {
 	if strings.Contains(clean[strings.LastIndex(clean[:j], "<details"):j], "open") {
 		t.Error("the diagnosis opens itself when nothing is blocking, so opening means nothing")
 	}
-	if !strings.Contains(clean, "nothing blocking") {
+	if !strings.Contains(clean, ">Nothing blocking<") {
 		t.Error("a clean diagnosis does not say so from its summary")
 	}
 }

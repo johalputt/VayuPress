@@ -167,7 +167,7 @@ func TestClaudeCodeHostNote(t *testing.T) {
 	}
 
 	blocked := osClaudeCodeSetupCards("https://blog.example.com/mcp", "https://blog.example.com/mcp", false, "mcp.example.com")
-	if !strings.Contains(blocked, "blocked") {
+	if !strings.Contains(blocked, `<span class="badge badge--warn">Blocked</span>`) {
 		t.Error("a challenged dedicated host must be named distinctly from 'not set up'")
 	}
 }

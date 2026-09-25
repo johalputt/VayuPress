@@ -35,6 +35,7 @@ import (
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // authorSelectOptions renders <option> tags for every staff user, marking
@@ -992,19 +993,21 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
       <button type="button" class="btn btn--ghost btn--sm" data-editor-redo title="Redo (Ctrl/Cmd+Shift+Z)" disabled>Redo</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-history-btn>History</button>
     </div>
-    <div class="text-xs muted">Press <kbd>/</kbd> on an empty block for commands, or <kbd>⌘K</kbd>/<kbd>Ctrl+K</kbd> anywhere. <kbd>/ai</kbd> for AI assist.</div>
-    <div class="text-xs muted mt-2">Type Markdown to format: <kbd>## </kbd> heading, <kbd>- </kbd> list, <kbd>- [ ] </kbd> task, <kbd>1. </kbd> numbered, <kbd>&gt; </kbd> quote, <kbd>&#96;&#96;&#96;</kbd> code, <kbd>---</kbd> divider.</div>
-    <div class="text-xs muted mt-2">Select text for <strong>bold</strong>/<em>italic</em>/link, or use <kbd>**bold**</kbd>, <kbd>*italic*</kbd>, <kbd>[text](url)</kbd>. Drag or paste an image to upload.</div>
-    <div class="text-xs muted mt-2">Reorder blocks by dragging <kbd>⋮⋮</kbd> or with the <kbd>↑</kbd>/<kbd>↓</kbd> buttons. <kbd>⌘.</kbd> toggles focus mode.</div>
-    <div class="text-xs muted mt-2"><kbd>Enter</kbd> new block · <kbd>Shift+Enter</kbd> line break · <kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> to save.</div>
-    <div class="text-xs muted mt-2"><kbd>Markdown</kbd> (<kbd>⌘⇧M</kbd>) edits the whole post as Markdown; <kbd>HTML</kbd> (<kbd>⌘⇧H</kbd>) as raw HTML — both round-trip back to blocks losslessly.</div>
-    <div class="text-xs muted mt-2"><kbd>` + saIcon("settings") + ` Settings</kbd> (<kbd>⌘⇧P</kbd>) opens post settings: feature image, URL, publish date, excerpt, tags, SEO &amp; social cards.</div>
+    ` + string(ui.Explain(ui.HTML(`
+      <p>Press <kbd>/</kbd> on an empty block for commands, or <kbd>⌘K</kbd>/<kbd>Ctrl+K</kbd> anywhere. <kbd>/ai</kbd> for AI assist.</p>
+      <p>Type Markdown to format: <kbd>## </kbd> heading, <kbd>- </kbd> list, <kbd>- [ ] </kbd> task, <kbd>1. </kbd> numbered, <kbd>&gt; </kbd> quote, <kbd>&#96;&#96;&#96;</kbd> code, <kbd>---</kbd> divider.</p>
+      <p>Select text for <strong>bold</strong>/<em>italic</em>/link, or use <kbd>**bold**</kbd>, <kbd>*italic*</kbd>, <kbd>[text](url)</kbd>. Drag or paste an image to upload.</p>
+      <p>Reorder blocks by dragging the grip, or with <strong>Move up</strong> and <strong>Move down</strong> over the block. <kbd>⌘.</kbd> toggles focus mode.</p>
+      <p><kbd>Enter</kbd> new block · <kbd>Shift+Enter</kbd> line break · <kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> to save.</p>
+      <p><kbd>Markdown</kbd> (<kbd>⌘⇧M</kbd>) edits the whole post as Markdown; <kbd>HTML</kbd> (<kbd>⌘⇧H</kbd>) as raw HTML — both round-trip back to blocks losslessly.</p>
+      <p><strong>Settings</strong> (<kbd>⌘⇧P</kbd>) opens post settings: feature image, URL, publish date, excerpt, tags, SEO &amp; social cards.</p>
+    `))) + `
   </aside>
   <div class="editor-preview-modal" data-editor-preview hidden role="dialog" aria-modal="true" aria-label="Preview">
     <div class="editor-preview-panel">
       <div class="editor-preview-head">
         <span>Preview</span>
-        <button type="button" class="btn--icon" data-editor-preview-close aria-label="Close preview">✕</button>
+        <button type="button" class="btn--icon" data-editor-preview-close aria-label="Close preview">` + saIcon("x") + `</button>
       </div>
       <article class="editor-preview-body article" data-editor-preview-body></article>
     </div>
@@ -1013,7 +1016,7 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
     <div class="editor-history-panel">
       <div class="editor-history-head">
         <span>Version history</span>
-        <button type="button" class="btn--icon" data-editor-history-close aria-label="Close history">✕</button>
+        <button type="button" class="btn--icon" data-editor-history-close aria-label="Close history">` + saIcon("x") + `</button>
       </div>
       <div class="editor-history-body">
         <div class="editor-history-list" data-editor-history-list></div>
@@ -1025,7 +1028,7 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
     <div class="editor-history-panel">
       <div class="editor-history-head">
         <span>` + saIcon("sparkle") + ` Write with AI</span>
-        <button type="button" class="btn--icon" data-ai-close aria-label="Close">✕</button>
+        <button type="button" class="btn--icon" data-ai-close aria-label="Close">` + saIcon("x") + `</button>
       </div>
       <div class="editor-settings-body ai-panel">
         <div class="pm-field">
@@ -1142,7 +1145,7 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
   <aside class="editor-settings" data-editor-settings hidden role="dialog" aria-modal="true" aria-label="Post settings">
     <div class="editor-settings-head">
       <span class="editor-settings-title">Post settings</span>
-      <button type="button" class="btn--icon" data-editor-settings-close aria-label="Close post settings">✕</button>
+      <button type="button" class="btn--icon" data-editor-settings-close aria-label="Close post settings">` + saIcon("x") + `</button>
     </div>
     <div class="editor-settings-body">
       <div class="pm-field">

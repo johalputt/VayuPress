@@ -142,10 +142,8 @@ func (inj *Injector) Reset() {
 
 // Named fault points used across the platform.
 const (
-	FaultWALWrite          = "db.wal.write"
-	FaultMigrationApply    = "migrations.apply"
-	FaultSigningSign       = "signing.sign"
-	FaultFederationDeliver = "federation.deliver"
-	FaultPluginInvoke      = "sandbox.plugin.invoke"
-	FaultOutboxCommit      = "outbox.commit"
+	FaultWALWrite       = "db.wal.write"
+	FaultMigrationApply = "migrations.apply"
+	FaultPluginInvoke   = "sandbox.plugin.invoke"
+	FaultOutboxCommit   = "outbox.commit"
 )

@@ -18,16 +18,16 @@ package main
 // styles, no inline script (this page needs none), every dynamic string escaped.
 
 import (
-	"html"
-	htmpl "html/template"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/budget"
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 func (a *App) handleOSGovernance(w http.ResponseWriter, r *http.Request) {
@@ -39,87 +39,71 @@ func (a *App) handleOSGovernance(w http.ResponseWriter, r *http.Request) {
 	history := mode.Global.History()
 	budgets := budget.Global.Status(now)
 
-	// ── Summary cards ────────────────────────────────────────────────────────
 	healthy, atRisk, exhausted := 0, 0, 0
+	budgetRows := make([][]ui.HTML, 0, len(budgets))
 	for _, b := range budgets {
+		tone := "ok"
 		switch b.State {
 		case "healthy":
 			healthy++
 		case "at-risk":
 			atRisk++
+			tone = "warn"
 		default:
 			exhausted++
+			tone = "danger"
 		}
-	}
-
-	summary := `<div class="stat-grid mb-6">` +
-		monStat("System mode", string(cur), strconv.Itoa(len(history))+" transition(s)") +
-		monStat("Budgets", strconv.Itoa(healthy)+" healthy", strconv.Itoa(atRisk)+" at-risk · "+strconv.Itoa(exhausted)+" exhausted") +
-		`</div>`
-
-	// ── Error budgets ────────────────────────────────────────────────────────
-	budgetRows := ""
-	for _, b := range budgets {
 		window := (time.Duration(b.WindowSec) * time.Second).String()
-		budgetRows += `<tr>
-  <td class="row-title">` + html.EscapeString(b.Name) + `<div class="row-meta">tracks ` + html.EscapeString(b.Tracks) + ` · window ` + html.EscapeString(window) + `</div></td>
-  <td class="muted text-sm">` + strconv.Itoa(b.Consumed) + ` / ` + strconv.Itoa(b.Limit) + `</td>
-  <td class="muted text-sm">` + html.EscapeString(sentenceWord(strings.ToLower(b.OnExhaust))) + `</td>
-  <td><span class="tool-status ` + budgetStateClass(b.State) + `">` + html.EscapeString(b.State) + `</span></td>
-</tr>`
+		budgetRows = append(budgetRows, []ui.HTML{
+			`<div>` + ui.Text(b.Name) + `</div><div class="muted text-xs">Tracks ` + ui.Text(strings.ToLower(b.Tracks)) + ` · ` + ui.Text(window) + ` window</div>`,
+			ui.Text(strconv.Itoa(b.Consumed) + " of " + strconv.Itoa(b.Limit)),
+			ui.Text(titleFirst(strings.ToLower(b.OnExhaust))),
+			ui.Tag(tone, budgetStateLabel(b.State)),
+		})
 	}
-	if budgetRows == "" {
-		budgetRows = `<tr><td colspan="4" class="muted text-sm">No budgets configured.</td></tr>`
-	}
-	budgetCard := `<div class="card mb-6">
-  <div class="card-title">Error budgets</div>
-  <div class="table-wrap"><table class="table">
-    <thead><tr><th>Budget</th><th>Consumed</th><th>On exhaust</th><th>State</th></tr></thead>
-    <tbody>` + budgetRows + `</tbody>
-  </table></div>
-  <div class="text-xs muted mt-3">Accounting + recommendation only — mode transitions are operator-gated, never auto-applied.</div>
-</div>`
 
-	// ── Mode transition lineage ──────────────────────────────────────────────
-	transRows := ""
-	hist := history
-	// Show the most recent transitions first, capped to the latest 20.
-	for i := len(hist) - 1; i >= 0 && i >= len(hist)-20; i-- {
-		t := hist[i]
-		transRows += `<tr>
-  <td class="muted text-sm">` + html.EscapeString(string(t.From)) + ` → ` + html.EscapeString(string(t.To)) + `</td>
-  <td class="muted text-sm">` + html.EscapeString(t.Reason) + `</td>
-  <td class="muted text-sm">` + t.OccurredAt.UTC().Format("2006-01-02 15:04:05Z") + `</td>
-</tr>`
+	// Most recent first, the latest 20. A restart brings the journal's history
+	// back, so this reads the same after one as before it.
+	transRows := [][]ui.HTML{}
+	for i := len(history) - 1; i >= 0 && i >= len(history)-20; i-- {
+		t := history[i]
+		transRows = append(transRows, []ui.HTML{
+			ui.Text(saModeLabel(t.From) + " → " + saModeLabel(t.To)),
+			ui.Text(t.Reason),
+			`<span class="muted">` + ui.Text(config.InSite(t.OccurredAt).Format("2 Jan 15:04")) + `</span>`,
+		})
 	}
-	if transRows == "" {
-		transRows = `<tr><td colspan="3" class="muted text-sm">No transitions yet — the runtime has held its current mode since boot.</td></tr>`
+
+	// Whether a budget's recommendation changes the mode by itself is a setting,
+	// so the page reads it rather than asserting either answer.
+	applied := "Recommendations only: changing the mode is yours, on System state."
+	if budget.GlobalActuator.Enabled() {
+		applied = "Applied automatically: an exhausted budget moves the install into the mode it names."
 	}
-	transCard := `<div class="card mb-6">
-  <div class="card-title">Mode transition lineage</div>
-  <div class="table-wrap"><table class="table">
-    <thead><tr><th>Transition</th><th>Reason</th><th>When (UTC)</th></tr></thead>
-    <tbody>` + transRows + `</tbody>
-  </table></div>
-</div>`
 
-	// ── Deep console links ───────────────────────────────────────────────────
-	link := func(href, label, desc string) string {
-		return `<a class="tool-card" href="` + href + `">
-  <div class="tool-card__head"><div class="tool-card__title">` + html.EscapeString(label) + `</div></div>
-  <div class="tool-card__desc">` + html.EscapeString(desc) + `</div>
-</a>`
+	modeTone := ""
+	if t := saModeTone(cur); t != "ok" {
+		modeTone = t
 	}
-	consoles := `<div class="tools-cat">Deep operator consoles</div>
-<div class="tools-grid">` +
-		link("/os/modes", "Mode transitions", "Drive the system-mode state machine and review the full journal.") +
-		`</div>`
-
-	body := `<div class="page-header">
-  <h1>Governance</h1>
-  <div class="page-actions"><span class="text-sm muted">adaptive runtime</span></div>
-</div>
-<p class="page-sub">The adaptive runtime that keeps your install healthy — modes, budgets and transparency, all decided on your own server.</p>` + summary + budgetCard + transCard + consoles
-
-	writeOSHTML(w, r, adminOSLayout(nonce, "Governance", "governance", cfg, htmpl.HTML(body)))
+	budgetTone := ""
+	if exhausted > 0 {
+		budgetTone = "danger"
+	} else if atRisk > 0 {
+		budgetTone = "warn"
+	}
+	body := ui.Join(
+		ui.Page("Governance", "How the install protects itself: the mode it is in, the budgets that move it, and why it changed.",
+			`<a class="btn btn--sm" href="/os/modes">System state</a>`),
+		ui.Figures(
+			ui.Figure{Value: saModeLabel(cur), Label: "System mode", Tone: modeTone,
+				Note: strconv.Itoa(len(history)) + " recorded transition" + plural(len(history))},
+			ui.Figure{Value: strconv.Itoa(healthy) + " of " + strconv.Itoa(len(budgets)), Label: "Budgets healthy", Tone: budgetTone,
+				Note: strconv.Itoa(atRisk) + " at risk · " + strconv.Itoa(exhausted) + " exhausted"},
+		),
+		ui.Section("Error budgets", applied,
+			ui.Table([]string{"Budget", "Consumed", "On exhaust", "State"}, budgetRows, "No budgets configured.")),
+		ui.Section("Mode changes", "Newest first",
+			ui.Table([]string{"Change", "Reason", "When"}, transRows, "The install has not changed mode.")),
+	)
+	writeOSHTML(w, r, adminOSLayout(nonce, "Governance", "governance", cfg, body))
 }

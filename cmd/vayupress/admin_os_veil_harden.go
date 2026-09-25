@@ -175,23 +175,23 @@ func (a *App) handleOSVeilHardenRequest(w http.ResponseWriter, r *http.Request) 
 func veilHardenChip(v vayuveil.HardenVerdict) string {
 	switch v {
 	case vayuveil.HardenInForce:
-		return `<span class="mon-chip mon-chip--on">in force</span>`
+		return `<span class="mon-chip mon-chip--on">In force</span>`
 	case vayuveil.HardenPending:
-		return `<span class="mon-chip mon-chip--off">requested</span>`
+		return `<span class="mon-chip mon-chip--off">Requested</span>`
 	case vayuveil.HardenAwaitingRestart:
-		return `<span class="mon-chip mon-chip--off">awaiting restart</span>`
+		return `<span class="mon-chip mon-chip--off">Awaiting restart</span>`
 	case vayuveil.HardenDidNotTake:
-		return `<span class="mon-chip mon-chip--off">did not take</span>`
+		return `<span class="mon-chip mon-chip--off">Did not take</span>`
 	case vayuveil.HardenSkipped:
-		return `<span class="mon-chip mon-chip--off">partly skipped</span>`
+		return `<span class="mon-chip mon-chip--off">Partly skipped</span>`
 	case vayuveil.HardenReverted:
-		return `<span class="mon-chip mon-chip--off">reverted</span>`
+		return `<span class="mon-chip mon-chip--off">Reverted</span>`
 	case vayuveil.HardenFailed:
-		return `<span class="mon-chip mon-chip--off">failed</span>`
+		return `<span class="mon-chip mon-chip--off">Failed</span>`
 	case vayuveil.HardenNotRequested:
-		return `<span class="mon-chip mon-chip--off">not requested</span>`
+		return `<span class="mon-chip mon-chip--off">Not requested</span>`
 	default:
-		return `<span class="mon-chip mon-chip--off">unverified</span>`
+		return `<span class="mon-chip mon-chip--off">Unverified</span>`
 	}
 }
 
@@ -221,12 +221,12 @@ func veilHardenCard(st vayuveil.HardenState, sb vayuveil.SandboxState, processSt
 		`<th>What it denies</th><th>Read back from</th><th>Now</th></tr></thead><tbody>`)
 	for _, d := range vayuveil.HardenBaseline() {
 		on, known := d.InForce(sb)
-		state := `<span class="mon-chip mon-chip--off">unverified</span>`
+		state := `<span class="mon-chip mon-chip--off">Unverified</span>`
 		switch {
 		case known && on:
-			state = `<span class="mon-chip mon-chip--on">in force</span>`
+			state = `<span class="mon-chip mon-chip--on">In force</span>`
 		case known:
-			state = `<span class="mon-chip mon-chip--off">not in force</span>`
+			state = `<span class="mon-chip mon-chip--off">Not in force</span>`
 		}
 		b.WriteString(`<tr><td class="text-xs mono">` + esc(d.Directive) + `</td><td class="text-xs muted">` +
 			esc(d.Denies) + `</td><td class="text-xs mono muted">` + esc(d.ReadBack) + `</td><td>` +

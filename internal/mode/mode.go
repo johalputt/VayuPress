@@ -138,24 +138,34 @@ func (m *Manager) ForceTransition(to Mode, reason string) {
 	}
 }
 
-// Restore silently seeds the manager's current mode from durable state at boot
-// (audit: an install that went read-only or quarantined before a crash rebooted
-// into NORMAL and started accepting writes nobody had re-authorised). Unlike a
-// transition it records NO history entry and fires NO hooks — the journal
-// already contains the original event; replaying it as news would duplicate the
-// row on every restart.
-func (m *Manager) Restore(to Mode) {
-	switch to {
+// restoredHistory bounds how much of the journal a restart carries back into
+// memory: enough for every page that shows lineage, not the whole log.
+const restoredHistory = 100
+
+// Restore resumes from the journal at boot: the mode the last recorded
+// transition left, and the transitions that led there (audit: an install that
+// went read-only or quarantined before a crash rebooted into NORMAL and started
+// accepting writes nobody had re-authorised). The history comes back with the
+// mode because without it a restart read as a fresh start: "has not changed
+// mode since it started 0 minutes ago", in a mode nothing explained. It fires
+// NO hooks — the journal already holds these rows, and replaying them as news
+// would write them again on every restart.
+func (m *Manager) Restore(past []Transition) {
+	if len(past) == 0 {
+		return
+	}
+	switch past[len(past)-1].To {
 	case ModeNormal, ModeDegraded, ModeReadOnly, ModeRecovery, ModeMaintenance, ModeQuarantined:
 	default:
 		return // unknown persisted value: keep the safe default (normal)
 	}
+	if len(past) > restoredHistory {
+		past = past[len(past)-restoredHistory:]
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if to == m.current {
-		return
-	}
-	m.current = to
+	m.current = past[len(past)-1].To
+	m.history = append([]Transition(nil), past...)
 }
 
 // OnTransition registers a hook called on every successful transition.

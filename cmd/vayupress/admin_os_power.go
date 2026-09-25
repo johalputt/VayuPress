@@ -195,12 +195,12 @@ func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedba
 		crawlHint = "Search engines and AI crawlers are <strong>blocked</strong> — robots.txt disallows everything, known crawler bots get a 403, and every public page is marked <code>noindex</code>."
 	}
 	statusBadge := `<span class="badge badge--ok">Live</span>`
-	toggleLabel := "Turn maintenance ON"
+	toggleLabel := "Turn maintenance on"
 	toggleClass := "btn btn--danger"
 	stateHint := "Your public site is <strong>live</strong>. Visitors reach it normally."
 	if on {
 		statusBadge = `<span class="badge badge--warn">In maintenance</span>`
-		toggleLabel = "Turn maintenance OFF (go live)"
+		toggleLabel = "Turn maintenance off and go live"
 		toggleClass = "btn btn--primary"
 		stateHint = "Your public site is <strong>offline</strong> — visitors see the maintenance page. Your admin console stays open."
 	}
@@ -263,7 +263,7 @@ func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedba
   <div class="settings-row">
     <div class="settings-row-info">
       <div class="settings-row-label">Shut the site down</div>
-      <div class="settings-row-hint">Turns maintenance ON and restarts, so the app comes back with the public site <strong>OFF</strong> — and stays off until you turn maintenance off here.</div>
+      <div class="settings-row-hint">Turns maintenance on and restarts, so the app comes back with the public site <strong>offline</strong> — and stays off until you turn maintenance off here.</div>
     </div>
     <button type="button" class="btn btn--danger btn--sm" data-power-shutdown>Shut down</button>
   </div>

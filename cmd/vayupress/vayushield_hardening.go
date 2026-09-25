@@ -238,7 +238,7 @@ func dnsResolverNotice() string {
 	if n := safefetch.DoHDialCount(); n > 0 {
 		out.WriteString(`<div class="settings-callout">
     <strong>Some outbound destinations are unreachable directly.</strong>
-    <span class="text-sm muted">` + strconv.FormatInt(n, 10) + ` connection(s) succeeded only after re-resolving the name through a
+    <span class="text-sm muted">` + strconv.FormatInt(n, 10) + ` connection` + plural(n) + ` succeeded only after re-resolving the name through a
       public DNS-over-HTTPS resolver — every address your server's own resolver returned for that destination could not be
       connected to. This is a route/firewall problem on the host or its provider (GitHub's API edges are the usual case),
       not a VayuPress fault; updates and other outbound traffic keep working through the mirror fallback. The count
@@ -1119,14 +1119,14 @@ func (a *App) shieldOffloadRow() string {
 	var pill string
 	switch state {
 	case "active":
-		pill = `<span class="vs-hard-state is-on">● Enforcing — ` + html.EscapeString(count) + ` IP(s) banned in-kernel</span>`
+		pill = `<span class="vs-hard-state is-on">● Enforcing — banned in-kernel: ` + html.EscapeString(count) + `</span>`
 	case "degraded":
 		// The agent applied the flush and then each ban individually because the
 		// atomic batch was rejected. Enforcement IS running and pardons DID lift,
 		// so this is not an error — but some bans are missing, and falling through
 		// to the "Idle" default would hide that behind a reassuring pill.
-		pill = `<span class="vs-hard-state is-work">▲ Enforcing ` + html.EscapeString(count) +
-			` IP(s) — some bans were rejected. ` + html.EscapeString(shieldOffloadReason()) + `</span>`
+		pill = `<span class="vs-hard-state is-work">▲ Enforcing, banned in-kernel: ` + html.EscapeString(count) +
+			` — some bans were rejected. ` + html.EscapeString(shieldOffloadReason()) + `</span>`
 	case "error":
 		pill = `<span class="vs-hard-state is-err">✕ ` + html.EscapeString(shieldOffloadReason()) + `</span>`
 	default:

@@ -393,7 +393,7 @@ func (a *App) handleMemberVayuMailDeviceRegister(w http.ResponseWriter, r *http.
 	// synced anything; approved and blocked rows are left alone, because one is
 	// somebody's working mail and the other is a deliberate decision.
 	if n, err := accts.PrunePendingDevices(r.Context(), emailAddr, stalePendingDeviceAge); err == nil && n > 0 {
-		logging.LogInfo("members", "reclaimed "+strconv.FormatInt(n, 10)+" unapproved VayuMail device(s) for "+emailAddr)
+		logging.LogInfo("members", "reclaimed "+strconv.FormatInt(n, 10)+" unapproved VayuMail device"+plural(n)+" for "+emailAddr)
 	}
 	// The auth path reads back at most appPasswordMaxPerMailbox rows, so a row
 	// beyond the cap would be a credential that can never authenticate.

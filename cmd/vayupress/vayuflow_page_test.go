@@ -74,17 +74,17 @@ func TestAFlowsBlastRadiusIsVisibleOnThePage(t *testing.T) {
 // A dry-run flow must not read as armed, and a live one must not read as safe.
 func TestTheModeChipDistinguishesDryRunFromLive(t *testing.T) {
 	dry := samplePageFlow()
-	if got := flowModeChip(dry); !strings.Contains(got, "dry-run") || strings.Contains(got, "mon-chip--on") {
+	if got := flowModeChip(dry); !strings.Contains(got, ">Dry-run<") || strings.Contains(got, "mon-chip--on") {
 		t.Errorf("a dry-run flow rendered as %q; it must not read as armed", got)
 	}
 	live := samplePageFlow()
 	live.Mode = vayuflow.RunLive
-	if got := flowModeChip(live); !strings.Contains(got, "mon-chip--on") || !strings.Contains(got, "live") {
+	if got := flowModeChip(live); !strings.Contains(got, "mon-chip--on") || !strings.Contains(got, ">Live<") {
 		t.Errorf("a live flow rendered as %q", got)
 	}
 	off := samplePageFlow()
 	off.Enabled = false
-	if got := flowModeChip(off); !strings.Contains(got, "disabled") {
+	if got := flowModeChip(off); !strings.Contains(got, ">Disabled<") {
 		t.Errorf("a disabled flow rendered as %q", got)
 	}
 }

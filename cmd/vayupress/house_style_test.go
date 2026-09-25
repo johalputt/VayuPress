@@ -189,7 +189,7 @@ func TestAnalyticsPageMeetsTheHouseStyle(t *testing.T) {
 	if !strings.Contains(empty, "No visits recorded") {
 		t.Error("a site with no traffic shows no explanation, only zeroes")
 	}
-	if !strings.Contains(empty, "nothing yet") {
+	if !strings.Contains(empty, ">Nothing yet<") {
 		t.Error("the collapsed band does not say it is empty, so it reads as a closed door")
 	}
 }
@@ -226,7 +226,7 @@ func TestScopedSEOPageMeetsTheHouseStyle(t *testing.T) {
 	if tile := statCardIn(t, none, "Directives set"); !strings.Contains(tile, "stat-card--warn") {
 		t.Errorf("a site declaring nothing to crawlers is not flagged: %s", tile)
 	}
-	if !strings.Contains(none, "all default") {
+	if !strings.Contains(none, ">All default<") {
 		t.Error("the collapsed band does not say everything is still the product default")
 	}
 
@@ -284,7 +284,7 @@ func TestScopedContentPageMeetsTheHouseStyle(t *testing.T) {
 	if !strings.Contains(empty, "Nothing is published on this site yet") {
 		t.Error("an empty site shows zeroes with no explanation")
 	}
-	if !strings.Contains(empty, "nothing yet") {
+	if !strings.Contains(empty, ">Nothing yet<") {
 		t.Error("the collapsed band reads as a closed door with no label")
 	}
 }
@@ -318,7 +318,7 @@ func TestScopedSettingsPageMeetsTheHouseStyle(t *testing.T) {
 	// Each tile pinned in BOTH states. Asserting only the configured case lets a
 	// tile that returns a constant pass — three of these four would survive a
 	// hardcoded value if the empty page went unchecked.
-	if tile := statCardIn(t, empty, "Identity"); !strings.Contains(tile, ">0 of 4<") {
+	if tile := statCardIn(t, empty, "Identity"); !strings.Contains(tile, `>0<span class="stat-card__unit">of 4<`) {
 		t.Errorf("the identity tile does not count zero as zero: %s", tile)
 	}
 	if tile := statCardIn(t, empty, "Author by-line"); !strings.Contains(tile, ">Default<") {
@@ -342,7 +342,7 @@ func TestScopedSettingsPageMeetsTheHouseStyle(t *testing.T) {
 			t.Errorf("the %q tile is still flagged on a fully configured site: %s", label, v)
 		}
 	}
-	if v := statCardIn(t, full, "Identity"); !strings.Contains(v, ">4 of 4<") {
+	if v := statCardIn(t, full, "Identity"); !strings.Contains(v, `>4<span class="stat-card__unit">of 4<`) {
 		t.Errorf("the identity tile miscounts what is set: %s", v)
 	}
 	if v := statCardIn(t, full, "Presentation"); !strings.Contains(v, ">Custom<") {
@@ -448,7 +448,7 @@ func TestThePresentationTileDoesNotInventAnAnswerWhenTheReadFailed(t *testing.T)
 	if strings.Contains(unknown, `mon-chip--off">product default`) {
 		t.Error("the collapsed band claims the product default for a state nobody could read")
 	}
-	if !strings.Contains(unknown, "not known") {
+	if !strings.Contains(unknown, ">Not known<") {
 		t.Error("the band's chip does not say the state is unknown")
 	}
 	// And the honest states must still be distinguishable, or "unknown" has just
@@ -624,7 +624,7 @@ func TestAToolRowsChipToneMatchesItsState(t *testing.T) {
 	if !strings.Contains(off, "mon-chip--off") {
 		t.Errorf("a site with nothing set is chipped in the colour that means it is fine: %s", off)
 	}
-	if !strings.Contains(off, ">nothing set<") {
+	if !strings.Contains(off, ">Nothing set<") {
 		t.Errorf("the row renders an empty pill instead of its state: %s", off)
 	}
 	if strings.Contains(off, "mon-chip--on") {

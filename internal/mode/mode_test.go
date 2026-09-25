@@ -105,3 +105,41 @@ func TestReset(t *testing.T) {
 		t.Error("after Reset history should be empty")
 	}
 }
+
+// A restart resumes the mode AND the transitions that explain it. Restoring the
+// mode alone had System state say "has not changed mode since it started", in a
+// degraded mode nothing on the page accounted for.
+func TestRestoreBringsBackTheModeAndWhyItIsSo(t *testing.T) {
+	m := New()
+	fired := 0
+	m.OnTransition(func(Transition) { fired++ })
+	past := []Transition{
+		{From: ModeNormal, To: ModeDegraded, Reason: "budget exhausted", Cause: "budget"},
+	}
+	m.Restore(past)
+	if m.Current() != ModeDegraded {
+		t.Fatalf("restored mode = %s, want degraded", m.Current())
+	}
+	if h := m.History(); len(h) != 1 || h[0].Reason != "budget exhausted" {
+		t.Errorf("restored history = %+v, want the journalled transition", h)
+	}
+	if fired != 0 {
+		t.Errorf("restoring fired %d hooks; the journal would write its own rows again", fired)
+	}
+
+	long := make([]Transition, restoredHistory+5)
+	for i := range long {
+		long[i] = Transition{From: ModeNormal, To: ModeNormal, Reason: "r"}
+	}
+	long[len(long)-1].To = ModeReadOnly
+	m.Restore(long)
+	if len(m.History()) != restoredHistory || m.Current() != ModeReadOnly {
+		t.Errorf("a long journal restored %d rows in %s, want the last %d in read-only", len(m.History()), m.Current(), restoredHistory)
+	}
+
+	n := New()
+	n.Restore([]Transition{{From: ModeNormal, To: Mode("bogus")}})
+	if n.Current() != ModeNormal || len(n.History()) != 0 {
+		t.Errorf("an unknown journalled mode was taken: %s, %d rows", n.Current(), len(n.History()))
+	}
+}

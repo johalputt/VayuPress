@@ -106,12 +106,12 @@ func osClaudeCodeSetupCards(endpoint, apex string, dedicated bool, blockedHost s
 	hostNote := ""
 	switch {
 	case dedicated:
-		hostNote = `<p class="text-sm muted mt-2"><span class="badge badge--ok">dedicated host</span> This install has a working <code>` +
+		hostNote = `<p class="text-sm muted mt-2"><span class="badge badge--ok">Dedicated host</span> This install has a working <code>` +
 			html.EscapeString(strings.TrimSuffix(strings.TrimPrefix(endpoint, "https://"), "/mcp")) +
 			`</code> is offered instead of <code>` + html.EscapeString(apex) + `</code> because it is not proxied.` +
 			string(ui.Tip("Both reach this same server with the same authentication, but the dedicated host is not proxied, so a bot challenge on your main domain can never sit in front of it.")) + `</p>`
 	case blockedHost != "":
-		hostNote = `<p class="text-sm muted mt-2"><span class="badge badge--warn">blocked</span> <code>` +
+		hostNote = `<p class="text-sm muted mt-2"><span class="badge badge--warn">Blocked</span> <code>` +
 			html.EscapeString(blockedHost) + `</code> is answered by something in front of this server.` +
 			string(ui.Tip("Until that host answers directly, rather than a bot challenge or firewall answering for it, the endpoint above stays on your main domain.")) + `</p>`
 	}

@@ -259,7 +259,7 @@ func runExportBundle(args []string) error {
 	if err := os.WriteFile(file, raw, 0o600); err != nil { //nosec G703 -- operator-supplied CLI bundle path; the operator controls the host filesystem
 		return fmt.Errorf("write bundle: %w", err)
 	}
-	fmt.Printf("Exported %d content item(s) to %s\n  %s\n", b.Count, file, b.Checksum)
+	fmt.Printf("Exported %d content item%s to %s\n  %s\n", b.Count, plural(b.Count), file, b.Checksum)
 	printBundleOmissions(os.Stderr, bundleOmissions(dbpkg.DB))
 	return nil
 }
@@ -283,13 +283,13 @@ func runImportBundle(args []string) error {
 	if err := verifyBundle(b); err != nil {
 		return err
 	}
-	fmt.Printf("Bundle: %d content item(s), mode=%s%s\n\n", len(b.Posts), mode, dryRunLabelText(dryRun))
+	fmt.Printf("Bundle: %d content item%s, mode=%s%s\n\n", len(b.Posts), plural(len(b.Posts)), mode, dryRunLabelText(dryRun))
 	ins, upd, skip, err := importBundle(dbpkg.DB, b, mode, dryRun, os.Stdout)
 	if err != nil {
 		return err
 	}
 	if dryRun {
-		fmt.Printf("\nDry run: %d item(s) would be imported (%s).\n", ins, mode)
+		fmt.Printf("\nDry run: %d item%s would be imported (%s).\n", ins, plural(ins), mode)
 		return nil
 	}
 	fmt.Printf("\nDone. Inserted: %d  Updated: %d  Skipped: %d\n", ins, upd, skip)
@@ -336,8 +336,8 @@ func bundleOmissions(db *sql.DB) []string {
 		// no table — there is nothing of that kind to leave behind.
 		if err := db.QueryRow(`SELECT COUNT(*) FROM vayuflow_flows`).Scan(&flows); err == nil && flows > 0 {
 			out = append(out, fmt.Sprintf(
-				"%d automation(s) — a flow borrows an account's authority, and that account does not "+
-					"exist on the target, so it cannot travel in a content bundle", flows))
+				"%d automation%s — a flow borrows an account's authority, and that account does not "+
+					"exist on the target, so it cannot travel in a content bundle", flows, plural(flows)))
 		}
 	}
 	// Stated whether or not this install has any, because an operator planning a

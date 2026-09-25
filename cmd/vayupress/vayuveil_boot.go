@@ -130,7 +130,7 @@ func recordVeilFindings(actor string, red []vayuveil.AttackResult) {
 	}
 	if n := len(vayuveil.TechniquesNotAttempted(red)); n > 0 {
 		dbpkg.AuditLog("vayuveil.sweep", actor, "techniques-not-attempted",
-			strconv.Itoa(n)+" technique(s) in ADR-0150 §6 were not attempted by this binary and are "+
+			strconv.Itoa(n)+" technique"+plural(n)+" in ADR-0150 §6 were not attempted by this binary and are "+
 				"therefore untested and undefended")
 	}
 }

@@ -1666,8 +1666,7 @@ func linkCausalLineage(entries []tlEntry) {
 func (a *App) handleTimelineJSON(w http.ResponseWriter, r *http.Request) {
 	snap := a.getAdminSnapshot()
 	faultNames := []string{
-		fault.FaultWALWrite, fault.FaultMigrationApply, fault.FaultSigningSign,
-		fault.FaultFederationDeliver, fault.FaultPluginInvoke, fault.FaultOutboxCommit,
+		fault.FaultWALWrite, fault.FaultMigrationApply, fault.FaultPluginInvoke, fault.FaultOutboxCommit,
 	}
 	faultTriggers := make([]int64, len(faultNames))
 	for i, name := range faultNames {
@@ -1814,8 +1813,6 @@ func (a *App) handleFaultStatus(w http.ResponseWriter, r *http.Request) {
 	faults := []string{
 		fault.FaultWALWrite,
 		fault.FaultMigrationApply,
-		fault.FaultSigningSign,
-		fault.FaultFederationDeliver,
 		fault.FaultPluginInvoke,
 		fault.FaultOutboxCommit,
 	}

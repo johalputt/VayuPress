@@ -5,6 +5,8 @@ package ui
 import (
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Page is the app header of a page: its title, the actions that belong to the
@@ -113,11 +115,35 @@ func (f Figure) Cell() HTML {
 		cls += " stat-card--" + f.Tone
 	}
 	s := `<div class="` + cls + `"><div class="stat-card__label">` + string(Text(f.Label)) +
-		`</div><div class="stat-card__value">` + string(Text(f.Value)) + `</div>`
+		`</div><div class="` + figureValueClass(f.Value) + `">` + figureValue(f.Value) + `</div>`
 	if f.Note != "" {
 		s += `<div class="stat-card__note">` + string(Text(f.Note)) + `</div>`
 	}
 	return HTML(s + `</div>`)
+}
+
+// figureValue sets a measured number at the display size and its unit one
+// step down ("258.0 MiB", "12 ms"): a unit set as large as its number made the
+// figure too wide for its column, and it is read second anyway.
+func figureValue(v string) string {
+	num, unit, ok := strings.Cut(strings.TrimSpace(v), " ")
+	if !ok || num == "" || !unicode.IsDigit(rune(num[0])) || strings.ContainsFunc(num, unicode.IsLetter) {
+		return string(Text(v))
+	}
+	return string(Text(num)) + `<span class="stat-card__unit">` + string(Text(unit)) + `</span>`
+}
+
+// figureValueClass sets a figure's value. A number is read at the display
+// size; a hostname or a phrase at that size ran out of its column
+// ("mail.localh…", "Main / domain"), so a value that does not start as a
+// number and is longer than a short word takes the size below.
+func figureValueClass(v string) string {
+	v = strings.TrimSpace(v)
+	r, _ := utf8.DecodeRuneInString(v)
+	if v == "" || unicode.IsDigit(r) || strings.ContainsRune("$€£₹+-−—…", r) || utf8.RuneCountInString(v) <= 8 {
+		return "stat-card__value"
+	}
+	return "stat-card__value stat-card__value--sm"
 }
 
 // Disclosure is a row that opens to show more: an icon (already drawn, so any

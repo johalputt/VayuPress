@@ -49,6 +49,7 @@ var icons = map[string]string{
 	"flow":      `<rect x="2.8" y="3.4" width="5" height="4.2" rx="1"/><rect x="12.2" y="12.4" width="5" height="4.2" rx="1"/><path d="M5.3 7.6v3.2a1.6 1.6 0 001.6 1.6h5.3"/>`,
 	"folder":    `<path d="M2.9 5.2a.8.8 0 0 1 .8-.8h4l1.6 1.8h7a.8.8 0 0 1 .8.8v8.6a.8.8 0 0 1-.8.8H3.7a.8.8 0 0 1-.8-.8z"/>`,
 	"forward":   `<path d="m12 5 4.5 4.5L12 14"/><path d="M16.2 9.5H8.8a5 5 0 0 0-5 5v1"/>`,
+	"grip":      `<path d="M7.6 5.4h0M12.4 5.4h0M7.6 10h0M12.4 10h0M7.6 14.6h0M12.4 14.6h0"/>`,
 	"globe":     `<circle cx="10" cy="10" r="7.2"/><path d="M2.8 10h14.4M10 2.8c2 2 3 4.4 3 7.2s-1 5.2-3 7.2c-2-2-3-4.4-3-7.2s1-5.2 3-7.2z"/>`,
 	"grid":      `<rect x="3.4" y="3.4" width="5.4" height="5.4" rx=".8"/><rect x="11.2" y="3.4" width="5.4" height="5.4" rx=".8"/><rect x="3.4" y="11.2" width="5.4" height="5.4" rx=".8"/><rect x="11.2" y="11.2" width="5.4" height="5.4" rx=".8"/>`,
 	"home":      `<path d="M3.5 9.2 10 3.8l6.5 5.4V16a.8.8 0 0 1-.8.8h-3.4v-4.6H7.7v4.6H4.3a.8.8 0 0 1-.8-.8z"/>`,

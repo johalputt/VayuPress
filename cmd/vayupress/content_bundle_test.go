@@ -220,7 +220,7 @@ func TestAutomationsAreCountedRatherThanAssumed(t *testing.T) {
 	}
 
 	joined := strings.Join(bundleOmissions(db), " | ")
-	if !strings.Contains(joined, "2 automation(s)") {
+	if !strings.Contains(joined, "2 automations") {
 		t.Errorf("two flows are not counted in the notice: %s", joined)
 	}
 	if !strings.Contains(joined, "borrows an account's authority") {

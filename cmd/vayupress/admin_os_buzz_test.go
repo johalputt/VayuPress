@@ -142,11 +142,10 @@ func TestBuzzStatsHostTone(t *testing.T) {
 	}
 
 	blocked := osBuzzStats("https://blog.example.com/mcp", nil, false, "mcp.example.com")
-	if !strings.Contains(blocked, "Dedicated host blocked") {
-		t.Error("a challenged dedicated host must be named distinctly from 'not set up'")
-	}
-	if !strings.Contains(blocked, "stat-card--warn") {
-		t.Error("a blocked dedicated host should carry the warn tone")
+	// Named distinctly from "not set up", and in the warn tone: one assertion
+	// holds both, so neither can be dropped alone.
+	if !strings.Contains(blocked, `<span class="badge badge--warn">Dedicated host blocked</span>`) {
+		t.Errorf("a challenged dedicated host must be named as blocked, in the warn tone:\n%s", blocked)
 	}
 }
 

@@ -105,22 +105,6 @@ func DefaultRules() []EscalationRule {
 			Cause:      "fault.migrations.apply",
 		},
 		{
-			FaultName:  FaultSigningSign,
-			Threshold:  5,
-			Window:     time.Minute,
-			TargetMode: mode.ModeDegraded,
-			Reason:     "signing faults degrading content integrity",
-			Cause:      "fault.signing.sign",
-		},
-		{
-			FaultName:  FaultFederationDeliver,
-			Threshold:  10,
-			Window:     time.Minute,
-			TargetMode: mode.ModeDegraded,
-			Reason:     "federation delivery failures above threshold",
-			Cause:      "fault.federation.deliver",
-		},
-		{
 			FaultName:  FaultPluginInvoke,
 			Threshold:  5,
 			Window:     2 * time.Minute,

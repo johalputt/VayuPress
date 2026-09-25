@@ -491,7 +491,7 @@ func (a *App) registerSiteBuilderTools(srv *mcp.Server) {
 			}
 			render.CachePurgeAll()
 			dbpkg.AuditLog("vayudomains.website.bundle", mcpActor(ctx), d.Host,
-				"built "+itoaSafe(m.Files)+" file(s) via=mcp")
+				"built "+itoaSafe(m.Files)+" file"+plural(m.Files)+" via=mcp")
 			resp := map[string]any{
 				"status": "published", "host": d.Host, "files": m.Files, "bytes": m.Bytes,
 				"url": "https://" + d.Host + "/", "serves": "the uploaded site",

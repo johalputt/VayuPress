@@ -986,7 +986,7 @@ func main() {
 				if n, err := a.members.ExpireLapsedSubscriptions(context.Background()); err != nil {
 					logging.LogError("members", "lapsed-subscription sweep failed; lapsed subscriptions stay active until the next tick", err.Error())
 				} else if n > 0 {
-					logging.LogInfo("members", fmt.Sprintf("expired %d lapsed subscription(s) past their paid period", n))
+					logging.LogInfo("members", fmt.Sprintf("expired %d lapsed subscription%s past their paid period", n, plural(n)))
 				}
 			}
 		}
@@ -996,7 +996,7 @@ func main() {
 	// only the newest few. Runs once at boot so an already-cluttered box is tidied
 	// immediately, then daily. Never touches the live DB or its WAL/SHM/journal.
 	if removed, reclaimed := update.SweepDBBackupsDefault(config.Cfg.DBPath); removed > 0 {
-		logging.LogInfo("update", fmt.Sprintf("pruned %d stale DB backup file(s), reclaimed %d MiB", removed, reclaimed/(1<<20)))
+		logging.LogInfo("update", fmt.Sprintf("pruned %d stale DB backup file%s, reclaimed %d MiB", removed, plural(removed), reclaimed/(1<<20)))
 	}
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour)
@@ -1015,14 +1015,14 @@ func main() {
 				}
 				// Daily DB-backup hygiene (see the boot sweep above).
 				if removed, reclaimed := update.SweepDBBackupsDefault(config.Cfg.DBPath); removed > 0 {
-					logging.LogInfo("update", fmt.Sprintf("pruned %d stale DB backup file(s), reclaimed %d MiB", removed, reclaimed/(1<<20)))
+					logging.LogInfo("update", fmt.Sprintf("pruned %d stale DB backup file%s, reclaimed %d MiB", removed, plural(removed), reclaimed/(1<<20)))
 				}
 				// VayuAPI hygiene (ADR-0134): hard-delete keys whose expiry passed
 				// more than the grace window ago. Expiry itself is enforced live;
 				// this only tidies long-dead rows out of the admin list.
 				if a.apiKeys != nil {
 					if n, err := a.apiKeys.Cleanup(context.Background()); err == nil && n > 0 {
-						logging.LogInfo("apikeys", fmt.Sprintf("purged %d long-expired API key(s)", n))
+						logging.LogInfo("apikeys", fmt.Sprintf("purged %d long-expired API key%s", n, plural(n)))
 					}
 				}
 			}
@@ -1087,12 +1087,11 @@ func main() {
 		logging.LogJSON(logging.LogFields{Level: "warn", Component: "mode", Msg: "mode journal unavailable (non-fatal): " + err.Error()})
 	} else {
 		logging.LogInfo("mode", fmt.Sprintf("mode journal open — %d prior transitions loaded", len(past)))
-		// Replay the persisted state (audit): a crash in read-only/quarantined
+		// Resume the persisted state (audit): a crash in read-only/quarantined
 		// used to reboot into NORMAL and accept writes nobody re-authorised.
-		// Restore seeds silently — no new journal row, no duplicated history.
 		if len(past) > 0 {
 			last := past[len(past)-1]
-			mode.Global.Restore(last.To)
+			mode.Global.Restore(past)
 			logging.LogInfo("mode", fmt.Sprintf("mode restored from journal: %s (reason=%s)", last.To, last.Reason))
 		}
 		defer modeJournal.Close()
@@ -1133,8 +1132,8 @@ func main() {
 	if n, err := a.flowRuns.RecoverInterrupted(context.Background()); err != nil {
 		log.Printf("vayuflow: could not recover in-flight runs: %v", err)
 	} else if n > 0 {
-		log.Printf("vayuflow: %d run(s) were in flight at shutdown and are marked interrupted; "+
-			"retry is an operator decision", n)
+		log.Printf("vayuflow: %d run%s were in flight at shutdown and are marked interrupted; "+
+			"retry is an operator decision", n, plural(n))
 	}
 	// The ticker stops with the rest of the background workers, on the same
 	// shutdown signal, so a draining process does not start new automations.

@@ -167,7 +167,7 @@ func runMigrateMarkdown(args []string) error {
 	if err != nil {
 		return fmt.Errorf("scan: %w", err)
 	}
-	fmt.Printf("Found %d file(s).\n\n", len(files))
+	fmt.Printf("Found %d file%s.\n\n", len(files), plural(len(files)))
 	if len(files) == 0 {
 		return nil
 	}
@@ -277,7 +277,7 @@ func runMigrateList(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Found %d Markdown file(s) in %s:\n\n", len(files), dir)
+	fmt.Printf("Found %d Markdown file%s in %s:\n\n", len(files), plural(len(files)), dir)
 	return dryRunList(files, false)
 }
 

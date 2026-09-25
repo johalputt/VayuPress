@@ -84,7 +84,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 	create := `<div class="quick-compose" role="search">
   <span class="quick-compose-icon" aria-hidden="true">` + saIcon("doc") + `</span>
   <input id="page-compose-input" class="quick-compose-input" type="text"
-    placeholder="Add a page… type a title and press Enter" autocomplete="off"
+    placeholder="New page title" autocomplete="off"
     aria-label="Add a page: type a title and press Enter">
   <select id="page-compose-template" class="input" aria-label="Page template" title="Start from a template">
     <option value="blank">Blank page</option>

@@ -548,7 +548,7 @@ func (a *App) bootVayuOS() {
 	// destructive mail action.
 	a.vayuMail.SetRetentionAudit(func(email string, count, days int) {
 		dbpkg.AuditLog("vayumail.retention.sweep", "system", email,
-			fmt.Sprintf("deleted %d read message(s) past %d days", count, days))
+			fmt.Sprintf("deleted %d read message%s past %d days", count, plural(count), days))
 	})
 	// Apply the operator's Outbox auto-clear window: env sets the default, the
 	// persisted admin choice overrides. Delivered queue rows older than this are
@@ -943,7 +943,7 @@ func (a *App) vayuTorHealth() (bool, string) {
 	case !st.Active:
 		return true, "available — activate from the VayuTor page"
 	case st.Connected:
-		return true, fmt.Sprintf("active — %d onion service(s) published", len(st.Onions))
+		return true, fmt.Sprintf("active — %d onion service%s published", len(st.Onions), plural(len(st.Onions)))
 	default:
 		msg := "activated, but the tor control port is unreachable"
 		if st.LastError != "" {
@@ -1157,11 +1157,11 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 		if isAnonTalkHandle(k.Email) {
 			continue
 		}
-		state := `<span class="badge badge--ok">active</span>`
+		state := `<span class="badge badge--ok">Active</span>`
 		if k.Revoked {
-			state = `<span class="badge badge--warn">revoked</span>`
+			state = `<span class="badge badge--warn">Revoked</span>`
 		} else if time.Now().After(k.ExpiresAt) {
-			state = `<span class="badge badge--warn">expired</span>`
+			state = `<span class="badge badge--warn">Expired</span>`
 		}
 		// Public key only — a copy button and a download, never the private half.
 		// Listing every mailbox's key here is how an operator hands one out; the
@@ -1170,7 +1170,7 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 			html.EscapeString(k.PublicArmor) + `</textarea>` +
 			`<button type="button" class="btn btn--sm" data-pgp-copy>Copy</button> ` +
 			`<a class="btn btn--sm btn--ghost" href="/os/vayumail/accounts/pubkey?email=` + qparam(k.Email) + `" download>.asc</a></span>`
-		rows.WriteString(`<tr><td>` + html.EscapeString(k.Email) + `</td><td class="mono text-sm">` + html.EscapeString(k.Fingerprint) + `</td><td>` + state + `</td><td class="muted">` + k.ExpiresAt.Format("2006-01-02") + `</td><td>` + pub + `</td></tr>`)
+		rows.WriteString(`<tr><td>` + html.EscapeString(k.Email) + `</td><td class="mono text-sm vm-break">` + html.EscapeString(k.Fingerprint) + `</td><td>` + state + `</td><td class="muted">` + k.ExpiresAt.Format("2006-01-02") + `</td><td>` + pub + `</td></tr>`)
 		if u := vpgp.WKDURL(k.Email); u != "" {
 			wkdRows.WriteString(`<tr><td class="mono text-sm">` + html.EscapeString(k.Email) + `</td><td><code class="mono text-xs vm-pgp__wkd">` + html.EscapeString(u) + `</code></td></tr>`)
 		}
@@ -1218,7 +1218,7 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	mc := a.vayuMail.Config()
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>VayuMail · DNS</h1></div>`)
-	body.WriteString(`<p class="page-sub">Native outbound mail sovereignty — publish these records, then verify every mail domain..</p>`)
+	body.WriteString(`<p class="page-sub">Native outbound mail sovereignty — publish these records, then verify every mail domain.</p>`)
 	body.WriteString(a.vayuosNav(r, "mail"))
 	if !mc.Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set your domain (DOMAIN env / first-boot wizard) to activate DKIM signing and outbound delivery.</div>`)
@@ -1278,9 +1278,9 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<p class="page-sub">Upstream PGP &amp; crypto dependency monitoring — VayuPress never reaches out on its own.</p>`)
 	body.WriteString(a.vayuosNav(r, "security"))
 	if !rep.Enabled {
-		body.WriteString(`<div class="empty-state">Automatic background checks are off by default (privacy first) — VayuPress never reaches out on its own. Click <strong>Check now</strong> above for a one-time, on-demand check (it fetches only public release metadata from GitHub and sends nothing about your site). To run checks automatically, set <code>VAYUOS_SECURITY_UPDATES=on</code> and restart.</div>`)
+		body.WriteString(saCallout("info", `Automatic checks are off, so VayuPress never reaches out on its own. <strong>Check now</strong> runs one check, fetching only public release metadata from GitHub and sending nothing about your site. To check automatically, set <code>VAYUOS_SECURITY_UPDATES=on</code> and restart.`))
 	} else if rep.UpdatesAvailable > 0 {
-		body.WriteString(`<div class="warn-box">` + itoaSafe(rep.UpdatesAvailable) + ` security-relevant update(s) available. ` + html.EscapeString(rep.UpgradeHint) + `</div>`)
+		body.WriteString(`<div class="warn-box">` + itoaSafe(rep.UpdatesAvailable) + ` security-relevant update` + plural(rep.UpdatesAvailable) + ` available. ` + html.EscapeString(rep.UpgradeHint) + `</div>`)
 	}
 	body.WriteString(`<div class="section-head"><span class="section-head__title">Dependencies</span><span class="section-head__hint">Upstream PGP / crypto components this build embeds</span></div>`)
 	body.WriteString(buildComponentTable(rep.Components))
@@ -1334,13 +1334,13 @@ func buildComponentTable(comps []secwatch.Component) string {
 		var status string
 		switch {
 		case c.UpdateAvailable:
-			status = `<span class="badge badge--warn">update available</span>`
+			status = `<span class="badge badge--warn">Update available</span>`
 		case latest == "":
 			// No upstream version known — the watcher is disabled or the check
 			// failed. Don't claim "up to date" when we haven't actually compared.
 			status = `<span class="muted text-sm">not checked</span>`
 		default:
-			status = `<span class="badge badge--ok">up to date</span>`
+			status = `<span class="badge badge--ok">Up to date</span>`
 		}
 		if latest == "" {
 			latest = "—"
@@ -1953,9 +1953,9 @@ func (a *App) vayuMailboxTabs(primaryDom string, primary []vmail.MailboxSummary,
 	}
 	b.WriteString(`<div class="vm-domtabs-strip" role="tablist">`)
 	for i, t := range tabs {
-		tier := ` <span class="badge badge--muted">secondary</span>`
+		tier := ` <span class="badge badge--muted">Secondary</span>`
 		if t.isPrimary {
-			tier = ` <span class="badge badge--accent">primary</span>`
+			tier = ` <span class="badge badge--accent">Primary</span>`
 		}
 		un := ""
 		if t.unseen > 0 {
@@ -2000,9 +2000,9 @@ func (a *App) vayuMailboxDomainCard(dom, primaryDomain string, boxes []vmail.Mai
 	if len(boxes) == 0 {
 		rows.WriteString(`<tr><td colspan="3" class="muted">No mailboxes on this domain yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>.</td></tr>`)
 	}
-	roleBadge := `<span class="badge badge--muted">secondary</span>`
+	roleBadge := `<span class="badge badge--muted">Secondary</span>`
 	if isPrimary {
-		roleBadge = `<span class="badge badge--accent">primary</span>`
+		roleBadge = `<span class="badge badge--accent">Primary</span>`
 	}
 	unit := "mailboxes"
 	if len(boxes) == 1 {
@@ -2258,7 +2258,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 			next = total
 		}
 		more := "/os/vayumail/inbox/fragment?user=" + qparam(user) + "&folder=" + qparam(folder) + "&limit=" + itoaSafe(next)
-		b.WriteString(`<div class="vm-more"><span class="muted text-sm">Showing the newest ` + itoaSafe(len(msgs)) + ` of ` + itoaSafe(total) + ` messages.</span><button type="button" class="btn btn--sm" hx-get="` + more + `" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">Load older</button></div>`)
+		b.WriteString(`<div class="vm-more"><span class="muted text-sm">Showing the newest ` + itoaSafe(len(msgs)) + ` of ` + itoaSafe(total) + ` message` + plural(total) + `.</span><button type="button" class="btn btn--sm" hx-get="` + more + `" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">Load older</button></div>`)
 	}
 	return b.String()
 }
@@ -2586,7 +2586,7 @@ func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
 		}
 		matched = append(matched, m)
 	}
-	b.WriteString(`<div class="vm-search-count text-sm muted">` + itoaSafe(len(matched)) + ` result(s) for “` + html.EscapeString(sf.q) + `”`)
+	b.WriteString(`<div class="vm-search-count text-sm muted">` + itoaSafe(len(matched)) + ` result` + plural(len(matched)) + ` for “` + html.EscapeString(sf.q) + `”`)
 	if capped {
 		// The engine scans a bounded window and the refinement filters run after
 		// it, so the count here is a floor, not a total. Saying nothing would read
@@ -3039,7 +3039,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView,
 
 	// Attachments.
 	if len(pm.Attachments) > 0 {
-		card.WriteString(`<div class="vm-attach"><div class="text-sm muted">` + saIcon("clip") + itoaSafe(len(pm.Attachments)) + ` attachment(s)</div><div class="vm-attach-list">`)
+		card.WriteString(`<div class="vm-attach"><div class="text-sm muted">` + saIcon("clip") + itoaSafe(len(pm.Attachments)) + ` attachment` + plural(len(pm.Attachments)) + `</div><div class="vm-attach-list">`)
 		for _, att := range pm.Attachments {
 			dl := "/os/vayumail/attachment?user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(id) + "&idx=" + itoaSafe(att.Index)
 			card.WriteString(`<a class="vm-attach-chip" href="` + dl + `" download><span class="vm-attach-ico">` + saIcon("doc") + `</span><span class="vm-attach-name">` + html.EscapeString(att.Filename) + `</span><span class="vm-attach-size">` + html.EscapeString(humanBytes(att.Size)) + `</span></a>`)
@@ -3274,6 +3274,18 @@ func emailDomain(email, fallback string) string {
 	return fallback
 }
 
+// parseQueueTime reads a queue row's created_at. The SQLite driver stores a
+// Go time in one of a few layouts depending on how it was written, so each is
+// tried; a value none of them reads is shown as stored.
+func parseQueueTime(s string) (time.Time, bool) {
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04:05.999999999-07:00", "2006-01-02 15:04:05"} {
+		if t, err := time.Parse(layout, strings.TrimSpace(s)); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
 // outboxChip renders one per-domain filter chip for the Outbox. It swaps the
 // whole outbox body via HTMX carrying its domain, so the filter is server-side
 // (no JS) and survives the auto-refresh poll (which re-emits the same domain).
@@ -3413,8 +3425,11 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 		fromCol = `<col class="vm-ocw-from">`
 		tableCls = "vm-outbox-table vm-outbox-table--multi"
 	}
-	cols := fromCol + `<col class="vm-ocw-to"><col class="vm-ocw-subj"><col class="vm-ocw-status"><col class="vm-ocw-tries"><col class="vm-ocw-err"><col class="vm-ocw-when"><col class="vm-ocw-act">`
-	b.WriteString(`<div class="card"><div class="card-title">Recent outbound</div><div class="table-wrap"><table class="table ` + tableCls + `"><colgroup>` + cols + `</colgroup><thead><tr>` + fromHead + `<th>To</th><th>Subject</th><th>Status</th><th>Tries</th><th>Last error</th><th>When</th><th></th></tr></thead><tbody>`)
+	// The attempt count and the last error ride under the subject: as columns of
+	// their own they squeezed an error into a sliver and cut the date short.
+	cols := fromCol + `<col class="vm-ocw-to"><col class="vm-ocw-subj"><col class="vm-ocw-status"><col class="vm-ocw-when"><col class="vm-ocw-act">`
+	b.WriteString(`<div class="card"><div class="card-title">Recent outbound</div><div class="table-wrap"><table class="table ` + tableCls + `"><colgroup>` + cols + `</colgroup><thead><tr>` + fromHead + `<th>To</th><th>Subject</th><th>Status</th><th>When</th><th></th></tr></thead><tbody>`)
+	now := time.Now()
 	shown := 0
 	for _, s := range sent {
 		if filterDomain != "" && !strings.EqualFold(emailDomain(s.From, primary), filterDomain) {
@@ -3425,25 +3440,29 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 		if subj == "" {
 			subj = "(no subject)"
 		}
-		badge := `<span class="badge badge--ok">delivered</span>`
+		badge := `<span class="badge badge--ok">Delivered</span>`
 		switch s.State {
 		case "failed":
-			badge = `<span class="badge badge--warn">failed</span>`
+			badge = `<span class="badge badge--warn">Failed</span>`
 		case "pending":
-			badge = `<span class="badge">pending</span>`
+			badge = `<span class="badge">Pending</span>`
 		}
 		when := s.CreatedAt
-		if len(when) > 19 {
-			when = when[:19]
+		if t, ok := parseQueueTime(s.CreatedAt); ok {
+			when = humanAgo(t, now)
 		}
-		lastErr := s.LastError
-		if len(lastErr) > 90 {
-			lastErr = lastErr[:90] + "…"
+		detail := ""
+		if s.LastError != "" {
+			lastErr := s.LastError
+			if len(lastErr) > 140 {
+				lastErr = lastErr[:140] + "…"
+			}
+			detail = `<div class="muted text-xs vm-oc-detail" title="` + html.EscapeString(s.LastError) + `">Try ` + itoaSafe(s.Attempts) + ` · ` + html.EscapeString(lastErr) + `</div>`
 		}
 		id := strconv.FormatInt(s.ID, 10)
 		actions := ""
 		if s.State == "failed" || s.State == "pending" {
-			actions += `<button type="button" class="btn btn--xs btn--primary" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"resend","id":"` + id + `","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Resend</button> `
+			actions += `<button type="button" class="btn btn--xs" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"resend","id":"` + id + `","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Resend</button> `
 		}
 		actions += `<button type="button" class="btn btn--xs btn--danger" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"delete","id":"` + id + `","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Delete</button>`
 		fromCell := ""
@@ -3458,18 +3477,16 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 		toJoined := strings.Join(s.To, ", ")
 		b.WriteString(`<tr>` + fromCell +
 			`<td class="text-sm vm-oc-nowrap" title="` + html.EscapeString(toJoined) + `">` + html.EscapeString(toJoined) + `</td>` +
-			`<td class="vm-oc-wrap" title="` + html.EscapeString(subj) + `">` + html.EscapeString(subj) + `</td>` +
+			`<td class="vm-oc-wrap"><div title="` + html.EscapeString(subj) + `">` + html.EscapeString(subj) + `</div>` + detail + `</td>` +
 			`<td>` + badge + `</td>` +
-			`<td class="text-sm">` + itoaSafe(s.Attempts) + `</td>` +
-			`<td class="muted text-xs vm-oc-wrap" title="` + html.EscapeString(s.LastError) + `">` + html.EscapeString(lastErr) + `</td>` +
-			`<td class="muted text-xs vm-oc-nowrap">` + html.EscapeString(when) + `</td>` +
+			`<td class="muted text-xs vm-oc-nowrap" title="` + html.EscapeString(s.CreatedAt) + `">` + html.EscapeString(when) + `</td>` +
 			`<td class="row-actions vm-oc-act">` + actions + `</td></tr>`)
 	}
 	if shown == 0 {
-		colspan := 7
+		colspan := 5
 		msg := `Nothing sent yet. Mail sent through VayuMail (DKIM-signed, direct-to-MX) appears here; VayuPress keeps retrying with backoff until it sends.`
 		if multi {
-			colspan = 8
+			colspan = 6
 		}
 		if filterDomain != "" {
 			msg = `No outbound mail from ` + html.EscapeString(filterDomain) + ` in the latest queue.`

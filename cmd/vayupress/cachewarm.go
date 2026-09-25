@@ -184,7 +184,7 @@ func (a *App) warmPass(ctx context.Context) {
 		}
 	}
 	if warmed > 0 {
-		logging.LogInfo("cachewarm", "primed "+strconv.Itoa(warmed)+" page(s)")
+		logging.LogInfo("cachewarm", "primed "+strconv.Itoa(warmed)+" page"+plural(warmed))
 	}
 }
 

@@ -119,8 +119,7 @@ func mySiteFactsGrid(d domain.Domain) string {
 		mail = "Active"
 	}
 	return `<div class="stat-grid">` +
-		`<div class="stat-card"><div class="stat-card__label">Your address</div>` +
-		`<div class="stat-card__value">` + html.EscapeString(d.Host) + `</div></div>` +
+		osStatTile("Your address", d.Host, "") +
 		`<div class="stat-card` + tlsClass + `"><div class="stat-card__label">Secure connection</div>` +
 		`<div class="stat-card__value">` + tls + `</div></div>` +
 		`<div class="stat-card"><div class="stat-card__label">Email on your domain</div>` +

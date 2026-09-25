@@ -70,7 +70,8 @@ func socialLabel(key string) string {
 	return titleFirst(key)
 }
 
-// titleFirst upper-cases the first rune of s, preserving the remainder.
+// titleFirst upper-cases the first rune of s, preserving the remainder: a
+// machine word printed as a label reads in sentence case ("pending" → "Pending").
 func titleFirst(s string) string {
 	if s == "" {
 		return ""
@@ -125,7 +126,7 @@ func (a *App) setUserRole(ctx context.Context, email, role string) error {
 	if n, rerr := a.apiKeys.RevokeOwnedBy(ctx, u.ID); rerr != nil {
 		logging.LogError("auth", "revoking API keys for a demoted user", rerr.Error())
 	} else if n > 0 {
-		dbpkg.AuditLog("apikey.revoke_owner_demoted", "user:"+u.ID, email, strconv.Itoa(n)+" key(s)")
+		dbpkg.AuditLog("apikey.revoke_owner_demoted", "user:"+u.ID, email, strconv.Itoa(n)+" key"+plural(n))
 	}
 	return nil
 }
@@ -530,7 +531,7 @@ func (a *App) teamCardHTML(r *http.Request) string {
 	return `<div class="card mb-6">
   <div class="card-head">
     <h2 class="card-title">Team &amp; roles</h2>
-    <span class="badge badge--muted">admin only</span>
+    <span class="badge badge--muted">Admin only</span>
   </div>
   <p class="field-hint">Roles: <strong>Admin</strong> manages the team &amp; settings · <strong>Editor</strong> writes &amp; manages all content · <strong>Author</strong> writes their own content. Each member edits their public profile under <a href="/os/profile">My profile</a>.</p>
   ` + table + `

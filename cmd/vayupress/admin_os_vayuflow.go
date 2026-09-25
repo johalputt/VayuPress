@@ -183,13 +183,13 @@ func (a *App) handleOSVayuFlowRun(w http.ResponseWriter, r *http.Request) {
 func flowCheckChip(s flowaudit.Status) string {
 	switch s {
 	case flowaudit.Pass:
-		return `<span class="mon-chip mon-chip--on" title="` + s.String() + `">ok</span>`
+		return `<span class="mon-chip mon-chip--on" title="` + s.String() + `">Ok</span>`
 	case flowaudit.Warn:
-		return `<span class="mon-chip mon-chip--off" title="` + s.String() + `">look</span>`
+		return `<span class="mon-chip mon-chip--off" title="` + s.String() + `">Look</span>`
 	case flowaudit.Fail:
-		return `<span class="mon-chip mon-chip--off" title="` + s.String() + `">act</span>`
+		return `<span class="mon-chip mon-chip--off" title="` + s.String() + `">Act</span>`
 	}
-	return `<span class="mon-chip mon-chip--off" title="` + s.String() + `">note</span>`
+	return `<span class="mon-chip mon-chip--off" title="` + s.String() + `">Note</span>`
 }
 
 func flowCheckIcon(s flowaudit.Status) string {
@@ -207,27 +207,27 @@ func flowCheckIcon(s flowaudit.Status) string {
 // flowModeChip renders a flow's arming state so it reads while collapsed.
 func flowModeChip(f vayuflow.Flow) string {
 	if !f.Enabled {
-		return `<span class="mon-chip mon-chip--off">disabled</span>`
+		return `<span class="mon-chip mon-chip--off">Disabled</span>`
 	}
 	if f.Mode == vayuflow.RunLive {
-		return `<span class="mon-chip mon-chip--on">live</span>`
+		return `<span class="mon-chip mon-chip--on">Live</span>`
 	}
-	return `<span class="mon-chip mon-chip--off">dry-run</span>`
+	return `<span class="mon-chip mon-chip--off">Dry-run</span>`
 }
 
 // runStatusChip renders one run's outcome.
 func runStatusChip(s vayuflow.RunStatus) string {
 	switch s {
 	case vayuflow.StatusSucceeded:
-		return `<span class="mon-chip mon-chip--on">succeeded</span>`
+		return `<span class="mon-chip mon-chip--on">Succeeded</span>`
 	case vayuflow.StatusRefused:
-		return `<span class="mon-chip mon-chip--off">refused</span>`
+		return `<span class="mon-chip mon-chip--off">Refused</span>`
 	case vayuflow.StatusInterrupted:
-		return `<span class="mon-chip mon-chip--off">interrupted</span>`
+		return `<span class="mon-chip mon-chip--off">Interrupted</span>`
 	case vayuflow.StatusFailed:
-		return `<span class="mon-chip mon-chip--off">failed</span>`
+		return `<span class="mon-chip mon-chip--off">Failed</span>`
 	}
-	return `<span class="mon-chip mon-chip--off">` + html.EscapeString(string(s)) + `</span>`
+	return `<span class="mon-chip mon-chip--off">` + html.EscapeString(titleFirst(string(s))) + `</span>`
 }
 
 // vayuFlowPage builds the console body. Pure, so it can be rendered and

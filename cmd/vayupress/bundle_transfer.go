@@ -330,7 +330,7 @@ func (a *App) handleBundleUploadDeploy(site bundleSite) http.HandlerFunc {
 			return
 		}
 		dbpkg.AuditLog("vayudomains.website.bundle", dbpkg.AuditActor(r), name,
-			"deployed "+itoaSafe(m.Files)+" file(s), "+humanBytes(m.Bytes))
+			"deployed "+itoaSafe(m.Files)+" file"+plural(m.Files)+", "+humanBytes(m.Bytes))
 		writeJSON(w, r, http.StatusOK, map[string]any{
 			"status": "deployed", "files": m.Files, "bytes": m.Bytes, "entry": m.Entry,
 			// What was dropped, so the deploy never quietly differs from the zip.

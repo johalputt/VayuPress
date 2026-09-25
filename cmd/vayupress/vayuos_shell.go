@@ -337,7 +337,8 @@ func saRailItem(href, label, icon, count string, current bool) string {
 	if count != "" {
 		c = `<span class="sa-count">` + count + `</span>`
 	}
-	return `<a class="nav-link sa-rail__item" href="` + href + `"` + cur + `>` + saIcon(icon) +
+	// The title names the link when the rail is collapsed to icons.
+	return `<a class="nav-link sa-rail__item" href="` + href + `" title="` + html.EscapeString(label) + `"` + cur + `>` + saIcon(icon) +
 		`<span class="sa-rail__label">` + html.EscapeString(label) + `</span>` + c + `</a>`
 }
 

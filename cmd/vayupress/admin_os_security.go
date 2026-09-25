@@ -150,10 +150,10 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 		if t.TrialDays > 0 {
 			price += ` <span class="badge badge--muted">` + strconv.Itoa(t.TrialDays) + `-day trial</span>`
 		}
-		vis := `<span class="badge badge--muted">` + esc(t.Visibility) + `</span>`
-		status := `<span class="badge badge--ok">active</span>`
+		vis := `<span class="badge badge--muted">` + esc(titleFirst(t.Visibility)) + `</span>`
+		status := `<span class="badge badge--ok">Active</span>`
 		if !t.Active {
-			status = `<span class="badge badge--muted">archived</span>`
+			status = `<span class="badge badge--muted">Archived</span>`
 		}
 		actions := `<button class="btn btn--sm btn--ghost" type="button" data-edit-tier
 			data-id="` + esc(t.ID) + `" data-name="` + esc(t.Name) + `" data-description="` + esc(t.Description) + `"
@@ -207,7 +207,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	rows := ""
 	for _, m := range list {
-		badge := `<span class="badge badge--free">free</span>`
+		badge := `<span class="badge badge--free">Free</span>`
 		if m.IsPaid() {
 			badge = `<span class="badge badge--paid">` + esc(m.Tier) + `</span>`
 		}
@@ -234,7 +234,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 		// offer the only action that makes sense for it.
 		emailCell := esc(m.Email)
 		if m.VerifiedAt == nil {
-			emailCell += ` <span class="badge badge--warn" title="This address was never confirmed — the sign-in link was requested but never used.">unconfirmed</span>`
+			emailCell += ` <span class="badge badge--warn" title="This address was never confirmed — the sign-in link was requested but never used.">Unconfirmed</span>`
 			actions = `<button type="button" class="btn btn--xs btn--danger" data-remove-member data-email="` + esc(m.Email) + `">Remove</button>`
 		}
 		// data-search lets the client-side filter match on email, name and labels.

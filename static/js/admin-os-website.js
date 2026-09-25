@@ -117,8 +117,9 @@
       setDeploy(window.vpBundleProgressText(done, total, phase), true);
     }).then(function (j) {
       deployBtn.disabled = false;
-      var msg = 'Deployed ' + (j.files || 0) + ' files \u2713';
-      if (j.skipped) msg += ' (' + j.skipped + ' system file(s) ignored)';
+      var nf = j.files || 0;
+      var msg = 'Deployed ' + nf + ' file' + (nf === 1 ? '' : 's') + ' \u2713';
+      if (j.skipped) msg += ' (' + j.skipped + ' system file' + (j.skipped === 1 ? '' : 's') + ' ignored)';
       setDeploy(msg + ' \u2014 select \u201CCustom uploaded website\u201D above, then Save & publish', true);
       if (window.vpToast) window.vpToast('Custom build deployed', 'ok');
     }, function (e) {

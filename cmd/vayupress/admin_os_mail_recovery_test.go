@@ -51,12 +51,12 @@ func TestBreakGlassStillRevokesAppPasswords(t *testing.T) {
 		t.Fatalf("break-glass: %v", err)
 	}
 	if n := len(s.AppPasswordCredentials(ctx, "user@example.com")); n != 0 {
-		t.Errorf("%d app password(s) survived a break-glass reset", n)
+		t.Errorf("%d app passwords survived a break-glass reset", n)
 	}
 	// It must also say what it did NOT do, or an operator assumes sessions and the
 	// outbound queue were handled when the server was not even running.
 	for _, want := range []string{
-		"2 app password(s) revoked",
+		"2 app passwords revoked",
 		"live webmail sessions are not ended",
 		"queued outbound mail is not held",
 		"audit log",

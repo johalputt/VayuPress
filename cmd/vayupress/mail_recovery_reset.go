@@ -284,7 +284,9 @@ func mailResetNotice(email string, reason mailResetReason, actor string,
 	return "Your mailbox password was reset", b.String()
 }
 
-func plural(n int) string {
+// plural is the "s" a count's noun takes: "1 file", "2 files". Every count in
+// the console reads this way rather than hedging with "file(s)".
+func plural[N ~int | ~int64](n N) string {
 	if n == 1 {
 		return ""
 	}

@@ -113,14 +113,7 @@ func backupNotification(st vayukeep.Status, bootErr string, now time.Time) (osNo
 
 // osVayuKeepStats is the at-a-glance strip, in the Monetization idiom.
 func osVayuKeepStats(st vayukeep.Status, now time.Time) string {
-	tile := func(value, label, tone string) string {
-		cls := "stat-card"
-		if tone != "" {
-			cls += " stat-card--" + tone
-		}
-		return `<div class="` + cls + `"><div class="stat-card__label">` + html.EscapeString(label) +
-			`</div><div class="stat-card__value">` + html.EscapeString(value) + `</div></div>`
-	}
+	tile := func(value, label, tone string) string { return osStatTile(label, value, tone) }
 	rpoVal, rpoTone := "never", "warn"
 	if !st.NewestGen.IsZero() {
 		rpoVal, rpoTone = humanAgo(st.NewestGen, now), ""
@@ -132,7 +125,7 @@ func osVayuKeepStats(st vayukeep.Status, now time.Time) string {
 	if !st.LastDrill.IsZero() {
 		verVal, verTone = humanAgo(st.LastDrill, now), ""
 		if !st.LastDrillOK {
-			verVal, verTone = "FAILED "+verVal, "warn"
+			verVal, verTone = "failed "+verVal, "warn"
 		}
 	}
 	if !st.Enabled {
@@ -430,7 +423,7 @@ func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vay
 	body := `<div class="page-header">
   <h1>Backup &amp; Recovery <span class="badge badge--` + bannerTone + `">` + html.EscapeString(v.Chip) + `</span></h1>
 </div>
-<p class="page-sub">Automatic, encrypted copies of your entire site — database, media, mailboxes and settings — checked on a schedule so you know they actually restore..</p>
+<p class="page-sub">Automatic, encrypted copies of your entire site — database, media, mailboxes and settings — checked on a schedule so you know they actually restore.</p>
 <div class="card"><p class="text-sm">` + v.Headline + `</p></div>
 ` + osVayuKeepStats(st, now)
 
@@ -1059,7 +1052,7 @@ func (a *App) handleOSVayuKeepPrune(w http.ResponseWriter, r *http.Request) {
 		detail = "Nothing removed: old restore points are only deleted once a newer one has passed a test restore, and none has since VayuPress started. Press Test restore now first."
 	}
 	if removed > 0 {
-		detail = strconv.Itoa(removed) + " restore point(s) removed."
+		detail = strconv.Itoa(removed) + " restore point" + plural(removed) + " removed."
 		dbpkg.AuditLog("vayukeep.prune", dbpkg.AuditActor(r), strconv.Itoa(removed), "")
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": removed > 0, "detail": detail})

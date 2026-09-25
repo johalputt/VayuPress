@@ -112,9 +112,9 @@ func (a *App) vayuAccountsList(ctx context.Context) string {
 	}
 	for _, d := range order {
 		list := groups[d]
-		role := `<span class="badge badge--muted">secondary</span>`
+		role := `<span class="badge badge--muted">Secondary</span>`
 		if d == primary {
-			role = `<span class="badge badge--accent">primary</span>`
+			role = `<span class="badge badge--accent">Primary</span>`
 		}
 		unit := "mailboxes"
 		if len(list) == 1 {
@@ -147,9 +147,9 @@ func (a *App) vayuCardVacation(ctx context.Context, ac vmail.Account) string {
 	ar := a.vayuMail.Accounts().AutoreplyFor(ctx, ac.Email)
 	state := `<span class="muted text-xs">off</span>`
 	if ar.Active(time.Now()) {
-		state = `<span class="badge badge--ok">active</span>`
+		state = `<span class="badge badge--ok">Active</span>`
 	} else if ar.Enabled {
-		state = `<span class="badge badge--warn">scheduled</span>`
+		state = `<span class="badge badge--warn">Scheduled</span>`
 	}
 	checked := ""
 	if ar.Enabled {
@@ -307,7 +307,7 @@ func (a *App) vayuCardPGP(ac vmail.Account) string {
 		// A mailbox created before VayuPGP was enabled has no key yet. Say so
 		// plainly rather than showing an empty box that looks broken.
 		return `<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">PGP public key</span> ` +
-			`<span class="badge badge--muted">no key</span></summary>` +
+			`<span class="badge badge--muted">No key</span></summary>` +
 			`<span class="muted text-sm">No key yet for this mailbox. Keys are generated automatically on account creation; ` +
 			`enable VayuPGP and re-create or re-save this account to mint one.</span></details>`
 	}
@@ -329,7 +329,7 @@ func (a *App) vayuCardPGP(ac vmail.Account) string {
 	// the screen on every card.
 	return `<details class="vm-ooo vm-acct__sub vm-pgp">` +
 		`<summary><span class="field-label">PGP public key</span> ` +
-		`<span class="badge badge--ok">key active</span></summary>` +
+		`<span class="badge badge--ok">Key active</span></summary>` +
 		`<div class="vm-row"><span class="field-label">Fingerprint</span>` +
 		`<code class="mono text-xs">` + esc(pk.Fingerprint) + `</code></div>` +
 		`<textarea class="input vm-pgp__armor mono text-xs" readonly rows="6" ` +
@@ -397,9 +397,9 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	if roleName == "" {
 		roleName = "mailbox"
 	}
-	statusBadge := `<span class="badge badge--ok">active</span>`
+	statusBadge := `<span class="badge badge--ok">Active</span>`
 	if !ac.Active {
-		statusBadge = `<span class="badge badge--warn">disabled</span>`
+		statusBadge = `<span class="badge badge--warn">Disabled</span>`
 	}
 	twofaBadge := `<span class="badge badge--muted">2FA off</span>`
 	if ac.TOTPEnabled {
@@ -504,7 +504,7 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 		c.WriteString(`<span class="vm-acct__name muted text-sm">` + esc(ac.FullName) + `</span>`)
 	}
 	c.WriteString(`</span>`)
-	c.WriteString(`<span class="vm-acct__badges"><span class="badge badge--info">` + esc(roleName) + `</span>` + statusBadge + twofaBadge + `</span>`)
+	c.WriteString(`<span class="vm-acct__badges"><span class="badge badge--info">` + esc(titleFirst(roleName)) + `</span>` + statusBadge + twofaBadge + `</span>`)
 	c.WriteString(`<span class="vm-acct__store">` + storageSummary + `</span>`)
 	c.WriteString(`<span class="vm-acct__chev" aria-hidden="true"></span>`)
 	c.WriteString(`</summary>`)
@@ -683,7 +683,7 @@ func (a *App) vayuCardHandover(ctx context.Context, ac vmail.Account) string {
 			}
 		}
 		return `<details class="vm-ooo vm-acct__sub"><summary>` +
-			`<span class="field-label">Ownership</span> <span class="badge badge--ok">handed over</span></summary>` +
+			`<span class="field-label">Ownership</span> <span class="badge badge--ok">Handed over</span></summary>` +
 			`<p class="muted text-xs">This mailbox belongs to its holder` + esc(when) + `. You cannot open it from
       here, sign in to it with your own password, reset its password, clear its second factor, mint a
       credential for it, or point its mail elsewhere. This cannot be reversed — the database refuses to
@@ -715,7 +715,7 @@ func (a *App) vayuCardHandover(ctx context.Context, ac vmail.Account) string {
 	}
 
 	return `<details class="vm-ooo vm-acct__sub"><summary>` +
-		`<span class="field-label">Ownership</span> <span class="badge badge--muted">you administer this</span></summary>` +
+		`<span class="field-label">Ownership</span> <span class="badge badge--muted">You administer this</span></summary>` +
 		`<p class="muted text-xs">Handing this mailbox to its holder ends <b>your</b> access to it. You will no
     longer be able to read it from the panel, sign in to it with your own console password over IMAP or
     POP3, reset its password, turn off its second factor, create an app password for it, or set

@@ -84,7 +84,7 @@ function lintPage() {
   const said = (e) => { // the text a reader sees: not a tip's, not a fold's, not code
     const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
     let t = "", x;
-    while ((x = w.nextNode())) if (!x.parentElement.closest(FOLDED)) t += x.nodeValue;
+    while ((x = w.nextNode())) if (!x.parentElement.closest(FOLDED + ", script, style, template")) t += x.nodeValue;
     return t.replace(/\s+/g, " ").trim();
   };
   const prose = [...main.querySelectorAll(PROSE)].filter((e) =>
@@ -92,6 +92,111 @@ function lintPage() {
     !e.closest("table, .sa-facts, .store-card, .theme-card") && said(e).length >= 60);
   const shown = prose.reduce((n, e) => n + said(e).length, 0);
   if (shown > 900) out.push(`${shown} characters of explanation on show (limit 900): fold the why into How this works`);
+
+  const visible = (e) => e.offsetParent !== null && e.getClientRects().length > 0;
+  const lines = (e) => { // how many lines the element's own text is set on
+    // Boxes on one line overlap vertically even when their sizes differ (a
+    // figure's unit is set smaller on the number's baseline).
+    const r = document.createRange(); r.selectNodeContents(e);
+    const boxes = [...r.getClientRects()].filter((q) => q.width > 0).sort((a, b) => a.top - b.top);
+    let n = 0, bottom = -Infinity;
+    for (const q of boxes) { if (q.top >= bottom - 1) { n++; bottom = q.bottom; } else bottom = Math.max(bottom, q.bottom); }
+    return n;
+  };
+  // A figure is read at a glance: one line, all of it. A hostname or a phrase
+  // set as a number clipped ("mail.localh") or broke ("Main / domain").
+  main.querySelectorAll(".stat-card__value").forEach((e) => {
+    if (!visible(e)) return;
+    const t = e.textContent.trim();
+    if (e.scrollWidth > e.clientWidth + 1) out.push(`figure "${t}" is cut off`);
+    else if (lines(e) > 1) out.push(`figure "${t}" breaks over lines`);
+  });
+  // The identifier that names a table row is one token: ADR-0163 read as
+  // "ADR-" over "0163". On a phone the rows stack and a long one may wrap.
+  if (innerWidth >= 600) main.querySelectorAll("td:first-child, th:first-child").forEach((cell) => {
+    const toks = cell.matches(".mono, code") ? [cell] : [...cell.querySelectorAll("code, .mono, kbd")];
+    toks.forEach((e) => {
+      const t = e.textContent.trim();
+      if (visible(e) && t && !/\s/.test(t) && t.length <= 24 && lines(e) > 1) out.push(`identifier "${t}" breaks over lines`);
+    });
+  });
+  // On a desktop a table fits its page; one that scrolls sideways hides a column.
+  if (innerWidth >= 1000) main.querySelectorAll(".table-wrap").forEach((e) => {
+    if (visible(e) && e.scrollWidth > e.clientWidth + 1) out.push(`a table scrolls sideways (${e.scrollWidth} > ${e.clientWidth})`);
+  });
+  // A control's label is read whole; a clipped one ("Open in ne") is a guess.
+  main.querySelectorAll("button, .btn, a.btn").forEach((e) => {
+    if (visible(e) && e.textContent.trim() && e.scrollWidth > e.clientWidth + 1) out.push(`control "${e.textContent.trim().slice(0, 30)}" is cut off`);
+  });
+  // An action is a button, not a banner: a filled button stretched across a
+  // block shouts the one thing a calm page says quietly.
+  if (innerWidth >= 1000) main.querySelectorAll(".btn--primary, button.btn-primary").forEach((e) => {
+    if (visible(e) && e.getBoundingClientRect().width > 360) out.push(`button "${e.textContent.trim().slice(0, 30)}" stretched to ${Math.round(e.getBoundingClientRect().width)}px`);
+  });
+  // The browser's own grey "Choose File" is not a console control: its button
+  // is drawn as ours, in the console's face and corner.
+  main.querySelectorAll("input[type=file]").forEach((e) => {
+    const b = getComputedStyle(e, "::file-selector-button");
+    if (visible(e) && (!/Inter/.test(b.fontFamily) || b.borderTopLeftRadius === "0px")) out.push("the browser's own file picker is on show");
+  });
+  // Words a reader trips on: a count that disagrees with its noun (a unit such
+  // as ms is not a plural), a hedged plural, a doubled full stop, a label in
+  // title case or capitals.
+  const text = said(main);
+  const onePlural = text.match(/(?:^|[^\d.,:/])1 (?!(?:is|was|has|does|plus|as|its|this|us|yes|less|pass|process|access|address|status|class|across|ms|rps|qps|fps|[kmg]bps)\b)[a-z]+s\b/);
+  if (onePlural) out.push(`count disagrees with its noun: "${onePlural[0].trim()}"`);
+  const hedged = text.match(/\w+\(s\)/);
+  if (hedged) out.push(`hedged plural: "${hedged[0]}"`);
+  const doubled = text.match(/[^.\s]\.\.(?!\.)/);
+  if (doubled) out.push(`doubled full stop: "${text.slice(Math.max(0, doubled.index - 20), doubled.index + 3)}"`);
+  main.querySelectorAll("button, .btn, a.btn").forEach((e) => {
+    const t = said(e);
+    // A product's own name keeps its capitals (Theme Studio, Spaces).
+    const plain = t.replace(/\b(?:Theme Studio|Theme Store|Spaces|Vayu[A-Z]\w*|Claude \w+|Tor)\b/g, "x");
+    if (visible(e) && (/^[A-Z][a-z]+(?: [A-Z][a-z]+)+$/.test(plain) || /\b(?:ON|OFF)\b/.test(t))) out.push(`label not in sentence case: "${t}"`);
+  });
+  // A title's icon sits on the title's line; one on a line of its own reads as
+  // a broken glyph ("▯" above "VayuMail — the official mobile app").
+  main.querySelectorAll(".card-title, .section-head__title, h1, h2, h3").forEach((t) => {
+    const ico = t.querySelector(":scope > svg.sa-ico");
+    if (!ico || !visible(ico) || !t.textContent.trim()) return;
+    const r = document.createRange(); r.selectNodeContents(t);
+    const text = [...r.getClientRects()].filter((q) => q.width > 0 && !(q.left >= ico.getBoundingClientRect().left && q.right <= ico.getBoundingClientRect().right + 1));
+    if (text.length && ico.getBoundingClientRect().bottom <= Math.min(...text.map((q) => q.top)) + 1) out.push(`icon above its title "${t.textContent.trim().slice(0, 30)}"`);
+  });
+  // A status is a label, set in sentence case like every other: "pending",
+  // "not pointed" and "at-risk" were raw machine values printed as they were.
+  main.querySelectorAll(".badge, .tag, .sa-tag, .tool-status, .pill, .mon-chip").forEach((e) => {
+    const t = said(e);
+    if (visible(e) && /^[a-z]/.test(t)) out.push(`status not in sentence case: "${t}"`);
+  });
+  // A text box too narrow to write in: beside the editor's sidebar, at 1024px
+  // the writing column was 150px and broke words in two.
+  if (innerWidth >= 600) main.querySelectorAll("textarea, [contenteditable=true]").forEach((e) => {
+    if (visible(e) && !e.closest("[aria-hidden=true]") && e.getBoundingClientRect().width < 320) out.push(`text box ${Math.round(e.getBoundingClientRect().width)}px wide, too narrow to write in`);
+  });
+  // Text left invisible: an entrance animation removed with its opacity:0
+  // start kept drew the primary domain's card as an empty box. One still fading
+  // in is not left invisible. Controls kept out of sight until wanted must be
+  // revealed by focus, which is how both the keyboard and a touch screen reach
+  // them: the editor's block controls appeared on hover alone, so a phone and
+  // the keyboard never saw them.
+  main.querySelectorAll("*").forEach((e) => {
+    const cs = getComputedStyle(e);
+    if (cs.opacity !== "0" || cs.pointerEvents === "none" || !visible(e) || said(e).length <= 2 || e.closest("[aria-hidden=true]")) return;
+    if (e.getAnimations().some((a) => a.playState === "running")) return;
+    const where = `<${e.tagName.toLowerCase()} class="${e.className}">`;
+    const control = e.querySelector("button, a[href], input, select, textarea");
+    if (!control) return out.push(`text drawn invisible in ${where}`);
+    const had = document.activeElement;
+    e.style.transition = "none";
+    control.focus({ preventScroll: true });
+    const shown = getComputedStyle(e).opacity !== "0";
+    control.blur();
+    e.style.transition = "";
+    if (had && had !== document.body) had.focus({ preventScroll: true });
+    if (!shown) out.push(`controls revealed by hover alone in ${where}`);
+  });
   return [...new Set(out)];
 }
 
@@ -213,27 +318,78 @@ test("every element of every page is on the Still Air scale, in both schemes", a
   expect(findings).toEqual([]);
 });
 
-test("every app and section passes the design lint, on a desktop and a phone", async ({ page }) => {
-  test.setTimeout(300000);
-  await openConsole(page);
-  const hrefs = await page.evaluate(() => [...new Set([...document.querySelectorAll("[data-sa-index] a")].map((a) => a.getAttribute("href")))]);
-  expect(hrefs.length).toBeGreaterThan(30); // the index is the rail's, so an empty one means the walk checked nothing
+// The phone is a touch screen, not a narrow desktop: with no hover, anything
+// the page reveals only on hover is never revealed at all.
+for (const [device, use] of [
+  ["a desktop", { viewport: { width: 1280, height: 900 } }],
+  // Where the rail and section list leave the least room beside them.
+  ["a small laptop", { viewport: { width: 1024, height: 768 } }],
+  ["a phone", { viewport: { width: 390, height: 900 }, hasTouch: true }],
+]) {
+  test.describe(`on ${device}`, () => {
+    test.use(use);
+    test(`every app and section passes the design lint, on ${device}`, async ({ page }) => {
+      test.setTimeout(300000);
+      await openConsole(page);
+      const hrefs = await page.evaluate(() => [...new Set([...document.querySelectorAll("[data-sa-index] a")].map((a) => a.getAttribute("href")))]);
+      expect(hrefs.length).toBeGreaterThan(30); // the index is the rail's, so an empty one means the walk checked nothing
 
-  const findings = [];
-  for (const width of [1280, 390]) {
-    await page.setViewportSize({ width, height: 900 });
-    for (const href of hrefs) {
-      const errors = [];
-      const onError = (e) => errors.push(e.message);
-      page.on("pageerror", onError);
-      await page.goto(href);
-      await page.waitForLoadState("load");
-      const found = await page.evaluate(lintPage);
-      page.off("pageerror", onError);
-      for (const f of [...found, ...errors.map((e) => "script error: " + e)]) findings.push(`${width}px ${href}: ${f}`);
-    }
-  }
-  expect(findings).toEqual([]);
+      const findings = [];
+      for (const href of hrefs) {
+        const errors = [];
+        const onError = (e) => errors.push(e.message);
+        page.on("pageerror", onError);
+        await page.goto(href);
+        await page.waitForLoadState("load");
+        const found = await page.evaluate(lintPage);
+        page.off("pageerror", onError);
+        for (const f of [...found, ...errors.map((e) => "script error: " + e)]) findings.push(`${href}: ${f}`);
+      }
+      expect(findings).toEqual([]);
+    });
+  });
+}
+
+// On a laptop screen the rail starts as icons, since with an app's section list
+// beside it the content column was too narrow for its tables. The toggle still
+// opens it, the choice survives a reload, and a collapsed link keeps its name.
+test("the rail starts as icons on a small laptop, and the toggle still decides", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await openConsole(page);
+  const rail = page.locator(".sa-rail");
+  const toggle = page.locator(".menu-toggle");
+  const width = async () => Math.round((await rail.boundingBox()).width);
+  expect(await width()).toBeLessThan(80);
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("link", { name: "Mail", exact: false }).first()).toBeVisible();
+
+  await toggle.click();
+  expect(await width()).toBeGreaterThan(180);
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await page.reload();
+  expect(await width()).toBeGreaterThan(180);
+
+  await toggle.click();
+  expect(await width()).toBeLessThan(80);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  expect(await width()).toBeLessThan(80); // a choice made is kept at any width
+});
+
+// The editor rebuilds its blocks on Enter and on a Markdown shortcut. Focus
+// used to follow a tick later, and a key typed in that tick was dropped: a
+// quick typist lost the first letter of a paragraph.
+test("writing straight on through Enter and a shortcut loses no keystroke", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/editor");
+  await page.locator(".eblock__text").first().click();
+  await page.keyboard.type("one");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("two");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("## Heading");
+  await expect(page.locator(".eblock__text").nth(0)).toHaveValue("one");
+  await expect(page.locator(".eblock__text").nth(1)).toHaveValue("two");
+  await expect(page.locator(".eblock__heading").first()).toHaveValue("Heading");
 });
 
 test("the command bar is operated by keyboard alone", async ({ page }) => {

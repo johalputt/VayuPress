@@ -138,13 +138,26 @@ window.vpToast = toast;
   var toggles = $$('.menu-toggle, [data-action="toggle-sidebar"]');
   var body = document.body;
   var desktop = window.matchMedia('(min-width: 769px)');
+  // Below this the stylesheet collapses the rail unless the toggle expanded it.
+  var roomy = window.matchMedia('(min-width: 1280px)');
   var KEY = 'vp_nav_collapsed';
 
   function setExpanded(v) {
     toggles.forEach(function (b) { b.setAttribute('aria-expanded', v ? 'true' : 'false'); });
   }
   function store(v) { try { localStorage.setItem(KEY, v ? '1' : '0'); } catch (e) {} }
-  function stored() { try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } }
+  // The operator's choice, or null when they have not made one.
+  function chosen() { try { var v = localStorage.getItem(KEY); return v === '1' ? true : v === '0' ? false : null; } catch (e) { return null; } }
+  function collapsed() {
+    if (body.classList.contains('nav-collapsed')) return true;
+    return !body.classList.contains('nav-expanded') && !roomy.matches;
+  }
+  function applyChoice() {
+    var c = chosen();
+    body.classList.toggle('nav-collapsed', c === true);
+    body.classList.toggle('nav-expanded', c === false);
+    setExpanded(!collapsed());
+  }
 
   // ── Mobile: slide-in drawer (locks scroll while open) ──────────────────────
   function openDrawer() {
@@ -161,23 +174,17 @@ window.vpToast = toast;
   }
 
   // ── Desktop: collapse the sidebar (persisted; never locks scroll) ──────────
-  function setCollapsed(v) {
-    body.classList.toggle('nav-collapsed', v);
-    setExpanded(!v);
-    store(v);
-  }
-
   function toggle() {
     if (desktop.matches) {
-      setCollapsed(!body.classList.contains('nav-collapsed'));
+      store(!collapsed());
+      applyChoice();
     } else {
       sidebar.classList.contains('open') ? closeDrawer() : openDrawer();
     }
   }
 
   // Restore the persisted desktop collapse state on load (desktop only).
-  if (desktop.matches && stored()) { body.classList.add('nav-collapsed'); }
-  setExpanded(!(desktop.matches && body.classList.contains('nav-collapsed')));
+  if (desktop.matches) applyChoice(); else setExpanded(false);
 
   toggles.forEach(function (b) {
     on(b, 'click', function (e) { e.preventDefault(); toggle(); });
@@ -194,14 +201,17 @@ window.vpToast = toast;
   var onChange = function (e) {
     if (e.matches) {
       closeDrawer();
-      body.classList.toggle('nav-collapsed', stored());
+      applyChoice();
     } else {
-      body.classList.remove('nav-collapsed');
+      body.classList.remove('nav-collapsed', 'nav-expanded');
       body.style.overflow = '';
     }
   };
   if (desktop.addEventListener) desktop.addEventListener('change', onChange);
   else if (desktop.addListener) desktop.addListener(onChange);
+  var onRoom = function () { if (desktop.matches) setExpanded(!collapsed()); };
+  if (roomy.addEventListener) roomy.addEventListener('change', onRoom);
+  else if (roomy.addListener) roomy.addListener(onRoom);
 })();
 
 /* ── Responsive data tables → cards ──────────────────────────

@@ -27,6 +27,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // modeStateClass maps a system mode to the status-pill modifier used for colour.
@@ -42,6 +43,18 @@ func modeStateClass(m mode.Mode) string {
 }
 
 // budgetStateClass maps a budget state string to a status-pill modifier.
+// budgetStateLabel is a budget state as the console says it.
+func budgetStateLabel(state string) string {
+	switch state {
+	case "healthy":
+		return "Healthy"
+	case "at-risk":
+		return "At risk"
+	default:
+		return "Exhausted"
+	}
+}
+
 func budgetStateClass(state string) string {
 	switch state {
 	case "healthy":
@@ -55,11 +68,7 @@ func budgetStateClass(state string) string {
 
 // monStat renders one performance stat card.
 func monStat(label, value, sub string) string {
-	return `<div class="stat-card">
-  <div class="stat-card__top"><div class="stat-card__label">` + html.EscapeString(label) + `</div></div>
-  <div class="stat-card__value">` + html.EscapeString(value) + `</div>
-  <div class="stat-card__bottom"><span class="muted text-xs">` + html.EscapeString(sub) + `</span></div>
-</div>`
+	return string(ui.Figure{Label: label, Value: value, Note: sub}.Cell())
 }
 
 func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +83,7 @@ func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
   <div class="flex justify-between items-center">
     <div>
       <div class="card-title">System mode</div>
-      <div class="text-sm muted">` + strconv.Itoa(transitions) + ` recorded transition(s)</div>
+      <div class="text-sm muted">` + strconv.Itoa(transitions) + ` recorded transition` + plural(transitions) + `</div>
     </div>
     <span aria-live="polite">` + monModePill(cur, false) + `</span>
   </div>

@@ -94,7 +94,7 @@ func TestDomainsCLI(t *testing.T) {
 	if err := runDomainsCLI([]string{"sync", "--all"}, &b); err != nil {
 		t.Fatalf("sync --all: %v", err)
 	}
-	if !strings.Contains(b.String(), "1 domain(s) set sync_state=approved") {
+	if !strings.Contains(b.String(), "1 domain set sync_state=approved") {
 		t.Errorf("sync --all output = %q, want 1 domain approved", b.String())
 	}
 	b.Reset()
@@ -107,7 +107,7 @@ func TestDomainsCLI(t *testing.T) {
 	if err := runDomainsCLI([]string{"sync", "--all"}, &b); err != nil {
 		t.Fatalf("sync --all (idempotent): %v", err)
 	}
-	if !strings.Contains(b.String(), "0 domain(s) set sync_state=approved") {
+	if !strings.Contains(b.String(), "0 domains set sync_state=approved") {
 		t.Errorf("second sync --all = %q, want 0 changed", b.String())
 	}
 	// hold --all takes them all back off the work list.

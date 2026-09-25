@@ -381,7 +381,7 @@ func (a *App) bootVayuShield() {
 			return
 		}
 		if res.Promoted > 0 || res.Purged > 0 {
-			logging.LogInfo("vayushield", fmt.Sprintf("learning cycle: promoted %d signature(s), purged %d stale", res.Promoted, res.Purged))
+			logging.LogInfo("vayushield", fmt.Sprintf("learning cycle: promoted %d signature%s, purged %d stale", res.Promoted, plural(res.Promoted), res.Purged))
 		}
 	})
 
@@ -1226,7 +1226,7 @@ func (a *App) shieldPolicyBand(ctx context.Context, geoBlind bool) string {
 	b.WriteString(`</div></div>`)
 	if a.vayuShield != nil {
 		if peers, in, refused, sent, failed := a.vayuShield.ClusterStats(); peers > 0 {
-			b.WriteString(`<p class="muted text-xs">` + strconv.Itoa(peers) + ` peer(s) · ` +
+			b.WriteString(`<p class="muted text-xs">` + strconv.Itoa(peers) + ` peer` + plural(peers) + ` · ` +
 				strconv.FormatInt(in, 10) + ` verdicts received · ` +
 				strconv.FormatInt(sent, 10) + ` pushes delivered · ` +
 				strconv.FormatInt(failed, 10) + ` failed`)
@@ -2120,7 +2120,7 @@ func (a *App) startShieldCluster(ctx context.Context) {
 		return
 	}
 	logging.LogInfo("vayushield", "verdict sharing active with "+strconv.Itoa(len(peers))+
-		" peer(s) as "+node+" — jails, reputation losses and pardons apply fleet-wide. "+
+		" peer"+plural(len(peers))+" as "+node+" — jails, reputation losses and pardons apply fleet-wide. "+
 		"This multiplies ingress linearly with node count; it is not anycast and not scrubbing.")
 
 	go func() {

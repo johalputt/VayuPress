@@ -276,10 +276,10 @@ func TestMirrorDownloadsAreShedWhenEverySlotIsBusy(t *testing.T) {
 func TestTheConsoleReportsTheMirrorsState(t *testing.T) {
 	s, _ := heldMirror(t, 16)
 	a := &App{relMirror: s}
-	if got := a.releaseMirrorChip(mirrorDomain(true)); !strings.Contains(got, "serving v3.17.66") {
+	if got := a.releaseMirrorChip(mirrorDomain(true)); !strings.Contains(got, ">Serving v3.17.66<") {
 		t.Errorf("chip = %s", got)
 	}
-	if got := a.releaseMirrorChip(mirrorDomain(false)); !strings.Contains(got, ">off<") {
+	if got := a.releaseMirrorChip(mirrorDomain(false)); !strings.Contains(got, ">Off<") {
 		t.Errorf("chip for a switched-off domain = %s", got)
 	}
 	card := a.releaseMirrorCard(mirrorDomain(true))

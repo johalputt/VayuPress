@@ -347,7 +347,7 @@ func (a *App) shieldAuditBody(r *http.Request) string {
 	switch {
 	case extra > 0:
 		b.WriteString(`<p class="text-sm"><span class="vs-hard-state is-err">✕ ` + strconv.Itoa(extra) +
-			` control(s) not enforcing</span> — plus one permanent limit every install has.</p>`)
+			` control` + plural(extra) + ` not enforcing</span> — plus one permanent limit every install has.</p>`)
 	case warn > 0:
 		// "nothing is failing" is what this said, directly above a tally reading
 		// "1 failing". Both were computed correctly — the tally counts raw Fail
@@ -357,7 +357,7 @@ func (a *App) shieldAuditBody(r *http.Request) string {
 		// real failure ever saw the contradiction: the reassuring case, read by
 		// the operator least likely to go digging.
 		b.WriteString(`<p class="text-sm"><span class="vs-hard-state is-work">▲ ` + strconv.Itoa(warn) +
-			` item(s) worth a look</span> — no control is failing, beyond the permanent limit below.</p>`)
+			` item` + plural(warn) + ` worth a look</span> — no control is failing, beyond the permanent limit below.</p>`)
 	default:
 		b.WriteString(`<p class="text-sm"><span class="vs-hard-state is-on">● Every control verified enforcing</span> — within the permanent limit below.</p>`)
 	}

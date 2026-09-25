@@ -159,9 +159,9 @@ func (a *App) handleVayuOSMailboxSettings(w http.ResponseWriter, r *http.Request
 
 	// Identity header: who this is, whether it is active, and its storage.
 	esc := html.EscapeString
-	badge := `<span class="badge badge--ok">active</span>`
+	badge := `<span class="badge badge--ok">Active</span>`
 	if !ac.Active {
-		badge = `<span class="badge badge--warn">disabled</span>`
+		badge = `<span class="badge badge--warn">Disabled</span>`
 	}
 	if ac.TOTPEnabled {
 		badge += `<span class="badge badge--info">2FA</span>`

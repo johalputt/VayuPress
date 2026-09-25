@@ -30,6 +30,7 @@ import (
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/apikeys"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // liveConnectorKeys returns the grants an operator can actually act on: external,
@@ -112,20 +113,25 @@ func mcpClientStats(endpoint string, keys []apikeys.Key, labelPrefix, countLabel
 	if full > 0 {
 		fullTone = "warn"
 	}
-	tile := func(value, label, tone string) string {
-		cls := "stat-card"
-		if tone != "" {
-			cls += " stat-card--" + tone
-		}
-		return `<div class="` + cls + `"><div class="stat-card__label">` + html.EscapeString(label) +
-			`</div><div class="stat-card__value">` + html.EscapeString(value) + `</div></div>`
-	}
+	tile := func(value, label, tone string) string { return osStatTile(label, value, tone) }
 	return `<div class="stat-grid">` +
 		tile(strconv.Itoa(live), countLabel, "") +
 		tile(strconv.Itoa(full), "Full-control keys", fullTone) +
-		tile(host, "Serving on", "") +
-		tile(hostLabel, "Endpoint host", hostTone) +
-		`</div>`
+		`</div>` + mcpEndpointFacts(host, hostLabel, hostTone)
+}
+
+// mcpEndpointFacts says where the endpoint is served. A hostname is not a
+// figure: set as one it ran out of its column ("mail.localh…"), so the counts
+// stay figures and the address is a fact under them.
+func mcpEndpointFacts(host, hostLabel, hostTone string) string {
+	which := ui.Text(hostLabel)
+	if hostTone != "" {
+		which = ui.Tag(hostTone, hostLabel)
+	}
+	return string(ui.Facts(
+		ui.Fact{Key: "Serving on", Value: `<code class="vm-break">` + ui.Text(host) + `</code>`},
+		ui.Fact{Key: "Endpoint host", Value: which},
+	))
 }
 
 // mcpGrantTile renders one choice in a grant grid. primary marks the button a

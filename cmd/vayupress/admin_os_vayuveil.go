@@ -137,15 +137,15 @@ func (a *App) handleOSVayuVeilToggle(w http.ResponseWriter, r *http.Request) {
 func veilStatusChip(s veilaudit.Status) string {
 	switch s {
 	case veilaudit.Pass:
-		return `<span class="mon-chip mon-chip--on">enforcing</span>`
+		return `<span class="mon-chip mon-chip--on">Enforcing</span>`
 	case veilaudit.Fail:
-		return `<span class="mon-chip mon-chip--off">open</span>`
+		return `<span class="mon-chip mon-chip--off">Open</span>`
 	case veilaudit.Warn:
-		return `<span class="mon-chip mon-chip--off">exposed</span>`
+		return `<span class="mon-chip mon-chip--off">Exposed</span>`
 	case veilaudit.Unverified:
-		return `<span class="mon-chip mon-chip--off">unverified</span>`
+		return `<span class="mon-chip mon-chip--off">Unverified</span>`
 	default:
-		return `<span class="mon-chip mon-chip--off">context</span>`
+		return `<span class="mon-chip mon-chip--off">Context</span>`
 	}
 }
 
@@ -185,9 +185,9 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 		`<span class="section-head__hint">What this switch does, and what it cannot</span></div>`)
 	b.WriteString(`<div class="mon-stack">`)
 
-	btnLabel, btnAction, chip := "Activate", "1", `<span class="mon-chip mon-chip--off">inactive</span>`
+	btnLabel, btnAction, chip := "Activate", "1", `<span class="mon-chip mon-chip--off">Inactive</span>`
 	if enabled {
-		btnLabel, btnAction, chip = "Deactivate", "0", `<span class="mon-chip mon-chip--on">reporting</span>`
+		btnLabel, btnAction, chip = "Deactivate", "0", `<span class="mon-chip mon-chip--on">Reporting</span>`
 	}
 	b.WriteString(monAcc(saIcon("shield"), "VayuVeil", "Inventory the observation channels on this host and report",
 		chip, true,
@@ -205,12 +205,12 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 				`written to prevent.</p>`))+`</div>`))
 
 	// ── What is actually enforced, and how big it is ──────────────────────────
-	selfChip := `<span class="mon-chip mon-chip--off">unverified</span>`
+	selfChip := `<span class="mon-chip mon-chip--off">Unverified</span>`
 	switch {
 	case self.Known && self.Undumpable:
-		selfChip = `<span class="mon-chip mon-chip--on">verified</span>`
+		selfChip = `<span class="mon-chip mon-chip--on">Verified</span>`
 	case self.Known:
-		selfChip = `<span class="mon-chip mon-chip--off">dumpable</span>`
+		selfChip = `<span class="mon-chip mon-chip--off">Dumpable</span>`
 	}
 	b.WriteString(monAcc(saIcon("lock"), "This process refuses to be dumped",
 		"The one control VayuVeil enforces, and its exact size", selfChip, true,
@@ -238,7 +238,7 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 
 	// ── The capture suite ─────────────────────────────────────────────────────
 	captured, refused, notPresent, notAttempted := vayuveil.RedTeamSummary(red)
-	suiteChip := `<span class="mon-chip mon-chip--off">not run</span>`
+	suiteChip := `<span class="mon-chip mon-chip--off">Not run</span>`
 	if len(red) > 0 {
 		if captured > 0 {
 			suiteChip = `<span class="mon-chip mon-chip--off">` + strconv.Itoa(captured) + ` captured</span>`
@@ -306,7 +306,7 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 		regChip, false, reg.String()))
 
 	// ── The posture report ────────────────────────────────────────────────────
-	postureChip := `<span class="mon-chip mon-chip--off">nothing enforcing</span>`
+	postureChip := `<span class="mon-chip mon-chip--off">Nothing enforcing</span>`
 	if pass > 0 {
 		postureChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(pass) + ` enforcing</span>`
 	}
@@ -317,7 +317,7 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 		// one tip away, so thirteen of them read as a list, not an essay.
 		post.WriteString(`<p class="text-sm">` + veilStatusChip(c.Status) + ` <b>` + esc(c.Title) + `</b>`)
 		if c.Permanent {
-			post.WriteString(` <span class="mon-chip mon-chip--off">permanent</span>`)
+			post.WriteString(` <span class="mon-chip mon-chip--off">Permanent</span>`)
 		}
 		if c.Detail != "" {
 			post.WriteString(string(ui.Tip(c.Detail)))
@@ -334,7 +334,7 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 	// ── What this will never claim ────────────────────────────────────────────
 	b.WriteString(monAcc(saIcon("warn"), "What VayuVeil will never claim",
 		"The boundary, stated so no future wording quietly moves it",
-		`<span class="mon-chip mon-chip--off">by construction</span>`, false,
+		`<span class="mon-chip mon-chip--off">By construction</span>`, false,
 		`<div class="card"><p class="text-sm muted">Not &ldquo;screenshot-proof&rdquo;. Not protection `+
 			`against an attacker with root, a kernel or driver-level attacker, DMA-capable hardware, `+
 			`firmware, ME/PSP or SMM. Not protection against a camera pointed at the screen, an HDMI `+

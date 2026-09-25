@@ -2623,7 +2623,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		body = notice + `<div class="page-header">
   <h1>Posts <span class="count-pill">` + strconv.Itoa(allCount) + `</span></h1>
   <div class="page-actions">
-    <a class="btn btn--primary" href="/os/editor">New Post</a>
+    <a class="btn btn--primary" href="/os/editor">New post</a>
   </div>
 </div>
 <p class="page-sub">Every article in one place — search, filter by status or date, publish or unpublish inline, and see at a glance what's announced to search engines.</p>
@@ -3084,7 +3084,7 @@ func osPostsHref(status, q, from, to, period string, page int) string {
 // it works without JavaScript and respects the strict CSP.
 func osPostsPager(status, q, from, to, period string, page, totalPages, total, shownFrom, shownTo int) string {
 	info := `<div class="pager-info">Showing <strong>` + strconv.Itoa(shownFrom) + `–` + strconv.Itoa(shownTo) +
-		`</strong> of <strong>` + strconv.Itoa(total) + `</strong> posts</div>`
+		`</strong> of <strong>` + strconv.Itoa(total) + `</strong> post` + plural(total) + `</div>`
 	if totalPages <= 1 {
 		return `<nav class="pager" aria-label="Posts pagination">` + info + `</nav>`
 	}
@@ -3241,7 +3241,7 @@ func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 	body := osEditorBody("", "", "[]", a.authorSelectOptions(r.Context(), currentUserIDOf(r))) + osEditorMetaScript("", "", time.Time{}, nil, PostMeta{})
 	body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js?v=` + assetVer("js/admin-os-editor.js") + `"></script>`
-	writeOSHTML(w, r, adminOSLayout(nonce, "New Post", "editor", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "New post", "editor", cfg, htmpl.HTML(body)))
 }
 
 // ── SEO ──────────────────────────────────────────────────────────────────────
@@ -3412,7 +3412,7 @@ func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	actions := []cmdAction{
-		{Label: "New Post", Icon: "pencil", Hint: "Open the block editor", Fn: "newPost"},
+		{Label: "New post", Icon: "pencil", Hint: "Open the block editor", Fn: "newPost"},
 		{Label: "SEO Dashboard", Icon: "search", Hint: "Indexing and search health", Fn: "goSEO"},
 		{Label: "Regenerate SEO artefacts", Icon: "refresh", Hint: "Rebuild sitemap, RSS & robots.txt", Fn: "regenSEO"},
 	}

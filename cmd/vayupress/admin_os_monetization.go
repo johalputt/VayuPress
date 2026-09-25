@@ -18,7 +18,6 @@ import (
 	htmpl "html/template"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
@@ -164,7 +163,7 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 	body := `<div class="page-header">
   <h1>Monetization</h1>
 </div>
-<p class="page-sub">Your whole revenue engine in one place — payments, membership plans, the premium mail-ID marketplace, paid posts and every order..</p>
+<p class="page-sub">Your whole revenue engine in one place — payments, membership plans, the premium mail-ID marketplace, paid posts and every order.</p>
 ` + statusBanner + `
 <div class="stat-grid">
   <div class="stat-card"><div class="stat-card__label">Revenue collected</div><div class="stat-card__value">` + html.EscapeString(priceLabel(revCurrency, stats.RevenueCents)) + `</div></div>
@@ -396,18 +395,7 @@ func monChip(on bool, onLabel, offLabel string) string {
 //
 // tone is "" or a modifier such as "warn".
 func osStatTile(label, value, tone string) string {
-	cls := "stat-card"
-	if tone != "" {
-		cls += " stat-card--" + tone
-	}
-	// A figure is set large; a word or a hostname at that size runs out of its
-	// tile ("mail.localh…", "Main / domain"), so it takes the smaller size.
-	vcls := "stat-card__value"
-	if strings.Contains(value, " ") || len([]rune(value)) > 9 {
-		vcls += " stat-card__value--sm"
-	}
-	return `<div class="` + cls + `"><div class="stat-card__label">` + html.EscapeString(label) +
-		`</div><div class="` + vcls + `">` + html.EscapeString(value) + `</div></div>`
+	return string(ui.Figure{Label: label, Value: value, Tone: tone}.Cell())
 }
 
 // monAcc is the console's disclosure for the pages that build their markup as

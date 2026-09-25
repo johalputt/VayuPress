@@ -123,7 +123,7 @@ func scopedSEOBody(domainID, origin string, declared map[string]string) string {
 	}
 	head.WriteString(`<div class="vm-row"><a class="btn btn--primary btn--sm" href="/os/d/` + esc(domainID) +
 		`/theme">Edit in Theme Studio</a></div></div>`)
-	headChip := `<span class="mon-chip mon-chip--off">all default</span>`
+	headChip := `<span class="mon-chip mon-chip--off">All default</span>`
 	if set > 0 {
 		headChip = `<span class="mon-chip mon-chip--on">` + strconv.Itoa(set) + ` set</span>`
 	}
@@ -143,7 +143,7 @@ func scopedSEOBody(domainID, origin string, declared map[string]string) string {
 
 	// The honest limit, on the page rather than in a commit message.
 	b.WriteString(monAcc(saIcon("columns"), "What is still install-level", "Not per-domain, and not claimed to be",
-		`<span class="mon-chip mon-chip--off">by construction</span>`, false,
+		`<span class="mon-chip mon-chip--off">By construction</span>`, false,
 		`<div class="card"><p class="text-sm muted">The install-wide SEO health report checks cached `+
 			`artefacts and the install's canonical hostname, so it describes the primary site. It is not shown `+
 			`here rather than shown here mislabelled: a freshness check reported under this domain's name, `+

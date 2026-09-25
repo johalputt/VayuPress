@@ -500,7 +500,7 @@
           if (j && j.result && j.result.finished_at) {
             var f = j.result.failed || 0;
             out.textContent = f > 0
-              ? 'Finished — ' + f + ' helper(s) reported a problem. Reload for detail.'
+              ? 'Finished — ' + f + ' helper' + (f === 1 ? '' : 's') + ' reported a problem. Reload for detail.'
               : 'Finished cleanly. Reload to see the summary.';
           } else {
             out.textContent = 'Finished. Reload to see the summary.';

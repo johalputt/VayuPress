@@ -349,7 +349,7 @@ func (a *App) vayuCardRecovery(ctx context.Context, email string) string {
 
 	// The summary badge is the whole point at a glance: scanning the mailbox list
 	// should show which accounts have no way back in.
-	state := `<span class="badge badge--warn">no recovery</span>`
+	state := `<span class="badge badge--warn">No recovery</span>`
 	if st.Ready {
 		bits := []string{}
 		if st.CodesRemaining > 0 {
@@ -360,7 +360,7 @@ func (a *App) vayuCardRecovery(ctx context.Context, email string) string {
 		}
 		state = `<span class="badge badge--ok">` + html.EscapeString(strings.Join(bits, " + ")) + `</span>`
 	} else if st.ContactPending != "" {
-		state = `<span class="badge badge--warn">unverified address</span>`
+		state = `<span class="badge badge--warn">Unverified address</span>`
 	}
 
 	var b strings.Builder

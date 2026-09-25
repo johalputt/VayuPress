@@ -359,14 +359,7 @@ func osConnectorStats(endpoint string, keys []apikeys.Key, dedicated bool, block
 	if full > 0 {
 		fullTone = "warn"
 	}
-	tile := func(value, label, tone string) string {
-		cls := "stat-card"
-		if tone != "" {
-			cls += " stat-card--" + tone
-		}
-		return `<div class="` + cls + `"><div class="stat-card__label">` + html.EscapeString(label) +
-			`</div><div class="stat-card__value">` + html.EscapeString(value) + `</div></div>`
-	}
+	tile := func(value, label, tone string) string { return osStatTile(label, value, tone) }
 	activeLabel := "Active connectors"
 	if idle > 0 {
 		activeLabel += " · " + strconv.Itoa(idle) + " paused"
@@ -374,9 +367,7 @@ func osConnectorStats(endpoint string, keys []apikeys.Key, dedicated bool, block
 	return `<div class="stat-grid">` +
 		tile(strconv.Itoa(live), activeLabel, "") +
 		tile(strconv.Itoa(full), "Full-control keys", fullTone) +
-		tile(host, "Serving on", "") +
-		tile(hostLabel, "Endpoint host", hostTone) +
-		`</div>`
+		`</div>` + mcpEndpointFacts(host, hostLabel, hostTone)
 }
 
 func osConnectorEndpointCard(endpoint, apex string, dedicated bool, blockedHost string) string {
@@ -387,7 +378,7 @@ func osConnectorEndpointCard(endpoint, apex string, dedicated bool, blockedHost 
 		// that silently disagrees with the site you are administering reads as a
 		// mistake, and an operator who "corrects" it back to the apex walks
 		// straight into the failure this is here to avoid.
-		note = `<p class="text-sm muted mb-4"><span class="badge badge--ok">dedicated host</span> This install has a working <code>` +
+		note = `<p class="text-sm muted mb-4"><span class="badge badge--ok">Dedicated host</span> This install has a working <code>` +
 			html.EscapeString(strings.TrimSuffix(strings.TrimPrefix(endpoint, "https://"), "/mcp")) +
 			`</code> is offered instead of <code>` + html.EscapeString(apex) + `</code> because it is not proxied.` +
 			string(ui.Tip("Both reach this same server with the same authentication, but the dedicated host is not proxied, so a bot challenge or firewall rule on your main domain can never sit in front of it. An MCP client has no browser and cannot answer a challenge, and when one appears the request never reaches this server to be logged.")) + `</p>`
@@ -396,7 +387,7 @@ func osConnectorEndpointCard(endpoint, apex string, dedicated bool, blockedHost 
 		// dump: the dedicated host EXISTS, and something in front of it answered
 		// instead of this server. Naming that distinctly matters — "not set up" and
 		// "set up but proxied" need opposite actions.
-		note = `<p class="text-sm muted mb-4"><span class="badge badge--warn">blocked</span> <code>` +
+		note = `<p class="text-sm muted mb-4"><span class="badge badge--warn">Blocked</span> <code>` +
 			html.EscapeString(blockedHost) + `</code> is answered by something in front of this server. Switch it to DNS only at your DNS provider.` +
 			string(ui.Tip("A bot challenge or firewall interstitial answered instead of VayuPress. A machine client cannot answer one, so that host is unusable until it is DNS only (the grey cloud in Cloudflare). Nothing needs changing here; the endpoint above stays on your main domain until the dedicated host answers directly.")) + `</p>`
 	} else {

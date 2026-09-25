@@ -53,7 +53,7 @@ func TestTheCardNeverSaysAppliedBeforeTheKernelSaysSo(t *testing.T) {
 			t.Errorf("the card claims %q while the process does not have it", forbidden)
 		}
 	}
-	if !strings.Contains(card, "awaiting restart") {
+	if !strings.Contains(card, ">Awaiting restart<") {
 		t.Error("the collapsed chip must say awaiting restart, so the state reads without opening the card")
 	}
 	// The written list is still shown — the operator asked for something and is

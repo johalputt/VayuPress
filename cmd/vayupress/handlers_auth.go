@@ -852,7 +852,7 @@ func (a *App) deleteUserAccount(ctx context.Context, email string) (string, erro
 		if n, err := a.apiKeys.RevokeOwnedBy(ctx, deletedID); err != nil {
 			logging.LogError("auth", "revoking API keys for a deleted user", err.Error())
 		} else if n > 0 {
-			dbpkg.AuditLog("apikey.revoke_owner_deleted", "user:"+deletedID, email, strconv.Itoa(n)+" key(s)")
+			dbpkg.AuditLog("apikey.revoke_owner_deleted", "user:"+deletedID, email, strconv.Itoa(n)+" key"+plural(n))
 		}
 	}
 	return deletedID, nil

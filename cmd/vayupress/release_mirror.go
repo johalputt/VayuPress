@@ -157,7 +157,7 @@ func (a *App) syncReleaseMirror(ctx context.Context) error {
 		logging.LogWarn("release-mirror", "sync incomplete: "+err.Error())
 	default:
 		st := a.relMirror.m.State()
-		logging.LogInfo("release-mirror", "in sync — holding "+strconv.Itoa(len(st.Releases))+" verified release(s), "+humanBytes(st.Bytes()))
+		logging.LogInfo("release-mirror", "in sync — holding "+strconv.Itoa(len(st.Releases))+" verified release"+plural(len(st.Releases))+", "+humanBytes(st.Bytes()))
 	}
 	return err
 }

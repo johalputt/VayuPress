@@ -381,7 +381,7 @@ func (a *App) diagnoseCertificate(ctx context.Context, d domain.Domain, logLines
 		}
 		out = append(out, diagCheck{
 			Label: label, OK: ok,
-			Detail: strconv.Itoa(res.Ran) + " helper(s) did work, " + strconv.Itoa(res.Skipped) +
+			Detail: strconv.Itoa(res.Ran) + " helper" + plural(res.Ran) + " did work, " + strconv.Itoa(res.Skipped) +
 				" had nothing to do, " + strconv.Itoa(res.Failed) + " reported a problem — " +
 				res.Details + age,
 		})
@@ -718,11 +718,11 @@ func scopedDiagnosticBody(checks []diagCheck, logLines []string, host string) st
 	b.WriteString(`<div class="card">`)
 	b.WriteString(`<div class="table-wrap"><table class="table"><tbody>`)
 	for _, c := range checks {
-		badge := `<span class="badge badge--ok">ok</span>`
+		badge := `<span class="badge badge--ok">OK</span>`
 		if !c.OK {
-			badge = `<span class="badge badge--muted">no</span>`
+			badge = `<span class="badge badge--muted">No</span>`
 			if c.Fatal {
-				badge = `<span class="badge badge--warn">blocking</span>`
+				badge = `<span class="badge badge--warn">Blocking</span>`
 			}
 		}
 		b.WriteString(`<tr><td>` + badge + `</td><td><b>` + esc(c.Label) + `</b>` +

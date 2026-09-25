@@ -44,7 +44,7 @@ func TestBudgetStateClass(t *testing.T) {
 func TestMonStatCSPSafeAndEscapes(t *testing.T) {
 	out := monStat("HTTP p95", "12 ms", "request latency")
 	assertCSPSafe(t, "monStat", out)
-	if !strings.Contains(out, "HTTP p95") || !strings.Contains(out, "12 ms") {
+	if !strings.Contains(out, "HTTP p95") || !strings.Contains(out, `12<span class="stat-card__unit">ms</span>`) {
 		t.Error("monStat dropped its label/value")
 	}
 	hostile := monStat(`<script>alert(1)</script>`, `"><img onerror=x>`, "x")

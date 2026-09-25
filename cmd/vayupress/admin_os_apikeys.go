@@ -279,14 +279,7 @@ func osAPIKeysStats(keys []apikeys.Key, creds []secrets.Credential) string {
 	if full > 0 {
 		fullTone = "warn"
 	}
-	tile := func(value, label, tone string) string {
-		cls := "stat-card"
-		if tone != "" {
-			cls += " stat-card--" + tone
-		}
-		return `<div class="` + cls + `"><div class="stat-card__label">` + html.EscapeString(label) +
-			`</div><div class="stat-card__value">` + html.EscapeString(value) + `</div></div>`
-	}
+	tile := func(value, label, tone string) string { return osStatTile(label, value, tone) }
 	return `<div class="stat-grid">` +
 		tile(strconv.Itoa(live), liveLabel, "") +
 		tile(strconv.Itoa(full), "Full-access keys", fullTone) +

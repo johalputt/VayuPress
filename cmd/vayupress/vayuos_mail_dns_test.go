@@ -14,7 +14,7 @@ import (
 // load-bearing "must not be proxied / DNS only" warning.
 func TestVayuMailHostSection(t *testing.T) {
 	out := vayuMailHostSection(mail.Config{Domain: "example.com", Hostname: "mail.example.com"})
-	for _, want := range []string{"mail.example.com", "DNS only", "do not proxy", "AAAA", "PTR", "25"} {
+	for _, want := range []string{"mail.example.com", "DNS only", "Do not proxy", "AAAA", "PTR", "25"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("mail host section missing %q", want)
 		}
@@ -53,7 +53,7 @@ func TestVayuDNSVerifyDomainTable(t *testing.T) {
 		{Type: "SPF", OK: true, Found: "v=spf1 a mx ~all"},
 	}}
 	out := vayuDNSVerifyDomainTable("shop.example", hc)
-	for _, want := range []string{"shop.example", "check records", "delivered elsewhere", "v=spf1 a mx ~all", "action", "ok"} {
+	for _, want := range []string{"shop.example", `badge--warn">Check records<`, "delivered elsewhere", "v=spf1 a mx ~all", `badge--warn">Action<`, `badge--ok">OK<`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("verify table missing %q\n%s", want, out)
 		}

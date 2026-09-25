@@ -146,13 +146,13 @@ func (a *App) previewSite(ctx context.Context, d domain.Domain, path string) (*S
 	}
 	if p.InlineStyles > 0 {
 		p.Problems = append(p.Problems, fmt.Sprintf(
-			"%d inline style block(s) written into the page: this site allows stylesheets only from its own origin, "+
-				"so the browser discards these entirely and every rule in them is lost", p.InlineStyles))
+			"%d inline style block%s written into the page: this site allows stylesheets only from its own origin, "+
+				"so the browser discards them entirely and every rule in them is lost", p.InlineStyles, plural(p.InlineStyles)))
 	}
 	if p.InlineJS > 0 {
 		p.Problems = append(p.Problems, fmt.Sprintf(
-			"%d inline script block(s) written into the page: they cannot run under this policy, "+
-				"so whatever they do never happens", p.InlineJS))
+			"%d inline script block%s written into the page: they cannot run under this policy, "+
+				"so whatever they do never happens", p.InlineJS, plural(p.InlineJS)))
 	}
 
 	p.Subresources = previewSubresources(ctx, h, d.Host, path, body)

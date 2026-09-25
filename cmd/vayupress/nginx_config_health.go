@@ -33,8 +33,10 @@ package main
 // where configuration is read from.
 
 import (
+	"errors"
 	"html"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -136,7 +138,16 @@ func inspectNginxSitesEnabled(dir string) NginxConfigHealth {
 		// Common and not alarming: a container image, a non-Debian layout, or a
 		// service user without read access. Say which rather than implying the
 		// configuration is clean.
-		h.Reason = "could not read " + dir + ": " + err.Error()
+		// In the operator's words, not the syscall's: "open …: no such file or
+		// directory" repeated the path it followed and read as a crash.
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			h.Reason = "There is no " + dir + " on this server"
+		case errors.Is(err, fs.ErrPermission):
+			h.Reason = "This service may not read " + dir
+		default:
+			h.Reason = "Could not read " + dir + ": " + err.Error()
+		}
 		return h
 	}
 	h.Checked = true
@@ -213,7 +224,7 @@ func nginxConfigHealthCard(h NginxConfigHealth) string {
 		`decides which server block answers for a hostname.</div></div>`)
 
 	if !h.Checked {
-		b.WriteString(saCallout("info", `<strong>Not checked.</strong> `+htmlEscape(h.Reason)+`. This is normal on a container or `+
+		b.WriteString(saCallout("info", `<strong>Not checked.</strong> `+htmlEscape(h.Reason)+`, which is normal on a container or `+
 			`non-Debian layout. It means these checks did not run — not that the configuration is clean.`))
 		return b.String()
 	}

@@ -77,9 +77,9 @@ func vayuDNSWizard(h dnsHealth) string {
 	b.WriteString(`<div class="card vm-wizard" id="vm-dns-wizard">`)
 	b.WriteString(`<div class="vm-wizard-head"><h2 class="vm-wizard-title">Domain health — are we done?</h2>`)
 	if h.AllOK {
-		b.WriteString(`<span class="badge badge--ok">all checks pass</span>`)
+		b.WriteString(`<span class="badge badge--ok">All checks pass</span>`)
 	} else {
-		b.WriteString(`<span class="badge badge--warn">action needed</span>`)
+		b.WriteString(`<span class="badge badge--warn">Action needed</span>`)
 	}
 	b.WriteString(`</div>`)
 	if h.AllOK {
@@ -215,7 +215,7 @@ func vayuMailHostSection(mc mail.Config) string {
 <tr><td><span class="vm-tag">PTR</span></td><td class="mono text-sm">reverse DNS of your IP</td><td class="mono text-sm">` + host + `</td><td><span class="muted text-xs">set at your VPS host</span></td></tr>
 </tbody></table></div>
 <p class="muted text-xs">Open inbound ports <span class="mono">25</span> (SMTP), <span class="mono">465/587</span> (submission), <span class="mono">993</span> (IMAPS) and <span class="mono">995</span> (POP3S) on your server firewall.</p>`
-	return vayuDNSCollapsible("Mail host & networking — "+mc.Hostname, `<span class="badge badge--warn">do not proxy</span>`, true, inner)
+	return vayuDNSCollapsible("Mail host & networking — "+mc.Hostname, `<span class="badge badge--warn">Do not proxy</span>`, true, inner)
 }
 
 // vayuDNSPublishSections builds the "records to publish" collapsibles — the
@@ -241,9 +241,9 @@ func (a *App) vayuDNSPublishSections(r *http.Request, mc mail.Config) string {
 // vayuDNSVerifyRow renders one verification row (record/check, status badge,
 // detail).
 func vayuDNSVerifyRow(typ string, ok bool, detail string) string {
-	badge := `<span class="badge badge--ok">ok</span>`
+	badge := `<span class="badge badge--ok">OK</span>`
 	if !ok {
-		badge = `<span class="badge badge--warn">action</span>`
+		badge = `<span class="badge badge--warn">Action</span>`
 	}
 	return `<tr><td>` + html.EscapeString(typ) + `</td><td>` + badge + `</td><td class="muted text-sm vm-break">` + html.EscapeString(detail) + `</td></tr>`
 }
@@ -258,9 +258,9 @@ func vayuDNSVerifyDomainTable(domain string, hc *mail.DomainHealth) string {
 		}
 		rows.WriteString(vayuDNSVerifyRow(rh.Type, rh.OK, detail))
 	}
-	pill := `<span class="badge badge--ok">aligned</span>`
+	pill := `<span class="badge badge--ok">Aligned</span>`
 	if !hc.AllOK {
-		pill = `<span class="badge badge--warn">check records</span>`
+		pill = `<span class="badge badge--warn">Check records</span>`
 	}
 	return `<div class="vm-verify-dom"><h4 class="vm-sub-title">` + html.EscapeString(domain) + ` ` + pill + `</h4>` +
 		`<div class="table-wrap"><table class="table vm-dns-table"><thead><tr><th>Record</th><th>Status</th><th>Found</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>`
@@ -288,9 +288,9 @@ func vayuDNSVerifyFragmentWith(h dnsHealth) string {
 		deliv.WriteString(vayuDNSVerifyRow(rh.Type, rh.OK, rh.Message))
 	}
 
-	pill := `<span class="badge badge--ok">all aligned</span>`
+	pill := `<span class="badge badge--ok">All aligned</span>`
 	if !h.AllOK {
-		pill = `<span class="badge badge--warn">action needed</span>`
+		pill = `<span class="badge badge--warn">Action needed</span>`
 	}
 
 	inner := `<div class="vm-verify-head">` + pill +

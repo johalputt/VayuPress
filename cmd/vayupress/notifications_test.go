@@ -83,8 +83,9 @@ func TestTopbarNotificationCentre(t *testing.T) {
 	if !strings.Contains(out, `data-notif`) || !strings.Contains(out, "aria-label=\"Notifications\"") {
 		t.Error("topbar must host the notification centre")
 	}
-	// The old topbar New Post button must be gone (its exact markup).
-	if strings.Contains(out, `btn btn--primary btn--sm" href="/os/editor">New Post`) {
+	// The old topbar New post button must be gone. Matched without regard to
+	// case, so relabelling it cannot make this pass while the button stays.
+	if strings.Contains(strings.ToLower(out), `btn btn--primary btn--sm" href="/os/editor">new post`) {
 		t.Error("topbar New Post button must be replaced by the notification centre")
 	}
 }
