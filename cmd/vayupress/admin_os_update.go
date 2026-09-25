@@ -255,7 +255,7 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
     <span class="upd-hero__badge">Software update</span>
     <p class="upd-hero__lead">Install the latest release in one click.` + string(ui.Tip("The download is refused unless it carries a valid signature from this project's release workflow; then the database backup, the atomic swap and the restart are handled for you.")) + `</p>
   </div>
-  <div class="upd-vers" data-update-state>
+  <div class="upd-vers">
     <div class="upd-ver">
       <span class="upd-ver__label">Installed</span>
       <span class="upd-ver__num">v` + html.EscapeString(Version) + `</span>
@@ -283,7 +283,7 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
     </label>
     <div class="upd-opt-note">Off installs only stable releases. Turn on to also offer the newest <strong>unreleased</strong> pre-release build when one is published — useful for early testing. Verification is unchanged: a pre-release is signed by the same workflow and checked the same way.</div>
   </div>
-  <div class="upd-actions" data-actions-wrap>
+  <div class="upd-actions">
     <button type="button" class="btn btn--ghost btn--sm" data-update-check>Check for updates</button>
     <button type="button" class="btn btn--primary btn--sm" data-update-apply` + applyDisabled + `>Update now</button>
     <button type="button" class="btn btn--ghost btn--sm" data-update-rollback>Roll back</button>
@@ -671,18 +671,6 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 		"status": "updated", "version": newVersion,
 		"note": update.RestartInstructions(newVersion),
 	})
-}
-
-// handleOSUpdateRestart re-execs the running process. Used to activate an
-// already-installed update or a staged database restore.
-func (a *App) handleOSUpdateRestart(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
-		return
-	}
-	dbpkg.AuditLog("update.restart", dbpkg.AuditActor(r), "", "operator-initiated restart via VayuOS")
-	update.ScheduleRestart(1200*time.Millisecond, restartCleanup)
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"status": "restarting"})
 }
 
 // handleOSUpdateRollback swaps the previous binary (kept as <binary>.bak by a

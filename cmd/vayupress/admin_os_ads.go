@@ -54,7 +54,6 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 
 	body := `<div class="page-header">
   <h1>Advertising</h1>
-  <div class="page-actions"><span id="ads-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
 </div>
 <p class="page-sub">Your own ad slots and member submissions, served from this site with no ad network.</p>
 ` + banner + `
@@ -68,7 +67,7 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
   <div class="settings-block-title">Member ad price</div>
   <p class="text-sm muted mb-4">A flat fee per submission, in whole currency units.` + string(ui.Tip("Charged once per submission through your connected gateway: Stripe one-time, or the direct method.")) + `</p>
   <div class="field" style="max-width:16rem"><label class="field-label" for="ad-price">Price per ad</label>
-    <input id="ad-price" class="input" type="number" min="0" step="1" data-ads-price value="` + strconv.Itoa(adPrice/100) + `"></div>
+    <input id="ad-price" class="input" type="number" min="0" step="1" value="` + strconv.Itoa(adPrice/100) + `"></div>
   <button type="button" class="btn btn--primary btn--sm" id="ad-price-save">Save price</button>
 </div>
 

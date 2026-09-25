@@ -288,7 +288,6 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/copy-from-primary", a.handleOSScopedCopyFromPrimary)
 		})
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains", a.handleOSDomainCreate)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/assign", a.handleOSDomainAssign)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/sync-all", a.handleOSDomainSyncAll)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/{id}/status", a.handleOSDomainStatus)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/{id}/allowance", a.handleOSDomainAllowance)
@@ -333,7 +332,6 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/upload", a.handleMediaUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/delete", a.handleOSMediaDelete)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/alt", a.handleOSMediaAlt)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/import", a.handleMediaImport)
 		// Growth hub: consolidates Members / Newsletter / Monetization / Advertising
 		// (+ My Profile) into one dashboard-style card page (admin-only).
 		pr.Get("/os/growth", a.hubRedirect("audience"))
@@ -367,7 +365,6 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/members/activity", a.handleOSMembersActivityFragment)
 		// Session-friendly membership management APIs (the /api/v1/admin/* originals
 		// require an API key; VayuOS operators hold a session cookie).
-		pr.Get("/os/api/members/stats", a.handleMemberStats)
 		pr.Get("/os/api/members/export.csv", a.handleMembersExportCSV)
 		pr.Get("/os/api/members/{email}", a.handleMemberDetail)
 		pr.Get("/os/api/members/tiers", a.handleTierListAdmin)
@@ -481,7 +478,6 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/api/update/check", a.handleOSUpdateCheck)
 		pr.Get("/os/api/update/history", a.handleOSUpdateHistory)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/update/apply", a.handleOSUpdateApply)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/update/restart", a.handleOSUpdateRestart)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/update/rollback", a.handleOSUpdateRollback)
 		// Subdomain provisioning: the console asks, a root-side systemd unit acts.
 		// CSRF-protected because it makes the server run certbot on demand, and
@@ -590,7 +586,6 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/api/vayuos/mail/recovery/status", a.handleVayuOSRecoveryStatus)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuos/mail/recovery/codes", a.handleVayuOSRecoveryCodes)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuos/mail/recovery/contact", a.handleVayuOSRecoveryContact)
-		pr.With(auth.CSRFTokenMiddleware).Get("/os/api/vayuos/mail/recovery/requests", a.handleVayuOSRecoveryRequests)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuos/mail/recovery/decide", a.handleVayuOSRecoveryDecide)
 		// Accounts redesign: HTMX list fragment + inline action swap (enable/disable,
 		// role, quota, retention, delete) so the page never full-reloads.
@@ -737,7 +732,6 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// HTMX in-place pin/unpin: returns the flipped pin button + an out-of-band
 		// "Pinned" badge, so the row updates without a full-page reload.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/pin-fragment", a.handleOSPostPinFragment)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/pin", a.handleOSPostPin)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/posts/{slug}", a.handleOSPostDelete)
 		// Session-friendly branding (favicon) upload — the /admin/theme/favicon
 		// original is in the API-key-only group, so a browser operator can't reach
@@ -761,7 +755,6 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// a plain GET like the other editor reads — the job id is unguessable and
 		// owner-checked, so there is no state change to protect with a CSRF token.
 		pr.Get("/os/api/editor/generate/status", a.handleOSEditorGenerateStatus)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/convert", a.handleOSEditorConvert)
 		pr.Get("/os/api/editor/versions/{slug}", a.handleOSEditorVersionList)
 		pr.Get("/os/api/editor/versions/{slug}/{id}", a.handleOSEditorVersionGet)
 		// Restore rewinds the article to a snapshot — a write, so CSRF-gated like
@@ -771,7 +764,6 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Read-only APIs (no CSRF needed)
 		pr.Get("/os/api/activity", a.handleOSActivity)
 		pr.Get("/os/api/cmd-index", a.handleOSCmdIndex)
-		pr.Get("/os/api/search/drift", a.handleSearchDrift)
 
 		// Interactive operator consoles — rendered in the VayuOS shell.
 		// These were previously in the RequireAPIKey group in routes.go, which

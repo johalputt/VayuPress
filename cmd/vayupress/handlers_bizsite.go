@@ -290,7 +290,7 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 		return `<label class="pm-label">` + he(label) + `</label><textarea class="input" rows="` + rows + `" data-biz-f="` + key + `" placeholder="` + he(ph) + `"></textarea>`
 	}
 	var formBody strings.Builder
-	formBody.WriteString(`<div class="biz-form" data-biz-form>`)
+	formBody.WriteString(`<div class="biz-form">`)
 	formBody.WriteString(`<div class="biz-form-col">`)
 	formBody.WriteString(field("name", "Business name", "Maison Olive"))
 	formBody.WriteString(field("tagline", "Tagline", "Seasonal plates, honest wine."))

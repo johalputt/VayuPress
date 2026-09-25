@@ -320,7 +320,7 @@ func domainsCards(domains []domain.Domain, counts, mailCounts, memberCounts map[
 		if marks[d.ID] {
 			icon = `<img class="domain-card__mark" src="/os/d/` + html.EscapeString(d.ID) + `/branding/mark" alt="" width="20" height="20">`
 		}
-		cards.WriteString(`<div class="` + cardCls + `" data-dom-row>
+		cards.WriteString(`<div class="` + cardCls + `">
   <div class="domain-card__head">
     <span class="domain-card__icon">` + icon + `</span>
     <span class="domain-card__id">` + hostText + `
@@ -864,53 +864,6 @@ document.querySelectorAll('[data-dom-delete]').forEach(function(b){
 });
 })();
 </script>`
-}
-
-// handleOSDomainAssign moves a post to a domain (Stage 2 content ownership).
-func (a *App) handleOSDomainAssign(w http.ResponseWriter, r *http.Request) {
-	if a.articles == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "article service not initialised", "")
-		return
-	}
-	var body struct {
-		Slug     string `json:"slug"`
-		DomainID string `json:"domain_id"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
-		return
-	}
-	body.Slug = strings.TrimSpace(body.Slug)
-	body.DomainID = strings.TrimSpace(body.DomainID)
-	// A non-empty target must be a real, registered secondary domain.
-	if body.DomainID != "" && a.domains != nil {
-		found := false
-		if list, err := a.domains.List(r.Context()); err == nil {
-			for _, d := range list {
-				if d.ID == body.DomainID && !d.IsPrimary {
-					found = true
-					break
-				}
-			}
-		}
-		if !found {
-			writeAPIError(w, r, http.StatusBadRequest, "unknown-domain", "target is not a registered secondary domain", "")
-			return
-		}
-	}
-	if err := a.articles.SetDomain(r.Context(), body.Slug, body.DomainID); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "assign-failed", err.Error(), "")
-		return
-	}
-	// The post just moved between domains — lazily invalidate the public caches
-	// so every domain's homepage re-renders on next request (Stage 2b). Reassigning
-	// touches no search-indexed field, so the engine snapshot version is unchanged;
-	// clear the per-domain client-index memo explicitly so search re-scopes too
-	// (Stage 2c). The per-domain sitemap/feed self-heal within their freshness
-	// window, so they need no explicit purge.
-	render.CachePurgeAll()
-	purgeDomainSearchIndex()
-	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // --- Session-friendly write APIs (CSRF-protected; operators hold a cookie) ---

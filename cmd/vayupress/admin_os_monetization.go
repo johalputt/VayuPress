@@ -163,7 +163,6 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 
 	body := `<div class="page-header">
   <h1>Monetization</h1>
-  <div class="page-actions"><span id="mon-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
 </div>
 <p class="page-sub">Your whole revenue engine in one place — payments, membership plans, the premium mail-ID marketplace, paid posts and every order..</p>
 ` + statusBanner + `

@@ -255,7 +255,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 	if rows != "" {
 		membersTable = `<div class="table-wrap"><table class="table">
   <thead><tr><th>Email</th><th>Name</th><th>Tier</th><th>Plan</th><th>Labels</th><th>Location</th><th>Last seen</th><th>Joined</th><th></th></tr></thead>
-  <tbody data-members-body>` + rows + `</tbody></table></div>`
+  <tbody>` + rows + `</tbody></table></div>`
 	}
 	membersCard := `<div class="card">
   <div class="card-head"><h2 class="card-title">Members</h2>

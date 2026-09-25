@@ -351,3 +351,46 @@ test("search settings finds a row and lands on it", async ({ page }) => {
   await expect(page).toHaveURL(/\/os\/settings#s-timezone$/);
   await expect(page.locator("#s-timezone").locator("xpath=ancestor::div[contains(concat(' ',@class,' '),' settings-row ')][1]")).toHaveClass(/is-found/);
 });
+
+// Theme Studio keeps unapplied work: it is saved a moment after it stops
+// changing, offered back on the next visit, and gone once discarded. The
+// banner and its buttons existed for a long time with nothing behind them.
+test("theme studio offers unapplied work back, and forgets it when discarded", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/theme");
+  const css = page.locator("[data-theme-css]");
+  await expect(css).toBeAttached();
+  const mark = "/* e2e draft " + Date.now() + " */";
+  await css.evaluate((el, v) => { el.value = v; el.dispatchEvent(new Event("input", { bubbles: true })); }, mark);
+  // The autosave waits for the typing to stop, then posts.
+  await page.waitForResponse((r) => r.url().endsWith("/os/api/theme/draft") && r.status() === 200, { timeout: 10000 });
+
+  await page.reload();
+  const banner = page.locator("[data-theme-draft]");
+  await expect(banner).toBeVisible();
+  await banner.locator("[data-draft-resume]").click();
+  await expect(banner).toBeHidden();
+  await expect(page.locator("[data-theme-css]")).toHaveValue(mark);
+
+  // Discarding clears it for good.
+  await page.reload();
+  await expect(page.locator("[data-theme-draft]")).toBeVisible();
+  const cleared = page.waitForResponse((r) => r.url().endsWith("/os/api/theme/draft") && r.status() === 200);
+  await page.locator("[data-draft-discard]").click();
+  await cleared;
+  await page.reload();
+  await expect(page.locator("[data-theme-draft]")).toBeHidden();
+});
+
+// A write the server refuses is said out loud. HTMX leaves the page unchanged
+// on a 4xx or 5xx, so without this a failed save looked exactly like a
+// successful one that did nothing.
+test("a refused write is announced, not silent", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/shield");
+  const live = page.locator(".page-actions [role='status']");
+  await expect(live).toBeAttached();
+  await page.evaluate(() => window.htmx.ajax("POST", "/os/api/no-such-write", { target: "body", swap: "none" }));
+  await expect(live).toHaveText(/did not go through \(\d{3}\)/);
+  await expect(page.locator(".toast", { hasText: "did not go through" })).toBeVisible();
+});

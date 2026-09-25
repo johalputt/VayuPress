@@ -269,11 +269,11 @@ func keepManualCard() string {
 	return `<p class="text-sm">Download your whole site as one file, or restore one you downloaded earlier — including onto a different server.</p>
 <div class="settings-block-title mt-3">Download a copy</div>
 <p class="text-sm muted mb-2">A consistent, checksummed snapshot of the database and every setting, saved to your computer. No size limit.</p>
-<a class="btn btn--primary btn--sm" href="/os/api/backup/export" data-backup-export download>Download full backup</a>
+<a class="btn btn--primary btn--sm" href="/os/api/backup/export" download>Download full backup</a>
 <div class="section-divider mt-4"></div>
 <div class="settings-block-title mt-4">Restore from a file</div>
 <p class="text-sm muted mb-2">Your current database is copied aside first, then the service restarts to load the restored data. <strong>This replaces all current content and settings.</strong></p>
-<div class="theme-actions" data-restore-wrap>
+<div class="theme-actions">
   <input type="file" id="backup-file" class="input upd-file" accept=".gz,.tgz,application/gzip,application/x-gzip" data-backup-file>
   <button type="button" class="btn btn--danger btn--sm" data-backup-import>Restore from file</button>
   <span class="text-xs muted" data-backup-msg role="status" aria-live="polite"></span>
@@ -429,7 +429,6 @@ func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vay
 	}
 	body := `<div class="page-header">
   <h1>Backup &amp; Recovery <span class="badge badge--` + bannerTone + `">` + html.EscapeString(v.Chip) + `</span></h1>
-  <div class="page-actions"><span id="vk-page-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
 </div>
 <p class="page-sub">Automatic, encrypted copies of your entire site — database, media, mailboxes and settings — checked on a schedule so you know they actually restore..</p>
 <div class="card"><p class="text-sm">` + v.Headline + `</p></div>

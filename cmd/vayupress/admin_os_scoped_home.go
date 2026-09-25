@@ -178,7 +178,6 @@ func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bo
 	b.WriteString(`<div class="page-header"><h1>` + hostShown + `</h1>` +
 		`<div class="page-actions">` + view +
 		`<a class="btn btn--ghost btn--sm" href="/os/domains">All sites</a>` +
-		`<span id="dom-manage-status" class="text-sm muted" role="status" aria-live="polite"></span>` +
 		`</div></div>`)
 	b.WriteString(`<p class="page-sub">Everything on this page applies to <b>` + esc(d.Host) +
 		`</b> and to nothing else on this install. Your own site's tools are in the left-hand ` +

@@ -748,14 +748,7 @@
       if (!applyLoadParam()) { highlightActiveCard(activePresetName); setStatus('Ready'); }
       baseline = snapshot(); countDiff(); // seed the changes pill from saved state
       schedulePreview(); // first preview load
-    })
-    .catch(function () { setStatus('Could not load theme', 'danger'); });
-
-  Promise.all([fetchTokens(), fetchPresets()])
-    .then(function () {
-      if (!applyLoadParam()) { highlightActiveCard(activePresetName); setStatus('Ready'); }
-      baseline = snapshot(); countDiff(); // seed the changes pill from saved state
-      schedulePreview(); // first preview load
+      offerDraft();
     })
     .catch(function () { setStatus('Could not load theme', 'danger'); });
   // ── Undo / redo + changes pill (2026 Wave A) ─────────────────────────
@@ -855,7 +848,7 @@
   function postJSON(url, payload) {
     return fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
       credentials: 'same-origin',
       body: JSON.stringify(payload)
     }).then(function (r) {
@@ -979,14 +972,39 @@
     focusBtn.classList.toggle('is-on', on);
   });
 
-  // Resumable drafts: debounce-save editor state; server-rendered banner resumes.
+  // Resumable drafts. Unapplied work is saved a moment after it stops
+  // changing, offered back by the banner on the next visit, and cleared once it
+  // is applied or reverted, so the banner never offers what is already live.
   var draftTimer = null;
+  function discardDraft() { return postJSON('/os/api/theme/draft', { discard: true }).catch(function () {}); }
   function saveDraft() {
-    postJSON('/os/api/theme/draft', { draft: window.btoa(unescape(encodeURIComponent(snapshot()))) })
-      .catch(function () {});
+    var s = snapshot();
+    if (s === baseline) { discardDraft(); return; }
+    postJSON('/os/api/theme/draft', { draft: window.btoa(unescape(encodeURIComponent(s))) }).catch(function () {});
   }
   var _markDirtyUD = markDirty;
   markDirty = function () { _markDirtyUD(); if (draftTimer) clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 2500); };
+  function offerDraft() {
+    var banner = document.querySelector('[data-theme-draft]');
+    if (!banner || banner.getAttribute('data-has-draft') !== '1') return;
+    var draft = '';
+    try { draft = decodeURIComponent(escape(window.atob(banner.getAttribute('data-draft-payload') || ''))); } catch (_) { draft = ''; }
+    if (!draft || draft === baseline) { discardDraft(); return; }
+    banner.hidden = false;
+    banner.querySelector('[data-draft-resume]').addEventListener('click', function () {
+      var prev = snapshot();
+      restore(draft);
+      pushHistory(prev);
+      banner.hidden = true;
+      setStatus('Draft restored — not yet applied', 'warn');
+    });
+    banner.querySelector('[data-draft-discard]').addEventListener('click', function () {
+      banner.hidden = true;
+      discardDraft();
+    });
+  }
+  var _clearDirtyUD = clearDirty;
+  clearDirty = function () { _clearDirtyUD(); if (draftTimer) clearTimeout(draftTimer); discardDraft(); };
   // ── Gallery filter + search (2026 Wave A) ──────────────────────────────
   // Server tags every card with data-archetype / data-scheme / data-search.
   // One active chip + a free-text search narrow the gallery; counts stay live.

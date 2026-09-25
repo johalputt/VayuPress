@@ -80,11 +80,10 @@ The CLI path additionally requires `VAYU_SELFUPDATE_ENABLED=true`.
 
 ### The web apply route
 
-`POST /os/api/update/apply` downloads, verifies and replaces the binary;
-`/os/api/update/restart` and `/os/api/update/rollback` sit beside it. All three
-are admin-role-checked and CSRF-protected, and all three run the verification
-above — there is no flag, environment variable or request field that turns it
-off.
+`POST /os/api/update/apply` downloads, verifies, replaces the binary and
+restarts; `/os/api/update/rollback` sits beside it. Both are admin-role-checked
+and CSRF-protected, and both run the verification above — there is no flag,
+environment variable or request field that turns it off.
 
 > An earlier version of this document stated that no endpoint downloaded,
 > replaced or restarted the binary. That described ADR-0064's original CLI-only

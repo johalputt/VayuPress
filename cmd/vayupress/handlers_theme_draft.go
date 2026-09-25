@@ -4,8 +4,8 @@ package main
 
 // handlers_theme_draft.go — Theme Studio resumable drafts (Wave C).
 //
-// The Studio autosaves its editor state (base64 JSON snapshot) under the
-// reserved settings key theme_studio_draft for the operator's scope. A draft
+// The Studio autosaves its editor state (base64 JSON snapshot) under
+// settings.KeyThemeStudioDraft for the operator's scope. A draft
 // NEVER touches the live render pipeline — unlike the generic settings API,
 // these handlers deliberately skip reloadRenderSettings — and is consumed by
 // handleOSTheme to render the resume banner.
@@ -13,9 +13,9 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-)
 
-const themeDraftKey = "theme_studio_draft"
+	"github.com/johalputt/vayupress/internal/settings"
+)
 
 func (a *App) handleThemeDraftSave(w http.ResponseWriter, r *http.Request) {
 	if a.siteSettings == nil {
@@ -34,7 +34,7 @@ func (a *App) handleThemeDraftSave(w http.ResponseWriter, r *http.Request) {
 	if body.Discard || value == "" {
 		value = "" // sentinel: no draft
 	}
-	if err := a.siteSettings.SetMany(r.Context(), osScope(r), map[string]string{themeDraftKey: value}); err != nil {
+	if err := a.siteSettings.SetMany(r.Context(), osScope(r), map[string]string{settings.KeyThemeStudioDraft: value}); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "settings-error", err.Error(), "")
 		return
 	}
@@ -43,6 +43,5 @@ func (a *App) handleThemeDraftSave(w http.ResponseWriter, r *http.Request) {
 
 // themeDraftFor returns the stored draft ("" when none) for the page render.
 func themeDraftFor(vals map[string]string) string {
-	v := vals[themeDraftKey]
-	return v
+	return vals[settings.KeyThemeStudioDraft]
 }

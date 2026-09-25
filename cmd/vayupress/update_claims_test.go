@@ -98,8 +98,8 @@ func TestTheSecurityDocDoesNotDescribeGatesThatDoNotExist(t *testing.T) {
 
 	for claim, why := range map[string]string{
 		"There is **no** endpoint that downloads, replaces, or restarts": "" +
-			"/os/api/update/apply downloads and replaces, and /os/api/update/restart " +
-			"restarts. A security document that under-describes the attack surface " +
+			"/os/api/update/apply downloads, replaces and restarts. A security " +
+			"document that under-describes the attack surface " +
 			"sends a reviewer looking in the wrong place",
 		"`VAYU_RELEASE_PUBKEY` present (no key → no apply)": "" +
 			"the panel path never required a pinned key, so this gate was not enforced " +

@@ -64,9 +64,12 @@ const (
 	// root domain serves: "" / "blog" keeps the blog at the root (the historic
 	// behaviour — existing installs never change on update), "business" serves
 	// the business site at the root with the blog at blog.<domain>.
-	KeySiteMode    = "site.mode"
-	KeyBizTemplate = "biz.template" // active business template key
-	KeyBizContent  = "biz.content"  // business-site content (JSON)
+	KeySiteMode = "site.mode"
+	// KeyThemeStudioDraft holds Theme Studio's autosaved, unapplied editor state
+	// for one scope. Never rendered, never exported: it is a draft.
+	KeyThemeStudioDraft = "theme.studio_draft"
+	KeyBizTemplate      = "biz.template" // active business template key
+	KeyBizContent       = "biz.content"  // business-site content (JSON)
 	// KeySampleIsDemo ("1") records that a site shows a design's sample
 	// business on purpose — a demo or showcase — so the console stops warning
 	// that sample content is live. Set and cleared from the site's Website page.
@@ -456,6 +459,7 @@ var RobotsOptions = map[string]bool{
 // editor round-trips it. Anything else is configuration, credentials, network
 // policy or measurements about this specific machine.
 var NotPortable = map[string]bool{
+	KeyThemeStudioDraft:           true,
 	KeyBrandFavicon:               true,
 	KeySiteTimezone:               true,
 	KeyBrandFaviconType:           true,
@@ -557,7 +561,8 @@ var NotPortable = map[string]bool{
 
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
-	KeyTalkHost: true,
+	KeyThemeStudioDraft: true,
+	KeyTalkHost:         true,
 	// The startup-duration ring (ADR-0155 P4). Written by the process itself on
 	// every boot, which is the only way it can be true.
 	KeyStartupMillis: true,

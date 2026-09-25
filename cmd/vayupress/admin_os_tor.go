@@ -106,7 +106,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
     <div class="vt-state ` + stateClass + `"><span class="vt-dot"></span> ` + stateLabel + `</div>
     <div class="muted text-sm">One click publishes every hosted domain as its own <code>.onion</code>, alongside the normal address — same site, no speed trade-off. Count only: no identity, time, or path is ever recorded.</div>
   </div>
-  <form class="vt-hero__action" method="post" action="/os/tor/toggle" data-tor-toggle data-tor-form>
+  <form class="vt-hero__action" method="post" action="/os/tor/toggle" data-tor-form>
     <input type="hidden" name="state" value="` + nextState + `">
     <input type="hidden" name="csrf_token" value="">
     <button type="submit" class="btn ` + btnKind + `">` + btnLabel + `</button>

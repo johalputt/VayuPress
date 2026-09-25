@@ -2073,7 +2073,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 		} else if pct >= 75 {
 			level = "warn"
 		}
-		b.WriteString(`<div class="vm-quota"><div class="vm-quota-meta text-sm muted">Storage: ` + html.EscapeString(humanBytes(used)) + ` of ` + html.EscapeString(humanBytes(quota)) + ` used (` + itoaSafe(pct) + `%)</div><div class="vm-quota-track"><div class="vm-quota-fill vm-quota-fill--` + level + `" data-quota-pct="` + itoaSafe(pct) + `"></div></div>`)
+		b.WriteString(`<div class="vm-quota"><div class="vm-quota-meta text-sm muted">Storage: ` + html.EscapeString(humanBytes(used)) + ` of ` + html.EscapeString(humanBytes(quota)) + ` used (` + itoaSafe(pct) + `%)</div><div class="vm-quota-track"><div class="vm-quota-fill vm-quota-fill--` + level + `"></div></div>`)
 		if pct >= 100 {
 			b.WriteString(`<div class="vm-quota-full text-sm">` + saIcon("warn") + ` Your mailbox is full — incoming mail may be rejected and you can't send until you free space.</div>`)
 		}

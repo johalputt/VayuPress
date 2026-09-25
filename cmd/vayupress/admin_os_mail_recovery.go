@@ -392,20 +392,6 @@ func (a *App) vayuCardRecovery(ctx context.Context, email string) string {
 
 // ── Assisted recovery: request and decision ──────────────────────────────────
 
-// handleVayuOSRecoveryRequests lists the requests awaiting a decision.
-func (a *App) handleVayuOSRecoveryRequests(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, 403, "forbidden", "administrators only", "")
-		return
-	}
-	accts, ok := a.recoveryAccounts()
-	if !ok {
-		writeAPIError(w, r, 503, "unavailable", "VayuMail is not running", "")
-		return
-	}
-	writeJSON(w, r, 200, map[string]interface{}{"requests": accts.PendingRecoveryRequests(r.Context())})
-}
-
 // handleVayuOSRecoveryDecide approves or declines an assisted-recovery request.
 //
 // Approval does NOT reveal or set a password. It mints a one-time reset link,

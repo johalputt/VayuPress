@@ -79,7 +79,7 @@ func monBudgetStatePill(name, state string, oob bool) string {
 // time so both truths are visible. Kept out of any aria-live region so it is
 // not announced to screen readers every 5s.
 func monUpdatedStamp(now time.Time, snapAge time.Duration, oob bool) string {
-	out := `<span class="text-sm muted" data-mon-updated id="mon-updated"` + oobAttr(oob) + `>updated ` +
+	out := `<span class="text-sm muted" id="mon-updated"` + oobAttr(oob) + `>updated ` +
 		html.EscapeString(now.Format("15:04:05"))
 	if snapAge >= 0 {
 		out += ` · metrics ` + html.EscapeString(snapAge.Truncate(time.Second).String()) + ` old`

@@ -153,7 +153,7 @@ func (a *App) handleOSNewsletter(w http.ResponseWriter, r *http.Request) {
 	if rows != "" {
 		table = `<div class="table-wrap"><table class="table">
   <thead><tr><th>Email</th><th>Status</th><th>Confirmed</th><th>Subscribed</th><th></th></tr></thead>
-  <tbody data-subs-body>` + rows + `</tbody></table></div>`
+  <tbody>` + rows + `</tbody></table></div>`
 	}
 	subsCard := `<div class="card">
   <div class="toolbar-row">

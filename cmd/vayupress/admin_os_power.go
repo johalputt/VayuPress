@@ -226,11 +226,11 @@ func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedba
   </div>
 </div>
 
-<div class="card" data-crawlers-card>
+<div class="card">
   <div class="settings-row">
     <div class="settings-row-info">
       <div class="settings-row-label">Search engine &amp; AI crawler access ` + crawlBadge + `</div>
-      <div class="settings-row-hint" data-crawlers-hint>` + crawlHint + `</div>
+      <div class="settings-row-hint">` + crawlHint + `</div>
     </div>
     <button type="button" class="` + crawlToggleClass + `" data-crawlers-toggle data-on="` + crawlAttr + `">` + crawlToggleLabel + `</button>
   </div>

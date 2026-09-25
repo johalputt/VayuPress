@@ -396,7 +396,7 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
       <input class="input" type="url" data-social="` + p.Key + `" value="` + esc(val) + `" placeholder="` + esc(p.Placeholder) + `"></label>`
 	}
 
-	avatarPreview := `<div class="pf-avatar-frame" data-avatar-frame>`
+	avatarPreview := `<div class="pf-avatar-frame">`
 	if u.AvatarURL != "" {
 		avatarPreview += `<img class="pf-avatar" data-avatar-preview src="` + esc(u.AvatarURL) + `" alt="Your avatar">`
 	} else {

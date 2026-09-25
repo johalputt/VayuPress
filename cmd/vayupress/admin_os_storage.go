@@ -214,7 +214,7 @@ func (a *App) handleOSStorage(w http.ResponseWriter, r *http.Request) {
 
 ` + cacheCardHTML(st.CacheSize) + `
 
-<div class="card" data-storage-card>
+<div class="card">
   <div class="card-title">Managed files <span class="count-pill">` + strconv.Itoa(len(files)) + `</span></div>
   <p class="text-sm muted mb-4">Backups, logs and temporary files VayuPress has created. Download one to keep it off-server, or delete it to reclaim space — total here is <strong>` + humanBytes(totalManaged) + `</strong>. The live database and its WAL are never listed and can never be deleted from here.</p>
   ` + storageFilesTable(files) + `
@@ -235,7 +235,7 @@ func cacheCardHTML(pageBytes int64) string {
 	if cloudflareConfigured() {
 		cdn = `<label class="upd-check mt-3"><input type="checkbox" data-cache-cdn checked> Also purge Cloudflare's copy of every page</label>`
 	}
-	return `<div class="card mb-6" data-cache-card>
+	return `<div class="card mb-6">
   <div class="card-head"><div><h2 class="card-title">Caches</h2><p class="card-subtitle">Data VayuPress rebuilds on its own. Pages are rendered again as visitors ask for them, so expect a short rise in CPU after a clear.</p></div>
     <button type="button" class="btn btn--primary btn--sm" data-cache-clear>Clear caches</button></div>
   <div class="table-wrap"><table class="table">

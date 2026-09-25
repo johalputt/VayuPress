@@ -274,7 +274,7 @@ func (a *App) pwaHealthCardHTML(r *http.Request, nonce string) string {
 	chip := monChip(failed == 0, "Origin OK", strconv.Itoa(failed)+" failing")
 	body := `<p class="text-sm muted mb-4">Whether installing this site gives a real app rather than a shortcut.` +
 		string(ui.Tip("On Android, a real app is a generated package, not a launcher shortcut, and survives a restart. Nothing in the install flow tells you which one you got, so these are the requirements, checked against what this instance actually serves.")) + `</p>` + rows +
-		`<div class="pwa-browser" data-pwa-probe>
+		`<div class="pwa-browser">
   <div class="section-head"><span class="section-head__title">From this browser</span>
     <span class="section-head__hint">Only the browser can answer these</span></div>
   <div class="pwa-probe-rows" data-pwa-probe-rows data-pwa-build="` + html.EscapeString(Version) + `"><span class="muted text-sm">Checking…</span></div>

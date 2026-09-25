@@ -151,4 +151,24 @@
     }
   });
 
+
+  /* ── HTMX writes: say what happened ──────────────────────────────────────
+     A write that swaps a fragment in place changes the page and says
+     nothing; a refused one changes nothing and says nothing either. The
+     page's status region announces the first to a screen reader, and a toast
+     names the second, so no write fails silently. */
+  document.addEventListener('htmx:afterRequest', function (e) {
+    var d = e.detail || {};
+    var verb = d.requestConfig && d.requestConfig.verb;
+    if (!verb || verb === 'get') return;
+    var live = document.querySelector('.page-actions [role="status"]');
+    if (d.successful) {
+      if (live) live.textContent = 'Done.';
+      return;
+    }
+    var msg = 'That did not go through' + (d.xhr && d.xhr.status ? ' (' + d.xhr.status + ')' : '') + '.';
+    if (live) live.textContent = msg;
+    say(msg, 'error');
+  });
+
 })();

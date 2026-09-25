@@ -472,45 +472,6 @@ func (a *App) handleOSPostPinFragment(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, osPostPinButton(esc, featured)+osPostPinFaceButtonOOB(esc, featured)+osPostPinBadge(esc, featured, true))
 }
 
-// handleOSPostPin pins or unpins (features) a post directly from the manager,
-// flipping the same `featured` flag the editor exposes as "Feature this post".
-// Pinned posts surface in the public Trending & pinned widget (homepage + under
-// every post), so we drop the trending cache and purge public caches so the
-// change appears immediately.
-func (a *App) handleOSPostPin(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Slug   string `json:"slug"`
-		Pinned bool   `json:"pinned"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
-		return
-	}
-	slug := strings.TrimSpace(body.Slug)
-	if slug == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-input", "a slug is required", "")
-		return
-	}
-	var tagsCSV string
-	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
-		writeAPIError(w, r, http.StatusNotFound, "not-found", "No article with that slug", "")
-		return
-	}
-	featured := 0
-	if body.Pinned {
-		featured = 1
-	}
-	if _, err := dbpkg.WDB.Exec(`UPDATE articles SET featured=?, updated_at=? WHERE slug=?`, featured, time.Now().UTC(), slug); err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "update-error", err.Error(), "")
-		return
-	}
-	// Refresh the public surfaces and the memoised trending/pinned payload.
-	invalidateTrendingCache()
-	render.CachePurge(slug, splitCSVTags(tagsCSV), generateSitemap, generateRSS, generateRobots)
-	atomic.AddInt64(&metrics.MetricPostPinToggles, 1)
-	writeJSON(w, r, http.StatusOK, map[string]bool{"pinned": body.Pinned})
-}
-
 // handleOSPostDelete permanently removes a post (or page) from the VayuOS
 // manager. It is synchronous so the list reflects the deletion immediately:
 // the article row carries its own blocks_json + publishing-options columns, so
@@ -740,50 +701,6 @@ func (a *App) uniqueArticleSlug(ctx context.Context, title string) string {
 		slug = base + "-" + strconv.Itoa(i)
 	}
 	return slug
-}
-
-// handleOSEditorConvert imports a legacy article's HTML into a block document
-// (ADR-0069 Stage 1). It is deliberately non-destructive: it writes only the
-// blocks_json side-car and never touches the rendered article content. The
-// operator reviews the imported blocks in the editor and the original content
-// stays authoritative until they explicitly Save. This keeps legacy posts
-// lossless — a poor import can be abandoned by navigating away.
-func (a *App) handleOSEditorConvert(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Slug string `json:"slug"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
-		return
-	}
-	slug := strings.TrimSpace(body.Slug)
-	if slug == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "missing-slug", "slug is required", "")
-		return
-	}
-
-	art, err := a.articles.Get(r.Context(), slug)
-	if err != nil {
-		writeAPIError(w, r, http.StatusNotFound, "not-found", "No article with that slug", "")
-		return
-	}
-
-	blocks := blockrender.ImportHTML(art.Content)
-	raw, err := json.Marshal(blocks)
-	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "marshal-error", err.Error(), "")
-		return
-	}
-	if err := persistBlocksJSON(r.Context(), slug, string(raw)); err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "persist-error", err.Error(), "")
-		return
-	}
-
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{
-		"status": "converted",
-		"slug":   slug,
-		"blocks": len(blocks),
-	})
 }
 
 // handleOSEditorImport converts an editor-supplied HTML string into a block
@@ -1230,7 +1147,7 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
     <div class="editor-settings-body">
       <div class="pm-field">
         <label class="pm-label">Feature image</label>
-        <div class="pm-feature" data-pm-feature>
+        <div class="pm-feature">
           <img class="pm-feature-preview" data-pm-feature-preview alt="" hidden>
           <div class="pm-feature-empty" data-pm-feature-empty>No feature image</div>
         </div>
