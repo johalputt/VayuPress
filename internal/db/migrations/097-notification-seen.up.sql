@@ -1,0 +1,2 @@
+-- Migration 097 (up): when each console user last marked the bell's recent events read. Needs-action items are conditions and are never marked read; they clear when fixed. user_id is '' for an API-key caller, which is admin-equivalent. NOTE: runMigrations executes line-by-line, so keep each statement on ONE line.
+CREATE TABLE IF NOT EXISTS notification_seen(user_id TEXT PRIMARY KEY, seen_at DATETIME NOT NULL);

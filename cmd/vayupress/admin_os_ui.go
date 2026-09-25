@@ -714,6 +714,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/seo/regenerate", a.handleSEORegenerate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/seo/indexnow-test", a.handleOSIndexNowTest)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/notifications/seen", a.handleOSNotificationsSeen)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", a.handleOSQuickCreatePost)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/status", a.handleOSPostStatus)
 		// One-request bulk apply for the Posts manager (Wave 4): per-slug outcomes,
@@ -928,26 +929,6 @@ func notifCap(n int) string {
 	return strconv.Itoa(n)
 }
 
-// notifIcon maps a notification kind to its glyph. The kind is a fixed literal
-// from osNotifications (never user input), so it also doubles as the accent
-// modifier class on the icon chip.
-func notifIcon(kind string) string {
-	switch kind {
-	case "mail":
-		return iconMail
-	case "comment":
-		return iconComments
-	case "message":
-		return iconMessages
-	case "domain":
-		return iconDomains
-	case "update":
-		return iconUpdate
-	default:
-		return iconBell
-	}
-}
-
 // line is what a notification says under its title. A tally reads "<count>
 // <detail>" (e.g. "3 unread in your inbox"); a state's detail stands alone;
 // storage is a percentage.
@@ -961,70 +942,109 @@ func (n osNotification) line() string {
 	return notifCap(n.Count) + " " + n.Detail
 }
 
-// osNotifItem renders one notification as a clickable row that navigates straight
-// to the page which clears it (a plain <a>, so no JS is needed for the jump).
+// osNotifItem renders one needs-action item: a condition, so no time, and a
+// row that navigates straight to the page that clears it (a plain <a>, so no
+// JS is needed for the jump). Its line already says the count; a chip beside
+// it repeated the number, and put a "1" beside every condition.
 func osNotifItem(n osNotification) string {
-	detail := n.line()
-	return `<a class="notif-item" href="` + n.Href + `">
-  <span class="notif-item__icon notif-item__icon--` + n.Kind + `">` + notifIcon(n.Kind) + `</span>
+	return `<a class="notif-item notif-item--` + n.Severity + `" href="` + n.Href + `">
+  <span class="notif-item__icon">` + saIcon(saNotifIcon(n.Kind)) + `</span>
   <span class="notif-item__body">
     <span class="notif-item__title">` + html.EscapeString(n.Title) + `</span>
-    <span class="notif-item__detail">` + html.EscapeString(detail) + `</span>
+    <span class="notif-item__detail">` + html.EscapeString(n.line()) + `</span>
   </span>
-  <span class="notif-item__count">` + notifCap(n.Count) + `</span>
 </a>`
 }
 
-// osNotifBell renders the topbar notification centre (the bell that replaced the
-// New Post shortcut): a button with a live count badge and an expandable panel
-// listing every actionable item, each a direct link to the page that clears it.
-// The panel is present on every admin page; the toggle is wired CSP-safely in
-// admin-os.js (initNotifications). Rendered identically in both worlds.
+// osRecentItem renders one event with its time. The server writes the time in
+// UTC; the page rewrites it in the viewer's own clock.
+func osRecentItem(e osRecentEvent, unread bool) string {
+	cls := "notif-item notif-item--event"
+	if unread {
+		cls += " is-unread"
+	}
+	at := e.At.UTC()
+	detail := ""
+	if e.Detail != "" {
+		detail = `<span class="notif-item__detail">` + html.EscapeString(e.Detail) + `</span>`
+	}
+	return `<a class="` + cls + `" href="` + e.Href + `">
+  <span class="notif-item__icon">` + saIcon(saNotifIcon(e.Kind)) + `</span>
+  <span class="notif-item__body"><span class="notif-item__title">` + html.EscapeString(e.Title) + `</span>` + detail + `</span>
+  <time class="notif-item__time" datetime="` + at.Format(time.RFC3339) + `">` + at.Format("15:04") + ` UTC</time>
+</a>`
+}
+
+// osNotifBell renders the system bar's notification centre (render 09): what
+// needs the viewer, then what happened in the last day. The badge counts the
+// first in full and the second until marked read. Each row is a direct link;
+// the toggle, the times and Mark all read are wired in admin-os.js.
 func osNotifBell(s *osSettings) string {
 	var notifs []osNotification
+	var recent []osRecentEvent
+	var seen time.Time
 	if s != nil {
-		notifs = s.Notifications
+		notifs, recent, seen = s.Notifications, s.Recent, s.RecentSeen
 	}
-	total := 0
+	needs := 0
 	hasDanger := false
 	for _, n := range notifs {
 		// Storage's count is a percentage, not a number of things to clear:
 		// adding it made a disk at 80% read as eighty notifications.
 		if n.Kind == "storage" {
-			total++
+			needs++
 		} else {
-			total += n.Count
+			needs += n.Count
 		}
 		if n.Severity == "danger" {
 			hasDanger = true
 		}
 	}
-	badge, headCount, activeCls := "", "", ""
+	unread := 0
+	for _, e := range recent {
+		if e.At.After(seen) {
+			unread++
+		}
+	}
+	total := needs + unread
+	badge, activeCls, markAll := "", "", ""
 	if total > 0 {
-		// The badge wears its worst severity (Wave 2.2): ten failed jobs must
-		// read as an alarm, not as three pending comments.
+		// The badge wears its worst severity: ten failed jobs must read as an
+		// alarm, not as three pending comments.
 		badgeCls := ""
 		if hasDanger {
 			badgeCls = " topbar-notif__badge--danger"
 		}
-		badge = `<span class="topbar-notif__badge` + badgeCls + `">` + notifCap(total) + `</span>`
-		headCount = `<span class="topbar-notif__count">` + notifCap(total) + ` new</span>`
+		badge = `<span class="topbar-notif__badge` + badgeCls + `" data-notif-badge>` + notifCap(total) + `</span>`
 		activeCls = " topbar-notif__btn--active"
 	}
+	if unread > 0 {
+		markAll = `<button type="button" class="btn btn--ghost btn--xs" data-notif-seen>Mark all read</button>`
+	}
 	var list strings.Builder
-	if len(notifs) == 0 {
-		list.WriteString(`<div class="topbar-notif__empty">Nothing needs you right now.</div>`)
-	} else {
+	if len(notifs) > 0 {
+		list.WriteString(`<div class="notif-group" role="group" aria-labelledby="notif-needs"><div class="notif-group__label" id="notif-needs">Needs action</div>`)
 		for _, n := range notifs {
 			list.WriteString(osNotifItem(n))
 		}
+		list.WriteString(`</div>`)
 	}
-	return `<div class="topbar-notif" data-notif>
+	if len(recent) > 0 {
+		list.WriteString(`<div class="notif-group" role="group" aria-labelledby="notif-recent" data-notif-recent><div class="notif-group__label" id="notif-recent">Last 24 hours</div>`)
+		for _, e := range recent {
+			list.WriteString(osRecentItem(e, e.At.After(seen)))
+		}
+		list.WriteString(`</div>`)
+	}
+	if list.Len() == 0 {
+		list.WriteString(`<div class="topbar-notif__empty">Nothing needs you, and nothing has happened in the last day.</div>`)
+	}
+	return `<div class="topbar-notif" data-notif data-notif-needs="` + strconv.Itoa(needs) + `">
   <button type="button" class="btn--icon topbar-notif__btn` + activeCls + `" data-notif-toggle aria-haspopup="true" aria-expanded="false" aria-label="Notifications">
     ` + iconBell + badge + `
   </button>
   <div class="topbar-notif__panel" data-notif-panel hidden>
-    <div class="topbar-notif__head"><span>Notifications</span>` + headCount + `</div>
+    <div class="topbar-notif__head"><span>Notifications</span>` + markAll + `</div>
     <div class="topbar-notif__list">` + list.String() + `</div>
   </div>
 </div>`
@@ -1044,12 +1064,8 @@ const iconWorldClearnet = `<svg class="space-switch__ico" viewBox="0 0 16 16" wi
 const iconWorldTor = `<svg class="space-switch__ico" viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><path d="M8 1.7c-.8.9-.8 1.8 0 2.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M8 4c-2.9 0-4.9 2.5-4.9 5.3 0 2.6 2.2 4.9 4.9 4.9s4.9-2.3 4.9-4.9C12.9 6.5 10.9 4 8 4z" stroke="currentColor" stroke-width="1.2"/><path d="M8 4.3c-1.3 1.4-2 3.2-2 5s.7 3.4 2 4.8M8 4.3c1.3 1.4 2 3.2 2 5s-.7 3.4-2 4.8" stroke="currentColor" stroke-width="1"/></svg>`
 
 var (
-	iconComments = svgIcon("M3 4h14v9H7l-4 3V4zm3 3h8M6 10h5")
-	iconMessages = svgIcon("M2 4h16v10H6l-4 3V4zm3 4h10M5 11h7")
-	iconUpdate   = svgIcon("M3 10a7 7 0 0112-4.9L17 7m0 0V3m0 4h-4M17 10a7 7 0 01-12 4.9L3 13m0 0v4m0-4h4")
-	iconDomains  = svgIcon("M10 2a8 8 0 100 16 8 8 0 000-16zM2 10h16M10 2c2.2 2 3.3 4.9 3.3 8s-1.1 6-3.3 8c-2.2-2-3.3-4.9-3.3-8s1.1-6 3.3-8z")
-	iconBell     = svgIcon("M10 3a4 4 0 00-4 4c0 4-2 5-2 5h12s-2-1-2-5a4 4 0 00-4-4zm-1.5 13a1.5 1.5 0 003 0")
-	iconMail     = svgIcon("M3 5h14v10H3V5zm0 1l7 5 7-5")
+	iconDomains = svgIcon("M10 2a8 8 0 100 16 8 8 0 000-16zM2 10h16M10 2c2.2 2 3.3 4.9 3.3 8s-1.1 6-3.3 8c-2.2-2-3.3-4.9-3.3-8s1.1-6 3.3-8z")
+	iconBell    = svgIcon("M10 3a4 4 0 00-4 4c0 4-2 5-2 5h12s-2-1-2-5a4 4 0 00-4-4zm-1.5 13a1.5 1.5 0 003 0")
 )
 
 // renderTrustedHTML emits a pre-constructed, server-side HTML fragment verbatim.
@@ -1386,6 +1402,10 @@ type osSettings struct {
 	// each linking straight to the page that clears it. Gated per-item to the
 	// viewer's access level, so an item never points at a page they cannot open.
 	Notifications []osNotification
+	// Recent is the bell's second half: what happened in the last day, with
+	// when (render 09). RecentSeen is when this viewer last marked them read.
+	Recent     []osRecentEvent
+	RecentSeen time.Time
 }
 
 // osNotification is one actionable item in the topbar notification centre: a
@@ -1453,6 +1473,8 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 	// Notification centre (topbar bell): computed last, once the access level is
 	// known, so each item can be gated to what the viewer can actually open.
 	s.Notifications = a.osNotifications(ctx, s)
+	s.Recent = a.osRecentEvents(ctx, s, time.Now().UTC())
+	s.RecentSeen = notifSeenAt(ctx, s.UserID)
 	for _, n := range s.Notifications {
 		if n.Kind == "mail" {
 			s.UnreadMail += n.Count

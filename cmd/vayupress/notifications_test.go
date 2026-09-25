@@ -20,7 +20,7 @@ func TestOSNotifBell(t *testing.T) {
 	if !strings.Contains(empty, "data-notif-toggle") || !strings.Contains(empty, "data-notif-panel") {
 		t.Error("empty bell must still render the toggle + panel")
 	}
-	if !strings.Contains(empty, "Nothing needs you right now.") {
+	if !strings.Contains(empty, "Nothing needs you, and nothing has happened in the last day.") {
 		t.Error("empty bell must show the caught-up state")
 	}
 	if strings.Contains(empty, "topbar-notif__badge") {
@@ -37,8 +37,8 @@ func TestOSNotifBell(t *testing.T) {
 	for _, want := range []string{
 		`href="/os/messages"`, `href="/os/comments"`,
 		"New messages", "Comments to review",
-		`class="topbar-notif__badge">5<`, // 2 + 3
-		"topbar-notif__btn--active",      // pulse ring while unread
+		`class="topbar-notif__badge" data-notif-badge>5<`, // 2 + 3
+		"topbar-notif__btn--active",                       // pulse ring while unread
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("populated bell missing %q", want)
@@ -59,7 +59,7 @@ func TestOSNotifBell(t *testing.T) {
 		{Title: "Comments to review", Detail: "awaiting moderation", Href: "/os/comments", Count: 2, Kind: "comment"},
 		{Title: "Storage filling up", Detail: "of your storage quota is in use", Href: "/os/storage", Count: 80, Kind: "storage", Severity: "warn"},
 	}})
-	if !strings.Contains(disk, `topbar-notif__badge">3<`) {
+	if !strings.Contains(disk, `topbar-notif__badge" data-notif-badge>3<`) {
 		t.Error("a storage notice must add one to the badge, not its percentage")
 	}
 	if !strings.Contains(disk, "80% of your storage quota is in use") {
@@ -70,7 +70,7 @@ func TestOSNotifBell(t *testing.T) {
 	big := osNotifBell(&osSettings{AccessLevel: accessAdmin, Notifications: []osNotification{
 		{Title: "x", Detail: "d", Href: "/os/messages", Count: 250, Kind: "message"},
 	}})
-	if !strings.Contains(big, `topbar-notif__badge">99+<`) {
+	if !strings.Contains(big, `topbar-notif__badge" data-notif-badge>99+<`) {
 		t.Error("badge must clamp large totals to 99+")
 	}
 }

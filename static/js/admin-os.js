@@ -883,6 +883,49 @@ window.vpRelTime = relativeTime;
   // Dismiss on outside click or Escape.
   on(document, 'click', function (e) { if (!wrap.contains(e.target)) close(); });
   on(document, 'keydown', function (e) { if (e.key === 'Escape') close(); });
+
+  // Times in the viewer's clock, and the last day split into Today and
+  // Yesterday by it: the server does not know the viewer's timezone, so it
+  // sends UTC and a neutral "Last 24 hours".
+  var recent = $('[data-notif-recent]', wrap);
+  if (recent) {
+    var today = new Date().toDateString();
+    var label = $('.notif-group__label', recent);
+    var firstDay = null;
+    $$('time[datetime]', recent).forEach(function (t) {
+      var d = new Date(t.getAttribute('datetime'));
+      if (isNaN(d)) return;
+      t.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      var day = d.toDateString() === today ? 'Today' : 'Yesterday';
+      if (firstDay === null) { firstDay = day; if (label) label.textContent = day; return; }
+      if (day !== firstDay && !$('[data-notif-yesterday]', recent)) {
+        var y = document.createElement('div');
+        y.className = 'notif-group__label';
+        y.setAttribute('data-notif-yesterday', '');
+        y.textContent = 'Yesterday';
+        var row = t.closest('.notif-item');
+        row.parentNode.insertBefore(y, row);
+      }
+    });
+  }
+
+  // Mark all read clears the events; what needs the operator stays counted,
+  // because a condition is not dealt with by being looked at.
+  var seen = $('[data-notif-seen]', wrap);
+  if (seen) on(seen, 'click', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    window.vpPost('/os/api/notifications/seen', {}, function () {
+      $$('.notif-item.is-unread', wrap).forEach(function (r) { r.classList.remove('is-unread'); });
+      seen.remove();
+      var needs = parseInt(wrap.getAttribute('data-notif-needs'), 10) || 0;
+      var badge = $('[data-notif-badge]', wrap);
+      if (!badge) return;
+      if (needs > 0) { badge.textContent = needs > 99 ? '99+' : String(needs); return; }
+      badge.remove();
+      btn.classList.remove('topbar-notif__btn--active');
+    });
+  });
 })();
 
 /* ── Login page shake on error ───────────────────────────────── */
@@ -1037,11 +1080,12 @@ window.vpRelTime = relativeTime;
     var badge = wrap.querySelector('.topbar-notif__badge');
     var cur = badge ? (parseInt((badge.textContent || '').replace(/\D/g, ''), 10) || 0) : 0;
     var label = (cur + delta) > 99 ? '99+' : String(cur + delta);
-    if (!badge) { badge = document.createElement('span'); badge.className = 'topbar-notif__badge'; btn.appendChild(badge); }
+    if (!badge) { badge = document.createElement('span'); badge.className = 'topbar-notif__badge'; badge.setAttribute('data-notif-badge', ''); btn.appendChild(badge); }
     badge.textContent = label;
     btn.classList.add('topbar-notif__btn--active');
-    var head = wrap.querySelector('.topbar-notif__count');
-    if (head) head.textContent = label + ' new';
+    // New mail is something that needs the operator, so Mark all read, which
+    // clears only events, must not take it back off the badge.
+    wrap.setAttribute('data-notif-needs', String((parseInt(wrap.getAttribute('data-notif-needs'), 10) || 0) + delta));
   }
 
   function poll() {

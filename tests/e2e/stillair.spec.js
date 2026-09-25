@@ -542,6 +542,35 @@ test("a write shows loading, then its outcome, on the control that started it", 
   expect(await page.evaluate(() => window.__marks)).toEqual([]);
 });
 
+// The bell (render 09): what happened carries its time in the viewer's clock
+// under Today, and Mark all read clears it for good while what needs the
+// operator stays counted.
+test("the bell dates what happened, and Mark all read clears it for good", async ({ page }) => {
+  const slug = "bell-" + Date.now();
+  const made = await page.request.post("/api/v1/articles", { data: { title: "Bell check " + slug, slug, content: "<p>x</p>" } });
+  expect(made.ok()).toBeTruthy();
+  await openConsole(page);
+  const open = async () => { await page.locator("[data-notif-toggle]").click(); await expect(page.locator("[data-notif-panel]")).toBeVisible(); };
+  await open();
+  const row = page.locator(".notif-item--event", { hasText: "Bell check " + slug });
+  await expect(row).toHaveClass(/is-unread/);
+  await expect(page.locator("[data-notif-recent] .notif-group__label").first()).toHaveText("Today");
+  await expect(row.locator("time")).not.toContainText("UTC"); // rewritten in the viewer's clock
+  const needs = Number(await page.locator("[data-notif]").getAttribute("data-notif-needs"));
+
+  await page.locator("[data-notif-seen]").click();
+  await expect(page.locator(".notif-item.is-unread")).toHaveCount(0);
+  await expect(page.locator("[data-notif-seen]")).toHaveCount(0);
+  const badge = page.locator("[data-notif-badge]");
+  if (needs > 0) await expect(badge).toHaveText(needs > 99 ? "99+" : String(needs));
+  else await expect(badge).toHaveCount(0);
+
+  await page.reload();
+  await open();
+  await expect(row).not.toHaveClass(/is-unread/);
+  await expect(page.locator("[data-notif-seen]")).toHaveCount(0);
+});
+
 test("the command bar is operated by keyboard alone", async ({ page }) => {
   await openConsole(page);
   await page.keyboard.press("Control+k");
