@@ -38,3 +38,22 @@ constitution.
   adequate for personal/team mailboxes, revisited if very large mailboxes need
   it. Role enforcement on outbound SMTP submission lands with the per-account
   submission path (v1.14.0 roadmap).
+
+## Update (2026-09-25): the reviewer role is enforced, and the helpers are gone
+
+The three helpers above were never called outside their own unit test. The
+console offered "Reviewer — read-only" while a reviewer could send (webmail,
+SMTP submission) and delete or move (webmail, IMAP, POP3). `RoleCanDelete` also
+described a rule the product never had: `author` and `mailbox` holders have
+always been able to delete their own mail, and enforcing it would have taken
+that away.
+
+They are replaced by one predicate, `RoleReadOnly`, and one engine question,
+`Engine.MailboxReadOnly(login)`. A reviewer's IMAP SELECT opens read-only, POP3
+refuses `DELE`, submission refuses `MAIL`, and the engine refuses the holder's
+own delete and move (`writeAuthorised`), so every webmail path is covered. An
+administrator acting on the mailbox is not bound, because the role describes
+its holder. The webmail does not offer a reviewer Compose, Reply, Forward,
+Move, Trash or Delete. Each path is tested with a non-reviewer control and
+mutation-checked (`readonly_role_test.go`,
+`mail_reviewer_readonly_test.go`).

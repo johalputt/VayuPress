@@ -185,6 +185,9 @@ func saVisibleApps(s *osSettings) []saApp {
 		if adminOnly && (lvl < accessAdmin || (s != nil && (s.MailOnly || s.UserRole == roleClientName))) {
 			return false
 		}
+		if s != nil && s.MailReadOnly && href == "/os/vayumail/compose" {
+			return false
+		}
 		return saCanOpen(s, href)
 	}
 	var out []saApp

@@ -49,6 +49,8 @@ type IMAPServer struct {
 	// quotaFor reports a mailbox's storage limit in bytes (0 = unlimited). Nil
 	// means unlimited, which is what every construction outside the engine gets.
 	quotaFor func(email string) int64
+	// readOnlyFor reports whether a login may only read (WithReadOnly).
+	readOnlyFor func(login string) bool
 
 	tls         *tls.Config
 	implicitTLS bool
@@ -91,6 +93,13 @@ func (s *IMAPServer) WithImplicitTLS(t *tls.Config, addr string) *IMAPServer {
 // over quota gets back under it — refusing it would leave them full, unable to
 // receive, and without the one action that fixes the state.
 func (s *IMAPServer) WithQuota(q func(email string) int64) *IMAPServer { s.quotaFor = q; return s }
+
+// WithReadOnly wires the read-only role check. A login it names has every
+// SELECT opened as EXAMINE opens it, so the guards that already refuse a
+// read-only mailbox refuse STORE, EXPUNGE, CLOSE's expunge and MOVE for it —
+// one mechanism rather than a second set of checks — and the client is told
+// [READ-ONLY], which is how IMAP clients learn not to offer delete at all.
+func (s *IMAPServer) WithReadOnly(f func(login string) bool) *IMAPServer { s.readOnlyFor = f; return s }
 
 // quotaState returns this mailbox's limit and its current usage, both zero when
 // no quota applies.
@@ -214,7 +223,10 @@ type imapSession struct {
 	authTries int
 	selected  string // canonical folder name, "" if none selected
 	readOnly  bool
-	msgs      []imapMsg
+	// readOnlyUser is set at sign-in for a login holding a read-only role; every
+	// folder it selects is then read-only.
+	readOnlyUser bool
+	msgs         []imapMsg
 }
 
 func (sess *imapSession) authed() bool { return sess.authedUser != "" }
@@ -436,6 +448,7 @@ func (s *IMAPServer) setAuthed(sess *imapSession, user string) {
 	sess.authedUser = local
 	sess.authedMail = mailAddr
 	sess.authedDomain = mailboxDomainFor(user, s.cfg.Domain)
+	sess.readOnlyUser = s.readOnlyFor != nil && s.readOnlyFor(user)
 }
 
 // ── Mailbox listing ──────────────────────────────────────────────────────────
@@ -611,7 +624,7 @@ func (s *IMAPServer) doSelect(line func(string), sess *imapSession, tag, arg str
 		return
 	}
 	sess.selected = folder
-	sess.readOnly = examine
+	sess.readOnly = examine || sess.readOnlyUser
 	unseen, firstUnseen := 0, 0
 	for i, m := range sess.msgs {
 		if !m.flags['S'] {
@@ -627,13 +640,21 @@ func (s *IMAPServer) doSelect(line func(string), sess *imapSession, tag, arg str
 		line(fmt.Sprintf("* OK [UNSEEN %d] First unseen", firstUnseen))
 	}
 	line(`* FLAGS (\Seen \Answered \Flagged \Deleted \Draft)`)
-	line(`* OK [PERMANENTFLAGS (\Seen \Answered \Flagged \Deleted \Draft \*)] Limited`)
+	if sess.readOnly {
+		line(`* OK [PERMANENTFLAGS ()] No permanent flags permitted`)
+	} else {
+		line(`* OK [PERMANENTFLAGS (\Seen \Answered \Flagged \Deleted \Draft \*)] Limited`)
+	}
 	line(fmt.Sprintf("* OK [UIDVALIDITY %d] UIDs valid", s.uidValidity(sess.authedMail, folder)))
 	line(fmt.Sprintf("* OK [UIDNEXT %d] Predicted next UID", s.uidNext(sess.authedMail, folder, len(sess.msgs))))
+	verb := "SELECT"
 	if examine {
-		line(tag + " OK [READ-ONLY] EXAMINE completed")
+		verb = "EXAMINE"
+	}
+	if sess.readOnly {
+		line(tag + " OK [READ-ONLY] " + verb + " completed")
 	} else {
-		line(tag + " OK [READ-WRITE] SELECT completed")
+		line(tag + " OK [READ-WRITE] " + verb + " completed")
 	}
 }
 

@@ -1064,6 +1064,10 @@
   document.body.addEventListener('vm-inbox-result', function (e) {
     var d = (e && e.detail) || {};
     if (!d.failed) return;
+    if (d.readonly) {
+      acctToast('This mailbox is read-only: messages can be read here but not deleted or moved.', 'warn');
+      return;
+    }
     var done = d.done || 0;
     acctToast(done + ' applied, ' + d.failed + ' failed — those messages may already have been moved or deleted.', 'warn');
   });

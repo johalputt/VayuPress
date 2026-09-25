@@ -124,6 +124,13 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 		writeOSHTML(w, r, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
+	if !a.isAdminRequest(r) {
+		if _, own := a.ownMailbox(r); own != "" && a.vayuMail.MailboxReadOnly(own) {
+			body.WriteString(`<div class="empty-state">This mailbox is read-only. It can read mail here, but not send it.</div>`)
+			writeOSHTML(w, r, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
+			return
+		}
+	}
 	domain := a.vayuMail.Config().Domain
 	// Sender selector. Admins may send as any configured account (or postmaster);
 	// non-admin staff may only send from their own assigned mailbox.
@@ -688,6 +695,10 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusForbidden, "no-mailbox", "No mailbox is assigned to your account", "")
 			return
 		}
+		if a.vayuMail.MailboxReadOnly(ownEmail) {
+			writeAPIError(w, r, http.StatusForbidden, "read-only", "This mailbox is read-only: it can read mail but not send it.", "")
+			return
+		}
 		from = ownEmail
 	}
 	splitAddrs := parseRecipientList
@@ -1000,19 +1011,24 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 			return a.vayuMail.MoveMessage(rd, id, from, target)
 		}
 	}
-	var firstErr string
+	var firstErr error
 	for _, id := range ids {
 		if err := apply(id); err != nil {
 			failed++
-			if firstErr == "" {
-				firstErr = err.Error()
+			if firstErr == nil {
+				firstErr = err
 			}
 		}
 	}
 	// A whole-batch failure (e.g. every id stale) is a real error; partial
-	// failures are reported but still 200 so the UI can refresh.
+	// failures are reported but still 200 so the UI can refresh. A read-only
+	// mailbox is a refusal, not a fault, and says so.
 	if failed == len(ids) {
-		writeAPIError(w, r, 500, "action-failed", firstErr, "")
+		if errors.Is(firstErr, vmail.ErrReadOnlyMailbox) {
+			writeAPIError(w, r, http.StatusForbidden, "read-only", mailChangeRefusal(firstErr), "")
+			return
+		}
+		writeAPIError(w, r, 500, "action-failed", firstErr.Error(), "")
 		return
 	}
 	resp := map[string]interface{}{"action": action, "count": len(ids) - failed, "failed": failed}

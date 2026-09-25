@@ -11,16 +11,17 @@ import (
 	"time"
 )
 
-// Mail account roles. Roles govern what an authenticated mailbox holder may do
-// (send / delete / manage). Account management itself is always restricted to
-// the VayuPress admin session (the panel routes are admin-only); roles add a
-// finer permission layer used by per-account actions and future SMTP
-// submission. Operators may also assign a custom (free-form) role string.
+// Mail account roles. A role decides which console the holder may open, and one
+// role, Reviewer, is read-only in the mailbox itself: it may read, and may not
+// send, delete or move mail out of a folder (Engine.MailboxReadOnly, enforced on
+// webmail, IMAP, POP3 and SMTP submission). Account management is restricted to
+// the VayuPress admin session whatever the role. Operators may also assign a
+// custom (free-form) role string, which carries mailbox rights and no console.
 const (
-	RoleAdministrator = "administrator" // full access
-	RoleEditor        = "editor"        // send + delete + read
-	RoleAuthor        = "author"        // send + read (no delete)
-	RoleReviewer      = "reviewer"      // read-only (no send, no delete)
+	RoleAdministrator = "administrator" // full console
+	RoleEditor        = "editor"        // mail + editor console
+	RoleAuthor        = "author"        // mail + author console
+	RoleReviewer      = "reviewer"      // read-only mail: no send, no delete, no move
 	// RoleMailbox is a mail-only identity: it can send and read its own
 	// mailbox, but unlike administrator it grants NO access to the wider
 	// VayuOS console — when such an account signs in through the membership
@@ -61,17 +62,9 @@ func normRole(r string) string {
 	return r
 }
 
-// RoleCanSend reports whether a role may send mail (everyone except reviewer).
-func RoleCanSend(role string) bool { return normRole(role) != RoleReviewer }
-
-// RoleCanDelete reports whether a role may delete messages (admin/editor).
-func RoleCanDelete(role string) bool {
-	r := normRole(role)
-	return r == RoleAdministrator || r == RoleEditor
-}
-
-// RoleCanManageAccounts reports whether a role may manage other accounts.
-func RoleCanManageAccounts(role string) bool { return normRole(role) == RoleAdministrator }
+// RoleReadOnly reports whether a role may only read its mailbox. An unknown or
+// empty role is the mailbox role, which is not read-only.
+func RoleReadOnly(role string) bool { return normRole(role) == RoleReviewer }
 
 // Account is an admin-managed mailbox identity (email + password + role). It is
 // independent of VayuPress CMS users so an operator can hand out mail-only

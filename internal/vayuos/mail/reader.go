@@ -100,3 +100,28 @@ func (e *Engine) readAuthorised(rd Reader) error {
 	}
 	return nil
 }
+
+// ErrReadOnlyMailbox is returned when the holder of a read-only mailbox tries to
+// change it: send, delete, or move a message out of a folder.
+var ErrReadOnlyMailbox = errors.New("vayumail: this mailbox is read-only")
+
+// writeAuthorised is readAuthorised plus the one rule a change adds: the holder
+// of a read-only mailbox may not make it. Only OWNER access is bound, because
+// the role describes the holder; an operator or the system acting on the
+// mailbox is not that person.
+func (e *Engine) writeAuthorised(rd Reader) error {
+	if err := e.readAuthorised(rd); err != nil {
+		return err
+	}
+	if e.ReaderReadOnly(rd) {
+		return ErrReadOnlyMailbox
+	}
+	return nil
+}
+
+// ReaderReadOnly reports whether this access is the holder of a read-only
+// mailbox. The webmail asks it to leave out the controls writeAuthorised would
+// refuse, so what is offered and what is enforced are the same decision.
+func (e *Engine) ReaderReadOnly(rd Reader) bool {
+	return rd.kind == readerOwner && e.MailboxReadOnly(rd.Key())
+}

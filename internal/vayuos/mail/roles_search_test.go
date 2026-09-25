@@ -74,33 +74,14 @@ func TestAccountRoles(t *testing.T) {
 	}
 }
 
-func TestRolePermissionHelpers(t *testing.T) {
+func TestRoleHelpers(t *testing.T) {
 	t.Parallel()
-	// CanSend: everyone except reviewer.
-	for _, r := range []string{RoleAdministrator, RoleEditor, RoleAuthor, "custom"} {
-		if !RoleCanSend(r) {
-			t.Errorf("RoleCanSend(%s) should be true", r)
-		}
-	}
-	if RoleCanSend(RoleReviewer) {
-		t.Errorf("reviewer must not send")
-	}
-	// CanDelete: admin + editor only.
-	if !RoleCanDelete(RoleAdministrator) || !RoleCanDelete(RoleEditor) {
-		t.Errorf("admin/editor should delete")
-	}
-	for _, r := range []string{RoleAuthor, RoleReviewer, "custom"} {
-		if RoleCanDelete(r) {
-			t.Errorf("RoleCanDelete(%s) should be false", r)
-		}
-	}
-	// CanManageAccounts: admin only.
-	if !RoleCanManageAccounts(RoleAdministrator) {
-		t.Errorf("admin should manage accounts")
-	}
-	for _, r := range []string{RoleEditor, RoleAuthor, RoleReviewer} {
-		if RoleCanManageAccounts(r) {
-			t.Errorf("RoleCanManageAccounts(%s) should be false", r)
+	// Only Reviewer is read-only; an empty or unknown role falls back to the
+	// mailbox role, which is not.
+	for r, want := range map[string]bool{RoleReviewer: true, " REVIEWER ": true,
+		RoleMailbox: false, RoleAuthor: false, RoleEditor: false, RoleAdministrator: false, "": false, "custom": false} {
+		if got := RoleReadOnly(r); got != want {
+			t.Errorf("RoleReadOnly(%q) = %v, want %v", r, got, want)
 		}
 	}
 	// normRole / IsBuiltinRole.

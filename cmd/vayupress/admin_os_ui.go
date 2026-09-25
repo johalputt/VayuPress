@@ -1368,6 +1368,9 @@ type osSettings struct {
 	// route guard in requireSessionOrAPIKey (hidden == unreachable).
 	MailOnly    bool
 	AccessLevel int
+	// MailReadOnly: a mail-only session whose mailbox holds the read-only role;
+	// the rail leaves out Compose, which the send path would refuse.
+	MailReadOnly bool
 	// UnreadMessages drives the sidebar badge on the Messages item.
 	UnreadMessages int
 	// TorSpaceOn: the Anonymous Tor Space is enabled — the shell wears the Tor
@@ -1443,6 +1446,7 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 			s.UserAvatar = u.AvatarURL
 			if mo, ok := ctx.Value(ctxMailOnlyKey).(bool); ok && mo {
 				s.MailOnly = true
+				s.MailReadOnly = a.vayuMail != nil && u.MailAddress != "" && a.vayuMail.MailboxReadOnly(u.MailAddress)
 			}
 			s.AccessLevel = accessLevelFor(u.Role, s.MailOnly)
 		}

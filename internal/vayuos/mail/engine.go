@@ -187,7 +187,7 @@ func (e *Engine) Search(rd Reader, q string, limit int) ([]SearchResult, error) 
 
 // MoveMessage moves a message between folders (e.g. mark as Junk, or Trash).
 func (e *Engine) MoveMessage(rd Reader, id, from, to string) error {
-	if err := e.readAuthorised(rd); err != nil {
+	if err := e.writeAuthorised(rd); err != nil {
 		return err
 	}
 	if e.maildir == nil {
@@ -269,6 +269,21 @@ func (e *Engine) MailboxQuota(email string) int64 {
 	return e.accounts.QuotaFor(context.Background(), email)
 }
 
+// MailboxReadOnly reports whether the mailbox signed in as login holds a
+// read-only role (Reviewer): it may read, and may not send, delete or move. login
+// is what the client authenticated with; a bare local part names the primary
+// domain, as the authenticator resolved it.
+func (e *Engine) MailboxReadOnly(login string) bool {
+	if e.accounts == nil {
+		return false
+	}
+	addr := strings.TrimSpace(login)
+	if !strings.Contains(addr, "@") {
+		addr += "@" + e.cfg.Domain
+	}
+	return RoleReadOnly(e.accounts.RoleFor(context.Background(), addr))
+}
+
 // MailboxOverQuota reports whether a mailbox has reached or exceeded its storage
 // quota — used to block sending/draft-saving (both file a copy into the
 // mailbox) once it is full. Always false when no quota is set (0 = unlimited).
@@ -318,7 +333,7 @@ func (e *Engine) Deliverability(ctx context.Context) []RecordHealth {
 
 // DeleteMessage permanently removes a message from a folder.
 func (e *Engine) DeleteMessage(rd Reader, folder, id string) error {
-	if err := e.readAuthorised(rd); err != nil {
+	if err := e.writeAuthorised(rd); err != nil {
 		return err
 	}
 	if e.maildir == nil {
@@ -724,7 +739,7 @@ func (e *Engine) Start(ctx context.Context) error {
 			e.smtpd = smtpd
 		}
 
-		imapd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithQuota(e.MailboxQuota).WithTLS(e.tlsConf).WithUIDStore(e.uids)
+		imapd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithQuota(e.MailboxQuota).WithReadOnly(e.MailboxReadOnly).WithTLS(e.tlsConf).WithUIDStore(e.uids)
 		if err := imapd.Start(ctx); err != nil {
 			e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("imap: %w", err))
 		} else {
@@ -732,7 +747,7 @@ func (e *Engine) Start(ctx context.Context) error {
 		}
 
 		// POP3 (110) with STLS when TLS is available. Best-effort, never fatal.
-		pop3d := NewPOP3Server(e.cfg, e.bridge, e.maildir, e.decrypt).WithTLS(e.tlsConf)
+		pop3d := NewPOP3Server(e.cfg, e.bridge, e.maildir, e.decrypt).WithReadOnly(e.MailboxReadOnly).WithTLS(e.tlsConf)
 		if err := pop3d.Start(ctx); err != nil {
 			e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("pop3: %w", err))
 		} else {
@@ -744,21 +759,21 @@ func (e *Engine) Start(ctx context.Context) error {
 		// but a failed bind is now recorded in inboundErr (rather than silently
 		// dropped) so the panel and logs can explain why a client can't connect.
 		if e.tlsConf != nil {
-			imapsd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithQuota(e.MailboxQuota).WithImplicitTLS(e.tlsConf, e.cfg.IMAPSListen).WithUIDStore(e.uids)
+			imapsd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithQuota(e.MailboxQuota).WithReadOnly(e.MailboxReadOnly).WithImplicitTLS(e.tlsConf, e.cfg.IMAPSListen).WithUIDStore(e.uids)
 			if err := imapsd.Start(ctx); err != nil {
 				e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("imaps (993): %w", err))
 			} else {
 				e.imapsd = imapsd
 			}
 			// Implicit-TLS POP3S (995).
-			pop3sd := NewPOP3Server(e.cfg, e.bridge, e.maildir, e.decrypt).WithImplicitTLS(e.tlsConf, e.cfg.POP3SListen)
+			pop3sd := NewPOP3Server(e.cfg, e.bridge, e.maildir, e.decrypt).WithReadOnly(e.MailboxReadOnly).WithImplicitTLS(e.tlsConf, e.cfg.POP3SListen)
 			if err := pop3sd.Start(ctx); err != nil {
 				e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("pop3s (995): %w", err))
 			} else {
 				e.pop3sd = pop3sd
 			}
 			if e.bridge != nil {
-				submitd := NewSubmissionServer(e.cfg, e.tlsConf, e.bridge.AuthUser, e.relayOutbound).WithSenderCheck(e.submissionSenderAllowed)
+				submitd := NewSubmissionServer(e.cfg, e.tlsConf, e.bridge.AuthUser, e.relayOutbound).WithSenderCheck(e.submissionSenderAllowed).WithReadOnly(e.MailboxReadOnly)
 				if err := submitd.Start(ctx); err != nil {
 					e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("submission (587): %w", err))
 				} else {

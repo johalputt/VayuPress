@@ -49,7 +49,7 @@ import (
 // does with DATA, and a unit test on the predicate cannot see DATA at all —
 // which is precisely why the existing predicate tests all pass while this
 // hole is open.
-func submissionHarness(t *testing.T, relay func(from string, rcpts []string, raw []byte) error) (*tls.Conn, *bufio.Reader) {
+func submissionHarness(t *testing.T, relay func(from string, rcpts []string, raw []byte) error, opts ...func(*SMTPServer) *SMTPServer) (*tls.Conn, *bufio.Reader) {
 	t.Helper()
 	cfg := testEngineConfig()
 
@@ -77,6 +77,9 @@ func submissionHarness(t *testing.T, relay func(from string, rcpts []string, raw
 	}
 
 	srv := NewSubmissionServer(cfg, testTLSConfig(t), auth, relay).WithSenderCheck(senderOK)
+	for _, o := range opts {
+		srv = o(srv)
+	}
 	if err := srv.Start(context.Background()); err != nil {
 		t.Fatalf("start: %v", err)
 	}

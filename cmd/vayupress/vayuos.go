@@ -12,6 +12,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	htmpl "html/template"
@@ -2032,6 +2033,8 @@ const inboxPageSize = 200
 // visible window (?limit=); 0 means the default page.
 func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 	user := rd.Key()
+	// A read-only mailbox is offered no control the engine would refuse.
+	readOnly := a.vayuMail.ReaderReadOnly(rd)
 	domain := a.vayuMail.Config().Domain
 	mbox := mailAddrOf(user, domain)
 	if limit <= 0 {
@@ -2054,7 +2057,11 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 	b.WriteString(`<div class="vm-toolbar">`)
 	b.WriteString(`<div class="vm-toolbar-id">` + mailAvatarImg(mbox, a.mailboxAvatarSet()) + `<div class="vm-toolbar-meta"><strong>` + html.EscapeString(mbox) + `</strong><a class="text-sm muted" href="/os/vayumail/inbox">All mailboxes</a></div></div>`)
 	b.WriteString(`<div class="vm-toolbar-actions">`)
-	b.WriteString(`<a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">` + saIcon("pencil") + ` Compose</a>`)
+	if readOnly {
+		b.WriteString(`<span class="text-sm muted">Read-only</span>`)
+	} else {
+		b.WriteString(`<a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">` + saIcon("pencil") + ` Compose</a>`)
+	}
 	b.WriteString(`<button type="button" class="btn btn--sm" hx-get="/os/vayumail/contacts?user=` + qparam(user) + `" hx-target="#vm-readpane" hx-swap="innerHTML" title="This mailbox's saved contacts">` + saIcon("audience") + ` Contacts</button>`)
 	b.WriteString(`<form class="vm-search" method="get" action="/os/vayumail/search"><input type="hidden" name="user" value="` + html.EscapeString(user) + `"><input class="input input--sm" type="search" name="q" placeholder="Search mail…" aria-label="Search mail"><button class="btn btn--sm" type="submit">Search</button></form>`)
 	b.WriteString(`</div></div>`)
@@ -2110,18 +2117,22 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"mark","mark":"read"}'` + inc + `>Mark read</button>`)
 			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"mark","mark":"unread"}'` + inc + `>Mark unread</button>`)
 			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"pin","pin":"1"}'` + inc + `>` + saIcon("pin") + ` Pin</button>`)
-			b.WriteString(`<span class="vm-move"><select class="input input--sm" name="to" aria-label="Move selected to folder" hx-post="/os/vayumail/inbox/action" hx-trigger="change" hx-vals='{"action":"move"}'` + inc + `><option value="">Move to…</option>`)
-			for _, f := range vmail.StandardFolders {
-				// Snoozed is excluded: only the snooze action files there (a
-				// manual move would sleep forever with no wake row).
-				if strings.EqualFold(f, folder) || strings.EqualFold(f, "Snoozed") {
-					continue
+			if !readOnly {
+				b.WriteString(`<span class="vm-move"><select class="input input--sm" name="to" aria-label="Move selected to folder" hx-post="/os/vayumail/inbox/action" hx-trigger="change" hx-vals='{"action":"move"}'` + inc + `><option value="">Move to…</option>`)
+				for _, f := range vmail.StandardFolders {
+					// Snoozed is excluded: only the snooze action files there (a
+					// manual move would sleep forever with no wake row).
+					if strings.EqualFold(f, folder) || strings.EqualFold(f, "Snoozed") {
+						continue
+					}
+					b.WriteString(`<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`)
 				}
-				b.WriteString(`<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`)
+				b.WriteString(`</select></span>`)
 			}
-			b.WriteString(`</select></span>`)
 		}
-		b.WriteString(`<button type="button" class="btn btn--sm btn--danger" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"delete"}' hx-confirm="Permanently delete the selected message(s)?"` + inc + `>Delete</button>`)
+		if !readOnly {
+			b.WriteString(`<button type="button" class="btn btn--sm btn--danger" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"delete"}' hx-confirm="Permanently delete the selected message(s)?"` + inc + `>Delete</button>`)
+		}
 		b.WriteString(`</div>`)
 	}
 
@@ -2135,11 +2146,16 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 		if strings.EqualFold(folder, "Inbox") {
 			// First-run: an empty inbox used to be one muted sentence. Point at the
 			// two things a new mailbox holder actually needs next.
+			firstRunNext := "Write one, or connect a mail app so you can use this mailbox from your phone."
+			firstRunWrite := `<a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">` + saIcon("pencil") + ` Write your first email</a>`
+			if readOnly {
+				firstRunNext, firstRunWrite = "Connect a mail app to read it on your phone.", ""
+			}
 			b.WriteString(`<tr><td colspan="6"><div class="empty-state">` +
 				`<div class="empty-icon">` + saIcon("inbox") + `</div>` +
 				`<div class="empty-title">Your inbox is empty</div>` +
-				`<div class="empty-sub">Mail sent to ` + html.EscapeString(mbox) + ` lands here. Write one, or connect a mail app so you can use this mailbox from your phone.</div>` +
-				`<div class="vm-row vm-row--tight"><a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">` + saIcon("pencil") + ` Write your first email</a>` +
+				`<div class="empty-sub">Mail sent to ` + html.EscapeString(mbox) + ` lands here. ` + firstRunNext + `</div>` +
+				`<div class="vm-row vm-row--tight">` + firstRunWrite +
 				`<a class="btn btn--sm" href="/os/vayumail/connect?user=` + qparam(user) + `">Connect a mail app</a></div>` +
 				`</div></td></tr>`)
 		} else {
@@ -2432,18 +2448,24 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 	// but a batch that half-worked must not look like one that completely worked
 	// either, so the failures are counted and reported to the shell as an event.
 	// The refreshed fragment still reflects whatever actually changed.
-	failed := 0
+	failed, readOnly := 0, false
 	for _, id := range ids {
 		if err := apply(id); err != nil {
 			failed++
+			readOnly = readOnly || errors.Is(err, vmail.ErrReadOnlyMailbox)
 		}
 	}
 	if failed > 0 {
 		// HX-Trigger carries a JSON detail object (htmx turns it into a DOM event
 		// carrying that detail); admin-os-mail.js renders it as one toast. The
-		// header has to be set before the fragment body is written.
+		// header has to be set before the fragment body is written. readonly
+		// names the one refusal whose cause the toast must not guess at.
+		cause := ""
+		if readOnly {
+			cause = `,"readonly":true`
+		}
 		w.Header().Set("HX-Trigger",
-			fmt.Sprintf(`{"vm-inbox-result":{"done":%d,"failed":%d}}`, len(ids)-failed, failed))
+			fmt.Sprintf(`{"vm-inbox-result":{"done":%d,"failed":%d%s}}`, len(ids)-failed, failed, cause))
 	}
 	// Re-render the window the operator was actually looking at, not page one.
 	limit, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("limit")))
@@ -2787,6 +2809,15 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 
 // vayuReadpaneEmpty renders the reading-pane placeholder (also the "message
 // left the folder" state after a pane move/delete).
+// mailChangeRefusal says why a delete or move did not happen, in the operator's
+// words rather than the engine's.
+func mailChangeRefusal(err error) string {
+	if errors.Is(err, vmail.ErrReadOnlyMailbox) {
+		return "This mailbox is read-only: messages can be read here but not deleted or moved."
+	}
+	return "That did not go through: " + err.Error()
+}
+
 func vayuReadpaneEmpty(msg string) string {
 	if msg == "" {
 		msg = "Select a message to read it here."
@@ -2801,6 +2832,9 @@ func vayuReadpaneEmpty(msg string) string {
 // message and marks it read (received folders only). ok is false on error.
 func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView, images bool) (string, bool) {
 	user := rd.Key()
+	// A read-only mailbox is offered no control the engine would refuse: no
+	// reply or forward (a send), no Junk, Trash, Restore or Move, no Delete.
+	readOnly := a.vayuMail.ReaderReadOnly(rd)
 	raw, err := a.vayuMail.ReadFolderMessage(rd, folder, id)
 	if err != nil {
 		return "", false
@@ -2894,8 +2928,10 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView,
 		}
 		hxPost := ` hx-post="/os/vayumail/message/pane-action" hx-target="#vm-readpane" hx-swap="innerHTML" `
 		card.WriteString(`<div class="vm-actions">`)
-		card.WriteString(`<a class="btn btn--primary btn--sm" href="` + replyLink + `">` + saIcon("reply") + ` Reply</a>`)
-		card.WriteString(`<a class="btn btn--sm" href="` + forwardLink + `">` + saIcon("forward") + ` Forward</a>`)
+		if !readOnly {
+			card.WriteString(`<a class="btn btn--primary btn--sm" href="` + replyLink + `">` + saIcon("reply") + ` Reply</a>`)
+			card.WriteString(`<a class="btn btn--sm" href="` + forwardLink + `">` + saIcon("forward") + ` Forward</a>`)
+		}
 		if received {
 			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("mark", "unread") + `>` + saIcon("mail") + ` Mark unread</button>`)
 		}
@@ -2904,13 +2940,15 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView,
 		} else {
 			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("pin", "1") + `>` + saIcon("pin") + ` Pin</button>`)
 		}
-		if !strings.EqualFold(folder, "Junk") {
-			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Junk") + `>` + saIcon("spam") + ` Junk</button>`)
-		}
-		if !strings.EqualFold(folder, "Trash") {
-			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Trash") + `>` + saIcon("trash") + ` Trash</button>`)
-		} else {
-			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Inbox") + `>` + saIcon("inbox") + ` Restore</button>`)
+		if !readOnly {
+			if !strings.EqualFold(folder, "Junk") {
+				card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Junk") + `>` + saIcon("spam") + ` Junk</button>`)
+			}
+			if !strings.EqualFold(folder, "Trash") {
+				card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Trash") + `>` + saIcon("trash") + ` Trash</button>`)
+			} else {
+				card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Inbox") + `>` + saIcon("inbox") + ` Restore</button>`)
+			}
 		}
 		// Snooze: hide until later; the sweeper resurfaces it unread. Only for
 		// received folders (the engine rejects Sent/Drafts/Snoozed anyway).
@@ -2921,7 +2959,9 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView,
 			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("snooze", "tomorrow") + ` title="Snooze until tomorrow 8:00">` + saIcon("timer") + ` Tomorrow</button>`)
 			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("snooze", "nextweek") + ` title="Snooze until Monday 8:00">` + saIcon("timer") + ` Next week</button>`)
 		}
-		card.WriteString(`<button type="button" class="btn btn--sm btn--danger"` + hxPost + paneVals("delete", "1") + ` hx-confirm="Permanently delete this message?">` + saIcon("trash") + ` Delete</button>`)
+		if !readOnly {
+			card.WriteString(`<button type="button" class="btn btn--sm btn--danger"` + hxPost + paneVals("delete", "1") + ` hx-confirm="Permanently delete this message?">` + saIcon("trash") + ` Delete</button>`)
+		}
 		card.WriteString(`</div>`)
 	} else {
 		// Emit only the raw next-message id (not a full URL): the client rebuilds
@@ -2934,8 +2974,10 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView,
 			nextAttr = `" data-next-id="` + html.EscapeString(nextID)
 		}
 		card.WriteString(`<div class="vm-actions" data-mail-actions data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(id) + nextAttr + `">`)
-		card.WriteString(`<a class="btn btn--primary btn--sm" href="` + replyLink + `">` + saIcon("reply") + ` Reply</a>`)
-		card.WriteString(`<a class="btn btn--sm" href="` + forwardLink + `">` + saIcon("forward") + ` Forward</a>`)
+		if !readOnly {
+			card.WriteString(`<a class="btn btn--primary btn--sm" href="` + replyLink + `">` + saIcon("reply") + ` Reply</a>`)
+			card.WriteString(`<a class="btn btn--sm" href="` + forwardLink + `">` + saIcon("forward") + ` Forward</a>`)
+		}
 		if received {
 			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-mark="unread">` + saIcon("mail") + ` Mark unread</button>`)
 		}
@@ -2944,25 +2986,30 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, pane, htmlView,
 		} else {
 			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-pin="1">` + saIcon("pin") + ` Pin</button>`)
 		}
-		if !strings.EqualFold(folder, "Junk") {
-			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Junk">` + saIcon("spam") + ` Junk</button>`)
-		}
-		if !strings.EqualFold(folder, "Trash") {
-			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Trash">` + saIcon("trash") + ` Trash</button>`)
-		} else {
-			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Inbox">` + saIcon("inbox") + ` Restore</button>`)
-		}
-		card.WriteString(`<span class="vm-move"><select class="input input--sm" data-mail-move-select aria-label="Move to folder"><option value="">Move to…</option>`)
-		for _, f := range vmail.StandardFolders {
-			// Snoozed is excluded: only the snooze action files there.
-			if strings.EqualFold(f, folder) || strings.EqualFold(f, "Snoozed") {
-				continue
+		if !readOnly {
+			if !strings.EqualFold(folder, "Junk") {
+				card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Junk">` + saIcon("spam") + ` Junk</button>`)
 			}
-			card.WriteString(`<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`)
+			if !strings.EqualFold(folder, "Trash") {
+				card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Trash">` + saIcon("trash") + ` Trash</button>`)
+			} else {
+				card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Inbox">` + saIcon("inbox") + ` Restore</button>`)
+			}
+			card.WriteString(`<span class="vm-move"><select class="input input--sm" data-mail-move-select aria-label="Move to folder"><option value="">Move to…</option>`)
+			for _, f := range vmail.StandardFolders {
+				// Snoozed is excluded: only the snooze action files there.
+				if strings.EqualFold(f, folder) || strings.EqualFold(f, "Snoozed") {
+					continue
+				}
+				card.WriteString(`<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`)
+			}
+			card.WriteString(`</select></span>`)
 		}
-		card.WriteString(`</select></span>`)
 		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-print>` + saIcon("print") + ` Print</button>`)
-		card.WriteString(`<button type="button" class="btn btn--sm btn--danger" data-mail-delete>` + saIcon("trash") + ` Delete</button></div>`)
+		if !readOnly {
+			card.WriteString(`<button type="button" class="btn btn--sm btn--danger" data-mail-delete>` + saIcon("trash") + ` Delete</button>`)
+		}
+		card.WriteString(`</div>`)
 	}
 
 	// Header card: subject + PGP badge, sender avatar, addresses and date.
@@ -3112,11 +3159,19 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 		}
 		writeOSHTML(w, r, vayuReadpaneEmpty("Snoozed — wakes "+until.Local().Format("Mon 15:04")+"."))
 	case r.FormValue("delete") == "1":
-		_ = a.vayuMail.DeleteMessage(rd, folder, id)
+		// The outcome is read, not assumed: saying "deleted" over a message that
+		// is still in the list is the one wrong answer.
+		if err := a.vayuMail.DeleteMessage(rd, folder, id); err != nil {
+			writeOSHTML(w, r, vayuReadpaneEmpty(mailChangeRefusal(err)))
+			return
+		}
 		writeOSHTML(w, r, vayuReadpaneEmpty("Message deleted."))
 	case strings.TrimSpace(r.FormValue("to")) != "":
 		to := strings.TrimSpace(r.FormValue("to"))
-		_ = a.vayuMail.MoveMessage(rd, id, folder, to)
+		if err := a.vayuMail.MoveMessage(rd, id, folder, to); err != nil {
+			writeOSHTML(w, r, vayuReadpaneEmpty(mailChangeRefusal(err)))
+			return
+		}
 		writeOSHTML(w, r, vayuReadpaneEmpty("Moved to "+html.EscapeString(to)+"."))
 	case r.FormValue("mark") == "unread":
 		_, _ = a.vayuMail.MarkUnread(rd, folder, id)

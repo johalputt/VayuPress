@@ -37,6 +37,9 @@ type POP3Server struct {
 	implicitTLS bool
 	listenAddr  string
 
+	// readOnlyFor reports whether a login may only read (WithReadOnly).
+	readOnlyFor func(login string) bool
+
 	ln     net.Listener
 	wg     sync.WaitGroup
 	mu     sync.Mutex
@@ -47,6 +50,10 @@ type POP3Server struct {
 func NewPOP3Server(cfg Config, bridge Bridge, md *Maildir, decrypt DecryptHook) *POP3Server {
 	return &POP3Server{cfg: cfg, bridge: bridge, maildir: md, decrypt: decrypt, listenAddr: cfg.POP3Listen, limiter: newConnLimiter(0, 0)}
 }
+
+// WithReadOnly wires the read-only role check: a login it names may retrieve
+// but not DELE, so a read-only holder's QUIT removes nothing.
+func (s *POP3Server) WithReadOnly(f func(login string) bool) *POP3Server { s.readOnlyFor = f; return s }
 
 // WithTLS enables the STLS command on the plaintext (110) listener.
 func (s *POP3Server) WithTLS(t *tls.Config) *POP3Server { s.tls = t; return s }
@@ -164,6 +171,7 @@ func (s *POP3Server) handle(conn net.Conn) {
 	var (
 		user        string
 		authed      bool
+		readOnly    bool
 		authTries   int
 		localUser   string
 		localDomain = s.cfg.Domain // Maildir key; a secondary login overrides it (Stage 3b)
@@ -233,6 +241,7 @@ func (s *POP3Server) handle(conn net.Conn) {
 			}
 			recordSource(true)
 			authed = true
+			readOnly = s.readOnlyFor != nil && s.readOnlyFor(user)
 			localUser = user
 			if i := strings.IndexByte(user, '@'); i >= 0 {
 				localUser = user[:i]
@@ -280,6 +289,10 @@ func (s *POP3Server) handle(conn net.Conn) {
 		case "DELE":
 			if !authed {
 				errResp("not authenticated")
+				continue
+			}
+			if readOnly {
+				errResp("[SYS/PERM] this mailbox is read-only")
 				continue
 			}
 			idx, ferr := pop3Index(arg, msgs)

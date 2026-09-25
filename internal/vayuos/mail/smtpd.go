@@ -56,6 +56,9 @@ type SMTPServer struct {
 	// envelope is invisible in every mail client, the header is what is rendered.
 	// Nil disables the check (the inbound listener never sets it).
 	headerFromAllowed func(authUser, fromAddr string) bool
+	// readOnly reports whether an authenticated submitter holds a read-only
+	// role and may not send at all (WithReadOnly). Nil disables the check.
+	readOnly func(authUser string) bool
 
 	ln     net.Listener
 	wg     sync.WaitGroup
@@ -89,6 +92,13 @@ func (s *SMTPServer) WithTLS(t *tls.Config) *SMTPServer {
 // alias (audit H4). Returns the server for chaining.
 func (s *SMTPServer) WithRecipientCheck(exists func(addr string) bool) *SMTPServer {
 	s.recipientExists = exists
+	return s
+}
+
+// WithReadOnly wires the read-only role check for the submission listener: a
+// login it names is refused at MAIL, before any envelope is accepted.
+func (s *SMTPServer) WithReadOnly(f func(authUser string) bool) *SMTPServer {
+	s.readOnly = f
 	return s
 }
 
@@ -323,6 +333,12 @@ func (s *SMTPServer) handle(conn net.Conn) {
 		case "MAIL":
 			if s.submission && !authed {
 				write("530 5.7.0 Authentication required")
+				continue
+			}
+			// A second AUTH is refused, so a read-only login has never opened a
+			// transaction and there is nothing here to clear.
+			if s.submission && s.readOnly != nil && s.readOnly(authUser) {
+				write("550 5.7.1 This mailbox is read-only and cannot send")
 				continue
 			}
 			from = extractAddr(arg)
