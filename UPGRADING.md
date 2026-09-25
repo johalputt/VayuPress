@@ -59,69 +59,64 @@ The `--upgrade` flag:
 | `CONFIG_VERSION` | `1.0` | Config version for compatibility validation |
 
 **Database migrations applied automatically:**
-- `004-plugin-pool` — Plugin pool tracking table
+- `004-queue-replay-fields` — Adds `replay_count` and `dead_reason` to the write queue
 
 ---
 
 ## Schema Changes & Migration Authoring
 
 Migrations are **forward-only**, embedded into the binary, and content-checksummed.
-Each lives in `internal/migrations/sql/` as a numbered up/down pair:
+Each lives in `internal/db/migrations/` as a numbered up/down pair:
 
 ```
-internal/migrations/sql/
-  010_article_summary.up.sql
-  010_article_summary.down.sql
+internal/db/migrations/
+  096-article-summary.up.sql
+  096-article-summary.down.sql
 ```
 
 ### Authoring a new migration
 
-1. Create the next-numbered `NNN_name.up.sql` and `NNN_name.down.sql`. The
-   engine applies `*.up.sql` in numeric order exactly once and records a
-   SHA-256 of each file in the `schema_migrations` table.
+1. Create the next-numbered `NNN-name.up.sql` and `NNN-name.down.sql`. On
+   start the binary applies each `*.up.sql` not yet in `schema_migrations`, in
+   name order, and records a SHA-256 of its text there.
+
+2. **Keep each statement on one line.** `runMigrations` (`internal/db/db.go`)
+   executes the file line by line, so a statement wrapped across lines is run
+   as fragments and fails.
 
    ```sql
-   -- 010_article_summary.up.sql
+   -- 096-article-summary.up.sql
    ALTER TABLE articles ADD COLUMN summary TEXT NOT NULL DEFAULT '';
    ```
 
-   ```sql
-   -- 010_article_summary.down.sql  (documents intent; not auto-run)
-   ALTER TABLE articles DROP COLUMN summary;
-   ```
-
-2. Keep migrations **additive and idempotent-friendly**. Prefer
-   `ADD COLUMN ... DEFAULT` over destructive rewrites; SQLite rewrites the whole
-   table for some `ALTER`s, so large tables should be migrated during a
+3. Keep migrations **additive**. Prefer `ADD COLUMN ... DEFAULT` and
+   `CREATE ... IF NOT EXISTS` over destructive rewrites; SQLite rewrites the
+   whole table for some `ALTER`s, so large tables should be migrated during a
    maintenance window.
 
-3. **Never edit an already-released migration file.** Its checksum is recorded
-   on every deployed instance; changing the bytes trips drift detection (below)
-   and the instance refuses to treat the schema as trusted. To change a shipped
-   migration, add a *new* one.
+4. **Never edit an already-released migration file.** Its checksum is recorded
+   on every deployed instance, and `verifyMigrationChecksums` halts start-up
+   when an applied migration's text no longer matches (ADR-0034). To change a
+   shipped migration, add a *new* one.
 
 ### Automated validation
 
-Checksum drift is detected automatically and surfaced two ways:
+A drift stops the binary at start-up with `migration drift detected: <versions>`
+in the log. The state is also readable while running:
 
 ```bash
-# Liveness contract — fails (non-ok) if any applied migration's bytes changed
+# Applied and pending migrations, and the drift counter
 curl -sf http://localhost:8080/health/migrations | jq .
 
-# The vayupress_migration_drift_detected_total metric increments on drift
+# The vayupress_migration_drift_detected_total metric counts drifted versions
 curl -sf http://localhost:8080/metrics | grep migration_drift
 ```
-
-`internal/migrations` (`VerifyChecksums`) compares each row in
-`schema_migrations` against the embedded SQL and returns the drifting versions;
-the deploy script and the `/health/migrations` contract both call into it, so a
-bad upgrade is caught before it serves traffic.
 
 ### Testing a migration locally
 
 ```bash
-# Apply against a throwaway DB and confirm the schema + checksums verify
-DB_PATH=$(mktemp -u).db go test ./internal/migrations/ -run TestMigrate -v
+# Apply every embedded migration to a fresh database
+go test ./internal/db/ -run Migrat -v
 
 # Full gate before pushing a schema change
 gofmt -l . && go vet ./... && go test ./...

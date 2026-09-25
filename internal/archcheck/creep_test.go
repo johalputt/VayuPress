@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // creep_test.go detects shared-abstraction creep patterns that bypass import
-// layer enforcement: global state, reflection abuse, forbidden utility symbols.
+// layer enforcement: reflection in security-critical code, shared utility packages.
 package archcheck_test
 
 import (
-	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -14,89 +13,16 @@ import (
 	"testing"
 )
 
-// TestNoGlobalMutableStateInDomainPackages verifies that domain-context packages
-// do not declare package-level var blocks (which create hidden shared state).
-// Infrastructure packages (logging, metrics) are allowed explicit globals.
-func TestNoGlobalMutableStateInDomainPackages(t *testing.T) {
-	// Domain packages that should not have mutable package-level vars.
-	domainPkgs := []string{
-		"internal/signing",
-		"internal/merkle",
-		"internal/governance",
-		"internal/federation",
-		"internal/did",
-		"internal/archive",
-	}
-
-	// Exceptions: var blocks that are clearly immutable constants or sentinels.
-	allowedPatterns := []string{
-		"Err",    // sentinel errors
-		"ErrCap", // capability errors
-	}
-
-	root := filepath.Join("..", "..")
-	for _, pkg := range domainPkgs {
-		pkgPath := filepath.Join(root, pkg)
-		if _, err := os.Stat(pkgPath); os.IsNotExist(err) {
-			continue
-		}
-
-		fset := token.NewFileSet()
-		//lint:ignore SA1019 ParseDir is sufficient for this build-tag-agnostic
-		// architecture creep check; the go/packages alternative is overkill here.
-		pkgs, err := parser.ParseDir(fset, pkgPath, func(fi os.FileInfo) bool { //nolint:staticcheck // SA1019: ParseDir is fine for this build-tag-agnostic scan
-			return !strings.HasSuffix(fi.Name(), "_test.go")
-		}, 0)
-		if err != nil {
-			continue
-		}
-
-		for _, p := range pkgs {
-			for fileName, f := range p.Files {
-				for _, decl := range f.Decls {
-					gd, ok := decl.(*ast.GenDecl)
-					if !ok || gd.Tok != token.VAR {
-						continue
-					}
-					for _, spec := range gd.Specs {
-						vs, ok := spec.(*ast.ValueSpec)
-						if !ok {
-							continue
-						}
-						for _, name := range vs.Names {
-							n := name.Name
-							if isAllowed(n, allowedPatterns) {
-								continue
-							}
-							// Unexported single-letter vars are likely loop vars caught by parser — skip.
-							if len(n) == 1 {
-								continue
-							}
-							t.Errorf("CREEP: global mutable var %q in domain package %s (%s)",
-								n, pkg, filepath.Base(fileName))
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
 // TestNoReflectionInCriticalPaths verifies that security-critical packages
 // do not use reflect — reflection can bypass type safety and capability checks.
 func TestNoReflectionInCriticalPaths(t *testing.T) {
 	criticalPkgs := []string{
 		"internal/sandbox",
-		"internal/signing",
-		"internal/did",
 	}
 
 	root := filepath.Join("..", "..")
 	for _, pkg := range criticalPkgs {
 		pkgPath := filepath.Join(root, pkg)
-		if _, err := os.Stat(pkgPath); os.IsNotExist(err) {
-			continue
-		}
 
 		fset := token.NewFileSet()
 		//lint:ignore SA1019 ParseDir is sufficient for this build-tag-agnostic
@@ -104,8 +30,8 @@ func TestNoReflectionInCriticalPaths(t *testing.T) {
 		pkgs, err := parser.ParseDir(fset, pkgPath, func(fi os.FileInfo) bool { //nolint:staticcheck // SA1019: ParseDir is fine for this build-tag-agnostic scan
 			return !strings.HasSuffix(fi.Name(), "_test.go")
 		}, 0)
-		if err != nil {
-			continue
+		if err != nil || len(pkgs) == 0 {
+			t.Fatalf("%s is named by this check but does not parse: %v", pkg, err)
 		}
 
 		for _, p := range pkgs {
@@ -144,13 +70,4 @@ func TestNoSharedDTOPackages(t *testing.T) {
 			}
 		}
 	}
-}
-
-func isAllowed(name string, patterns []string) bool {
-	for _, p := range patterns {
-		if strings.HasPrefix(name, p) {
-			return true
-		}
-	}
-	return false
 }

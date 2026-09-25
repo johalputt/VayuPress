@@ -10,9 +10,8 @@ STAGING=$(mktemp -d)
 trap 'rm -rf "$STAGING"' EXIT
 
 # Collect artifacts
-mkdir -p "$STAGING/bin" "$STAGING/migrations" "$STAGING/deploy"
+mkdir -p "$STAGING/bin" "$STAGING/deploy"
 cp "$ROOT/dist/vayupress" "$STAGING/bin/"
-cp "$ROOT/internal/migrations/sql/"*.sql "$STAGING/migrations/" 2>/dev/null || true
 cp "$ROOT/deploy/"*.sh "$STAGING/deploy/"
 
 # Generate per-file checksums

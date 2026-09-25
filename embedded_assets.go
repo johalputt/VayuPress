@@ -45,5 +45,5 @@ var DocsADRFS embed.FS
 // Members are rooted at "docs/" (e.g. "docs/OPERATIONS.md", "docs/security/trust-model.md").
 //
 //go:embed docs/*.md
-//go:embed docs/architecture docs/compatibility docs/governance docs/operations docs/plugins docs/release docs/reliability docs/security
+//go:embed docs/architecture docs/compatibility docs/governance docs/operations docs/plugins docs/release docs/security
 var DocsFS embed.FS

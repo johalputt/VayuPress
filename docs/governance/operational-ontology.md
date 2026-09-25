@@ -8,7 +8,7 @@ can always answer *how bad is it*, *how sure are we*, *where did it come from*, 
 
 This document is the canonical statement of those axes and the rules that bind them.
 It is enforced, not aspirational: a cross-package contract test
-(`internal/governance/ontology_contract_test.go`) fails the build if the code drifts
+(`internal/archcheck/ontology_contract_test.go`) fails the build if the code drifts
 from what is written here.
 
 ## The four axes

@@ -1,146 +1,32 @@
-#
-#
-#
-#
-#
-#
-#    active only when VayuPress terminates TLS in-process; today TLS is
-#    false-positive review, wired into VayuOS in a follow-up.
-#    reserved for public-render-path analytics attribution.
-#    simulating whole 10-minute windows; test-suite-only, like Solve above.
-#    terminated upstream (nginx), so the capture store is dormant infrastructure.
-#    the vayushield package's tests can exercise the Decide bias path without
-#    verifies) — kept as a public API and used by the test suite.
-#  - Solve: the reference proof-of-work solver (clients solve in JS; server only
-#  - TLS ClientHello capture (fingerprint.NewStore/Store.Put/FromClientHello):
-#  - VerdictFrom: reads the middleware's classification off the request context,
-#  - botdb Store.Import / Store.ReportFalsePositive: operator community-import and
-#  - calibrate.BiasedForTest: constructs a calibrator pre-loaded with a bias so
-#  - internal/vayuflow/*: ADR-0151. The engine is fully wired and reachable. TWO entries remain and both are named rather than tolerated: Schedule.String returns the expression a cron parsed from and exists so a future editor can echo it back to the operator, and ImplementedActions is the registry-consistency helper the tests use to hold implementations and capabilities against each other. Neither is a subsystem shipping unreachable — that state went 65 -> 2 as the wiring landed, and anything ADDED here for this package needs the same kind of sentence.
-# "<file>: unreachable func: <name>", line/col stripped so it survives edits).
-# Each line below is a function currently unreachable from the program
-# The CI gate fails only on entries NOT listed here, so new dead code is
-# These are INTENTIONAL: VayuPress ships several forward-looking subsystems
-# VCB (Vayu Compatibility Bible, ADR-0135): manifest loaders + the capability
-# VayuAPI (fine-grained keys): Stage-1 permission vocabulary + resolved-key helpers, unit-tested and consumed by the Stage-2 enforcement middleware (ADR-0134).
-# VayuShield + VayuAnalytics — forward-looking / operator-reserved surface that
-# ahead of their wiring (federation/ActivityPub, the plugin registry, the
-# blocked while this known surface is accepted. When you wire one of these up
 # deadcode baseline — see scripts/deadcode-gate.sh
-# entrypoints, as reported by golang.org/x/tools/cmd/deadcode (normalised to
-# for the future host-side package-install flow. The rest of internal/vcb is
-# go.mod, invisible to the root ./... deadcode walk) and are the entry points
-# is compiled and unit-tested but not yet reachable from main:
-# or delete it, regenerate the baseline with:  scripts/deadcode-gate.sh --update
-# re-export are consumed by the NESTED tools/vayu-compat module (its own
-# reachable from main.
-# reachable via the /api/v1/vcb endpoints.
-# sandbox worker pool + seccomp/capability hardening, clustering, the Arweave
-# storage stub, profiling handlers, and assorted exported helpers reserved for
-# the documented roadmap). They compile and are unit-tested but are not yet
-internal/ai/agent.go: unreachable func: AgentRunner.Run
-internal/ai/agent.go: unreachable func: AgentRunner.execStep
-internal/ai/agent.go: unreachable func: NewAgentRunner
-internal/ai/embeddings.go: unreachable func: CosineSimilarity
-internal/ai/embeddings.go: unreachable func: LocalEmbedder.Dimensions
-internal/ai/embeddings.go: unreachable func: LocalEmbedder.Embed
-internal/ai/embeddings.go: unreachable func: NewLocalEmbedder
-internal/ai/embeddings.go: unreachable func: normalize
-internal/ai/policy.go: unreachable func: DefaultPolicy
-internal/ai/policy.go: unreachable func: Policy.Apply
-internal/ai/policy.go: unreachable func: Policy.Check
-internal/ai/policy.go: unreachable func: Policy.Compile
-internal/archive/snapshot.go: unreachable func: Manager.Create
-internal/archive/snapshot.go: unreachable func: Manager.List
-internal/archive/snapshot.go: unreachable func: NewManager
-internal/archive/snapshot.go: unreachable func: addFile
+#
+# Each line below is a function unreachable from the program entrypoints, as
+# reported by golang.org/x/tools/cmd/deadcode ("<file>: unreachable func:
+# <name>", line/col stripped so it survives edits). The CI gate fails only on
+# an entry NOT listed here, so new dead code is blocked. Removing an entry is
+# always welcome; refresh with:  scripts/deadcode-gate.sh --update
+#
+# Known groups, so a reader knows why each is still here:
+#  - internal/sandbox, plugins.RegisterSubprocess, vcb.Load*Manifest: the
+#    out-of-process plugin runtime. It is built and tested, but no production
+#    path loads a plugin into it yet.
+#  - internal/vayushield: Solve (the reference proof-of-work solver; clients
+#    solve in JS) and calibrate.BiasedForTest are test-suite entry points;
+#    fingerprint.NewStore/FromClientHello capture only when TLS terminates
+#    in-process, and today nginx terminates it; VerdictFrom is kept as API.
+#  - internal/vayuflow: Schedule.String and ImplementedActions, used by tests
+#    to hold implementations and capabilities against each other.
+#
 internal/budget/actuator.go: unreachable func: Actuator.LastActuations
 internal/budget/budget.go: unreachable func: Ledger.Record
 internal/db/db.go: unreachable func: RollbackMigration
-internal/did/did.go: unreachable func: Authenticator.IssueChallenge
-internal/did/did.go: unreachable func: Authenticator.Verify
-internal/did/did.go: unreachable func: GenerateDIDKey
-internal/did/did.go: unreachable func: NewAuthenticator
-internal/did/did.go: unreachable func: SignChallenge
 internal/emailtmpl/emailtmpl.go: unreachable func: SettingsKey
-internal/events/schema/builtin.go: unreachable func: init#1
-internal/events/schema/registry.go: unreachable func: NewRegistry
-internal/events/schema/registry.go: unreachable func: Registry.MarshalJSON
-internal/events/schema/registry.go: unreachable func: Registry.Register
-internal/events/schema/registry.go: unreachable func: Registry.Validate
-internal/events/schema/registry.go: unreachable func: checkType
 internal/fault/fault.go: unreachable func: Injector.Check
 internal/fault/fault.go: unreachable func: Injector.Register
 internal/fault/fault.go: unreachable func: Injector.Reset
 internal/fault/fault.go: unreachable func: Injector.SetProbability
-internal/federation/activitypub.go: unreachable func: NewServer
-internal/federation/activitypub.go: unreachable func: Server.ActorHandler
-internal/federation/activitypub.go: unreachable func: Server.Followers
-internal/federation/activitypub.go: unreachable func: Server.InboxCount
-internal/federation/activitypub.go: unreachable func: Server.InboxHandler
-internal/federation/activitypub.go: unreachable func: Server.OutboxCount
-internal/federation/activitypub.go: unreachable func: Server.OutboxHandler
-internal/federation/activitypub.go: unreachable func: Server.Publish
-internal/federation/activitypub.go: unreachable func: Server.ReceiveActivity
-internal/federation/activitypub.go: unreachable func: Server.SetKeyResolver
-internal/federation/activitypub.go: unreachable func: Server.SetReplayStore
-internal/federation/activitypub.go: unreachable func: Server.WebFinger
-internal/federation/activitypub.go: unreachable func: Server.verifyInbound
-internal/federation/replay.go: unreachable func: NewReplayStore
-internal/federation/replay.go: unreachable func: ReplayStore.Count
-internal/federation/replay.go: unreachable func: ReplayStore.EnsureSchema
-internal/federation/replay.go: unreachable func: ReplayStore.Mark
-internal/federation/replay.go: unreachable func: ReplayStore.MarkOrReject
-internal/federation/replay.go: unreachable func: ReplayStore.Seen
-internal/federation/signature.go: unreachable func: ParseRSAPublicKeyPEM
-internal/federation/signature.go: unreachable func: VerifyRequest
-internal/federation/signature.go: unreachable func: buildSigningString
-internal/federation/signature.go: unreachable func: checkDateSkew
-internal/federation/signature.go: unreachable func: parseSignatureHeader
-internal/federation/signature.go: unreachable func: signedHeaderList
-internal/federation/signature.go: unreachable func: splitTopLevelCommas
-internal/federation/signature.go: unreachable func: verifyDigest
-internal/governance/rfc.go: unreachable func: NewStore
-internal/governance/rfc.go: unreachable func: RFC.Result
-internal/governance/rfc.go: unreachable func: RFC.Tally
-internal/governance/rfc.go: unreachable func: Store.CastVote
-internal/governance/rfc.go: unreachable func: Store.Create
-internal/governance/rfc.go: unreachable func: Store.Get
-internal/governance/rfc.go: unreachable func: Store.List
-internal/graph/graph.go: unreachable func: Graph.AddEdge
-internal/graph/graph.go: unreachable func: Graph.AddNode
-internal/graph/graph.go: unreachable func: Graph.GetNode
-internal/graph/graph.go: unreachable func: Graph.NodesByType
-internal/graph/graph.go: unreachable func: Graph.Stats
-internal/graph/graph.go: unreachable func: Graph.Successors
-internal/graph/graph.go: unreachable func: New
 internal/imageproc/imageproc.go: unreachable func: DefaultMaxWidthStr
 internal/lifecycle/lifecycle.go: unreachable func: Manager.Stop
-internal/mcp/mcp.go: unreachable func: Server.Tools
-internal/merkle/tree.go: unreachable func: New
-internal/merkle/tree.go: unreachable func: Tree.Proof
-internal/merkle/tree.go: unreachable func: Tree.Root
-internal/merkle/tree.go: unreachable func: Verify
-internal/merkle/tree.go: unreachable func: hashCopy
-internal/merkle/tree.go: unreachable func: leafHash
-internal/merkle/tree.go: unreachable func: pairHash
-internal/merkle/tree.go: unreachable func: parentLayer
-internal/migrations/migrate.go: unreachable func: Migrator.Applied
-internal/migrations/migrate.go: unreachable func: Migrator.Down
-internal/migrations/migrate.go: unreachable func: Migrator.Up
-internal/migrations/migrate.go: unreachable func: Migrator.applied
-internal/migrations/migrate.go: unreachable func: Migrator.apply
-internal/migrations/migrate.go: unreachable func: Migrator.ensureTable
-internal/migrations/migrate.go: unreachable func: Migrator.lastApplied
-internal/migrations/migrate.go: unreachable func: New
-internal/migrations/migrate.go: unreachable func: sha256Hex
-internal/migrations/migrate.go: unreachable func: versionOf
-internal/migrations/resilience.go: unreachable func: Migrator.DryRun
-internal/migrations/resilience.go: unreachable func: Migrator.EnsureJournal
-internal/migrations/resilience.go: unreachable func: Migrator.Journal
-internal/migrations/resilience.go: unreachable func: Migrator.RecordJournalEntry
-internal/migrations/resilience.go: unreachable func: Migrator.VerifyChecksums
-internal/migrations/resilience.go: unreachable func: boolInt
 internal/mode/journal.go: unreachable func: Journal.History
 internal/mode/mode.go: unreachable func: AllowedFrom
 internal/payments/payments.go: unreachable func: Gateways
@@ -150,22 +36,9 @@ internal/policy/engine.go: unreachable func: Engine.EvaluateCategory
 internal/policy/engine.go: unreachable func: EvaluationReport.BlockingFailures
 internal/policy/engine.go: unreachable func: EvaluationReport.Summary
 internal/policy/journal.go: unreachable func: Journal.RecentRuns
-internal/profiling/health_fingerprint.go: unreachable func: CaptureFingerprint
-internal/profiling/health_fingerprint.go: unreachable func: EnableBlockProfiling
-internal/profiling/health_fingerprint.go: unreachable func: EnableMutexProfiling
-internal/profiling/health_fingerprint.go: unreachable func: HealthFingerprint.JSON
-internal/profiling/profiling.go: unreachable func: Handler
-internal/profiling/profiling.go: unreachable func: Snapshot
-internal/profiling/profiling.go: unreachable func: guard
 internal/provenance/confidence.go: unreachable func: All
 internal/provenance/confidence.go: unreachable func: Confidence.AtLeast
 internal/provenance/confidence.go: unreachable func: Parse
-internal/registry/registry.go: unreachable func: New
-internal/registry/registry.go: unreachable func: Registry.Get
-internal/registry/registry.go: unreachable func: Registry.HTTPHandler
-internal/registry/registry.go: unreachable func: Registry.Install
-internal/registry/registry.go: unreachable func: Registry.List
-internal/registry/registry.go: unreachable func: Registry.Register
 internal/render/csp.go: unreachable func: AllowedFrameOrigin
 internal/render/render.go: unreachable func: AdminCSSLink
 internal/render/render.go: unreachable func: WaitForPurges
@@ -210,47 +83,7 @@ internal/sandbox/subprocess_linux.go: unreachable func: applyNamespaceFlags
 internal/sandbox/subprocess_linux.go: unreachable func: applyProcAttr
 internal/sandbox/subprocess_linux.go: unreachable func: applyRunAs
 internal/sandbox/watchdog.go: unreachable func: PluginTelemetry.snapshot
-internal/search/semantic/semantic.go: unreachable func: Index.Add
-internal/search/semantic/semantic.go: unreachable func: Index.Search
-internal/search/semantic/semantic.go: unreachable func: Index.Size
-internal/search/semantic/semantic.go: unreachable func: New
-internal/search/sharded/sharded.go: unreachable func: New
-internal/search/sharded/sharded.go: unreachable func: ShardedIndex.Index
-internal/search/sharded/sharded.go: unreachable func: ShardedIndex.Search
-internal/search/sharded/sharded.go: unreachable func: ShardedIndex.shardFor
 internal/seo/sitemap.go: unreachable func: GenerateSitemap
-internal/signing/article.go: unreachable func: GenerateKeyPair
-internal/signing/article.go: unreachable func: Sign
-internal/signing/article.go: unreachable func: Verify
-internal/signing/article.go: unreachable func: canonicalJSON
-internal/slo/slo.go: unreachable func: NewRegistry
-internal/slo/slo.go: unreachable func: NewTracker
-internal/slo/slo.go: unreachable func: Registry.Get
-internal/slo/slo.go: unreachable func: Registry.Register
-internal/slo/slo.go: unreachable func: Registry.Snapshot
-internal/slo/slo.go: unreachable func: Tracker.Budget
-internal/slo/slo.go: unreachable func: Tracker.BudgetExhausted
-internal/slo/slo.go: unreachable func: Tracker.Record
-internal/slo/slo.go: unreachable func: Tracker.Status
-internal/slo/slo.go: unreachable func: Tracker.prune
-internal/spam/spam.go: unreachable func: Classify
-internal/spam/spam.go: unreachable func: Score.IsSpam
-internal/spam/spam.go: unreachable func: wordCount
-internal/storage/arweave_stub.go: unreachable func: ArweaveBackend.Get
-internal/storage/arweave_stub.go: unreachable func: ArweaveBackend.Name
-internal/storage/arweave_stub.go: unreachable func: ArweaveBackend.Put
-internal/storage/ipfs_stub.go: unreachable func: IPFSBackend.Get
-internal/storage/ipfs_stub.go: unreachable func: IPFSBackend.Name
-internal/storage/ipfs_stub.go: unreachable func: IPFSBackend.Put
-internal/storage/local.go: unreachable func: LocalBackend.Get
-internal/storage/local.go: unreachable func: LocalBackend.Name
-internal/storage/local.go: unreachable func: LocalBackend.Put
-internal/storage/local.go: unreachable func: NewLocal
-internal/storage/storage.go: unreachable func: FallbackBackend.Get
-internal/storage/storage.go: unreachable func: FallbackBackend.Name
-internal/storage/storage.go: unreachable func: FallbackBackend.Put
-internal/testutil/goroutine.go: unreachable func: AssertNoGoroutineLeak
-internal/testutil/goroutine.go: unreachable func: goroutineCount
 internal/theme/compiler.go: unreachable func: CompileVPOnly
 internal/theme/options.go: unreachable func: DefaultOptions
 internal/toc/toc.go: unreachable func: InjectAnchors

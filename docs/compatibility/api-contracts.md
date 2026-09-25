@@ -115,7 +115,7 @@ Events emitted to the outbox follow this envelope:
 
 ```json
 {
-  "type":           "article.published",
+  "type":           "article.created",
   "version":        "v1",
   "id":             "uuid",
   "correlation_id": "uuid",
@@ -130,7 +130,6 @@ Events emitted to the outbox follow this envelope:
 - `version` is always `v<n>`.
 - `id` is a UUID v4.
 - `occurred_at` is always RFC-3339 UTC.
-- `payload` schema is governed by the event schema registry (`internal/events/schema`).
 - Events are append-only; published events are never modified or deleted.
 
 ---
@@ -152,28 +151,3 @@ Events emitted to the outbox follow this envelope:
 
 Span names follow `<layer>.<domain>.<operation>` convention.  
 `attrs` keys follow OpenTelemetry semantic conventions where applicable.
-
----
-
-## Signed Article Contract
-
-```json
-{
-  "payload": {
-    "id":           "uuid",
-    "title":        "string",
-    "body":         "string",
-    "author_did":   "did:key:z...",
-    "published_at": "2026-06-13T09:00:00Z",
-    "version":      1
-  },
-  "public_key_hex": "hex-encoded-32-bytes",
-  "signature_hex":  "hex-encoded-64-bytes"
-}
-```
-
-**Invariants:**
-- `version` is monotonically increasing; no rollback accepted.
-- `author_did` must resolve to a valid DID document.
-- Signature covers canonical JSON of `payload` (keys sorted; no whitespace).
-- Any field change requires re-signing (new `version`).

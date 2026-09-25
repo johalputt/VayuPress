@@ -164,7 +164,6 @@
 | RR-01 | Single SQLite writer is a bottleneck | Low | Architecture Lead | Design choice; escape hatch to PG exists |
 | RR-02 | Isso comment system is 3rd-party Go | Low | Security Lead | Isolated process, no DB access |
 | RR-03 | Let's Encrypt outbound ACME traffic | Low | Security Lead | Required for TLS; ACME pinned to LE CAs |
-| RR-05 | Inbound ActivityPub inbox accepts unsigned requests unless a key resolver is configured | Low | Security Lead | `internal/federation` now implements RSA-SHA256 HTTP Signature verification (`VerifyRequest`), with body Digest validation and a ±5 min clock-skew window, enforced on the inbox whenever `Server.SetKeyResolver` is set. It also caps payloads at 10 MiB and applies replay protection (`federation_seen_activities`, 7-day TTL), and federation is suspended in `quarantined` mode. Residual: enforcement is opt-in, so a deployment that exposes the inbox without wiring a resolver remains open — operators federating with untrusted peers must configure a resolver. |
 | RR-06 | IndexNow submissions trust the configured key/host | Low | Operator | `pingIndexNow` is mode-aware (suppressed in `read-only`/`quarantined`/`maintenance`) and journals success/failure/suppression, but the IndexNow key is operator-supplied and not rotated automatically. |
 
 ---

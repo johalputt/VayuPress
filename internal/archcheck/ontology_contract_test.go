@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package governance_test
+package archcheck_test
 
 // This is the executable half of docs/governance/operational-ontology.md. It is a
 // cross-package contract test: it pins the couplings *between* the ontology's axes

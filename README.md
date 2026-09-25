@@ -247,13 +247,13 @@ VayuPress is a single Go binary and a single SQLite database. There is no second
                     │   VayuOS control panel   Newsletter   Media   VayuAPI       │
                     │                                                             │
                     │   ── Platform kernel (immutable) ──                         │
-                    │   signing · migrations · outbox · policy · modes · audit    │
+                    │   migrations · outbox · policy · modes · audit              │
                     │                                                             │
                     │                    SQLite (WAL mode)                        │
                     └─────────────────────────────────────────────────────────────┘
 ```
 
-Under the hood: an **immutable platform kernel** (Ed25519 article signing, checksum-verified migrations, transactional event outbox, WORM audit log, a policy engine and six adaptive system modes), an async SQLite write queue with dead-letter replay, sandboxed out-of-process plugins with seccomp + capability enforcement, and full observability (structured logs, tracing, SLO error budgets). Architecture and every decision are recorded in [`docs/`](docs/) and the [ADR registry](docs/adr/).
+Under the hood: a platform kernel (checksum-verified migrations, transactional event outbox, WORM audit log, a policy engine and six adaptive system modes), an async SQLite write queue with dead-letter replay, a plugin runtime that confines each out-of-process plugin with seccomp, namespaces and a capability allowlist (the loader that installs plugins into it is not built yet), and structured logs and tracing. Architecture and every decision are recorded in [`docs/`](docs/) and the [ADR registry](docs/adr/).
 
 ---
 

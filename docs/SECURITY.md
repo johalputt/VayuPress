@@ -119,8 +119,10 @@ The comment, webmention, and newsletter receivers accept untrusted public input:
 | `POST /webmention` | Source/target validated; stored `pending`; W3C 202 semantics; no SSRF auto-fetch in the receive path |
 | `POST /api/v1/newsletter/subscribe` | Email validated; double-opt-in confirmation token required before active |
 
-Spam classification (`internal/spam`) and the existing rate limiter apply to
-these public routes.
+No content classifier runs on these routes. A comment needs a signed-in member,
+mailbox or operator and is rate-limited per author (`commentIngest`);
+newsletter sign-ups and webmentions are rate-limited per client address
+(`newsletterIngest`, `webmentionIngest`), all in `cmd/vayupress/plugin_handlers.go`.
 
 ---
 

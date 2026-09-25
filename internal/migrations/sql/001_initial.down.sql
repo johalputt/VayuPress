@@ -1,1 +1,0 @@
--- no-op: schema_migrations is managed by the migration engine

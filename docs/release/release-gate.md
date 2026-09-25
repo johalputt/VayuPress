@@ -36,9 +36,8 @@ All must pass on the release commit before tagging:
 
 ### 3. Migration Verification
 
-- [ ] All `.sql` migration files pass SHA-256 checksum verification
-- [ ] `Migrator.Up()` succeeds on clean database
-- [ ] `Migrator.Down()` can reverse all reversible migrations
+- [ ] `go test ./internal/db/ -run TestAllMigrationsApplyCleanly` passes: every embedded migration applies to a fresh database
+- [ ] No released file under `internal/db/migrations/` was edited (start-up halts on checksum drift, ADR-0034)
 - [ ] No migration modifies data in irreversible ways without explicit documentation
 
 ### 4. Security Checklist
@@ -50,35 +49,15 @@ All must pass on the release commit before tagging:
 - [ ] TruffleHog scan: zero findings
 - [ ] SBOM generated for release artifacts
 
-### 5. Performance Gate
-
-Run benchmarks on the release candidate and compare against `testdata/bench/*.baseline.txt`:
-
-```bash
-go test ./internal/signing/ -bench=. -benchmem | tee /tmp/signing-release.txt
-benchcmp testdata/bench/signing.baseline.txt /tmp/signing-release.txt
-```
-
-Thresholds (must not regress beyond these from baseline):
-
-| Benchmark | Max allowed regression |
-|-----------|----------------------|
-| `BenchmarkSign` | +20% ns/op |
-| `BenchmarkVerify` | +20% ns/op |
-| `BenchmarkMerkleNew1024` | +30% ns/op |
-| `BenchmarkMerkleProof` | +10% ns/op |
-
-If thresholds exceeded: file a performance issue before releasing. Do not block release for ≤ 5% regressions confirmed as measurement noise.
-
-### 6. Operational Readiness
+### 5. Operational Readiness
 
 - [ ] `docs/operations/backup-restore.md` restore procedure verified on staging
 - [ ] `docs/operations/wal-corruption-recovery.md` recovery tested (inject corruption in staging)
-- [ ] `/healthz` endpoint responds correctly after clean startup
+- [ ] `/health/ready` endpoint responds correctly after clean startup
 - [ ] Graceful shutdown: all in-flight requests complete before process exits
 - [ ] Systemd unit restarts correctly after SIGKILL
 
-### 7. Release Artifacts
+### 6. Release Artifacts
 
 - [ ] Binary built with `CGO_ENABLED=1` and verified against `go.sum`
 - [ ] SBOM attached as release asset (`vayupress-<version>.cdx.json`)
@@ -86,7 +65,7 @@ If thresholds exceeded: file a performance issue before releasing. Do not block 
 - [ ] Git tag is signed: `git tag -s v<version>`
 - [ ] Release notes include: what changed, migration steps (if any), known issues
 
-### 8. Rollback Verification
+### 7. Rollback Verification
 
 - [ ] Previous release binary confirmed to work against current DB (backwards schema compat)
 - [ ] Rollback procedure documented in CHANGELOG for this release

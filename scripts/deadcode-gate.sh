@@ -3,15 +3,13 @@
 # deadcode-gate.sh — fail CI only when NEW unreachable code is introduced.
 #
 # golang.org/x/tools/cmd/deadcode reports functions unreachable from the program
-# entrypoints. VayuPress ships several forward-looking subsystems ahead of their
-# wiring (federation/ActivityPub, the plugin registry, the sandbox worker pool +
-# seccomp/capability hardening, clustering, the Arweave storage stub, etc.);
-# those are intentional and enumerated in scripts/deadcode-allow.txt.
+# entrypoints. The ones accepted today are listed, with the reason for each
+# group, in scripts/deadcode-allow.txt.
 #
 # This gate compares the current report against that baseline and fails ONLY on
-# entries that are not already allow-listed — so it cannot regress (new dead
-# code is blocked) while the known roadmap surface is accepted. Removing dead
-# code is always welcome; refresh the baseline with --update when you do.
+# entries that are not already allow-listed, so new dead code is blocked.
+# Removing dead code is always welcome; refresh the baseline with --update when
+# you do.
 #
 # Usage:  scripts/deadcode-gate.sh           # gate against the baseline
 #         scripts/deadcode-gate.sh --update  # regenerate the baseline
@@ -32,12 +30,25 @@ fi
 BIN="$(command -v deadcode)"
 
 # Normalise away line:col so the baseline survives unrelated line shifts.
+# A deadcode that cannot load the packages (e.g. built by an older Go than the
+# toolchain) reports nothing, which would read as "no dead code" and, under
+# --update, empty the baseline. Its own failure stops the gate, with its error.
 current="$(mktemp)"
-"$BIN" ./... 2>/dev/null | sed -E 's/:[0-9]+:[0-9]+:/:/' | sort -u > "$current"
+report="$(mktemp)"
+if ! "$BIN" ./... > "$report" 2> "$report.err"; then
+  echo "deadcode could not analyse the module:"
+  head -20 "$report.err"
+  rm -f "$current" "$report" "$report.err"
+  exit 1
+fi
+sed -E 's/:[0-9]+:[0-9]+:/:/' "$report" | sort -u > "$current"
+rm -f "$report" "$report.err"
 
 if [ "${1:-}" = "--update" ]; then
   header="$(mktemp)"
-  grep -E '^(#|$)' "$ALLOW" > "$header" 2>/dev/null || true
+  # Only the leading comment block is the header; taking every comment line
+  # anywhere and sorting the file once scrambled it into alphabetical order.
+  awk '/^(#|$)/{print; next} {exit}' "$ALLOW" > "$header"
   cat "$header" "$current" > "$ALLOW"
   rm -f "$current" "$header"
   echo "baseline updated: $(grep -vcE '^(#|$)' "$ALLOW") entries"

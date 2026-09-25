@@ -27,46 +27,35 @@ var infraPkgs = []string{
 }
 
 // forbiddenImports maps a package path suffix to a slice of import path suffixes
-// it must never contain. Checked transitively one level deep.
+// it must never contain. Checked on direct imports.
 var forbiddenImports = []struct {
 	pkg     string // importing package (suffix)
 	mustNot string // must not import this (suffix)
 	why     string
 }{
-	// Infrastructure must not import domain contexts
-	{"internal/logging", "internal/signing", "logging imports signing"},
-	{"internal/logging", "internal/governance", "logging imports governance"},
-	{"internal/logging", "internal/federation", "logging imports federation"},
-	{"internal/db", "internal/signing", "db imports signing"},
-	{"internal/db", "internal/governance", "db imports governance"},
-	{"internal/metrics", "internal/signing", "metrics imports signing"},
-	// Cross-context: sandbox must not know about signing
-	{"internal/sandbox", "internal/signing", "sandbox imports signing (ADR-0062)"},
-	{"internal/sandbox", "internal/governance", "sandbox imports governance (ADR-0062)"},
-	// Cross-context: federation must not depend on AI runtime
-	{"internal/federation", "internal/ai", "federation imports ai (ADR-0062)"},
 	// api layer must not be imported by anything below it
 	{"internal/sandbox", "internal/api", "lower layer imports api"},
 	{"internal/logging", "internal/api", "lower layer imports api"},
 	{"internal/db", "internal/api", "lower layer imports api"},
 }
 
+// importOf loads a package by its module path. A package a rule names that no
+// longer loads is a failure, not a skip: skipping let every rule over a deleted
+// package pass for as long as nobody read the list.
+func importOf(t *testing.T, pkg string) *build.Package {
+	t.Helper()
+	p, err := build.Default.Import(module+"/"+pkg, ".", build.ImportComment)
+	if err != nil {
+		t.Fatalf("%s is named by a layering rule but does not load: %v", pkg, err)
+	}
+	return p
+}
+
 func TestLayerViolations(t *testing.T) {
-	ctx := build.Default
-	ctx.GOPATH = ""
-
 	for _, rule := range forbiddenImports {
-		importer := module + "/" + rule.pkg
-		forbidden := module + "/" + rule.mustNot
-
-		pkg, err := ctx.Import(importer, ".", build.ImportComment)
-		if err != nil {
-			// Package may not exist yet — skip rather than fail.
-			continue
-		}
-
-		for _, imp := range pkg.Imports {
-			if strings.HasSuffix(imp, rule.mustNot) || imp == forbidden {
+		importOf(t, rule.mustNot)
+		for _, imp := range importOf(t, rule.pkg).Imports {
+			if imp == module+"/"+rule.mustNot {
 				t.Errorf("LAYER VIOLATION: %s imports %s — %s", rule.pkg, imp, rule.why)
 			}
 		}
@@ -76,25 +65,18 @@ func TestLayerViolations(t *testing.T) {
 // TestInfraHasNoDomainImports verifies each infra package's direct imports
 // contain no business-context packages.
 func TestInfraHasNoDomainImports(t *testing.T) {
-	ctx := build.Default
 	domainContexts := []string{
-		"internal/signing",
-		"internal/governance",
-		"internal/federation",
-		"internal/ai",
-		"internal/archive",
-		"internal/did",
+		"internal/plugins",
+		"internal/sandbox",
 		"internal/search",
 	}
-
+	for _, domain := range domainContexts {
+		importOf(t, domain)
+	}
 	for _, infra := range infraPkgs {
-		pkg, err := ctx.Import(module+"/"+infra, ".", build.ImportComment)
-		if err != nil {
-			continue
-		}
-		for _, imp := range pkg.Imports {
+		for _, imp := range importOf(t, infra).Imports {
 			for _, domain := range domainContexts {
-				if strings.Contains(imp, domain) {
+				if imp == module+"/"+domain || strings.HasPrefix(imp, module+"/"+domain+"/") {
 					t.Errorf("INFRA VIOLATION: %s imports domain package %s", infra, imp)
 				}
 			}

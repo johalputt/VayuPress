@@ -50,21 +50,15 @@ go test -bench=. -benchmem -run=^$ ./...
 
 | Operation | Package | ns/op | B/op | allocs/op |
 |-----------|---------|------:|-----:|----------:|
-| Ed25519 sign | `internal/signing` | 28,423 | 688 | 7 |
-| Ed25519 verify | `internal/signing` | 64,133 | 432 | 4 |
 | Article input validation | `internal/api` | 234 | 0 | 0 |
 | Tag split | `internal/api` | 1,575 | 1,112 | 9 |
 | Slug validation | `internal/api` | 384 | 0 | 0 |
-| Migration apply (full) | `internal/migrations` | 142,151 | 4,688 | 102 |
-| Event schema validate | `internal/events/schema` | 196 | 0 | 0 |
-| Merkle build (1024 leaves) | `internal/merkle` | 943,875 | 372,489 | 5,201 |
-| Merkle proof generation | `internal/merkle` | 1,403 | 1,264 | 20 |
 | Histogram record | `internal/metrics` | 18.3 | 0 | 0 |
 | Histogram percentile | `internal/metrics` | 27.6 | 0 | 0 |
 | Cache hit-ratio read | `internal/metrics` | 0.46 | 0 | 0 |
 
-**Zero-allocation hot paths:** input validation, slug validation, event-schema
-validation, and all metrics recording allocate nothing per call — they impose no
+**Zero-allocation hot paths:** input validation, slug validation
+and all metrics recording allocate nothing per call — they impose no
 GC pressure under sustained load.
 
 ---
