@@ -636,15 +636,6 @@ window.vpRelTime = relativeTime;
   });
 })();
 
-/* ── Settings toggle rows ────────────────────────────────────── */
-$$('[data-setting-key]').forEach(function (el) {
-  el.addEventListener('change', function () {
-    var key = el.dataset.settingKey;
-    var val = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value;
-    vpPost('/os/api/settings', { key: key, value: val }, function () { toast('Saved', 'ok'); }, function () { toast('Error saving setting', 'error'); });
-  });
-});
-
 /* ── Media library (Phase 4) ─────────────────────────────────── */
 (function initMedia() {
   var grid = $('[data-media-grid]');

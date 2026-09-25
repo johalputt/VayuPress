@@ -45,7 +45,7 @@ type Row struct {
 // Rows renders settings as rows with the control on the right.
 func Rows(rows ...Row) HTML {
 	var b strings.Builder
-	b.WriteString(`<div>`)
+	b.WriteString(`<div class="settings-rows">`)
 	for _, r := range rows {
 		cls := "settings-row"
 		if r.Changed {

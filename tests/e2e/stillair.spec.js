@@ -276,3 +276,61 @@ test("a confirmation dialog keeps focus and gives it back", async ({ page }) => 
   await expect(dialog).toHaveCount(0);
   await expect(opener).toBeFocused();
 });
+
+// Settings compares every row with the value it loaded with: the bar counts
+// real changes, Discard puts them back, Save sends them and they survive a
+// reload. Typing a letter and deleting it is no change.
+test("a settings change is marked, counted, discarded and saved", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/settings");
+  const tagline = page.locator("#s-tagline");
+  const author = page.locator("#s-author");
+  const row = (el) => el.locator("xpath=ancestor::div[contains(concat(' ',@class,' '),' settings-row ')][1]");
+  const bar = page.locator("[data-settings-bar]");
+  const count = page.locator("[data-settings-count]");
+  const saved = await tagline.inputValue();
+
+  await tagline.press("End");
+  await tagline.type("x");
+  await expect(bar).toBeVisible();
+  await tagline.press("Backspace");
+  await expect(bar).toBeHidden();
+  await expect(row(tagline)).not.toHaveClass(/is-changed/);
+
+  await tagline.fill("Written by the e2e walk");
+  await author.fill("Someone else");
+  await expect(row(tagline)).toHaveClass(/is-changed/);
+  await expect(count).toHaveText("2 unsaved changes");
+  await page.locator("[data-settings-discard]").click();
+  await expect(bar).toBeHidden();
+  await expect(tagline).toHaveValue(saved);
+  await expect(row(tagline)).not.toHaveClass(/is-changed/);
+
+  await tagline.fill("Written by the e2e walk");
+  await expect(count).toHaveText("1 unsaved change");
+  await page.locator("[data-settings-save]").click();
+  await expect(bar).toBeHidden();
+  await page.reload();
+  await expect(page.locator("#s-tagline")).toHaveValue("Written by the e2e walk");
+
+  // Leave the install as it was found.
+  await page.locator("#s-tagline").fill(saved);
+  await page.locator("[data-settings-save]").click();
+  await expect(bar).toBeHidden();
+});
+
+// The search in the Settings sidebar finds a row by its words and lands on it.
+test("search settings finds a row and lands on it", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/settings/appearance");
+  const find = page.locator("[data-settings-search]");
+  await find.fill("zzzz");
+  await expect(page.locator("[data-settings-none]")).toBeVisible();
+  await find.fill("time zone");
+  const hit = page.locator(".sa-find__item:visible");
+  await expect(hit).toHaveCount(1);
+  await expect(hit).toContainText("Site identity");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/os\/settings#s-timezone$/);
+  await expect(page.locator("#s-timezone").locator("xpath=ancestor::div[contains(concat(' ',@class,' '),' settings-row ')][1]")).toHaveClass(/is-found/);
+});

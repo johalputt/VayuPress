@@ -108,9 +108,19 @@ func TestEveryStillAirLinkIsARealRoute(t *testing.T) {
 		have[r] = true
 	}
 	check := func(href string) {
-		if !have[strings.TrimSuffix(href, "/")] {
-			t.Errorf("%s is linked from the Still Air chrome but is not a route", href)
+		href = strings.TrimSuffix(href, "/")
+		if have[href] {
+			return
 		}
+		// A Settings category is one pattern route; the link is real only
+		// when the handler knows its slug (an unknown one is sent back to
+		// the front page, which would hide a renamed category).
+		if slug, ok := strings.CutPrefix(href, "/os/settings/"); ok && have["/os/settings/{group}"] {
+			if _, known := settingsCategoryFor(slug); known {
+				return
+			}
+		}
+		t.Errorf("%s is linked from the Still Air chrome but is not a route", href)
 	}
 	for _, apps := range [][]saApp{saClearnetApps, saTorApps} {
 		for _, a := range apps {

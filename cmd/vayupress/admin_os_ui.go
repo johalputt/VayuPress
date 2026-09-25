@@ -81,6 +81,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	// shell adds.
 	r.Get("/os/static/css/vayuos.css", serveAdminOSAsset("css/vayuos.css", "text/css; charset=utf-8"))
 	r.Get("/os/static/js/vayuos.js", serveAdminOSAsset("js/vayuos.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/img/vayupress-mark-white.png", serveAdminOSAsset("img/vayupress-mark-white.png", "image/png"))
+	r.Get("/os/static/img/vayupress-mark-black.png", serveAdminOSAsset("img/vayupress-mark-black.png", "image/png"))
 	// VayuOS installable app (PWA): manifest, service worker (scoped /os/), and app
 	// icons. Served here without auth — like the other /os/static assets — so the
 	// browser can fetch them to offer + keep the install; they carry no user data.
@@ -1462,7 +1464,7 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 		}
 	}
 	if rc := chi.RouteContext(ctx); rc != nil {
-		s.Route = rc.RoutePattern()
+		s.Route = resolvedRoute(rc)
 	}
 	s.Mode = mode.Global.Current()
 	if h := mode.Global.History(); len(h) > 0 {
@@ -1888,10 +1890,7 @@ func osChangePasswordPage(email, msg, csrf string) string {
 		banner = `<div class="login-error" role="alert">` + html.EscapeString(msg) + `</div>`
 	}
 	return authPageShell("Set a new password — VayuOS", `
-  <div class="login-brandline">
-    <img src="/static/favicon-light.png" alt="" width="30" height="30">
-    <span>VayuPress</span>
-  </div>
+  <div class="login-brandline">`+saMark()+`<span>VayuPress</span></div>
   <div class="login-card">
     <h1 class="login-title">Set a new password</h1>
     <p class="login-sub">You're signing in with the default administrator password. Choose a new one to continue.</p>
@@ -1952,10 +1951,7 @@ func osLoginPage(prefillEmail, errMsg, next string) string {
 		nextHTML = `<input type="hidden" name="next" value="` + html.EscapeString(next) + `">`
 	}
 	return authPageShell("Sign in — VayuPress", `
-  <div class="login-brandline">
-    <img src="/static/favicon-light.png" alt="" width="30" height="30">
-    <span>VayuPress</span>
-  </div>
+  <div class="login-brandline">`+saMark()+`<span>VayuPress</span></div>
   <div class="login-card">
     <h1 class="login-title">Welcome back</h1>
     <p class="login-sub">Sign in to your dashboard</p>
@@ -3265,534 +3261,36 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 	if group == "" {
 		group = "general"
 	}
-
-	tabs := []struct{ Key, Label, Href string }{
-		{"general", "General", "/os/settings/general"},
-		{"navigation", "Navigation", "/os/settings/navigation"},
-		{"footer", "Footer", "/os/settings/footer"},
-		{"design", "Design", "/os/settings/design"},
-		{"members", "Members", "/os/settings/members"},
-		{"email", "Email", "/os/settings/email"},
-		{"security", "Security", "/os/settings/security"},
-		{"advanced", "Advanced", "/os/settings/advanced"},
+	if group == "security" {
+		// Sign-in security is Shield's; the old tab here was only a link to it.
+		http.Redirect(w, r, "/os/security", http.StatusMovedPermanently)
+		return
 	}
-
-	tabHTML := ""
-	for _, t := range tabs {
-		cls := "tab"
-		if t.Key == group {
-			cls += " tab--active"
-		}
-		tabHTML += `<a class="` + cls + `" href="` + t.Href + `">` + html.EscapeString(t.Label) + `</a>`
+	cat, ok := settingsCategoryFor(group)
+	if !ok {
+		http.Redirect(w, r, "/os/settings", http.StatusFound)
+		return
 	}
+	body := string(settingsPageBody(r.Context(), a, cat))
 
-	var groupBody string
-	ss := a.siteSettings
-	switch group {
-	case "navigation":
-		groupBody = osSettingsNavigation(r.Context(), ss)
-	case "footer":
-		groupBody = osSettingsFooter(r.Context(), ss)
-	case "design":
-		groupBody = osSettingsDesign(r.Context(), ss)
-	case "members":
-		groupBody = osSettingsMembers(r.Context(), ss)
-	case "email":
-		groupBody = osSettingsEmail(r.Context(), ss)
-	case "security":
-		groupBody = osSettingsSecurity(r.Context(), ss)
-	case "advanced":
-		groupBody = osSettingsAdvanced(r.Context(), ss)
-	default:
-		groupBody = osSettingsGeneral(r.Context(), ss)
-	}
-	body := `<div class="page-header">
-  <h1>Settings</h1>
-  <div class="page-actions">
-    <span id="settings-status" role="status" aria-live="polite" class="text-xs muted"></span>
-    <button type="button" class="btn btn--primary btn--sm" id="settings-save-btn">Save changes</button>
-  </div>
-</div>
-<nav class="tab-list" aria-label="Settings sections">` + tabHTML + `</nav>
-<div class="card">
-  ` + groupBody + `
-  <div class="settings-save-bar">
-    <span id="settings-status-bar" role="status" aria-live="polite" class="text-xs muted"></span>
-    <button type="button" class="btn btn--primary btn--sm" id="settings-save-bar-btn">Save changes</button>
-  </div>
-</div>`
-
-	saveScript := `var saveBtn=document.getElementById('settings-save-btn');
-var saveBtnBar=document.getElementById('settings-save-bar-btn');
-var statusEl=document.getElementById('settings-status');
-var statusBar=document.getElementById('settings-status-bar');
-function setStatus(t,isErr){
-  var c=isErr?'var(--danger)':'var(--ok)';
-  if(statusEl){statusEl.textContent=t;statusEl.style.color=c;}
-  if(statusBar){statusBar.textContent=t;statusBar.style.color=c;}
-}
-function doSave(){
-  var fields=document.querySelectorAll('[data-setting-key]');
-  var pairs=[];
-  fields.forEach(function(el){
-    var key=el.dataset.settingKey;
-    var val=el.type==='checkbox'?(el.checked?'true':'false'):el.value;
-    pairs.push({key:key,value:val});
-  });
-  if(!pairs.length){setStatus('Nothing to save',false);return;}
-  if(saveBtn)saveBtn.disabled=true;
-  if(saveBtnBar)saveBtnBar.disabled=true;
-  setStatus('Saving…',false);
-  var c=csrf();
-  // Send sequentially to avoid SQLite write contention (WAL allows one writer).
-  pairs.reduce(function(chain,p){
-    return chain.then(function(){
-      return fetch('/os/api/settings',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','X-CSRF-Token':c},
-        body:JSON.stringify(p)
-      }).then(function(r){
-        if(r.ok)return;
-        return r.json().then(function(e){
-          throw new Error(p.key+': '+(e.detail||e.message||e.error||r.status));
-        }).catch(function(){
-          throw new Error(p.key+': HTTP '+r.status);
-        });
-      });
-    });
-  },Promise.resolve()).then(function(){
-    setStatus('Saved',false);
-    if(saveBtn)saveBtn.disabled=false;
-    if(saveBtnBar)saveBtnBar.disabled=false;
-    if(window.vpToast)window.vpToast('Settings saved','ok');
-  }).catch(function(e){
-    setStatus('Failed — '+e.message,true);
-    if(saveBtn)saveBtn.disabled=false;
-    if(saveBtnBar)saveBtnBar.disabled=false;
-  });
-}
-if(saveBtn)saveBtn.addEventListener('click',doSave);
-if(saveBtnBar)saveBtnBar.addEventListener('click',doSave);
-// Reorder a row among its same-type siblings (dir<0 = up, dir>0 = down), then
-// resync the hidden JSON so the new order persists on Save. Shared by the nav
-// and footer link editors. CSP-safe: pure DOM, no inline handlers.
-function moveRow(row,dir,sync){
-  if(dir<0){var p=row.previousElementSibling;if(p)row.parentNode.insertBefore(row,p);}
-  else{var n=row.nextElementSibling;if(n)row.parentNode.insertBefore(n,row);}
-  if(sync)sync();
-}
-function reorderBtns(row,sync){
-  var up=document.createElement('button');up.type='button';up.className='btn btn--sm';up.textContent='↑';up.title='Move up';up.setAttribute('aria-label','Move up');
-  up.addEventListener('click',function(){moveRow(row,-1,sync);});
-  var dn=document.createElement('button');dn.type='button';dn.className='btn btn--sm';dn.textContent='↓';dn.title='Move down';dn.setAttribute('aria-label','Move down');
-  dn.addEventListener('click',function(){moveRow(row,1,sync);});
-  return[up,dn];
-}
-// Navigation menu editor (Navigation tab). Builds rows from nav.items JSON and
-// keeps a hidden input in sync so the generic Save picks it up.
-var navEditor=document.getElementById('nav-editor');
-var navHidden=document.getElementById('nav-json-input');
-var navAdd=document.getElementById('nav-add-btn');
-if(navEditor&&navHidden){
-  function navSync(){
-    var rows=navEditor.querySelectorAll('[data-nav-row]');var out=[];
-    rows.forEach(function(row){
-      var l=row.querySelector('[data-nav-label]').value.trim();
-      var h=row.querySelector('[data-nav-href]').value.trim();
-      if(l&&h)out.push({label:l,href:h});
-    });
-    navHidden.value=JSON.stringify(out);
-  }
-  function navRow(label,href){
-    var row=document.createElement('div');row.setAttribute('data-nav-row','');
-    row.style.cssText='display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem';
-    var li=document.createElement('input');li.className='input';li.type='text';li.placeholder='Label';li.value=label||'';li.setAttribute('data-nav-label','');li.style.flex='1';
-    var hi=document.createElement('input');hi.className='input';hi.type='text';hi.placeholder='/path or https://…';hi.value=href||'';hi.setAttribute('data-nav-href','');hi.style.flex='2';
-    var rm=document.createElement('button');rm.type='button';rm.className='btn btn--sm';rm.textContent='✕';
-    rm.addEventListener('click',function(){row.remove();navSync();});
-    li.addEventListener('input',navSync);hi.addEventListener('input',navSync);
-    row.appendChild(li);row.appendChild(hi);
-    var nb=reorderBtns(row,navSync);row.appendChild(nb[0]);row.appendChild(nb[1]);
-    row.appendChild(rm);
-    return row;
-  }
-  (function(){
-    var seed=[];try{seed=JSON.parse(navEditor.getAttribute('data-nav-json')||'[]');}catch(e){seed=[];}
-    seed.forEach(function(it){navEditor.appendChild(navRow(it.label,it.href));});
-  })();
-  if(navAdd)navAdd.addEventListener('click',function(){navEditor.appendChild(navRow('',''));});
-}
-// Branding: favicon/logo upload (Design tab). Elements only exist there.
-var favFile=document.getElementById('brand-favicon-file');
-var favUp=document.getElementById('brand-favicon-upload');
-var favRm=document.getElementById('brand-favicon-remove');
-var favStatus=document.getElementById('brand-favicon-status');
-var favImg=document.getElementById('brand-favicon-img');
-var favState=document.getElementById('brand-favicon-state');
-function favSet(t,isErr){if(favStatus){favStatus.textContent=t;favStatus.style.color=isErr?'var(--danger)':'var(--ok)';}}
-// The endpoint and the preview both follow the page's scope, taken from the
-// image the server already rendered. Hard-coding /os/api/branding/favicon here
-// is what made a hosted domain's Theme Studio save the install-wide mark while
-// looking like it saved that domain's.
-var favBase=(favImg&&favImg.getAttribute('src')||'/favicon.ico').split('?')[0];
-var favPost=favBase==='/favicon.ico'?'/os/api/branding/favicon':favBase.replace('/branding/mark','/api/branding/favicon');
-function favBust(){if(favImg)favImg.src=favBase+'?t='+Date.now();}
-if(favUp)favUp.addEventListener('click',function(){
-  var f=favFile&&favFile.files&&favFile.files[0];
-  if(!f){favSet('Choose a PNG or ICO first',true);return;}
-  favUp.disabled=true;favSet('Uploading…',false);
-  var fd=new FormData();fd.append('favicon',f);
-  fetch(favPost,{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
-    .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
-    .then(function(res){favUp.disabled=false;if(res.ok){favSet('Favicon updated',false);favBust();if(favState)favState.textContent='Custom favicon active — stored in the database.';}else{favSet(res.d.error||'Upload failed',true);}})
-    .catch(function(e){favUp.disabled=false;favSet('Error: '+e,true);});
-});
-if(favRm)favRm.addEventListener('click',function(){
-  favRm.disabled=true;favSet('Removing…',false);
-  var fd=new FormData();fd.append('remove','1');
-  fetch(favPost,{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
-    .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
-    .then(function(res){favRm.disabled=false;if(res.ok){favSet('Default restored',false);favBust();if(favState)favState.textContent='Using the default mark.';}else{favSet(res.d.error||'Remove failed',true);}})
-    .catch(function(e){favRm.disabled=false;favSet('Error: '+e,true);});
-});
-// Footer editor (Footer tab). Builds tagline/copyright/columns/social/legal and
-// keeps a hidden JSON input (footer.config) in sync for the generic Save.
-var footerInput=document.getElementById('footer-json-input');
-if(footerInput){
-  var fTagline=document.getElementById('footer-tagline');
-  var fCopyright=document.getElementById('footer-copyright');
-  var fCols=document.getElementById('footer-cols');
-  var fSocial=document.getElementById('footer-social');
-  var fLegal=document.getElementById('footer-legal');
-  function fLinkRow(label,href){
-    var row=document.createElement('div');row.setAttribute('data-f-link','');
-    row.style.cssText='display:flex;gap:.5rem;align-items:center;margin-bottom:.4rem';
-    var li=document.createElement('input');li.className='input';li.type='text';li.placeholder='Label';li.value=label||'';li.setAttribute('data-f-label','');li.style.flex='1';
-    var hi=document.createElement('input');hi.className='input';hi.type='text';hi.placeholder='/path, mailto: or https://…';hi.value=href||'';hi.setAttribute('data-f-href','');hi.style.flex='2';
-    var rm=document.createElement('button');rm.type='button';rm.className='btn btn--sm';rm.textContent='✕';
-    rm.addEventListener('click',function(){row.remove();footerSync();});
-    li.addEventListener('input',footerSync);hi.addEventListener('input',footerSync);
-    row.appendChild(li);row.appendChild(hi);
-    var fb=reorderBtns(row,footerSync);row.appendChild(fb[0]);row.appendChild(fb[1]);
-    row.appendChild(rm);
-    return row;
-  }
-  function fColCard(title,links){
-    var card=document.createElement('div');card.setAttribute('data-f-col','');
-    card.style.cssText='border:1px solid var(--border-1);border-radius:8px;padding:.75rem;margin-bottom:.75rem';
-    var head=document.createElement('div');head.style.cssText='display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem';
-    var ti=document.createElement('input');ti.className='input';ti.type='text';ti.placeholder='Column title (e.g. Company)';ti.value=title||'';ti.setAttribute('data-f-col-title','');ti.style.flex='1';
-    ti.addEventListener('input',footerSync);
-    var rmc=document.createElement('button');rmc.type='button';rmc.className='btn btn--sm';rmc.textContent='Remove column';
-    rmc.addEventListener('click',function(){card.remove();footerSync();});
-    head.appendChild(ti);
-    var cb=reorderBtns(card,footerSync);head.appendChild(cb[0]);head.appendChild(cb[1]);
-    head.appendChild(rmc);
-    var linksWrap=document.createElement('div');linksWrap.setAttribute('data-f-col-links','');
-    (links||[]).forEach(function(l){linksWrap.appendChild(fLinkRow(l.label,l.href));});
-    var addL=document.createElement('button');addL.type='button';addL.className='btn btn--sm';addL.textContent='+ Add link';
-    addL.addEventListener('click',function(){linksWrap.appendChild(fLinkRow('',''));footerSync();});
-    card.appendChild(head);card.appendChild(linksWrap);card.appendChild(addL);
-    return card;
-  }
-  function fCollect(wrap){
-    var out=[];if(!wrap)return out;
-    wrap.querySelectorAll('[data-f-link]').forEach(function(row){
-      var l=row.querySelector('[data-f-label]').value.trim();
-      var h=row.querySelector('[data-f-href]').value.trim();
-      if(l&&h)out.push({label:l,href:h});
-    });
-    return out;
-  }
-  function footerSync(){
-    var cols=[];
-    if(fCols)fCols.querySelectorAll('[data-f-col]').forEach(function(card){
-      var t=card.querySelector('[data-f-col-title]').value.trim();
-      var links=fCollect(card.querySelector('[data-f-col-links]'));
-      if(t||links.length)cols.push({title:t,links:links});
-    });
-    footerInput.value=JSON.stringify({
-      tagline:fTagline?fTagline.value.trim():'',
-      copyright:fCopyright?fCopyright.value.trim():'',
-      columns:cols,
-      social:fCollect(fSocial),
-      legal:fCollect(fLegal)
-    });
-  }
-  (function(){
-    var seed={};try{seed=JSON.parse(footerInput.getAttribute('data-footer-seed')||'{}');}catch(e){seed={};}
-    if(fTagline)fTagline.value=seed.tagline||'';
-    if(fCopyright)fCopyright.value=seed.copyright||'';
-    if(fCols)(seed.columns||[]).forEach(function(c){fCols.appendChild(fColCard(c.title,c.links));});
-    if(fSocial)(seed.social||[]).forEach(function(l){fSocial.appendChild(fLinkRow(l.label,l.href));});
-    if(fLegal)(seed.legal||[]).forEach(function(l){fLegal.appendChild(fLinkRow(l.label,l.href));});
-    if(fTagline)fTagline.addEventListener('input',footerSync);
-    if(fCopyright)fCopyright.addEventListener('input',footerSync);
-    footerSync();
-  })();
-  var addCol=document.getElementById('footer-add-col');
-  if(addCol)addCol.addEventListener('click',function(){fCols.appendChild(fColCard('',[]));footerSync();});
-  var addSocial=document.getElementById('footer-add-social');
-  if(addSocial)addSocial.addEventListener('click',function(){fSocial.appendChild(fLinkRow('',''));footerSync();});
-  var addLegal=document.getElementById('footer-add-legal');
-  if(addLegal)addLegal.addEventListener('click',function(){fLegal.appendChild(fLinkRow('',''));footerSync();});
-}`
-
-	fullHTML := adminOSShellHead(nonce, "Settings", "settings", cfg) +
+	saveScript := settingsPageScript
+	fullHTML := adminOSShellHead(nonce, cat.Label, "settings", cfg) +
 		renderTrustedHTML(htmpl.HTML(body)) +
 		adminOSShellFoot(nonce, saveScript, pageUsesAlpine(body))
 	writeOSHTML(w, r, fullHTML)
 }
 
-func osSettingsGeneral(ctx context.Context, ss *settings.Store) string {
-	var siteName, tagline, desc, author, tz string
-	if ss != nil {
-		siteName = ss.Get(ctx, settings.ForPrimary(), settings.KeySiteName)
-		tagline = ss.Get(ctx, settings.ForPrimary(), settings.KeySiteTagline)
-		desc = ss.Get(ctx, settings.ForPrimary(), settings.KeySiteDescription)
-		author = ss.Get(ctx, settings.ForPrimary(), settings.KeySiteAuthor)
-		tz = ss.Get(ctx, settings.ForPrimary(), settings.KeySiteTimezone)
-	}
-
-	// Date & time. Timestamps are always STORED in UTC (unambiguous, survives a
-	// server move, never shifts under daylight saving); this setting only decides
-	// what is displayed — post dates on the public site and every timestamp in the
-	// admin. Without it both read as UTC, so an operator in IST saw every time 5½
-	// hours behind their clock and a post published after 05:30 local showed the
-	// previous day's date to readers.
-	nowLine := "Currently showing: " + currentSiteTimeLine()
-	tzBlock := `<div class="settings-section">
-  <div class="settings-block-title">Date &amp; time</div>
-  <div class="field"><label class="field-label" for="s-timezone">Display timezone</label>
-    <select id="s-timezone" class="input" data-setting-key="` + settings.KeySiteTimezone + `">` +
-		timezoneOptionsHTML(tz) + `</select>
-    <span class="field-hint">Post dates and every admin timestamp are shown in this zone. Times are always stored in UTC, so changing this never alters your data — only how it reads. ` +
-		html.EscapeString(nowLine) + `</span></div>
-</div>`
-
-	return tzBlock + `<div class="settings-section">
-  <div class="settings-block-title">Site identity</div>
-  <div class="field"><label class="field-label" for="s-name">Site name</label>
-    <input id="s-name" class="input" type="text"
-      data-setting-key="` + settings.KeySiteName + `"
-      value="` + html.EscapeString(siteName) + `" placeholder="My Publication"></div>
-  <div class="field"><label class="field-label" for="s-tagline">Tagline</label>
-    <input id="s-tagline" class="input" type="text"
-      data-setting-key="` + settings.KeySiteTagline + `"
-      value="` + html.EscapeString(tagline) + `" placeholder="A short description"></div>
-  <div class="field"><label class="field-label" for="s-desc">Description</label>
-    <textarea id="s-desc" class="textarea"
-      data-setting-key="` + settings.KeySiteDescription + `"
-      placeholder="Used in RSS, sitemaps, and SEO meta">` + html.EscapeString(desc) + `</textarea></div>
-  <div class="field"><label class="field-label" for="s-author">Author name</label>
-    <input id="s-author" class="input" type="text"
-      data-setting-key="` + settings.KeySiteAuthor + `"
-      value="` + html.EscapeString(author) + `" placeholder="Your name"></div>
-</div>`
-}
-
-func osSettingsNavigation(ctx context.Context, ss *settings.Store) string {
-	navJSON := ""
-	if ss != nil {
-		navJSON = ss.Get(ctx, settings.ForPrimary(), settings.KeyNavItems)
-	}
-	if strings.TrimSpace(navJSON) == "" {
-		// Seed the editor with the built-in defaults so operators start from the
-		// current visible menu rather than a blank slate.
-		navJSON = `[{"label":"Home","href":"/"},{"label":"Feed","href":"/feed.xml"},{"label":"Console","href":"/admin"}]`
-	}
-	return `<div class="settings-section">
-  <div class="settings-block-title">Public navigation menu</div>
-  <p class="text-sm muted mb-4">These links appear in the top navigation bar on every public page. Point them at internal pages (e.g. <code>/about</code>), feeds, or external/redirect URLs (e.g. <code>https://example.com</code>). Drag-free, add or remove as many as you like.</p>
-  <div id="nav-editor" data-nav-json="` + html.EscapeString(navJSON) + `"></div>
-  <button type="button" class="btn btn--sm mt-2" id="nav-add-btn">+ Add link</button>
-  <input type="hidden" id="nav-json-input" data-setting-key="` + settings.KeyNavItems + `" value="` + html.EscapeString(navJSON) + `">
-  <p class="field-hint mt-2">Leave the list empty and Save to restore the default Home / Feed / Console menu.</p>
-</div>`
-}
-
-// defaultFooterSeed pre-populates the footer editor for operators who have not
-// configured a footer yet, so they start from a premium layout (a link column,
-// Privacy/Terms legal links, copyright line) rather than a blank slate.
-const defaultFooterSeed = `{"tagline":"","copyright":"© {year} {site}. All rights reserved.","columns":[{"title":"Explore","links":[{"label":"Home","href":"/"},{"label":"Feed","href":"/feed.xml"}]}],"social":[],"legal":[{"label":"Privacy","href":"/privacy"},{"label":"Terms","href":"/terms"}]}`
-
-func osSettingsFooter(ctx context.Context, ss *settings.Store) string {
-	footerJSON := ""
-	if ss != nil {
-		footerJSON = ss.Get(ctx, settings.ForPrimary(), settings.KeyFooterConfig)
-	}
-	if strings.TrimSpace(footerJSON) == "" {
-		footerJSON = defaultFooterSeed
-	}
-	esc := html.EscapeString(footerJSON)
-	return `<div class="settings-section">
-  <div class="settings-block-title">Premium footer</div>
-  <p class="text-sm muted mb-4">Build a rich footer for every public page: a brand tagline, multiple link columns, social links, a legal-links bar (Privacy, Terms…) and a copyright line. Hrefs accept internal paths (e.g. <code>/privacy</code>), feeds, <code>mailto:</code> or external URLs. Leave everything empty to fall back to a clean default copyright bar.</p>
-
-  <div class="field"><label class="field-label" for="footer-tagline">Footer tagline</label>
-    <input id="footer-tagline" class="input" type="text" placeholder="A short line shown under your brand"></div>
-
-  <div class="field"><label class="field-label" for="footer-copyright">Copyright line</label>
-    <input id="footer-copyright" class="input" type="text" placeholder="© {year} {site}. All rights reserved.">
-    <span class="field-hint">Use <code>{year}</code> for the current year and <code>{site}</code> for your site name.</span></div>
-
-  <div class="settings-block-title mt-4">Link columns</div>
-  <p class="text-sm muted mb-2">Grouped link lists (e.g. Explore, Company, Resources).</p>
-  <div id="footer-cols"></div>
-  <button type="button" class="btn btn--sm mt-2" id="footer-add-col">+ Add column</button>
-
-  <div class="settings-block-title mt-4">Social links</div>
-  <div id="footer-social"></div>
-  <button type="button" class="btn btn--sm mt-2" id="footer-add-social">+ Add social link</button>
-
-  <div class="settings-block-title mt-4">Legal links (bottom bar)</div>
-  <p class="text-sm muted mb-2">Shown in the footer's bottom bar next to the copyright — e.g. Privacy, Terms, Cookies.</p>
-  <div id="footer-legal"></div>
-  <button type="button" class="btn btn--sm mt-2" id="footer-add-legal">+ Add legal link</button>
-
-  <input type="hidden" id="footer-json-input" data-setting-key="` + settings.KeyFooterConfig + `" data-footer-seed="` + esc + `" value="` + esc + `">
-</div>`
-}
-
-func osSettingsDesign(ctx context.Context, ss *settings.Store) string {
-	primaryLight, primaryDark, customCSS := "#0f766e", "#2dd4bf", ""
-	faviconState := "Using the default mark."
-	if ss != nil {
-		if v := ss.Get(ctx, settings.ForPrimary(), settings.KeyThemePrimaryLight); v != "" {
-			primaryLight = v
-		}
-		if v := ss.Get(ctx, settings.ForPrimary(), settings.KeyThemePrimaryDark); v != "" {
-			primaryDark = v
-		}
-		customCSS = ss.Get(ctx, settings.ForPrimary(), settings.KeyThemeCustomCSS)
-		if ss.Get(ctx, settings.ForPrimary(), settings.KeyBrandFavicon) != "" {
-			faviconState = "Custom favicon active — stored in the database."
+// resolvedRoute is the matched pattern with its own parameters filled in. A
+// Settings category is served by /os/settings/{group}, and the chrome can only
+// mark Appearance current if it sees /os/settings/appearance.
+func resolvedRoute(rc *chi.Context) string {
+	route := rc.RoutePattern()
+	for i, k := range rc.URLParams.Keys {
+		if k != "*" && i < len(rc.URLParams.Values) {
+			route = strings.Replace(route, "{"+k+"}", rc.URLParams.Values[i], 1)
 		}
 	}
-
-	return `<div class="settings-section">
-  <div class="settings-callout">
-    <strong>Design now lives in the Theme Studio.</strong>
-    <span class="text-sm muted">Logo, colours, layout, hero, fonts, navigation, article pages and the social share image are all edited there with a live preview.</span>
-    <a class="btn btn--primary btn--sm mt-2" href="/os/theme">Open Theme Studio →</a>
-  </div>
-</div>
-<div class="settings-section">
-  <div class="settings-block-title">Branding</div>
-  <div class="field">
-    <label class="field-label">Logo &amp; favicon</label>
-    <div class="settings-row" style="align-items:center;gap:1rem">
-      <img id="brand-favicon-img" src="/favicon.ico?t=` + strconv.FormatInt(time.Now().Unix(), 10) + `" alt="Current favicon" width="40" height="40" style="border-radius:6px;background:var(--surface-2)">
-      <div class="settings-row-info">
-        <div class="settings-row-label">Site mark</div>
-        <div class="settings-row-hint" id="brand-favicon-state">` + html.EscapeString(faviconState) + `</div>
-      </div>
-    </div>
-    <span class="field-hint">PNG or ICO, square, ≤ 256 KB. Used as the favicon (browser tab) and the nav-bar logo on the public site. Applies immediately.</span>
-    <div class="theme-actions" style="display:flex;gap:.5rem;align-items:center;margin-top:.5rem;flex-wrap:wrap">
-      <input type="file" id="brand-favicon-file" accept="image/png,image/x-icon,.png,.ico" class="input" style="max-width:18rem">
-      <button type="button" class="btn btn--primary btn--sm" id="brand-favicon-upload">Upload</button>
-      <button type="button" class="btn btn--sm" id="brand-favicon-remove">Remove (use default)</button>
-      <span id="brand-favicon-status" class="text-xs muted" role="status" aria-live="polite"></span>
-    </div>
-  </div>
-</div>
-<div class="settings-section">
-  <div class="settings-block-title">Theme colours</div>
-  <div class="settings-row">
-    <div class="settings-row-info">
-      <div class="settings-row-label">Primary colour (light mode)</div>
-      <div class="settings-row-hint">Main brand colour used on the public site</div>
-    </div>
-    <input type="color" data-setting-key="` + settings.KeyThemePrimaryLight + `" value="` + html.EscapeString(primaryLight) + `">
-  </div>
-  <div class="settings-row">
-    <div class="settings-row-info">
-      <div class="settings-row-label">Primary colour (dark mode)</div>
-    </div>
-    <input type="color" data-setting-key="` + settings.KeyThemePrimaryDark + `" value="` + html.EscapeString(primaryDark) + `">
-  </div>
-  <div class="settings-block-title mt-4">Custom CSS</div>
-  <div class="field">
-    <label class="field-label" for="s-custom-css">Custom stylesheet (injected on public pages only)</label>
-    <textarea id="s-custom-css" class="textarea font-mono" rows="8"
-      data-setting-key="` + settings.KeyThemeCustomCSS + `"
-      placeholder="/* Your custom CSS here */">` + html.EscapeString(customCSS) + `</textarea>
-    <span class="field-hint">Applied to every public page. Never loaded in the admin panel.</span>
-  </div>
-</div>`
-}
-
-func osSettingsMembers(ctx context.Context, ss *settings.Store) string {
-	membershipBtns := ""
-	if ss != nil && ss.Get(ctx, settings.ForPrimary(), settings.KeyMembershipButtons) == "true" {
-		membershipBtns = " checked"
-	}
-	return `<div class="settings-section">
-  <div class="settings-block-title">Memberships</div>
-  <div class="settings-row">
-    <div class="settings-row-info">
-      <div class="settings-row-label">Enable memberships</div>
-      <div class="settings-row-hint">Allow readers to create free or paid accounts</div>
-    </div>
-    <input type="checkbox" class="toggle" data-setting-key="members.enabled" checked>
-  </div>
-  <div class="settings-row">
-    <div class="settings-row-info">
-      <div class="settings-row-label">Show Sign in / Sign up on the site</div>
-      <div class="settings-row-hint">Display public Sign in &amp; Sign up buttons in the homepage navigation (like Ghost)</div>
-    </div>
-    <input type="checkbox" class="toggle" data-setting-key="` + settings.KeyMembershipButtons + `"` + membershipBtns + `>
-  </div>
-  <div class="settings-row">
-    <div class="settings-row-info">
-      <div class="settings-row-label">Magic-link sign-in</div>
-      <div class="settings-row-hint">Passwordless email links (no password required for members)</div>
-    </div>
-    <input type="checkbox" class="toggle" data-setting-key="members.magic_link" checked>
-  </div>
-  <p class="text-sm muted mt-4">Stripe webhook secret and paid tier configuration are set via environment variables. See documentation for details.</p>
-</div>`
-}
-
-func osSettingsEmail(ctx context.Context, ss *settings.Store) string {
-	from := ""
-	if ss != nil {
-		from = ss.Get(ctx, settings.ForPrimary(), "smtp.from")
-	}
-	return `<div class="settings-section">
-  <div class="settings-block-title">SMTP</div>
-  <p class="text-sm muted mb-4">Configure via environment variables: <code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>, <code>SMTP_PASS</code>, <code>SMTP_FROM</code>, <code>SMTP_TLS</code>.</p>
-  <div class="field">
-    <label class="field-label" for="s-smtp-from">From address (display only)</label>
-    <input id="s-smtp-from" class="input" type="email" data-setting-key="smtp.from"
-      value="` + html.EscapeString(from) + `" placeholder="VayuPress &lt;hello@example.com&gt;">
-  </div>
-</div>`
-}
-
-func osSettingsSecurity(_ context.Context, _ *settings.Store) string {
-	return `<div class="settings-section">
-  <div class="settings-block-title">Security</div>
-  <p class="text-sm muted">Two-factor authentication (TOTP) and session management live in the dedicated <a href="/os/security">Security</a> panel.</p>
-</div>`
-}
-
-func osSettingsAdvanced(_ context.Context, _ *settings.Store) string {
-	return `<div class="settings-section">
-  <div class="settings-block-title">Cache</div>
-  <div class="settings-row">
-    <div class="settings-row-info">
-      <div class="settings-row-label">Cache directory</div>
-      <div class="settings-row-hint">Set via <code>CACHE_DIR</code> environment variable</div>
-    </div>
-    <code class="font-mono text-xs muted">` + html.EscapeString(config.Cfg.CacheDir) + `</code>
-  </div>
-  <div class="section-divider"></div>
-  <div class="settings-block-title">Export and restore</div>
-  <p class="text-sm muted">Exports, imports and restores are in Backups; clearing the caches is in Storage.</p>
-  <div class="flex gap-2 mt-3"><a class="btn btn--ghost btn--sm" href="/os/vayukeep">Open Backups</a><a class="btn btn--ghost btn--sm" href="/os/storage">Open Storage</a></div>
-</div>`
+	return route
 }
 
 // ── JSON APIs ─────────────────────────────────────────────────────────────────
@@ -4013,6 +3511,13 @@ func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	if a.siteSettings == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "settings-error", "settings not initialised", "")
+		return
+	}
+	// SetMany skips a key it does not know and reports success, so a page
+	// offering a control for one would say "Saved" and store nothing — which is
+	// how three controls on the old Members page shipped doing nothing.
+	if !settings.AllKeys[body.Key] {
+		writeAPIError(w, r, http.StatusBadRequest, "unknown-setting", "There is no setting called "+strconv.Quote(body.Key), "")
 		return
 	}
 	if err := a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{body.Key: body.Value}); err != nil {

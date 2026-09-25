@@ -102,16 +102,15 @@ var saClearnetApps = []saApp{
 		{Label: "Governance", Href: "/os/governance", Icon: "doc"},
 		{Label: "Decisions", Href: "/os/adr", Icon: "list"},
 	}},
-	{Key: "settings", Label: "Settings", Icon: "settings", Href: "/os/settings", Sections: []saSection{
-		{Label: "General", Href: "/os/settings", Icon: "settings"},
-		{Label: "My profile", Href: "/os/profile", Icon: "audience"},
+	{Key: "settings", Label: "Settings", Icon: "settings", Href: "/os/settings", Sections: append(settingsSections(), []saSection{
+		{Label: "My profile", Href: "/os/profile", Icon: "audience", Group: "Account"},
 		{Label: "Worlds", Href: "/os/spaces", Icon: "tor"},
 		{Label: "Tools and plugins", Href: "/os/tools", Icon: "grid", Group: "Integrations"},
 		{Label: "API keys", Href: "/os/apikeys", Icon: "key"},
 		{Label: "VayuMCP", Href: "/os/connector", Icon: "link"},
 		{Label: "Claude Code", Href: "/os/claudecode", Icon: "cmd"},
 		{Label: "Buzz", Href: "/os/buzz", Icon: "flow"},
-	}},
+	}...)},
 }
 
 // saTorApps is the Tor world: its own database and identity, so only what
@@ -137,10 +136,8 @@ var saTorApps = []saApp{
 	{Key: "system", Label: "System", Icon: "system", Href: "/os/storage", Sections: []saSection{
 		{Label: "Storage", Href: "/os/storage", Icon: "disk"},
 	}},
-	{Key: "settings", Label: "Settings", Icon: "settings", Href: "/os/settings", Sections: []saSection{
-		{Label: "General", Href: "/os/settings", Icon: "settings"},
-		{Label: "My profile", Href: "/os/profile", Icon: "audience"},
-	}},
+	{Key: "settings", Label: "Settings", Icon: "settings", Href: "/os/settings", Sections: append(settingsSections(),
+		saSection{Label: "My profile", Href: "/os/profile", Icon: "audience", Group: "Account"})},
 }
 
 // saNavApp maps a page's classic nav key to its app. A key missing here falls
@@ -385,7 +382,13 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	var side strings.Builder
 	if app != nil && len(app.Sections) > 1 {
 		side.WriteString(`<nav class="sa-appside" aria-label="` + html.EscapeString(app.Label) + `">`)
-		side.WriteString(`<div class="sa-appside__title">` + html.EscapeString(app.Label) + `</div>`)
+		if app.Key == "settings" {
+			// The render puts the search where the title would be; the rail
+			// and the crumb already say this is Settings.
+			side.WriteString(settingsSearchIndex(app))
+		} else {
+			side.WriteString(`<div class="sa-appside__title">` + html.EscapeString(app.Label) + `</div>`)
+		}
 		for i := range app.Sections {
 			x := &app.Sections[i]
 			if x.Group != "" {
@@ -525,7 +528,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 <div class="shell sa-shell">
 <header class="sa-sysbar" role="banner">
   <button type="button" class="menu-toggle sa-iconbtn" data-action="toggle-sidebar" aria-label="Show or hide the app list" aria-controls="vp-sidebar" aria-expanded="true">` + saIcon("list") + `</button>
-  <a class="sa-mark" href="` + home + `" aria-label="VayuOS home">` + saMark + `<span class="sa-mark__site">` + html.EscapeString(siteName) + `</span></a>
+  <a class="sa-mark" href="` + home + `" aria-label="VayuOS home">` + saMark() + `<span class="sa-mark__site">` + html.EscapeString(siteName) + `</span></a>
   <button type="button" class="topbar-cmd sa-search" aria-label="Search or run a command">` + saIcon("search") + ` <span class="sa-search__text">Search or run a command</span><kbd>⌘K</kbd></button>
   <div class="sa-status" role="status" aria-label="System status">` + modeHTML + `<span class="sa-sep" aria-hidden="true"></span>` + worldHTML + `</div>
   ` + osNotifBell(s) + `

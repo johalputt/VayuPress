@@ -94,4 +94,52 @@
     });
   });
 
+
+  /* ── Search settings ───────────────────────────────────────────────────
+     The index is a list of links the server drew (settings_app.go); this
+     only filters it. Every word must appear, so "footer legal" narrows
+     rather than widens. While a query stands the categories step aside. */
+  var find = document.querySelector('[data-settings-search]');
+  if (find) {
+    var side = find.closest('.sa-appside');
+    var index = document.querySelector('[data-settings-index]');
+    var none = document.querySelector('[data-settings-none]');
+    var items = Array.prototype.slice.call(index.querySelectorAll('.sa-find__item'));
+    var shown = [];
+    var active = -1;
+    var mark = function (i) {
+      shown.forEach(function (a, j) { a.classList.toggle('is-active', j === i); });
+      active = i;
+    };
+    var filter = function () {
+      var words = find.value.toLowerCase().split(/\s+/).filter(Boolean);
+      side.classList.toggle('is-searching', words.length > 0);
+      index.hidden = !words.length;
+      shown = [];
+      items.forEach(function (a) {
+        var terms = a.getAttribute('data-terms');
+        var hit = words.length > 0 && words.every(function (w) { return terms.indexOf(w) >= 0; });
+        a.parentNode.hidden = !hit;
+        if (hit) shown.push(a);
+      });
+      none.hidden = !words.length || shown.length > 0;
+      mark(shown.length ? 0 : -1);
+    };
+    find.addEventListener('input', filter);
+    find.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (!shown.length) return;
+        e.preventDefault();
+        mark((active + (e.key === 'ArrowDown' ? 1 : shown.length - 1)) % shown.length);
+      } else if (e.key === 'Enter' && active >= 0) {
+        e.preventDefault();
+        shown[active].click();
+      } else if (e.key === 'Escape' && find.value) {
+        e.preventDefault();
+        find.value = '';
+        filter();
+      }
+    });
+  }
+
 })();

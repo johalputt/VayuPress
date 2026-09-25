@@ -21,7 +21,7 @@ func TestSelectorParity(t *testing.T) {
 	boundInJS := []string{
 		"data-post-row", "data-post-select", "data-post-select-all", "data-post-bulk",
 		"data-post-bulkbar", "data-post-bulk-count", "data-post-delete",
-		"data-setting-key", "data-media-grid", "data-media-dropzone", "data-media-input",
+		"data-media-grid", "data-media-dropzone", "data-media-input",
 		"data-media-search", "data-media-empty", "data-media-filter", "data-media-delete-selected",
 		"data-media-sel-count", "data-notif-toggle",
 		"data-space-switch", "data-copy",
