@@ -1418,6 +1418,25 @@ type osSettings struct {
 	// on the install's own console.
 	Sites []osSite
 	Scope *osSite
+	// MailSide is set while a mailbox is open (render 04): the Mail app's
+	// sidebar becomes that mailbox's folders, then the install's other
+	// mailboxes, then the rest of Mail.
+	MailSide *osMailSide
+}
+
+// osMailSide is the open mailbox as the Mail sidebar shows it. Folders is
+// mailFolderNav's markup, which every list refresh sends again out of band.
+type osMailSide struct {
+	Address string
+	Folders string
+	Boxes   []osMailBox
+}
+
+// osMailBox is one of the install's mailboxes, offered to an administrator.
+type osMailBox struct {
+	Key, Address string
+	Unseen       int
+	Current      bool
 }
 
 // osSite is one hosted site in the switcher.

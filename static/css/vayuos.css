@@ -2250,9 +2250,7 @@
 }
 
 /* ── VayuMail panel (CSP-safe: no inline styles) ───────────────────────────── */
-.vmtabs { display: flex; flex-wrap: wrap; gap: .25rem; margin: .25rem 0 1rem; border-bottom: 1px solid var(--border); }
 
-.vmtabs .tab { padding: .5rem .85rem; }
 
 .vm-row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-top: .75rem; }
 
@@ -2324,11 +2322,8 @@
 
 .vp-os .vm-toolbar { position: sticky; top: 0; z-index: 6; display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; padding: .55rem .7rem; margin: 0 0 .6rem; background: var(--bg-glass); border: 1px solid var(--border); border-radius: var(--radius-surface); }
 
-.vp-os .vm-toolbar-id { display: flex; align-items: center; gap: .55rem; min-width: 0; }
 
-.vp-os .vm-toolbar-meta { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
 
-.vp-os .vm-toolbar-meta strong { overflow-wrap: anywhere; }
 
 .vp-os .vm-toolbar-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 
@@ -2566,9 +2561,7 @@
 
 .vp-os .vm-readpane .vm-reader { box-shadow: var(--shadow-3); }
 
-.vmtabs .tab { border-radius: var(--radius-control) var(--radius-control) 0 0; transition: color .14s ease, background .14s ease; }
 
-.vmtabs .tab:hover { background: var(--bg-surface-2); }
 
 /* VayuTalk share panel: the QR of the chat link (or, in the Tor world, of the
    anonymous code). Always on white — a scanner needs the contrast in dark mode. */
@@ -2578,10 +2571,7 @@
 
 /* A mail domain whose DNS is not finished (read from the stored verdict). A
    border, not just a fill, so it survives forced-colors mode. */
-.vp-os .vmtabs__attn { display: inline-block; width: .5rem; height: .5rem; margin-left: .3rem; vertical-align: .1em; border-radius: 50%; background: var(--warn); border: 1px solid var(--warn); }
 
-@media (forced-colors: active) { .vp-os .vmtabs__attn { border-color: CanvasText; background: Mark; }
- }
 
 /* Narrow screens: single column. The pane hides until a message is opened,
    then it shows above the list as a full-width reader with a Close button. */
@@ -4198,14 +4188,9 @@
 
 
 /* One place restyles the sub-nav and the stat strip across every VayuMail page. */
-.vp-os .vmtabs { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin: 0 0 var(--sp-5); padding: 5px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--bg-surface); box-shadow: var(--sh-sm); width: fit-content; max-width: 100%; }
 
-.vp-os .vmtabs .tab { padding: .45rem .95rem; border: 0; border-radius: var(--radius-control); color: var(--text-2); font-size: var(--text-sm); font-weight: 600; transition: color var(--t-fast), background var(--t-fast); }
 
-.vp-os .vmtabs .tab:hover { color: var(--text); background: var(--bg-surface-2); text-decoration: none; }
 
-.vp-os .vmtabs .tab--active,
-.vp-os .vmtabs .tab--active:hover { color: var(--on-accent); background: var(--brand); }
 
 /* Stat tiles gain the Monetization stat-card lift + top accent. */
 
@@ -5696,6 +5681,12 @@
 .vp-os[data-ui="still-air"] .sa-appside__item[aria-current="page"] .sa-ico { color: var(--accent); }
 .vp-os[data-ui="still-air"] .sa-appside__label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vp-os[data-ui="still-air"] .sa-attn { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: none; }
+/* Mail's folders (render 04) are items of the sidebar itself, whichever way
+   it lays out; the wrapper exists only to be swapped when the list refreshes. */
+.vp-os[data-ui="still-air"] .sa-appside__folders { display: contents; }
+.vp-os[data-ui="still-air"] .sa-appside__title[title] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vp-os[data-ui="still-air"] .sa-appside__count { flex: none; font: var(--type-meta); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .sa-appside__item[aria-current="true"] { color: var(--text-1); font-weight: 500; }
 
 .vp-os[data-ui="still-air"] .sa-content {
   min-width: 0; min-height: 0; overflow-y: auto; max-width: none; width: auto;
@@ -5992,7 +5983,6 @@
 
 /* Tabs: underline, never pills. VayuMail's own tab strip is replaced by the
    Mail app's sidebar. */
-.vp-os[data-ui="still-air"] .vmtabs { display: none; }
 .vp-os[data-ui="still-air"] .tabs { gap: var(--space-6); border-bottom: 1px solid var(--border-1); background: none; padding: 0; border-radius: 0; box-shadow: none; }
 .vp-os[data-ui="still-air"] .tab {
   padding: 10px 0; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; flex: none;
@@ -6371,13 +6361,11 @@
    kept for the one thing that is new. Row controls wait for the pointer or
    focus, except a pin that is on, which is state the reader needs to see. */
 .vp-os[data-ui="still-air"] .vm-toolbar {
-  position: sticky; top: 0; z-index: 6;
-  background: var(--surface-2); backdrop-filter: none;
-  border: 1px solid var(--border-1); border-radius: var(--radius-surface);
-  padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4);
+  position: sticky; top: 0; z-index: 6; background: var(--surface-1); backdrop-filter: none;
+  border: 0; border-radius: 0; padding: 0 0 var(--space-3); margin-bottom: var(--space-3);
 }
-.vp-os[data-ui="still-air"] .vm-toolbar-meta strong { font: var(--type-strong); color: var(--text-1); }
-.vp-os[data-ui="still-air"] .vm-toolbar-meta a { font: var(--type-meta); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .vm-toolbar-actions { flex: 1; }
+.vp-os[data-ui="still-air"] .vm-toolbar .vm-search { flex: 1 1 320px; }
 .vp-os[data-ui="still-air"] .vm-av {
   width: 28px; height: 28px; font: 600 12px/1 var(--font-ui); color: var(--text-1);
 }
@@ -6418,6 +6406,43 @@
 .vp-os[data-ui="still-air"] .vm-msg-subject { font: var(--type-title); letter-spacing: -0.01em; }
 .vp-os[data-ui="still-air"] .vm-actions .btn .sa-ico,
 .vp-os[data-ui="still-air"] .vm-toolbar .btn .sa-ico { width: 14px; height: 14px; }
+/* Three panes (render 04): the folders are the sidebar, then the list and
+   the reader. Where there is room for both, the reader holds its place while
+   nothing is open, so opening a message never reflows the list. */
+@media (min-width: 1100px) {
+  .vp-os[data-ui="still-air"] .vm-split:has(.vm-readpane-empty) { grid-template-columns: minmax(20rem, 26rem) minmax(0, 1fr); }
+  .vp-os[data-ui="still-air"] .vm-split:has(.vm-readpane-empty) .vm-readpane { display: block; }
+}
+.vp-os[data-ui="still-air"] .vm-readpane-empty { min-height: 60vh; border: 0; background: none; }
+/* A message is two lines wherever the list is narrow — beside the reader, or
+   on a phone — sender and time, then the subject, rather than six columns
+   that leave the subject one word wide. Pin and read controls live in the
+   reader there. Measured on the list, not the window. */
+.vp-os[data-ui="still-air"] .vm-inbox-list { container-type: inline-size; }
+/* The selected message is one band across both of its lines. */
+.vp-os[data-ui="still-air"] .vm-list tr.vm-row-item.vm-active { background: var(--surface-select); }
+.vp-os[data-ui="still-air"] .vm-list tr.vm-row-item.vm-active > td { background: none; }
+/* In the reader beside the list, Reply leads and the rest are quiet, so ten
+   actions read as one row of tools rather than a wall of buttons. */
+.vp-os[data-ui="still-air"] .vm-readpane .vm-actions { gap: 2px; }
+.vp-os[data-ui="still-air"] .vm-readpane .vm-actions .btn:not(.btn--primary) { border-color: transparent; background: none; padding: 0 8px; }
+.vp-os[data-ui="still-air"] .vm-readpane .vm-actions .btn:not(.btn--primary):hover { background: var(--surface-hover); }
+.vp-os[data-ui="still-air"] .vm-readpane .vm-actions .btn--danger { color: var(--danger); }
+@container (max-width: 640px) {
+  .vp-os[data-ui="still-air"] .vm-list thead { display: none; }
+  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item {
+    display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: var(--space-3); row-gap: 2px;
+    padding: var(--space-4) var(--space-4); border-bottom: 1px solid var(--border-1);
+  }
+  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td { padding: 0; border: 0; background: none; }
+  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td:nth-child(2),
+  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td.row-actions { display: none; }
+  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td.vm-check { grid-row: 1 / span 2; align-self: center; }
+  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td:nth-child(3) { grid-column: 2; grid-row: 1; min-width: 0; }
+  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td.vm-date { grid-column: 3; grid-row: 1; align-self: center; }
+  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td.vm-subj { grid-column: 2 / span 2; grid-row: 2; padding-left: 36px; min-width: 0; }
+  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item[hidden] { display: none; }
+}
 
 /* ── Shield ────────────────────────────────────────────────────────────── */
 /* A live layer is the normal case, so it is quiet: state shows on the layer
@@ -6565,22 +6590,6 @@
   .vp-os[data-ui="still-air"] .tabs .tab { flex: none; }
   .vp-os[data-ui="still-air"] .seg-filter { max-width: 100%; overflow-x: auto; margin-left: 0; }
   .vp-os[data-ui="still-air"] .sa-shell { grid-template-columns: minmax(0, 1fr); }
-  /* A message is two lines on a phone — sender and time, then the subject —
-     rather than six columns that leave the subject one word wide. Pin and
-     read controls live in the reading pane here. */
-  .vp-os[data-ui="still-air"] .vm-list thead { display: none; }
-  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item {
-    display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: var(--space-3); row-gap: 2px;
-    padding: var(--space-4) var(--space-4); border-bottom: 1px solid var(--border-1);
-  }
-  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td { padding: 0; border: 0; background: none; }
-  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td:nth-child(2),
-  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td.row-actions { display: none; }
-  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td.vm-check { grid-row: 1 / span 2; align-self: center; }
-  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td:nth-child(3) { grid-column: 2; grid-row: 1; min-width: 0; }
-  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td.vm-date { grid-column: 3; grid-row: 1; align-self: center; }
-  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item > td.vm-subj { grid-column: 2 / span 2; grid-row: 2; padding-left: 36px; min-width: 0; }
-  .vp-os[data-ui="still-air"] .vm-list tr.vm-row-item[hidden] { display: none; }
   .vp-os[data-ui="still-air"] .sa-sysbar { gap: var(--space-3); padding: 0 var(--space-3); }
   .vp-os[data-ui="still-air"] .sa-sysbar .menu-toggle { display: none; }
   .vp-os[data-ui="still-air"] .sa-search { flex: 0 0 30px; width: 30px; padding: 0; justify-content: center; margin-left: auto; margin-right: 0; border: 0; background: none; }

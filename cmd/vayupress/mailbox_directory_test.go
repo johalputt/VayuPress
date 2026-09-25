@@ -8,8 +8,9 @@ import (
 )
 
 // The mailbox DIRECTORY — every mailbox on the install, one card per mail
-// domain — is what an administrator gets by clicking the Mailbox tab, because
-// that tab links to /os/vayumail/inbox with no ?user= at all.
+// domain — is what an administrator without a mailbox of their own gets from
+// /os/vayumail/inbox with no ?user=, and what any administrator gets from
+// ?all=1 ("All mailboxes" in the Mail sidebar). One with a mailbox opens it.
 //
 // The authority consolidation replaced a `if !isAdmin { … }` guard with an
 // unconditional `if user == "" { refuse }`. For an administrator, `user == ""`
@@ -29,19 +30,23 @@ func TestTheMailboxTabWithNoMailboxNamedIsTheDirectoryForAnAdministrator(t *test
 	cases := []struct {
 		name      string
 		isAdmin   bool
+		own       string
 		requested string
+		all       bool
 		want      bool
 	}{
-		{"an administrator clicking the Mailbox tab wants every mailbox", true, "", true},
-		{"an administrator who named a mailbox wants that one", true, "someone", false},
-		{"a non-admin never gets the directory, named or not", false, "", false},
-		{"a non-admin naming a mailbox still never gets the directory", false, "victim", false},
-		{"whitespace is not a mailbox name", true, "   ", true},
+		{"an administrator with no mailbox of their own wants every mailbox", true, "", "", false, true},
+		{"an administrator with a mailbox opens it (render 04)", true, "ankush", "", false, false},
+		{"an administrator asking for all mailboxes gets them", true, "ankush", "", true, true},
+		{"an administrator who named a mailbox wants that one", true, "ankush", "someone", true, false},
+		{"a non-admin never gets the directory, named or not", false, "", "", true, false},
+		{"a non-admin naming a mailbox still never gets the directory", false, "me", "victim", true, false},
+		{"whitespace is not a mailbox name", true, "", "   ", false, true},
 	}
 	for _, c := range cases {
-		if got := mailboxDirectoryRequested(c.isAdmin, c.requested); got != c.want {
-			t.Errorf("%s: mailboxDirectoryRequested(%v, %q) = %v, want %v",
-				c.name, c.isAdmin, c.requested, got, c.want)
+		if got := mailboxDirectoryRequested(c.isAdmin, c.own, c.requested, c.all); got != c.want {
+			t.Errorf("%s: mailboxDirectoryRequested(%v, %q, %q, %v) = %v, want %v",
+				c.name, c.isAdmin, c.own, c.requested, c.all, got, c.want)
 		}
 	}
 }

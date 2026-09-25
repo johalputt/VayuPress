@@ -118,7 +118,6 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Compose</h1></div>`)
 	body.WriteString(`<p class="page-sub">Send DKIM-signed mail — auto-PGP-encrypted when the recipient's key is known.</p>`)
-	body.WriteString(a.vayuosNav(r, "compose"))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to enable outbound delivery.</div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -1112,7 +1111,6 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Mail accounts</h1></div>`)
 	body.WriteString(`<p class="page-sub">Admin-managed email IDs &amp; passwords (SMTP/IMAP login). Each mailbox is a card — tap to expand.</p>`)
-	body.WriteString(a.vayuosNav(r, "accounts"))
 	if !a.isAdminRequest(r) {
 		body.WriteString(`<div class="empty-state">Mail-account management is available to administrators only. Your own mailbox is under <a href="/os/vayumail/inbox">Mailbox</a>.</div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -1603,7 +1601,6 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Connect a mail app</h1></div>`)
 	body.WriteString(`<p class="page-sub">IMAP / POP3 / SMTP settings for the Gmail app, Apple Mail, Thunderbird, Outlook and more.</p>`)
-	body.WriteString(a.vayuosNav(r, "connect"))
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to enable mailboxes and mail-client access.</div>`)

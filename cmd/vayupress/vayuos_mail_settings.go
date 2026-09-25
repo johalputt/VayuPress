@@ -138,7 +138,6 @@ func (a *App) handleVayuOSMailboxSettings(w http.ResponseWriter, r *http.Request
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Mailbox settings</h1></div>`)
 	body.WriteString(`<p class="page-sub">Everything that belongs to one address — forwarding, vacation, aliases, filters, recovery, handover, PGP and its picture.</p>`)
-	body.WriteString(a.vayuosNav(r, "accounts"))
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive.</div>`)

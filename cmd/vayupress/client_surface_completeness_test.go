@@ -235,62 +235,49 @@ func TestAClientsNavigationLeadsToTheirOwnPagesAndNowhereElse(t *testing.T) {
 }
 
 // The last piece of the same finding, carried forward from the release that
-// named it: the VayuMail tab strip offered a client an "Overview" tab pointing
-// at /os/vayumail — the mailbox-administration dashboard the confinement
+// named it: VayuMail's own tab strip offered a client an "Overview" tab pointing
+// at /os/vayumail, the mailbox-administration dashboard the confinement
 // refuses. It was the FIRST tab on every mailbox page they were given, so a
 // paying customer's first click threw them back to /os/mysite with no
-// explanation.
-//
-// The strip now asks clientPathAllowed rather than carrying a second copy of the
-// rule, so it cannot drift from the confinement it reflects.
-func TestTheMailTabStripOffersAClientNothingTheyCannotOpen(t *testing.T) {
-	a := resetSessionApp(t)
-
-	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/inbox", nil), boundClient())
-	tabs := a.vayuosNav(req, "mailbox")
-
-	got := regexp.MustCompile(`href="(/os/[^"?#]*)`).FindAllStringSubmatch(tabs, -1)
-	if len(got) == 0 {
-		t.Fatal("a client's mail tab strip is empty — they can no longer move between " +
-			"their own inbox, composer and connect page")
+// explanation. The strip is gone; the rail and the Mail sidebar replaced it. A
+// client's Mail opens their inbox, and a mailbox holder, who is not a client,
+// keeps every Mail page they can open.
+func TestMailOpensAClientsInboxAndKeepsAHoldersPages(t *testing.T) {
+	mailHrefs := func(s *osSettings) string {
+		var out []string
+		for _, app := range saVisibleApps(s) {
+			if app.Key == "mail" {
+				out = append(out, app.Href)
+				for _, sec := range app.Sections {
+					out = append(out, sec.Href)
+				}
+			}
+		}
+		return " " + strings.Join(out, " ") + " "
 	}
-	for _, m := range got {
-		if !clientPathAllowed(m[1]) {
-			t.Errorf("the mail tab strip offers a client %q, which the confinement refuses — "+
-				"clicking it bounces them to /os/mysite with no explanation", m[1])
+	client := saSession(accessMailOnly)
+	client.UserRole = roleClientName
+	// A client's Mail is their inbox; compose and connect are reached from it.
+	// That nothing a client is offered is refused them is
+	// TestStillAirShowsOnlyWhatTheSessionCanOpen's, for every app.
+	got := mailHrefs(client)
+	if !strings.Contains(got, " /os/vayumail/inbox ") {
+		t.Errorf("a client's Mail does not open their inbox: %s", got)
+	}
+
+	// THE CONTROL: the filter is keyed on the client role, not applied to
+	// everyone. A mailbox-only holder reaches the whole non-admin Mail app.
+	holder := saSession(accessMailOnly)
+	holder.MailOnly = true
+	got = mailHrefs(holder)
+	for _, want := range []string{"/os/vayumail", "/os/vayumail/compose", "/os/vayumail/inbox", "/os/vayumail/connect", "/os/vayumail/sent"} {
+		if !strings.Contains(got, " "+want+" ") {
+			t.Errorf("a mailbox holder lost %q: %s", want, got)
 		}
 	}
-	// It must still be a usable strip, not an empty one: the pages they DO hold.
-	for _, want := range []string{"/os/vayumail/inbox", "/os/vayumail/compose", "/os/vayumail/connect"} {
-		if !strings.Contains(tabs, `href="`+want+`"`) {
-			t.Errorf("the strip no longer offers %q, which a client is sold", want)
-		}
-	}
-}
-
-// THE CONTROL, and the reason the filter is keyed on the client role rather than
-// applied to everyone: a mailbox-only holder is NOT a client and legitimately
-// reaches the whole non-admin strip, Overview included. Filtering unconditionally
-// would take that away to fix somebody else's problem.
-func TestTheMailTabStripIsUnchangedForAMailboxHolder(t *testing.T) {
-	a := resetSessionApp(t)
-
-	holder := &users.User{ID: "m1", Email: "boss@example.com", Role: users.RoleAuthor, MailAddress: "boss@example.com"}
-	req := withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/inbox", nil), holder)
-	tabs := a.vayuosNav(req, "mailbox")
-
-	for _, want := range []string{"/os/vayumail", "/os/vayumail/compose", "/os/vayumail/inbox",
-		"/os/vayumail/connect", "/os/vayumail/sent"} {
-		if !strings.Contains(tabs, `href="`+want+`"`) {
-			t.Errorf("a mailbox holder lost the %q tab. The confinement filter is meant for "+
-				"agency clients only; applying it to everyone removes a working page from "+
-				"people who were never confined.", want)
-		}
-	}
-	// And the admin-only tabs stay hidden from them, as before.
 	for _, hidden := range []string{"/os/vayumail/accounts", "/os/vayumail/dns", "/os/vayumail/pgp"} {
-		if strings.Contains(tabs, `href="`+hidden+`"`) {
-			t.Errorf("a non-admin was offered the %q tab", hidden)
+		if strings.Contains(got, " "+hidden+" ") {
+			t.Errorf("a non-admin was offered %q", hidden)
 		}
 	}
 }

@@ -344,6 +344,30 @@ func saRailItem(href, label, icon, count string, current bool) string {
 		`<span class="sa-rail__label">` + html.EscapeString(label) + `</span>` + c + `</a>`
 }
 
+// saMailSide heads the Mail sidebar while a mailbox is open: the mailbox,
+// its folders, and for an administrator the install's other mailboxes.
+func saMailSide(m *osMailSide) string {
+	var b strings.Builder
+	b.WriteString(`<div class="sa-appside__title" title="` + html.EscapeString(m.Address) + `">` + html.EscapeString(m.Address) + `</div>`)
+	b.WriteString(m.Folders)
+	if len(m.Boxes) > 0 {
+		b.WriteString(`<div class="sa-appside__group">Mailboxes on this install</div>`)
+		for _, x := range m.Boxes {
+			cur, count := "", ""
+			if x.Current {
+				cur = ` aria-current="true"`
+			}
+			if x.Unseen > 0 {
+				count = `<span class="sa-appside__count" aria-label="` + itoaSafe(x.Unseen) + ` unread">` + notifCap(x.Unseen) + `</span>`
+			}
+			b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/inbox?user=` + qparam(x.Key) + `"` + cur + `>` + saIcon("mail") +
+				`<span class="sa-appside__label">` + html.EscapeString(x.Address) + `</span>` + count + `</a>`)
+		}
+		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/inbox?all=1">` + saIcon("grid") + `<span class="sa-appside__label">All mailboxes</span></a>`)
+	}
+	return b.String()
+}
+
 // stillAirShellHead is adminOSShellHead for the Still Air design. Same contract:
 // it opens <main id="main-content">, and adminOSShellFoot closes it.
 func stillAirShellHead(nonce, title, active string, s *osSettings) string {
@@ -387,15 +411,27 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	var side strings.Builder
 	if app != nil && len(app.Sections) > 1 {
 		side.WriteString(`<nav class="sa-appside" aria-label="` + html.EscapeString(app.Label) + `">`)
-		if app.Key == "settings" {
+		mailOpen := app.Key == "mail" && s.MailSide != nil
+		mailGroup := !mailOpen // under the folders, the rest of Mail is labelled
+		switch {
+		case app.Key == "settings":
 			// The render puts the search where the title would be; the rail
 			// and the crumb already say this is Settings.
 			side.WriteString(settingsSearchIndex(app))
-		} else {
+		case mailOpen:
+			side.WriteString(saMailSide(s.MailSide))
+		default:
 			side.WriteString(`<div class="sa-appside__title">` + html.EscapeString(app.Label) + `</div>`)
 		}
 		for i := range app.Sections {
 			x := &app.Sections[i]
+			if mailOpen && x.Href == "/os/vayumail/inbox" {
+				continue // the folders above are the mailbox
+			}
+			if !mailGroup && x.Group == "" {
+				side.WriteString(`<div class="sa-appside__group">Mail</div>`)
+			}
+			mailGroup = true
 			if x.Group != "" {
 				side.WriteString(`<div class="sa-appside__group">` + html.EscapeString(x.Group) + `</div>`)
 			}

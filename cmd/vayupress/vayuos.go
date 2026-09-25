@@ -1128,7 +1128,7 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 <div class="table-wrap"><table class="table"><thead><tr><th>Component</th><th>Status</th><th>Detail</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>`
 	}
 	body := `<div class="page-header"><h1>VayuMail</h1></div>
-<p class="page-sub">Your mailboxes — read, compose and connect any mail app. Everything in one place.</p>` + a.vayuosNav(r, "overview") + statStrip + `
+<p class="page-sub">Your mailboxes — read, compose and connect any mail app. Everything in one place.</p>` + statStrip + `
 <div class="section-head"><span class="section-head__title">Your mailbox</span><span class="section-head__hint">Read, send and connect an app</span></div>
 <div class="grid grid-3">
   <div class="card"><div class="card-title">Inbox</div><p class="muted">Read mail received into your mailboxes (Maildir).</p><a class="btn" href="/os/vayumail/inbox">Open inbox</a></div>
@@ -1182,7 +1182,7 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 		wkdRows.WriteString(`<tr><td colspan="2" class="muted">No mailboxes yet.</td></tr>`)
 	}
 	body := `<div class="page-header"><h1>VayuPGP keys</h1></div>
-<p class="page-sub">Ed25519 + Curve25519 · private keys AES-256-GCM encrypted at rest · published via WKD.</p>` + a.vayuosNav(r, "pgp") + `
+<p class="page-sub">Ed25519 + Curve25519 · private keys AES-256-GCM encrypted at rest · published via WKD.</p>` + `
 <div class="section-head"><span class="section-head__title">Keypairs</span><span class="section-head__hint">One per mailbox — generated automatically on account creation</span></div>
 <div class="card">
 <div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Fingerprint</th><th>State</th><th>Expires</th><th>Public key</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div>
@@ -1219,7 +1219,6 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>VayuMail · DNS</h1></div>`)
 	body.WriteString(`<p class="page-sub">Native outbound mail sovereignty — publish these records, then verify every mail domain.</p>`)
-	body.WriteString(a.vayuosNav(r, "mail"))
 	if !mc.Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set your domain (DOMAIN env / first-boot wizard) to activate DKIM signing and outbound delivery.</div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -1276,7 +1275,6 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>`)
 	body.WriteString(`<p class="page-sub">Upstream PGP &amp; crypto dependency monitoring — VayuPress never reaches out on its own.</p>`)
-	body.WriteString(a.vayuosNav(r, "security"))
 	if !rep.Enabled {
 		body.WriteString(saCallout("info", `Automatic checks are off, so VayuPress never reaches out on its own. <strong>Check now</strong> runs one check, fetching only public release metadata from GitHub and sending nothing about your site. To check automatically, set <code>VAYUOS_SECURITY_UPDATES=on</code> and restart.`))
 	} else if rep.UpdatesAvailable > 0 {
@@ -1362,65 +1360,6 @@ func (a *App) handleVayuOSHealthJSON(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, a.vayuHealth.Snapshot())
 }
 
-// vayuosNav renders the VayuOS sub-navigation shown on every VayuOS page. The
-// admin flag gates the tabs that expose infrastructure detail — PGP keys, the
-// DNS records, the security-update watcher and account management — so the four
-// non-admin roles (editor, author, reviewer, mailbox) only ever see the mail
-// surface they actually use (Overview, Compose, Mailbox, Connect, Outbox).
-func (a *App) vayuosNav(r *http.Request, active string) string {
-	admin := a.isAdminRequest(r)
-	// A bound client reaches only part of this strip. Overview points at
-	// /os/vayumail — the mailbox-administration dashboard — which the confinement
-	// refuses, so it was the FIRST tab on the page and threw a paying customer
-	// back to /os/mysite with no explanation on their first click.
-	//
-	// Asked of clientPathAllowed rather than answered with a second adminOnly
-	// flag: the confinement already knows what a client can open, and a duplicate
-	// rule here would be a future divergence. Non-clients are unfiltered, because
-	// a mail-only holder legitimately reaches every tab a non-admin sees.
-	confined := false
-	if u := currentUser(r); u != nil && u.Role == roleClientName {
-		confined = true
-	}
-	type navTab struct {
-		key, label, href string
-		adminOnly        bool
-	}
-	items := []navTab{
-		{"overview", "Overview", "/os/vayumail", false},
-		{"compose", "Compose", "/os/vayumail/compose", false},
-		{"mailbox", "Mailbox", "/os/vayumail/inbox", false},
-		{"accounts", "Accounts", "/os/vayumail/accounts", true},
-		{"connect", "Connect", "/os/vayumail/connect", false},
-		{"outbox", "Outbox", "/os/vayumail/sent", false},
-		{"pgp", "PGP Keys", "/os/vayumail/pgp", true},
-		{"mail", "DNS", "/os/vayumail/dns", true},
-		{"security", "Security", "/os/vayumail/security", true},
-	}
-	var sb strings.Builder
-	sb.WriteString(`<div class="vmtabs">`)
-	for _, it := range items {
-		if it.adminOnly && !admin {
-			continue
-		}
-		if confined && !clientPathAllowed(it.href) {
-			continue
-		}
-		cls := "tab"
-		if it.key == active {
-			cls = "tab tab--active"
-		}
-		mark := ""
-		if _, bad := a.mailDNSNeedsAttention(); bad && it.key == "mail" {
-			mark = ` <span class="vmtabs__attn" role="img" aria-label="needs attention" title="A mail domain's DNS is not finished"></span>`
-		}
-		sb.WriteString(`<a class="` + cls + `" href="` + it.href + `">` + html.EscapeString(it.label) + mark + `</a>`)
-	}
-	sb.WriteString(`</div>`)
-	return sb.String()
-}
-
-// folderTabs renders the mailbox folder selector (Inbox/Sent/Drafts/Junk/Trash).
 // qparam returns a query-string value that is safe both inside the URL and inside
 // the surrounding HTML attribute: url.QueryEscape handles URL encoding, and the
 // html.EscapeString wrapper is a no-op on that output but gives static analysis
@@ -1792,24 +1731,63 @@ func (a *App) folderUnread(rd vmail.Reader) map[string]int {
 	return counts
 }
 
-func folderTabs(user, active string, counts map[string]int) string {
+// mailFolderIcons draws each standard folder in the Mail sidebar.
+var mailFolderIcons = map[string]string{
+	"Inbox": "inbox", "Sent": "send", "Drafts": "draft", "Archive": "archive",
+	"Snoozed": "timer", "Junk": "spam", "Trash": "trash",
+}
+
+// mailFolderNav is the open mailbox's folders, as the Mail sidebar shows them
+// (render 04). A list refresh sends it again out of band (oob), so the current
+// folder and the unread counts beside the list never go stale while the list
+// changes: a folder switch, a row action and the new-mail poll all refresh it.
+func mailFolderNav(user, active string, counts map[string]int, oob bool) string {
 	var sb strings.Builder
-	sb.WriteString(`<div class="vmtabs" role="tablist">`)
+	sb.WriteString(`<div id="vm-folders" class="sa-appside__folders"`)
+	if oob {
+		sb.WriteString(` hx-swap-oob="true"`)
+	}
+	sb.WriteString(`><div class="sa-appside__group">Folders</div>`)
 	for _, f := range vmail.StandardFolders {
-		cls := "tab"
-		if strings.EqualFold(f, active) {
-			cls = "tab tab--active"
-		}
 		full := "/os/vayumail/inbox?user=" + qparam(user) + "&folder=" + qparam(f)
 		frag := "/os/vayumail/inbox/fragment?user=" + qparam(user) + "&folder=" + qparam(f)
-		badge := ""
-		if n := counts[f]; n > 0 {
-			badge = ` <span class="vm-tab-badge">` + itoaSafe(n) + `</span>`
+		cur, badge := "", ""
+		if strings.EqualFold(f, active) {
+			cur = ` aria-current="page"`
 		}
-		sb.WriteString(`<a class="` + cls + `" href="` + full + `" hx-get="` + frag + `" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin" hx-push-url="` + full + `">` + f + badge + `</a>`)
+		if n := counts[f]; n > 0 {
+			badge = `<span class="sa-appside__count" aria-label="` + itoaSafe(n) + ` unread">` + notifCap(n) + `</span>`
+		}
+		sb.WriteString(`<a class="sa-appside__item" href="` + full + `" hx-get="` + frag + `" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin" hx-push-url="` + full + `"` + cur + `>` +
+			saIcon(mailFolderIcons[f]) + `<span class="sa-appside__label">` + f + `</span>` + badge + `</a>`)
 	}
 	sb.WriteString(`</div>`)
 	return sb.String()
+}
+
+// vayuInboxSwap is the folder view as an HTMX swap returns it: the list, and
+// the sidebar's folders out of band.
+func (a *App) vayuInboxSwap(rd vmail.Reader, folder string, limit int) string {
+	return a.vayuInboxBody(rd, folder, limit) + mailFolderNav(rd.Key(), folder, a.folderUnread(rd), true)
+}
+
+// mailSideBoxes is the install's mailboxes for an administrator's Mail
+// sidebar, the open one marked. The directory has every domain; this lists
+// the primary domain's, and links to the directory for the rest.
+func (a *App) mailSideBoxes(r *http.Request, open string) []osMailBox {
+	if !a.isAdminRequest(r) {
+		return nil
+	}
+	boxes, err := a.vayuMail.Mailboxes()
+	if err != nil {
+		return nil
+	}
+	domain := a.vayuMail.Config().Domain
+	out := make([]osMailBox, 0, len(boxes))
+	for _, bx := range boxes {
+		out = append(out, osMailBox{Key: bx.Username, Address: bx.Username + "@" + domain, Unseen: bx.Unseen, Current: bx.Username == open})
+	}
+	return out
 }
 
 // mailboxDirectoryRequested reports whether a mailbox page carrying no ?user= is
@@ -1817,13 +1795,14 @@ func folderTabs(user, active string, counts map[string]int) string {
 //
 // It exists because "no mailbox named" means two different things depending on
 // who is asking, and a single condition that means two things is how the
-// directory came to be fenced off. For an administrator it means "show me every
-// mailbox" — the Mailbox tab links to /os/vayumail/inbox with no parameter, so
-// it is the ONLY way in. For anyone else it means their account has no mailbox,
+// directory came to be fenced off. For an administrator it means their own
+// mailbox when they have one (Mail opens on it, render 04) and every mailbox
+// when they do not, or when they ask for all of them (?all=1, the sidebar's
+// "All mailboxes"). For anyone else it means their account has no mailbox,
 // which is a refusal. Reading the directory is not a mail read and mints no
 // Reader: there is no mailbox for an authority to be carried for.
-func mailboxDirectoryRequested(isAdmin bool, requested string) bool {
-	return isAdmin && strings.TrimSpace(requested) == ""
+func mailboxDirectoryRequested(isAdmin bool, own, requested string, all bool) bool {
+	return isAdmin && strings.TrimSpace(requested) == "" && (all || own == "")
 }
 
 // handleVayuOSInbox lists mailboxes, or (with ?user=) the messages in a folder.
@@ -1835,11 +1814,10 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	// CSRF cookie so the HTMX row/bulk POSTs pass the double-submit middleware.
 	csrfTokenFor(w, r)
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Mailbox</h1></div>`)
-	body.WriteString(`<p class="page-sub">Received &amp; filed mail (Maildir).</p>`)
-	body.WriteString(a.vayuosNav(r, "mailbox"))
+	head := `<div class="page-header"><h1>Mailbox</h1></div>`
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
+		body.WriteString(head)
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to a real domain to provision mailboxes. The inbound SMTP/IMAP listener runs by default once a domain is set (disable with <code>VAYUOS_MAIL_INBOUND=off</code>); receiving external mail also needs port 25 reachable and MX/A DNS records pointing at this host.</div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
@@ -1858,7 +1836,8 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	// list (VayuDomains). A single-domain install renders exactly one card. The
 	// Maildir is domain-partitioned, so every domain's accounts come from its own
 	// tree.
-	if mailboxDirectoryRequested(a.isAdminRequest(r), requested) {
+	if mailboxDirectoryRequested(a.isAdminRequest(r), a.ownMailboxKey(r), requested, r.URL.Query().Get("all") != "") {
+		body.WriteString(head)
 		primary, err := a.vayuMail.Mailboxes()
 		if err != nil {
 			body.WriteString(`<div class="empty-state">Could not read mailboxes: ` + html.EscapeString(err.Error()) + `</div>`)
@@ -1880,6 +1859,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		folder = "Inbox"
 	}
 	if user == "" {
+		body.WriteString(head)
 		body.WriteString(`<div class="empty-state">No mailbox has been assigned to your account yet. Ask an administrator to assign you an email address under <strong>Members → Team &amp; roles</strong>.</div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
@@ -1895,6 +1875,8 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	// the pane overlays the list (see vayuos.css .vm-split).
 	// Outside #vm-inbox-list on purpose: the fragment swaps that element's
 	// contents, so an indicator inside it would be replaced mid-request.
+	mbox := mailAddrOf(user, domain)
+	cfg.MailSide = &osMailSide{Address: mbox, Folders: mailFolderNav(user, folder, a.folderUnread(rd), false), Boxes: a.mailSideBoxes(r, user)}
 	body.WriteString(`<span id="vm-inbox-spin" class="htmx-indicator vm-spin" aria-hidden="true">loading…</span>`)
 	body.WriteString(`<div class="vm-split">`)
 	body.WriteString(`<div id="vm-inbox-list" class="vm-inbox-list">`)
@@ -2026,7 +2008,7 @@ func (a *App) vayuMailboxDomainCard(dom, primaryDomain string, boxes []vmail.Mai
 // "Load older", which widens the window.
 const inboxPageSize = 200
 
-// vayuInboxBody renders the folder view (toolbar + quota + tabs + message list)
+// vayuInboxBody renders the folder view (toolbar + quota + message list)
 // as an HTMX fragment. It is returned on page load and swapped into
 // #vm-inbox-list on the new-mail poll, after any row/bulk action, and on folder
 // switch — so the mailbox never does a jarring full-page reload. limit is the
@@ -2041,6 +2023,9 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 		limit = inboxPageSize
 	}
 	var b strings.Builder
+	// The sidebar names the mailbox and holds its folders (render 04), so the
+	// page's own heading is for a screen reader, and swaps with the folder.
+	b.WriteString(`<h1 class="vp-sr-only">` + html.EscapeString(mbox) + ` · ` + html.EscapeString(folder) + `</h1>`)
 
 	// Live new-mail poll. It lives inside the fragment (re-rendered on every
 	// swap) so it always targets the folder currently in view — a poll bound to
@@ -2055,7 +2040,6 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 
 	// Sticky toolbar: mailbox identity + Compose + search.
 	b.WriteString(`<div class="vm-toolbar">`)
-	b.WriteString(`<div class="vm-toolbar-id">` + mailAvatarImg(mbox, a.mailboxAvatarSet()) + `<div class="vm-toolbar-meta"><strong>` + html.EscapeString(mbox) + `</strong><a class="text-sm muted" href="/os/vayumail/inbox">All mailboxes</a></div></div>`)
 	b.WriteString(`<div class="vm-toolbar-actions">`)
 	if readOnly {
 		b.WriteString(`<span class="text-sm muted">Read-only</span>`)
@@ -2086,9 +2070,6 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder string, limit int) string {
 		}
 		b.WriteString(`</div>`)
 	}
-
-	// Folder tabs with live unread badges (HTMX folder switching).
-	b.WriteString(folderTabs(user, folder, a.folderUnread(rd)))
 
 	msgs, err := a.vayuMail.ListFolder(rd, folder)
 	if err != nil {
@@ -2371,7 +2352,7 @@ func (a *App) handleVayuOSInboxFragment(w http.ResponseWriter, r *http.Request) 
 	// The window the client asked for rides along with the request, so "Load
 	// older" survives the poll and a folder switch.
 	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
-	writeOSFragment(w, a.vayuInboxBody(rd, folder, limit))
+	writeOSFragment(w, a.vayuInboxSwap(rd, folder, limit))
 }
 
 // handleVayuOSInboxAction applies a mark / pin / move / delete to one message
@@ -2469,7 +2450,7 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 	}
 	// Re-render the window the operator was actually looking at, not page one.
 	limit, _ := strconv.Atoi(strings.TrimSpace(r.PostFormValue("limit")))
-	writeOSFragment(w, a.vayuInboxBody(rd, folder, limit))
+	writeOSFragment(w, a.vayuInboxSwap(rd, folder, limit))
 }
 
 // handleVayuOSSearch runs a bounded full-text search across a mailbox's folders.
@@ -2484,7 +2465,6 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	sf := parseSearchFilters(r)
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Search mail</h1><span class="muted text-sm">` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + `</span></div>`)
-	body.WriteString(a.vayuosNav(r, "mailbox"))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive or no mailbox selected. <a href="/os/vayumail/inbox">Back to Mailbox</a></div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -2775,7 +2755,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body strings.Builder
-		body.WriteString(`<div class="page-header"><h1>Message</h1></div>` + a.vayuosNav(r, "mailbox"))
+		body.WriteString(`<div class="page-header"><h1>Message</h1></div>`)
 		body.WriteString(`<div class="empty-state">Message not available. <a href="/os/vayumail/inbox">Back to Mailbox</a></div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
@@ -2789,7 +2769,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body strings.Builder
-		body.WriteString(`<div class="page-header"><h1>Message</h1></div>` + a.vayuosNav(r, "mailbox"))
+		body.WriteString(`<div class="page-header"><h1>Message</h1></div>`)
 		body.WriteString(`<div class="empty-state">Could not read message. <a href="/os/vayumail/inbox?user=` + qparam(user) + `">Back</a></div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
@@ -2801,7 +2781,6 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Message</h1><span class="muted text-sm">` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + ` · ` + html.EscapeString(folder) + `</span></div>`)
-	body.WriteString(a.vayuosNav(r, "mailbox"))
 	body.WriteString(card)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -3244,7 +3223,6 @@ func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Outbox</h1></div>`)
 	body.WriteString(`<p class="page-sub">Outbound delivery queue — auto-retries with backoff until sent, with one-click Resend.</p>`)
-	body.WriteString(a.vayuosNav(r, "outbox"))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to activate outbound delivery.</div>`)
 		writeOSHTML(w, r, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))

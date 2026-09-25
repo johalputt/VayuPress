@@ -4,12 +4,9 @@ package main
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/johalputt/vayupress/internal/users"
 	"github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -19,7 +16,6 @@ import (
 func TestAnUnfinishedMailDomainIsRaisedFromTheStoredVerdict(t *testing.T) {
 	a := appWithMailAccounts(t)
 	ctx := context.Background()
-	admin := &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin}
 	bell := func(level int) string {
 		var out []string
 		for _, n := range a.osNotifications(ctx, &osSettings{AccessLevel: level}) {
@@ -27,12 +23,15 @@ func TestAnUnfinishedMailDomainIsRaisedFromTheStoredVerdict(t *testing.T) {
 		}
 		return strings.Join(out, "\n")
 	}
+	// The Mail sidebar's DNS section, as the console builds it for this install.
 	tabs := func() string {
-		return a.vayuosNav(withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail", nil), admin), "overview")
+		s := a.getOSSettings(ctx)
+		s.AccessLevel, s.Route = accessAdmin, "/os/vayumail"
+		return stillAirShellHead("n", "Mail", "vayuos", s)
 	}
 
 	// Never checked: unknown is not a problem to raise.
-	if strings.Contains(bell(accessAdmin), "Mail domain") || strings.Contains(tabs(), "vmtabs__attn") {
+	if strings.Contains(bell(accessAdmin), "Mail domain") || strings.Contains(tabs(), `aria-label="needs attention"`) {
 		t.Fatal("an install that has never finished a check must not be told its DNS needs attention")
 	}
 
@@ -42,7 +41,7 @@ func TestAnUnfinishedMailDomainIsRaisedFromTheStoredVerdict(t *testing.T) {
 	if got := bell(accessAdmin); !strings.Contains(got, "Mail domain needs attention | SPF for example.com — no SPF record | /os/vayumail/dns") {
 		t.Errorf("a failing check must reach an administrator's bell with its next step, got:\n%s", got)
 	}
-	if !strings.Contains(tabs(), "vmtabs__attn") {
+	if !strings.Contains(tabs(), `aria-label="needs attention"`) {
 		t.Error("a failing check must mark the DNS tab")
 	}
 	if strings.Contains(bell(accessAuthor), "Mail domain") {
@@ -50,7 +49,7 @@ func TestAnUnfinishedMailDomainIsRaisedFromTheStoredVerdict(t *testing.T) {
 	}
 
 	a.recordMailDNS(dnsHealth{AllOK: true})
-	if strings.Contains(bell(accessAdmin), "Mail domain") || strings.Contains(tabs(), "vmtabs__attn") {
+	if strings.Contains(bell(accessAdmin), "Mail domain") || strings.Contains(tabs(), `aria-label="needs attention"`) {
 		t.Error("a passing check must clear both")
 	}
 }
