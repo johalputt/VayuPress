@@ -171,4 +171,67 @@
     say(msg, 'error');
   });
 
+
+  /* ── Control states: loading, then success or error ─────────────────────
+     A write shows, on the control that started it, that it is working and
+     then how it went (plan §7). The toast says it once, elsewhere, and goes;
+     the control is where the operator is looking. One mechanism for every
+     write, HTMX or fetch, so no page wires its own and none can forget.
+     A fetch is credited to the button whose click handler started it: the
+     click is noted, and forgotten once that task ends, so a fetch from a
+     timer or a later callback is never pinned on a stale button. */
+  var origin = null;
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button, .btn') : null;
+    if (!b) return;
+    origin = b;
+    setTimeout(function () { if (origin === b) origin = null; }, 0);
+  }, true);
+
+  function begin(el) {
+    el.removeAttribute('data-state');
+    el.setAttribute('aria-busy', 'true');
+  }
+  function settle(el, ok) {
+    el.removeAttribute('aria-busy');
+    var state = ok ? 'success' : 'error';
+    el.setAttribute('data-state', state);
+    setTimeout(function () {
+      if (el.getAttribute('data-state') === state) el.removeAttribute('data-state');
+    }, ok ? 1600 : 2600);
+  }
+  function isWrite(method) { return !/^(GET|HEAD|OPTIONS)$/i.test(method || 'GET'); }
+
+  var nativeFetch = window.fetch;
+  if (nativeFetch) {
+    window.fetch = function (input, init) {
+      var p = nativeFetch.apply(this, arguments);
+      var method = (init && init.method) || (input && input.method);
+      var el = origin;
+      if (!el || !isWrite(method)) return p;
+      begin(el);
+      p.then(function (r) { settle(el, r.ok); }, function () { settle(el, false); });
+      return p;
+    };
+  }
+
+  var htmxOrigin = new WeakMap();
+  document.addEventListener('htmx:beforeRequest', function (e) {
+    var d = e.detail || {};
+    if (!d.requestConfig || !isWrite(d.requestConfig.verb)) return;
+    var el = d.elt;
+    if (el && el.tagName === 'FORM') {
+      var ev = d.requestConfig.triggeringEvent;
+      el = (ev && ev.submitter) || el.querySelector('[type="submit"], button:not([type])');
+    }
+    if (!el || !el.matches('button, .btn, input, select, textarea')) return;
+    htmxOrigin.set(d.xhr, el);
+    begin(el);
+  });
+  document.addEventListener('htmx:afterRequest', function (e) {
+    var d = e.detail || {};
+    var el = d.xhr && htmxOrigin.get(d.xhr);
+    if (el) settle(el, d.successful);
+  });
+
 })();

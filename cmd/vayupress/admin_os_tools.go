@@ -296,10 +296,7 @@ func toolCardHTML(s toolState) string {
 			checked = " checked"
 		}
 		// The switch posts through admin-os-tools.js (CSRF-guarded fetch).
-		control = `<label class="switch" title="Enable or disable this module">
-      <input type="checkbox" class="switch-input" data-tool-toggle="` + html.EscapeString(s.ID) + `"` + checked + `>
-      <span class="switch-track" aria-hidden="true"></span>
-    </label>`
+		control = `<input type="checkbox" class="toggle" role="switch" aria-label="` + html.EscapeString(s.Name) + `" data-tool-toggle="` + html.EscapeString(s.ID) + `"` + checked + `>`
 	} else {
 		control = `<span class="chip">Built-in</span>`
 	}

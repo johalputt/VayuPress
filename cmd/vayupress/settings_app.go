@@ -164,7 +164,7 @@ func settingControl(f settingField, value string) ui.HTML {
 		if value == "true" {
 			on = " checked"
 		}
-		return ui.HTML(`<input type="checkbox" class="toggle" ` + attrs + on + `>`)
+		return ui.HTML(`<input type="checkbox" class="toggle" role="switch" ` + attrs + on + `>`)
 	case "color":
 		return ui.HTML(`<input type="color" class="settings-color" ` + attrs + ` value="` + v + `">`)
 	case "timezone":

@@ -104,7 +104,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
     </div>
     <span class="theme-field__hint">Messages from any page containing the contact form are emailed here via VayuMail. Add the form to a page with the Contact template (or type <code>[[contact-form]]</code> in the page body). For a custom confirmation on a specific page, use <code>[[contact-form: your thank-you message]]</code>.</span>
     <div class="vm-row mt-2">
-      <label class="cz-check"><input type="checkbox" id="contact-autoreply"` + autoReplyChecked + `> Send visitors an auto-reply confirmation</label>
+      <label class="cz-check"><input type="checkbox" class="toggle" role="switch" id="contact-autoreply"` + autoReplyChecked + `> Send visitors an auto-reply confirmation</label>
       <span id="contact-autoreply-status" class="text-xs muted" role="status" aria-live="polite"></span>
     </div>
   </div>
@@ -135,7 +135,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
   <td class="row-title"><a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>
     <div class="row-meta">/` + esc + `</div></td>
   <td>` + statusPill + `</td>
-  <td><label class="cz-check"><input type="checkbox" data-page-nav data-href="` + html.EscapeString(href) + `" data-label="` + html.EscapeString(p.Title) + `"> In menu</label>
+  <td><label class="cz-check"><input type="checkbox" class="toggle" role="switch" data-page-nav data-href="` + html.EscapeString(href) + `" data-label="` + html.EscapeString(p.Title) + `"> In menu</label>
     <label class="theme-field theme-field--text mt-2"><span class="theme-field__label text-xs">Footer group</span>
       ` + pageFooterSelect(href, p.Title, footerCfg) + `</label></td>
   <td class="row-actions">

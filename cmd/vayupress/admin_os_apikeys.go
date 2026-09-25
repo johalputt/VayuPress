@@ -533,7 +533,7 @@ func osAPIKeysProviderCard(p providerMeta, c secrets.Credential) string {
       <div class="text-sm muted ak-cred-desc">` + string(ui.Brief(p.Desc)) + `</div>
     </div>
     <label class="settings-row ak-cred-toggle"><span class="text-xs muted">Enabled</span>
-      <input type="checkbox" class="toggle" data-cred-enabled` + checked + `></label>
+      <input type="checkbox" class="toggle" role="switch" data-cred-enabled` + checked + `></label>
   </div>
   ` + endpointField + `
   <div class="field">
@@ -564,7 +564,7 @@ func osAPIKeysCustomRow(c secrets.Credential) string {
   <div class="ak-cred-head">
     <div class="settings-row-label">` + html.EscapeString(c.Label) + `</div>
     <label class="settings-row ak-cred-toggle"><span class="text-xs muted">Enabled</span>
-      <input type="checkbox" class="toggle" data-cred-enabled` + checked + `></label>
+      <input type="checkbox" class="toggle" role="switch" data-cred-enabled` + checked + `></label>
   </div>
   <div class="field">
     <label class="field-label">Endpoint</label>

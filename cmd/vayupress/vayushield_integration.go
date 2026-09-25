@@ -1044,7 +1044,7 @@ func (a *App) shieldProtectionBody(ctx context.Context, geoBlind bool) string {
 	b.WriteString(vsField("sh_pow", "Challenge at score ≥", ftoa2(cur.PoWThreshold)))
 	b.WriteString(vsField("sh_js", "JS check at ≥", ftoa2(cur.JSThreshold)))
 	b.WriteString(vsField("sh_block", "Block at ≥", ftoa2(cur.BlockThreshold)))
-	b.WriteString(`<div class="vs-field vs-field--tog">` + vsToggle("sh_tarpit", cur.Tarpit, false) + `<label for="sh_tarpit">Tarpit the worst offenders</label></div>`)
+	b.WriteString(`<div class="vs-field vs-field--tog">` + vsToggle("sh_tarpit", "", cur.Tarpit, false) + `<label for="sh_tarpit">Tarpit the worst offenders</label></div>`)
 	b.WriteString(`</div></div>`)
 	// Observe-only mode is placed first in this band and worded as a cost, not a
 	// feature. It is the primitive that makes a threshold change safe to roll
@@ -1073,7 +1073,7 @@ func (a *App) shieldProtectionBody(ctx context.Context, geoBlind bool) string {
 	// operator has to make, so the copy states the collateral rather than
 	// selling the feature.
 	b.WriteString(`<div class="vs-adv">` + `<div class="vs-field vs-field--tog">` +
-		vsToggle("sh_group_ipv4", cur.GroupIPv4, false) +
+		vsToggle("sh_group_ipv4", "", cur.GroupIPv4, false) +
 		`<label for="sh_group_ipv4">Also jail IPv4 by /24 subnet</label></div>` +
 		`<p class="muted text-xs">Jail sentences already apply per IPv6 /64, because a single IPv6 allocation hands an attacker billions of addresses and per-address limits never catch up. IPv4 is different: one /24 behind a mobile carrier or a shared broadband gateway can be thousands of unrelated people, and jailing one scraper would lock all of them out. Leave this off unless you know your traffic.</p>` +
 		`</div>`)
@@ -1198,7 +1198,7 @@ func (a *App) shieldPolicyBand(ctx context.Context, geoBlind bool) string {
 	if config.Cfg.OnionMode {
 		refuseUnknownDesc = `<strong>Disabled in this Space</strong> — country rules do not apply where every visitor arrives as 127.0.0.1.`
 	}
-	b.WriteString(`<div class="vs-row"><div><div class="vs-row-title">Refuse visitors with no resolvable country</div><div class="vs-row-desc">` + refuseUnknownDesc + `</div></div>` + vsToggle("sh_refuse_unknown", refuseUnknown, false) + `</div>`)
+	b.WriteString(`<div class="vs-row"><div><div class="vs-row-title">Refuse visitors with no resolvable country</div><div class="vs-row-desc">` + refuseUnknownDesc + `</div></div>` + vsToggle("sh_refuse_unknown", "Refuse visitors with no resolvable country", refuseUnknown, false) + `</div>`)
 	b.WriteString(`</div></div>`)
 
 	// Route weights. The default of one-slot-per-request is what makes an
@@ -1781,9 +1781,11 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-// vsToggle renders a real toggle switch. master=true marks it as the control
-// that reveals its sibling .vs-adv block via the CSS :has() rule.
-func vsToggle(id string, on, master bool) string {
+// vsToggle renders the console's one toggle. master=true marks it as the
+// control that reveals its sibling .vs-adv block via the CSS :has() rule. name
+// labels it when no <label for> does: a row's title sits beside the switch
+// without naming it.
+func vsToggle(id, name string, on, master bool) string {
 	c := ""
 	if on {
 		c = " checked"
@@ -1792,13 +1794,16 @@ func vsToggle(id string, on, master bool) string {
 	if master {
 		m = " data-master"
 	}
-	return `<label class="vs-switch"><input type="checkbox" id="` + id + `" name="` + id + `"` + c + m + `><span class="vs-slider"></span></label>`
+	if name != "" {
+		m += ` aria-label="` + html.EscapeString(name) + `"`
+	}
+	return `<input type="checkbox" class="toggle" role="switch" id="` + id + `" name="` + id + `"` + c + m + `>`
 }
 
 // vsRow renders a feature row: title + one-line description on the left, a
 // toggle switch on the right.
 func vsRow(id, title, desc string, on, master bool) string {
-	return `<div class="vs-row"><div><div class="vs-row-title">` + html.EscapeString(title) + `</div><div class="vs-row-desc">` + html.EscapeString(desc) + `</div></div>` + vsToggle(id, on, master) + `</div>`
+	return `<div class="vs-row"><div><div class="vs-row-title">` + html.EscapeString(title) + `</div><div class="vs-row-desc">` + html.EscapeString(desc) + `</div></div>` + vsToggle(id, title, on, master) + `</div>`
 }
 
 // vsField renders a compact labelled number input for a feature's advanced area.

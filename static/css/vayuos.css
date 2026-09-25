@@ -55,6 +55,7 @@
   /* Icons drawn by the stylesheet, stroked in --text-3: an inline SVG cannot
      read a token, so each scheme carries its own. */
   --icon-chevron:   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2396948c' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  --icon-check:     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6.4l2.6 2.6L10 3.4' stroke='%23000' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   /* The VayuPress mark is the brand's own image: white on this scheme. */
   --mark-white:     inline;
   --mark-black:     none;
@@ -1702,19 +1703,6 @@
 .vp-os .tool-status--idle { color: var(--warn); background: var(--warn-dim); }
 
 /* Toggle switch */
-.vp-os .switch { position: relative; display: inline-flex; cursor: pointer; flex: 0 0 auto; }
-
-.vp-os .switch-input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
-
-.vp-os .switch-track { width: 38px; height: 22px; border-radius: var(--r-full); background: var(--bg-surface-3); border: 1px solid var(--border); transition: background 0.18s ease, border-color 0.18s ease; position: relative; display: inline-block; }
-
-.vp-os .switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-2); transition: transform 0.18s ease, background 0.18s ease; }
-
-.vp-os .switch-input:checked + .switch-track { background: var(--brand-dim); border-color: var(--brand); }
-
-.vp-os .switch-input:checked + .switch-track::after { transform: translateX(16px); background: var(--brand); }
-
-.vp-os .switch-input:disabled + .switch-track { opacity: 0.5; }
 
 /* Monitoring: tool-card used as a navigational link */
 .vp-os a.tool-card { text-decoration: none; color: inherit; cursor: pointer; }
@@ -1922,16 +1910,6 @@
    appearance reset — no JS, no inline styles, CSP-safe. Label text sits on the
    left, the switch on the right, mirroring the reference theme editor. */
 .vp-os .cz-check { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 600; color: var(--text); cursor: pointer; user-select: none; }
-
-.vp-os .cz-check input[type="checkbox"] { appearance: none; -webkit-appearance: none; order: 2; flex: 0 0 auto; position: relative; width: 42px; height: 24px; margin: 0; cursor: pointer; background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--r-full); transition: background .16s, border-color .16s; }
-
-.vp-os .cz-check input[type="checkbox"]::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--surface-2); box-shadow: var(--shadow-3); transition: transform .16s; }
-
-.vp-os .cz-check input[type="checkbox"]:checked { background: var(--brand); border-color: var(--brand); }
-
-.vp-os .cz-check input[type="checkbox"]:checked::after { transform: translateX(18px); }
-
-.vp-os .cz-check input[type="checkbox"]:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 /* ── Theme gallery cards (Tumblr-style visual previews) ────────────────────── */
 .vp-os .theme-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
@@ -3777,17 +3755,6 @@
 .vp-os .vs-row-desc { color: var(--text-2); font-size: var(--text-sm); margin-top: var(--sp-1); max-width: 64ch; }
 
 /* ── Toggle switch ───────────────────────────────────────────── */
-.vp-os .vs-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex: none; }
-
-.vp-os .vs-switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
-
-.vp-os .vs-slider { position: absolute; inset: 0; background: var(--bg-surface-3); border: 1px solid var(--border-strong); border-radius: var(--r-full); transition: background var(--t), border-color var(--t); }
-
-.vp-os .vs-slider::before { content: ""; position: absolute; height: 18px; width: 18px; left: 2px; top: 2px; background: var(--text-2); border-radius: 50%; transition: transform var(--t), background var(--t); }
-
-.vp-os .vs-switch input:checked + .vs-slider { background: var(--brand); border-color: var(--brand); }
-
-.vp-os .vs-switch input:checked + .vs-slider::before { transform: translateX(20px); background: var(--surface-2); }
 
 /* ── Advanced disclosure (revealed only when its master toggle is on) ── */
 .vp-os .vs-adv { display: none; flex-wrap: wrap; gap: var(--sp-4); padding: var(--sp-4); margin: 0 0 var(--sp-4); background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--r); }
@@ -6064,12 +6031,27 @@
 }
 .vp-os[data-ui="still-air"] .input::placeholder,
 .vp-os[data-ui="still-air"] .textarea::placeholder { color: var(--text-4); }
-.vp-os[data-ui="still-air"] .input:hover { border-color: var(--border-2); }
+.vp-os[data-ui="still-air"] .input:hover:not(:disabled):not(:focus) { border-color: var(--text-4); }
 .vp-os[data-ui="still-air"] .input:focus,
 .vp-os[data-ui="still-air"] .textarea:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-soft); }
 .vp-os[data-ui="still-air"] .input[aria-invalid="true"] { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
-.vp-os[data-ui="still-air"] input[type="checkbox"],
 .vp-os[data-ui="still-air"] input[type="radio"] { accent-color: var(--accent); }
+/* The checkbox is drawn (render 01), not the browser's box tinted: a tinted
+   native box changes nothing the console controls when it is checked, so its
+   states could not follow the rest. The check is a mask, so it takes the
+   on-accent colour in every scheme and in the Tor world. */
+.vp-os[data-ui="still-air"] input[type="checkbox"]:not(.toggle) {
+  appearance: none; -webkit-appearance: none; flex: none; width: 16px; height: 16px; margin: 0;
+  display: inline-grid; place-content: center; vertical-align: -3px; cursor: pointer;
+  border: 1.5px solid var(--border-2); border-radius: var(--radius-small); background: var(--surface-2);
+}
+.vp-os[data-ui="still-air"] input[type="checkbox"]:not(.toggle)::before {
+  content: ""; width: 10px; height: 10px; background: var(--on-accent);
+  -webkit-mask: var(--icon-check) center / contain no-repeat; mask: var(--icon-check) center / contain no-repeat;
+  transform: scale(0); transition: transform var(--duration-micro) var(--ease-enter);
+}
+.vp-os[data-ui="still-air"] input[type="checkbox"]:not(.toggle):checked { background: var(--accent); border-color: var(--accent); }
+.vp-os[data-ui="still-air"] input[type="checkbox"]:not(.toggle):checked::before { transform: scale(1); }
 
 /* Tables: sentence-case heads, hairlines, quiet hover. */
 .vp-os[data-ui="still-air"] .table-wrap { border: 1px solid var(--border-1); border-radius: var(--radius-surface); background: var(--surface-2); overflow: auto; box-shadow: none; }
@@ -6180,41 +6162,69 @@
 /* The Tor accent never bleeds into a side rule the way the classic one did. */
 .vp-os[data-ui="still-air"][data-space="tor"] .sidebar { border-right-color: var(--border-1); box-shadow: none; }
 
-/* The toggle (render 01). One component, whichever markup draws it: the
-   classic console grew four (.toggle, .switch, .vs-switch, the customizer's
-   checkbox), each its own size and colour. A 30 x 18 track, round because a
+/* The toggle (render 01). One markup, <input type="checkbox" class="toggle"
+   role="switch">: the classic console grew four (.toggle, .switch,
+   .vs-switch, the customizer's checkbox), each its own size and colour, and
+   they are gone. A 30 x 18 track, round because a
    toggle is one of the few physically round things; a 14 px knob that moves
    12 px. Off is a hairline-tone track, on is the accent. */
-.vp-os[data-ui="still-air"] .toggle,
-.vp-os[data-ui="still-air"] .switch-track,
-.vp-os[data-ui="still-air"] .vs-slider,
-.vp-os[data-ui="still-air"] .cz-check input[type="checkbox"] {
+.vp-os[data-ui="still-air"] .toggle {
   width: 30px; height: 18px; border: 0; border-radius: 9px;
   background: var(--border-2); box-shadow: none;
   transition: background-color var(--duration-micro) var(--ease-enter);
 }
-.vp-os[data-ui="still-air"] .vs-switch { width: 30px; height: 18px; }
-.vp-os[data-ui="still-air"] .toggle::before,
-.vp-os[data-ui="still-air"] .switch-track::after,
-.vp-os[data-ui="still-air"] .vs-slider::before,
-.vp-os[data-ui="still-air"] .cz-check input[type="checkbox"]::after {
+.vp-os[data-ui="still-air"] .toggle::before {
   top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
   background: var(--knob-off); box-shadow: var(--shadow-knob);
   transition: transform var(--duration-micro) var(--ease-move);
 }
-.vp-os[data-ui="still-air"] .toggle:checked,
-.vp-os[data-ui="still-air"] .switch-input:checked + .switch-track,
-.vp-os[data-ui="still-air"] .vs-switch input:checked + .vs-slider,
-.vp-os[data-ui="still-air"] .cz-check input[type="checkbox"]:checked { background: var(--accent); }
-.vp-os[data-ui="still-air"] .toggle:checked::before,
-.vp-os[data-ui="still-air"] .switch-input:checked + .switch-track::after,
-.vp-os[data-ui="still-air"] .vs-switch input:checked + .vs-slider::before,
-.vp-os[data-ui="still-air"] .cz-check input[type="checkbox"]:checked::after { transform: translateX(12px); background: var(--paper); }
-.vp-os[data-ui="still-air"] .switch-input:focus-visible + .switch-track,
-.vp-os[data-ui="still-air"] .vs-switch input:focus-visible + .vs-slider { outline: 2px solid var(--focus); outline-offset: 2px; }
-.vp-os[data-ui="still-air"] .toggle:disabled,
-.vp-os[data-ui="still-air"] .switch-input:disabled + .switch-track,
-.vp-os[data-ui="still-air"] .vs-switch input:disabled + .vs-slider { opacity: 0.45; cursor: not-allowed; }
+.vp-os[data-ui="still-air"] .toggle:checked { background: var(--accent); }
+.vp-os[data-ui="still-air"] .toggle:checked::before { transform: translateX(12px); background: var(--paper); }
+.vp-os[data-ui="still-air"] .cz-check .toggle { order: 2; }
+
+/* ── Control states (plan §7, render 01) ───────────────────────────────────
+   Every core control has the same nine: rest, hover, focus, pressed, active,
+   disabled, loading, success and error, so a state reads the same wherever
+   it appears and no control invents its own. The markup that asks for one:
+   :disabled or aria-disabled="true"; aria-busy="true" for loading;
+   data-state="success"; aria-invalid="true" or data-state="error"; and for
+   active, :checked, aria-pressed, aria-checked or .is-active. vayuos.js sets
+   loading, success and error on the control a write came from. A text field
+   is pressed and active by being focused, so those three are one look. */
+.vp-os[data-ui="still-air"] :is(.btn, .sa-seg__opt, .seg-btn, input[type="checkbox"]):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.vp-os[data-ui="still-air"] :is(.input, .textarea, select):focus-visible { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-soft); }
+.vp-os[data-ui="still-air"] :is(.textarea, select):hover:not(:disabled):not(:focus) { border-color: var(--text-4); }
+.vp-os[data-ui="still-air"] .sa-seg__opt:hover:not(:disabled) { color: var(--text-1); }
+.vp-os[data-ui="still-air"] :is(input[type="checkbox"]:not(.toggle), .toggle:not(:checked)):hover:not(:disabled) { box-shadow: 0 0 0 3px var(--surface-hover); }
+.vp-os[data-ui="still-air"] .toggle:checked:hover:not(:disabled) { background: var(--accent-hover); }
+.vp-os[data-ui="still-air"] :is(.sa-seg__opt, .seg-btn, input[type="checkbox"]):active:not(:disabled) { transform: scale(0.97); }
+.vp-os[data-ui="still-air"] .btn[aria-pressed="true"] { background: var(--surface-select); border-color: var(--focus); color: var(--text-1); }
+.vp-os[data-ui="still-air"] :is(.input, .textarea, select):disabled { color: var(--text-4); background-color: var(--surface-1); border-color: var(--border-1); cursor: not-allowed; }
+.vp-os[data-ui="still-air"] :is(.sa-seg__opt, .seg-btn):is(:disabled, [aria-disabled="true"]) { color: var(--text-4); cursor: not-allowed; transform: none; }
+.vp-os[data-ui="still-air"] input[type="checkbox"]:disabled { opacity: 0.45; cursor: not-allowed; }
+.vp-os[data-ui="still-air"] .btn[aria-busy="true"] { position: relative; color: transparent; pointer-events: none; }
+.vp-os[data-ui="still-air"] .btn[aria-busy="true"]::after {
+  content: ""; position: absolute; inset: 0; margin: auto; width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid var(--text-3); border-top-color: transparent; animation: vp3-spin 0.7s linear infinite;
+}
+.vp-os[data-ui="still-air"] :is(.btn--primary, .btn--accent)[aria-busy="true"]::after { border-color: var(--on-accent); border-top-color: transparent; }
+.vp-os[data-ui="still-air"] :is(.input, .textarea, select)[aria-busy="true"] {
+  cursor: progress; background-image: linear-gradient(var(--accent), var(--accent)); background-repeat: no-repeat;
+  background-size: 32% 2px; background-position: -40% 100%; animation: sa-busy-bar 1.1s var(--ease-move) infinite;
+}
+.vp-os[data-ui="still-air"] select:not([multiple]):not([size])[aria-busy="true"] {
+  background-image: linear-gradient(var(--accent), var(--accent)), var(--icon-chevron);
+  background-size: 32% 2px, auto; background-position: -40% 100%, right 10px center;
+}
+@keyframes sa-busy-bar { to { background-position: 140% 100%, right 10px center; } }
+.vp-os[data-ui="still-air"] :is(.sa-seg__opt, .seg-btn, input[type="checkbox"])[aria-busy="true"] { cursor: progress; pointer-events: none; animation: sa-busy-pulse 1s ease-in-out infinite alternate; }
+@keyframes sa-busy-pulse { to { opacity: 0.45; } }
+.vp-os[data-ui="still-air"] :is(.btn, .input, .textarea, select, .sa-seg__opt, .seg-btn)[data-state="success"] { border-color: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+.vp-os[data-ui="still-air"] :is(.btn, .input, .textarea, select, .sa-seg__opt, .seg-btn):is([data-state="error"], [aria-invalid="true"]) { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+.vp-os[data-ui="still-air"] .btn[data-state="success"]:not(.btn--primary):not(.btn--accent) { color: var(--ok); }
+.vp-os[data-ui="still-air"] .btn[data-state="error"]:not(.btn--primary):not(.btn--accent) { color: var(--danger); }
+.vp-os[data-ui="still-air"] input[type="checkbox"][data-state="success"] { outline: 2px solid var(--ok); outline-offset: 2px; }
+.vp-os[data-ui="still-air"] input[type="checkbox"]:is([data-state="error"], [aria-invalid="true"]) { outline: 2px solid var(--danger); outline-offset: 2px; }
 
 /* ── Home ──────────────────────────────────────────────────────────────── */
 .vp-os[data-ui="still-air"] .sa-content > .sa-home__head,

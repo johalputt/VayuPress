@@ -392,6 +392,156 @@ test("writing straight on through Enter and a shortcut loses no keystroke", asyn
   await expect(page.locator(".eblock__heading").first()).toHaveValue("Heading");
 });
 
+// Every core control has the same nine states (plan §7, render 01). Each is
+// put on each control on a real console page, with the real stylesheet, and
+// judged by what that state must show, not only by looking different from
+// rest: a rule that made every state a colour change would pass a
+// difference check and still leave "disabled" looking clickable.
+test("every core control shows each of its nine states, each by its own sign", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/settings");
+  await page.evaluate(() => {
+    const box = document.createElement("div");
+    box.id = "sa-states";
+    box.innerHTML =
+      '<button type="button" class="btn" id="c-btn">Open DNS</button> ' +
+      '<button type="button" class="btn btn--primary" id="c-pri">Publish</button> ' +
+      '<input class="input" id="c-input" value="johal.in"> ' +
+      '<select class="input" id="c-select"><option>One</option></select> ' +
+      '<textarea class="textarea" id="c-area">Notes</textarea> ' +
+      '<input type="checkbox" id="c-check"> ' +
+      '<input type="checkbox" class="toggle" role="switch" id="c-toggle"> ' +
+      '<span class="sa-seg"><button type="button" class="sa-seg__opt" id="c-seg" aria-pressed="false">Day</button></span>';
+    document.querySelector("main#main-content").prepend(box);
+    // Final values, not a frame mid-transition. Set through the CSSOM: the
+    // console's CSP refuses an injected stylesheet, as it should.
+    box.querySelectorAll("*").forEach((e) => { e.style.transition = "none"; });
+  });
+  const token = (name) => page.evaluate((n) => {
+    const d = document.createElement("div");
+    d.style.color = `var(${n})`;
+    document.querySelector("main").appendChild(d);
+    const c = getComputedStyle(d).color;
+    d.remove();
+    return c;
+  }, name);
+  const [focus, ok, danger] = [await token("--focus"), await token("--ok"), await token("--danger")];
+  const look = (sel) => page.$eval(sel, (e) => {
+    const c = getComputedStyle(e), a = getComputedStyle(e, "::after");
+    return {
+      border: c.borderTopColor, shadow: c.boxShadow, outline: c.outlineStyle + " " + c.outlineColor,
+      bg: c.backgroundColor + " " + c.backgroundImage, color: c.color, transform: c.transform,
+      opacity: c.opacity, cursor: c.cursor, anim: c.animationName, after: a.animationName,
+      visible: e.matches(":focus-visible"),
+    };
+  });
+  const reset = (sel) => page.$eval(sel, (e) => {
+    for (const a of ["disabled", "aria-busy", "data-state", "aria-invalid"]) e.removeAttribute(a);
+    if (e.hasAttribute("aria-pressed")) e.setAttribute("aria-pressed", "false");
+    if (e.type === "checkbox") e.checked = false;
+    e.blur();
+  });
+  const set = (sel, fn) => page.$eval(sel, fn);
+  const field = (sel) => ["#c-input", "#c-select", "#c-area"].includes(sel);
+  const fails = [];
+  const expectThat = (cond, what) => { if (!cond) fails.push(what); };
+
+  for (const sel of ["#c-btn", "#c-pri", "#c-input", "#c-select", "#c-area", "#c-check", "#c-toggle", "#c-seg"]) {
+    await page.mouse.move(0, 0);
+    await reset(sel);
+    const rest = JSON.stringify(await look(sel));
+    const differs = (s) => JSON.stringify(s) !== rest;
+
+    await page.hover(sel);
+    expectThat(differs(await look(sel)), `${sel} hover looks like rest`);
+    await page.mouse.move(0, 0);
+
+    await page.keyboard.press("Shift");
+    await page.focus(sel);
+    const f = await look(sel);
+    expectThat(f.visible && (f.outline === "solid " + focus || f.border === focus), `${sel} focus shows no focus ring`);
+    await reset(sel);
+
+    if (!field(sel)) {
+      await page.hover(sel);
+      await page.mouse.down();
+      const pr = await look(sel);
+      await page.mouse.move(0, 0);
+      await page.mouse.up();
+      expectThat(/matrix\(0\.97/.test(pr.transform), `${sel} pressed does not give under the pointer`);
+      await reset(sel);
+      await set(sel, (e) => { if (e.type === "checkbox") e.checked = true; else e.setAttribute("aria-pressed", "true"); });
+      expectThat(differs(await look(sel)), `${sel} active looks like rest`);
+      await reset(sel);
+    }
+
+    await set(sel, (e) => { e.disabled = true; });
+    expectThat((await look(sel)).cursor === "not-allowed", `${sel} disabled still looks usable`);
+    await reset(sel);
+
+    await set(sel, (e) => e.setAttribute("aria-busy", "true"));
+    const busy = await look(sel);
+    expectThat(busy.after === "vp3-spin" || busy.anim === "sa-busy-bar" || busy.anim === "sa-busy-pulse", `${sel} loading shows nothing working`);
+    await reset(sel);
+
+    await set(sel, (e) => e.setAttribute("data-state", "success"));
+    const good = await look(sel);
+    expectThat(good.border === ok || good.outline === "solid " + ok, `${sel} success is not in the success colour`);
+    await reset(sel);
+
+    // A field says it is wrong with aria-invalid; a button or switch has no
+    // such attribute, so the write mechanism's data-state carries it.
+    await page.$eval(sel, (e, isField) => e.setAttribute(isField ? "aria-invalid" : "data-state", isField ? "true" : "error"), field(sel));
+    const bad = await look(sel);
+    expectThat(bad.border === danger || bad.outline === "solid " + danger, `${sel} error is not in the danger colour`);
+    await reset(sel);
+  }
+  expect(fails).toEqual([]);
+});
+
+// The states are driven, not only drawn: the control a write came from shows
+// it working and then how it went. A read leaves it alone, and a write started
+// later, from a timer, is not pinned on a button clicked earlier.
+test("a write shows loading, then its outcome, on the control that started it", async ({ page }) => {
+  await openConsole(page);
+  let status = 500;
+  await page.route("**/os/__state-probe", async (route) => {
+    await new Promise((r) => setTimeout(r, 300));
+    await route.fulfill({ status, body: "{}" });
+  });
+  await page.evaluate(() => {
+    const mk = (id, fn) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "btn"; b.id = id; b.textContent = id;
+      b.addEventListener("click", fn);
+      document.querySelector("main#main-content").prepend(b);
+    };
+    mk("w-post", () => fetch("/os/__state-probe", { method: "POST" }));
+    mk("w-get", () => fetch("/os/__state-probe"));
+    mk("w-late", () => setTimeout(() => fetch("/os/__state-probe", { method: "POST" }), 50));
+  });
+  const post = page.locator("#w-post");
+  await post.click();
+  await expect(post).toHaveAttribute("aria-busy", "true");
+  await expect(post).toHaveAttribute("data-state", "error");
+  await expect(post).not.toHaveAttribute("aria-busy", "true");
+  status = 200;
+  await post.click();
+  await expect(post).toHaveAttribute("data-state", "success");
+
+  // Watched rather than asserted after the fact: a mark on these clears
+  // itself, and a retrying negative assertion would wait for it to go.
+  await page.evaluate(() => {
+    window.__marks = [];
+    new MutationObserver((ms) => ms.forEach((m) => window.__marks.push(m.target.id + " " + m.attributeName)))
+      .observe(document.querySelector("main"), { subtree: true, attributeFilter: ["aria-busy", "data-state"] });
+  });
+  await page.locator("#w-get").click();
+  await page.locator("#w-late").click();
+  await page.waitForTimeout(800);
+  expect(await page.evaluate(() => window.__marks)).toEqual([]);
+});
+
 test("the command bar is operated by keyboard alone", async ({ page }) => {
   await openConsole(page);
   await page.keyboard.press("Control+k");

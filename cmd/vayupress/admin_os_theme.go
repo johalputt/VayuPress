@@ -443,7 +443,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
         </div>
         <span class="theme-field__hint">PNG, JPEG or WebP, &le; 1.5 MB. Used for the homepage and as a fallback for posts.</span>
         <div class="vm-row mt-4">
-          <label class="cz-check"><input type="checkbox" id="site-membership"` + membershipChecked + `> Show Sign in / Sign up buttons in the nav</label>
+          <label class="cz-check"><input type="checkbox" class="toggle" role="switch" id="site-membership"` + membershipChecked + `> Show Sign in / Sign up buttons in the nav</label>
           <span class="text-xs muted" id="site-membership-status" role="status" aria-live="polite"></span>
         </div>
       </div>
@@ -486,7 +486,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Style the homepage hero — layout, height and an optional background tint, gradient or uploaded image.</p>
         <div class="vm-row mb-3">
-          <label class="cz-check"><input type="checkbox" id="home-hero"` + heroChecked + `> Show the homepage hero (off = clean homepage, straight to posts)</label>
+          <label class="cz-check"><input type="checkbox" class="toggle" role="switch" id="home-hero"` + heroChecked + `> Show the homepage hero (off = clean homepage, straight to posts)</label>
           <span class="text-xs muted" id="home-hero-status" role="status" aria-live="polite"></span>
         </div>
         <div class="cz-logo">
