@@ -43,6 +43,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
@@ -1269,13 +1270,18 @@ func adminOSShellFoot(nonce, pageScript string, needsAlpine bool, needsPurify ..
       <svg class="cmd-search-icon" viewBox="0 0 20 20" fill="none" width="18" height="18" aria-hidden="true">
         <path d="M8 15A7 7 0 108 1a7 7 0 000 14zm5-1l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
-      <input id="cmd-input" class="cmd-input" type="text" placeholder="Search posts, members, settings…" autocomplete="off" aria-label="Search">
+      <input id="cmd-input" class="cmd-input" type="text" placeholder="Search or run a command" autocomplete="off" aria-label="Search or run a command" aria-controls="cmd-results">
+      <button type="button" class="cmd-kind" data-cmd-kind aria-live="polite" aria-label="Filter by kind">All</button>
     </div>
-    <div id="cmd-results" class="cmd-results" role="listbox"></div>
+    <div class="cmd-body">
+      <div id="cmd-results" class="cmd-results" role="listbox" aria-label="Results"></div>
+      <aside class="cmd-preview" data-cmd-preview aria-label="Preview"></aside>
+    </div>
     <div class="cmd-footer">
-      <span class="cmd-footer-hint"><kbd>↑↓</kbd> navigate</span>
-      <span class="cmd-footer-hint"><kbd>↵</kbd> select</span>
-      <span class="cmd-footer-hint"><kbd>Esc</kbd> close</span>
+      <span class="cmd-footer-hint"><kbd>↑</kbd><kbd>↓</kbd> move</span>
+      <span class="cmd-footer-hint"><kbd>↵</kbd> open or run</span>
+      <span class="cmd-footer-hint"><kbd>tab</kbd> filter by kind</span>
+      <span class="cmd-footer-hint cmd-footer-hint--end"><kbd>esc</kbd> close</span>
     </div>
   </div>
 </div>
@@ -3396,124 +3402,111 @@ func (a *App) handleOSActivity(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(items)
 }
 
-// handleOSCmdIndex returns the command palette search index as JSON.
-//
-// Wave 1 fixes two lies this endpoint used to tell: its three "actions" carried
-// empty Fn strings (the buttons rendered but did nothing), and its 11-page
-// registry covered ~17% of the console while the input promised "Search posts,
-// members, settings…". The registry below now mirrors the sidebar/hubs and is
-// gated by the SAME osPathMinLevel predicate, so shown == reachable holds here
-// too. Actions are dispatched client-side through the vpActions registry
-// (static/js/admin-os.js), not window[fn] string lookup.
+// handleOSCmdIndex returns what the command bar searches beyond the rail's own
+// index of pages (render 03): posts to open, actions to run, and settings rows
+// to jump to. Every entry is gated by the page it belongs to, the predicate the
+// rail uses, so the bar never offers what this session could not open. The
+// pages themselves are not listed here: the rail's index already names each
+// one, and a second hand-kept list of them had drifted to hubs that no longer
+// exist.
 func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
-	// The keys are the ones admin-os.js reads (item.label, item.slug, item.fn,
-	// item.href …). Without tags they marshalled as "Label", "Slug" and so on,
-	// so every palette row rendered blank, every link went to
-	// /os/editor/undefined, no action ran, and typing a query threw.
 	type cmdPost struct {
-		Label string `json:"label"`
-		Slug  string `json:"slug"`
+		Label   string `json:"label"`
+		Slug    string `json:"slug"`
+		Status  string `json:"status"`
+		Updated string `json:"updated"`
+		Excerpt string `json:"excerpt,omitempty"`
 	}
+	// An action either opens a page (Href) or runs one request (Post) and
+	// reports what the server answered.
 	type cmdAction struct {
 		Label string `json:"label"`
 		Icon  string `json:"icon"`
 		Hint  string `json:"hint"`
-		Fn    string `json:"fn"`
+		Href  string `json:"href,omitempty"`
+		Post  string `json:"post,omitempty"`
+		Done  string `json:"done,omitempty"`
+		gate  string
 	}
 	type cmdSetting struct {
 		Label string `json:"label"`
-		Icon  string `json:"icon"`
+		Where string `json:"where"`
+		Hint  string `json:"hint,omitempty"`
 		Href  string `json:"href"`
 	}
 
+	lvl := accessAdmin
+	if cfg := a.getOSSettings(r.Context()); cfg != nil {
+		lvl = cfg.AccessLevel
+	}
+	can := func(href string) bool {
+		path, _, _ := strings.Cut(href, "#")
+		return lvl >= osPathMinLevel(path)
+	}
+
 	posts := []cmdPost{}
-	if res, err := a.articles.List(r.Context(), 1, 50, ""); err == nil {
-		for _, p := range res.Articles {
-			posts = append(posts, cmdPost{Label: p.Title, Slug: p.Slug})
+	// Read directly: the article list projection carries neither status nor
+	// content. The first 2,000 characters are plenty for an excerpt.
+	if can("/os/editor") && dbpkg.DB != nil {
+		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
+			`SELECT slug, title, COALESCE(NULLIF(status,''),'published'), updated_at, substr(COALESCE(content,''),1,2000) FROM articles ORDER BY updated_at DESC LIMIT 50`); err == nil {
+			for rows.Next() {
+				var p cmdPost
+				var updated time.Time
+				var content string
+				if rows.Scan(&p.Slug, &p.Label, &p.Status, &updated, &content) == nil {
+					p.Updated, p.Excerpt = updated.UTC().Format(time.RFC3339), cmdExcerpt(content)
+					posts = append(posts, p)
+				}
+			}
+			_ = rows.Err() // a read cut short just offers fewer posts
+			rows.Close()
 		}
 	}
 
-	actions := []cmdAction{
-		{Label: "New post", Icon: "pencil", Hint: "Open the block editor", Fn: "newPost"},
-		{Label: "SEO Dashboard", Icon: "search", Hint: "Indexing and search health", Fn: "goSEO"},
-		{Label: "Regenerate SEO artefacts", Icon: "refresh", Hint: "Rebuild sitemap, RSS & robots.txt", Fn: "regenSEO"},
+	actions := []cmdAction{}
+	for _, act := range []cmdAction{
+		{Label: "New post", Icon: "pencil", Hint: "Open the block editor on a blank post", Href: "/os/editor", gate: "/os/editor"},
+		{Label: "Take a backup now", Icon: "archive", Hint: "Saves a restore point and test-restores it before saying it worked", Post: "/os/api/vayukeep/backup", Done: "Backup taken and tested.", gate: "/os/vayukeep"},
+		{Label: "Clear the page cache", Icon: "refresh", Hint: "Pages are rebuilt on their next visit; the sitemap, feed and robots.txt now", Post: "/os/api/storage/clear-cache", Done: "Page cache cleared.", gate: "/os/storage"},
+		{Label: "Regenerate sitemap, RSS and robots.txt", Icon: "refresh", Hint: "Rebuilds the three files search engines read", Post: "/os/api/seo/regenerate", Done: "Sitemap, RSS and robots.txt rebuilt.", gate: "/os/seo"},
+		{Label: "Check for security updates", Icon: "shield", Hint: "Fetches public release metadata only; nothing about your site is sent", Post: "/os/api/vayuos/security/check", Done: "Security updates checked.", gate: "/os/security"},
+	} {
+		if can(act.gate) {
+			actions = append(actions, act)
+		}
 	}
 
-	allPages := []cmdSetting{
-		// Content workspace
-		{Label: "Posts", Icon: "pencil", Href: "/os/posts"},
-		{Label: "Pages", Icon: "doc", Href: "/os/pages"},
-		{Label: "Comments", Icon: "talk", Href: "/os/comments"},
-		{Label: "Messages", Icon: "mail", Href: "/os/messages"},
-		{Label: "Media library", Icon: "image", Href: "/os/media"},
-		{Label: "Website", Icon: "globe", Href: "/os/website"},
-		// Hubs
-		{Label: "Dashboard", Icon: "home", Href: osHome},
-		{Label: "Growth hub", Icon: "trend", Href: "/os/growth"},
-		{Label: "Optimize hub", Icon: "bolt", Href: "/os/optimize"},
-		{Label: "Operations hub", Icon: "wrench", Href: "/os/operations"},
-		// Growth family
-		{Label: "Members", Icon: "audience", Href: "/os/members"},
-		{Label: "Newsletter", Icon: "mail", Href: "/os/newsletter"},
-		{Label: "Monetization", Icon: "coin", Href: "/os/monetization"},
-		{Label: "Advertising", Icon: "megaphone", Href: "/os/ads"},
-		{Label: "My Profile", Icon: "user", Href: "/os/profile"},
-		// Optimize family
-		{Label: "SEO Dashboard", Icon: "search", Href: "/os/seo"},
-		{Label: "Analytics", Icon: "chart", Href: "/os/analytics"},
-		{Label: "VayuShield", Icon: "shield", Href: "/os/shield"},
-		{Label: "Theme Studio", Icon: "palette", Href: "/os/theme"},
-		{Label: "Theme Store", Icon: "palette", Href: "/os/theme/store"},
-		{Label: "Tools & Plugins", Icon: "plug", Href: "/os/tools"},
-		{Label: "Domains", Icon: "globe", Href: "/os/domains"},
-		{Label: "API Keys", Icon: "key", Href: "/os/apikeys"},
-		{Label: "Connector", Icon: "plug", Href: "/os/connector"},
-		{Label: "General settings", Icon: "settings", Href: "/os/settings/general"},
-		{Label: "Design & theme settings", Icon: "palette", Href: "/os/settings/design"},
-		{Label: "Email settings", Icon: "mail", Href: "/os/settings/email"},
-		{Label: "Members settings", Icon: "audience", Href: "/os/settings/members"},
-		{Label: "Security settings", Icon: "lock", Href: "/os/settings/security"},
-		// Operations family
-		{Label: "Monitoring", Icon: "chart", Href: "/os/monitoring"},
-		{Label: "Storage & System", Icon: "disk", Href: "/os/storage"},
-		{Label: "Security posture", Icon: "lock", Href: "/os/security"},
-		{Label: "System modes", Icon: "compass", Href: "/os/modes"},
-		{Label: "Topology", Icon: "link", Href: "/os/topology"},
-		{Label: "VayuFlow automations", Icon: "bolt", Href: "/os/vayuflow"},
-		{Label: "Backup & Recovery", Icon: "archive", Href: "/os/vayukeep"},
-		{Label: "Governance", Icon: "columns", Href: "/os/governance"},
-		{Label: "Update & Migration", Icon: "upload", Href: "/os/update"},
-		{Label: "Architecture decisions", Icon: "book", Href: "/os/adr"},
-		{Label: "DNS", Icon: "globe", Href: "/os/dns"},
-		{Label: "System hub", Icon: "wall", Href: "/os/system"},
-		// Products & spaces
-		{Label: "VayuMail inbox", Icon: "inbox", Href: "/os/vayumail/inbox"},
-		{Label: "VayuTalk", Icon: "talk", Href: "/os/talk"},
-		{Label: "Tor space", Icon: "tor", Href: "/os/tor"},
-		{Label: "Spaces (worlds)", Icon: "tor", Href: "/os/spaces"},
-	}
-
-	// Same predicate the sidebar uses: an entry only reaches the palette when
-	// this session could actually open it.
-	lvl := accessAdmin
-	cfg := a.getOSSettings(r.Context())
-	if cfg != nil {
-		lvl = cfg.AccessLevel
-	}
-	sPages := make([]cmdSetting, 0, len(allPages))
-	for _, p := range allPages {
-		if lvl >= osPathMinLevel(p.Href) {
-			sPages = append(sPages, p)
+	settingsList := []cmdSetting{}
+	for _, e := range settingsEntries() {
+		if can(e.Href) {
+			settingsList = append(settingsList, cmdSetting{Label: e.Label, Where: e.Where, Hint: e.Hint, Href: e.Href})
 		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"posts":    posts,
 		"actions":  actions,
-		"settings": sPages,
+		"settings": settingsList,
 	})
 }
+
+// cmdExcerpt is a post's opening words as plain text, for the command bar's
+// preview: tags dropped, entities read, whitespace folded, cut on a word.
+func cmdExcerpt(content string) string {
+	text := strings.Join(strings.Fields(html.UnescapeString(cmdTagRe.ReplaceAllString(content, " "))), " ")
+	if utf8.RuneCountInString(text) <= 160 {
+		return text
+	}
+	cut := string([]rune(text)[:160])
+	if at := strings.LastIndex(cut, " "); at > 100 {
+		cut = cut[:at]
+	}
+	return cut + "…"
+}
+
+var cmdTagRe = regexp.MustCompile(`<[^>]*>`)
 
 // handleOSSettingsAPI persists a single settings key/value from the VayuOS UI.
 func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {

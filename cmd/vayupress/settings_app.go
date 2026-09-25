@@ -225,6 +225,34 @@ func settingsPageBody(ctx context.Context, a *App, c settingsCategory) ui.HTML {
 	return ui.Join(parts...)
 }
 
+// settingsEntry is one findable setting: a row, or a band drawn by its own
+// code, with the category it is in.
+type settingsEntry struct {
+	Href, Label, Where, Hint, Terms string
+}
+
+// settingsEntries lists every row and band of every category. "Search
+// settings" and the command bar both look through it, so the two can never
+// disagree about what a setting is called or where it lives.
+func settingsEntries() []settingsEntry {
+	var out []settingsEntry
+	for _, c := range settingsCategories {
+		for _, g := range c.Groups {
+			if g.Custom != nil {
+				where := c.Label
+				if g.Title == c.Label {
+					where = "Settings" // "Footer, in Footer" says nothing
+				}
+				out = append(out, settingsEntry{Href: settingsHref(c.Slug), Label: g.Title, Where: where, Hint: g.Hint, Terms: g.Terms})
+			}
+			for _, f := range g.Fields {
+				out = append(out, settingsEntry{Href: settingsHref(c.Slug) + "#" + f.ID, Label: f.Label, Where: c.Label, Hint: f.Hint})
+			}
+		}
+	}
+	return out
+}
+
 // settingsSearchIndex is what "Search settings" looks through: every row and
 // band of every category, and the Settings app's other pages by name. It is a
 // list of links, so it reads without script too.
@@ -235,19 +263,8 @@ func settingsSearchIndex(app *saApp) string {
 			html.EscapeString(strings.ToLower(label+" "+where+" "+terms)) + `"><span class="sa-find__label">` + html.EscapeString(label) +
 			`</span><span class="sa-find__where">` + html.EscapeString(where) + `</span></a></li>`)
 	}
-	for _, c := range settingsCategories {
-		for _, g := range c.Groups {
-			if g.Custom != nil {
-				where := c.Label
-				if g.Title == c.Label {
-					where = "Settings" // "Footer, in Footer" says nothing
-				}
-				item(settingsHref(c.Slug), g.Title, where, g.Hint+" "+g.Terms)
-			}
-			for _, f := range g.Fields {
-				item(settingsHref(c.Slug)+"#"+f.ID, f.Label, c.Label, f.Hint)
-			}
-		}
+	for _, e := range settingsEntries() {
+		item(e.Href, e.Label, e.Where, e.Hint+" "+e.Terms)
 	}
 	for _, s := range app.Sections {
 		if !strings.HasPrefix(s.Href, "/os/settings") {

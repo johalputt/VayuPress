@@ -337,10 +337,6 @@
 
 }
 
-.vp-os .space-switch__status { display: flex; align-items: center; gap: 5px; padding: 7px var(--sp-3) 2px; font-size: var(--text-xs); color: var(--text-2); }
-
-.vp-os .space-switch__status[hidden] { display: none; }
-
 .vp-os .nav-link { --nav-accent: var(--brand); position: relative; display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: 500; color: var(--text-2); transition: background var(--t), color var(--t), transform var(--t-spring); text-decoration: none; }
 
 .vp-os .nav-link[data-nav="dashboard"] { --nav-accent: var(--accent); }
@@ -981,14 +977,6 @@
 
 .vp-os .skeleton { background-size: 800px 100%; animation: vp3-shimmer 1.8s infinite linear; border-radius: var(--r-sm); }
 
-.vp-os .skeleton--text { height: 14px; }
-
-.vp-os .skeleton--title { height: 24px; }
-
-.vp-os .skeleton--card { height: 96px; border-radius: var(--r); }
-
-.vp-os .skeleton--avatar { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; }
-
 /* ── Tables ──────────────────────────────────────────────────── */
 .vp-os .table-wrap { overflow-x: auto; }
 
@@ -1036,12 +1024,6 @@
 
 /* ── Avatar ──────────────────────────────────────────────────── */
 .vp-os .avatar { width: 36px; height: 36px; border-radius: 50%; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: var(--text-sm); font-weight: 600; font-family: var(--font-head); }
-
-.vp-os .avatar--sm { width: 28px; height: 28px; font-size: var(--text-xs); }
-
-.vp-os .avatar--brand { background: var(--brand-dim); color: var(--brand); }
-
-.vp-os .avatar--lg { width: 48px; height: 48px; font-size: var(--text-lg); }
 
 /* Image avatars: fill the circular box and crop, never distort. */
 .vp-os img.avatar { object-fit: cover; }
@@ -1121,15 +1103,11 @@
 
 .vp-os .font-mono { font-family: var(--font-mono); }
 
-.vp-os .font-bold { font-weight: 600; }
-
 .vp-os .flex { display: flex; }
 
 .vp-os .items-center { align-items: center; }
 
 .vp-os .justify-between { justify-content: space-between; }
-
-.vp-os .gap-2 { gap: var(--sp-2); }
 
 .vp-os .gap-3 { gap: var(--sp-3); }
 
@@ -1248,21 +1226,6 @@
    and may shrink, so on a phone the picker is not crushed to its arrow. */
 .vp-os .quick-compose-input { min-width: 0; }
 .vp-os .quick-compose > select { flex: 0 0 auto; width: auto; }
-
-/* ── Health / onboarding checklist ───────────────────────────── */
-.vp-os .checklist { display: flex; flex-direction: column; gap: var(--sp-2); }
-
-.vp-os .checklist-item { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-sm); font-size: var(--text-sm); background: var(--bg-surface-2); }
-
-.vp-os .checklist-item--done { opacity: 0.55; }
-
-.vp-os .checklist-check { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border-strong); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: transparent; }
-
-.vp-os .checklist-item--done .checklist-check { background: var(--ok); border-color: var(--ok); color: var(--on-accent); }
-
-.vp-os .checklist-label { flex: 1; color: var(--text-2); }
-
-.vp-os .checklist-item--done .checklist-label { text-decoration: line-through; }
 
 /* ── Settings forms ──────────────────────────────────────────── */
 
@@ -6116,7 +6079,7 @@
 /* Command bar: drops from the search field, scrim not blur. */
 .vp-os[data-ui="still-air"] .cmd-backdrop { background: var(--scrim); backdrop-filter: none; -webkit-backdrop-filter: none; padding-top: 72px; animation: sa-fade var(--duration-standard) var(--ease-enter); }
 .vp-os[data-ui="still-air"] .cmd-panel {
-  max-width: 640px; background: var(--surface-overlay); border: 1px solid var(--border-2); border-radius: var(--radius-surface);
+  max-width: 880px; background: var(--surface-overlay); border: 1px solid var(--border-2); border-radius: var(--radius-surface);
   box-shadow: var(--shadow-5); animation: sa-drop var(--duration-major) var(--ease-move);
 }
 @keyframes sa-drop { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
@@ -6141,7 +6104,7 @@
 .vp-os[data-ui="still-air"] .cmd-item--active .cmd-item__icon { background: none; border: 0; color: var(--accent); transform: none; }
 .vp-os[data-ui="still-air"] .cmd-item__label { font: var(--type-body); font-weight: 400; color: var(--text-1); }
 .vp-os[data-ui="still-air"] .cmd-item__label mark {
-  background: none; color: var(--text-1); font-weight: 600;
+  background: none; color: var(--text-1); font-weight: 600; padding: 0; border-radius: 0;
   text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 1.5px; text-underline-offset: 3px;
 }
 .vp-os[data-ui="still-air"] .cmd-item__icon .sa-ico { width: 16px; height: 16px; }
@@ -6150,6 +6113,31 @@
 .vp-os[data-ui="still-air"] .sa-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 .vp-os[data-ui="still-air"] .cmd-item__hint { font: var(--type-meta); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .cmd-footer { padding: 9px var(--space-5); border-top: 1px solid var(--border-1); font: var(--type-meta); color: var(--text-3); gap: var(--space-6); }
+/* Render 03: the results and, beside them, the highlighted one previewed.
+   The preview needs room; below 900 px the list has the panel to itself. */
+.vp-os[data-ui="still-air"] .cmd-body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; }
+.vp-os[data-ui="still-air"] .cmd-body .cmd-results { max-height: min(56vh, 460px); }
+.vp-os[data-ui="still-air"] .cmd-preview { border-left: 1px solid var(--border-1); padding: var(--space-5); overflow-y: auto; max-height: min(56vh, 460px); display: flex; flex-direction: column; gap: var(--space-2); }
+.vp-os[data-ui="still-air"] .cmd-preview__path { font: var(--type-meta); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .cmd-preview__title { font: var(--type-heading); color: var(--text-1); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .cmd-preview__text { font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .cmd-preview__meta { font: var(--type-meta); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .cmd-preview__facts { display: grid; grid-template-columns: auto 1fr; margin: var(--space-3) 0 0; border-top: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .cmd-preview__facts dt,
+.vp-os[data-ui="still-air"] .cmd-preview__facts dd { margin: 0; padding: 8px 0; border-bottom: 1px solid var(--border-1); font: var(--type-small); }
+.vp-os[data-ui="still-air"] .cmd-preview__facts dt { color: var(--text-2); padding-right: var(--space-4); }
+.vp-os[data-ui="still-air"] .cmd-preview__facts dd { color: var(--text-1); text-align: right; font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .cmd-kind { flex: none; cursor: pointer; font: var(--type-meta); color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border-1); border-radius: var(--radius-small); padding: 2px 8px; }
+.vp-os[data-ui="still-air"] .cmd-footer-hint--end { margin-left: auto; }
+.vp-os[data-ui="still-air"] .cmd-footer kbd + kbd { margin-left: 2px; }
+@media (max-width: 899px) {
+  .vp-os[data-ui="still-air"] .cmd-body { grid-template-columns: minmax(0, 1fr); }
+  .vp-os[data-ui="still-air"] .cmd-preview { display: none; }
+}
+/* A legend of keys is for a keyboard; a touch screen filters with the chip. */
+@media (pointer: coarse) {
+  .vp-os[data-ui="still-air"] .cmd-footer { display: none; }
+}
 
 /* The Tor accent never bleeds into a side rule the way the classic one did. */
 .vp-os[data-ui="still-air"][data-space="tor"] .sidebar { border-right-color: var(--border-1); box-shadow: none; }

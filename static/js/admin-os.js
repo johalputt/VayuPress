@@ -302,44 +302,36 @@ document.addEventListener('htmx:confirm', function (e) {
   window.vpConfirm({ title: q }, function () { e.detail.issueRequest(true); });
 });
 
-/* ── Client-side action registry (Wave 1: palette actions moved off
-     window[fn] string lookup into a small explicit map). */
-window.vpActions = {
-  newPost: function () { location.href = '/os/editor'; },
-  goSEO: function () { location.href = '/os/seo'; },
-  regenSEO: function () {
-    fetch('/os/api/seo/regenerate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
-      body: JSON.stringify({})
-    }).then(function (r) {
-      if (!r.ok) throw new Error('SEO regen failed (' + r.status + ')');
-      return r.json();
-    }).then(function () {
-      if (window.vpToast) window.vpToast('Sitemap, RSS & robots regenerated', 'ok');
-    }).catch(function (err) {
-      if (window.vpToast) window.vpToast('Could not regenerate: ' + err.message, 'danger');
-    });
-  }
-};
-
-/* ── Command palette (Cmd+K / Ctrl+K) ───────────────────────── */
-(function initCommandPalette() {
+/* ── Command bar (Cmd+K / Ctrl+K, render 03) ─────────────────────
+   Three kinds of result: Go to (the rail's own gated index of pages, then
+   posts), Actions (a page to open or one request to run) and Settings (every
+   row, the list Search settings reads). The highlighted result is previewed
+   beside the list; Tab narrows to one kind. Built with textContent and
+   elements only: no markup from any response is ever inserted. */
+(function initCommandBar() {
   var backdrop = $('#cmd-backdrop');
   var input = $('#cmd-input');
   var results = $('#cmd-results');
+  var preview = $('[data-cmd-preview]');
+  var kindChip = $('[data-cmd-kind]');
   if (!backdrop || !input || !results) return;
 
-  var index = null; // Loaded lazily
+  var KINDS = ['All', 'Go to', 'Actions', 'Settings'];
+  var kind = 0;
+  var index = null;
+  var items = [];      // [{el, data}]
   var activeIdx = -1;
-  var items = [];
+  var pageCache = {};  // href -> summary, for the live page preview
+  var previewTimer = null;
 
   function open() {
     backdrop.removeAttribute('hidden');
     input.value = '';
+    kind = 0;
+    if (kindChip) kindChip.textContent = KINDS[kind];
     input.focus();
     loadIndex();
-    render('');
+    render();
   }
   function close() {
     backdrop.setAttribute('hidden', '');
@@ -350,169 +342,216 @@ window.vpActions = {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
       backdrop.hasAttribute('hidden') ? open() : close();
+      return;
     }
-    if (!backdrop.hasAttribute('hidden')) {
-      if (e.key === 'Escape') close();
-      if (e.key === 'ArrowDown') { e.preventDefault(); moveActive(1); }
-      if (e.key === 'ArrowUp')   { e.preventDefault(); moveActive(-1); }
-      if (e.key === 'Enter')     { e.preventDefault(); activateCurrent(); }
-    }
+    if (backdrop.hasAttribute('hidden')) return;
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowDown') { e.preventDefault(); setActive(activeIdx + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(activeIdx - 1); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (items[activeIdx]) items[activeIdx].el.click(); }
+    else if (e.key === 'Tab') { e.preventDefault(); cycleKind(e.shiftKey ? -1 : 1); }
   });
-  backdrop.addEventListener('click', function (e) {
-    if (e.target === backdrop) close();
-  });
-
-  var cmdBtn = $('.topbar-cmd');
-  if (cmdBtn) cmdBtn.addEventListener('click', open);
-
-  input.addEventListener('input', function () { render(input.value); });
+  // The chip is the same filter for a pointer or a finger, which have no Tab.
+  if (kindChip) kindChip.addEventListener('click', function () { cycleKind(1); input.focus(); });
+  function cycleKind(step) {
+    kind = (kind + step + KINDS.length) % KINDS.length;
+    if (kindChip) kindChip.textContent = KINDS[kind];
+    render();
+  }
+  backdrop.addEventListener('click', function (e) { if (e.target === backdrop) close(); });
+  $$('.topbar-cmd, .sa-search').forEach(function (b) { b.addEventListener('click', open); });
+  input.addEventListener('input', render);
 
   function loadIndex() {
     if (index !== null) return;
-    var cached = null;
-    try { cached = JSON.parse(sessionStorage.getItem('vp3_cmd_index_v1')); } catch (e) {}
-    if (cached) { index = cached; return; }
     fetch('/os/api/cmd-index')
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        index = data;
-        try { sessionStorage.setItem('vp3_cmd_index_v1', JSON.stringify(data)); } catch (e) {}
-        render(input.value);
-      })
-      .catch(function () { index = { posts: [], actions: [], settings: [] }; });
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (data) { index = data; render(); })
+      .catch(function () { index = { posts: [], actions: [], settings: [] }; render(); });
   }
 
-  function render(q) {
-    q = q.toLowerCase().trim();
-    results.innerHTML = '';
+  // The label with every place the query appears marked, not only the first.
+  function label(text, q) {
+    var el = document.createElement('span');
+    el.className = 'cmd-item__label';
+    var low = text.toLowerCase(), at = 0, i;
+    while (q && (i = low.indexOf(q, at)) >= 0) {
+      el.appendChild(document.createTextNode(text.slice(at, i)));
+      var m = document.createElement('mark');
+      m.textContent = text.slice(i, i + q.length);
+      el.appendChild(m);
+      at = i + q.length;
+    }
+    el.appendChild(document.createTextNode(text.slice(at)));
+    return el;
+  }
+
+  function row(data, q) {
+    var el = document.createElement(data.href ? 'a' : 'button');
+    el.className = 'cmd-item';
+    el.setAttribute('role', 'option');
+    if (data.href) el.href = data.href; else el.type = 'button';
+    var ic = document.createElement('span');
+    ic.className = 'cmd-item__icon';
+    ic.appendChild(window.vpIcon(data.icon));
+    el.appendChild(ic);
+    el.appendChild(label(data.text, q));
+    if (data.where) {
+      var w = document.createElement('span');
+      w.className = 'cmd-item__hint';
+      w.textContent = data.where;
+      el.appendChild(w);
+    }
+    el.addEventListener('click', function () { close(); if (data.post) run(data); });
+    el.addEventListener('mousemove', function () { var n = items.findIndex(function (it) { return it.el === el; }); if (n !== activeIdx) setActive(n); });
+    return el;
+  }
+
+  function group(title, list, q) {
+    if (!list.length) return;
+    var g = document.createElement('div');
+    g.className = 'cmd-group-label';
+    g.textContent = title;
+    results.appendChild(g);
+    list.forEach(function (d) {
+      var el = row(d, q);
+      results.appendChild(el);
+      items.push({ el: el, data: d });
+    });
+  }
+
+  function render() {
+    var q = input.value.toLowerCase().trim();
+    results.textContent = '';
     items = [];
     activeIdx = -1;
-
     if (!index) {
       var loading = document.createElement('div');
       loading.className = 'cmd-group-label';
       loading.textContent = 'Loading…';
       results.appendChild(loading);
+      showPreview(null);
       return;
     }
+    var hit = function (s) { return !q || s.toLowerCase().indexOf(q) >= 0; };
+    var want = function (k) { return kind === 0 || KINDS[kind] === k; };
+    var cap = kind === 0 ? (q ? 6 : 4) : 30;
 
-    // Still Air: icons from the page's sprite instead of emoji, the matched
-    // text marked, and a "Go to" group first, built from the shell's own gated
-    // index of apps and sections. The classic palette is unchanged.
-    var sa = document.body.dataset.ui === 'still-air';
-    var saIcon = window.vpIcon;
-    function labelFor(text) {
-      var lbl = document.createElement('div');
-      lbl.className = 'cmd-item__label';
-      var at = sa && q ? text.toLowerCase().indexOf(q) : -1;
-      if (at < 0) { lbl.textContent = text; return lbl; }
-      lbl.appendChild(document.createTextNode(text.slice(0, at)));
-      var mark = document.createElement('mark');
-      mark.textContent = text.slice(at, at + q.length);
-      lbl.appendChild(mark);
-      lbl.appendChild(document.createTextNode(text.slice(at + q.length)));
-      return lbl;
-    }
-    if (sa) {
-      var goTo = Array.prototype.slice.call(document.querySelectorAll('[data-sa-index] a')).filter(function (a) {
-        return !q || a.textContent.toLowerCase().indexOf(q) >= 0;
-      }).slice(0, q ? 8 : 6);
-      if (goTo.length) {
-        var gl = document.createElement('div');
-        gl.className = 'cmd-group-label';
-        gl.textContent = 'Go to';
-        results.appendChild(gl);
-        goTo.forEach(function (a) {
-          var el = document.createElement('a');
-          el.className = 'cmd-item';
-          el.href = a.getAttribute('href');
-          var ic = document.createElement('div');
-          ic.className = 'cmd-item__icon';
-          ic.appendChild(saIcon(a.getAttribute('data-icon')));
-          el.appendChild(ic);
-          el.appendChild(labelFor(a.textContent));
-          el.addEventListener('click', close);
-          results.appendChild(el);
-          items.push(el);
-        });
-      }
-    }
-
-    var sections = [
-      { label: 'Posts', key: 'posts', icon: 'content', href: function(i){ return '/os/editor/' + i.slug; } },
-      { label: 'Quick Actions', key: 'actions', icon: 'flow', fn: function(i){ return i.fn; } },
-      { label: 'Settings', key: 'settings', icon: 'settings', href: function(i){ return i.href; } },
-    ];
-
-    sections.forEach(function (sec) {
-      var list = (index[sec.key] || []).filter(function (item) {
-        return !q || item.label.toLowerCase().includes(q) || (item.slug && item.slug.includes(q));
-      }).slice(0, 6);
-      if (!list.length) return;
-
-      var label = document.createElement('div');
-      label.className = 'cmd-group-label';
-      label.textContent = sec.label;
-      results.appendChild(label);
-
-      list.forEach(function (item) {
-        var el = sec.href
-          ? document.createElement('a')
-          : document.createElement('button');
-        el.className = 'cmd-item';
-        if (sec.href) el.href = sec.href(item);
-
-        var icon = document.createElement('div');
-        icon.className = 'cmd-item__icon';
-        icon.appendChild(saIcon(item.icon || sec.icon));
-
-        var lbl = labelFor(item.label || item.title || '');
-
-        el.appendChild(icon);
-        el.appendChild(lbl);
-
-        if (item.hint) {
-          var hint = document.createElement('div');
-          hint.className = 'cmd-item__hint';
-          hint.textContent = item.hint;
-          el.appendChild(hint);
-        }
-
-        if (!sec.href && item.fn) {
-          el.addEventListener('click', function () {
-            close();
-            var fn = window.vpActions && window.vpActions[item.fn];
-            if (typeof fn === 'function') { fn(); return; }
-            if (item.href) location.href = item.href;
-          });
-        } else {
-          el.addEventListener('click', close);
-        }
-
-        results.appendChild(el);
-        items.push(el);
+    if (want('Go to')) {
+      var pages = $$('[data-sa-index] a').filter(function (a) { return hit(a.textContent); }).map(function (a) {
+        return { kind: 'page', text: a.textContent, href: a.getAttribute('href'), icon: a.getAttribute('data-icon') };
       });
-    });
-
-    if (!items.length && q) {
+      var posts = (index.posts || []).filter(function (p) { return q && (hit(p.label) || p.slug.indexOf(q) >= 0); }).map(function (p) {
+        return { kind: 'post', text: p.label, href: '/os/editor/' + p.slug, icon: 'content', where: p.status === 'draft' ? 'Draft' : 'Post', post: null, p: p };
+      });
+      group('Go to', pages.concat(posts).slice(0, cap), q);
+    }
+    if (want('Actions')) {
+      group('Actions', (index.actions || []).filter(function (a) { return hit(a.label); }).slice(0, cap).map(function (a) {
+        return { kind: 'action', text: a.label, href: a.href || null, post: a.post || null, icon: a.icon, hint: a.hint, done: a.done };
+      }), q);
+    }
+    if (want('Settings') && (q || kind !== 0)) {
+      group('Settings', (index.settings || []).filter(function (st) { return hit(st.label + ' ' + st.where); }).slice(0, cap).map(function (st) {
+        return { kind: 'setting', text: st.label, href: st.href, icon: 'settings', where: st.where, hint: st.hint };
+      }), q);
+    }
+    if (!items.length) {
       var empty = document.createElement('div');
       empty.className = 'cmd-group-label';
-      empty.textContent = 'No results for "' + q + '"';
+      empty.textContent = q ? 'Nothing matches “' + input.value.trim() + '”.' : 'Nothing to show.';
       results.appendChild(empty);
     }
+    setActive(0);
   }
 
-  function moveActive(dir) {
-    if (!items.length) return;
-    var cur = $('.cmd-item--active', results);
-    if (cur) cur.classList.remove('cmd-item--active');
-    activeIdx = (activeIdx + dir + items.length) % items.length;
-    items[activeIdx].classList.add('cmd-item--active');
-    items[activeIdx].scrollIntoView({ block: 'nearest' });
+  function setActive(n) {
+    if (!items.length) { showPreview(null); return; }
+    n = (n + items.length) % items.length;
+    if (items[activeIdx]) { items[activeIdx].el.classList.remove('cmd-item--active'); items[activeIdx].el.removeAttribute('aria-selected'); }
+    activeIdx = n;
+    items[n].el.classList.add('cmd-item--active');
+    items[n].el.setAttribute('aria-selected', 'true');
+    items[n].el.scrollIntoView({ block: 'nearest' });
+    showPreview(items[n].data);
   }
 
-  function activateCurrent() {
-    if (activeIdx >= 0 && items[activeIdx]) items[activeIdx].click();
+  // One request, and what the server said about it. A backup answers 200
+  // with ok:false when its test restore fails, so the body decides.
+  function run(d) {
+    if (window.vpToast) window.vpToast(d.text + '…', 'info');
+    window.vpPost(d.post, {}, function (res) {
+      if (res && res.ok === false) { window.vpToast((res.detail || d.text + ' did not complete.'), 'error'); return; }
+      window.vpToast((res && (res.detail || res.message)) || d.done || 'Done.', 'ok');
+    });
+  }
+
+  function line(cls, text) {
+    var el = document.createElement('div');
+    el.className = cls;
+    el.textContent = text;
+    return el;
+  }
+
+  function showPreview(d) {
+    if (!preview) return;
+    clearTimeout(previewTimer);
+    preview.textContent = '';
+    if (!d) return;
+    if (d.kind === 'page') {
+      var parts = d.text.split(' › ');
+      preview.appendChild(line('cmd-preview__path', parts.slice(0, -1).join(' › ') || 'Go to'));
+      preview.appendChild(line('cmd-preview__title', parts[parts.length - 1]));
+      // The page itself, as it is now: its line under the title and its
+      // figures. Fetched only while the pane is on screen, once per page.
+      if (preview.offsetParent === null) return;
+      var cached = pageCache[d.href];
+      if (cached) { pageSummary(cached); return; }
+      previewTimer = setTimeout(function () {
+        fetch(d.href, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var main = doc.querySelector('main') || doc.body;
+          var sub = main.querySelector('.page-sub');
+          var figs = Array.prototype.slice.call(main.querySelectorAll('.stat-card')).slice(0, 4).map(function (c) {
+            var l = c.querySelector('.stat-card__label'), v = c.querySelector('.stat-card__value');
+            return [l ? l.textContent.trim() : '', v ? v.textContent.trim().replace(/\s+/g, ' ') : ''];
+          }).filter(function (f) { return f[0] && f[1]; });
+          pageCache[d.href] = { sub: sub ? sub.textContent.trim() : '', figs: figs };
+          if (items[activeIdx] && items[activeIdx].data === d) pageSummary(pageCache[d.href]);
+        }).catch(function () {});
+      }, 180);
+      return;
+    }
+    if (d.kind === 'post') {
+      preview.appendChild(line('cmd-preview__path', d.p.status === 'draft' ? 'Draft' : 'Published'));
+      preview.appendChild(line('cmd-preview__title', d.text));
+      if (d.p.updated && window.vpRelTime) preview.appendChild(line('cmd-preview__meta', 'Updated ' + window.vpRelTime(d.p.updated)));
+      if (d.p.excerpt) preview.appendChild(line('cmd-preview__text', d.p.excerpt));
+      return;
+    }
+    if (d.kind === 'action') {
+      preview.appendChild(line('cmd-preview__path', d.post ? 'Runs now' : 'Opens'));
+      preview.appendChild(line('cmd-preview__title', d.text));
+      if (d.hint) preview.appendChild(line('cmd-preview__text', d.hint));
+      if (d.post) preview.appendChild(line('cmd-preview__meta', 'What the server answers is shown when it finishes.'));
+      return;
+    }
+    preview.appendChild(line('cmd-preview__path', 'Settings › ' + d.where));
+    preview.appendChild(line('cmd-preview__title', d.text));
+    if (d.hint) preview.appendChild(line('cmd-preview__text', d.hint));
+  }
+
+  function pageSummary(sum) {
+    if (sum.sub) preview.appendChild(line('cmd-preview__text', sum.sub));
+    if (!sum.figs.length) return;
+    var list = document.createElement('dl');
+    list.className = 'cmd-preview__facts';
+    sum.figs.forEach(function (f) {
+      var dt = document.createElement('dt'); dt.textContent = f[0];
+      var dd = document.createElement('dd'); dd.textContent = f[1];
+      list.appendChild(dt); list.appendChild(dd);
+    });
+    preview.appendChild(list);
   }
 })();
 

@@ -571,6 +571,43 @@ test("the bell dates what happened, and Mark all read clears it for good", async
   await expect(page.locator("[data-notif-seen]")).toHaveCount(0);
 });
 
+// The command bar (render 03): results grouped Go to, Actions, Settings, the
+// query marked in each, the highlighted one previewed beside the list, Tab to
+// narrow to one kind, and an action that runs and says what the server said.
+test("the command bar groups, marks, previews and runs", async ({ page }) => {
+  await openConsole(page);
+  await page.keyboard.press("Control+k");
+  await page.locator(".cmd-input").fill("site");
+  const groups = page.locator("#cmd-results .cmd-group-label");
+  await expect(groups).toHaveText(["Go to", "Actions", "Settings"]);
+  const active = page.locator(".cmd-item--active");
+  await expect(active).toHaveCount(1);
+  await expect(active.locator("mark").first()).toHaveText(/site/i);
+  const preview = page.locator("[data-cmd-preview] .cmd-preview__title");
+  const last = async () => (await active.locator(".cmd-item__label").textContent()).split(" › ").pop();
+  await expect(preview).toHaveText(await last());
+  // A page is previewed as it is now: its own line, read from the page.
+  await expect(page.locator("[data-cmd-preview] .cmd-preview__text").first()).not.toBeEmpty();
+  await page.keyboard.press("ArrowDown");
+  await expect(preview).toHaveText(await last()); // the preview follows the highlight
+  await expect(page.locator(".cmd-footer .cmd-footer-hint")).toHaveCount(4);
+
+  await page.keyboard.press("Tab");
+  await expect(page.locator("[data-cmd-kind]")).toHaveText("Go to");
+  await expect(groups).toHaveText(["Go to"]);
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.locator("[data-cmd-kind]")).toHaveText("All");
+  await page.locator("[data-cmd-kind]").click(); // the same filter without a Tab key
+  await expect(groups).toHaveText(["Go to"]);
+  await page.keyboard.press("Shift+Tab");
+
+  await page.locator(".cmd-input").fill("clear the page cache");
+  await expect(active).toContainText("Clear the page cache");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#cmd-backdrop")).toBeHidden();
+  await expect(page.locator(".toast--ok").last()).toBeVisible();
+});
+
 test("the command bar is operated by keyboard alone", async ({ page }) => {
   await openConsole(page);
   await page.keyboard.press("Control+k");
