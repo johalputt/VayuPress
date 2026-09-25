@@ -5927,7 +5927,7 @@
 .vp-os[data-ui="still-air"] .stat-card::after { display: none; animation: none; content: none; }
 .vp-os[data-ui="still-air"] .stat-card:hover { transform: none; box-shadow: none; border-color: transparent; }
 .vp-os[data-ui="still-air"] .stat-card__value { order: -1; font: 600 28px/34px var(--font-ui); letter-spacing: -0.015em; color: var(--text-1); font-variant-numeric: tabular-nums; }
-.vp-os[data-ui="still-air"] .stat-card__value--sm { font: 600 20px/28px var(--font-ui); }
+.vp-os[data-ui="still-air"] .stat-card__value--sm { font: 600 20px/28px var(--font-ui); overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] .stat-card__label { font: var(--type-small); color: var(--text-3); text-transform: none; letter-spacing: 0; }
 .vp-os[data-ui="still-air"] .stat-card__note,
 .vp-os[data-ui="still-air"] .stat-card__bottom { font: var(--type-meta); color: var(--text-3); }
@@ -6744,3 +6744,41 @@
   .vp-os[data-ui="still-air"] .sa-appside.is-searching .sa-find { flex: 1 0 100%; }
 }
 .vp-os[data-ui="still-air"] .sa-appside.is-searching > :is(.sa-appside__item, .sa-appside__group) { display: none; }
+
+/* ── Calm pages ─────────────────────────────────────────────────────────
+   A page says what is and what to do. Why it works that way folds into
+   one "How this works" line (ui.Explain), and a sentence of help sits
+   behind an info mark (ui.Tip). */
+.vp-os[data-ui="still-air"] .sa-explain { margin-top: var(--space-4); }
+.vp-os[data-ui="still-air"] .sa-explain__sum {
+  display: inline-flex; align-items: center; gap: var(--space-2); list-style: none; cursor: pointer;
+  font: var(--type-small); color: var(--text-3); border-radius: var(--radius-small);
+}
+.vp-os[data-ui="still-air"] .sa-explain__sum::-webkit-details-marker { display: none; }
+.vp-os[data-ui="still-air"] .sa-explain__sum:hover,
+.vp-os[data-ui="still-air"] .sa-explain[open] > .sa-explain__sum { color: var(--text-2); }
+.vp-os[data-ui="still-air"] .sa-explain__sum:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.vp-os[data-ui="still-air"] .sa-explain__sum .sa-ico { width: 14px; height: 14px; }
+.vp-os[data-ui="still-air"] .sa-explain__body {
+  margin-top: var(--space-3); padding-left: var(--space-4); border-left: 2px solid var(--border-1);
+  font: var(--type-small); color: var(--text-2); max-width: 68ch;
+}
+.vp-os[data-ui="still-air"] .sa-explain__body > * + * { margin-top: var(--space-3); }
+.vp-os[data-ui="still-air"] .sa-tip {
+  position: relative; display: inline-flex; vertical-align: middle; margin-left: var(--space-2); padding: 0;
+  border: 0; background: none; color: var(--text-3); cursor: help; border-radius: 50%;
+}
+.vp-os[data-ui="still-air"] .sa-tip .sa-ico { width: 14px; height: 14px; }
+.vp-os[data-ui="still-air"] .sa-tip:hover, .vp-os[data-ui="still-air"] .sa-tip:focus { color: var(--text-1); outline: none; }
+.vp-os[data-ui="still-air"] .sa-tip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.vp-os[data-ui="still-air"] .sa-tip__pop {
+  position: absolute; z-index: 40; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%);
+  width: max-content; max-width: min(280px, 70vw); padding: 8px 10px; white-space: normal; text-align: left;
+  font: var(--type-small); color: var(--text-1); background: var(--surface-overlay);
+  border: 1px solid var(--border-2); border-radius: var(--radius-control); box-shadow: var(--shadow-4);
+  pointer-events: none;
+  /* Out of layout until asked for: a hidden box near the right edge still
+     widened the page on a phone. */
+  display: none;
+}
+.vp-os[data-ui="still-air"] .sa-tip:is(:hover, :focus) .sa-tip__pop { display: block; }

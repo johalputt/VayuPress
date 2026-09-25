@@ -34,6 +34,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/totp"
+	"github.com/johalputt/vayupress/internal/ui"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
@@ -1697,17 +1698,17 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	// VayuPress's own official mobile client. Plain external links only —
 	// CSP-safe (no third-party assets are loaded).
 	body.WriteString(`<div class="card"><div class="card-title">` + saIcon("phone") + ` VayuMail — the official mobile app</div>`)
-	body.WriteString(`<p class="text-sm">The easiest way to use your mailboxes on the go. <strong>VayuMail Mobile</strong> is VayuPress's own open-source app — connecting it takes about 30 seconds:</p>`)
 	body.WriteString(`<ol class="text-sm">` +
-		`<li><strong>Install the app</strong> (links below).</li>` +
-		`<li><strong>Enter your email address and an app password</strong> — <a href="#vm-apppw-card">create one below</a>.</li>` +
-		`<li>Done. The app <strong>auto-discovers every server setting</strong> from <span class="mono">/.well-known/vayumail/autoconfig.json</span> and <strong>auto-syncs PGP keys via WKD</strong>, so your mail stays end-to-end encrypted on your phone — no host, port or key typing.</li>` +
+		`<li>Install the app.</li>` +
+		`<li>Sign in with your address and an <a href="#vm-apppw-card">app password</a>.</li>` +
+		`<li>It fills in every server setting and syncs PGP keys itself.` +
+		string(ui.Tip("VayuMail Mobile is VayuPress's own open-source app. It reads every server setting from /.well-known/vayumail/autoconfig.json and syncs PGP keys through WKD, so your mail stays end-to-end encrypted on your phone with no host, port or key typing.")) + `</li>` +
 		`</ol>`)
 	body.WriteString(`<div class="vm-row mt-1">` +
 		`<a class="btn btn--primary btn--sm" href="https://github.com/johalputt/VayuMail-Mobile/releases" target="_blank" rel="noopener noreferrer">Download app ↗</a>` +
 		`<a class="btn btn--ghost btn--sm" href="https://github.com/johalputt/VayuMail-Mobile" target="_blank" rel="noopener noreferrer">Source ↗</a>` +
 		`</div>`)
-	body.WriteString(`<p class="muted text-xs mt-2">Prefer another client? Any standard mail app (Apple Mail, the Gmail app, Outlook, Thunderbird) also connects using the manual settings below. With the trusted certificate active there is no security warning to accept.</p>`)
+	body.WriteString(`<p class="muted text-xs mt-2">Any other mail app connects with the settings below.</p>`)
 	body.WriteString(`</div>`)
 
 	// ── App passwords — the credential the mobile app signs in with ──────────
@@ -1720,8 +1721,8 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	// from a per-domain autoconfig XML: the user types only their email address
 	// and password, and the client fills in IMAP/SMTP host, ports and security.
 	body.WriteString(`<div class="card"><div class="card-title">Instant setup — no manual server entry</div>`)
-	body.WriteString(`<p class="text-sm">The VayuMail app and most standard clients <strong>auto-configure</strong> from just your email address: choose <em>Add account</em>, enter your <span class="mono">you@` + html.EscapeString(mc.Domain) + `</span> address and mailbox password, and every server setting is filled in for you — no host/port typing.</p>`)
-	body.WriteString(`<p class="muted text-xs">Published at <span class="mono">https://` + html.EscapeString(mc.Domain) + `/.well-known/autoconfig/mail/config-v1.1.xml</span> and <span class="mono">/.well-known/vayumail/autoconfig.json</span> (the VayuMail app reads the latter). If a client asks, the incoming server is <span class="mono">` + hHost + `</span> (IMAP ` + imapsPort + ` SSL) and outgoing is <span class="mono">` + hHost + `</span> (SMTP ` + subPort + ` STARTTLS).</p>`)
+	body.WriteString(`<p class="text-sm">Choose <em>Add account</em>, enter your <span class="mono">you@` + html.EscapeString(mc.Domain) + `</span> address and password, and every server setting fills in.` +
+		string(ui.Tip("Published at https://"+mc.Domain+"/.well-known/autoconfig/mail/config-v1.1.xml and /.well-known/vayumail/autoconfig.json (the VayuMail app reads the latter). If a client asks, the incoming server is "+host+" (IMAP "+imapsPort+" SSL) and outgoing is "+host+" (SMTP "+subPort+" STARTTLS).")) + `</p>`)
 	body.WriteString(`</div>`)
 
 	// ── Recommended settings ─────────────────────────────────────────────────
@@ -1734,7 +1735,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<tr><th>Username</th><td colspan="2">your full email address (e.g. <span class="mono">you@` + html.EscapeString(mc.Domain) + `</span>)</td></tr>`)
 	body.WriteString(`<tr><th>Password</th><td colspan="2">an <a href="#vm-apppw-card">app password</a> (recommended for devices) or your mailbox password (set under <a href="/os/vayumail/accounts">Accounts</a>)</td></tr>`)
 	body.WriteString(`</tbody></table></div>`)
-	body.WriteString(`<p class="muted text-sm">IMAP keeps mail in sync across all your devices; POP3 downloads to a single device. Prefer the SSL ports where your app supports them.</p></div>`)
+	body.WriteString(`<p class="muted text-sm">IMAP syncs every device; POP3 downloads to one.` + string(ui.Tip("Prefer the SSL ports where your app supports them.")) + `</p></div>`)
 
 	// ── Per-mailbox quick setup ──────────────────────────────────────────────
 	var emails []string
@@ -1751,7 +1752,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body.WriteString(`<div class="card"><div class="card-title">Per-mailbox setup</div>`)
-	body.WriteString(`<p class="muted text-sm">Use the email address as the <strong>username</strong> for all three protocols; the password is that mailbox's own password.</p>`)
+	body.WriteString(`<p class="muted text-sm">The username is the full address; the password is the mailbox's own.</p>`)
 	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox (username)</th><th>IMAP</th><th>POP3</th><th>SMTP (send)</th></tr></thead><tbody>`)
 	if len(emails) == 0 {
 		body.WriteString(`<tr><td colspan="4" class="muted">No active mailboxes yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>.</td></tr>`)
@@ -2273,7 +2274,8 @@ func (a *App) vayuAppPasswordsCard(r *http.Request) string {
 	post := ` hx-target="#vm-apppw-card" hx-swap="innerHTML"`
 	var b strings.Builder
 	b.WriteString(`<div class="card"><div class="card-title">App passwords</div>`)
-	b.WriteString(`<p class="text-sm">An <strong>app password</strong> is a sign-in credential for one device — the VayuMail app, or any IMAP/SMTP/POP3 client. It is <strong>shown once</strong> at creation, stored only as an Argon2id hash, and can be revoked here at any time without changing the mailbox password. With <span class="mono">VAYUMAIL_2FA_ENFORCE</span> on, mail apps on 2FA-protected mailboxes <em>must</em> use one.</p>`)
+	b.WriteString(`<p class="text-sm">A sign-in for one device, shown once and revocable here.` +
+		string(ui.Tip("For the VayuMail app or any IMAP, SMTP or POP3 client. It is stored only as an Argon2id hash and can be revoked without changing the mailbox password. With VAYUMAIL_2FA_ENFORCE on, mail apps on 2FA-protected mailboxes must use one.")) + `</p>`)
 
 	if len(emails) == 0 {
 		b.WriteString(`<p class="muted">No active mailboxes yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>.</p></div>`)
@@ -2464,7 +2466,8 @@ func (a *App) vayuDevicesCard(ctx context.Context) string {
 		}
 		b.WriteString(`<div class="vm-attention" role="status"><strong>` + strconv.Itoa(pending) + `</strong> ` + noun + ` awaiting approval — review and Approve or Block below.</div>`)
 	}
-	b.WriteString(`<p class="text-sm">A <strong>new device</strong> that signs into VayuMail registers itself here and starts <strong>pending</strong>: it cannot sync any mail — even with the correct password — until you approve it. With approval required, the mailbox password alone never syncs mail over IMAP/POP3/SMTP, so a stolen password is useless to an attacker's device.</p>`)
+	b.WriteString(`<p class="text-sm">A <strong>new device</strong> waits here for your approval before it syncs any mail.` +
+		string(ui.Tip("It cannot sync mail even with the correct password until you approve it. With approval required, the mailbox password alone never syncs mail over IMAP, POP3 or SMTP, so a stolen password is useless to an attacker's device.")) + `</p>`)
 
 	// Registered devices — pending first (they need action).
 	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Device</th><th>Platform</th><th>Status</th><th>Registered</th><th>Last used</th><th></th></tr></thead><tbody>`)
@@ -2491,7 +2494,8 @@ func (a *App) vayuDevicesCard(ctx context.Context) string {
 	// Per-mailbox enforcement toggle. Turning it OFF restores password sign-in
 	// on the mail protocols for that mailbox (devices are auto-approved).
 	b.WriteString(`<div class="card-title mt-2">Require device approval</div>`)
-	b.WriteString(`<p class="muted text-sm">When required (recommended), only approved devices sync mail; the mailbox password still signs into the web console and registers new devices. Turning it off lets the mailbox password sign in from any mail app, unapproved.</p>`)
+	b.WriteString(`<p class="muted text-sm">Recommended on.` +
+		string(ui.Tip("When required, only approved devices sync mail; the mailbox password still signs into the web console and registers new devices. Turning it off lets the mailbox password sign in from any mail app, unapproved.")) + `</p>`)
 	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Device approval</th><th></th></tr></thead><tbody>`)
 	if len(accs) == 0 {
 		b.WriteString(`<tr><td colspan="3" class="muted">No mail accounts yet.</td></tr>`)

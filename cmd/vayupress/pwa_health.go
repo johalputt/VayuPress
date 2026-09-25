@@ -36,6 +36,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // captureWriter records a handler's response so a check can inspect what this
@@ -271,18 +272,14 @@ func (a *App) pwaHealthCardHTML(r *http.Request, nonce string) string {
 	// edge in front of it intercepting the manifest. Passing here means the origin
 	// is right, and the browser half below is what settles it.
 	chip := monChip(failed == 0, "Origin OK", strconv.Itoa(failed)+" failing")
-	body := `<p class="text-sm muted mb-4">Installing this site should produce a real app that survives a
-restart — on Android, a generated package rather than a launcher shortcut. Nothing in the install
-flow tells you which one you got, so these are the requirements, checked against what this instance
-actually serves.</p>` + rows +
+	body := `<p class="text-sm muted mb-4">Whether installing this site gives a real app rather than a shortcut.` +
+		string(ui.Tip("On Android, a real app is a generated package, not a launcher shortcut, and survives a restart. Nothing in the install flow tells you which one you got, so these are the requirements, checked against what this instance actually serves.")) + `</p>` + rows +
 		`<div class="pwa-browser" data-pwa-probe>
   <div class="section-head"><span class="section-head__title">From this browser</span>
     <span class="section-head__hint">Only the browser can answer these</span></div>
   <div class="pwa-probe-rows" data-pwa-probe-rows data-pwa-build="` + html.EscapeString(Version) + `"><span class="muted text-sm">Checking…</span></div>
 </div>
-<p class="text-sm muted mt-4"><strong>Already have the icon on your home screen?</strong> A shortcut
-cannot turn itself into an app. Remove it and add it again — then confirm it appears in Android's
-full app list, not only on the home screen.</p>
+<p class="text-sm muted mt-4">Installed before these passed? Remove the icon and add it again.` + string(ui.Tip("A shortcut cannot turn itself into an app. After adding it again, confirm it appears in Android's full app list, not only on the home screen.")) + `</p>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-pwa.js?v=` + assetVer("js/admin-os-pwa.js") + `"></script>`
 
 	// Always expanded. A diagnostic that hides itself when the server-side checks

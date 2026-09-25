@@ -76,12 +76,14 @@ func assertHouseStyle(t *testing.T, page string, want houseStyle) {
 		if !strings.Contains(page, `class="mon-stack"`) {
 			t.Errorf("%s: the bands are not in a mon-stack, so the page is a flat scroll", want.Name)
 		}
-		opens := strings.Count(page, `<details class="mon-acc"`)
-		closes := strings.Count(page, "</details>")
-		if opens < want.MinBands {
+		bands := strings.Count(page, `<details class="mon-acc"`)
+		if bands < want.MinBands {
 			t.Errorf("%s: %d collapsible bands, want at least %d — every section should collapse",
-				want.Name, opens, want.MinBands)
+				want.Name, bands, want.MinBands)
 		}
+		// Every <details> balances, the bands and the "How this works" folds
+		// inside them alike.
+		opens, closes := strings.Count(page, "<details"), strings.Count(page, "</details>")
 		if opens != closes {
 			t.Errorf("%s: %d <details> opened, %d closed — the page structure is broken",
 				want.Name, opens, closes)

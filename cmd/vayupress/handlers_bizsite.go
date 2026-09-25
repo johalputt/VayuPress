@@ -32,6 +32,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/sitedoc"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // bizSettings returns the current mode, active template and content.
@@ -231,7 +232,7 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	// Hosting mode — explicit, never changed by updates.
 	var hostBody strings.Builder
 	b2 := &hostBody
-	b2.WriteString(`<p class="text-sm muted">Your current choice is kept forever across updates — nothing changes unless you change it here.</p>` +
+	b2.WriteString(`<p class="text-sm muted">Updates never change this.</p>` +
 		`<label class="vb-mode"><input type="radio" name="biz-mode" value="blog"`)
 	if mode != "business" {
 		b2.WriteString(` checked`)
@@ -241,18 +242,21 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	if mode == "business" {
 		b2.WriteString(` checked`)
 	}
-	b2.WriteString(`> <strong>Business website at the root</strong> <span class="muted text-sm">— ` + he(domain) + ` is your business site; the blog lives at blog.` + he(domain) + `</span></label>`)
+	b2.WriteString(`> <strong>Business website at the root</strong> <span class="muted text-sm">— the blog moves to blog.` + he(domain) + `</span></label>`)
 	b2.WriteString(`<label class="vb-mode"><input type="radio" name="biz-mode" value="business_subpath"`)
 	if mode == "business_subpath" {
 		b2.WriteString(` checked`)
 	}
-	b2.WriteString(`> <strong>Website at the root, blog at /blog</strong> <span class="muted text-sm">— ` + he(domain) + ` is your business site, the blog homepage is ` + he(domain) + `/blog, and every existing post keeps its ` + he(domain) + `/slug URL. One domain, no subdomain or extra certificate needed.</span></label>`)
+	b2.WriteString(`> <strong>Website at the root, blog at /blog</strong> <span class="muted text-sm">— posts keep their URLs</span>` +
+		string(ui.Tip(domain+" is your business site, the blog homepage is "+domain+"/blog, and every existing post keeps its "+domain+"/slug URL. One domain, no subdomain or extra certificate needed.")) + `</label>`)
 	b2.WriteString(`<label class="vb-mode"><input type="radio" name="biz-mode" value="custom"`)
 	if mode == "custom" {
 		b2.WriteString(` checked`)
 	}
-	b2.WriteString(`> <strong>Custom uploaded website</strong> <span class="muted text-sm">— serve your own static site (built by hand or with AI, uploaded below) at ` + he(domain) + `; the blog stays at ` + he(domain) + `/blog and posts keep their ` + he(domain) + `/slug URLs</span></label>`)
-	b2.WriteString(`<p class="muted text-xs mt-2">The subdomain option points <span class="mono">` + he(domain) + `</span>, <span class="mono">blog.` + he(domain) + `</span> and <span class="mono">mail.` + he(domain) + `</span> at this server; the installer issues and renews Let&#39;s Encrypt certificates for all three automatically. The <span class="mono">/blog</span> and custom options need only <span class="mono">` + he(domain) + `</span>.</p>`)
+	b2.WriteString(`> <strong>Custom uploaded website</strong> <span class="muted text-sm">— your own static site, uploaded below</span>` +
+		string(ui.Tip("Serve your own static site, built by hand or with AI, at "+domain+"; the blog stays at "+domain+"/blog and posts keep their "+domain+"/slug URLs.")) + `</label>`)
+	b2.WriteString(`<p class="muted text-xs mt-2">Certificates are issued and renewed for you.` +
+		string(ui.Tip("The subdomain option points "+domain+", blog."+domain+" and mail."+domain+" at this server; the installer issues and renews Let's Encrypt certificates for all three. The /blog and custom options need only "+domain+".")) + `</p>`)
 	b.WriteString(monAcc(saIcon("globe"), "What does "+domain+" show?", "Blog, business site, /blog or your own upload",
 		`<span class="mon-chip mon-chip--on">● `+he(bizModeLabel(mode))+`</span>`, true, hostBody.String()))
 	b.WriteString(`</div>`)

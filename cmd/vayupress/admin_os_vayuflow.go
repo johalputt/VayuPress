@@ -27,6 +27,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/safefetch"
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayuflow"
 	"github.com/johalputt/vayupress/internal/vayuflow/flowaudit"
 )
@@ -245,12 +246,12 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 		`<a class="btn btn--ghost btn--sm" href="/os/adr">ADR-0151</a>` +
 		`<span id="flow-status" class="text-sm muted" role="status" aria-live="polite"></span>` +
 		`</div></div>`)
-	b.WriteString(`<p class="page-sub">Automations this install runs on its own: when something ` +
-		`happens, if a condition holds, do a bounded piece of work. Every flow is armed by a named ` +
-		`operator, spends against ceilings it declared before it could be saved, and records what it ` +
-		`did. <b>A new flow starts in dry-run</b>: the whole flow executes and every effect is ` +
-		`captured and refused at the capability boundary, so what you read is what a live run would ` +
-		`do.</p>`)
+	b.WriteString(`<p class="page-sub">When something happens and a condition holds, do a bounded ` +
+		`piece of work. A new flow starts in dry-run.</p>` +
+		string(ui.Explain(`<p>Every flow is armed by a named operator, spends against ceilings it `+
+			`declared before it could be saved, and records what it did. <b>A new flow starts in `+
+			`dry-run</b>: the whole flow executes and every effect is captured and refused at the `+
+			`capability boundary, so what you read is what a live run would do.</p>`)))
 
 	armed := 0
 	for _, f := range flows {
@@ -287,10 +288,8 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 	// ── What can be automated ────────────────────────────────────────────────
 	b.WriteString(`<div class="section-head"><span class="section-head__title">What a flow may do</span>` +
 		`<span class="section-head__hint">The capability registry, in full</span></div>`)
-	b.WriteString(`<div class="card"><p class="text-sm muted">Every action an automation can take is ` +
-		`registered with what it touches, the strongest write it may perform, what it does in a Tor ` +
-		`Space, whether it can be undone, and the role its owner must still hold. An action with no ` +
-		`registration cannot be invoked at all.</p>`)
+	b.WriteString(`<div class="card"><p class="text-sm muted">An action that is not listed here cannot be invoked.` +
+		string(ui.Tip("Every action an automation can take is registered with what it touches, the strongest write it may perform, what it does in a Tor Space, whether it can be undone, and the role its owner must still hold.")) + `</p>`)
 	b.WriteString(`<table class="table"><thead><tr><th>Action</th><th>Writes</th><th>Tor</th>` +
 		`<th>Undo</th><th>Owner must be</th></tr></thead><tbody>`)
 	for _, c := range vayuflow.Capabilities() {
@@ -301,17 +300,14 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 			`<td>` + esc(c.MinRole) + `</td></tr>`)
 	}
 	b.WriteString(`</tbody></table>`)
-	b.WriteString(`<p class="text-sm muted">Settings, users, keys, domains, protection tiers and ` +
-		`payment configuration are deliberately absent and cannot be automated in this version.</p>`)
+	b.WriteString(`<p class="text-sm muted">Settings, users, keys, domains, protection and payments cannot be automated.</p>`)
 	b.WriteString(`</div>`)
 
 	// ── Flows ────────────────────────────────────────────────────────────────
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Flows</span>` +
 		`<span class="section-head__hint">Create, arm, inspect &amp; run</span></div>`)
 	if len(flows) == 0 {
-		b.WriteString(`<div class="card"><p class="text-sm muted">No automations are defined yet. ` +
-			`Build one below — it starts switched off and in dry-run, and stays that way until ` +
-			`you decide otherwise.</p></div>`)
+		b.WriteString(`<div class="card"><p class="text-sm muted">No automations yet. One you build below starts off and in dry-run.</p></div>`)
 	}
 	b.WriteString(`<div class="mon-stack">` +
 		monAcc(saIcon("plus"), "Create a flow", "Starts switched off, in dry-run", "", len(flows) == 0,
@@ -619,10 +615,8 @@ func flowEditorCard() string {
 		`<input class="input" id="ff-condval" type="text" placeholder="release-notes"></div>`)
 
 	b.WriteString(`<div class="settings-block-title">What it does</div>`)
-	b.WriteString(`<p class="text-sm muted">Up to four steps, in order. Each one names an action from ` +
-		`the registry above; leave a row blank to stop there. Parameters are ` +
-		`<span class="mono">key=value</span>, one per line. A parameter whose whole value is ` +
-		`<span class="mono">$prev</span> receives the previous step's output.</p>`)
+	b.WriteString(`<p class="text-sm muted">Up to four steps, in order; a blank row stops there.` +
+		string(ui.Tip("Each step names an action from the registry above. Parameters are key=value, one per line. A parameter whose whole value is $prev receives the previous step's output.")) + `</p>`)
 	for i := 1; i <= 4; i++ {
 		n := strconv.Itoa(i)
 		b.WriteString(`<div class="field"><label class="field-label" for="ff-act` + n + `">Step ` + n + `</label>` +
@@ -636,8 +630,8 @@ func flowEditorCard() string {
 	}
 
 	b.WriteString(`<div class="settings-block-title">What it may spend</div>`)
-	b.WriteString(`<p class="text-sm muted">Every ceiling is required and there is no way to write ` +
-		`"unlimited". The run trail shows what was spent against what was allowed.</p>`)
+	b.WriteString(`<p class="text-sm muted">Every ceiling is required; nothing is unlimited.` +
+		string(ui.Tip("The run trail shows what was spent against what was allowed.")) + `</p>`)
 	for _, f := range []struct{ id, label, def string }{
 		{"ff-bsteps", "Steps per run", "4"},
 		{"ff-bruns", "Runs per hour", "2"},
@@ -653,9 +647,8 @@ func flowEditorCard() string {
 		`<button type="button" class="btn btn--primary btn--sm" id="ff-save">Save flow</button>` +
 		`<button type="button" class="btn btn--ghost btn--sm" id="ff-reset">Clear the form</button>` +
 		`</div>`)
-	b.WriteString(`<p class="text-sm muted">A new flow is stored switched off and in dry-run. ` +
-		`Neither this form nor an edit ever changes those — arming is its own button, with its own ` +
-		`entry in the audit trail.</p>`)
+	b.WriteString(`<p class="text-sm muted">Saved off and in dry-run; arming is its own button.` +
+		string(ui.Tip("Neither this form nor an edit ever changes those. Arming has its own entry in the audit trail.")) + `</p>`)
 	b.WriteString(`</div>`)
 	return b.String()
 }

@@ -142,4 +142,13 @@
     });
   }
 
+
+  /* ── Tips (ui.Tip) ──────────────────────────────────────────────────────
+     A tip opens on hover or focus by CSS alone; Escape puts it away. */
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.activeElement && document.activeElement.classList.contains('sa-tip')) {
+      document.activeElement.blur();
+    }
+  });
+
 })();

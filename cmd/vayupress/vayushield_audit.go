@@ -33,6 +33,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/shieldaudit"
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayushield"
 	"github.com/johalputt/vayupress/internal/vayushield/inspect"
 )
@@ -338,7 +339,6 @@ func (a *App) shieldAuditBody(r *http.Request) string {
 
 	var b strings.Builder
 	b.WriteString(vsRefresh("audit", "vs-body-audit", ""))
-	b.WriteString(`<p class="muted text-sm">What this install is <strong>actually enforcing</strong>, as distinct from what is switched on. Rows about the kernel and the edge come from the root agent, which can see them; rows about VayuPress itself are read from the running process. Nothing here probes the site over the network.</p>`)
 
 	// The baseline matters: a perfect install still shows one Fail, because the
 	// volumetric row can never pass. Summarising against zero would report a
@@ -379,10 +379,15 @@ func (a *App) shieldAuditBody(r *http.Request) string {
 			// alone encodes it as a glyph, which is no use to a screen reader, to
 			// a test asserting on the rendered page, or to an operator diffing two
 			// installs.
+			// A row to act on keeps its finding in view; a row that is fine
+			// keeps only its title, with how it was established one tip away.
 			b.WriteString(`<div class="vs-tier" data-status="` + html.EscapeString(want.String()) +
-				`"><div class="vs-tier-head">` + icon[want] + ` ` +
-				html.EscapeString(c.Title) + `</div><p class="muted text-sm">` +
-				html.EscapeString(c.Detail) + `</p></div>`)
+				`"><div class="vs-tier-head">` + icon[want] + ` ` + html.EscapeString(c.Title))
+			if want == shieldaudit.Fail || want == shieldaudit.Warn {
+				b.WriteString(`</div><p class="muted text-sm">` + string(ui.Brief(c.Detail)) + `</p></div>`)
+			} else {
+				b.WriteString(string(ui.Tip(c.Detail)) + `</div></div>`)
+			}
 		}
 	}
 	b.WriteString(`</div>`)
@@ -399,6 +404,7 @@ func (a *App) shieldAuditBody(r *http.Request) string {
 	b.WriteString(`<p class="muted text-xs">` + strconv.Itoa(pass) + ` enforcing · ` +
 		strconv.Itoa(warn) + ` warning · ` + strconv.Itoa(info) + ` informational · ` +
 		failNote + `.</p>`)
+	b.WriteString(string(ui.Explain(`<p>What this install is <strong>actually enforcing</strong>, as distinct from what is switched on. Rows about the kernel and the edge come from the root agent, which can see them; rows about VayuPress itself are read from the running process. Nothing here probes the site over the network.</p>`)))
 	return b.String()
 }
 

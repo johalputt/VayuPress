@@ -138,6 +138,41 @@ func Disclosure(icon HTML, title, sub string, state HTML, open bool, body HTML) 
 		`<span class="mon-acc__chev" aria-hidden="true">` + string(Icon("chev-d")) + `</span></summary><div class="mon-acc__body">` + string(body) + `</div></details>`)
 }
 
+// Explain folds a page's explanation away: one quiet "How this works" line that
+// opens to the text. A console page says what is and what to do; why it works
+// that way is there for whoever asks. Status, and anything the operator must
+// act on, never goes in here. No script: <details>.
+func Explain(body HTML) HTML {
+	return HTML(`<details class="sa-explain"><summary class="sa-explain__sum">` + string(Icon("info")) +
+		`<span>How this works</span></summary><div class="sa-explain__body">` + string(body) + `</div></details>`)
+}
+
+// Tip is one sentence of help behind an info mark, shown on hover or focus (a
+// tap focuses it on a phone). The sentence is also the button's name, so a
+// screen reader hears it without opening anything.
+func Tip(text string) HTML {
+	t := string(Text(text))
+	return HTML(`<button type="button" class="sa-tip" aria-label="` + t + `">` + string(Icon("info")) +
+		`<span class="sa-tip__pop" aria-hidden="true">` + t + `</span></button>`)
+}
+
+// Brief says a status in its first sentence and puts the rest behind a tip.
+// Status text written as a paragraph leads with the finding and follows with
+// how it was established; the finding is what a page shows.
+func Brief(text string) HTML {
+	first, rest := text, ""
+	for i := 0; i+2 < len(text); i++ {
+		if text[i] == '.' && text[i+1] == ' ' && text[i+2] >= 'A' && text[i+2] <= 'Z' {
+			first, rest = text[:i+1], strings.TrimSpace(text[i+2:])
+			break
+		}
+	}
+	if rest == "" {
+		return Text(first)
+	}
+	return Text(first) + Tip(rest)
+}
+
 // Table renders a table with its header row. Cells are trusted markup; a
 // caller puts Text around anything a person typed.
 func Table(headers []string, rows [][]HTML, empty string) HTML {

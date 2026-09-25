@@ -19,6 +19,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
 
@@ -501,7 +502,8 @@ func (a *App) handleOSDNS(w http.ResponseWriter, r *http.Request) {
 	primary := strings.TrimSpace(config.Cfg.Domain)
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Domains &amp; DNS</h1></div>`)
-	body.WriteString(`<p class="page-sub">Every record this install needs — across <strong>every domain it hosts</strong> — and whether it is actually pointed here. Each subdomain unlocks one product and is optional, but when one is missing it fails <strong>quietly</strong>, so this page checks rather than assumes.</p>`)
+	body.WriteString(`<p class="page-sub">Every record this install needs, across every domain it hosts, and whether it is pointed here.` +
+		string(ui.Tip("Each subdomain unlocks one product and is optional, but a missing one fails quietly, so this page checks rather than assumes.")) + `</p>`)
 
 	if primary == "" || primary == "localhost" {
 		body.WriteString(`<div class="empty-state">No domain is configured yet. Set <code>DOMAIN</code> and restart to manage DNS here.</div>`)
@@ -572,17 +574,18 @@ func (a *App) handleOSDNS(w http.ResponseWriter, r *http.Request) {
 	for _, v := range views {
 		body.WriteString(dnsDomainSection(v))
 	}
-	body.WriteString(`<p class="text-xs muted"><strong>Pointed here</strong> — resolves to an address this server actually holds. <strong>Resolving</strong> — resolves, but this server cannot prove it is the target; normal behind NAT, and not a fault. <strong>Behind the proxy</strong> — the record resolves to the same front as your apex, so a bot challenge sits in front of a client that cannot answer one; switch it to DNS only. <strong>Not checked</strong> — the lookup did not finish in time, so nothing is claimed either way.</p>
-<p class="text-xs muted">Your apex and <code>www</code> being proxied is correct and expected — only the direct hosts below them need to bypass it. <code>talk</code>, <code>mcp</code> and <code>api</code> are install-wide and live on the primary only.</p></div>`)
+	body.WriteString(string(ui.Explain(`<p><strong>Pointed here</strong> — resolves to an address this server actually holds. <strong>Resolving</strong> — resolves, but this server cannot prove it is the target; normal behind NAT, and not a fault. <strong>Behind the proxy</strong> — the record resolves to the same front as your apex, so a bot challenge sits in front of a client that cannot answer one; switch it to DNS only. <strong>Not checked</strong> — the lookup did not finish in time, so nothing is claimed either way.</p>
+<p>Your apex and <code>www</code> being proxied is correct and expected — only the direct hosts below them need to bypass it. <code>talk</code>, <code>mcp</code> and <code>api</code> are install-wide and live on the primary only.</p>`)) + `</div>`)
 
 	// Why the proxy matters, stated once rather than repeated per row.
 	body.WriteString(`<div class="section-head"><span class="section-head__title">Why “CDN proxy off”</span><span class="section-head__hint">The field most often set wrong</span></div>`)
-	body.WriteString(`<div class="card"><p class="text-sm muted">Every direct service above is <strong>machine-to-machine</strong>. A mail server, GnuPG, a CI job and an MCP client have no JavaScript engine, so a proxy that presents a bot challenge — a “checking your browser” page a human passes without noticing — stops them dead. In Cloudflare this is the grey cloud, labelled <strong>DNS only</strong>. Your apex and <code>www</code> keep full protection for human traffic; only these direct hosts bypass it, and each vhost is deliberately narrow.</p></div>`)
+	body.WriteString(`<div class="card"><p class="text-sm">Direct hosts must be <strong>DNS only</strong>: a machine cannot pass a bot challenge.</p>` + string(ui.Explain(`<p>Every direct service above is <strong>machine-to-machine</strong>. A mail server, GnuPG, a CI job and an MCP client have no JavaScript engine, so a proxy that presents a bot challenge — a “checking your browser” page a human passes without noticing — stops them dead. In Cloudflare this is the grey cloud, labelled <strong>DNS only</strong>. Your apex and <code>www</code> keep full protection for human traffic; only these direct hosts bypass it, and each vhost is deliberately narrow.</p>`)) + `</div>`)
 
 	// Live WKD URLs, so the operator can see exactly what a PGP client asks for.
 	if wkd := vpgp.WKDURL("you@" + primary); wkd != "" {
 		body.WriteString(`<div class="section-head"><span class="section-head__title">PGP key discovery</span><span class="section-head__hint">What a correspondent's client actually requests</span></div>`)
-		body.WriteString(`<div class="card"><p class="text-sm muted">Key discovery is <strong>per domain</strong>: a key for an address at one domain is only findable at that domain's own <code>openpgpkey</code> host, with its own certificate. Provisioning below covers every domain listed above. Per-mailbox URLs are under <a href="/os/vayumail/pgp">VayuPGP</a>. Verify any of them from any machine with:</p>` +
+		body.WriteString(`<div class="card"><p class="text-sm muted">Verify from any machine with:` +
+			string(ui.Tip("Key discovery is per domain: a key for an address at one domain is only findable at that domain's own openpgpkey host, with its own certificate. Provisioning below covers every domain listed above. Per-mailbox URLs are under VayuPGP.")) + `</p>` +
 			`<p class="mono text-xs">gpg --locate-keys you@` + html.EscapeString(primary) + `</p></div>`)
 	}
 

@@ -53,7 +53,7 @@ function lintPage() {
   document.querySelectorAll(".section-head").forEach((h) => {
     const title = (h.querySelector(".section-head__title") || h).textContent.trim().toLowerCase();
     const next = h.nextElementSibling;
-    const inner = next && next.querySelector(".card-title, .mon-acc__title, h2, h3");
+    const inner = next && next.querySelector(".card-title, .settings-block-title, .mon-acc__title, h2, h3");
     if (inner && inner.textContent.trim().toLowerCase() === title) out.push(`heading "${title}" repeated by the card below it`);
   });
   main.querySelectorAll("*").forEach((e) => {
@@ -75,6 +75,23 @@ function lintPage() {
     const r = s.getBoundingClientRect();
     if (s.offsetParent !== null && (r.width > 64 || r.height > 64)) out.push(`icon drawn at ${Math.round(r.width)}px`);
   });
+  // Explanation on show. A page says what is and what to do; the why folds
+  // into "How this works" (ui.Explain) or a tip (ui.Tip). Only the outermost
+  // block is counted, so a sentence is not counted twice. A theme's or a
+  // plugin's own description in a catalogue is content, not explanation.
+  const PROSE = "p, li, .page-sub, .card-sub, .text-sm, .text-xs, .muted, .hint, small";
+  const FOLDED = ".sa-tip, details:not([open]) > :not(summary), code, pre";
+  const said = (e) => { // the text a reader sees: not a tip's, not a fold's, not code
+    const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+    let t = "", x;
+    while ((x = w.nextNode())) if (!x.parentElement.closest(FOLDED)) t += x.nodeValue;
+    return t.replace(/\s+/g, " ").trim();
+  };
+  const prose = [...main.querySelectorAll(PROSE)].filter((e) =>
+    e.offsetParent && !e.parentElement.closest(PROSE) && !e.closest(FOLDED) &&
+    !e.closest("table, .sa-facts, .store-card, .theme-card") && said(e).length >= 60);
+  const shown = prose.reduce((n, e) => n + said(e).length, 0);
+  if (shown > 900) out.push(`${shown} characters of explanation on show (limit 900): fold the why into How this works`);
   return [...new Set(out)];
 }
 

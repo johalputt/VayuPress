@@ -933,7 +933,7 @@ func (a *App) shieldAegisBody() string {
 	}
 	var b strings.Builder
 	b.WriteString(`<div class="vs-title">Aegis — sovereign defense layers</div>`)
-	b.WriteString(`<p class="muted text-sm vs-lead">Every request runs this gauntlet, cheapest first. All layers are automatic — they observe continuously, act only under genuine pressure, and stand down on their own.</p>`)
+	b.WriteString(`<p class="muted text-sm vs-lead">Every request runs these layers, cheapest first; each acts only under real pressure.</p>`)
 	b.WriteString(`<div class="vs-aegis">`)
 
 	// L0 — admin sovereignty lane.
@@ -2153,9 +2153,8 @@ func shieldPageChrome() string {
 		`href="https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0148-multi-node-verdict-sharing.md">Docs</a>` +
 		`<span id="vs-status" role="status" aria-live="polite" class="text-xs muted"></span>` +
 		`</div></div>` +
-		`<p class="page-sub">Enterprise-grade, self-hosted bot protection — verified search &amp; AI ` +
-		`crawlers always pass, real readers are never challenged, and every defense layer is live ` +
-		`below..</p>`
+		`<p class="page-sub">Self-hosted bot protection. Verified search and AI crawlers always pass; ` +
+		`real readers are never challenged.</p>`
 }
 
 // shieldThroughputBand wraps the per-layer counters in their own section.

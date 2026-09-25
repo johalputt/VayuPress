@@ -31,6 +31,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // claudeKeyLabelPrefix marks the keys this page mints, so its stat strip counts
@@ -68,7 +69,8 @@ func osClaudeCodeIntro() string {
     <span id="` + mcpStatusID + `" role="status" aria-live="polite" class="text-xs muted"></span>
   </div>
 </div>
-<p class="text-sm muted mb-4">Connect <strong>Claude Code</strong>, <strong>Claude Desktop</strong> or <strong>claude.ai</strong> to this site and run it by chat — publish and edit posts, build pages, search content, read analytics, switch themes. It goes through <a href="/os/connector">VayuMCP</a>, the Model Context Protocol server this site already serves, so there is nothing to install on either side. <strong>The one-click route needs no key at all</strong>: Claude signs in through this site's own OAuth&nbsp;2.1 server and you approve a scope on screen.</p>
+<p class="page-sub">Run this site by chat from Claude Code, Claude Desktop or claude.ai. The one-click route needs no key.</p>
+` + string(ui.Explain(ui.HTML(`<p>Connect <strong>Claude Code</strong>, <strong>Claude Desktop</strong> or <strong>claude.ai</strong> to this site and run it by chat — publish and edit posts, build pages, search content, read analytics, switch themes. It goes through <a href="/os/connector">VayuMCP</a>, the Model Context Protocol server this site already serves, so there is nothing to install on either side. <strong>The one-click route needs no key at all</strong>: Claude signs in through this site's own OAuth&nbsp;2.1 server and you approve a scope on screen.</p>`))) + `
 
 ` + mcpClientTokenBanner("This is the only time the full key is shown. It has been filled into the Desktop and CLI configurations below — copy the one you need, then store the key somewhere safe. You will not be able to see it again.")
 }
@@ -106,21 +108,21 @@ func osClaudeCodeSetupCards(endpoint, apex string, dedicated bool, blockedHost s
 	case dedicated:
 		hostNote = `<p class="text-sm muted mt-2"><span class="badge badge--ok">dedicated host</span> This install has a working <code>` +
 			html.EscapeString(strings.TrimSuffix(strings.TrimPrefix(endpoint, "https://"), "/mcp")) +
-			`</code> host, so that is the endpoint offered here rather than <code>` + html.EscapeString(apex) +
-			`</code>. Both reach this same server with the same authentication, but the dedicated host is not proxied — so a bot challenge on your main domain can never sit in front of it.</p>`
+			`</code> is offered instead of <code>` + html.EscapeString(apex) + `</code> because it is not proxied.` +
+			string(ui.Tip("Both reach this same server with the same authentication, but the dedicated host is not proxied, so a bot challenge on your main domain can never sit in front of it.")) + `</p>`
 	case blockedHost != "":
 		hostNote = `<p class="text-sm muted mt-2"><span class="badge badge--warn">blocked</span> <code>` +
-			html.EscapeString(blockedHost) + `</code> exists, but a request to it was answered by <strong>something in front of this server</strong> rather than by VayuPress. Until that host answers directly, the endpoint above stays on your main domain.</p>`
+			html.EscapeString(blockedHost) + `</code> is answered by something in front of this server.` +
+			string(ui.Tip("Until that host answers directly, rather than a bot challenge or firewall answering for it, the endpoint above stays on your main domain.")) + `</p>`
 	}
 
 	oneClick := `<div class="card">
-  <p class="text-sm muted">This needs <strong>no key</strong>. The Connect button lives on <strong>Claude's side</strong>, not on this page — this site runs the OAuth&nbsp;2.1 server it signs into.</p>
-  <p class="text-sm muted mt-2">On <strong>claude.ai</strong> or Claude Desktop open <em>Settings → Connectors → Add custom connector</em>, paste the endpoint below, and click <strong>Connect</strong>. Claude signs you in through this site and shows an <strong>Approve&nbsp;&amp;&nbsp;connect</strong> screen where you choose Full&nbsp;control, Author or Read-only.</p>
+  <p class="text-sm">In Claude, open <em>Settings → Connectors → Add custom connector</em>, paste this endpoint and click <strong>Connect</strong>.` + string(ui.Tip("This needs no key. The Connect button lives on Claude's side; this site runs the OAuth 2.1 server it signs into. Claude signs you in through this site and shows an Approve and connect screen where you choose Full control, Author or Read-only.")) + `</p>
   <div class="ak-token-row">
     <input id="cc-endpoint" class="input font-mono ak-token-input" type="text" readonly value="` + e + `">
     <button type="button" class="btn btn--sm" data-copy="#cc-endpoint">Copy</button>
   </div>` + hostNote + `
-  <p class="field-hint mt-2">Custom connectors on claude.ai may require a paid plan (Pro/Max/Team/Enterprise). The Desktop and CLI routes below remain for clients that use a pasted key. Technical detail: <a href="/docs/adr/ADR-0140-vayu-mcp-oauth" target="_blank" rel="noopener">ADR-0140</a>.</p>
+  <p class="field-hint mt-2">Custom connectors on claude.ai may need a paid plan.` + string(ui.Tip("Pro, Max, Team or Enterprise. The Desktop and CLI routes below remain for clients that use a pasted key.")) + ` <a href="/docs/adr/ADR-0140-vayu-mcp-oauth" target="_blank" rel="noopener">ADR-0140</a></p>
 </div>`
 
 	cliCard := `<div class="card">
@@ -150,21 +152,21 @@ func osClaudeCodeSetupCards(endpoint, apex string, dedicated bool, blockedHost s
 // key model, different default, for a stated reason.
 func osClaudeCodeGrantCard() string {
 	return `<div class="card">
-  <p class="text-sm muted mb-4">Only the Desktop and CLI routes need a key — the one-click route above grants its own scope on Claude's approval screen. You can pause or revoke any grant instantly from the <a href="/os/connector">VayuMCP</a> page, and every action is written to the audit log.</p>
+  <p class="text-sm mb-4">Only the Desktop and CLI routes need a key.` + string(ui.Tip("The one-click route grants its own scope on Claude's approval screen. Any grant can be paused or revoked from the VayuMCP page, and every action is written to the audit log.")) + `</p>
 
   <div class="cx-grant-grid">
     ` + mcpGrantTile(true, "Full control", "Everything", " badge--accent",
-		"A superuser key. Every current and future VayuMCP tool becomes available — posts, pages, media, analytics, settings and more as the toolset grows. This is the \"give Claude the keys to the whole site\" option.",
+		"Every tool, now and as the toolset grows.",
 		"*:*", claudeKeyLabelPrefix+" (full control)", "Grant full control") + `
     ` + mcpGrantTile(false, "Author only", "Posts &amp; pages", "",
-		"Let Claude write, update and organise content — create and edit posts and pages, search and list — but nothing else. A safe default for a writing assistant.",
+		"Write and organise posts and pages; nothing else.",
 		"posts:read,posts:write", claudeKeyLabelPrefix+" (author)", "Grant author access") + `
     ` + mcpGrantTile(false, "Read only", "Look, don't touch", "",
-		"Claude can read posts and pages, search content and read analytics, but cannot change anything. Ideal for analysis, reporting and audits.",
+		"Read posts, pages and analytics; change nothing.",
 		"posts:read,analytics:read", claudeKeyLabelPrefix+" (read-only)", "Grant read-only access") + `
   </div>
 
-  <p class="field-hint mt-2">Need a precise grant? Build a custom scoped key on the <a href="/os/apikeys">API Keys</a> page — the connector honours it exactly.</p>
+  <p class="field-hint mt-2">For a precise grant, build a scoped key on <a href="/os/apikeys">API Keys</a>.</p>
 </div>`
 }
 

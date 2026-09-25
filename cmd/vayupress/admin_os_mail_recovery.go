@@ -23,6 +23,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/seo"
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -208,9 +209,8 @@ func (a *App) recoveryCardHTML(r *http.Request, nonce string, mailboxes []string
 		strconv.Itoa(len(stuck))+" cannot be recovered")
 
 	var b strings.Builder
-	b.WriteString(`<p class="text-sm muted mb-4">A mailbox holder who forgets their password cannot be helped by
-email — the reset link would be delivered to the mailbox they cannot open. Recovery has to be enrolled
-<strong>before</strong> it is needed, so this is where you do it.</p>`)
+	b.WriteString(`<p class="text-sm muted mb-4">Recovery has to be enrolled <strong>before</strong> a password is forgotten.` +
+		string(ui.Tip("A mailbox holder who forgets their password cannot be helped by email: the reset link would be delivered to the mailbox they cannot open.")) + `</p>`)
 
 	// Readiness first: it is the actionable part.
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Readiness</span>

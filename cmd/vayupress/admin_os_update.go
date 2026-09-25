@@ -50,6 +50,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/update"
 )
 
@@ -180,17 +181,17 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 	case !modeOK:
 		banner = `<div class="settings-callout">
     <strong>Updates are paused.</strong>
-    <span class="text-sm muted">The system is in <code>` + html.EscapeString(curMode) + `</code> mode, which blocks changing the binary. Checking for updates and backups still work; updates resume automatically once the system returns to normal.</span>
+    <span class="text-sm muted">The system is in <code>` + html.EscapeString(curMode) + `</code> mode; updates resume on their own when it returns to normal.` + string(ui.Tip("This mode blocks changing the binary. Checking for updates and backups still work.")) + `</span>
   </div>`
 	case hasKey:
 		banner = `<div class="settings-callout">
     <strong>One-click updates are ready.</strong>
-    <span class="text-sm muted">Every release is checked against the signature its build published, and installed only if that signature was made by this project&rsquo;s own release workflow &mdash; so a binary from anywhere else is refused even if it downloads cleanly. You have also pinned a release key, which is required on top. The binary is then swapped atomically and the service restarts. A database backup first is optional (checkbox below).</span>
+    <span class="text-sm muted">Only releases signed by this project install, and your pinned key too.` + string(ui.Tip("Every release is checked against the signature its build published and installed only if that signature was made by this project's own release workflow, so a binary from anywhere else is refused even if it downloads cleanly. Your pinned release key is required on top. The binary is then swapped atomically and the service restarts; a database backup first is optional.")) + `</span>
   </div>`
 	default:
 		banner = `<div class="settings-callout">
     <strong>One-click updates are ready.</strong>
-    <span class="text-sm muted">Every release is checked against the signature its build published, and installed only if that signature was made by this project&rsquo;s own release workflow &mdash; so a binary from anywhere else is refused even if it downloads cleanly. Nothing to configure: this applies to every install. The binary is then swapped atomically and the service restarts. A database backup first is optional (checkbox below).</span>
+    <span class="text-sm muted">Only releases signed by this project install.` + string(ui.Tip("Every release is checked against the signature its build published and installed only if that signature was made by this project's own release workflow, so a binary from anywhere else is refused even if it downloads cleanly. Nothing to configure: this applies to every install. The binary is then swapped atomically and the service restarts; a database backup first is optional.")) + `</span>
   </div>`
 	}
 
@@ -205,7 +206,7 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 	// on that, and those are different decisions.
 	cost := readStartupCost(r.Context(), a.siteSettings, socketActivated)
 	banner += `<div class="settings-callout"><strong>What restarting costs here.</strong> ` +
-		`<span class="text-sm muted">` + html.EscapeString(cost.Describe()) + `</span></div>`
+		`<span class="text-sm muted">` + string(ui.Brief(cost.Describe())) + `</span></div>`
 
 	// If the root agent had to repair this install after a failed update, say so
 	// here — this is the page the operator opens next, and an install that
@@ -245,14 +246,14 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
     <span class="text-sm muted">Current version <strong>v` + html.EscapeString(Version) + `</strong> · mode <strong>` + html.EscapeString(curMode) + `</strong></span>
   </div>
 </div>
-<p class="page-sub">Keep VayuPress current and your data safe — one-click updates that refuse anything not signed by this project, and full, checksummed database backups..</p>
+<p class="page-sub">One-click updates that refuse anything this project did not sign.</p>
 ` + banner + `
 <div class="section-head"><span class="section-head__title">Install an update</span><span class="section-head__hint">Signature checked · auto-backup · atomic swap</span></div>
 <div class="upd-hero" data-update-card>
   <div class="upd-hero__aura" aria-hidden="true"></div>
   <div class="upd-hero__head">
     <span class="upd-hero__badge">Software update</span>
-    <p class="upd-hero__lead">Install the latest VayuPress release in one click — the download is refused unless it carries a valid signature from this project&rsquo;s release workflow, then automatic database backup, atomic swap and restart, all handled for you.</p>
+    <p class="upd-hero__lead">Install the latest release in one click.` + string(ui.Tip("The download is refused unless it carries a valid signature from this project's release workflow; then the database backup, the atomic swap and the restart are handled for you.")) + `</p>
   </div>
   <div class="upd-vers" data-update-state>
     <div class="upd-ver">
@@ -294,7 +295,7 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 <div class="mon-stack mt-6">` +
 		monAcc(iconHistory, "Update history", "Every check, install and rollback, newest first", "", false, historyBody) +
 		`</div>
-<p class="text-sm muted mt-4">Backups live in <a href="/os/vayukeep">System › Backups</a> — automatic copies, manual export and import, and restore, all in one place.</p>
+<p class="text-sm muted mt-4">Backups are in <a href="/os/vayukeep">System › Backups</a>.</p>
 
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-update.js?v=` + assetVer("js/admin-os-update.js") + `"></script>`
 

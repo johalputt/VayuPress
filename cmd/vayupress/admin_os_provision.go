@@ -14,6 +14,7 @@ import (
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // admin_os_provision.go — the unprivileged half of one-click subdomain setup.
@@ -307,20 +308,23 @@ func provisionCardHTML() string {
 		detail = `<p class="text-xs muted">Last run ` + html.EscapeString(res.FinishedAt) +
 			` — of ` + strconv.Itoa(res.Ran+res.Skipped+res.Failed) + ` helpers: ` +
 			strconv.Itoa(res.Ran) + ` did work, ` + strconv.Itoa(res.Skipped) + ` had nothing to do, ` +
-			strconv.Itoa(res.Failed) + ` reported a problem. ` +
-			`<span class="mono">` + html.EscapeString(res.Details) + `</span></p>`
+			strconv.Itoa(res.Failed) + ` reported a problem.`
+		if res.Details != "" {
+			detail += string(ui.Tip(res.Details))
+		}
+		detail += `</p>`
 		if strings.Contains(res.Details, "nginx-config-broken") {
 			detail += `<p class="text-xs muted"><strong>nginx's configuration was already invalid ` +
-				`before provisioning ran</strong>, so every helper aborted without changing anything. ` +
-				`One stale vhost anywhere under <code>sites-enabled</code> does this — most often one ` +
-				`written while <code>DOMAIN</code> was still <code>localhost</code>, naming a certificate ` +
-				`that cannot exist. Find it with ` +
-				`<code>sudo nginx -t</code>, then remove the offending symlink and run this again.</p>`
+				`before provisioning ran</strong>, so nothing changed. Find it with <code>sudo nginx -t</code>.` +
+				string(ui.Tip("Every helper aborted without changing anything. One stale vhost anywhere under "+
+					"sites-enabled does this, most often one written while DOMAIN was still localhost, naming a "+
+					"certificate that cannot exist. Remove the offending symlink and run this again.")) + `</p>`
 		}
 		if res.Ran == 0 {
-			detail += `<p class="text-xs muted">A helper skips when its DNS is not pointed — or when <code>DOMAIN</code> ` +
-				`cannot be read from <code>/etc/vayupress/env</code>, which skips every one of them at once. ` +
-				`Check <code>/var/lib/vayupress-provision/provision.log</code> for the reason.</p>`
+			detail += `<p class="text-xs muted">No helper did any work.` +
+				string(ui.Tip("A helper skips when its DNS is not pointed, or when DOMAIN cannot be read from "+
+					"/etc/vayupress/env, which skips every one of them at once. "+
+					"/var/lib/vayupress-provision/provision.log has the reason.")) + `</p>`
 		}
 	}
 
@@ -333,24 +337,24 @@ func provisionCardHTML() string {
 		// postponed and the certificate never appeared. This command installs only
 		// the privileged helper, runs one pass immediately, and touches neither
 		// the binary nor the database.
-		action = `<p class="text-sm muted">Installing a <code>systemd</code> unit needs root, and this service ` +
-			`deliberately cannot become root. That makes this the <strong>one</strong> command you ever have to run ` +
-			`— it installs only the helper and provisions immediately, leaving the binary and database untouched:</p>` +
+		action = `<p class="text-sm">A one-time install, as root:` +
+			string(ui.Tip("Installing a systemd unit needs root, and this service deliberately cannot become root. "+
+				"This is the one command you ever have to run: it installs only the helper and provisions "+
+				"immediately, leaving the binary and database untouched.")) + `</p>` +
 			`<div class="vm-row"><code class="mono text-xs vm-pgp__wkd" data-provision-cmd>` +
 			html.EscapeString(provisionInstallCommand) + `</code>` +
-			`<button type="button" class="btn btn--sm" data-provision-copy>Copy</button></div>` +
-			`<p class="text-xs muted">After it finishes, every subdomain is provisioned from this page and from a ` +
-			`daily sweep, with no further terminal use.</p>`
+			`<button type="button" class="btn btn--sm" data-provision-copy>Copy</button></div>`
 	}
 
 	return `<div class="section-head"><span class="section-head__title">Subdomains &amp; certificates</span>` +
 		`<span class="section-head__hint">Issue TLS and write vhosts for mail, PGP discovery, chat, MCP and the API</span></div>
 <div class="card">
 <p class="text-sm">` + status + `</p>
-<p class="text-sm muted">Installing an update swaps the <strong>binary only</strong> — the service runs unprivileged and cannot obtain a certificate or reload nginx by itself. This runs that privileged step for every subdomain whose DNS is pointed: <code>mail.</code>, <code>openpgpkey.</code>, <code>talk.</code>, <code>mcp.</code> and <code>api.</code>. A subdomain that is not pointed is skipped, so it is always safe to run.</p>
-<p class="text-sm muted">It also runs <strong>daily on its own</strong>, so a DNS record you point later is picked up without you doing anything.</p>
+<p class="text-sm muted">Runs daily on its own, and is safe to run any time.</p>
 ` + detail + `
 <div class="vm-row">` + action + `<span class="text-sm muted" data-provision-status></span></div>
-<p class="text-xs muted">Requesting a run creates an empty flag file that a root-side service watches. No argument is passed and its contents are never read, so this console can ask for provisioning and cannot influence what the privileged step does.</p>
+` + string(ui.Explain(`<p>Installing an update swaps the <strong>binary only</strong>: the service runs unprivileged and cannot obtain a certificate or reload nginx by itself. This runs that privileged step for every subdomain whose DNS is pointed: <code>mail.</code>, <code>openpgpkey.</code>, <code>talk.</code>, <code>mcp.</code> and <code>api.</code>. A subdomain that is not pointed is skipped, so it is always safe to run.</p>
+<p>It also runs <strong>daily on its own</strong>, so a DNS record you point later is picked up without you doing anything; once the helper is installed there is no further terminal use.</p>
+<p>Requesting a run creates an empty flag file that a root-side service watches. No argument is passed and its contents are never read, so this console can ask for provisioning and cannot influence what the privileged step does.</p>`)) + `
 </div>`
 }

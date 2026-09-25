@@ -18,6 +18,7 @@ import (
 	htmpl "html/template"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
@@ -400,8 +401,14 @@ func osStatTile(label, value, tone string) string {
 	if tone != "" {
 		cls += " stat-card--" + tone
 	}
+	// A figure is set large; a word or a hostname at that size runs out of its
+	// tile ("mail.localh…", "Main / domain"), so it takes the smaller size.
+	vcls := "stat-card__value"
+	if strings.Contains(value, " ") || len([]rune(value)) > 9 {
+		vcls += " stat-card__value--sm"
+	}
 	return `<div class="` + cls + `"><div class="stat-card__label">` + html.EscapeString(label) +
-		`</div><div class="stat-card__value">` + html.EscapeString(value) + `</div></div>`
+		`</div><div class="` + vcls + `">` + html.EscapeString(value) + `</div></div>`
 }
 
 // monAcc is the console's disclosure for the pages that build their markup as

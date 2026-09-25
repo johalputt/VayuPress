@@ -26,6 +26,7 @@ import (
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/safefetch"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // publicMCPEndpoint returns the absolute URL of this site's MCP connector
@@ -306,9 +307,8 @@ func osConnectorIntro() string {
     <span id="cx-status" role="status" aria-live="polite" class="text-xs muted"></span>
   </div>
 </div>
-<p class="text-sm muted mb-4"><strong>VayuMCP</strong> is a built-in <strong>Model Context Protocol</strong> connector: it lets an AI client connect directly to this site and run it with a native set of tools — publish posts, build pages, read analytics, search content, and more. This page is the <strong>protocol surface</strong> — your endpoint, your grants, and every client currently connected. What a client can do is decided <strong>entirely by the key you grant below</strong>: a full-control key lets it run the whole site; a limited key exposes only what you allow. It is simply your API, spoken in MCP.</p>
-
-<p class="text-sm muted mb-4">Setting up a specific client? <a href="/os/claudecode"><strong>Claude Code</strong></a> and <a href="/os/buzz"><strong>Buzz</strong></a> have their own step-by-step pages. Everything else — Cursor, Cline, or anything that speaks MCP over HTTP — connects with the endpoint and configuration below.</p>
+<p class="page-sub">Let an AI client run this site with its own tools. What it can do is decided by the key you grant.</p>
+` + string(ui.Explain(ui.HTML(`<p><strong>VayuMCP</strong> is a built-in <strong>Model Context Protocol</strong> connector: it lets an AI client connect directly to this site and run it with a native set of tools — publish posts, build pages, read analytics, search content, and more. This page is the <strong>protocol surface</strong> — your endpoint, your grants, and every client currently connected. What a client can do is decided <strong>entirely by the key you grant below</strong>: a full-control key lets it run the whole site; a limited key exposes only what you allow. It is simply your API, spoken in MCP.</p><p>Setting up a specific client? <a href="/os/claudecode"><strong>Claude Code</strong></a> and <a href="/os/buzz"><strong>Buzz</strong></a> have their own step-by-step pages. Everything else — Cursor, Cline, or anything that speaks MCP over HTTP — connects with the endpoint and configuration below.</p>`))) + `
 
 <div id="cx-token-banner" class="card ak-token-banner" hidden>
   <div class="settings-block-title">Copy your new connector key now</div>
@@ -389,21 +389,21 @@ func osConnectorEndpointCard(endpoint, apex string, dedicated bool, blockedHost 
 		// straight into the failure this is here to avoid.
 		note = `<p class="text-sm muted mb-4"><span class="badge badge--ok">dedicated host</span> This install has a working <code>` +
 			html.EscapeString(strings.TrimSuffix(strings.TrimPrefix(endpoint, "https://"), "/mcp")) +
-			`</code> host, so that is the endpoint offered above rather than <code>` + html.EscapeString(apex) +
-			`</code>. Both reach this same server with the same authentication, but the dedicated host is not proxied — so a bot challenge or firewall rule on your main domain can never sit in front of it. An MCP client has no browser and cannot answer a challenge, and when one appears the request never reaches this server to be logged, which makes it very hard to diagnose from here.</p>`
+			`</code> is offered instead of <code>` + html.EscapeString(apex) + `</code> because it is not proxied.` +
+			string(ui.Tip("Both reach this same server with the same authentication, but the dedicated host is not proxied, so a bot challenge or firewall rule on your main domain can never sit in front of it. An MCP client has no browser and cannot answer a challenge, and when one appears the request never reaches this server to be logged.")) + `</p>`
 	} else if blockedHost != "" {
 		// The diagnosis an operator otherwise has to reach with curl and a header
 		// dump: the dedicated host EXISTS, and something in front of it answered
 		// instead of this server. Naming that distinctly matters — "not set up" and
 		// "set up but proxied" need opposite actions.
 		note = `<p class="text-sm muted mb-4"><span class="badge badge--warn">blocked</span> <code>` +
-			html.EscapeString(blockedHost) + `</code> exists, but a request to it was answered by <strong>something in front of this server</strong> — a bot challenge or firewall interstitial, not VayuPress. A machine client cannot answer one, so that host is unusable until it is switched to <strong>DNS only</strong> (the grey cloud in Cloudflare) at your DNS provider. Nothing needs changing here; the endpoint above stays on your main domain until the dedicated host answers directly.</p>`
+			html.EscapeString(blockedHost) + `</code> is answered by something in front of this server. Switch it to DNS only at your DNS provider.` +
+			string(ui.Tip("A bot challenge or firewall interstitial answered instead of VayuPress. A machine client cannot answer one, so that host is unusable until it is DNS only (the grey cloud in Cloudflare). Nothing needs changing here; the endpoint above stays on your main domain until the dedicated host answers directly.")) + `</p>`
 	} else {
-		note = `<p class="text-sm muted mb-4">If your domain sits behind a proxy or firewall that can challenge visitors, this endpoint can stop working without warning — an MCP client has no browser and cannot answer a challenge. A dedicated <code>mcp.&lt;your-domain&gt;</code> host with the proxy switched off avoids that permanently; see the note below. Once it is pointed and provisioned, this page offers it here automatically.</p>`
+		note = `<p class="text-sm muted mb-4">A proxy that challenges visitors can break this endpoint.` + string(ui.Tip("An MCP client has no browser and cannot answer a challenge. A dedicated mcp.<your-domain> host with the proxy switched off avoids that permanently; once it is pointed and provisioned, this page offers it here automatically.")) + `</p>`
 	}
 	return `<div class="card">
-  <div class="settings-block-title">Your connector endpoint</div>
-  <p class="text-sm muted mb-4">This is the single URL an MCP client (Claude, Claude Code, or any other) connects to. It is served by VayuPress itself — no extra service, no extra port. Requests are authenticated with the key you grant below.</p>
+  <p class="text-sm mb-4">The one URL every MCP client connects to.` + string(ui.Tip("It is served by VayuPress itself, with no extra service and no extra port. Requests are authenticated with the key you grant below.")) + `</p>
   ` + note + `
   <div class="ak-token-row">
     <input id="cx-endpoint" class="input font-mono ak-token-input" type="text" readonly value="` + e + `">
@@ -417,7 +417,7 @@ func osConnectorEndpointCard(endpoint, apex string, dedicated bool, blockedHost 
 // create endpoint; the preset buttons carry their capability set in data-caps.
 func osConnectorGrantCard() string {
 	return `<div class="card">
-  <p class="text-sm muted mb-4">Pick how much control to hand over to the connected client. You can revoke any grant instantly below, and every action the client takes is written to the audit log.</p>
+  <p class="text-sm mb-4">How much may the client do? A grant can be revoked below, and every action is audited.</p>
 
   <div class="cx-grant-grid">
     <div class="cx-grant cx-grant--full">
@@ -425,7 +425,7 @@ func osConnectorGrantCard() string {
         <span class="settings-row-label">Full control</span>
         <span class="badge badge--accent">Everything</span>
       </div>
-      <p class="text-sm muted">A superuser key. Every current and future VayuMCP tool becomes available — posts, pages, media, analytics, and more as the toolset grows. This is the "give the client the keys to the whole site" option.</p>
+      <p class="text-sm muted">Every tool, now and as the toolset grows.</p>
       <button type="button" class="btn btn--primary" data-mint="*:*" data-label="VayuMCP (full control)">Grant full control</button>
     </div>
 
@@ -434,7 +434,7 @@ func osConnectorGrantCard() string {
         <span class="settings-row-label">Author only</span>
         <span class="badge">Posts &amp; pages</span>
       </div>
-      <p class="text-sm muted">Let Claude write, update, and organise content — create and edit posts and pages, search, and list — but nothing else. A safe default for a writing assistant.</p>
+      <p class="text-sm muted">Write and organise posts and pages; nothing else.</p>
       <button type="button" class="btn" data-mint="posts:read,posts:write" data-label="VayuMCP (author)">Grant author access</button>
     </div>
 
@@ -443,12 +443,12 @@ func osConnectorGrantCard() string {
         <span class="settings-row-label">Read only</span>
         <span class="badge">Look, don't touch</span>
       </div>
-      <p class="text-sm muted">Claude can read posts and pages, search content, and read analytics — but cannot change anything. Ideal for analysis, reporting, and audits.</p>
+      <p class="text-sm muted">Read posts, pages and analytics; change nothing.</p>
       <button type="button" class="btn" data-mint="posts:read,analytics:read" data-label="VayuMCP (read-only)">Grant read-only access</button>
     </div>
   </div>
 
-  <p class="field-hint mt-2">Need a precise grant? Build a custom scoped key on the <a href="/os/apikeys">API Keys</a> page — the connector honours it exactly.</p>
+  <p class="field-hint mt-2">For a precise grant, build a scoped key on <a href="/os/apikeys">API Keys</a>.</p>
 </div>`
 }
 
@@ -475,9 +475,9 @@ func osConnectorConnectCard(endpoint string) string {
 }`
 
 	generic := `<div class="card">
-  <p class="text-sm muted">Most MCP clients take a remote server as a URL plus a header. Grant a key above and this block is filled in for you:</p>
+  <p class="text-sm muted">A URL plus a header. Grant a key above and it is filled in.</p>
   ` + mcpSnippet("cx-cfg-generic", cfg) + `
-  <p class="field-hint mt-2">Some clients want the key as <code>X-API-Key</code> instead of <code>Authorization: Bearer</code> — both are accepted. The transport is MCP over Streamable HTTP (JSON-RPC 2.0).</p>
+  <p class="field-hint mt-2">X-API-Key works as well as Authorization: Bearer.` + string(ui.Tip("The transport is MCP over Streamable HTTP (JSON-RPC 2.0).")) + `</p>
 </div>`
 
 	clients := `<div class="card">
@@ -630,13 +630,13 @@ func osConnectorManageCard(keys []apikeys.Key) string {
 			`<button type="button" class="btn btn--sm" data-revoke="` + id + `">Disconnect</button>
     <button type="button" class="btn btn--sm btn--danger" data-cx-remove="` + id + `">Remove</button>
   </div>
-  <p class="field-hint mt-2"><strong>Pause</strong> stops this connector immediately and can be undone — the same key works again on Resume. <strong>Disconnect</strong> is permanent: the key stops working for good and the record is kept for the audit log. <strong>Remove</strong> also deletes the record.</p>
+  <p class="field-hint mt-2">Pause can be undone; Disconnect cannot.` + string(ui.Tip("Pause stops this connector immediately and can be undone: the same key works again on Resume. Disconnect is permanent: the key stops working for good and the record is kept for the audit log. Remove also deletes the record.")) + `</p>
 </div>`
 
 		panels += monAcc(icon, k.Label, activity, chip, false, body)
 	}
 
-	hint := `<p class="text-sm muted mb-4">Every client that has connected, and what it can reach. Each action is written to the audit log.</p>`
+	hint := `<p class="text-sm muted mb-4">Every client that has connected, and what it can reach.</p>`
 	if unused > 0 {
 		// Directly actionable: a key that has never been used is almost always a
 		// leftover from a connect attempt that failed, and these accumulate

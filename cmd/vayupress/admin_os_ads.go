@@ -22,6 +22,7 @@ import (
 	"github.com/johalputt/vayupress/internal/ads"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // handleOSAds renders the Advertising console.
@@ -48,24 +49,24 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 
 	banner := ""
 	if !adsOn {
-		banner = `<div class="settings-callout"><strong>Advertising is off.</strong> <span class="text-sm muted">Your slots are saved but nothing renders on the public site until you enable the Advertising module.</span> <a class="btn btn--primary btn--sm mt-2" href="/os/tools">Enable in Tools &amp; Plugins →</a></div>`
+		banner = `<div class="settings-callout"><strong>Advertising is off.</strong> <span class="text-sm muted">Slots are saved; nothing shows until the module is on.</span> <a class="btn btn--primary btn--sm mt-2" href="/os/tools">Enable in Tools &amp; Plugins →</a></div>`
 	}
 
 	body := `<div class="page-header">
   <h1>Advertising</h1>
   <div class="page-actions"><span id="ads-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
 </div>
-<p class="page-sub">Run your own ad slots — review member submissions and place your own creatives. Sovereign and origin-served, with no third-party ad network.</p>
+<p class="page-sub">Your own ad slots and member submissions, served from this site with no ad network.</p>
 ` + banner + `
 <div class="card">
   <div class="settings-block-title">Member ad submissions` + memberAdBadge(len(pendingAds)) + `</div>
-  <p class="text-sm muted mb-4">Members buy an ad from their account; each paid submission waits here for your review. <strong>Approve</strong> publishes it in its placement; <strong>Reject</strong> declines it. Only image ads are accepted from members — never member HTML.</p>
+  <p class="text-sm muted mb-4">Paid submissions wait here for your review.` + string(ui.Tip("Members buy an ad from their account. Approve publishes it in its placement; Reject declines it. Only image ads are accepted from members, never member HTML.")) + `</p>
   ` + memberAdReviewTable(pendingAds) + `
 </div>
 
 <div class="card">
   <div class="settings-block-title">Member ad price</div>
-  <p class="text-sm muted mb-4">The flat fee a member pays to submit one ad for review. Charged once per submission via your connected gateway (Stripe one-time, or the sovereign direct method). Set in whole currency units.</p>
+  <p class="text-sm muted mb-4">A flat fee per submission, in whole currency units.` + string(ui.Tip("Charged once per submission through your connected gateway: Stripe one-time, or the direct method.")) + `</p>
   <div class="field" style="max-width:16rem"><label class="field-label" for="ad-price">Price per ad</label>
     <input id="ad-price" class="input" type="number" min="0" step="1" data-ads-price value="` + strconv.Itoa(adPrice/100) + `"></div>
   <button type="button" class="btn btn--primary btn--sm" id="ad-price-save">Save price</button>
@@ -73,7 +74,7 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 
 <div class="card">
   <div class="settings-block-title">Ad slots</div>
-  <p class="text-sm muted mb-4">Each slot targets a placement and renders a same-origin image+link, a sanitised HTML creative, or a Google AdSense unit. New slots are enabled by default.</p>
+  <p class="text-sm muted mb-4">Each slot fills one placement; new slots start enabled.` + string(ui.Tip("A slot renders a same-origin image and link, a sanitised HTML creative, or a Google AdSense unit.")) + `</p>
   ` + adsSlotsTable(slots) + `
 </div>
 
@@ -104,7 +105,7 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 
 <div class="card">
   <div class="settings-block-title">Google AdSense</div>
-  <p class="text-sm muted mb-4">Optional. Enable the <strong>Google AdSense</strong> module in Tools &amp; Plugins, set your publisher id here, then create slots of kind <em>AdSense</em>. Pages that show an AdSense unit automatically widen their Content-Security-Policy to admit Google's ad origins. ` + adsGoogleStatus(googleOn, adsenseClient) + `</p>
+  <p class="text-sm muted mb-4">Optional. ` + adsGoogleStatus(googleOn, adsenseClient) + string(ui.Tip("Enable the Google AdSense module in Tools and Plugins, set your publisher id here, then create slots of kind AdSense. Pages that show an AdSense unit widen their Content-Security-Policy to admit Google's ad origins.")) + `</p>
   <div class="field"><label class="field-label" for="ad-adsense-client">Publisher id</label>
     <input id="ad-adsense-client" class="input font-mono" type="text" data-ads-key="` + settings.KeyAdsenseClient + `" value="` + html.EscapeString(adsenseClient) + `" placeholder="ca-pub-0000000000000000"></div>
   <button type="button" class="btn btn--primary btn--sm" id="ad-adsense-save">Save publisher id</button>

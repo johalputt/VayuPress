@@ -36,6 +36,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // buzzKeyLabelPrefix marks the keys this page mints, so the stat strip can count
@@ -75,7 +76,8 @@ func osBuzzIntro() string {
     <span id="` + mcpStatusID + `" role="status" aria-live="polite" class="text-xs muted"></span>
   </div>
 </div>
-<p class="text-sm muted mb-4"><strong>Buzz</strong> is an open-source workspace where people and AI agents work together, built on the <strong>Nostr</strong> protocol — every member, human or agent, holds their own cryptographic keypair, so an agent signs its own work instead of borrowing someone's login. Its agents run <strong>Claude Code, Goose and Codex</strong>, and all three speak <strong>Model Context Protocol</strong>. This site already serves its whole toolset over MCP through <a href="/os/connector">VayuMCP</a> — so a Buzz agent can publish posts, build pages, search content and read analytics here <strong>without anything extra being installed on either side</strong>. Grant a key below and point the agent at your endpoint.</p>
+<p class="page-sub">Let an agent in a Buzz workspace publish, build pages and read analytics here. Grant a key, then point the agent at this site.</p>
+` + string(ui.Explain(ui.HTML(`<p><strong>Buzz</strong> is an open-source workspace where people and AI agents work together, built on the <strong>Nostr</strong> protocol — every member, human or agent, holds their own cryptographic keypair, so an agent signs its own work instead of borrowing someone's login. Its agents run <strong>Claude Code, Goose and Codex</strong>, and all three speak <strong>Model Context Protocol</strong>. This site already serves its whole toolset over MCP through <a href="/os/connector">VayuMCP</a> — so a Buzz agent can publish posts, build pages, search content and read analytics here <strong>without anything extra being installed on either side</strong>. Grant a key below and point the agent at your endpoint.</p>`))) + `
 
 ` + mcpClientTokenBanner("This is the only time the full key is shown. It has been filled into the configurations below — copy the one your agent uses, then store the key somewhere safe. You will not be able to see it again.")
 }
@@ -101,31 +103,28 @@ func osBuzzSetupCards(endpoint string) string {
 }`
 
 	step1 := `<div class="card">
-  <p class="text-sm muted">Use <strong>Grant access</strong> further down this page to mint a key for the agent. Start with <strong>Author</strong> unless you have a reason not to — it lets the agent write and organise content but nothing else, and you can grant a wider key later without disconnecting anything.</p>
-  <p class="field-hint mt-2">Each Buzz agent should get its own key. That way the audit log tells you which agent did what, and revoking one does not disconnect the others.</p>
+  <p class="text-sm">Grant each agent its own key below; start with Author.` + string(ui.Tip("Author lets the agent write and organise content but nothing else, and you can grant a wider key later without disconnecting anything. With one key per agent, the audit log tells you which agent did what, and revoking one does not disconnect the others.")) + `</p>
 </div>`
 
 	step2 := `<div class="card">
-  <p class="text-sm muted">Your endpoint is below. Buzz agents are ordinary MCP clients, so they connect the same way any other does — the URL plus an <code>Authorization: Bearer</code> header.</p>
+  <p class="text-sm">The endpoint, then the config for your agent.` + string(ui.Tip("Buzz agents are ordinary MCP clients: they connect with the URL plus an Authorization: Bearer header.")) + `</p>
   <div class="ak-token-row">
     <input id="bz-endpoint" class="input font-mono ak-token-input" type="text" readonly value="` + e + `">
     <button type="button" class="btn btn--sm" data-copy="#bz-endpoint">Copy</button>
   </div>
-  <p class="text-sm muted mt-2"><strong>Claude Code</strong> — the agent Buzz drives most directly. Run this where the agent runs:</p>
+  <p class="text-sm muted mt-2"><strong>Claude Code</strong>, where the agent runs:</p>
   ` + mcpSnippet("bz-cfg-cli", cliTpl) + `
-  <p class="text-sm muted mt-2"><strong>Goose, Codex, or any other MCP client</strong> — add a remote MCP server with the same URL and header. Most take this shape:</p>
+  <p class="text-sm muted mt-2"><strong>Goose, Codex or any other MCP client</strong>:</p>
   ` + mcpSnippet("bz-cfg-json", jsonTpl) + `
 </div>`
 
 	step3 := `<div class="card">
-  <p class="text-sm muted">Start the agent from your Buzz workspace as you normally would. Buzz bridges it into the channel through its agent harness, and the tools this site exposes become available to it there — no extra bridge, relay or plugin in between.</p>
-  <p class="field-hint mt-2">The agent reaches this server directly over HTTPS. Buzz relays your team's messages; it does not proxy these tool calls, so your content never travels through the workspace to get here.</p>
+  <p class="text-sm">Start the agent from your Buzz workspace as usual; this site's tools become available to it there.` + string(ui.Tip("Buzz bridges the agent into the channel through its agent harness, with no extra bridge, relay or plugin. The agent reaches this server directly over HTTPS; Buzz relays your team's messages but does not proxy these tool calls, so your content never travels through the workspace.")) + `</p>
 </div>`
 
 	step4 := `<div class="card">
   <p class="text-sm muted">Ask the agent to list your most recent posts. If it answers with real titles from this site, the connector is live.</p>
-  <p class="text-sm muted mt-2">If it cannot connect, the cause is almost always in front of this server rather than in it — a proxy or firewall challenging a client that has no browser to answer with. The <a href="/os/connector">VayuMCP</a> page has the paths to exempt and a dedicated-host workaround.</p>
-  <p class="field-hint mt-2">Every call an agent makes is written to the audit log, and any grant can be paused or revoked from <a href="/os/connector">VayuMCP</a> at any time.</p>
+  <p class="text-sm muted mt-2">If it cannot connect, see <a href="/os/connector">VayuMCP</a>.` + string(ui.Tip("The cause is almost always in front of this server: a proxy or firewall challenging a client that has no browser to answer with. VayuMCP has the paths to exempt and a dedicated-host workaround. Every agent call is audited, and any grant can be paused or revoked there.")) + `</p>
 </div>`
 
 	return `<div class="mon-stack">` +
@@ -145,21 +144,21 @@ func osBuzzSetupCards(endpoint string) string {
 // that looks like the default.
 func osBuzzGrantCard() string {
 	return `<div class="card">
-  <p class="text-sm muted mb-4">Pick how much of this site the Buzz agent may reach. You can pause or revoke any grant instantly from the <a href="/os/connector">VayuMCP</a> page, and every action an agent takes is written to the audit log.</p>
+  <p class="text-sm mb-4">How much may the agent do? A grant can be paused or revoked on <a href="/os/connector">VayuMCP</a>, and every action is audited.</p>
 
   <div class="cx-grant-grid">
     ` + mcpGrantTile(true, "Author", "Posts &amp; pages", "",
-		"The agent can write, update and organise content — create and edit posts and pages, search and list — but nothing else. The right default for an agent that drafts and publishes alongside your team.",
+		"Write and organise posts and pages; nothing else.",
 		"posts:read,posts:write", buzzKeyLabelPrefix+" (author)", "Grant author access") + `
     ` + mcpGrantTile(false, "Read only", "Look, don't touch", "",
-		"The agent can read posts and pages, search content and read analytics, but cannot change anything. Ideal for an agent that reports into a channel or answers questions about the site.",
+		"Read posts, pages and analytics; change nothing.",
 		"posts:read,analytics:read", buzzKeyLabelPrefix+" (read-only)", "Grant read-only access") + `
     ` + mcpGrantTile(false, "Full control", "Everything", " badge--accent",
-		"A superuser key — every current and future tool, including settings and infrastructure. Grant this only to an agent you would trust with your own login, and prefer one of the narrower grants above where it will do.",
+		"Every tool, settings included. Only for an agent you would trust with your own login.",
 		"*:*", buzzKeyLabelPrefix+" (full control)", "Grant full control") + `
   </div>
 
-  <p class="field-hint mt-2">Need a precise grant? Build a custom scoped key on the <a href="/os/apikeys">API Keys</a> page — the connector honours it exactly.</p>
+  <p class="field-hint mt-2">For a precise grant, build a scoped key on <a href="/os/apikeys">API Keys</a>.</p>
 </div>`
 }
 

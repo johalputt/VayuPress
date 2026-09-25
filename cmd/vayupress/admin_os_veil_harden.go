@@ -46,6 +46,7 @@ import (
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayuveil"
 )
 
@@ -212,7 +213,7 @@ func veilHardenCard(st vayuveil.HardenState, sb vayuveil.SandboxState, processSt
 
 	var b strings.Builder
 	b.WriteString(`<div class="card"><div class="settings-block-title">What this asks for</div>`)
-	b.WriteString(`<p class="text-sm muted">` + esc(vayuveil.DescribeHardenVerdict(v, missing)) + `</p>`)
+	b.WriteString(`<p class="text-sm">` + string(ui.Brief(vayuveil.DescribeHardenVerdict(v, missing))) + `</p>`)
 
 	// The baseline, every row saying where its verification comes from. A row
 	// that claims a control should be able to say how it knows.
@@ -258,16 +259,20 @@ func veilHardenCard(st vayuveil.HardenState, sb vayuveil.SandboxState, processSt
 
 	// What is deliberately NOT written, and why. This is the half of the page
 	// that makes the other half worth believing.
-	b.WriteString(`<div class="settings-block-title">What this will not write, and why</div>` +
-		`<p class="text-sm muted">Systemd offers dozens more hardening directives and several of them ` +
-		`would read well in a release note. Each one below is excluded for a reason that survives being ` +
-		`said out loud — either this process cannot read it back, so it could be reported as applied ` +
-		`and never as verified, or writing it blind can take a live install down at its next restart.</p>` +
-		`<ul class="text-sm muted">`)
+	// Folded, not dropped: this is the half of the page that makes the other
+	// half worth believing, for whoever asks.
+	var why strings.Builder
+	why.WriteString(`<p><b>What this will not write, and why.</b> Systemd offers dozens more hardening ` +
+		`directives and several of them would read well in a release note. Each one below is excluded ` +
+		`for a reason that survives being said out loud: either this process cannot read it back, so it ` +
+		`could be reported as applied and never as verified, or writing it blind can take a live install ` +
+		`down at its next restart.</p><ul>`)
 	for _, ref := range vayuveil.HardenRefusals() {
-		b.WriteString(`<li><span class="mono">` + esc(ref.Directive) + `</span> — ` + esc(ref.Reason) + `</li>`)
+		why.WriteString(`<li><span class="mono">` + esc(ref.Directive) + `</span> — ` + esc(ref.Reason) + `</li>`)
 	}
-	b.WriteString(`</ul>`)
+	why.WriteString(`</ul><p>Requesting a run creates an empty flag file that a root-side service ` +
+		`watches. No argument is passed and its contents are never read, so this console can ask for ` +
+		`hardening and cannot influence which directives root writes.</p>`)
 
 	// The action, or the one command that genuinely needs root.
 	switch {
@@ -278,45 +283,40 @@ func veilHardenCard(st vayuveil.HardenState, sb vayuveil.SandboxState, processSt
 		// now writes this watcher too. Leading with the command would send an
 		// operator to a terminal for something already on its way — the exact
 		// failure this project has a standing rule about, in its politest form.
-		b.WriteString(`<p class="text-sm muted">The root-side worker is not installed here <b>yet</b>. ` +
-			`If subdomain provisioning is set up on this server, the daily sweep installs it on its ` +
-			`own from the signed release bundle, with no terminal use at all — this page will then ` +
-			`show the button instead of this paragraph.</p>` +
-			`<p class="text-sm muted"><b>Allow up to two daily sweeps</b>, and the reason is worth ` +
-			`knowing rather than rounding off: the sweep upgrades its own driver, and the upgraded ` +
-			`driver only takes effect on the following run. So the first sweep delivers the worker ` +
-			`and the second one installs its watcher.</p>` +
-			`<p class="text-sm muted">Installing a <code>systemd</code> unit needs root and this ` +
-			`service deliberately cannot become root, which is itself one of the controls above. So if ` +
-			`provisioning is not set up, or you would rather not wait for the sweep, this one command ` +
-			`does it now and touches neither the binary nor the database:</p>` +
+		b.WriteString(`<p class="text-sm">The root-side worker is not installed here <b>yet</b>; ` +
+			`the daily sweep installs it on its own. To install it now instead:</p>` +
 			`<div class="vm-row"><code class="mono text-xs vm-pgp__wkd" data-veilharden-cmd>` +
 			esc(veilHardenInstallCommand) + `</code>` +
 			`<button type="button" class="btn btn--sm" data-veilharden-copy>Copy</button></div>`)
+		why.WriteString(`<p>If subdomain provisioning is set up on this server, the daily sweep ` +
+			`installs the worker from the signed release bundle with no terminal use at all, and this ` +
+			`page then shows the button. <b>Allow up to two daily sweeps</b>: the sweep upgrades its own ` +
+			`driver, and the upgraded driver only takes effect on the following run, so the first sweep ` +
+			`delivers the worker and the second installs its watcher.</p>` +
+			`<p>Installing a <code>systemd</code> unit needs root and this service deliberately cannot ` +
+			`become root, which is itself one of the controls above. The command touches neither the ` +
+			`binary nor the database.</p>`)
 	case len(missing) == 0:
-		b.WriteString(`<p class="text-sm muted">Every directive in the baseline is already in force for ` +
-			`this process, so there is nothing to request. The button is not shown rather than shown ` +
-			`and inert.</p>`)
+		b.WriteString(`<p class="text-sm">Every directive in the baseline is already in force; ` +
+			`there is nothing to request.</p>`)
 	default:
-		b.WriteString(`<p class="text-sm muted"><b>The service restarts to apply this.</b> Systemd ` +
-			`applies unit directives at exec, so a drop-in written under a running process does nothing ` +
-			`until it starts again — which means a button that wrote the file and stopped there would ` +
-			`report a control that does not exist. The restart is brief, and if the service does not ` +
-			`come back the worker <b>removes the drop-in and restarts it without one</b>: a hardening ` +
-			`button that can lock you out of your own panel is worse than the exposure it closes.</p>` +
-			`<p class="text-sm muted"><span class="mono">MemorySwapMax=0</span> is worth understanding ` +
-			`before you click. It forbids the kernel from paging this service out at all, which is what ` +
-			`keeps decrypted mail and the keystore key off the disk — and it means that under real ` +
-			`memory pressure the service is killed rather than swapped. That is the trade, stated ` +
-			`rather than buried.</p>` +
+		// The two consequences of pressing the button stay in view; how they
+		// come about is folded below.
+		b.WriteString(`<p class="text-sm"><b>The service restarts to apply this</b>, briefly. ` +
+			`Under memory pressure it is then killed rather than swapped.</p>` +
 			`<div class="vm-row"><button type="button" class="btn btn--primary btn--sm" ` +
 			`data-veilharden-run>Request hardening and restart</button>` +
 			`<span class="text-sm muted" data-veilharden-status></span></div>`)
+		why.WriteString(`<p>Systemd applies unit directives at exec, so a drop-in written under a ` +
+			`running process does nothing until it starts again; a button that wrote the file and stopped ` +
+			`there would report a control that does not exist. If the service does not come back, the ` +
+			`worker <b>removes the drop-in and restarts it without one</b>: a hardening button that can ` +
+			`lock you out of your own panel is worse than the exposure it closes.</p>` +
+			`<p><span class="mono">MemorySwapMax=0</span> forbids the kernel from paging this service out ` +
+			`at all, which is what keeps decrypted mail and the keystore key off the disk.</p>`)
 	}
 
-	b.WriteString(`<p class="text-xs muted">Requesting a run creates an empty flag file that a ` +
-		`root-side service watches. No argument is passed and its contents are never read, so this ` +
-		`console can ask for hardening and cannot influence which directives root writes.</p></div>`)
+	b.WriteString(string(ui.Explain(ui.HTML(why.String()))) + `</div>`)
 
 	return monAcc(saIcon("wall"), "Unit hardening", "Ask root for the directives this process can verify afterwards",
 		veilHardenChip(v), v != vayuveil.HardenInForce, b.String())

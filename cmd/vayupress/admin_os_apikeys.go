@@ -18,6 +18,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/secrets"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // iconKey is the sidebar icon for the API Keys console.
@@ -145,7 +146,7 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
     <span id="ak-status" role="status" aria-live="polite" class="text-xs muted"></span>
   </div>
 </div>
-<p class="page-sub">Manage the keys that authenticate calls to your VayuPress API, and store the credentials VayuPress uses to talk to third-party services. Third-party secrets are encrypted at rest with AES-256-GCM and are shown masked — they never leave your server in clear text. Every issue, rotate, revoke and reveal is written to the audit log.</p>
+<p class="page-sub">Keys for your API, and the credentials VayuPress uses with other services.` + string(ui.Tip("Third-party secrets are encrypted at rest with AES-256-GCM and shown masked; they never leave your server in clear text. Every issue, rotate, revoke and reveal is written to the audit log.")) + `</p>
 
 <div id="ak-token-banner" class="card ak-token-banner" hidden>
   <div class="settings-block-title">Copy your new key now</div>
@@ -197,13 +198,15 @@ func osAPIBaseCard() string {
 	base := html.EscapeString(apiBaseURL())
 	var hint string
 	if strings.TrimSpace(config.Cfg.APIHost) != "" {
-		hint = `<p class="field-hint mt-2">Served on your dedicated <code>` + html.EscapeString(config.Cfg.APIHost) + `</code> host (<code>VAYUOS_API_HOST</code>), pointed straight at the origin with the proxy <strong>off</strong>. Only <code>/api</code> and <code>/health</code> are exposed there — the admin console is not — and VayuShield still guards it.</p>`
+		hint = `<p class="field-hint mt-2">Served on your dedicated <code>` + html.EscapeString(config.Cfg.APIHost) + `</code> host.` +
+			string(ui.Tip("Set by VAYUOS_API_HOST and pointed straight at the origin with the proxy off. Only /api and /health are exposed there, not the admin console, and VayuShield still guards it.")) + `</p>`
 	} else {
-		hint = `<p class="field-hint mt-2">Behind a proxy that shows a bot &ldquo;challenge&rdquo; page (e.g. Cloudflare)? A script or agent can&rsquo;t solve it. Point a dedicated <code>api.&lt;your-domain&gt;</code> record straight at this server with the proxy <strong>off (&ldquo;DNS only&rdquo;)</strong>, set <code>VAYUOS_API_HOST=api.&lt;your-domain&gt;</code>, and re-run the installer — VayuPress serves a hardened, API-only host there. See the installation guide.</p>`
+		hint = `<p class="field-hint mt-2">Behind a proxy that challenges visitors? Use a dedicated API host.` +
+			string(ui.Tip("A script or agent cannot solve a bot challenge. Point a dedicated api.<your-domain> record straight at this server with the proxy off (DNS only), set VAYUOS_API_HOST=api.<your-domain>, and re-run the installer: VayuPress serves a hardened, API-only host there. See the installation guide.")) + `</p>`
 	}
 	return `<div class="card">
   <div class="settings-block-title">Your API base URL</div>
-  <p class="text-sm muted mb-4">Point scripts, CI jobs and AI agents here, sending a key you mint below as <code>Authorization: Bearer &lt;key&gt;</code>.</p>
+  <p class="text-sm muted mb-4">For scripts, CI jobs and agents, with a key sent as <code>Authorization: Bearer</code>.</p>
   <div class="ak-token-row">
     <input id="ak-apibase" class="input font-mono ak-token-input" type="text" readonly value="` + base + `">
     <button type="button" class="btn btn--sm" data-copy="#ak-apibase">Copy</button>
@@ -350,7 +353,7 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
 	// is inert and every row stays visible, and the create/rotate/revoke flows
 	// (vanilla JS) are untouched.
 	list := `<div class="card" x-data="filterList" data-filter-noun="keys">
-  <p class="text-sm muted mb-4">Issue keys for scripts, integrations, and CI. Send a key as the <code>X-API-Key</code> header or <code>Authorization: Bearer &lt;key&gt;</code>. Each key is granted <strong>only</strong> the sections and actions you check below — a key can do nothing it was not granted. Rotating invalidates the old value immediately; deactivating disables a key reversibly; revoking disables it permanently (audit row kept). The <strong>System</strong> key is auto-managed for internal use.</p>
+  <p class="text-sm muted mb-4">Each key can do only what it is granted below.` + string(ui.Tip("Send a key as the X-API-Key header or Authorization: Bearer <key>. Rotating invalidates the old value immediately; deactivating disables a key reversibly; revoking disables it permanently, keeping its audit row. The System key is managed automatically for internal use.")) + `</p>
   <div class="ak-filter"><input type="search" class="input ak-filter-input" placeholder="Filter keys by label or prefix…" x-model="q" @input="apply()" aria-label="Filter API keys"><span data-filter-status role="status" aria-live="polite" class="vp-sr-only"></span></div>
   <div class="table-wrap">
     <table class="table ak-table">
@@ -358,7 +361,7 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
       <tbody>` + rows + `<tr data-filter-empty hidden><td colspan="6" class="text-sm muted ak-empty">No keys match your filter.</td></tr></tbody>
     </table>
   </div>
-  <p class="field-hint mt-2">A root key set via the <code>API_KEY</code> environment variable always remains valid as a bootstrap credential (full access) and is not listed here.</p>
+  <p class="field-hint mt-2">The <code>API_KEY</code> root key is not listed here.` + string(ui.Tip("A root key set through the API_KEY environment variable always remains valid as a bootstrap credential with full access.")) + `</p>
 </div>
 `
 	return list + osAPIKeysCreateCard()
@@ -475,13 +478,12 @@ func osAPIKeysServicesSection(creds []secrets.Credential) string {
 	}
 
 	return `<div class="card">
-  <div class="settings-block-title">Third-party services</div>
-  <p class="text-sm muted mb-4">Connect the services VayuPress integrates with. Secrets are encrypted before they touch the database and shown only as a masked hint afterwards.</p>
+  <p class="text-sm muted mb-4">Secrets are encrypted before they are stored and shown only masked afterwards.</p>
   ` + cards + `
 </div>
 <div class="card">
   <div class="settings-block-title">Custom credentials</div>
-  <p class="text-sm muted mb-4">Store an API key for any other service by name. Useful for bespoke integrations and plugins.</p>
+  <p class="text-sm muted mb-4">Any other service, by name.</p>
   <div class="ak-cc-form">
     <div class="field ak-field-grow">
       <label class="field-label" for="cc-label">Name</label>
@@ -535,7 +537,7 @@ func osAPIKeysProviderCard(p providerMeta, c secrets.Credential) string {
   <div class="ak-cred-head">
     <div>
       <div class="settings-row-label">` + html.EscapeString(p.Title) + `</div>
-      <div class="text-sm muted ak-cred-desc">` + html.EscapeString(p.Desc) + `</div>
+      <div class="text-sm muted ak-cred-desc">` + string(ui.Brief(p.Desc)) + `</div>
     </div>
     <label class="settings-row ak-cred-toggle"><span class="text-xs muted">Enabled</span>
       <input type="checkbox" class="toggle" data-cred-enabled` + checked + `></label>
