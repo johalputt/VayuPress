@@ -94,30 +94,6 @@ func TestIsMultipleModes(t *testing.T) {
 	}
 }
 
-func TestEvaluateFromPolicySLO(t *testing.T) {
-	m := New()
-	m.EvaluateFromPolicy(true, false, false)
-	if m.Current() != ModeDegraded {
-		t.Errorf("sloExhausted should → Degraded, got %s", m.Current())
-	}
-}
-
-func TestEvaluateFromPolicyMigrationDrift(t *testing.T) {
-	m := New()
-	m.EvaluateFromPolicy(false, true, false)
-	if m.Current() != ModeReadOnly {
-		t.Errorf("migrationDrift should → ReadOnly, got %s", m.Current())
-	}
-}
-
-func TestEvaluateFromPolicyQuarantine(t *testing.T) {
-	m := New()
-	m.EvaluateFromPolicy(false, false, true)
-	if m.Current() != ModeQuarantined {
-		t.Errorf("pluginsQuarantined should → Quarantined, got %s", m.Current())
-	}
-}
-
 func TestReset(t *testing.T) {
 	m := New()
 	m.Transition(ModeDegraded, "r", "c") //nolint:errcheck

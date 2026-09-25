@@ -59,7 +59,6 @@ import (
 	"github.com/johalputt/vayupress/internal/outbox"
 	"github.com/johalputt/vayupress/internal/payments"
 	"github.com/johalputt/vayupress/internal/plugins"
-	"github.com/johalputt/vayupress/internal/policy"
 	"github.com/johalputt/vayupress/internal/preview"
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/redirects"
@@ -1098,23 +1097,6 @@ func main() {
 		}
 		defer modeJournal.Close()
 	}
-
-	// Policy journal — persists evaluation runs to SQLite for the provenance inspector.
-	policy.GlobalJournal = policy.NewJournal(dbpkg.DB)
-	go func() {
-		runPolicyEval := func() {
-			report := policy.Global.EvaluateAll(policy.Context{})
-			if _, err := policy.GlobalJournal.Record(report); err != nil {
-				logging.LogJSON(logging.LogFields{Level: "warn", Component: "policy", Msg: "journal write failed: " + err.Error()})
-			}
-		}
-		runPolicyEval() // seed one run immediately on start
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			runPolicyEval()
-		}
-	}()
 
 	// Resource governance — limiters and watchdog (ADR-0055).
 	resource.Register("articles.write", config.Cfg.WorkerCount*4)

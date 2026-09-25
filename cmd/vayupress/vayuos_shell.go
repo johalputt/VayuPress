@@ -86,7 +86,6 @@ var saClearnetApps = []saApp{
 		{Label: "VayuShield", Href: "/os/shield", Icon: "shield"},
 		{Label: "Sign-in security", Href: "/os/security", Icon: "lock"},
 		{Label: "VayuVeil", Href: "/os/vayuveil", Icon: "eye"},
-		{Label: "Policy", Href: "/os/policy", Icon: "doc"},
 	}},
 	{Key: "system", Label: "System", Icon: "system", Href: "/os/modes", Sections: []saSection{
 		{Label: "System state", Href: "/os/modes", Icon: "pulse"},
@@ -149,7 +148,7 @@ var saNavApp = map[string]string{
 	"vayuos":  "mail",
 	"talk":    "talk",
 	"website": "site", "theme": "site", "theme-store": "site", "seo": "site", "domains": "site", "tor": "site", "optimize": "site",
-	"shield": "shield", "vayuveil": "shield", "security": "shield", "policy": "shield",
+	"shield": "shield", "vayuveil": "shield", "security": "shield",
 	"operations": "system", "system": "system", "storage": "system", "update": "system", "monitoring": "system", "governance": "system",
 	"vayuflow": "system", "modes": "system", "faults": "system", "topology": "system", "replay": "system", "adr": "system",
 	"settings": "settings", "tools": "settings", "apikeys": "settings", "connector": "settings", "claudecode": "settings",

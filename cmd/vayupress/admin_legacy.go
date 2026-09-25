@@ -63,8 +63,7 @@ func legacyRedirect() http.HandlerFunc {
 }
 
 // operatorLegacyRedirect 301-redirects a legacy operator-console page URL
-// (/admin/modes, /admin/policy, /admin/topology, /admin/replay, /admin/faults,
-// /admin/adr) to its VayuOS equivalent under /os. The operator consoles now
+// (/admin/modes, /admin/topology, /admin/replay, /admin/faults, /admin/adr) to its VayuOS equivalent under /os. The operator consoles now
 // live inside the single VayuOS shell; only the page URLs moved (the POST
 // control endpoints under /admin/* are unchanged).
 func operatorLegacyRedirect() http.HandlerFunc {

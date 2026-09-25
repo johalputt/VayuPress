@@ -61,7 +61,6 @@ shot "$BASE_URL/os/connector"                         "$OUT_DIR/admin-os-connect
 
 # ── Operations consoles — "operations as first-class surfaces" ───────────────
 shot "$BASE_URL/os/modes"                         "$OUT_DIR/policy-modes.png"
-shot "$BASE_URL/os/policy"                        "$OUT_DIR/policy-inspector.png"
 shot "$BASE_URL/os/topology"                      "$OUT_DIR/runtime-topology.png"
 shot "$BASE_URL/os/replay"                        "$OUT_DIR/replay-explorer.png"
 shot "$BASE_URL/os/faults"                        "$OUT_DIR/fault-manager.png"

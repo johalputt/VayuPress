@@ -99,7 +99,7 @@ func osPathMinLevel(path string) int {
 		// API keys, so they sit with "connector" and "apikeys" rather than being
 		// readable by an author.
 		"settings", "security", "apikeys", "connector", "buzz", "claudecode", "update", "storage", "monitoring", "governance",
-		"tools", "modes", "mode", "policy", "topology", "replay", "faults", "adr", "budgets",
+		"tools", "modes", "mode", "topology", "replay", "faults", "adr", "budgets",
 		"members", "newsletter", "monetization", "ads", "website", "branding", "shield",
 		// Money & fulfilment: payment-gateway secrets, the order ledger, and the
 		// premium mail-ID marketplace mutate revenue and expose customer PII —

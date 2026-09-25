@@ -31,11 +31,6 @@ internal/mode/journal.go: unreachable func: Journal.History
 internal/mode/mode.go: unreachable func: AllowedFrom
 internal/payments/payments.go: unreachable func: Gateways
 internal/plugins/plugins.go: unreachable func: RegisterSubprocess
-internal/policy/engine.go: unreachable func: Engine.Count
-internal/policy/engine.go: unreachable func: Engine.EvaluateCategory
-internal/policy/engine.go: unreachable func: EvaluationReport.BlockingFailures
-internal/policy/engine.go: unreachable func: EvaluationReport.Summary
-internal/policy/journal.go: unreachable func: Journal.RecentRuns
 internal/provenance/confidence.go: unreachable func: All
 internal/provenance/confidence.go: unreachable func: Confidence.AtLeast
 internal/provenance/confidence.go: unreachable func: Parse
@@ -100,9 +95,6 @@ internal/trace/store.go: unreachable func: parseStatus
 internal/trace/trace.go: unreachable func: CausationID
 internal/vayuflow/cron.go: unreachable func: Schedule.String
 internal/vayuflow/runner.go: unreachable func: ImplementedActions
-internal/vayuos/mail/accounts.go: unreachable func: RoleCanDelete
-internal/vayuos/mail/accounts.go: unreachable func: RoleCanManageAccounts
-internal/vayuos/mail/accounts.go: unreachable func: RoleCanSend
 internal/vayushield/calibrate/calibrate.go: unreachable func: BiasedForTest
 internal/vayushield/challenge/challenge.go: unreachable func: Solve
 internal/vayushield/fingerprint/capture.go: unreachable func: FromClientHello

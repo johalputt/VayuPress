@@ -1,0 +1,1 @@
+-- Migration 096 (down): the deleted rows described nothing and are not restored.

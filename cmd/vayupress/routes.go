@@ -649,7 +649,6 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/admin/faults", opsRedirect)
 		r.Get("/admin/topology", opsRedirect)
 		r.Get("/admin/replay", opsRedirect)
-		r.Get("/admin/policy", opsRedirect)
 		r.Get("/admin/adr", opsRedirect)
 
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/benchmark", a.handleRunBenchmark)

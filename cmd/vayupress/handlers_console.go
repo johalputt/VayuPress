@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,7 +15,6 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/fault"
 	"github.com/johalputt/vayupress/internal/mode"
-	"github.com/johalputt/vayupress/internal/policy"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/ui"
 )
@@ -219,10 +217,6 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 	// The WAL node is not turned red in read-only mode: read-only does not stop
 	// WAL writes (System state lists what it does refuse), and a red node here
 	// said it did.
-	fedStatus := "ok"
-	if cur == mode.ModeDegraded {
-		fedStatus = "warn"
-	}
 	searchStatus := "ok"
 	searchSub := "VayuFind (built-in)"
 	if a.search == nil {
@@ -238,24 +232,15 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 	if faultTotal > 0 {
 		escStatus, faultStatus = "warn", "warn"
 	}
-	// Every figure on a node is measured; none is a constant that happens to
-	// read like one ("6/6 PASS" and "3 workers" were).
-	live := policy.Global.EvaluateAll(policy.Context{})
-	polPass, polTotal := len(live.Passed), len(live.Passed)+len(live.Warnings)+len(live.Failed)
-	polStatus := "ok"
-	switch {
-	case len(live.Failed) > 0:
-		polStatus = "err"
-	case len(live.Warnings) > 0:
-		polStatus = "warn"
-	}
 	modeStatus := "mode-" + string(cur)
 	modeLabel := saModeLabel(cur)
 
 	// Names in sentence case. Every sub-line is either measured or says what the
-	// subsystem is; none is a figure written in. There is no signing node: no
-	// code path in the running binary signs anything with an Ed25519 key, and
-	// the node said one was loaded.
+	// subsystem is; none is a figure written in ("6/6 PASS" and "3 workers"
+	// were). A node is drawn only for something the running binary does: there
+	// is no signing node (nothing signs with an Ed25519 key), no federation node
+	// (no ActivityPub code ships) and no policy node (every evaluation was
+	// handed an empty context, so its verdict described nothing).
 	nodes := []topoNode{
 		{"ingress", "HTTP ingress", "chi router · TLS", "ok", "write", 30, 70},
 		{"auth", "Auth and CSRF", "API key · rate limit", "ok", "write", 250, 70},
@@ -265,8 +250,6 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 		{"cache", "Render cache", fmt.Sprintf("%.0f%% hit ratio", snap.CacheHitRatio*100), "ok", "read", 250, 185},
 		{"replay", "Replay store", "dead letter · quarantine", "ok", "read", 470, 185},
 		{"outbox", "Outbox relay", "transactional events", "ok", "read", 690, 185},
-		{"federation", "Federation", "ActivityPub delivery", fedStatus, "read", 690, 300},
-		{"policy", "Policy engine", fmt.Sprintf("%d of %d pass", polPass, polTotal), polStatus, "govern", 30, 415},
 		{"mode", "Mode engine", modeLabel, modeStatus, "govern", 250, 415},
 		{"escalator", "Escalation engine", fmt.Sprintf("%d rules armed", len(fault.DefaultRules())), escStatus, "govern", 470, 415},
 		{"faults", "Fault points", fmt.Sprintf("%d fired", faultTotal), faultStatus, "govern", 690, 415},
@@ -292,8 +275,6 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 		{"auth", "cache", 'b', 't', ""},
 		{"queue", "replay", 'b', 't', ""},
 		{"wal", "outbox", 'b', 't', "flow"},
-		{"outbox", "federation", 'b', 't', "flow"},
-		{"policy", "mode", 'r', 'l', "ctrl"},
 		{"faults", "escalator", 'l', 'r', "ctrl"},
 		{"escalator", "mode", 'l', 'r', "ctrl"},
 		{"mode", "wal", 't', 'b', "ctrl"},
@@ -605,114 +586,6 @@ func humanizeWindow(d time.Duration) string {
 		return fmt.Sprintf("%d min", int(d.Minutes()))
 	}
 	return fmt.Sprintf("%d s", int(d.Seconds()))
-}
-
-// =============================================================================
-// Ω11 — Policy Provenance Inspector (GET /admin/policy)
-// Shows the live policy engine state plus full evaluation history from SQLite.
-// =============================================================================
-
-func (a *App) handlePolicyPage(w http.ResponseWriter, r *http.Request) {
-	nonce := a.writeConsoleShellHead(w, r, "policy", "Policy")
-
-	live := policy.Global.EvaluateAll(policy.Context{})
-	pass, warn, fail := len(live.Passed), len(live.Warnings), len(live.Failed)
-	var rows []policy.EvalRow
-	var runs []policy.RunSummary
-	if policy.GlobalJournal != nil {
-		rows, _ = policy.GlobalJournal.History(120)
-		runs, _ = policy.GlobalJournal.RunHistory(20)
-	}
-	clean := 0
-	for _, rs := range runs {
-		if rs.Warn == 0 && rs.Fail == 0 {
-			clean++
-		}
-	}
-	resultTag := func(res string) ui.HTML {
-		return ui.Tag(map[string]string{"pass": "ok", "warn": "warn", "fail": "danger"}[res], sentenceWord(res))
-	}
-
-	liveRows := make([][]ui.HTML, 0, pass+warn+fail)
-	for _, r := range append(append(live.Failed, live.Warnings...), live.Passed...) {
-		res := "pass"
-		if !r.Passed {
-			res = "fail"
-			if r.Severity == policy.SeverityWarning || r.Severity == policy.SeverityAdvisory {
-				res = "warn"
-			}
-		}
-		liveRows = append(liveRows, []ui.HTML{resultTag(res), `<span class="mono">` + ui.Text(r.Name) + `</span>`,
-			ui.Text(sentenceWord(string(r.Category))), ui.Text(sentenceWord(string(r.Severity))), ui.Text(sentenceWord(r.Message))})
-	}
-	historyRows := make([][]ui.HTML, 0, len(rows))
-	for _, row := range rows {
-		run := row.RunID
-		if len(run) > 12 {
-			run = run[:12] + "…"
-		}
-		historyRows = append(historyRows, []ui.HTML{`<span class="mono">` + ui.Text(row.EvaluatedAt.UTC().Format("2006-01-02 15:04:05Z")) + `</span>`,
-			`<span class="mono">` + ui.Text(run) + `</span>`, resultTag(row.Result), `<span class="mono">` + ui.Text(row.PolicyName) + `</span>`,
-			ui.Text(sentenceWord(row.Category)), ui.Text(sentenceWord(row.Detail))})
-	}
-	failTone, warnTone := "", ""
-	if fail > 0 {
-		failTone = "danger"
-	}
-	if warn > 0 {
-		warnTone = "warn"
-	}
-
-	fmt.Fprint(w, ui.Join(
-		ui.Page("Policy", "The rules this install holds itself to, how each did just now, and how past evaluations went. Failures come first.", ""),
-		ui.Figures(
-			ui.Figure{Value: strconv.Itoa(pass) + " of " + strconv.Itoa(pass+warn+fail), Label: "Passing"},
-			ui.Figure{Value: strconv.Itoa(warn), Label: "Warnings", Tone: warnTone},
-			ui.Figure{Value: strconv.Itoa(fail), Label: "Failures", Tone: failTone},
-			ui.Figure{Value: strconv.Itoa(clean) + " of " + strconv.Itoa(len(runs)), Label: "Clean runs", Note: "Recent evaluations with no warning or failure"},
-		),
-		ui.Section("Recent runs", "Oldest to newest", policyRunBars(runs)),
-		ui.Section("Live evaluation", time.Now().UTC().Format("15:04:05Z"),
-			ui.Table([]string{"Result", "Policy", "Category", "Severity", "Detail"}, liveRows, "No policies are registered.")),
-		ui.Section("Evaluation history", "Last "+strconv.Itoa(len(rows))+" entries",
-			ui.Table([]string{"Evaluated", "Run", "Result", "Policy", "Category", "Detail"}, historyRows, "No evaluation has been recorded yet. The first runs when the install starts.")),
-	))
-	writeConsoleShellFoot(w, nonce, "")
-}
-
-// policyRunBars draws the recorded evaluation runs oldest to newest, one bar
-// each, as tall as the number of policies it evaluated and in the tone of its
-// worst result. SVG attributes, not inline styles, carry the geometry.
-func policyRunBars(runs []policy.RunSummary) ui.HTML {
-	if len(runs) == 0 {
-		return ui.Empty("chart", "No runs recorded yet", "The first evaluation is recorded when the install starts.", "")
-	}
-	most := 1
-	for _, rs := range runs {
-		if t := rs.Pass + rs.Warn + rs.Fail; t > most {
-			most = t
-		}
-	}
-	slot := 100.0 / float64(len(runs))
-	var b strings.Builder
-	b.WriteString(`<svg class="pol-runs" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="Policy evaluation runs, oldest to newest">`)
-	for i := len(runs) - 1; i >= 0; i-- { // runs arrive newest first
-		rs := runs[i]
-		h := math.Max(2, 38*float64(rs.Pass+rs.Warn+rs.Fail)/float64(most))
-		tone := "ok"
-		switch {
-		case rs.Fail > 0:
-			tone = "fail"
-		case rs.Warn > 0:
-			tone = "warn"
-		}
-		x := float64(len(runs)-1-i) * slot
-		fmt.Fprintf(&b, `<rect class="pol-run pol-run--%s" x="%.2f" y="%.2f" width="%.2f" height="%.2f"><title>%s</title></rect>`,
-			tone, x+slot*0.2, 40-h, slot*0.6, h,
-			ui.Text(fmt.Sprintf("%s: %d passed, %d warned, %d failed", rs.EvaluatedAt.UTC().Format("2006-01-02 15:04Z"), rs.Pass, rs.Warn, rs.Fail)))
-	}
-	b.WriteString(`</svg>`)
-	return ui.HTML(b.String())
 }
 
 // sentenceWord capitalises the first letter of a machine word ("pass" →

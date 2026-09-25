@@ -247,13 +247,13 @@ VayuPress is a single Go binary and a single SQLite database. There is no second
                     │   VayuOS control panel   Newsletter   Media   VayuAPI       │
                     │                                                             │
                     │   ── Platform kernel (immutable) ──                         │
-                    │   migrations · outbox · policy · modes · audit              │
+                    │   migrations · outbox · modes · audit                       │
                     │                                                             │
                     │                    SQLite (WAL mode)                        │
                     └─────────────────────────────────────────────────────────────┘
 ```
 
-Under the hood: a platform kernel (checksum-verified migrations, transactional event outbox, WORM audit log, a policy engine and six adaptive system modes), an async SQLite write queue with dead-letter replay, a plugin runtime that confines each out-of-process plugin with seccomp, namespaces and a capability allowlist (the loader that installs plugins into it is not built yet), and structured logs and tracing. Architecture and every decision are recorded in [`docs/`](docs/) and the [ADR registry](docs/adr/).
+Under the hood: a platform kernel (checksum-verified migrations, transactional event outbox, WORM audit log and six adaptive system modes), an async SQLite write queue with dead-letter replay, a plugin runtime that confines each out-of-process plugin with seccomp, namespaces and a capability allowlist (the loader that installs plugins into it is not built yet), and structured logs and tracing. Architecture and every decision are recorded in [`docs/`](docs/) and the [ADR registry](docs/adr/).
 
 ---
 
@@ -384,14 +384,14 @@ Open it, run your own test, browse the archive. That is the entire pitch, deploy
 | ![Member signup](docs/screenshots/member-signup.png) | ![Plans](docs/screenshots/member-pricing.png) |
 | *Branded passwordless member signup* | *Reader-facing plans, aware of who is signed in* |
 
-The adaptive-governance runtime is fully inspectable from inside VayuOS — system modes, the policy provenance inspector, a live runtime-topology graph, the dead-letter replay explorer, the fault manager, and the ADR registry.
+The adaptive-governance runtime is fully inspectable from inside VayuOS — system modes, a live runtime-topology graph, the dead-letter replay explorer, the fault manager, and the ADR registry.
 
 | | |
 |---|---|
-| ![System modes](docs/screenshots/policy-modes.png) | ![Policy inspector](docs/screenshots/policy-inspector.png) |
-| ![Runtime topology](docs/screenshots/runtime-topology.png) | ![Replay explorer](docs/screenshots/replay-explorer.png) |
-| ![Fault manager](docs/screenshots/fault-manager.png) | ![ADR registry](docs/screenshots/adr-registry.png) |
+| ![System modes](docs/screenshots/policy-modes.png) | ![Runtime topology](docs/screenshots/runtime-topology.png) |
+| ![Replay explorer](docs/screenshots/replay-explorer.png) | ![Fault manager](docs/screenshots/fault-manager.png) |
 | ![Governance](docs/screenshots/admin-os-governance.png) | ![Monitoring](docs/screenshots/admin-os-monitoring.png) |
+| ![ADR registry](docs/screenshots/adr-registry.png) | |
 
 </details>
 

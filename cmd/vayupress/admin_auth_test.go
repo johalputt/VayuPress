@@ -24,7 +24,6 @@ func TestAdminRoutesRequireAuth(t *testing.T) {
 		{"GET", "/admin/modes"},
 		{"GET", "/admin/faults"},
 		{"GET", "/admin/replay"},
-		{"GET", "/admin/policy"},
 		{"GET", "/admin/topology"},
 		{"GET", "/admin/backup/validate"},
 		{"GET", "/api/v1/admin/outbox/stats"},

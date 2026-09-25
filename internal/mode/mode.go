@@ -184,21 +184,6 @@ func (m *Manager) Reset() {
 	m.history = nil
 }
 
-// EvaluateFromPolicy transitions mode based on policy evaluation results.
-// - Any exhausted SLO → Degraded (if currently Normal)
-// - Migration drift → ReadOnly (if currently Normal or Degraded)
-// - Quarantined plugins → Quarantined (if currently Normal or Degraded)
-func (m *Manager) EvaluateFromPolicy(sloExhausted bool, migrationDrift bool, pluginsQuarantined bool) {
-	switch {
-	case migrationDrift:
-		_ = m.Transition(ModeReadOnly, "migration checksum drift detected", "policy.migration-drift")
-	case pluginsQuarantined:
-		_ = m.Transition(ModeQuarantined, "plugin quarantine threshold exceeded", "policy.plugin-quarantine")
-	case sloExhausted:
-		_ = m.Transition(ModeDegraded, "SLO error budget exhausted", "policy.slo-exhausted")
-	}
-}
-
 // allowed defines the permitted mode transition graph.
 // From any mode you can force via ForceTransition — this governs automatic transitions.
 var allowed = map[Mode][]Mode{

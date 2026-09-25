@@ -43,20 +43,6 @@ Normal ──→ Degraded ──→ Normal
 
 ---
 
-## Policy-Driven Transitions
-
-`EvaluateFromPolicy` maps policy engine results to mode transitions:
-
-| Policy Condition | Target Mode | Priority |
-|-----------------|-------------|----------|
-| `migrationDrift == true` | ReadOnly | Highest |
-| `pluginsQuarantined == true` | Quarantined | Medium |
-| `sloExhausted == true` | Degraded | Lowest |
-
-Priority matters when multiple conditions are true simultaneously.
-
----
-
 ## Subsystem Behaviour by Mode
 
 | Subsystem | Normal | Degraded | ReadOnly | Recovery | Maintenance | Quarantined |
@@ -87,10 +73,11 @@ queue flushing) to a background goroutine.
 Every transition (including forced ones) is:
 1. Appended to `Manager.history` in memory.
 2. Logged via `logging.LogJSON` at `warn` (normal) or `error` (forced) level.
-3. Preserved for the lifetime of the process (history is never trimmed).
+3. Written to SQLite by the mode journal (`internal/mode/journal.go`), which
+   subscribes through `OnTransition`; at start the last journalled mode is
+   restored, so a restart does not silently return to Normal.
 
-History is accessible via `mode.Global.History()` and exposed on the
-`/internal/health` endpoint.
+The history is shown on the System state and Governance pages.
 
 ---
 
@@ -102,17 +89,8 @@ if mode.Global.Is(mode.ModeReadOnly, mode.ModeRecovery, mode.ModeMaintenance) {
     return ErrWritesForbidden
 }
 
-// React to policy evaluation
-mode.Global.EvaluateFromPolicy(
-    sloTracker.BudgetExhausted(),
-    migrations.DriftCount() > 0,
-    sandbox.QuarantinedCount() > 0,
-)
-
-// Register a subsystem hook
+// Subscribe to transitions (the mode journal is the one subscriber today)
 mode.Global.OnTransition(func(t mode.Transition) {
-    if t.To == mode.ModeQuarantined {
-        federation.SuspendOutbound()
-    }
+    logging.LogInfo("example", string(t.From)+" -> "+string(t.To))
 })
 ```

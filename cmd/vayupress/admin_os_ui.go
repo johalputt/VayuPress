@@ -773,7 +773,6 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/faults", a.handleFaultPage)
 		pr.Get("/os/topology", a.handleTopologyPage)
 		pr.Get("/os/replay", a.handleReplayPage)
-		pr.Get("/os/policy", a.handlePolicyPage)
 		pr.Get("/os/adr", a.handleAdminADR)
 
 		// Operator-initiated actions. API-key callers hold no browser session and
@@ -3457,7 +3456,6 @@ func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
 		{Label: "Storage & System", Icon: "disk", Href: "/os/storage"},
 		{Label: "Security posture", Icon: "lock", Href: "/os/security"},
 		{Label: "System modes", Icon: "compass", Href: "/os/modes"},
-		{Label: "Policy", Icon: "doc", Href: "/os/policy"},
 		{Label: "Topology", Icon: "link", Href: "/os/topology"},
 		{Label: "VayuFlow automations", Icon: "bolt", Href: "/os/vayuflow"},
 		{Label: "Backup & Recovery", Icon: "archive", Href: "/os/vayukeep"},

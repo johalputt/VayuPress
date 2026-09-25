@@ -1,0 +1,2 @@
+-- Migration 096 (up): the policy engine is removed. Every evaluation it journalled was run against an empty context, so the rows describe nothing, and the table grew by six rows every five minutes with no pruning. The rows go; the table stays, so a binary rolled back to one that still writes it keeps working. NOTE: runMigrations executes line-by-line, so keep each statement on ONE line.
+DELETE FROM policy_evaluations;

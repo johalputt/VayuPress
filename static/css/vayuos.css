@@ -6512,10 +6512,6 @@
 /* A settings row's control keeps its size and sits on the right (plan §4). */
 .vp-os[data-ui="still-air"] .settings-row-control { flex: none; display: flex; align-items: center; gap: var(--space-3); }
 .vp-os[data-ui="still-air"] .mem-bar { fill: var(--chart-1); }
-.vp-os[data-ui="still-air"] .pol-runs { display: block; width: 100%; height: 64px; }
-.vp-os[data-ui="still-air"] .pol-run--ok { fill: var(--ok); }
-.vp-os[data-ui="still-air"] .pol-run--warn { fill: var(--warn); }
-.vp-os[data-ui="still-air"] .pol-run--fail { fill: var(--danger); }
 .vp-os[data-ui="still-air"] .topo-bar--govern { fill: var(--chart-4); }
 .vp-os[data-ui="still-air"] .topo-bar--observe { fill: var(--chart-2); }
 .vp-os[data-ui="still-air"] .topo-dot--ok { fill: var(--ok); }
