@@ -18,6 +18,7 @@ package main
 // classic selectors, so admin-os.js drives both designs unchanged.
 
 import (
+	"context"
 	"html"
 	"net/http"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	"unicode"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/mode"
 )
 
@@ -531,7 +533,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 <div class="shell sa-shell">
 <header class="sa-sysbar" role="banner">
   <button type="button" class="menu-toggle sa-iconbtn" data-action="toggle-sidebar" aria-label="Show or hide the app list" aria-controls="vp-sidebar" aria-expanded="true">` + saIcon("list") + `</button>
-  <a class="sa-mark" href="` + home + `" aria-label="VayuOS home">` + saMark() + `<span class="sa-mark__site">` + html.EscapeString(siteName) + `</span></a>
+  ` + saBrand(s, home, siteName) + `
   <button type="button" class="topbar-cmd sa-search" aria-label="Search or run a command">` + saIcon("search") + ` <span class="sa-search__text">Search or run a command</span><kbd>⌘K</kbd></button>
   <div class="sa-status" role="status" aria-label="System status">` + modeHTML + `<span class="sa-sep" aria-hidden="true"></span>` + worldHTML + `</div>
   ` + osNotifBell(s) + `
@@ -625,5 +627,76 @@ func saPaletteIndex(apps []saApp) string {
 func (a *App) hubRedirect(app string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, saAppHref(a.getOSSettings(r.Context()), app, osHome), http.StatusSeeOther)
+	}
+}
+
+// saBrand is the system bar's left end: the mark, which goes home, and the
+// site this page belongs to. With hosted sites it is a switcher to each
+// site's console (ADR-0154, one console per site); inside one, it names that
+// site, never the install's, so an operator always sees whose site they are
+// changing.
+func saBrand(s *osSettings, home, siteName string) string {
+	label := siteName
+	if s.Scope != nil {
+		label = s.Scope.Host
+	}
+	if len(s.Sites) == 0 {
+		return `<a class="sa-mark" href="` + home + `" aria-label="VayuOS home">` + saMark() + `<span class="sa-mark__site">` + html.EscapeString(label) + `</span></a>`
+	}
+	item := func(href, icon, text, meta string, current bool) string {
+		cur := ""
+		if current {
+			cur = ` aria-current="page"`
+		}
+		if meta != "" {
+			meta = `<span class="sa-menu__meta">` + html.EscapeString(meta) + `</span>`
+		}
+		return `<a class="sa-menu__item" role="menuitem" href="` + href + `"` + cur + `>` + saIcon(icon) + `<span class="sa-menu__text">` + html.EscapeString(text) + `</span>` + meta + `</a>`
+	}
+	var menu strings.Builder
+	menu.WriteString(`<div class="sa-menu__label">Sites</div>`)
+	menu.WriteString(item(osHome, "home", siteName, "Your console", s.Scope == nil))
+	for _, site := range s.Sites {
+		meta := ""
+		if !site.Active {
+			meta = "Off"
+		}
+		menu.WriteString(item("/os/d/"+site.ID, "globe", site.Host, meta, s.Scope != nil && s.Scope.ID == site.ID))
+	}
+	menu.WriteString(`<div class="sa-menu__sep"></div>` + item("/os/domains", "list", "All sites", "", false))
+	return `<a class="sa-mark sa-mark--glyph" href="` + home + `" aria-label="VayuOS home">` + saMark() + `</a>` +
+		`<details class="sa-pop sa-sites"><summary class="sa-sites__btn" aria-label="Switch site, now ` + html.EscapeString(label) + `">` +
+		`<span class="sa-mark__site">` + html.EscapeString(label) + `</span>` + saIcon("chev-ud") + `</summary>` +
+		`<div class="sa-pop__panel sa-menu sa-sites__menu" role="menu">` + menu.String() + `</div></details>`
+}
+
+// osSitesFor fills the switcher: the hosted sites this session may open, and
+// the one the current page belongs to. Only a session that can open the site
+// list gets one; everyone else sees the site's name, as before. A Tor site
+// still minting its address has no console to go to yet, so it is left out.
+func (a *App) osSitesFor(ctx context.Context, s *osSettings) {
+	if a.domains == nil || s.MailOnly || s.AccessLevel < osPathMinLevel("/os/domains") {
+		return
+	}
+	list, err := a.domains.List(ctx)
+	if err != nil {
+		return
+	}
+	scopeID := ""
+	if rest, ok := strings.CutPrefix(s.Route, "/os/d/"); ok {
+		scopeID, _, _ = strings.Cut(rest, "/")
+	}
+	at := -1
+	for _, d := range list {
+		if d.IsPrimary || isPendingTorSite(d.Host) {
+			continue
+		}
+		if d.ID == scopeID {
+			at = len(s.Sites)
+		}
+		s.Sites = append(s.Sites, osSite{ID: d.ID, Host: d.Host, Active: d.Status == domain.StatusActive})
+	}
+	if at >= 0 {
+		s.Scope = &s.Sites[at] // taken once the slice has stopped growing
 	}
 }

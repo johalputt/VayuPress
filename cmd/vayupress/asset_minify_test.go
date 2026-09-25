@@ -85,10 +85,13 @@ func TestConsoleStylesheetIsServedMinified(t *testing.T) {
 // the source controls. Not on gzip output: the same file compresses to
 // different sizes under Go 1.26 and Go 1.27, so a gzip budget measured the
 // toolchain as much as the CSS, and went red on CI's newer Go with nothing
-// changed. Today the sheet minifies to 311,232 bytes; the budget leaves about
-// 4 KB for ordinary work, and the classic sheet's decoration (335,629 bytes
-// with it) would not fit if it came back. Raise it on purpose, in this line.
-const consoleCSSBudget = 315_000
+// changed. The sheet minified to 311,232 bytes when the budget was set at
+// 315,000. The P6 components then spent that headroom: the nine control
+// states, the bell's groups, the command bar's preview and the site switcher,
+// with 43 dead rules removed on the way. Raised to 320,000 on 2026-09-25 for
+// that work; the classic sheet's decoration (335,629 bytes with it) still
+// could not fit if it came back. Raise it on purpose, in this line.
+const consoleCSSBudget = 320_000
 
 func TestConsoleStylesheetFitsItsBudget(t *testing.T) {
 	src, err := os.ReadFile("../../static/css/vayuos.css") // #nosec G304 -- repository file

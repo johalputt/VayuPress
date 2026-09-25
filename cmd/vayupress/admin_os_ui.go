@@ -1412,6 +1412,17 @@ type osSettings struct {
 	// when (render 09). RecentSeen is when this viewer last marked them read.
 	Recent     []osRecentEvent
 	RecentSeen time.Time
+	// Sites are the hosted sites whose consoles this session may open, for
+	// the system bar's switcher; Scope is the one this page belongs to, nil
+	// on the install's own console.
+	Sites []osSite
+	Scope *osSite
+}
+
+// osSite is one hosted site in the switcher.
+type osSite struct {
+	ID, Host string
+	Active   bool
 }
 
 // osNotification is one actionable item in the topbar notification centre: a
@@ -1489,6 +1500,7 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 	if rc := chi.RouteContext(ctx); rc != nil {
 		s.Route = resolvedRoute(rc)
 	}
+	a.osSitesFor(ctx, s)
 	s.Mode = mode.Global.Current()
 	if h := mode.Global.History(); len(h) > 0 {
 		s.ModeSince = h[len(h)-1].OccurredAt
