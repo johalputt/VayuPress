@@ -155,6 +155,11 @@ const (
 	// default alt when inserting that image. Absent keys simply have no default.
 	KeyMediaAlt = "media.alt"
 
+	// KeyMediaNames stores a JSON object mapping a content-addressed media
+	// filename to the name a person knows it by: the original filename at
+	// upload, or what the operator renamed it to in the Media library.
+	KeyMediaNames = "media.names"
+
 	// Feature flags — operator-toggleable platform modules surfaced in the
 	// Tools & Plugins panel. Each value is "on" (default) or "off". Disabling a
 	// flag turns the corresponding public surface off at the request boundary;
@@ -486,6 +491,7 @@ var NotPortable = map[string]bool{
 	KeyContactEmail:               true,
 	KeyContactAutoReply:           true,
 	KeyMediaAlt:                   true,
+	KeyMediaNames:                 true,
 	KeyThemeHeroImage:             true,
 	KeyThemeHeroImageType:         true,
 	KeyThemeOGImage:               true,
@@ -581,6 +587,7 @@ var AllKeys = map[string]bool{
 	KeyContactEmail:            true,
 	KeyContactAutoReply:        true,
 	KeyMediaAlt:                true,
+	KeyMediaNames:              true,
 	KeySiteName:                true,
 	KeySiteTagline:             true,
 	KeySiteDescription:         true,

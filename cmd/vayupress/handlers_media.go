@@ -384,7 +384,7 @@ func (a *App) handleMediaUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, _, err := r.FormFile("file")
+	file, header, err := r.FormFile("file")
 	if err != nil {
 		fail(400, "no image file in upload (field 'file')")
 		return
@@ -439,6 +439,12 @@ func (a *App) handleMediaUpload(w http.ResponseWriter, r *http.Request) {
 		Level: "info", Component: "media", Severity: "info",
 		Msg: "image uploaded: " + res.Name, RequestID: getRequestID(r),
 	})
+	// Keep the name the file arrived with, so the library shows
+	// "himalaya-dawn.jpg" rather than its content hash. The same bytes
+	// uploaded again keep the name they were first given.
+	if header != nil {
+		a.nameMediaOnce(r.Context(), res.Name, header.Filename)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(201)

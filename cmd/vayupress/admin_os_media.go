@@ -18,24 +18,158 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
-// mediaItem is one stored asset as surfaced to the library UI.
+// mediaItem is one stored asset as surfaced to the library UI. Name is the
+// stored, content-addressed file name; Title is what a person calls it.
 type mediaItem struct {
-	Name    string `json:"name"`
-	URL     string `json:"url"`
-	Size    int64  `json:"size"`
-	ModUnix int64  `json:"mod"`
-	IsPDF   bool   `json:"isPdf"`
-	Alt     string `json:"alt"`
+	Name    string     `json:"name"`
+	Title   string     `json:"title"`
+	Kind    string     `json:"kind"`
+	URL     string     `json:"url"`
+	Size    int64      `json:"size"`
+	ModUnix int64      `json:"mod"`
+	IsPDF   bool       `json:"isPdf"`
+	Alt     string     `json:"alt"`
+	Uses    []mediaUse `json:"uses"`
+}
+
+// mediaUse is one place a file is referenced from, with where to go to see it.
+type mediaUse struct {
+	Label string `json:"label"`
+	Href  string `json:"href"`
+}
+
+// mediaKinds names each stored extension the way a person reads it.
+var mediaKinds = map[string]string{
+	".jpg": "JPEG image", ".png": "PNG image", ".gif": "GIF image",
+	".webp": "WebP image", ".svg": "SVG drawing", ".pdf": "PDF document",
+}
+
+// mediaNameMap returns the persisted filename→display-name map (best-effort).
+func (a *App) mediaNameMap(ctx context.Context) map[string]string {
+	out := map[string]string{}
+	if a.siteSettings == nil {
+		return out
+	}
+	if raw := a.siteSettings.Get(ctx, settings.ForPrimary(), settings.KeyMediaNames); strings.TrimSpace(raw) != "" {
+		_ = json.Unmarshal([]byte(raw), &out)
+	}
+	return out
+}
+
+func (a *App) saveMediaNames(ctx context.Context, names map[string]string) error {
+	b, err := json.Marshal(names)
+	if err != nil {
+		return err
+	}
+	return a.siteSettings.SetMany(ctx, settings.ForPrimary(), map[string]string{settings.KeyMediaNames: string(b)})
+}
+
+// cleanMediaTitle is a display name as it may be stored: the last path
+// element of whatever the browser sent, trimmed, and bounded.
+func cleanMediaTitle(s string) string {
+	s = strings.TrimSpace(filepath.Base(strings.ReplaceAll(s, "\\", "/")))
+	if s == "." || s == "/" {
+		return ""
+	}
+	if r := []rune(s); len(r) > 120 {
+		s = string(r[:120])
+	}
+	return s
+}
+
+// nameMediaOnce records the name a file arrived with, unless it already has
+// one: the same bytes uploaded again are the same file, and keep the name
+// they were first given or renamed to.
+func (a *App) nameMediaOnce(ctx context.Context, stored, original string) {
+	title := cleanMediaTitle(original)
+	if a.siteSettings == nil || title == "" || !storedMediaName.MatchString(stored) {
+		return
+	}
+	names := a.mediaNameMap(ctx)
+	if _, ok := names[stored]; ok {
+		return
+	}
+	names[stored] = title
+	_ = a.saveMediaNames(ctx, names)
+}
+
+// mediaRefRe finds a stored media file referenced from any text: a post's
+// body or blocks, a website document, a setting.
+var mediaRefRe = regexp.MustCompile(`/media/([a-f0-9]{32}\.(?:png|jpg|gif|webp|pdf|svg))`)
+
+// mediaUsage maps each stored file to the places that reference it: posts and
+// pages (body, blocks, feature and share images), each site's live website,
+// and settings such as a logo. It is read on demand, not kept: a list that
+// had to be maintained at every save would drift from the content it claims
+// to describe.
+func (a *App) mediaUsage(ctx context.Context) map[string][]mediaUse {
+	uses := map[string][]mediaUse{}
+	add := func(text string, use mediaUse) {
+		seen := map[string]bool{}
+		for _, m := range mediaRefRe.FindAllStringSubmatch(text, -1) {
+			if !seen[m[1]] {
+				seen[m[1]] = true
+				uses[m[1]] = append(uses[m[1]], use)
+			}
+		}
+	}
+	if dbpkg.DB == nil {
+		return uses
+	}
+	rdb := dbpkg.Reader()
+	if rows, err := rdb.QueryContext(ctx, `SELECT slug, title, is_page, COALESCE(content,'') || ' ' || COALESCE(blocks_json,'') || ' ' || COALESCE(feature_image,'') || ' ' || COALESCE(og_image,'') || ' ' || COALESCE(twitter_image,'') FROM articles ORDER BY is_page, title`); err == nil {
+		for rows.Next() {
+			var slug, title, text string
+			var isPage bool
+			if rows.Scan(&slug, &title, &isPage, &text) == nil {
+				label := "Post · " + title
+				if isPage {
+					label = "Page · " + title
+				}
+				add(text, mediaUse{Label: label, Href: "/os/editor/" + slug})
+			}
+		}
+		_ = rows.Err() // a read cut short just shows fewer uses
+		rows.Close()
+	}
+	if rows, err := rdb.QueryContext(ctx, `SELECT r.domain_id, r.doc FROM site_revisions r JOIN (SELECT domain_id, MAX(id) AS id FROM site_revisions GROUP BY domain_id) n ON n.id = r.id ORDER BY r.domain_id`); err == nil {
+		for rows.Next() {
+			var domainID, doc string
+			if rows.Scan(&domainID, &doc) == nil {
+				use := mediaUse{Label: "Website", Href: "/os/website/editor"}
+				if domainID != "" {
+					use = mediaUse{Label: "Website · a hosted site", Href: "/os/d/" + domainID + "/website"}
+				}
+				add(doc, use)
+			}
+		}
+		_ = rows.Err()
+		rows.Close()
+	}
+	if rows, err := rdb.QueryContext(ctx, `SELECT value FROM site_settings WHERE value LIKE '%/media/%'`); err == nil {
+		for rows.Next() {
+			var value string
+			if rows.Scan(&value) == nil {
+				add(value, mediaUse{Label: "Site settings", Href: "/os/settings/design"})
+			}
+		}
+		_ = rows.Err()
+		rows.Close()
+	}
+	return uses
 }
 
 // mediaAltMap returns the persisted filename→alt-text map (best-effort).
@@ -102,6 +236,7 @@ func listMediaItems() []mediaItem {
 		}
 		items = append(items, mediaItem{
 			Name:    name,
+			Kind:    mediaKinds[filepath.Ext(name)],
 			URL:     "/media/" + name,
 			Size:    info.Size(),
 			ModUnix: info.ModTime().Unix(),
@@ -113,12 +248,20 @@ func listMediaItems() []mediaItem {
 }
 
 // handleOSMediaList returns the media library contents as JSON, merging each
-// asset's persisted alt text.
+// asset's alt text, its name and where it is used.
 func (a *App) handleOSMediaList(w http.ResponseWriter, r *http.Request) {
 	items := listMediaItems()
-	alts := a.mediaAltMap(r.Context())
+	alts, names, uses := a.mediaAltMap(r.Context()), a.mediaNameMap(r.Context()), a.mediaUsage(r.Context())
 	for i := range items {
 		items[i].Alt = alts[items[i].Name]
+		items[i].Title = names[items[i].Name]
+		if items[i].Title == "" {
+			items[i].Title = items[i].Name
+		}
+		items[i].Uses = uses[items[i].Name]
+		if items[i].Uses == nil {
+			items[i].Uses = []mediaUse{}
+		}
 	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"items": items})
 }
@@ -144,7 +287,7 @@ func (a *App) handleOSMediaDelete(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
-	alts := a.mediaAltMap(r.Context())
+	alts, names := a.mediaAltMap(r.Context()), a.mediaNameMap(r.Context())
 	deleted := 0
 	for _, n := range body.Names {
 		if !storedMediaName.MatchString(n) {
@@ -153,6 +296,7 @@ func (a *App) handleOSMediaDelete(w http.ResponseWriter, r *http.Request) {
 		if err := os.Remove(filepath.Join(config.Cfg.MediaDir, n)); err == nil {
 			deleted++
 			delete(alts, n)
+			delete(names, n)
 		}
 	}
 	if deleted > 0 {
@@ -165,8 +309,42 @@ func (a *App) handleOSMediaDelete(w http.ResponseWriter, r *http.Request) {
 		if b, err := json.Marshal(alts); err == nil {
 			_ = a.siteSettings.SetMany(r.Context(), settings.ForPrimary(), map[string]string{settings.KeyMediaAlt: string(b)})
 		}
+		_ = a.saveMediaNames(r.Context(), names)
 	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"deleted": deleted})
+}
+
+// handleOSMediaName renames a file as the library shows it. The stored file,
+// and every link to it, is unchanged: the name is how a person finds it.
+func (a *App) handleOSMediaName(w http.ResponseWriter, r *http.Request) {
+	if a.siteSettings == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "settings-error", "settings not initialised", "")
+		return
+	}
+	var body struct {
+		Name  string `json:"name"`
+		Title string `json:"title"`
+	}
+	if err := readJSONDirect(r, &body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	if !storedMediaName.MatchString(body.Name) {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-name", "Unknown media asset", "")
+		return
+	}
+	title := cleanMediaTitle(body.Title)
+	if title == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "empty-name", "A file needs a name", "")
+		return
+	}
+	names := a.mediaNameMap(r.Context())
+	names[body.Name] = title
+	if err := a.saveMediaNames(r.Context(), names); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "save-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]string{"title": title})
 }
 
 // handleOSMediaAlt sets (or clears) the alt text for one media asset.
@@ -212,46 +390,46 @@ func (a *App) handleOSMediaAlt(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// handleOSMedia renders the media library page: a responsive grid populated by
-// admin-os.js from the listing endpoint, plus an upload dropzone that POSTs to
-// the existing /api/v1/admin/media handler.
+// handleOSMedia renders the media library (render 07): a table or grid of
+// every file, an inspector for the selected one, a context menu on the
+// selection, and uploads with their progress and time left. The list itself
+// is drawn by admin-os.js from /os/api/media.
 func (a *App) handleOSMedia(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
 	count := countMediaItems()
-
+	seg := func(view, icon, label string, on bool) string {
+		return `<button type="button" class="sa-seg__opt" data-media-view="` + view + `" aria-pressed="` + strconv.FormatBool(on) + `" aria-label="` + label + `">` + saIcon(icon) + `</button>`
+	}
+	kind := func(k, label string, on bool) string {
+		cls := "seg-btn"
+		if on {
+			cls += " is-active"
+		}
+		return `<button type="button" class="` + cls + `" data-media-filter="` + k + `">` + label + `</button>`
+	}
 	body := `<div class="page-header">
   <h1>Media</h1>
-  <span class="muted text-sm">` + strconv.Itoa(count) + ` items</span>
-</div>
-<p class="page-sub">Your whole media library — drag &amp; drop to upload, then copy a link or reuse any file in a post. Everything is served from your own origin.</p>
-
-<div class="media-dropzone" data-media-dropzone tabindex="0" role="button"
-     aria-label="Upload media — click or drop files">
-  <div class="media-dropzone__icon" aria-hidden="true">` + saIcon("upload") + `</div>
-  <div class="media-dropzone__text">Drop an image or PDF here, or <span class="media-dropzone__link">browse</span></div>
-  <div class="media-dropzone__hint text-xs muted">PNG · JPEG · GIF · WebP · SVG · PDF — up to 32 MB. SVG is cleaned on upload: script, styles and off-site references are stripped before the file is stored.</div>
-  <input type="file" data-media-input accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,application/pdf" hidden>
-</div>
-
-<div class="toolbar-row mt-3">
-  <input type="search" class="input" data-media-search placeholder="Search by filename…" aria-label="Search media" autocomplete="off" style="flex:1;min-width:160px">
-  <div class="seg-filter" role="group" aria-label="Filter by type">
-    <button type="button" class="seg-btn is-active" data-media-filter="all">All</button>
-    <button type="button" class="seg-btn" data-media-filter="image">Images</button>
-    <button type="button" class="seg-btn" data-media-filter="pdf">PDFs</button>
+  <div class="page-actions">
+    <label class="media-find">` + saIcon("search") + `<input type="search" class="input" data-media-search placeholder="Filter media" aria-label="Filter media" autocomplete="off"></label>
+    <span class="sa-seg" role="group" aria-label="Show as">` + seg("list", "list", "Show as a list", true) + seg("grid", "grid", "Show as a grid", false) + `</span>
+    <button type="button" class="btn btn--primary" data-media-upload>` + saIcon("upload") + ` Upload</button>
+    <input type="file" data-media-input multiple accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,application/pdf" hidden>
   </div>
-  <button type="button" class="btn btn--ghost btn--sm" data-media-delete-selected disabled><span>Delete selected (<span data-media-sel-count>0</span>)</span></button>
 </div>
-<div class="text-sm muted" data-media-empty hidden>No media match your search.</div>
-
-<div class="media-grid" data-media-grid aria-live="polite">
-  <div class="skeleton skeleton--media"></div>
-  <div class="skeleton skeleton--media"></div>
-  <div class="skeleton skeleton--media"></div>
-  <div class="skeleton skeleton--media"></div>
-</div>`
+<p class="page-sub">` + strconv.Itoa(count) + ` file` + plural(count) + `, served from your own address. Drop files anywhere on this page to upload them.` +
+		string(ui.Tip("PNG, JPEG, GIF, WebP, SVG and PDF, up to 32 MB each. An SVG is cleaned on upload: scripts, styles and references to other sites are removed before it is stored.")) + `</p>
+<div class="seg-filter media-kinds" role="group" aria-label="Kind">` + kind("all", "All", true) + kind("image", "Images", false) + kind("pdf", "Documents", false) + `</div>
+<div class="media-shell">
+  <div class="media-main" data-media-drop>
+    <div data-media-list aria-live="polite"><div class="skeleton skeleton--media"></div></div>
+    <p class="table-empty" data-media-empty hidden>No file matches that.</p>
+  </div>
+  <aside class="media-inspector" data-media-inspector aria-label="Details"><p class="table-empty">Select a file to see its details.</p></aside>
+</div>
+<div class="sa-pop__panel sa-menu media-menu" data-media-menu role="menu" hidden></div>
+<div class="media-uploads" data-media-uploads role="status" hidden></div>`
 
 	writeOSHTML(w, r, adminOSLayout(nonce, "Media", "media", cfg, htmpl.HTML(body)))
 }

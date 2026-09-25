@@ -17,13 +17,13 @@ func TestSelectorParity(t *testing.T) {
 	goSrc, jsSrc := readConsoleSources(t)
 
 	// Hooks admin-os.js binds — each must be rendered by the Go templates.
-	// (data-media-select is created by the JS itself and is deliberately absent.)
+	// (data-media-uses is created by the JS itself and is deliberately absent.)
 	boundInJS := []string{
 		"data-post-row", "data-post-select", "data-post-select-all", "data-post-bulk",
 		"data-post-bulkbar", "data-post-bulk-count", "data-post-delete",
-		"data-media-grid", "data-media-dropzone", "data-media-input",
-		"data-media-search", "data-media-empty", "data-media-filter", "data-media-delete-selected",
-		"data-media-sel-count", "data-notif-toggle",
+		"data-media-list", "data-media-drop", "data-media-input", "data-media-upload",
+		"data-media-search", "data-media-empty", "data-media-filter", "data-media-view",
+		"data-media-inspector", "data-media-menu", "data-media-uploads", "data-notif-toggle",
 		"data-space-switch", "data-copy",
 	}
 	for _, hook := range boundInJS {

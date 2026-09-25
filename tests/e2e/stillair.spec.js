@@ -608,6 +608,89 @@ test("the command bar groups, marks, previews and runs", async ({ page }) => {
   await expect(page.locator(".toast--ok").last()).toBeVisible();
 });
 
+// A PNG of noise: incompressible, so its size is what goes over the wire, and
+// different on every run, so the library meets it as a new file each time.
+function noisePNG(w, h) {
+  const zlib = require("zlib");
+  const crypto = require("crypto");
+  // CRC-32 by hand: zlib.crc32 is newer than some Node 20 releases CI may run.
+  const crc32 = (buf) => {
+    let c = ~0;
+    for (const b of buf) { c ^= b; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); }
+    return ~c >>> 0;
+  };
+  const rows = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++) crypto.randomFillSync(rows, y * (w * 3 + 1) + 1, w * 3);
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type), data]);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+// Media (render 07): an upload says how far along it is and how long is left;
+// the file then arrives under the name it had, and is inspected, renamed and
+// trashed from the keyboard, through the same menu a right-click opens.
+test("a media upload shows its progress, and the file is worked by keyboard", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/media");
+  await page.waitForLoadState("networkidle");
+  // A slow uplink, so the upload lasts long enough to measure.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: 256 * 1024 });
+  await page.evaluate(() => {
+    window.__uploadSaid = [];
+    const box = document.querySelector("[data-media-uploads]");
+    new MutationObserver(() => window.__uploadSaid.push(box.textContent)).observe(box, { subtree: true, childList: true, characterData: true });
+  });
+  const name = `harbour-${Date.now().toString(36)}.png`;
+  await page.locator("[data-media-input]").setInputFiles({ name, mimeType: "image/png", buffer: noisePNG(400, 400) });
+  const panel = page.locator("[data-media-uploads]");
+  await expect(panel.locator(".media-uploads__title")).toHaveText("1 file uploaded", { timeout: 20000 });
+  await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  const said = await page.evaluate(() => window.__uploadSaid.join("\n"));
+  expect(said).toContain("Uploading 1 file");
+  expect(said).toContain(name);
+  expect(said).toMatch(/\d+% · \d+ s left/);
+
+  const row = page.locator(".media-row", { hasText: name });
+  await expect(row).toHaveCount(1);
+  await row.click();
+  await expect(row).toHaveAttribute("aria-selected", "true");
+  const inspector = page.locator("[data-media-inspector]");
+  await expect(inspector.locator(".media-inspector__title")).toHaveText(name);
+  await expect(inspector.locator(".media-inspector__meta")).toHaveText(/^400 × 400 · PNG image · /);
+  await expect(inspector.locator("[data-media-uses]")).toHaveText("Not used anywhere");
+
+  // The menu key opens the menu on the file, and Escape hands focus back.
+  await page.keyboard.press("Shift+F10");
+  const menu = page.locator("[data-media-menu]");
+  await expect(menu.locator(".sa-menu__text")).toHaveText(["Open preview", "Copy link", "Rename", "Show where it’s used", "Download", "Move to trash"]);
+  await expect(menu.locator(".sa-menu__item").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(row).toBeFocused();
+
+  const renamed = name.replace("harbour", "Dawn over the harbour");
+  await page.keyboard.press("F2");
+  await page.locator(".vp-confirm input").fill(renamed);
+  await page.keyboard.press("Enter");
+  const after = page.locator(".media-row", { hasText: renamed });
+  await expect(after).toBeFocused();
+  await page.reload();
+  await expect(page.locator(".media-row", { hasText: renamed })).toHaveCount(1); // the server kept it
+
+  await page.locator(".media-row", { hasText: renamed }).click();
+  await page.keyboard.press("Delete");
+  const dialog = page.locator(".vp-confirm");
+  await expect(dialog).toContainText("Nothing uses it.");
+  await dialog.getByRole("button", { name: "Move to trash" }).click();
+  await expect(page.locator(".media-row", { hasText: renamed })).toHaveCount(0);
+});
+
 test("the command bar is operated by keyboard alone", async ({ page }) => {
   await openConsole(page);
   await page.keyboard.press("Control+k");

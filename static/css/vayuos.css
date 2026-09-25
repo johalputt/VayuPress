@@ -828,7 +828,6 @@
 
 .vp-os .badge--info { background: var(--info-dim); color: var(--info); }
 
-.vp-os .badge--brand { background: var(--brand-dim); color: var(--brand); }
 
 .vp-os .badge--accent { background: var(--accent-dim); color: var(--accent); }
 
@@ -1565,41 +1564,7 @@
 
 }
 
-/* ── Media library (Phase 4, ADR-0068) ─────────────────────────────────────── */
-.vp-os .media-dropzone { border: 2px dashed var(--border-strong); border-radius: var(--r-md); padding: var(--sp-8); text-align: center; cursor: pointer; transition: border-color var(--t-fast), background var(--t-fast); margin-bottom: var(--sp-6); }
-
-.vp-os .media-dropzone:hover, .vp-os .media-dropzone:focus-visible { border-color: var(--brand); background: var(--brand-dim); outline: none; }
-
-.vp-os .media-dropzone--over { border-color: var(--brand); background: var(--brand-dim); }
-
-.vp-os .media-dropzone__icon { font-size: 28px; color: var(--brand); }
-
-.vp-os .media-dropzone__text { margin-top: var(--sp-2); font-weight: 500; }
-
-.vp-os .media-dropzone__link { color: var(--brand); text-decoration: underline; }
-
-.vp-os .media-dropzone__hint { margin-top: var(--sp-1); }
-
-.vp-os .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--sp-4); }
-
-.vp-os .media-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; display: flex; flex-direction: column; }
-
-.vp-os .media-card__thumb { position: relative; aspect-ratio: 4 / 3; background: var(--bg-surface-3); display: flex; align-items: center; justify-content: center; overflow: hidden; }
-
-.vp-os .media-card__select { position: absolute; top: 6px; left: 6px; z-index: 1; width: 18px; height: 18px; cursor: pointer; }
-
-.vp-os .media-card__alt { width: 100%; padding: 4px 6px; font-size: var(--text-xs); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-surface); color: var(--text); font-family: inherit; }
-
-.vp-os .media-card__thumb img { width: 100%; height: 100%; object-fit: cover; }
-
-.vp-os .media-card__pdf { font-weight: 600; color: var(--danger); }
-
-.vp-os .media-card__meta { padding: var(--sp-2) var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-xs); color: var(--text-2); }
-
-.vp-os .media-card__copy { align-self: flex-start; border: 1px solid var(--border); border-radius: var(--r-sm); padding: 2px var(--sp-2); font-size: var(--text-xs); color: var(--text-2); }
-
-.vp-os .media-card__copy:hover { background: var(--bg-surface-3); color: var(--text); }
-
+/* ── Media library ── the Still Air layer below draws it (render 07). */
 .vp-os .skeleton--media { aspect-ratio: 4 / 3; height: auto; border-radius: var(--r-md); }
 
 /* ── Security / TOTP enrolment (Phase 5, ADR-0068) ─────────────────────────── */
@@ -2247,7 +2212,7 @@
 
 .vp-os .posts-filter-date .input { width: auto; }
 
-.vp-os .select--inline,.vp-os .select--sm { width: auto; padding-top: .375rem; padding-bottom: .375rem; font-size: var(--text-xs); }
+.vp-os .select--inline { width: auto; padding-top: .375rem; padding-bottom: .375rem; font-size: var(--text-xs); }
 
 .vp-os .pager { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); padding-top: var(--sp-4); border-top: 1px solid var(--border); }
 
@@ -2351,7 +2316,6 @@
    Only the raw source keeps a cap (.vm-raw below) — that one really is a dump. */
 .vm-pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
 
-.vm-stat { font-size: 28px; font-weight: 600; }
 
 .vm-break { word-break: break-all; }
 
@@ -3032,8 +2996,6 @@
 
 @media (max-width: 640px) {
   .vp-os .table-wrap { -webkit-overflow-scrolling: touch; }
-
-  .vp-os .vm-stat { font-size: 20px; }
 
 }
 
@@ -4229,15 +4191,11 @@
 
 /* Stat strip — at-a-glance summary above the mailbox list. */
 
-.vp-os .vm-stat { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-4) var(--sp-4); display: flex; flex-direction: column; gap: 2px; box-shadow: var(--sh-sm); }
 
 .vp-os .vm-stat__v { font-family: var(--font-head); font-size: var(--text-2xl); font-weight: 600; color: var(--text); line-height: 1.1; }
 
-.vp-os .vm-stat__l { font-size: var(--text-xs); color: var(--text-3); }
 
-.vp-os .vm-stat--warn { border-color: var(--warn); background: var(--warn-dim); }
 
-.vp-os .vm-stat--warn .vm-stat__v { color: var(--warn); }
 
 /* One place restyles the sub-nav and the stat strip across every VayuMail page. */
 .vp-os .vmtabs { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin: 0 0 var(--sp-5); padding: 5px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--bg-surface); box-shadow: var(--sh-sm); width: fit-content; max-width: 100%; }
@@ -4250,13 +4208,9 @@
 .vp-os .vmtabs .tab--active:hover { color: var(--on-accent); background: var(--brand); }
 
 /* Stat tiles gain the Monetization stat-card lift + top accent. */
-.vp-os .vm-stat { position: relative; overflow: hidden; transition: border-color var(--t), box-shadow var(--t), transform var(--t); }
 
-.vp-os .vm-stat::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; opacity: 0; transition: opacity var(--t); }
 
-.vp-os .vm-stat:hover { border-color: var(--border-strong); }
 
-.vp-os .vm-stat:hover::before { opacity: .85; }
 
 /* Collapsible mailbox cards. */
 .vp-os .vm-acct-list { display: flex; flex-direction: column; gap: var(--sp-3); }
@@ -5350,7 +5304,6 @@
 /* An empty library says so across the whole grid, not in its first cell. */
 .vp-os .media-grid > .empty-state { grid-column: 1 / -1; }
 
-.vp-os .media-dropzone__icon { display: flex; justify-content: center; }
 
 .tl-leg-dot--ok { background: var(--ok); }
 
@@ -5907,7 +5860,6 @@
 .vp-os[data-ui="still-air"] .badge--pending { color: var(--warn); background: var(--warn-soft); }
 .vp-os[data-ui="still-air"] .badge--danger { color: var(--danger); background: var(--danger-soft); }
 .vp-os[data-ui="still-air"] .badge--info,
-.vp-os[data-ui="still-air"] .badge--brand,
 .vp-os[data-ui="still-air"] .badge--accent,
 .vp-os[data-ui="still-air"] .badge--paid { color: var(--accent); background: var(--accent-soft); }
 .vp-os[data-ui="still-air"] .badge--muted,
@@ -5945,9 +5897,9 @@
 .vp-os[data-ui="still-air"] .tone-ok { color: var(--ok); }
 .vp-os[data-ui="still-air"] .code-block--wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] :is(.card-title, .section-head__title, .vs-tier-head) > .sa-ico { color: var(--text-3); }
-.vp-os[data-ui="still-air"] :is(.card--danger .card-title, .tone-danger) > .sa-ico { color: var(--danger); }
+.vp-os[data-ui="still-air"] .card--danger .card-title > .sa-ico { color: var(--danger); }
 .vp-os[data-ui="still-air"] :is(.card--ok .card-title, .tone-ok) > .sa-ico { color: var(--ok); }
-.vp-os[data-ui="still-air"] :is(.empty-icon, .media-dropzone__icon, .vm-readpane-empty-ico, .vtalk-hint-badge) .sa-ico { width: 28px; height: 28px; stroke-width: 1.25; }
+.vp-os[data-ui="still-air"] :is(.empty-icon, .vm-readpane-empty-ico, .vtalk-hint-badge) .sa-ico { width: 28px; height: 28px; stroke-width: 1.25; }
 
 /* Lists and their filters: one row of controls that wraps as a row, a
    segmented status filter, and status carried by a dot and a word. */
@@ -5979,9 +5931,6 @@
 
 .vp-os[data-ui="still-air"] .posts-filter :is(.input, .select) { height: 30px; }
 .vp-os[data-ui="still-air"] .posts-filter .input[type="date"] { width: 140px; }
-.vp-os[data-ui="still-air"] .media-dropzone { border: 1px dashed var(--border-2); border-radius: var(--radius-surface); background: var(--surface-1); }
-.vp-os[data-ui="still-air"] .media-dropzone__icon { display: flex; justify-content: center; color: var(--text-3); }
-.vp-os[data-ui="still-air"] .media-dropzone__link { color: var(--accent); }
 
 /* Label/value facts (backup status, connector details). */
 .vp-os[data-ui="still-air"] .cx-detail { border-bottom: 1px solid var(--border-1); }
@@ -6155,6 +6104,92 @@
 /* A legend of keys is for a keyboard; a touch screen filters with the chip. */
 @media (pointer: coarse) {
   .vp-os[data-ui="still-air"] .cmd-footer { display: none; }
+}
+
+/* Media (render 07): the files, and beside them the one selected. The
+   inspector sits to the right where there is room for both and below the
+   list where there is not; it is never an overlay, so reading a file's
+   details never hides the file. */
+.vp-os[data-ui="still-air"] .media-find { position: relative; display: inline-flex; align-items: center; }
+.vp-os[data-ui="still-air"] .media-find .sa-ico { position: absolute; left: 9px; width: 15px; height: 15px; color: var(--text-3); pointer-events: none; }
+.vp-os[data-ui="still-air"] .media-find .input { width: 220px; padding-left: 30px; }
+.vp-os[data-ui="still-air"] .media-kinds { margin: 0 0 var(--space-4); }
+.vp-os[data-ui="still-air"] .media-shell { display: grid; grid-template-columns: minmax(0, 1fr) clamp(248px, 30%, 300px); gap: var(--space-5); align-items: start; }
+.vp-os[data-ui="still-air"] .media-main { min-width: 0; border-radius: var(--radius-surface); container-type: inline-size; }
+.vp-os[data-ui="still-air"] .media-main.is-drop { outline: 2px dashed var(--accent); outline-offset: 4px; background: var(--surface-select); }
+.vp-os[data-ui="still-air"] .media-thumb { flex: none; display: inline-grid; place-items: center; overflow: hidden; background: var(--surface-sunken); border-radius: var(--radius-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.vp-os[data-ui="still-air"] .media-thumb--sm { width: 32px; height: 32px; }
+.vp-os[data-ui="still-air"] .media-thumb--lg { width: 100%; aspect-ratio: 4 / 3; border-radius: var(--radius-control); }
+.vp-os[data-ui="still-air"] .media-thumb--xl { width: 100%; aspect-ratio: 4 / 3; }
+.vp-os[data-ui="still-air"] .media-thumb--xl img { object-fit: contain; }
+.vp-os[data-ui="still-air"] .media-thumb--lg .sa-ico, .vp-os[data-ui="still-air"] .media-thumb--xl .sa-ico { width: 32px; height: 32px; }
+/* Fixed columns, so a long name is cut rather than pushing the size and the
+   uses out of view; the name column takes what is left. */
+.vp-os[data-ui="still-air"] .media-table { table-layout: fixed; }
+.vp-os[data-ui="still-air"] .media-table th:nth-child(2) { width: 112px; }
+.vp-os[data-ui="still-air"] .media-table th:is(:nth-child(3), :nth-child(4)) { width: 76px; }
+.vp-os[data-ui="still-air"] .media-table th:nth-child(5) { width: 128px; }
+.vp-os[data-ui="still-air"] .media-row { cursor: default; }
+.vp-os[data-ui="still-air"] .media-row td { padding-top: 6px; padding-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vp-os[data-ui="still-air"] .media-row[aria-selected="true"] td { background: var(--surface-select); }
+.vp-os[data-ui="still-air"] .media-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.vp-os[data-ui="still-air"] .media-row__name { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.vp-os[data-ui="still-air"] .media-row__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-1); }
+.vp-os[data-ui="still-air"] .media-row__num { font-variant-numeric: tabular-nums; color: var(--text-2); }
+.vp-os[data-ui="still-air"] .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-4); }
+.vp-os[data-ui="still-air"] .media-card { display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: var(--radius-surface); cursor: default; }
+.vp-os[data-ui="still-air"] .media-card:hover { background: var(--surface-hover); }
+.vp-os[data-ui="still-air"] .media-card[aria-selected="true"] { background: var(--surface-select); }
+.vp-os[data-ui="still-air"] .media-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.vp-os[data-ui="still-air"] .media-card__name { font: var(--type-small); color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os[data-ui="still-air"] .media-card__meta { font: var(--type-meta); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .media-inspector {
+  position: sticky; top: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4); border: 1px solid var(--border-1); border-radius: var(--radius-surface); background: var(--surface-2);
+}
+.vp-os[data-ui="still-air"] .media-inspector__preview { border-radius: var(--radius-control); overflow: hidden; }
+.vp-os[data-ui="still-air"] .media-inspector__title { font: var(--type-heading); color: var(--text-1); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .media-inspector__meta { font: var(--type-meta); color: var(--text-3); margin-top: -8px; font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .media-inspector__facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3) var(--space-4); margin: 0; font: var(--type-small); }
+.vp-os[data-ui="still-air"] .media-inspector__facts dt { color: var(--text-3); }
+.vp-os[data-ui="still-air"] .media-inspector__facts dd { margin: 0; color: var(--text-1); min-width: 0; }
+.vp-os[data-ui="still-air"] .media-inspector__alt { width: 100%; min-height: 0; resize: vertical; }
+.vp-os[data-ui="still-air"] .media-inspector__uses { display: flex; flex-direction: column; gap: 2px; color: var(--text-2); }
+.vp-os[data-ui="still-air"] .media-inspector__uses a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os[data-ui="still-air"] .media-inspector__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+/* The menu opens where the pointer or the focused file is, so it is placed
+   against the viewport rather than inside a popover's trigger. */
+.vp-os[data-ui="still-air"] .media-menu { position: fixed; top: 0; right: auto; width: 240px; transform-origin: top left; }
+.vp-os[data-ui="still-air"] .sa-menu__key { margin-left: auto; font: var(--type-meta); color: var(--text-3); background: none; border: 0; padding: 0; }
+.vp-os[data-ui="still-air"] .sa-menu__item--danger, .vp-os[data-ui="still-air"] .sa-menu__item--danger .sa-ico { color: var(--danger); }
+.vp-os[data-ui="still-air"] .media-uploads {
+  position: fixed; right: var(--space-5); bottom: var(--space-5); z-index: 90; width: min(340px, calc(100vw - 32px));
+  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4);
+  background: var(--surface-overlay); border: 1px solid var(--border-2); border-radius: var(--radius-surface); box-shadow: var(--shadow-4);
+}
+.vp-os[data-ui="still-air"] .media-uploads[hidden] { display: none; }
+.vp-os[data-ui="still-air"] .media-uploads__head { display: flex; justify-content: space-between; gap: var(--space-3); font: var(--type-strong); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .media-uploads__pct { font: var(--type-small); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .media-uploads__bar { width: 100%; height: 4px; appearance: none; border: 0; border-radius: 2px; background: var(--surface-press); overflow: hidden; }
+.vp-os[data-ui="still-air"] .media-uploads__bar::-webkit-progress-bar { background: var(--surface-press); }
+.vp-os[data-ui="still-air"] .media-uploads__bar::-webkit-progress-value { background: var(--accent); transition: width var(--duration-standard); }
+.vp-os[data-ui="still-air"] .media-uploads__bar::-moz-progress-bar { background: var(--accent); }
+.vp-os[data-ui="still-air"] .media-uploads__now { font: var(--type-meta); color: var(--text-3); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .media-uploads.is-failed .media-uploads__now { color: var(--danger); }
+@media (max-width: 899px) {
+  .vp-os[data-ui="still-air"] .media-shell { grid-template-columns: minmax(0, 1fr); }
+  .vp-os[data-ui="still-air"] .media-inspector { position: static; }
+  .vp-os[data-ui="still-air"] .media-find, .vp-os[data-ui="still-air"] .media-find .input { flex: 1 1 100%; width: 100%; }
+}
+/* A narrow list keeps what tells files apart: the name, the size and, while
+   there is room, where it is used; the inspector says that too. Measured on the list, not the window: beside the inspector the
+   list is narrow on a wide screen too. */
+@container (max-width: 560px) {
+  .vp-os[data-ui="still-air"] .media-table :is(th, td):is(:nth-child(2), :nth-child(4)) { display: none; }
+}
+@container (max-width: 400px) {
+  .vp-os[data-ui="still-air"] .media-table :is(th, td):nth-child(5) { display: none; }
 }
 
 /* The Tor accent never bleeds into a side rule the way the classic one did. */
@@ -6526,8 +6561,8 @@
   /* Wide data scrolls inside its own box, never the page: tables outside a
      .table-wrap, tab rows and segmented filters. */
   .vp-os[data-ui="still-air"] .sa-content table:not(.table-wrap table) { display: block; max-width: 100%; overflow-x: auto; }
-  .vp-os[data-ui="still-air"] :is(.tabs, .tab-list) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  .vp-os[data-ui="still-air"] :is(.tabs, .tab-list) .tab { flex: none; }
+  .vp-os[data-ui="still-air"] .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .vp-os[data-ui="still-air"] .tabs .tab { flex: none; }
   .vp-os[data-ui="still-air"] .seg-filter { max-width: 100%; overflow-x: auto; margin-left: 0; }
   .vp-os[data-ui="still-air"] .sa-shell { grid-template-columns: minmax(0, 1fr); }
   /* A message is two lines on a phone — sender and time, then the subject —

@@ -333,6 +333,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/upload", a.handleMediaUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/delete", a.handleOSMediaDelete)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/alt", a.handleOSMediaAlt)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/name", a.handleOSMediaName)
 		// Growth hub: consolidates Members / Newsletter / Monetization / Advertising
 		// (+ My Profile) into one dashboard-style card page (admin-only).
 		pr.Get("/os/growth", a.hubRedirect("audience"))

@@ -12,7 +12,7 @@ test("the media library loads its list", async ({ page }) => {
   const listed = page.waitForResponse((r) => r.url().includes("/os/api/media") && r.status() === 200);
   await page.goto("/os/media");
   await listed;
-  await expect(page.locator("[data-media-grid] .skeleton")).toHaveCount(0);
+  await expect(page.locator("[data-media-list] .skeleton")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

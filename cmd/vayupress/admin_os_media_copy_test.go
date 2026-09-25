@@ -70,17 +70,18 @@ func TestMediaPageDescribesWhatTheUploadActuallyAccepts(t *testing.T) {
 	}
 	page := rec.Body.String()
 
-	hint := extractElement(page, `<div class="media-dropzone__hint`)
+	// The formats are named in the tip on the page's opening line.
+	hint := extractTag(extractElement(page, `<p class="page-sub">`), `<button type="button" class="sa-tip"`)
 	if hint == "" {
-		t.Fatal("could not find the dropzone hint on the Media page")
+		t.Fatal("could not find the upload hint on the Media page")
 	}
 	if strings.Contains(strings.ToLower(hint), "svg is refused") {
-		t.Errorf("the dropzone hint says SVG is refused: %q.\n"+
+		t.Errorf("the upload hint says SVG is refused: %q.\n"+
 			"The handler it labels accepts SVG, sanitises it and stores it. An operator who "+
 			"believes this line will not look for the SVGs holding their quota down.", hint)
 	}
 	if !strings.Contains(strings.ToUpper(hint), "SVG") {
-		t.Errorf("the dropzone hint lists the accepted formats without SVG: %q.\n"+
+		t.Errorf("the upload hint lists the accepted formats without SVG: %q.\n"+
 			"It is accepted, it is charged against the quota and it is shown in the grid — a "+
 			"format the page will store and will not name is a format the operator cannot "+
 			"account for.", hint)

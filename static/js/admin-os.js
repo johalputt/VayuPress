@@ -687,209 +687,353 @@ window.vpRelTime = relativeTime;
 
 /* ── Media library (Phase 4) ─────────────────────────────────── */
 (function initMedia() {
-  var grid = $('[data-media-grid]');
-  if (!grid) return;
-  var dropzone = $('[data-media-dropzone]');
-  var input = $('[data-media-input]');
-
-  function relTime(unix) {
-    var s = Math.floor(Date.now() / 1000) - unix;
-    if (s < 60) return 'just now';
-    if (s < 3600) return Math.floor(s / 60) + 'm ago';
-    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
-    return Math.floor(s / 86400) + 'd ago';
-  }
-
-  function fmtSize(b) {
-    if (b < 1024) return b + ' B';
-    if (b < 1048576) return (b / 1024).toFixed(0) + ' KB';
-    return (b / 1048576).toFixed(1) + ' MB';
-  }
-
-  function card(item) {
-    var el = document.createElement('figure');
-    el.className = 'media-card';
-
-    var thumb = document.createElement('div');
-    thumb.className = 'media-card__thumb';
-
-    // Selection checkbox for bulk delete.
-    var sel = document.createElement('input');
-    sel.type = 'checkbox';
-    sel.className = 'media-card__select';
-    sel.setAttribute('data-media-select', '');
-    sel.value = item.name;
-    sel.setAttribute('aria-label', 'Select ' + item.name);
-    sel.addEventListener('change', updateSelCount);
-    thumb.appendChild(sel);
-
-    if (item.isPdf) {
-      var badge = document.createElement('span');
-      badge.className = 'media-card__pdf';
-      badge.textContent = 'PDF';
-      thumb.appendChild(badge);
-    } else {
-      var img = document.createElement('img');
-      img.loading = 'lazy';
-      img.src = item.url;
-      img.alt = item.alt || item.name;
-      thumb.appendChild(img);
-    }
-    el.appendChild(thumb);
-
-    var meta = document.createElement('figcaption');
-    meta.className = 'media-card__meta';
-    var size = document.createElement('span');
-    size.textContent = fmtSize(item.size) + ' · ' + relTime(item.mod);
-    meta.appendChild(size);
-
-    // Alt-text editor (images only) — saves on blur.
-    if (!item.isPdf) {
-      var altI = document.createElement('input');
-      altI.type = 'text';
-      altI.className = 'media-card__alt';
-      altI.placeholder = 'Alt text…';
-      altI.value = item.alt || '';
-      altI.maxLength = 300;
-      altI.setAttribute('aria-label', 'Alt text for ' + item.name);
-      altI.addEventListener('blur', function () {
-        if (altI.value === (item.alt || '')) return;
-        item.alt = altI.value;
-        vpPost('/os/api/media/alt', { name: item.name, alt: altI.value }, function () { toast('Alt text saved', 'ok'); }, function () { toast('Could not save alt', 'error'); });
-      });
-      meta.appendChild(altI);
-    }
-
-    var copy = document.createElement('button');
-    copy.type = 'button';
-    copy.className = 'media-card__copy';
-    copy.textContent = 'Copy URL';
-    copy.addEventListener('click', function () {
-      var full = window.location.origin + item.url;
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(full).then(function () { toast('URL copied', 'ok'); });
-      } else {
-        toast(full, 'ok');
-      }
-    });
-    meta.appendChild(copy);
-    el.appendChild(meta);
-    return el;
-  }
-
-  var allItems = [];
+  /* Media library (render 07): a table or grid of every file, an inspector
+     for the selected one, a context menu on the selection (right-click, the
+     menu key or Shift+F10), and uploads with progress and time left. Every
+     name, alt text and use is set with textContent; nothing from the server
+     is parsed as markup. */
+  var list = $('[data-media-list]');
+  if (!list) return;
+  var inspector = $('[data-media-inspector]');
+  var menu = $('[data-media-menu]');
+  var uploads = $('[data-media-uploads]');
   var search = $('[data-media-search]');
-  var emptyMsg = $('[data-media-empty]');
-  var typeFilter = 'all';
+  var empty = $('[data-media-empty]');
+  var input = $('[data-media-input]');
+  var drop = $('[data-media-drop]');
+  var items = [], shown = [], selected = [], filter = 'all', view = 'list';
+  var mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  try { view = localStorage.getItem('vp_media_view') === 'grid' ? 'grid' : 'list'; } catch (e) {}
 
-  function applyFilter() {
-    while (grid.firstChild) grid.removeChild(grid.firstChild);
-    if (!allItems.length) {
-      var empty = document.createElement('div');
-      empty.className = 'empty-state';
-      empty.textContent = 'No media yet. Upload your first image or PDF.';
-      grid.appendChild(empty);
-      if (emptyMsg) emptyMsg.hidden = true;
-      return;
-    }
-    var q = (search && search.value || '').trim().toLowerCase();
-    var shown = allItems.filter(function (it) {
-      if (typeFilter === 'image' && it.isPdf) return false;
-      if (typeFilter === 'pdf' && !it.isPdf) return false;
-      if (q && (it.name || '').toLowerCase().indexOf(q) === -1) return false;
-      return true;
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function fmtSize(b) { return b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(b < 10240 ? 1 : 0) + ' KB' : (b / 1048576).toFixed(1) + ' MB'; }
+  function fmtDay(unix) { return new Date(unix * 1000).toLocaleDateString([], { day: '2-digit', month: 'short' }); }
+  function fmtWhen(unix) { return new Date(unix * 1000).toLocaleString([], { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+  function usedIn(it) {
+    if (!it.uses.length) return 'Not used';
+    var n = { post: 0, page: 0, other: [] };
+    it.uses.forEach(function (u) {
+      if (u.label.indexOf('Post · ') === 0) n.post++;
+      else if (u.label.indexOf('Page · ') === 0) n.page++;
+      else if (n.other.indexOf(u.label.split(' · ')[0]) < 0) n.other.push(u.label.split(' · ')[0]);
     });
-    shown.forEach(function (it) { grid.appendChild(card(it)); });
-    if (emptyMsg) emptyMsg.hidden = shown.length > 0;
-    updateSelCount();
+    var parts = [];
+    if (n.post) parts.push(n.post + ' post' + (n.post === 1 ? '' : 's'));
+    if (n.page) parts.push(n.page + ' page' + (n.page === 1 ? '' : 's'));
+    return parts.concat(n.other).join(' · ');
+  }
+  function thumb(it, size) {
+    var box = el('span', 'media-thumb media-thumb--' + size);
+    if (it.isPdf) box.appendChild(window.vpIcon('doc'));
+    else { var img = el('img'); img.src = it.url; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; box.appendChild(img); }
+    return box;
   }
 
   function load() {
-    fetch('/os/api/media', { headers: { 'Accept': 'application/json' } })
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        allItems = (data && data.items) || [];
-        applyFilter();
+    fetch('/os/api/media', { headers: { Accept: 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) {
+        items = d.items || [];
+        selected = selected.filter(function (n) { return items.some(function (it) { return it.name === n; }); });
+        draw();
       })
-      .catch(function () { toast('Could not load media', 'error'); });
+      .catch(function () { if (window.vpToast) window.vpToast('The media library could not be read.', 'error'); });
   }
 
-  if (search) search.addEventListener('input', applyFilter);
-  document.querySelectorAll('[data-media-filter]').forEach(function (b) {
-    b.addEventListener('click', function () {
-      document.querySelectorAll('[data-media-filter]').forEach(function (x) { x.classList.remove('is-active'); });
-      b.classList.add('is-active');
-      typeFilter = b.getAttribute('data-media-filter');
-      applyFilter();
+  function draw() {
+    var q = (search && search.value || '').toLowerCase().trim();
+    shown = items.filter(function (it) {
+      if (filter === 'image' && it.isPdf) return false;
+      if (filter === 'pdf' && !it.isPdf) return false;
+      return !q || it.title.toLowerCase().indexOf(q) >= 0 || (it.alt || '').toLowerCase().indexOf(q) >= 0;
     });
-  });
-
-  // ── Bulk delete ───────────────────────────────────────────────────────────
-  var delBtn = $('[data-media-delete-selected]');
-  var selCount = $('[data-media-sel-count]');
-  function selectedNames() {
-    return Array.prototype.slice.call(grid.querySelectorAll('[data-media-select]:checked')).map(function (c) { return c.value; });
-  }
-  function updateSelCount() {
-    var n = selectedNames().length;
-    if (selCount) selCount.textContent = String(n);
-    if (delBtn) delBtn.disabled = n === 0;
-  }
-  if (delBtn) delBtn.addEventListener('click', function () {
-    var names = selectedNames();
-    if (!names.length) return;
-    vpConfirm({
-      title: 'Delete files',
-      message: 'Delete ' + names.length + ' file' + (names.length > 1 ? 's' : '') + '? This cannot be undone.',
-      confirm: 'Delete',
-    }, function () {
-      delBtn.disabled = true;
-      fetch('/os/api/media/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
-        body: JSON.stringify({ names: names }),
-      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
-        .then(function (res) {
-          if (res.ok) { toast('Deleted ' + (res.j.deleted || 0), 'ok'); load(); }
-          else { delBtn.disabled = false; toast('Delete failed', 'error'); }
-        }).catch(function () { delBtn.disabled = false; toast('Network error', 'error'); });
-    });
-  });
-
-  function upload(file) {
-    if (!file) return;
-    var fd = new FormData();
-    fd.append('file', file);
-    toast('Uploading…', 'ok');
-    fetch('/os/api/media/upload', {
-      method: 'POST',
-      headers: { 'X-CSRF-Token': cookie('vp_csrf') },
-      body: fd
-    })
-      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
-      .then(function (res) {
-        if (!res.ok) { toast(typeof res.j.error === 'string' ? res.j.error : (res.j.message || res.j.detail || 'Upload failed'), 'error'); return; }
-        toast('Uploaded', 'ok');
-        load();
-      })
-      .catch(function () { toast('Network error', 'error'); });
+    var hadFocus = list.contains(document.activeElement);
+    list.textContent = '';
+    if (empty) empty.hidden = shown.length > 0;
+    if (view === 'grid') {
+      var grid = el('div', 'media-grid');
+      shown.forEach(function (it) {
+        var c = el('div', 'media-card');
+        c.appendChild(thumb(it, 'lg'));
+        c.appendChild(el('span', 'media-card__name', it.title));
+        c.appendChild(el('span', 'media-card__meta', fmtSize(it.size)));
+        grid.appendChild(wire(c, it));
+      });
+      list.appendChild(grid);
+    } else {
+      var wrap = el('div', 'table-wrap');
+      var t = el('table', 'table media-table');
+      var head = el('tr');
+      ['Name', 'Kind', 'Size', 'Added', 'Used in'].forEach(function (h) { head.appendChild(el('th', null, h)); });
+      var thead = el('thead'); thead.appendChild(head); t.appendChild(thead);
+      var tb = el('tbody');
+      shown.forEach(function (it) {
+        var tr = el('tr', 'media-row');
+        var name = el('span', 'media-row__name');
+        name.appendChild(thumb(it, 'sm'));
+        name.appendChild(el('span', 'media-row__title', it.title));
+        var cell = el('td'); cell.appendChild(name); tr.appendChild(cell);
+        tr.appendChild(el('td', 'muted', it.kind));
+        tr.appendChild(el('td', 'media-row__num', fmtSize(it.size)));
+        tr.appendChild(el('td', 'media-row__num', fmtDay(it.mod)));
+        tr.appendChild(el('td', it.uses.length ? null : 'muted', usedIn(it)));
+        tb.appendChild(wire(tr, it));
+      });
+      t.appendChild(tb); wrap.appendChild(t); list.appendChild(wrap);
+    }
+    // One tab stop into the list: the selected file, else the first. A redraw
+    // after a rename or a delete keeps the keyboard where it was.
+    var stop = $('[aria-selected="true"]', list) || $('[data-name]', list);
+    if (stop) { stop.tabIndex = 0; if (hadFocus) stop.focus({ preventScroll: true }); }
+    inspect();
   }
 
-  if (dropzone) {
-    dropzone.addEventListener('click', function () { if (input) input.click(); });
-    dropzone.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (input) input.click(); }
-    });
-    dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('media-dropzone--over'); });
-    dropzone.addEventListener('dragleave', function () { dropzone.classList.remove('media-dropzone--over'); });
-    dropzone.addEventListener('drop', function (e) {
+  // A row or card: selectable by click (Ctrl/Cmd adds to the selection),
+  // by the arrow keys, and with a menu on right-click or the menu key.
+  function wire(node, it) {
+    node.tabIndex = -1;
+    node.setAttribute('data-name', it.name);
+    node.setAttribute('aria-selected', selected.indexOf(it.name) >= 0 ? 'true' : 'false');
+    node.addEventListener('click', function (e) { choose(it.name, e.metaKey || e.ctrlKey); });
+    node.addEventListener('dblclick', function () { window.open(it.url, '_blank', 'noopener'); });
+    // The browser fires contextmenu for the menu key and Shift+F10 too, at a
+    // point on the focused file, so this one listener serves all three; a
+    // keydown handler for those keys opened the menu twice.
+    node.addEventListener('contextmenu', function (e) {
       e.preventDefault();
-      dropzone.classList.remove('media-dropzone--over');
-      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) upload(e.dataTransfer.files[0]);
+      if (selected.indexOf(it.name) < 0) choose(it.name, false);
+      openMenu(e.clientX, e.clientY);
+    });
+    return node;
+  }
+  function nodes() { return $$('[data-name]', list); }
+  function choose(name, add) {
+    if (add) {
+      var at = selected.indexOf(name);
+      if (at >= 0) selected.splice(at, 1); else selected.push(name);
+    } else selected = [name];
+    nodes().forEach(function (n) { n.setAttribute('aria-selected', selected.indexOf(n.getAttribute('data-name')) >= 0 ? 'true' : 'false'); });
+    var cur = $('[data-name="' + name + '"]', list);
+    if (cur) { nodes().forEach(function (n) { n.tabIndex = -1; }); cur.tabIndex = 0; cur.focus({ preventScroll: true }); }
+    inspect();
+  }
+  function current() { return items.filter(function (it) { return selected.indexOf(it.name) >= 0; }); }
+
+  list.addEventListener('keydown', function (e) {
+    var all = nodes(); if (!all.length) return;
+    var at = all.indexOf(document.activeElement);
+    var one = current()[0];
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); choose(all[Math.min(all.length - 1, at + 1)].getAttribute('data-name'), false); }
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); choose(all[Math.max(0, at - 1)].getAttribute('data-name'), false); }
+    else if (e.key === ' ' && one) { e.preventDefault(); window.open(one.url, '_blank', 'noopener'); }
+    else if (e.key === 'F2' && one) { e.preventDefault(); rename(one); }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && selected.length) { e.preventDefault(); trash(); }
+    else if ((e.metaKey || e.ctrlKey) && e.key === 'c' && one) { e.preventDefault(); copy(one); }
+  });
+
+  // ── The inspector ─────────────────────────────────────────────
+  function fact(dl, label, value) {
+    dl.appendChild(el('dt', null, label));
+    var dd = el('dd'); if (typeof value === 'string') dd.textContent = value; else dd.appendChild(value);
+    dl.appendChild(dd);
+    return dd;
+  }
+  function inspect() {
+    if (!inspector) return;
+    inspector.textContent = '';
+    var sel = current();
+    if (!sel.length) { inspector.appendChild(el('p', 'table-empty', 'Select a file to see its details.')); return; }
+    if (sel.length > 1) {
+      inspector.appendChild(el('div', 'media-inspector__title', sel.length + ' files selected'));
+      inspector.appendChild(el('div', 'media-inspector__meta', fmtSize(sel.reduce(function (t, it) { return t + it.size; }, 0)) + ' together'));
+      var del = el('button', 'btn btn--danger btn--sm', 'Move ' + sel.length + ' files to trash'); del.type = 'button';
+      del.addEventListener('click', trash); inspector.appendChild(del);
+      return;
+    }
+    var it = sel[0];
+    var pv = el('div', 'media-inspector__preview');
+    pv.appendChild(thumb(it, 'xl'));
+    inspector.appendChild(pv);
+    inspector.appendChild(el('div', 'media-inspector__title', it.title));
+    var meta = el('div', 'media-inspector__meta', it.kind + ' · ' + fmtSize(it.size));
+    inspector.appendChild(meta);
+    var img = $('img', pv);
+    if (img) img.addEventListener('load', function () { meta.textContent = img.naturalWidth + ' × ' + img.naturalHeight + ' · ' + it.kind + ' · ' + fmtSize(it.size); });
+    var dl = el('dl', 'media-inspector__facts');
+    if (!it.isPdf) {
+      var alt = el('textarea', 'textarea media-inspector__alt'); alt.rows = 2; alt.value = it.alt || ''; alt.placeholder = 'Describe the picture';
+      alt.setAttribute('aria-label', 'Alt text');
+      alt.addEventListener('change', function () {
+        window.vpPost('/os/api/media/alt', { name: it.name, alt: alt.value }, function () { it.alt = alt.value.trim(); window.vpToast('Alt text saved.', 'ok'); });
+      });
+      fact(dl, 'Alt text', alt);
+    }
+    fact(dl, 'Added', fmtWhen(it.mod));
+    var uses = el('div', 'media-inspector__uses');
+    if (!it.uses.length) uses.textContent = 'Not used anywhere';
+    it.uses.forEach(function (u) { var a = el('a', null, u.label); a.href = u.href; uses.appendChild(a); });
+    fact(dl, 'Used in', uses).setAttribute('data-media-uses', '');
+    inspector.appendChild(dl);
+    var row = el('div', 'media-inspector__actions');
+    [['Copy link', function () { copy(it); }, 'btn btn--sm'], ['Rename', function () { rename(it); }, 'btn btn--sm'],
+     ['Download', function () { download(it); }, 'btn btn--sm'], ['Move to trash', trash, 'btn btn--danger btn--sm']].forEach(function (b) {
+      var btn = el('button', b[2], b[0]); btn.type = 'button'; btn.addEventListener('click', b[1]); row.appendChild(btn);
+    });
+    inspector.appendChild(row);
+  }
+
+  // ── Actions ───────────────────────────────────────────────────
+  function copy(it) {
+    var full = location.origin + it.url;
+    (navigator.clipboard ? navigator.clipboard.writeText(full) : Promise.reject()).then(
+      function () { window.vpToast('Link copied.', 'ok'); },
+      function () { window.vpPrompt({ title: 'Copy the link', label: 'Link', value: full, confirm: 'Done' }); });
+  }
+  function download(it) {
+    var a = el('a'); a.href = it.url; a.download = it.title; document.body.appendChild(a); a.click(); a.remove();
+  }
+  function rename(it) {
+    window.vpPrompt({ title: 'Rename', label: 'Name', value: it.title, confirm: 'Rename',
+      message: 'The name is how you find it here. Its link, and every post that uses it, stay as they are.' }, function (v) {
+      if (v == null || !v.trim() || v.trim() === it.title) return;
+      window.vpPost('/os/api/media/name', { name: it.name, title: v }, function (d) { it.title = d.title; draw(); window.vpToast('Renamed.', 'ok'); });
     });
   }
-  if (input) input.addEventListener('change', function () { if (input.files.length) upload(input.files[0]); });
+  function trash() {
+    var sel = current(); if (!sel.length) return;
+    var used = sel.filter(function (it) { return it.uses.length; });
+    var one = sel.length === 1;
+    window.vpConfirm({
+      title: one ? 'Move “' + sel[0].title + '” to trash?' : 'Move ' + sel.length + ' files to trash?',
+      message: used.length
+        ? (one ? 'It is used in ' + usedIn(sel[0]) + '; those will show a broken image.' : used.length + ' of them are in use, and those places will show a broken image.') + ' This cannot be undone.'
+        : 'Nothing uses ' + (one ? 'it' : 'them') + '. This cannot be undone.',
+      confirm: 'Move to trash'
+    }, function () {
+      window.vpPost('/os/api/media/delete', { names: sel.map(function (it) { return it.name; }) }, function (d) {
+        window.vpToast((d.deleted || 0) + ' file' + (d.deleted === 1 ? '' : 's') + ' moved to trash.', 'ok');
+        selected = []; load();
+      });
+    });
+  }
 
+  // ── The context menu ──────────────────────────────────────────
+  function openMenu(x, y) {
+    if (!menu) return;
+    var sel = current(), one = sel.length === 1 ? sel[0] : null;
+    menu.textContent = '';
+    function item(icon, label, key, fn, danger) {
+      var b = el('button', 'sa-menu__item' + (danger ? ' sa-menu__item--danger' : '')); b.type = 'button'; b.setAttribute('role', 'menuitem');
+      b.appendChild(window.vpIcon(icon)); b.appendChild(el('span', 'sa-menu__text', label));
+      if (key) b.appendChild(el('kbd', 'sa-menu__key', key));
+      b.addEventListener('click', function () { closeMenu(); fn(); });
+      menu.appendChild(b);
+    }
+    function sep() { menu.appendChild(el('div', 'sa-menu__sep')); }
+    if (one) {
+      item('eye', 'Open preview', 'Space', function () { window.open(one.url, '_blank', 'noopener'); });
+      item('link', 'Copy link', mac ? '⌘C' : 'Ctrl+C', function () { copy(one); });
+      item('rename', 'Rename', 'F2', function () { rename(one); });
+      sep();
+      item('where', 'Show where it’s used', '', function () { var u = $('[data-media-uses]', inspector); if (u) { u.scrollIntoView({ block: 'nearest' }); var a = $('a', u); (a || u).focus && (a || u).focus(); } });
+      item('download', 'Download', '', function () { download(one); });
+      sep();
+    }
+    item('trash', one ? 'Move to trash' : 'Move ' + sel.length + ' files to trash', mac ? '⌫' : 'Del', trash, true);
+    menu.hidden = false;
+    var w = menu.offsetWidth, h = menu.offsetHeight;
+    menu.style.left = Math.max(8, Math.min(x, innerWidth - w - 8)) + 'px';
+    menu.style.top = Math.max(8, Math.min(y, innerHeight - h - 8)) + 'px';
+    var first = $('button', menu); if (first) first.focus();
+  }
+  function closeMenu() { if (menu && !menu.hidden) { menu.hidden = true; var cur = $('[data-name][tabindex="0"]', list); if (cur) cur.focus({ preventScroll: true }); } }
+  if (menu) {
+    menu.addEventListener('keydown', function (e) {
+      var bs = $$('button', menu), at = bs.indexOf(document.activeElement);
+      if (e.key === 'Escape') { e.preventDefault(); closeMenu(); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); bs[(at + 1) % bs.length].focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); bs[(at - 1 + bs.length) % bs.length].focus(); }
+    });
+    document.addEventListener('click', function (e) { if (!menu.contains(e.target)) closeMenu(); });
+    document.addEventListener('scroll', closeMenu, true);
+  }
+
+  // ── Upload, with progress and time left ───────────────────────
+  // One file at a time, so the time left is measured, not guessed: bytes sent
+  // over time taken, applied to the bytes still to go.
+  function uploadAll(files) {
+    files = Array.prototype.slice.call(files || []);
+    if (!files.length || !uploads) return;
+    var total = files.reduce(function (t, f) { return t + f.size; }, 0), done = 0, started = Date.now(), failed = [];
+    uploads.hidden = false;
+    uploads.textContent = '';
+    var head = el('div', 'media-uploads__head');
+    var title = el('span', 'media-uploads__title', 'Uploading ' + files.length + ' file' + (files.length === 1 ? '' : 's'));
+    var pct = el('span', 'media-uploads__pct', '0%');
+    head.appendChild(title); head.appendChild(pct);
+    var bar = el('progress', 'media-uploads__bar'); bar.max = 100; bar.value = 0;
+    var now = el('div', 'media-uploads__now');
+    uploads.appendChild(head); uploads.appendChild(bar); uploads.appendChild(now);
+    function show(sent, file) {
+      var p = total ? Math.min(100, Math.round((done + sent) / total * 100)) : 100;
+      var secs = (Date.now() - started) / 1000, rate = (done + sent) / Math.max(secs, 0.25);
+      var left = rate > 0 ? Math.ceil((total - done - sent) / rate) : 0;
+      pct.textContent = p + '%' + (p < 100 && secs > 1 ? ' · ' + (left < 60 ? left + ' s' : Math.ceil(left / 60) + ' min') + ' left' : '');
+      bar.value = p;
+      if (file) now.textContent = file.name + (sent >= file.size ? ' — making web versions' : '');
+    }
+    (function next(i) {
+      if (i >= files.length) {
+        title.textContent = failed.length ? (files.length - failed.length) + ' of ' + files.length + ' uploaded' : files.length + ' file' + (files.length === 1 ? '' : 's') + ' uploaded';
+        pct.textContent = ''; bar.value = 100;
+        now.textContent = failed.length ? failed.join(' · ') : '';
+        uploads.classList.toggle('is-failed', failed.length > 0);
+        load();
+        if (!failed.length) setTimeout(function () { uploads.hidden = true; }, 4000);
+        return;
+      }
+      var f = files[i], fd = new FormData(), x = new XMLHttpRequest();
+      fd.append('file', f);
+      x.open('POST', '/os/api/media/upload');
+      x.setRequestHeader('X-CSRF-Token', window.vpCsrf());
+      x.upload.onprogress = function (e) { show(e.loaded, f); };
+      x.onload = function () {
+        if (x.status >= 300) { var m = ''; try { var j = JSON.parse(x.responseText); m = (j.error && j.error.message) || j.detail || ''; } catch (err) {} failed.push(f.name + ': ' + (m || 'refused (' + x.status + ')')); }
+        done += f.size; show(0, null); next(i + 1);
+      };
+      x.onerror = function () { failed.push(f.name + ': the connection dropped'); done += f.size; next(i + 1); };
+      show(0, f);
+      x.send(fd);
+    })(0);
+  }
+
+  // ── Wiring ────────────────────────────────────────────────────
+  if (search) search.addEventListener('input', draw);
+  $$('[data-media-filter]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      $$('[data-media-filter]').forEach(function (x) { x.classList.toggle('is-active', x === b); });
+      filter = b.getAttribute('data-media-filter'); draw();
+    });
+  });
+  $$('[data-media-view]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      view = b.getAttribute('data-media-view');
+      try { localStorage.setItem('vp_media_view', view); } catch (e) {}
+      $$('[data-media-view]').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      draw();
+    });
+    b.setAttribute('aria-pressed', b.getAttribute('data-media-view') === view ? 'true' : 'false');
+  });
+  var up = $('[data-media-upload]');
+  if (up && input) up.addEventListener('click', function () { input.click(); });
+  if (input) input.addEventListener('change', function () { uploadAll(input.files); input.value = ''; });
+  // The whole page takes a drop, as the page says; the list lights up to
+  // show where the files will land.
+  if (drop) {
+    document.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('is-drop'); });
+    document.addEventListener('dragleave', function (e) { if (!e.relatedTarget) drop.classList.remove('is-drop'); });
+    document.addEventListener('drop', function (e) { e.preventDefault(); drop.classList.remove('is-drop'); uploadAll(e.dataTransfer && e.dataTransfer.files); });
+  }
   load();
 })();
 
