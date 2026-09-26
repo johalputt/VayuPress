@@ -277,7 +277,7 @@ func saHomeInstall(cfg *osSettings, snap *adminMetricsSnapshot, m mode.Mode) str
 		world = "Tor"
 	}
 	row("World", world)
-	row("Version", `<span class="mono">`+html.EscapeString(Version)+`</span>`)
+	row("Version", saEdition()+` <span class="mono">`+html.EscapeString(Version)+`</span>`)
 	if snap != nil && snap.UptimeSeconds > 0 {
 		row("Up for", saUptime(time.Duration(snap.UptimeSeconds*float64(time.Second))))
 	}

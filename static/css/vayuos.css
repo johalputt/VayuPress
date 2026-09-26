@@ -5633,6 +5633,12 @@
   display: flex; justify-content: space-between; padding: var(--space-3) 10px 0;
   font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums;
 }
+/* VayuOS Still Air: the product at the weight of a label, the design's name
+   quieter beside it, as a release name sits beside an OS's. */
+.vp-os .sa-edition { font-weight: 500; color: var(--text-2); white-space: nowrap; }
+.vp-os .sa-edition__name { font-weight: 400; color: var(--text-3); }
+.vp-os .login-footer { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.vp-os .login-footer .sa-edition { font-size: 13px; }
 /* Collapsed to icons: by the toggle, or by default where the rail and an app's
    section list together would take 440px of a laptop screen and leave tables
    scrolling sideways. The label stays readable to assistive technology, as it

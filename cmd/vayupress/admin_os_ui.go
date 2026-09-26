@@ -2087,7 +2087,7 @@ func osLoginPage(prefillEmail, errMsg, next string) string {
     </form>
     <p class="login-recover"><a href="/mail/recover">Forgot your mailbox password?</a></p>
   </div>
-  <div class="login-footer">Sovereign · zero-telemetry · yours completely</div>`)
+  <div class="login-footer">`+saEdition()+`<span>Sovereign · zero-telemetry · yours completely</span></div>`)
 }
 
 // authPageShell wraps the calm auth-page layout (theme toggle + centered column)

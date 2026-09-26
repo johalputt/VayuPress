@@ -2,553 +2,214 @@
   <picture>
     <source media="(prefers-color-scheme: dark)"  srcset="docs/assets/vayupress-mark-dark.png">
     <source media="(prefers-color-scheme: light)" srcset="docs/assets/vayupress-mark-light.png">
-    <img src="docs/assets/vayupress-mark-light.png" alt="VayuPress" width="150">
+    <img src="docs/assets/vayupress-mark-light.png" alt="VayuPress" width="120">
   </picture>
 </p>
 
 <h1 align="center">VayuPress</h1>
 
 <p align="center">
-  <strong>Your whole online presence — website, blog, private mail, encrypted chat, and one-click Tor .onion — in one sovereign binary.</strong><br>
-  One VPS. One process. One control panel. Zero telemetry, zero vendor lock-in, zero SDKs.
+  Your website, blog, mail, private chat and Tor onion, in one binary on one server.<br>
+  Run from <strong>VayuOS Still Air</strong>, a quiet console that stays out of the way.
 </p>
 
 <p align="center">
   <a href="https://github.com/johalputt/vayupress/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/johalputt/vayupress/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/johalputt/vayupress/actions/workflows/security.yml"><img alt="Security" src="https://github.com/johalputt/vayupress/actions/workflows/security.yml/badge.svg"></a>
-  <a href="https://github.com/johalputt/vayupress/actions/workflows/dep-freshness.yml"><img alt="Dependency Freshness" src="https://github.com/johalputt/vayupress/actions/workflows/dep-freshness.yml/badge.svg"></a>
-  <a href="https://github.com/johalputt/vayupress/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/johalputt/VayuPress?sort=semver&color=0ea5e9&label=release"></a>
-  <a href="https://github.com/johalputt/vayupress/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/johalputt/VayuPress?style=flat&logo=github&color=f5c518"></a>
-  <a href="https://go.dev/"><img alt="Go" src="https://img.shields.io/badge/go-1.25-00ADD8?logo=go&logoColor=white"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
-  <img alt="Telemetry" src="https://img.shields.io/badge/telemetry-zero-success">
-  <a href="GOVERNANCE-CONSTITUTION.md"><img alt="Constitution" src="https://img.shields.io/badge/constitution-v6.0-blueviolet"></a>
+  <a href="https://github.com/johalputt/vayupress/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/johalputt/VayuPress?sort=semver&color=2d5bd7&label=release"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-27704f"></a>
+  <img alt="Telemetry" src="https://img.shields.io/badge/telemetry-none-27704f">
+</p>
+
+<p align="center">
+  <a href="https://johal.in"><strong>johal.in</strong></a> runs it: 234,615 posts and 13 sites on one small VPS, with its own mail server.
+  <a href="#johalin-in-production">The numbers</a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/admin-os-dashboard.png" alt="VayuOS Still Air: Home, with what needs attention, setup steps, visitors and the state of the install" width="920">
 </p>
 
 ---
 
-## About
+**Vayu** is Sanskrit for *wind*: the force that moves everything and belongs to
+no one. Point a domain at one server and run one command. You get a website, a
+blog at `blog.`, your own mail at `mail.` and private chat at `talk.`, each
+with a certificate issued and renewed for you. It all runs as one Go binary with
+one SQLite database, sends no telemetry, and has no SaaS behind it. You own
+the content, the mailbox, the data and the machine.
 
-> **Live install:** **[johal.in](https://johal.in)** — **234,499 posts**, **100 across Performance, Accessibility, Best Practices and SEO**, **12 sites** and a full mail server, all on **one Contabo VPS 10**. [See the numbers →](#running-in-production--johalin)
+## Products
 
-**Vayu** is Sanskrit for *wind* — the invisible force that moves everything and is owned by no one. VayuPress moves your online presence the same way: entirely under your control, seen by no third party.
+| | What it is | Read more |
+|---|---|---|
+| **Website** | A business site from eleven templates, edited with a live preview. You choose whether the site or the blog sits at the root. | [A website is a document](docs/adr/ADR-0161-a-website-is-a-document.md) |
+| **Blog** | A block editor with lossless Markdown and HTML modes, focus mode, typewriter scrolling, footnotes, diagrams and version diffs. Memberships, newsletters, comments and SEO are built in. | [Block editor](docs/adr/ADR-0092-block-editor-v2-and-low-impact-deploys.md) · [Themes](docs/adr/ADR-0086-theme-whole-site-design.md) |
+| **VayuMail** | Your own mail server: SMTP, IMAP and POP3, with DKIM, SPF and DMARC checked live. Every mailbox gets PGP automatically, published by WKD. There are five ways back into a locked mailbox. | [Mail server](docs/adr/ADR-0077-vayumail-outbound-pure-go.md) · [Recovery](docs/MAIL-RECOVERY.md) |
+| **VayuMail Mobile** | A pure-Go Android app for your mail and chat. It signs in once, creates its own app password, and decrypts on the device. | [VayuMail-Mobile](https://github.com/johalputt/VayuMail-Mobile) |
+| **VayuTalk** | End-to-end-encrypted chat, shared by the web console and the phone. Messages live only in memory and are destroyed once read. | [Architecture](docs/adr/ADR-0131-vayutalk-ephemeral-messaging.md) · [Over Tor](docs/VAYUTALK-ONION-FEDERATION.md) |
+| **VayuShield** | A five-layer bot shield that learns offenders and releases them on its own. It never blocks search engines, AI assistants or readers. It cannot absorb a volumetric flood; that needs anycast capacity in front. | [Architecture](docs/adr/ADR-0111-vayushield-bot-protection-and-analytics.md) |
+| **VayuAnalytics** | Visitors, funnels, retention and revenue. It uses no cookies, stores no IP address, and needs no consent banner. | [No personal data](docs/adr/ADR-0097-vayuanalytics-no-pii.md) |
+| **VayuTor** | A stable Tor v3 `.onion` for every domain, on its own tor. It gets past blocked networks with obfs4 bridges and can mint vanity addresses. | [Onion services](docs/adr/ADR-0138-vayutor-onion-services.md) |
+| **Spaces** | Runs the install as a public Clearnet world or an anonymous Tor world. The two have separate databases and nothing crosses between them. | [Two worlds](docs/adr/ADR-0141-vayuos-spaces-clearnet-tor.md) · [Anonymity model](docs/adr/ADR-0143-tor-space-anonymity-model.md) |
+| **VayuDomains** | Many independent sites from one process. Each has its own certificate, console, content and analytics. | [Agency hosting](docs/adr/ADR-0152-agency-hosting.md) · [Domain independence](docs/adr/ADR-0153-domain-independence.md) |
+| **VayuAPI** | Keys scoped to one `section:action`, each with its own expiry and rate budget, stored only as a hash, and audited. | [Reference](docs/compatibility/vayuapi.md) |
+| **VayuMCP** | A built-in MCP server, so Claude or any MCP client can run your site with exactly the rights its key grants. | [Connector](docs/compatibility/mcp.md) · [Buzz](docs/compatibility/buzz.md) |
+| **VCB** | The plugin and theme contract, checked by `vayu-compat` using the host's own validator. | [The Bible](docs/compatibility/vcb.md) |
+| **VayuFlow** | Automations that are armed step by step and show the exact diff they would apply before they run. | [Architecture](docs/adr/ADR-0151-vayuflow-automation-engine.md) |
+| **VayuVeil** | An administrator's view of what this binary exposes: what is reachable, what is observed, and which units are on. | [Architecture](docs/adr/ADR-0150-vayuveil-endpoint-observation-control.md) |
+| **Getting paid** | Your own Stripe, PayPal or self-hosted BTCPay (no processor, no KYC). Sell tiers, paywalls, mailboxes, premium addresses and member ads, all through one audited ledger. | [Subscription engine](docs/adr/ADR-0087-subscription-engine-v2.md) |
 
-VayuPress began as a publishing engine. It is now a **complete sovereign platform** —
-**thirteen products in one Go binary**: a business **website**, a **blog**, a private
-**PGP email server** (VayuMail) for your own domain with an official **mobile app**,
-**ephemeral end-to-end-encrypted chat** (VayuTalk), a self-learning **bot shield**
-(VayuShield), **privacy-first analytics** (VayuAnalytics), a fine-grained **scoped
-API** (VayuAPI), **one-click Tor `.onion` services** for every domain (VayuTor), a
-built-in **MCP server** that connects Claude and any MCP client in one click
-(VayuMCP), **many independent sites from one process** (VayuDomains), an
-**automation engine that shows its diff before it runs** (VayuFlow), an
-**endpoint observation console** (VayuVeil), and a single admin console
-(**VayuOS**) — that runs on a single modest VPS. **VayuOS installs as an app** (PWA) on your phone or desktop in one click,
-always live via a zero-cache service worker — no store, no build step. You can run
-it as **two independently switchable worlds** — a public **Clearnet Space** and a
-fully anonymous, web-only **Tor Space** (VayuOS Spaces) — and you can **get paid**
-through your own **Stripe, PayPal, or self-hosted BTCPay** (BTC, Monero, Ethereum,
-USDT — no processor, no KYC) with built-in memberships, paywalls, a premium mail-ID
-marketplace and member ads.
+## VayuOS Still Air
 
-Point a domain at one server, run one install command, and you get:
+**Still Air** is the design VayuOS is built in, and the name it ships under: a
+console that is calm, precise and quiet, where the work is the loudest thing on
+the screen.
 
-- a **website** at `yourdomain.com`,
-- a **blog** at `blog.yourdomain.com`,
-- a **mail server with automatic PGP** at `mail.yourdomain.com`,
-- **ephemeral, end-to-end-encrypted chat** at `talk.yourdomain.com`,
+- **Content first.** Each app opens on what you came for. Help waits behind a
+  small ⓘ instead of standing in front of the page.
+- **One grammar.** Every page is built from the same few parts: hairline
+  sections, rows with their control on the right, figures and disclosures.
+- **Colour that means something.** The accent marks the one thing you act on.
+  Green, amber and red appear only when a fact calls for them.
+- **Two schemes, drawn separately.** Graphite (dark) and Paper (light), each
+  with its own tokens.
+- **The machine's state is always visible.** The system bar shows the
+  operating mode and the world (Clearnet or Tor) on every page. `⌘K` finds any
+  page and runs any command.
+- **Nothing hidden behind a framework.** It is server-rendered Go and HTMX,
+  with one stylesheet and one icon set, served from your origin under a strict
+  CSP. It installs as an app, and its service worker caches nothing.
+- **Held by tests, not taste.**
+  - A design lint walks every console page in a browser and fails on any value
+    off the token scale.
+  - Twelve surfaces are compared with approved baselines in both schemes.
+  - Every text colour is held to WCAG AA against its surface.
+  - Lighthouse budgets hold four console pages.
 
-each with a free Let's Encrypt certificate issued and renewed for you. No SaaS bill, no analytics harvesting, no plugin marketplace, no credentials on someone else's cloud. **You own the content, the mailbox, the data, and the machine.**
-
-> *Own your content. Own your communication. Own your infrastructure.*
-
----
-
-## Why this exists
-
-I built VayuPress for myself first.
-
-Self-hosting hurt. Not in any single dramatic way — it was the accumulation. A mail server that
-needed a weekend and then broke. Six services that each wanted their own database, their own
-reverse-proxy block, their own certificate, their own upgrade path. A stack that worked until one
-piece moved and then did not. Every guide assuming you already knew the part you did not know.
-
-That pain is not a law of nature. It is a consequence of nobody having bothered to make the
-sovereign option as easy as the rented one, because there is no money in making people
-independent. So I made the thing I needed: **one binary, one process, one command**, and the
-whole stack works.
-
-**I do not want anyone else to feel what I felt.** That is the entire goal. Not profit, not an
-exit, not a company.
-
-### What that means in practice
-
-**VayuPress is free for everyone, forever — individuals and large companies alike.** A big
-technology company can run this, build on it, and ship it inside a product without paying anyone
-anything. That is not a loophole to be closed later; it is the point. A licence that carves out
-the powerful is still a licence with a gatekeeper, and I did not build this to become one.
-
-**It will not be sold, relicensed, or made source-available.** Not for money, not for a hosted
-edition, not for an acquisition. The reasoning and the structure that backs it are in
-[docs/LICENSING.md](docs/LICENSING.md).
-
-**There is no paid tier and no feature held back.** Every install gets the same binary.
-
-### About the funding goal
-
-There is a goal of **USD 5,000 per month** in [docs/SUSTAINABILITY.md](docs/SUSTAINABILITY.md).
-It exists for exactly one reason: I currently work on VayuPress part-time, and that figure is
-what would let me work on it full-time.
-
-**It is not a condition on anything.** If it is never reached, VayuPress stays free, stays
-Apache-2.0, and stays maintained part-time. Nothing gets sold. The values came first and the
-funding question does not get to revise them.
-
-> ਨਾਨਕ ਨਾਮ ਚੜ੍ਹਦੀ ਕਲਾ, ਤੇਰੇ ਭਾਣੇ ਸਰਬੱਤ ਦਾ ਭਲਾ
->
-> *Nanak Naam Chardi Kala, Tere Bhane Sarbat da Bhala* — may the spirit be ever in ascendance;
-> in Your will, may all prosper.
-
----
-
-## What you get
-
-### 🌐 A real website
-Serve a genuine business site at your domain — **11 elegant, modern-minimalist templates** (restaurant, café, shop, portfolio, agency, school, clinic, salon, gym, professional firm, hotel), edited entirely from VayuOS with live preview. You choose the hosting topology (website at the root or the blog at the root); an update never changes it for you.
-
-### ✍️ A Ghost-class blog — with a writer people actually enjoy
-A best-in-class **block editor** with whole-document **Markdown** and **HTML** modes (lossless round-trips), drag/drop/paste images or any `https` link, tables, toggles, task lists, math, callouts, code, self-hosted audio/video, Mermaid diagrams rendered server-side, a slash-command palette, live preview, autosave, and version-history diffs. The writing surface is tuned to disappear: **typewriter scrolling** keeps your line centered, a **focus-mode spotlight** dims everything but the block you're in, **paste-as-Markdown** turns a whole pasted draft into real blocks, a **live document outline** tracks your headings with click-to-jump, real **footnotes**, image **captions**, block **duplicate**, and full **keyboard block reordering**. Whole-site **themes** restyle every surface (nav, hero, feed, article, footer) with a live Theme Studio. Multi-author bylines, memberships, paywalls, newsletters, threaded comments, and SEO baked in.
-
-### 🛡️ Built-in bot shield (VayuShield "Aegis")
-An **enterprise-grade, self-learning bot shield** built into the same binary, defending in five layers with **zero operator commands**: an admin-sovereignty lane that keeps the console responsive while the public site is under application-layer load, a fixed-memory probabilistic fair-shed that catches spoofed botnets without ever touching a client within its fair budget, a reputation brain that jails offenders in minutes and **forgives automatically**, silent-first proof-of-work challenges that self-calibrate so they never bother real browsers, and optional kernel-level `nftables + XDP` offload. Search engines and AI assistants are always allowed; abuse is shed with `429`/`503` carrying `Retry-After`, so **SEO and real users are structurally protected**. Everything is visible and tunable with no restart from the VayuShield console and its live Aegis layer map. *([architecture →](docs/adr/ADR-0111-vayushield-bot-protection-and-analytics.md))*
-
-**What it does not do, stated plainly:** it will not absorb a volumetric flood. Every layer above runs after a completed TCP handshake on your uplink, so a flood large enough to saturate that uplink is decided upstream of your server, by your provider's routers, and no software on the host can change it. VayuShield handles the abuse a publisher actually meets — scrapers, credential stuffing, comment spam, AI crawlers, application-layer floods — and handles it at or above commodity edge bot management. For volumetric resilience you need anycast capacity, which means either a network in front or several nodes of your own. Anyone telling you a single host solves this is selling something.
-
-### 📧 A sovereign PGP mail server (VayuMail)
-Your own mail server for your domain — **SMTP send + receive, IMAP and POP3**, RFC-6376 **DKIM signing**, direct-to-MX delivery with STARTTLS, automatic **MX / SPF / DKIM / DMARC** records with live DNS health checks, per-mailbox quotas, junk filtering, and a full webmail surface. **PGP is native and automatic** (VayuPGP): keypairs are generated per account, private keys are AES-256-GCM encrypted at rest, and your public keys are published via **Web Key Directory (WKD)** so any client can find them. The composer speaks **PGP/MIME (RFC 3156)**, so an encrypted message can carry **attachments and multiple recipients** — not just a plain-text body. New mail raises a **live topbar bell and desktop notification** (via the service worker, so it works in the installed PWA too) with one click to the mailbox. Mail never leaves your server unencrypted to a third party. And **a forgotten mailbox password is no longer a dead end**: five recovery paths — single-use recovery codes, a verified off-install recovery address, a still-syncing trusted device, an administrator-approved one-time link, and a host break-glass command — all running one reset pipeline that revokes every app password and session, holds queued outbound mail, and writes an append-only audit trail. The public flow never confirms whether an address exists, and no reset ever mints a session or reveals a password. *([recovery guide →](docs/MAIL-RECOVERY.md) · [ADR →](docs/adr/ADR-0144-vayumail-account-recovery.md))*
-
-### 💬 Ephemeral end-to-end-encrypted chat (VayuTalk)
-Real-time private messaging built into the same binary — a **PGP end-to-end-encrypted chat** for your domain that interoperates seamlessly across the **web console and the mobile app over one shared relay**: a message typed on the web reaches the phone and vice-versa, indistinguishable to the server. Every message is encrypted to the recipient's key, relayed through a **bounded in-memory store that never touches disk**, and **read-destroyed** — it vanishes the moment it is read or when its short TTL (5 min – 1 h) elapses. Out-of-band **safety-number verification** (shown identically on web and app) defeats a man-in-the-middle key swap. The relay auto-serves on a dedicated **`talk.yourdomain.com`** subdomain that bypasses any CDN in front of your site, so the long-lived event stream is never buffered or bot-challenged — provisioned automatically by the installer the moment you point that one DNS record. In the **Tor world** (see VayuOS Spaces below) your chat identity is instead an **anonymous, rotatable code** — not a mailbox — and, opt-in, VayuTalk delivers **onion-to-onion over Tor** between two separate `.onion` installs (guarded `.onion`-only lane, over-Tor key fetch, sender-signature verification, cross-onion read receipts). *([architecture →](docs/adr/ADR-0131-vayutalk-ephemeral-messaging.md) · [Tor federation →](docs/VAYUTALK-ONION-FEDERATION.md))*
-
-### 📱 An official mobile app (VayuMail Mobile)
-[**johalputt/VayuMail-Mobile**](https://github.com/johalputt/VayuMail-Mobile) — a pure-Go Android app that reads and sends your PGP mail *and* carries VayuTalk chat from your own domain. Onboarding is **direct-connect**: you enter your domain and sign in once, and the app **provisions a per-device app password automatically** (never your real password, revocable anytime) and auto-configures IMAP/SMTP from VayuPress's first-party autoconfig endpoint — no host, port, or key typing. Encrypted mail is decrypted **on-device** with a synced private key, and VayuTalk chat interoperates with the web console over the same relay. No tracking pixels, no remote content, no telemetry.
-
-### 📊 Privacy-first analytics (VayuAnalytics)
-Real product analytics — pageviews, sessions, top pages, referrers, UTM campaigns, custom events, funnels, retention, revenue, and a live visitor panel — stored locally in SQLite. Visitor identity is a **server-side daily-rotating salted hash**: no cookies, no `localStorage`, no IP or User-Agent ever stored, **no consent banner required**, nothing to leak on a database compromise. Visitor country is resolved from an **embedded offline table** — no external GeoIP service, no phone-home.
-
-### 🛠️ One control panel (VayuOS)
-Everything above is run from a single, fast, strict-CSP admin at `/os` — dashboard, editor, media library, themes, members, newsletter, mail, **VayuTalk chat**, analytics, **VayuShield**, SEO, API keys, and one-click **update & encrypted backup**. The dashboard opens on a real **14-day publishing area chart** (server-rendered SVG, hover tooltips, zero JavaScript) and live stat cards; every data table folds into phone-friendly cards on mobile. TOTP two-factor, role-based access, WORM audit log, and an adaptive policy-governed runtime underneath. Built with **HTMX + lightweight hand-written CSS** — no SPA framework, no build step, negligible RAM/CPU.
-
-### 📲 Install VayuOS as an app — one-click PWA
-VayuOS is an **installable app**. Open `/os` in any modern browser and it offers **Install VayuOS** — a one-click install that puts the console on your **home screen or desktop** as a standalone, full-screen app on both **mobile and Android/desktop Chromium**; on iPhone/iPad, **Share → Add to Home Screen** does the same. There's a built-in **Install** button in the console top bar too, so it's always one tap away. The installed app opens straight into `/os`, uses the official VayuPress mark as its icon, and launches instantly — no store, no download, no account beyond your normal sign-in. It is **privacy-first and always live**: the app ships a **zero-cache service worker** that never stores a single console response and purges any old cache on upgrade, so an installed VayuOS is **never stale** — every visit shows exactly what the server serves right now, and an update is visible the instant it lands. All same-origin, under the same strict CSP, with a tiny offline notice as the only fallback.
-
-### 🔌 A fine-grained, scoped API (VayuAPI)
-Drive the whole platform programmatically — create posts, apply themes, manage domains, read analytics, install plugins, run backups — with **API keys scoped to the exact section and action they need, and nothing more**. Mint a key from a **12 × 6 permission grid** (twelve sections × six actions, written `section:action`), give it an optional hard expiry and a **per-key rate budget**, then rotate, deactivate (reversibly) or revoke it in a click. Keys are **owner-scoped and stored only as a hash** (the raw value is shown once); every call is checked against the key's grant on both the `/api/v1` and `/os` surfaces, metered against its budget (`429` + `Retry-After` when exhausted), and appended to a tamper-evident **audit log**. So a script, a CI job, or an AI agent can update your site autonomously — without ever holding the keys to everything. *([reference →](docs/compatibility/vayuapi.md) · [ADR →](docs/adr/ADR-0134-vayuapi-fine-grained-keys.md))*
-
-### 🧩 An extension contract that guarantees compatibility (VCB)
-The **Vayu Compatibility Bible** turns "will this plugin/theme work?" into a checked contract. A developer — or an AI agent — writes a `plugin.json` or `theme.json`, runs **`vayu-compat`**, and knows *before shipping* that every hook, capability, colour, option, sandbox limit, and CSP rule matches what the host actually enforces — because the validator is the **same code the host runs**, so the docs can never drift. Themes that fetch from an external host, plugins that request more than they need, or manifests built against a hook that doesn't exist are refused with a plain, exact reason. Discover the live contract over the API (`GET /api/v1/vcb/contract`) or validate a manifest against a running host (`POST /api/v1/vcb/validate`). *([the Bible →](docs/compatibility/vcb.md) · [ADR →](docs/adr/ADR-0135-vayu-compatibility-bible.md))*
-
-### 🤖 A native Claude / MCP connector (VayuMCP)
-Connect VayuPress to an AI assistant the way Claude connects to GitHub — VayuPress serves its **own Model Context Protocol server** from the same binary at `POST /mcp`, so Claude (Desktop, Code, or any MCP client) gets **native tools** to run your site: publish and edit posts, search content, read your site, and more. Auth reuses the **scoped-key** model — a connector can do **exactly** what its key grants and nothing more, so you choose between **full control** (a superuser key, "give Claude the keys") and **limited** (e.g. `posts:write` only); a tool the key doesn't grant is invisible and refused. Every call is rate-limited and written to the same WORM audit log, and there's no new inbound surface beyond one authenticated route. The agents in a **[Buzz](https://github.com/block/buzz)** workspace connect over the very same endpoint — VayuOS ships a guided page for it, and nothing extra runs on either side. *([the connector →](docs/compatibility/mcp.md) · [Buzz →](docs/compatibility/buzz.md) · [ADR →](docs/adr/ADR-0139-vayu-mcp-connector.md))*
-
-### 🧅 Private, censorship-resistant Tor onion services (VayuTor)
-Flip one switch in VayuOS and **every domain becomes reachable as its own Tor v3 `.onion`** — alongside its clearnet URL, both serving the same site at once and advertised to Tor Browser via the **`Onion-Location`** header — so visitors reach you with **no ISP, network observer, or third party** able to see who connected or from where. VayuPress runs its **own tor** as an unprivileged child (control-port `ADD_ONION`), pinning each onion's ED25519 key so the address is **stable across restarts** — no root, no `torrc`, no systemd — and even **downloads a current Tor by itself** when the host's is missing or too old, so it works on locked-down and end-of-life servers with **nothing done on the box**. It **beats networks that block Tor** with an automatic ladder (direct → 80/443 → **obfs4 bridges**, the obfs4 transport built in, nothing to install) that routes around IP blocks and DPI; mints **vanity addresses** (a recognisable prefix you choose, brute-forced on the server, no key ever leaving it); reports live **onion health with signed webhook alerts** when onions drop or recover; and **hardens onion responses** (no HSTS, `Referrer-Policy: no-referrer`, no inbound ports). Privacy is structural: the metric is a single count — **no IP** (Tor provides none), no time, path, or user-agent — with per-page counts strictly **opt-in and aggregate-only**. *([architecture →](docs/adr/ADR-0138-vayutor-onion-services.md))*
-
-### 🌐🧅 Two worlds, one binary — VayuOS Spaces (Clearnet & Tor)
-Run your platform as **two separate, independently switchable worlds**. A whole-install switch (`VAYUOS_MODE=clearnet|tor`) selects a **Clearnet Space** — your public HTTPS site, global VayuMail, mail-linked VayuTalk, normal analytics — or an anonymous **Tor Space** that is **web-only and fully anonymous**: a Tor-native site on its own `.onion`, webmail-only VayuMail·Tor, and an anonymous rotatable VayuTalk. The Tor world is **anti-leak by construction** — no clearnet callbacks (WKD/gravatar/webmention/MX gated off), external hotlinked images blocked, `img-src 'self' data:` never widened, and http-onion serving with **no CA-TLS, no HSTS, no Secure cookie**. From the clearnet console an operator flips into the Tor world with one click (it manages that world's own data — its Tor domains, blog, mail and chat) and back again. The two worlds keep **separate databases**; accounts, mailboxes, PGP keys and Talk IDs never cross — content moves only through a checksummed, offline-movable `vayupress migrate export|import` bundle. *([architecture →](docs/adr/ADR-0141-vayuos-spaces-clearnet-tor.md))*
-
-### 🏢 Many sites, one binary — VayuDomains & agency hosting
-Point a second domain at the same server and it is **a site, not a copy of yours**. Each host gets its own certificate, its own console, its own branding, its own content and its own analytics scope — and decides for itself whether it serves a blog, a business template or a hand-built bundle, changeable later without a migration. The live install runs **twelve hostnames across two apex domains from one process and one database**: six blogs, five custom bundles, one business template, every certificate renewing without a restart. There is no per-site process, no per-site config file and no per-site cron. *([agency hosting →](docs/adr/ADR-0152-agency-hosting.md) · [domain independence →](docs/adr/ADR-0153-domain-independence.md) · [one console per site →](docs/adr/ADR-0154-one-console-per-site.md) · [what a domain serves →](docs/adr/ADR-0159-what-a-domain-serves-is-changeable.md))*
-
-### ⚙️ Automation that shows its work before it runs (VayuFlow)
-Schedules, events and manual triggers drive **flows** — ordered steps over the capabilities the platform already has (content, mail, egress, model calls), each one **armed explicitly** before it can act. A flow is **dry-runnable**: you see the exact diff it would apply before anything is written. Runs are recorded with idempotency keys and survive a crash, a durable inbox holds event triggers, model steps are bounded in output, and the whole engine is **inert in a Tor Space** rather than quietly reaching the clearnet. *([architecture →](docs/adr/ADR-0151-vayuflow-automation-engine.md))*
-
-### 🔭 Know what your endpoints are doing (VayuVeil)
-An admin-only **observation-control console** for the surfaces this binary exposes — what is reachable, what is being observed, and which units are switched on. Read-only where reading is enough, with the controls that do change something kept explicit and audited. *([architecture →](docs/adr/ADR-0150-vayuveil-endpoint-observation-control.md))*
-
-### 💳 Turn it on and get paid — Monetization
-A complete, **redirect-based** monetization suite (no payment SDK ever embedded — checkout is a top-level redirect, your strict CSP untouched), controlled and audited from one **Monetization control centre** in VayuOS. Take payments through **your own Stripe and PayPal keys** — auto-renewing **PayPal subscriptions** and instant **Stripe one-time** purchases — **or take crypto:** connect a self-hosted **BTCPay Server** and accept **Bitcoin, Monero, Ethereum, and stablecoins** — VayuPress creates the invoice over BTCPay's Greenfield API and a HMAC-verified webhook settles it, with funds landing straight in *your* BTCPay wallet with **no processor, no custody, and no KYC** — the one rail that lets an anonymous or Tor buyer pay without an account. All three sit on one sovereign payments ledger with idempotent fulfilment and verified webhook receipts. Sell **paid membership tiers** that unlock member-only posts; put a **per-post paywall** on any single article (one-time unlock, remembered per member). Turn tiers into **VayuMail mailboxes**: each paid tier provisions a real mailbox with its quota, an auto PGP keypair + WKD, and VayuTalk — plus a **premium / vanity mail-ID marketplace** where reserved and custom addresses are sold (bought → paid entitlement → member claims and sets a password), with operator approve/revoke and a terms-agreement trail. And let members **advertise on your site**: a self-serve "Advertise here" panel takes a flat fee (Stripe, PayPal, BTCPay, or the sovereign direct method) and drops each image ad into an operator **moderation queue** — nothing renders until you approve it. Every paid section — subscriptions, premium IDs, paid posts, member ads — flows through one auditable **Orders** ledger.
-
----
+[How the console is built](docs/ADMIN-UI.md)
 
 ## Quick start
-
-One command stands up the whole stack — website, blog, and PGP mail — on a fresh VPS:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/johalputt/vayupress/main/scripts/deploy-vayupress.sh | bash
 ```
 
-Or clone and deploy manually:
+The installer sets up the binary, the systemd service, Nginx and Let's Encrypt.
+It creates an `admin@yourdomain` account with a random password, saved to a
+root-only file, and asks for a new password at first sign-in.
 
-```bash
-git clone https://github.com/johalputt/vayupress.git
-cd vayupress
-sudo ./scripts/deploy-vayupress.sh
-```
+Point the apex and `www` at the server for a website. Each subdomain below adds
+one product and can be added later:
 
-The installer provisions the binary, systemd service, Nginx, and Let's Encrypt certificates for your website, blog, and mail hostnames. A fresh install auto-creates an `admin@yourdomain` account (random password, saved to a root-only file) and forces a password change on first sign-in — no extra CLI step.
-
-**DNS records — point these before you install.** The apex and `www` are all you need for a website. Each subdomain below unlocks one product, is independent of the others, and can be added later (re-run the installer, or let the next update pick it up).
-
-| Name | CDN proxy | Unlocks |
+| Name | CDN proxy | Adds |
 |---|---|---|
-| `yourdomain.com`, `www.` | on or off | Website & blog |
-| `mail.yourdomain.com` | **OFF** | VayuMail — your own mail server |
-| `openpgpkey.yourdomain.com` | **OFF** | VayuPGP key discovery — makes encryption automatic |
-| `talk.yourdomain.com` | **OFF** | VayuTalk — real-time encrypted chat relay |
-| `mcp.yourdomain.com` | **OFF** | VayuMCP — one-click Connect from Claude and any MCP client |
-| `api.yourdomain.com` | **OFF** | VayuAPI — challenge-free REST host for scripts, CI and agents |
+| `mail.` | **off** | VayuMail |
+| `openpgpkey.` | **off** | Automatic PGP key discovery |
+| `talk.` | **off** | VayuTalk |
+| `mcp.` | **off** | VayuMCP |
+| `api.` | **off** | VayuAPI, without challenges |
 
-**The proxy column is the one people get wrong.** Every service on those subdomains is machine-to-machine — a mail server, GnuPG, a CI job and an MCP client have no JavaScript engine and cannot answer a CDN bot challenge. Behind one they fail, and `openpgpkey.` fails *silently*: key discovery just stops and correspondents quietly fall back to unencrypted mail. In Cloudflare, that's the grey cloud marked **DNS only**. Your apex and `www` keep full CDN protection for human traffic.
+These must be *DNS only*: mail servers, GnuPG and MCP clients cannot answer a
+CDN's bot challenge, and `openpgpkey.` fails silently behind one. A single
+8 GB / 4 vCPU / 50 GB VPS runs everything.
+[Installation guide](docs/INSTALLATION.md) · [Upgrading](docs/UPGRADING.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
 
-If your DNS is on Cloudflare, set `CF_ZONE_ID` and `CF_API_TOKEN` in `/etc/vayupress/env` and the `openpgpkey.` record is created for you, proxy off, on the next update. Full detail, per-record verification commands and what each failure looks like: *([installation guide →](docs/INSTALLATION.md))*
-
-Runs comfortably on a single **8 GB RAM / 4 vCPU / 50 GB NVMe** VPS.
-
----
-
-## Why VayuPress
-
-|  | VayuPress | Typical stack |
-|---|---|---|
-| **What it replaces** | Website builder **+** blog **+** mail provider **+** analytics **+** admin | Four or five separate SaaS bills |
-| **Where your data lives** | Your VPS, your SQLite file | Vendor clouds you don't control |
-| **Telemetry** | None — verifiable, it's open source | "Anonymized analytics" |
-| **Mail** | Your own server, PGP automatic | Google/Microsoft reads the metadata |
-| **Private messaging** | Built-in, E2E-encrypted, ephemeral (VayuTalk) | A separate Signal/Slack account & server |
-| **Tracking of readers** | Cookieless, no PII, no consent banner | Cookies + third-party pixels |
-| **Bot & DDoS protection** | Built-in, self-learning (VayuShield Aegis) | A separate Cloudflare/WAF subscription |
-| **Anonymity / Tor** | One-click `.onion` for every domain — stable & **vanity** addresses, **obfs4 bridges** to beat censorship, self-managed tor, health alerts, count-only stats (VayuTor) — **plus** a fully separate, anti-leak **Tor world** (VayuOS Spaces) | Manual torrc surgery, or not at all |
-| **Getting paid** | Built-in — your own Stripe/PayPal keys **or self-hosted BTCPay** (BTC/Monero/ETH/USDT, no KYC), paid tiers, per-post paywalls, tier mailboxes, a premium mail-ID marketplace, and member ads, all audited from one panel (Monetization) | A separate Stripe/Memberful/Substack stack — and no crypto option |
-| **Dependencies** | One Go binary + SQLite + Nginx | Node, databases, Redis, queues, SDKs |
-| **Extensibility** | Sandboxed, capability-gated plugins; a scoped API + a checked compatibility contract (VCB) | Marketplace plugins with full access |
-| **Automation / API** | Fine-grained keys scoped to `section:action`, rate-limited & audited (VayuAPI) | All-or-nothing tokens, or none at all |
-| **Lock-in** | Open standards, plain export | Proprietary formats, export friction |
-
----
-
-## One binary, by design
-
-VayuPress is a single Go binary and a single SQLite database. There is no second service to install, secure, or keep alive — search, comments, analytics, mail, and PGP all run in-process.
-
-```text
-                         Internet ──HTTPS──▶ Nginx (TLS, static, CSP)
-                                                  │ 127.0.0.1:8080
-                    ┌─────────────────────────────▼──────────────────────────────┐
-                    │                     VayuPress (one Go binary)               │
-                    │                                                             │
-                    │   VayuShield Aegis (L0 lane · L2 fair-shed · L5 brain)      │
-                    │   Website · Blog · Block editor · Themes · Members          │
-                    │   VayuMail (SMTP/IMAP/POP3 · DKIM · MX/SPF/DMARC)           │
-                    │   VayuTalk (ephemeral E2E chat · SSE relay · read-once)     │
-                    │   VayuPGP (keys · WKD)   VayuFind (search)   Analytics      │
-                    │   VayuTor (v3 .onion · self-managed tor · obfs4 · vanity)   │
-                    │   VayuOS control panel   Newsletter   Media   VayuAPI       │
-                    │                                                             │
-                    │   ── Platform kernel (immutable) ──                         │
-                    │   migrations · outbox · modes · audit                       │
-                    │                                                             │
-                    │                    SQLite (WAL mode)                        │
-                    └─────────────────────────────────────────────────────────────┘
-```
-
-Under the hood: a platform kernel (checksum-verified migrations, transactional event outbox, WORM audit log and six adaptive system modes), an async SQLite write queue with dead-letter replay, a plugin runtime that confines each out-of-process plugin with seccomp, namespaces and a capability allowlist (the loader that installs plugins into it is not built yet), and structured logs and tracing. Architecture and every decision are recorded in [`docs/`](docs/) and the [ADR registry](docs/adr/).
-
----
-
-## Running in production — [johal.in](https://johal.in)
-
-Benchmarks are easy to stage. This is a live install you can open right now and check yourself.
+## johal.in, in production
 
 | | |
 |---|---|
-| **Site** | **[johal.in](https://johal.in)** — a working blog, publicly reachable |
-| **Published posts** | **234,499** in one SQLite database |
-| **Hardware** | A single **Contabo VPS&nbsp;10** — one box, nothing else |
-| **Running on it** | **12 sites** (2 apex + 10 subdomains, every certificate live) **+** a full mail server **+** the blog |
-| **Version** | VayuPress — the current release |
+| **Version** | VayuPress 3.17.81 |
+| **Posts** | 234,615, in one SQLite database |
+| **Sites** | 13 hostnames across `johal.in` and `vayupress.com`: 5 blogs, 7 hand-built sites and 1 business template |
+| **Also on the box** | The mail server (SMTP, IMAP, POP3, DKIM, WKD) |
+| **Hardware** | One Contabo VPS 10 |
 
-### Google PageSpeed Insights
-
-Not just performance — all four categories, on **both** mobile and desktop:
-
-| Category | Mobile | Desktop |
+| Lighthouse | Mobile | Desktop |
 |---|---|---|
-| **Performance** | 99–100 | **100** |
-| **Accessibility** | **100** | **100** |
-| **Best Practices** | **100** | **100** |
-| **SEO** | **100** | **100** |
-| Agentic Browsing | 2/2 | 2/2 |
+| Performance · Accessibility · Best Practices · SEO | 99–100 · 100 · 100 · 100 | 100 · 100 · 100 · 100 |
+| Largest Contentful Paint | 1.5–1.7 s | 0.3 s |
+| Total Blocking Time | 0–60 ms | 0 ms |
+| Time to First Byte, from Iowa | 161 ms | 156 ms |
 
-Core Web Vitals behind those scores:
-
-| Metric | Mobile | Desktop |
-|---|---|---|
-| First Contentful Paint | 1.2–1.3 s | **0.3 s** |
-| Largest Contentful Paint | 1.5–1.7 s | **0.3 s** |
-| Total Blocking Time | 0–60 ms | **0 ms** |
-| Cumulative Layout Shift | 0–0.004 | 0.003–0.005 |
-
-An article page ships **21.8 KiB of JavaScript in total** — all of it first-party, from the origin.
-
-Ranges rather than headline numbers, because that is what you will actually see. Measured across the homepage and two article pages over two days: **desktop sits at 100 on every category, every run**; mobile Performance lands at 99 or 100 depending on the run, and Accessibility, Best Practices and SEO were 100 on every single run of both.
-
-### Cloudflare synthetic monitoring — the server-side number
-
-A second, independent Lighthouse run (Cloudflare Synthetic Monitoring, from Iowa, USA) scores **100 on both mobile and desktop**, and reports the metric that matters most for the architecture claim:
-
-| Metric | Mobile | Desktop |
-|---|---|---|
-| **Time to First Byte** | **161 ms** | **156 ms** |
-| Time to Interactive | 1,492 ms | **391 ms** |
-| Total Blocking Time | 29 ms | **0 ms** |
-| Cumulative Layout Shift | **0** | **0** |
-
-**156 ms to first byte, from Iowa to a single VPS, with 234,499 posts in SQLite.** That is the answer to the scaling objection stated as a number: the database is not the bottleneck, and at this size it is not close to being one.
-
-Three things worth drawing out.
-
-**234,499 posts on SQLite, on one small VPS.** "SQLite doesn't scale" is the most common objection to this architecture, and this is the answer to it: a quarter of a million articles, served from a single file, on hardware that costs less per month than most managed-database add-ons. WAL mode, prepared statements and an async write queue do the work — details in [One binary, by design](#one-binary-by-design) above.
-
-**Everything on one box — now twelve sites of it.** The same VPS terminates TLS for **twelve hostnames** across two apex domains, runs the mail server (SMTP/IMAP/POP3, DKIM, WKD) and serves the blog — from one binary and one database. Six of those sites serve blogs, five serve hand-built bundles, one runs a business template; every certificate is live and renews without a restart. No managed Postgres, no Redis, no separate mail provider, no CDN origin shield, and no second process per site.
-
-That is the number the architecture is really claiming. One binary hosting a dozen independent sites is not a bigger version of hosting one — it is the case where a shared database, a shared TLS store and a shared control plane either hold or do not.
-
-**0 ms blocking time is a design outcome, not a tuning trick.** There is no third-party analytics, no tag manager, no font CDN and no tracking pixel to block on, because the platform ships its own analytics and serves every byte from your origin under a strict `style-src 'self'` policy. The pages are fast largely because nothing else is invited onto them.
-
-Open it, run your own test, browse the archive. That is the entire pitch, deployed.
-
-> Measured 27–28 July 2026 by two independent tools — Google PageSpeed Insights across three URLs, and Cloudflare Synthetic Monitoring from Iowa, USA. Post count and version read live from the site's own API. Your numbers will depend on your content, VPS and network.
-
----
+The install facts were read from johal.in's own API on 26 September 2026. The
+Lighthouse figures come from PageSpeed Insights and Cloudflare Synthetic
+Monitoring on 27–28 July 2026, at 234,499 posts. Both are refreshed with each
+release. An article ships 21.8 KiB of JavaScript, all first-party; there is no
+third-party script to block on.
+[Benchmarks](docs/BENCHMARKS.md) · [Architecture](docs/ARCHITECTURE.md)
 
 ## Showcase
 
-### Website & blog
-![VayuPress homepage](docs/screenshots/homepage.png)
-*Public homepage — article grid with tag filtering, dark/light toggle, zero-telemetry footer. Styled entirely from your own origin (strict `style-src 'self'` CSP).*
-
-![VayuPress article](docs/screenshots/article-page.png)
-*A rendered article — JSON-LD schema, author/date meta, tag strip, reading time, and zero third-party requests.*
-
-### VayuOS — the single control panel
-![VayuOS dashboard](docs/screenshots/admin-os-dashboard.png)
-*The dashboard (`/os`) — grouped sidebar, stat cards, publishing-trend sparkline, activity feed, and a `⌘K` command palette.*
-
-> **Install it as an app:** open `/os` and click **Install VayuOS** (or the install button in the top bar; on iOS, Share → Add to Home Screen). It lands on your home screen/desktop as a standalone app, always live via a zero-cache worker.
-
-![VayuOS block editor](docs/screenshots/admin-os-editor.png)
-*The block editor — typed-block document rendered server-side through escape + bluemonday, slash-command palette, autosave, live preview, and inline version-history diff.*
-
-![Theme Studio](docs/screenshots/admin-os-theme.png)
-*Theme Studio (`/os/theme`) — a preset gallery and design-token editor with instant live preview, compiled to one sovereign stylesheet served from your own origin.*
-
-### 🧅 VayuTor — clearnet and an anonymous Tor world, side by side
-![Spaces — Clearnet and Tor](docs/screenshots/admin-os-spaces.png)
-*Spaces (`/os/spaces`) — one click runs a **second, fully separate** VayuPress as an anonymous `.onion` world with its own database, accounts and identity. The two share nothing, so their content and logins can never be linked. The page states the honest limit rather than claiming perfect anonymity: both worlds run on the same server, so this separates identity and content, not the machine.*
-
-### 💳 Monetization — the whole revenue engine on one page
-![Monetization](docs/screenshots/admin-os-monetization.png)
-*Monetization (`/os/monetization`) — cards, PayPal, crypto (BTC/XMR/ETH/USDT) and direct transfer, membership plans, the premium mail-ID marketplace, paid posts and every order. Funds always settle into your own accounts; there is no platform cut and no SDK lock-in.*
-
-### 🛡️ VayuShield — the built-in bot shield
-![VayuShield](docs/screenshots/admin-os-shield.png)
-*The VayuShield console (`/os/shield`) — a live Aegis layer map (L0 sovereignty lane · L2 fair-shed · L4 challenges · L5 reputation brain · L1 kernel offload), protection toggles that apply with no restart, learned-signature review queue, and cookieless engagement analytics. Self-learning and self-healing: it defends against application-layer abuse automatically and never blocks a real reader or a search/AI crawler. It is not a substitute for anycast capacity — see the plain statement of limits above.*
-
-![VayuAnalytics](docs/screenshots/admin-os-analytics.png)
-*VayuAnalytics — cookieless, no-PII product analytics computed entirely from your local SQLite database.*
-
-### The rest of the products
-
 | | |
 |---|---|
-| ![VayuMail](docs/screenshots/admin-os-vayumail.png) | ![VayuTalk](docs/screenshots/admin-os-vayutalk.png) |
-| *VayuMail — a real mail server: SMTP/IMAP/POP3, DKIM, and PGP encryption at rest* | *VayuTalk — end-to-end encrypted chat on your own domain* |
-| ![VayuMCP](docs/screenshots/admin-os-connector.png) | ![Members](docs/screenshots/admin-os-members.png) |
-| *VayuMCP — a built-in MCP server + OAuth 2.1, so Claude and any MCP client connect in one click* | *Members — tiers, growth, revenue and retention, all from your own database* |
-| ![Website](docs/screenshots/admin-os-website.png) | ![Domains](docs/screenshots/admin-os-domains.png) |
-| *Website — pages, navigation and the public shell* | *VayuDomains — host several domains from one binary* |
+| ![VayuMail](docs/screenshots/admin-os-vayumail.png) | ![VayuShield](docs/screenshots/admin-os-shield.png) |
+| *VayuMail* | *VayuShield: the Aegis layer map* |
+| ![Editor](docs/screenshots/admin-os-editor.png) | ![Spaces](docs/screenshots/admin-os-spaces.png) |
+| *The block editor* | *Spaces: Clearnet and Tor* |
+| ![Homepage](docs/screenshots/homepage.png) | ![Article](docs/screenshots/article-page.png) |
+| *The public site* | *An article* |
 
-<details>
-<summary><strong>More of VayuOS</strong> — posts, media, SEO, security, members and the operator control plane</summary>
+Every screen is in [`docs/screenshots/`](docs/screenshots/), retaken from a live
+instance every two hours.
 
-| | |
-|---|---|
-| ![Posts](docs/screenshots/admin-os-posts.png) | ![Media](docs/screenshots/admin-os-media.png) |
-| *Post manager — one collapsible card per post* | *Content-addressed media library* |
-| ![SEO](docs/screenshots/admin-os-seo.png) | ![Security](docs/screenshots/admin-os-security.png) |
-| *SEO readiness dashboard* | *Security & PGP surface (admin-only)* |
-| ![Sign-in](docs/screenshots/os-login.png) | ![Settings](docs/screenshots/admin-os-settings.png) |
-| *Strict-CSP, self-hosted sign-in* | *Settings — one place, no scattered config* |
-| ![Member signup](docs/screenshots/member-signup.png) | ![Plans](docs/screenshots/member-pricing.png) |
-| *Branded passwordless member signup* | *Reader-facing plans, aware of who is signed in* |
+## Security
 
-The adaptive-governance runtime is fully inspectable from inside VayuOS — system modes, a live runtime-topology graph, the dead-letter replay explorer, the fault manager, and the ADR registry.
+- **Strict CSP:** no `unsafe-inline` or `unsafe-eval`, and a nonce on every
+  request. Every asset is served from your origin.
+- **Encrypted at rest:** PGP private keys and stored secrets use AES-256-GCM.
+  Backups are one AES-256-GCM archive, keyed with Argon2id.
+- **Plugins:** out-of-process plugins run under seccomp and namespaces, with
+  capabilities denied by default.
+- **Records:** releases are signed, and there is a write-once audit log.
 
-| | |
-|---|---|
-| ![System modes](docs/screenshots/policy-modes.png) | ![Runtime topology](docs/screenshots/runtime-topology.png) |
-| ![Replay explorer](docs/screenshots/replay-explorer.png) | ![Fault manager](docs/screenshots/fault-manager.png) |
-| ![Governance](docs/screenshots/admin-os-governance.png) | ![Monitoring](docs/screenshots/admin-os-monitoring.png) |
-| ![ADR registry](docs/screenshots/adr-registry.png) | |
+A commit reaches `main` only through fifteen required CI jobs, including race
+tests, a cross-compile matrix and a byte-for-byte reproducible build.
 
-</details>
+[Security policy](SECURITY.md) · [Threat model](docs/THREAT-MODEL.md) · [Every gate, and what it does not prove](docs/QUALITY-GATES.md) · [Constitution](GOVERNANCE-CONSTITUTION.md) · [Ethics](ETHICS.md)
 
-> Screenshots are regenerated from a live instance by the [screenshots CI workflow](.github/workflows/screenshots.yml), which runs automatically every two hours (and on demand via `workflow_dispatch`).
+## Why this exists
 
----
+I built VayuPress for myself first. Self-hosting hurt, and the pain was not one
+dramatic thing but an accumulation: a mail server that needed a weekend and
+then broke, six services that each wanted their own database, proxy block,
+certificate and upgrade path. That pain is not a law of nature. Nobody had
+bothered to make the sovereign option as easy as the rented one. So I made one
+binary, one process and one command, and I do not want anyone else to feel what
+I felt.
 
-## Security & sovereignty
+**VayuPress is free for everyone, forever: individuals and large companies
+alike.**
+- It will not be sold, relicensed, or made source-available.
+- There is no paid tier, and no feature is held back.
+- The funding goal exists only so the work can become full-time; it is not a
+  condition on anything.
 
-- **Zero telemetry, zero third-party reader requests.** Strict CSP (no `unsafe-eval`, no `unsafe-inline`, per-request nonces); all assets served same-origin. No CDNs.
-- **Encrypted at rest.** PGP private keys and stored third-party secrets are AES-256-GCM encrypted; operator backups are a single AES-256-GCM + Argon2id archive of everything (DB, settings, media, mailboxes, keys).
-- **Sandboxed extensibility.** Out-of-process plugins run under seccomp + namespace isolation with deny-by-default capabilities.
-- **Governed by construction.** A machine-enforced [Constitution](GOVERNANCE-CONSTITUTION.md), an [Ethical AI Charter](ETHICS.md) (no training on user data, no telemetry), signed releases, and a WORM audit log. AI assistance is strictly opt-in and local-only (Ollama) — nothing leaves your server.
+[Licensing](docs/LICENSING.md) · [Sustainability](docs/SUSTAINABILITY.md)
 
----
-
-## What every change passes before it ships
-
-There is no separate QA step. A commit reaches `main` only by passing fifteen
-required CI jobs — one of which, the cross-compile matrix, is itself seven
-parallel builds — and `ci-pass` re-checks every one by name. A job that ran
-without being listed there would be a job that cannot fail the build.
-
-**The Go code itself**
-
-| Gate | What it catches |
-|---|---|
-| `go vet`, `gofmt -l` | Suspicious constructs; unformatted source |
-| `staticcheck` | Dead stores, impossible conditions, misused stdlib |
-| `golangci-lint run` (v2, zero issues) | The aggregate linter set, errcheck included |
-| `gosec -severity high -confidence high` | Injection, weak crypto, hardcoded credentials |
-| `govulncheck` | Known CVEs on code paths actually reachable from this binary |
-| `go build -race` + `go test -race` | Data races, in unit and integration runs |
-| `go test -shuffle=on` | Tests that only pass in their usual order — shared state between tests |
-| `go test ./internal/archcheck/` | Layering violations: which package may import which |
-| `go test ./internal/compat/` | Golden-file breaks in the plugin/theme contract (VCB) |
-| deadcode gate | Newly unreachable code, against a committed baseline |
-| **cross-compile matrix** | **Architecture-specific compile errors, on seven Linux ABIs** |
-| **`go mod tidy` drift, `go mod verify`** | **Undeclared or unused dependencies; module contents that no longer match `go.sum`** |
-| **reproducible build** | **Two cold builds of identical source that are not byte-identical** |
-
-**Everything around the code**
-
-| Gate | What it catches |
-|---|---|
-| trufflehog (filesystem mode) | Committed secrets |
-| shellcheck, markdownlint | Broken shell, malformed docs |
-| **heredoc audit** | **An unescaped backtick inside an unquoted heredoc — live command substitution in a file that is supposed to be config text** |
-| SPDX + license check | A source file with no licence header |
-| ADR completeness, required docs | A design decision that shipped unrecorded |
-| Governance / ethics / security-policy / community checks | Drift between the Constitution and the repository |
-| source-sync | `cmd/vayupress/main.go` diverging from the deploy script's copy |
-| **release-metadata consistency** | **`.release-version` and the top `CHANGELOG.md` section disagreeing** |
-
-The last one exists because of how releases work here: pushing `.release-version`
-*is* the release. Nothing downstream re-derives the version. Without that check a
-version can be bumped and announced while the notes describe a different release
-— or a changelog can claim fixes shipped when no build was ever cut.
-
-The cross-compile matrix earned its place the same way. Every other Go gate runs
-on the runner's own `linux/amd64`, so nothing asked whether the source compiled
-anywhere else. It did not: `internal/sandbox` named `syscall.SYS_EPOLL_WAIT` in
-architecture-neutral code, and the arm64 and riscv64 ABIs have never defined it.
-ARM VPSes are squarely this product's audience.
-
-It then failed on its own first run, twice, on code written to fix that — a
-32-bit `int` cannot hold `SECCOMP_RET_KILL_PROCESS`, and `SYS_SOCKET` does not
-exist on 386, which multiplexes through `socketcall(2)`. Both were in test files,
-which is why they had survived a local per-architecture `go build`: `go build`
-does not compile tests and `go vet` does. That is the argument for the gate in
-one sentence — the person adding it had just spent a day on this exact class of
-bug and still shipped two more.
-
-**What these gates do not prove.** They run on `linux/amd64`; the cross-compile
-matrix proves the other six architectures *compile*, not that they were tested,
-and releases remain a single native build.
-
-The reproducibility gate proves the build is deterministic: two cold builds,
-each from an empty module cache and its own temporary directory, are
-byte-identical. `go.mod` pins the Go toolchain and the release builds with
-`GOTOOLCHAIN=auto`, so a tag decides its own compiler rather than inheriting
-whatever the runner happened to have — which is what makes the property a
-statement about the tag instead of about one afternoon.
-
-The remaining variable is the C side: the release links SQLite statically, so
-the host's gcc and libc still participate. Reproducing a published binary
-exactly therefore means matching the release runner's C toolchain as well. The
-Go version is recorded in the artifact itself (`go version <file>`); the C
-toolchain is not, and pinning it is open work.
-
-An earlier version of this section claimed builds were *not* reproducible. That
-was wrong, and it was published in two sets of release notes before being
-checked properly. The measurement behind it compared two binaries built while
-the working tree was being edited, which is not a reproducibility test at all.
-The controlled test — cold, independent caches, unmodified tree — passes, and is
-now a gate so the answer stops depending on who measured it.
-
-The shell lint is worth a note of its own, because for a long time it could not
-fail. It ran `find scripts/ -name "*.sh" -exec shellcheck {} \;`, and `find`
-returns 0 whatever its `-exec` reports — so the step printed its success line
-unconditionally. It runs through `xargs -0` now. It had been concealing a real
-error: a config-writing heredoc with an unquoted delimiter, where backticks are
-live command substitution rather than text, so every generated nginx file
-carried a comment with words silently deleted. The heredoc audit above gates
-that whole class rather than the single instance.
-
-Two style tools were evaluated and rejected rather than added: `gofumpt` (96
-files, formatting preference rather than correctness) and `go vet -vettool=shadow`
-(127 findings, overwhelmingly benign shadowing). A gate nobody can keep green
-gets disabled, and a disabled gate protects nothing.
-
----
+> ਨਾਨਕ ਨਾਮ ਚੜ੍ਹਦੀ ਕਲਾ, ਤੇਰੇ ਭਾਣੇ ਸਰਬੱਤ ਦਾ ਭਲਾ
+>
+> *Nanak Naam Chardi Kala, Tere Bhane Sarbat da Bhala*: may the spirit be ever
+> in ascendance; in Your will, may all prosper.
 
 ## Documentation
 
-- **[CHANGELOG.md](CHANGELOG.md)** — every release and what changed, version by version.
-- **[docs/adr/](docs/adr/)** — Architecture Decision Records: every design decision, recorded.
-- **[docs/compatibility/vcb.md](docs/compatibility/vcb.md)** — the Vayu Compatibility Bible: how to build a compatible plugin, theme, or tool.
-- **[docs/compatibility/vayuapi.md](docs/compatibility/vayuapi.md)** — the API-key, permission, and rate-limit reference.
-- **[docs/MAIL-RECOVERY.md](docs/MAIL-RECOVERY.md)** — VayuMail account recovery: what to enrol before anyone is locked out, and every way back in.
-- **[docs/LICENSING.md](docs/LICENSING.md)** — why Apache-2.0, why no CLA, and how the licence could change in future.
-- **[docs/CRA-READINESS.md](docs/CRA-READINESS.md)** — EU Cyber Resilience Act: scope assessment and gap analysis.
-- **[GOVERNANCE-CONSTITUTION.md](GOVERNANCE-CONSTITUTION.md)** — the binding rules, mechanically enforced by CI.
-- **[ETHICS.md](ETHICS.md)** — the Ethical AI Charter.
-- **[VayuMail-Mobile](https://github.com/johalputt/VayuMail-Mobile)** — the official mobile mail app.
+[Changelog](CHANGELOG.md) · [ADRs](docs/adr/) · [API](docs/API-REFERENCE.md) ·
+[Operations](docs/OPERATIONS.md) · [Development](docs/DEVELOPMENT.md) ·
+[Releases](docs/RELEASES.md) · [EU CRA readiness](docs/CRA-READINESS.md)
 
 ## License
 
-**Apache License 2.0** — see [LICENSE](LICENSE). **Free for anyone, for anything, forever.** Use
-it, sell services around it, fork it, ship it inside a commercial product. No fee, no permission,
-no registration. Self-hosters carry no obligations whatsoever: run it, modify it, keep your
-changes private — Apache-2.0 asks nothing of you, which is exactly why it was chosen over a
-copyleft licence.
+Apache License 2.0: see [LICENSE](LICENSE).
+- **Use:** anyone may use it, sell services around it, fork it or ship it
+  inside a product, with no fee and no permission needed.
+- **Copyright:** each contributor keeps copyright in their own work.
+  Contributions come in under the
+  [Developer Certificate of Origin](https://developercertificate.org/). There
+  is no Contributor Licence Agreement, and there will not be one.
+- **Permanence:** without a CLA, nobody can build a relicensing business on
+  this code, including the author. Every published release stays Apache-2.0
+  permanently.
 
-**Apache-2.0 permanently, unconditionally.** No reciprocal move, no source-available move, no
-dual licence, no open-core split — and no condition attached: not funding, not adoption, not
-acquisition. Every release already published is irrevocably free as a completed legal fact, not
-a promise. Nobody has to pay anything to use VayuPress, now or ever.
-
-Every source file carries an `SPDX-License-Identifier`, third-party components are listed in
-[NOTICE](NOTICE), and the reasoning — including what structurally backs that pledge — is in
-[docs/LICENSING.md](docs/LICENSING.md).
-
-Apache-2.0 rather than MIT for the patent grant (§3): every contributor licenses their patents,
-and that licence terminates for anyone who sues over them. MIT is silent on patents, which is a
-real exposure for a codebase implementing DKIM, OpenPGP, MCP and OAuth.
-
-**Copyright is held by each contributor over their own work.** It is not assigned to anyone.
-Contributions are accepted under the [Developer Certificate of Origin](https://developercertificate.org/)
-with `git commit -s`, and **there is no Contributor Licence Agreement — there will not be one.**
-
-That is a deliberate structural commitment, not an oversight. A CLA concentrates copyright in one
-party, and only a party holding the copyright can sell proprietary licences to it. Every
-well-known relicensing of a community project into a paid product was built on one. Without a
-CLA that business cannot be constructed here — by anyone, including the author — and **every
-release already published stays under Apache-2.0 permanently**, forkable from its tag no matter
-what this repository does later.
-
-[docs/LICENSING.md](docs/LICENSING.md) sets out precisely what that protects, what it does not,
-and the routes by which the licence could change in future.
+Why Apache-2.0 rather than MIT, and exactly what the pledge does and doesn't
+protect, is in [docs/LICENSING.md](docs/LICENSING.md).

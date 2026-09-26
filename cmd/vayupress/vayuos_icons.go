@@ -14,6 +14,19 @@ func saIcon(name string) string { return string(ui.Icon(name)) }
 // saSprite is the set as one hidden sprite, emitted once per page.
 var saSprite = string(ui.Sprite)
 
+// osDesign is the name of the console's design, which ships as branding:
+// "VayuOS Still Air", the way an operating system names its release. The
+// operator asked for it to be shown (2026-09-26). One constant, so every place
+// that says it agrees and a rename is one edit.
+const osDesign = "Still Air"
+
+// saEdition is the product and its design as one lockup. The design name is
+// set in the lighter weight so it reads as the release name and never
+// competes with the product's.
+func saEdition() string {
+	return `<span class="sa-edition">VayuOS <span class="sa-edition__name">` + osDesign + `</span></span>`
+}
+
 // saMark draws the VayuPress mark as the brand's own image, not a redrawing:
 // the mark cut from docs/site/assets/logo-dark.png (the white logo, above its
 // wordmark) with every pixel kept, and its black twin (the same alpha, black)

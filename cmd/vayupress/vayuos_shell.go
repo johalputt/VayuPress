@@ -586,7 +586,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 ` + strip + `
 <aside id="vp-sidebar" class="sidebar sa-rail" aria-label="Apps">
   <nav class="sa-rail__apps" aria-label="Apps">` + rail.String() + `</nav>
-  <div class="sa-rail__foot">` + settingsItem + `<div class="sa-rail__version"><span>VayuOS</span><span>` + html.EscapeString(Version) + `</span></div></div>
+  <div class="sa-rail__foot">` + settingsItem + `<div class="sa-rail__version">` + saEdition() + `<span>` + html.EscapeString(Version) + `</span></div></div>
 </aside>
 <nav class="sa-tabbar" aria-label="Apps">` + tabs.String() + `</nav>
 ` + saPaletteIndex(apps) + saSprite + `<script nonce="` + nonce + `">` + vpIconScript + `</script>

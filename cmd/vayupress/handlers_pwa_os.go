@@ -56,7 +56,7 @@ func (a *App) handleOSManifest(w http.ResponseWriter, r *http.Request) {
 		"id":               "/os",
 		"name":             "VayuOS",
 		"short_name":       "VayuOS",
-		"description":      "Your sovereign console — mail, chat, site, security and more, in one app.",
+		"description":      "VayuOS " + osDesign + ": your sovereign console. Mail, chat, site, security and more, in one app.",
 		"start_url":        "/os/",
 		"scope":            "/os/",
 		"display":          "standalone",

@@ -60,5 +60,5 @@ func feedbackBody() string {
 		"What I expected:\n\n\n" +
 		"What actually happened:\n\n\n" +
 		"You can attach screenshots or files below.\n\n" +
-		"— Sent from VayuOS v" + Version + " · " + world + " Space · " + config.Cfg.Domain + "\n"
+		"— Sent from VayuOS " + osDesign + " v" + Version + " · " + world + " Space · " + config.Cfg.Domain + "\n"
 }

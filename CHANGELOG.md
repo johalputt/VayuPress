@@ -66,6 +66,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   list, and each thing that needs you is hidden until it changes (a new
   count or detail) or for a day, whichever comes first. Home still lists
   them meanwhile, and the empty bell says so.
+- **VayuOS Still Air.** Still Air, the console's design, now carries its
+  name. It appears as *VayuOS Still Air* at the foot of the app rail, on the
+  sign-in page, in Home's *This install*, and in the installed app's
+  description.
+- **A shorter README.** Each product now has one line and a link to its full
+  documentation. The list of CI gates moved to `docs/QUALITY-GATES.md`, and
+  johal.in's figures were read from the live install.
 - **The read connections are watched like the write connection.** System ›
   Monitoring has a Read connections section: stalls since start, the worst
   one, the time callers spent queued, and how many visitors the render

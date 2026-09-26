@@ -11,7 +11,7 @@ import (
 // stamps in the running version and world, so every report arrives actionable.
 func TestFeedbackBody(t *testing.T) {
 	b := feedbackBody()
-	for _, want := range []string{"Bug", "Improvement", "Feature request", "Steps to reproduce", "VayuOS v" + Version, "Space"} {
+	for _, want := range []string{"Bug", "Improvement", "Feature request", "Steps to reproduce", "VayuOS Still Air v" + Version, "Space"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("feedback body missing %q\n---\n%s", want, b)
 		}
