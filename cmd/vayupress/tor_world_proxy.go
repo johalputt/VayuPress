@@ -27,9 +27,23 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/render"
 )
+
+// torWorldTransport carries every proxied console request into the Tor world.
+// Its header timeout sits under the server's 30-second WriteTimeout (main.go):
+// without one, a child that accepts a connection and never answers held every
+// console page until that timeout closed the response unwritten, which the
+// edge reports as a 502, and the view cookie kept the operator there. With it,
+// a silent child gets the unavailable page and its way back to Clearnet.
+var torWorldTransport http.RoundTripper = &http.Transport{
+	DialContext:           (&net.Dialer{Timeout: 3 * time.Second}).DialContext,
+	ResponseHeaderTimeout: 25 * time.Second,
+	MaxIdleConnsPerHost:   8,
+	IdleConnTimeout:       90 * time.Second,
+}
 
 // worldCookie names the per-browser view flag; value "tor" ⇒ view the Tor world.
 const worldCookie = "vp_world"
@@ -161,6 +175,7 @@ func (a *App) proxyToTorWorld(w http.ResponseWriter, r *http.Request) {
 	}
 	target := &url.URL{Scheme: "http", Host: "127.0.0.1:" + strconv.Itoa(port)}
 	proxy := &httputil.ReverseProxy{
+		Transport: torWorldTransport,
 		// Rewrite replaces the Director field, deprecated since Go 1.26
 		// (staticcheck SA1019 — flagged once the module's go directive moved
 		// to 1.26). Two Director behaviours are replicated here by hand,

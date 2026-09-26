@@ -125,6 +125,20 @@ func TestCloudflarePurgeNeverLeavesATorWorld(t *testing.T) {
 	}
 }
 
+// A clear asked for while one runs is refused with the reason, not started.
+func TestASecondCacheClearWaitsForTheFirst(t *testing.T) {
+	clearCacheRunning.Lock() // a clear in progress
+	defer clearCacheRunning.Unlock()
+	a := &App{}
+	r := httptest.NewRequest(http.MethodPost, "/os/api/storage/clear-cache", strings.NewReader(`{}`))
+	r = r.WithContext(context.WithValue(r.Context(), ctxUserKey, &users.User{Role: users.RoleAdmin}))
+	w := httptest.NewRecorder()
+	a.handleOSStorageClearCache(w, r)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "already running") {
+		t.Fatalf("a second clear got %d %s; want 409 saying one is already running", w.Code, w.Body.String())
+	}
+}
+
 // Only an administrator clears caches.
 func TestClearCacheRefusesANonAdmin(t *testing.T) {
 	a := &App{}

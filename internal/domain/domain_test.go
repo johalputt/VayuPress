@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -297,5 +298,92 @@ func TestSetHostRewritesSecondary(t *testing.T) {
 	// A blank host is rejected.
 	if err := r.SetHost(ctx, sec.ID, "   "); err == nil {
 		t.Fatal("SetHost must refuse a blank host")
+	}
+}
+
+// seededRegistry is a registry over a table holding the primary and one hosted
+// site, loaded once.
+func seededRegistry(t *testing.T) *Registry {
+	t.Helper()
+	r := newTestRegistry(t)
+	ctx := context.Background()
+	if err := r.EnsurePrimary(ctx, "johal.in", "blog"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := r.Create(ctx, "second.example", SiteBusiness, false); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := r.Resolve(ctx, "second.example"); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	return r
+}
+
+func expire(r *Registry) {
+	r.mu.Lock()
+	r.ttl = time.Now().Add(-time.Second)
+	r.mu.Unlock()
+}
+
+// A refresh that fails keeps the last good copy in service and is not tried
+// again until refreshRetry has passed. Retried on every request, each attempt
+// on a busy install waited for a read connection and timed out, which is how a
+// slow minute became a console at 502.
+func TestAFailedRefreshServesTheLastCopyAndWaitsToRetry(t *testing.T) {
+	r := seededRegistry(t)
+	_ = r.db.Close() // every refresh from here fails
+	expire(r)
+	if _, err := r.Resolve(context.Background(), "second.example"); err != nil {
+		t.Fatalf("a failed refresh must keep serving the last good copy, got %v", err)
+	}
+	r.mu.RLock()
+	next := r.ttl
+	r.mu.RUnlock()
+	if !next.After(time.Now()) {
+		t.Fatal("a failed refresh must wait before the next attempt, not retry on the next request")
+	}
+}
+
+// Once loaded, a request that finds another refresh in progress uses the copy
+// it has instead of waiting for (or repeating) that refresh.
+func TestARequestDoesNotWaitOnAnotherRequestsRefresh(t *testing.T) {
+	r := seededRegistry(t)
+	r.refreshMu.Lock() // a refresh in progress elsewhere
+	defer r.refreshMu.Unlock()
+	expire(r)
+	done := make(chan error, 1)
+	go func() { _, err := r.Resolve(context.Background(), "second.example"); done <- err }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a request waited for another request's refresh instead of using the copy it had")
+	}
+}
+
+// Before the first load there is no copy to use, so a request waits for the
+// refresh in progress: answering at once would serve a hosted site as the
+// primary for as long as the first load takes.
+func TestARequestBeforeTheFirstLoadWaitsForIt(t *testing.T) {
+	seeded := seededRegistry(t)
+	r := New(seeded.db, nil) // same table, nothing loaded yet
+	r.refreshMu.Lock()
+	type result struct {
+		d   Domain
+		err error
+	}
+	done := make(chan result, 1)
+	go func() { d, err := r.Resolve(context.Background(), "second.example"); done <- result{d, err} }()
+	select {
+	case res := <-done:
+		r.refreshMu.Unlock()
+		t.Fatalf("a request before the first load must wait for it, got %+v %v", res.d, res.err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	r.refreshMu.Unlock()
+	if res := <-done; res.err != nil || res.d.Host != "second.example" {
+		t.Fatalf("after the first load: %+v %v", res.d, res.err)
 	}
 }

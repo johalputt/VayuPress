@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
@@ -79,11 +80,22 @@ func staleTemp(dir string, maxAge time.Duration, now time.Time, remove bool) (fi
 	return files, bytes
 }
 
+// clearCacheRunning is held by the one cache clear in progress. A second click
+// while it runs is told so rather than starting another: each clear unlinks
+// every rendered page, and on a large site two at once meant twice the disk
+// work at the moment every page starts being rebuilt from the database.
+var clearCacheRunning sync.Mutex
+
 func (a *App) handleOSStorageClearCache(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return
 	}
+	if !clearCacheRunning.TryLock() {
+		writeAPIError(w, r, http.StatusConflict, "clear-running", "A cache clear is already running. It will finish on its own.", "")
+		return
+	}
+	defer clearCacheRunning.Unlock()
 	var body struct {
 		PurgeCDN bool `json:"purge_cdn"`
 	}

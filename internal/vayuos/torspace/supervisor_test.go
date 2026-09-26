@@ -4,10 +4,45 @@ package torspace
 
 import (
 	"errors"
+	"os"
 	"os/exec"
+	"os/signal"
+	"runtime"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
+
+// childEnv makes this test binary stand in for a Tor-Space child: started with
+// it set, it makes itself undumpable as every VayuPress process does at start
+// (vayuveil.ApplyProcessHardening), then waits for SIGTERM instead of running
+// the tests.
+const childEnv = "TORSPACE_TEST_CHILD"
+
+func TestMain(m *testing.M) {
+	if os.Getenv(childEnv) == "1" {
+		_ = unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0)
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGTERM)
+		<-sig
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+// containsExact reports whether ss contains s exactly.
+func containsExact(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
 
 // newTestSup returns a supervisor with fast timeouts and injected seams so the
 // lifecycle runs without the real vayupress binary.
@@ -154,9 +189,89 @@ func TestCleanExePath(t *testing.T) {
 	}
 }
 
-func TestContainsExact(t *testing.T) {
-	ss := []string{"A=1", "B=2"}
-	if !containsExact(ss, "A=1") || containsExact(ss, "A=") || containsExact(ss, "C=3") {
-		t.Error("containsExact must match whole entries only")
+// The child a previous image of this process left running across a self-update
+// is stopped and reaped, while a copy of the binary with another parent and a
+// child started with arguments are left alone. The children are undumpable, as
+// every VayuPress process is, so nothing here may depend on their environ.
+func TestReapStopsOnlyThePreviousImagesChild(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("/proc")
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := func(cmd *exec.Cmd) *exec.Cmd {
+		cmd.Env = append(os.Environ(), childEnv+"=1")
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		return cmd
+	}
+	gone := func(pid int) bool { _, err := os.Stat("/proc/" + strconv.Itoa(pid)); return os.IsNotExist(err) }
+
+	leftover := exec.Command(exe) // exactly realSpawn's shape
+	start(leftover)
+	withArgs := start(exec.Command(exe, "-test.run=^$"))
+	defer func() { _ = withArgs.Process.Kill(); _, _ = withArgs.Process.Wait() }()
+	// A copy of the binary whose parent is a shell, not this process.
+	shell := exec.Command("sh", "-c", `"$0" & echo $!; wait`, exe)
+	shell.Env = append(os.Environ(), childEnv+"=1")
+	out, err := shell.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := shell.Start(); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 32)
+	n, _ := out.Read(buf)
+	grandchild, _ := strconv.Atoi(strings.TrimSpace(string(buf[:n])))
+	defer func() { _ = syscall.Kill(grandchild, syscall.SIGTERM); _ = shell.Wait() }()
+	if grandchild == 0 {
+		t.Fatal("no grandchild pid")
+	}
+	time.Sleep(200 * time.Millisecond) // let each one reach its signal wait
+	// The condition this reaper exists for, stated rather than assumed: to a
+	// same-user parent, an undumpable child's environ cannot be read. As root it
+	// can, which hides the fault the environ-based reaper had; CI runs as a user.
+	if os.Geteuid() != 0 {
+		if _, err := os.ReadFile("/proc/" + strconv.Itoa(leftover.Process.Pid) + "/environ"); err == nil {
+			t.Fatal("the stand-in child's environ is readable: it is not undumpable, so this test is not the real condition")
+		}
+	}
+
+	s := &Supervisor{exePath: exe}
+	reaped := make(chan struct{})
+	go func() { s.reapOrphan(); close(reaped) }()
+	select {
+	case <-reaped:
+	case <-time.After(stopDrainTimeout + 10*time.Second):
+		t.Fatal("reapOrphan never returned: a stopped child was never reaped, and a zombie still answers kill(pid, 0)")
+	}
+
+	if !gone(leftover.Process.Pid) {
+		t.Error("the previous image's child was not stopped and reaped (still in /proc, running or a zombie)")
+	}
+	// A process that is not ours is not waited for, so one wrongly signalled
+	// would still be exiting when reapOrphan returns: allow it the time to go
+	// before judging that it was left alone.
+	time.Sleep(500 * time.Millisecond)
+	if gone(withArgs.Process.Pid) {
+		t.Error("a child started with arguments is not a Tor-Space child and must be left alone")
+	}
+	if gone(grandchild) {
+		t.Error("a copy of the binary with another parent must be left alone")
+	}
+}
+
+// The parent PID is read after the last ')' of /proc/<pid>/stat, so a command
+// name holding ") " cannot shift the fields.
+func TestParentPIDOfThisProcess(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("/proc")
+	}
+	if got := parentPID(os.Getpid()); got != os.Getppid() {
+		t.Errorf("parentPID(self) = %d, want %d", got, os.Getppid())
 	}
 }

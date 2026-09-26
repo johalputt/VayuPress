@@ -288,17 +288,26 @@ func (d Domain) EffectiveSiteType() string {
 // staleness from an out-of-band DB edit.
 const cacheTTL = 30 * time.Second
 
+// refreshRetry is how long a failed refresh waits before the next attempt,
+// while the last good copy keeps being served. Without it every request after a
+// failure retried at once: on a busy install each attempt waited for a read
+// connection, timed out, and added to the queue that made the next one time
+// out, so a slow minute became a console that stayed at 502.
+const refreshRetry = 5 * time.Second
+
 // Registry is the thread-safe domain store with an in-process snapshot cache
 // keyed by lower-cased host.
 type Registry struct {
 	db  *sql.DB
 	rdb *sql.DB // read pool; falls back to db when nil
 
-	mu      sync.RWMutex
-	byHost  map[string]Domain
-	primary Domain
-	hasPrim bool
-	hasSec  bool // any non-primary domain registered — precomputed so the
+	mu        sync.RWMutex
+	refreshMu sync.Mutex // held by the one refresh in progress
+	byHost    map[string]Domain
+	loaded    bool // a refresh has succeeded at least once
+	primary   Domain
+	hasPrim   bool
+	hasSec    bool // any non-primary domain registered — precomputed so the
 	// per-request HasSecondaries gate (hit on every public blog page and VayuOS
 	// request) is a single cached bool read, never a map scan or DB query.
 	ttl time.Time
@@ -369,6 +378,7 @@ func (r *Registry) refresh(ctx context.Context) error {
 	r.primary = primary
 	r.hasPrim = hasPrim
 	r.hasSec = hasSec
+	r.loaded = true
 	r.ttl = time.Now().Add(cacheTTL)
 	r.mu.Unlock()
 	return nil
@@ -378,15 +388,38 @@ func (r *Registry) refresh(ctx context.Context) error {
 // time-based: an empty registry (localhost/dev, before seeding) is a valid,
 // cacheable state, so the hot path must not re-query the DB on every request
 // just because there are no rows yet.
+//
+// One refresh runs at a time. Once the registry has loaded, a request that
+// finds another refresh in progress carries on with the copy it has rather than
+// queueing behind it (or starting its own: every request did, once the TTL ran
+// out). Before the first load there is no copy to use, so those requests wait.
 func (r *Registry) ensureFresh(ctx context.Context) {
 	r.mu.RLock()
 	fresh := !r.ttl.IsZero() && time.Now().Before(r.ttl)
+	loaded := r.loaded
+	r.mu.RUnlock()
+	if fresh {
+		return
+	}
+	if loaded {
+		if !r.refreshMu.TryLock() {
+			return
+		}
+	} else {
+		r.refreshMu.Lock()
+	}
+	defer r.refreshMu.Unlock()
+	r.mu.RLock()
+	fresh = !r.ttl.IsZero() && time.Now().Before(r.ttl) // the refresh we waited for may have done it
 	r.mu.RUnlock()
 	if fresh {
 		return
 	}
 	if err := r.refresh(ctx); err != nil {
 		logging.LogError("domains", "registry refresh failed", err.Error())
+		r.mu.Lock()
+		r.ttl = time.Now().Add(refreshRetry)
+		r.mu.Unlock()
 	}
 }
 

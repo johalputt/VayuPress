@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/vayuos/torspace"
 )
@@ -68,6 +69,47 @@ func TestProxyToTorWorldUnavailable(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "Back to Clearnet") {
 		t.Error("fallback must offer a way back to clearnet")
+	}
+}
+
+// A Tor world that takes the connection and never answers gets the unavailable
+// page, with its way back to Clearnet, before the server's own timeout would
+// close the response unwritten (a 502 at the edge, on every console page).
+func TestProxyToASilentTorWorldGivesTheWayBack(t *testing.T) {
+	release := make(chan struct{})
+	child := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer child.Close()
+	defer close(release)
+	saved := torWorldTransport
+	torWorldTransport = &http.Transport{ResponseHeaderTimeout: 200 * time.Millisecond}
+	defer func() { torWorldTransport = saved }()
+
+	port := child.Listener.Addr().(*net.TCPAddr).Port
+	a := &App{torSpace: torspace.New("", t.TempDir()+"/vayupress.db", "child-secret-key", port)}
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() { a.proxyToTorWorld(rec, httptest.NewRequest("GET", "/os/posts", nil)); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a silent Tor world held the console request past its header timeout")
+	}
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "Back to Clearnet") {
+		t.Errorf("a silent Tor world must give the unavailable page with the way back, got %d", rec.Code)
+	}
+}
+
+// The production transport has a header timeout, and it is under the server's
+// WriteTimeout, so the unavailable page is written before the response is cut.
+func TestTheTorWorldTransportGivesUpBeforeTheServerDoes(t *testing.T) {
+	tr, ok := torWorldTransport.(*http.Transport)
+	if !ok || tr.ResponseHeaderTimeout <= 0 || tr.ResponseHeaderTimeout >= 30*time.Second {
+		t.Fatalf("Tor world header timeout must be set and under the 30s WriteTimeout, got %+v", torWorldTransport)
 	}
 }
 

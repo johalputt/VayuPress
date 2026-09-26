@@ -14,8 +14,9 @@ package torspace
 //     full VayuPress in a tight respawn loop;
 //   - a GRACEFUL stop (SIGTERM → drain window → SIGKILL) because this child owns
 //     a live SQLite DB and a hard kill mid-WAL risks corruption;
-//   - reaping a prior-run orphan by an ENVIRON role marker (VAYUOS_SPACE_CHILD=1
-//     + our own DB path), never by binary name — parent and child are both
+//   - reaping the child a previous image of this process left running across a
+//     self-update re-exec: identified as our own child with the spawn's exact
+//     command line, never by binary name alone — parent and child are both
 //     `vayupress`, so a name match would risk killing the parent.
 //
 // It spawns NOTHING until Ensure(true) is called. This file is not yet wired to
@@ -290,47 +291,93 @@ func httpHealth(port int) bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-// reapOrphan kills a Tor-Space child left over from a previous parent run,
-// identified by its ENVIRON role marker (VAYUOS_SPACE_CHILD=1 AND our own child
-// DB path) — never by binary name, which the parent shares. Linux-only,
-// best-effort; no /proc → skip.
+// reapOrphan stops a Tor-Space child that this process's previous image left
+// running. A self-update re-execs in place (syscall.Exec keeps the PID), and
+// the previous image's child keeps running through it: it is still OUR child,
+// so its parent PID is ours. That, and its command line, are what identify it,
+// because both stay readable from /proc when the child is undumpable.
+//
+// It used to be identified by its environment instead. Every VayuPress process
+// makes itself undumpable at start (vayuveil.ApplyProcessHardening), which
+// makes /proc/<pid>/environ root-owned, so that read failed silently for a
+// same-user parent: the old child kept its port, answered the new child's
+// health check, and the Tor world stayed on the old binary across every update.
+//
+// Called only while this supervisor has no child running, so every match is a
+// leftover. Linux-only, best-effort; no /proc → skip.
 func (s *Supervisor) reapOrphan() {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return
-	}
-	self := os.Getpid()
-	dbMarker := "DB_PATH=" + filepath.Join(s.Root(), "vayupress.db")
-	for _, e := range entries {
-		pid, perr := strconv.Atoi(e.Name())
-		if perr != nil || pid == self {
-			continue
-		}
-		raw, rerr := os.ReadFile("/proc/" + e.Name() + "/environ")
-		if rerr != nil {
-			continue
-		}
-		vars := strings.Split(string(raw), "\x00")
-		if containsExact(vars, EnvSpaceChild+"=1") && containsExact(vars, dbMarker) {
-			killGraceful(pid)
-		}
+	for _, pid := range s.leftoverChildren() {
+		stopChild(pid)
 	}
 }
 
-// killGraceful SIGTERMs a pid, waits for it to exit, then SIGKILLs.
-func killGraceful(pid int) {
+// leftoverChildren lists this process's children whose command line is exactly
+// the binary the supervisor spawns, with no arguments. That is the shape of a
+// Tor-Space child (realSpawn) and of nothing else: a copy started by another
+// process has another parent, and a helper started with arguments is not one.
+func (s *Supervisor) leftoverChildren() []int {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil
+	}
+	self := os.Getpid()
+	var out []int
+	for _, e := range entries {
+		pid, perr := strconv.Atoi(e.Name())
+		if perr != nil || pid == self || parentPID(pid) != self {
+			continue
+		}
+		raw, rerr := os.ReadFile("/proc/" + e.Name() + "/cmdline")
+		if rerr != nil {
+			continue
+		}
+		args := strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")
+		if len(args) == 1 && args[0] == s.exePath {
+			out = append(out, pid)
+		}
+	}
+	return out
+}
+
+// parentPID reads a process's parent PID from /proc/<pid>/stat, or 0. The
+// command name before it is in parentheses and may itself contain spaces or
+// ')', so the fields are read after the last ')'.
+func parentPID(pid int) int {
+	raw, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return 0
+	}
+	i := strings.LastIndexByte(string(raw), ')')
+	if i < 0 {
+		return 0
+	}
+	f := strings.Fields(string(raw[i+1:])) // state, ppid, …
+	if len(f) < 2 {
+		return 0
+	}
+	ppid, _ := strconv.Atoi(f[1])
+	return ppid
+}
+
+// stopChild ends a child of this process and reaps it: SIGTERM so it can close
+// its listener and checkpoint its SQLite, SIGKILL after the drain window.
+// Waiting is as much the point as signalling. An unreaped child is a zombie
+// that keeps its /proc entry, and a zombie still answers kill(pid, 0), so
+// polling that could never see a child go.
+func stopChild(pid int) {
 	p, err := os.FindProcess(pid)
 	if err != nil {
 		return
 	}
 	_ = p.Signal(syscall.SIGTERM)
-	for i := 0; i < 30; i++ {
-		if p.Signal(syscall.Signal(0)) != nil {
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
+	done := make(chan struct{})
+	go func() { _, _ = p.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(stopDrainTimeout):
+		_ = p.Kill()
+		<-done
 	}
-	_ = p.Signal(syscall.SIGKILL)
 }
 
 // TailLog returns the last few non-empty lines of the child's log for the admin
@@ -403,14 +450,4 @@ func cleanExePath(p string) string {
 		}
 	}
 	return strings.TrimSuffix(p, " (deleted)")
-}
-
-// containsExact reports whether ss contains s exactly.
-func containsExact(ss []string, s string) bool {
-	for _, v := range ss {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
