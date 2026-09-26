@@ -6,7 +6,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.82] — 2026-09-26
+
+The paced heavy work plan, whole: clearing the cache becomes Refresh every
+page, and backups, the backup before an update and the full download go in
+steps at the pace the server can spare, each shown running with its pace and
+the reason. Load-tested on a 2.6 GB database under steady traffic, the
+console's slowest request during a download went from 6.5 s to 82 ms. The
+load test also found article views waiting on the database's one write
+connection, and a paywall check that failed open; both are fixed. VayuOS
+carries the Still Air name.
 
 ### Security
 
