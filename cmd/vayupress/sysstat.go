@@ -11,16 +11,15 @@ package main
 // renders.
 
 import (
-	"bufio"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/hoststat"
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -112,9 +111,9 @@ func collectSysStats(dbPath, cacheDir, mediaDir, backupsDir string) sysStats {
 	runtime.ReadMemStats(&ms)
 	s.GoHeapInUse = ms.HeapInuse
 	s.Goroutines = runtime.NumGoroutine()
-	s.ProcRSS = readProcRSS()
+	s.ProcRSS = hoststat.ProcRSS()
 
-	total, avail := readMemInfo()
+	total, avail, _ := hoststat.MemInfo()
 	s.MemTotal = total
 	s.MemAvailable = avail
 	if total >= avail {
@@ -139,61 +138,6 @@ func collectSysStats(dbPath, cacheDir, mediaDir, backupsDir string) sysStats {
 		go refreshFootprint(cacheDir, mediaDir, backupsDir)
 	}
 	return s
-}
-
-// readProcRSS reads this process's resident set size (bytes) from
-// /proc/self/status (VmRSS, reported in kB). Returns 0 if unavailable.
-func readProcRSS() uint64 {
-	f, err := os.Open("/proc/self/status")
-	if err != nil {
-		return 0
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := sc.Text()
-		if strings.HasPrefix(line, "VmRSS:") {
-			return kbFieldToBytes(line)
-		}
-	}
-	return 0
-}
-
-// readMemInfo reads total and available system memory (bytes) from
-// /proc/meminfo. Returns (0,0) if unavailable.
-func readMemInfo() (total, available uint64) {
-	f, err := os.Open("/proc/meminfo")
-	if err != nil {
-		return 0, 0
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := sc.Text()
-		switch {
-		case strings.HasPrefix(line, "MemTotal:"):
-			total = kbFieldToBytes(line)
-		case strings.HasPrefix(line, "MemAvailable:"):
-			available = kbFieldToBytes(line)
-		}
-		if total != 0 && available != 0 {
-			break
-		}
-	}
-	return total, available
-}
-
-// kbFieldToBytes parses a /proc line like "VmRSS:   12345 kB" into bytes.
-func kbFieldToBytes(line string) uint64 {
-	fields := strings.Fields(line)
-	if len(fields) < 2 {
-		return 0
-	}
-	kb, err := strconv.ParseUint(fields[1], 10, 64)
-	if err != nil {
-		return 0
-	}
-	return kb * 1024
 }
 
 // diskUsage returns the total and free bytes of the filesystem containing path.
