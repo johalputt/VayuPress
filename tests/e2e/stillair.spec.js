@@ -632,8 +632,8 @@ test("the command bar groups, marks, previews and runs", async ({ page }) => {
   await expect(groups).toHaveText(["Go to"]);
   await page.keyboard.press("Shift+Tab");
 
-  await page.locator(".cmd-input").fill("clear the page cache");
-  await expect(active).toContainText("Clear the page cache");
+  await page.locator(".cmd-input").fill("refresh every page");
+  await expect(active).toContainText("Refresh every page");
   await page.keyboard.press("Enter");
   await expect(page.locator("#cmd-backdrop")).toBeHidden();
   await expect(page.locator(".toast--ok").last()).toBeVisible();
@@ -804,6 +804,27 @@ test("a confirmation dialog keeps focus and gives it back", async ({ page }) => 
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(opener).toBeFocused();
+});
+
+// An app sidebar with more entries than fit scrolls, and squeezes nothing: the
+// mailbox address above sixteen mailboxes was cut to half its height. The
+// sidebar is filled here with the real stylesheet, so the rule holds for any
+// app whose list grows long.
+test("a long app sidebar scrolls and squeezes nothing", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/settings");
+  await page.setViewportSize({ width: 1280, height: 600 });
+  const squeezed = await page.evaluate(() => {
+    const side = document.querySelector(".sa-appside");
+    if (!side) return ["no app sidebar on /os/settings"];
+    const item = side.querySelector(".sa-appside__item");
+    side.insertAdjacentHTML("afterbegin", '<div class="sa-appside__title" title="a-long-mailbox-address@example.org">a-long-mailbox-address@example.org</div>');
+    for (let i = 0; i < 40; i++) side.appendChild(item.cloneNode(true));
+    return [...side.children]
+      .filter((el) => el.getBoundingClientRect().height + 1 < el.scrollHeight)
+      .map((el) => `${el.className}: ${Math.round(el.getBoundingClientRect().height)}px shown of ${el.scrollHeight}px`);
+  });
+  expect(squeezed).toEqual([]);
 });
 
 // Refresh every page answers at once and reports its progress under the card:
