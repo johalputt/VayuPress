@@ -5665,6 +5665,11 @@
   display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow-y: auto;
   padding: var(--space-4) var(--space-3); border-right: 1px solid var(--border-1);
 }
+/* A long sidebar scrolls; it never squeezes. Flex items may shrink when the
+   column overflows, and one with overflow: hidden (the ellipsised mailbox
+   address) has no content-height floor, so it was cut to half its height
+   while sixteen mailboxes were listed below it. */
+.vp-os[data-ui="still-air"] .sa-appside > * { flex-shrink: 0; }
 .vp-os[data-ui="still-air"] .sa-appside__title { font: var(--type-heading); color: var(--text-1); padding: 4px 10px 10px; }
 .vp-os[data-ui="still-air"] .sa-appside__group { font: var(--type-meta); color: var(--text-3); padding: var(--space-5) 10px var(--space-2); }
 .vp-os[data-ui="still-air"] .sa-appside__item {

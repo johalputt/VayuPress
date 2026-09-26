@@ -28,6 +28,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   against the page instead of the content. The console now has one scroll
   bar, its content area, on every page at every width.
 
+- **The mailbox address at the top of Mail was cut in half** when many
+  mailboxes were listed below it. A long sidebar now scrolls and squeezes
+  nothing, in every app.
+
 ### Changed
 
 - **Clear caches is now Refresh every page, and it can no longer take the
