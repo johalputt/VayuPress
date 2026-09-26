@@ -1838,12 +1838,17 @@ func (a *App) handleFaultStatus(w http.ResponseWriter, r *http.Request) {
 // relatedArticles returns up to limit articles that share at least one tag with
 // the current article, most recent first. The current slug is excluded.
 //
-// Membership is resolved through the indexed article_tags join table (migration
-// 048): the wanted tags are matched by their normalised (lower-cased) form via
-// the tag_norm index, then joined to the articles primary key. This replaces the
-// previous `tags LIKE '%..%'` pre-filter that full-scanned the articles table,
-// so related posts stay fast at 1M+ posts. SELECT DISTINCT collapses the case
-// where an article matches several of the wanted tags.
+// The cost is bounded by the number of tags and the limit, never by how many
+// posts carry a tag. Each tag's newest candidates come straight off the
+// (tag_norm, created_at DESC, article_id) index, a range scan that stops after
+// relatedPerTag entries; only those few ids are then read from articles.
+//
+// The query this replaces joined every post carrying any of the tags to
+// articles, then sorted and de-duplicated them, and only then applied the
+// LIMIT. On johal.in (235,000 posts, 4.6 M tag links) a tag shared by tens of
+// thousands of posts made one render read each of those rows past its content
+// column (status and created_at sit after it), well over 30 s, so any burst of
+// uncached pages held every read connection and the console timed out.
 func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []string, limit int) []render.RelatedArticle {
 	if dbpkg.DB == nil || limit <= 0 {
 		return nil
@@ -1851,7 +1856,7 @@ func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []st
 	seenSlug := map[string]struct{}{currentSlug: {}}
 	var out []render.RelatedArticle
 
-	// 1. Prefer posts that share a tag with the current one (indexed tag lookup).
+	// 1. Prefer posts that share a tag with the current one.
 	norms := make([]string, 0, len(tags))
 	seenTag := make(map[string]struct{}, len(tags))
 	for _, t := range tags {
@@ -1865,37 +1870,14 @@ func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []st
 		seenTag[n] = struct{}{}
 		norms = append(norms, n)
 	}
-	if len(norms) > 0 {
-		args := make([]interface{}, 0, len(norms)+2)
-		placeholders := make([]string, 0, len(norms))
-		for _, n := range norms {
-			placeholders = append(placeholders, "?")
-			args = append(args, n)
+	for _, ra := range relatedByTag(ctx, norms, currentSlug, limit*4) {
+		if _, dup := seenSlug[ra.Slug]; dup {
+			continue
 		}
-		args = append(args, currentSlug, limit)
-		// CROSS JOIN pins article_tags as the driving table so the query is always
-		// an indexed tag lookup (cost bounded by how many posts carry these tags),
-		// never a full scan of the articles table — which the planner could otherwise
-		// choose when one of the tags is very common, reintroducing the 502.
-		q := `SELECT DISTINCT a.title, a.slug, a.created_at FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm IN (` +
-			strings.Join(placeholders, ",") + `) AND a.slug != ? AND a.status='published' ORDER BY t.created_at DESC LIMIT ?`
-		if rows, err := dbpkg.Reader().QueryContext(ctx, q, args...); err == nil {
-			for rows.Next() {
-				var ra render.RelatedArticle
-				if rows.Scan(&ra.Title, &ra.Slug, &ra.CreatedAt) != nil {
-					continue
-				}
-				if _, dup := seenSlug[ra.Slug]; dup {
-					continue
-				}
-				seenSlug[ra.Slug] = struct{}{}
-				out = append(out, ra)
-				if len(out) >= limit {
-					break
-				}
-			}
-			_ = rows.Err()
-			rows.Close()
+		seenSlug[ra.Slug] = struct{}{}
+		out = append(out, ra)
+		if len(out) >= limit {
+			break
 		}
 	}
 
@@ -1923,6 +1905,70 @@ func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []st
 			}
 			_ = rows.Err()
 			rows.Close()
+		}
+	}
+	return out
+}
+
+// relatedPerTagSQL reads one tag's newest posts from the index alone: the
+// ORDER BY matches the index, so SQLite walks it and stops at the LIMIT, and
+// every column it returns is in the index, so it never touches articles.
+const relatedPerTagSQL = `SELECT article_id, created_at FROM article_tags WHERE tag_norm=? ORDER BY created_at DESC LIMIT ?`
+
+// relatedByTag returns published posts carrying any of the tags, newest first,
+// taken from each tag's newest perTag candidates. A tag whose newest perTag
+// posts are all drafts or the current one yields nothing more here; the recent
+// posts top-up in relatedArticles fills the space.
+func relatedByTag(ctx context.Context, norms []string, currentSlug string, perTag int) []render.RelatedArticle {
+	type candidate struct {
+		id string
+		at time.Time
+	}
+	var cands []candidate
+	for _, n := range norms {
+		rows, err := dbpkg.Reader().QueryContext(ctx, relatedPerTagSQL, n, perTag)
+		if err != nil {
+			return nil
+		}
+		for rows.Next() {
+			var c candidate
+			if rows.Scan(&c.id, &c.at) != nil {
+				continue
+			}
+			cands = append(cands, c) // a post under two tags appears twice; relatedArticles keeps it once
+		}
+		_ = rows.Err()
+		rows.Close()
+	}
+	if len(cands) == 0 {
+		return nil
+	}
+	sort.SliceStable(cands, func(i, j int) bool { return cands[i].at.After(cands[j].at) })
+
+	args := make([]interface{}, 0, len(cands)+1)
+	for _, c := range cands {
+		args = append(args, c.id)
+	}
+	args = append(args, currentSlug)
+	rows, err := dbpkg.Reader().QueryContext(ctx,
+		`SELECT id, title, slug, created_at FROM articles WHERE id IN (?`+strings.Repeat(",?", len(cands)-1)+`) AND status='published' AND slug != ?`, args...)
+	if err != nil {
+		return nil
+	}
+	byID := make(map[string]render.RelatedArticle, len(cands))
+	for rows.Next() {
+		var id string
+		var ra render.RelatedArticle
+		if rows.Scan(&id, &ra.Title, &ra.Slug, &ra.CreatedAt) == nil {
+			byID[id] = ra
+		}
+	}
+	_ = rows.Err()
+	rows.Close()
+	out := make([]render.RelatedArticle, 0, len(byID))
+	for _, c := range cands {
+		if ra, ok := byID[c.id]; ok {
+			out = append(out, ra)
 		}
 	}
 	return out
