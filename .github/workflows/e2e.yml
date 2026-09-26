@@ -30,6 +30,13 @@ jobs:
     runs-on: ubuntu-latest
     env:
       API_KEY: e2e-ci-key
+      # The suite drives the console with this one key, several specs at
+      # once; an operator's browser uses a session, which the per-key budget
+      # never applies to. At the default 600/min the long page walks spent the
+      # budget mid-run and every later page was the rate-limit JSON, which
+      # Chromium draws as a bare <pre>: the intermittent media-upload,
+      # outside-services and design-lint failures.
+      VAYU_API_RATE_PER_MIN: "100000"
       DB_PATH: /tmp/vayupress/vayupress.db
       CACHE_DIR: /tmp/vayupress/cache
       MEDIA_DIR: /tmp/vayupress/media
@@ -98,6 +105,13 @@ jobs:
       contents: write
     env:
       API_KEY: e2e-ci-key
+      # The suite drives the console with this one key, several specs at
+      # once; an operator's browser uses a session, which the per-key budget
+      # never applies to. At the default 600/min the long page walks spent the
+      # budget mid-run and every later page was the rate-limit JSON, which
+      # Chromium draws as a bare <pre>: the intermittent media-upload,
+      # outside-services and design-lint failures.
+      VAYU_API_RATE_PER_MIN: "100000"
       DB_PATH: /tmp/vayupress/vayupress.db
       CACHE_DIR: /tmp/vayupress/cache
       MEDIA_DIR: /tmp/vayupress/media
