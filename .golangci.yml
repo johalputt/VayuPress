@@ -25,8 +25,20 @@ linters:
                     # checkpointed — the class of bug behind the VayuOS 502s)
     - unconvert     # redundant type conversions
     - misspell      # comment/string typos
+    - depguard      # import boundaries (see settings)
 
   settings:
+    depguard:
+      rules:
+        # Every Markdown renderer is configured once, in internal/markdown,
+        # where a corpus test holds each one to golden HTML. A renderer built
+        # anywhere else escapes that test, and a goldmark upgrade would change
+        # its output unseen.
+        goldmark:
+          files: ["$all", "!**/internal/markdown/*.go"]
+          deny:
+            - pkg: github.com/yuin/goldmark
+              desc: "configure Markdown renderers in internal/markdown, where the corpus test covers them"
     staticcheck:
       # Keep SA* (correctness) and S1* (simplify); drop the purely stylistic
       # ST* (stylecheck) and QF* (quickfix) categories — they add churn without

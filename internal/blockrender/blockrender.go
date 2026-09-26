@@ -26,29 +26,8 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/diagram"
 	"github.com/johalputt/vayupress/internal/embeds"
+	"github.com/johalputt/vayupress/internal/markdown"
 	"github.com/microcosm-cc/bluemonday"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
-	goldhtml "github.com/yuin/goldmark/renderer/html"
-)
-
-// inlineMD renders inline markdown (bold, italic, inline code, links,
-// strikethrough) inside block text. It is GFM-based but HTML-unsafe input is
-// escaped by goldmark and the assembled fragment is still run through the
-// bluemonday UGC policy below, so this never widens the XSS surface — it only
-// upgrades the previously plain-escaped text to safe rich inline HTML.
-var inlineMD = goldmark.New(
-	goldmark.WithExtensions(extension.Strikethrough, extension.Linkify),
-	goldmark.WithRendererOptions(goldhtml.WithHardWraps()),
-)
-
-// blockMD renders a full Markdown document (the "markdown" card): block-level
-// constructs (headings, lists, tables, blockquotes, code fences, task lists)
-// plus GFM inline. Its output is still run through the bluemonday UGC policy by
-// the caller, so untrusted/raw HTML inside the Markdown cannot widen the XSS
-// surface.
-var blockMD = goldmark.New(
-	goldmark.WithExtensions(extension.GFM, extension.Footnote),
 )
 
 // footnoteIDRe restricts the id/fragment anchors the sanitiser lets through to
@@ -73,7 +52,7 @@ func renderInlineHTML(s string) string {
 		return ""
 	}
 	var buf bytes.Buffer
-	if err := inlineMD.Convert([]byte(s), &buf); err != nil {
+	if err := markdown.Inline.Convert([]byte(s), &buf); err != nil {
 		return html.EscapeString(s)
 	}
 	out := strings.TrimSpace(buf.String())
@@ -233,7 +212,7 @@ type Block struct {
 // nothing is lost.
 func MarkdownToBlocks(md string) []Block {
 	var buf bytes.Buffer
-	if err := blockMD.Convert([]byte(md), &buf); err != nil {
+	if err := markdown.Block.Convert([]byte(md), &buf); err != nil {
 		return []Block{{Type: "markdown", Text: md}}
 	}
 	blocks := ImportHTML(buf.String())
@@ -645,7 +624,7 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 			return
 		}
 		var mdBuf bytes.Buffer
-		if err := blockMD.Convert([]byte(blk.Text), &mdBuf); err != nil {
+		if err := markdown.Block.Convert([]byte(blk.Text), &mdBuf); err != nil {
 			b.WriteString(`<div class="vp-md"><p>` + html.EscapeString(blk.Text) + `</p></div>`)
 		} else {
 			b.WriteString(`<div class="vp-md">` + mdBuf.String() + `</div>`)

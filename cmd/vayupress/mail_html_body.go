@@ -19,17 +19,8 @@ import (
 	"strings"
 
 	"github.com/microcosm-cc/bluemonday"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
-	goldhtml "github.com/yuin/goldmark/renderer/html"
-)
 
-// mailMD renders the composer's Markdown. Hard wraps are on because people write
-// mail with meaningful line breaks and expect them kept; GFM covers the lists,
-// quotes, code fences and strikethrough the toolbar emits.
-var mailMD = goldmark.New(
-	goldmark.WithExtensions(extension.GFM),
-	goldmark.WithRendererOptions(goldhtml.WithHardWraps()),
+	"github.com/johalputt/vayupress/internal/markdown"
 )
 
 // mailOutboundPolicy sanitises the HTML *we* send. Sanitising our own output
@@ -59,12 +50,12 @@ var mailOutboundPolicy = func() *bluemonday.Policy {
 // renderMailHTML turns the composer's Markdown into the sanitised HTML alternative
 // part, wrapped in a minimal document. It returns "" when the body has no content,
 // so an empty message never produces an empty HTML part.
-func renderMailHTML(markdown string) string {
-	if strings.TrimSpace(markdown) == "" {
+func renderMailHTML(md string) string {
+	if strings.TrimSpace(md) == "" {
 		return ""
 	}
 	var buf bytes.Buffer
-	if err := mailMD.Convert([]byte(markdown), &buf); err != nil {
+	if err := markdown.Mail.Convert([]byte(md), &buf); err != nil {
 		// A render failure must never lose the message: the caller falls back to
 		// sending text/plain alone, which is the honest result.
 		return ""

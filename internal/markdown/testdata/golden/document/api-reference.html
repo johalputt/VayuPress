@@ -1,0 +1,226 @@
+<h1 id="vayupress-api-reference">VayuPress API Reference</h1>
+<h2 id="overview">Overview</h2>
+<p><strong>Base URL</strong>: <code>https://yourdomain.com/api/v1</code><br>
+<strong>Authentication</strong>: <code>Authorization: Bearer &lt;API_KEY&gt;</code> header<br>
+<strong>Content-Type</strong>: <code>application/json</code><br>
+<strong>Versioning</strong>: Stable APIs use <code>/api/v1/</code>. Experimental APIs are behind feature flags.</p>
+<h2 id="authentication">Authentication</h2>
+<p>All write endpoints require the <code>Authorization: Bearer &lt;API_KEY&gt;</code> header.</p>
+<p>State-changing requests also require a CSRF token (double-submit cookie):</p>
+<ol>
+<li>Make a <code>GET</code> request — the server sets a <code>vp_csrf</code> cookie.</li>
+<li>Include the cookie value in the <code>X-CSRF-Token</code> header for <code>POST</code>/<code>PUT</code>/<code>DELETE</code>.</li>
+</ol>
+<h2 id="error-format">Error Format</h2>
+<pre><code class="language-json">{
+  &quot;error&quot;: {
+    &quot;code&quot;: &quot;invalid_slug&quot;,
+    &quot;message&quot;: &quot;Slug must be lowercase alphanumeric with hyphens/underscores.&quot;,
+    &quot;request_id&quot;: &quot;a1b2c3d4&quot;,
+    &quot;docs&quot;: &quot;/docs/api/errors#invalid_slug&quot;
+  }
+}
+</code></pre>
+<h2 id="articles">Articles</h2>
+<h3 id="list-articles">List Articles</h3>
+<pre><code>GET /api/v1/articles
+</code></pre>
+<p>Query parameters:</p>
+<ul>
+<li><code>limit</code> — max 100, default 20</li>
+<li><code>cursor</code> — pagination cursor (opaque string from previous response)</li>
+<li><code>tag</code> — filter by tag</li>
+</ul>
+<p>Response:</p>
+<pre><code class="language-json">{
+  &quot;articles&quot;: [
+    {
+      &quot;id&quot;: &quot;01J...&quot;,
+      &quot;title&quot;: &quot;My Article&quot;,
+      &quot;slug&quot;: &quot;my-article&quot;,
+      &quot;tags&quot;: [&quot;go&quot;, &quot;sqlite&quot;],
+      &quot;created_at&quot;: &quot;2026-06-12T00:00:00Z&quot;,
+      &quot;updated_at&quot;: &quot;2026-06-12T00:00:00Z&quot;
+    }
+  ],
+  &quot;next_cursor&quot;: &quot;eyJpZCI6...&quot;
+}
+</code></pre>
+<h3 id="get-article">Get Article</h3>
+<pre><code>GET /api/v1/articles/:slug
+</code></pre>
+<p>Returns full article including <code>content</code> field.</p>
+<h3 id="create-article">Create Article</h3>
+<pre><code>POST /api/v1/articles
+Authorization: Bearer &lt;API_KEY&gt;
+X-CSRF-Token: &lt;token&gt;
+
+{
+  &quot;title&quot;: &quot;My Article&quot;,
+  &quot;slug&quot;: &quot;my-article&quot;,
+  &quot;content&quot;: &quot;&lt;p&gt;Hello world&lt;/p&gt;&quot;,
+  &quot;tags&quot;: [&quot;go&quot;, &quot;sqlite&quot;]
+}
+</code></pre>
+<ul>
+<li><code>slug</code>: lowercase alphanumeric, hyphens, underscores; 1–200 chars.</li>
+<li><code>content</code>: HTML sanitized server-side (bluemonday).</li>
+<li>Write is enqueued asynchronously; returns <code>202 Accepted</code>.</li>
+</ul>
+<p>Response:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;01J...&quot;,
+  &quot;status&quot;: &quot;queued&quot;
+}
+</code></pre>
+<h3 id="update-article">Update Article</h3>
+<pre><code>PUT /api/v1/articles/:slug
+Authorization: Bearer &lt;API_KEY&gt;
+X-CSRF-Token: &lt;token&gt;
+</code></pre>
+<p>Same body as create. Partial updates supported — omit fields to keep existing values.</p>
+<h3 id="delete-article">Delete Article</h3>
+<pre><code>DELETE /api/v1/articles/:slug
+Authorization: Bearer &lt;API_KEY&gt;
+X-CSRF-Token: &lt;token&gt;
+</code></pre>
+<p>Returns <code>204 No Content</code>.</p>
+<h2 id="search">Search</h2>
+<pre><code>GET /api/v1/search?q=&lt;query&gt;&amp;limit=20&amp;offset=0
+</code></pre>
+<p>Served by VayuFind, the built-in search engine (ADR-0101). No external search service.</p>
+<ul>
+<li>Search queries are never logged or stored.</li>
+<li>Rate limited: 10 req/s per IP.</li>
+</ul>
+<h2 id="media">Media</h2>
+<h3 id="upload">Upload</h3>
+<pre><code>POST /api/v1/media
+Authorization: Bearer &lt;API_KEY&gt;
+Content-Type: multipart/form-data
+</code></pre>
+<p>Allowed MIME types: <code>image/jpeg</code>, <code>image/png</code>, <code>image/gif</code>, <code>image/webp</code>, <code>image/svg+xml</code>, <code>application/pdf</code> (optional).</p>
+<p>Returns:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;abc123&quot;,
+  &quot;url&quot;: &quot;/static/media/abc123.webp&quot;,
+  &quot;width&quot;: 1200,
+  &quot;height&quot;: 630
+}
+</code></pre>
+<ul>
+<li>Files processed in seccomp/apparmor sandbox via libvips.</li>
+<li>SHA-256 deduplication: identical files reuse the same URL.</li>
+<li>Max upload size governed by <code>STORAGE_QUOTA_GB</code>.</li>
+</ul>
+<h2 id="health">Health</h2>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /health</code></td>
+<td>Liveness — 200 = alive</td>
+</tr>
+<tr>
+<td><code>GET /health/ready</code></td>
+<td>Readiness — checks DB, search, storage</td>
+</tr>
+<tr>
+<td><code>GET /health/db</code></td>
+<td>Database connectivity</td>
+</tr>
+<tr>
+<td><code>GET /health/search</code></td>
+<td>Search availability</td>
+</tr>
+<tr>
+<td><code>GET /health/workers</code></td>
+<td>Queue worker health</td>
+</tr>
+<tr>
+<td><code>GET /health/storage</code></td>
+<td>Storage quota (503 if &gt;90% full)</td>
+</tr>
+<tr>
+<td><code>GET /health/dependencies</code></td>
+<td>All subsystem status (structured)</td>
+</tr>
+<tr>
+<td><code>GET /health/ai</code></td>
+<td>AI subsystem health</td>
+</tr>
+<tr>
+<td><code>GET /health/security</code></td>
+<td>Security subsystem health</td>
+</tr>
+</tbody>
+</table>
+<p>Health response:</p>
+<pre><code class="language-json">{
+  &quot;status&quot;: &quot;ok&quot;,
+  &quot;version&quot;: &quot;1.0.0-p8&quot;,
+  &quot;uptime_seconds&quot;: 3600
+}
+</code></pre>
+<p>Degraded:</p>
+<pre><code class="language-json">{
+  &quot;status&quot;: &quot;degraded&quot;,
+  &quot;components&quot;: {
+    &quot;search&quot;: &quot;unavailable&quot;,
+    &quot;db&quot;: &quot;ok&quot;
+  }
+}
+</code></pre>
+<h2 id="metrics">Metrics</h2>
+<pre><code>GET /metrics
+</code></pre>
+<p>Prometheus-format metrics (counters, gauges, histograms). Local-first — no external telemetry.</p>
+<h2 id="cache">Cache</h2>
+<pre><code>POST /api/v1/cache/purge
+Authorization: Bearer &lt;API_KEY&gt;
+X-CSRF-Token: &lt;token&gt;
+
+{ &quot;slug&quot;: &quot;my-article&quot; }
+</code></pre>
+<p>Rate-limited to 5 purges/minute per IP.</p>
+<h2 id="webhooks">Webhooks</h2>
+<p>VayuPress supports outgoing webhooks on article create/update/delete events.</p>
+<p>Configure via environment. Payload signed with HMAC-SHA256; verify the <code>X-VayuPress-Signature</code> header.</p>
+<h2 id="api-stability-tiers">API Stability Tiers</h2>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Endpoints</th>
+<th>Guarantee</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stable</td>
+<td><code>/api/v1/articles</code>, <code>/api/v1/search</code>, <code>/health</code></td>
+<td>Backward-compatible in MAJOR version</td>
+</tr>
+<tr>
+<td>Beta</td>
+<td><code>/api/v1/ai/*</code></td>
+<td>May change with notice</td>
+</tr>
+<tr>
+<td>Experimental</td>
+<td>Feature-flagged endpoints</td>
+<td>No guarantees; may disappear</td>
+</tr>
+<tr>
+<td>Internal</td>
+<td><code>/admin/*</code> internals</td>
+<td>No public contract</td>
+</tr>
+</tbody>
+</table>
+<p>Deprecated endpoints include a <code>Sunset: &lt;date&gt;</code> response header.</p>

@@ -30,9 +30,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/microcosm-cc/bluemonday"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/parser"
 
 	"github.com/johalputt/vayupress/internal/ads"
 	"github.com/johalputt/vayupress/internal/api"
@@ -42,6 +39,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/fault"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/markdown"
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
@@ -1169,12 +1167,8 @@ var adrNumberPrefix = regexp.MustCompile(`^(?i:ADR)-\d+\s*(?::|—|–|-)\s*`)
 // strips anything unsafe, so the rendered registry can never become an injection
 // surface even though ADRs are operator-authored.
 func renderMarkdownDocument(md []byte) template.HTML {
-	gm := goldmark.New(
-		goldmark.WithExtensions(extension.GFM, extension.Table),
-		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
-	)
 	var buf strings.Builder
-	if err := gm.Convert(md, &buf); err != nil {
+	if err := markdown.Document.Convert(md, &buf); err != nil {
 		// Fall back to escaped plain text rather than failing the page.
 		return template.HTML("<pre>" + template.HTMLEscapeString(string(md)) + "</pre>") //nolint:gosec // escaped above
 	}

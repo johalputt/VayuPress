@@ -1,0 +1,219 @@
+<h1 id="continuity--what-happens-to-a-clients-site-and-mail-if-the-studio-stops">Continuity — what happens to a client's site and mail if the studio stops</h1>
+<p>This document exists because ADR-0152 said it was worth more to a client than
+the privacy feature, and it was written after that feature rather than before
+it. That ordering was wrong, and stating so here is cheaper than pretending the
+sequence was deliberate.</p>
+<p>It answers one question, asked by someone non-technical who has handed their
+business website and their business email to a small studio:</p>
+<blockquote>
+<p>If you disappear, what happens to my mail?</p>
+</blockquote>
+<p>&quot;Disappear&quot; covers the boring cases as well as the grim one: a two-week
+hospital stay, a lost laptop, a studio that stops trading, a falling-out. The
+plan does not distinguish between them, because the client's exposure is the
+same in all of them and a plan that only works for the polite cases is not a
+plan.</p>
+<p>Two audiences. Sections 1–4 are written for the <strong>studio</strong> and are operational.
+Section 5 is written to be <strong>handed to a client</strong> as-is.</p>
+<hr>
+<h2 id="1-what-the-client-actually-owns-today">1. What the client actually owns today</h2>
+<p>Being precise here matters more than being reassuring, because everything below
+depends on it.</p>
+<table>
+<thead>
+<tr>
+<th>Thing</th>
+<th>Who holds it</th>
+<th>What happens if the studio vanishes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The domain name</td>
+<td><strong>Whoever the registrar says</strong></td>
+<td>If registered in the studio's name, the client may lose the address their mail depends on</td>
+</tr>
+<tr>
+<td>DNS and MX records</td>
+<td>The studio, in practice</td>
+<td>Mail stops arriving when they lapse or point nowhere</td>
+</tr>
+<tr>
+<td>Website content</td>
+<td>On the studio's server</td>
+<td>Recoverable from a backup, or re-buildable</td>
+</tr>
+<tr>
+<td>Mail already received</td>
+<td>On the studio's server, as maildir files</td>
+<td>Recoverable <strong>only</strong> from a backup, or by the client pulling it over IMAP first</td>
+</tr>
+<tr>
+<td>Mailbox passwords</td>
+<td>The client, if handed over</td>
+<td>Unaffected — this is what handover is for</td>
+</tr>
+<tr>
+<td>The server itself</td>
+<td>The studio's hosting account</td>
+<td>Stops at the next unpaid invoice</td>
+</tr>
+</tbody>
+</table>
+<p>The two rows that end a business are the first and the fourth. A client who
+loses the domain loses the address; a client who loses the archive loses years
+of business records. Everything else is inconvenience.</p>
+<h2 id="2-the-one-thing-to-do-before-anything-else">2. The one thing to do before anything else</h2>
+<p><strong>Register the domain in the client's own name, with the client's own
+registrar account, and give them the login.</strong> Bill them for the renewal or
+absorb it — that is a commercial choice — but do not hold the registration.</p>
+<p>This single step converts every scenario below from &quot;the client is stuck&quot; to
+&quot;the client is inconvenienced&quot;, because it is the only asset that cannot be
+reconstructed. Content can be rebuilt. Mail can be restored from a backup or
+pulled over IMAP. A domain held by a company that no longer answers email is
+recoverable only through the registrar's dispute process, if at all.</p>
+<p>If a client's domain is currently in the studio's account, move it. That is
+the highest-value hour of work in this document.</p>
+<h2 id="3-what-already-works-without-writing-any-new-code">3. What already works, without writing any new code</h2>
+<h3 id="31-the-client-can-pull-their-own-mail-down-today">3.1 The client can pull their own mail down, today</h3>
+<p>VayuMail speaks <strong>standard IMAP</strong> (implicit TLS on 993). Any mail client —
+Thunderbird, Apple Mail, Outlook — can download the entire archive to the
+client's own machine.</p>
+<p><strong>It is an app password, not the mailbox password.</strong> Device approval is on by
+default (ADR-0129), which retires the raw mailbox password on the mail path, so
+a client who types their normal password into Thunderbird gets a refusal and
+reasonably concludes the mail server is broken. The holder mints an app
+password themselves from the Connect tab in webmail.</p>
+<p>That the <em>holder</em> can mint it is what makes this survive handover.
+<code>canManageAppPassword</code> answers <code>isOwner</code> <strong>before</strong> it reaches the severance,
+so the operator loses the ability to mint a credential for a handed-over
+mailbox while the holder keeps it. A mail-only session can reach
+<code>/os/vayumail</code>, so nothing about being a confined mailbox login blocks the
+Connect tab either. Verified in both places rather than assumed — had either
+gone the other way, this whole section would be advice that fails on the one
+day it is needed.</p>
+<p>This is the client's self-rescue path and it should be set up on <strong>day one</strong>,
+not on the day it is needed. A local copy in a mail client is a backup the
+studio cannot lose, cannot be locked out of, and does not have to be asked for.</p>
+<h3 id="32-backups-exist-and-are-verified-not-merely-enabled">3.2 Backups exist and are verified, not merely enabled</h3>
+<p>VayuKeep replicates the whole data directory — database, settings, media and
+<strong>maildirs</strong> — to a target the operator owns, and every generation is
+encrypted; the engine refuses to start without a passphrase rather than
+silently writing something readable.</p>
+<p>More importantly it runs a <strong>restore drill</strong>: it restores the newest generation
+into a temporary directory, opens the database inside it, asks SQLite whether
+the pages are intact, and throws it away. The distinction that matters is
+between &quot;replication is enabled&quot;, which is a configuration value worth nothing,
+and &quot;a restore worked at 04:12 this morning&quot;, which is a measurement. The panel
+reports the second and is able to say no.</p>
+<p>Turn it on. Check the drill result, not the toggle.</p>
+<h3 id="33-content-is-exportable-to-a-file">3.3 Content is exportable to a file</h3>
+<pre><code>vayupress migrate export --file client-site.vaybundle
+vayupress migrate import --file client-site.vaybundle --mode=merge --dry-run
+</code></pre>
+<p>The bundle is checksummed and offline-movable, and the import supports a dry
+run. It carries <strong>content only</strong> — articles and pages. Accounts, mailboxes, PGP
+keys and chat identities deliberately never cross.</p>
+<h3 id="34-there-is-no-lock-in-to-unlock">3.4 There is no lock-in to unlock</h3>
+<p>The whole product is one Apache-2.0 binary and a SQLite database, published on
+GitHub. A successor — the client's nephew, another agency, a hosting company —
+can run the same binary against a restored data directory. There is no
+proprietary format to reverse-engineer and no licence to transfer.</p>
+<h2 id="4-the-runbook">4. The runbook</h2>
+<h3 id="41-studio-unavailable-temporarily-illness-travel-no-laptop">4.1 Studio unavailable, temporarily (illness, travel, no laptop)</h3>
+<p>Nothing breaks by itself. The install keeps serving and delivering mail
+unattended; certificates renew automatically. The exposures are a hosting
+invoice that fails to be paid, and nobody watching for a full disk.</p>
+<p><strong>Prepare:</strong> put the hosting account on a card that will not expire, and give
+one trusted person the ability to pay it.</p>
+<h3 id="42-studio-unavailable-permanently">4.2 Studio unavailable, permanently</h3>
+<p>The client needs three things, in this order:</p>
+<ol>
+<li><strong>The domain.</strong> Covered by §2 if it was done. If not, this is the blocker
+and everything else waits on it.</li>
+<li><strong>Their mail.</strong> Immediately available over IMAP if §3.1 was set up. If not,
+it must come from a backup, which requires the backup location and its
+passphrase.</li>
+<li><strong>The site.</strong> Rebuildable from a backup or a content bundle; worst case,
+re-built from scratch. Painful, not fatal.</li>
+</ol>
+<p><strong>Prepare:</strong> the sealed envelope in §4.4.</p>
+<h3 id="43-client-leaves-for-another-provider">4.3 Client leaves for another provider</h3>
+<p>An ordinary, planned migration. Export content with §3.3, let them pull mail
+over IMAP with §3.1, and point DNS at the new host. Hand over rather than make
+them extract — a studio that makes leaving difficult earns exactly one bad
+referral for every client who tries.</p>
+<p>Do <strong>not</strong> delete the mailbox until the client confirms their local copy is
+complete. There is no undo.</p>
+<h3 id="44-the-envelope">4.4 The envelope</h3>
+<p>One document, held by the client or their solicitor, reviewed annually:</p>
+<ul>
+<li>The domain registrar, and the account it is registered under.</li>
+<li>Where backups are written, and how to reach that location.</li>
+<li>The backup passphrase. <strong>Not in the same envelope as the location</strong>, and
+never in email.</li>
+<li>The mailbox addresses, and their recovery addresses.</li>
+<li>The hosting provider and account.</li>
+<li>A one-line statement of what the software is, with the GitHub URL, so a
+successor knows what they are looking at.</li>
+</ul>
+<p>That envelope, plus a domain in the client's own name, plus a mail client
+holding a local copy, is a continuity plan. Everything above it is detail.</p>
+<h2 id="5-what-to-tell-a-client-in-their-words">5. What to tell a client, in their words</h2>
+<blockquote>
+<p>Your website and your email run on a server we operate for you. Here is what
+that means if something happens to us.</p>
+<p><strong>Your domain name is yours.</strong> It is registered in your name, with your own
+account at the registrar, and you have the login. Nobody can take it, and it
+is the one thing that could not be replaced.</p>
+<p><strong>Your email is already on your own computer.</strong> We set up your mail
+programme to download a copy of everything, using a device password created
+for that programme — not the password you type to read your mail on the web,
+which deliberately will not work there. If our server went away this
+afternoon, the mail you have received is still on your machine. Please do not
+switch that off.</p>
+<p><strong>We keep encrypted backups</strong>, and we test them by actually restoring them
+rather than assuming they work.</p>
+<p><strong>You have an envelope</strong> listing your domain, where the backups are, and who
+to hand it to. If we are not here, someone technical can take that and pick
+up where we left off. The software is public and free, so they are not locked
+out of anything.</p>
+<p><strong>What we cannot promise.</strong> We are a small business, not a data centre. If
+the server fails you may be offline for a day while we restore it. Your mail
+is stored as ordinary files on a machine we run — it is not encrypted in a way
+that would stop us reading it, and we have told you that plainly elsewhere. If
+you need guarantees beyond this, you need a larger provider, and we will say
+so rather than pretend otherwise.</p>
+</blockquote>
+<h2 id="6-what-this-plan-does-not-cover">6. What this plan does not cover</h2>
+<p>Stated because a plan that only lists its strengths is one a client is right to
+discount.</p>
+<ul>
+<li><strong>It is procedural, not enforced.</strong> Nothing in the software checks that the
+domain is in the client's name, that the envelope exists, or that IMAP was
+ever set up. Every step in §2 and §4.4 is a habit, and habits lapse. The
+first three could plausibly become panel checks; today they are not.</li>
+<li><strong>There is no self-service mail export.</strong> A client cannot press a button and
+receive their archive. IMAP is the substitute and it is a good one, but it
+requires a mail client configured in advance — and a client who never did
+that, whose studio has vanished, depends entirely on a backup someone else
+holds. ADR-0152 §D4 names this same gap as one of the reasons cryptographic
+sealing was not built; it has not closed since.</li>
+<li><strong>It assumes the backups are real.</strong> Everything in §4.2 rests on VayuKeep
+being enabled, its target reachable, and its passphrase known. An operator who
+turned it on and never looked at a drill result has a plan resting on an
+assumption.</li>
+<li><strong>One box still fails as one box.</strong> Row scoping is not a sandbox and a
+hardware failure takes every client down together, as ADR-0152 §D5 records.
+Continuity here means &quot;recoverable&quot;, never &quot;uninterrupted&quot;.</li>
+<li><strong>It has not been rehearsed.</strong> No client migration has been performed against
+this document. A runbook nobody has walked through is a draft, and the first
+real use will find something wrong with it.</li>
+</ul>
+<h2 id="references">References</h2>
+<ul>
+<li><strong>ADR-0152</strong> — agency hosting on one install; §D4 mail privacy, §D5 what is
+deliberately not isolated, open decision 7 (this document).</li>
+<li><code>docs/OPERATIONS.md</code> — backup and restore operations.</li>
+<li><code>docs/INSTALLATION.md</code> — what a successor needs to stand the binary up.</li>
+</ul>

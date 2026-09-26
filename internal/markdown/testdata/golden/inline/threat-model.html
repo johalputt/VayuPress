@@ -1,0 +1,141 @@
+<h1>VayuPress Threat Model</h1>
+<p><strong>Version</strong>: 1.0.0<br>
+<strong>Date</strong>: 2026-06-12<br>
+<strong>Author</strong>: Security Lead, @johalputt<br>
+<strong>Review cycle</strong>: Annual or after any architectural change</p>
+<hr>
+<h2>Trust Boundaries</h2>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│  INTERNET (untrusted)                                        │
+│  ┌──────────┐  ┌──────────┐  ┌────────────┐               │
+│  │ Readers  │  │ Authors  │  │ Attackers  │               │
+│  └────┬─────┘  └────┬─────┘  └─────┬──────┘               │
+│       │              │               │                       │
+│  ─────┼──────────────┼───────────────┼────── TrustBoundary1 │
+│       ▼              ▼               ▼                       │
+│  ┌─────────────────────────────────────────┐               │
+│  │  Nginx (TLS termination + WAF headers)  │               │
+│  └────────────────────┬────────────────────┘               │
+│  ──────────────────────┼────────────────── TrustBoundary2   │
+│                        ▼                                     │
+│  ┌─────────────────────────────────────────┐               │
+│  │  VayuPress Go binary (localhost:8080)   │               │
+│  │  - Single process, non-root uid         │               │
+│  │  - Read-only filesystem except /data    │               │
+│  └───────┬───────────────────┬─────────────┘               │
+│  ─────────┼───────────────────┼──────── TrustBoundary3      │
+│           ▼                   ▼                              │
+│  ┌──────────────┐   ┌──────────────────┐                   │
+│  │ SQLite /data │   │ VayuFind (in-proc)│                   │
+│  │ (rw, WAL)    │   │ localhost:7700   │                   │
+│  └──────────────┘   └──────────────────┘                   │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<p><strong>TB1</strong> — Internet ↔ Nginx: TLS required, rate limiting via fail2ban, CSP/HSTS enforced<br>
+<strong>TB2</strong> — Nginx ↔ App: Unix socket or 127.0.0.1 only, no direct public access<br>
+<strong>TB3</strong> — App ↔ Storage: Filesystem ACLs, SQLite WAL, no network exposure of DB</p>
+<hr>
+<h2>Entry Points</h2>
+<p>| ID | Entry Point | Protocol | Auth Required | Notes |<br>
+|----|-------------|----------|---------------|-------|<br>
+| EP-01 | <code>GET /</code> (public posts) | HTTPS | No | Rate-limited by nginx |<br>
+| EP-02 | <code>POST /api/v1/posts</code> | HTTPS | API key (Bearer) | Authors only |<br>
+| EP-03 | <code>POST /api/v1/admin/*</code> | HTTPS | API key + lockout | Admin actions |<br>
+| EP-04 | <code>GET /health/*</code> | HTTPS | No (read-only) | Health contracts |<br>
+| EP-05 | <code>GET /metrics</code> | localhost only | No | Prometheus; not exposed publicly |<br>
+| EP-06 | <code>GET /debug/pprof/*</code> | HTTPS | API key + rate limit | Audit logged |<br>
+| EP-07 | <code>POST /webhooks/github</code> | HTTPS | HMAC-SHA256 | Signature verified |<br>
+| EP-08 | SSH (port 22) | SSH | Key auth only | Admin server access |<br>
+| EP-09 | <code>GET/POST /isso/*</code> | HTTPS | CSRF token | Comment system proxy |<br>
+| EP-10 | Search index | in-process | No network surface | Not reachable at all — no port, no key |</p>
+<hr>
+<h2>Assets</h2>
+<p>| ID | Asset | Sensitivity | Location | Owner |<br>
+|----|-------|-------------|----------|-------|<br>
+| A-01 | Published posts | Public | SQLite <code>/data/vayupress.db</code> | VayuPress |<br>
+| A-02 | Draft posts | Confidential | SQLite, author-only | Authors |<br>
+| A-03 | Admin API key | Critical | Env var <code>VAYU_API_KEY</code> | Operator |<br>
+| A-05 | TLS private key | Critical | <code>/etc/letsencrypt/live/</code> | Certbot |<br>
+| A-06 | SQLite database | High | <code>/data/vayupress.db</code> | VayuPress |<br>
+| A-07 | Backup archives | High | <code>/data/backups/</code> | VayuPress |<br>
+| A-08 | Audit logs | High | <code>audit_log</code> table (WORM) | VayuPress |<br>
+| A-09 | User comments | Internal | Isso SQLite | VayuPress |<br>
+| A-10 | Search index | Internal | Inside the VayuPress database | VayuPress |<br>
+| A-11 | Media uploads | Internal | <code>/data/media/</code> | VayuPress |<br>
+| A-12 | Config / env vars | Critical | <code>/etc/vayupress/</code> | Operator |</p>
+<hr>
+<h2>Threat Actors</h2>
+<p>| ID | Actor | Motivation | Capability | Likelihood |<br>
+|----|-------|------------|------------|-----------|<br>
+| TA-01 | Script kiddie | Defacement, crypto mining | Low | High |<br>
+| TA-02 | Spam bot | SEO spam, comment spam | Low-Medium | High |<br>
+| TA-03 | Credential stuffer | Account takeover | Medium | Medium |<br>
+| TA-04 | Targeted attacker | Data exfiltration, content manipulation | High | Low |<br>
+| TA-05 | Supply chain attacker | Backdoor via dependency | High | Low |<br>
+| TA-06 | Malicious author | Privilege escalation, data theft | Medium | Low |<br>
+| TA-07 | Rogue maintainer | Insider threat | High | Very Low |<br>
+| TA-08 | Nation-state | Censorship, surveillance | Very High | Very Low |</p>
+<hr>
+<h2>Mitigations</h2>
+<h3>Authentication &amp; Authorization</h3>
+<p>| Threat | Mitigation | Implementation |<br>
+|--------|------------|----------------|<br>
+| Credential stuffing (TA-03) | Account lockout after 10 failures | <code>authFail</code> counter, 15-min lockout |<br>
+| API key theft | Key rotation endpoint | <code>POST /api/v1/admin/rotate-key</code> |<br>
+| Weak password hashing | Argon2id (not bcrypt) | <code>argon2.IDKey()</code> in Go |<br>
+| Privilege escalation (TA-06) | Role-based: author vs admin | Separate API key scopes |<br>
+| Session fixation | Bearer tokens, no sessions | Stateless JWT-style API keys |</p>
+<h3>Injection Attacks</h3>
+<p>| Threat | Mitigation | Implementation |<br>
+|--------|------------|----------------|<br>
+| SQL injection | Parameterized queries only | <code>database/sql</code> with <code>?</code> placeholders |<br>
+| XSS via content | CSP nonce per request | ADR-0036; <code>Content-Security-Policy: nonce-{uuid}</code> |<br>
+| SSTI (template injection) | html/template (auto-escape) | Go stdlib; no raw string templates |<br>
+| Command injection | No shell exec in hot path | <code>exec.Command</code> only in deploy script |<br>
+| Path traversal (media) | <code>filepath.Clean</code> + prefix check | Media handler validates path within <code>/data/media/</code> |</p>
+<h3>Network Attacks</h3>
+<p>| Threat | Mitigation | Implementation |<br>
+|--------|------------|----------------|<br>
+| SSRF (TA-04) | Block link metadata fetches to private IPs | 169.254.169.254, 10.x, 172.16.x, 192.168.x blocked |<br>
+| CSRF | Per-request CSRF token | <code>X-CSRF-Token</code> header checked on state-changing requests |<br>
+| Clickjacking | X-Frame-Options: DENY | Nginx header |<br>
+| Protocol downgrade | HSTS (2yr, includeSubDomains) | <code>Strict-Transport-Security: max-age=63072000</code> |<br>
+| DDoS | Nginx rate limiting + fail2ban | 10 req/s per IP, ban after 20 failures |</p>
+<h3>Supply Chain</h3>
+<p>| Threat | Mitigation | Implementation |<br>
+|--------|------------|----------------|<br>
+| Dependency backdoor (TA-05) | <code>govulncheck</code> in CI | Scans all transitive deps |<br>
+| Build tampering | Reproducible builds | <code>CGO_ENABLED=0 go build</code> |<br>
+| Artifact substitution | SHA-256 checksums in CHANGELOG | Verifiable release artifacts |<br>
+| Dependency drift | <code>go mod verify</code> in CI | Ensures go.sum integrity |<br>
+| License violation | <code>go-licenses check</code> in CI | All deps must be approved licenses |</p>
+<h3>Data Protection</h3>
+<p>| Threat | Mitigation | Implementation |<br>
+|--------|------------|----------------|<br>
+| Data exfiltration (TA-04) | No external network calls from app | Outbound blocked except Let's Encrypt ACME |<br>
+| Backup theft | Encrypted offsite backups | AES-256 (operator-configured) |<br>
+| Log tampering | WORM audit table | <code>audit_log</code> insert-only, no UPDATE/DELETE grants |<br>
+| Database corruption | WAL mode + nightly integrity check | <code>PRAGMA integrity_check</code> in cron |<br>
+| Migration tampering | Checksum drift detection | ADR-0034; halts startup if drift found |</p>
+<h3>Infrastructure</h3>
+<p>| Threat | Mitigation | Implementation |<br>
+|--------|------------|----------------|<br>
+| Root privilege abuse | VayuPress runs as <code>vayupress</code> uid | systemd <code>User=vayupress</code> |<br>
+| File write outside data dir | Read-only filesystem | systemd <code>ProtectSystem=strict</code>, <code>ReadWritePaths=/data</code> |<br>
+| Port scanning | UFW default deny | Ports 22, 80, 443 only |<br>
+| SSH brute force (TA-01) | fail2ban ssh jail | 5 failures → 10-min ban |<br>
+| Certificate expiry | Auto-renew via certbot cron | Daily certbot renew check |</p>
+<hr>
+<h2>Residual Risks</h2>
+<p>| ID | Risk | Severity | Accepted By | Rationale |<br>
+|----|------|----------|-------------|-----------|<br>
+| RR-01 | Single SQLite writer is a bottleneck | Low | Architecture Lead | Design choice; escape hatch to PG exists |<br>
+| RR-02 | Isso comment system is 3rd-party Go | Low | Security Lead | Isolated process, no DB access |<br>
+| RR-03 | Let's Encrypt outbound ACME traffic | Low | Security Lead | Required for TLS; ACME pinned to LE CAs |<br>
+| RR-06 | IndexNow submissions trust the configured key/host | Low | Operator | <code>pingIndexNow</code> is mode-aware (suppressed in <code>read-only</code>/<code>quarantined</code>/<code>maintenance</code>) and journals success/failure/suppression, but the IndexNow key is operator-supplied and not rotated automatically. |</p>
+<hr>
+<h2>Review Log</h2>
+<p>| Date | Reviewer | Changes |<br>
+|------|----------|---------|<br>
+| 2026-06-12 | @johalputt | Initial threat model (v1.0) |<br>
+| 2026-06-14 | @johalputt | Added RR-05 (federation HTTP-signature gap) and RR-06 (IndexNow governance) after code audit |</p>

@@ -1,0 +1,75 @@
+<h1>Edges, one per construct</h1>
+<h2>Emphasis and code</h2>
+<p><em>one</em> <strong>two</strong> <em><strong>three</strong></em> <em>under</em> <strong>double</strong> a<em>b</em>c <code>code</code> <code>a ` b</code> *escaped*</p>
+<h2>Headings with the same text</h2>
+<h3>Setup</h3>
+<h3>Setup</h3>
+<h2>Line breaks</h2>
+<p>a line<br>
+followed by another</p>
+<p>two spaces at the end<br>
+then a hard break</p>
+<h2>Links</h2>
+<p><a href="https://example.com" title="title">text</a> <a href="https://example.com">https://example.com</a> <a href="http://www.example.com">www.example.com</a><br>
+<a href="https://example.com/path?q=1&amp;r=2">https://example.com/path?q=1&amp;r=2</a> <a href="mailto:mail@example.com">mail@example.com</a> <a href="https://example.org">ref</a></p>
+<h2>Strikethrough and tasks</h2>
+<p><del>gone</del> <del>one tilde</del></p>
+<ul>
+<li>[ ] open</li>
+<li>[x] done</li>
+</ul>
+<h2>Table</h2>
+<p>| Left | Centre | Right |<br>
+|:-----|:------:|------:|<br>
+| a    | b      | c     |<br>
+| <code>x|y</code> | <strong>bold</strong> | 3 |</p>
+<h2>Lists</h2>
+<ol>
+<li>one</li>
+<li>two
+<ul>
+<li>nested
+<ul>
+<li>deeper</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>three</li>
+</ol>
+<ul>
+<li>
+<p>tight</p>
+</li>
+<li>
+<p>list</p>
+</li>
+<li>
+<p>loose</p>
+</li>
+<li>
+<p>list</p>
+</li>
+</ul>
+<h2>Quote and fence</h2>
+<blockquote>
+<p>quoted</p>
+<blockquote>
+<p>nested</p>
+</blockquote>
+</blockquote>
+<pre><code class="language-go">func main() { println(&quot;&lt;tag&gt;&quot;) }
+</code></pre>
+<pre><code>indented code
+</code></pre>
+<h2>Footnote</h2>
+<p>A claim.[^1] Another.[^note]</p>
+<p>[^1]: The source.<br>
+[^note]: A named one.</p>
+<h2>Raw HTML and entities</h2>
+<!-- raw HTML omitted -->
+<p>&amp; © © © &lt; &gt; &quot;quotes&quot; 'single'</p>
+<h2>Unicode</h2>
+<p>नमस्ते, 你好, émoji ✓ — dash … ellipsis</p>
+<hr>
+<p>Final paragraph.</p>

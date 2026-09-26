@@ -1,0 +1,276 @@
+<h1>VayuPress Troubleshooting</h1>
+<h2>Health Check Failures</h2>
+<h3><code>/health</code> returns 500</h3>
+<p>VayuPress process is not running or crashed.</p>
+<pre><code class="language-bash">sudo systemctl status vayupress
+sudo journalctl -u vayupress -n 50
+</code></pre>
+<h3><code>/health/ready</code> returns 503</h3>
+<p>A required subsystem (DB, storage) is unavailable.</p>
+<pre><code class="language-bash">curl http://localhost:8080/health/dependencies
+# Check which component reports &quot;unavailable&quot;
+</code></pre>
+<h3><code>/health/search</code> returns 503</h3>
+<p>The search index is unavailable or stale — non-critical. Publishing and reading are unaffected; rebuild with <code>POST /admin/reindex</code>.</p>
+<pre><code class="language-bash">curl -s http://localhost:8080/health/search
+sudo journalctl -u vayupress -n 50 | grep -i search
+</code></pre>
+<h2>Write Queue Issues</h2>
+<h3>Articles not appearing after POST</h3>
+<p>Writes are asynchronous. Check the queue:</p>
+<pre><code class="language-bash">sqlite3 /var/lib/vayupress/vayupress.db &quot;SELECT status, COUNT(*) FROM write_jobs GROUP BY status&quot;
+</code></pre>
+<p>If jobs are stuck in <code>processing</code>:</p>
+<pre><code class="language-bash"># The stuck-job reaper runs every minute and resets jobs stuck &gt;5 min
+# Or manually reset:
+sqlite3 /var/lib/vayupress/vayupress.db &quot;UPDATE write_jobs SET status='pending' WHERE status='processing'&quot;
+sudo systemctl restart vayupress
+</code></pre>
+<h3>Jobs in dead-letter queue</h3>
+<pre><code class="language-bash">sqlite3 /var/lib/vayupress/vayupress.db &quot;SELECT id, op, dead_reason FROM write_jobs WHERE status='dead'&quot;
+</code></pre>
+<p>Jobs move to <code>dead</code> after <code>MAX_REPLAY_COUNT</code> (default 3) replay attempts. Check logs for the root cause.</p>
+<h2>Database Issues</h2>
+<h3>SQLite locked errors</h3>
+<p>WAL mode is mandatory. Verify:</p>
+<pre><code class="language-bash">sqlite3 /var/lib/vayupress/vayupress.db &quot;PRAGMA journal_mode&quot;
+# Expected: wal
+</code></pre>
+<p>If not WAL:</p>
+<pre><code class="language-bash">sqlite3 /var/lib/vayupress/vayupress.db &quot;PRAGMA journal_mode=WAL&quot;
+</code></pre>
+<h3>Migration checksum drift (startup halted)</h3>
+<p>VayuPress detected a tampered migration. Check logs:</p>
+<pre><code class="language-bash">sudo journalctl -u vayupress | grep &quot;CHECKSUM DRIFT&quot;
+</code></pre>
+<p>This is a security alert. Do not bypass it without understanding why the checksum changed.</p>
+<h3>Database corruption</h3>
+<pre><code class="language-bash">sqlite3 /var/lib/vayupress/vayupress.db &quot;PRAGMA integrity_check&quot;
+# Expected: ok
+</code></pre>
+<p>If corrupt, restore from backup:</p>
+<pre><code class="language-bash">ls -lt /backups/vayupress-*.db.gz | head -5
+# Restore:
+sudo systemctl stop vayupress
+gunzip -c /backups/vayupress-&lt;date&gt;.db.gz &gt; /var/lib/vayupress/vayupress.db
+sudo systemctl start vayupress
+</code></pre>
+<h2>Cache Issues</h2>
+<h3>Stale content after update</h3>
+<p>Force-purge the cache for an article:</p>
+<pre><code class="language-bash">curl -X POST http://localhost:8080/api/v1/cache/purge \
+  -H &quot;Authorization: Bearer $API_KEY&quot; \
+  -H &quot;X-CSRF-Token: $CSRF_TOKEN&quot; \
+  -d '{&quot;slug&quot;: &quot;my-article&quot;}'
+</code></pre>
+<p>Or clear all cache:</p>
+<pre><code class="language-bash">sudo rm -rf /var/cache/vayupress/posts/*
+</code></pre>
+<h3>Cache directory unwritable</h3>
+<pre><code class="language-bash">sudo chown -R www-data:www-data /var/cache/vayupress
+sudo chmod -R 755 /var/cache/vayupress
+</code></pre>
+<h2>Performance Issues</h2>
+<h3>High memory usage</h3>
+<pre><code class="language-bash">curl http://localhost:8080/metrics | grep vayu_memory
+</code></pre>
+<p>If idle RAM &gt;800 MB, check for goroutine leaks:</p>
+<pre><code class="language-bash">curl http://localhost:6060/debug/pprof/goroutine?debug=1
+</code></pre>
+<h3>High TTFB</h3>
+<pre><code class="language-bash">curl http://localhost:8080/metrics | grep vayu_http_request_duration
+</code></pre>
+<p>Check if Nginx is serving static files (should be, for cached pages):</p>
+<pre><code class="language-bash">nginx -t &amp;&amp; sudo systemctl status nginx
+</code></pre>
+<h2>Storage Issues</h2>
+<h3>Storage quota exceeded (413 on upload)</h3>
+<pre><code class="language-bash">df -h /var/www/vayupress
+curl http://localhost:8080/health/storage
+</code></pre>
+<p>Increase <code>STORAGE_QUOTA_GB</code> in the environment, or delete old media.</p>
+<h3>Orphaned media files</h3>
+<p>The orphan cleanup cron runs daily. To run manually:</p>
+<pre><code class="language-bash">curl -X POST http://localhost:8080/admin/storage/cleanup \
+  -H &quot;Authorization: Bearer $API_KEY&quot;
+</code></pre>
+<h2>VayuTalk Chat Issues</h2>
+<h3>Messages queue / never deliver live; web shows &quot;Reconnecting…&quot;; the mobile app receives nothing</h3>
+<p>VayuTalk delivers messages and read receipts over a long-lived <strong>Server-Sent
+Events</strong> stream (<code>GET /api/v1/talk/stream</code> for the app, <code>GET /os/talk/stream</code>
+for the web console). If that stream can't stay open, messages only ever drain
+from the queue during brief connect windows — so live delivery and read
+receipts silently fail, the web status dot sticks on &quot;Reconnecting…&quot;, and the
+app (which can send via POST but can't hold the stream) appears to receive
+nothing. Two layers in front of VayuPress commonly break the stream:</p>
+<p><strong>1. Reverse proxy (nginx) buffering / idle timeout.</strong> A generic proxy block
+buffers the response and times the connection out (nginx defaults:
+<code>proxy_read_timeout 60s</code>). The SSE endpoints need dedicated <code>location</code> blocks:</p>
+<pre><code class="language-nginx">    location = /api/v1/talk/stream {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Connection &quot;&quot;;
+        proxy_buffering off; proxy_cache off; gzip off;
+        chunked_transfer_encoding on;
+        proxy_read_timeout 3600s; proxy_send_timeout 3600s;
+    }
+    location = /os/talk/stream {
+        # …same, plus:  proxy_pass_header X-CSRF-Token;
+    }
+</code></pre>
+<p><code>deploy-vayupress.sh</code> writes these automatically; an existing server needs them
+added and <code>nginx -s reload</code>. Verify with <code>curl -N https://DOMAIN/api/v1/talk/stream</code>
+— you should get a JSON <code>invalid-token</code> error (or an <code>event: ping</code>), NOT an
+immediate disconnect.</p>
+<p><strong>2. A CDN / bot challenge in front of nginx (e.g. Cloudflare).</strong> A browser can
+solve a JavaScript &quot;managed challenge,&quot; so the <strong>web</strong> may work — but the mobile
+app is a plain HTTP client that <strong>cannot</strong> solve it, so Cloudflare returns a
+<code>Just a moment…</code> HTML page instead of the event stream and the app's stream never
+connects. Diagnose it:</p>
+<pre><code class="language-bash">curl -N -s https://DOMAIN/api/v1/talk/stream -H 'User-Agent: Go-http-client/2.0' | head -c 300
+</code></pre>
+<p>If you see <code>&lt;!DOCTYPE html&gt;… Just a moment…</code> (look for <code>cf-ray</code>,
+<code>challenges.cloudflare.com</code>), the CDN is intercepting the stream. <strong>Do not turn
+bot protection off site-wide</strong> — exempt only the VayuTalk paths. In Cloudflare:
+<strong>Security → WAF → Custom rules → Create rule</strong>, expression:</p>
+<pre><code>(starts_with(http.request.uri.path, &quot;/api/v1/&quot;)) or (starts_with(http.request.uri.path, &quot;/os/talk/&quot;))
+</code></pre>
+<p>Action <strong>Skip</strong> → skip managed rules, Bot Fight Mode, and (if shown) Security
+Level / Browser Integrity Check. The rest of the site keeps full CDN protection;
+only the VayuTalk API/stream paths pass straight through. When fixed, the <code>curl</code>
+above returns VayuPress's JSON, and the app connects. The same principle applies
+to any CDN or WAF — allow the two stream paths, keep protecting everything else.</p>
+<h3>Recommended: a dedicated, proxy-off <code>talk.&lt;domain&gt;</code> subdomain (automatic)</h3>
+<p>If your site sits behind a CDN you can't fully exempt (e.g. a WAF Skip rule isn't
+enough against a heavy bot swarm), the robust fix is to serve the VayuTalk relay
+on its own subdomain that bypasses the CDN entirely, while the main domain keeps
+full protection. VayuPress automates the entire server side — <strong>the only manual
+step is one DNS record:</strong></p>
+<pre><code>talk.&lt;domain&gt;   A / AAAA   -&gt;  your server's IP    (CDN/proxy OFF — &quot;DNS only&quot;)
+</code></pre>
+<p>Then run the deploy script (every VayuPress update runs it):</p>
+<pre><code class="language-bash">sudo bash scripts/deploy-vayupress.sh
+</code></pre>
+<p>It automatically: adds <code>talk.&lt;domain&gt;</code> to the Let's Encrypt certificate, writes a
+dedicated nginx vhost that exposes <strong>only</strong> the relay API (SSE never buffered),
+and sets <code>VAYUOS_TALK_HOST</code>, which makes the server advertise the host in
+<code>/.well-known/vayumail/autoconfig.json</code>. The VayuMail app reads that, confirms the
+subdomain is live, and routes its chat stream there on its own — no app setting to
+change. Until the DNS record exists the step is skipped and the app keeps using
+the main domain, so nothing breaks in the meantime.</p>
+<p>Verify after DNS propagates:</p>
+<pre><code class="language-bash">curl -s https://&lt;domain&gt;/health | grep -o '&quot;version&quot;[^,]*'          # confirm the running build
+curl -N -s https://talk.&lt;domain&gt;/api/v1/talk/stream                 # expect JSON invalid-token, NOT a CDN page
+</code></pre>
+<p>Because your origin IP is already reachable via <code>mail.&lt;domain&gt;</code> (mail must also be
+CDN-proxy-off), exposing <code>talk.&lt;domain&gt;</code> adds no new exposure. To keep the CDN's
+protection meaningful for the main site even though the IP is public, restrict the
+main <code>&lt;domain&gt;</code> vhost to your CDN's published IP ranges (allow those, deny the
+rest); <code>talk.&lt;domain&gt;</code> stays open. The relay itself is safe exposed: it is
+auth-gated, server-side rate-limited, and size-capped.</p>
+<h2>VayuMail Sign-In Issues</h2>
+<h3>Someone forgot their mailbox password</h3>
+<p>Send them to <code>https://&lt;your-domain&gt;/mail/recover</code>. It is linked from every
+sign-in page as <em>&quot;Forgot your mailbox password?&quot;</em>.</p>
+<p>Which path works depends on what they enrolled <strong>before</strong> they were locked out:</p>
+<table>
+<thead>
+<tr>
+<th>They have</th>
+<th>Send them to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A recovery address</td>
+<td><code>/mail/recover</code></td>
+</tr>
+<tr>
+<td>Recovery codes</td>
+<td><code>/mail/recover/code</code></td>
+</tr>
+<tr>
+<td>A phone still syncing the mailbox</td>
+<td>the mobile app's own reset</td>
+</tr>
+<tr>
+<td>Nothing</td>
+<td><code>/mail/recover/ask</code> — then approve it in VayuOS</td>
+</tr>
+</tbody>
+</table>
+<p>Two things that look like faults and are not:</p>
+<ul>
+<li><strong>&quot;Check your inbox&quot; for an address that does not exist.</strong> The response is
+identical for a real mailbox and a typo, by design — the endpoint must not
+reveal which addresses exist. If nothing arrives, check the spelling first.</li>
+<li><strong>Every phone needs re-enrolling after a reset.</strong> A reset revokes all app
+passwords deliberately, so a stale credential cannot survive the recovery.</li>
+</ul>
+<p>To see the state of an install from the host:</p>
+<pre><code class="language-bash">vayupress mail unrecoverable                     # mailboxes with no factor at all
+vayupress mail recovery someone@yourdomain.com   # what one mailbox has enrolled
+</code></pre>
+<p>Full guide, including the last-administrator break-glass:
+<a href="MAIL-RECOVERY.md">docs/MAIL-RECOVERY.md</a>.</p>
+<h3>The recovery address option is missing or disabled</h3>
+<p>Expected in a <strong>Tor Space</strong>. It needs clearnet egress, which a Tor Space refuses
+by design, so it is disabled and labelled rather than failing at the moment it is
+needed. Recovery codes and the mobile-app path both work there.</p>
+<h2>PGP Key Discovery Issues</h2>
+<h3><code>gpg --locate-keys you@example.com</code> finds nothing</h3>
+<p>VayuPress mints a PGP keypair for every mailbox and serves the Web Key Directory,
+so if discovery finds nothing the keys almost certainly exist and are simply not
+reachable where clients look. There are exactly three causes, in the order worth
+checking.</p>
+<p><strong>1. <code>openpgpkey.&lt;domain&gt;</code> is not pointed at the server.</strong> PGP clients do not look
+on your main domain — the WKD specification defines a dedicated hostname, and
+without it your keys are published where nobody checks. Confirm:</p>
+<pre><code class="language-bash">getent hosts openpgpkey.example.com     # no output = not pointed
+</code></pre>
+<p>Add an <code>A</code>/<code>AAAA</code> record for <code>openpgpkey.example.com</code> → your server, <strong>CDN proxy
+OFF</strong>, then run:</p>
+<pre><code class="language-bash">sudo bash /path/to/VayuPress/scripts/setup-openpgpkey-subdomain.sh
+</code></pre>
+<p>It provisions the certificate and vhost, and self-checks afterwards. With
+<code>CF_ZONE_ID</code> and <code>CF_API_TOKEN</code> set in <code>/etc/vayupress/env</code> it creates the record
+for you.</p>
+<p><strong>2. The CDN proxy is on for that record.</strong> This is the failure worth
+understanding, because <strong>nothing appears broken</strong>: a key fetch is
+machine-to-machine, GnuPG has no JavaScript engine and cannot answer a bot
+challenge, so discovery fails and correspondents quietly fall back to sending in
+cleartext. No error surfaces anywhere. Fetch the policy file — HTML instead of an
+empty <code>200</code> means the proxy is intercepting:</p>
+<pre><code class="language-bash">curl -sSI &quot;https://openpgpkey.example.com/.well-known/openpgpkey/example.com/policy&quot;
+</code></pre>
+<p>Set the record to <strong>DNS only</strong> (Cloudflare: grey cloud). Do not disable protection
+site-wide; only this host needs to be direct, and its vhost serves one path prefix
+and returns 404 for everything else.</p>
+<p><strong>3. VayuPGP is switched off.</strong> With the engine disabled the directory returns 404
+even though the host and certificate are perfect — which looks identical to a DNS
+problem from outside. Check <strong>VayuOS → VayuPGP</strong>. The setup script distinguishes
+these two for you: it fetches its own policy file after reloading nginx and says
+which of them it is.</p>
+<h3>Keys resolve for the primary domain but not a secondary one</h3>
+<p>Discovery is <strong>per-domain</strong>: a key for <code>someone@shop.example</code> is findable only at
+<code>openpgpkey.shop.example</code>, never via the primary domain's host. Every mail-enabled
+domain needs its own record. The setup script provisions the primary plus every
+mail-enabled VayuDomains secondary (<code>vayupress domains hosts --mail</code>) in one run,
+so this usually means the secondary's record is missing:</p>
+<pre><code class="language-bash">sudo bash /path/to/VayuPress/scripts/setup-openpgpkey-subdomain.sh shop.example
+</code></pre>
+<h2>Logs</h2>
+<pre><code class="language-bash"># VayuPress logs (structured JSON)
+sudo journalctl -u vayupress -f
+
+# Nginx access logs
+sudo tail -f /var/log/nginx/access.log
+
+# Search index activity (built in — no separate service log)
+sudo journalctl -u vayupress -f | grep -i search
+</code></pre>
+<h2>Support</h2>
+<p><a href="mailto:support@vayupress.com">support@vayupress.com</a> — <a href="https://vayupress.com/docs">https://vayupress.com/docs</a></p>

@@ -25,9 +25,8 @@ import (
 	"strings"
 
 	"github.com/microcosm-cc/bluemonday"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/parser"
+
+	"github.com/johalputt/vayupress/internal/markdown"
 )
 
 // skipDirs are the image-heavy documentation folders that carry no prose — kept
@@ -48,10 +47,6 @@ type docGroup struct {
 }
 
 var (
-	gm = goldmark.New(
-		goldmark.WithExtensions(extension.GFM, extension.Table),
-		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
-	)
 	ugc = bluemonday.UGCPolicy()
 )
 
@@ -258,7 +253,7 @@ func card(e *docEntry) string {
 
 func renderMarkdown(md []byte) string {
 	var buf strings.Builder
-	if err := gm.Convert(md, &buf); err != nil {
+	if err := markdown.Document.Convert(md, &buf); err != nil {
 		return "<pre>" + html.EscapeString(string(md)) + "</pre>"
 	}
 	return ugc.Sanitize(buf.String())

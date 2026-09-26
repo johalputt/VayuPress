@@ -1,0 +1,574 @@
+<h1>VayuPress Threat Model</h1>
+<p><strong>Version</strong>: 1.0.0<br>
+<strong>Date</strong>: 2026-06-12<br>
+<strong>Author</strong>: Security Lead, @johalputt<br>
+<strong>Review cycle</strong>: Annual or after any architectural change</p>
+<hr>
+<h2>Trust Boundaries</h2>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│  INTERNET (untrusted)                                        │
+│  ┌──────────┐  ┌──────────┐  ┌────────────┐               │
+│  │ Readers  │  │ Authors  │  │ Attackers  │               │
+│  └────┬─────┘  └────┬─────┘  └─────┬──────┘               │
+│       │              │               │                       │
+│  ─────┼──────────────┼───────────────┼────── TrustBoundary1 │
+│       ▼              ▼               ▼                       │
+│  ┌─────────────────────────────────────────┐               │
+│  │  Nginx (TLS termination + WAF headers)  │               │
+│  └────────────────────┬────────────────────┘               │
+│  ──────────────────────┼────────────────── TrustBoundary2   │
+│                        ▼                                     │
+│  ┌─────────────────────────────────────────┐               │
+│  │  VayuPress Go binary (localhost:8080)   │               │
+│  │  - Single process, non-root uid         │               │
+│  │  - Read-only filesystem except /data    │               │
+│  └───────┬───────────────────┬─────────────┘               │
+│  ─────────┼───────────────────┼──────── TrustBoundary3      │
+│           ▼                   ▼                              │
+│  ┌──────────────┐   ┌──────────────────┐                   │
+│  │ SQLite /data │   │ VayuFind (in-proc)│                   │
+│  │ (rw, WAL)    │   │ localhost:7700   │                   │
+│  └──────────────┘   └──────────────────┘                   │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<p><strong>TB1</strong> — Internet ↔ Nginx: TLS required, rate limiting via fail2ban, CSP/HSTS enforced<br>
+<strong>TB2</strong> — Nginx ↔ App: Unix socket or 127.0.0.1 only, no direct public access<br>
+<strong>TB3</strong> — App ↔ Storage: Filesystem ACLs, SQLite WAL, no network exposure of DB</p>
+<hr>
+<h2>Entry Points</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Entry Point</th>
+<th>Protocol</th>
+<th>Auth Required</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EP-01</td>
+<td><code>GET /</code> (public posts)</td>
+<td>HTTPS</td>
+<td>No</td>
+<td>Rate-limited by nginx</td>
+</tr>
+<tr>
+<td>EP-02</td>
+<td><code>POST /api/v1/posts</code></td>
+<td>HTTPS</td>
+<td>API key (Bearer)</td>
+<td>Authors only</td>
+</tr>
+<tr>
+<td>EP-03</td>
+<td><code>POST /api/v1/admin/*</code></td>
+<td>HTTPS</td>
+<td>API key + lockout</td>
+<td>Admin actions</td>
+</tr>
+<tr>
+<td>EP-04</td>
+<td><code>GET /health/*</code></td>
+<td>HTTPS</td>
+<td>No (read-only)</td>
+<td>Health contracts</td>
+</tr>
+<tr>
+<td>EP-05</td>
+<td><code>GET /metrics</code></td>
+<td>localhost only</td>
+<td>No</td>
+<td>Prometheus; not exposed publicly</td>
+</tr>
+<tr>
+<td>EP-06</td>
+<td><code>GET /debug/pprof/*</code></td>
+<td>HTTPS</td>
+<td>API key + rate limit</td>
+<td>Audit logged</td>
+</tr>
+<tr>
+<td>EP-07</td>
+<td><code>POST /webhooks/github</code></td>
+<td>HTTPS</td>
+<td>HMAC-SHA256</td>
+<td>Signature verified</td>
+</tr>
+<tr>
+<td>EP-08</td>
+<td>SSH (port 22)</td>
+<td>SSH</td>
+<td>Key auth only</td>
+<td>Admin server access</td>
+</tr>
+<tr>
+<td>EP-09</td>
+<td><code>GET/POST /isso/*</code></td>
+<td>HTTPS</td>
+<td>CSRF token</td>
+<td>Comment system proxy</td>
+</tr>
+<tr>
+<td>EP-10</td>
+<td>Search index</td>
+<td>in-process</td>
+<td>No network surface</td>
+<td>Not reachable at all — no port, no key</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>Assets</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Asset</th>
+<th>Sensitivity</th>
+<th>Location</th>
+<th>Owner</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A-01</td>
+<td>Published posts</td>
+<td>Public</td>
+<td>SQLite <code>/data/vayupress.db</code></td>
+<td>VayuPress</td>
+</tr>
+<tr>
+<td>A-02</td>
+<td>Draft posts</td>
+<td>Confidential</td>
+<td>SQLite, author-only</td>
+<td>Authors</td>
+</tr>
+<tr>
+<td>A-03</td>
+<td>Admin API key</td>
+<td>Critical</td>
+<td>Env var <code>VAYU_API_KEY</code></td>
+<td>Operator</td>
+</tr>
+<tr>
+<td>A-05</td>
+<td>TLS private key</td>
+<td>Critical</td>
+<td><code>/etc/letsencrypt/live/</code></td>
+<td>Certbot</td>
+</tr>
+<tr>
+<td>A-06</td>
+<td>SQLite database</td>
+<td>High</td>
+<td><code>/data/vayupress.db</code></td>
+<td>VayuPress</td>
+</tr>
+<tr>
+<td>A-07</td>
+<td>Backup archives</td>
+<td>High</td>
+<td><code>/data/backups/</code></td>
+<td>VayuPress</td>
+</tr>
+<tr>
+<td>A-08</td>
+<td>Audit logs</td>
+<td>High</td>
+<td><code>audit_log</code> table (WORM)</td>
+<td>VayuPress</td>
+</tr>
+<tr>
+<td>A-09</td>
+<td>User comments</td>
+<td>Internal</td>
+<td>Isso SQLite</td>
+<td>VayuPress</td>
+</tr>
+<tr>
+<td>A-10</td>
+<td>Search index</td>
+<td>Internal</td>
+<td>Inside the VayuPress database</td>
+<td>VayuPress</td>
+</tr>
+<tr>
+<td>A-11</td>
+<td>Media uploads</td>
+<td>Internal</td>
+<td><code>/data/media/</code></td>
+<td>VayuPress</td>
+</tr>
+<tr>
+<td>A-12</td>
+<td>Config / env vars</td>
+<td>Critical</td>
+<td><code>/etc/vayupress/</code></td>
+<td>Operator</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>Threat Actors</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Actor</th>
+<th>Motivation</th>
+<th>Capability</th>
+<th>Likelihood</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TA-01</td>
+<td>Script kiddie</td>
+<td>Defacement, crypto mining</td>
+<td>Low</td>
+<td>High</td>
+</tr>
+<tr>
+<td>TA-02</td>
+<td>Spam bot</td>
+<td>SEO spam, comment spam</td>
+<td>Low-Medium</td>
+<td>High</td>
+</tr>
+<tr>
+<td>TA-03</td>
+<td>Credential stuffer</td>
+<td>Account takeover</td>
+<td>Medium</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>TA-04</td>
+<td>Targeted attacker</td>
+<td>Data exfiltration, content manipulation</td>
+<td>High</td>
+<td>Low</td>
+</tr>
+<tr>
+<td>TA-05</td>
+<td>Supply chain attacker</td>
+<td>Backdoor via dependency</td>
+<td>High</td>
+<td>Low</td>
+</tr>
+<tr>
+<td>TA-06</td>
+<td>Malicious author</td>
+<td>Privilege escalation, data theft</td>
+<td>Medium</td>
+<td>Low</td>
+</tr>
+<tr>
+<td>TA-07</td>
+<td>Rogue maintainer</td>
+<td>Insider threat</td>
+<td>High</td>
+<td>Very Low</td>
+</tr>
+<tr>
+<td>TA-08</td>
+<td>Nation-state</td>
+<td>Censorship, surveillance</td>
+<td>Very High</td>
+<td>Very Low</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>Mitigations</h2>
+<h3>Authentication &amp; Authorization</h3>
+<table>
+<thead>
+<tr>
+<th>Threat</th>
+<th>Mitigation</th>
+<th>Implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Credential stuffing (TA-03)</td>
+<td>Account lockout after 10 failures</td>
+<td><code>authFail</code> counter, 15-min lockout</td>
+</tr>
+<tr>
+<td>API key theft</td>
+<td>Key rotation endpoint</td>
+<td><code>POST /api/v1/admin/rotate-key</code></td>
+</tr>
+<tr>
+<td>Weak password hashing</td>
+<td>Argon2id (not bcrypt)</td>
+<td><code>argon2.IDKey()</code> in Go</td>
+</tr>
+<tr>
+<td>Privilege escalation (TA-06)</td>
+<td>Role-based: author vs admin</td>
+<td>Separate API key scopes</td>
+</tr>
+<tr>
+<td>Session fixation</td>
+<td>Bearer tokens, no sessions</td>
+<td>Stateless JWT-style API keys</td>
+</tr>
+</tbody>
+</table>
+<h3>Injection Attacks</h3>
+<table>
+<thead>
+<tr>
+<th>Threat</th>
+<th>Mitigation</th>
+<th>Implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQL injection</td>
+<td>Parameterized queries only</td>
+<td><code>database/sql</code> with <code>?</code> placeholders</td>
+</tr>
+<tr>
+<td>XSS via content</td>
+<td>CSP nonce per request</td>
+<td>ADR-0036; <code>Content-Security-Policy: nonce-{uuid}</code></td>
+</tr>
+<tr>
+<td>SSTI (template injection)</td>
+<td>html/template (auto-escape)</td>
+<td>Go stdlib; no raw string templates</td>
+</tr>
+<tr>
+<td>Command injection</td>
+<td>No shell exec in hot path</td>
+<td><code>exec.Command</code> only in deploy script</td>
+</tr>
+<tr>
+<td>Path traversal (media)</td>
+<td><code>filepath.Clean</code> + prefix check</td>
+<td>Media handler validates path within <code>/data/media/</code></td>
+</tr>
+</tbody>
+</table>
+<h3>Network Attacks</h3>
+<table>
+<thead>
+<tr>
+<th>Threat</th>
+<th>Mitigation</th>
+<th>Implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SSRF (TA-04)</td>
+<td>Block link metadata fetches to private IPs</td>
+<td>169.254.169.254, 10.x, 172.16.x, 192.168.x blocked</td>
+</tr>
+<tr>
+<td>CSRF</td>
+<td>Per-request CSRF token</td>
+<td><code>X-CSRF-Token</code> header checked on state-changing requests</td>
+</tr>
+<tr>
+<td>Clickjacking</td>
+<td>X-Frame-Options: DENY</td>
+<td>Nginx header</td>
+</tr>
+<tr>
+<td>Protocol downgrade</td>
+<td>HSTS (2yr, includeSubDomains)</td>
+<td><code>Strict-Transport-Security: max-age=63072000</code></td>
+</tr>
+<tr>
+<td>DDoS</td>
+<td>Nginx rate limiting + fail2ban</td>
+<td>10 req/s per IP, ban after 20 failures</td>
+</tr>
+</tbody>
+</table>
+<h3>Supply Chain</h3>
+<table>
+<thead>
+<tr>
+<th>Threat</th>
+<th>Mitigation</th>
+<th>Implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dependency backdoor (TA-05)</td>
+<td><code>govulncheck</code> in CI</td>
+<td>Scans all transitive deps</td>
+</tr>
+<tr>
+<td>Build tampering</td>
+<td>Reproducible builds</td>
+<td><code>CGO_ENABLED=0 go build</code></td>
+</tr>
+<tr>
+<td>Artifact substitution</td>
+<td>SHA-256 checksums in CHANGELOG</td>
+<td>Verifiable release artifacts</td>
+</tr>
+<tr>
+<td>Dependency drift</td>
+<td><code>go mod verify</code> in CI</td>
+<td>Ensures go.sum integrity</td>
+</tr>
+<tr>
+<td>License violation</td>
+<td><code>go-licenses check</code> in CI</td>
+<td>All deps must be approved licenses</td>
+</tr>
+</tbody>
+</table>
+<h3>Data Protection</h3>
+<table>
+<thead>
+<tr>
+<th>Threat</th>
+<th>Mitigation</th>
+<th>Implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Data exfiltration (TA-04)</td>
+<td>No external network calls from app</td>
+<td>Outbound blocked except Let's Encrypt ACME</td>
+</tr>
+<tr>
+<td>Backup theft</td>
+<td>Encrypted offsite backups</td>
+<td>AES-256 (operator-configured)</td>
+</tr>
+<tr>
+<td>Log tampering</td>
+<td>WORM audit table</td>
+<td><code>audit_log</code> insert-only, no UPDATE/DELETE grants</td>
+</tr>
+<tr>
+<td>Database corruption</td>
+<td>WAL mode + nightly integrity check</td>
+<td><code>PRAGMA integrity_check</code> in cron</td>
+</tr>
+<tr>
+<td>Migration tampering</td>
+<td>Checksum drift detection</td>
+<td>ADR-0034; halts startup if drift found</td>
+</tr>
+</tbody>
+</table>
+<h3>Infrastructure</h3>
+<table>
+<thead>
+<tr>
+<th>Threat</th>
+<th>Mitigation</th>
+<th>Implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Root privilege abuse</td>
+<td>VayuPress runs as <code>vayupress</code> uid</td>
+<td>systemd <code>User=vayupress</code></td>
+</tr>
+<tr>
+<td>File write outside data dir</td>
+<td>Read-only filesystem</td>
+<td>systemd <code>ProtectSystem=strict</code>, <code>ReadWritePaths=/data</code></td>
+</tr>
+<tr>
+<td>Port scanning</td>
+<td>UFW default deny</td>
+<td>Ports 22, 80, 443 only</td>
+</tr>
+<tr>
+<td>SSH brute force (TA-01)</td>
+<td>fail2ban ssh jail</td>
+<td>5 failures → 10-min ban</td>
+</tr>
+<tr>
+<td>Certificate expiry</td>
+<td>Auto-renew via certbot cron</td>
+<td>Daily certbot renew check</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>Residual Risks</h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Risk</th>
+<th>Severity</th>
+<th>Accepted By</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RR-01</td>
+<td>Single SQLite writer is a bottleneck</td>
+<td>Low</td>
+<td>Architecture Lead</td>
+<td>Design choice; escape hatch to PG exists</td>
+</tr>
+<tr>
+<td>RR-02</td>
+<td>Isso comment system is 3rd-party Go</td>
+<td>Low</td>
+<td>Security Lead</td>
+<td>Isolated process, no DB access</td>
+</tr>
+<tr>
+<td>RR-03</td>
+<td>Let's Encrypt outbound ACME traffic</td>
+<td>Low</td>
+<td>Security Lead</td>
+<td>Required for TLS; ACME pinned to LE CAs</td>
+</tr>
+<tr>
+<td>RR-06</td>
+<td>IndexNow submissions trust the configured key/host</td>
+<td>Low</td>
+<td>Operator</td>
+<td><code>pingIndexNow</code> is mode-aware (suppressed in <code>read-only</code>/<code>quarantined</code>/<code>maintenance</code>) and journals success/failure/suppression, but the IndexNow key is operator-supplied and not rotated automatically.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>Review Log</h2>
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th>Reviewer</th>
+<th>Changes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-06-12</td>
+<td>@johalputt</td>
+<td>Initial threat model (v1.0)</td>
+</tr>
+<tr>
+<td>2026-06-14</td>
+<td>@johalputt</td>
+<td>Added RR-05 (federation HTTP-signature gap) and RR-06 (IndexNow governance) after code audit</td>
+</tr>
+</tbody>
+</table>

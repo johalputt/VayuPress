@@ -31,11 +31,9 @@ import (
 	"unicode"
 
 	"github.com/microcosm-cc/bluemonday"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
-	goldparser "github.com/yuin/goldmark/parser"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/markdown"
 )
 
 // runMigrate is the entry point for `vayupress migrate <subcommand> [flags]`.
@@ -293,11 +291,6 @@ type mdDoc struct {
 	rawBody string
 }
 
-var goldMD = goldmark.New(
-	goldmark.WithExtensions(extension.GFM),
-	goldmark.WithParserOptions(goldparser.WithAutoHeadingID()),
-)
-
 func parseMDFile(path string) (*mdDoc, error) {
 	data, err := os.ReadFile(path) //nosec G703 -- path is an operator-supplied CLI argument (vayupress migrate); the operator already controls the host filesystem
 	if err != nil {
@@ -335,7 +328,7 @@ func parseMDFile(path string) (*mdDoc, error) {
 	}
 
 	var htmlBuf bytes.Buffer
-	if err := goldMD.Convert(body, &htmlBuf); err != nil {
+	if err := markdown.Document.Convert(body, &htmlBuf); err != nil {
 		return nil, fmt.Errorf("convert: %w", err)
 	}
 

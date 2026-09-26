@@ -1,0 +1,256 @@
+<h1>VayuPress Release Process</h1>
+<p><strong>Version</strong>: 1.0.0 (Prompt 8 — Release Engineering)<br>
+<strong>Release cadence</strong>: Feature releases quarterly; patch releases as needed<br>
+<strong>Release Manager role</strong>: See <code>docs/MAINTAINERS.md</code></p>
+<hr>
+<h2>Versioning policy — micro by default, roll over at 99</h2>
+<p>Every release bumps the third (micro) segment, however large the change:
+<code>v3.13.96</code> → <code>v3.13.97</code>. Size never decides the bump; only the rollover does.
+Each segment counts 0–99:</p>
+<ul>
+<li>micro at 99 → the next release bumps the minor and resets micro:
+<code>v3.13.99</code> → <code>v3.14.0</code>;</li>
+<li>minor at 99 as micro rolls over → the next release bumps the major and
+resets both: <code>v3.99.99</code> → <code>v4.0.0</code>.</li>
+</ul>
+<p>A release changes three files in one commit, so they always agree:
+<code>.release-version</code> (which starts the tag-release workflow),
+<code>var Version</code> in <code>cmd/vayupress/main.go</code> (no <code>v</code> prefix), and a matching
+section in <code>CHANGELOG.md</code>.</p>
+<h2>Release Types</h2>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Trigger</th>
+<th>Examples</th>
+<th>Branch</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Micro</td>
+<td>Every release</td>
+<td>v3.13.1, v3.13.2</td>
+<td>main</td>
+</tr>
+<tr>
+<td>Minor</td>
+<td>Micro rolls over from 99</td>
+<td>v3.13.99 → v3.14.0</td>
+<td>main</td>
+</tr>
+<tr>
+<td>Major</td>
+<td>Minor rolls over from 99</td>
+<td>v3.99.99 → v4.0.0</td>
+<td>main</td>
+</tr>
+</tbody>
+</table>
+<p>Security patches skip RFC and go directly to release after Security Lead review.</p>
+<hr>
+<h2>Pre-Release Checklist</h2>
+<h3>Code Freeze (T-7 days)</h3>
+<ul>
+<li><input disabled="" type="checkbox"> All planned issues closed or deferred</li>
+<li><input disabled="" type="checkbox"> No open P1/P2 bugs</li>
+<li><input disabled="" type="checkbox"> All ADRs for this release accepted (not draft)</li>
+<li><input disabled="" type="checkbox"> <code>go mod tidy</code> run, go.sum committed</li>
+</ul>
+<h3>CI Gate (must be green)</h3>
+<ul>
+<li><input disabled="" type="checkbox"> <code>ci-pass</code> job green on release commit</li>
+<li><input disabled="" type="checkbox"> <code>security-pass</code> job green</li>
+<li><input disabled="" type="checkbox"> Binary size &lt; 45 MB (<code>make check-size</code>)</li>
+<li><input disabled="" type="checkbox"> Memory &lt; 800 MB idle (smoke test)</li>
+<li><input disabled="" type="checkbox"> JS bundle &lt; 50 KB gzip</li>
+<li><input disabled="" type="checkbox"> Race detector: no races (<code>make test-race</code>)</li>
+<li><input disabled="" type="checkbox"> <code>govulncheck</code>: zero known vulnerabilities</li>
+<li><input disabled="" type="checkbox"> <code>golangci-lint</code>: zero errors</li>
+<li><input disabled="" type="checkbox"> <code>go-licenses check</code>: all licenses approved</li>
+</ul>
+<h3>Documentation (T-3 days)</h3>
+<ul>
+<li><input disabled="" type="checkbox"> <code>CHANGELOG.md</code> entry written (version, date, ADRs, breaking changes)</li>
+<li><input disabled="" type="checkbox"> <code>docs/API-REFERENCE.md</code> updated for any new/changed endpoints</li>
+<li><input disabled="" type="checkbox"> <code>docs/INSTALLATION.md</code> updated for any new env vars or config</li>
+<li><input disabled="" type="checkbox"> <code>scripts/README.md</code> updated with new ADR table entries</li>
+<li><input disabled="" type="checkbox"> Deploy script version string bumped (e.g., <code>v1.0.0-p9</code>)</li>
+</ul>
+<h3>Security Review (T-2 days)</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Security Lead has reviewed any auth/crypto/network changes</li>
+<li><input disabled="" type="checkbox"> <code>docs/THREAT-MODEL.md</code> updated if new entry points or assets added</li>
+<li><input disabled="" type="checkbox"> <code>SECURITY.md</code> advisory section updated if relevant</li>
+<li><input disabled="" type="checkbox"> Ethical Review Board sign-off (if Prompt 12 applies)</li>
+</ul>
+<hr>
+<h2>Release Steps</h2>
+<h3>1. Tag the Release</h3>
+<pre><code class="language-bash"># Ensure main is clean and CI is green
+git checkout main
+git pull origin main
+
+# Create annotated tag
+git tag -a v1.X.Y -m &quot;VayuPress v1.X.Y — &lt;one-line summary&gt;
+
+ADRs: ADR-XXXX
+Constitution: Prompts 1-12 compliant
+&quot;
+
+# Push tag
+git push origin v1.X.Y
+</code></pre>
+<h3>2. Build Release Artifact</h3>
+<pre><code class="language-bash"># Reproducible build
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go build -ldflags=&quot;-s -w -X main.Version=v1.X.Y&quot; \
+  -trimpath -o vayupress-linux-amd64 ./main.go
+
+# Verify size
+ls -lh vayupress-linux-amd64
+
+# Compute checksum
+sha256sum vayupress-linux-amd64 &gt; vayupress-linux-amd64.sha256
+
+# Also hash the deploy script
+sha256sum scripts/deploy-vayupress.sh &gt; deploy-vayupress.sh.sha256
+</code></pre>
+<h3>3. Create GitHub Release</h3>
+<p>Create a release on GitHub with:</p>
+<ul>
+<li>Tag: <code>v1.X.Y</code></li>
+<li>Title: <code>VayuPress v1.X.Y — &lt;summary&gt;</code></li>
+<li>Body: copy the CHANGELOG.md entry for this version</li>
+<li>Attachments: binary + sha256, deploy script + sha256</li>
+</ul>
+<h3>4. Update CHANGELOG.md</h3>
+<pre><code class="language-markdown">## [v1.X.Y] — YYYY-MM-DD
+
+### Summary
+&lt;brief description&gt;
+
+### Governance
+- Constitution: v6.0 Prompts 1–12 compliant
+- New ADRs: ADR-XXXX — &lt;title&gt;
+
+### Changes
+- ...
+
+### Security
+- ...
+
+### SHA-256 Checksums
+- `vayupress-linux-amd64`: `&lt;hash&gt;`
+- `deploy-vayupress.sh`: `&lt;hash&gt;`
+</code></pre>
+<h3>5. Post-Release</h3>
+<ul>
+<li><input disabled="" type="checkbox"> Announce on community channels (<a href="mailto:releases@vayupress.com">releases@vayupress.com</a>)</li>
+<li><input disabled="" type="checkbox"> Update <code>scripts/README.md</code> version reference</li>
+<li><input disabled="" type="checkbox"> Close the GitHub milestone</li>
+<li><input disabled="" type="checkbox"> Open next milestone</li>
+</ul>
+<hr>
+<h2>Hotfix Process</h2>
+<p>For P1 security or critical bug fixes:</p>
+<pre><code class="language-bash"># Branch from main (which is already at latest release)
+git checkout main
+git pull origin main
+git checkout -b hotfix/v1.X.Y-description
+
+# Fix the issue
+# ...commit...
+
+# Fast-track review: Security Lead + BDFL (2 person minimum)
+# CI must still be green — no exceptions
+
+# Merge to main
+git checkout main
+git merge --no-ff hotfix/v1.X.Y-description
+
+# Tag immediately
+git tag -a v1.X.Y -m &quot;Hotfix: &lt;description&gt;&quot;
+git push origin main v1.X.Y
+</code></pre>
+<p>Security hotfixes: coordinate via <a href="mailto:security@vayupress.com">security@vayupress.com</a> before any public disclosure.</p>
+<hr>
+<h2>Semantic Versioning Rules</h2>
+<p>VayuPress follows <a href="https://semver.org/">SemVer 2.0</a>:</p>
+<table>
+<thead>
+<tr>
+<th>Change</th>
+<th>Version bump</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Backward-compatible bug fix</td>
+<td>Patch (0.0.X)</td>
+</tr>
+<tr>
+<td>New endpoint (backward compatible)</td>
+<td>Minor (0.X.0)</td>
+</tr>
+<tr>
+<td>New env var with default</td>
+<td>Minor (0.X.0)</td>
+</tr>
+<tr>
+<td>Removed endpoint</td>
+<td>Major (X.0.0) — RFC required</td>
+</tr>
+<tr>
+<td>Changed DB schema (breaking)</td>
+<td>Major (X.0.0) — RFC required</td>
+</tr>
+<tr>
+<td>New required env var</td>
+<td>Major (X.0.0)</td>
+</tr>
+</tbody>
+</table>
+<p>Breaking changes without a major version bump violate the governance contract.</p>
+<hr>
+<h2>Version String Policy</h2>
+<p>The embedded Go binary version string must match the git tag exactly:</p>
+<pre><code class="language-go">var Version = &quot;dev&quot; // overridden at build time via -ldflags
+</code></pre>
+<p>Build command must pass: <code>-X main.Version=v1.X.Y</code></p>
+<p>The deploy script version string (<code>v1.0.0-p9</code>) includes the prompt level suffix for governance traceability.</p>
+<hr>
+<h2>Release Schedule</h2>
+<table>
+<thead>
+<tr>
+<th>Quarter</th>
+<th>Target</th>
+<th>Focus</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q1</td>
+<td>v1.1.0</td>
+<td>Performance (Prompt 2)</td>
+</tr>
+<tr>
+<td>Q2</td>
+<td>v1.2.0</td>
+<td>Platform evolution (Prompt 4)</td>
+</tr>
+<tr>
+<td>Q3</td>
+<td>v1.3.0</td>
+<td>Community governance (Prompt 11)</td>
+</tr>
+<tr>
+<td>Q4</td>
+<td>v2.0.0</td>
+<td>(if breaking changes needed)</td>
+</tr>
+</tbody>
+</table>
+<p>Patch releases happen outside this schedule as needed.</p>
