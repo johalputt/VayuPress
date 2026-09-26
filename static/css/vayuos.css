@@ -3110,7 +3110,6 @@
 
 .vp-os .upd-notes__lead { display: block; font-weight: 600; color: var(--text, var(--on-accent)); }
 
-.vp-os .upd-notes__rest { display: block; opacity: .85; }
 
 .vp-os .upd-notes__more { margin-top: .8rem; padding-top: .7rem; border-top: 1px solid var(--border, var(--border-2)); font-size: 13px; opacity: .8; }
 

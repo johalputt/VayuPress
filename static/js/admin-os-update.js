@@ -179,8 +179,11 @@
         var it = sec.items[i];
         var li = document.createElement('li');
         li.className = 'upd-notes__item';
-        li.appendChild(withClass('span', 'upd-notes__lead', it.lead));
-        if (it.rest) { li.appendChild(withClass('span', 'upd-notes__rest', truncate(it.rest, 180))); }
+        // Each change's headline only, itself bounded: the body is external text
+        // of any length, and on show it made this card a page of prose (1,219
+        // characters for one release, past the console's calm-page limit).
+        // The full notes are one link away.
+        li.appendChild(withClass('span', 'upd-notes__lead', truncate(it.lead, 120)));
         list.appendChild(li);
         shown++;
       }
