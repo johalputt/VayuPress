@@ -18,7 +18,10 @@ async function settle(page, path) {
   await page.evaluate(() => document.fonts.ready);
 }
 
-// What moves by itself on a fresh install.
+// What moves by itself on a fresh install: clocks, counts, the version, the
+// live status, and any sentence that says how long ago something was. Home's
+// date, its clock and its install facts (version, uptime, response time)
+// change on their own too.
 function masks(page) {
   return [
     page.locator("time"),
@@ -27,7 +30,11 @@ function masks(page) {
     page.locator(".sa-rail__foot"),
     page.locator(".sa-count"),
     page.locator(".sa-appside__count"),
-    page.locator("[data-live]"),
+    page.locator(".sa-home__date"),
+    page.locator(".sa-home__state"),
+    page.locator('section[aria-labelledby="sa-install"]'),
+    page.getByText(/\b\d+ (second|minute|hour|day)s? ago\b/),
+    page.getByText(/Now: \d{4}-\d{2}-\d{2} \d{2}:\d{2}/),
   ];
 }
 

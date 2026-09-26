@@ -1050,8 +1050,8 @@ func osNotifBell(s *osSettings) string {
 		list.WriteString(`<div class="topbar-notif__empty">Nothing needs you, and nothing has happened in the last day.</div>`)
 	}
 	return `<div class="topbar-notif" data-notif data-notif-needs="` + strconv.Itoa(needs) + `">
-  <button type="button" class="btn--icon topbar-notif__btn` + activeCls + `" data-notif-toggle aria-haspopup="true" aria-expanded="false" aria-label="Notifications">
-    ` + iconBell + badge + `
+  <button type="button" class="btn--icon topbar-notif__btn` + activeCls + `" data-notif-toggle aria-haspopup="true" aria-expanded="false">
+    ` + iconBell + `<span class="vp-sr-only">Notifications</span>` + badge + `
   </button>
   <div class="topbar-notif__panel" data-notif-panel hidden>
     <div class="topbar-notif__head"><span>Notifications</span>` + markAll + `</div>
@@ -2716,7 +2716,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
       <button class="btn btn--ghost btn--sm" type="submit">Filter</button>
       <a class="btn btn--ghost btn--sm" href="/os/posts">Clear</a>
     </form>
-    <div class="seg-filter" role="tablist" aria-label="Filter by status">
+    <div class="seg-filter" role="group" aria-label="Filter by status">
       <a class="seg-btn` + osActiveCls(status == "all") + `" href="` + osPostsHref("all", q, from, to, period, 1) + `">All <span class="muted">` + strconv.Itoa(allCount) + `</span></a>
       <a class="seg-btn` + osActiveCls(status == "published") + `" href="` + osPostsHref("published", q, from, to, period, 1) + `">Published <span class="muted">` + strconv.Itoa(published) + `</span></a>
       <a class="seg-btn` + osActiveCls(status == "draft") + `" href="` + osPostsHref("draft", q, from, to, period, 1) + `">Drafts <span class="muted">` + strconv.Itoa(drafts) + `</span></a>
@@ -2959,7 +2959,7 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 <p class="page-sub">Moderate the conversation on your posts — approve, reply to or remove comments before they go public.</p>
 <div class="card">
   <div class="toolbar-row">
-    <div class="seg-filter" role="tablist" aria-label="Filter by status">
+    <div class="seg-filter" role="group" aria-label="Filter by status">
       <button type="button" class="seg-btn is-active" data-comment-filter="all">All <span class="muted">` + strconv.Itoa(len(all)) + `</span></button>
       <button type="button" class="seg-btn" data-comment-filter="pending">Pending <span class="muted" id="cc-pending">` + strconv.Itoa(pending) + `</span></button>
       <button type="button" class="seg-btn" data-comment-filter="approved">Approved <span class="muted" id="cc-approved">` + strconv.Itoa(approved) + `</span></button>

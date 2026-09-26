@@ -80,8 +80,14 @@ func TestOSNotifBell(t *testing.T) {
 func TestTopbarNotificationCentre(t *testing.T) {
 	out := adminOSLayout("N", "Dashboard", "dashboard", &osSettings{SiteName: "Demo"}, htmpl.HTML("<p>x</p>"))
 	assertCSPSafe(t, "topbar/notif", out)
-	if !strings.Contains(out, `data-notif`) || !strings.Contains(out, "aria-label=\"Notifications\"") {
-		t.Error("topbar must host the notification centre")
+	// The bell is named by its own content — "Notifications" and the count
+	// beside it — so the name a screen reader hears always carries the badge
+	// a sighted operator sees (an aria-label left the count out).
+	if !strings.Contains(out, `data-notif`) || !strings.Contains(out, `<span class="vp-sr-only">Notifications</span>`) {
+		t.Error("topbar must host the notification centre, named Notifications")
+	}
+	if strings.Contains(out, `data-notif-toggle aria-haspopup="true" aria-expanded="false" aria-label=`) {
+		t.Error("the bell's aria-label hides its count from its name")
 	}
 	// The old topbar New post button must be gone. Matched without regard to
 	// case, so relabelling it cannot make this pass while the button stays.

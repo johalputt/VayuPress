@@ -574,7 +574,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 <header class="sa-sysbar" role="banner">
   <button type="button" class="menu-toggle sa-iconbtn" data-action="toggle-sidebar" aria-label="Show or hide the app list" aria-controls="vp-sidebar" aria-expanded="true">` + saIcon("list") + `</button>
   ` + saBrand(s, home, siteName) + `
-  <button type="button" class="topbar-cmd sa-search" aria-label="Search or run a command">` + saIcon("search") + ` <span class="sa-search__text">Search or run a command</span><kbd>⌘K</kbd></button>
+  <button type="button" class="topbar-cmd sa-search" aria-keyshortcuts="Control+K Meta+K">` + saIcon("search") + ` <span class="sa-search__text">Search or run a command</span><kbd aria-hidden="true">⌘K</kbd></button>
   <div class="sa-status" role="status" aria-label="System status">` + modeHTML + `<span class="sa-sep" aria-hidden="true"></span>` + worldHTML + `</div>
   ` + osNotifBell(s) + `
   ` + account + `
@@ -681,7 +681,7 @@ func saBrand(s *osSettings, home, siteName string) string {
 		label = s.Scope.Host
 	}
 	if len(s.Sites) == 0 {
-		return `<a class="sa-mark" href="` + home + `" aria-label="VayuOS home">` + saMark() + `<span class="sa-mark__site">` + html.EscapeString(label) + `</span></a>`
+		return `<a class="sa-mark" href="` + home + `">` + saMark() + `<span class="sa-mark__site">` + html.EscapeString(label) + `</span></a>`
 	}
 	item := func(href, icon, text, meta string, current bool) string {
 		cur := ""

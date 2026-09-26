@@ -5634,7 +5634,7 @@
 .vp-os[data-ui="still-air"] .sa-rail__foot { margin-top: auto; display: flex; flex-direction: column; gap: 1px; padding-top: var(--space-4); }
 .vp-os[data-ui="still-air"] .sa-rail__version {
   display: flex; justify-content: space-between; padding: var(--space-3) 10px 0;
-  font: var(--type-meta); color: var(--text-4); font-variant-numeric: tabular-nums;
+  font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums;
 }
 /* Collapsed to icons: by the toggle, or by default where the rail and an app's
    section list together would take 440px of a laptop screen and leave tables
@@ -6607,7 +6607,8 @@
   .vp-os[data-ui="still-air"] .sa-sysbar { gap: var(--space-3); padding: 0 var(--space-3); }
   .vp-os[data-ui="still-air"] .sa-sysbar .menu-toggle { display: none; }
   .vp-os[data-ui="still-air"] .sa-search { flex: 0 0 30px; width: 30px; padding: 0; justify-content: center; margin-left: auto; margin-right: 0; border: 0; background: none; }
-  .vp-os[data-ui="still-air"] .sa-search__text,
+  /* The words stay for a screen reader: they are the button's name. */
+  .vp-os[data-ui="still-air"] .sa-search__text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .vp-os[data-ui="still-air"] .sa-search kbd,
   .vp-os[data-ui="still-air"] .sa-status .sa-sep,
   .vp-os[data-ui="still-air"] .sa-world { display: none; }
