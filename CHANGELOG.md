@@ -6,7 +6,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.17.81] — 2026-09-26
+
+A fix release, shipped on its own under the exception for a live breakage.
+On johal.in the Shield page answered 502, and the Tor world gave no way back
+to Clearnet from the system bar. The render ceiling, already on main, ships
+with them.
 
 ### Fixed
 
