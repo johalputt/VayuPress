@@ -6,6 +6,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.80] — 2026-09-26
+
+A fix release, shipped on its own under the exception for a live breakage.
+With 3.17.79 installed, johal.in's console still answered 502.
+
+### Fixed
+
+- **Article pages were slow on a large site, and the console paid for it.**
+  The related-posts list joined every post that shared any of the page's
+  tags to the articles table, then sorted them all, and only then kept four.
+  On a site with hundreds of thousands of posts, a common tag meant tens of
+  thousands of rows read for each page not yet cached. After the page cache
+  was cleared, crawlers kept every database read connection busy with it,
+  and console pages waited out the 30-second limit. It now reads only each
+  tag's newest few posts from its index. On a test database of 60,000 posts,
+  with one tag on 45,000 of them, the list went from 1.4 s to under 1 ms
+  and returned the same posts.
+- **The update page could show a page of release notes.** It now lists each
+  change's headline, with the full changelog one link away.
+
 ## [3.17.79] — 2026-09-26
 
 A fix release, shipped on its own under the exception for a live breakage. On
