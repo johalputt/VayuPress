@@ -1,0 +1,87 @@
+name: Boot VayuPress for browser tests
+description: >
+  Builds the server with go.mod's toolchain, starts it with one seeded article,
+  installs Playwright's Chromium and starts the header-injecting proxy, so every
+  job that drives a browser boots the same install the same way. Expects the
+  job's env to carry API_KEY, DB_PATH, CACHE_DIR, MEDIA_DIR, TMP_DIR, PORT and
+  DOMAIN.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      with:
+        go-version: 'stable'
+
+    - name: Pin the Go toolchain to go.mod
+      # go.mod's toolchain line is the one source for the compiler that tests,
+      # scans and builds releases.
+      shell: bash
+      run: |
+        TC=$(sed -n 's/^toolchain //p' go.mod)
+        [ -n "$TC" ] || { echo "::error::go.mod has no toolchain directive"; exit 1; }
+        echo "GOTOOLCHAIN=$TC" >> "$GITHUB_ENV"
+
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      with:
+        node-version: '20'
+
+    - name: Install Playwright + Chromium
+      shell: bash
+      working-directory: tests/e2e
+      run: |
+        npm install
+        npx playwright install --with-deps chromium
+
+    - name: Build VayuPress
+      shell: bash
+      run: |
+        mkdir -p /tmp/vayupress/cache /tmp/vayupress/tmp /tmp/vayupress/media
+        CGO_ENABLED=1 go build -o /tmp/vayupress/vayupress ./cmd/vayupress/
+
+    - name: Start server
+      shell: bash
+      run: |
+        /tmp/vayupress/vayupress > /tmp/vayupress/server.log 2>&1 &
+        echo $! > /tmp/vayupress/server.pid
+        for i in $(seq 1 90); do
+          if curl -fsS http://localhost:8080/health/live >/dev/null 2>&1; then
+            echo "server up"; exit 0
+          fi
+          sleep 1
+        done
+        echo "server did not start"; cat /tmp/vayupress/server.log; exit 1
+
+    - name: Seed an article
+      shell: bash
+      run: |
+        curl -fsS -X POST http://localhost:8080/api/v1/articles \
+          -H "X-API-Key: $API_KEY" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "title": "Hello VayuPress",
+            "slug": "hello-vayupress",
+            "content": "<p>A sovereign, single-VPS publishing engine. Seed content for E2E.</p>",
+            "tags": ["welcome", "governance"]
+          }'
+        for i in $(seq 1 30); do
+          if curl -fsS http://localhost:8080/api/v1/articles/hello-vayupress >/dev/null 2>&1; then
+            echo "article published"; exit 0
+          fi
+          sleep 1
+        done
+        echo "article never became visible"; cat /tmp/vayupress/server.log; exit 1
+
+    - name: Start header-injecting proxy
+      shell: bash
+      run: |
+        LISTEN=:8088 UPSTREAM=http://localhost:8080 API_KEY=$API_KEY \
+          go run ./scripts/screenshot-proxy > /tmp/vayupress/proxy.log 2>&1 &
+        echo $! > /tmp/vayupress/proxy.pid
+        for i in $(seq 1 20); do
+          if curl -fsS http://localhost:8088/health/live >/dev/null 2>&1; then
+            echo "proxy up"; exit 0
+          fi
+          sleep 1
+        done
+        echo "proxy did not start"; cat /tmp/vayupress/proxy.log; exit 1
