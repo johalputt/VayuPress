@@ -353,6 +353,16 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 			atomic.AddInt64(&metrics.MetricCacheMisses, 1)
 		}
 	}
+	// Every page rendered here from the database takes a render slot: page 1 on
+	// a miss, and the deeper pages, which have no cache file and are what a
+	// crawler walks. The warmer's own render of page 1 is exempt.
+	if !warm {
+		release, ok := admitColdRender(w, r)
+		if !ok {
+			return
+		}
+		defer release()
+	}
 
 	var total int
 	// Read pool + index-friendly predicates. `COALESCE(status,'published')` /
@@ -451,6 +461,13 @@ func (a *App) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 		q = q[:120]
 	}
 	var hits []render.SearchHit
+	if q != "" {
+		release, ok := admitColdRender(w, r)
+		if !ok {
+			return
+		}
+		defer release()
+	}
 	if q != "" && a.search != nil {
 		ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
 		defer cancel()
@@ -589,6 +606,14 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	}
 	if !warm {
 		atomic.AddInt64(&metrics.MetricCacheMisses, 1)
+		// An operator previewing is not a crawler: never held back.
+		if !isAdmin {
+			release, ok := admitColdRender(w, r)
+			if !ok {
+				return
+			}
+			defer release()
+		}
 	}
 	var art dbpkg.Article
 	var tagsStr string

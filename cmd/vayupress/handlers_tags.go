@@ -27,6 +27,13 @@ import (
 // disk-cached so a newly introduced tag appears at once; a short Cache-Control
 // still lets a CDN or browser hold it briefly. Drafts never contribute.
 func (a *App) handleTagIndex(w http.ResponseWriter, r *http.Request) {
+	// No cache file: every request counts every tag link.
+	release, ok := admitColdRender(w, r)
+	if !ok {
+		return
+	}
+	defer release()
+
 	var infos []render.TagInfo
 	var totalPosts int
 
@@ -136,6 +143,11 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	atomic.AddInt64(&metrics.MetricCacheMisses, 1)
+	release, ok := admitColdRender(w, r)
+	if !ok {
+		return
+	}
+	defer release()
 
 	articles, total := a.articlesByTag(r.Context(), tag, 200, scope, scoped)
 	if total == 0 {

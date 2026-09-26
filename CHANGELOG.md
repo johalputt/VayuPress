@@ -6,6 +6,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Crawlers can no longer take the console down with uncached pages.**
+  Every public page built from the database now waits for one of a fixed
+  number of render slots: a post or home page without a cache file, the
+  deeper feed pages, a tag page, the topic index and a search. The slots are
+  a third of the database read connections, at most two per CPU, so the rest
+  stay free for cached pages and the console however hard the site is
+  crawled. A visitor who finds no slot within 5 seconds is asked to retry in
+  30, which crawlers honour. Cached pages, the background warmer and your own
+  previews never wait.
+
 ## [3.17.80] — 2026-09-26
 
 A fix release, shipped on its own under the exception for a live breakage.
