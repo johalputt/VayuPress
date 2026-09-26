@@ -15,6 +15,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   which on a large site is millions of rows. The counts are now kept for 5
   minutes, the time the page already told browsers to keep it, and counted
   again in the background while the previous counts keep serving.
+- **A stalled database connection is now seen while it is stalled.** The
+  watch on the write connection only counted time a caller had finished
+  waiting, so one caller stuck behind a busy connection counted as nothing
+  until it got through. It now also counts a pool that stays full while a
+  caller waits.
+
+### Added
+
+- **The read connections are watched like the write connection.** System ›
+  Monitoring has a Read connections section: stalls since start, the worst
+  one, the time callers spent queued, and how many visitors the render
+  ceiling asked to retry. Five seconds into a stall a snapshot of what every
+  connection is doing is saved beside the database, naming the query that
+  holds them. `/health/db` reports the read pool as `reader`.
 
 ## [3.17.81] — 2026-09-26
 

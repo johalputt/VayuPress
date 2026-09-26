@@ -135,6 +135,7 @@ func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
 	stallState := dbpkg.WriteStall()
 	recState := a.analytics.CollectorStats()
 	writer := writeStallStats(stallState, recState) + writeStallCard(stallState, recState)
+	reader := readStallSection(dbpkg.ReadStall(), coldRenderShed.Load())
 
 	// ── Governance budgets ───────────────────────────────────────────────────
 	rows := ""
@@ -180,7 +181,7 @@ func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
   <h1>Monitoring</h1>
   <div class="page-actions">` + monUpdatedStamp(time.Now(), a.nowSnapAge(), false) + `</div>
 </div>
-<p class="page-sub">A live view of your running install — performance, background jobs, storage and budgets, refreshed as you watch.</p>` + poller + modeCard + perf + storageJobs + writer + budgetsCard + consoles
+<p class="page-sub">A live view of your running install — performance, background jobs, storage and budgets, refreshed as you watch.</p>` + poller + modeCard + perf + storageJobs + writer + reader + budgetsCard + consoles
 
 	writeOSHTML(w, r, adminOSLayout(nonce, "Monitoring", "monitoring", cfg, htmpl.HTML(body)))
 }

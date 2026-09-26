@@ -47,7 +47,7 @@ func shortDur(d time.Duration) string {
 }
 
 // writeStallStats returns the stat tiles for the writer and the view recorder.
-func writeStallStats(st dbpkg.WriteStallState, rec analytics.CollectorState) string {
+func writeStallStats(st dbpkg.StallState, rec analytics.CollectorState) string {
 	stallLabel := "none since boot"
 	stallValue := "0"
 	if st.Total > 0 {
@@ -90,8 +90,36 @@ func writeStallStats(st dbpkg.WriteStallState, rec analytics.CollectorState) str
 		`</div>`
 }
 
+// stallHistoryTable lists a pool's recent stalls, newest first.
+func stallHistoryTable(recent []dbpkg.StallEvent, none string) string {
+	rows := ""
+	for i := len(recent) - 1; i >= 0; i-- {
+		e := recent[i]
+		dump := `<span class="muted text-xs">—</span>`
+		if e.Dump != "" {
+			// The path, not the contents. A goroutine dump is an operator's
+			// artefact; the panel says it exists and where.
+			dump = `<code class="text-xs">` + html.EscapeString(e.Dump) + `</code>`
+		}
+		rows += `<tr>
+  <td class="row-title">` + html.EscapeString(e.Start.UTC().Format("2006-01-02 15:04:05")) + ` UTC</td>
+  <td class="muted text-sm">` + html.EscapeString(shortDur(e.Duration)) + `</td>
+  <td class="muted text-sm">` + strconv.FormatInt(e.Waits, 10) + `</td>
+  <td class="muted text-sm">` + html.EscapeString(shortDur(e.Blocked)) + `</td>
+  <td>` + dump + `</td>
+</tr>`
+	}
+	if rows == "" {
+		rows = `<tr><td colspan="5" class="muted text-sm">` + html.EscapeString(none) + `</td></tr>`
+	}
+	return `<div class="table-wrap"><table class="table">
+    <thead><tr><th>Started</th><th>Lasted</th><th>Callers delayed</th><th>Queued</th><th>Snapshot</th></tr></thead>
+    <tbody>` + rows + `</tbody>
+  </table></div>`
+}
+
 // writeStallCard renders the explanatory card and the stall history.
-func writeStallCard(st dbpkg.WriteStallState, rec analytics.CollectorState) string {
+func writeStallCard(st dbpkg.StallState, rec analytics.CollectorState) string {
 	out := `<div class="section-head"><div class="section-head__title">Write connection</div>` +
 		`<div class="section-head__hint">SQLite has one writer, so everything that writes shares a single connection. ` +
 		`When something holds it, other writes queue — this is where that shows up.</div></div>`
@@ -114,37 +142,13 @@ func writeStallCard(st dbpkg.WriteStallState, rec analytics.CollectorState) stri
 			`card is being measured. This is a fault in the install, not a quiet install.</span></div>`
 	}
 
-	rows := ""
-	for i := len(st.Recent) - 1; i >= 0; i-- {
-		e := st.Recent[i]
-		dump := `<span class="muted text-xs">—</span>`
-		if e.Dump != "" {
-			// The path, not the contents. A goroutine dump is an operator's
-			// artefact; the panel says it exists and where.
-			dump = `<code class="text-xs">` + html.EscapeString(e.Dump) + `</code>`
-		}
-		rows += `<tr>
-  <td class="row-title">` + html.EscapeString(e.Start.UTC().Format("2006-01-02 15:04:05")) + ` UTC</td>
-  <td class="muted text-sm">` + html.EscapeString(shortDur(e.Duration)) + `</td>
-  <td class="muted text-sm">` + strconv.FormatInt(e.Waits, 10) + `</td>
-  <td class="muted text-sm">` + html.EscapeString(shortDur(e.Blocked)) + `</td>
-  <td>` + dump + `</td>
-</tr>`
-	}
-	if rows == "" {
-		rows = `<tr><td colspan="5" class="muted text-sm">No write stall has been recorded since this ` +
-			`install last started.</td></tr>`
-	}
 	out += `<div class="card mb-6">
   <div class="settings-block-title">Recent write stalls</div>
   <p class="text-sm muted">A stall is a period during which a caller was waiting for the write connection
   continuously. Brief contention is normal on a busy install and is not listed here. "Queued" is the total
   time callers spent waiting, summed across all of them, so it exceeds the stall's own length whenever more
   than one was affected.</p>
-  <div class="table-wrap"><table class="table">
-    <thead><tr><th>Started</th><th>Lasted</th><th>Callers delayed</th><th>Queued</th><th>Snapshot</th></tr></thead>
-    <tbody>` + rows + `</tbody>
-  </table></div>
+  ` + stallHistoryTable(st.Recent, "No write stall has been recorded since this install last started.") + `
 </div>`
 
 	// The recorder's own state, because it is the biggest single writer on a

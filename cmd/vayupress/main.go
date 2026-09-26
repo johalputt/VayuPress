@@ -1512,7 +1512,9 @@ func main() {
 	// anything holding it makes every other writer queue — and until this existed
 	// there was no way, from inside the product, to see that queue or to know it
 	// had happened. It samples DBStats and takes no connection of its own, which
-	// is what lets it answer during the incident it describes.
+	// is what lets it answer during the incident it describes. The read pool is
+	// watched the same way: crawler renders filling it were the 2026-09-26
+	// outage, and the writer read healthy throughout.
 	dbpkg.StartStallWatch(nil)
 	logging.LogInfo("main", fmt.Sprintf("listening on :%s (v%s) — %s", config.Cfg.Port, Version, how))
 	if err := srv.Serve(ln); err != http.ErrServerClosed {

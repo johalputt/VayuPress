@@ -93,6 +93,24 @@ func TestHealthDBReportsContentionInsteadOfHanging(t *testing.T) {
 	}
 }
 
+// The read pool is reported beside the writer. On 2026-09-26 the writer read
+// healthy throughout an outage that was entirely the read pool.
+func TestHealthDBReportsTheReadPool(t *testing.T) {
+	body := answersWithin(t, "/health/db", HandleHealthDB, healthDBProbe+5*time.Second)
+	if body == nil {
+		t.Fatal("no body")
+	}
+	r, ok := body["reader"].(map[string]interface{})
+	if !ok {
+		t.Fatal("the response carries no read-pool detail; the pool whose exhaustion was the whole outage is invisible to a monitor")
+	}
+	for _, k := range []string{"in_use", "max_open", "waits_total", "wait_seconds", "stalled_now", "watching"} {
+		if _, present := r[k]; !present {
+			t.Errorf("the read-pool report omits %q", k)
+		}
+	}
+}
+
 // Readiness must go false — and say why — rather than hanging. A probe that
 // times out looks identical to a dead process to every orchestrator there is.
 func TestHealthReadyFailsFastAndNamesTheReason(t *testing.T) {

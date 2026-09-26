@@ -120,6 +120,20 @@ func HandleHealthDB(w http.ResponseWriter, r *http.Request) {
 			"watching":          stall.Watching,
 		},
 	}
+	// The read pool, which the console and every uncached page share. Full of
+	// crawler renders, it was the whole of the 2026-09-26 outage while the
+	// writer above read healthy.
+	rs := dbpkg.ReadStall()
+	body["reader"] = map[string]interface{}{
+		"in_use":            rs.InUse,
+		"max_open":          rs.MaxOpen,
+		"waits_total":       rs.WaitCount,
+		"wait_seconds":      rs.WaitDuration.Seconds(),
+		"stalled_now":       rs.Stalled,
+		"stalls_since_boot": rs.Total,
+		"longest_stall_s":   rs.Longest.Seconds(),
+		"watching":          rs.Watching,
+	}
 	if stall.Current != nil {
 		body["current_stall"] = map[string]interface{}{
 			"started":         stall.Current.Start.UTC().Format(time.RFC3339),

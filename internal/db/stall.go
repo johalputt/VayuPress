@@ -2,7 +2,14 @@
 
 package db
 
-// stall.go — noticing that the single write connection is jammed, and saying so.
+// stall.go — noticing that a connection pool is jammed, and saying so.
+//
+// Two pools are watched the same way: the single write connection, and the
+// public read pool. The read pool was added after the 2026-09-26 outage on
+// johal.in: crawler renders held every read connection, and the console waited
+// out its 30-second deadline behind them. Nothing measured that queue either,
+// and the cause was found only by a goroutine dump taken by hand during the
+// fault. This file now takes that dump itself.
 //
 // # Why this exists
 //
@@ -25,13 +32,22 @@ package db
 //
 // # What counts as a stall
 //
-// Between two samples one second apart, WaitDuration can grow by at most one
-// second per waiting goroutine. If it grew by nearly a full second or more, then
-// something was queued for essentially the whole interval — the connection was
-// not merely busy, it was unavailable. That is the signal, and it is deliberately
-// a floor rather than a threshold on depth: one caller blocked for the entire
-// window is already the failure, and waiting for a crowd to form would miss the
-// case where the crowd is what the stall creates.
+// A second counts as stalled on either of two signals, because neither sees
+// every stall:
+//
+//   - WaitDuration grew by nearly a full second or more. Callers spent the
+//     whole interval queued between them. It is a floor rather than a
+//     threshold on depth: waiting for a crowd to form would miss the case
+//     where the crowd is what the stall creates.
+//   - Every connection stayed in use at every tenth-of-a-second look, and a
+//     caller queued while they were. This is the one caller stuck behind a
+//     full pool, which WaitDuration cannot see: database/sql adds a wait to
+//     it only when the wait ENDS, so a caller queued for a minute counts as
+//     nothing for that minute. A real read pool with every connection held
+//     and one caller queued read WaitCount 1, WaitDuration 0 after ten
+//     seconds (stall_test.go).
+//
+// A full pool with nobody queued is busy, not stalled.
 //
 // # What this does NOT claim
 //
@@ -42,11 +58,13 @@ package db
 // a control nobody verified.
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,6 +77,11 @@ const (
 	// mutex briefly and copies a struct.
 	stallSample = time.Second
 
+	// stallTick is how often the pool is looked at within a sample, to tell a
+	// pool that stayed full from one that was full now and then.
+	stallTick  = 100 * time.Millisecond
+	stallTicks = int(stallSample / stallTick)
+
 	// stallRatio is the fraction of a sample interval that must be spent
 	// waiting for the interval to count as stalled. Below 1.0 because timer
 	// jitter means a fully-blocked second measures slightly under a second.
@@ -68,8 +91,7 @@ const (
 	stallHistory = 20
 )
 
-// StallEvent is one period during which the write connection was continuously
-// contended.
+// StallEvent is one period during which a pool was continuously contended.
 type StallEvent struct {
 	Start    time.Time     // when contention was first observed
 	Duration time.Duration // how long it lasted (still growing if Ongoing)
@@ -87,6 +109,13 @@ type StallEvent struct {
 }
 
 type stallWatch struct {
+	// name prefixes the snapshot files, so each pool's are told apart and
+	// pruned apart.
+	name string
+	// pool is read at every sample rather than once, because the pools are
+	// opened after this package's variables are initialised.
+	pool func() *sql.DB
+
 	mu       sync.Mutex
 	current  *StallEvent
 	recent   []StallEvent // newest last, capped at stallHistory
@@ -101,54 +130,112 @@ type stallWatch struct {
 	dumpAfter time.Duration
 }
 
-var writeStall = &stallWatch{dumpAfter: 5 * time.Second}
+var (
+	writeStall = &stallWatch{name: "writestall", pool: func() *sql.DB { return DB }, dumpAfter: 5 * time.Second}
 
-// StartStallWatch begins sampling the write pool. Safe to call more than once;
-// only the first call starts a sampler.
+	// readStall watches RDB itself, not Reader(): where there is no read pool,
+	// Reader() is the writer, which writeStall already watches.
+	//
+	// The read pool holds many connections, so the same floor means more here:
+	// a caller queued for a whole second is a second in which every read
+	// connection was taken.
+	readStall = &stallWatch{name: "readstall", pool: func() *sql.DB { return RDB }, dumpAfter: 5 * time.Second}
+)
+
+// StartStallWatch begins sampling the write pool and the read pool. Safe to
+// call more than once; only the first call starts each sampler.
 func StartStallWatch(stop <-chan struct{}) {
-	writeStall.mu.Lock()
-	if writeStall.started || DB == nil {
-		writeStall.mu.Unlock()
+	writeStall.start(stop)
+	readStall.start(stop)
+}
+
+func (s *stallWatch) start(stop <-chan struct{}) {
+	s.mu.Lock()
+	if s.started || s.pool() == nil {
+		s.mu.Unlock()
 		return
 	}
-	writeStall.started = true
-	if writeStall.dumper == nil {
-		writeStall.dumper = writeGoroutineDump
+	s.started = true
+	if s.dumper == nil {
+		s.dumper = func() string { return goroutineDump(s.name) }
 	}
-	writeStall.mu.Unlock()
+	s.mu.Unlock()
 
 	go func() {
-		t := time.NewTicker(stallSample)
+		t := time.NewTicker(stallTick)
 		defer t.Stop()
 		var prevWait time.Duration
 		var prevCount int64
+		var h heldPool
 		first := true
+		ticks := 0
 		for {
 			select {
 			case <-stop:
 				return
 			case now := <-t.C:
-				if DB == nil {
+				p := s.pool()
+				if p == nil {
 					continue
 				}
-				st := DB.Stats()
+				st := p.Stats()
 				if first {
 					prevWait, prevCount, first = st.WaitDuration, st.WaitCount, false
+					h = newHeldPool(st.WaitCount)
 					continue
 				}
+				h.look(st.InUse, st.MaxOpenConnections, st.WaitCount)
+				if ticks++; ticks < stallTicks {
+					continue
+				}
+				ticks = 0
+				held := h.second(st.WaitCount)
 				dWait := st.WaitDuration - prevWait
 				dCount := st.WaitCount - prevCount
 				prevWait, prevCount = st.WaitDuration, st.WaitCount
-				writeStall.observe(now, dWait, dCount)
+				s.observe(now, dWait, dCount, held)
 			}
 		}
 	}()
 }
 
-// observe folds one sample into the current event. Separated from the ticker so
-// a test can drive it with synthetic samples instead of real contention.
-func (s *stallWatch) observe(now time.Time, dWait time.Duration, dCount int64) {
-	jammed := dWait >= time.Duration(float64(stallSample)*stallRatio)
+// heldPool follows the looks within one sample: whether every connection was
+// in use at every look, and whether a caller queued while they were.
+type heldPool struct {
+	allFull  bool  // every look this second found every connection in use
+	fullFrom int64 // WaitCount at the look BEFORE the pool was seen full; -1 while not full
+	last     int64 // WaitCount at the previous look
+}
+
+func newHeldPool(waitCount int64) heldPool {
+	return heldPool{allFull: true, fullFrom: -1, last: waitCount}
+}
+
+func (h *heldPool) look(inUse, maxOpen int, waitCount int64) {
+	switch full := maxOpen > 0 && inUse >= maxOpen; {
+	case !full:
+		h.allFull, h.fullFrom = false, -1
+	case h.fullFrom < 0:
+		// From the previous look, not this one: the caller who queued as the
+		// last connection went is the one this signal exists for.
+		h.fullFrom = h.last
+	}
+	h.last = waitCount
+}
+
+// second closes a sample: held if the pool stayed full throughout and a caller
+// has queued since it filled. The next sample starts afresh.
+func (h *heldPool) second(waitCount int64) bool {
+	held := h.allFull && h.fullFrom >= 0 && waitCount > h.fullFrom
+	h.allFull = true
+	return held
+}
+
+// observe folds one sample into the current event. held says the pool stayed
+// full all second while a caller queued. Separated from the ticker so a test
+// can drive it with synthetic samples instead of real contention.
+func (s *stallWatch) observe(now time.Time, dWait time.Duration, dCount int64, held bool) {
+	jammed := held || dWait >= time.Duration(float64(stallSample)*stallRatio)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -185,8 +272,8 @@ func (s *stallWatch) observe(now time.Time, dWait time.Duration, dCount int64) {
 	}
 }
 
-// WriteStallState is the summary the panel and /health/db report.
-type WriteStallState struct {
+// StallState is the summary the panel and /health/db report for one pool.
+type StallState struct {
 	Watching bool
 	Stalled  bool          // a stall is happening right now
 	Current  *StallEvent   // non-nil while Stalled
@@ -201,31 +288,36 @@ type WriteStallState struct {
 	MaxOpen      int
 }
 
-// WriteStall reports the write pool's contention. It never touches the database
-// and never takes a connection, which is the point: it has to answer during the
-// incident it describes.
-func WriteStall() WriteStallState {
-	out := WriteStallState{}
-	if DB != nil {
-		st := DB.Stats()
+// WriteStall reports the write pool's contention, and ReadStall the read
+// pool's. Neither touches the database or takes a connection, which is the
+// point: each has to answer during the incident it describes.
+func WriteStall() StallState { return writeStall.state() }
+
+// ReadStall: see WriteStall.
+func ReadStall() StallState { return readStall.state() }
+
+func (s *stallWatch) state() StallState {
+	out := StallState{}
+	if p := s.pool(); p != nil {
+		st := p.Stats()
 		out.WaitCount, out.WaitDuration = st.WaitCount, st.WaitDuration
 		out.InUse, out.MaxOpen = st.InUse, st.MaxOpenConnections
 	}
-	writeStall.mu.Lock()
-	defer writeStall.mu.Unlock()
-	out.Watching = writeStall.started
-	out.Total, out.Longest = writeStall.total, writeStall.longest
-	if writeStall.current != nil {
-		c := *writeStall.current
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out.Watching = s.started
+	out.Total, out.Longest = s.total, s.longest
+	if s.current != nil {
+		c := *s.current
 		out.Stalled, out.Current = true, &c
 	}
-	if n := len(writeStall.recent); n > 0 {
-		out.Recent = append([]StallEvent(nil), writeStall.recent...)
+	if n := len(s.recent); n > 0 {
+		out.Recent = append([]StallEvent(nil), s.recent...)
 	}
 	return out
 }
 
-// writeGoroutineDump captures every goroutine's stack to the cache directory and
+// goroutineDump captures every goroutine's stack to the state directory and
 // returns the path, or "" if it could not be written.
 //
 // This is the difference between an outage that has to be reproduced to be
@@ -233,13 +325,27 @@ func WriteStall() WriteStallState {
 // the stacks still show what is holding the connection; five minutes later
 // there is nothing to look at, which is precisely why this class of fault
 // survived so long.
-func writeGoroutineDump() string {
+//
+// runtime.Stack stops silently at the end of its buffer, so the buffer grows
+// until the dump fits. A read-pool stall is a crowd of request goroutines, and
+// a snapshot cut off at the first megabyte can end before the one goroutine
+// that names the cause. The ceiling keeps a pathological count from turning
+// the diagnostic into an allocation the host cannot afford.
+func goroutineDump(name string) string {
 	buf := make([]byte, 1<<20)
-	n := runtime.Stack(buf, true)
-	return persistStallDump(buf[:n])
+	for {
+		n := runtime.Stack(buf, true)
+		if n < len(buf) || len(buf) >= stallDumpMax {
+			return persistStallDump(name, buf[:n])
+		}
+		buf = make([]byte, 2*len(buf))
+	}
 }
 
-// stallDumpKeep is how many snapshots are retained. Enough to compare a repeat
+// stallDumpMax is the largest snapshot taken: tens of thousands of goroutines.
+const stallDumpMax = 64 << 20
+
+// stallDumpKeep is how many snapshots are retained for each pool. Enough to compare a repeat
 // occurrence against the first, few enough that a recurring stall cannot fill
 // the disk — which would turn a diagnostic into a second outage.
 const stallDumpKeep = 3
@@ -264,8 +370,8 @@ func stallDumpDir() string {
 	return filepath.Join(filepath.Dir(config.Cfg.DBPath), "stalls")
 }
 
-// persistStallDump writes one snapshot and prunes older ones.
-func persistStallDump(b []byte) string {
+// persistStallDump writes one snapshot and prunes older ones of the same name.
+func persistStallDump(name string, b []byte) string {
 	dir := stallDumpDir()
 	if dir == "" {
 		return ""
@@ -273,24 +379,27 @@ func persistStallDump(b []byte) string {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return ""
 	}
-	name := filepath.Join(dir, fmt.Sprintf("writestall-%s.txt", time.Now().UTC().Format("20060102T150405Z")))
+	path := filepath.Join(dir, fmt.Sprintf("%s-%s.txt", name, time.Now().UTC().Format("20060102T150405Z")))
 	// 0600: stack traces name internal functions and file paths. Useful to the
 	// operator, nobody else's business.
-	if err := os.WriteFile(name, b, 0o600); err != nil {
+	if err := os.WriteFile(path, b, 0o600); err != nil {
 		return ""
 	}
-	pruneStallDumps(dir)
-	return name
+	pruneStallDumps(dir, name)
+	return path
 }
 
-func pruneStallDumps(dir string) {
+// pruneStallDumps keeps the newest stallDumpKeep snapshots of one pool. Per
+// pool, so a recurring read stall cannot prune away the only snapshot of a
+// write stall.
+func pruneStallDumps(dir, name string) {
 	ents, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
 	var names []string
 	for _, e := range ents {
-		if !e.IsDir() && filepath.Ext(e.Name()) == ".txt" {
+		if !e.IsDir() && filepath.Ext(e.Name()) == ".txt" && strings.HasPrefix(e.Name(), name+"-") {
 			names = append(names, e.Name())
 		}
 	}

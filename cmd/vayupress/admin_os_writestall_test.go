@@ -22,8 +22,8 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 )
 
-func quietWriter() (dbpkg.WriteStallState, analytics.CollectorState) {
-	return dbpkg.WriteStallState{Watching: true, MaxOpen: 1},
+func quietWriter() (dbpkg.StallState, analytics.CollectorState) {
+	return dbpkg.StallState{Watching: true, MaxOpen: 1},
 		analytics.CollectorState{Running: true, BufferedHi: 20000}
 }
 
