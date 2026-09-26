@@ -159,3 +159,52 @@ func TestMarkAllReadIsRememberedPerViewer(t *testing.T) {
 		t.Errorf("another viewer inherits the read mark: %v", got)
 	}
 }
+
+// Clear all empties the bell and it stays empty across a reload: the events
+// leave the list and each condition on show is hidden. A condition comes back
+// when it changes, or after a day; an event after the clear is shown.
+func TestClearAllEmptiesTheBellUntilSomethingChanges(t *testing.T) {
+	openMigratedDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	backups := osNotification{Title: "Backups unproven", Detail: "No verified backup yet", Href: "/os/vayukeep", Kind: "backup", Count: 1, State: true}
+	comments := osNotification{Title: "Comments to review", Href: "/os/comments", Kind: "comment", Count: 3}
+	older := osRecentEvent{Title: "Message from Priya", Href: "/os/messages", Kind: "message", At: now.Add(-time.Hour)}
+	// The usual case: a viewer who has used Mark all read before.
+	if _, err := dbpkg.DB.Exec(`INSERT INTO notification_seen(user_id, seen_at) VALUES('op', ?)`, now.Add(-2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := clearNotifications(ctx, "op", []osNotification{backups, comments}, now); err != nil {
+		t.Fatal(err)
+	}
+	bell := func(user string, at time.Time, notifs []osNotification, recent ...osRecentEvent) string {
+		return osNotifBell(&osSettings{AccessLevel: accessAdmin, Notifications: notifs, Recent: recent,
+			RecentSeen: notifSeenAt(ctx, user), RecentCleared: notifClearedAt(ctx, user), NotifDismissed: notifDismissed(ctx, user, at)})
+	}
+
+	out := bell("op", now, []osNotification{backups, comments}, older)
+	for _, gone := range []string{"Backups unproven", "Comments to review", "Message from Priya", "data-notif-badge", "data-notif-clear"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("after Clear all the bell still shows %q:\n%s", gone, out)
+		}
+	}
+	if !strings.Contains(out, "All cleared") {
+		t.Errorf("an empty bell after Clear all does not say what comes back:\n%s", out)
+	}
+
+	more := comments
+	more.Count = 4
+	if out := bell("op", now, []osNotification{backups, more}); !strings.Contains(out, "Comments to review") || !strings.Contains(out, "data-notif-badge") {
+		t.Errorf("a cleared condition that changed did not come back on the badge:\n%s", out)
+	}
+	if out := bell("op", now.Add(notifDismissFor+time.Minute), []osNotification{backups}); !strings.Contains(out, "Backups unproven") {
+		t.Errorf("a cleared condition still unfixed a day later did not come back:\n%s", out)
+	}
+	newer := osRecentEvent{Title: "Comment from Mehul", Href: "/os/comments", Kind: "comment", At: now.Add(time.Minute)}
+	if out := bell("op", now, nil, older, newer); !strings.Contains(out, "Comment from Mehul") || strings.Contains(out, "Message from Priya") {
+		t.Errorf("after Clear all, want only the event that came later:\n%s", out)
+	}
+	if out := bell("someone-else", now, []osNotification{backups}, older); !strings.Contains(out, "Backups unproven") || !strings.Contains(out, "Message from Priya") {
+		t.Errorf("another viewer's bell was cleared too:\n%s", out)
+	}
+}

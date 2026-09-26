@@ -1,0 +1,3 @@
+-- Migration 099 (up): Clear all in the bell. cleared_at is when each console user last cleared the recent events; they leave the list, not only turn read. notification_dismissed holds the needs-action items hidden by that clear, by fingerprint, each until a time: an item comes back when it changes (a new fingerprint) or when the time passes, because a condition that still needs someone must not stay hidden for good. NOTE: runMigrations executes line-by-line, so keep each statement on ONE line.
+ALTER TABLE notification_seen ADD COLUMN cleared_at DATETIME;
+CREATE TABLE IF NOT EXISTS notification_dismissed(user_id TEXT NOT NULL, fingerprint TEXT NOT NULL, until DATETIME NOT NULL, PRIMARY KEY(user_id, fingerprint));

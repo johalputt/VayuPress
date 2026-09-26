@@ -131,6 +131,90 @@ func notifSeenAt(ctx context.Context, userID string) time.Time {
 	return at
 }
 
+// notifClearedAt is when the viewer last cleared the bell's events; the zero
+// time when they never have. Events up to it leave the list.
+func notifClearedAt(ctx context.Context, userID string) time.Time {
+	var at sql.NullTime
+	if dbpkg.DB != nil {
+		_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT cleared_at FROM notification_seen WHERE user_id = ?`, userID).Scan(&at)
+	}
+	return at.Time
+}
+
+// notifDismissed is the set of needs-action fingerprints the viewer cleared
+// that are still hidden at now.
+func notifDismissed(ctx context.Context, userID string, now time.Time) map[string]bool {
+	out := map[string]bool{}
+	if dbpkg.DB == nil {
+		return out
+	}
+	rows, err := dbpkg.Reader().QueryContext(ctx, `SELECT fingerprint FROM notification_dismissed WHERE user_id = ? AND until > ?`, userID, now.UTC())
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var f string
+		if rows.Scan(&f) == nil {
+			out[f] = true
+		}
+	}
+	_ = rows.Err() // a read cut short hides fewer items, never more
+	return out
+}
+
+// notifDismissFor is how long Clear all hides a needs-action item that does
+// not change. A day, so a condition nobody fixed is back the next morning.
+const notifDismissFor = 24 * time.Hour
+
+// fingerprint identifies a needs-action item as it is now: what it is and the
+// line it shows, which carries a tally's count. Clear all hides the item while
+// this stays the same; a new count or a new detail is new information, and the
+// item comes back.
+func (n osNotification) fingerprint() string {
+	return n.Kind + "\x1f" + n.Title + "\x1f" + n.line()
+}
+
+// handleOSNotificationsClear empties the bell for the viewer: the recent
+// events leave the list, and each needs-action item on show is hidden until it
+// changes or a day passes. Home's attention list still shows every condition.
+func (a *App) handleOSNotificationsClear(w http.ResponseWriter, r *http.Request) {
+	if dbpkg.DB == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "no-database", "the database is not available", "")
+		return
+	}
+	s := a.getOSSettings(r.Context())
+	if err := clearNotifications(r.Context(), currentUserIDOf(r), s.Notifications, time.Now().UTC()); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "clear-failed", "could not clear notifications", "")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// clearNotifications records a Clear all by userID at now, hiding notifs.
+func clearNotifications(ctx context.Context, userID string, notifs []osNotification, now time.Time) error {
+	return dbpkg.RunInTx(ctx, dbpkg.DB, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO notification_seen(user_id, seen_at, cleared_at) VALUES(?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET seen_at = excluded.seen_at, cleared_at = excluded.cleared_at`,
+			userID, now, now); err != nil {
+			return err
+		}
+		// Earlier dismissals are replaced: what this clear hides is what is on
+		// show now.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM notification_dismissed WHERE user_id = ?`, userID); err != nil {
+			return err
+		}
+		for _, n := range notifs {
+			if _, err := tx.ExecContext(ctx,
+				`INSERT OR REPLACE INTO notification_dismissed(user_id, fingerprint, until) VALUES(?, ?, ?)`,
+				userID, n.fingerprint(), now.Add(notifDismissFor)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // handleOSNotificationsSeen marks every event up to now read for the viewer.
 // Needs-action items are untouched: a condition that still needs someone is
 // not read by being looked at.

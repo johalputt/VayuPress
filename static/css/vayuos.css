@@ -5551,6 +5551,7 @@
   border-bottom: 1px solid var(--border-1); font: var(--type-heading); color: var(--text-1);
   text-transform: none; letter-spacing: 0;
 }
+.vp-os[data-ui="still-air"] .topbar-notif__actions { display: flex; gap: 4px; }
 /* One scroller: the list. The header, and Mark all read in it, stay put. */
 .vp-os[data-ui="still-air"] .topbar-notif__list { padding: 4px; overflow-y: auto; min-height: 0; flex: 1 1 auto; max-height: none; }
 .vp-os[data-ui="still-air"] .topbar-notif__panel[hidden] { display: none; }

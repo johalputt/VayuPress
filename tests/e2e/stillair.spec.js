@@ -545,7 +545,7 @@ test("a write shows loading, then its outcome, on the control that started it", 
 // The bell (render 09): what happened carries its time in the viewer's clock
 // under Today, and Mark all read clears it for good while what needs the
 // operator stays counted.
-test("the bell dates what happened, and Mark all read clears it for good", async ({ page }) => {
+test("the bell dates what happened, Mark all read clears it for good, and Clear all empties it", async ({ page }) => {
   const slug = "bell-" + Date.now();
   const made = await page.request.post("/api/v1/articles", { data: { title: "Bell check " + slug, slug, content: "<p>x</p>" } });
   expect(made.ok()).toBeTruthy();
@@ -569,6 +569,16 @@ test("the bell dates what happened, and Mark all read clears it for good", async
   await open();
   await expect(row).not.toHaveClass(/is-unread/);
   await expect(page.locator("[data-notif-seen]")).toHaveCount(0);
+
+  // Clear all empties the bell, and a reload keeps it empty of what was
+  // cleared. Other tests publish meanwhile, so the check is on this post's row.
+  await page.locator("[data-notif-clear]").click();
+  await expect(page.locator("[data-notif-panel] .notif-item")).toHaveCount(0);
+  await expect(page.locator("[data-notif-empty]")).toBeVisible();
+  await expect(page.locator("[data-notif-badge]")).toHaveCount(0);
+  await page.reload();
+  await open();
+  await expect(row).toHaveCount(0);
 });
 
 // The command bar (render 03): results grouped Go to, Actions, Settings, the

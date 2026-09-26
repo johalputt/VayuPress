@@ -1112,6 +1112,34 @@ window.vpRelTime = relativeTime;
       btn.classList.remove('topbar-notif__btn--active');
     });
   });
+
+  // Clear all empties the bell: the events leave, and each condition is
+  // hidden until it changes or a day passes. The server holds both, so a
+  // reload shows the same empty bell.
+  var clear = $('[data-notif-clear]', wrap);
+  if (clear) on(clear, 'click', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    window.vpPost('/os/api/notifications/clear', {}, function () {
+      var needs = parseInt(wrap.getAttribute('data-notif-needs'), 10) || 0;
+      var list = $('.topbar-notif__list', wrap);
+      if (list) {
+        var empty = document.createElement('div');
+        empty.className = 'topbar-notif__empty';
+        empty.setAttribute('data-notif-empty', '');
+        empty.textContent = needs > 0
+          ? 'All cleared. What still needs you comes back when it changes, or tomorrow; Home lists it meanwhile.'
+          : 'Nothing needs you, and nothing has happened in the last day.';
+        list.replaceChildren(empty);
+      }
+      wrap.setAttribute('data-notif-needs', '0');
+      clear.remove();
+      if (seen) seen.remove();
+      var badge = $('[data-notif-badge]', wrap);
+      if (badge) badge.remove();
+      btn.classList.remove('topbar-notif__btn--active');
+    });
+  });
 })();
 
 /* ── Login page shake on error ───────────────────────────────── */

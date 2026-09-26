@@ -23,6 +23,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Clear all in the notification bell.** Mark all read turns the last
+  day's events read, but what needs you stays counted, which is why one
+  notification came back. Clear all empties the bell: the events leave the
+  list, and each thing that needs you is hidden until it changes (a new
+  count or detail) or for a day, whichever comes first. Home still lists
+  them meanwhile, and the empty bell says so.
 - **The read connections are watched like the write connection.** System ›
   Monitoring has a Read connections section: stalls since start, the worst
   one, the time callers spent queued, and how many visitors the render

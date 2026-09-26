@@ -725,6 +725,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/seo/indexnow-test", a.handleOSIndexNowTest)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/notifications/seen", a.handleOSNotificationsSeen)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/notifications/clear", a.handleOSNotificationsClear)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", a.handleOSQuickCreatePost)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/status", a.handleOSPostStatus)
 		// One-request bulk apply for the Posts manager (Wave 4): per-slug outcomes,
@@ -993,8 +994,21 @@ func osNotifBell(s *osSettings) string {
 	var notifs []osNotification
 	var recent []osRecentEvent
 	var seen time.Time
+	hidden := 0
 	if s != nil {
-		notifs, recent, seen = s.Notifications, s.Recent, s.RecentSeen
+		seen = s.RecentSeen
+		for _, n := range s.Notifications {
+			if s.NotifDismissed[n.fingerprint()] {
+				hidden++
+				continue
+			}
+			notifs = append(notifs, n)
+		}
+		for _, e := range s.Recent {
+			if e.At.After(s.RecentCleared) {
+				recent = append(recent, e)
+			}
+		}
 	}
 	needs := 0
 	hasDanger := false
@@ -1017,7 +1031,7 @@ func osNotifBell(s *osSettings) string {
 		}
 	}
 	total := needs + unread
-	badge, activeCls, markAll := "", "", ""
+	badge, activeCls, markAll, clearAll := "", "", "", ""
 	if total > 0 {
 		// The badge wears its worst severity: ten failed jobs must read as an
 		// alarm, not as three pending comments.
@@ -1030,6 +1044,9 @@ func osNotifBell(s *osSettings) string {
 	}
 	if unread > 0 {
 		markAll = `<button type="button" class="btn btn--ghost btn--xs" data-notif-seen>Mark all read</button>`
+	}
+	if len(notifs)+len(recent) > 0 {
+		clearAll = `<button type="button" class="btn btn--ghost btn--xs" data-notif-clear>Clear all</button>`
 	}
 	var list strings.Builder
 	if len(notifs) > 0 {
@@ -1047,17 +1064,27 @@ func osNotifBell(s *osSettings) string {
 		list.WriteString(`</div>`)
 	}
 	if list.Len() == 0 {
-		list.WriteString(`<div class="topbar-notif__empty">Nothing needs you, and nothing has happened in the last day.</div>`)
+		list.WriteString(notifEmpty(hidden))
 	}
 	return `<div class="topbar-notif" data-notif data-notif-needs="` + strconv.Itoa(needs) + `">
   <button type="button" class="btn--icon topbar-notif__btn` + activeCls + `" data-notif-toggle aria-haspopup="true" aria-expanded="false">
     ` + iconBell + `<span class="vp-sr-only">Notifications</span>` + badge + `
   </button>
   <div class="topbar-notif__panel" data-notif-panel hidden>
-    <div class="topbar-notif__head"><span>Notifications</span>` + markAll + `</div>
+    <div class="topbar-notif__head"><span>Notifications</span><span class="topbar-notif__actions">` + markAll + clearAll + `</span></div>
     <div class="topbar-notif__list">` + list.String() + `</div>
   </div>
 </div>`
+}
+
+// notifEmpty is the bell with nothing to show. After Clear all it says what
+// was hidden and when it comes back, so an empty bell is never mistaken for
+// nothing being wrong.
+func notifEmpty(hidden int) string {
+	if hidden > 0 {
+		return `<div class="topbar-notif__empty" data-notif-empty>All cleared. What still needs you comes back when it changes, or tomorrow; Home lists it meanwhile.</div>`
+	}
+	return `<div class="topbar-notif__empty" data-notif-empty>Nothing needs you, and nothing has happened in the last day.</div>`
 }
 
 // svgIcon returns a minimal inline SVG for the sidebar.
@@ -1421,6 +1448,11 @@ type osSettings struct {
 	// when (render 09). RecentSeen is when this viewer last marked them read.
 	Recent     []osRecentEvent
 	RecentSeen time.Time
+	// RecentCleared is when this viewer last used Clear all: earlier events
+	// leave the bell. NotifDismissed holds the needs-action fingerprints that
+	// clear hid and that have not changed since (os_notif_recent.go).
+	RecentCleared  time.Time
+	NotifDismissed map[string]bool
 	// Sites are the hosted sites whose consoles this session may open, for
 	// the system bar's switcher; Scope is the one this page belongs to, nil
 	// on the install's own console.
@@ -1520,6 +1552,8 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 	s.Notifications = a.osNotifications(ctx, s)
 	s.Recent = a.osRecentEvents(ctx, s, time.Now().UTC())
 	s.RecentSeen = notifSeenAt(ctx, s.UserID)
+	s.RecentCleared = notifClearedAt(ctx, s.UserID)
+	s.NotifDismissed = notifDismissed(ctx, s.UserID, time.Now())
 	for _, n := range s.Notifications {
 		if n.Kind == "mail" {
 			s.UnreadMail += n.Count
