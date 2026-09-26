@@ -545,6 +545,27 @@ test("a write shows loading, then its outcome, on the control that started it", 
 // The bell (render 09): what happened carries its time in the viewer's clock
 // under Today, and Mark all read clears it for good while what needs the
 // operator stays counted.
+// The console is a fixed-height shell with one vertical scroller, its content
+// area. The document itself never scrolls: a page that does has a second
+// scroll bar around the first (the browser's default body margin did this on
+// every page). Checked on every page, at desktop and phone width.
+test("the console page itself never scrolls; only its content does", async ({ page }) => {
+  test.setTimeout(300000);
+  await openConsole(page);
+  const hrefs = await page.evaluate(() => [...new Set([...document.querySelectorAll("[data-sa-index] a")].map((a) => a.getAttribute("href")))]);
+  const scrolling = [];
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const href of hrefs) {
+      await page.goto(href);
+      await page.waitForLoadState("load");
+      const over = await page.evaluate(() => document.scrollingElement.scrollHeight - document.scrollingElement.clientHeight);
+      if (over > 0) scrolling.push(`${width}px ${href}: the document scrolls by ${over}px`);
+    }
+  }
+  expect(scrolling).toEqual([]);
+});
+
 test("the bell dates what happened, Mark all read clears it for good, and Clear all empties it", async ({ page }) => {
   const slug = "bell-" + Date.now();
   const made = await page.request.post("/api/v1/articles", { data: { title: "Bell check " + slug, slug, content: "<p>x</p>" } });

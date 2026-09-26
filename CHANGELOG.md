@@ -21,6 +21,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   until it got through. It now also counts a pool that stays full while a
   caller waits.
 
+- **A scroll bar inside a scroll bar, on every console page.** The page
+  itself scrolled around the content area: by 16 px on a desktop, because
+  the browser's default margin was never removed, and by up to 1,600 px on a
+  phone, where hidden table headers and screen-reader labels were placed
+  against the page instead of the content. The console now has one scroll
+  bar, its content area, on every page at every width.
+
 ### Added
 
 - **Clear all in the notification bell.** Mark all read turns the last

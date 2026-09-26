@@ -259,7 +259,11 @@
 /* ── Reset ───────────────────────────────────────────────────── */
 .vp-os *, .vp-os *::before, .vp-os *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-.vp-os { font-family: var(--font-body); font-size: var(--text-base); color: var(--text); background: var(--bg-base); line-height: 1.55; -webkit-font-smoothing: antialiased; min-height: 100vh; }
+/* margin: 0 — the console is a fixed-height shell with one scroller, its
+   content area. The browser's default 8px body margin made the document 16px
+   taller than the window, so every page had a second scroll bar around the
+   first. */
+.vp-os { margin: 0; font-family: var(--font-body); font-size: var(--text-base); color: var(--text); background: var(--bg-base); line-height: 1.55; -webkit-font-smoothing: antialiased; min-height: 100vh; }
 
 /* The decorative backdrop layers were removed (they read as noise); the markup
    still emits these hooks, so keep them inert. */
@@ -5681,7 +5685,13 @@
 .vp-os[data-ui="still-air"] .sa-appside__count { flex: none; font: var(--type-meta); color: var(--text-2); font-variant-numeric: tabular-nums; }
 .vp-os[data-ui="still-air"] .sa-appside__item[aria-current="true"] { color: var(--text-1); font-weight: 500; }
 
+/* position: relative makes the one scroller the containing block of every
+   absolutely positioned thing inside it. Without it a visually hidden label
+   or table header was placed against the page at its natural spot, deep in
+   the content, and stretched the document past the shell: on a phone, a
+   second scroll bar around this one. */
 .vp-os[data-ui="still-air"] .sa-content {
+  position: relative;
   min-width: 0; min-height: 0; overflow-y: auto; max-width: none; width: auto;
   padding: 0 var(--space-9) var(--space-10);
   scroll-padding-top: 64px;
