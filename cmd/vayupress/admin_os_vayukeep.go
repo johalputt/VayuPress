@@ -261,8 +261,8 @@ func keepPointsCard(gens []vayukeep.Generation, now time.Time) string {
 func keepManualCard() string {
 	return `<p class="text-sm">Download your whole site as one file, or restore one you downloaded earlier — including onto a different server.</p>
 <div class="settings-block-title mt-3">Download a copy</div>
-<p class="text-sm muted mb-2">A consistent, checksummed snapshot of the database and every setting, saved to your computer. No size limit.</p>
-<a class="btn btn--primary btn--sm" href="/os/api/backup/export" download>Download full backup</a>
+<p class="text-sm muted mb-2">A consistent, checksummed snapshot of the database and every setting, saved to your computer. No size limit: it is prepared at the pace the server can spare, then offered at the top of this page.</p>
+<button type="button" class="btn btn--primary btn--sm" data-backup-export>Prepare a download</button>
 <div class="section-divider mt-4"></div>
 <div class="settings-block-title mt-4">Restore from a file</div>
 <p class="text-sm muted mb-2">Your current database is copied aside first, then the service restarts to load the restored data. <strong>This replaces all current content and settings.</strong></p>
@@ -505,6 +505,10 @@ document.addEventListener('click',function(ev){
     vkPost('/os/api/vayukeep/clear-older',{},clr,'Removing…','vk-status');
   });
 });
+// A large site's download takes longer to prepare than a proxy waits for its
+// first byte, so it is prepared as background work and offered in #vk-run.
+var ex=document.querySelector('[data-backup-export]');
+if(ex){ex.addEventListener('click',function(){vkPost('/os/api/backup/export/start',{},ex,'Starting…');});}
 var d=document.querySelector('[data-vk-drill]');
 if(d){d.addEventListener('click',function(){vkPost('/os/api/vayukeep/drill',{},d,'Restoring…');});}
 Array.prototype.forEach.call(document.querySelectorAll('[data-vk-verify]'),function(el){

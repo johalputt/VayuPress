@@ -70,7 +70,13 @@ table, one DB copy captures content **and** settings.
   update now uses the same copy: until 2026-09-26 it archived the live file and
   its `-wal` byte for byte.
 - **No size limit, constant memory:** export streams `manifest → settings → DB`
-  straight to the HTTP response with `io.Copy`; import streams the upload
+  to a temporary file, so a failure is an error rather than a truncated
+  download, and the file is then sent with `http.ServeContent`. The console
+  prepares it as background work and offers the file when it is ready
+  (amended 2026-09-26): a large site's archive takes longer to build than a
+  reverse proxy waits for a first byte, and the browser was shown a gateway
+  error while the server built on. API keys keep the one-request
+  `GET /os/api/backup/export`. Import streams the upload
   through `gzip`/`tar` readers to disk via a `MultipartReader` (never
   `ParseMultipartForm`). The handlers lift the server read/write deadlines with
   `http.ResponseController` so large transfers don't time out.

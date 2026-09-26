@@ -29,9 +29,6 @@ func CreateBackup(ctx context.Context, dbPath, destDir string, pc Pacing) (strin
 	if dbPath == "" {
 		return "", fmt.Errorf("update: empty dbPath")
 	}
-	if _, err := os.Stat(dbPath); err != nil {
-		return "", fmt.Errorf("update: nothing to back up: %w", err)
-	}
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return "", fmt.Errorf("update: mkdir backup dir: %w", err)
 	}

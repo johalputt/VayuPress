@@ -16,6 +16,7 @@ import (
 	"context"
 	"html"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,8 +46,8 @@ var sealChunks = pace.JobConfig{Min: 4, Max: 256, Step: 4, Floor: true}
 
 // updatePacing paces the pre-update backup and the Export download in the same
 // units as VayuKeep's copy and seal: pages for the database copy, chunks for
-// the archive.
-func updatePacing() update.Pacing {
+// the archive. A var for the reason newSnapshotJob is one.
+var updatePacing = func() update.Pacing {
 	return update.Pacing{
 		Pages:  func() pacedio.Pacer { return newSnapshotJob() },
 		Chunks: func() pacedio.Pacer { return pace.Host().NewJob(sealChunks) },
@@ -74,10 +75,11 @@ func snapshotLiveDB(ctx context.Context, dbPath, dest string) error {
 const keepManualTimeout = 48 * time.Hour
 
 // keepRun is the work the Backups page shows: the database copy while one is
-// being taken (scheduled or asked for), and Back up now or Test restore from the
-// click to its end, then its outcome until the next one starts. One slot holds
-// both buttons' work: each reads or writes the whole backup, and running two at
-// once would double exactly the load that pacing exists to spread.
+// being taken (scheduled or asked for), and Back up now, Test restore or a
+// download being prepared from the click to its end, then its outcome until the
+// next one starts. One slot holds all three buttons' work: each reads the whole
+// database or backup, and running two at once would double exactly the load
+// that pacing exists to spread.
 type keepRun struct {
 	mu      sync.Mutex
 	copying bool
@@ -85,11 +87,23 @@ type keepRun struct {
 	copied  sqlitecopy.Progress
 	work    string    // what the running button is doing; "" when none runs
 	started time.Time // when it was pressed
+	paced   *pace.Job // the pacer the button's work last started
 	result  *keepResult
 }
 
-// keepResult is how the last Back up now or Test restore ended, in the words
-// the page shows.
+// show records p as the pacer of the running work, so the page can say at what
+// pace sealing, a test restore or a download goes and why, as it does for the
+// copy. A pacer that is not the host's (a test's) has no pace to show.
+func (k *keepRun) show(p pacedio.Pacer) pacedio.Pacer {
+	if j, ok := p.(*pace.Job); ok {
+		k.mu.Lock()
+		k.paced = j
+		k.mu.Unlock()
+	}
+	return p
+}
+
+// keepResult is how the last button's work ended, in the words the page shows.
 type keepResult struct {
 	OK         bool
 	Detail     string
@@ -97,6 +111,11 @@ type keepResult struct {
 	Older      int
 	OlderBytes int64
 	At         time.Time
+	// Download is a prepared export waiting to be fetched, and its size. It is
+	// removed when the next button's work starts; one left behind by a restart
+	// is swept with the other stale temporary files.
+	Download      string
+	DownloadBytes int64
 }
 
 // snapshot is VayuKeep's Snapshot: the paced copy, recorded as it goes.
@@ -125,8 +144,21 @@ func (k *keepRun) startManual(work string, now time.Time) bool {
 	if k.work != "" {
 		return false
 	}
-	k.work, k.started, k.result = work, now, nil
+	if k.result != nil && k.result.Download != "" {
+		_ = os.Remove(k.result.Download)
+	}
+	k.work, k.started, k.paced, k.result = work, now, nil, nil
 	return true
+}
+
+// download is the prepared export, or "" when none is waiting.
+func (k *keepRun) download() string {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.result == nil {
+		return ""
+	}
+	return k.result.Download
 }
 
 func (k *keepRun) finishManual(r keepResult) {
@@ -172,7 +204,7 @@ func (a *App) keepResultFor(res vayukeep.DrillResult, actor string, now time.Tim
 func keepRunHTML(k *keepRun) string {
 	k.mu.Lock()
 	copying, work, started, res := k.copying, k.work, k.started, k.result
-	p, job := k.copied, k.job
+	p, job, paced := k.copied, k.job, k.paced
 	k.mu.Unlock()
 
 	const id = `id="vk-run" role="status" aria-live="polite"`
@@ -182,6 +214,9 @@ func keepRunHTML(k *keepRun) string {
 		}
 		cls := "settings-callout"
 		out := `<div ` + id + ` class="` + cls + `"><strong>` + html.EscapeString(res.Detail) + `</strong>`
+		if res.Download != "" {
+			out += ` <a class="btn btn--primary btn--sm" href="/os/api/backup/export/file" download>Download (` + html.EscapeString(humanBytes(res.DownloadBytes)) + `)</a>`
+		}
 		if res.OK && res.Older > 0 {
 			out += ` <button type="button" class="btn btn--danger btn--sm" data-vk-clear-older data-vk-older="` + strconv.Itoa(res.Older) +
 				`" data-vk-generation="` + html.EscapeString(res.Generation) + `">Remove ` + strconv.Itoa(res.Older) + ` older restore point` +
@@ -203,8 +238,13 @@ func keepRunHTML(k *keepRun) string {
 			j.Pace, j.Why = st.Verdict.Level.String(), st.Verdict.Reason
 		}
 	default:
-		// Sealing and test-restoring are paced too, but report no length yet.
+		// Sealing, test-restoring and preparing a download report no length
+		// yet, but their pace and its reason.
 		j = ui.Job{Title: work, Percent: -1, Progress: "started " + started.UTC().Format("15:04") + " UTC"}
+		if paced != nil {
+			st := paced.Status()
+			j.Pace, j.Why = st.Verdict.Level.String(), st.Verdict.Reason
+		}
 	}
 	return `<div ` + id + ` hx-get="/os/vayukeep/run" hx-trigger="every 2s" hx-swap="outerHTML">` +
 		`<div class="section-head"><h2 class="section-head__title">Running now</h2></div>` + string(j.HTML()) + `</div>`
@@ -241,9 +281,11 @@ func keepHeldNotice(since time.Time, why string, now time.Time) (osNotification,
 // handleOSVayuKeepRun is the "Running now" block, polled by the Backups page.
 // Only the page's poll asks for it, so a poll that finds nothing running is the
 // run just ending: the page reloads, because the figures and restore points
-// around the block changed with it.
+// around the block changed with it. Administrators only, but not keepGuard: a
+// download is prepared whether or not automatic backup is set up.
 func (a *App) handleOSVayuKeepRun(w http.ResponseWriter, r *http.Request) {
-	if !a.keepGuard(w, r) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrator access required", "")
 		return
 	}
 	out := keepRunHTML(&a.keepRun)

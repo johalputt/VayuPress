@@ -88,6 +88,8 @@ func TestOSPathMinLevel(t *testing.T) {
 		"/os/api/mailids/m1/activate":     accessAdmin,
 		"/os/api/domains/d1/sync":         accessAdmin,
 		"/os/api/backup/export":           accessAdmin,
+		"/os/api/backup/export/start":     accessAdmin,
+		"/os/api/backup/export/file":      accessAdmin,
 		"/os/api/power/restart":           accessAdmin,
 		"/os/api/users":                   accessAdmin,
 		"/os/api/mode":                    accessAdmin,

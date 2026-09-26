@@ -960,7 +960,7 @@ func main() {
 	}
 
 	// Reader memberships & paywalls (Tier 2).
-	a.members = members.New(dbpkg.DB)
+	a.members = members.New(dbpkg.DB).WithReader(dbpkg.Reader())
 	// Monetization (Tier 5): order ledger + advertising slots. Stores are always
 	// wired; the public surfaces stay dark until the operator enables the
 	// feature flags (feature.payments / feature.ads) in Tools & Plugins.

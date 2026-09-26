@@ -168,3 +168,17 @@ func TestACopyNeverOverwrites(t *testing.T) {
 		t.Fatal("the existing file was damaged")
 	}
 }
+
+// A missing source is an error, and nothing is created in its place: opening
+// the path would otherwise make an empty database there and copy that.
+func TestACopyOfNothingFails(t *testing.T) {
+	dir := t.TempDir()
+	src, dest := filepath.Join(dir, "gone.db"), filepath.Join(dir, "copy.db")
+	err := Copy(context.Background(), src, dest, &fixedPacer{pages: 8}, nil)
+	if err == nil || !strings.Contains(err.Error(), "no database to copy") {
+		t.Fatalf("copying a missing database answered %v", err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, "*")); len(left) != 0 {
+		t.Fatalf("a copy of nothing left %v", left)
+	}
+}

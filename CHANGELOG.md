@@ -8,8 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **A members-only or paid post could be published to everyone by one failed
+  lookup.** The check of a post's access level answered "public" on any
+  error, a lookup that timed out behind a busy database included, and a post
+  read as public is rendered whole and written to the page cache, where every
+  later visitor was served it. A lookup that fails now keeps the post gated.
+
 ### Fixed
 
+- **Every article view waited for the database's one write connection.** The
+  check of whether a post is members-only ran there, on cached pages too, so
+  under load article views queued behind every write on the site, and the
+  backup pacer read that queue as a busy server and held backups back. It
+  now reads from the read pool: under a synthetic load that kept the write
+  connection contended for minutes at a time, it stays free.
 - **The topic index no longer counts every tag on every view.** `/tags`
   counted each tag's posts across every tag link each time it was opened,
   which on a large site is millions of rows. The counts are now kept for 5
@@ -70,11 +84,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **Back up now and Test restore answer at once.** A paced backup of a large
   site can take longer than any request may stay open, so the page shows each
   running and then its outcome: the test restore's verdict, as before, never
-  an optimistic "started". One runs at a time.
-- **Export (Download full backup) is paced and no longer cut off at 30
-  seconds.** Its copy and archive go as fast as the server can spare, and it
-  runs to its own limit instead of the request's; an update, with its backup,
-  does the same, so a large site's update is not reported failed half way.
+  an optimistic "started". One runs at a time. Sealing and the test restore
+  show their pace and its reason, as the copy does.
+- **Download full backup is prepared first, then offered.** It was built
+  inside the request, which the console cut off at 30 seconds and a reverse
+  proxy gives up on after 60 (nginx's default), so a large site's download
+  failed in the browser while the server kept building it. Prepare a download
+  now builds it at the pace the server can spare, shows it running on Backup
+  & Recovery like Back up now, and then offers the file; preparing another
+  removes the last. API keys and scripts keep the one-request export, now
+  paced and bounded by its own limit. An update, with its backup, also runs to
+  its own limit, so a large site's update is not reported failed half way.
 - **The test restore checks each table on its own**, pausing between tables
   when the server is busy, and names the table that fails. It no longer checks
   the file-wide page accounting, which can waste space but cannot lose a row.

@@ -501,6 +501,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// missing, so this is the page that makes a half-configured install visible.
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/dns", a.handleOSDNS)
 		pr.Get("/os/api/backup/export", a.handleOSBackupExport)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/backup/export/start", a.handleOSBackupExportStart)
+		pr.Get("/os/api/backup/export/file", a.handleOSBackupExportFile)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/backup/import", a.handleOSBackupImport)
 
 		// Storage & System — admin-only resource usage (RAM/disk) plus managed

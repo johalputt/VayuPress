@@ -34,6 +34,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	htmpl "html/template"
@@ -49,6 +50,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
+	"github.com/johalputt/vayupress/internal/pacedio"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/update"
@@ -786,48 +788,49 @@ func snapshotTmpDir() string {
 	return os.TempDir()
 }
 
-// handleOSBackupExport builds a full snapshot (.tar.gz) and serves it as a
-// download. The archive is built to a temp file FIRST so that any failure
-// returns a clean JSON error instead of a truncated 0-byte download; it is then
-// served with http.ServeContent, which sets a real Content-Length (so the
-// browser shows accurate progress) and streams from disk in constant memory
-// regardless of size. The write deadline is lifted for large transfers.
-func (a *App) handleOSBackupExport(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
-		return
-	}
-
-	tmpDir := snapshotTmpDir()
-	archive, err := os.CreateTemp(tmpDir, exportTempPattern)
+// buildExport writes a full snapshot (.tar.gz) to a temporary file and returns
+// its path and size. The archive is built FIRST so that any failure is reported
+// as an error instead of a truncated download. It runs off any request's
+// deadline, to its own bound: the copy and archive are paced by the host, and a
+// large site's take longer than any request may. parent is the request's
+// context, kept for its values, never its deadline.
+func buildExport(parent context.Context, pc update.Pacing) (string, int64, error) {
+	archive, err := os.CreateTemp(snapshotTmpDir(), exportTempPattern)
 	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "tmp-error",
-			"Could not create a temporary file for the backup: "+err.Error(), "")
-		return
+		return "", 0, fmt.Errorf("could not create a temporary file for the backup: %w", err)
 	}
-	archivePath := archive.Name()
-	defer os.Remove(archivePath)
-
-	// Build the whole archive before sending any response header.
-	// Built off the request's 30 s deadline: the copy and archive are paced by
-	// the host, and a large site's take longer than any request may.
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), exportTimeout)
+	path := archive.Name()
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), exportTimeout)
 	defer cancel()
-	exportErr := update.ExportSnapshot(ctx, archive, dbpkg.DB, config.Cfg.DBPath, tmpDir, Version, updatePacing())
-	closeErr := archive.Close()
-	if exportErr != nil {
-		logging.LogError("update", "snapshot export failed", exportErr.Error())
-		writeAPIError(w, r, http.StatusInternalServerError, "export-failed", "Backup failed: "+exportErr.Error(), "")
-		return
+	err = update.ExportSnapshot(ctx, archive, dbpkg.Reader(), config.Cfg.DBPath, filepath.Dir(path), Version, pc)
+	if cerr := archive.Close(); err == nil && cerr != nil {
+		err = fmt.Errorf("flushing the archive: %w", cerr)
 	}
-	if closeErr != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "export-failed", "Backup failed while flushing: "+closeErr.Error(), "")
-		return
+	var size int64
+	if err == nil {
+		if fi, serr := os.Stat(path); serr != nil {
+			err = serr
+		} else if size = fi.Size(); size == 0 {
+			err = errors.New("the archive came out empty")
+		}
 	}
-
-	f, err := os.Open(archivePath)
 	if err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "export-failed", "Backup file unreadable: "+err.Error(), "")
+		_ = os.Remove(path)
+		logging.LogError("update", "snapshot export failed", err.Error())
+		return "", 0, err
+	}
+	return path, size, nil
+}
+
+// serveExport sends a built snapshot with http.ServeContent, which sets a real
+// Content-Length (so the browser shows accurate progress), supports resuming,
+// and streams from disk in constant memory regardless of size. The write
+// deadline is lifted for large transfers.
+func serveExport(w http.ResponseWriter, r *http.Request, path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "export-gone",
+			"This download is no longer on the server. Prepare it again from Backup & Recovery.", "")
 		return
 	}
 	defer f.Close()
@@ -836,13 +839,7 @@ func (a *App) handleOSBackupExport(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "export-failed", err.Error(), "")
 		return
 	}
-	if fi.Size() == 0 {
-		writeAPIError(w, r, http.StatusInternalServerError, "export-empty", "Backup produced an empty archive.", "")
-		return
-	}
-
-	filename := fmt.Sprintf("vayupress-backup-v%s-%s.tar.gz", Version, time.Now().UTC().Format("20060102T150405Z"))
-	// Lift the server WriteTimeout for a potentially large download.
+	filename := fmt.Sprintf("vayupress-backup-v%s-%s.tar.gz", Version, fi.ModTime().UTC().Format("20060102T150405Z"))
 	if rc := http.NewResponseController(w); rc != nil {
 		_ = rc.SetWriteDeadline(time.Time{})
 	}
@@ -850,13 +847,80 @@ func (a *App) handleOSBackupExport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "no-store")
-
 	dbpkg.AuditLog("backup.export", dbpkg.AuditActor(r), filename,
 		fmt.Sprintf("full snapshot exported via VayuOS (%d bytes)", fi.Size()))
-
-	// ServeContent sets Content-Length, supports range/resume, and streams the
-	// file from disk — constant memory, no size limit.
 	http.ServeContent(w, r, filename, fi.ModTime(), f)
+}
+
+// handleOSBackupExport builds a snapshot and sends it in one request, for API
+// keys and scripts talking to the service directly. The console does not use
+// it: behind a reverse proxy a large site's archive takes longer to build than
+// the proxy waits for a first byte (nginx's default is 60 s), and the browser
+// is shown a gateway error while the server builds on for nobody. The console
+// prepares the download as background work instead (handleOSBackupExportStart).
+func (a *App) handleOSBackupExport(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	path, _, err := buildExport(r.Context(), updatePacing())
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "export-failed", "Backup failed: "+err.Error(), "")
+		return
+	}
+	defer os.Remove(path)
+	serveExport(w, r, path)
+}
+
+// handleOSBackupExportStart prepares a download in the Backups page's one slot
+// for heavy work and answers at once; the page shows it running, then offers
+// the file (handleOSBackupExportFile).
+func (a *App) handleOSBackupExportStart(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	if !a.keepRun.startManual("Preparing your download", time.Now()) {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": true,
+			"detail": "A backup, test restore or download is already running; its progress is on this page."})
+		return
+	}
+	parent := r.Context()
+	pc := updatePacing()
+	shown := func(start func() pacedio.Pacer) func() pacedio.Pacer {
+		if start == nil {
+			return nil // full speed: nothing to show
+		}
+		return func() pacedio.Pacer { return a.keepRun.show(start()) }
+	}
+	pc = update.Pacing{Pages: shown(pc.Pages), Chunks: shown(pc.Chunks)}
+	go func() {
+		path, size, err := buildExport(parent, pc)
+		if err != nil {
+			a.keepRun.finishManual(keepResult{Detail: "The download could not be prepared: " + err.Error(), At: time.Now()})
+			return
+		}
+		a.keepRun.finishManual(keepResult{OK: true, Download: path, DownloadBytes: size, At: time.Now(),
+			Detail: "Your download is ready: the whole site, checksummed, " + humanBytes(size) + "."})
+	}()
+	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": true,
+		"detail": "Preparing your download at the pace the server can spare; it is offered on this page when ready."})
+}
+
+// handleOSBackupExportFile sends the download prepared last. It takes no name
+// from the request: the only file it can send is the one the slot recorded.
+func (a *App) handleOSBackupExportFile(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	path := a.keepRun.download()
+	if path == "" {
+		writeAPIError(w, r, http.StatusNotFound, "export-none",
+			"No download is waiting. Prepare one from Backup & Recovery.", "")
+		return
+	}
+	serveExport(w, r, path)
 }
 
 // handleOSBackupImport accepts a multipart upload of a snapshot, validates it,

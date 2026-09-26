@@ -17,6 +17,12 @@
 // it was when the transaction began, whatever is written meanwhile, and the
 // backup reads through it. A restart is therefore a broken invariant, not
 // something to retry, and Copy fails on the first one.
+//
+// The price of the pin: no checkpoint can move past the snapshot while the copy
+// runs, so the write-ahead log keeps everything the site writes meanwhile and
+// is folded back in only after the copy ends. A copy held at its slowest pace
+// for a day holds a day of writes there; the site's periodic checkpoint reports
+// the log's size as it grows.
 package sqlitecopy
 
 import (
@@ -45,6 +51,12 @@ var ErrRestarted = errors.New("the copy restarted: the database changed under it
 func Copy(ctx context.Context, src, dest string, p pacedio.Pacer, onStep func(Progress)) (err error) {
 	if _, statErr := os.Stat(dest); statErr == nil {
 		return fmt.Errorf("sqlitecopy: %s already exists", dest)
+	}
+	// Opening a path that does not exist creates an empty database there,
+	// which would then copy "successfully": a backup of nothing, and a stray
+	// database file where the live one belongs.
+	if _, statErr := os.Stat(src); statErr != nil {
+		return fmt.Errorf("sqlitecopy: no database to copy: %w", statErr)
 	}
 	srcDB, err := sql.Open("sqlite3", src+"?_busy_timeout=15000&_journal_mode=WAL")
 	if err != nil {

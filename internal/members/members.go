@@ -104,10 +104,18 @@ func (m *Member) DisplayName() string {
 }
 
 // Store manages members, magic-link tokens, sessions, and per-article access.
-type Store struct{ db *sql.DB }
+type Store struct{ db, read *sql.DB }
 
-// New creates a Store.
-func New(db *sql.DB) *Store { return &Store{db: db} }
+// New creates a Store that reads and writes through db.
+func New(db *sql.DB) *Store { return &Store{db: db, read: db} }
+
+// WithReader sends GetAccess, which every article view asks, to read (a WAL
+// read pool) instead of the one write connection, where each view queued
+// behind every write on the site, cached pages included.
+func (s *Store) WithReader(read *sql.DB) *Store {
+	s.read = read
+	return s
+}
 
 // memberCols is the canonical SELECT column list for scanning into a Member.
 const memberCols = `id,email,name,note,tier,status,newsletter_opt_in,reply_notify,stripe_customer,last_seen_at,created_at,country,region,city,domain_id,gender,avatar_choice,verified_at`
@@ -745,11 +753,20 @@ func (s *Store) SetAccess(ctx context.Context, slug, level string) error {
 	return err
 }
 
-// GetAccess returns the access level for a slug, defaulting to public.
+// GetAccess returns the access level for a slug: public when none is set, and
+// paid when it cannot be read. It used to answer public on any error, and an
+// article that reads as public is rendered whole and written to the page cache,
+// where every later visitor is served it: one timed-out lookup published a
+// paid post until its cache entry next changed.
 func (s *Store) GetAccess(ctx context.Context, slug string) string {
 	var level string
-	err := s.db.QueryRowContext(ctx, `SELECT level FROM article_access WHERE slug=?`, slug).Scan(&level)
-	if err != nil || level == "" {
+	err := s.read.QueryRowContext(ctx, `SELECT level FROM article_access WHERE slug=?`, slug).Scan(&level)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return AccessPublic
+	case err != nil:
+		return AccessPaid
+	case level == "":
 		return AccessPublic
 	}
 	return level

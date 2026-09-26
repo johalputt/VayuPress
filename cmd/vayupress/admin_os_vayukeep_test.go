@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/pace"
 	"github.com/johalputt/vayupress/internal/sqlitecopy"
 	"github.com/johalputt/vayupress/internal/users"
 	"github.com/johalputt/vayupress/internal/vayukeep"
@@ -361,7 +362,7 @@ func TestEverythingBackupRelatedIsOnOnePage(t *testing.T) {
 
 	for _, want := range []string{
 		// Manual export / import, moved from Update & Backup.
-		"/os/api/backup/export", "data-backup-import", "Download full backup",
+		"data-backup-export>", "data-backup-import", "Prepare a download",
 		// Housekeeping: manual delete plus auto-delete limits.
 		`data-vk-delete="`, "data-vk-retention>", "data-vk-prune>",
 		`id="vk-keep-n"`, `id="vk-keep-d"`,
@@ -565,6 +566,32 @@ func TestBackUpNowAnswersAtOnceThenShowsItsOutcome(t *testing.T) {
 
 // The copy is shown with how far it has got in bytes and the pacer's verdict,
 // so a slow backup says why it is slow.
+// After the copy, sealing, the test restore and a download report no length,
+// but the page still says at what pace they go and why: that is the answer to
+// "why is this taking so long".
+func TestWorkAfterTheCopyShowsItsPace(t *testing.T) {
+	busy := pace.New(pace.Sources{CPUs: 1, Load1: func() (float64, bool) { return 1.5, true }})
+	job := busy.NewJob(sealChunks)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, _ = job.Next(ctx) // eases, and the pause is cut short by ctx
+
+	k := &keepRun{}
+	k.startManual("Preparing your download", time.Now())
+	k.show(job)
+	got := keepRunHTML(k)
+	for _, want := range []string{"Preparing your download", "Easing", "load 1.5 on 1 CPUs"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the running work is missing %q: %s", want, got)
+		}
+	}
+	k.finishManual(keepResult{Detail: "done"})
+	k.startManual("Testing that the newest restore point restores", time.Now())
+	if got := keepRunHTML(k); strings.Contains(got, "Easing") {
+		t.Errorf("the last work's pace is shown for the next: %s", got)
+	}
+}
+
 func TestTheRunningCopyShowsItsProgressAndPace(t *testing.T) {
 	k := &keepRun{copying: true, copied: sqlitecopy.Progress{Copied: 410, Total: 1000, PageSize: 4096}}
 	got := keepRunHTML(k)

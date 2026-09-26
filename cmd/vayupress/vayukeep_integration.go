@@ -43,7 +43,7 @@ func (a *App) bootVayuKeep(ctx context.Context) {
 // database, which is exactly what a restore that silently produced nothing looks
 // like; the row count is what distinguishes "restored" from "restored something".
 func (a *App) vayuKeepVerifier(ctx context.Context, dbPath string) (int64, error) {
-	return verifyRestoredDB(ctx, dbPath, pace.Host().NewJob(pace.JobConfig{Min: 1, Max: 1, Floor: true}))
+	return verifyRestoredDB(ctx, dbPath, a.keepRun.show(pace.Host().NewJob(pace.JobConfig{Min: 1, Max: 1, Floor: true})))
 }
 
 // verifyRestoredDB runs integrity_check one table at a time, asking the pacer
