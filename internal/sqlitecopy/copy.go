@@ -33,7 +33,7 @@ import (
 	"os"
 
 	"github.com/johalputt/vayupress/internal/pacedio"
-	sqlite3 "github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // Progress is how far a copy has got, in database pages of PageSize bytes.
@@ -95,20 +95,7 @@ func Copy(ctx context.Context, src, dest string, p pacedio.Pacer, onStep func(Pr
 	}
 	defer dstConn.Close()
 
-	err = dstConn.Raw(func(d any) error {
-		return srcConn.Raw(func(s any) error {
-			bk, err := d.(*sqlite3.SQLiteConn).Backup("main", s.(*sqlite3.SQLiteConn), "main")
-			if err != nil {
-				return err
-			}
-			if err := steps(ctx, bk, p, pageSize, onStep); err != nil {
-				_ = bk.Finish()
-				return err
-			}
-			return bk.Finish()
-		})
-	})
-	if err != nil {
+	if err = backup(ctx, dstConn, srcConn, p, pageSize, onStep); err != nil {
 		_ = os.Remove(dest)
 	}
 	return err
