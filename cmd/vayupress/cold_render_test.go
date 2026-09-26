@@ -58,6 +58,7 @@ func routeRequest(path string, params ...string) *http.Request {
 func TestEveryUncachedPublicPageWaitsForASlot(t *testing.T) {
 	setupRelatedTestDB(t)
 	render.Init(t.TempDir())
+	forgetTagIndex(t)
 	repo := dbpkg.NewArticleRepo(dbpkg.DB)
 	a := &App{siteSettings: settings.New(dbpkg.DB), articles: &api.ArticleService{Repo: repo}}
 	now := time.Now()

@@ -10,62 +10,45 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/seo"
 )
 
 // handleTagIndex renders the public topic index (/tags): every distinct tag with
-// its published-post count, sorted by frequency. It is rendered live rather than
-// disk-cached so a newly introduced tag appears at once; a short Cache-Control
-// still lets a CDN or browser hold it briefly. Drafts never contribute.
+// its published-post count, sorted by frequency. Drafts never contribute.
+//
+// The counts come from tagIndexCounts, at most tagIndexTTL old, never from a
+// count per request: counting reads every tag link, which on johal.in is 4.6
+// million rows.
 func (a *App) handleTagIndex(w http.ResponseWriter, r *http.Request) {
-	// No cache file: every request counts every tag link.
-	release, ok := admitColdRender(w, r)
-	if !ok {
-		return
-	}
-	defer release()
-
-	var infos []render.TagInfo
-	var totalPosts int
-
+	key, count := "", a.tagIndexGlobal
 	if a.multiDomain(r) {
 		// VayuDomains Stage 2c: count only the active domain's published posts, so
 		// each domain's topic index reflects exactly what its tag pages will serve.
-		infos, totalPosts = a.tagIndexScoped(r.Context(), a.contentScope(r))
-	} else {
-		tags, err := a.articles.ListTags(r.Context())
-		if err != nil {
-			http.Error(w, "render error", http.StatusInternalServerError)
-			return
+		scope := a.contentScope(r)
+		key = "d:" + scope
+		count = func(ctx context.Context) ([]render.TagInfo, int, error) {
+			infos, total := a.tagIndexScoped(ctx, scope)
+			return infos, total, nil
 		}
-		infos = make([]render.TagInfo, 0, len(tags))
-		for _, t := range tags {
-			if strings.TrimSpace(t.Tag) == "" {
-				continue
-			}
-			infos = append(infos, render.TagInfo{Name: t.Tag, Count: t.Count})
-		}
-		dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM articles WHERE status='published'`).Scan(&totalPosts)
+	}
+	idx, ok := tagIndexCounts(w, r, key, count)
+	if !ok {
+		return
 	}
 
-	// Most-used topics first; ties broken alphabetically for a stable, scannable list.
-	sort.Slice(infos, func(i, j int) bool {
-		if infos[i].Count != infos[j].Count {
-			return infos[i].Count > infos[j].Count
-		}
-		return strings.ToLower(infos[i].Name) < strings.ToLower(infos[j].Name)
-	})
-
-	html, err := render.RenderTagIndex(config.Cfg.Domain, Version, infos, totalPosts)
+	html, err := render.RenderTagIndex(config.Cfg.Domain, Version, idx.infos, idx.total)
 	if err != nil {
 		http.Error(w, "render error", http.StatusInternalServerError)
 		return
@@ -73,6 +56,108 @@ func (a *App) handleTagIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	fmt.Fprint(w, html)
+}
+
+// tagIndexTTL is how old the topic index's counts may be before they are
+// counted again. It matches the page's own max-age, so a new tag shows within
+// the time a browser would have held the page anyway.
+const tagIndexTTL = 5 * time.Minute
+
+type tagIndexEntry struct {
+	infos []render.TagInfo // sorted; shared by every request, never modified
+	total int
+	at    time.Time
+}
+
+// tagIndexMemo holds the counts per scope ("" for a single-domain install).
+var tagIndexMemo = struct {
+	sync.Mutex
+	m          map[string]tagIndexEntry
+	refreshing map[string]bool
+}{m: map[string]tagIndexEntry{}, refreshing: map[string]bool{}}
+
+// tagIndexCounts returns the counts for key. Held counts are served at once;
+// once they are older than tagIndexTTL, one background count per key replaces
+// them while the old ones keep serving. Only the first request for a key counts
+// on the request path, and it takes a render slot to do so. Without a slot it
+// has already answered (503) and returns false; on a failed count it has
+// answered 500.
+func tagIndexCounts(w http.ResponseWriter, r *http.Request, key string,
+	count func(context.Context) ([]render.TagInfo, int, error)) (tagIndexEntry, bool) {
+	tagIndexMemo.Lock()
+	e, have := tagIndexMemo.m[key]
+	if have {
+		if time.Since(e.at) >= tagIndexTTL && !tagIndexMemo.refreshing[key] {
+			tagIndexMemo.refreshing[key] = true
+			go refreshTagIndex(key, count)
+		}
+		tagIndexMemo.Unlock()
+		return e, true
+	}
+	tagIndexMemo.Unlock()
+
+	release, ok := admitColdRender(w, r)
+	if !ok {
+		return e, false
+	}
+	defer release()
+	infos, total, err := count(r.Context())
+	if err != nil {
+		http.Error(w, "render error", http.StatusInternalServerError)
+		return e, false
+	}
+	return storeTagIndex(key, infos, total), true
+}
+
+// refreshTagIndex counts again off the request path. On failure the old counts
+// stay, and the next request after the TTL tries again.
+func refreshTagIndex(key string, count func(context.Context) ([]render.TagInfo, int, error)) {
+	defer func() {
+		tagIndexMemo.Lock()
+		delete(tagIndexMemo.refreshing, key)
+		tagIndexMemo.Unlock()
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	infos, total, err := count(ctx)
+	if err != nil {
+		logging.LogWarn("render", "topic index count failed; the previous counts stay: "+err.Error())
+		return
+	}
+	storeTagIndex(key, infos, total)
+}
+
+func storeTagIndex(key string, infos []render.TagInfo, total int) tagIndexEntry {
+	// Most-used topics first; ties broken alphabetically for a stable, scannable list.
+	sort.Slice(infos, func(i, j int) bool {
+		if infos[i].Count != infos[j].Count {
+			return infos[i].Count > infos[j].Count
+		}
+		return strings.ToLower(infos[i].Name) < strings.ToLower(infos[j].Name)
+	})
+	e := tagIndexEntry{infos: infos, total: total, at: time.Now()}
+	tagIndexMemo.Lock()
+	tagIndexMemo.m[key] = e
+	tagIndexMemo.Unlock()
+	return e
+}
+
+// tagIndexGlobal counts the topic index of a single-domain install.
+func (a *App) tagIndexGlobal(ctx context.Context) ([]render.TagInfo, int, error) {
+	tags, err := a.articles.ListTags(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	infos := make([]render.TagInfo, 0, len(tags))
+	for _, t := range tags {
+		if strings.TrimSpace(t.Tag) == "" {
+			continue
+		}
+		infos = append(infos, render.TagInfo{Name: t.Tag, Count: t.Count})
+	}
+	var total int
+	dbpkg.Reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE status='published'`).Scan(&total)
+	return infos, total, nil
 }
 
 // tagIndexScoped computes the topic index for a single domain (Stage 2c): each

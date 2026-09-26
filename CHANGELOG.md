@@ -6,6 +6,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **The topic index no longer counts every tag on every view.** `/tags`
+  counted each tag's posts across every tag link each time it was opened,
+  which on a large site is millions of rows. The counts are now kept for 5
+  minutes, the time the page already told browsers to keep it, and counted
+  again in the background while the previous counts keep serving.
+
 ## [3.17.81] — 2026-09-26
 
 A fix release, shipped on its own under the exception for a live breakage.
