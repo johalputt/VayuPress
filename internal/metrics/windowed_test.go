@@ -140,3 +140,19 @@ func TestPercentileStaysWithinItsBucketBounds(t *testing.T) {
 		t.Errorf("P95 = %d ms, outside the (64,128] bucket the samples fell in", got)
 	}
 }
+
+// PercentileOver reads only the recent minutes: slow requests five minutes ago
+// still dominate the window's p95, but not the last two minutes'.
+func TestPercentileOverReadsOnlyTheRecentMinutes(t *testing.T) {
+	var h WindowedHistogram
+	h.slotMin = time.Now().Unix() / 60
+	h.slots[(h.head-5+windowMinutes)%windowMinutes][13] = 500 // slow, five minutes ago
+	h.slots[h.head][2] = 500                                  // fast, now
+	whole, recent := h.Percentile(95), h.PercentileOver(95, 2)
+	if recent >= whole {
+		t.Fatalf("p95 over the last 2 minutes = %d, over the window = %d; the recent view still counts the slow minute", recent, whole)
+	}
+	if recent > HistBoundMS[2] {
+		t.Errorf("p95 over the last 2 minutes = %d ms, want within the fast bucket (%d ms)", recent, HistBoundMS[2])
+	}
+}

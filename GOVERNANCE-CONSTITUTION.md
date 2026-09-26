@@ -1870,7 +1870,7 @@ cmd/vayupress/main.go → all internal packages
 - Owns all authentication state: authFailBuckets, rateBuckets, trustedIPs, csrfSecret
 
 ### `internal/render`
-- Exports: `RenderArticle()`, `RenderArticleWithLayout()`, `DetectLayout()`, `CSPNonce()`, `WriteCSSAssets()`, `WarmCache()`, `CachePurge()`, `Init()`
+- Exports: `RenderArticle()`, `RenderArticleWithLayout()`, `DetectLayout()`, `CSPNonce()`, `WriteCSSAssets()`, `CachePurge()`, `CachePurgeAll()`, `Init()`
 - Depends: logging, config, db, metrics
 - Owns: articleTmpl, bluemonday policy, CSS constants and hashes, cacheWrite
 

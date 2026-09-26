@@ -34,15 +34,6 @@ func TestWarmTunables(t *testing.T) {
 		t.Fatal("VAYUPRESS_CACHE_WARM=0 must disable the warmer")
 	}
 
-	t.Setenv("VAYUPRESS_CACHE_WARM_DELAY_MS", "40")
-	if got := warmDelay(); got != 40*time.Millisecond {
-		t.Fatalf("warmDelay = %v, want 40ms", got)
-	}
-	t.Setenv("VAYUPRESS_CACHE_WARM_DELAY_MS", "bogus")
-	if got := warmDelay(); got != defaultWarmDelay {
-		t.Fatalf("bad delay should fall back to default, got %v", got)
-	}
-
 	t.Setenv("VAYUPRESS_CACHE_WARM_INTERVAL", "10m")
 	if got := warmInterval(); got != 10*time.Minute {
 		t.Fatalf("warmInterval = %v, want 10m", got)

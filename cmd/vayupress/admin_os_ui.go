@@ -509,7 +509,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/storage", a.handleOSStorage)
 		pr.Get("/os/api/storage/download", a.handleOSStorageDownload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/storage/delete", a.handleOSStorageDelete)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/storage/clear-cache", a.handleOSStorageClearCache)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/storage/refresh-pages", a.handleOSStorageRefreshPages)
+		pr.Get("/os/storage/refresh-status", a.handleOSStorageRefreshStatus)
 		pr.Get("/os/seo", a.handleOSSEONative)
 		pr.Get("/os/analytics", a.handleOSAnalytics)
 		// VayuAnalytics: export downloads + goal management (session-authed).
@@ -3547,7 +3548,7 @@ func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
 	for _, act := range []cmdAction{
 		{Label: "New post", Icon: "pencil", Hint: "Open the block editor on a blank post", Href: "/os/editor", gate: "/os/editor"},
 		{Label: "Take a backup now", Icon: "archive", Hint: "Saves a restore point and test-restores it before saying it worked", Post: "/os/api/vayukeep/backup", Done: "Backup taken and tested.", gate: "/os/vayukeep"},
-		{Label: "Clear the page cache", Icon: "refresh", Hint: "Pages are rebuilt on their next visit; the sitemap, feed and robots.txt now", Post: "/os/api/storage/clear-cache", Done: "Page cache cleared.", gate: "/os/storage"},
+		{Label: "Refresh every page", Icon: "refresh", Hint: "Rebuilt in the background at the pace the server can spare; the sitemap, feed and robots.txt now", Post: "/os/api/storage/refresh-pages", Done: "Every page is being refreshed.", gate: "/os/storage"},
 		{Label: "Regenerate sitemap, RSS and robots.txt", Icon: "refresh", Hint: "Rebuilds the three files search engines read", Post: "/os/api/seo/regenerate", Done: "Sitemap, RSS and robots.txt rebuilt.", gate: "/os/seo"},
 		{Label: "Check for security updates", Icon: "shield", Hint: "Fetches public release metadata only; nothing about your site is sent", Post: "/os/api/vayuos/security/check", Done: "Security updates checked.", gate: "/os/security"},
 	} {

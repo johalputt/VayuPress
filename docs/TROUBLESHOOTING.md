@@ -112,11 +112,19 @@ curl -X POST http://localhost:8080/api/v1/cache/purge \
   -d '{"slug": "my-article"}'
 ```
 
-Or clear all cache:
+Or refresh every page: **System › Storage › Refresh every page** in the
+console, or the same call without a slug:
 
 ```bash
-sudo rm -rf /var/cache/vayupress/posts/*
+curl -X POST http://localhost:8080/api/v1/cache/purge \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "X-CSRF-Token: $CSRF_TOKEN"
 ```
+
+Every page is marked out of date and rebuilt in the background, as fast as the
+server can spare; visitors keep the current copy until theirs is ready. Do not
+delete the cache directory by hand: with no copy to serve, every request renders
+from the database at once, which on a large site is an outage.
 
 ### Cache directory unwritable
 

@@ -253,8 +253,8 @@ func newUUID() string {
 
 // =============================================================================
 
-// warmStartupDelay is how long the boot-time cache warm waits for the box to
-// settle before it starts the (paced) re-render. Tunable via VAYU_WARM_DELAY_SEC
+// warmStartupDelay is how long the boot rebuild of the sitemap, feed and
+// robots.txt waits for the box to settle. Tunable via VAYU_WARM_DELAY_SEC
 // (clamped to 0..600s); defaults to a gentle 4s.
 func warmStartupDelay() time.Duration {
 	if n, err := strconv.Atoi(config.EnvOr("VAYU_WARM_DELAY_SEC", "4")); err == nil && n >= 0 && n <= 600 {
@@ -1269,13 +1269,14 @@ func main() {
 	// current design instead of a cached older home/tag page.
 	render.ReconcileCacheVersion()
 
-	// Background cache warm + feed/sitemap generation. Deliberately gentle: it
-	// waits a few seconds for the box to settle after boot, then paces itself
-	// (render.WarmCache throttles per article) so re-rendering the public cache
-	// after a deploy never saturates a small VPS. Set VAYU_WARM_ON_BOOT=0 to skip
-	// it entirely (public pages then render lazily on first request). Tune the
-	// settle delay with VAYU_WARM_DELAY_SEC and the per-article pace with
-	// VAYU_WARM_THROTTLE_MS.
+	// Feed, sitemap and robots.txt after boot, once the box has settled
+	// (VAYU_WARM_DELAY_SEC; VAYU_WARM_ON_BOOT=0 skips it). Pages are not
+	// rendered here: the paced warmer (cachewarm.go) rebuilds whatever the
+	// renderer change above left stale, through the page handler itself, at
+	// the pace the host can spare. The boot warm this replaced rendered up to
+	// 1,000 posts with RenderArticle on a fixed 12 ms throttle, holding one
+	// cursor over their content the whole time, and cached pages without what
+	// the handler adds, related posts among them.
 	go func() {
 		if config.EnvOr("VAYU_WARM_ON_BOOT", "1") == "0" {
 			logging.LogInfo("cache-warm", "skipped on boot (VAYU_WARM_ON_BOOT=0)")
@@ -1286,12 +1287,9 @@ func main() {
 			return
 		case <-time.After(warmStartupDelay()):
 		}
-		logging.LogInfo("cache-warm", "starting (throttled)...")
-		render.WarmCache(api.SplitTags)
 		generateSitemap()
 		generateRSS()
 		generateRobots()
-		logging.LogInfo("cache-warm", "complete")
 	}()
 
 	// Lifecycle manager — ordered startup and shutdown (ADR-0051).

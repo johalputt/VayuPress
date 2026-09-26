@@ -2668,60 +2668,20 @@ func spawnPurge(fn func()) {
 	}()
 }
 
+// Regenerate runs site-wide rebuilds (the sitemap, feed and robots.txt) in the
+// background, tracked like CachePurge's, for callers that invalidate the whole
+// cache rather than one post.
+func Regenerate(fns ...func()) {
+	for _, fn := range fns {
+		spawnPurge(fn)
+	}
+}
+
 // WaitForPurges blocks until every async cache regeneration spawned by
-// CachePurge has finished. It exists for deterministic test teardown (so the
+// CachePurge or Regenerate has finished. It exists for deterministic test teardown (so the
 // fire-and-forget writes cannot race a test's temp-dir cleanup or the next
 // test's config reload); production code never calls it.
 func WaitForPurges() { purgeWG.Wait() }
-
-// WarmCache pre-renders the 1000 most recently updated articles that are not already cached.
-func WarmCache(splitTags func(string) []string) {
-	throttle := warmThrottle()
-	rows, err := db.Reader().Query(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE COALESCE(status,'published')='published' ORDER BY updated_at DESC LIMIT 1000`)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-	count := 0
-	for rows.Next() {
-		var a db.Article
-		var tagsStr string
-		rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &tagsStr, &a.CreatedAt, &a.UpdatedAt)
-		a.Tags = splitTags(tagsStr)
-		if unsafePathComponent(a.Slug) {
-			continue
-		}
-		dest := filepath.Join(config.Cfg.CacheDir, "posts", a.Slug+".html")
-		if fi, err := os.Stat(dest); err == nil && CacheEntryFresh(fi) {
-			continue
-		}
-		html, err := RenderArticle(a)
-		if err != nil {
-			continue
-		}
-		_ = CacheWrite(filepath.Join("posts", a.Slug+".html"), html)
-		count++
-		// Pace the re-render so warming the cache after a deploy never pegs a CPU
-		// on a small VPS. Only sleeps after work actually done (cached/skipped
-		// articles are free). Tunable via VAYU_WARM_THROTTLE_MS.
-		if throttle > 0 {
-			time.Sleep(throttle)
-		}
-	}
-	logging.LogInfo("cache-warm", fmt.Sprintf("pre-rendered %d articles", count))
-}
-
-// warmThrottle is the per-article pause used while warming the public cache.
-// Tunable via VAYU_WARM_THROTTLE_MS (clamped 0..5000ms); defaults to a gentle
-// 12ms so a full re-render spreads out instead of saturating the CPU.
-func warmThrottle() time.Duration {
-	if v := strings.TrimSpace(os.Getenv("VAYU_WARM_THROTTLE_MS")); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 5000 {
-			return time.Duration(n) * time.Millisecond
-		}
-	}
-	return 12 * time.Millisecond
-}
 
 // cacheSchema is bumped whenever the public listing/article templates change in
 // a way the CSS content hashes do not already capture (e.g. markup-only edits).

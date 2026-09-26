@@ -61,3 +61,13 @@ persisted *staleness cutoff*.
   a burst; this is the same bounded, per-page behaviour as any cache miss today
   and is vastly smaller than the previous global herd. A single-flight guard can
   be layered on later if needed.
+
+## Later (2026-09-26)
+
+`WarmCache` is gone. It rendered with `RenderArticle` rather than the page
+handler, so the pages it cached lacked what the handler adds, and it ran on a
+fixed throttle whatever the host was doing. Stale pages are rebuilt by the
+paced warmer (`cmd/vayupress/cachewarm.go`), which asks `internal/pace` before
+each batch. The staleness cutoff described here is unchanged, and "Clear
+caches" became "Refresh every page", which marks every page stale rather than
+deleting it.

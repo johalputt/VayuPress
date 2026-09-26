@@ -41,35 +41,39 @@
       .catch(function (e) { show('Error: ' + e, true); });
   }
 
-  // ── Clear caches ────────────────────────────────────────────────────────
-  var clearBtn = document.querySelector('[data-cache-clear]');
+  // ── Refresh every page ──────────────────────────────────────────────
+  // The server marks every page out of date and rebuilds them in the
+  // background; the progress under the card polls itself while it runs.
+  var refreshBtn = document.querySelector('[data-pages-refresh]');
   var cacheMsg = document.querySelector('[data-cache-msg]');
-  if (clearBtn) {
-    clearBtn.addEventListener('click', function () {
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', function () {
       var cdnBox = document.querySelector('[data-cache-cdn]');
       var purgeCDN = !!(cdnBox && cdnBox.checked);
       vpConfirm({
-        title: 'Clear caches',
-        message: 'Delete every rendered page and temporary files unused for an hour' + (purgeCDN ? ', and purge Cloudflare' : '') + '? Pages are rebuilt as visitors ask for them. Media, backups and the database are not touched.',
-        confirm: 'Clear caches'
+        title: 'Refresh every page',
+        message: 'Mark every page out of date and rebuild them in the background' + (purgeCDN ? ', and purge Cloudflare' : '') + '? Visitors keep the current copy of each page until its new one is ready.',
+        confirm: 'Refresh every page'
       }, function () {
-        clearBtn.disabled = true;
-        fetch('/os/api/storage/clear-cache', {
+        refreshBtn.disabled = true;
+        fetch('/os/api/storage/refresh-pages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
           body: JSON.stringify({ purge_cdn: purgeCDN })
         })
           .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
           .then(function (res) {
-            clearBtn.disabled = false;
-            if (!res.ok) { say((res.d && (res.d.detail || res.d.title)) || 'The caches could not be cleared.', true); return; }
+            refreshBtn.disabled = false;
+            if (!res.ok) { say((res.d && (res.d.detail || res.d.title)) || 'The refresh could not start.', true); return; }
             var d = res.d;
-            var text = 'Freed ' + d.freed + ' — ' + d.pages + ' page' + (d.pages === 1 ? '' : 's') + ' and ' + d.temp_files + ' temporary file' + (d.temp_files === 1 ? '' : 's') + '.';
+            var text = d.joined ? 'A refresh was already running; it now covers every page.' : 'Every page is being refreshed.';
+            if (d.temp_files > 0) text += ' Removed ' + d.temp_files + ' temporary file' + (d.temp_files === 1 ? '' : 's') + ' (' + d.freed + ').';
             if (d.cdn === 'purged') text += ' Cloudflare purged.';
             else if (d.cdn && d.cdn.indexOf('failed') === 0) text += ' Cloudflare purge ' + d.cdn + '.';
             say(text, d.cdn && d.cdn.indexOf('failed') === 0);
+            if (window.htmx) window.htmx.ajax('GET', '/os/storage/refresh-status', { target: '#pages-refresh', swap: 'outerHTML' });
           })
-          .catch(function (e) { clearBtn.disabled = false; say('Error: ' + e, true); });
+          .catch(function (e) { refreshBtn.disabled = false; say('Error: ' + e, true); });
       });
     });
   }

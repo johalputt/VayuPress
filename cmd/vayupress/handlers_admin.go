@@ -196,12 +196,12 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, 429, "rate_limited", "full cache purge rate-limited", "/docs/api/cache")
 			return
 		}
-		// The same clear as System › Storage: every rendered page, per-domain
-		// copies included, and nothing else under CACHE_DIR.
-		purged, _ = render.CacheClear()
-		go generateSitemap()
-		go generateRSS()
-		go generateRobots()
+		// The same refresh as System › Storage: every rendered page is marked
+		// out of date and rebuilt in the background at the pacer's pace. A
+		// full delete here made every request a database render at once.
+		// purged is the number of published posts the refresh will rebuild.
+		dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COUNT(1) FROM articles WHERE status='published'`).Scan(&purged)
+		a.refreshEveryPage(false, "api:"+rid)
 	}
 	logging.LogJSON(logging.LogFields{Level: "info", Component: "cache-purge", RequestID: rid, Msg: fmt.Sprintf("type=%s purged=%d", purgeType, purged)})
 	a.FireHook("cache.purge", map[string]interface{}{"purge_type": purgeType, "slug": slug, "purged_count": purged})

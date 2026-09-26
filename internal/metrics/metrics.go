@@ -220,12 +220,23 @@ func (h *WindowedHistogram) Record(d time.Duration) {
 }
 
 func (h *WindowedHistogram) Percentile(pct float64) int64 {
+	return h.PercentileOver(pct, windowMinutes)
+}
+
+// PercentileOver is Percentile over only the last minutes of the window, the
+// current minute included. The pacer reads the last two: a heavy job must ease
+// off within a minute of visitors feeling it, not after the dashboard's 15.
+func (h *WindowedHistogram) PercentileOver(pct float64, minutes int) int64 {
+	if minutes < 1 || minutes > windowMinutes {
+		minutes = windowMinutes
+	}
 	nowMin := time.Now().Unix() / 60
 	h.mu.Lock()
 	h.rotate(nowMin)
 	var agg [16]int64
 	var count int64
-	for s := 0; s < windowMinutes; s++ {
+	for i := 0; i < minutes; i++ {
+		s := (h.head - i + windowMinutes) % windowMinutes
 		for b := 0; b < 16; b++ {
 			agg[b] += h.slots[s][b]
 			count += h.slots[s][b]

@@ -28,6 +28,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   against the page instead of the content. The console now has one scroll
   bar, its content area, on every page at every width.
 
+### Changed
+
+- **Clear caches is now Refresh every page, and it can no longer take the
+  site down.** Clearing deleted every rendered page, so every visitor and
+  crawler afterwards made the server build a page from the database at once;
+  on a large site that was the outage of 26 September. Now every page is
+  marked out of date and kept: visitors get the current copy while a new one
+  is built in the background. The rebuild goes as fast as the server can
+  spare, judging each batch by how busy the database, disk, processors and
+  memory are and how fast pages are loading, and slows down or waits when
+  they are busy. System › Storage shows how far it has got and why it is
+  going at that pace. Space is still freed: pages of posts that no longer
+  exist, of domains no longer set up, and old temporary files are removed.
+  The API's cache purge without a slug does the same.
+- **Pages marked out of date by any change (a theme save, a domain change)
+  are rebuilt at the same pace.** The background rebuild used to wait a fixed
+  250 ms between pages whatever the server was doing, which took a day on a
+  large site and did not slow down when visitors came.
+
+### Upgrade Notes
+
+- `VAYUPRESS_CACHE_WARM_DELAY_MS` and `VAYU_WARM_THROTTLE_MS` no longer
+  exist: the pace is decided from the server's load. The rebuild of pages at
+  boot went with them; pages a new version changes are rebuilt by the
+  background rebuild instead.
+
 ### Added
 
 - **Clear all in the notification bell.** Mark all read turns the last

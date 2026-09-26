@@ -202,6 +202,11 @@ X-CSRF-Token: <token>
 { "slug": "my-article" }
 ```
 
+Without a slug, every page is marked out of date and rebuilt in the background
+at the pace the server can spare (`purge_type: "full"`; `purged` is the number
+of published posts to rebuild). Nothing is deleted, so visitors keep being
+served while it runs.
+
 Rate-limited to 5 purges/minute per IP.
 
 ## Webhooks

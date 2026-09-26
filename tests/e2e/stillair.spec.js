@@ -789,12 +789,12 @@ test("the account menu is operated by keyboard alone", async ({ page }) => {
 test("a confirmation dialog keeps focus and gives it back", async ({ page }) => {
   await openConsole(page);
   await page.goto("/os/storage");
-  const opener = page.locator("[data-cache-clear]");
+  const opener = page.locator("[data-pages-refresh]");
   await opener.focus();
   await page.keyboard.press("Enter");
   const dialog = page.locator(".vp-confirm");
   await expect(dialog).toBeVisible();
-  const confirm = dialog.getByRole("button", { name: "Clear caches" });
+  const confirm = dialog.getByRole("button", { name: "Refresh every page" });
   const cancel = dialog.getByRole("button", { name: "Cancel" });
   await expect(confirm).toBeFocused();
   await page.keyboard.press("Tab");
@@ -804,6 +804,20 @@ test("a confirmation dialog keeps focus and gives it back", async ({ page }) => 
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(opener).toBeFocused();
+});
+
+// Refresh every page answers at once and reports its progress under the card:
+// the pages are rebuilt in the background, none deleted.
+test("refresh every page starts at once and shows its progress", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/storage");
+  await page.locator("[data-pages-refresh]").click();
+  await page.locator(".vp-confirm").getByRole("button", { name: "Refresh every page" }).click();
+  await expect(page.locator("[data-cache-msg]")).toContainText(/Every page is being refreshed|already running/);
+  await expect(page.locator("#pages-refresh")).toContainText(/Refreshing every page|Last refresh finished/);
+  // The post the suite seeds is still served: nothing was deleted to refresh it.
+  const post = await page.request.get("/" + (process.env.ARTICLE_SLUG || "hello-vayupress"));
+  expect(post.ok()).toBeTruthy();
 });
 
 // Settings compares every row with the value it loaded with: the bar counts

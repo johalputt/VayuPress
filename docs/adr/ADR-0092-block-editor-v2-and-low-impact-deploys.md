@@ -83,3 +83,11 @@ returning a 502 (non-idempotent methods are never retried).
   site down for seconds. All pacing has gentle defaults and is env-tunable.
 - The new columns are additive and nullable-by-default, so the upgrade is
   backward compatible and requires no operator action.
+
+## Later (2026-09-26)
+
+`VAYU_WARM_THROTTLE_MS` no longer exists: the boot cache warm it paced was
+removed, and stale pages are rebuilt by the paced warmer, which sizes its
+batches from the host's live load (`internal/pace`). `VAYU_WARM_DELAY_SEC` and
+`VAYU_WARM_ON_BOOT` still govern the boot rebuild of the sitemap, feed and
+robots.txt.

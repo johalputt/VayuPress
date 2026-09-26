@@ -2,26 +2,33 @@
 
 package main
 
-// admin_os_cache.go — "Clear caches" on System › Storage: one control that
-// frees the space held by data VayuPress can rebuild, and says how much.
+// admin_os_cache.go — "Refresh every page" on System › Storage.
 //
-// What it removes, and only this:
-//   - rendered pages (render.CacheClear's allow-list; the pre-update backups,
-//     search index and VayuShield lists beside them in CACHE_DIR stay);
-//   - VayuPress's own files in TMP_DIR (export archives, write probes)
-//     untouched for an hour: an export still being written is younger than
-//     that, and nothing else in TMP_DIR is ours, whatever directory it names.
+// It used to be "Clear caches", which deleted every rendered page. On a large
+// site that turned each page's worst query into sustained load: with no file
+// there was no stale copy to serve, so every request, crawlers included,
+// rendered from the database at once, and johal.in's console answered 502 for
+// hours (2026-09-26). Now nothing is deleted that is still in use:
+//
+//   - every rendered page is marked out of date (render.CachePurgeAll); a
+//     visitor keeps getting the current copy while its new one is rendered;
+//   - the warmer rebuilds every page in the background, in batches the pacer
+//     sizes from what the host is doing (cachewarm.go, internal/pace);
+//   - the space a clear used to free comes from what nobody can ask for any
+//     more: cached pages whose post is gone, removed in the same paced pass,
+//     and VayuPress's own temp files untouched for an hour.
 //
 // Optionally it also asks Cloudflare to drop its copies, when Cloudflare is
 // configured and this is not a Tor world. Media, backups, logs and the database
-// are never touched: none of them can be rebuilt.
+// are never touched.
 
 import (
 	"encoding/json"
+	"html"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sync"
+	"strconv"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
@@ -80,55 +87,86 @@ func staleTemp(dir string, maxAge time.Duration, now time.Time, remove bool) (fi
 	return files, bytes
 }
 
-// clearCacheRunning is held by the one cache clear in progress. A second click
-// while it runs is told so rather than starting another: each clear unlinks
-// every rendered page, and on a large site two at once meant twice the disk
-// work at the moment every page starts being rebuilt from the database.
-var clearCacheRunning sync.Mutex
+// refreshResult is what Refresh every page reports at once; the pass itself
+// reports on the Storage page as it goes (refreshStatusHTML).
+type refreshResult struct {
+	Joined     bool   `json:"joined"` // a pass was already running and became the refresh
+	TempFiles  int    `json:"temp_files"`
+	FreedBytes int64  `json:"freed_bytes"`
+	Freed      string `json:"freed"`
+	CDN        string `json:"cdn"`
+}
 
-func (a *App) handleOSStorageClearCache(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
-		return
-	}
-	if !clearCacheRunning.TryLock() {
-		writeAPIError(w, r, http.StatusConflict, "clear-running", "A cache clear is already running. It will finish on its own.", "")
-		return
-	}
-	defer clearCacheRunning.Unlock()
-	var body struct {
-		PurgeCDN bool `json:"purge_cdn"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
-
-	// Tens of thousands of small files can take a few seconds to unlink.
-	if rc := http.NewResponseController(w); rc != nil {
-		_ = rc.SetWriteDeadline(time.Now().Add(2 * time.Minute))
-	}
-	pages, pageBytes := render.CacheClear()
+// refreshEveryPage marks every rendered page stale and starts the paced
+// rebuild. The console's button and the API's full purge both call it.
+func (a *App) refreshEveryPage(purgeCDN bool, actor string) refreshResult {
+	render.CachePurgeAll()
 	temps, tempBytes := staleTemp(config.Cfg.TmpDir, staleTempAge, time.Now(), true)
 	// The sitemap, feed and robots.txt are rebuilt now rather than on a timer,
 	// so search engines never find them older than the pages they list.
-	go generateSitemap()
-	go generateRSS()
-	go generateRobots()
-	go refreshFootprint(config.Cfg.CacheDir, config.Cfg.MediaDir, updateBackupDir())
+	render.Regenerate(generateSitemap, generateRSS, generateRobots, func() {
+		refreshFootprint(config.Cfg.CacheDir, config.Cfg.MediaDir, updateBackupDir())
+	})
+	joined := a.startRefresh()
 
 	cdn := "off"
-	if body.PurgeCDN && cloudflareConfigured() {
+	if purgeCDN && cloudflareConfigured() {
 		cdn = "purged"
 		if err := a.cloudflarePurge(map[string]any{"purge_everything": true}); err != nil {
 			cdn = "failed: " + err.Error()
 		}
 	}
-	freed := pageBytes + tempBytes
-	dbpkg.AuditLog("storage.clear-cache", dbpkg.AuditActor(r), "caches",
-		"cleared "+humanBytes(freed)+" ("+itoaSafe(pages)+" pages, "+itoaSafe(temps)+" temp files); cdn "+cdn)
-	writeJSON(w, r, http.StatusOK, map[string]any{
-		"pages":       pages,
-		"temp_files":  temps,
-		"freed_bytes": freed,
-		"freed":       humanBytes(freed),
-		"cdn":         cdn,
-	})
+	dbpkg.AuditLog("storage.refresh-pages", actor, "caches",
+		"every page marked for refresh; "+itoaSafe(temps)+" temp files ("+humanBytes(tempBytes)+") removed; cdn "+cdn)
+	return refreshResult{Joined: joined, TempFiles: temps, FreedBytes: tempBytes, Freed: humanBytes(tempBytes), CDN: cdn}
+}
+
+func (a *App) handleOSStorageRefreshPages(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	var body struct {
+		PurgeCDN bool `json:"purge_cdn"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	writeJSON(w, r, http.StatusOK, a.refreshEveryPage(body.PurgeCDN, dbpkg.AuditActor(r)))
+}
+
+// handleOSStorageRefreshStatus is the pass's progress, polled by the Storage
+// page while it runs.
+func (a *App) handleOSStorageRefreshStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(refreshStatusHTML(warmProgress())))
+}
+
+// refreshStatusHTML shows the pass in progress, or the last refresh: how far
+// it has got, what it has removed, and the pace it runs at and why.
+func refreshStatusHTML(run *warmRun) string {
+	const id = `id="pages-refresh" role="status" aria-live="polite"`
+	if run == nil || (!run.Refresh && !run.Finished.IsZero()) {
+		return `<div ` + id + `></div>`
+	}
+	removed := ""
+	if run.Removed > 0 {
+		removed = ` · removed ` + itoaSafe(run.Removed) + ` page` + plural(run.Removed) + ` whose post is gone (` + humanBytes(run.Freed) + `)`
+	}
+	counts := itoaSafe(run.Checked) + ` of ` + itoaSafe(run.Total) + ` posts checked · ` + itoaSafe(run.Rebuilt) + ` page` + plural(run.Rebuilt) + ` rebuilt` + removed
+	if !run.Finished.IsZero() {
+		state := "Last refresh finished " + run.Finished.UTC().Format("2006-01-02 15:04") + " UTC"
+		if run.Cancelled {
+			state = "Last refresh stopped when VayuPress restarted; pages not reached refresh as visitors ask for them"
+		}
+		return `<div ` + id + ` class="text-sm muted mt-3">` + html.EscapeString(state) + `: ` + counts + `.</div>`
+	}
+	pct := 0
+	if run.Total > 0 {
+		pct = run.Checked * 100 / run.Total
+	}
+	return `<div ` + id + ` class="mt-3" hx-get="/os/storage/refresh-status" hx-trigger="every 2s" hx-swap="outerHTML">
+  <progress class="progress" max="100" value="` + strconv.Itoa(pct) + `" aria-label="Pages refreshed">` + strconv.Itoa(pct) + `%</progress>
+  <p class="text-sm mt-2">Refreshing every page: ` + counts + `.</p>
+  <p class="text-sm muted">` + html.EscapeString(run.Pace.Verdict.Level.String()) + `, batches of ` + itoaSafe(run.Pace.Batch) + `: ` + html.EscapeString(run.Pace.Verdict.Reason) + `.</p>
+</div>`
 }

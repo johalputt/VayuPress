@@ -38,6 +38,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // storageLogDir / storageBackupDir let an operator point the panel at custom
@@ -226,9 +227,10 @@ func (a *App) handleOSStorage(w http.ResponseWriter, r *http.Request) {
 	writeOSHTML(w, r, adminOSLayout(nonce, "Storage & System", "storage", cfg, htmpl.HTML(body)))
 }
 
-// cacheCardHTML is the one-click clear: what it would free, what it never
-// touches, and the Cloudflare purge when there is a Cloudflare to purge.
-// pageBytes comes from the background footprint, never a walk on this request.
+// cacheCardHTML is Refresh every page: what the rendered pages and stale temp
+// files hold, the Cloudflare purge when there is a Cloudflare to purge, and
+// the refresh's progress. pageBytes comes from the background footprint, never
+// a walk on this request.
 func cacheCardHTML(pageBytes int64) string {
 	tempFiles, tempBytes := staleTemp(config.Cfg.TmpDir, staleTempAge, time.Now(), false)
 	cdn := ""
@@ -236,8 +238,11 @@ func cacheCardHTML(pageBytes int64) string {
 		cdn = `<label class="upd-check mt-3"><input type="checkbox" data-cache-cdn checked> Also purge Cloudflare's copy of every page</label>`
 	}
 	return `<div class="card mb-6">
-  <div class="card-head"><div><h2 class="card-title">Caches</h2><p class="card-subtitle">Data VayuPress rebuilds on its own. Pages are rendered again as visitors ask for them, so expect a short rise in CPU after a clear.</p></div>
-    <button type="button" class="btn btn--primary btn--sm" data-cache-clear>Clear caches</button></div>
+  <div class="card-head"><div><h2 class="card-title">Pages ` + string(ui.Tip("Every rendered page is marked out of date and rebuilt in the background, as fast as the server can spare: "+
+		"faster when it is idle, slower when visitors or the database are busy. Visitors keep the current copy of a page until its new one is ready. "+
+		"Pages whose post no longer exists, and temporary files untouched for an hour, are removed. Media, backups, logs and the database are never touched.")) + `</h2>
+    <p class="card-subtitle">Rebuilt from the database on their own. Refresh every page when one shows something out of date.</p></div>
+    <button type="button" class="btn btn--primary btn--sm" data-pages-refresh>Refresh every page</button></div>
   <div class="table-wrap"><table class="table">
     <tbody>
       <tr><td>Rendered pages</td><td class="muted text-sm">Home, post and tag pages, for every domain</td><td>` + humanBytes(pageBytes) + `</td></tr>
@@ -245,7 +250,7 @@ func cacheCardHTML(pageBytes int64) string {
     </tbody>
   </table></div>
   ` + cdn + `
-  <p class="text-xs muted mt-3">Never touched: media, backups, logs and the database.</p>
+  ` + refreshStatusHTML(warmProgress()) + `
   <div data-cache-msg role="status" aria-live="polite" class="action-msg"></div>
 </div>`
 }
