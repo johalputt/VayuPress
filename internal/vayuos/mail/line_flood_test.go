@@ -47,10 +47,7 @@ import (
 // every byte offered, which is the whole finding.
 func floodOneEndlessLine(t *testing.T, addr string, budget int) int {
 	t.Helper()
-	conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	conn := floodConn(t, addr)
 	defer conn.Close()
 	readLineRaw(t, conn) // greeting
 
@@ -79,9 +76,26 @@ func floodOneEndlessLine(t *testing.T, addr string, budget int) int {
 
 // acceptedCeiling is the most a single endless line may cost before the server
 // gives up on it. Well above the real bound (64 KiB) because the kernel's send
-// and receive buffers absorb a few hundred KiB on their own, and well below
-// what an unbounded reader would swallow.
+// and receive buffers absorb some on their own, and well below what an
+// unbounded reader would swallow.
 const acceptedCeiling = 4 << 20
+
+// floodConn dials addr with a small, fixed send buffer. Left to autotuning, the
+// client's own send buffer grows to net.ipv4.tcp_wmem's maximum (4 MiB on a
+// stock Linux), and every byte in it counts as "accepted": the flood tests then
+// failed, under -race, at 4 MiB plus the 64 KiB the server did read, which
+// measured the kernel rather than the server.
+func floodConn(t *testing.T, addr string) net.Conn {
+	t.Helper()
+	conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	if err := conn.(*net.TCPConn).SetWriteBuffer(64 << 10); err != nil {
+		t.Fatalf("send buffer: %v", err)
+	}
+	return conn
+}
 
 // floodBudget is what the attacker offers. An unbounded server takes all of it.
 const floodBudget = 24 << 20
@@ -132,10 +146,7 @@ func TestIMAPRefusesAnEndlessAuthenticateContinuation(t *testing.T) {
 	}
 	t.Cleanup(func() { srv.Stop(context.Background()) })
 
-	conn, err := net.DialTimeout("tcp", srv.Addr(), 3*time.Second)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	conn := floodConn(t, srv.Addr())
 	defer conn.Close()
 	readLineRaw(t, conn) // greeting
 
