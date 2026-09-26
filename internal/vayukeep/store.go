@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -223,10 +224,11 @@ func (e *Engine) prune() error {
 		if proven == "" || g.Name >= proven {
 			continue
 		}
-		if err := os.Remove(g.Path); err != nil {
+		if gone, err := removeGeneration(g.Path); err != nil {
 			return err
+		} else if gone {
+			removed++
 		}
-		removed++
 	}
 	if removed > 0 {
 		e.cfg.Log("info", fmt.Sprintf("retention removed %d generation(s)", removed))
@@ -276,9 +278,26 @@ func (e *Engine) refreshFromTarget() {
 	})
 }
 
+// removeGeneration deletes one generation file. One that is already gone is
+// not a failure: the generation is absent, which is what was asked. Retention,
+// "Clean up now" and "Remove older" each list the target and then delete from
+// that list, so two of them at once — or a second click on the same button —
+// meet files the first has taken; reporting that as an error told the
+// operator a removal had failed when it had happened. gone reports whether
+// this call removed the file, so nothing is counted twice.
+func removeGeneration(path string) (gone bool, err error) {
+	if err := os.Remove(path); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // Delete removes one generation from the target permanently.
 func (e *Engine) Delete(gen Generation) error {
-	if err := os.Remove(gen.Path); err != nil {
+	if _, err := removeGeneration(gen.Path); err != nil {
 		return err
 	}
 	e.cfg.Log("info", "generation "+gen.Name+" deleted by the operator")
@@ -368,11 +387,14 @@ func (e *Engine) RemoveOlderThanProven() (removed []Generation, err error) {
 		if g.Name >= proven {
 			continue
 		}
-		if err := os.Remove(g.Path); err != nil {
+		gone, err := removeGeneration(g.Path)
+		if err != nil {
 			e.refreshFromTarget()
 			return removed, err
 		}
-		removed = append(removed, g)
+		if gone {
+			removed = append(removed, g)
+		}
 	}
 	if len(removed) > 0 {
 		e.cfg.Log("info", fmt.Sprintf("removed %d generation(s) older than %s, which passed a restore drill", len(removed), proven))

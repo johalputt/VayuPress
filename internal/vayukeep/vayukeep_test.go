@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -30,7 +31,6 @@ type harness struct {
 	dbPath  string
 	target  string
 	now     time.Time
-	logs    []string
 }
 
 func newHarness(t *testing.T, mut func(*Config)) *harness {
@@ -59,7 +59,7 @@ func newHarness(t *testing.T, mut func(*Config)) *harness {
 		Passphrase: "a test passphrase",
 		Snapshot:   copySnapshot,
 		Now:        func() time.Time { return h.now },
-		Log:        func(level, msg string) { h.logs = append(h.logs, level+": "+msg) },
+		Log:        func(string, string) {},
 	}
 	if mut != nil {
 		mut(&cfg)
@@ -823,5 +823,81 @@ func TestFirstDrillComesSoonAfterStart(t *testing.T) {
 	short := newHarness(t, func(c *Config) { c.DrillInterval = 3 * time.Minute })
 	if got := short.engine.firstDrillAt().Sub(short.now); got != 3*time.Minute {
 		t.Errorf("with a 3m drill interval the first drill is due after %v; want 3m", got)
+	}
+}
+
+// Two removals at once — a second click on "Remove older", or it racing
+// scheduled retention — each succeed, and between them remove each older
+// generation exactly once. Before, the second met a file the first had
+// already taken and told the operator the removal had failed.
+//
+// Whether two callers collide is up to the scheduler: with the fix reverted
+// this fails about 17 runs in 20. TestDeletingAGoneGenerationIsDone holds the
+// already-gone rule on every run; what this one holds every time is the count.
+func TestOverlappingRemovalsBothSucceed(t *testing.T) {
+	h := newHarness(t, nil)
+	ctx := context.Background()
+	for i := 0; i < 6; i++ {
+		h.engine.cycle(ctx, true)
+		h.advance(time.Minute)
+	}
+	if res := h.engine.BackupNow(ctx); !res.OK {
+		t.Fatalf("BackupNow: %s", res.Err)
+	}
+	const callers = 16
+	var (
+		wg    sync.WaitGroup
+		start = make(chan struct{})
+		mu    sync.Mutex
+		total int
+		errs  []error
+	)
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			removed, err := h.engine.RemoveOlderThanProven()
+			mu.Lock()
+			defer mu.Unlock()
+			total += len(removed)
+			if err != nil {
+				errs = append(errs, err)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if len(errs) > 0 {
+		t.Errorf("%d of %d overlapping removals reported a failure, first: %v", len(errs), callers, errs[0])
+	}
+	if total != 6 {
+		t.Errorf("the removals counted %d generations between them; want each of the 6 older ones once", total)
+	}
+}
+
+// Deleting a generation someone already deleted is done, not failed; a
+// generation that cannot be removed for any other reason still is.
+func TestDeletingAGoneGenerationIsDone(t *testing.T) {
+	h := newHarness(t, nil)
+	h.engine.cycle(context.Background(), true)
+	gens, err := h.engine.List()
+	if err != nil || len(gens) != 1 {
+		t.Fatalf("list: %v %v", gens, err)
+	}
+	if err := h.engine.Delete(gens[0]); err != nil {
+		t.Fatalf("first delete: %v", err)
+	}
+	if err := h.engine.Delete(gens[0]); err != nil {
+		t.Errorf("deleting a generation that is already gone reported %v", err)
+	}
+	// A directory with something in it cannot be removed by os.Remove: that
+	// is a real failure and must still say so.
+	stuck := filepath.Join(t.TempDir(), "stuck")
+	if err := os.MkdirAll(filepath.Join(stuck, "inside"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.engine.Delete(Generation{Name: "stuck", Path: stuck}); err == nil {
+		t.Error("a removal that failed was reported as done")
 	}
 }

@@ -134,8 +134,11 @@ var saTorApps = []saApp{
 		{Label: "Theme", Href: "/os/theme", Icon: "sun"},
 		{Label: "Domains", Href: "/os/domains", Icon: "globe"},
 	}},
+	// Backups are the Tor world's own: VayuKeep runs in it against its own
+	// database, with clearnet targets refused.
 	{Key: "system", Label: "System", Icon: "system", Href: "/os/storage", Sections: []saSection{
 		{Label: "Storage", Href: "/os/storage", Icon: "disk"},
+		{Label: "Backups", Href: "/os/vayukeep", Icon: "db"},
 	}},
 	{Key: "settings", Label: "Settings", Icon: "settings", Href: "/os/settings", Sections: append(settingsSections(),
 		saSection{Label: "My profile", Href: "/os/profile", Icon: "audience", Group: "Account"})},
