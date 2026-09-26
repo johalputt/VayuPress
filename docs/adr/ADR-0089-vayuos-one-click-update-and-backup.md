@@ -63,9 +63,12 @@ piece that makes the update truly hands-free — no `systemctl restart` step.
 database (`vayupress.db`). Because all site settings live in the `site_settings`
 table, one DB copy captures content **and** settings.
 
-- **Consistency:** the DB is copied with SQLite `VACUUM INTO`, which takes a read
-  snapshot and writes a fully checkpointed, defragmented standalone file. No
-  torn pages, and no need to ship `-wal`/`-shm` sidecars.
+- **Consistency:** the DB is copied through one pinned read transaction with
+  SQLite's backup API (`internal/sqlitecopy`; amended 2026-09-26, it was
+  `VACUUM INTO`), in steps paced by the host, into a standalone file. No torn
+  pages, and no need to ship `-wal`/`-shm` sidecars. The backup taken before an
+  update now uses the same copy: until 2026-09-26 it archived the live file and
+  its `-wal` byte for byte.
 - **No size limit, constant memory:** export streams `manifest → settings → DB`
   straight to the HTTP response with `io.Copy`; import streams the upload
   through `gzip`/`tar` readers to disk via a `MultipartReader` (never

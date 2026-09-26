@@ -145,6 +145,15 @@ func serviceUserGuess() string {
 // rewrites the database and the previous binary is kept as <binary>.bak.
 const inlineBackupMaxBytes = 2 << 30 // 2 GiB
 
+// updateApplyTimeout bounds an update, from download to swap. The download
+// alone is allowed 15 minutes (the client's timeout); the rest is a paced
+// backup of up to inlineBackupMaxBytes on a busy host.
+const updateApplyTimeout = time.Hour
+
+// exportTimeout bounds building the Export download: a paced copy and archive
+// of the whole database, however large, on a host that may be busy.
+const exportTimeout = 6 * time.Hour
+
 // dbSizeBytes returns the on-disk size of the live database file (0 if unknown).
 func dbSizeBytes() int64 {
 	if config.Cfg.DBPath == "" {
@@ -598,11 +607,22 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	if backup {
 		opt.DBPath = config.Cfg.DBPath
 		opt.BackupDir = config.Cfg.CacheDir + "/update-backups"
+		opt.Pacing = updatePacing()
 	}
-	newVersion, err := update.ApplyVerified(r.Context(), client, updateOwner, updateRepo, opt, st)
+	// The download, a paced database backup and the swap outlast the router's
+	// 30 s deadline on any real site, and an update cut off there fails half way
+	// with the binary untouched but the operator told only "failed". It runs to
+	// its own bound instead, and the page already waits for the restart when a
+	// proxy gives up on the response first.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), updateApplyTimeout)
+	defer cancel()
+	if rc := http.NewResponseController(w); rc != nil {
+		_ = rc.SetWriteDeadline(time.Now().Add(updateApplyTimeout))
+	}
+	newVersion, err := update.ApplyVerified(ctx, client, updateOwner, updateRepo, opt, st)
 	if err != nil {
 		if st != nil && histID > 0 {
-			_ = st.MarkComplete(r.Context(), histID, "failed", err.Error())
+			_ = st.MarkComplete(ctx, histID, "failed", err.Error())
 		}
 		msg := err.Error()
 		// Make the most common, recoverable failure self-explanatory: the
@@ -618,7 +638,7 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 
 	if body.DryRun {
 		if st != nil && histID > 0 {
-			_ = st.MarkComplete(r.Context(), histID, "checked", "dry-run verification passed for "+newVersion)
+			_ = st.MarkComplete(ctx, histID, "checked", "dry-run verification passed for "+newVersion)
 		}
 		writeJSON(w, r, http.StatusOK, map[string]interface{}{
 			"status": "verified", "version": newVersion,
@@ -628,7 +648,7 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if st != nil && histID > 0 {
-		_ = st.MarkComplete(r.Context(), histID, "success", "applied "+newVersion+" via VayuOS")
+		_ = st.MarkComplete(ctx, histID, "success", "applied "+newVersion+" via VayuOS")
 	}
 	dbpkg.AuditLog("update.apply", dbpkg.AuditActor(r), newVersion, "binary updated "+Version+" -> "+newVersion+" via VayuOS")
 	logging.LogInfo("update", "applied "+newVersion+" via VayuOS admin")
@@ -789,7 +809,11 @@ func (a *App) handleOSBackupExport(w http.ResponseWriter, r *http.Request) {
 	defer os.Remove(archivePath)
 
 	// Build the whole archive before sending any response header.
-	exportErr := update.ExportSnapshot(r.Context(), archive, dbpkg.DB, config.Cfg.DBPath, tmpDir, Version)
+	// Built off the request's 30 s deadline: the copy and archive are paced by
+	// the host, and a large site's take longer than any request may.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), exportTimeout)
+	defer cancel()
+	exportErr := update.ExportSnapshot(ctx, archive, dbpkg.DB, config.Cfg.DBPath, tmpDir, Version, updatePacing())
 	closeErr := archive.Close()
 	if exportErr != nil {
 		logging.LogError("update", "snapshot export failed", exportErr.Error())

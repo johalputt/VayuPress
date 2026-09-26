@@ -23,8 +23,10 @@ import (
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/pace"
+	"github.com/johalputt/vayupress/internal/pacedio"
 	"github.com/johalputt/vayupress/internal/sqlitecopy"
 	"github.com/johalputt/vayupress/internal/ui"
+	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/vayukeep"
 )
 
@@ -40,6 +42,16 @@ var snapshotPages = pace.JobConfig{Min: 1024, Max: 16384, Step: 1024, Floor: tru
 // restore, in VayuKeep's 256 KiB chunks: 1 MiB at the slowest, 64 MiB at most
 // between asking the pacer again.
 var sealChunks = pace.JobConfig{Min: 4, Max: 256, Step: 4, Floor: true}
+
+// updatePacing paces the pre-update backup and the Export download in the same
+// units as VayuKeep's copy and seal: pages for the database copy, chunks for
+// the archive.
+func updatePacing() update.Pacing {
+	return update.Pacing{
+		Pages:  func() pacedio.Pacer { return newSnapshotJob() },
+		Chunks: func() pacedio.Pacer { return pace.Host().NewJob(sealChunks) },
+	}
+}
 
 // newSnapshotJob paces one snapshot. A var so a test can take a snapshot at
 // full speed: the host pacer reads the machine's real load, and a busy test

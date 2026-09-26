@@ -5,18 +5,32 @@ package update
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/pacedio"
+	"github.com/johalputt/vayupress/internal/sqlitecopy"
 )
 
-// CreateBackup copies the SQLite DB (and its -wal/-shm sidecars if present) into
-// destDir as a timestamped .tar.gz and returns the archive path. Pure stdlib.
-func CreateBackup(dbPath, destDir string) (string, error) {
+// CreateBackup writes a consistent copy of the SQLite database at dbPath into
+// destDir as a timestamped .tar.gz and returns the archive path.
+//
+// It used to archive the live file and its -wal and -shm byte for byte while
+// the site kept writing, which can capture a pair that restores into a corrupt
+// database: the defect ADR-0145 removed from every other backup path, still
+// here in the one taken before an update. The database is now copied through
+// one pinned read transaction (internal/sqlitecopy) and archived alone, since
+// the copy has folded the write-ahead log in. Both the copy and the archive are
+// paced by pc.
+func CreateBackup(ctx context.Context, dbPath, destDir string, pc Pacing) (string, error) {
 	if dbPath == "" {
 		return "", fmt.Errorf("update: empty dbPath")
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		return "", fmt.Errorf("update: nothing to back up: %w", err)
 	}
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return "", fmt.Errorf("update: mkdir backup dir: %w", err)
@@ -24,65 +38,54 @@ func CreateBackup(dbPath, destDir string) (string, error) {
 
 	ts := time.Now().UTC().Format("20060102T150405Z")
 	base := filepath.Base(dbPath)
-	archivePath := filepath.Join(destDir, fmt.Sprintf("backup-%s-%s.tar.gz", base, ts))
+	// The copy lands beside the archive, on the backup directory's disk, never
+	// in the default temporary directory: that is a RAM-backed tmpfs on most
+	// distributions, and a multi-gigabyte copy into it takes the machine down.
+	snap := filepath.Join(destDir, ".snapshot-"+ts+".db")
+	_ = os.Remove(snap)
+	if err := sqlitecopy.Copy(ctx, dbPath, snap, pc.pages(), nil); err != nil {
+		return "", fmt.Errorf("update: consistent copy: %w", err)
+	}
+	defer os.Remove(snap)
+	fi, err := os.Stat(snap)
+	if err != nil {
+		return "", err
+	}
 
+	archivePath := filepath.Join(destDir, fmt.Sprintf("backup-%s-%s.tar.gz", base, ts))
 	out, err := os.Create(archivePath)
 	if err != nil {
 		return "", fmt.Errorf("update: create archive: %w", err)
 	}
-	defer out.Close()
-
-	gz := gzip.NewWriter(out)
-	defer gz.Close()
+	complete := false
+	defer func() {
+		out.Close()
+		if !complete {
+			_ = os.Remove(archivePath)
+		}
+	}()
+	gz := gzip.NewWriter(pacedio.NewWriter(ctx, out, pc.chunks()))
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
-
-	// Include the main DB and any sidecar files that exist.
-	candidates := []string{dbPath, dbPath + "-wal", dbPath + "-shm"}
-	added := false
-	for _, p := range candidates {
-		fi, statErr := os.Stat(p)
-		if statErr != nil {
-			continue // sidecar (or db) absent — skip
-		}
-		if err := addFileToTar(tw, p, fi); err != nil {
-			return "", err
-		}
-		added = true
+	if err := writeTarFile(tw, base, snap, fi); err != nil {
+		return "", err
 	}
-	if !added {
-		return "", fmt.Errorf("update: nothing to back up — %q not found", dbPath)
+	if err := tw.Close(); err != nil {
+		return "", fmt.Errorf("update: close tar: %w", err)
 	}
+	if err := gz.Close(); err != nil {
+		return "", fmt.Errorf("update: close gzip: %w", err)
+	}
+	if err := out.Sync(); err != nil {
+		return "", err
+	}
+	complete = true
 
 	// Retention: prune older pre-update backups, keeping the newest N. Scoped to
 	// THIS database's base name so it can never touch another DB's backups, and
-	// best-effort so a prune failure never fails the backup. The archive we just
-	// created is the newest by mod time, so it is always within the keep window
-	// even though its deferred writers flush after this returns (pruning only
-	// ever deletes strictly older files).
+	// best-effort so a prune failure never fails the backup. The archive just
+	// written is the newest by mod time, so it is always within the keep window
+	// (pruning only ever deletes strictly older files).
 	_, _ = pruneBackups(destDir, fmt.Sprintf("backup-%s-*.tar.gz", base), backupKeep())
 
 	return archivePath, nil
-}
-
-func addFileToTar(tw *tar.Writer, path string, fi os.FileInfo) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("update: open %s: %w", path, err)
-	}
-	defer f.Close()
-
-	hdr := &tar.Header{
-		Name:    filepath.Base(path),
-		Mode:    int64(fi.Mode().Perm()),
-		Size:    fi.Size(),
-		ModTime: fi.ModTime(),
-	}
-	if err := tw.WriteHeader(hdr); err != nil {
-		return fmt.Errorf("update: tar header %s: %w", path, err)
-	}
-	if _, err := io.Copy(tw, f); err != nil {
-		return fmt.Errorf("update: tar copy %s: %w", path, err)
-	}
-	return nil
 }

@@ -3,13 +3,14 @@
 package vayukeep
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/pacedio"
 )
 
 // countingPacer allows one chunk per ask and counts the asks.
@@ -31,7 +32,7 @@ func (c *countingPacer) Next(ctx context.Context) (int, error) {
 func TestSealingAndTheTestRestoreAskThePacerAsTheyGo(t *testing.T) {
 	var pacers []*countingPacer
 	h := newHarness(t, func(c *Config) {
-		c.Pace = func() Pacer {
+		c.Pace = func() pacedio.Pacer {
 			p := &countingPacer{}
 			pacers = append(pacers, p)
 			return p
@@ -57,24 +58,3 @@ func TestSealingAndTheTestRestoreAskThePacerAsTheyGo(t *testing.T) {
 		}
 	}
 }
-
-// A paced writer never passes on more than its budget in one write, whatever
-// size the caller hands it.
-func TestAPacedWriteIsCutToTheBudget(t *testing.T) {
-	var sizes []int
-	sink := writerFunc(func(p []byte) (int, error) { sizes = append(sizes, len(p)); return len(p), nil })
-	pw := &pacedWriter{w: sink, pacedIO: pacedIO{ctx: context.Background(), p: &countingPacer{}}}
-	big := bytes.Repeat([]byte{1}, 3*paceChunk+10)
-	if n, err := pw.Write(big); err != nil || n != len(big) {
-		t.Fatalf("Write = %d, %v", n, err)
-	}
-	for _, s := range sizes {
-		if s > paceChunk {
-			t.Errorf("a write of %d bytes passed a budget of %d", s, paceChunk)
-		}
-	}
-}
-
-type writerFunc func([]byte) (int, error)
-
-func (f writerFunc) Write(p []byte) (int, error) { return f(p) }

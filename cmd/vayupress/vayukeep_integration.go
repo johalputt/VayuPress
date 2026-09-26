@@ -19,7 +19,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/pace"
-	"github.com/johalputt/vayupress/internal/sqlitecopy"
+	"github.com/johalputt/vayupress/internal/pacedio"
 	"github.com/johalputt/vayupress/internal/vayukeep"
 )
 
@@ -53,7 +53,7 @@ func (a *App) vayuKeepVerifier(ctx context.Context, dbPath string) (int64, error
 // page accounting (a page claimed twice, or by nothing), which wastes space but
 // loses no row. A single very large table is still one statement; that limit
 // is recorded, not hidden.
-func verifyRestoredDB(ctx context.Context, dbPath string, p sqlitecopy.Pacer) (int64, error) {
+func verifyRestoredDB(ctx context.Context, dbPath string, p pacedio.Pacer) (int64, error) {
 	db, err := sql.Open("sqlite3", dbPath+"?mode=ro&_busy_timeout=5000")
 	if err != nil {
 		return 0, err

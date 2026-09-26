@@ -26,14 +26,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/johalputt/vayupress/internal/pacedio"
 	sqlite3 "github.com/mattn/go-sqlite3"
 )
-
-// Pacer is asked before every step how many pages that step may copy. It blocks
-// while the host is too busy; *pace.Job is one.
-type Pacer interface {
-	Next(ctx context.Context) (int, error)
-}
 
 // Progress is how far a copy has got, in database pages of PageSize bytes.
 type Progress struct {
@@ -46,7 +41,8 @@ var ErrRestarted = errors.New("the copy restarted: the database changed under it
 
 // Copy writes a consistent copy of the SQLite database at src to dest, which
 // must not exist. onStep, when not nil, is told the progress after each step.
-func Copy(ctx context.Context, src, dest string, p Pacer, onStep func(Progress)) (err error) {
+// The pacer is asked before every step how many pages it may copy.
+func Copy(ctx context.Context, src, dest string, p pacedio.Pacer, onStep func(Progress)) (err error) {
 	if _, statErr := os.Stat(dest); statErr == nil {
 		return fmt.Errorf("sqlitecopy: %s already exists", dest)
 	}
@@ -114,7 +110,7 @@ type stepper interface {
 	PageCount() int
 }
 
-func steps(ctx context.Context, bk stepper, p Pacer, pageSize int, onStep func(Progress)) error {
+func steps(ctx context.Context, bk stepper, p pacedio.Pacer, pageSize int, onStep func(Progress)) error {
 	last := -1
 	for {
 		pages, err := p.Next(ctx)

@@ -45,6 +45,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/pacedio"
 )
 
 // Config controls the engine. The zero value is disabled.
@@ -91,7 +93,7 @@ type Config struct {
 	// Pace, when set, starts the pacing for one seal or one test restore: it
 	// is asked before each chunk and blocks while the host is busy. Nil runs
 	// at full speed, as tests and the command line want.
-	Pace func() Pacer
+	Pace func() pacedio.Pacer
 	// Log receives one-line operational messages.
 	Log func(level, msg string)
 }

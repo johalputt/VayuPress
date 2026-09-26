@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
+
+	"github.com/johalputt/vayupress/internal/pacedio"
 )
 
 // newTestDB creates a SQLite database carrying the minimal VayuPress schema the
@@ -45,7 +47,7 @@ func TestExportImportRoundTrip(t *testing.T) {
 
 	// Export to an in-memory buffer.
 	var buf bytes.Buffer
-	if err := ExportSnapshot(context.Background(), &buf, db, srcPath, dir, "9.9.9"); err != nil {
+	if err := ExportSnapshot(context.Background(), &buf, db, srcPath, dir, "9.9.9", Pacing{}); err != nil {
 		t.Fatalf("ExportSnapshot: %v", err)
 	}
 	if buf.Len() == 0 {
@@ -125,7 +127,7 @@ func TestExportSnapshotToFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ExportSnapshot(context.Background(), f, db, srcPath, dir, "1.2.3"); err != nil {
+	if err := ExportSnapshot(context.Background(), f, db, srcPath, dir, "1.2.3", Pacing{}); err != nil {
 		f.Close()
 		t.Fatalf("ExportSnapshot to file: %v", err)
 	}
@@ -151,5 +153,25 @@ func TestExportSnapshotToFile(t *testing.T) {
 	}
 	if _, err := os.Stat(destPath + PendingRestoreSuffix); err != nil {
 		t.Fatalf("pending restore not staged: %v", err)
+	}
+}
+
+// The export is two passes over the database, the copy and the archive, and
+// both go at their pacer's word.
+func TestTheExportIsPaced(t *testing.T) {
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "source.db")
+	db := newTestDB(t, srcPath)
+	defer db.Close()
+	var pages, chunks countingPacer
+	var buf bytes.Buffer
+	if err := ExportSnapshot(context.Background(), &buf, db, srcPath, dir, "9.9.9", Pacing{
+		Pages:  func() pacedio.Pacer { return &pages },
+		Chunks: func() pacedio.Pacer { return &chunks },
+	}); err != nil {
+		t.Fatalf("ExportSnapshot: %v", err)
+	}
+	if pages.calls == 0 || chunks.calls < 2 {
+		t.Errorf("the copy asked its pacer %d times and the hash and archive %d", pages.calls, chunks.calls)
 	}
 }

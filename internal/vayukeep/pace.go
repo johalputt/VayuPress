@@ -13,86 +13,20 @@ package vayukeep
 import (
 	"context"
 	"io"
+
+	"github.com/johalputt/vayupress/internal/pacedio"
 )
-
-// Pacer is asked before each chunk how many chunks may follow, and blocks while
-// the host is busy. *pace.Job is one.
-type Pacer interface {
-	Next(ctx context.Context) (int, error)
-}
-
-// paceChunk is the unit a pacer's answer counts: 256 KiB. The pacer's smallest
-// batch is one chunk, so a busy host still sees the work move.
-const paceChunk = 256 << 10
-
-// pacedIO spends a budget of bytes, asking the pacer for more when it runs out.
-type pacedIO struct {
-	ctx    context.Context
-	p      Pacer
-	budget int
-}
-
-func (x *pacedIO) take(n int) (int, error) {
-	if x.budget <= 0 {
-		chunks, err := x.p.Next(x.ctx)
-		if err != nil {
-			return 0, err
-		}
-		x.budget = max(chunks, 1) * paceChunk
-	}
-	n = min(n, x.budget)
-	x.budget -= n
-	return n, nil
-}
-
-type pacedWriter struct {
-	w io.Writer
-	pacedIO
-}
-
-// Write writes p in as many paced pieces as the budget allows, so no single
-// large write escapes the pacer.
-func (pw *pacedWriter) Write(p []byte) (int, error) {
-	written := 0
-	for written < len(p) {
-		n, err := pw.take(len(p) - written)
-		if err != nil {
-			return written, err
-		}
-		m, err := pw.w.Write(p[written : written+n])
-		written += m
-		if err != nil {
-			return written, err
-		}
-	}
-	return written, nil
-}
-
-type pacedReader struct {
-	r io.Reader
-	pacedIO
-}
-
-func (pr *pacedReader) Read(p []byte) (int, error) {
-	n, err := pr.take(len(p))
-	if err != nil {
-		return 0, err
-	}
-	m, err := pr.r.Read(p[:n])
-	pr.budget += n - m // what was not read stays in the budget
-	return m, err
-}
 
 func (e *Engine) pacedWriter(ctx context.Context, w io.Writer) io.Writer {
 	if e.cfg.Pace == nil {
 		return w
 	}
-	return &pacedWriter{w: w, pacedIO: pacedIO{ctx: ctx, p: e.cfg.Pace()}}
+	return pacedio.NewWriter(ctx, w, e.cfg.Pace())
 }
 
 func (e *Engine) pacedReader(ctx context.Context, r io.Reader) io.Reader {
 	if e.cfg.Pace == nil {
 		return r
 	}
-	return &pacedReader{r: r, pacedIO: pacedIO{ctx: ctx, p: e.cfg.Pace()}}
+	return pacedio.NewReader(ctx, r, e.cfg.Pace())
 }

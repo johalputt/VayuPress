@@ -29,6 +29,10 @@ type ApplyOptions struct {
 	// (unreleased builds) become eligible for install, not just stable releases.
 	// Verification is unchanged — checksum always, signature when a key is pinned.
 	IncludePrerelease bool
+
+	// Pacing paces the pre-update database backup. The zero value runs it at
+	// full speed, as the command line does.
+	Pacing Pacing
 }
 
 // Guard injects a mode lookup so apply can refuse in unsafe modes.
@@ -233,7 +237,7 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 	// Always back up the database before mutating the binary.
 	backupPath := ""
 	if opt.DBPath != "" {
-		bp, berr := CreateBackup(opt.DBPath, opt.BackupDir)
+		bp, berr := CreateBackup(ctx, opt.DBPath, opt.BackupDir, opt.Pacing)
 		if berr != nil {
 			return "", fmt.Errorf("update: backup failed, aborting apply: %w", berr)
 		}

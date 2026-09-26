@@ -3,6 +3,7 @@
 package update
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,9 +19,7 @@ func TestCreateBackupPrunesOldArchives(t *testing.T) {
 	t.Setenv("VAYU_UPDATE_BACKUP_KEEP", "3")
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "vayupress.db")
-	if err := os.WriteFile(dbPath, []byte("sqlite"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	walHeavyDB(t, dbPath)
 	destDir := filepath.Join(dir, "backups")
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -40,7 +39,7 @@ func TestCreateBackupPrunesOldArchives(t *testing.T) {
 	}
 
 	// A fresh backup (newest) should trigger pruning down to keep=3.
-	newest, err := CreateBackup(dbPath, destDir)
+	newest, err := CreateBackup(context.Background(), dbPath, destDir, Pacing{})
 	if err != nil {
 		t.Fatalf("CreateBackup: %v", err)
 	}

@@ -21,6 +21,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   until it got through. It now also counts a pool that stays full while a
   caller waits.
 
+- **The backup taken before an update could restore into a corrupt
+  database.** It archived the live database file and its write-ahead log byte
+  for byte while the site kept writing, which can capture a pair that does not
+  belong together. It is now one consistent copy, archived alone, and paced by
+  the server's load like every other backup. A test with commits still only in
+  the write-ahead log restores all of them; the old way restored none.
 - **A scroll bar inside a scroll bar, on every console page.** The page
   itself scrolled around the content area: by 16 px on a desktop, because
   the browser's default margin was never removed, and by up to 1,600 px on a
@@ -65,6 +71,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   site can take longer than any request may stay open, so the page shows each
   running and then its outcome: the test restore's verdict, as before, never
   an optimistic "started". One runs at a time.
+- **Export (Download full backup) is paced and no longer cut off at 30
+  seconds.** Its copy and archive go as fast as the server can spare, and it
+  runs to its own limit instead of the request's; an update, with its backup,
+  does the same, so a large site's update is not reported failed half way.
 - **The test restore checks each table on its own**, pausing between tables
   when the server is busy, and names the table that fails. It no longer checks
   the file-wide page accounting, which can waste space but cannot lose a row.

@@ -16,8 +16,8 @@ package update
 //     io.Writer and the DB is copied with io.Copy, never buffered in memory;
 //     restore streams the upload through the gzip/tar readers to disk. A 50 GB
 //     database exports and restores in constant memory.
-//   - Consistency. The DB is copied with `VACUUM INTO`, which takes a read
-//     snapshot and writes a fully-checkpointed, defragmented standalone file —
+//   - Consistency. The DB is copied through one pinned read transaction
+//     (internal/sqlitecopy), in steps paced by the host, into a standalone file:
 //     no torn pages, no need to also ship the -wal/-shm sidecars.
 //   - Safe restore. A restore never mutates the live database in place. The
 //     validated incoming DB is staged next to the live file as
@@ -43,7 +43,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/pacedio"
+	"github.com/johalputt/vayupress/internal/sqlitecopy"
 )
 
 const (
@@ -73,14 +74,18 @@ type SnapshotManifest struct {
 	SettingsCount int       `json:"settings_count"`
 }
 
-// ExportSnapshot writes a complete, consistent snapshot of db to w as a
-// streaming .tar.gz. It never buffers the database in memory, so there is no
-// practical size limit. tmpDir is used for the transient VACUUM copy; version
-// is recorded in the manifest. The caller owns w (e.g. an http.ResponseWriter)
-// and any Content-Disposition headers.
-func ExportSnapshot(ctx context.Context, w io.Writer, db *sql.DB, dbPath, tmpDir, version string) error {
+// ExportSnapshot writes a complete, consistent snapshot of the database at
+// dbPath to w as a streaming .tar.gz, paced by pc. It never buffers the
+// database in memory, so there is no practical size limit. db is read for the
+// settings dump; tmpDir holds the transient copy; version is recorded in the
+// manifest. The caller owns w (e.g. an http.ResponseWriter) and any
+// Content-Disposition headers.
+func ExportSnapshot(ctx context.Context, w io.Writer, db *sql.DB, dbPath, tmpDir, version string, pc Pacing) error {
 	if db == nil {
 		return fmt.Errorf("update: nil db")
+	}
+	if dbPath == "" {
+		return fmt.Errorf("update: no database path to export")
 	}
 	if tmpDir == "" {
 		tmpDir = os.TempDir()
@@ -91,9 +96,9 @@ func ExportSnapshot(ctx context.Context, w io.Writer, db *sql.DB, dbPath, tmpDir
 
 	// 1. Consistent, checkpointed standalone copy of the live DB.
 	tmpDB := filepath.Join(tmpDir, fmt.Sprintf("vp-export-%d.db", time.Now().UnixNano()))
-	_ = os.Remove(tmpDB) // VACUUM INTO refuses to overwrite an existing file
-	if err := snapshotDBCopy(ctx, db, dbPath, tmpDB); err != nil {
-		return err
+	_ = os.Remove(tmpDB) // the copy refuses to overwrite an existing file
+	if err := sqlitecopy.Copy(ctx, dbPath, tmpDB, pc.pages(), nil); err != nil {
+		return fmt.Errorf("update: consistent copy: %w", err)
 	}
 	defer os.Remove(tmpDB)
 
@@ -102,8 +107,11 @@ func ExportSnapshot(ctx context.Context, w io.Writer, db *sql.DB, dbPath, tmpDir
 		return fmt.Errorf("update: stat snapshot db: %w", err)
 	}
 
-	// 2. Hash the DB copy so the manifest can be verified on restore.
-	sum, err := fileSHA256(tmpDB)
+	// 2. Hash the DB copy so the manifest can be verified on restore. Both this
+	//    read and the archive below go at one pacer's word: each is a pass over
+	//    the whole database.
+	chunks := pc.chunks()
+	sum, err := fileSHA256(tmpDB, func(r io.Reader) io.Reader { return pacedio.NewReader(ctx, r, chunks) })
 	if err != nil {
 		return err
 	}
@@ -128,7 +136,7 @@ func ExportSnapshot(ctx context.Context, w io.Writer, db *sql.DB, dbPath, tmpDir
 	}
 
 	// 4. Stream the archive: manifest → settings → DB (largest last).
-	gz := gzip.NewWriter(w)
+	gz := gzip.NewWriter(pacedio.NewWriter(ctx, w, chunks))
 	gz.Name = snapshotDBName
 	tw := tar.NewWriter(gz)
 
@@ -233,7 +241,7 @@ func StageRestore(ctx context.Context, src io.Reader, dbPath, tmpDir string) (*S
 
 	// Verify the DB hash matches the manifest (detects truncation/corruption).
 	if manifest.DBSHA256 != "" {
-		sum, err := fileSHA256(stagedDB)
+		sum, err := fileSHA256(stagedDB, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -273,7 +281,9 @@ func ApplyPendingRestore(dbPath, backupDir string) (bool, error) {
 	// Safety net: back up whatever is currently live before we overwrite it, so
 	// a bad restore is itself recoverable.
 	if _, err := os.Stat(dbPath); err == nil && backupDir != "" {
-		if _, berr := CreateBackup(dbPath, backupDir); berr != nil {
+		// Full speed: this runs at boot, before the database is open, with no
+		// visitor yet to yield to.
+		if _, berr := CreateBackup(context.Background(), dbPath, backupDir, Pacing{}); berr != nil {
 			// Non-fatal: a failed pre-restore backup must not block recovery, but
 			// surface it so the operator knows.
 			fmt.Fprintf(os.Stderr, "update: pre-restore backup failed (continuing): %v\n", berr)
@@ -286,7 +296,7 @@ func ApplyPendingRestore(dbPath, backupDir string) (bool, error) {
 		}
 		_ = os.Remove(pending)
 	}
-	// The restored DB is fully checkpointed (VACUUM INTO); any sidecars from the
+	// The restored DB is a standalone copy with no write-ahead log; any sidecars from the
 	// previous database are stale and must go.
 	_ = os.Remove(dbPath + "-wal")
 	_ = os.Remove(dbPath + "-shm")
@@ -294,32 +304,6 @@ func ApplyPendingRestore(dbPath, backupDir string) (bool, error) {
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-
-// snapshotDBCopy writes a standalone, consistent copy of the live database to
-// dest. It prefers SQLite's `VACUUM INTO`, which produces a fully checkpointed,
-// defragmented file from a read snapshot. If that fails for any reason (an older
-// SQLite build, a restricted/cross-device temp dir, etc.) it falls back to
-// checkpointing the WAL and copying the database file byte-for-byte, so an
-// export still succeeds rather than producing nothing.
-func snapshotDBCopy(ctx context.Context, db *sql.DB, dbPath, dest string) error {
-	if _, err := db.ExecContext(ctx, "VACUUM INTO ?", dest); err == nil {
-		return nil
-	} else {
-		vacErr := err
-		// Flush the WAL into the main file so the plain copy is as consistent as
-		// possible, then copy the database file.
-		_, _ = db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
-		_ = os.Remove(dest)
-		if dbPath == "" {
-			return fmt.Errorf("update: vacuum into snapshot failed and no db path for fallback: %w", vacErr)
-		}
-		if cerr := copyFile(dbPath, dest, 0o644); cerr != nil {
-			return fmt.Errorf("update: snapshot db copy failed (vacuum: %v; copy: %w)", vacErr, cerr)
-		}
-		logging.LogInfo("update", "snapshot used checkpointed file-copy fallback (VACUUM INTO failed: "+vacErr.Error()+")")
-		return nil
-	}
-}
 
 // validateSQLiteDB opens path read-only and confirms it is an intact SQLite
 // database carrying the core VayuPress schema. This stops an operator from
@@ -391,14 +375,19 @@ func dumpSettings(ctx context.Context, db *sql.DB) ([]byte, int) {
 	return data, len(out)
 }
 
-func fileSHA256(path string) (string, error) {
+// fileSHA256 hashes the file at path; wrap, when set, paces the read.
+func fileSHA256(path string, wrap func(io.Reader) io.Reader) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("update: open for hash: %w", err)
 	}
 	defer f.Close()
+	var r io.Reader = f
+	if wrap != nil {
+		r = wrap(f)
+	}
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	if _, err := io.Copy(h, r); err != nil {
 		return "", fmt.Errorf("update: hash: %w", err)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
