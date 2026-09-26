@@ -285,6 +285,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 			// served from a DIFFERENT origin and cannot ask another host for it.
 			dr.Get("/branding/mark", a.handleOSScopedBrandMark)
 			dr.Get("/seo", a.handleOSScopedSEO)
+			// This site's own outside services; the same page and save as the
+			// primary's, scoped by the path.
+			dr.Get("/services", a.handleOSServices)
+			dr.With(auth.CSRFTokenMiddleware).Post("/api/csp", a.handleOSServicesSave)
 			dr.Get("/analytics", a.handleOSScopedAnalytics)
 			dr.With(auth.CSRFTokenMiddleware).Post("/api/copy-from-primary", a.handleOSScopedCopyFromPrimary)
 		})
@@ -344,6 +348,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// maintenance page, restart, or shut down. Preview renders that page.
 		pr.Get("/os/power", a.handleOSPower)
 		pr.Get("/os/vayukeep", a.handleOSVayuKeep)
+		// Outside services: what the primary's public pages may load from
+		// other sites. "website" is an administrator's area.
+		pr.Get("/os/website/services", a.handleOSServices)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/csp", a.handleOSServicesSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/backup", a.handleOSVayuKeepBackup)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/drill", a.handleOSVayuKeepDrill)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/verify", a.handleOSVayuKeepVerify)
@@ -1565,6 +1573,11 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	// hub; Home and the bell are where an operator looks without being sent, and
 	// a broken recovery path is otherwise silent until the day it is needed.
 	if n, ok := backupNotification(a.vayuKeepStatus(), a.vayuKeepErr, time.Now().UTC()); ok {
+		state(n.Href, n.Title, n.Detail, n.Kind, n.Severity)
+	}
+	// A site in report-only blocks nothing; it is a trial, and a trial nobody
+	// remembers is an open door, so it stays in front of the operator.
+	for _, n := range a.cspReportOnlyNotices(ctx) {
 		state(n.Href, n.Title, n.Detail, n.Kind, n.Severity)
 	}
 	if dbpkg.DB == nil {

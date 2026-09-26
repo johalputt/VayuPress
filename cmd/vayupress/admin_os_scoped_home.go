@@ -65,6 +65,8 @@ var scopedTools = []scopedTool{
 		Desc: "Head directives, tokens, sitemap and robots"},
 	{Key: "analytics", Path: "/os/d/%s/analytics", Icon: "trend", Title: "Visitors", Live: true,
 		Desc: "This site's own traffic, counted server-side"},
+	{Key: "services", Path: "/os/d/%s/services", Icon: "shield", Title: "Outside services", Live: true,
+		Desc: "What this site's pages may load from elsewhere"},
 }
 
 // scopedToolChip is one navigation row's state, in the grammar every other row

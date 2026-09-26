@@ -691,6 +691,32 @@ test("a media upload shows its progress, and the file is worked by keyboard", as
   await expect(page.locator(".media-row", { hasText: renamed })).toHaveCount(0);
 });
 
+// Outside services: each change saves as it is made, a public page is sent
+// what was chosen, the console never is, and a refused save says why in the
+// server's words (it used to toast "[object Object]").
+test("outside services reach the public pages, never the console", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/website/services");
+  const csp = async (path) => (await page.request.get(path)).headers()["content-security-policy"] || "";
+  // Start from strict, whatever an earlier run left.
+  await page.evaluate(() => new Promise((done) => window.vpPost("/os/api/website/csp", { mode: "strict" }, done, done)));
+  await page.reload();
+  await Promise.all([page.waitForEvent("load"), page.locator('input[name="csp-mode"][value="custom"]').check()]);
+  await Promise.all([page.waitForEvent("load"), page.locator('[data-csp-service="stripe"]').check()]);
+  await expect(page.locator('[data-csp-service="stripe"]')).toBeChecked();
+  expect(await csp("/")).toContain("https://js.stripe.com");
+  expect(await csp("/os/posts")).not.toContain("stripe");
+
+  const refused = await page.evaluate(() => new Promise((done) => {
+    window.vpPost("/os/api/website/csp", { mode: "custom", sources: { "script-src": ["https://cdn.example.com"] } },
+      () => done("saved"), (d, msg) => done(msg));
+  }));
+  expect(refused).toContain("come only from the listed services");
+
+  await Promise.all([page.waitForEvent("load"), page.locator('input[name="csp-mode"][value="strict"]').check()]);
+  expect(await csp("/")).not.toContain("stripe");
+});
+
 test("the command bar is operated by keyboard alone", async ({ page }) => {
   await openConsole(page);
   await page.keyboard.press("Control+k");

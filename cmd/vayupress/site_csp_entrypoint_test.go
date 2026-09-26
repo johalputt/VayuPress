@@ -75,7 +75,7 @@ func TestTheEntryPointItselfConsultsTheRefusalList(t *testing.T) {
 	} {
 		if siteAllowsEvalGiven(requestForDomain(d, p), bundleIsDeployed) {
 			t.Errorf("the entry point granted 'unsafe-eval' on %s. It is not enough for "+
-				"evalRefusedPath to know: siteAllowsEval has to ask it", p)
+				"strictPath to know: siteAllowsEval has to ask it", p)
 		}
 	}
 }

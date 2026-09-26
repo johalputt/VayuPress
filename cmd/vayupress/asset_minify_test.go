@@ -89,9 +89,12 @@ func TestConsoleStylesheetIsServedMinified(t *testing.T) {
 // 315,000. The P6 components then spent that headroom: the nine control
 // states, the bell's groups, the command bar's preview and the site switcher,
 // with 43 dead rules removed on the way. Raised to 320,000 on 2026-09-25 for
-// that work; the classic sheet's decoration (335,629 bytes with it) still
-// could not fit if it came back. Raise it on purpose, in this line.
-const consoleCSSBudget = 320_000
+// that work. Raised to 330,000 on 2026-09-26 for the Outside services page,
+// with room for what the release still adds. A budget is discipline, not a
+// limit: raise it on purpose, in this line, when a requirement needs it —
+// never cut a feature to stay under it. The classic sheet's decoration
+// (335,629 bytes with it) still could not come back unnoticed.
+const consoleCSSBudget = 330_000
 
 func TestConsoleStylesheetFitsItsBudget(t *testing.T) {
 	src, err := os.ReadFile("../../static/css/vayuos.css") // #nosec G304 -- repository file

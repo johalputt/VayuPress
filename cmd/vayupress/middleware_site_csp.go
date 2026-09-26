@@ -5,14 +5,18 @@ package main
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/settings"
 )
 
-// evalRefusedPrefixes are the paths that NEVER get the relaxed policy, whatever
-// a domain has opted into.
+// strictPathPrefixes are the paths that NEVER get a relaxed policy, whatever
+// a site has opted into: neither the eval opt-in nor a site's outside services
+// (sitePolicy). A service the operator allows runs on their public pages, not
+// where a session can be read.
 //
 // The opt-in exists for a static page an operator publishes on their own hosted
 // domain. It must not follow a visitor into the panel, the API, an OAuth
@@ -20,7 +24,7 @@ import (
 // the surfaces where 'unsafe-eval' turns a small injection into a large one.
 // Matching by prefix rather than by handler is deliberate: a new admin route
 // added later inherits the refusal without anyone remembering to add it here.
-var evalRefusedPrefixes = []string{
+var strictPathPrefixes = []string{
 	"/os", "/api", "/admin", "/oauth", "/mcp", "/__vayushield", "/__vayuanalytics",
 	// The visitor-facing half of "anything else that carries a session", which
 	// the list above missed for as long as it existed.
@@ -75,6 +79,11 @@ func (a *App) siteCSPMiddleware(next http.Handler) http.Handler {
 				hdr = "Content-Security-Policy-Report-Only"
 			}
 			w.Header().Set(hdr, render.BuildCSPAllowingEval(render.CSPNonce(r)))
+		}
+		if !strictPath(r.URL.Path) {
+			if p := a.sitePolicy(r); p.Mode != render.PolicyStrict {
+				w = &policyWriter{ResponseWriter: w, policy: p, now: time.Now()}
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -136,10 +145,10 @@ func evalPermittedFor(d domain.Domain, path string) bool {
 		return false
 	}
 	// Absolute: no setting reaches past this.
-	return !evalRefusedPath(path)
+	return !strictPath(path)
 }
 
-// evalRefusedPath reports whether p sits under one of evalRefusedPrefixes.
+// strictPath reports whether p sits under one of strictPathPrefixes.
 //
 // It is a named function because the tests used to re-implement this loop
 // instead of calling it, so they were asserting against a copy of the rule.
@@ -149,11 +158,76 @@ func evalPermittedFor(d domain.Domain, path string) bool {
 // living in the test that guards the rule is the divergence already.
 //
 // The match is whole-segment on purpose: "/mailbox" is not "/mail".
-func evalRefusedPath(p string) bool {
-	for _, pre := range evalRefusedPrefixes {
+func strictPath(p string) bool {
+	for _, pre := range strictPathPrefixes {
 		if p == pre || strings.HasPrefix(p, pre+"/") {
 			return true
 		}
 	}
 	return false
+}
+
+// sitePolicy is the outside-services policy of the site this request is for:
+// the primary's, or the hosted domain's own.
+func (a *App) sitePolicy(r *http.Request) render.SitePolicy {
+	sc := settings.ForPrimary()
+	if d, ok := activeDomain(r); ok && !d.IsPrimary {
+		sc = settings.ForDomain(d.ID)
+	}
+	return a.sitePolicyIn(r.Context(), sc)
+}
+
+// policyWriter merges a site's outside services into the policy the handler
+// set, at the moment the headers go out. Merging there rather than in each
+// handler is the point: the baseline, the embed and ad pages and the eval
+// opt-in each build their own header, and one chokepoint after all of them
+// means no page type can be missed or has to remember to call anything.
+type policyWriter struct {
+	http.ResponseWriter
+	policy render.SitePolicy
+	now    time.Time
+	done   bool
+}
+
+func (w *policyWriter) apply() {
+	if w.done {
+		return
+	}
+	w.done = true
+	h := w.Header()
+	for _, name := range []string{"Content-Security-Policy", "Content-Security-Policy-Report-Only"} {
+		if v := h.Get(name); v != "" {
+			h.Set(name, w.policy.Apply(v))
+		}
+	}
+	// Report-only blocks nothing for a while, so a site can see what it
+	// needs; past ReportUntil it is enforced again without anyone acting.
+	if w.policy.Enforced(w.now) == render.PolicyReport {
+		if v := h.Get("Content-Security-Policy"); v != "" {
+			h.Del("Content-Security-Policy")
+			h.Set("Content-Security-Policy-Report-Only", v)
+		}
+	}
+}
+
+func (w *policyWriter) WriteHeader(code int) {
+	w.apply()
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *policyWriter) Write(b []byte) (int, error) {
+	w.apply()
+	return w.ResponseWriter.Write(b)
+}
+
+// Unwrap lets http.ResponseController reach the connection's own writer for
+// flushing and deadlines.
+func (w *policyWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// Flush keeps streamed responses streaming through the wrapper.
+func (w *policyWriter) Flush() {
+	w.apply()
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }

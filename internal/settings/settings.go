@@ -160,6 +160,11 @@ const (
 	// upload, or what the operator renamed it to in the Media library.
 	KeyMediaNames = "media.names"
 
+	// KeyCSPPolicy is a site's outside services: the origins its public pages
+	// may load from beyond the strict baseline, as render.SitePolicy JSON.
+	// Per site, so a hosted domain's choice never widens another's.
+	KeyCSPPolicy = "csp.policy"
+
 	// Feature flags — operator-toggleable platform modules surfaced in the
 	// Tools & Plugins panel. Each value is "on" (default) or "off". Disabling a
 	// flag turns the corresponding public surface off at the request boundary;
@@ -492,6 +497,7 @@ var NotPortable = map[string]bool{
 	KeyContactAutoReply:           true,
 	KeyMediaAlt:                   true,
 	KeyMediaNames:                 true,
+	KeyCSPPolicy:                  true,
 	KeyThemeHeroImage:             true,
 	KeyThemeHeroImageType:         true,
 	KeyThemeOGImage:               true,
@@ -588,6 +594,7 @@ var AllKeys = map[string]bool{
 	KeyContactAutoReply:        true,
 	KeyMediaAlt:                true,
 	KeyMediaNames:              true,
+	KeyCSPPolicy:               true,
 	KeySiteName:                true,
 	KeySiteTagline:             true,
 	KeySiteDescription:         true,

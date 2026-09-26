@@ -79,7 +79,10 @@ window.vpPost = function (url, body, onok, onerr) {
     })
     .then(function (res) {
       if (res.ok) { if (onok) onok(res.d); return; }
-      var msg = (res.d && (res.d.detail || res.d.title || res.d.error || res.d.message)) ||
+      // The API's error body is {"error": {"code", "message"}}: reading
+      // res.d.error itself put "[object Object]" in the toast.
+      var err = res.d && res.d.error;
+      var msg = (res.d && (res.d.detail || res.d.title || (err && (err.message || (typeof err === 'string' && err))) || res.d.message)) ||
         (res.status === 403 ? 'session token expired — reload the page and try again'
           : 'Request failed (' + res.status + ')');
       if (onerr) onerr(res.d, msg); else toast(msg, 'error');

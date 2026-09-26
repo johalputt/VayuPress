@@ -6182,6 +6182,20 @@
   .vp-os[data-ui="still-air"] .media-table :is(th, td):nth-child(5) { display: none; }
 }
 
+/* Outside services: a site's CSP choices. The modes are three cards, the one
+   in force marked; the sample policy wraps rather than scrolls. */
+.vp-os[data-ui="still-air"] .csp-modes { display: grid; gap: var(--space-2); max-width: 680px; }
+.vp-os[data-ui="still-air"] .csp-mode { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-1); border-radius: var(--radius-surface); cursor: pointer; }
+.vp-os[data-ui="still-air"] .csp-mode:has(input:checked) { border-color: var(--accent); background: var(--surface-select); }
+.vp-os[data-ui="still-air"] .csp-mode input { margin-top: 3px; accent-color: var(--accent); }
+.vp-os[data-ui="still-air"] .csp-mode > span { display: flex; flex-direction: column; gap: 2px; font: var(--type-body); }
+.vp-os[data-ui="still-air"] .csp-mode .muted { font: var(--type-small); }
+.vp-os[data-ui="still-air"] .csp-note { font: var(--type-small); margin: var(--space-3) 0 0; max-width: 680px; }
+.vp-os[data-ui="still-air"] .csp-add { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; }
+.vp-os[data-ui="still-air"] .csp-add select { flex: 0 0 190px; }
+.vp-os[data-ui="still-air"] .csp-add .input[type="text"] { flex: 1 1 320px; }
+.vp-os[data-ui="still-air"] .csp-sample { font: var(--type-mono); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+
 /* The Tor accent never bleeds into a side rule the way the classic one did. */
 .vp-os[data-ui="still-air"][data-space="tor"] .sidebar { border-right-color: var(--border-1); box-shadow: none; }
 

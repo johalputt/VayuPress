@@ -80,6 +80,10 @@ func (a *App) handleCSPReport(w http.ResponseWriter, r *http.Request) {
 	if directive == "" {
 		directive = env.Report.EffectiveDirective
 	}
+	// Counted per site and per visitor before the duplicate check below, which
+	// would otherwise drop the second visitor's report of the same origin — the
+	// very thing the Outside services page waits for before offering it.
+	recordCSPBlock(env.Report.DocumentURI, directive, env.Report.BlockedURI, ip, time.Now())
 
 	// Duplicate suppression: skip counting/logging an identical violation seen
 	// within the dedup window.

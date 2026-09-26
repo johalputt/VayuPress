@@ -135,6 +135,8 @@ func saNotifIcon(kind string) string {
 		return "refresh"
 	case "backup":
 		return "archive"
+	case "security":
+		return "shield"
 	case "jobs":
 		return "flow"
 	case "storage":

@@ -112,7 +112,7 @@ func TestTheRelaxationNeverReachesAnAuthenticatedSurface(t *testing.T) {
 		"/__vayushield/pow", "/__vayuanalytics/enter",
 	}
 	for _, p := range mustRefuse {
-		if !evalRefusedPath(p) {
+		if !strictPath(p) {
 			t.Errorf("%q would receive the relaxed policy. A session lives behind that path, and "+
 				"'unsafe-eval' there converts an injected string into full control of the "+
 				"operator's account", p)
@@ -124,7 +124,7 @@ func TestTheRelaxationNeverReachesAnAuthenticatedSurface(t *testing.T) {
 // refusal wearing a setting's clothes.
 func TestAnOrdinarySitePathIsNotRefused(t *testing.T) {
 	for _, p := range []string{"/", "/index.html", "/assets/app.js", "/assets/site.css", "/about"} {
-		if evalRefusedPath(p) {
+		if strictPath(p) {
 			t.Errorf("%q is refused, so the opted-in site still cannot run", p)
 		}
 	}
@@ -141,7 +141,7 @@ func TestThePrefixMatchDoesNotOverreach(t *testing.T) {
 		// could find.
 		"/mailbox", "/mailing-list", "/members-only", "/membership",
 		"/checkouts", "/signups", "/vayumailer"} {
-		if evalRefusedPath(p) {
+		if strictPath(p) {
 			t.Errorf("%q was refused — a legitimate page broken by an over-eager match", p)
 		}
 	}
@@ -160,7 +160,7 @@ func TestThePrefixMatchDoesNotOverreach(t *testing.T) {
 // API under /api/v1/members/... was already refused by the /api prefix, but the
 // API is not where the script executes; the page is.
 //
-// The comment on evalRefusedPrefixes states the rule as "the panel, the API, an
+// The comment on strictPathPrefixes states the rule as "the panel, the API, an
 // OAuth consent screen or anything else that carries a session". This is the
 // "anything else".
 func TestTheRelaxationNeverReachesASessionBearingPage(t *testing.T) {
@@ -179,7 +179,7 @@ func TestTheRelaxationNeverReachesASessionBearingPage(t *testing.T) {
 		"/vayumail",               // webmail
 	}
 	for _, p := range sessionPages {
-		if !evalRefusedPath(p) {
+		if !strictPath(p) {
 			t.Errorf("%q would receive 'unsafe-eval'. The member session cookie is Path=\"/\", so "+
 				"it is attached to this page, and eval there turns an injected string into "+
 				"account takeover", p)
@@ -190,7 +190,7 @@ func TestTheRelaxationNeverReachesASessionBearingPage(t *testing.T) {
 // TestTheMiddlewareItselfRefusesAnAuthenticatedPath exercises siteAllowsEval,
 // not the matcher it calls.
 //
-// Every other test in this file asserts against evalRefusedPath. That leaves the
+// Every other test in this file asserts against strictPath. That leaves the
 // entry point unguarded: siteAllowsEval could stop consulting the refusal list
 // altogether and nothing would fail — a mutation returning true unconditionally
 // passed the whole file. This is the test that sees it.

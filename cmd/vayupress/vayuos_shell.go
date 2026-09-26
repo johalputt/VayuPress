@@ -80,6 +80,7 @@ var saClearnetApps = []saApp{
 		{Label: "Theme", Href: "/os/theme", Icon: "sun"},
 		{Label: "Theme store", Href: "/os/theme/store", Icon: "grid"},
 		{Label: "SEO", Href: "/os/seo", Icon: "search"},
+		{Label: "Outside services", Href: "/os/website/services", Icon: "shield"},
 		{Label: "Domains", Href: "/os/domains", Icon: "globe", Group: "Addresses"},
 		{Label: "DNS", Href: "/os/dns", Icon: "list"},
 		{Label: "Tor", Href: "/os/tor", Icon: "tor"},
