@@ -563,3 +563,21 @@ func TestTheTorWorldRailOffersNoClearnetSection(t *testing.T) {
 		}
 	}
 }
+
+// An operator can leave either world from the system bar. In the Tor world the
+// console is a separate instance in OnionMode; it must still offer the
+// Clearnet link, or entering Tor is a one-way trip.
+func TestTheSystemBarSwitchesWorldsFromEitherWorld(t *testing.T) {
+	defer func(v bool) { config.Cfg.OnionMode = v }(config.Cfg.OnionMode)
+	for _, c := range []struct {
+		onion bool
+		href  string
+	}{{false, `data-space-switch`}, {true, `href="/os/world?target=clearnet"`}} {
+		config.Cfg.OnionMode = c.onion
+		out := stillAirShellHead("n", "Home", "dashboard", saSession(accessAdmin))
+		bar := out[strings.Index(out, "sa-sysbar"):]
+		if !strings.Contains(bar, `class="sa-pop sa-world"`) || !strings.Contains(bar, c.href) {
+			t.Errorf("OnionMode=%v: the system bar offers no world switch (want %s); an operator cannot change worlds from here", c.onion, c.href)
+		}
+	}
+}

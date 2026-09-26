@@ -19,6 +19,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   crawled. A visitor who finds no slot within 5 seconds is asked to retry in
   30, which crawlers honour. Cached pages, the background warmer and your own
   previews never wait.
+- **The Tor world had no way back to Clearnet in the new console.** The
+  system bar showed "Tor" as a plain label there, so an operator who had
+  entered the Tor world could not switch back from the bar. It now opens the
+  same world switch as on Clearnet, with Clearnet one click away.
 
 ## [3.17.80] — 2026-09-26
 

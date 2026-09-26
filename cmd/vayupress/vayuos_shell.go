@@ -485,7 +485,11 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 		world = "Tor"
 	}
 	worldHTML := `<span class="sa-state"><span class="sa-dot sa-dot--accent"></span>` + world + `</span>`
-	if admin && !config.Cfg.OnionMode {
+	// The switch is offered in both worlds. The Tor world is a separate
+	// instance in OnionMode, and a plain label there left an operator who had
+	// entered it with no way back to Clearnet; spaceSwitch gives it the
+	// Clearnet link, which the parent always answers.
+	if admin {
 		worldHTML = `<details class="sa-pop sa-world"><summary class="sa-state" aria-label="World: ` + world + `"><span class="sa-dot sa-dot--accent"></span>` + world + `</summary>` +
 			`<div class="sa-pop__panel sa-world__panel">` + spaceSwitch(s.AccessLevel, s) + `</div></details>`
 	}
