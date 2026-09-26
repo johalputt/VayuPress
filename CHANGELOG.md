@@ -39,6 +39,49 @@ The Still Air redesign of the VayuOS console.
   failing a test restore. This used to be visible only on the Operations hub.
 - **System state** says what the current mode refuses, taken from the checks
   the code actually makes, with the recent mode changes and a way to switch.
+- **Outside services in a site's security policy** (Site › Outside services,
+  ADR-0164). Every public page used to get one strict policy. Each site can
+  now allow what it uses:
+  - vetted services such as Google Fonts, Google Analytics, Plausible,
+    YouTube, Stripe, Turnstile or Calendly, each marked when it runs code;
+  - named origins for styles, fonts, images, media, embeds and form
+    destinations.
+
+  Script origins cannot be typed in: code comes only from a vetted service.
+  Inline script and eval stay refused. "Report only" blocks nothing for 7
+  days and then enforces again by itself. Requests the policy blocked are
+  listed per site, once two visitors have reported one, with an Allow button.
+  Strict stays the default. The console, API, OAuth, member, sign-up,
+  checkout and mail pages are never widened, and a Tor site still loads
+  nothing from outside.
+- **Settings is one app**: categories with a search above them, rows with
+  the control on the right, a mark on every changed row, and one bar that
+  saves or discards the changes together.
+- **Media is a library**:
+  - a table or a grid;
+  - an inspector showing the preview, size, alt text, date added and every
+    place the file is used;
+  - a context menu that works from the keyboard;
+  - several uploads at once, with the time left.
+
+  A file keeps the name it arrived with, and renaming it never changes its
+  link. Trashing a file that is in use says where it is used first.
+- **Mail opens your mailbox in three panes**: folders with unread counts,
+  the list and the reader. The folders and counts refresh with the list.
+  Administrators land on their own mailbox, and every mailbox is one link
+  away.
+- **The bell separates what needs you from what happened**. "Needs action"
+  lists conditions that clear when fixed. Today and Yesterday list events at
+  your local time: messages, comments, sign-ups, posts, updates, mode
+  changes and backups. "Mark all read" clears the events for you.
+- **The command bar groups its results** into Go to (pages and posts),
+  Actions and Settings, and previews the highlighted one. Its actions run
+  there and report what the server answered: new post, back up and
+  test-restore, clear cache, rebuild the sitemap and feed, check for
+  updates.
+- **Switch sites from the system bar.** The site's name opens a list of the
+  install's own console and every hosted site. Inside a hosted site's
+  console the bar names that site.
 
 ### Changed
 
@@ -54,14 +97,52 @@ The Still Air redesign of the VayuOS console.
 - **Errors say what failed.** The sign-in form, the member portal and the
   newsletter composer answered a failure with "Something went wrong"; they now
   say what could not be done and what to try, and a test keeps the phrase out.
+- **Pages lead with what is true and what to do.** Fourteen pages carried up
+  to 6,600 characters of explanation on show. Each now opens with one line;
+  the how and why sit behind "How this works" or an info mark. Nothing was
+  removed.
+- **Every control has the same nine states**: rest, hover, focus, pressed,
+  active, disabled, loading, success and error. A button shows it is working
+  while its write runs, then whether it worked. The four toggle styles are
+  now one, and a checked checkbox looks checked.
+- **Between 769 and 1279 px the rail starts as icons**, so tables and forms
+  fit a small laptop. The toggle still decides, and its choice is
+  remembered.
+- **The editor's block controls no longer make every block 162 px tall**, and
+  they appear on focus, not only on hover, so the keyboard and phones reach
+  them. The sidebar goes below the writing under 1440 px.
+- **The maintenance and offline pages wear the console's design**, in the
+  reader's colour scheme, and every select shows an arrow.
+- **Status tags and labels read in sentence case** across the console.
+- **The console mark is the VayuPress logo** itself, in white or black to
+  suit the scheme.
 
 ### Changed (performance)
 
-- **The console's stylesheets are served minified**: comments and indentation
-  are stripped when the file is served, and the rules the old design left
-  behind are removed. The console downloads 57 KB of styles (gzipped, both
-  stylesheets) where the previous release sent 79 KB. The source keeps its
-  comments, and a test holds the two stylesheets to a size budget.
+- **The console has one stylesheet, served minified**: comments and
+  indentation are stripped when the file is served, and the old design's
+  stylesheet and the rules nothing renders are gone. The console downloads
+  53 KB of styles (gzipped) where 3.17.77 sent 79 KB across two. The source
+  keeps its comments. A test holds the stylesheet to a size budget, and
+  Lighthouse holds four console pages to byte budgets.
+
+### Removed
+
+- **The policy engine.** Every caller gave it an empty context, so its six
+  verdicts described nothing: "SLO budgets healthy" with no SLO tracked, and
+  "golden files present" without looking. The Policy page, its Topology node,
+  Governance card, timeline figure and five-minute journal timer go with it.
+  Migration 096 empties `policy_evaluations` and keeps the table, so rolling
+  back still works.
+- **Eighteen internal packages nothing ran**, and the documents that
+  described them as running. Among them: ActivityPub federation, DID login,
+  article signing, semantic search, a plugin registry and SLOs. The docs are
+  served at /docs, so those claims were public. The Topology nodes for
+  signing and federation are gone too.
+- **Console routes nothing called**, including post pin, editor convert,
+  update restart and domain assign. /api/v1 is unchanged.
+- **`deploy/migrate.sh`**, which applied unused SQL straight to the live
+  database and was called by nothing.
 
 ### Fixed
 
@@ -75,9 +156,8 @@ The Still Air redesign of the VayuOS console.
 - **The Backups page showed the default retention, not the one you saved**, so
   the form reverted after every save.
 - **Topology and the overview timeline showed figures that were never
-  measured.** The policy engine always read "6/6 PASS", the write queue always
-  had "3 workers" and the escalation engine "6 rules armed"; they are now
-  evaluated each time. The WAL node no longer turns red in read-only mode,
+  measured.** The write queue always had "3 workers" and the escalation engine
+  "6 rules armed"; they are now read each time. The WAL node no longer turns red in read-only mode,
   which does not stop WAL writes, and the Fault Engine's example chain no
   longer ends in "write queue paused" for the same reason.
 - **Pages overflowed a phone screen**: the editor was 956 px wide on a
@@ -117,8 +197,54 @@ The Still Air redesign of the VayuOS console.
   settings API with any number, including one that backed up every minute or
   overflowed the interval. Only an offered cadence is used now.
 
+- **Theme Studio's palette generator, contrast fix and draft autosave failed
+  for every operator.** They posted without the console's CSRF token. The
+  resumable draft was never stored either, and its Restore banner had no
+  script behind it. All three work now, and a test checks every console
+  script's writes for the token.
+- **Settings could say "Saved" and store nothing.** The settings API
+  skipped keys the store does not keep and answered ok, which three controls
+  on the old Members page did. It now refuses an unknown key, and a test
+  reads every key off the rendered pages.
+- **Email delivery said the site sends no email** on installs that send
+  through the built-in VayuMail engine. It now names the transport that
+  actually sends.
+- **A write the server refused changed nothing and said nothing.** Every
+  in-page (HTMX) write in the console now reports in the page's status
+  region, and a refusal also shows a message with its status code.
+- **Firing a fault, replaying a job, changing the mode and toggling the Tor
+  Space never confirmed or refreshed.** Two helpers had the same name. There
+  is one now.
+- **A refused console request showed "[object Object]"** instead of the
+  server's message.
+- **Fifteen actions asked with the browser's own confirm box** (Ads, API
+  keys, Connector, Monetization, Payments). They use the console's dialog.
+- **The editor dropped a key** typed within a frame of Enter, a Markdown
+  shortcut, Backspace, a paste or Cmd/Ctrl+D.
+- **Removing older restore points twice at once reported a failure** when
+  the removal had happened: the second click met a file the first had
+  already taken. A restore point that is already gone now counts as removed.
+- **A Tor site's backups notice led outside every app.** Its System app now
+  lists Backups.
+- **Accessibility**: the rail's version text was below AA contrast. The
+  search button and the mark had names that did not contain their visible
+  text. The bell's count was not read out, and the status filters were not
+  a group. Lighthouse now scores the console 100 for accessibility, and CI
+  fails below that.
+
 ### Security
 
+- **A Reviewer mailbox was not read-only.** The console offers "Reviewer —
+  read-only, mail only", but nothing enforced it. A reviewer could send from
+  webmail and over SMTP submission, and delete or move mail over webmail,
+  IMAP and POP3. Every path now refuses:
+  - IMAP opens the mailbox read-only;
+  - POP3 refuses DELE;
+  - submission refuses MAIL with 550 5.7.1;
+  - webmail's send, delete and move refuse, and the webmail no longer offers
+    those actions.
+
+  An administrator acting on the mailbox is unaffected.
 - **go-crypto 1.5.1** (ProtonMail/go-crypto, the OpenPGP library behind
   VayuMail's encryption and signatures), up from 1.4.1.
 - **Clear caches deleted any old file in the temp directory**, not only
