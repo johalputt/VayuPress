@@ -6,6 +6,54 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.17.79] — 2026-09-26
+
+A fix release, shipped on its own under the exception for a live breakage. On
+johal.in the console answered 502 and did not recover, the Tor world stayed on
+an old version through every update, and parts of the console could not be
+read on hover.
+
+### Fixed
+
+- **The console answered 502, and stayed that way.** Every request looks its
+  host up in a cached list of domains, and once the list expired every request
+  refreshed it at the same moment. A refresh that failed was retried by the
+  next request. On a busy install each attempt waited for a database read
+  connection, and some waited until the 30-second request limit, which the
+  proxy reports as a 502. Each of those attempts then added to the queue that
+  made the next one fail. Opening the Shield page, or clearing the page cache
+  on a large site, was enough to start it. Now one refresh runs at a time,
+  requests keep using the list they have while it runs, and a failed refresh
+  waits five seconds before the next attempt.
+- **The Tor world stayed on the version it first started with.** An update
+  restarts VayuPress in place and should also restart the Tor world's
+  process. The code that found the old process read its environment, which
+  VayuPress's own hardening (ADR-0150) makes unreadable to it, so the old
+  process was never found. It kept its port and kept answering, which is why
+  the Tor world did not have the current console design. It is now identified
+  as this process's own child, with the exact command it was started with,
+  and it is waited for until it has exited. The first update to this version
+  replaces a Tor world left behind by an earlier one.
+- **A Tor world that stopped answering held every console page.** The console
+  now shows the "Tor world unavailable" page, with its way back to Clearnet,
+  after 25 seconds.
+- **Clearing the cache twice ran two clears at once.** A second request while
+  one runs is told a clear is already running.
+- **Text that could not be read.** Hovering the Clearnet/Tor switch left its
+  labels at a contrast of 1.2 : 1, from rules the old design left behind.
+  Checking every control on every page, hovered and at rest, in both colour
+  schemes and both worlds, found the same fault elsewhere:
+  - the active filter chip on hover;
+  - tertiary text on raised rows;
+  - accent badges on tinted backgrounds;
+  - danger buttons;
+  - a dimmed VayuShield layer.
+
+  Each now reads at 4.5 : 1 or better.
+- **Notices broken into pieces.** A notice that mixed text and code, such as
+  "VayuMail is inactive. Set DOMAIN…", was laid out as separate centred
+  fragments. There were 19 of them. They now read as sentences.
+
 ## [3.17.78] — 2026-09-26
 
 The Still Air redesign of the VayuOS console.
