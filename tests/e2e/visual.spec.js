@@ -65,7 +65,11 @@ const desktop = [
   },
 ];
 
-const shot = { maxDiffPixelRatio: 0.01, animations: "disabled", caret: "hide" };
+// Two boots render these pixel for pixel alike, so the tolerance is only for
+// anti-aliasing on a different runner CPU. Playwright's defaults (a per-pixel
+// colour threshold of 0.2, and here 1% of pixels) passed a page whose current
+// sidebar item had lost its tint: Still Air draws with tints that small.
+const shot = { threshold: 0.05, maxDiffPixelRatio: 0.001, animations: "disabled", caret: "hide" };
 
 // The console's service worker takes control on a first visit and reloads the
 // page once, which lands in the middle of a screenshot. A picture of the
