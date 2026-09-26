@@ -21,15 +21,17 @@ import (
 	"strconv"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // readStallSection renders the read pool's tiles, its live state and its stall
 // history. shed is the number of uncached page requests asked to retry.
 func readStallSection(st dbpkg.StallState, shed int64) string {
-	out := `<div class="section-head"><div class="section-head__title">Read connections</div>` +
-		`<div class="section-head__hint">Pages, the console and most queries read through a shared pool of ` +
-		strconv.Itoa(st.MaxOpen) + ` connections. When every one is taken, requests queue, and this is where ` +
-		`that shows up.</div></div>`
+	// The explanations sit behind tips: the page's own measure of explanation
+	// on show (the design lint's 900 characters) holds for Monitoring too.
+	out := `<div class="section-head"><div class="section-head__title">Read connections ` +
+		string(ui.Tip("Pages, the console and most queries read through a shared pool of "+strconv.Itoa(st.MaxOpen)+
+			" connections. When every one is taken, requests queue, and this is where that shows up.")) + `</div></div>`
 
 	stallValue, stallLabel := "0", "none since boot"
 	if st.Total > 0 {
@@ -68,10 +70,9 @@ func readStallSection(st dbpkg.StallState, shed int64) string {
 	}
 
 	out += `<div class="card mb-6">
-  <div class="settings-block-title">Recent read stalls</div>
-  <p class="text-sm muted">A read stall is a period during which a caller waited for a read connection
-  continuously, so every connection in the pool was in use. A snapshot of what each one was doing is saved
-  five seconds in; it names the query that held them.</p>
+  <div class="settings-block-title">Recent read stalls ` + string(ui.Tip("A read stall is a period during which "+
+		"every read connection stayed in use while a caller waited. Five seconds in, a snapshot of what each "+
+		"connection was doing is saved; it names the query that held them.")) + `</div>
   ` + stallHistoryTable(st.Recent, "No read stall has been recorded since this install last started.") + `
 </div>`
 	return out
