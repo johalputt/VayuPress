@@ -185,8 +185,7 @@ func (s *Store) ReviewQueue(ctx context.Context, limit int) ([]StoredSignature, 
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	rows, err := s.reader().QueryContext(ctx,
-		selectCols+` WHERE operator_verified=0 AND auto_learned=1 ORDER BY confidence DESC, request_count DESC LIMIT ?`, limit)
+	rows, err := s.reader().QueryContext(ctx, reviewQueueSQL, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +240,7 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 		return out, err
 	}
 	cutoff := time.Now().UTC().Add(-24 * time.Hour)
-	_ = s.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM vayushield_signatures WHERE auto_learned=1 AND created_at>=?`, cutoff).Scan(&out.LearnedLast24h)
+	_ = s.reader().QueryRowContext(ctx, learnedSinceSQL, cutoff).Scan(&out.LearnedLast24h)
 	_ = s.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM vayushield_signatures WHERE operator_verified=0 AND auto_learned=1`).Scan(&out.PendingReview)
 	_ = s.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM vayushield_signatures WHERE operator_verified=1`).Scan(&out.Verified)
 	return out, nil
@@ -484,7 +483,7 @@ func (s *Store) PurgeBlocked(ctx context.Context, retainDays int) (int64, error)
 // grew that table forever. The data is aggregate-only (hashed IP, coarse
 // outcome), but unbounded growth is still a liability; the daily learning cycle
 // now trims it on the same schedule as the block log. Chunked and index-driven
-// (idx_challenges_created).
+// (idx_challenges_created_outcome).
 func (s *Store) PurgeChallenges(ctx context.Context, retainDays int) (int64, error) {
 	if s == nil || s.db == nil || retainDays <= 0 {
 		return 0, nil
@@ -512,6 +511,18 @@ func (s *Store) PurgeChallenges(ctx context.Context, retainDays int) (int64, err
 }
 
 // ── scanning helpers ─────────────────────────────────────────────────────────
+
+// The Shield console's queries over the two largest Shield tables. Each reads
+// an index made for it (migration 098) and nothing else, so its cost follows
+// the rows it returns, not the size of the table; console_plans_test.go holds
+// them to that. Named so the store and that test run the same text.
+const (
+	// reviewQueueSQL reads the queue in idx_signatures_queue's order and stops
+	// at the LIMIT: no sort of every unverified signature.
+	reviewQueueSQL = selectCols + ` WHERE operator_verified=0 AND auto_learned=1 ORDER BY confidence DESC, request_count DESC LIMIT ?`
+	// learnedSinceSQL counts from idx_signatures_learned alone.
+	learnedSinceSQL = `SELECT COUNT(1) FROM vayushield_signatures WHERE auto_learned=1 AND created_at>=?`
+)
 
 const selectCols = `SELECT id,fingerprint_hash,ja3_hash,ja4_hash,http2_settings_hash,header_order_hash,user_agent_pattern,ip_range_hint,post_quantum_present,classification,bot_name,confidence,request_count,false_positive_count,auto_learned,operator_verified,notes,first_seen,last_seen FROM vayushield_signatures`
 

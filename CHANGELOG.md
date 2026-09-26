@@ -23,6 +23,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   system bar showed "Tor" as a plain label there, so an operator who had
   entered the Tor world could not switch back from the bar. It now opens the
   same world switch as on Clearnet, with Clearnet one click away.
+- **The Shield page could answer 502 on a site with a long bot history.**
+  Three of its sections read row after row of the two largest Shield tables:
+  signatures learned in the last day, the review queue, and the trail's
+  challenge counts. On a database the size of johal.in's (710,000 signatures,
+  4.3 million challenges) the page took 2.9 s with the data in memory, and
+  past the 30-second limit when it was not. Each now reads an index made for
+  it, and the page takes 0.6 s on that database.
+
+### Upgrade Notes
+
+- The first start after updating builds three database indexes. On a site
+  with millions of Shield records this takes up to a minute, during which
+  the site does not answer. It happens once.
 
 ## [3.17.80] — 2026-09-26
 

@@ -99,9 +99,23 @@ func sqliteTime(t time.Time) string { return t.UTC().Format("2006-01-02 15:04:05
 // ReadTrail computes the aggregate report over the last `hours`.
 //
 // Every query is bounded by created_at and driven by idx_blocked_created /
-// idx_challenges_created, so the cost scales with the window rather than with
+// idx_challenges_created_outcome, so the cost scales with the window rather than with
 // the table. That matters: this runs on a panel that refreshes itself, on the
 // same SQLite the site serves from.
+// The trail's two reads of vayushield_challenges, a table of millions of rows
+// on a busy site. Both are answered from idx_challenges_created_outcome alone
+// (migration 098): a day of challenges is a range of that index, never a row
+// lookup per challenge. console_plans_test.go holds them to it.
+const (
+	challengeOutcomesSQL = `SELECT COALESCE(SUM(CASE WHEN outcome='issued' THEN 1 ELSE 0 END),0),
+		        COALESCE(SUM(CASE WHEN outcome='solved' THEN 1 ELSE 0 END),0)
+		 FROM vayushield_challenges WHERE created_at>=?`
+	challengeHoursSQL = `SELECT strftime('%Y-%m-%d %H:00', created_at) AS h,
+		        COALESCE(SUM(CASE WHEN outcome='issued' THEN 1 ELSE 0 END),0),
+		        COALESCE(SUM(CASE WHEN outcome='solved' THEN 1 ELSE 0 END),0)
+		 FROM vayushield_challenges WHERE created_at>=? GROUP BY h`
+)
+
 func (s *Store) ReadTrail(ctx context.Context, hours, topN, retentionDays int) (Trail, error) {
 	if s == nil || s.reader() == nil {
 		return Trail{}, nil
@@ -126,9 +140,7 @@ func (s *Store) ReadTrail(ctx context.Context, hours, topN, retentionDays int) (
 		return t, err
 	}
 	row = db.QueryRowContext(ctx,
-		`SELECT COALESCE(SUM(CASE WHEN outcome='issued' THEN 1 ELSE 0 END),0),
-		        COALESCE(SUM(CASE WHEN outcome='solved' THEN 1 ELSE 0 END),0)
-		 FROM vayushield_challenges WHERE created_at>=?`, cut)
+		challengeOutcomesSQL, cut)
 	if err := row.Scan(&t.TotalChallenges, &t.TotalSolved); err != nil && err != sql.ErrNoRows {
 		return t, err
 	}
@@ -226,10 +238,7 @@ func (s *Store) hourly(ctx context.Context, cut string) ([]HourBucket, error) {
 	_ = rows.Close()
 
 	rows, err = s.reader().QueryContext(ctx,
-		`SELECT strftime('%Y-%m-%d %H:00', created_at) AS h,
-		        COALESCE(SUM(CASE WHEN outcome='issued' THEN 1 ELSE 0 END),0),
-		        COALESCE(SUM(CASE WHEN outcome='solved' THEN 1 ELSE 0 END),0)
-		 FROM vayushield_challenges WHERE created_at>=? GROUP BY h`, cut)
+		challengeHoursSQL, cut)
 	if err != nil {
 		return nil, err
 	}
