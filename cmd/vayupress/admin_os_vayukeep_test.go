@@ -18,10 +18,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/sqlitecopy"
 	"github.com/johalputt/vayupress/internal/users"
 	"github.com/johalputt/vayupress/internal/vayukeep"
 )
@@ -36,7 +38,7 @@ func TestPanelWarnsWhenNothingHasBeenRestored(t *testing.T) {
 		NewestGen: vkNow.Add(-5 * time.Minute), LastSuccess: vkNow.Add(-5 * time.Minute),
 		// LastDrill deliberately zero.
 	}
-	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{})
+	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{}, "")
 	if !strings.Contains(got, "badge--warn") {
 		t.Error("a never-verified replica rendered without a warning badge")
 	}
@@ -60,7 +62,7 @@ func TestPanelSurfacesAFailedDrill(t *testing.T) {
 		LastDrill: vkNow.Add(-time.Hour), LastDrillOK: false,
 		LastDrillError: "integrity_check reported \"malformed database\"",
 	}
-	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{})
+	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{}, "")
 	for _, want := range []string{"Test restore FAILED", "badge--warn", "malformed database"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("a failed drill must surface %q:\n%s", want, got)
@@ -78,7 +80,7 @@ func TestPanelReportsVerifiedOnlyWhenEarned(t *testing.T) {
 		NewestGen: vkNow.Add(-3 * time.Minute), LastSuccess: vkNow.Add(-3 * time.Minute),
 		LastDrill: vkNow.Add(-20 * time.Minute), LastDrillOK: true, LastDrillRows: 431,
 	}
-	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{})
+	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{}, "")
 	if !strings.Contains(got, "badge--ok") || !strings.Contains(got, "Protected") {
 		t.Errorf("a healthy, drilled replica should read as protected:\n%s", got)
 	}
@@ -98,7 +100,7 @@ func TestPanelFlagsAStaleReplica(t *testing.T) {
 		NewestGen: vkNow.Add(-72 * time.Hour),
 		LastDrill: vkNow.Add(-time.Hour), LastDrillOK: true,
 	}
-	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{})
+	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{}, "")
 	if !strings.Contains(got, "Stale") || !strings.Contains(got, "badge--warn") {
 		t.Errorf("a three-day-old newest generation must be flagged stale:\n%s", got)
 	}
@@ -107,7 +109,7 @@ func TestPanelFlagsAStaleReplica(t *testing.T) {
 // TestPanelDistinguishesOffFromRefused — "I never set this up" and "I set this
 // up and it is not running" need different answers.
 func TestPanelDistinguishesOffFromRefused(t *testing.T) {
-	off := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false, keepPrefs{})
+	off := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false, keepPrefs{}, "")
 	if !strings.Contains(off, "Not set up") {
 		t.Errorf("an unconfigured install should say so:\n%s", off)
 	}
@@ -115,7 +117,7 @@ func TestPanelDistinguishesOffFromRefused(t *testing.T) {
 		t.Error("an unconfigured install must not claim it refused to start")
 	}
 
-	refused := osVayuKeepBody("n", vayukeep.Status{}, "the target /var/lib/vayupress/backups is inside the data directory", nil, vkNow, "", false, keepPrefs{})
+	refused := osVayuKeepBody("n", vayukeep.Status{}, "the target /var/lib/vayupress/backups is inside the data directory", nil, vkNow, "", false, keepPrefs{}, "")
 	if !strings.Contains(refused, "Refused to start") {
 		t.Errorf("a refused configuration must say so:\n%s", refused)
 	}
@@ -136,7 +138,7 @@ func TestPanelReportsPaused(t *testing.T) {
 		LastError: "no space left on device",
 		LastDrill: vkNow.Add(-time.Hour), LastDrillOK: true,
 	}
-	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{})
+	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{}, "")
 	for _, want := range []string{"Paused", "badge--warn", "no space left on device", "Nothing new is being saved"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("a paused engine must surface %q:\n%s", want, got)
@@ -155,7 +157,7 @@ func TestPanelEscapesUntrustedText(t *testing.T) {
 		LastDrillError: `<img src=x onerror="alert(2)">`,
 		LastError:      `<b>boom</b>`,
 	}
-	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{})
+	got := osVayuKeepBody("n", st, "", nil, vkNow, "", false, keepPrefs{}, "")
 	// Assert on the injected VALUES, not on generic markup. Two traps here:
 	// a bare `onerror=` carries no HTML-special character so it survives escaping
 	// as inert text, and the page legitimately contains its own `<script>` block —
@@ -169,7 +171,7 @@ func TestPanelEscapesUntrustedText(t *testing.T) {
 		t.Error("the target should appear escaped rather than dropped")
 	}
 
-	refused := osVayuKeepBody("n", vayukeep.Status{}, `<script>alert(3)</script>`, nil, vkNow, "", false, keepPrefs{})
+	refused := osVayuKeepBody("n", vayukeep.Status{}, `<script>alert(3)</script>`, nil, vkNow, "", false, keepPrefs{}, "")
 	if strings.Contains(refused, "<script>alert(3)") {
 		t.Errorf("the boot error was not escaped:\n%s", refused)
 	}
@@ -222,7 +224,7 @@ func TestConsoleIsReachableAndOperable(t *testing.T) {
 		LastDrill: vkNow, LastDrillOK: true,
 	}, "", []vayukeep.Generation{
 		{Name: "vk-20260727-120000.vpbk", Taken: vkNow, Bytes: 4 << 20},
-	}, vkNow, "/mnt/replica", false, keepPrefs{})
+	}, vkNow, "/mnt/replica", false, keepPrefs{}, "")
 	for _, want := range []string{
 		"data-vk-backup>", "data-vk-drill>", `data-vk-verify="`, `data-vk-restore="`, "data-vk-disable>",
 		"/os/api/vayukeep/backup", "/os/api/vayukeep/drill", "/os/api/vayukeep/verify",
@@ -260,7 +262,7 @@ func TestConsoleIsReachableAndOperable(t *testing.T) {
 // must be able to turn backups on without opening a terminal, because the ones
 // who never open a terminal are exactly the ones running without backups.
 func TestSetupIsClickableNotTypable(t *testing.T) {
-	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false, keepPrefs{})
+	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false, keepPrefs{}, "")
 	// Match the BUTTON, not the selector string. The page's own script contains
 	// '[data-vk-setup]' unconditionally, so asserting on the bare attribute name
 	// passes even when no form was rendered — which is precisely the bug this
@@ -290,7 +292,7 @@ func TestSetupIsClickableNotTypable(t *testing.T) {
 
 	// An env-managed install must be told the console will not override it,
 	// rather than being shown a form whose Save button silently does nothing.
-	env := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "/mnt/x", true, keepPrefs{})
+	env := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "/mnt/x", true, keepPrefs{}, "")
 	if strings.Contains(env, "data-vk-setup>") {
 		t.Error("an env-managed install was shown a setup form the console cannot apply")
 	}
@@ -304,7 +306,7 @@ func TestSetupIsClickableNotTypable(t *testing.T) {
 // the operator to invent it is how installs end up with "backup123" or with no
 // backups at all.
 func TestOperatorCanObtainAPassphrase(t *testing.T) {
-	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false, keepPrefs{})
+	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false, keepPrefs{}, "")
 	for _, want := range []string{"data-vk-gen>", "data-vk-copy>", "Generate one", "getRandomValues"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the setup form is missing %q — it demands a strong passphrase without offering one", want)
@@ -333,7 +335,7 @@ func TestOperatorCanObtainAPassphrase(t *testing.T) {
 // instruction to edit a file or restart a service contradicts the button sitting
 // next to it, and a page that argues with itself is worse than either version.
 func TestNoTerminalEraCopyRemains(t *testing.T) {
-	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false, keepPrefs{})
+	got := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false, keepPrefs{}, "")
 	for _, stale := range []string{
 		"Two lines and a restart",
 		"systemctl restart vayupress",
@@ -355,7 +357,7 @@ func TestEverythingBackupRelatedIsOnOnePage(t *testing.T) {
 		LastDrill: vkNow, LastDrillOK: true,
 	}, "", []vayukeep.Generation{
 		{Name: "vk-20260727-120000.vpbk", Taken: vkNow, Bytes: 4 << 20},
-	}, vkNow, "/mnt/replica", false, keepPrefs{})
+	}, vkNow, "/mnt/replica", false, keepPrefs{}, "")
 
 	for _, want := range []string{
 		// Manual export / import, moved from Update & Backup.
@@ -455,15 +457,120 @@ func TestBackupAndTestRestoreOutliveTheRequestDeadline(t *testing.T) {
 	}
 	w := httptest.NewRecorder()
 	a.handleOSVayuKeepBackup(w, expired("/os/api/vayukeep/backup"))
-	if !strings.Contains(w.Body.String(), "saved and tested") {
-		t.Errorf("Back up now, past the request deadline: %s", w.Body.String())
+	if got := keepOutcome(t, a); !strings.Contains(got, "saved and tested") {
+		t.Errorf("Back up now, past the request deadline: %s", got)
 	}
 	w = httptest.NewRecorder()
 	a.handleOSVayuKeepDrill(w, expired("/os/api/vayukeep/drill"))
-	if !strings.Contains(w.Body.String(), "PASSED") {
-		t.Errorf("Test restore now, past the request deadline: %s", w.Body.String())
+	if got := keepOutcome(t, a); !strings.Contains(got, "PASSED") {
+		t.Errorf("Test restore now, past the request deadline: %s", got)
 	}
 	if st := e.Status(); !st.LastDrillOK {
 		t.Errorf("a cancelled request left the status reading a failed test restore: %q", st.LastDrillError)
+	}
+}
+
+// keepOutcome waits for the running Back up now to end and returns what the
+// Backups page then shows.
+func keepOutcome(t *testing.T, a *App) string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		out := keepRunHTML(&a.keepRun)
+		if !strings.Contains(out, `hx-trigger`) {
+			return out
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Back up now was still running after 10 s: %s", out)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// A paced copy of a large site takes far longer than a request may stay open,
+// so Back up now answers at once and the page shows the backup running, then
+// the outcome of its test restore. A second press while it runs starts
+// nothing. The snapshot here is held until the test releases it, so an answer
+// that arrives is one the handler gave before the backup finished.
+func TestBackUpNowAnswersAtOnceThenShowsItsOutcome(t *testing.T) {
+	prev := config.Cfg
+	t.Cleanup(func() { config.Cfg = prev })
+	config.Cfg.VayuKeepEnabled = true
+	root := t.TempDir()
+	dbPath := filepath.Join(root, "data", "vayupress.db")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dbPath, []byte("SQLITE PAGES v1"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	var snapshots atomic.Int32
+	e, err := vayukeep.New(vayukeep.Config{
+		Enabled: true, DataDir: filepath.Dir(dbPath), DBPath: dbPath,
+		TargetDir: filepath.Join(root, "replica"), Passphrase: "a test passphrase",
+		Snapshot: func(_ context.Context, src, dst string) error {
+			snapshots.Add(1)
+			<-release
+			b, err := os.ReadFile(src) // #nosec G304 -- test fixture
+			if err != nil {
+				return err
+			}
+			return os.WriteFile(dst, b, 0o600)
+		},
+		Log: func(string, string) {},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.SetVerifier(func(context.Context, string) (int64, error) { return 3, nil })
+	a := &App{vayuKeep: e}
+	press := func() string {
+		r := withUser(httptest.NewRequest(http.MethodPost, "/os/api/vayukeep/backup", strings.NewReader(`{}`)), &users.User{Role: users.RoleAdmin})
+		w := httptest.NewRecorder()
+		done := make(chan struct{})
+		go func() { a.handleOSVayuKeepBackup(w, r); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			close(release)
+			t.Fatal("Back up now waited for the backup instead of answering")
+		}
+		return w.Body.String()
+	}
+
+	if got := press(); !strings.Contains(got, "Backing up") {
+		t.Fatalf("the first press answered %s", got)
+	}
+	if got := keepRunHTML(&a.keepRun); !strings.Contains(got, "Running now") || !strings.Contains(got, `hx-trigger="every 2s"`) {
+		t.Errorf("while it runs the page shows %s", got)
+	}
+	if got := press(); !strings.Contains(got, "already running") {
+		t.Errorf("a second press while one runs answered %s", got)
+	}
+	drill := httptest.NewRecorder()
+	a.handleOSVayuKeepDrill(drill, withUser(httptest.NewRequest(http.MethodPost, "/os/api/vayukeep/drill", strings.NewReader(`{}`)), &users.User{Role: users.RoleAdmin}))
+	if !strings.Contains(drill.Body.String(), "already running") {
+		t.Errorf("Test restore while a backup runs answered %s", drill.Body.String())
+	}
+	close(release)
+	got := keepOutcome(t, a)
+	if !strings.Contains(got, "saved and tested") || !strings.Contains(got, "3 posts read back") {
+		t.Errorf("after it ends the page shows %s", got)
+	}
+	if n := snapshots.Load(); n != 1 {
+		t.Errorf("%d snapshots were taken for one backup and one refused press", n)
+	}
+}
+
+// The copy is shown with how far it has got in bytes and the pacer's verdict,
+// so a slow backup says why it is slow.
+func TestTheRunningCopyShowsItsProgressAndPace(t *testing.T) {
+	k := &keepRun{copying: true, copied: sqlitecopy.Progress{Copied: 410, Total: 1000, PageSize: 4096}}
+	got := keepRunHTML(k)
+	for _, want := range []string{"Copying the database", `value="41"`, "41% · 1.6 MiB of 3.9 MiB"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the running copy is missing %q: %s", want, got)
+		}
 	}
 }

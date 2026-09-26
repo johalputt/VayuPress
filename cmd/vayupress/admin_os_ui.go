@@ -353,6 +353,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/website/services", a.handleOSServices)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/csp", a.handleOSServicesSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/backup", a.handleOSVayuKeepBackup)
+		pr.Get("/os/vayukeep/run", a.handleOSVayuKeepRun)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/drill", a.handleOSVayuKeepDrill)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/verify", a.handleOSVayuKeepVerify)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayukeep/setup", a.handleOSVayuKeepSetup)
@@ -1609,6 +1610,11 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	// a broken recovery path is otherwise silent until the day it is needed.
 	if n, ok := backupNotification(a.vayuKeepStatus(), a.vayuKeepErr, time.Now().UTC()); ok {
 		state(n.Href, n.Title, n.Detail, n.Kind, n.Severity)
+	}
+	if since, why := a.keepRun.held(); !since.IsZero() {
+		if n, ok := keepHeldNotice(since, why, time.Now()); ok {
+			state(n.Href, n.Title, n.Detail, n.Kind, n.Severity)
+		}
 	}
 	// A site in report-only blocks nothing; it is a trial, and a trial nobody
 	// remembers is an open door, so it stays in front of the operator.
@@ -3547,7 +3553,7 @@ func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
 	actions := []cmdAction{}
 	for _, act := range []cmdAction{
 		{Label: "New post", Icon: "pencil", Hint: "Open the block editor on a blank post", Href: "/os/editor", gate: "/os/editor"},
-		{Label: "Take a backup now", Icon: "archive", Hint: "Saves a restore point and test-restores it before saying it worked", Post: "/os/api/vayukeep/backup", Done: "Backup taken and tested.", gate: "/os/vayukeep"},
+		{Label: "Take a backup now", Icon: "archive", Hint: "Saves a restore point and test-restores it before saying it worked", Post: "/os/api/vayukeep/backup", Done: "Backing up. Its progress is on the Backups page.", gate: "/os/vayukeep"},
 		{Label: "Refresh every page", Icon: "refresh", Hint: "Rebuilt in the background at the pace the server can spare; the sitemap, feed and robots.txt now", Post: "/os/api/storage/refresh-pages", Done: "Every page is being refreshed.", gate: "/os/storage"},
 		{Label: "Regenerate sitemap, RSS and robots.txt", Icon: "refresh", Hint: "Rebuilds the three files search engines read", Post: "/os/api/seo/regenerate", Done: "Sitemap, RSS and robots.txt rebuilt.", gate: "/os/seo"},
 		{Label: "Check for security updates", Icon: "shield", Hint: "Fetches public release metadata only; nothing about your site is sent", Post: "/os/api/vayuos/security/check", Done: "Security updates checked.", gate: "/os/security"},

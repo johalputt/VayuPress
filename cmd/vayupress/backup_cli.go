@@ -6,8 +6,9 @@ package main
 // encrypted backups of the whole data directory (SQLite DB + settings, media,
 // VayuMail maildirs, PGP key store).
 //
-// The database is archived from a `VACUUM INTO` snapshot, never from the live
-// file. Copying a running SQLite database and its `-wal` byte-for-byte can
+// The database is archived from a consistent snapshot taken in paced steps
+// over one pinned read transaction (snapshotLiveDB, internal/sqlitecopy),
+// never from the live file. Copying a running SQLite database and its `-wal` byte-for-byte can
 // capture a torn state that restores into a corrupt database, and no amount of
 // care at restore time can repair bytes that were inconsistent when they were
 // read. This used to be handled by printing advice ("stop the service, or pick
@@ -18,7 +19,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"io"
@@ -29,27 +29,6 @@ import (
 	"github.com/johalputt/vayupress/internal/backup"
 	"github.com/johalputt/vayupress/internal/config"
 )
-
-// snapshotLiveDB writes a consistent, fully-checkpointed copy of the SQLite
-// database at dbPath to dest. `VACUUM INTO` reads through a single read
-// transaction, so the result is a point-in-time image even while the service is
-// writing — and it folds the WAL in, so the snapshot needs no sidecars.
-func snapshotLiveDB(ctx context.Context, dbPath, dest string) error {
-	db, err := sql.Open("sqlite3", dbPath+"?_busy_timeout=15000&_journal_mode=WAL")
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	if err := db.PingContext(ctx); err != nil {
-		return err
-	}
-	// VACUUM INTO refuses to overwrite, so the destination must not exist.
-	_ = os.Remove(dest)
-	if _, err := db.ExecContext(ctx, "VACUUM INTO ?", dest); err != nil {
-		return fmt.Errorf("consistent database snapshot failed: %w", err)
-	}
-	return nil
-}
 
 // dbArchiveOptions builds the substitution that puts a consistent snapshot into
 // the archive under the database's normal name, and skips the `-wal`/`-shm`
@@ -77,7 +56,7 @@ func dbArchiveOptions(ctx context.Context, srcDir, dbPath string, out io.Writer)
 	}
 	cleanup := func() { _ = os.RemoveAll(tmpDir) }
 	snap := filepath.Join(tmpDir, "snapshot.db")
-	fmt.Fprintln(out, "Taking a consistent database snapshot (VACUUM INTO) …")
+	fmt.Fprintln(out, "Taking a consistent database snapshot, paced by the server's load …")
 	if err := snapshotLiveDB(ctx, dbPath, snap); err != nil {
 		cleanup()
 		return backup.Options{}, noop, err

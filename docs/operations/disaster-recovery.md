@@ -152,7 +152,7 @@ DR-01 (database restore) is the escalation — not a separate search recovery.
 
 ## DR-06: Backup Verification Failure
 
-**Trigger**: VayuOS → Power & Maintenance → Backup & recovery shows **Restore FAILED**, or
+**Trigger**: VayuOS → System › Backups shows **Restore FAILED**, or
 `journalctl -u vayupress | grep vayukeep` contains `restore drill FAILED`.
 
 This is an outage of your recovery path, not a warning. The generations may be present,
@@ -243,13 +243,16 @@ VAYU_BACKUP_PASSPHRASE=…                # the same passphrase `vayupress backu
 Setting a target IS the intent to replicate, so there is no second on/off switch to
 forget. `VAYUKEEP_OFF=true` disables it explicitly.
 
-Every generation is a `VACUUM INTO` snapshot — consistent without stopping the service —
+Every generation's database is copied through one pinned read transaction, so it is one
+moment's data without stopping the service. The copy, the seal and the test restore all
+go in steps, as fast as the server can spare, and slow down while visitors need the disk;
+System › Backups shows the copy running and why it is going at that pace. Generations are
 sealed with AES-256-GCM under an Argon2id-wrapped key, with each frame chained to the
 last. Nothing is written unencrypted, and there is no option to.
 
 **The recovery point is only as good as the last drill.** A generation nothing has read
-back is a file, not a backup. Check *last verified restore* on VayuOS → Power &
-Maintenance, not *enabled*.
+back is a file, not a backup. Check *last verified restore* on VayuOS → System ›
+Backups, not *enabled*.
 
 Historical note: before v3.15.80 this table described a nightly 02:00 UTC job that did not
 exist. The only database backup the deploy script installed ran inside `if $UPGRADE`, so

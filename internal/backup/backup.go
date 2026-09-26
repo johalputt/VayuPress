@@ -466,7 +466,7 @@ func (d *legacyReader) finish() error { return nil }
 type Options struct {
 	// Substitute maps a path relative to srcDir onto a file elsewhere on disk
 	// that should be archived under that name instead. It exists so a live
-	// SQLite database is archived from a consistent `VACUUM INTO` snapshot while
+	// SQLite database is archived from a consistent snapshot while
 	// still appearing at its normal path inside the archive.
 	Substitute map[string]string
 	// Skip lists paths relative to srcDir to leave out entirely — the `-wal` and

@@ -237,6 +237,7 @@ type App struct {
 	vayuKeep    *vayukeep.Engine
 	vayuKeepErr string
 	keepSup     keepSupervisor
+	keepRun     keepRun // the backup the Backups page shows running (vayukeep_pace.go)
 
 	// VayuOS — native control layer (Phase 2): mail sovereignty + PGP privacy.
 	vayuKernel *vkernel.Bus

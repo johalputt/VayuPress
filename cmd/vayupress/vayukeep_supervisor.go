@@ -34,6 +34,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/pace"
 	"github.com/johalputt/vayupress/internal/secrets"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/update"
@@ -138,7 +139,8 @@ func (a *App) buildKeepConfig(ctx context.Context) vayukeep.Config {
 		DrillInterval:     time.Duration(config.Cfg.VayuKeepDrillMin) * time.Minute,
 		RetainGenerations: a.keepInt(ctx, settings.KeyVayuKeepRetainGen, config.Cfg.VayuKeepRetainGen),
 		RetainDays:        a.keepInt(ctx, settings.KeyVayuKeepRetainDays, config.Cfg.BackupRetainDays),
-		Snapshot:          snapshotLiveDB,
+		Snapshot:          a.keepRun.snapshot,
+		Pace:              func() vayukeep.Pacer { return pace.Host().NewJob(sealChunks) },
 		Pressure: func() bool {
 			g := a.sovereign
 			return g != nil && g.Inflight()*4 >= g.Cap()*3

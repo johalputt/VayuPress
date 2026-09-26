@@ -4,6 +4,15 @@ Status: Accepted (P1 and the generation engine shipped in v3.15.80; continuous W
 Date: 2026-07-27
 Deciders: VayuPress core
 
+> **Amended 2026-09-26.** A generation's database is no longer taken with
+> `VACUUM INTO`, one statement that could not pause. The console takes it with
+> SQLite's backup API in paced steps over one pinned read transaction
+> (`internal/sqlitecopy`), and seals and test-restores in paced chunks
+> (`internal/vayukeep/pace.go`), each step sized by the host pacer
+> (`internal/pace`). The consistency property below is unchanged, and the
+> stepped copy fails rather than restarts if it ever stops being one moment.
+> The restore drill checks each table in turn, asking the pacer between tables.
+
 ## Context
 
 VayuPress has two backup paths. Each is half-right, and neither is the half the

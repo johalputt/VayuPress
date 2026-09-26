@@ -15,7 +15,8 @@ package main
 //   - copy the live `.db` and skip the sidecars → the rows are LOST
 //   - copy the live `.db` and its `-wal` byte-for-byte → restorable only if the
 //     pair happened to be caught in a consistent state, which is the defect
-//   - snapshot with `VACUUM INTO` → the WAL is folded in and the rows are there
+//   - snapshot through one pinned read transaction (SQLite's backup API, in
+//     paced steps) → the WAL is folded in and the rows are there
 //
 // Asserting the rows survive therefore fails on the old behaviour and passes
 // only on the new one.
@@ -29,6 +30,7 @@ import (
 	"testing"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/pace"
 )
 
 // seedWALHeavyDB creates a WAL-mode database whose most recent commits are still
@@ -137,6 +139,7 @@ func TestBackupCapturesConsistentDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	fullSpeedSnapshots(t)
 	prevDB := config.Cfg.DBPath
 	t.Cleanup(func() { config.Cfg.DBPath = prevDB })
 	config.Cfg.DBPath = dbPath
@@ -199,6 +202,7 @@ func TestBackupRefusesTamperedArchiveBeforeTouchingDest(t *testing.T) {
 	live, _ := seedWALHeavyDB(t, dbPath)
 	defer live.Close()
 
+	fullSpeedSnapshots(t)
 	prevDB := config.Cfg.DBPath
 	t.Cleanup(func() { config.Cfg.DBPath = prevDB })
 	config.Cfg.DBPath = dbPath
@@ -231,4 +235,14 @@ func TestBackupRefusesTamperedArchiveBeforeTouchingDest(t *testing.T) {
 	if err := runBackupCLI("restore", []string{"-in", archive, "-verify"}, &bytes.Buffer{}); err == nil {
 		t.Fatal("verify accepted a truncated archive")
 	}
+}
+
+// fullSpeedSnapshots takes this test's snapshots unpaced. These tests prove
+// consistency, and the host pacer would read the test runner's own load and
+// could wait on it; pacing is proved in internal/sqlitecopy.
+func fullSpeedSnapshots(t *testing.T) {
+	t.Helper()
+	prev := newSnapshotJob
+	t.Cleanup(func() { newSnapshotJob = prev })
+	newSnapshotJob = func() *pace.Job { return pace.New(pace.Sources{}).NewJob(snapshotPages) }
 }

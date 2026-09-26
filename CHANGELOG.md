@@ -50,6 +50,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   are rebuilt at the same pace.** The background rebuild used to wait a fixed
   250 ms between pages whatever the server was doing, which took a day on a
   large site and did not slow down when visitors came.
+- **Backups no longer take the disk from visitors.** A backup copied the
+  whole database in one statement that nothing could pause: minutes of the
+  disk's full bandwidth on a large site, whenever a backup fell due. It is now
+  copied in steps over one moment's snapshot, sealed and test-restored in
+  chunks, each as large as the server can spare, and smaller or paused while
+  the database, disk, processors or memory are busy or pages are slow. A copy
+  that ever stopped being one moment's data fails instead of carrying on.
+  System › Backups shows the copy running, how far it has got and why it is
+  going at that pace, and the bell says so if a backup has waited on a busy
+  server for over an hour. The `vayupress backup` command is paced the same
+  way.
+- **Back up now and Test restore answer at once.** A paced backup of a large
+  site can take longer than any request may stay open, so the page shows each
+  running and then its outcome: the test restore's verdict, as before, never
+  an optimistic "started". One runs at a time.
+- **The test restore checks each table on its own**, pausing between tables
+  when the server is busy, and names the table that fails. It no longer checks
+  the file-wide page accounting, which can waste space but cannot lose a row.
 
 ### Upgrade Notes
 

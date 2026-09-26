@@ -174,7 +174,7 @@ func (e *Engine) writeGeneration(ctx context.Context) (int64, error) {
 	if err := tmp.Chmod(0o600); err != nil {
 		return 0, err
 	}
-	if err := backup.CreateWithOptions(tmp, e.cfg.Passphrase, e.cfg.DataDir, opts); err != nil {
+	if err := backup.CreateWithOptions(e.pacedWriter(ctx, tmp), e.cfg.Passphrase, e.cfg.DataDir, opts); err != nil {
 		return 0, err
 	}
 	// fsync before the rename: without it a crash can leave a correctly-named

@@ -126,7 +126,7 @@ func (e *Engine) drill(ctx context.Context) DrillResult {
 	defer os.RemoveAll(scratch)
 
 	dest := filepath.Join(scratch, "restored")
-	if _, err := backup.ExtractStaged(f, e.cfg.Passphrase, dest); err != nil {
+	if _, err := backup.ExtractStaged(e.pacedReader(ctx, f), e.cfg.Passphrase, dest); err != nil {
 		res.Err = "restore failed: " + err.Error()
 		res.Duration = e.cfg.Now().Sub(start)
 		return res

@@ -359,7 +359,7 @@ func keepSpecCard(st vayukeep.Status) string {
 	rows := detailRow("Encryption", "AES-256-GCM. Each backup gets its own random key, sealed with an Argon2id key derived from your passphrase.") +
 		detailRow("Tamper detection", "Every block is chained to the one before it and the file ends with an authenticated end marker, so a truncated, edited or reordered backup fails to open rather than restoring partially.") +
 		detailRow("There is no unencrypted mode", "A copy carries member emails, mailbox contents and comment data. Making encryption optional would make the wrong thing easy.") +
-		detailRow("Database consistency", "Captured with VACUUM INTO through a single read transaction, so a backup taken while the site is live is consistent. The service never needs stopping.") +
+		detailRow("Database consistency", "Copied through a single read transaction, so a backup taken while the site is live is one moment's data. The copy goes in steps, as fast as the server can spare, and slows down while visitors need the disk. The service never needs stopping.") +
 		detailRow("What is included", "Database, media, VayuMail mailboxes, settings and public PGP material.") +
 		detailRow("What is excluded", "Keystore secrets never leave the machine, so a stolen backup cannot decrypt your stored third-party credentials.") +
 		detailRow("Effect on site speed", "None on any page request. Change detection is two file checks, and both backup and test restore stand aside while the site is busy.")
@@ -413,7 +413,7 @@ func (p keepPrefs) withDefaults() keepPrefs {
 	return p
 }
 
-func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vayukeep.Generation, now time.Time, currentTarget string, envManaged bool, prefs keepPrefs) string {
+func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vayukeep.Generation, now time.Time, currentTarget string, envManaged bool, prefs keepPrefs, run string) string {
 	prefs = prefs.withDefaults()
 	v := keepStatusVerdict(st, bootErr, now)
 	bannerTone := "ok"
@@ -425,7 +425,7 @@ func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vay
 </div>
 <p class="page-sub">Automatic, encrypted copies of your entire site — database, media, mailboxes and settings — checked on a schedule so you know they actually restore.</p>
 <div class="card"><p class="text-sm">` + v.Headline + `</p></div>
-` + osVayuKeepStats(st, now)
+` + run + osVayuKeepStats(st, now)
 
 	if !st.Enabled || bootErr != "" {
 		body += `<div class="section-head"><span class="section-head__title">Get protected</span><span class="section-head__hint">A folder, a passphrase, one button</span></div>
@@ -463,9 +463,10 @@ func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vay
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
 function toast(msg,kind){if(window.vpToast){window.vpToast(msg,kind);}}
-// Every control reports the real outcome. The test restore is synchronous on
-// purpose: an operator asking whether their backups work is owed the answer they
-// waited for, not an optimistic "started" that a later failure never corrects.
+// Every control reports the real outcome. Back up now and Test restore answer
+// at once because a paced run can outlast any request, but the page then shows
+// the run and its outcome (#vk-run): never an optimistic "started" that a later
+// failure fails to correct.
 function vkPost(url,payload,btn,working,outId,then){
   var out=document.getElementById(outId||'vk-status');
   var label=btn?btn.textContent:'';
@@ -492,23 +493,18 @@ function vkPost(url,payload,btn,working,outId,then){
     .finally(function(){ if(btn){btn.disabled=false;btn.textContent=label;} });
 }
 var b=document.querySelector('[data-vk-backup]');
-// Back up now writes a restore point and test-restores it. Only when that
-// passes is the operator offered the older ones to remove, and the server
-// refuses the removal unless a tested point exists anyway.
-if(b){b.addEventListener('click',function(){vkPost('/os/api/vayukeep/backup',{},b,'Backing up and testing…','vk-status',function(d){
-  if(!d.ok||!d.older){return;}
-  var out=document.getElementById('vk-status'); if(!out){return;}
-  var clr=document.createElement('button');
-  clr.type='button'; clr.className='btn btn--danger btn--sm';
-  clr.textContent='Remove '+d.older+' older restore point'+(d.older===1?'':'s')+' ('+d.older_size+')';
-  clr.addEventListener('click',function(){
-    vpConfirm({title:'Remove older restore points',message:'Delete the '+d.older+' restore point'+(d.older===1?'':'s')+' older than '+d.generation+'? '+d.generation+' passed its test restore and is kept. This cannot be undone.',confirm:'Remove'},function(){
-      vkPost('/os/api/vayukeep/clear-older',{},clr,'Removing…','vk-status');
-    });
+// Back up now starts the backup and the page shows it running (#vk-run polls
+// itself). Only a backup that passed its test restore offers the older points
+// for removal, and the server refuses the removal unless a tested point exists.
+if(b){b.addEventListener('click',function(){vkPost('/os/api/vayukeep/backup',{},b,'Starting…');});}
+// The offer arrives in a polled fragment, after this script ran: delegated.
+document.addEventListener('click',function(ev){
+  var clr=ev.target.closest('[data-vk-clear-older]'); if(!clr){return;}
+  var n=clr.getAttribute('data-vk-older'), g=clr.getAttribute('data-vk-generation');
+  vpConfirm({title:'Remove older restore points',message:'Delete the '+n+' restore point'+(n==='1'?'':'s')+' older than '+g+'? '+g+' passed its test restore and is kept. This cannot be undone.',confirm:'Remove'},function(){
+    vkPost('/os/api/vayukeep/clear-older',{},clr,'Removing…','vk-status');
   });
-  out.appendChild(document.createTextNode(' '));
-  out.appendChild(clr);
-});});}
+});
 var d=document.querySelector('[data-vk-drill]');
 if(d){d.addEventListener('click',function(){vkPost('/os/api/vayukeep/drill',{},d,'Restoring…');});}
 Array.prototype.forEach.call(document.querySelectorAll('[data-vk-verify]'),function(el){
@@ -601,7 +597,7 @@ func (a *App) handleOSVayuKeep(w http.ResponseWriter, r *http.Request) {
 				RetainGens: a.keepInt(r.Context(), settings.KeyVayuKeepRetainGen, config.Cfg.VayuKeepRetainGen),
 				RetainDays: a.keepInt(r.Context(), settings.KeyVayuKeepRetainDays, config.Cfg.BackupRetainDays),
 				EveryMin:   a.keepEveryMin(r.Context()),
-			}))))
+			}, keepRunHTML(&a.keepRun)))))
 }
 
 // ── Endpoints ────────────────────────────────────────────────────────────────
@@ -619,62 +615,29 @@ func (a *App) keepGuard(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// keepWorkContext bounds a backup or test restore the operator started and is
-// waiting for. It keeps the request's values but not its cancellation: every
-// request carries the router's 30-second deadline (coreMiddleware), and a
-// backup cut off there is recorded as a failed backup, a drill cut off there
-// as a failed test restore. Neither is true, and the second raises an alarm
-// about the recovery path. A closed tab must not abandon a half-written
-// backup either.
-func keepWorkContext(r *http.Request, d time.Duration) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(r.Context()), d)
-}
-
-// handleOSVayuKeepBackup takes a restore point on demand.
+// handleOSVayuKeepBackup takes a restore point on demand. It answers at once:
+// the copy is paced by the server's load and a large site's can take far longer
+// than any request may stay open, so the page shows it running (keepRunHTML)
+// and then its outcome. That outcome is still the test restore's, never an
+// optimistic "started" left standing.
 func (a *App) handleOSVayuKeepBackup(w http.ResponseWriter, r *http.Request) {
 	if !a.keepGuard(w, r) {
 		return
 	}
-	// Written and test-restored while the operator waits: "requested" is not an
-	// answer to "is my site backed up".
-	if rc := http.NewResponseController(w); rc != nil {
-		_ = rc.SetWriteDeadline(time.Now().Add(11 * time.Minute))
-	}
-	ctx, cancel := keepWorkContext(r, 10*time.Minute)
-	defer cancel()
-	res := a.vayuKeep.BackupNow(ctx)
-	switch {
-	case res.Err == vayukeep.DrillBusy:
-		newest, _ := a.vayuKeep.Newest()
-		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "reload": true,
-			"detail": newest.Name + " was saved, but a test restore was already running, so it is not tested yet. Press Test restore now in a minute."})
-		return
-	case !res.OK && res.Generation == "":
-		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "reload": true, "detail": "No backup was made: " + res.Err})
-		return
-	case !res.OK:
-		dbpkg.AuditLog("vayukeep.backup", dbpkg.AuditActor(r), res.Generation, "FAILED its test restore")
-		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "reload": true,
-			"detail": res.Generation + " was saved but did NOT pass its test restore — " + res.Err + ". Your older restore points are untouched and nothing will be deleted on its strength."})
+	if !a.keepRun.startManual("Sealing the restore point and testing that it restores", time.Now()) {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": true,
+			"detail": "A backup or test restore is already running; its progress is on this page."})
 		return
 	}
-	dbpkg.AuditLog("vayukeep.backup", dbpkg.AuditActor(r), res.Generation, "passed its test restore")
-	detail := res.Generation + " saved and tested: it restores, and the database inside checks out clean."
-	if res.Rows > 0 {
-		detail += " " + strconv.FormatInt(res.Rows, 10) + " post" + plural(int(res.Rows)) + " read back."
-	}
-	gens, _ := a.vayuKeep.List()
-	older, olderBytes := 0, int64(0)
-	for _, g := range gens {
-		if g.Name < res.Generation {
-			older++
-			olderBytes += g.Bytes
-		}
-	}
-	writeJSON(w, r, http.StatusOK, map[string]any{
-		"ok": true, "detail": detail, "generation": res.Generation,
-		"older": older, "older_size": humanBytes(olderBytes), "reload": older == 0,
-	})
+	actor := dbpkg.AuditActor(r)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), keepManualTimeout)
+		defer cancel()
+		res := a.vayuKeep.BackupNow(ctx)
+		a.keepRun.finishManual(a.keepResultFor(res, actor, time.Now()))
+	}()
+	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": true,
+		"detail": "Backing up. The copy goes as fast as the server can spare; its progress is on this page."})
 }
 
 // handleOSVayuKeepClearOlder deletes every restore point older than the newest
@@ -706,26 +669,32 @@ func (a *App) handleOSVayuKeepClearOlder(w http.ResponseWriter, r *http.Request)
 		"detail": "Removed " + strconv.Itoa(len(removed)) + " older restore point" + plural(len(removed)) + " (" + humanBytes(freed) + " freed). Kept " + a.vayuKeep.ProvenGeneration() + ", which passed a test restore."})
 }
 
-// handleOSVayuKeepDrill runs a test restore synchronously and reports the real
-// outcome, then asks the page to reload so the status reflects it.
+// handleOSVayuKeepDrill starts a test restore and answers at once; the page
+// shows it running and then its real outcome, as for Back up now.
 func (a *App) handleOSVayuKeepDrill(w http.ResponseWriter, r *http.Request) {
 	if !a.keepGuard(w, r) {
 		return
 	}
-	ctx, cancel := keepWorkContext(r, 5*time.Minute)
-	defer cancel()
-	res := a.vayuKeep.Drill(ctx)
-	detail := "Test restore PASSED — your newest backup unpacked and its database checked out clean."
-	if res.Rows > 0 {
-		detail += " " + strconv.FormatInt(res.Rows, 10) + " post" + plural(int(res.Rows)) + " read back."
+	if !a.keepRun.startManual("Testing that the newest restore point restores", time.Now()) {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": true,
+			"detail": "A backup or test restore is already running; its progress is on this page."})
+		return
 	}
-	if !res.OK {
-		detail = "Test restore FAILED — " + res.Err
-	}
-	writeJSON(w, r, http.StatusOK, map[string]any{
-		"ok": res.OK, "detail": detail, "reload": true,
-		"generation": res.Generation, "ms": res.Duration.Milliseconds(),
-	})
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), keepManualTimeout)
+		defer cancel()
+		res := a.vayuKeep.Drill(ctx)
+		detail := "Test restore PASSED: your newest backup unpacked and its database checked out clean."
+		if res.Rows > 0 {
+			detail += " " + strconv.FormatInt(res.Rows, 10) + " post" + plural(int(res.Rows)) + " read back."
+		}
+		if !res.OK {
+			detail = "Test restore FAILED: " + res.Err
+		}
+		a.keepRun.finishManual(keepResult{OK: res.OK, Detail: detail, Generation: res.Generation, At: time.Now()})
+	}()
+	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "reload": true,
+		"detail": "Testing a restore. It goes as fast as the server can spare; its progress is on this page."})
 }
 
 // handleOSVayuKeepVerify reads one named restore point end to end without

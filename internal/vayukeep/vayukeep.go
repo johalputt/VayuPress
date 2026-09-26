@@ -12,9 +12,10 @@
 //
 // Three properties define the design.
 //
-// Consistent by construction. Every generation is a `VACUUM INTO` snapshot taken
-// through a single read transaction, never a copy of a live file, so it folds in
-// the write-ahead log and is restorable without stopping the service.
+// Consistent by construction. Every generation's database is a snapshot taken
+// through a single read transaction (the caller's Snapshot; the console's is
+// SQLite's backup API in paced steps), never a copy of a live file, so it folds
+// in the write-ahead log and is restorable without stopping the service.
 //
 // Sealed by default. Generations are written through internal/backup's VPBK2
 // chained-AEAD stream. There is no unencrypted mode; a replica that leaves the
@@ -87,6 +88,10 @@ type Config struct {
 	// Snapshot writes a consistent copy of the database at dbPath to dest.
 	// Injected so this package does not need a SQL driver.
 	Snapshot func(ctx context.Context, dbPath, dest string) error
+	// Pace, when set, starts the pacing for one seal or one test restore: it
+	// is asked before each chunk and blocks while the host is busy. Nil runs
+	// at full speed, as tests and the command line want.
+	Pace func() Pacer
 	// Log receives one-line operational messages.
 	Log func(level, msg string)
 }

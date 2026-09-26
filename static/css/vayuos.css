@@ -6180,6 +6180,18 @@
 .vp-os[data-ui="still-air"] .media-uploads__bar::-webkit-progress-bar { background: var(--surface-press); }
 .vp-os[data-ui="still-air"] .media-uploads__bar::-webkit-progress-value { background: var(--accent); transition: width var(--duration-standard); }
 .vp-os[data-ui="still-air"] .media-uploads__bar::-moz-progress-bar { background: var(--accent); }
+/* A job running now (ui.Job): title and progress on one line, a thin bar, then
+   the pace and the pacer's reason. Hairlines, not a box: it sits in a section. */
+.vp-os[data-ui="still-air"] .ui-job { padding: var(--space-5) 0; border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .ui-job__top { display: flex; align-items: baseline; gap: var(--space-4); margin-bottom: 10px; }
+.vp-os[data-ui="still-air"] .ui-job__title { font: var(--type-strong); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .ui-job__meta { margin-left: auto; font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .ui-job__bar { display: block; width: 100%; height: 6px; border: 0; border-radius: 3px; background: var(--surface-press); appearance: none; overflow: hidden; }
+.vp-os[data-ui="still-air"] .ui-job__bar::-webkit-progress-bar { background: var(--surface-press); }
+.vp-os[data-ui="still-air"] .ui-job__bar::-webkit-progress-value { background: var(--accent); border-radius: 3px; transition: width var(--duration-standard); }
+.vp-os[data-ui="still-air"] .ui-job__bar::-moz-progress-bar { background: var(--accent); border-radius: 3px; }
+.vp-os[data-ui="still-air"] .ui-job__why { display: flex; align-items: center; gap: 8px; margin-top: 8px; font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .ui-job__pace { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
 .vp-os[data-ui="still-air"] .media-uploads__now { font: var(--type-meta); color: var(--text-3); overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] .media-uploads.is-failed .media-uploads__now { color: var(--danger); }
 @media (max-width: 899px) {

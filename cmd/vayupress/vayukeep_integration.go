@@ -14,9 +14,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/pace"
+	"github.com/johalputt/vayupress/internal/sqlitecopy"
 	"github.com/johalputt/vayupress/internal/vayukeep"
 )
 
@@ -40,24 +43,58 @@ func (a *App) bootVayuKeep(ctx context.Context) {
 // database, which is exactly what a restore that silently produced nothing looks
 // like; the row count is what distinguishes "restored" from "restored something".
 func (a *App) vayuKeepVerifier(ctx context.Context, dbPath string) (int64, error) {
+	return verifyRestoredDB(ctx, dbPath, pace.Host().NewJob(pace.JobConfig{Min: 1, Max: 1, Floor: true}))
+}
+
+// verifyRestoredDB runs integrity_check one table at a time, asking the pacer
+// before each, so the check of a 17 GB restore yields to visitors between
+// tables instead of reading the whole file in one statement. A table's check
+// covers its rows and every index on it. What it leaves out is the file-wide
+// page accounting (a page claimed twice, or by nothing), which wastes space but
+// loses no row. A single very large table is still one statement; that limit
+// is recorded, not hidden.
+func verifyRestoredDB(ctx context.Context, dbPath string, p sqlitecopy.Pacer) (int64, error) {
 	db, err := sql.Open("sqlite3", dbPath+"?mode=ro&_busy_timeout=5000")
 	if err != nil {
 		return 0, err
 	}
 	defer db.Close()
 
-	var integrity string
-	if err := db.QueryRowContext(ctx, `PRAGMA integrity_check`).Scan(&integrity); err != nil {
-		return 0, fmt.Errorf("integrity_check did not run: %w", err)
+	rows, err := db.QueryContext(ctx, `SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name`)
+	if err != nil {
+		return 0, fmt.Errorf("the restored database's tables could not be listed: %w", err)
 	}
-	if integrity != "ok" {
-		return 0, fmt.Errorf("integrity_check reported %q", integrity)
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		tables = append(tables, name)
 	}
-	var rows int64
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM articles`).Scan(&rows); err != nil {
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, t := range tables {
+		if _, err := p.Next(ctx); err != nil {
+			return 0, err
+		}
+		var verdict string
+		q := `PRAGMA integrity_check("` + strings.ReplaceAll(t, `"`, `""`) + `")`
+		if err := db.QueryRowContext(ctx, q).Scan(&verdict); err != nil {
+			return 0, fmt.Errorf("integrity_check of %s did not run: %w", t, err)
+		}
+		if verdict != "ok" {
+			return 0, fmt.Errorf("integrity_check of %s reported %q", t, verdict)
+		}
+	}
+	var n int64
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM articles`).Scan(&n); err != nil {
 		return 0, fmt.Errorf("the restored database has no readable articles table: %w", err)
 	}
-	return rows, nil
+	return n, nil
 }
 
 // vayuKeepStatus returns the current replication state, safe on a nil engine.
