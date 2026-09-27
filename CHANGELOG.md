@@ -8,6 +8,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.86] — 2026-09-27
+
+VayuMCP can now look after a hosted static site entirely: read it and change
+it file by file, pictures and fonts included, or have the install build it
+from a GitHub repository and rebuild it on every push, so a site of any size
+is updated without anything done by hand (ADR-0165).
+
 ### Added
 
 - **A hosted site can be changed file by file through VayuMCP.**
