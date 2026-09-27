@@ -126,11 +126,11 @@
     "inlineFields": 0
   },
   "/os/monetization": {
-    "boxes": 17,
-    "nested": 13,
-    "badges": 9,
-    "zeroFigures": 4,
-    "inlineFields": 17
+    "boxes": 2,
+    "nested": 0,
+    "badges": 0,
+    "zeroFigures": 0,
+    "inlineFields": 5
   },
   "/os/monitoring": {
     "boxes": 15,
@@ -161,9 +161,9 @@
     "inlineFields": 4
   },
   "/os/power": {
-    "boxes": 5,
-    "nested": 1,
-    "badges": 2,
+    "boxes": 1,
+    "nested": 0,
+    "badges": 0,
     "zeroFigures": 0,
     "inlineFields": 2
   },
@@ -196,8 +196,8 @@
     "inlineFields": 0
   },
   "/os/settings": {
-    "boxes": 3,
-    "nested": 1,
+    "boxes": 1,
+    "nested": 0,
     "badges": 0,
     "zeroFigures": 0,
     "inlineFields": 5
@@ -210,15 +210,15 @@
     "inlineFields": 0
   },
   "/os/settings/appearance": {
-    "boxes": 1,
+    "boxes": 0,
     "nested": 0,
     "badges": 0,
     "zeroFigures": 0,
     "inlineFields": 0
   },
   "/os/settings/design": {
-    "boxes": 4,
-    "nested": 1,
+    "boxes": 1,
+    "nested": 0,
     "badges": 0,
     "zeroFigures": 0,
     "inlineFields": 4
@@ -231,21 +231,21 @@
     "inlineFields": 0
   },
   "/os/settings/footer": {
-    "boxes": 3,
-    "nested": 1,
+    "boxes": 1,
+    "nested": 0,
     "badges": 0,
     "zeroFigures": 0,
     "inlineFields": 11
   },
   "/os/settings/members": {
-    "boxes": 1,
+    "boxes": 0,
     "nested": 0,
     "badges": 0,
     "zeroFigures": 0,
     "inlineFields": 0
   },
   "/os/settings/navigation": {
-    "boxes": 1,
+    "boxes": 0,
     "nested": 0,
     "badges": 0,
     "zeroFigures": 0,
@@ -413,10 +413,10 @@
     "inlineFields": 13
   },
   "/os/website/services": {
-    "boxes": 7,
+    "boxes": 3,
     "nested": 0,
     "badges": 0,
     "zeroFigures": 0,
-    "inlineFields": 2
+    "inlineFields": 0
   }
 }
