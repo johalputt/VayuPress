@@ -10,6 +10,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Monetization, Advertising, Power and Outside services are settings
+  pages.** Each opens on its title with its state beside it, as a dot and a
+  word ("Taking payments", "Down for maintenance", "Strict"), and lists its
+  settings as rows under hairlines, the way Settings does. Values edit in
+  place and one bar saves them together; the separate Save buttons are gone.
+  Connecting a payment gateway, adding an ad slot or a source, and pricing a
+  post each open in a sheet. Settings loses the panel around its rows to
+  match. The visitors' maintenance message is limited to 280 characters where
+  it is shown, counted in characters: the limit used to cut bytes, which could
+  split a letter in two.
+
 - **An app that is not set up says what it needs.** Mail, Talk, Tor,
   Backups, Advertising, the Newsletter and your profile each answered with a
   sentence of their own while off, and one sent the reader to a "first-boot

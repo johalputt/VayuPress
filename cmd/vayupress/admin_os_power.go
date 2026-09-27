@@ -25,6 +25,7 @@ import (
 	htmpl "html/template"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -33,6 +34,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // maintenanceExemptPrefixes are path prefixes that stay reachable while the site
@@ -117,6 +119,23 @@ func (a *App) serveMaintenance(w http.ResponseWriter, r *http.Request) {
 // maintenance: a Still Air notice on the console's own stylesheet, the way the
 // sign-in page is. Every asset it names stays reachable in maintenance
 // (maintenancePathExempt), which TestMaintenancePageHTML checks.
+// maintenanceMessageMax is how long the visitors' message may be, in
+// characters. It is applied where the message is shown as well as where the
+// Power page saves it: the general settings API stores the key too, and a
+// limit held by one writer only is not a limit.
+const maintenanceMessageMax = 280
+
+// clipMaintenanceMessage trims the message and keeps at most
+// maintenanceMessageMax characters. It counts runes: the byte slice it
+// replaced cut a character in half in any script beyond ASCII.
+func clipMaintenanceMessage(m string) string {
+	m = strings.TrimSpace(m)
+	if r := []rune(m); len(r) > maintenanceMessageMax {
+		m = string(r[:maintenanceMessageMax])
+	}
+	return m
+}
+
 func maintenancePageHTML(message string) string {
 	brand := html.EscapeString(config.Cfg.Domain)
 	title, foot := "Under maintenance", "Powered by VayuPress"
@@ -124,7 +143,7 @@ func maintenancePageHTML(message string) string {
 		title, foot = brand+" — under maintenance", brand+" · powered by VayuPress"
 	}
 	msg := "We’re making things better behind the scenes and will be back online shortly. Thanks for your patience."
-	if m := strings.TrimSpace(message); m != "" {
+	if m := clipMaintenanceMessage(message); m != "" {
 		msg = html.EscapeString(m)
 	}
 	return `<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -157,7 +176,7 @@ func (a *App) handleOSPower(w http.ResponseWriter, r *http.Request) {
 	}
 	crawlersOff := a.crawlersBlocked(r.Context())
 	feedbackAddr := a.feedbackEmail(r.Context())
-	writeOSHTML(w, r, adminOSLayout(nonce, "Power & Maintenance", "operations", cfg,
+	writeOSHTML(w, r, settingsLayout(nonce, "Power", "operations", cfg,
 		htmpl.HTML(osPowerBody(nonce, on, msg, crawlersOff, feedbackAddr))))
 }
 
@@ -177,104 +196,50 @@ func (a *App) handleOSPowerPreview(w http.ResponseWriter, r *http.Request) {
 // toggle and the restart/shutdown buttons; all three POST to the CSRF-protected
 // /os/api/power/* endpoints.
 func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedbackAddr string) string {
-	esc := html.EscapeString
-	onAttr := "0"
+	state := ui.State("ok", "Live")
+	siteHint := "Visitors reach the public site normally. Offline, they see a maintenance page and the console stays open."
+	siteBtn := `<button type="button" class="btn btn--sm" data-power-toggle data-on="0">Take the site offline</button>`
 	if on {
-		onAttr = "1"
+		state = ui.State("warn", "Down for maintenance")
+		siteHint = "Visitors see the maintenance page. The console stays open."
+		siteBtn = `<button type="button" class="btn btn--primary btn--sm" data-power-toggle data-on="1">Bring the site back</button>`
 	}
-	crawlAttr := "0"
-	crawlBadge := `<span class="badge badge--ok">Allowed</span>`
-	crawlToggleLabel := "Block all crawlers"
-	crawlToggleClass := "btn btn--danger btn--sm"
-	crawlHint := "Search engines and AI crawlers <strong>can</strong> index your public site. Turn this on to shut them out."
+	crawl, crawlBtn := ui.State("ok", "Allowed"), `<button type="button" class="btn btn--sm" data-crawlers-toggle data-on="0">Block</button>`
+	crawlHint := "Google, Bing, GPTBot, ClaudeBot, PerplexityBot and other search and AI crawlers may index the public site."
 	if crawlersOff {
-		crawlAttr = "1"
-		crawlBadge = `<span class="badge badge--warn">Blocked</span>`
-		crawlToggleLabel = "Allow crawlers"
-		crawlToggleClass = "btn btn--primary btn--sm"
-		crawlHint = "Search engines and AI crawlers are <strong>blocked</strong> — robots.txt disallows everything, known crawler bots get a 403, and every public page is marked <code>noindex</code>."
+		crawl, crawlBtn = ui.State("warn", "Blocked"), `<button type="button" class="btn btn--sm" data-crawlers-toggle data-on="1">Allow</button>`
+		crawlHint = "robots.txt disallows everything, known crawlers get a 403, and every public page says noindex."
 	}
-	statusBadge := `<span class="badge badge--ok">Live</span>`
-	toggleLabel := "Turn maintenance on"
-	toggleClass := "btn btn--danger"
-	stateHint := "Your public site is <strong>live</strong>. Visitors reach it normally."
-	if on {
-		statusBadge = `<span class="badge badge--warn">In maintenance</span>`
-		toggleLabel = "Turn maintenance off and go live"
-		toggleClass = "btn btn--primary"
-		stateHint = "Your public site is <strong>offline</strong> — visitors see the maintenance page. Your admin console stays open."
+	field := func(id, key, kind, label, value string) ui.HTML {
+		return settingControl(settingField{ID: id, Key: key, Kind: kind, Label: label}, value)
 	}
-	return `<div class="page-header"><h1>Power &amp; Maintenance ` + statusBadge + `</h1>
-<p class="page-sub">Take the public site offline behind a premium maintenance page, or restart the app. Your VayuOS console always stays reachable.</p></div>
+	msg := string(field("mnt-msg", settings.KeyMaintenanceMessage, "textarea", "Message while offline", message))
+	msg = strings.Replace(msg, `<textarea `, `<textarea maxlength="`+strconv.Itoa(maintenanceMessageMax)+`" placeholder="We’re upgrading the system and will be back shortly." `, 1)
 
-<div class="card" data-power-card>
-  <div class="settings-row">
-    <div class="settings-row-info">
-      <div class="settings-row-label">Maintenance mode</div>
-      <div class="settings-row-hint" data-state-hint>` + stateHint + `</div>
-    </div>
-    <button type="button" class="` + toggleClass + `" data-power-toggle data-on="` + onAttr + `">` + toggleLabel + `</button>
-  </div>
-  <div class="section-divider"></div>
-  <div class="field">
-    <label class="field-label" for="mnt-msg">Message shown to visitors (optional)</label>
-    <textarea id="mnt-msg" class="input" rows="2" maxlength="280" placeholder="We’re upgrading the system and will be back shortly.">` + esc(message) + `</textarea>
-    <div class="mt-2" style="display:flex;gap:.5rem;flex-wrap:wrap">
-      <button type="button" class="btn btn--sm" data-power-savemsg>Save message</button>
-      <a class="btn btn--sm btn--ghost" href="/os/power/preview" target="_blank" rel="noopener">Preview the page ↗</a>
-    </div>
-  </div>
-</div>
-
-<div class="card">
-  <div class="settings-row">
-    <div class="settings-row-info">
-      <div class="settings-row-label">Search engine &amp; AI crawler access ` + crawlBadge + `</div>
-      <div class="settings-row-hint">` + crawlHint + `</div>
-    </div>
-    <button type="button" class="` + crawlToggleClass + `" data-crawlers-toggle data-on="` + crawlAttr + `">` + crawlToggleLabel + `</button>
-  </div>
-  <div class="settings-row-hint mt-2 text-xs muted">Blocks Google, Bing, GPTBot, ClaudeBot, PerplexityBot and other AI/search bots. Your visitors, the VayuOS console and VayuMCP are never affected.</div>
-</div>
-
-<div class="card">
-  <div class="settings-block-title">Feedback &amp; bug reports</div>
-  <p class="text-sm muted"><strong>Send feedback</strong>, in the account menu, lets you and your team report a bug, request an improvement or suggest a feature — it opens a PGP-encrypted email to the inbox below (screenshots and files supported). By default it reaches the <strong>VayuPress team at feedback@vayupress.com</strong>; change it here to collect reports in your own inbox instead.</p>
-  <div class="field">
-    <label class="field-label" for="fb-addr">Feedback inbox</label>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-      <input id="fb-addr" class="input" type="email" style="max-width:22rem" value="` + esc(feedbackAddr) + `" placeholder="feedback@vayupress.com">
-      <button type="button" class="btn btn--sm" data-fb-save>Save</button>
-      <a class="btn btn--ghost btn--sm" href="/os/vayumail/compose?feedback=1">Open a test report ↗</a>
-    </div>
-  </div>
-</div>
-
-<div class="card">
-  <div class="settings-block-title">Restart &amp; shutdown</div>
-  <p class="text-sm muted">The app drains in-flight requests, then restarts. It comes back automatically within a few seconds (your service runs with auto-restart).</p>
-  <div class="settings-row">
-    <div class="settings-row-info">
-      <div class="settings-row-label">Restart the app</div>
-      <div class="settings-row-hint">A quick refresh — the site comes back <strong>live</strong>. Use after an update or to clear transient state.</div>
-    </div>
-    <button type="button" class="btn btn--primary btn--sm" data-power-restart>Restart now</button>
-  </div>
-  <div class="settings-row">
-    <div class="settings-row-info">
-      <div class="settings-row-label">Shut the site down</div>
-      <div class="settings-row-hint">Turns maintenance on and restarts, so the app comes back with the public site <strong>offline</strong> — and stays off until you turn maintenance off here.</div>
-    </div>
-    <button type="button" class="btn btn--danger btn--sm" data-power-shutdown>Shut down</button>
-  </div>
-</div>
-
+	page := ui.SettingsPage("Power", state, "",
+		ui.Section("The public site", "The console is never taken offline", ui.Rows(
+			ui.Row{Label: "Maintenance", Hint: siteHint, Control: ui.HTML(siteBtn)},
+			ui.Row{Label: "Message while offline", Hint: "At most " + strconv.Itoa(maintenanceMessageMax) + " characters. Empty shows the default.", ID: "mnt-msg", Control: ui.HTML(msg)},
+			ui.Row{Label: "The maintenance page", Hint: "What visitors see, without taking the site down.",
+				Control: `<a class="settings-row-go" href="/os/power/preview" target="_blank" rel="noopener">Preview` + ui.Icon("ext") + `</a>`},
+			ui.Row{Label: "Search engines and AI crawlers", Hint: crawlHint + " Visitors, the console and VayuMCP are never affected.", Control: crawl + ui.HTML(crawlBtn)},
+		)),
+		ui.Section("Feedback", "", ui.Rows(
+			ui.Row{Label: "Feedback inbox", Hint: "Send feedback, in the account menu, writes a PGP-encrypted report here. Empty sends it to the VayuPress team at feedback@vayupress.com.", ID: "fb-addr",
+				Control: field("fb-addr", settings.KeyFeedbackEmail, "email", "Feedback inbox", feedbackAddr)},
+		)),
+		ui.Section("Restart", "The service restarts itself after each", ui.Rows(
+			ui.Row{Label: "Restart the app", Hint: "In-flight requests finish first. Back in a few seconds, live.", Control: `<button type="button" class="btn btn--sm" data-power-restart>Restart</button>`},
+			ui.Row{Label: "Shut the site down", Hint: "Maintenance goes on and the app restarts, so it comes back offline and stays so until you bring it back.", Control: `<button type="button" class="btn btn--danger btn--sm" data-power-shutdown>Shut down</button>`},
+		)),
+		ui.SaveBar(),
+	)
+	return string(page) + `
 <script nonce="` + nonce + `">
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
 function toast(msg,kind){if(window.vpToast){window.vpToast(msg,kind);}}
 function post(url,body){return fetch(url,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:body?JSON.stringify(body):'{}'});}
-var card=document.querySelector('[data-power-card]');
 var tgl=document.querySelector('[data-power-toggle]');
 if(tgl){tgl.addEventListener('click',function(){
   var turnOn=tgl.getAttribute('data-on')!=='1';
@@ -287,23 +252,6 @@ if(tgl){tgl.addEventListener('click',function(){
   };
   if(turnOn){vpConfirm({title:'Go offline?',message:'Take the public site offline now? Visitors will see the maintenance page. Your admin console stays open.',confirm:'Go offline'},apply);return;}
   apply();
-});}
-var saveBtn=document.querySelector('[data-power-savemsg]');
-if(saveBtn){saveBtn.addEventListener('click',function(){
-  var ta=document.getElementById('mnt-msg');
-  post('/os/api/power/maintenance',{message:(ta&&ta.value)||''}).then(function(r){return r.json();}).then(function(j){
-    toast(j&&j.ok?'Message saved.':'Could not save the message','ok');
-  }).catch(function(){toast('Network error','error');});
-});}
-var fbBtn=document.querySelector('[data-fb-save]');
-if(fbBtn){fbBtn.addEventListener('click',function(){
-  var inp=document.getElementById('fb-addr');
-  var v=((inp&&inp.value)||'').trim();
-  fbBtn.disabled=true;
-  post('/os/api/settings',{key:'vayupress.feedback_email',value:v}).then(function(r){return r.json();}).then(function(j){
-    fbBtn.disabled=false;
-    toast(j&&j.status==='ok'?'Feedback inbox saved.':'Could not save the address','ok');
-  }).catch(function(){fbBtn.disabled=false;toast('Network error','error');});
 });}
 var crawlBtn=document.querySelector('[data-crawlers-toggle]');
 if(crawlBtn){crawlBtn.addEventListener('click',function(){
@@ -369,11 +317,7 @@ func (a *App) handleOSPowerMaintenance(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if body.Message != nil {
-		m := strings.TrimSpace(*body.Message)
-		if len(m) > 280 {
-			m = m[:280]
-		}
-		kv[settings.KeyMaintenanceMessage] = m
+		kv[settings.KeyMaintenanceMessage] = clipMaintenanceMessage(*body.Message)
 	}
 	if len(kv) == 0 {
 		writeJSON(w, r, http.StatusOK, map[string]any{"ok": true})

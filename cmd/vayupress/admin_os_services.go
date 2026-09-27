@@ -91,13 +91,12 @@ func (a *App) handleOSServices(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	mode := p.Enforced(now)
 
-	var b strings.Builder
 	// Every change saves as it is made, the way Add and Allow always did, so
-	// there is no unsaved state to lose and no bar to find on a phone.
-	b.WriteString(`<div data-csp-save="` + save + `">`)
-	b.WriteString(string(ui.Page("Outside services", "What "+name+"'s public pages may load from other sites. Strict is the default: nothing from outside loads.", "")))
+	// there is no unsaved state to lose and no bar to find on a phone: this
+	// Settings page has no SaveBar.
+	var secs []ui.HTML
 	if config.Cfg.OnionMode {
-		b.WriteString(string(ui.Callout("info", "This is the Tor world. Every outside address is removed before a page is sent, whatever is chosen here, so a visitor's browser never leaves the onion.")))
+		secs = append(secs, ui.Callout("info", "This is the Tor world. Every outside address is removed before a page is sent, whatever is chosen here, so a visitor's browser never leaves the onion."))
 	}
 
 	option := func(value, title, hint string) string {
@@ -114,12 +113,12 @@ func (a *App) handleOSServices(w http.ResponseWriter, r *http.Request) {
 	case p.Mode == render.PolicyReport:
 		state = `<p class="csp-note">Report only ended on ` + p.ReportUntil.Format("2 Jan 2006") + `; the allowances below are enforced.</p>`
 	}
-	b.WriteString(string(ui.Section("Policy", "", ui.HTML(`<div class="csp-modes" role="radiogroup" aria-label="Policy">`+
+	secs = append(secs, ui.Section("Policy", "", ui.HTML(`<div class="csp-modes" role="radiogroup" aria-label="Policy">`+
 		option(render.PolicyStrict, "Strict", "Only this site's own files load.")+
 		option(render.PolicyCustom, "Allow what I choose", "The services and sources below load too.")+
 		option(render.PolicyReport, "Report only, for 7 days", "Nothing is blocked; everything blocked is listed below. Then it enforces again on its own.")+
 		`</div>`+state+`<p class="muted csp-note">Sign-in, member, checkout and mail pages, and this console, always keep the strict policy.`+
-		string(ui.Tip("A service you allow runs on your public pages, never where someone's session could be read."))+`</p>`))))
+		string(ui.Tip("A service you allow runs on your public pages, never where someone's session could be read."))+`</p>`)))
 
 	on := map[string]bool{}
 	for _, id := range p.Services {
@@ -143,7 +142,7 @@ func (a *App) handleOSServices(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, ui.Row{Label: s.Name, Hint: hint, ID: "csp-svc-" + s.ID,
 			Control: ui.HTML(`<input type="checkbox" class="toggle" role="switch" id="csp-svc-` + s.ID + `" data-csp-service="` + s.ID + `"` + checked + `>`)})
 	}
-	b.WriteString(string(ui.Section("Services", "", ui.Rows(rows...))))
+	secs = append(secs, ui.Section("Services", "", ui.Rows(rows...)))
 
 	var srcRows [][]ui.HTML
 	for _, d := range render.CustomDirectives {
@@ -161,14 +160,16 @@ func (a *App) handleOSServices(w http.ResponseWriter, r *http.Request) {
 	if p.InlineStyles {
 		inline = " checked"
 	}
-	b.WriteString(string(ui.Section("Your own sources", "", ui.Join(
+	secs = append(secs, ui.Section("Your own sources", "", ui.Join(
 		ui.Table([]string{"For", "Address", ""}, srcRows, "None yet."),
-		ui.HTML(`<div class="csp-add"><select class="input" data-csp-add-dir aria-label="For">`+opts+`</select>`+
-			`<input type="text" class="input" data-csp-add-src placeholder="https://images.example.com" aria-label="Address" autocomplete="off" spellcheck="false">`+
-			`<button type="button" class="btn" data-csp-add>Add</button></div>`),
+		ui.HTML(`<div class="csp-add"><button type="button" class="btn btn--sm" data-sheet="csp-add-sheet">Add a source</button></div>`),
 		ui.Rows(ui.Row{Label: "Inline styles", Hint: "Many embedded widgets style themselves this way. Styles cannot run code.", ID: "csp-inline",
 			Control: ui.HTML(`<input type="checkbox" class="toggle" role="switch" id="csp-inline" data-csp-inline` + inline + `>`)}),
-	))))
+	)))
+	secs = append(secs, ui.Sheet("csp-add-sheet", "Add a source", ui.HTML(
+		`<div class="field"><label class="field-label" for="csp-add-dir">For</label><select class="input" id="csp-add-dir" data-csp-add-dir>`+opts+`</select></div>`+
+			`<div class="field"><label class="field-label" for="csp-add-src">Address</label><input type="text" class="input" id="csp-add-src" data-csp-add-src placeholder="https://images.example.com" autocomplete="off" spellcheck="false"></div>`+
+			`<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-csp-add>Add the source</button></div>`)))
 
 	var blockRows [][]ui.HTML
 	for _, bl := range cspBlocksFor(hosts) {
@@ -181,19 +182,27 @@ func (a *App) handleOSServices(w http.ResponseWriter, r *http.Request) {
 			ui.HTML(`<time datetime="` + bl.Last.UTC().Format(time.RFC3339) + `">` + bl.Last.UTC().Format("2 Jan, 15:04") + `</time>`),
 			cspBlockAction(bl)})
 	}
-	b.WriteString(string(ui.Section("Blocked on this site", "", ui.Join(
+	secs = append(secs, ui.Section("Blocked on this site", "", ui.Join(
 		ui.Table([]string{"What", "From", "Seen", "Last", ""}, blockRows, "Nothing blocked here has been reported by more than one visitor."),
 		ui.HTML(`<p class="muted csp-note">Reported by visitors' browsers since the server started.`+
 			string(ui.Tip("Anyone can send a report, so an address shows here only once more than one visitor has reported it. Allow only what you recognise."))+`</p>`),
-	))))
+	)))
 
 	sample := strings.Replace(p.Apply(render.BuildCSP("NONCE", nil)), "'nonce-NONCE'", "'nonce-…'", 1)
-	b.WriteString(string(ui.Disclosure(ui.Icon("shield"), "The policy your pages are sent", "As saved", "", false,
-		ui.HTML(`<pre class="csp-sample">`+string(ui.Text(strings.ReplaceAll(sample, "; ", ";\n")))+`</pre>`))))
+	secs = append(secs, ui.Disclosure(ui.Icon("shield"), "The policy your pages are sent", "As saved", "", false,
+		ui.HTML(`<pre class="csp-sample">`+string(ui.Text(strings.ReplaceAll(sample, "; ", ";\n")))+`</pre>`)))
 
-	b.WriteString(`</div>`)
-	b.WriteString(`<script nonce="` + nonce + `">` + servicesScript + `</script>`)
-	writeOSHTML(w, r, adminOSLayout(nonce, "Outside services", "website", cfg, htmpl.HTML(b.String())))
+	pageState := ui.State("ok", "Strict")
+	switch {
+	case mode == render.PolicyReport:
+		pageState = ui.State("warn", "Report only until "+p.ReportUntil.Format("2 Jan"))
+	case mode == render.PolicyCustom:
+		pageState = ui.State("accent", "Allowing what you chose")
+	}
+	body := `<div data-csp-save="` + save + `">` +
+		string(ui.SettingsPage("Outside services", pageState, "What "+name+"'s public pages may load from other sites. Strict is the default: nothing from outside loads.", secs...)) +
+		`</div><script nonce="` + nonce + `">` + servicesScript + `</script>`
+	writeOSHTML(w, r, adminOSLayout(nonce, "Outside services", "website", cfg, htmpl.HTML(body)))
 }
 
 // servicesScript saves the page's policy on every change. Allow and Turn on

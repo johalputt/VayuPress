@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"html"
+	htmpl "html/template"
 	"strconv"
 	"strings"
 	"time"
@@ -198,7 +199,7 @@ func settingControl(f settingField, value string) ui.HTML {
 
 // settingsPageBody renders one category.
 func settingsPageBody(ctx context.Context, a *App, c settingsCategory) ui.HTML {
-	parts := []ui.HTML{`<div class="settings-page">`, ui.Page(c.Label, c.Sub, "")}
+	var sections []ui.HTML
 	for _, g := range c.Groups {
 		var body ui.HTML
 		if g.Custom != nil {
@@ -215,14 +216,9 @@ func settingsPageBody(ctx context.Context, a *App, c settingsCategory) ui.HTML {
 			}
 			body = ui.Rows(rows...)
 		}
-		parts = append(parts, ui.Section(g.Title, g.Hint, body))
+		sections = append(sections, ui.Section(g.Title, g.Hint, body))
 	}
-	// The one bar that saves or discards every changed row. It rises when the
-	// first row changes; aria-live says how many are waiting.
-	parts = append(parts, `<div class="settings-bar" data-settings-bar hidden><span class="settings-bar__count" data-settings-count aria-live="polite"></span>`+
-		`<button type="button" class="btn btn--ghost btn--sm" data-settings-discard>Discard</button>`+
-		`<button type="button" class="btn btn--primary btn--sm" data-settings-save>Save changes</button></div></div>`)
-	return ui.Join(parts...)
+	return ui.SettingsPage(c.Label, "", c.Sub, append(sections, ui.SaveBar())...)
 }
 
 // settingsEntry is one findable setting: a row, or a band drawn by its own
@@ -370,6 +366,14 @@ func settingsAdvancedFacts(_ context.Context, _ *App) ui.HTML {
 		ui.Facts(ui.Fact{Key: "Cache", Value: `<span class="mono">` + ui.Text(config.Cfg.CacheDir) + `</span>`}),
 		ui.HTML(`<p class="settings-panel__lead">Exports, imports and restores are in <a href="/os/vayukeep">Backups</a>; clearing the caches is in <a href="/os/storage">Storage</a>.</p>`),
 	)
+}
+
+// settingsLayout is adminOSLayout for a page of the Settings kind: the same
+// shell, with settingsPageScript run in its foot so every data-setting-key
+// control shares the one save bar.
+func settingsLayout(nonce, title, active string, cfg *osSettings, body htmpl.HTML) string {
+	return adminOSShellHead(nonce, title, active, cfg) + renderTrustedHTML(body) +
+		adminOSShellFoot(nonce, settingsPageScript, pageUsesAlpine(string(body)), pageUsesPurify(string(body)))
 }
 
 // settingsPageScript runs a Settings page. Rows are compared with the value

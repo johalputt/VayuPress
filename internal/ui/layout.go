@@ -42,6 +42,7 @@ type Row struct {
 	Control     HTML
 	ID          string // the control's id, so the label can point at it
 	Changed     bool
+	Icon        string // an icon before the label, where the render has one
 }
 
 // Rows renders settings as rows with the control on the right.
@@ -56,6 +57,9 @@ func Rows(rows ...Row) HTML {
 		label := string(Text(r.Label))
 		if r.ID != "" {
 			label = `<label for="` + string(Text(r.ID)) + `">` + label + `</label>`
+		}
+		if r.Icon != "" {
+			label = string(Icon(r.Icon)) + label
 		}
 		b.WriteString(`<div class="` + cls + `"><div class="settings-row-info"><div class="settings-row-label">` + label + `</div>`)
 		if r.Hint != "" {

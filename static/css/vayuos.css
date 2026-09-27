@@ -5798,6 +5798,19 @@
 .vp-os[data-ui="still-air"] .page-header h1 { font: var(--type-title); letter-spacing: -0.01em; color: var(--text-1); }
 .vp-os[data-ui="still-air"] .page-sub { font: 400 14px/21px var(--font-ui); color: var(--text-2); max-width: 70ch; margin: 0 0 var(--space-7); }
 .vp-os[data-ui="still-air"] .page-header:has(+ .page-sub) { margin-bottom: var(--space-2); }
+/* A page's state sits beside its title (ui.SettingsPage), not under it. */
+.vp-os[data-ui="still-air"] .page-header:has(.page-state) { justify-content: flex-start; }
+.vp-os[data-ui="still-air"] .page-state { display: inline-flex; flex-wrap: wrap; gap: var(--space-5); }
+.vp-os[data-ui="still-air"] .page-lead { margin: 0 0 var(--space-7); }
+/* State as a dot and a word (ui.State). */
+.vp-os[data-ui="still-air"] .sa-mark { display: inline-flex; align-items: center; gap: 7px; font: var(--type-small); color: var(--text-2); white-space: nowrap; }
+.vp-os[data-ui="still-air"] .sa-dot--neutral { background: var(--text-3); }
+/* A row that leads elsewhere: its count and a chevron, and a row's icon. */
+.vp-os[data-ui="still-air"] .settings-row-go { display: inline-flex; align-items: center; gap: 6px; font: var(--type-small); color: var(--text-2); text-decoration: none; }
+.vp-os[data-ui="still-air"] .settings-row-go:hover { color: var(--text-1); text-decoration: none; }
+.vp-os[data-ui="still-air"] .settings-row-count { font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .settings-row-label:has(> .sa-ico) { display: flex; align-items: center; gap: var(--space-3); }
+.vp-os[data-ui="still-air"] .settings-row-label > .sa-ico { flex: none; color: var(--text-2); }
 .vp-os[data-ui="still-air"] .section-head {
   margin: var(--space-8) 0 0; padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border-1); align-items: baseline;
@@ -6059,6 +6072,14 @@
 .vp-os[data-ui="still-air"] .table tr:last-child td { border-bottom: 0; }
 .vp-os[data-ui="still-air"] .table tbody tr:hover td { background: var(--surface-hover); }
 .vp-os[data-ui="still-air"] .table-empty { color: var(--text-3); font: var(--type-small); }
+/* On a page of the Settings kind a table is flush (rule 2): it sits under its
+   band's hairline like the rows do, its first and last columns on the page's
+   edges. The List kind (step 5) does the same for every list. */
+.vp-os[data-ui="still-air"] .settings-page .table-wrap { border: 0; border-radius: 0; background: none; }
+.vp-os[data-ui="still-air"] .settings-page .table :is(th, td):first-child { padding-left: 0; }
+.vp-os[data-ui="still-air"] .settings-page .table :is(th, td):last-child { padding-right: 0; }
+.vp-os[data-ui="still-air"] .settings-page .table tr:last-child td { border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .settings-page .table-empty { padding: var(--space-5) 0; text-align: left; }
 
 /* Tabs: underline, never pills. VayuMail's own tab strip is replaced by the
    Mail app's sidebar. */
@@ -6786,18 +6807,15 @@
 /* Outranks the content column's 1180px measure; rows read best narrow. */
 .vp-os[data-ui="still-air"] .sa-content > .settings-page { max-width: 760px; }
 .vp-os[data-ui="still-air"] .settings-page > section { margin-top: var(--space-8); }
-/* The panel under a band's heading is its edge; a hairline too would draw it twice. */
-.vp-os[data-ui="still-air"] .settings-page .section-head { border-bottom: 0; padding-bottom: 0; }
-.vp-os[data-ui="still-air"] .settings-page .section-head + * { margin-top: var(--space-3); }
-.vp-os[data-ui="still-air"] .settings-rows {
-  background: var(--surface-2); border: 1px solid var(--border-1); border-radius: var(--radius-surface);
-}
+/* Render 04: a band is its heading over a hairline, then rows divided by
+   hairlines. No panel: the rows sit on the page (rule 2, one surface level). */
+.vp-os[data-ui="still-air"] .settings-page .section-head { border-bottom: 1px solid var(--border-1); padding-bottom: var(--space-3); }
+.vp-os[data-ui="still-air"] .settings-page .section-head + * { margin-top: 0; }
 .vp-os[data-ui="still-air"] .settings-rows + * { margin-top: var(--space-5); }
 .vp-os[data-ui="still-air"] .settings-rows .settings-row {
   display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--space-7); align-items: center;
-  padding: 14px var(--space-6); border-bottom: 1px solid var(--border-1);
+  padding: var(--space-5) 0; border-bottom: 1px solid var(--border-1);
 }
-.vp-os[data-ui="still-air"] .settings-rows .settings-row:last-child { border-bottom: 0; }
 .vp-os[data-ui="still-air"] .settings-rows .settings-row-control { justify-content: flex-end; min-width: 0; }
 .vp-os[data-ui="still-air"] .settings-rows .settings-row-control > :is(.input, .textarea, select) { width: 100%; }
 /* A text box is written in, not set: its row stacks, label above, the box the
@@ -6883,7 +6901,7 @@
 .vp-os[data-ui="still-air"] .sa-find__where { font: var(--type-meta); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .sa-find__none { margin: var(--space-3) 8px 0; font: var(--type-small); color: var(--text-3); }
 @media (max-width: 720px) {
-  .vp-os[data-ui="still-air"] .settings-rows .settings-row { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-4) var(--space-5); }
+  .vp-os[data-ui="still-air"] .settings-rows .settings-row { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: var(--space-4) 0; }
   .vp-os[data-ui="still-air"] .settings-rows .settings-row-control { justify-content: flex-start; }
   .vp-os[data-ui="still-air"] .settings-mark { justify-content: flex-start; }
   .vp-os[data-ui="still-air"] .settings-mark__state { text-align: left; }

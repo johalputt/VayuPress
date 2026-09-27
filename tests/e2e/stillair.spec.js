@@ -797,6 +797,19 @@ test("outside services reach the public pages, never the console", async ({ page
 
   await Promise.all([page.waitForEvent("load"), page.locator('input[name="csp-mode"][value="strict"]').check()]);
   expect(await csp("/")).not.toContain("stripe");
+
+  // A source of the operator's own is added from a sheet, not a form in the page.
+  const origin = "https://img.e2e.example";
+  await expect(page.locator("#csp-add-sheet")).toBeHidden();
+  await page.getByRole("button", { name: "Add a source" }).click();
+  await expect(page.locator("#csp-add-sheet")).toBeVisible();
+  await page.locator("#csp-add-src").fill(origin);
+  await Promise.all([page.waitForEvent("load"), page.getByRole("button", { name: "Add the source" }).click()]);
+  await expect(page.locator(`[data-origin="${origin}"]`)).toHaveCount(1);
+  expect(await csp("/")).toContain(origin);
+  await Promise.all([page.waitForEvent("load"), page.locator(`[data-origin="${origin}"]`).click()]);
+  await expect(page.locator(`[data-origin="${origin}"]`)).toHaveCount(0);
+  await page.evaluate(() => new Promise((done) => window.vpPost("/os/api/website/csp", { mode: "strict" }, done, done)));
 });
 
 test("the command bar is operated by keyboard alone", async ({ page }) => {
@@ -1009,6 +1022,11 @@ const SETUP_PAGES = [
   ["/os/profile", /^You're signed in with the API key$/],
 ];
 
+// These tests turn apps on and put them back, and the first needs them off:
+// they run one after another, never beside each other.
+test.describe("apps, off and then on", () => {
+test.describe.configure({ mode: "serial" });
+
 test("an app that is not set up says what it needs, and one button does the next step", async ({ page }) => {
   await openConsole(page);
   for (const [href, title] of SETUP_PAGES) {
@@ -1020,6 +1038,46 @@ test("an app that is not set up says what it needs, and one button does the next
     expect(await setup.locator(".sa-setup__step").count(), href).toBeGreaterThan(0);
     await expect(setup.locator(".btn--primary:visible"), href).toHaveCount(1);
   }
+});
+
+// Advertising once it is on is a Settings page: slots are a list, a new slot
+// rises in a sheet, and the price and networks are rows under the one bar.
+test("advertising, once on, lists its slots and adds one from a sheet", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/ads");
+  await Promise.all([page.waitForEvent("load"), page.getByRole("button", { name: "Turn on Advertising" }).click()]);
+  expect(await page.locator("main [data-page-kind]").evaluateAll((els) => els.map((e) => e.getAttribute("data-page-kind")))).toEqual(["settings"]);
+  await expect(page.locator(".page-state")).toContainText("Showing ads");
+
+  const name = `E2E slot ${Date.now()}`;
+  await page.getByRole("button", { name: "Add an ad slot" }).click();
+  const sheet = page.locator("#ad-new");
+  await expect(sheet).toBeVisible();
+  await sheet.locator("#ad-name").fill(name);
+  await Promise.all([page.waitForEvent("load"), sheet.getByRole("button", { name: "Add the slot" }).click()]);
+  const row = page.locator("tr", { hasText: name });
+  await expect(row.locator(".sa-mark")).toHaveText("On");
+  await Promise.all([page.waitForEvent("load"), row.getByRole("button", { name: "Turn off" }).click()]);
+  await expect(page.locator("tr", { hasText: name }).locator(".sa-mark")).toHaveText("Off");
+
+  const price = page.locator("#ad-price");
+  const before = await price.inputValue();
+  await price.fill("700");
+  await page.locator("[data-settings-bar]").getByRole("button", { name: "Save changes" }).click();
+  await expect(page.locator("[data-settings-bar]")).toBeHidden();
+  await page.reload();
+  await expect(page.locator("#ad-price")).toHaveValue("700");
+
+  // Back as found: the price, no slot, Advertising off.
+  await page.locator("#ad-price").fill(before);
+  await page.locator("[data-settings-bar]").getByRole("button", { name: "Save changes" }).click();
+  await expect(page.locator("[data-settings-bar]")).toBeHidden();
+  await page.locator("tr", { hasText: name }).getByRole("button", { name: "Delete" }).click();
+  await Promise.all([page.waitForEvent("load"), page.locator(".vp-confirm").getByRole("button", { name: "Delete" }).click()]);
+  await page.evaluate(() => new Promise((ok, no) => window.vpPost("/os/api/tools/toggle", { id: "ads", enabled: false }, ok, (d, m) => no(new Error(m)))));
+  await page.reload();
+  await expect(page.locator(".sa-setup h1")).toHaveText("Advertising is off");
+});
 });
 
 test("a setup page's command is copied whole, and its forms rise in sheets", async ({ page, context }) => {
@@ -1047,4 +1105,43 @@ test("a setup page's command is copied whole, and its forms rise in sheets", asy
   await expect(manual.locator("[data-backup-export]")).toBeVisible();
   await manual.getByRole("button", { name: "Close" }).click();
   await expect(manual).toBeHidden();
+});
+
+// Monetization is a Settings page (render 04): rows edit in place and one bar
+// saves them, and each gateway's form rises in a sheet from its row.
+test("monetization saves its rows from one bar, and its forms rise in sheets", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/monetization");
+  const kinds = await page.locator("main [data-page-kind]").evaluateAll((els) => els.map((e) => e.getAttribute("data-page-kind")));
+  expect(kinds).toEqual(["settings"]);
+
+  const currency = page.locator("#mon-currency");
+  const before = await currency.inputValue();
+  const next = before === "EUR" ? "USD" : "EUR";
+  const bar = page.locator("[data-settings-bar]");
+  await expect(bar).toBeHidden();
+  await currency.fill(next);
+  await expect(bar).toBeVisible();
+  await expect(bar.locator("[data-settings-count]")).toHaveText("1 unsaved change");
+  await bar.getByRole("button", { name: "Save changes" }).click();
+  await expect(bar).toBeHidden();
+  await page.reload();
+  await expect(page.locator("#mon-currency")).toHaveValue(next);
+  // Put it back, so the install is as the test found it.
+  await page.locator("#mon-currency").fill(before);
+  await page.locator("[data-settings-bar]").getByRole("button", { name: "Save changes" }).click();
+  await expect(page.locator("[data-settings-bar]")).toBeHidden();
+
+  for (const [row, sheet] of [["Cards", "#mon-stripe"], ["PayPal", "#mon-paypal"], ["Crypto, through your BTCPay Server", "#mon-btcpay"], ["Another processor", "#mon-webhook"]]) {
+    const r = page.locator(".settings-row", { hasText: row });
+    await r.locator("[data-sheet]").click();
+    await expect(page.locator(sheet), row).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(sheet), row).toBeHidden();
+  }
+  await page.getByRole("button", { name: "Price a post" }).click();
+  await expect(page.locator("#mon-paid-posts #pp-slug")).toBeVisible();
+  // The page's own script answers, not only the shared one that opened the sheet.
+  await page.getByRole("button", { name: "Set the price" }).click();
+  await expect(page.locator("#action-msg")).toHaveText("Enter a post slug first");
 });

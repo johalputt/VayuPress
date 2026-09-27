@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // TestMaintenancePageHTML checks the public maintenance page is a self-contained
@@ -68,5 +69,19 @@ func TestMaintenancePathExempt(t *testing.T) {
 		if maintenancePathExempt(p) {
 			t.Errorf("public path %q should show the maintenance page, not bypass it", p)
 		}
+	}
+}
+
+// The visitors' message is limited where it is shown, in characters: the
+// settings API stores the key without the Power page's limit, and the byte
+// slice the limit used to be cut a Devanagari letter in half.
+func TestTheMaintenanceMessageIsLimitedInCharacters(t *testing.T) {
+	long := strings.Repeat("ह", maintenanceMessageMax+20)
+	page := maintenancePageHTML(long)
+	if !utf8.ValidString(page) {
+		t.Fatal("the page carries a character cut in half")
+	}
+	if got := strings.Count(page, "ह"); got != maintenanceMessageMax {
+		t.Fatalf("the page shows %d characters of the message, want %d", got, maintenanceMessageMax)
 	}
 }

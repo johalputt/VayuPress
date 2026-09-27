@@ -54,77 +54,52 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 	}
 	adPrice := a.adSlotPriceCents(ctx)
 
-	banner := ""
+	state := ui.State("ok", "Showing ads")
+	lead := `<button type="button" class="btn btn--primary btn--sm" data-sheet="ad-new">Add an ad slot</button>`
 	if !adsOn {
-		banner = `<div class="settings-callout"><strong>Advertising is off.</strong> <span class="text-sm muted">Slots are saved; nothing shows until the module is on.</span> <a class="btn btn--primary btn--sm mt-2" href="/os/tools">Enable in Tools &amp; Plugins →</a></div>`
+		state = ui.State("neutral", "Advertising is off")
+		lead = `<button type="button" class="btn btn--primary btn--sm" data-action="module-on" data-module="ads">Turn on Advertising</button> ` +
+			`<button type="button" class="btn btn--sm" data-sheet="ad-new">Add an ad slot</button>`
+	}
+	if len(pendingAds) > 0 {
+		state += ui.HTML(" ") + ui.State("warn", strconv.Itoa(len(pendingAds))+" member ad"+plural(len(pendingAds))+" to review")
+	}
+	field := func(id, key, kind, label, value string) ui.HTML {
+		return settingControl(settingField{ID: id, Key: key, Kind: kind, Label: label}, value)
+	}
+	adsense := "Off: turn on Google AdSense in Tools and plugins first."
+	switch {
+	case googleOn && adsenseClient != "":
+		adsense = "Serving AdSense units."
+	case googleOn:
+		adsense = "On, and waiting for a publisher ID."
 	}
 
-	body := `<div class="page-header">
-  <h1>Advertising</h1>
-</div>
-<p class="page-sub">Your own ad slots and member submissions, served from this site with no ad network.</p>
-` + banner + `
-<div class="card">
-  <div class="settings-block-title">Member ad submissions` + memberAdBadge(len(pendingAds)) + `</div>
-  <p class="text-sm muted mb-4">Paid submissions wait here for your review.` + string(ui.Tip("Members buy an ad from their account. Approve publishes it in its placement; Reject declines it. Only image ads are accepted from members, never member HTML.")) + `</p>
-  ` + memberAdReviewTable(pendingAds) + `
-</div>
+	newSlot := `<div class="field"><label class="field-label" for="ad-name">Name</label><input id="ad-name" class="input" type="text" placeholder="Below-post banner"></div>
+<div class="field"><label class="field-label" for="ad-placement">Placement</label><select id="ad-placement" class="select">` + adsPlacementOptions() + `</select></div>
+<div class="field"><label class="field-label" for="ad-kind">What fills it</label><select id="ad-kind" class="select"><option value="image">An image and a link</option><option value="html">An HTML creative, sanitised</option><option value="adsense">A Google AdSense unit</option></select></div>
+<div class="field"><label class="field-label" for="ad-image">Image URL</label><input id="ad-image" class="input" type="text" placeholder="/media/banner.png or https://…"><span class="field-hint">For an image and a link.</span></div>
+<div class="field"><label class="field-label" for="ad-link">Where it links</label><input id="ad-link" class="input" type="text" placeholder="https://sponsor.example"><span class="field-hint">For an image and a link.</span></div>
+<div class="field"><label class="field-label" for="ad-alt">Label</label><input id="ad-alt" class="input" type="text" placeholder="Sponsored by …"></div>
+<div class="field"><label class="field-label" for="ad-html">HTML, or the AdSense unit ID</label><textarea id="ad-html" class="textarea font-mono" rows="3"></textarea></div>
+<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" id="ad-create-btn">Add the slot</button></div>`
 
-<div class="card">
-  <div class="settings-block-title">Member ad price</div>
-  <p class="text-sm muted mb-4">A flat fee per submission, in whole currency units.` + string(ui.Tip("Charged once per submission through your connected gateway: Stripe one-time, or the direct method.")) + `</p>
-  <div class="field" style="max-width:16rem"><label class="field-label" for="ad-price">Price per ad</label>
-    <input id="ad-price" class="input" type="number" min="0" step="1" value="` + strconv.Itoa(adPrice/100) + `"></div>
-  <button type="button" class="btn btn--primary btn--sm" id="ad-price-save">Save price</button>
-</div>
-
-<div class="card">
-  <div class="settings-block-title">Ad slots</div>
-  <p class="text-sm muted mb-4">Each slot fills one placement; new slots start enabled.` + string(ui.Tip("A slot renders a same-origin image and link, a sanitised HTML creative, or a Google AdSense unit.")) + `</p>
-  ` + adsSlotsTable(slots) + `
-</div>
-
-<div class="card">
-  <div class="settings-block-title">Add an ad slot</div>
-  <div class="ads-form" style="display:grid;gap:.75rem;max-width:42rem">
-    <div class="field"><label class="field-label" for="ad-name">Name</label>
-      <input id="ad-name" class="input" type="text" placeholder="e.g. Below-post banner"></div>
-    <div class="field"><label class="field-label" for="ad-placement">Placement</label>
-      <select id="ad-placement" class="select">` + adsPlacementOptions() + `</select></div>
-    <div class="field"><label class="field-label" for="ad-kind">Creative kind</label>
-      <select id="ad-kind" class="select">
-        <option value="image">Image + link (house / direct-sold)</option>
-        <option value="html">HTML creative (sanitised)</option>
-        <option value="adsense">Google AdSense unit</option>
-      </select></div>
-    <div class="field"><label class="field-label" for="ad-image">Image URL <span class="muted text-xs">(image kind)</span></label>
-      <input id="ad-image" class="input" type="text" placeholder="/media/banner.png or https://…"></div>
-    <div class="field"><label class="field-label" for="ad-link">Destination URL <span class="muted text-xs">(image kind)</span></label>
-      <input id="ad-link" class="input" type="text" placeholder="https://sponsor.example"></div>
-    <div class="field"><label class="field-label" for="ad-alt">Alt / label text</label>
-      <input id="ad-alt" class="input" type="text" placeholder="Sponsored by …"></div>
-    <div class="field"><label class="field-label" for="ad-html">HTML creative / AdSense unit id</label>
-      <textarea id="ad-html" class="textarea font-mono" rows="3" placeholder="HTML for an HTML creative, or the numeric ad-unit id for an AdSense slot"></textarea></div>
-    <div><button type="button" class="btn btn--primary" id="ad-create-btn">Add slot</button></div>
-  </div>
-</div>
-
-<div class="card">
-  <div class="settings-block-title">Google AdSense</div>
-  <p class="text-sm muted mb-4">Optional. ` + adsGoogleStatus(googleOn, adsenseClient) + string(ui.Tip("Enable the Google AdSense module in Tools and Plugins, set your publisher id here, then create slots of kind AdSense. Pages that show an AdSense unit widen their Content-Security-Policy to admit Google's ad origins.")) + `</p>
-  <div class="field"><label class="field-label" for="ad-adsense-client">Publisher id</label>
-    <input id="ad-adsense-client" class="input font-mono" type="text" data-ads-key="` + settings.KeyAdsenseClient + `" value="` + html.EscapeString(adsenseClient) + `" placeholder="ca-pub-0000000000000000"></div>
-  <button type="button" class="btn btn--primary btn--sm" id="ad-adsense-save">Save publisher id</button>
-</div>
-
-<div class="card">
-  <div class="settings-block-title">Affiliate disclosure</div>
-  <p class="text-sm muted mb-4">When the Affiliate module is on, this disclosure shows above every post.</p>
-  <div class="field"><label class="field-label" for="ad-disclosure">Disclosure text</label>
-    <textarea id="ad-disclosure" class="textarea" rows="2" data-ads-key="` + settings.KeyAffiliateDisclosure + `">` + html.EscapeString(disclosure) + `</textarea></div>
-  <button type="button" class="btn btn--primary btn--sm" id="ad-disclosure-save">Save disclosure</button>
-</div>
-
+	page := ui.SettingsPage("Advertising", state, "Your own ad slots and your members' ads, served from this site with no ad network.",
+		ui.HTML(`<div class="page-lead">`+lead+`</div>`),
+		ui.Section("Member ads", "Paid submissions wait for your approval", ui.HTML(memberAdReviewTable(pendingAds))),
+		ui.Section("Ad slots", "Each fills one placement", ui.HTML(adsSlotsTable(slots))),
+		ui.Section("Pricing and networks", "", ui.Rows(
+			ui.Row{Label: "Price of a member ad", Hint: "Charged once per submission, in minor units: 500 is " + priceLabel(a.payCurrency(ctx), 500) + ".", ID: "ad-price",
+				Control: field("ad-price", settings.KeyAdSlotPriceCents, "text", "Price of a member ad", strconv.Itoa(adPrice))},
+			ui.Row{Label: "AdSense publisher ID", Hint: adsense + " Pages that show a unit let Google's ad origins through their CSP.", ID: "ad-adsense-client",
+				Control: field("ad-adsense-client", settings.KeyAdsenseClient, "text", "AdSense publisher ID", adsenseClient)},
+			ui.Row{Label: "Affiliate disclosure", Hint: "Shown above every post while the Affiliate module is on.", ID: "ad-disclosure",
+				Control: field("ad-disclosure", settings.KeyAffiliateDisclosure, "textarea", "Affiliate disclosure", disclosure)},
+		)),
+		ui.Sheet("ad-new", "Add an ad slot", ui.HTML(newSlot)),
+		ui.SaveBar(),
+	)
+	body := string(page) + `
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
 <script nonce="` + nonce + `">
 (function(){'use strict';
@@ -132,7 +107,6 @@ function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return 
 var msg=document.getElementById('action-msg');
 function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
 function jfetch(method,url,payload){var o={method:method,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()}};if(payload)o.body=JSON.stringify(payload);return fetch(url,o).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});});}
-function jsave(key,val,btn){btn.disabled=true;show('Saving…',false);return fetch('/os/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({key:key,value:val})}).then(function(r){btn.disabled=false;show(r.ok?'Saved':'Error',!r.ok);}).catch(function(e){btn.disabled=false;show('Error: '+e,true);});}
 var createBtn=document.getElementById('ad-create-btn');
 if(createBtn)createBtn.addEventListener('click',function(){
   var payload={name:val('ad-name'),placement:val('ad-placement'),kind:val('ad-kind'),image_url:val('ad-image'),link_url:val('ad-link'),alt_text:val('ad-alt'),html:val('ad-html'),enabled:true};
@@ -158,24 +132,10 @@ document.querySelectorAll('[data-adreview-action]').forEach(function(b){
     if(act==='reject'){vpConfirm({title:'Reject this member ad?',message:'It will not be published.',confirm:'Reject'},go);}else{go();}
   });
 });
-var priceBtn=document.getElementById('ad-price-save');
-if(priceBtn)priceBtn.addEventListener('click',function(){var u=parseInt(val('ad-price'),10);if(isNaN(u)||u<0){show('Enter a valid price',true);return;}jsave('` + settings.KeyAdSlotPriceCents + `',String(u*100),priceBtn);});
-var asBtn=document.getElementById('ad-adsense-save');
-if(asBtn)asBtn.addEventListener('click',function(){jsave('` + settings.KeyAdsenseClient + `',val('ad-adsense-client'),asBtn);});
-var dBtn=document.getElementById('ad-disclosure-save');
-if(dBtn)dBtn.addEventListener('click',function(){jsave('` + settings.KeyAffiliateDisclosure + `',val('ad-disclosure'),dBtn);});
 })();
 </script>`
 
-	writeOSHTML(w, r, adminOSLayout(nonce, "Advertising", "ads", cfg, htmpl.HTML(body)))
-}
-
-// memberAdBadge shows the count of ads awaiting review as an inline pill.
-func memberAdBadge(n int) string {
-	if n == 0 {
-		return ""
-	}
-	return ` <span class="status-pill status-pill--draft">` + strconv.Itoa(n) + ` awaiting review</span>`
+	writeOSHTML(w, r, settingsLayout(nonce, "Advertising", "ads", cfg, htmpl.HTML(body)))
 }
 
 // memberAdReviewTable renders the moderation queue with approve/reject actions.
@@ -233,16 +193,16 @@ func (a *App) handleOSAdReviewReject(w http.ResponseWriter, r *http.Request) {
 
 func adsSlotsTable(slots []ads.Slot) string {
 	if len(slots) == 0 {
-		return `<div class="table-empty">No ad slots yet. Add one below.</div>`
+		return `<div class="table-empty">No ad slots yet.</div>`
 	}
 	rows := ""
 	for i := range slots {
 		s := slots[i]
-		statusPill := `<span class="status-pill status-pill--live">● enabled</span>`
-		toggleTo, toggleLabel := "0", "Disable"
+		statusPill := string(ui.State("ok", "On"))
+		toggleTo, toggleLabel := "0", "Turn off"
 		if !s.Enabled {
-			statusPill = `<span class="status-pill status-pill--draft">● disabled</span>`
-			toggleTo, toggleLabel = "1", "Enable"
+			statusPill = string(ui.State("neutral", "Off"))
+			toggleTo, toggleLabel = "1", "Turn on"
 		}
 		rows += `<tr>
   <td class="row-title">` + html.EscapeString(s.Name) + `</td>
@@ -267,17 +227,6 @@ func adsPlacementOptions() string {
 		out += `<option value="` + html.EscapeString(p.ID) + `">` + html.EscapeString(p.Label) + `</option>`
 	}
 	return out
-}
-
-func adsGoogleStatus(moduleOn bool, client string) string {
-	switch {
-	case moduleOn && client != "":
-		return `<strong class="tone-ok">AdSense is active.</strong>`
-	case moduleOn:
-		return `<strong>Module on — set a publisher id to start serving units.</strong>`
-	default:
-		return `<strong>Module is off.</strong>`
-	}
 }
 
 // ── JSON CRUD handlers (session + CSRF, mounted under /os) ─────────────────────

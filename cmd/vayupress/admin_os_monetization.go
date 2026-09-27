@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/johalputt/vayupress/internal/ads"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/members"
@@ -51,11 +52,9 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 	premiumPriceStr := strconv.Itoa(a.premiumMailIDPriceCents(ctx))
 	mailidTerms := a.mailIDTerms(ctx)
 	var pricedPosts []members.PricedPost
-	var grants []members.PremiumGrant
 	gPending, gPaid, gClaimed := 0, 0, 0
 	if a.members != nil {
 		pricedPosts, _ = a.members.ListPricedPosts(ctx, 100)
-		grants, _ = a.members.AllPremiumGrants(ctx, 50)
 		gPending, gPaid, gClaimed = a.members.PremiumGrantCounts(ctx)
 	}
 	premiumSold := gPaid + gClaimed
@@ -76,123 +75,118 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 	paypalConnected, _, _, _ := a.paypalStatus(ctx)
 	btcpayConnected, _, _, _ := a.btcpayStatus(ctx)
 
-	statusBanner := ""
-	if !enabled {
-		statusBanner = `<div class="settings-callout"><strong>Payments are off.</strong> <span class="text-sm muted">Readers cannot check out until you enable the Payments module.</span> <a class="btn btn--primary btn--sm mt-2" href="/os/tools">Enable in Tools &amp; Plugins →</a></div>`
-	}
-
 	revCurrency := stats.Currency
 	if revCurrency == "" {
 		revCurrency = currency
 	}
+	tiers := 0
+	if a.members != nil {
+		if ts, err := a.members.ListTiers(ctx, true); err == nil {
+			tiers = len(ts)
+		}
+	}
+	adsWaiting := 0
+	if a.ads != nil {
+		if pending, err := a.ads.ListByStatus(ctx, ads.StatusPendingReview); err == nil {
+			adsWaiting = len(pending)
+		}
+	}
 
-	directCard := `<div class="card">
-  <div class="settings-block-title">Direct / offline payment</div>
-  <p class="text-sm muted mb-4">The dependency-free way to get paid. Publish how readers should pay (bank transfer, UPI, a payment link…); they quote their order reference, you confirm receipt in the ledger below. No third-party gateway required.</p>
-  <div class="field">
-    <label class="field-label" for="mon-currency">Currency (ISO-4217)</label>
-    <input id="mon-currency" class="input" type="text" maxlength="3" data-mon-key="` + settings.KeyPayCurrency + `" value="` + html.EscapeString(currency) + `" placeholder="USD" style="max-width:8rem;text-transform:uppercase">
-  </div>
-  <div class="field">
-    <label class="field-label" for="mon-instructions">Payment instructions</label>
-    <textarea id="mon-instructions" class="textarea font-mono" rows="6" data-mon-key="` + settings.KeyPayDirectInstructions + `" placeholder="Bank: …&#10;Account: …&#10;UPI: you@bank&#10;Or pay at: https://example.com/pay">` + html.EscapeString(instructions) + `</textarea>
-    <span class="field-hint">Shown to readers on the checkout page and emailed with their order reference.</span>
-  </div>
-  <div class="field">
-    <label class="field-label" for="mon-support">Support email (optional)</label>
-    <input id="mon-support" class="input" type="email" data-mon-key="` + settings.KeyPaySupportEmail + `" value="` + html.EscapeString(supportEmail) + `" placeholder="billing@example.com">
-  </div>
-  <button type="button" class="btn btn--primary btn--sm" id="mon-save-btn">Save payment settings</button>
-</div>`
+	count := func(n int, word string) string { return strconv.Itoa(n) + " " + word + plural(n) }
 
-	connectedCard := `<div class="card">
-  <div class="settings-block-title">Connected gateway (webhook)</div>
-  <p class="text-sm muted mb-4">Connect any external processor. Configure it to POST a JSON event to <code>/api/v1/payments/webhook/&lt;name&gt;</code> with an <code>X-VayuPress-Signature</code> header (hex HMAC-SHA256 of the body, using the secret below) and a <code>reference</code> field matching the order. ` + webhookStatus(webhookConfigured) + `</p>
-  <div class="field">
-    <label class="field-label" for="mon-webhook-secret">Webhook signing secret</label>
-    <input id="mon-webhook-secret" class="input font-mono" type="password" placeholder="Leave blank to keep current" autocomplete="new-password">
-    <span class="field-hint">Stored encrypted at rest (AES-256-GCM). Used to verify every inbound gateway webhook.</span>
-  </div>
-  <button type="button" class="btn btn--primary btn--sm" id="mon-webhook-save">Save webhook secret</button>
-</div>`
+	// The page's state, beside its title: whether readers can pay, what has
+	// come in, and what is waiting on the operator.
+	state := ui.State("neutral", "Payments are off")
+	action := ui.HTML(`<button type="button" class="btn btn--primary btn--sm" data-action="module-on" data-module="payments">Turn on payments</button>`)
+	if enabled {
+		line := "Taking payments"
+		if stats.RevenueCents > 0 {
+			line += " · " + priceLabel(revCurrency, stats.RevenueCents) + " collected"
+		}
+		state, action = ui.State("ok", line), ""
+	}
+	if stats.Pending > 0 {
+		state += ui.HTML(" ") + ui.State("warn", count(stats.Pending, "order")+" to confirm")
+	}
 
-	mailidMarketCard := `<div class="card">
-  <div class="settings-block-title">Premium mail-ID marketplace</div>
-  <p class="text-sm muted mb-4">Members buy premium (vanity) VayuMail addresses from their account. Live sales below — <strong>` + strconv.Itoa(gClaimed) + `</strong> active, <strong>` + strconv.Itoa(gPaid) + `</strong> awaiting activation, <strong>` + strconv.Itoa(gPending) + `</strong> awaiting payment.</p>
-  ` + premiumGrantsTable(grants) + `
-  <div class="mt-2"><a class="btn btn--primary btn--sm" href="/os/monetization/mailids">Manage premium IDs →</a></div>
-</div>`
+	// A gateway row: its state, and the button that opens its form in a sheet.
+	gateway := func(icon, label, hint string, on bool, onWord, sheet string) ui.Row {
+		st, verb := ui.State("neutral", "Not set up"), "Set up"
+		if on {
+			st, verb = ui.State("ok", onWord), "Manage"
+		}
+		return ui.Row{Icon: icon, Label: label, Hint: hint,
+			Control: st + ui.HTML(`<button type="button" class="btn btn--sm" data-sheet="`+sheet+`">`+verb+`</button>`)}
+	}
+	// A row that leads to where the thing is managed, with its count.
+	goRow := func(label, hint, count, href string) ui.Row {
+		return ui.Row{Label: label, Hint: hint,
+			Control: ui.HTML(`<a class="settings-row-go" href="` + href + `">` + string(ui.Text(count)) + string(ui.Icon("chev-r")) + `</a>`)}
+	}
+	field := func(id, key, kind, label, value string) ui.HTML {
+		return settingControl(settingField{ID: id, Key: key, Kind: kind, Label: label}, value)
+	}
 
-	addrMarketCard := `<div class="card">
-  <div class="settings-block-title">VayuMail address marketplace</div>
-  <p class="text-sm muted mb-4">Premium (vanity) addresses — ultra-short handles and sought-after words — are held back from the free member claim so you can sell them. Set their price, and the terms a member must accept before any address is provisioned to them.</p>
-  <div class="field">
-    <label class="field-label" for="mon-mailid-price">Premium address price</label>
-    <input id="mon-mailid-price" class="input" type="number" min="0" step="1" data-mail-key="` + settings.KeyPremiumMailIDPriceCents + `" value="` + html.EscapeString(premiumPriceStr) + `" placeholder="500" style="max-width:10rem">
-    <span class="field-hint">In minor units of your checkout currency (e.g. 500 = ` + html.EscapeString(priceLabel(currency, 500)) + `).</span>
-  </div>
-  <div class="field">
-    <label class="field-label" for="mon-mailid-terms">Mailbox terms (acceptable-use agreement)</label>
-    <textarea id="mon-mailid-terms" class="textarea" rows="6" data-mail-key="` + settings.KeyMailIDTerms + `" placeholder="Members must accept these terms before an address is provisioned…">` + html.EscapeString(mailidTerms) + `</textarea>
-    <span class="field-hint">Shown with a required &ldquo;I agree&rdquo; checkbox on the claim form. Every acceptance is recorded (address + a hash of this text + time) as your proof of agreement. Leave blank to disable the requirement.</span>
-  </div>
-  <button type="button" class="btn btn--primary btn--sm" id="mon-mailid-save">Save mailbox settings</button>
-</div>`
+	pay := ui.Rows(
+		gateway("card", "Cards", "Stripe, with Apple Pay and Google Pay, through your own keys.", stripeConnected, "Connected", "mon-stripe"),
+		gateway("coin", "PayPal", "Subscriptions that renew on their own.", paypalConnected, "Connected", "mon-paypal"),
+		gateway("key", "Crypto, through your BTCPay Server", "Bitcoin, Monero, Ethereum and stablecoins, paid into your own wallet. No processor, no KYC.", btcpayConnected, "Connected", "mon-btcpay"),
+		ui.Row{Icon: "send", Label: "Direct transfer", Hint: "Bank transfer, UPI or a payment link, confirmed by you in the orders below.", Control: ui.State("ok", "Always on")},
+		gateway("plug", "Another processor", "Any gateway that can send a signed webhook.", webhookConfigured, "Connected", "mon-webhook"),
+	)
+	checkout := ui.Rows(
+		ui.Row{Label: "Currency", Hint: "Three letters, ISO 4217: USD, EUR, INR.", ID: "mon-currency",
+			Control: field("mon-currency", settings.KeyPayCurrency, "text", "Currency", currency)},
+		ui.Row{Label: "How to pay you directly", Hint: "Shown at checkout and emailed with the order reference: bank details, a UPI address, a payment link.", ID: "mon-instructions",
+			Control: field("mon-instructions", settings.KeyPayDirectInstructions, "textarea", "How to pay you directly", instructions)},
+		ui.Row{Label: "Billing email", Hint: "Where readers write about a payment. Optional.", ID: "mon-support",
+			Control: field("mon-support", settings.KeyPaySupportEmail, "email", "Billing email", supportEmail)},
+	)
+	sell := ui.Rows(
+		goRow("Membership tiers", "What members pay for, and what each tier opens.", count(tiers, "tier"), "/os/members"),
+		ui.Row{Label: "Paid posts", Hint: "A one-time unlock on a single post.",
+			Control: ui.HTML(`<span class="settings-row-count">` + string(ui.Text(count(len(pricedPosts), "post"))) + `</span><button type="button" class="btn btn--sm" data-sheet="mon-paid-posts">Price a post</button>`)},
+		goRow("Premium addresses", "Short and sought-after mail addresses, held back for sale.", strconv.Itoa(premiumSold)+" sold · "+strconv.Itoa(gPending)+" awaiting payment", "/os/monetization/mailids"),
+		goRow("Member ads", "Image ads your members buy, shown once you approve them.", strconv.Itoa(adsWaiting)+" waiting", "/os/ads"),
+	)
+	addresses := ui.Rows(
+		ui.Row{Label: "Price", Hint: "In minor units of your currency: 500 is " + priceLabel(currency, 500) + ".", ID: "mon-mailid-price",
+			Control: field("mon-mailid-price", settings.KeyPremiumMailIDPriceCents, "text", "Price", premiumPriceStr)},
+		ui.Row{Label: "Terms a buyer accepts", Hint: "Shown with a required checkbox before an address is issued; each acceptance is kept with a hash of this text. Empty means none.", ID: "mon-mailid-terms",
+			Control: field("mon-mailid-terms", settings.KeyMailIDTerms, "textarea", "Terms a buyer accepts", mailidTerms)},
+	)
 
-	paidPostsCard := `<div class="card">
-  <div class="settings-block-title">Paid posts</div>
-  <p class="text-sm muted mb-4">Charge a one-time price for access to a single post — readers buy it (card or offline) without a subscription. Set a post's access level and price by slug; a price of 0 removes the individual sale.</p>
-  <div class="field" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
-    <div style="flex:2;min-width:10rem"><label class="field-label" for="pp-slug">Post slug</label>
-    <input id="pp-slug" class="input" type="text" placeholder="my-post" autocomplete="off" spellcheck="false"></div>
-    <div style="flex:1;min-width:8rem"><label class="field-label" for="pp-level">Access</label>
-    <select id="pp-level" class="input"><option value="paid">Paid members</option><option value="members">Members</option><option value="public">Public</option></select></div>
-    <div style="flex:1;min-width:7rem"><label class="field-label" for="pp-price">Price (cents)</label>
-    <input id="pp-price" class="input" type="number" min="0" step="1" placeholder="300"></div>
-    <button type="button" class="btn btn--primary btn--sm" id="pp-save">Set</button>
-  </div>
-  ` + paidPostsTable(pricedPosts, currency) + `
-</div>`
+	paidPostsSheet := `<p class="text-sm muted mb-4">Set a post's access and its one-time price by its slug. A price of 0 ends the single sale.</p>
+<div class="field"><label class="field-label" for="pp-slug">Post slug</label><input id="pp-slug" class="input" type="text" placeholder="my-post" autocomplete="off" spellcheck="false"></div>
+<div class="field"><label class="field-label" for="pp-level">Who can read it</label><select id="pp-level" class="input"><option value="paid">Paid members</option><option value="members">Members</option><option value="public">Everyone</option></select></div>
+<div class="field"><label class="field-label" for="pp-price">Price, in cents</label><input id="pp-price" class="input" type="number" min="0" step="1" placeholder="300"></div>
+<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" id="pp-save">Set the price</button></div>
+<div class="mt-4">` + paidPostsTable(pricedPosts, currency) + `</div>`
+	webhookSheet := `<p class="text-sm muted mb-4">Point the processor at <code>/api/v1/payments/webhook/&lt;name&gt;</code>. It signs each JSON event with <code>X-VayuPress-Signature</code> (hex HMAC-SHA256 of the body with this secret) and sends the order's <code>reference</code>. ` + webhookStatus(webhookConfigured) + `</p>
+<div class="field"><label class="field-label" for="mon-webhook-secret">Signing secret</label><input id="mon-webhook-secret" class="input font-mono" type="password" placeholder="Leave empty to keep the current one" autocomplete="new-password"><span class="field-hint">Stored encrypted (AES-256-GCM).</span></div>
+<div class="mt-3"><button type="button" class="btn btn--primary btn--sm" id="mon-webhook-save">Save the secret</button></div>`
 
-	ordersCard := `<div class="card">
-  <div class="settings-block-title">Order ledger</div>
-  <p class="text-sm muted mb-4">Every checkout records an order. For offline/direct payments, confirm receipt with <strong>Mark paid</strong> — that fulfils the purchase and emails a receipt automatically.</p>
-  ` + monetizationOrdersTable(orders) + `
-</div>`
-
-	body := `<div class="page-header">
-  <h1>Monetization</h1>
-</div>
-<p class="page-sub">Your whole revenue engine in one place — payments, membership plans, the premium mail-ID marketplace, paid posts and every order.</p>
-` + statusBanner + `
-<div class="stat-grid">
-  <div class="stat-card"><div class="stat-card__label">Revenue collected</div><div class="stat-card__value">` + html.EscapeString(priceLabel(revCurrency, stats.RevenueCents)) + `</div></div>
-  <div class="stat-card"><div class="stat-card__label">Paid members</div><div class="stat-card__value">` + strconv.Itoa(paidMembers) + `</div></div>
-  <div class="stat-card"><div class="stat-card__label">Pending orders</div><div class="stat-card__value">` + strconv.Itoa(stats.Pending) + `</div></div>
-  <div class="stat-card"><div class="stat-card__label">Premium addresses sold</div><div class="stat-card__value">` + strconv.Itoa(premiumSold) + `</div></div>
-</div>
-
-<div class="section-head"><span class="section-head__title">Payment methods</span><span class="section-head__hint">Cards, PayPal, crypto (anonymous-friendly) — or take payments directly. Funds always settle into your own accounts.</span></div>
-<div class="mon-stack">` +
-		monAcc(saIcon("card"), "Card payments · Stripe", "Cards, Apple\u00a0Pay & Google\u00a0Pay via a hosted checkout", monChip(stripeConnected, "Connected", "Not set up"), false, a.paymentGatewaysCard(nonce, ctx)) +
-		monAcc(saIcon("coin"), "PayPal", "Auto-renewing subscriptions", monChip(paypalConnected, "Connected", "Not set up"), false, a.paypalConnectCard(nonce, ctx)) +
-		monAcc(saIcon("coin"), "Crypto · BTCPay Server", "BTC · XMR · ETH · USDT — for anonymous / Tor buyers", monChip(btcpayConnected, "Connected", "Not set up"), false, a.btcpayConnectCard(nonce, ctx)) +
-		monAcc(saIcon("columns"), "Direct / offline payment", "Bank transfer, UPI or any link — no gateway", `<span class="mon-chip mon-chip--on">● Always on</span>`, false, directCard) +
-		monAcc(saIcon("plug"), "Connected gateway (webhook)", "Any external processor via a signed webhook", monChip(webhookConfigured, "Configured", "Not set up"), false, connectedCard) +
-		`</div>
-
-<div class="section-head"><span class="section-head__title">Products &amp; pricing</span><span class="section-head__hint">Everything you sell — mail-IDs, paid posts, plans</span></div>
-<div class="mon-stack">` +
-		monAcc(saIcon("mail"), "Premium mail-ID marketplace", strconv.Itoa(premiumSold)+" sold · "+strconv.Itoa(gPending)+" awaiting payment", monChip(premiumSold > 0, "Live", "No sales yet"), false, mailidMarketCard) +
-		monAcc(saIcon("tag"), "VayuMail address marketplace", "Price & terms for vanity addresses", `<span class="mon-chip mon-chip--on">● `+html.EscapeString(priceLabel(currency, a.premiumMailIDPriceCents(ctx)))+`</span>`, false, addrMarketCard) +
-		monAcc(saIcon("doc"), "Paid posts", "One-time access pricing, per post", monChip(len(pricedPosts) > 0, strconv.Itoa(len(pricedPosts))+" priced", "None yet"), false, paidPostsCard) +
-		`</div>
-
-<div class="section-head"><span class="section-head__title">Orders</span><span class="section-head__hint">Every payment — memberships, mail-IDs &amp; paid posts</span></div>
-<div class="mon-stack">` +
-		monAcc(saIcon("receipt"), "Order ledger", "Confirm offline payments · full history", monChip(stats.Pending > 0, strconv.Itoa(stats.Pending)+" pending", "All settled"), true, ordersCard) +
-		`</div>
-
+	ordersTable := ui.HTML(monetizationOrdersTable(orders))
+	page := ui.SettingsPage("Monetization", state, "",
+		ui.HTML(func() string {
+			if action == "" {
+				return ""
+			}
+			return `<div class="page-lead">` + string(action) + `</div>`
+		}()),
+		ui.Section("How people pay", "Funds settle into your own accounts", pay),
+		ui.Section("Checkout", "", checkout),
+		ui.Section("What you sell", "", sell),
+		ui.Section("Premium addresses", "", addresses),
+		ui.Section("Orders", "Confirm a direct payment once it arrives", ordersTable),
+		ui.Sheet("mon-stripe", "Cards", ui.HTML(a.paymentGatewaysCard(nonce, ctx))),
+		ui.Sheet("mon-paypal", "PayPal", ui.HTML(a.paypalConnectCard(nonce, ctx))),
+		ui.Sheet("mon-btcpay", "Crypto, through your BTCPay Server", ui.HTML(a.btcpayConnectCard(nonce, ctx))),
+		ui.Sheet("mon-webhook", "Another processor", ui.HTML(webhookSheet)),
+		ui.Sheet("mon-paid-posts", "Paid posts", ui.HTML(paidPostsSheet)),
+		ui.SaveBar(),
+	)
+	body := string(page) + `
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
 <script nonce="` + nonce + `">
 (function(){'use strict';
@@ -215,20 +209,6 @@ document.querySelectorAll('[data-order-action]').forEach(function(b){
     else if(act==='cancel'){vpConfirm({title:'Cancel this order?',confirm:'Cancel order'},go);}
     else{go();}
   });
-});
-var saveBtn=document.getElementById('mon-save-btn');
-if(saveBtn)saveBtn.addEventListener('click',function(){
-  var fields=document.querySelectorAll('[data-mon-key]');var chain=Promise.resolve();var ok=true;
-  saveBtn.disabled=true;show('Saving…',false);
-  fields.forEach(function(el){chain=chain.then(function(){return jsave(el.getAttribute('data-mon-key'),el.value).then(function(r){if(!r.ok)ok=false;});});});
-  chain.then(function(){saveBtn.disabled=false;show(ok?'Payment settings saved':'Some settings failed',!ok);}).catch(function(e){saveBtn.disabled=false;show('Error: '+e,true);});
-});
-var midBtn=document.getElementById('mon-mailid-save');
-if(midBtn)midBtn.addEventListener('click',function(){
-  var fields=document.querySelectorAll('[data-mail-key]');var chain=Promise.resolve();var ok=true;
-  midBtn.disabled=true;show('Saving…',false);
-  fields.forEach(function(el){chain=chain.then(function(){return jsave(el.getAttribute('data-mail-key'),el.value).then(function(r){if(!r.ok)ok=false;});});});
-  chain.then(function(){midBtn.disabled=false;show(ok?'Mailbox settings saved':'Some settings failed',!ok);}).catch(function(e){midBtn.disabled=false;show('Error: '+e,true);});
 });
 var ppBtn=document.getElementById('pp-save');
 if(ppBtn)ppBtn.addEventListener('click',function(){
@@ -254,7 +234,7 @@ if(whBtn)whBtn.addEventListener('click',function(){
 })();
 </script>`
 
-	writeOSHTML(w, r, adminOSLayout(nonce, "Monetization", "monetization", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, settingsLayout(nonce, "Monetization", "monetization", cfg, htmpl.HTML(body)))
 }
 
 // paidPostsTable lists the posts that carry a one-time price.
@@ -332,26 +312,6 @@ func premiumGrantPill(status string) string {
 	default:
 		return `<span class="status-pill">● ` + html.EscapeString(status) + `</span>`
 	}
-}
-
-// premiumGrantsTable renders recent premium-address sales (read-only overview).
-func premiumGrantsTable(grants []members.PremiumGrant) string {
-	if len(grants) == 0 {
-		return `<div class="table-empty">No premium addresses sold yet. They appear here as members buy vanity IDs from their account.</div>`
-	}
-	rows := ""
-	for i := range grants {
-		g := grants[i]
-		rows += `<tr>` +
-			`<td class="row-title"><code>` + html.EscapeString(g.Address()) + `</code></td>` +
-			`<td class="muted text-sm">` + html.EscapeString(g.Email) + `</td>` +
-			`<td>` + premiumGrantPill(g.Status) + `</td>` +
-			`<td class="muted text-sm">` + config.FormatSite(g.CreatedAt, "2 Jan 2006") + `</td>` +
-			`</tr>`
-	}
-	return `<div class="table-wrap"><table class="table">` +
-		`<thead><tr><th>Address</th><th>Buyer</th><th>Status</th><th>Purchased</th></tr></thead>` +
-		`<tbody>` + rows + `</tbody></table></div>`
 }
 
 func orderStatusPill(status string) string {
