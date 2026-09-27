@@ -14,16 +14,20 @@
     return m ? decodeURIComponent(m[1]) : '';
   }
 
+  // The state is a dot and a word (ui.State), rebuilt from nodes: markup is
+  // never written from script here.
   function setStatus(card, enabled) {
     var el = card.querySelector('[data-tool-status]');
     if (!el) return;
-    if (enabled) {
-      el.textContent = 'Active';
-      el.className = 'tool-status tool-status--on';
-    } else {
-      el.textContent = 'Disabled';
-      el.className = 'tool-status tool-status--off';
-    }
+    var mark = document.createElement('span');
+    mark.className = 'sa-indicator';
+    var dot = document.createElement('span');
+    dot.className = 'sa-dot sa-dot--' + (enabled ? 'ok' : 'neutral');
+    dot.setAttribute('aria-hidden', 'true');
+    mark.appendChild(dot);
+    mark.appendChild(document.createTextNode(enabled ? 'On' : 'Off'));
+    el.textContent = '';
+    el.appendChild(mark);
   }
 
   var toggles = document.querySelectorAll('[data-tool-toggle]');

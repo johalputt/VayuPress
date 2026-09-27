@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // TestAPIBaseURL covers the three resolutions: dedicated VAYUOS_API_HOST wins,
@@ -31,30 +32,34 @@ func TestAPIBaseURL(t *testing.T) {
 	}
 }
 
-// TestOSAPIBaseCard checks the card shows the resolved base URL and the right
+// TestOSAPIBaseRows checks the rows show the resolved base URL and the right
 // guidance for each of the two states (dedicated host set vs not).
-func TestOSAPIBaseCard(t *testing.T) {
+func TestOSAPIBaseRows(t *testing.T) {
 	oldHost, oldDomain := config.Cfg.APIHost, config.Cfg.Domain
 	t.Cleanup(func() { config.Cfg.APIHost, config.Cfg.Domain = oldHost, oldDomain })
 
 	// No dedicated host → apex base + "point a dedicated api.<domain>" guidance.
 	config.Cfg.APIHost, config.Cfg.Domain = "", "example.com"
-	card := osAPIBaseCard()
-	if !strings.Contains(card, "https://example.com/api/v1") {
-		t.Errorf("card missing apex base URL:\n%s", card)
+	out := string(ui.Rows(osAPIBaseRows()...))
+	if !strings.Contains(out, `id="ak-apibase">https://example.com/api/v1</code>`) {
+		t.Errorf("rows missing apex base URL:\n%s", out)
 	}
-	if !strings.Contains(card, "VAYUOS_API_HOST") {
-		t.Errorf("card should mention the VAYUOS_API_HOST setting:\n%s", card)
+	if !strings.Contains(out, "VAYUOS_API_HOST") || !strings.Contains(out, string(ui.State("neutral", "Main domain"))) {
+		t.Errorf("rows should name the main domain and the VAYUOS_API_HOST setting:\n%s", out)
 	}
 	// CSP-safe-prose rule: never the literal "CDN" in admin connector-style copy.
-	if strings.Contains(card, "CDN") {
-		t.Errorf("card must not contain the literal 'CDN':\n%s", card)
+	if strings.Contains(out, "CDN") {
+		t.Errorf("rows must not contain the literal 'CDN':\n%s", out)
 	}
 
-	// Dedicated host set → confirms the host and that /os is not exposed there.
+	// Dedicated host set → confirms the host and that the console is not
+	// exposed there.
 	config.Cfg.APIHost = "api.example.com"
-	card = osAPIBaseCard()
-	if !strings.Contains(card, "https://api.example.com/api/v1") || !strings.Contains(card, "api.example.com</code>") {
-		t.Errorf("card should confirm the dedicated host:\n%s", card)
+	out = string(ui.Rows(osAPIBaseRows()...))
+	if !strings.Contains(out, `id="ak-apibase">https://api.example.com/api/v1</code>`) || !strings.Contains(out, string(ui.State("ok", "Dedicated host"))) {
+		t.Errorf("rows should confirm the dedicated host:\n%s", out)
+	}
+	if !strings.Contains(out, "Served on api.example.com") || !strings.Contains(out, "not the console") {
+		t.Errorf("rows should say what the dedicated host serves:\n%s", out)
 	}
 }

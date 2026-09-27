@@ -1161,3 +1161,87 @@ for (const [path, banner] of [["/os/connector", "#cx-token-value"], ["/os/claude
     expect(errors).toEqual([]);
   });
 }
+// Tools and plugins: a module is a row, and its switch saves at once and says
+// so as a dot and a word.
+test("a module's switch saves at once and its state follows", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/tools");
+  expect(await page.locator("main [data-page-kind]").evaluateAll((els) => els.map((e) => e.getAttribute("data-page-kind")))).toEqual(["settings"]);
+  const sw = page.locator('[data-tool-toggle="webmentions"]');
+  const state = page.locator('[data-tool-card="webmentions"] [data-tool-status] .sa-indicator');
+  const was = await sw.isChecked();
+  await sw.setChecked(!was);
+  await expect(state).toHaveText(was ? "Off" : "On");
+  await page.reload();
+  await expect(page.locator('[data-tool-toggle="webmentions"]')).toBeChecked({ checked: !was });
+  await page.locator('[data-tool-toggle="webmentions"]').setChecked(was);
+  await expect(state).toHaveText(was ? "On" : "Off");
+});
+
+// API keys: a key is made in its sheet, and the sheet steps aside for the one
+// showing of the key. A credential deleted from inside its sheet asks first,
+// and the question is answerable: a sheet is a modal dialog and leaves
+// everything outside it inert, so a confirmation drawn beside it rather than
+// above it could not be clicked.
+test("a key is made in a sheet, and a confirmation asked in a sheet can be answered", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/apikeys");
+  expect(await page.locator("main [data-page-kind]").evaluateAll((els) => els.map((e) => e.getAttribute("data-page-kind")))).toEqual(["settings"]);
+
+  const label = `e2e sheet key ${Date.now()}`;
+  const sheet = page.locator("dialog#ak-create");
+  await page.locator('[data-sheet="ak-create"]').click();
+  await expect(sheet).toBeVisible();
+  await sheet.locator("#ak-create-btn").click();
+  // Refused in the sheet, where the operator is looking.
+  await expect(sheet.locator("[data-sheet-status]")).toHaveText("Grant at least one permission (or tick Full access)");
+  await sheet.locator("#ak-new-label").fill(label);
+  await sheet.locator('.ak-perm[data-section="posts"][data-action="read"]').check();
+  await sheet.locator("#ak-create-btn").click();
+  await expect(sheet).toBeHidden();
+  await expect(page.locator("#ak-token-value")).toHaveValue(/^vp_/);
+  await Promise.all([page.waitForEvent("load"), page.locator("#ak-token-done").click()]);
+  // A key is managed from its sheet, and its confirmations open above it.
+  const row = page.locator("tr", { hasText: label });
+  await expect(row.locator(".sa-indicator").last()).toHaveText("Active");
+  await row.getByRole("button", { name: "Manage" }).click();
+  await page.locator("dialog.sa-sheet[open]").getByRole("button", { name: "Revoke" }).click();
+  await Promise.all([page.waitForEvent("load"), page.locator(".vp-confirm").getByRole("button", { name: "Revoke" }).click({ timeout: 5000 })]);
+  await expect(page.locator("tr", { hasText: label }).locator(".sa-indicator").last()).toHaveText("Revoked");
+  await page.locator("tr", { hasText: label }).getByRole("button", { name: "Manage" }).click();
+  await page.locator("dialog.sa-sheet[open]").getByRole("button", { name: "Delete" }).click();
+  await Promise.all([page.waitForEvent("load"), page.locator(".vp-confirm").getByRole("button", { name: "Delete" }).click({ timeout: 5000 })]);
+  await expect(page.locator("tr", { hasText: label })).toHaveCount(0);
+
+  const name = `e2e credential ${Date.now()}`;
+  await page.locator('[data-sheet="ak-cc-new"]').click();
+  await page.locator("dialog#ak-cc-new #cc-label").fill(name);
+  await page.locator("dialog#ak-cc-new #cc-secret").fill("e2e-secret-value");
+  await Promise.all([page.waitForEvent("load"), page.locator("dialog#ak-cc-new #cc-add-btn").click()]);
+  const cred = page.locator(".settings-row", { hasText: name });
+  await expect(cred.locator(".sa-indicator")).toHaveText("On");
+  await cred.getByRole("button", { name: "Edit" }).click();
+  const credSheet = page.locator("dialog.sa-sheet[open]");
+  await credSheet.getByRole("button", { name: "Delete" }).click();
+  await Promise.all([page.waitForEvent("load"), page.locator(".vp-confirm").getByRole("button", { name: "Delete" }).click({ timeout: 5000 })]);
+  await expect(page.locator(".settings-row", { hasText: name })).toHaveCount(0);
+});
+
+// VayuMCP: a connector is governed from its sheet, and disconnecting it asks
+// first, above the sheet.
+test("a connector is disconnected from its sheet", async ({ page }) => {
+  await openConsole(page);
+  await page.goto("/os/connector");
+  await page.getByRole("button", { name: "Grant read-only access" }).click();
+  await expect(page.locator("#cx-token-banner")).toBeVisible();
+  await Promise.all([page.waitForEvent("load"), page.locator("#cx-token-done").click()]);
+
+  const rows = page.locator(".settings-row", { hasText: "VayuMCP (read-only)" });
+  const before = await rows.count();
+  expect(before).toBeGreaterThan(0);
+  await rows.last().getByRole("button", { name: "Details" }).click();
+  const sheet = page.locator("dialog.sa-sheet[open]");
+  await sheet.getByRole("button", { name: "Remove" }).click();
+  await Promise.all([page.waitForEvent("load"), page.locator(".vp-confirm").getByRole("button", { name: "Remove" }).click({ timeout: 5000 })]);
+  await expect(page.locator(".settings-row", { hasText: "VayuMCP (read-only)" })).toHaveCount(before - 1);
+});

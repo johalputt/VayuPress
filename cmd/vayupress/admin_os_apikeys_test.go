@@ -10,6 +10,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/secrets"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // TestAPIKeysOwnSectionCSPSafe renders the issued-key list and the scoped-key
@@ -39,11 +40,18 @@ func TestAPIKeysOwnSectionCSPSafe(t *testing.T) {
 	out := osAPIKeysOwnSection(keys)
 	assertCSPSafe(t, "osAPIKeysOwnSection", out)
 
-	// Lifecycle status badges must each appear.
-	for _, want := range []string{"Active", "Inactive", "Expired", "Revoked", "System"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("own section missing %q status", want)
+	// Each lifecycle state appears as a dot and a word, in its own tone.
+	for _, want := range []ui.HTML{
+		ui.State("ok", "Active"), ui.State("neutral", "Inactive"), ui.State("warn", "Expired"),
+		ui.State("neutral", "Revoked"), ui.State("neutral", "System, auto-managed"),
+	} {
+		if !strings.Contains(out, string(want)) {
+			t.Errorf("own section missing the state %s", want)
 		}
+	}
+	// The create form is in a sheet, and the row that opens it is on the page.
+	if !strings.Contains(out, `data-sheet="ak-create"`) || !strings.Contains(out, `<dialog class="sa-sheet" id="ak-create"`) {
+		t.Error("the create sheet is not both opened and present")
 	}
 	// Lifecycle actions: activate is offered only for the inactive key; a live key
 	// offers deactivate; expired/revoked offer delete.
@@ -78,25 +86,40 @@ func TestAPIKeysOwnSectionCSPSafe(t *testing.T) {
 	if !strings.Contains(out, "posts:read") || !strings.Contains(out, `class="ak-cap"`) {
 		t.Error("scoped key did not render capability chips")
 	}
-	if !strings.Contains(out, "Full access") {
-		t.Error("superuser/internal key must render a Full access badge")
+	table := out[:strings.Index(out, "</table>")]
+	if n := strings.Count(table, string(ui.State("accent", "Full access"))); n != 2 {
+		t.Errorf("the superuser and internal keys must each read Full access in the list, got %d", n)
+	}
+	// Every key but the system key is managed from a sheet of its own, which
+	// the row opens; the system key has nothing to manage.
+	for _, k := range keys {
+		opens := strings.Contains(table, `data-sheet="ak-key-`+k.ID+`"`)
+		exists := strings.Contains(out, `<dialog class="sa-sheet" id="ak-key-`+k.ID+`"`)
+		if want := k.Scope != apikeys.ScopeInternal; opens != want || exists != want {
+			t.Errorf("key %s: sheet opened %v, present %v, want %v", k.ID, opens, exists, want)
+		}
+	}
+	if strings.Contains(table, `data-action="ak-`) {
+		t.Error("a lifecycle control is back in the table, which then scrolls sideways on a laptop")
 	}
 }
 
-// TestAPIKeysVCBCardCSPSafe verifies the one-click VCB gateway is CSP-safe and
-// links to the compatibility docs and the live contract endpoints.
-func TestAPIKeysVCBCardCSPSafe(t *testing.T) {
-	out := osAPIKeysVCBCard()
-	assertCSPSafe(t, "osAPIKeysVCBCard", out)
+// TestAPIKeysVCBCSPSafe verifies the VCB gateway is CSP-safe and links to the
+// compatibility docs and the live contract endpoints.
+func TestAPIKeysVCBCSPSafe(t *testing.T) {
+	out := string(osAPIKeysVCB())
+	assertCSPSafe(t, "osAPIKeysVCB", out)
 	for _, want := range []string{
 		`href="/docs/compatibility/vcb"`,
 		`href="/docs/compatibility/vayuapi"`,
 		"/api/v1/vcb/contract",
 		"plugins:read",
 		"vayu-compat",
+		`data-sheet="ak-vcb"`,
+		`<dialog class="sa-sheet" id="ak-vcb"`,
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("VCB card missing %q", want)
+			t.Errorf("VCB section missing %q", want)
 		}
 	}
 }
@@ -116,10 +139,31 @@ func TestAPIKeysServicesSectionCSPSafe(t *testing.T) {
 		t.Error("custom credential row not rendered")
 	}
 	if !strings.Contains(out, "IndexNow") || !strings.Contains(out, "OpenRouter") {
-		t.Error("known-provider cards not rendered")
+		t.Error("known-provider rows not rendered")
 	}
 	if strings.Contains(out, `type="password" data-cred-secret placeholder="sk-`) && strings.Contains(out, "sk-live") {
 		t.Error("services section must never emit a plaintext secret value")
+	}
+	// Each state says which of three things is true: never set up, set up and
+	// switched off, set up and on.
+	for _, want := range []string{
+		string(ui.State("ok", "On")),
+		string(ui.State("neutral", "Off")), string(ui.State("neutral", "Not set up")),
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("services section missing %s", want)
+		}
+	}
+	// Every sheet a row opens exists: one per provider, one per custom
+	// credential, and the one that adds a credential.
+	ids := []string{"ak-cc-c2", "ak-cc-new"}
+	for _, p := range knownProviders {
+		ids = append(ids, "ak-cred-"+p.Provider)
+	}
+	for _, id := range ids {
+		if !strings.Contains(out, `data-sheet="`+id+`"`) || !strings.Contains(out, `<dialog class="sa-sheet" id="`+id+`"`) {
+			t.Errorf("sheet %q is not both opened and present", id)
+		}
 	}
 }
 
@@ -179,10 +223,10 @@ func TestInternalKeyOffersNoImpossibleActions(t *testing.T) {
 	}
 }
 
-// TestAPIKeyStatsCountOnlyUsableGrants — a revoked or expired key is not
+// TestAPIKeyStateCountsOnlyUsableGrants — a revoked or expired key is not
 // exposure. Inflating the full-access figure would make the one number on this
 // page that should provoke a reaction easy to ignore.
-func TestAPIKeyStatsCountOnlyUsableGrants(t *testing.T) {
+func TestAPIKeyStateCountsOnlyUsableGrants(t *testing.T) {
 	past := time.Now().UTC().Add(-time.Hour)
 	keys := []apikeys.Key{
 		{ID: "sys", Scope: apikeys.ScopeInternal, Permissions: apikeys.Superuser(), Active: true},
@@ -191,21 +235,21 @@ func TestAPIKeyStatsCountOnlyUsableGrants(t *testing.T) {
 		{ID: "expired", Scope: apikeys.ScopeExternal, Permissions: apikeys.Superuser(), Active: true, ExpiresAt: &past},
 		{ID: "off", Scope: apikeys.ScopeExternal, Permissions: apikeys.Superuser(), Active: false},
 	}
-	out := osAPIKeysStats(keys, nil)
-	// Exactly one usable external key, and exactly one usable full-access grant.
-	if !strings.Contains(out, ">1<") {
-		t.Error("stats do not report exactly one usable key among five rows")
-	}
-	if !strings.Contains(out, "inactive") {
-		t.Error("keys excluded from the active count should be accounted for, not silently dropped")
-	}
-	if !strings.Contains(out, "stat-card--warn") {
-		t.Error("a live full-access key exists but nothing marks it for attention")
+	out := string(osAPIKeysState(keys))
+	// Exactly one usable external key, and exactly one usable full-access grant;
+	// the other three are accounted for, not silently dropped.
+	for _, want := range []ui.HTML{
+		ui.State("ok", "1 key active"),
+		ui.State("neutral", "3 inactive"),
+		ui.State("warn", "1 with full access"),
+	} {
+		if !strings.Contains(out, string(want)) {
+			t.Errorf("state missing %s, got:\n%s", want, out)
+		}
 	}
 	// The auto-managed system key is not an operator-issued grant.
-	clean := osAPIKeysStats([]apikeys.Key{keys[0]}, nil)
-	if strings.Contains(clean, "stat-card--warn") {
-		t.Error("the auto-managed system key is being counted as an operator's full-access grant")
+	if clean := string(osAPIKeysState([]apikeys.Key{keys[0]})); clean != string(ui.State("neutral", "No keys issued")) {
+		t.Errorf("the auto-managed system key is being counted as an operator's key: %s", clean)
 	}
 }
 

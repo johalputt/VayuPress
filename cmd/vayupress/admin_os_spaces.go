@@ -12,7 +12,6 @@ package main
 // writes through the shared CSRF-checked vpPost helper (no inline styles — CSP).
 
 import (
-	"html"
 	"net/http"
 
 	"github.com/johalputt/vayupress/internal/anonaudit"
@@ -20,6 +19,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // anonAuditInputs snapshots the live anonymity-relevant state for the report.
@@ -37,28 +37,22 @@ func anonAuditInputs() anonaudit.Inputs {
 
 // osSpacesAnonAuditCard renders the anonymity self-audit — the operator's
 // verifiable "is my IP protected?" report (honest: it never claims 100%).
-func osSpacesAnonAuditCard(checks []anonaudit.Check) string {
-	rows := ""
+func osSpacesAnonAudit(checks []anonaudit.Check) ui.HTML {
+	rows := make([]ui.Row, 0, len(checks))
 	for _, c := range checks {
-		badge := `<span class="badge badge--muted">Info</span>`
+		st := ui.State("neutral", "Note")
 		switch c.Status {
 		case anonaudit.Pass:
-			badge = `<span class="badge badge--ok">● Protected</span>`
+			st = ui.State("ok", "Protected")
 		case anonaudit.Warn:
-			badge = `<span class="badge badge--warn">● Review</span>`
+			st = ui.State("warn", "Review")
 		case anonaudit.Fail:
-			badge = `<span class="badge badge--warn">✕ At risk</span>`
+			st = ui.State("danger", "At risk")
 		}
-		rows += `<li class="mb-2">` + badge +
-			` <strong>` + html.EscapeString(c.Title) + `</strong>` +
-			`<br><span class="text-sm muted">` + html.EscapeString(c.Detail) + `</span></li>`
+		rows = append(rows, ui.Row{Label: c.Title, Hint: c.Detail, Control: st})
 	}
-	return `<div class="card">
-  <div class="settings-block-title">Anonymity self-audit</div>
-  <p class="text-sm muted mb-4">A live check of what is protecting your identity — and what only you can protect.</p>
-  <ul class="reset-list">` + rows + `</ul>
-  <p class="text-sm muted mt-4"><a href="/docs/adr/ADR-0143-tor-space-anonymity-model" target="_blank" rel="noopener">How this works &amp; what it can't protect →</a></p>
-</div>`
+	return ui.Section("Anonymity self-audit", "What protects your identity now", ui.Join(ui.Rows(rows...),
+		ui.HTML(`<p class="muted text-sm mt-3"><a href="/docs/adr/ADR-0143-tor-space-anonymity-model" target="_blank" rel="noopener">What it checks, and what it cannot protect</a></p>`)))
 }
 
 // handleOSSpaces renders the Spaces page.
@@ -75,20 +69,26 @@ func (a *App) handleOSSpaces(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	onion := config.Cfg.OnionMode
 
-	body := osSpacesHeader() +
-		osSpacesCurrentCard(onion, config.Cfg.Domain) +
-		osSpacesModelCard()
+	world := ui.State("ok", "Clearnet")
+	what := "A public site, blog and mail over HTTPS on your domain."
 	if onion {
-		// This whole install already IS the Tor world.
-		body += osSpacesTorSelfCard(config.Cfg.Domain)
-		// A live, honest report of the anonymity posture (ADR-0141).
-		body += osSpacesAnonAuditCard(anonaudit.Run(anonAuditInputs()))
-	} else {
-		// A clearnet install can spin up a separate Anonymous Tor Space child.
-		body += osSpacesTorSpaceCard(a.torSpaceStatusNow())
+		world = ui.State("accent", "Tor")
+		what = "An anonymous .onion world: no clearnet domain, no CA certificate, and every clearnet callback off."
 	}
+	secs := []ui.HTML{ui.Section("This install", "Each install is one world", ui.Rows(
+		ui.Row{Label: "World", Hint: what, Control: world},
+		ui.Row{Label: "Two worlds, no mesh", Hint: "A Clearnet world and a Tor world share nothing, not even a database, so their content and logins can never be linked.",
+			Control: `<a class="settings-row-go" href="/docs/adr/ADR-0141-vayuos-spaces-clearnet-tor" target="_blank" rel="noopener">How it works` + ui.Icon("ext") + `</a>`},
+	))}
+	if onion {
+		secs = append(secs, ui.Section("Your anonymous world", "", ui.Rows(onionAddressRow(config.Cfg.Domain))),
+			osSpacesAnonAudit(anonaudit.Run(anonAuditInputs())))
+	} else {
+		secs = append(secs, osSpacesTorSpace(a.torSpaceStatusNow()))
+	}
+	body := string(ui.SettingsPage("Worlds", world, "Your public world and an anonymous Tor world, side by side.", secs...))
 
-	full := adminOSShellHead(nonce, "Spaces", "spaces", cfg) +
+	full := adminOSShellHead(nonce, "Worlds", "spaces", cfg) +
 		body +
 		adminOSShellFoot(nonce, osSpacesScript, false)
 	writeOSHTML(w, r, full)
@@ -123,98 +123,38 @@ func (a *App) handleOSSpaceToggle(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "enabled": enable})
 }
 
-func osSpacesHeader() string {
-	return `<div class="page-header">
-  <h1>Spaces</h1>
-  <div class="page-actions">
-    <a class="btn btn--sm" href="/docs/adr/ADR-0141-vayuos-spaces-clearnet-tor" target="_blank" rel="noopener">About Spaces</a>
-  </div>
-</div>
-<p class="text-sm muted mb-4">Run your public world and an anonymous Tor world side by side.</p>`
+// onionAddressRow shows an onion address to open in Tor Browser, with Copy.
+func onionAddressRow(host string) ui.Row {
+	u := string(ui.Text("http://" + host))
+	return ui.Row{Label: "Address", Hint: "Open it in Tor Browser.",
+		Control: ui.HTML(`<code class="space-addr">` + u + `</code><button type="button" class="btn btn--sm" data-copy="` + u + `">Copy</button>`)}
 }
 
-// osSpacesCurrentCard shows which world THIS install is (from VAYUOS_MODE).
-func osSpacesCurrentCard(onion bool, domain string) string {
-	badge := `<span class="space-badge space-badge--clearnet">Clearnet</span>`
-	desc := `A public site, blog and mail served over HTTPS on your domain.`
-	if onion {
-		badge = `<span class="space-badge space-badge--tor">Tor</span>`
-		d := html.EscapeString(domain)
-		desc = `An anonymous <code>.onion</code> world (<code>` + d + `</code>): no clearnet domain, no CA-TLS, and every clearnet callback is disabled.`
-	}
-	return `<div class="card">
-  <div class="settings-block-title">This install</div>
-  <p class="text-sm muted mb-4">Every VayuOS install runs in exactly one world. This one is a:</p>
-  <p>` + badge + `</p>
-  <p class="text-sm muted mt-4">` + desc + `</p>
-</div>`
-}
-
-// osSpacesModelCard explains the two-world "no mesh" model.
-func osSpacesModelCard() string {
-	return `<div class="card">
-  <div class="settings-block-title">Two worlds, no mesh</div>
-  <ul class="text-sm muted">
-    <li><strong>Clearnet Space</strong> — your public site, blog and mail on your domain, over HTTPS.</li>
-    <li><strong>Tor Space</strong> — an anonymous <code>.onion</code> world with its own database, no clearnet callbacks and no CA-TLS.</li>
-  </ul>
-  <p class="text-sm muted mt-4">They share <strong>nothing</strong> — separate databases — so their content and logins can never be linked.</p>
-</div>`
-}
-
-// osSpacesTorSpaceCard is the one-click Anonymous Tor Space control + live status.
-func osSpacesTorSpaceCard(st torSpaceStatus) string {
-	label, kind, next := "Turn on Tor Space", "btn--primary", "on"
-	statusPill := `<span class="badge badge--muted">Off</span>`
+// osSpacesTorSpace is the Anonymous Tor Space: a second, fully separate
+// VayuPress as a .onion world, one button to start or stop it, its address
+// once it is published, and the honest limit of what it separates.
+func osSpacesTorSpace(st torSpaceStatus) ui.HTML {
+	state, btn := ui.State("neutral", "Off"), `<button type="button" class="btn btn--primary btn--sm" data-space-toggle="on">Turn on</button>`
 	if st.Enabled {
-		label, kind, next = "Turn off Tor Space", "btn--ghost", "off"
+		btn = `<button type="button" class="btn btn--sm" data-space-toggle="off">Turn off</button>`
+		state = ui.State("warn", "Starting")
 		if st.Running {
-			statusPill = `<span class="badge badge--ok">● Running</span>`
-		} else {
-			statusPill = `<span class="badge badge--warn">● Starting…</span>`
+			state = ui.State("ok", "Running")
 		}
 	}
-
-	extra := ""
-	if st.Enabled && st.Running && st.Onion != "" {
-		o := html.EscapeString(st.Onion)
-		extra += `
-  <p class="text-sm muted mt-4">Your anonymous address (open in Tor Browser):</p>
-  <div class="ak-token-row">
-    <input class="input font-mono ak-token-input" type="text" readonly value="http://` + o + `">
-    <button type="button" class="btn btn--sm" data-copy="http://` + o + `">Copy</button>
-  </div>`
-	} else if st.Enabled && st.Onion == "" {
-		extra += `
-  <p class="text-sm muted mt-4">Publishing your <code>.onion</code> to the Tor network — the first time this takes a couple of minutes.</p>`
+	rows := []ui.Row{{Label: "Anonymous Tor Space", Hint: "A second, fully separate VayuPress as a .onion world: its own database, accounts and identity. While it is on, the console wears the Tor colour.",
+		Control: state + ui.HTML(btn)}}
+	switch {
+	case st.Enabled && st.Running && st.Onion != "":
+		rows = append(rows, onionAddressRow(st.Onion))
+	case st.Enabled && st.Onion == "":
+		rows = append(rows, ui.Row{Label: "Address", Hint: "Publishing the .onion to the Tor network; the first time takes a couple of minutes.", Control: ui.State("warn", "Publishing")})
 	}
 	if st.LastErr != "" {
-		extra += `
-  <p class="text-sm mt-2" role="status">` + saIcon("warn") + html.EscapeString(st.LastErr) + `</p>`
+		rows = append(rows, ui.Row{Label: "Last error", Hint: st.LastErr, Control: ui.State("danger", "Failed")})
 	}
-
-	return `<div class="card">
-  <div class="settings-block-title">Anonymous Tor Space</div>
-  <p class="text-sm muted mb-4">One click runs a <strong>second, fully separate</strong> VayuPress as an anonymous <code>.onion</code> world — its own database, accounts and identity, no terminal. While it is on, VayuOS wears the Tor colour so you always know.</p>
-  <div class="ak-cred-actions">
-    <button type="button" class="btn ` + kind + `" data-space-toggle="` + next + `">` + label + `</button>
-    ` + statusPill + `
-  </div>` + extra + `
-  <p class="text-sm muted mt-4"><strong>Honest note:</strong> both worlds run on this same server, so this separates your <em>identity and content</em> — not the machine. Anonymity that survives someone seizing the server needs a physically separate computer.</p>
-</div>`
-}
-
-// osSpacesTorSelfCard (whole-install Tor installs) shows this Space's own onion.
-func osSpacesTorSelfCard(domain string) string {
-	d := html.EscapeString(domain)
-	return `<div class="card">
-  <div class="settings-block-title">Your anonymous world</div>
-  <p class="text-sm muted mb-4">This install is the Tor Space. Its address:</p>
-  <div class="ak-token-row">
-    <input class="input font-mono ak-token-input" type="text" readonly value="http://` + d + `">
-    <button type="button" class="btn btn--sm" data-copy="http://` + d + `">Copy</button>
-  </div>
-</div>`
+	rows = append(rows, ui.Row{Label: "What it separates", Hint: "Identity and content, not the machine: both worlds run on this server. Anonymity that survives someone seizing the server needs a separate computer."})
+	return ui.Section("An anonymous world", "Beside this one, on the same server", ui.Rows(rows...))
 }
 
 // osSpacesScript wires the copy buttons and the Tor Space toggle. It runs inside

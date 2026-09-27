@@ -29,6 +29,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // toolModule describes one entry in the Tools & Plugins registry.
@@ -205,30 +206,33 @@ func (a *App) handleOSTools(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Render grouped cards in registry order, emitting a category header the
-	// first time each category is seen.
-	var cards strings.Builder
-	seen := map[string]bool{}
-	for _, s := range states {
-		if !seen[s.Category] {
-			seen[s.Category] = true
-			cards.WriteString(`<div class="tools-cat">` + html.EscapeString(s.Category) + `</div>`)
+	// One band per category, in registry order; a module is a row with its
+	// state and, when it can be switched, its switch. Switches save as they
+	// change (admin-os-tools.js), so the page has no SaveBar.
+	var secs []ui.HTML
+	var rows []ui.Row
+	cat := ""
+	flush := func() {
+		if cat != "" {
+			secs = append(secs, ui.Section(cat, "", ui.Rows(rows...)))
 		}
-		cards.WriteString(toolCardHTML(s))
+		rows = nil
 	}
+	for _, s := range states {
+		if s.Category != cat {
+			flush()
+			cat = s.Category
+		}
+		rows = append(rows, toolRow(s))
+	}
+	flush()
+	secs = append(secs, ui.Section("Sandboxed plugins", "Out of process", ui.HTML(pluginRegistryHTML())))
 
-	body := `<div class="page-header">
-  <h1>Tools &amp; Plugins <span class="count-pill">` + strconv.Itoa(active) + `/` + strconv.Itoa(total) + `</span></h1>
-  <div class="page-actions">
-    <span class="text-sm muted">Sovereign modules — all built in, zero downloads.</span>
-  </div>
-</div>
-<p class="page-sub">Every capability of your install in one place — switch modules on or off and see what's active. All built in, nothing to download.</p>
-<div class="tools-grid">` + cards.String() + `</div>` +
-		pluginRegistryHTML() + `
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-tools.js?v=` + assetVer("js/admin-os-tools.js") + `"></script>`
+	body := string(ui.SettingsPage("Tools and plugins", ui.State("ok", strconv.Itoa(active)+" of "+strconv.Itoa(total)+" on"),
+		"Every module of this install, built in and switched here. Nothing is downloaded.", secs...)) +
+		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-tools.js?v=` + assetVer("js/admin-os-tools.js") + `"></script>`
 
-	writeOSHTML(w, r, adminOSLayout(nonce, "Tools & Plugins", "tools", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Tools and plugins", "tools", cfg, htmpl.HTML(body)))
 }
 
 // pluginRegistryHTML renders the live sandboxed-plugin registry: every
@@ -237,81 +241,52 @@ func (a *App) handleOSTools(w http.ResponseWriter, r *http.Request) {
 // no out-of-process plugins are installed, with a pointer to the interface spec.
 func pluginRegistryHTML() string {
 	stats := plugins.SubprocessStats()
-
-	header := `<div class="tools-cat">Sandboxed plugins (out-of-process)</div>`
 	if len(stats) == 0 {
-		return header + `<div class="card">
-  <div class="tool-card__desc muted">No out-of-process plugins are installed. Sandboxed plugins run as isolated subprocesses (seccomp, namespaces, capability allowlists) and speak the line-oriented JSON IPC protocol — see <code>docs/plugins/SPEC.md</code>.</div>
-</div>`
+		return `<p class="muted text-sm">None installed. A sandboxed plugin runs as its own process (seccomp, namespaces, a capability allowlist) and speaks the JSON protocol in <code>docs/plugins/SPEC.md</code>.</p>`
 	}
-
 	var rows strings.Builder
 	for _, s := range stats {
-		status, cls := "Stopped", "tool-status--idle"
+		state := ui.State("neutral", "Stopped")
 		switch {
 		case s.Quarantined:
-			status, cls = "Quarantined", "tool-status--off"
+			state = ui.State("danger", "Quarantined")
 		case s.Running:
-			status, cls = "Running", "tool-status--on"
+			state = ui.State("ok", "Running")
 		}
 		pid := "—"
 		if s.PID > 0 {
 			pid = strconv.Itoa(s.PID)
 		}
-		rows.WriteString(`<tr>
-  <td class="row-title">` + html.EscapeString(s.Name) + `</td>
-  <td class="muted text-sm">` + pid + `</td>
-  <td class="muted text-sm">` + strconv.FormatInt(s.Invocations, 10) + `</td>
-  <td class="muted text-sm">` + strconv.Itoa(s.Crashes) + `</td>
-  <td><span class="tool-status ` + cls + `">` + status + `</span></td>
-</tr>`)
+		rows.WriteString(`<tr><td class="row-title">` + html.EscapeString(s.Name) + `</td><td class="muted text-sm">` + pid +
+			`</td><td class="muted text-sm">` + strconv.FormatInt(s.Invocations, 10) + `</td><td class="muted text-sm">` + strconv.Itoa(s.Crashes) +
+			`</td><td>` + string(state) + `</td></tr>`)
 	}
-
-	return header + `<div class="card">
-  <div class="table-wrap"><table class="table">
-    <thead><tr><th>Plugin</th><th>PID</th><th>Invocations</th><th>Crashes</th><th>Status</th></tr></thead>
-    <tbody>` + rows.String() + `</tbody>
-  </table></div>
-  <div class="text-xs muted mt-3">Each plugin is a sandboxed subprocess (capability allowlists, seccomp, namespaces). Interface contract: <code>docs/plugins/SPEC.md</code>.</div>
-</div>`
+	return `<div class="table-wrap"><table class="table"><thead><tr><th>Plugin</th><th>PID</th><th>Invocations</th><th>Crashes</th><th>State</th></tr></thead><tbody>` +
+		rows.String() + `</tbody></table></div>`
 }
 
-// toolCardHTML renders a single module card. Toggleable modules get a switch;
-// built-in modules get a static "Built-in" badge. Status reflects readiness.
-func toolCardHTML(s toolState) string {
-	var status, statusCls string
+// toolRow renders one module: what it does on the left; its state and, for a
+// module that can be switched, its switch on the right. data-tool-card and
+// data-tool-status are where admin-os-tools.js writes a change.
+func toolRow(s toolState) ui.Row {
+	state := ui.State("ok", "On")
 	switch {
 	case s.Toggleable && !s.Enabled:
-		status, statusCls = "Disabled", "tool-status--off"
+		state = ui.State("neutral", "Off")
 	case !s.Ready:
-		status, statusCls = "Inactive", "tool-status--idle"
-	default:
-		status, statusCls = "Active", "tool-status--on"
+		state = ui.State("warn", "Not running")
+	case !s.Toggleable:
+		state = ui.State("ok", "Built in")
 	}
-
-	var control string
+	control := `<span class="tool-ctl" data-tool-card="` + html.EscapeString(s.ID) + `"><span data-tool-status>` + string(state) + `</span>`
 	if s.Toggleable {
 		checked := ""
 		if s.Enabled {
 			checked = " checked"
 		}
-		// The switch posts through admin-os-tools.js (CSRF-guarded fetch).
-		control = `<input type="checkbox" class="toggle" role="switch" aria-label="` + html.EscapeString(s.Name) + `" data-tool-toggle="` + html.EscapeString(s.ID) + `"` + checked + `>`
-	} else {
-		control = `<span class="chip">Built-in</span>`
+		control += `<input type="checkbox" class="toggle" role="switch" aria-label="` + html.EscapeString(s.Name) + `" data-tool-toggle="` + html.EscapeString(s.ID) + `"` + checked + `>`
 	}
-
-	return `<div class="tool-card" data-tool-card="` + html.EscapeString(s.ID) + `">
-  <div class="tool-card__head">
-    <span class="tool-card__icon" aria-hidden="true">` + saIcon(s.Icon) + `</span>
-    <div class="tool-card__title">` + html.EscapeString(s.Name) + `</div>
-    ` + control + `
-  </div>
-  <div class="tool-card__desc">` + html.EscapeString(s.Desc) + `</div>
-  <div class="tool-card__foot">
-    <span class="tool-status ` + statusCls + `" data-tool-status>` + status + `</span>
-  </div>
-</div>`
+	return ui.Row{Icon: s.Icon, Label: s.Name, Hint: s.Desc, Control: ui.HTML(control + `</span>`)}
 }
 
 // ── APIs ─────────────────────────────────────────────────────────────────────

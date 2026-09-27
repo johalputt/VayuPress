@@ -4524,21 +4524,11 @@
 
 .vp-os .ak-create-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); }
 
-/* Third-party service credential cards (IndexNow, OpenRouter, Ollama, n8n,
-   custom): header with title + enable toggle, then the secret/endpoint fields
-   and the save/reveal/delete action row. */
-.vp-os .ak-cred-card + .ak-cred-card { margin-top: var(--sp-4); }
-
-.vp-os .ak-cred-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-3); }
-
-.vp-os .ak-cred-desc { max-width: 68ch; margin-top: var(--sp-1); }
-
+/* A service credential's fields, in its sheet on API keys: the enable toggle,
+   then the secret and endpoint, then save, reveal and delete. */
 .vp-os .ak-cred-toggle { display: inline-flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; margin: 0; }
 
 .vp-os .ak-cred-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); }
-
-/* Custom-credential add form: name / endpoint / secret inputs + Add button. */
-.vp-os .ak-cc-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); margin-bottom: var(--sp-4); }
 
 /* ── Claude connector page (ADR-0139, Stage 2) ─────────────────────────────
    Three grant choices sit side by side and wrap to a single column on narrow
@@ -5059,6 +5049,12 @@
 
 /* vpConfirm modal (Wave 3.11): the styled, focus-managed replacement for
    window.confirm. Built with createElement/textContent only — CSP-safe. */
+/* The top-layer host for vpConfirm and vpPrompt (vpLayerScript): a bare
+   dialog that draws nothing itself, so the backdrop inside it looks as it
+   always has. */
+.vp-os dialog.vp-layer { padding: 0; margin: 0; border: 0; background: transparent; width: 100vw; height: 100vh; max-width: none; max-height: none; overflow: visible; }
+.vp-os dialog.vp-layer::backdrop { background: transparent; }
+
 .vp-os .vp-confirm-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: var(--scrim); }
 
 .vp-os .vp-confirm { background: var(--bg-surface); border: 1px solid var(--border-strong, var(--border)); border-radius: var(--r-md, 12px); box-shadow: var(--sh-lg); padding: var(--space-5); width: min(420px, calc(100vw - 32px)); }
@@ -5811,6 +5807,8 @@
 .vp-os[data-ui="still-air"] .settings-row-go { display: inline-flex; align-items: center; gap: 6px; font: var(--type-small); color: var(--text-2); text-decoration: none; }
 .vp-os[data-ui="still-air"] .settings-row-go:hover { color: var(--text-1); text-decoration: none; }
 .vp-os[data-ui="still-air"] .settings-row-count { font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .tool-ctl { display: inline-flex; align-items: center; gap: var(--space-4); }
+.vp-os[data-ui="still-air"] .space-addr { font: var(--type-mono); color: var(--text-1); overflow-wrap: anywhere; min-width: 0; }
 .vp-os[data-ui="still-air"] .settings-row-label:has(> .sa-ico) { display: flex; align-items: center; gap: var(--space-3); }
 .vp-os[data-ui="still-air"] .settings-row-label > .sa-ico { flex: none; color: var(--text-2); }
 .vp-os[data-ui="still-air"] .section-head {

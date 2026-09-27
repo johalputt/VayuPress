@@ -25,9 +25,7 @@ package main
 // configures, exactly as the Buzz page is.
 
 import (
-	"html"
 	"net/http"
-	"strings"
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/render"
@@ -38,21 +36,14 @@ import (
 // Claude clients rather than every connector on the install.
 const claudeKeyLabelPrefix = "Claude"
 
-// handleOSClaudeCode renders the Claude Code connector console.
+// handleOSClaudeCode renders the Claude Code connector page: the routes in,
+// the endpoint, the grants, and what to do when Connect fails.
 func (a *App) handleOSClaudeCode(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	endpoint, apex, dedicated, blockedHost := connectorEndpoint(r)
-	keys := a.liveConnectorKeys(r)
 
-	body := osClaudeCodeIntro() +
-		osClaudeCodeStats(endpoint, keys, dedicated, blockedHost) +
-		`<div class="section-head"><span class="section-head__title">Connect Claude</span><span class="section-head__hint">Three ways in — the first needs no key at all</span></div>` +
-		osClaudeCodeSetupCards(endpoint, apex, dedicated, blockedHost) +
-		`<div class="section-head"><span class="section-head__title">Grant access</span><span class="section-head__hint">Only needed for the Desktop config and CLI routes</span></div>` +
-		osClaudeCodeGrantCard() +
-		`<div class="section-head"><span class="section-head__title">If Connect fails</span><span class="section-head__hint">Almost always something in front of this server</span></div>` +
-		osClaudeCodeTroubleshootCard()
+	body := osClaudeCodePage(endpoint, apex, dedicated, blockedHost, a.liveConnectorKeys(r))
 
 	full := adminOSShellHead(nonce, "Claude Code", "claudecode", cfg) +
 		body +
@@ -60,34 +51,9 @@ func (a *App) handleOSClaudeCode(w http.ResponseWriter, r *http.Request) {
 	writeOSHTML(w, r, full)
 }
 
-// osClaudeCodeIntro is the page header plus the one-time key banner.
-func osClaudeCodeIntro() string {
-	return `<div class="page-header">
-  <h1>Claude Code</h1>
-  <div class="page-actions">
-    <a class="btn btn--sm" href="/docs/compatibility/claude-code" target="_blank" rel="noopener">Claude docs</a>
-    <span id="` + mcpStatusID + `" role="status" aria-live="polite" class="text-xs muted"></span>
-  </div>
-</div>
-<p class="page-sub">Run this site by chat from Claude Code, Claude Desktop or claude.ai. The one-click route needs no key.</p>
-` + string(ui.Explain(ui.HTML(`<p>Connect <strong>Claude Code</strong>, <strong>Claude Desktop</strong> or <strong>claude.ai</strong> to this site and run it by chat — publish and edit posts, build pages, search content, read analytics, switch themes. It goes through <a href="/os/connector">VayuMCP</a>, the Model Context Protocol server this site already serves, so there is nothing to install on either side. <strong>The one-click route needs no key at all</strong>: Claude signs in through this site's own OAuth&nbsp;2.1 server and you approve a scope on screen.</p>`))) + `
-
-` + mcpClientTokenBanner("This is the only time the full key is shown. It has been filled into the Desktop and CLI configurations below — copy the one you need, then store the key somewhere safe. You will not be able to see it again.")
-}
-
-// osClaudeCodeStats is the at-a-glance strip, scoped to the keys this page minted.
-func osClaudeCodeStats(endpoint string, keys []apikeys.Key, dedicated bool, blockedHost string) string {
-	return mcpClientStats(endpoint, keys, claudeKeyLabelPrefix, "Claude clients connected", dedicated, blockedHost)
-}
-
-// osClaudeCodeSetupCards renders the three routes in, best first.
-//
-// The one-click accordion is the only one opened by default, and it is the only
-// one whose chip reads "Recommended". That ordering is the argument: it needs no
-// key, so there is no token to leak, paste wrongly, or forget to revoke.
-func osClaudeCodeSetupCards(endpoint, apex string, dedicated bool, blockedHost string) string {
-	e := html.EscapeString(endpoint)
-
+// osClaudeCodePage is the page body. It takes the request-derived endpoint and
+// the keys as arguments so the tests render exactly what an operator sees.
+func osClaudeCodePage(endpoint, apex string, dedicated bool, blockedHost string, keys []apikeys.Key) string {
 	cliTpl := `claude mcp add --transport http vayupress ` + endpoint +
 		` --header "Authorization: Bearer ` + keyTemplatePlaceholder + `"`
 	desktopTpl := `{
@@ -98,100 +64,52 @@ func osClaudeCodeSetupCards(endpoint, apex string, dedicated bool, blockedHost s
     }
   }
 }`
-
-	// Say WHY the offered endpoint may differ from the address in the browser
-	// bar. An endpoint that silently disagrees with the site being administered
-	// reads as a mistake, and an operator who "corrects" it walks into the exact
-	// failure the dedicated host exists to avoid.
-	hostNote := ""
-	switch {
-	case dedicated:
-		hostNote = `<p class="text-sm muted mt-2"><span class="badge badge--ok">Dedicated host</span> This install has a working <code>` +
-			html.EscapeString(strings.TrimSuffix(strings.TrimPrefix(endpoint, "https://"), "/mcp")) +
-			`</code> is offered instead of <code>` + html.EscapeString(apex) + `</code> because it is not proxied.` +
-			string(ui.Tip("Both reach this same server with the same authentication, but the dedicated host is not proxied, so a bot challenge on your main domain can never sit in front of it.")) + `</p>`
-	case blockedHost != "":
-		hostNote = `<p class="text-sm muted mt-2"><span class="badge badge--warn">Blocked</span> <code>` +
-			html.EscapeString(blockedHost) + `</code> is answered by something in front of this server.` +
-			string(ui.Tip("Until that host answers directly, rather than a bot challenge or firewall answering for it, the endpoint above stays on your main domain.")) + `</p>`
-	}
-
-	oneClick := `<div class="card">
-  <p class="text-sm">In Claude, open <em>Settings → Connectors → Add custom connector</em>, paste this endpoint and click <strong>Connect</strong>.` + string(ui.Tip("This needs no key. The Connect button lives on Claude's side; this site runs the OAuth 2.1 server it signs into. Claude signs you in through this site and shows an Approve and connect screen where you choose Full control, Author or Read-only.")) + `</p>
-  <div class="ak-token-row">
-    <input id="cc-endpoint" class="input font-mono ak-token-input" type="text" readonly value="` + e + `">
-    <button type="button" class="btn btn--sm" data-copy="#cc-endpoint">Copy</button>
-  </div>` + hostNote + `
-  <p class="field-hint mt-2">Custom connectors on claude.ai may need a paid plan.` + string(ui.Tip("Pro, Max, Team or Enterprise. The Desktop and CLI routes below remain for clients that use a pasted key.")) + ` <a href="/docs/adr/ADR-0140-vayu-mcp-oauth" target="_blank" rel="noopener">ADR-0140</a></p>
-</div>`
-
-	cliCard := `<div class="card">
-  <p class="text-sm muted">Grant a key below, then run one command. This is the route a Claude Code agent uses, including when it is driven from a <a href="/os/buzz">Buzz</a> workspace.</p>
-  ` + mcpSnippet("cc-cfg-cli", cliTpl) + `
-</div>`
-
-	desktopCard := `<div class="card">
-  <p class="text-sm muted">Grant a key below, then add this to <code>claude_desktop_config.json</code> (Settings → Developer → Edit config) and restart Claude Desktop:</p>
-  ` + mcpSnippet("cc-cfg-desktop", desktopTpl) + `
-  <p class="field-hint mt-2">Prefer the one-click route above where it is available — it stores no token on disk.</p>
-</div>`
-
-	return `<div class="mon-stack">` +
-		monAcc(saIcon("sparkle"), "One-click Connect on claude.ai", "Easiest — no key to copy or store", `<span class="mon-chip mon-chip--on">● Recommended</span>`, true, oneClick) +
-		monAcc(saIcon("keyboard"), "Claude Code (CLI)", "One command", `<span class="mon-chip mon-chip--off">○ Needs a key</span>`, false, cliCard) +
-		monAcc(saIcon("monitor"), "Claude Desktop (config file)", "Paste a config block", `<span class="mon-chip mon-chip--off">○ Needs a key</span>`, false, desktopCard) +
-		`</div>`
-}
-
-// osClaudeCodeGrantCard renders the one-click grants.
-//
-// Full control leads here, unlike the Buzz page. The common case for this page is
-// an operator connecting their OWN assistant to their OWN site, where the whole
-// point is that it can do the work; a Buzz agent sits in a shared channel and
-// acts for several people, so its page leads with the narrow grant instead. Same
-// key model, different default, for a stated reason.
-func osClaudeCodeGrantCard() string {
-	return `<div class="card">
-  <p class="text-sm mb-4">Only the Desktop and CLI routes need a key.` + string(ui.Tip("The one-click route grants its own scope on Claude's approval screen. Any grant can be paused or revoked from the VayuMCP page, and every action is written to the audit log.")) + `</p>
-
-  <div class="cx-grant-grid">
-    ` + mcpGrantTile(true, "Full control", "Everything", " badge--accent",
-		"Every tool, now and as the toolset grows.",
-		"*:*", claudeKeyLabelPrefix+" (full control)", "Grant full control") + `
-    ` + mcpGrantTile(false, "Author only", "Posts &amp; pages", "",
-		"Write and organise posts and pages; nothing else.",
-		"posts:read,posts:write", claudeKeyLabelPrefix+" (author)", "Grant author access") + `
-    ` + mcpGrantTile(false, "Read only", "Look, don't touch", "",
-		"Read posts, pages and analytics; change nothing.",
-		"posts:read,analytics:read", claudeKeyLabelPrefix+" (read-only)", "Grant read-only access") + `
-  </div>
-
-  <p class="field-hint mt-2">For a precise grant, build a scoped key on <a href="/os/apikeys">API Keys</a>.</p>
-</div>`
-}
-
-// osClaudeCodeTroubleshootCard is the proxy/WAF reference: essential when it
-// bites, noise on every other visit, so it is folded away behind its own title.
-func osClaudeCodeTroubleshootCard() string {
-	proxy := `<div class="card">
-  <p class="text-sm muted">Claude reaches this server <strong>machine-to-machine</strong> — no browser is in the loop for the API calls — so it <strong>cannot pass a JavaScript &ldquo;challenge&rdquo; / &ldquo;Just a moment&hellip;&rdquo; page</strong>. If your site is proxied with <em>Bot&nbsp;Fight&nbsp;Mode</em>, a <em>Managed&nbsp;Challenge</em>, a custom rule or <em>Under&nbsp;Attack</em> mode on, those requests are stopped <strong>before they reach VayuPress</strong> and Connect fails with &ldquo;couldn't register&rdquo; — the request never appears in this server's log, which is what makes it hard to diagnose.</p>
-  <p class="text-sm muted">Let these exact paths <strong>bypass the challenge</strong>: <code>/mcp</code>, <code>/oauth/*</code> and <code>/.well-known/*</code>. <code>/mcp</code> matters <em>after</em> connecting too — every tool call runs over it, so a challenge there breaks the connector on first use.</p>
-  <pre class="cx-code font-mono" id="cc-waf-expr">starts_with(http.request.uri.path, "/mcp") or
+	// The one-click route leads, and only it reads Recommended: it needs no
+	// key, so there is no token to leak, paste wrongly, or forget to revoke.
+	connect := ui.Rows(
+		ui.Row{Icon: "sparkle", Label: "One-click Connect on claude.ai", Hint: "In Claude, open Settings, Connectors, Add custom connector; paste the endpoint below and press Connect. Claude signs in through this site and you approve a scope on screen. Custom connectors on claude.ai may need a paid plan.",
+			Control: ui.State("ok", "Recommended")},
+		ui.Row{Icon: "keyboard", Label: "Claude Code", Hint: "Grant a key below, then run one command. The route a Claude Code agent uses, including one driven from a Buzz workspace.",
+			Control: ui.State("neutral", "Needs a key") + `<button type="button" class="btn btn--sm" data-sheet="cc-cli">Show the command</button>`},
+		ui.Row{Icon: "monitor", Label: "Claude Desktop", Hint: "Grant a key below, then add a block to claude_desktop_config.json and restart Claude Desktop. The one-click route stores no token on disk.",
+			Control: ui.State("neutral", "Needs a key") + `<button type="button" class="btn btn--sm" data-sheet="cc-desktop">Show the config</button>`},
+	)
+	// Full control leads here, unlike on Buzz. The common case for this page is
+	// an operator connecting their OWN assistant to their OWN site, where the
+	// whole point is that it can do the work; a Buzz agent sits in a shared
+	// channel and acts for several people, so its page leads with the narrow
+	// grant instead. Same key model, different default, for a stated reason.
+	grants := ui.Rows(
+		mcpGrantRow(true, "Full control", "Every tool, now and as the toolset grows.", "*:*", claudeKeyLabelPrefix+" (full control)", "Grant full control"),
+		mcpGrantRow(false, "Author", "Write and organise posts and pages; nothing else.", "posts:read,posts:write", claudeKeyLabelPrefix+" (author)", "Grant author access"),
+		mcpGrantRow(false, "Read only", "Read posts, pages and analytics; change nothing.", "posts:read,analytics:read", claudeKeyLabelPrefix+" (read-only)", "Grant read-only access"),
+		ui.Row{Label: "A precise grant", Hint: "Any sections and actions you choose. Every grant can be paused or revoked on VayuMCP, and every action is audited.",
+			Control: `<a class="settings-row-go" href="/os/apikeys">API keys` + ui.Icon("chev-r") + `</a>`},
+	)
+	fails := ui.Rows(
+		ui.Row{Icon: "shield", Label: "Behind a proxy or firewall?", Hint: "The most common reason Connect fails: a challenge page answers instead of this server.",
+			Control: `<button type="button" class="btn btn--sm" data-sheet="cc-proxy">What to allow</button>`},
+		ui.Row{Icon: "plug", Label: "Connected clients", Hint: "Pause, disconnect or remove a client. A key never used is almost always a connect attempt that did not finish, and safe to remove.",
+			Control: `<a class="settings-row-go" href="/os/connector">VayuMCP` + ui.Icon("chev-r") + `</a>`},
+	)
+	proxy := `<p class="text-sm muted">Claude reaches this server machine to machine, with no browser to answer a challenge page. Bot Fight Mode, a Managed Challenge, a custom rule or Under Attack mode stops those requests before they reach VayuPress, so Connect fails with "couldn't register" and nothing appears in this server's log.</p>
+<p class="text-sm muted mt-3">Let these paths skip the challenge. <code>/mcp</code> matters after connecting too: every tool call runs over it.</p>
+<pre class="cx-code font-mono" id="cc-waf-expr">starts_with(http.request.uri.path, "/mcp") or
 starts_with(http.request.uri.path, "/oauth/") or
 starts_with(http.request.uri.path, "/.well-known/")</pre>
-  <div class="ak-cred-actions">
-    <button type="button" class="btn btn--sm" data-copy="#cc-waf-expr">Copy expression</button>
-  </div>
-  <p class="field-hint mt-2">Verify with a plain <code>curl</code> of your site's <code>/health</code> endpoint: it must return JSON, <strong>not</strong> a challenge page. When curl gets through, Claude will too. Full reference, including the dedicated-host workaround for proxies that cannot scope a challenge per path, lives on the <a href="/os/connector">VayuMCP</a> page.</p>
-</div>`
+<div class="mt-3"><button type="button" class="btn btn--sm" data-copy="#cc-waf-expr">Copy the expression</button></div>
+<p class="field-hint mt-3">Check with <code>curl</code> on your site's <code>/health</code>: it must return JSON, not a challenge page. When curl gets through, Claude will too. The dedicated-host route, for proxies that cannot scope a challenge per path, is on the <a href="/os/connector">VayuMCP</a> page.</p>`
 
-	manage := `<div class="card">
-  <p class="text-sm muted">Every client that has connected is listed on the <a href="/os/connector">VayuMCP</a> page with what it can reach, when it last called, and controls to pause, disconnect or remove it.</p>
-  <p class="field-hint mt-2">A key that has never been used is almost always a leftover from a connect attempt that did not finish — safe to remove.</p>
-</div>`
-
-	return `<div class="mon-stack">` +
-		monAcc(saIcon("shield"), "Behind a proxy or WAF?", "The most common reason Connect fails", `<span class="mon-chip mon-chip--off">○ Reference</span>`, false, proxy) +
-		monAcc(saIcon("plug"), "Manage connected clients", "Pause, disconnect or remove a grant", `<span class="mon-chip mon-chip--off">○ On VayuMCP</span>`, false, manage) +
-		`</div>`
+	return string(ui.SettingsPage("Claude Code", mcpClientState(keys, claudeKeyLabelPrefix, "Claude client"),
+		"Run this site by chat from Claude Code, Claude Desktop or claude.ai, through VayuMCP. The one-click route needs no key.",
+		ui.HTML(mcpClientTokenBanner("This is the only time the full key is shown. It has been filled into the Claude Code and Desktop configurations: copy the one you need, then keep the key somewhere safe.")+
+			`<p class="page-lead"><span id="`+mcpStatusID+`" role="status" aria-live="polite" class="text-xs muted"></span></p>`),
+		ui.Section("Connect Claude", "The first needs no key", connect),
+		ui.Section("Endpoint", "", ui.Rows(mcpEndpointRows("cc-endpoint", endpoint, apex, dedicated, blockedHost)...)),
+		ui.Section("Grant access", "Only Claude Code and Desktop need a key", grants),
+		ui.Section("If Connect fails", "", fails),
+		ui.Sheet("cc-cli", "Claude Code", ui.HTML(`<p class="text-sm muted mb-3">Grant a key first; it is filled in here.</p>`+mcpSnippet("cc-cfg-cli", cliTpl))),
+		ui.Sheet("cc-desktop", "Claude Desktop", ui.HTML(`<p class="text-sm muted mb-3">Add this to <code>claude_desktop_config.json</code> (Settings, Developer, Edit config) and restart Claude Desktop.</p>`+mcpSnippet("cc-cfg-desktop", desktopTpl))),
+		ui.Sheet("cc-proxy", "Behind a proxy or firewall", ui.HTML(proxy)),
+	))
 }

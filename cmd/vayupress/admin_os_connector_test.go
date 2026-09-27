@@ -11,83 +11,100 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/apikeys"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
-// TestConnectorCardsCSPSafe renders every connector-page fragment and asserts
-// they carry no inline style / unsafe-eval / external asset host (the VayuOS CSP
-// contract), and that the one-click grant choices and connect snippets are all
-// present.
-func TestConnectorCardsCSPSafe(t *testing.T) {
+// TestConnectorPageCSPSafe renders the whole VayuMCP page as an operator sees
+// it, in each endpoint state, and asserts the VayuOS CSP contract (no inline
+// style, no unsafe-eval, no external asset host).
+func TestConnectorPageCSPSafe(t *testing.T) {
 	endpoint := "https://blog.example.com/mcp"
-
-	intro := osConnectorIntro()
-	assertCSPSafe(t, "osConnectorIntro", intro)
-
-	epCard := osConnectorEndpointCard(endpoint, endpoint, false, "")
-	assertCSPSafe(t, "osConnectorEndpointCard", epCard)
-	if !strings.Contains(epCard, endpoint) {
-		t.Errorf("endpoint card must show the endpoint URL %q", endpoint)
-	}
-
-	// The dedicated-host variant is the one an operator sees when mcp.<domain> is
-	// provisioned, and it names both URLs — so it is the copy most at risk of
-	// drifting outside the CSP contract.
-	dedi := osConnectorEndpointCard("https://mcp.example.com/mcp", endpoint, true, "")
-	assertCSPSafe(t, "osConnectorEndpointCard/dedicated", dedi)
-	if !strings.Contains(dedi, "https://mcp.example.com/mcp") {
-		t.Error("dedicated endpoint card must offer the dedicated URL")
-	}
-	if !strings.Contains(dedi, endpoint) {
-		t.Error("dedicated endpoint card must explain which URL it replaced, or the difference reads as a bug")
-	}
-
-	grant := osConnectorGrantCard()
-	assertCSPSafe(t, "osConnectorGrantCard", grant)
-	// The headline one-click choice mints a superuser ("*:*") key.
-	if !strings.Contains(grant, `data-mint="*:*"`) {
-		t.Error("grant card missing the full-control (*:*) one-click button")
-	}
-	// The limited presets must never silently include a wildcard.
-	for _, preset := range []string{`data-mint="posts:read,posts:write"`, `data-mint="posts:read,analytics:read"`} {
-		if !strings.Contains(grant, preset) {
-			t.Errorf("grant card missing limited preset %q", preset)
+	for name, out := range map[string]string{
+		"main domain": osConnectorPage(endpoint, endpoint, false, "", nil),
+		"dedicated":   osConnectorPage("https://mcp.example.com/mcp", endpoint, true, "", nil),
+		"blocked":     osConnectorPage(endpoint, endpoint, false, "mcp.example.com", nil),
+	} {
+		assertCSPSafe(t, "osConnectorPage/"+name, out)
+		if !strings.Contains(out, `data-page-kind="settings"`) {
+			t.Errorf("%s: VayuMCP is not rendered as a settings page", name)
 		}
+	}
+}
+
+// TestConnectorDedicatedEndpoint — the dedicated-host variant names both URLs:
+// the one to paste, and the one it replaced, or the difference reads as a bug.
+func TestConnectorDedicatedEndpoint(t *testing.T) {
+	out := osConnectorPage("https://mcp.example.com/mcp", "https://blog.example.com/mcp", true, "", nil)
+	if !strings.Contains(out, `id="cx-endpoint">https://mcp.example.com/mcp</code>`) {
+		t.Error("the endpoint row must offer the dedicated URL")
+	}
+	if !strings.Contains(out, "instead of https://blog.example.com/mcp") {
+		t.Error("the host row must say which URL the dedicated one replaced")
+	}
+}
+
+// TestConnectorGrants pins the one-click grants. The headline choice mints a
+// superuser key; the limited presets must never silently include a wildcard.
+func TestConnectorGrants(t *testing.T) {
+	grant := string(osConnectorGrants())
+	for _, preset := range []string{`data-mint="*:*"`, `data-mint="posts:read,posts:write"`, `data-mint="posts:read,analytics:read"`} {
+		if !strings.Contains(grant, preset) {
+			t.Errorf("grants missing preset %q", preset)
+		}
+	}
+	if n := strings.Count(grant, `data-mint="`); n != 3 {
+		t.Errorf("expected 3 one-click grants, got %d", n)
 	}
 	if !strings.Contains(grant, `href="/os/apikeys"`) {
-		t.Error("grant card should link to the API Keys page for custom grants")
+		t.Error("grants should link to the API keys page for a precise grant")
 	}
+}
 
-	connect := osConnectorConnectCard(endpoint)
-	assertCSPSafe(t, "osConnectorConnectCard", connect)
-	// The generic, client-agnostic configuration is what this page is for.
-	for _, want := range []string{"mcpServers", endpoint, "Authorization"} {
+// TestConnectorConnect — the generic, client-agnostic configuration is what
+// this page is for, and client-specific setup lives on its own pages
+// (ADR-0147).
+func TestConnectorConnect(t *testing.T) {
+	endpoint := "https://blog.example.com/mcp"
+	connect := string(osConnectorConnect(endpoint))
+	for _, want := range []string{"mcpServers", endpoint, "Authorization", keyTemplatePlaceholder} {
 		if !strings.Contains(connect, want) {
-			t.Errorf("connect card missing %q", want)
+			t.Errorf("connect section missing %q", want)
 		}
 	}
-	// Client-specific setup moved to its own pages (ADR-0147). This page must
-	// route the reader there — dropping the instructions without a pointer would
-	// leave a Claude or Buzz operator with nowhere to go.
+	// Every sheet a row opens must exist, or the button does nothing.
+	for _, id := range []string{"cx-generic", "cx-proxy"} {
+		if !strings.Contains(connect, `data-sheet="`+id+`"`) || !strings.Contains(connect, `<dialog class="sa-sheet" id="`+id+`"`) {
+			t.Errorf("sheet %q is not both opened and present", id)
+		}
+	}
+	// The WAF expression is the actionable payload of the proxy sheet.
+	for _, want := range []string{`"/mcp"`, `"/oauth/"`, `"/.well-known/"`} {
+		if !strings.Contains(connect, want) {
+			t.Errorf("proxy sheet missing the path %s to exempt", want)
+		}
+	}
+	// Dropping client instructions without a pointer would leave a Claude or
+	// Buzz operator with nowhere to go…
 	for _, want := range []string{`href="/os/claudecode"`, `href="/os/buzz"`} {
 		if !strings.Contains(connect, want) {
-			t.Errorf("connect card must link to the guided page %q", want)
+			t.Errorf("connect section must link to the guided page %q", want)
 		}
 	}
-	// …and must not have kept a stale copy of them, or the two pages drift.
+	// …and a stale copy of them here would drift from those pages.
 	for _, gone := range []string{"claude mcp add", "claude_desktop_config.json"} {
 		if strings.Contains(connect, gone) {
-			t.Errorf("connect card still carries client-specific setup %q — it belongs on /os/claudecode", gone)
+			t.Errorf("connect section still carries client-specific setup %q; it belongs on /os/claudecode", gone)
 		}
 	}
 }
 
 // TestConnectorEndpointNotDoubleEscaped guards the fix for the review finding:
-// a Host with an HTML-special char must be encoded exactly once in the Claude
-// Desktop config, identically to the CLI snippet — never double-encoded.
+// a Host with an HTML-special char must be encoded exactly once in the config,
+// never double-encoded.
 func TestConnectorEndpointNotDoubleEscaped(t *testing.T) {
-	out := osConnectorConnectCard("https://a&b.example.com/mcp")
+	out := string(osConnectorConnect("https://a&b.example.com/mcp"))
 	if strings.Contains(out, "&amp;amp;") {
-		t.Error("endpoint is double HTML-escaped in the connect card (expected single encoding)")
+		t.Error("endpoint is double HTML-escaped in the connect section (expected single encoding)")
 	}
 	if !strings.Contains(out, "https://a&amp;b.example.com/mcp") {
 		t.Error("endpoint should appear single-encoded (&amp;) in the rendered snippet")
@@ -326,25 +343,29 @@ func TestProbeIdentifiesWhoAnswered(t *testing.T) {
 // message. Getting this wrong sends an operator to provision a host that already
 // exists, which is exactly the wrong hour of work.
 func TestBlockedHostIsReportedDistinctlyFromMissing(t *testing.T) {
-	apexOnly := osConnectorEndpointCard("https://example.com/mcp", "https://example.com/mcp", false, "")
-	blocked := osConnectorEndpointCard("https://example.com/mcp", "https://example.com/mcp", false, "mcp.example.com")
-	assertCSPSafe(t, "osConnectorEndpointCard/blocked", blocked)
+	apexOnly := osConnectorPage("https://example.com/mcp", "https://example.com/mcp", false, "", nil)
+	blocked := osConnectorPage("https://example.com/mcp", "https://example.com/mcp", false, "mcp.example.com", nil)
 
-	if !strings.Contains(blocked, "mcp.example.com") {
+	if !strings.Contains(blocked, "mcp.example.com is answered by something in front of this server") {
 		t.Error("the blocked notice must name the host that is being blocked")
 	}
 	if !strings.Contains(blocked, "DNS only") {
 		t.Error("the blocked notice must say what to change; naming a fault without the fix is half a message")
 	}
-	if blocked == apexOnly {
-		t.Error("a blocked dedicated host renders identically to having none — the two need opposite actions")
+	// Named, and in the warn tone: one assertion holds both, so neither can be
+	// dropped alone.
+	if !strings.Contains(blocked, string(ui.State("warn", "Dedicated host blocked"))) {
+		t.Error("a blocked dedicated host must be a warning, named distinctly from the main domain")
+	}
+	if !strings.Contains(apexOnly, string(ui.State("neutral", "Main domain"))) {
+		t.Error("serving on the main domain by choice must read as a neutral state")
 	}
 }
 
-// TestConnectorStatsSurfaceFullControlKeys — this page mints superuser keys in
+// TestConnectorStateSurfacesFullControlKeys — this page mints superuser keys in
 // one click, and a superuser key can run the entire site. How many exist is the
-// one number an operator should not have to read down a table to find.
-func TestConnectorStatsSurfaceFullControlKeys(t *testing.T) {
+// one number an operator should not have to read down a list to find.
+func TestConnectorStateSurfacesFullControlKeys(t *testing.T) {
 	limited := apikeys.NewPermissions()
 	limited.Grant(apikeys.SectionPosts, apikeys.ActionWrite)
 	keys := []apikeys.Key{
@@ -352,51 +373,38 @@ func TestConnectorStatsSurfaceFullControlKeys(t *testing.T) {
 		{ID: "b", Permissions: limited, Active: true},
 		{ID: "c", Permissions: apikeys.Superuser(), Active: true},
 	}
-
-	out := osConnectorStats("https://mcp.example.com/mcp", keys, true, "")
-	assertCSPSafe(t, "osConnectorStats", out)
-	if !strings.Contains(out, "Full-control keys") {
-		t.Error("the stat strip does not surface how many superuser keys are live")
+	out := string(osConnectorState(keys))
+	if !strings.Contains(out, string(ui.State("ok", "3 connectors connected"))) {
+		t.Errorf("expected 3 connectors connected, got:\n%s", out)
 	}
-	// Two superuser keys, and the tile must be marked for attention.
-	if !strings.Contains(out, "stat-card--warn") {
-		t.Error("full-control keys exist but nothing marks the tile as needing attention")
+	if !strings.Contains(out, string(ui.State("warn", "2 with full control"))) {
+		t.Errorf("full-control keys exist but the state does not warn of them:\n%s", out)
 	}
-	if !strings.Contains(out, "mcp.example.com") {
-		t.Error("the strip must name the host actually being served")
-	}
-	if !strings.Contains(out, "Dedicated host") {
-		t.Error("a dedicated endpoint host is not reflected in the strip")
-	}
-
-	// A blocked dedicated host is a warning state, distinct from serving on the
-	// main domain by choice.
-	blocked := osConnectorStats("https://example.com/mcp", nil, false, "mcp.example.com")
-	if !strings.Contains(blocked, "blocked") && !strings.Contains(blocked, "Dedicated host blocked") {
-		t.Error("a blocked dedicated host is not surfaced in the stat strip")
-	}
-	// No keys at all: nothing should be flagged.
-	clean := osConnectorStats("https://example.com/mcp", nil, false, "")
-	if strings.Contains(clean, "stat-card--warn") {
-		t.Error("an install with no keys and no dedicated host is showing a warning")
+	if clean := string(osConnectorState(nil)); strings.Contains(clean, "sa-dot--warn") {
+		t.Error("an install with no keys is showing a warning")
 	}
 }
 
-// TestStatStripCountsOnlyUsableConnectors — a paused connector is not active,
-// and a paused full-control key is not a live grant. Counting either would put a
-// number in the strip that the panels below it contradict.
-func TestStatStripCountsOnlyUsableConnectors(t *testing.T) {
+// TestConnectorStateCountsOnlyUsableConnectors — a paused connector is not
+// connected, and a paused or expired full-control key is not a live grant.
+// Counting either would put a number beside the title that the list under it
+// contradicts. Expired is named apart from paused: Resume cannot revive it.
+func TestConnectorStateCountsOnlyUsableConnectors(t *testing.T) {
 	past := time.Now().Add(-time.Hour)
 	keys := []apikeys.Key{
 		{ID: "live", Permissions: apikeys.Superuser(), Active: true},
 		{ID: "paused", Permissions: apikeys.Superuser(), Active: false},
 		{ID: "expired", Permissions: apikeys.Superuser(), Active: true, ExpiresAt: &past},
 	}
-	out := osConnectorStats("https://example.com/mcp", keys, false, "")
-	if !strings.Contains(out, ">1<") {
-		t.Error("the strip does not report exactly one active connector out of three rows")
-	}
-	if !strings.Contains(out, "paused") {
-		t.Error("connectors that are not counted as active should be accounted for, not silently dropped")
+	out := string(osConnectorState(keys))
+	for _, want := range []ui.HTML{
+		ui.State("ok", "1 connector connected"),
+		ui.State("neutral", "1 paused"),
+		ui.State("neutral", "1 expired"),
+		ui.State("warn", "1 with full control"),
+	} {
+		if !strings.Contains(out, string(want)) {
+			t.Errorf("state missing %s, got:\n%s", want, out)
+		}
 	}
 }

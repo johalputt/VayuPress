@@ -1150,6 +1150,25 @@ func pageUsesPurify(body string) bool { return strings.Contains(body, "data-edit
 // adminOSShellHead emits the VayuOS document head, sidebar, topbar and the
 // opening <main class="content"> tag. The caller appends body content and then
 // adminOSShellFoot.
+// vpLayerScript mounts a confirm or prompt in the browser's top layer, in a
+// modal <dialog> of its own.
+//
+// Appending it to <body> as a plain element worked until forms moved into
+// sheets. A sheet is a modal <dialog>, and while one is open everything outside
+// it is inert: a confirmation asked from inside a sheet (Disconnect on a
+// VayuMCP connector, Delete on a stored credential) was drawn underneath it and
+// could not be clicked. Raising a z-index cannot fix that, because inertness is
+// not about stacking; only another modal dialog sits above one. The Escape key
+// stays with the caller's own handler, so cancel is only kept from closing the
+// host behind the caller's back.
+const vpLayerScript = `window.vpLayer=function(backdrop){
+  var host=document.createElement('dialog');host.className='vp-layer';
+  host.addEventListener('cancel',function(e){e.preventDefault();});
+  host.appendChild(backdrop);document.body.appendChild(host);
+  if(host.showModal)host.showModal();else host.setAttribute('open','');
+  return function(){if(host.open&&host.close)host.close();if(host.parentNode)host.parentNode.removeChild(host);};
+};`
+
 // vpConfirm is the shared CSP-safe confirmation dialog (Wave 3.11): a real
 // focus-aware modal built with createElement and textContent only — the
 // browser-native confirm() is an unstyled chrome blob that cannot say what will
@@ -1167,13 +1186,14 @@ const vpConfirmScript = `window.vpConfirm=function(opts,onYes){
   var ok=document.createElement('button');ok.type='button';ok.className='btn btn--danger btn--sm';ok.textContent=opts.confirm||'Confirm';
   row.appendChild(cancel);row.appendChild(ok);
   box.appendChild(t);if(opts.message)box.appendChild(m);box.appendChild(row);backdrop.appendChild(box);
-  function close(){if(backdrop.parentNode)backdrop.parentNode.removeChild(backdrop);document.removeEventListener('keydown',onKey);if(lastFocus&&lastFocus.focus)lastFocus.focus();}
+  var unmount;
+  function close(){if(unmount)unmount();document.removeEventListener('keydown',onKey);if(lastFocus&&lastFocus.focus)lastFocus.focus();}
   function onKey(e){if(e.key==='Escape'){e.preventDefault();close();}else if(e.key==='Tab'){var f=[ok,cancel];var i=f.indexOf(document.activeElement);e.preventDefault();f[(i+1)%2].focus();}}
   cancel.addEventListener('click',close);
   backdrop.addEventListener('click',function(e){if(e.target===backdrop)close();});
   ok.addEventListener('click',function(){close();if(onYes)onYes();});
   document.addEventListener('keydown',onKey);
-  document.body.appendChild(backdrop);
+  unmount=vpLayer(backdrop);
   ok.focus();
 };`
 
@@ -1215,7 +1235,8 @@ const vpPromptScript = `window.vpPrompt=function(opts,onDone){
   var cancel=document.createElement('button');cancel.type='button';cancel.className='btn btn--ghost btn--sm';cancel.textContent=opts.cancel||'Cancel';
   var ok=document.createElement('button');ok.type='button';ok.className='btn btn--primary btn--sm';ok.textContent=opts.confirm||'Save';
   row.appendChild(cancel);row.appendChild(ok);box.appendChild(row);backdrop.appendChild(box);
-  function finish(v){if(backdrop.parentNode)backdrop.parentNode.removeChild(backdrop);document.removeEventListener('keydown',onKey);if(lastFocus&&lastFocus.focus)lastFocus.focus();if(onDone)onDone(v);}
+  var unmount;
+  function finish(v){if(unmount)unmount();document.removeEventListener('keydown',onKey);if(lastFocus&&lastFocus.focus)lastFocus.focus();if(onDone)onDone(v);}
   function close(){finish(null);}
   function submit(){finish((inp.value||'').trim());}
   function onKey(e){if(e.key==='Escape'){e.preventDefault();close();}else if(e.key==='Tab'){var f=[inp,ok,cancel];var i=f.indexOf(document.activeElement);e.preventDefault();f[(i+1)%3].focus();}}
@@ -1224,7 +1245,7 @@ const vpPromptScript = `window.vpPrompt=function(opts,onDone){
   ok.addEventListener('click',submit);
   inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();submit();}});
   document.addEventListener('keydown',onKey);
-  document.body.appendChild(backdrop);
+  unmount=vpLayer(backdrop);
   inp.focus();inp.select();
 };`
 
@@ -1403,7 +1424,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.sidebar [data-copy], .w
   });
 });
 })();
-` + vpConfirmScript + vpPromptScript + `
+` + vpLayerScript + vpConfirmScript + vpPromptScript + `
 </script>
 ` + alpine + `<!-- Bootstrap (nonce-gated, reads data-admin-theme from body) -->
 ` + purifyTag + `

@@ -283,15 +283,7 @@ func (a *App) handleOSConnector(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	body := osConnectorIntro() +
-		osConnectorStats(endpoint, connectors, dedicated, blockedHost) +
-		`<div class="section-head"><span class="section-head__title">Your connector endpoint</span><span class="section-head__hint">The single URL every MCP client connects to</span></div>` +
-		osConnectorEndpointCard(endpoint, apexEndpoint, dedicated, blockedHost) +
-		`<div class="section-head"><span class="section-head__title">Grant access</span><span class="section-head__hint">A connector is exactly as powerful as the key you give it</span></div>` +
-		osConnectorGrantCard() +
-		osConnectorConnectCard(endpoint) +
-		`<div class="section-head"><span class="section-head__title">Active connectors</span><span class="section-head__hint">Revoking one disconnects that client immediately</span></div>` +
-		osConnectorManageCard(connectors)
+	body := osConnectorPage(endpoint, apexEndpoint, dedicated, blockedHost, connectors)
 
 	full := adminOSShellHead(nonce, "VayuMCP", "connector", cfg) +
 		body +
@@ -299,152 +291,81 @@ func (a *App) handleOSConnector(w http.ResponseWriter, r *http.Request) {
 	writeOSHTML(w, r, full)
 }
 
-func osConnectorIntro() string {
-	return `<div class="page-header">
-  <h1>VayuMCP</h1>
-  <div class="page-actions">
-    <a class="btn btn--sm" href="/docs/compatibility/mcp" target="_blank" rel="noopener">Connector docs</a>
-    <span id="cx-status" role="status" aria-live="polite" class="text-xs muted"></span>
-  </div>
-</div>
-<p class="page-sub">Let an AI client run this site with its own tools. What it can do is decided by the key you grant.</p>
-` + string(ui.Explain(ui.HTML(`<p><strong>VayuMCP</strong> is a built-in <strong>Model Context Protocol</strong> connector: it lets an AI client connect directly to this site and run it with a native set of tools — publish posts, build pages, read analytics, search content, and more. This page is the <strong>protocol surface</strong> — your endpoint, your grants, and every client currently connected. What a client can do is decided <strong>entirely by the key you grant below</strong>: a full-control key lets it run the whole site; a limited key exposes only what you allow. It is simply your API, spoken in MCP.</p><p>Setting up a specific client? <a href="/os/claudecode"><strong>Claude Code</strong></a> and <a href="/os/buzz"><strong>Buzz</strong></a> have their own step-by-step pages. Everything else — Cursor, Cline, or anything that speaks MCP over HTTP — connects with the endpoint and configuration below.</p>`))) + `
+// osConnectorPage is the page body. It takes the request-derived endpoint and
+// the connectors as arguments so the tests render exactly what an operator sees.
+func osConnectorPage(endpoint, apex string, dedicated bool, blockedHost string, connectors []apikeys.Key) string {
+	return string(ui.SettingsPage("VayuMCP", osConnectorState(connectors),
+		"Let an AI client run this site with its own tools. What it can do is decided by the key you grant.",
+		ui.HTML(osConnectorIntro()),
+		ui.Section("Endpoint", "The one URL every MCP client connects to", ui.Rows(mcpEndpointRows("cx-endpoint", endpoint, apex, dedicated, blockedHost)...)),
+		ui.Section("Grant access", "A connector is as powerful as its key", osConnectorGrants()),
+		ui.Section("Connect a client", "A granted key is filled in", osConnectorConnect(endpoint)),
+		ui.Section("Connected clients", "Disconnecting one stops that client at once", ui.HTML(osConnectorManageCard(connectors))),
+	))
+}
 
-<div id="cx-token-banner" class="card ak-token-banner" hidden>
+// osConnectorIntro is the one-time key banner, hidden until a key is minted,
+// and the status line the page script writes to.
+func osConnectorIntro() string {
+	return `<div id="cx-token-banner" class="card ak-token-banner" hidden>
   <div class="settings-block-title">Copy your new connector key now</div>
-  <p class="text-sm muted">This is the only time the full key is shown. Paste it into the connector configuration below (it has been filled in for you), then store it somewhere safe — you won't be able to see it again.</p>
+  <p class="text-sm muted">This is the only time the full key is shown. It has been filled into the configuration below: copy it, then keep it somewhere safe.</p>
   <div class="ak-token-row">
     <input id="cx-token-value" class="input font-mono ak-token-input" type="text" readonly>
     <button type="button" class="btn btn--sm" id="cx-token-copy">Copy key</button>
     <button type="button" class="btn btn--primary btn--sm" id="cx-token-done">Done</button>
   </div>
-</div>`
+</div>
+<p class="page-lead"><span id="cx-status" role="status" aria-live="polite" class="text-xs muted"></span></p>`
 }
 
-// osConnectorStats is the at-a-glance strip, matching the Monetization and
-// Domains & DNS pages: what is granted, and whether the endpoint is on the host
-// that cannot be challenged.
+// osConnectorState is the page's state beside its title: live connectors,
+// paused and expired ones, and how many live ones hold full control.
 //
-// Full-control keys get their own tile deliberately. A superuser key can run the
-// whole site, and this page hands them out in one click — an operator should be
-// able to see how many exist without reading down a table.
-func osConnectorStats(endpoint string, keys []apikeys.Key, dedicated bool, blockedHost string) string {
-	// "Active" must mean active. Counting paused and expired connectors here would
-	// put a number on the page that the panels underneath contradict — and a
-	// full-control key that is paused is not a live grant, so folding it into the
-	// warning count would overstate exposure too.
-	full, live, idle := 0, 0, 0
+// "Connected" must mean connected. Counting paused and expired connectors as
+// live would put a number beside the title that the list underneath
+// contradicts, and a full-control key that is paused is not a live grant, so
+// counting it in the warning would overstate exposure too. Expired is told
+// apart from paused for the same reason the list does: Resume cannot bring an
+// expired key back.
+func osConnectorState(keys []apikeys.Key) ui.HTML {
+	full, live, paused, expired := 0, 0, 0, 0
 	now := time.Now()
 	for _, k := range keys {
-		usable := k.Active && (k.ExpiresAt == nil || k.ExpiresAt.After(now))
-		if usable {
+		switch {
+		case k.ExpiresAt != nil && !k.ExpiresAt.After(now):
+			expired++
+		case !k.Active:
+			paused++
+		default:
 			live++
 			if k.Permissions.IsSuperuser() {
 				full++
 			}
-		} else {
-			idle++
 		}
 	}
-	host := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(endpoint, "https://"), "http://"), "/mcp")
-
-	hostLabel, hostTone := "Main domain", ""
-	switch {
-	case dedicated:
-		hostLabel = "Dedicated host"
-	case blockedHost != "":
-		hostLabel, hostTone = "Dedicated host blocked", "warn"
+	st := connectorState(live, full, paused, "connector")
+	if expired > 0 {
+		st += " " + ui.State("neutral", strconv.Itoa(expired)+" expired")
 	}
-	fullTone := ""
-	if full > 0 {
-		fullTone = "warn"
-	}
-	tile := func(value, label, tone string) string { return osStatTile(label, value, tone) }
-	activeLabel := "Active connectors"
-	if idle > 0 {
-		activeLabel += " · " + strconv.Itoa(idle) + " paused"
-	}
-	return `<div class="stat-grid">` +
-		tile(strconv.Itoa(live), activeLabel, "") +
-		tile(strconv.Itoa(full), "Full-control keys", fullTone) +
-		`</div>` + mcpEndpointFacts(host, hostLabel, hostTone)
+	return st
 }
 
-func osConnectorEndpointCard(endpoint, apex string, dedicated bool, blockedHost string) string {
-	e := html.EscapeString(endpoint)
-	note := ""
-	if dedicated {
-		// Say WHY this differs from the address in the browser bar. An endpoint
-		// that silently disagrees with the site you are administering reads as a
-		// mistake, and an operator who "corrects" it back to the apex walks
-		// straight into the failure this is here to avoid.
-		note = `<p class="text-sm muted mb-4"><span class="badge badge--ok">Dedicated host</span> This install has a working <code>` +
-			html.EscapeString(strings.TrimSuffix(strings.TrimPrefix(endpoint, "https://"), "/mcp")) +
-			`</code> is offered instead of <code>` + html.EscapeString(apex) + `</code> because it is not proxied.` +
-			string(ui.Tip("Both reach this same server with the same authentication, but the dedicated host is not proxied, so a bot challenge or firewall rule on your main domain can never sit in front of it. An MCP client has no browser and cannot answer a challenge, and when one appears the request never reaches this server to be logged.")) + `</p>`
-	} else if blockedHost != "" {
-		// The diagnosis an operator otherwise has to reach with curl and a header
-		// dump: the dedicated host EXISTS, and something in front of it answered
-		// instead of this server. Naming that distinctly matters — "not set up" and
-		// "set up but proxied" need opposite actions.
-		note = `<p class="text-sm muted mb-4"><span class="badge badge--warn">Blocked</span> <code>` +
-			html.EscapeString(blockedHost) + `</code> is answered by something in front of this server. Switch it to DNS only at your DNS provider.` +
-			string(ui.Tip("A bot challenge or firewall interstitial answered instead of VayuPress. A machine client cannot answer one, so that host is unusable until it is DNS only (the grey cloud in Cloudflare). Nothing needs changing here; the endpoint above stays on your main domain until the dedicated host answers directly.")) + `</p>`
-	} else {
-		note = `<p class="text-sm muted mb-4">A proxy that challenges visitors can break this endpoint.` + string(ui.Tip("An MCP client has no browser and cannot answer a challenge. A dedicated mcp.<your-domain> host with the proxy switched off avoids that permanently; once it is pointed and provisioned, this page offers it here automatically.")) + `</p>`
-	}
-	return `<div class="card">
-  <p class="text-sm mb-4">The one URL every MCP client connects to.` + string(ui.Tip("It is served by VayuPress itself, with no extra service and no extra port. Requests are authenticated with the key you grant below.")) + `</p>
-  ` + note + `
-  <div class="ak-token-row">
-    <input id="cx-endpoint" class="input font-mono ak-token-input" type="text" readonly value="` + e + `">
-    <button type="button" class="btn btn--sm" data-copy="#cx-endpoint">Copy</button>
-  </div>
-</div>`
+// osConnectorGrants are the one-click grants. Each mints through the scoped
+// key create endpoint with its capability set in data-mint.
+func osConnectorGrants() ui.HTML {
+	return ui.Rows(
+		mcpGrantRow(true, "Full control", "Every tool, now and as the toolset grows.", "*:*", "VayuMCP (full control)", "Grant full control"),
+		mcpGrantRow(false, "Author", "Write and organise posts and pages; nothing else.", "posts:read,posts:write", "VayuMCP (author)", "Grant author access"),
+		mcpGrantRow(false, "Read only", "Read posts, pages and analytics; change nothing.", "posts:read,analytics:read", "VayuMCP (read-only)", "Grant read-only access"),
+		ui.Row{Label: "A precise grant", Hint: "Any sections and actions you choose. Every action a client takes is audited.",
+			Control: `<a class="settings-row-go" href="/os/apikeys">API keys` + ui.Icon("chev-r") + `</a>`},
+	)
 }
 
-// osConnectorGrantCard renders the two one-click choices: full control (a
-// superuser key) or a limited preset. Both mint through the existing scoped-key
-// create endpoint; the preset buttons carry their capability set in data-caps.
-func osConnectorGrantCard() string {
-	return `<div class="card">
-  <p class="text-sm mb-4">How much may the client do? A grant can be revoked below, and every action is audited.</p>
-
-  <div class="cx-grant-grid">
-    <div class="cx-grant cx-grant--full">
-      <div class="cx-grant-head">
-        <span class="settings-row-label">Full control</span>
-        <span class="badge badge--accent">Everything</span>
-      </div>
-      <p class="text-sm muted">Every tool, now and as the toolset grows.</p>
-      <button type="button" class="btn btn--primary" data-mint="*:*" data-label="VayuMCP (full control)">Grant full control</button>
-    </div>
-
-    <div class="cx-grant">
-      <div class="cx-grant-head">
-        <span class="settings-row-label">Author only</span>
-        <span class="badge">Posts &amp; pages</span>
-      </div>
-      <p class="text-sm muted">Write and organise posts and pages; nothing else.</p>
-      <button type="button" class="btn" data-mint="posts:read,posts:write" data-label="VayuMCP (author)">Grant author access</button>
-    </div>
-
-    <div class="cx-grant">
-      <div class="cx-grant-head">
-        <span class="settings-row-label">Read only</span>
-        <span class="badge">Look, don't touch</span>
-      </div>
-      <p class="text-sm muted">Read posts, pages and analytics; change nothing.</p>
-      <button type="button" class="btn" data-mint="posts:read,analytics:read" data-label="VayuMCP (read-only)">Grant read-only access</button>
-    </div>
-  </div>
-
-  <p class="field-hint mt-2">For a precise grant, build a scoped key on <a href="/os/apikeys">API Keys</a>.</p>
-</div>`
-}
-
-// osConnectorConnectCard shows the generic, client-agnostic configuration plus
-// the proxy reference.
+// osConnectorConnect is how a client connects: the generic, client-agnostic
+// configuration, the clients with their own guided pages, and the proxy
+// reference.
 //
 // It used to carry four blocks — claude.ai one-click, Claude Desktop, Claude Code
 // CLI, and the proxy note — which made a page about a protocol spend most of its
@@ -455,7 +376,7 @@ func osConnectorGrantCard() string {
 // cfg embeds the RAW endpoint. mcpSnippet html-escapes the whole block exactly
 // once; escaping the endpoint first would double-encode any HTML-special char a
 // valid Host may contain.
-func osConnectorConnectCard(endpoint string) string {
+func osConnectorConnect(endpoint string) ui.HTML {
 	cfg := `{
   "mcpServers": {
     "vayupress": {
@@ -465,25 +386,15 @@ func osConnectorConnectCard(endpoint string) string {
   }
 }`
 
-	generic := `<div class="card">
-  <p class="text-sm muted">A URL plus a header. Grant a key above and it is filled in.</p>
-  ` + mcpSnippet("cx-cfg-generic", cfg) + `
-  <p class="field-hint mt-2">X-API-Key works as well as Authorization: Bearer.` + string(ui.Tip("The transport is MCP over Streamable HTTP (JSON-RPC 2.0).")) + `</p>
-</div>`
+	generic := `<p class="text-sm muted mb-3">A URL plus a header. Grant a key above and it is filled in.</p>
+` + mcpSnippet("cx-cfg-generic", cfg) + `
+<p class="field-hint mt-2">X-API-Key works as well as Authorization: Bearer.` + string(ui.Tip("The transport is MCP over Streamable HTTP (JSON-RPC 2.0).")) + `</p>`
 
-	clients := `<div class="card">
-  <p class="text-sm muted">Two clients have guided pages, because their setup differs enough to be worth its own walkthrough:</p>
-  <p class="text-sm muted mt-2"><a href="/os/claudecode"><strong>Claude Code →</strong></a> Claude Code, Claude Desktop and claude.ai. The one-click route there needs no key at all — Claude signs in through this site's OAuth&nbsp;2.1 server and you approve a scope on screen.</p>
-  <p class="text-sm muted mt-2"><a href="/os/buzz"><strong>Buzz →</strong></a> agents in a Buzz workspace, which reach this endpoint through their agent harness.</p>
-  <p class="field-hint mt-2">Anything else — Cursor, Cline, a custom client — uses the configuration above unchanged.</p>
-</div>`
-
-	// The proxy/WAF section is reference material: essential when it bites, noise
-	// on every other visit. It used to run to five dense paragraphs sitting between
-	// the operator and the connector list, so it dominated a page whose actual job
-	// is "copy an endpoint, grant a key". Folded away, findable by its own title.
-	proxy := `<div class="card">
-  <p class="text-sm muted">An MCP client reaches this server <strong>machine-to-machine</strong> — no browser is in the loop for the API calls — so it <strong>cannot pass a JavaScript &ldquo;challenge&rdquo; / &ldquo;Just a moment&hellip;&rdquo; page</strong>. If your site is proxied with <em>Bot&nbsp;Fight&nbsp;Mode</em>, a <em>Managed&nbsp;Challenge</em>, a custom rule, or <em>Under&nbsp;Attack</em> mode on, those requests are stopped <strong>before they reach VayuPress</strong> and Connect fails with &ldquo;couldn't register&rdquo; — the request never appears in this server's log, which is what makes it hard to diagnose.</p>
+	// The proxy/WAF text is reference material: essential when it bites, noise
+	// on every other visit. It used to sit between the operator and the
+	// connector list and dominate a page whose job is "copy an endpoint, grant a
+	// key", so it opens in a sheet, findable by its own row.
+	proxy := `<p class="text-sm muted">An MCP client reaches this server <strong>machine-to-machine</strong> — no browser is in the loop for the API calls — so it <strong>cannot pass a JavaScript &ldquo;challenge&rdquo; / &ldquo;Just a moment&hellip;&rdquo; page</strong>. If your site is proxied with <em>Bot&nbsp;Fight&nbsp;Mode</em>, a <em>Managed&nbsp;Challenge</em>, a custom rule, or <em>Under&nbsp;Attack</em> mode on, those requests are stopped <strong>before they reach VayuPress</strong> and Connect fails with &ldquo;couldn't register&rdquo; — the request never appears in this server's log, which is what makes it hard to diagnose.</p>
   <p class="text-sm muted">Let these exact paths <strong>bypass the challenge</strong>: <code>/mcp</code>, <code>/oauth/*</code> and <code>/.well-known/*</code>. <code>/mcp</code> matters <em>after</em> connecting too — every tool call runs over it, so a challenge there breaks the connector on first use. In Cloudflare: <em>Security → WAF → Custom rules</em>, action <strong>Skip</strong>, ticking <em>Managed rules</em>, <em>Super Bot Fight Mode</em>, <em>Rate limiting rules</em> and <em>Browser Integrity Check</em>. <strong>On the free plan</strong> you get only a handful of custom rules — if you are at the cap, append these paths to an existing Skip rule instead of adding one:</p>
   <pre class="cx-code font-mono" id="cx-waf-expr">starts_with(http.request.uri.path, "/mcp") or
 starts_with(http.request.uri.path, "/oauth/") or
@@ -492,15 +403,23 @@ starts_with(http.request.uri.path, "/.well-known/")</pre>
     <button type="button" class="btn btn--sm" data-copy="#cx-waf-expr">Copy expression</button>
   </div>
   <p class="field-hint mt-2">Verify with a plain <code>curl</code> of your site's <code>/health</code> endpoint: it must return JSON, <strong>not</strong> a challenge page. When curl gets through, an MCP client will too.</p>
-  <p class="field-hint mt-2"><strong>Can't scope the challenge per path?</strong> (Bot&nbsp;Fight&nbsp;Mode on the free plan cannot be.) Point a dedicated <code>mcp.&lt;your-domain&gt;</code> record straight at this server with the <strong>proxy OFF (&ldquo;DNS only&rdquo;)</strong>. Your main site keeps full protection; only this host is direct, and VayuShield still guards it. VayuPress provisions the certificate and vhost itself — run <code>sudo bash scripts/setup-mcp-subdomain.sh</code>, or re-run your update once the record exists. This page then offers that host automatically.</p>
-</div>`
+  <p class="field-hint mt-2"><strong>Can't scope the challenge per path?</strong> (Bot&nbsp;Fight&nbsp;Mode on the free plan cannot be.) Point a dedicated <code>mcp.&lt;your-domain&gt;</code> record straight at this server with the <strong>proxy OFF (&ldquo;DNS only&rdquo;)</strong>. Your main site keeps full protection; only this host is direct, and VayuShield still guards it. VayuPress provisions the certificate and vhost itself — run <code>sudo bash scripts/setup-mcp-subdomain.sh</code>, or re-run your update once the record exists. This page then offers that host automatically.</p>`
 
-	return `<div class="section-head"><span class="section-head__title">Connect a client</span><span class="section-head__hint">A granted key is filled in automatically</span></div>
-<div class="mon-stack">` +
-		monAcc(saIcon("plug"), "Any MCP client", "URL plus a header — the standard shape", `<span class="mon-chip mon-chip--on">● Start here</span>`, true, generic) +
-		monAcc(saIcon("compass"), "Guided setup for a specific client", "Claude Code · Buzz", `<span class="mon-chip mon-chip--off">○ Own pages</span>`, false, clients) +
-		monAcc(saIcon("shield"), "Behind a proxy or WAF?", "The most common reason Connect fails", `<span class="mon-chip mon-chip--off">○ Reference</span>`, false, proxy) +
-		`</div>`
+	link := func(href, text string) ui.HTML {
+		return ui.HTML(`<a class="settings-row-go" href="` + href + `">` + text + string(ui.Icon("chev-r")) + `</a>`)
+	}
+	return ui.Rows(
+		ui.Row{Icon: "plug", Label: "Any MCP client", Hint: "A URL plus a header: the shape Cursor, Cline and custom clients use unchanged.",
+			Control: `<button type="button" class="btn btn--sm" data-sheet="cx-generic">Show the config</button>`},
+		ui.Row{Icon: "compass", Label: "Claude Code, Claude Desktop and claude.ai", Hint: "Guided setup. The one-click route needs no key: Claude signs in through this site's OAuth 2.1 server and you approve a scope on screen.",
+			Control: link("/os/claudecode", "Claude Code")},
+		ui.Row{Icon: "compass", Label: "Buzz", Hint: "Agents in a Buzz workspace, which reach this endpoint through their agent harness.",
+			Control: link("/os/buzz", "Buzz")},
+		ui.Row{Icon: "shield", Label: "Behind a proxy or WAF?", Hint: "The most common reason Connect fails.",
+			Control: `<button type="button" class="btn btn--sm" data-sheet="cx-proxy">What to allow</button>`},
+	) +
+		ui.Sheet("cx-generic", "Any MCP client", ui.HTML(generic)) +
+		ui.Sheet("cx-proxy", "Behind a proxy or WAF", ui.HTML(proxy))
 }
 
 // osConnectorManageCard lists the operator's live (non-revoked, external) keys so
@@ -545,11 +464,12 @@ func connectorDetailRow(label, value string) string {
 // is the difference between this and Revoke, which is permanent.
 func osConnectorManageCard(keys []apikeys.Key) string {
 	if len(keys) == 0 {
-		return `<div class="card"><div class="empty-state">No connectors yet. Grant a key above, then connect a client.</div></div>`
+		return `<p class="muted text-sm">No connectors yet. Grant a key above, then connect a client.</p>`
 	}
 
 	unused := 0
-	panels := ""
+	var rows []ui.Row
+	sheets := ""
 	for _, k := range keys {
 		id := html.EscapeString(k.ID)
 
@@ -561,12 +481,12 @@ func osConnectorManageCard(keys []apikeys.Key) string {
 		// Status. Expiry is checked before the active flag: an expired key is
 		// already refused by the auth cache, so calling it "Paused" would invite an
 		// operator to press Resume and watch nothing change.
-		state, chip, icon := "active", `<span class="mon-chip mon-chip--on">● Active</span>`, saIcon("plug")
+		state, chip, icon := "active", ui.State("ok", "Active"), "plug"
 		switch {
 		case k.ExpiresAt != nil && k.ExpiresAt.Before(time.Now()):
-			state, chip, icon = "expired", `<span class="mon-chip mon-chip--off">○ Expired</span>`, saIcon("hourglass")
+			state, chip, icon = "expired", ui.State("neutral", "Expired"), "hourglass"
 		case !k.Active:
-			state, chip, icon = "paused", `<span class="mon-chip mon-chip--off">○ Paused</span>`, saIcon("power")
+			state, chip, icon = "paused", ui.State("neutral", "Paused"), "power"
 		}
 
 		// The subtitle carries the one fact that tells two connectors apart.
@@ -615,19 +535,23 @@ func osConnectorManageCard(keys []apikeys.Key) string {
 			toggle = `<button type="button" class="btn btn--sm" data-cx-resume="` + id + `">Resume</button>`
 		}
 
-		body := `<div class="card">
-  <div class="cx-details">` + details + `</div>
+		body := `<div class="cx-details">` + details + `</div>
   <div class="ak-cred-actions">` + toggle +
 			`<button type="button" class="btn btn--sm" data-revoke="` + id + `">Disconnect</button>
     <button type="button" class="btn btn--sm btn--danger" data-cx-remove="` + id + `">Remove</button>
+    <span class="text-xs muted" data-sheet-status role="status" aria-live="polite"></span>
   </div>
-  <p class="field-hint mt-2">Pause can be undone; Disconnect cannot.` + string(ui.Tip("Pause stops this connector immediately and can be undone: the same key works again on Resume. Disconnect is permanent: the key stops working for good and the record is kept for the audit log. Remove also deletes the record.")) + `</p>
-</div>`
+  <p class="field-hint mt-2">Pause stops it at once and Resume brings back the same key. Disconnect is permanent and keeps the record for the audit log; Remove deletes the record too.</p>`
 
-		panels += monAcc(icon, k.Label, activity, chip, false, body)
+		// ui.Sheet escapes the id it is given, so it takes the raw one; the
+		// opener escapes the same raw id once, or the two would not match.
+		sheet := "cx-conn-" + k.ID
+		rows = append(rows, ui.Row{Icon: icon, Label: k.Label, Hint: activity,
+			Control: chip + ui.HTML(`<button type="button" class="btn btn--sm" data-sheet="`+html.EscapeString(sheet)+`">Details</button>`)})
+		sheets += string(ui.Sheet(sheet, k.Label, ui.HTML(body)))
 	}
 
-	hint := `<p class="text-sm muted mb-4">Every client that has connected, and what it can reach.</p>`
+	hint := ""
 	if unused > 0 {
 		// Directly actionable: a key that has never been used is almost always a
 		// leftover from a connect attempt that failed, and these accumulate
@@ -637,19 +561,19 @@ func osConnectorManageCard(keys []apikeys.Key) string {
 		if unused == 1 {
 			word = " connector has"
 		}
-		hint += `<p class="text-sm muted mb-4"><span class="mon-chip mon-chip--off">○ ` + n + ` never used</span> ` +
-			n + word + ` never made a call. That usually means a connect attempt that did not finish — safe to remove.</p>`
+		hint = `<p class="text-sm muted mb-3">` + n + word + ` never made a call. That usually means a connect attempt that did not finish, and is safe to remove.</p>`
 	}
-	return `<div class="card">` + hint + `<div class="mon-stack">` + panels + `</div>
-  <p class="field-hint mt-2">Rotating a key, changing its expiry or editing per-section grants lives on the <a href="/os/apikeys">API Keys</a> page.</p>
-</div>`
+	return hint + string(ui.Rows(rows...)) + sheets +
+		`<p class="field-hint mt-3">Rotating a key, its expiry or its grants is on <a href="/os/apikeys">API keys</a>.</p>`
 }
 
 // osConnectorScript is the nonce-gated controller. It runs inside the shared
 // bootstrap IIFE (adminOSShellFoot), so csrf() is already in scope.
 const osConnectorScript = `
 var cxStatus=document.getElementById('cx-status');
-function cxSet(t,isErr){if(cxStatus){cxStatus.textContent=t;cxStatus.style.color=isErr?'var(--danger)':'var(--ok)';}}
+// A failure in a connector's sheet is said in that sheet: the page's status
+// line is behind it while it is open.
+function cxSet(t,isErr,from){var d=from&&from.closest('dialog');var s=(d&&d.querySelector('[data-sheet-status]'))||cxStatus;if(s){s.textContent=t;s.style.color=isErr?'var(--danger)':'var(--ok)';}}
 function cxPost(url,payload){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify(payload||{})}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});});}
 function cxCopy(text){if(navigator.clipboard){navigator.clipboard.writeText(text);}return true;}
 
@@ -702,8 +626,8 @@ document.addEventListener('click',function(ev){
     var id=revBtn.getAttribute('data-revoke');
     revBtn.disabled=true;
     cxPost('/os/api/apikeys/revoke',{id:id}).then(function(res){
-      if(res.ok){location.reload();}else{revBtn.disabled=false;cxSet(res.d.detail||'Could not disconnect',true);}
-    }).catch(function(e){revBtn.disabled=false;cxSet('Error: '+e,true);});
+      if(res.ok){location.reload();}else{revBtn.disabled=false;cxSet(res.d.detail||'Could not disconnect',true,revBtn);}
+    }).catch(function(e){revBtn.disabled=false;cxSet('Error: '+e,true,revBtn);});
     });
     return;
   }
@@ -715,8 +639,8 @@ document.addEventListener('click',function(ev){
     var pid=pauseBtn.getAttribute('data-cx-pause');
     pauseBtn.disabled=true;
     cxPost('/os/api/apikeys/deactivate',{id:pid}).then(function(res){
-      if(res.ok){location.reload();}else{pauseBtn.disabled=false;cxSet(res.d.detail||'Could not pause',true);}
-    }).catch(function(e){pauseBtn.disabled=false;cxSet('Error: '+e,true);});
+      if(res.ok){location.reload();}else{pauseBtn.disabled=false;cxSet(res.d.detail||'Could not pause',true,pauseBtn);}
+    }).catch(function(e){pauseBtn.disabled=false;cxSet('Error: '+e,true,pauseBtn);});
     return;
   }
   var resumeBtn=ev.target.closest('[data-cx-resume]');
@@ -724,8 +648,8 @@ document.addEventListener('click',function(ev){
     var rid=resumeBtn.getAttribute('data-cx-resume');
     resumeBtn.disabled=true;
     cxPost('/os/api/apikeys/activate',{id:rid}).then(function(res){
-      if(res.ok){location.reload();}else{resumeBtn.disabled=false;cxSet(res.d.detail||'Could not resume',true);}
-    }).catch(function(e){resumeBtn.disabled=false;cxSet('Error: '+e,true);});
+      if(res.ok){location.reload();}else{resumeBtn.disabled=false;cxSet(res.d.detail||'Could not resume',true,resumeBtn);}
+    }).catch(function(e){resumeBtn.disabled=false;cxSet('Error: '+e,true,resumeBtn);});
     return;
   }
   var rmBtn=ev.target.closest('[data-cx-remove]');
@@ -734,8 +658,8 @@ document.addEventListener('click',function(ev){
     var mid=rmBtn.getAttribute('data-cx-remove');
     rmBtn.disabled=true;
     cxPost('/os/api/apikeys/delete',{id:mid}).then(function(res){
-      if(res.ok){location.reload();}else{rmBtn.disabled=false;cxSet(res.d.detail||'Could not remove',true);}
-    }).catch(function(e){rmBtn.disabled=false;cxSet('Error: '+e,true);});
+      if(res.ok){location.reload();}else{rmBtn.disabled=false;cxSet(res.d.detail||'Could not remove',true,rmBtn);}
+    }).catch(function(e){rmBtn.disabled=false;cxSet('Error: '+e,true,rmBtn);});
     });
     return;
   }

@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **API keys, VayuMCP, Claude Code, Buzz, Worlds and Tools are settings
+  pages too.** Each opens on its title with its state beside it ("2 keys
+  active", "1 with full access", "Nothing connected yet"), in place of the
+  strip of figures it opened with. Creating a key, setting up a service
+  credential, a client's configuration, a connector's details and the proxy
+  reference each open in a sheet, and a confirmation asked from a sheet
+  opens above it. A key, a connector and a credential say their state as a
+  dot and a word. On API keys the Copy button beside the base URL copies
+  it; it did nothing before.
+
 ## [3.17.84] — 2026-09-27
 
 A fix for the connector pages: since 3.17.78 no API key could be created and

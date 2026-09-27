@@ -197,17 +197,22 @@ func Tip(text string) HTML {
 // Status text written as a paragraph leads with the finding and follows with
 // how it was established; the finding is what a page shows.
 func Brief(text string) HTML {
-	first, rest := text, ""
-	for i := 0; i+2 < len(text); i++ {
-		if text[i] == '.' && text[i+1] == ' ' && text[i+2] >= 'A' && text[i+2] <= 'Z' {
-			first, rest = text[:i+1], strings.TrimSpace(text[i+2:])
-			break
-		}
-	}
+	first, rest := FirstSentence(text)
 	if rest == "" {
 		return Text(first)
 	}
 	return Text(first) + Tip(rest)
+}
+
+// FirstSentence splits text after its first sentence: a full stop, a space,
+// and a capital. A stop inside "e.g. this" or a version number is not an end.
+func FirstSentence(text string) (first, rest string) {
+	for i := 0; i+2 < len(text); i++ {
+		if text[i] == '.' && text[i+1] == ' ' && text[i+2] >= 'A' && text[i+2] <= 'Z' {
+			return text[:i+1], strings.TrimSpace(text[i+2:])
+		}
+	}
+	return text, ""
 }
 
 // Table renders a table with its header row. Cells are trusted markup; a

@@ -80,13 +80,16 @@ func mcpClientTokenBanner(note string) string {
 </div>`
 }
 
-// mcpClientStats is the at-a-glance strip, matching Monetization.
+// mcpClientState is a connector page's state beside its title: how many of
+// the keys it minted are live, and how many of those hold full control.
 //
 // It counts only the keys the calling page minted, identified by label prefix.
 // Counting every connector would put a number on the page that the page cannot
 // explain — a key granted to Claude is not a Buzz agent — and an operator
 // auditing which clients can reach their site needs those separated, not summed.
-func mcpClientStats(endpoint string, keys []apikeys.Key, labelPrefix, countLabel string, dedicated bool, blockedHost string) string {
+// A full-control key hands a client the whole site, so how many exist is its
+// own warning, readable without opening the list.
+func mcpClientState(keys []apikeys.Key, labelPrefix, noun string) ui.HTML {
 	live, full := 0, 0
 	for _, k := range keys {
 		if !strings.HasPrefix(k.Label, labelPrefix) {
@@ -97,64 +100,57 @@ func mcpClientStats(endpoint string, keys []apikeys.Key, labelPrefix, countLabel
 			full++
 		}
 	}
-	host := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(endpoint, "https://"), "http://"), "/mcp")
+	return connectorState(live, full, 0, noun)
+}
 
-	hostLabel, hostTone := "Main domain", ""
+// connectorState words live and full-control counts as the page's state.
+func connectorState(live, full, paused int, noun string) ui.HTML {
+	st := ui.State("neutral", "Nothing connected yet")
+	if live > 0 {
+		st = ui.State("ok", strconv.Itoa(live)+" "+noun+plural(live)+" connected")
+	}
+	if paused > 0 {
+		st += " " + ui.State("neutral", strconv.Itoa(paused)+" paused")
+	}
+	if full > 0 {
+		st += " " + ui.State("warn", strconv.Itoa(full)+" with full control")
+	}
+	return st
+}
+
+// mcpEndpointRows are the endpoint every client connects to, with Copy, and
+// which host serves it. The note says why the offered endpoint may differ from
+// the address in the browser bar: one that silently disagrees reads as a
+// mistake, and an operator who "corrects" it walks into the exact failure the
+// dedicated host exists to avoid.
+func mcpEndpointRows(id, endpoint, apex string, dedicated bool, blockedHost string) []ui.Row {
+	host := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(endpoint, "https://"), "http://"), "/mcp")
+	which, why := ui.State("neutral", "Main domain"), "A proxy that challenges visitors can break this endpoint: a client has no browser to answer it. A dedicated mcp.<your-domain> host with the proxy off avoids that, and is offered here once it answers."
 	switch {
 	case dedicated:
-		hostLabel = "Dedicated host"
+		which, why = ui.State("ok", "Dedicated host"), host+" is offered instead of "+apex+" because it is not proxied, so a challenge on your main domain can never sit in front of it."
 	case blockedHost != "":
-		hostLabel, hostTone = "Dedicated host blocked", "warn"
+		which, why = ui.State("warn", "Dedicated host blocked"), blockedHost+" is answered by something in front of this server. Switch it to DNS only at your DNS provider; until then the endpoint stays on your main domain."
 	}
-	// A full-control key hands a client the whole site, so it gets its own tile
-	// and its own tone: an operator should see how many exist without reading a
-	// table.
-	fullTone := ""
-	if full > 0 {
-		fullTone = "warn"
+	return []ui.Row{
+		{Label: "Endpoint", Hint: "The one URL every MCP client connects to, served by VayuPress itself.",
+			Control: ui.HTML(`<code class="space-addr" id="` + id + `">` + string(ui.Text(endpoint)) + `</code><button type="button" class="btn btn--sm" data-copy="#` + id + `">Copy</button>`)},
+		{Label: "Host", Hint: why, Control: which},
 	}
-	tile := func(value, label, tone string) string { return osStatTile(label, value, tone) }
-	return `<div class="stat-grid">` +
-		tile(strconv.Itoa(live), countLabel, "") +
-		tile(strconv.Itoa(full), "Full-control keys", fullTone) +
-		`</div>` + mcpEndpointFacts(host, hostLabel, hostTone)
 }
 
-// mcpEndpointFacts says where the endpoint is served. A hostname is not a
-// figure: set as one it ran out of its column ("mail.localh…"), so the counts
-// stay figures and the address is a fact under them.
-func mcpEndpointFacts(host, hostLabel, hostTone string) string {
-	which := ui.Text(hostLabel)
-	if hostTone != "" {
-		which = ui.Tag(hostTone, hostLabel)
-	}
-	return string(ui.Facts(
-		ui.Fact{Key: "Serving on", Value: `<code class="vm-break">` + ui.Text(host) + `</code>`},
-		ui.Fact{Key: "Endpoint host", Value: which},
-	))
-}
-
-// mcpGrantTile renders one choice in a grant grid. primary marks the button a
-// page wants an operator to reach for by default — which is a real decision, not
-// styling: on a page whose common case is a shared team agent the safe grant
-// should look like the default, and on a personal-assistant page it need not.
-func mcpGrantTile(primary bool, name, badge, badgeCls, desc, caps, keyLabel, button string) string {
-	btnCls := "btn"
+// mcpGrantRow is one grant a page offers: what it allows, and the button that
+// mints it. primary marks the grant a page wants an operator to reach for by
+// default — a real decision, not styling: on a page whose common case is a
+// shared team agent the safe grant should look like the default, and on a
+// personal-assistant page it need not.
+func mcpGrantRow(primary bool, name, desc, caps, keyLabel, button string) ui.Row {
+	cls := "btn btn--sm"
 	if primary {
-		btnCls = "btn btn--primary"
+		cls = "btn btn--primary btn--sm"
 	}
-	extra := ""
-	if caps == "*:*" {
-		extra = " cx-grant--full"
-	}
-	return `<div class="cx-grant` + extra + `">
-      <div class="cx-grant-head">
-        <span class="settings-row-label">` + name + `</span>
-        <span class="badge` + badgeCls + `">` + badge + `</span>
-      </div>
-      <p class="text-sm muted">` + desc + `</p>
-      <button type="button" class="` + btnCls + `" data-mint="` + caps + `" data-label="` + keyLabel + `">` + button + `</button>
-    </div>`
+	return ui.Row{Label: name, Hint: desc,
+		Control: ui.HTML(`<button type="button" class="` + cls + `" data-mint="` + html.EscapeString(caps) + `" data-label="` + html.EscapeString(keyLabel) + `">` + html.EscapeString(button) + `</button>`)}
 }
 
 // mcpSnippet renders one copyable block. The template carries the placeholder the
