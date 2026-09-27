@@ -13,6 +13,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	htmpl "html/template"
 	"net/http"
@@ -22,9 +23,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
@@ -112,10 +116,11 @@ var mediaRefRe = regexp.MustCompile(`/media/([a-f0-9]{32}\.(?:png|jpg|gif|webp|p
 
 // mediaUsage maps each stored file to the places that reference it: posts and
 // pages (body, blocks, feature and share images), each site's live website,
-// and settings such as a logo. It is read on demand, not kept: a list that
-// had to be maintained at every save would drift from the content it claims
-// to describe.
-func (a *App) mediaUsage(ctx context.Context) map[string][]mediaUse {
+// and settings such as a logo. It reads every post, so it runs off the request
+// path (mediaUses) and fails whole: a scan cut short would report files as
+// unused that a later post still shows, and the trash confirmation repeats
+// that claim.
+func (a *App) mediaUsage(ctx context.Context) (map[string][]mediaUse, error) {
 	uses := map[string][]mediaUse{}
 	add := func(text string, use mediaUse) {
 		seen := map[string]bool{}
@@ -127,49 +132,126 @@ func (a *App) mediaUsage(ctx context.Context) map[string][]mediaUse {
 		}
 	}
 	if dbpkg.DB == nil {
-		return uses
+		return uses, nil
 	}
-	rdb := dbpkg.Reader()
-	if rows, err := rdb.QueryContext(ctx, `SELECT slug, title, is_page, COALESCE(content,'') || ' ' || COALESCE(blocks_json,'') || ' ' || COALESCE(feature_image,'') || ' ' || COALESCE(og_image,'') || ' ' || COALESCE(twitter_image,'') FROM articles ORDER BY is_page, title`); err == nil {
+	scan := func(query string, row func(*sql.Rows) error) error {
+		rows, err := dbpkg.Reader().QueryContext(ctx, query)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
 		for rows.Next() {
+			if err := row(rows); err != nil {
+				return err
+			}
+		}
+		return rows.Err()
+	}
+	// No ORDER BY: sorting every post by title made SQLite sort the whole
+	// content column through a temporary file. Each file's few uses are sorted
+	// below instead.
+	if err := scan(`SELECT slug, title, is_page, COALESCE(content,'') || ' ' || COALESCE(blocks_json,'') || ' ' || COALESCE(feature_image,'') || ' ' || COALESCE(og_image,'') || ' ' || COALESCE(twitter_image,'') FROM articles`,
+		func(rows *sql.Rows) error {
 			var slug, title, text string
 			var isPage bool
-			if rows.Scan(&slug, &title, &isPage, &text) == nil {
-				label := "Post · " + title
-				if isPage {
-					label = "Page · " + title
-				}
-				add(text, mediaUse{Label: label, Href: "/os/editor/" + slug})
+			if err := rows.Scan(&slug, &title, &isPage, &text); err != nil {
+				return err
 			}
-		}
-		_ = rows.Err() // a read cut short just shows fewer uses
-		rows.Close()
+			label := "Post · " + title
+			if isPage {
+				label = "Page · " + title
+			}
+			add(text, mediaUse{Label: label, Href: "/os/editor/" + slug})
+			return nil
+		}); err != nil {
+		return nil, err
 	}
-	if rows, err := rdb.QueryContext(ctx, `SELECT r.domain_id, r.doc FROM site_revisions r JOIN (SELECT domain_id, MAX(id) AS id FROM site_revisions GROUP BY domain_id) n ON n.id = r.id ORDER BY r.domain_id`); err == nil {
-		for rows.Next() {
+	if err := scan(`SELECT r.domain_id, r.doc FROM site_revisions r JOIN (SELECT domain_id, MAX(id) AS id FROM site_revisions GROUP BY domain_id) n ON n.id = r.id ORDER BY r.domain_id`,
+		func(rows *sql.Rows) error {
 			var domainID, doc string
-			if rows.Scan(&domainID, &doc) == nil {
-				use := mediaUse{Label: "Website", Href: "/os/website/editor"}
-				if domainID != "" {
-					use = mediaUse{Label: "Website · a hosted site", Href: "/os/d/" + domainID + "/website"}
-				}
-				add(doc, use)
+			if err := rows.Scan(&domainID, &doc); err != nil {
+				return err
 			}
-		}
-		_ = rows.Err()
-		rows.Close()
+			use := mediaUse{Label: "Website", Href: "/os/website/editor"}
+			if domainID != "" {
+				use = mediaUse{Label: "Website · a hosted site", Href: "/os/d/" + domainID + "/website"}
+			}
+			add(doc, use)
+			return nil
+		}); err != nil {
+		return nil, err
 	}
-	if rows, err := rdb.QueryContext(ctx, `SELECT value FROM site_settings WHERE value LIKE '%/media/%'`); err == nil {
-		for rows.Next() {
+	if err := scan(`SELECT value FROM site_settings WHERE value LIKE '%/media/%'`,
+		func(rows *sql.Rows) error {
 			var value string
-			if rows.Scan(&value) == nil {
-				add(value, mediaUse{Label: "Site settings", Href: "/os/settings/design"})
+			if err := rows.Scan(&value); err != nil {
+				return err
 			}
-		}
-		_ = rows.Err()
-		rows.Close()
+			add(value, mediaUse{Label: "Site settings", Href: "/os/settings/design"})
+			return nil
+		}); err != nil {
+		return nil, err
 	}
-	return uses
+	// Posts before pages, each by title, as the query used to order them.
+	for _, u := range uses {
+		sort.SliceStable(u, func(i, j int) bool {
+			pi, pj := strings.HasPrefix(u[i].Label, "Page · "), strings.HasPrefix(u[j].Label, "Page · ")
+			if pi != pj {
+				return !pi
+			}
+			return u[i].Label < u[j].Label
+		})
+	}
+	return uses, nil
+}
+
+// mediaUsesTTL is how old the record of where files are used may be before it
+// is scanned again. The scan reads every post (234,615 of them on johal.in),
+// so it is kept rather than repeated for each look at the library.
+const mediaUsesTTL = 5 * time.Minute
+
+// mediaUsesMemo is the last complete scan and when it started. A file added
+// after that has not been looked for, so it is unknown, never "not used".
+var mediaUsesMemo = struct {
+	sync.Mutex
+	uses       map[string][]mediaUse
+	at         time.Time
+	refreshing bool
+}{}
+
+// mediaUses returns the last complete scan and when it began, starting a new
+// one off the request path once it is older than mediaUsesTTL or began before
+// the newest file (Unix seconds) was added: a file just uploaded would
+// otherwise read "Checking…" for up to the whole TTL. Before the first scan
+// has finished it returns a zero time: every file is unknown. scanning says
+// whether a scan is under way, so the page knows an answer is coming.
+func (a *App) mediaUses(newest int64) (uses map[string][]mediaUse, at time.Time, scanning bool) {
+	mediaUsesMemo.Lock()
+	defer mediaUsesMemo.Unlock()
+	at = mediaUsesMemo.at
+	unseen := !at.IsZero() && newest >= at.Unix()
+	if (at.IsZero() || time.Since(at) >= mediaUsesTTL || unseen) && !mediaUsesMemo.refreshing {
+		mediaUsesMemo.refreshing = true
+		go a.refreshMediaUses()
+	}
+	return mediaUsesMemo.uses, at, mediaUsesMemo.refreshing
+}
+
+// refreshMediaUses scans again. A scan that fails leaves the previous one in
+// place, and the next look after the TTL tries again.
+func (a *App) refreshMediaUses() {
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	uses, err := a.mediaUsage(ctx)
+	mediaUsesMemo.Lock()
+	defer mediaUsesMemo.Unlock()
+	mediaUsesMemo.refreshing = false
+	if err != nil {
+		logging.LogWarn("media", "the scan for where files are used failed; the previous one stays: "+err.Error())
+		return
+	}
+	mediaUsesMemo.uses, mediaUsesMemo.at = uses, started
 }
 
 // mediaAltMap returns the persisted filename→alt-text map (best-effort).
@@ -251,19 +333,37 @@ func listMediaItems() []mediaItem {
 // asset's alt text, its name and where it is used.
 func (a *App) handleOSMediaList(w http.ResponseWriter, r *http.Request) {
 	items := listMediaItems()
-	alts, names, uses := a.mediaAltMap(r.Context()), a.mediaNameMap(r.Context()), a.mediaUsage(r.Context())
+	alts, names := a.mediaAltMap(r.Context()), a.mediaNameMap(r.Context())
+	// A file dated in the future is left out: no scan could begin after it, so
+	// it would start one on every request.
+	var newest int64
+	now := time.Now().Unix()
+	for _, it := range items {
+		if it.ModUnix <= now && it.ModUnix > newest {
+			newest = it.ModUnix
+		}
+	}
+	uses, at, scanning := a.mediaUses(newest)
 	for i := range items {
 		items[i].Alt = alts[items[i].Name]
 		items[i].Title = names[items[i].Name]
 		if items[i].Title == "" {
 			items[i].Title = items[i].Name
 		}
-		items[i].Uses = uses[items[i].Name]
-		if items[i].Uses == nil {
-			items[i].Uses = []mediaUse{}
+		// Uses stays nil ("uses": null, not yet known) for a file the last scan
+		// began before; only a file the scan could have seen is "not used".
+		if !at.IsZero() && items[i].ModUnix < at.Unix() {
+			items[i].Uses = uses[items[i].Name]
+			if items[i].Uses == nil {
+				items[i].Uses = []mediaUse{}
+			}
 		}
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"items": items})
+	out := map[string]interface{}{"items": items, "uses_checked": nil, "uses_scanning": scanning}
+	if !at.IsZero() {
+		out["uses_checked"] = at.UTC().Format(time.RFC3339)
+	}
+	writeJSON(w, r, http.StatusOK, out)
 }
 
 // handleOSMediaDelete removes one or more content-addressed media files. Names

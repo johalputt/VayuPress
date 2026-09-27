@@ -53,7 +53,10 @@ func TestMediaUsageFindsEachPlaceAFileIsUsed(t *testing.T) {
 			t.Fatalf("seed: %v\n%s", err, q.sql)
 		}
 	}
-	uses := (&App{}).mediaUsage(context.Background())
+	uses, err := (&App{}).mediaUsage(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
 	got := func(name string) string {
 		var out []string
 		for _, u := range uses[name] {
@@ -142,8 +145,8 @@ func TestRenameAndDeleteKeepTheNamesInStep(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list.Items) != 1 {
 		t.Fatalf("list: %v %s", err, rec.Body.String())
 	}
-	if it := list.Items[0]; it.Title != "Harbour at dawn.png" || it.Kind != "PNG image" || it.Uses == nil {
-		t.Errorf("the library lists %+v; want the new name, its kind, and uses as a list (never null)", it)
+	if it := list.Items[0]; it.Title != "Harbour at dawn.png" || it.Kind != "PNG image" {
+		t.Errorf("the library lists %+v; want the new name and its kind", it)
 	}
 
 	if rec := post(a.handleOSMediaDelete, `{"names":["`+libA+`"]}`); rec.Code != http.StatusOK {

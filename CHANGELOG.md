@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Media lists its files on a large install.** Every list looked for each
+  file in every post before it answered; on johal.in that is 234,615 posts,
+  the list never arrived, and on a phone the first tap on a filter showed
+  "No file matches that" over a library of 55 files. The list now answers at
+  once, and where each file is used follows when a scan off the request has
+  finished, every five minutes or as soon as a file newer than the last scan
+  appears. Until a file has been looked for it reads "Checking…", never "Not
+  used", and moving it to the trash says so; a file the scan found unused is
+  "not used when last checked", with the time, since a post saved after the
+  scan may show it. A list that cannot be read says that, with Try again,
+  instead of passing for an empty library.
+
 ### Changed
 
 - **Every console page opens on its own title.** The breadcrumb bar above

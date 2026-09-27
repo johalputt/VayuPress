@@ -705,6 +705,12 @@ window.vpRelTime = relativeTime;
   var input = $('[data-media-input]');
   var drop = $('[data-media-drop]');
   var items = [], shown = [], selected = [], filter = 'all', view = 'list';
+  // loaded: the list has arrived, so an empty one is a fact. Until then a
+  // filter or view change must not draw "No file matches that" over a library
+  // the page has not read; on johal.in that is what a timed-out list showed.
+  // checked: when the scan behind "not used" began. It is a record, and a
+  // post saved since may show a file the record calls unused.
+  var loaded = false, recheck = null, recheckIn = 4000, checked = null;
   var mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   try { view = localStorage.getItem('vp_media_view') === 'grid' ? 'grid' : 'list'; } catch (e) {}
 
@@ -712,7 +718,10 @@ window.vpRelTime = relativeTime;
   function fmtSize(b) { return b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(b < 10240 ? 1 : 0) + ' KB' : (b / 1048576).toFixed(1) + ' MB'; }
   function fmtDay(unix) { return new Date(unix * 1000).toLocaleDateString([], { day: '2-digit', month: 'short' }); }
   function fmtWhen(unix) { return new Date(unix * 1000).toLocaleString([], { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+  // uses is null until the server's scan of every post has looked for the
+  // file: unknown, which is never the same as unused.
   function usedIn(it) {
+    if (it.uses == null) return 'Checking…';
     if (!it.uses.length) return 'Not used';
     var n = { post: 0, page: 0, other: [] };
     it.uses.forEach(function (u) {
@@ -733,17 +742,46 @@ window.vpRelTime = relativeTime;
   }
 
   function load() {
+    clearTimeout(recheck);
     fetch('/os/api/media', { headers: { Accept: 'application/json' } })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function (d) {
-        items = d.items || [];
+        if (!d || !Array.isArray(d.items)) throw new Error('an unexpected answer');
+        items = d.items; loaded = true; checked = d.uses_checked || null;
         selected = selected.filter(function (n) { return items.some(function (it) { return it.name === n; }); });
         draw();
+        // Where files are used is scanned off the request, and a file newer
+        // than the last scan starts another; ask again until every file has
+        // been looked for. Every four seconds while a scan runs; with none
+        // running (the last one failed) the wait doubles to a minute, so a
+        // scan that keeps failing is not restarted every four seconds for as
+        // long as the page stays open.
+        if (d.uses_scanning) recheckIn = 4000;
+        if (items.some(function (it) { return it.uses == null; })) {
+          recheck = setTimeout(load, recheckIn);
+          if (!d.uses_scanning) recheckIn = Math.min(recheckIn * 2, 60000);
+        } else recheckIn = 4000;
       })
-      .catch(function () { if (window.vpToast) window.vpToast('The media library could not be read.', 'error'); });
+      .catch(function (e) { failed(e && e.message); });
+  }
+  // A list that could not be read says so, with a way to try again, and never
+  // reads as an empty library.
+  function failed(why) {
+    if (loaded) { if (window.vpToast) window.vpToast('The media library could not be refreshed.', 'error'); return; }
+    list.textContent = '';
+    if (empty) empty.hidden = true;
+    var box = el('div', 'table-empty');
+    box.setAttribute('role', 'alert');
+    box.appendChild(el('p', null, 'The media library could not be read' + (why ? ' (' + why + ')' : '') + '.'));
+    var again = el('button', 'btn btn--sm', 'Try again');
+    again.type = 'button';
+    again.addEventListener('click', function () { list.textContent = ''; list.appendChild(el('div', 'skeleton skeleton--media')); load(); });
+    box.appendChild(again);
+    list.appendChild(box);
   }
 
   function draw() {
+    if (!loaded) return;
     var q = (search && search.value || '').toLowerCase().trim();
     shown = items.filter(function (it) {
       if (filter === 'image' && it.isPdf) return false;
@@ -779,7 +817,7 @@ window.vpRelTime = relativeTime;
         tr.appendChild(el('td', 'muted', it.kind));
         tr.appendChild(el('td', 'media-row__num', fmtSize(it.size)));
         tr.appendChild(el('td', 'media-row__num', fmtDay(it.mod)));
-        tr.appendChild(el('td', it.uses.length ? null : 'muted', usedIn(it)));
+        tr.appendChild(el('td', it.uses && it.uses.length ? null : 'muted', usedIn(it)));
         tb.appendChild(wire(tr, it));
       });
       t.appendChild(tb); wrap.appendChild(t); list.appendChild(wrap);
@@ -873,8 +911,9 @@ window.vpRelTime = relativeTime;
     }
     fact(dl, 'Added', fmtWhen(it.mod));
     var uses = el('div', 'media-inspector__uses');
-    if (!it.uses.length) uses.textContent = 'Not used anywhere';
-    it.uses.forEach(function (u) { var a = el('a', null, u.label); a.href = u.href; uses.appendChild(a); });
+    if (it.uses == null) uses.textContent = 'Checking…';
+    else if (!it.uses.length) uses.textContent = 'Not used anywhere';
+    (it.uses || []).forEach(function (u) { var a = el('a', null, u.label); a.href = u.href; uses.appendChild(a); });
     fact(dl, 'Used in', uses).setAttribute('data-media-uses', '');
     inspector.appendChild(dl);
     var row = el('div', 'media-inspector__actions');
@@ -904,13 +943,16 @@ window.vpRelTime = relativeTime;
   }
   function trash() {
     var sel = current(); if (!sel.length) return;
-    var used = sel.filter(function (it) { return it.uses.length; });
+    var used = sel.filter(function (it) { return it.uses && it.uses.length; });
+    var unchecked = sel.some(function (it) { return it.uses == null; });
     var one = sel.length === 1;
     window.vpConfirm({
       title: one ? 'Move “' + sel[0].title + '” to trash?' : 'Move ' + sel.length + ' files to trash?',
       message: used.length
         ? (one ? 'It is used in ' + usedIn(sel[0]) + '; those will show a broken image.' : used.length + ' of them are in use, and those places will show a broken image.') + ' This cannot be undone.'
-        : 'Nothing uses ' + (one ? 'it' : 'them') + '. This cannot be undone.',
+        : unchecked
+          ? 'Where ' + (one ? 'it is' : 'they are') + ' used has not been checked yet, so a page may still show ' + (one ? 'it' : 'them') + '. This cannot be undone.'
+          : 'Nothing used ' + (one ? 'it' : 'them') + ' when last checked, ' + window.vpRelTime(checked) + '. This cannot be undone.',
       confirm: 'Move to trash'
     }, function () {
       window.vpPost('/os/api/media/delete', { names: sel.map(function (it) { return it.name; }) }, function (d) {

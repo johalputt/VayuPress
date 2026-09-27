@@ -665,6 +665,43 @@ function noisePNG(w, h) {
 // Media (render 07): an upload says how far along it is and how long is left;
 // the file then arrives under the name it had, and is inspected, renamed and
 // trashed from the keyboard, through the same menu a right-click opens.
+// On johal.in the library's list timed out (the scan for where files are used
+// read 234,615 posts) and the first tap redrew it as "No file matches that"
+// over 55 files. A list that cannot be read says so and can be tried again;
+// and a file nobody has checked yet is never said to be unused.
+test("a media list that could not be read says so, and an unchecked file is not called unused", async ({ page }) => {
+  await openConsole(page);
+  await page.route("**/os/api/media", (r) => r.fulfill({ status: 504, body: "Gateway Timeout" }));
+  await page.goto("/os/media");
+  const failure = page.locator("[data-media-list] [role=alert]");
+  await expect(failure).toContainText("could not be read (HTTP 504)");
+  await page.click('[data-media-filter="all"]'); // what the operator tapped
+  await expect(failure).toBeVisible();
+  await expect(page.locator("[data-media-empty]")).toBeHidden();
+
+  // The list arrives before the server has looked for where its files are used.
+  await page.unroute("**/os/api/media");
+  await page.route("**/os/api/media", async (r) => {
+    const res = await r.fetch();
+    const d = await res.json();
+    d.items.forEach((it) => { it.uses = null; });
+    d.uses_checked = null;
+    return r.fulfill({ response: res, json: d });
+  });
+  await failure.getByRole("button", { name: "Try again" }).click();
+  await expect(failure).toHaveCount(0);
+  // A file of this test's own, since the install may not hold one yet.
+  const name = `unchecked-${Date.now()}.png`;
+  await page.locator("[data-media-input]").setInputFiles({ name, mimeType: "image/png", buffer: noisePNG(64, 64) });
+  const row = page.locator("[data-media-list] [data-name]", { hasText: name });
+  await expect(row).toBeVisible();
+  await row.click();
+  await expect(page.locator("[data-media-uses]")).toHaveText("Checking…");
+  await page.getByRole("button", { name: "Move to trash" }).click();
+  await expect(page.getByText(/has not been checked yet/)).toBeVisible();
+  await expect(page.getByText(/Nothing used/)).toHaveCount(0);
+});
+
 test("a media upload shows its progress, and the file is worked by keyboard", async ({ page }) => {
   await openConsole(page);
   await page.goto("/os/media");
@@ -717,7 +754,7 @@ test("a media upload shows its progress, and the file is worked by keyboard", as
   await page.locator(".media-row", { hasText: renamed }).click();
   await page.keyboard.press("Delete");
   const dialog = page.locator(".vp-confirm");
-  await expect(dialog).toContainText("Nothing uses it.");
+  await expect(dialog).toContainText(/Nothing used it when last checked, (just now|\d+m ago)\./);
   await dialog.getByRole("button", { name: "Move to trash" }).click();
   await expect(page.locator(".media-row", { hasText: renamed })).toHaveCount(0);
 });
