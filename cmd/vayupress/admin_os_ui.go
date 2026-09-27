@@ -2304,9 +2304,11 @@ func (a *App) osFirstRunChecklist(ctx context.Context, accessLevel int) []osChec
 	})
 
 	// All done ⇒ no card. A checklist that nags completed work is the same
-	// dishonesty the plan set out to remove.
+	// dishonesty the plan set out to remove. The DNS review is a reminder the
+	// server can never mark done, so it goes with the card rather than holding
+	// it open: counted, it kept "Finish setting up" on every Home for good.
 	for _, it := range items {
-		if !it.Done {
+		if !it.Done && !it.Review {
 			return items
 		}
 	}

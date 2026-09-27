@@ -68,17 +68,10 @@ func TestFirstRunChecklistHonestLifecycle(t *testing.T) {
 	config.Cfg.Domain = "example.com"
 	t.Cleanup(func() { config.Cfg.Domain = prevDomain })
 
-	items = a.osFirstRunChecklist(ctx, accessAdmin)
-	if len(items) != 0 {
-		var pending []string
-		for _, it := range items {
-			if !it.Done && !it.Review {
-				pending = append(pending, it.Label)
-			}
-		}
-		if len(pending) > 0 {
-			t.Errorf("after full setup the card still nags: %v", pending)
-		}
+	// The card is gone, not reduced to its reminder: the DNS review can never
+	// be marked done, and counting it kept the card on every Home for good.
+	if items = a.osFirstRunChecklist(ctx, accessAdmin); items != nil {
+		t.Errorf("after full setup the card is still shown: %#v", items)
 	}
 }
 
