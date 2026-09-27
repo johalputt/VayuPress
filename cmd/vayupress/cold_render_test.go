@@ -149,7 +149,12 @@ func TestCachedPagesTheWarmerAndPreviewsNeverWaitForASlot(t *testing.T) {
 
 // A slot is given back when its render ends, so the ceiling bounds renders at
 // once rather than renders in total.
+//
+// The slots are sized from the read pool, so a database must be open before
+// the first test to take one. Without it this test passed only when a sibling
+// had sized them already, and a shuffled order that ran it first panicked.
 func TestARenderSlotIsGivenBack(t *testing.T) {
+	setupRelatedTestDB(t)
 	coldRenderOnce.Do(func() { coldRenderSlots = make(chan struct{}, coldRenderLimit()) })
 	before := len(coldRenderSlots)
 	release, ok := admitColdRender(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/x", nil))
