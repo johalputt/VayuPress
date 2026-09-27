@@ -12,7 +12,7 @@ func State(tone, text string) HTML {
 	default:
 		tone = "neutral"
 	}
-	return HTML(`<span class="sa-mark"><span class="sa-dot sa-dot--` + tone + `" aria-hidden="true"></span>` + string(Text(text)) + `</span>`)
+	return HTML(`<span class="sa-indicator"><span class="sa-dot sa-dot--` + tone + `" aria-hidden="true"></span>` + string(Text(text)) + `</span>`)
 }
 
 // SettingsPage is the page kind whose rows edit in place: the title with the

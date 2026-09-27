@@ -1056,9 +1056,9 @@ test("advertising, once on, lists its slots and adds one from a sheet", async ({
   await sheet.locator("#ad-name").fill(name);
   await Promise.all([page.waitForEvent("load"), sheet.getByRole("button", { name: "Add the slot" }).click()]);
   const row = page.locator("tr", { hasText: name });
-  await expect(row.locator(".sa-mark")).toHaveText("On");
+  await expect(row.locator(".sa-indicator")).toHaveText("On");
   await Promise.all([page.waitForEvent("load"), row.getByRole("button", { name: "Turn off" }).click()]);
-  await expect(page.locator("tr", { hasText: name }).locator(".sa-mark")).toHaveText("Off");
+  await expect(page.locator("tr", { hasText: name }).locator(".sa-indicator")).toHaveText("Off");
 
   const price = page.locator("#ad-price");
   const before = await price.inputValue();

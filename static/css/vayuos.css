@@ -5802,8 +5802,10 @@
 .vp-os[data-ui="still-air"] .page-header:has(.page-state) { justify-content: flex-start; }
 .vp-os[data-ui="still-air"] .page-state { display: inline-flex; flex-wrap: wrap; gap: var(--space-5); }
 .vp-os[data-ui="still-air"] .page-lead { margin: 0 0 var(--space-7); }
-/* State as a dot and a word (ui.State). */
-.vp-os[data-ui="still-air"] .sa-mark { display: inline-flex; align-items: center; gap: 7px; font: var(--type-small); color: var(--text-2); white-space: nowrap; }
+/* State as a dot and a word (ui.State). Not .sa-mark, which is the brand
+   in the system bar, nor .sa-state, which is its interactive mode chip: a
+   shared name restyled both on every page. */
+.vp-os[data-ui="still-air"] .sa-indicator { display: inline-flex; align-items: center; gap: 7px; font: var(--type-small); color: var(--text-2); white-space: nowrap; }
 .vp-os[data-ui="still-air"] .sa-dot--neutral { background: var(--text-3); }
 /* A row that leads elsewhere: its count and a chevron, and a row's icon. */
 .vp-os[data-ui="still-air"] .settings-row-go { display: inline-flex; align-items: center; gap: 6px; font: var(--type-small); color: var(--text-2); text-decoration: none; }
