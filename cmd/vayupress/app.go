@@ -179,6 +179,11 @@ type App struct {
 	// for (release_mirror.go). nil when the process has no data directory
 	// for it, which switches the mirror off everywhere.
 	relMirror *releaseMirrorServer
+	// siteSyncs holds a *siteSyncSlot per domain that follows a repository
+	// (site_follow.go), so two builds of one site never share its working copy.
+	siteSyncs sync.Map
+	// siteForge stands in for GitHub in tests; nil in production.
+	siteForge *siteForge
 
 	// Email delivery (Tier 1) — no-op when SMTP is unconfigured.
 	mailer *email.Sender

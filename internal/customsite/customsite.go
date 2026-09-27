@@ -159,6 +159,12 @@ func dirs(base string) (current, previous, staging string) {
 func Deploy(base string, zr *zip.Reader, budget int64) (Manifest, error) {
 	deployMu.Lock()
 	defer deployMu.Unlock()
+	return deployLocked(base, zr, budget)
+}
+
+// deployLocked is Deploy for a caller already holding deployMu: Edit, which
+// must read the live bundle and replace it without another deploy between.
+func deployLocked(base string, zr *zip.Reader, budget int64) (Manifest, error) {
 	current, _, staging := dirs(base)
 
 	// Refuse on the archive's own declaration before writing a byte, so a bundle

@@ -157,6 +157,9 @@ func (a *App) registerSiteTools(srv *mcp.Server) {
 				// The mirror's state, including the operator-only error text, so a
 				// sync that is failing is visible here without a screenshot.
 				"release_mirror": a.mcpReleaseMirror(d),
+				// The repository the site is built from, and how its last build
+				// went: a push that did not go live says why here.
+				"follows": a.siteFollowReport(d),
 				// Fields still publishing a template's sample content — a live
 				// page describing a business that does not exist.
 				"sample_content": siteSampleFields(ctx, d),
@@ -461,6 +464,9 @@ func (a *App) registerSiteBuilderTools(srv *mcp.Server) {
 			if err := mcpSiteWritable(d); err != nil {
 				return "", err
 			}
+			if f, ok := d.Follow(); ok {
+				return "", errFollowedSite(d, f)
+			}
 			if !hasIndexHTML(in.Files) {
 				return "", bundleError("index.html is required — without it the domain serves nothing at /")
 			}
@@ -476,22 +482,10 @@ func (a *App) registerSiteBuilderTools(srv *mcp.Server) {
 			if err != nil {
 				return "", err
 			}
-			// Switch the domain to serve it. Deploying a site and leaving the
-			// domain on its blog would be the "control that did nothing" defect:
-			// the assistant reports success and the visitor sees the old site.
-			// Preserving, not replacing: publishing a hand-built site says what
-			// the domain SERVES, and must not erase the business details the
-			// operator typed into the template.
-			cfg, err := scopedWebsiteConfigPreserving(d, "custom", "")
-			if err != nil {
+			if err := a.servePublishedBundle(ctx, d, mcpActor(ctx),
+				"built "+itoaSafe(m.Files)+" file"+plural(m.Files)+" via=mcp"); err != nil {
 				return "", err
 			}
-			if err := a.domains.SetSite(ctx, d.ID, cfg); err != nil {
-				return "", err
-			}
-			render.CachePurgeAll()
-			dbpkg.AuditLog("vayudomains.website.bundle", mcpActor(ctx), d.Host,
-				"built "+itoaSafe(m.Files)+" file"+plural(m.Files)+" via=mcp")
 			resp := map[string]any{
 				"status": "published", "host": d.Host, "files": m.Files, "bytes": m.Bytes,
 				"url": "https://" + d.Host + "/", "serves": "the uploaded site",

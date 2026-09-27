@@ -1234,6 +1234,7 @@ func main() {
 	a.startScheduler(queue.DoneCh)
 	a.startUpdateWatcher(queue.DoneCh)
 	a.startReleaseMirror(queue.DoneCh)
+	a.startSiteFollow(queue.DoneCh)
 	a.startCacheWarmer(queue.DoneCh)
 
 	// Wire queue injections.

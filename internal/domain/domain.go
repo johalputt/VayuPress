@@ -163,6 +163,21 @@ type domainConfig struct {
 	// (internal/update/mirror.go) ahead of whatever else it serves. Off by
 	// default; operator-set only, like Limits.
 	ReleaseMirror bool `json:"release_mirror,omitempty"`
+	// Follow makes this domain's website a build of a repository, redeployed
+	// whenever the branch moves. Operator-set only, like ReleaseMirror.
+	Follow *Follow `json:"follow,omitempty"`
+}
+
+// Follow is the repository a domain's website is built from. The fields are
+// checked where they are set (cmd/vayupress/site_follow.go), against the same
+// rules the sync applies, and stored as given.
+type Follow struct {
+	Repo   string `json:"repo"`          // "owner/name" on GitHub
+	Branch string `json:"branch"`        // "main"
+	Dir    string `json:"dir,omitempty"` // the folder that is the site; empty renders the docs
+	// Site is which docs site a Dir-less follow renders: the product site
+	// (empty) or "updates", the release mirror's page.
+	Site string `json:"site,omitempty"`
 }
 
 // decodeConfig parses a config_json blob. Malformed JSON yields a zero envelope
@@ -183,7 +198,7 @@ func decodeConfig(raw string) domainConfig {
 // cleared override stores nothing rather than an empty object — which keeps the
 // short-circuits in Brand() and Site() intact.
 func encodeConfig(c domainConfig) (string, error) {
-	if c.Brand.Empty() && c.Site.Empty() && c.Limits.Empty() && !c.ReleaseMirror {
+	if c.Brand.Empty() && c.Site.Empty() && c.Limits.Empty() && !c.ReleaseMirror && c.Follow == nil {
 		return "", nil
 	}
 	out, err := json.Marshal(c)
@@ -224,6 +239,23 @@ func (d Domain) ReleaseMirror() bool { return decodeConfig(d.ConfigJSON).Release
 func EncodeReleaseMirrorInto(existing string, on bool) (string, error) {
 	c := decodeConfig(existing)
 	c.ReleaseMirror = on
+	return encodeConfig(c)
+}
+
+// Follow reports the repository this domain's website is built from.
+func (d Domain) Follow() (Follow, bool) {
+	f := decodeConfig(d.ConfigJSON).Follow
+	if f == nil {
+		return Follow{}, false
+	}
+	return *f, true
+}
+
+// EncodeFollowInto merges what a domain follows (nil: nothing) into an existing
+// config_json, preserving every sibling key.
+func EncodeFollowInto(existing string, f *Follow) (string, error) {
+	c := decodeConfig(existing)
+	c.Follow = f
 	return encodeConfig(c)
 }
 

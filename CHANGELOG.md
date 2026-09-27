@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **A hosted site can be changed file by file through VayuMCP.**
+  `list_site_files` and `read_site_file` read the live site: text as it is,
+  pictures and fonts as base64. `edit_site_files` writes some files and
+  deletes others, and every other file stays as it is. Before this, the only
+  way in was `build_site`, which replaced the whole site with text sent in
+  one call, so a fix to one page of a large site meant resending all of it,
+  and a picture could not be sent at all. An edit goes live through the same
+  deploy an upload takes, and `restore_previous_site` undoes it (ADR-0165).
+- **A hosted site can be built from a GitHub repository, and rebuilt on
+  every push.** `follow_repository` names a public repository, a branch and
+  the folder that is the site. The install looks at the branch every five
+  minutes, and at once on `sync_site`, then fetches what changed, checks each
+  file against the commit, and publishes the result. A site of any size is
+  deployed this way, and no key that can write to the server is kept in
+  GitHub. Without a folder, the repository's `docs/` and `CHANGELOG.md` are
+  rendered as a documentation site, drawn with the repository's own design
+  when it keeps one in `docs/site/theme/`, so a new look is a push too.
+  `get_site` reports what a site follows and how its last build went. A site
+  that follows a repository refuses hand edits and says where the change
+  belongs, because the next push would quietly undo them. None of this runs
+  in a Tor Space.
+
 ## [3.17.85] — 2026-09-27
 
 A fix for backups: on every install whose backups were not configured by

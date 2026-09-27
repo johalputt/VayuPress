@@ -314,6 +314,26 @@ func (r *Registry) SetReleaseMirror(ctx context.Context, id string, on bool) err
 	return err
 }
 
+// SetFollow sets the repository a secondary domain's website is built from, or
+// with nil stops it following one. The primary is refused: its website is the
+// install-wide Website settings.
+func (r *Registry) SetFollow(ctx context.Context, id string, f *Follow) error {
+	cur, err := r.get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if cur.IsPrimary {
+		return fmt.Errorf("domain: the primary domain's website is managed from Website settings")
+	}
+	cfg, err := EncodeFollowInto(cur.ConfigJSON, f)
+	if err != nil {
+		return err
+	}
+	defer r.invalidate()
+	_, err = r.db.ExecContext(ctx, `UPDATE domains SET config_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND is_primary=0`, cfg, id)
+	return err
+}
+
 // SetSite stores a secondary domain's website override — which mode its root
 // serves, and the business template and content that go with it.
 //
