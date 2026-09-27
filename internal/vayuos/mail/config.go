@@ -200,7 +200,7 @@ func (c Config) RelayAddr() string {
 // DefaultConfig returns constitutional defaults.
 func DefaultConfig() Config {
 	return Config{
-		Enabled:          false, // enabled by the first-boot wizard once a domain is set
+		Enabled:          false, // on when VayuPress runs for a real domain (cmd/vayupress/vayuos.go)
 		DKIMSelector:     "vayu",
 		StorageDir:       "./vayudata/mail",
 		QueueMaxAttempts: 20, // generous auto-retry ("keep trying until it sends"): 2m→4m→…→6h cap, ~4+ days before it's marked failed and offered for one-click Resend

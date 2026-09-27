@@ -13,6 +13,7 @@ package main
 
 import (
 	"context"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -111,7 +112,7 @@ func TestPanelFlagsAStaleReplica(t *testing.T) {
 // up and it is not running" need different answers.
 func TestPanelDistinguishesOffFromRefused(t *testing.T) {
 	off := osVayuKeepBody("n", vayukeep.Status{}, "", nil, vkNow, "", false, keepPrefs{}, "")
-	if !strings.Contains(off, "Not set up") {
+	if !strings.Contains(html.UnescapeString(off), "Backups aren't set up yet") {
 		t.Errorf("an unconfigured install should say so:\n%s", off)
 	}
 	if strings.Contains(off, "Refused to start") {

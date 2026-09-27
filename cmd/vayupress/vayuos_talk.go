@@ -245,16 +245,12 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 		body.WriteString(`<div class="settings-callout">` + saIcon("tor") + ` <strong>This is the Tor world's chat.</strong> It is separate from your Clearnet mailbox chat and the mobile app — they run on a different relay. To message your mailbox contacts or the app, switch to <a href="/os/world?target=clearnet"><strong>Clearnet</strong></a>.</div>`)
 	}
 
-	if !a.vayuTalkEnabled() {
-		body.WriteString(`<div class="empty-state">VayuTalk is inactive. It runs automatically once mail is enabled (a <code>DOMAIN</code> is set); it is disabled only when <code>VAYUOS_TALK=off</code>.</div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
-		return
+	var idents []string
+	if a.vayuTalkEnabled() {
+		idents = a.talkIdentities(r)
 	}
-
-	idents := a.talkIdentities(r)
 	if len(idents) == 0 {
-		body.WriteString(`<div class="empty-state">VayuTalk needs a mailbox on this domain to use as your chat identity, and this server has no mailboxes yet. Create one under <a href="/os/vayumail/accounts">VayuMail → Accounts</a>, then reload.</div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
+		a.writeTalkSetup(w, r)
 		return
 	}
 	self := idents[0]

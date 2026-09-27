@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **An app that is not set up says what it needs.** Mail, Talk, Tor,
+  Backups, Advertising, the Newsletter and your profile each answered with a
+  sentence of their own while off, and one sent the reader to a "first-boot
+  wizard" that does not exist. Each now opens on one page: what the app is,
+  the steps it needs with those already done ticked, and one button for the
+  next. Where only the installer can do a step (a domain for Mail and Talk),
+  the page shows the command and the button copies it. Backups keep download
+  and restore a tap away while automatic backup is off, and their forms rise
+  in a sheet instead of sitting in the page. The Tor page no longer blames
+  `VAYUOS_TOR=off` for onion services that are simply off, and in the Tor
+  world it says they are run from Clearnet.
+
 ### Fixed
 
 - **Media says "Not checked" when nothing is checking.** A file not yet

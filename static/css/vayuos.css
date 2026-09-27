@@ -5711,6 +5711,80 @@
 }
 .vp-os[data-ui="still-air"] .sa-content > * { max-width: 1180px; }
 
+/* Setup: an app that is not set up yet (page grammar, render 07). What it is,
+   what it needs with the steps done ticked, and the one thing to do next, in a
+   single reading column, never one grey line in an empty page. */
+.vp-os[data-ui="still-air"] .sa-setup { max-width: 560px; margin: var(--space-10) auto 0; }
+.vp-os[data-ui="still-air"] .sa-setup__icon {
+  display: grid; place-items: center; width: 56px; height: 56px;
+  border-radius: var(--radius-surface); background: var(--accent-soft); color: var(--accent);
+}
+.vp-os[data-ui="still-air"] .sa-setup__icon .sa-ico { width: 24px; height: 24px; }
+.vp-os[data-ui="still-air"] .sa-setup__title { margin: var(--space-7) 0 var(--space-3); font: var(--type-display); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .sa-setup__what { margin: 0; font: var(--type-body); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .sa-setup__steps { list-style: none; margin: var(--space-8) 0 0; padding: 0; }
+.vp-os[data-ui="still-air"] .sa-setup__step {
+  position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: var(--space-4);
+  align-items: start; padding: var(--space-5) 0; border-bottom: 1px solid var(--border-1);
+}
+.vp-os[data-ui="still-air"] .sa-setup__mark {
+  display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  border: 1px solid var(--border-2); font: var(--type-label); color: var(--text-2);
+}
+.vp-os[data-ui="still-air"] .sa-setup__step.is-done .sa-setup__mark { border-color: var(--ok); background: var(--ok); color: var(--on-accent); }
+.vp-os[data-ui="still-air"] .sa-setup__mark .sa-ico { width: 14px; height: 14px; }
+.vp-os[data-ui="still-air"] .sa-setup__body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-1); min-width: 0; }
+.vp-os[data-ui="still-air"] .sa-setup__label { font: var(--type-strong); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .sa-setup__link { color: inherit; text-decoration: none; }
+/* The whole step opens where it is done, not only its title. */
+.vp-os[data-ui="still-air"] .sa-setup__link::after { content: ""; position: absolute; inset: 0; }
+.vp-os[data-ui="still-air"] .sa-setup__step:has(.sa-setup__link):hover .sa-setup__label { color: var(--accent); }
+.vp-os[data-ui="still-air"] .sa-setup__detail { font: var(--type-small); color: var(--text-3); }
+/* The command wraps rather than scrolls: it is shown so it can be read whole
+   before it is run. */
+.vp-os[data-ui="still-air"] .sa-setup__cmd {
+  display: block; margin-top: var(--space-3); white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 10px;
+  border-radius: var(--radius-control); background: var(--surface-sunken); font: var(--type-mono); color: var(--text-1);
+}
+.vp-os[data-ui="still-air"] .sa-setup__go { align-self: center; color: var(--text-3); }
+.vp-os[data-ui="still-air"] .sa-setup__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin-top: var(--space-8); }
+@media (max-width: 640px) {
+  .vp-os[data-ui="still-air"] .sa-setup { margin-top: var(--space-5); }
+}
+
+/* Sheets (ui.Sheet): a form rises over the page, from the right on a wide
+   screen and from the bottom on a phone. The dialog is the scrim's full size
+   and transparent, so a click beside the panel lands on the dialog itself and
+   closes it (admin-os.js). */
+.vp-os[data-ui="still-air"] .sa-sheet {
+  position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none;
+  margin: 0; padding: 0; border: 0; background: transparent; color: var(--text-1);
+}
+.vp-os[data-ui="still-air"] .sa-sheet::backdrop { background: var(--scrim); }
+.vp-os[data-ui="still-air"] .sa-sheet__panel {
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(520px, 100%); overflow-y: auto;
+  background: var(--surface-overlay); border-left: 1px solid var(--border-2); box-shadow: var(--shadow-5);
+  padding: var(--space-6); animation: sa-sheet-in var(--duration-major) var(--ease-move);
+}
+@keyframes sa-sheet-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.vp-os[data-ui="still-air"] .sa-sheet__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
+.vp-os[data-ui="still-air"] .sa-sheet__title { font: var(--type-heading); margin: 0; }
+.vp-os[data-ui="still-air"] .sa-sheet__close { flex: none; }
+/* A form moved into a sheet brings no spacing of its own: it had it from the
+   card it used to sit in. */
+.vp-os[data-ui="still-air"] .sa-sheet__body .field { margin-top: var(--space-5); }
+@media (max-width: 640px) {
+  .vp-os[data-ui="still-air"] .sa-sheet__panel {
+    top: auto; left: 0; width: 100%; max-height: 90vh; border-left: 0; border-top: 1px solid var(--border-2);
+    border-radius: var(--radius-surface) var(--radius-surface) 0 0; padding: var(--space-5);
+    animation-name: sa-sheet-up;
+  }
+  @keyframes sa-sheet-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-os[data-ui="still-air"] .sa-sheet__panel { animation: none; }
+}
+
 /* Phone tab bar */
 .vp-os[data-ui="still-air"] .sa-tabbar { display: none; }
 

@@ -21,6 +21,8 @@ import (
 
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
+	"github.com/johalputt/vayupress/internal/vayuos/torspace"
 	vtor "github.com/johalputt/vayupress/internal/vayuos/vayutor"
 )
 
@@ -36,6 +38,40 @@ echo "deb [signed-by=/usr/share/keyrings/tor.gpg] https://deb.torproject.org/tor
   | sudo tee /etc/apt/sources.list.d/tor.list
 sudo apt-get update && sudo apt-get install -y tor`
 
+// torOnCommand makes Tor available where VAYUOS_TOR=off took it away: the line
+// goes from the env file the installer writes, and the service restarts to
+// read it.
+const torOnCommand = "sudo sed -i '/^VAYUOS_TOR=/d' /etc/vayupress/env && sudo systemctl restart vayupress"
+
+// torSetup is the Tor page until onion services are on. Three reasons they
+// are not: this is the Tor world's own instance, which the Clearnet console
+// runs; VAYUOS_TOR=off; or they are simply off, and one button turns them on.
+// The page used to blame VAYUOS_TOR=off for all three, and showed a strip of
+// zero figures above the button in the last.
+func torSetup(nonce string, available bool) string {
+	what := "Every site you host, also as a .onion beside its normal address: a way in that no provider, network or observer can trace to a visitor."
+	if torspace.IsSpaceChild() {
+		return string(ui.Setup(ui.SetupPage{Icon: "tor", Title: "Onion services run from Clearnet", What: what,
+			Steps:  []ui.SetupStep{{Title: "Clearnet's console", Detail: "This is the Tor world. The onion services that serve it are turned on, and looked after, from the Clearnet console."}},
+			Action: `<a class="btn btn--primary" href="/os/world?target=clearnet">Switch to Clearnet</a>`}))
+	}
+	if !available {
+		return string(ui.Setup(ui.SetupPage{Icon: "tor", Title: "Tor is turned off", What: what,
+			Steps: []ui.SetupStep{{Title: "Tor available to this install",
+				Detail: "VAYUOS_TOR=off in /etc/vayupress/env takes it away. Removing the line and restarting brings it back:", Command: torOnCommand}},
+			Action: copyCommandButton("Copy the command", torOnCommand)}))
+	}
+	return string(ui.Setup(ui.SetupPage{Icon: "tor", Title: "Onion services are off", What: what,
+		Steps: []ui.SetupStep{
+			{Title: "Tor available", Done: true, Detail: "VayuPress runs its own Tor, and fetches a current one when the server's is too old."},
+			{Title: "Onion services on", Detail: "One .onion for each site you host, reachable within a few minutes. Tor Browser finds it on its own. If this server's network blocks Tor, the page says so and bridges get round it."},
+		},
+		// data-tor starts the page's script, which fills the form's CSRF field
+		// from the live cookie as it is sent.
+		Action: ui.HTML(`<form method="post" action="/os/tor/toggle" data-tor data-tor-form><input type="hidden" name="state" value="on"><input type="hidden" name="csrf_token" value=""><button type="submit" class="btn btn--primary">Turn on onion services</button></form>` +
+			`<script nonce="` + nonce + `" src="/os/static/js/admin-os-tor.js?v=` + assetVer("js/admin-os-tor.js") + `"></script>`)}))
+}
+
 // handleOSTor renders the VayuTor control page.
 func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
@@ -46,53 +82,42 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 		st = a.vayuTor.Snapshot()
 	}
 
+	if a.vayuTor == nil || !st.Available || !st.Active {
+		writeOSHTML(w, r, adminOSLayout(nonce, "VayuTor", "tor", cfg, htmpl.HTML(torSetup(nonce, a.vayuTor != nil && st.Available))))
+		return
+	}
+
 	esc := htmpl.HTMLEscapeString
 	body := `<div class="page-header"><h1>VayuTor</h1></div>`
 	body += `<p class="page-sub">Publish every hosted domain as a Tor onion service — a private, un-trackable way in that works alongside the normal address. No provider, network, or observer can see who visits.</p>`
 
-	if a.vayuTor == nil || !st.Available {
-		body += `<div class="empty-state">VayuTor is switched off at the environment level (<code>VAYUOS_TOR=off</code>). Remove that to make it available, then reload.</div>`
-		writeOSHTML(w, r, adminOSLayout(nonce, "VayuTor", "tor", cfg, htmpl.HTML(body)))
-		return
-	}
-
-	// ── Status hero + one-click toggle ──
-	stateClass, stateLabel := "vt-state--off", "Inactive"
+	// ── Status hero + one-click toggle. Onion services are on from here: off,
+	// the page is torSetup. ──
+	stateClass, stateLabel := "vt-state--warn", "Activating…"
 	switch {
-	case st.Active && st.Connected && st.BootstrapPct >= 100:
+	case st.Connected && st.BootstrapPct >= 100:
 		stateClass, stateLabel = "vt-state--on", "Active"
-	case st.Active && st.Connected:
+	case st.Connected:
 		// Control port is up and onions are registered, but tor is still joining
 		// the Tor network — onions are not reachable until this hits 100%.
 		stateClass, stateLabel = "vt-state--warn", "Connecting to Tor ("+strconv.Itoa(st.BootstrapPct)+"%)"
-	case st.Active && !st.Connected:
-		stateClass, stateLabel = "vt-state--warn", "Activating…"
 	}
-	btnLabel, btnKind, nextState := "Activate onion services", "btn--primary", "on"
-	if st.Active {
-		btnLabel, btnKind, nextState = "Deactivate", "btn--ghost", "off"
-	}
+	btnLabel, btnKind, nextState := "Deactivate", "btn--ghost", "off"
 
 	// Premium overview: a stat grid (like Monetization), then a slim control card.
-	shortState := "Inactive"
+	shortState := "Starting"
 	switch {
-	case st.Active && st.Connected && st.BootstrapPct >= 100:
+	case st.Connected && st.BootstrapPct >= 100:
 		shortState = "Active"
-	case st.Active && st.Connected:
+	case st.Connected:
 		shortState = strconv.Itoa(st.BootstrapPct) + "%"
-	case st.Active:
-		shortState = "Starting"
 	}
-	netLabel := "—"
-	if st.Active {
-		switch {
-		case st.TorManaged:
-			netLabel = "Managed Tor"
-		case st.Transport != "" && st.Transport != "direct":
-			netLabel = esc(st.Transport)
-		default:
-			netLabel = "Direct"
-		}
+	netLabel := "Direct"
+	switch {
+	case st.TorManaged:
+		netLabel = "Managed Tor"
+	case st.Transport != "" && st.Transport != "direct":
+		netLabel = esc(st.Transport)
 	}
 	body += `<div class="stat-grid">
   <div class="stat-card"><div class="stat-card__label">Status</div><div class="stat-card__value">` + shortState + `</div></div>
@@ -114,13 +139,13 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 </div>`
 
 	// ── Connection guidance when activated but the daemon is unreachable ──
-	if st.Active && !st.Connected {
+	if !st.Connected {
 		hint := "Bringing Tor up. VayuPress runs its own Tor daemon automatically — it only needs the <code>tor</code> program installed on the server (no control-port or systemd setup required). If this persists, Tor isn't installed yet: the VayuPress deploy/update script installs it in one step (<code>apt-get install tor</code>). Re-run the updater, then reload."
 		if st.LastError != "" {
 			hint += `<div class="text-xs muted mt-2">last error: ` + esc(st.LastError) + `</div>`
 		}
 		body += `<div class="card vt-warn"><div class="card-title">` + saIcon("hourglass") + ` Bringing onions up…</div><p class="text-sm">` + hint + `</p></div>`
-	} else if st.Active && st.Connected && st.BootstrapPct < 100 {
+	} else if st.BootstrapPct < 100 {
 		// Connected to our tor, but it is still joining the Tor network. Onions
 		// cannot be reached until bootstrap completes — this is the usual reason a
 		// freshly-activated .onion shows "Onion site not found".
@@ -172,11 +197,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	body += `<div class="section-head"><span class="section-head__title">Onion addresses</span><span class="section-head__hint">One <code>.onion</code> per hosted domain — same site, a private way in</span></div>`
 	body += `<div class="card">`
 	if len(st.Onions) == 0 {
-		if st.Active {
-			body += `<div class="empty-state">No onion addresses yet — they appear here within a minute of activation, one per hosted domain.</div>`
-		} else {
-			body += `<div class="empty-state"><div class="empty-sub">Activate above to publish an onion address for every hosted domain. Both the normal URL and its <code>.onion</code> keep working at the same time, with no speed or quality trade-off.</div></div>`
-		}
+		body += `<div class="empty-state">No onion addresses yet — they appear here within a minute of activation, one per hosted domain.</div>`
 	} else {
 		body += `<p class="muted text-sm mb-3">Each domain has its own <code>.onion</code>. It serves the exact same site as the clearnet URL — both work simultaneously. Share the <code>.onion</code> with privacy-focused visitors; Tor Browser also discovers it automatically (via the <code>Onion-Location</code> header).</p>`
 		body += `<div class="vt-onions">`

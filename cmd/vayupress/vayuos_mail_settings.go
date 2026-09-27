@@ -139,9 +139,8 @@ func (a *App) handleVayuOSMailboxSettings(w http.ResponseWriter, r *http.Request
 	body.WriteString(`<div class="page-header"><h1>Mailbox settings</h1></div>`)
 	body.WriteString(`<p class="page-sub">Everything that belongs to one address — forwarding, vacation, aliases, filters, recovery, handover, PGP and its picture.</p>`)
 
-	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
-		body.WriteString(`<div class="empty-state">VayuMail is inactive.</div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox settings", "vayuos", cfg, htmpl.HTML(body.String())))
+	if !a.mailRunning() || a.vayuMail.Accounts() == nil {
+		a.writeMailSetup(w, r, "Mailbox settings")
 		return
 	}
 	if !a.isAdminRequest(r) {

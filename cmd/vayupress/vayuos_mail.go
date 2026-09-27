@@ -118,9 +118,8 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Compose</h1></div>`)
 	body.WriteString(`<p class="page-sub">Send DKIM-signed mail — auto-PGP-encrypted when the recipient's key is known.</p>`)
-	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
-		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to enable outbound delivery.</div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
+	if !a.mailRunning() {
+		a.writeMailSetup(w, r, "Compose")
 		return
 	}
 	if !a.isAdminRequest(r) {
@@ -1116,9 +1115,8 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 		writeOSHTML(w, r, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
-	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
-		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to manage mail accounts.</div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
+	if !a.mailRunning() || a.vayuMail.Accounts() == nil {
+		a.writeMailSetup(w, r, "Mail accounts")
 		return
 	}
 	domain := a.vayuMail.Config().Domain
@@ -1602,9 +1600,8 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<div class="page-header"><h1>Connect a mail app</h1></div>`)
 	body.WriteString(`<p class="page-sub">IMAP / POP3 / SMTP settings for the Gmail app, Apple Mail, Thunderbird, Outlook and more.</p>`)
 
-	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
-		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to enable mailboxes and mail-client access.</div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Connect a mail app", "vayuos", cfg, htmpl.HTML(body.String())))
+	if !a.mailRunning() {
+		a.writeMailSetup(w, r, "Connect a mail app")
 		return
 	}
 

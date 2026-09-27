@@ -38,6 +38,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/newsletter"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -67,6 +68,13 @@ func (a *App) handleOSNewsletter(w http.ResponseWriter, r *http.Request) {
 
 	// ── SMTP status banner ────────────────────────────────────────────────────
 	smtpReady := a.mailer != nil && a.mailer.Enabled()
+	// No relay and nobody yet is a newsletter that has not started: a setup
+	// page. Once there are subscribers or past broadcasts the page shows them,
+	// relay or not.
+	if !smtpReady && stats.Total == 0 && len(broadcasts) == 0 {
+		writeOSHTML(w, r, adminOSLayout(nonce, "Newsletter", "newsletter", cfg, htmpl.HTML(newsletterSetup())))
+		return
+	}
 	banner := ""
 	if !smtpReady {
 		banner = `<div class="card settings-callout mb-6">
@@ -413,4 +421,20 @@ func (a *App) deliverBroadcastTracked(broadcastID string, subs []newsletter.Subs
 		logging.LogError("newsletter", "finish broadcast failed", err.Error())
 	}
 	logging.LogInfo("newsletter", fmt.Sprintf("broadcast %s complete — sent=%d failed=%d", broadcastID, sent, failed))
+}
+
+// newsletterSetup is the Newsletter before it can send or has anyone to send
+// to. Broadcasts need an SMTP relay, which only the environment sets; the
+// Email delivery settings say what is set now and how to change it.
+func newsletterSetup() string {
+	return string(ui.Setup(ui.SetupPage{
+		Icon:  "send",
+		Title: "The newsletter isn't set up yet",
+		What:  "Email your readers from your own server, with no mailing-list service in between.",
+		Steps: []ui.SetupStep{
+			{Title: "A mail relay for broadcasts", Detail: "A broadcast goes to every subscriber at once, through an SMTP relay named by SMTP_HOST and its companions in /etc/vayupress/env, read when VayuPress starts."},
+			{Title: "Subscribers", Detail: "Each confirms by email before they count, and every broadcast carries a link to leave. Confirmations go out through Mail when no relay is set."},
+		},
+		Action: `<a class="btn btn--primary" href="/os/settings/email">Email delivery settings</a>`,
+	}))
 }

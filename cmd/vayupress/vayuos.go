@@ -1068,6 +1068,10 @@ func redirectLegacyVayuOS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
+	if !a.mailRunning() {
+		a.writeMailSetup(w, r, "VayuMail")
+		return
+	}
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	admin := a.isAdminRequest(r)
@@ -1220,8 +1224,7 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<div class="page-header"><h1>VayuMail · DNS</h1></div>`)
 	body.WriteString(`<p class="page-sub">Native outbound mail sovereignty — publish these records, then verify every mail domain.</p>`)
 	if !mc.Enabled {
-		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set your domain (DOMAIN env / first-boot wizard) to activate DKIM signing and outbound delivery.</div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
+		a.writeMailSetup(w, r, "Mail DNS")
 		return
 	}
 	qs, stats, _ := a.vayuMail.QueueStatus(r.Context())
@@ -1816,10 +1819,8 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	head := `<div class="page-header"><h1>Mailbox</h1></div>`
 
-	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
-		body.WriteString(head)
-		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to a real domain to provision mailboxes. The inbound SMTP/IMAP listener runs by default once a domain is set (disable with <code>VAYUOS_MAIL_INBOUND=off</code>); receiving external mail also needs port 25 reachable and MX/A DNS records pointing at this host.</div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+	if !a.mailRunning() {
+		a.writeMailSetup(w, r, "Mailbox")
 		return
 	}
 	domain := a.vayuMail.Config().Domain
@@ -3223,9 +3224,8 @@ func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Outbox</h1></div>`)
 	body.WriteString(`<p class="page-sub">Outbound delivery queue — auto-retries with backoff until sent, with one-click Resend.</p>`)
-	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
-		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to activate outbound delivery.</div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
+	if !a.mailRunning() {
+		a.writeMailSetup(w, r, "Outbox")
 		return
 	}
 	// The outbound delivery queue is server-wide; non-admins see their own sent

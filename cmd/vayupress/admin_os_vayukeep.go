@@ -32,6 +32,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/secrets"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayukeep"
 )
 
@@ -414,6 +415,9 @@ func (p keepPrefs) withDefaults() keepPrefs {
 }
 
 func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vayukeep.Generation, now time.Time, currentTarget string, envManaged bool, prefs keepPrefs, run string) string {
+	if !st.Enabled && bootErr == "" && !envManaged {
+		return run + keepSetupPage(currentTarget) + keepScripts(nonce)
+	}
 	prefs = prefs.withDefaults()
 	v := keepStatusVerdict(st, bootErr, now)
 	bannerTone := "ok"
@@ -457,9 +461,37 @@ func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vay
 		monAcc(iconVCB, "How the schedule works", "When backups happen and what is kept", "", false, keepScheduleCard(prefs)) +
 		monAcc(iconArchive, "Schedule & housekeeping", "How often to back up, and how long copies are kept", "", false,
 			keepRetentionCard(prefs)) +
-		`</div>
+		`</div>` + keepScripts(nonce)
+	return body
+}
 
-<script nonce="` + nonce + `">
+// keepSetupPage is the page until automatic backup is on: what it does, what it
+// needs, and one button, with the setup form in a sheet. Downloading a copy or
+// restoring one from a file does not wait on automatic backup, so it stays one
+// tap away in a sheet of its own; a download being prepared shows above (run).
+// A backup that failed to start (bootErr) or one the environment configures is
+// not this page: those are the status page, which says what is wrong.
+func keepSetupPage(currentTarget string) string {
+	return string(ui.Setup(ui.SetupPage{
+		Icon:  "archive",
+		Title: "Backups aren't set up yet",
+		What:  "Encrypted copies of your whole site (database, media, mailboxes and settings), taken every few minutes while you work and tested on a schedule, so you know they restore.",
+		Steps: []ui.SetupStep{
+			{Title: "A folder", Detail: "Outside the site's data folder. A separate disk or mounted volume also survives losing this one."},
+			{Title: "A passphrase", Detail: "It encrypts every copy. Keep it somewhere other than this server: there is no reset."},
+			{Title: "The first backup, and a test restore", Detail: "Both run as soon as it is on, with no restart."},
+		},
+		Action: `<button type="button" class="btn btn--primary" data-sheet="vk-setup-sheet">Set up automatic backup</button>`,
+		More:   `<button type="button" class="btn btn--ghost" data-sheet="vk-manual-sheet">Download or restore a copy</button>`,
+	})) +
+		string(ui.Sheet("vk-setup-sheet", "Set up automatic backup", ui.HTML(keepSetupCard("", currentTarget, false)))) +
+		string(ui.Sheet("vk-manual-sheet", "Download or restore a copy", ui.HTML(keepManualCard())))
+}
+
+// keepScripts wires every control on the page, in both its forms (set up, or
+// not yet). Each looks its element up and does nothing without it.
+func keepScripts(nonce string) string {
+	return `<script nonce="` + nonce + `">
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
 function toast(msg,kind){if(window.vpToast){window.vpToast(msg,kind);}}
@@ -581,7 +613,6 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-vk-restore]'),func
 })();
 </script>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-update.js?v=` + assetVer("js/admin-os-update.js") + `"></script>`
-	return body
 }
 
 // handleOSVayuKeep renders the Backup & Recovery console.

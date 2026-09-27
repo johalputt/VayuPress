@@ -32,6 +32,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/users"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
@@ -375,10 +376,19 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	u := currentUser(r)
 	if u == nil {
-		// API-key sessions have no associated user account to edit.
-		body := `<div class="page-header"><h1>My profile</h1></div>
-<div class="empty-state">Profile editing is available when you sign in with a user account.</div>`
-		writeOSHTML(w, r, adminOSLayout(nonce, "My profile", "profile", cfg, htmpl.HTML(body)))
+		// A session signed in with the API key has no account, so no byline to
+		// edit: the page says what a profile is and how to get one.
+		body := ui.Setup(ui.SetupPage{
+			Icon:  "user",
+			Title: "You're signed in with the API key",
+			What:  "A profile is your byline: the name, photo, bio and links readers see on what you write. It belongs to a user account, and this session has none.",
+			Steps: []ui.SetupStep{
+				{Title: "A user account", Detail: "Add yourself under Team, on the Members page, with the role you need.", Href: "/os/members"},
+				{Title: "Signed in with it", Detail: "Sign out, then sign in with the account's email and password. Your profile is here from then on."},
+			},
+			Action: `<a class="btn btn--primary" href="/os/members">Add an account</a>`,
+		})
+		writeOSHTML(w, r, adminOSLayout(nonce, "My profile", "profile", cfg, body))
 		return
 	}
 	// Reload to get the freshest profile fields.

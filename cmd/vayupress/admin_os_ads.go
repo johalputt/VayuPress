@@ -45,6 +45,13 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 		slots, _ = a.ads.List(ctx)
 		pendingAds, _ = a.ads.ListByStatus(ctx, ads.StatusPendingReview)
 	}
+	// Off with nothing saved is a fresh install's Advertising: a setup page. Off
+	// with slots or paid submissions waiting is a choice the operator made, and
+	// the page keeps showing what is there.
+	if !adsOn && a.ads != nil && len(slots) == 0 && len(pendingAds) == 0 {
+		writeOSHTML(w, r, adminOSLayout(nonce, "Advertising", "ads", cfg, htmpl.HTML(adsSetup())))
+		return
+	}
 	adPrice := a.adSlotPriceCents(ctx)
 
 	banner := ""
@@ -353,3 +360,17 @@ func (a *App) handleOSAdDelete(w http.ResponseWriter, r *http.Request) {
 
 // purgeAdCaches drops cached rendered pages so an ad change shows immediately.
 func (a *App) purgeAdCaches() { render.CachePurgeAll() }
+
+// adsSetup is Advertising until it is on.
+func adsSetup() string {
+	return string(ui.Setup(ui.SetupPage{
+		Icon:  "megaphone",
+		Title: "Advertising is off",
+		What:  "Your own ad slots, served from this site with no ad network, and ads your members can buy for you to approve.",
+		Steps: []ui.SetupStep{
+			{Title: "Advertising on", Detail: "Nothing shows on the site until a slot has something to fill it."},
+			{Title: "An ad slot", Detail: "A placement (header, in-article, sidebar or footer) and what fills it: your own image and link, an HTML creative, or a Google AdSense unit."},
+		},
+		Action: `<button type="button" class="btn btn--primary" data-action="module-on" data-module="ads">Turn on Advertising</button>`,
+	}))
+}

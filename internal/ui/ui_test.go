@@ -51,6 +51,14 @@ func TestEveryPrimitiveEscapesTextOnce(t *testing.T) {
 	escapedOnce(t, "Step mark", Steps(Step{Mark: hostile}))
 	escapedOnce(t, "Step title", Steps(Step{Title: hostile}))
 	escapedOnce(t, "Step detail", Steps(Step{Title: "T", Detail: hostile}))
+	escapedOnce(t, "Setup title", Setup(SetupPage{Title: hostile}))
+	escapedOnce(t, "Setup what", Setup(SetupPage{Title: "T", What: hostile}))
+	escapedOnce(t, "Setup step title", Setup(SetupPage{Title: "T", Steps: []SetupStep{{Title: hostile}}}))
+	escapedOnce(t, "Setup step detail", Setup(SetupPage{Title: "T", Steps: []SetupStep{{Title: "S", Detail: hostile}}}))
+	escapedOnce(t, "Setup step command", Setup(SetupPage{Title: "T", Steps: []SetupStep{{Title: "S", Command: hostile}}}))
+	escapedOnce(t, "Setup step link", Setup(SetupPage{Title: "T", Steps: []SetupStep{{Title: "S", Href: hostile}}}))
+	escapedOnce(t, "Sheet title", Sheet("s", hostile, ""))
+	escapedOnce(t, "Sheet id", Sheet(hostile, "T", ""))
 }
 
 // Markup the caller vouches for passes through untouched: a primitive that

@@ -305,6 +305,23 @@ document.addEventListener('htmx:confirm', function (e) {
   window.vpConfirm({ title: q }, function () { e.detail.issueRequest(true); });
 });
 
+/* ── Sheets (ui.Sheet) ─────────────────────────────────────────
+   A form that rises over the page. The <dialog> itself keeps focus inside and
+   closes on Escape; this opens it from any data-sheet button, closes it from
+   its close button, and closes it on a click on the scrim, which lands on the
+   dialog element because the panel fills the rest of it. */
+document.addEventListener('click', function (e) {
+  var open = e.target.closest && e.target.closest('[data-sheet]');
+  if (open) {
+    var d = document.getElementById(open.getAttribute('data-sheet'));
+    if (d && typeof d.showModal === 'function' && !d.open) d.showModal();
+    return;
+  }
+  var shut = e.target.closest && e.target.closest('[data-sheet-close]');
+  if (shut) { var s = shut.closest('dialog'); if (s) s.close(); return; }
+  if (e.target.matches && e.target.matches('dialog.sa-sheet')) e.target.close();
+});
+
 /* ── Command bar (Cmd+K / Ctrl+K, render 03) ─────────────────────
    Three kinds of result: Go to (the rail's own gated index of pages, then
    posts), Actions (a page to open or one request to run) and Settings (every
@@ -601,7 +618,13 @@ document.addEventListener('click', function (e) {
   if (!el) return;
   var action = el.dataset.action;
   var actions = {
-    // (room for future generic actions)
+    // A setup page's "Turn on" for a module: the same call as its switch in
+    // Tools, then the page again, which is the module's own once it is on.
+    'module-on': function (b) {
+      b.disabled = true;
+      window.vpPost('/os/api/tools/toggle', { id: b.dataset.module, enabled: true },
+        function () { location.reload(); }, function (d, msg) { b.disabled = false; toast(msg, 'error'); });
+    },
   };
   if (actions[action]) { e.preventDefault(); actions[action](el); }
 });

@@ -992,3 +992,59 @@ test("a refused write is announced, not silent", async ({ page }) => {
   await expect(live).toHaveText(/did not go through \(\d{3}\)/);
   await expect(page.locator(".toast", { hasText: "did not go through" })).toBeVisible();
 });
+
+// An app that cannot run yet answers with one page that says what it is, what
+// it needs with the steps already done ticked, and one button for the next.
+// Each used to answer with a sentence of its own, one of them pointing at a
+// wizard that does not exist. On this install (localhost, fresh) every one of
+// these is off.
+const SETUP_PAGES = [
+  ["/os/vayumail", /^Mail isn't set up yet$/],
+  ["/os/vayumail/inbox", /^Mail isn't set up yet$/],
+  ["/os/talk", /^Talk isn't set up yet$/],
+  ["/os/tor", /^(Onion services are off|Tor is turned off)$/],
+  ["/os/vayukeep", /^Backups aren't set up yet$/],
+  ["/os/ads", /^Advertising is off$/],
+  ["/os/newsletter", /^The newsletter isn't set up yet$/],
+  ["/os/profile", /^You're signed in with the API key$/],
+];
+
+test("an app that is not set up says what it needs, and one button does the next step", async ({ page }) => {
+  await openConsole(page);
+  for (const [href, title] of SETUP_PAGES) {
+    await page.goto(href);
+    const kinds = await page.locator("main [data-page-kind]").evaluateAll((els) => els.map((e) => e.getAttribute("data-page-kind")));
+    expect(kinds, href).toEqual(["setup"]);
+    const setup = page.locator(".sa-setup");
+    await expect(setup.locator("h1"), href).toHaveText(title);
+    expect(await setup.locator(".sa-setup__step").count(), href).toBeGreaterThan(0);
+    await expect(setup.locator(".btn--primary:visible"), href).toHaveCount(1);
+  }
+});
+
+test("a setup page's command is copied whole, and its forms rise in sheets", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await openConsole(page);
+  await page.goto("/os/vayumail");
+  const shown = (await page.locator(".sa-setup__cmd").first().textContent()).trim();
+  expect(shown).toContain("deploy-vayupress.sh");
+  await page.getByRole("button", { name: "Copy the install command" }).click();
+  await expect(page.getByRole("button", { name: "copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(shown);
+
+  // Backups: the setup form is in a sheet, and so are download and restore,
+  // which do not wait on automatic backup.
+  await page.goto("/os/vayukeep");
+  const setupSheet = page.locator("#vk-setup-sheet");
+  await expect(setupSheet).toBeHidden();
+  await page.getByRole("button", { name: "Set up automatic backup" }).click();
+  await expect(setupSheet).toBeVisible();
+  await expect(setupSheet.locator("#vk-target")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(setupSheet).toBeHidden();
+  await page.getByRole("button", { name: "Download or restore a copy" }).click();
+  const manual = page.locator("#vk-manual-sheet");
+  await expect(manual.locator("[data-backup-export]")).toBeVisible();
+  await manual.getByRole("button", { name: "Close" }).click();
+  await expect(manual).toBeHidden();
+});

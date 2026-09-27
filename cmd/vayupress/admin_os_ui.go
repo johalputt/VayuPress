@@ -1382,9 +1382,10 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-space-switch]'),fu
     }).catch(function(){if(sw)sw.classList.remove('is-busy');vpSpaceStatus('Could not switch — please try again.');if(window.vpToast)window.vpToast('Could not switch world — please try again.','error');});
   });
 });
-// Copy buttons for the Tor .onion address — in the sidebar and on the dashboard
-// world card. Scoped so it never double-binds with the VayuTor page's own island.
-Array.prototype.forEach.call(document.querySelectorAll('.sidebar [data-copy], .world-card [data-copy]'),function(btn){
+// Copy buttons for the Tor .onion address (in the sidebar and on the dashboard
+// world card) and for a setup page's command. Scoped so it never double-binds
+// with a page's own copy handler.
+Array.prototype.forEach.call(document.querySelectorAll('.sidebar [data-copy], .world-card [data-copy], .sa-setup [data-copy]'),function(btn){
   btn.addEventListener('click',function(){
     var v=btn.getAttribute('data-copy')||'',p=btn.textContent;
     var done=function(){btn.textContent='copied';setTimeout(function(){btn.textContent=p;},1400);};
