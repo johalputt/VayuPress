@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.87] — 2026-09-27
+
+A fix for backups that failed when a file in the data directory grew while it
+was being copied. It also names, on Monitoring and through VayuMCP
+(`get_performance`), the routes that make the HTTP latency figure, the first
+step in bringing johal.in's p95 back down.
+
+### Added
+
+- **Monitoring says where the time goes.** Below the performance figures, the
+  slowest routes of the last 15 minutes, each with its requests, its p95 and
+  the time its requests took together. `get_performance` returns the same to
+  an assistant. A slow figure now names what to fix rather than sending
+  anyone to the server log.
+
 ### Fixed
 
 - **A backup no longer fails because a file grew while it was copied.** The
