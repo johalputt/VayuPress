@@ -20,6 +20,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   dot and a word. On API keys the Copy button beside the base URL copies
   it; it did nothing before.
 
+### Fixed
+
+- **Automatic backup can be turned on, and used, from the console.** On
+  every install whose backups were not configured by environment variables,
+  "Turn on automatic backup" failed: the passphrase was refused as an
+  unknown kind of credential. Past that, every control on the Backups page
+  (Back up now, Test restore, Check, Restore, Delete, the schedule) answered
+  "automatic backup is not set up" even with backups running, and no
+  restore point was taken before an update, because each asked whether the
+  environment named a backup folder rather than whether the engine was on.
+  An end-to-end test now turns backups on from the setup page, waits for a
+  restore point, test-restores it and turns backups off. The service
+  credential form no longer accepts the backup passphrase, which is set on
+  the Backups page.
+- **Home's "Finish setting up" goes away once setup is done.** Its "Review
+  DNS & HTTPS" step is a reminder the console never marks done, and it held
+  the card open on every Home for good.
+
 ## [3.17.84] — 2026-09-27
 
 A fix for the connector pages: since 3.17.78 no API key could be created and

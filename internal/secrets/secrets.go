@@ -99,6 +99,7 @@ const (
 // KnownProviders is the allowlist of provider slugs accepted on write.
 var KnownProviders = map[string]bool{
 	ProviderIndexNow:       true,
+	ProviderVayuKeep:       true,
 	ProviderN8N:            true,
 	ProviderOllama:         true,
 	ProviderOpenRouter:     true,

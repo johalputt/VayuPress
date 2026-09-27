@@ -643,7 +643,7 @@ func (a *App) keepGuard(w http.ResponseWriter, r *http.Request) bool {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrator access required", "")
 		return false
 	}
-	if a.vayuKeep == nil || !config.Cfg.VayuKeepEnabled {
+	if !a.keepRunning() {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "vayukeep-off", "automatic backup is not set up", "")
 		return false
 	}

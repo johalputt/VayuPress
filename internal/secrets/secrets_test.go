@@ -321,3 +321,17 @@ func TestRewrapMasterMigratesWithoutDataLoss(t *testing.T) {
 		t.Fatal("expected failure: keyring is now env-wrapped, so no-secret access must fail")
 	}
 }
+
+// The Backups page keeps its passphrase here. Refused as an unknown provider,
+// turning on automatic backup from the console failed on every install whose
+// backups were not configured by environment variables.
+func TestTheBackupPassphraseCanBeStored(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	if _, err := s.Upsert(ctx, ProviderVayuKeep, "Backup passphrase", "", "quiet-harbour-lantern-47", true, false); err != nil {
+		t.Fatalf("storing the backup passphrase: %v", err)
+	}
+	if got, _ := s.ProviderSecret(ctx, ProviderVayuKeep); got != "quiet-harbour-lantern-47" {
+		t.Fatalf("the backup passphrase reads back as %q", got)
+	}
+}

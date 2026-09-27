@@ -1078,9 +1078,48 @@ test("advertising, once on, lists its slots and adds one from a sheet", async ({
   await page.reload();
   await expect(page.locator(".sa-setup h1")).toHaveText("Advertising is off");
 });
+
+// Backups turned on from the console, the way the setup page offers it, and
+// then used. Both halves were broken on every install not configured by
+// environment variables: the passphrase was refused as an unknown credential,
+// and past that every control answered "not set up", because the guard asked
+// the environment rather than the engine.
+test("backups turned on in the console back up, test-restore, and turn off", async ({ page }) => {
+  test.setTimeout(120000);
+  await openConsole(page);
+  await page.goto("/os/vayukeep");
+  // Download and restore do not wait on automatic backup: their sheet opens
+  // from the setup page, and closes.
+  await page.getByRole("button", { name: "Download or restore a copy" }).click();
+  const manual = page.locator("#vk-manual-sheet");
+  await expect(manual.locator("[data-backup-export]")).toBeVisible();
+  await manual.getByRole("button", { name: "Close" }).click();
+  await expect(manual).toBeHidden();
+
+  const sheet = page.locator("#vk-setup-sheet");
+  await expect(sheet).toBeHidden();
+  await page.getByRole("button", { name: "Set up automatic backup" }).click();
+  await expect(sheet).toBeVisible();
+  await sheet.locator("#vk-target").fill(`/var/tmp/vk-e2e-${Date.now()}`);
+  await sheet.getByRole("button", { name: "Generate one" }).click();
+  await Promise.all([page.waitForEvent("load"), sheet.getByRole("button", { name: "Turn on automatic backup" }).click()]);
+
+  // The first restore point, then a test restore of it that passes.
+  await expect(async () => {
+    await page.reload();
+    await expect(page.locator("[data-vk-restore]").first()).toBeAttached({ timeout: 1000 });
+  }).toPass({ timeout: 60000 });
+  await page.locator("[data-vk-drill]").first().click();
+  await expect(page.locator("#vk-run")).toContainText("Test restore PASSED", { timeout: 60000 });
+
+  // Back as found: off, and the setup page again.
+  await page.locator("[data-vk-disable]").first().click();
+  await Promise.all([page.waitForEvent("load"), page.locator(".vp-confirm").getByRole("button", { name: "Turn off" }).click()]);
+  await expect(page.locator(".sa-setup h1")).toHaveText("Backups aren't set up yet");
+});
 });
 
-test("a setup page's command is copied whole, and its forms rise in sheets", async ({ page, context }) => {
+test("a setup page's command is copied whole", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await openConsole(page);
   await page.goto("/os/vayumail");
@@ -1089,22 +1128,6 @@ test("a setup page's command is copied whole, and its forms rise in sheets", asy
   await page.getByRole("button", { name: "Copy the install command" }).click();
   await expect(page.getByRole("button", { name: "copied" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(shown);
-
-  // Backups: the setup form is in a sheet, and so are download and restore,
-  // which do not wait on automatic backup.
-  await page.goto("/os/vayukeep");
-  const setupSheet = page.locator("#vk-setup-sheet");
-  await expect(setupSheet).toBeHidden();
-  await page.getByRole("button", { name: "Set up automatic backup" }).click();
-  await expect(setupSheet).toBeVisible();
-  await expect(setupSheet.locator("#vk-target")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(setupSheet).toBeHidden();
-  await page.getByRole("button", { name: "Download or restore a copy" }).click();
-  const manual = page.locator("#vk-manual-sheet");
-  await expect(manual.locator("[data-backup-export]")).toBeVisible();
-  await manual.getByRole("button", { name: "Close" }).click();
-  await expect(manual).toBeHidden();
 });
 
 // Monetization is a Settings page (render 04): rows edit in place and one bar

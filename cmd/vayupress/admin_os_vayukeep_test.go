@@ -420,7 +420,6 @@ func TestOnlyAnOfferedCadenceReachesTheEngine(t *testing.T) {
 func TestBackupAndTestRestoreOutliveTheRequestDeadline(t *testing.T) {
 	prev := config.Cfg
 	t.Cleanup(func() { config.Cfg = prev })
-	config.Cfg.VayuKeepEnabled = true
 
 	root := t.TempDir()
 	dbPath := filepath.Join(root, "data", "vayupress.db")
@@ -497,7 +496,6 @@ func keepOutcome(t *testing.T, a *App) string {
 func TestBackUpNowAnswersAtOnceThenShowsItsOutcome(t *testing.T) {
 	prev := config.Cfg
 	t.Cleanup(func() { config.Cfg = prev })
-	config.Cfg.VayuKeepEnabled = true
 	root := t.TempDir()
 	dbPath := filepath.Join(root, "data", "vayupress.db")
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {

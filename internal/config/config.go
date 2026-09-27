@@ -102,7 +102,6 @@ var Cfg struct {
 	// deliberately NOT a dedicated variable — it is the same VAYU_BACKUP_PASSPHRASE
 	// the CLI uses, so an operator has exactly one secret to look after and a
 	// generation is always restorable with `vayupress restore`.
-	VayuKeepEnabled    bool
 	VayuKeepTarget     string
 	VayuKeepMinMin     int
 	VayuKeepMaxMin     int
@@ -221,7 +220,6 @@ func load(requireAPIKey bool) {
 	// Enabled follows the target: configuring somewhere to replicate to IS the
 	// intent to replicate. A separate on/off switch only creates the state where
 	// an operator set a target, believes they have backups, and does not.
-	Cfg.VayuKeepEnabled = Cfg.VayuKeepTarget != "" && os.Getenv("VAYUKEEP_OFF") != "true"
 	Cfg.VayuKeepMinMin = GetEnvAsInt("VAYUKEEP_MIN_MINUTES", 5)
 	Cfg.VayuKeepMaxMin = GetEnvAsInt("VAYUKEEP_MAX_MINUTES", 360)
 	Cfg.VayuKeepDrillMin = GetEnvAsInt("VAYUKEEP_DRILL_MINUTES", 720)

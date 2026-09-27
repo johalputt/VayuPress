@@ -801,10 +801,6 @@ func (a *App) apiKeyMutate(w http.ResponseWriter, r *http.Request, action string
 }
 
 func (a *App) handleOSCredentialSave(w http.ResponseWriter, r *http.Request) {
-	if a.secrets == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "secrets-error", "secrets store not initialised", "")
-		return
-	}
 	if !a.isAdminRequest(r) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return
@@ -818,6 +814,17 @@ func (a *App) handleOSCredentialSave(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	// The backup passphrase is set on the Backups page, which says to keep the
+	// old one for the backups it sealed. Saved here under another label it
+	// would become the newest and replace it with no word said.
+	if strings.EqualFold(strings.TrimSpace(body.Provider), secrets.ProviderVayuKeep) {
+		writeAPIError(w, r, http.StatusBadRequest, "secrets-error", "The backup passphrase is set on the Backups page.", "")
+		return
+	}
+	if a.secrets == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "secrets-error", "secrets store not initialised", "")
 		return
 	}
 	id, err := a.secrets.Upsert(r.Context(), body.Provider, body.Label, body.Endpoint, body.Secret, body.Enabled, false)

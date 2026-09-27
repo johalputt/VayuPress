@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/pace"
 	"github.com/johalputt/vayupress/internal/pacedio"
@@ -105,12 +104,20 @@ func (a *App) vayuKeepStatus() vayukeep.Status {
 	return a.vayuKeep.Status()
 }
 
+// keepRunning reports whether automatic backup is on, as the engine was built:
+// from the environment, or from the console's switch when the environment
+// names no target. Asking the environment alone answered "not set up" to every
+// control on an install whose backups were turned on in the console.
+func (a *App) keepRunning() bool {
+	return a.vayuKeep != nil && a.vayuKeep.Status().Enabled
+}
+
 // vayuKeepPreflight takes a generation before a destructive operation and waits
 // briefly for it, so an operator who runs a migration or an update has a
 // restore point from immediately before it rather than from whenever the
 // cadence last fired. It never blocks the operation for long, and never fails it.
 func (a *App) vayuKeepPreflight(reason string) {
-	if a.vayuKeep == nil || !config.Cfg.VayuKeepEnabled {
+	if !a.keepRunning() {
 		return
 	}
 	logging.LogInfo("vayukeep", "pre-flight generation requested before "+reason)
