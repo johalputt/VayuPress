@@ -91,9 +91,12 @@ func Facts(facts ...Fact) HTML {
 
 // Figure is one measured number and what it counts. Tone "warn" or "danger"
 // marks a figure that wants attention; the number itself is never coloured
-// alone, the note says why.
+// alone, the note says why. Live marks a reading sampled from the running
+// server (a latency, a stall count), which is 0 or not depending on what
+// happened a moment ago rather than on what the page is.
 type Figure struct {
 	Value, Label, Note, Tone string
+	Live                     bool
 }
 
 // Figures renders the few numbers that answer "what is the state of this".
@@ -118,7 +121,11 @@ func (f Figure) Cell() HTML {
 	case "warn", "danger":
 		cls += " stat-card--" + f.Tone
 	}
-	s := `<div class="` + cls + `"><div class="stat-card__label">` + string(Text(f.Label)) +
+	live := ""
+	if f.Live {
+		live = ` data-live`
+	}
+	s := `<div class="` + cls + `"` + live + `><div class="stat-card__label">` + string(Text(f.Label)) +
 		`</div><div class="` + figureValueClass(f.Value) + `">` + figureValue(f.Value) + `</div>`
 	if f.Note != "" {
 		s += `<div class="stat-card__note">` + string(Text(f.Note)) + `</div>`

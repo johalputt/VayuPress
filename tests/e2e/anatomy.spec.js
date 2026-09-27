@@ -50,7 +50,12 @@ function anatomy() {
       e.children.length <= 2 && t.length > 1 && t.length < 24 &&
       !e.matches("button, a, input, kbd, select, code, .sa-dot, [class*=avatar], [data-label]");
   }).length;
-  const figures = [...main.querySelectorAll(".stat-card__value, [class*='figure'] [class*='value']")].filter(visible);
+  // A live reading (data-live, ui.Figure.Live) is left out: whether Monitoring's
+  // latency reads 0 depends on how much traffic the tests before this one made,
+  // so counting it failed a commit that changed one Go test (5 in the
+  // baseline, 10 on the run). The ratchet compares what a page is.
+  const figures = [...main.querySelectorAll(".stat-card__value, [class*='figure'] [class*='value']")]
+    .filter(visible).filter((e) => !e.closest("[data-live]"));
   const zeroFigures = figures.filter((e) => /^[$€₹£]?\s*0([.,]0+)?\s*(%|ms|s|B)?$/.test(e.textContent.trim())).length;
   const inlineFields = all.filter((e) =>
     e.matches("input:not([type=hidden]):not([type=checkbox]):not([type=radio]), textarea, select") &&

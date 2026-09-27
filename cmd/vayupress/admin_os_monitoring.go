@@ -66,9 +66,9 @@ func budgetStateClass(state string) string {
 	}
 }
 
-// monStat renders one performance stat card.
+// monStat renders one performance stat card. Every one is a live reading.
 func monStat(label, value, sub string) string {
-	return string(ui.Figure{Label: label, Value: value, Note: sub}.Cell())
+	return string(ui.Figure{Label: label, Value: value, Note: sub, Live: true}.Cell())
 }
 
 func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {

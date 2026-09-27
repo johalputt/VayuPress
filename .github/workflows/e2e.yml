@@ -7,7 +7,7 @@ name: e2e
 # Stage 3; its e2e specs were removed with it.)
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -54,6 +54,23 @@ jobs:
 
       - uses: ./.github/actions/boot-vayupress
 
+      # A commit that changes a surface's look on purpose says which, in a
+      # line of its message: "Baselines: settings, outside-services". Those
+      # surfaces are rendered afresh and recorded by the record job below once
+      # everything else in this run has passed; every other surface is still
+      # compared. Re-recording everything would have absorbed the brand
+      # restyle of 780f0255, which only the unnamed surfaces caught.
+      - name: Surfaces this commit re-records
+        id: rerecord
+        shell: bash
+        run: |
+          names=$(git log -1 --format=%B | sed -n 's/^Baselines:[[:space:]]*//p' | head -1 | tr -d ' ')
+          if [ -n "$names" ] && ! [[ "$names" =~ ^[a-z0-9-]+(,[a-z0-9-]+)*$ ]]; then
+            echo "::error::Baselines: takes surface names separated by commas, got '$names'"; exit 1
+          fi
+          echo "pattern=(${names//,/|}) looks as designed" >> "$GITHUB_OUTPUT"
+          echo "names=$names" >> "$GITHUB_OUTPUT"
+
       - name: Screenshots match the baselines
         working-directory: tests/e2e
         # First, on the install exactly as the boot left it, because that is
@@ -61,7 +78,25 @@ jobs:
         # spec alone on a fresh boot). The other specs publish posts, upload
         # files and mark the bell read, which would change the picture. Its
         # own output folder keeps the diff images from the next run's clean.
-        run: npx playwright test visual.spec.js --output test-results-visual
+        env:
+          NAMES: ${{ steps.rerecord.outputs.names }}
+          PATTERN: ${{ steps.rerecord.outputs.pattern }}
+        run: |
+          if [ -z "$NAMES" ]; then
+            npx playwright test visual.spec.js --output test-results-visual
+          else
+            npx playwright test visual.spec.js --output test-results-visual --grep-invert "$PATTERN"
+            # A name that matches no surface is a typo, and Playwright fails
+            # on "no tests found": it is never silently skipped.
+            npx playwright test visual.spec.js --output test-results-visual-new --grep "$PATTERN" --update-snapshots
+          fi
+
+      - name: Keep the re-recorded baselines
+        if: ${{ steps.rerecord.outputs.names != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: rerecorded-baselines
+          path: tests/e2e/visual.spec.js-snapshots/
 
       - name: Page grammar is no further from its baseline
         if: ${{ !cancelled() }}
@@ -104,6 +139,43 @@ jobs:
         run: |
           [ -f /tmp/vayupress/proxy.pid ]  && kill "$(cat /tmp/vayupress/proxy.pid)"  || true
           [ -f /tmp/vayupress/server.pid ] && kill "$(cat /tmp/vayupress/server.pid)" || true
+
+    outputs:
+      names: ${{ steps.rerecord.outputs.names }}
+
+  # Commits the surfaces a pushed commit named in "Baselines:", and only once
+  # the whole e2e job passed on it, so a re-recorded picture never lands beside
+  # a failing test. The only job here that can write to the repository.
+  record:
+    needs: e2e
+    if: ${{ github.event_name == 'push' && needs.e2e.outputs.names != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          token: ${{ secrets.SCREENSHOTS_PAT || github.token }}
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: rerecorded-baselines
+          path: tests/e2e/visual.spec.js-snapshots/
+      - name: Commit them
+        env:
+          NAMES: ${{ needs.e2e.outputs.names }}
+        run: |
+          git config user.name  "johalputt"
+          git config user.email "ankushchoudharyjohal@gmail.com"
+          git add tests/e2e/visual.spec.js-snapshots
+          if git diff --cached --quiet; then
+            echo "The named surfaces already match their baselines."; exit 0
+          fi
+          git commit -m "e2e: re-recorded baselines for ${NAMES//,/, }"
+          for i in 1 2 3 4; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((2 ** i))
+          done
+          exit 1
 
   # Visual baselines (tests/e2e/visual.spec.js) are rendered by THIS runner's
   # Chromium: a baseline from any other browser build differs on anti-aliasing
