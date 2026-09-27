@@ -1,0 +1,60 @@
+{{define "decisions"}}{{template "head" .}}
+<div class="registry">
+  <p class="stamp top"><span class="dot live" aria-hidden="true"></span><span>Synced from main <time datetime="{{iso .In.Synced}}" data-ago>{{stamp .In.Synced}}</time></span></p>
+  <h1>Every decision, and why.</h1>
+  <p class="lede">{{len .ADRs}} architecture decision records: what was chosen, what was refused, and the test that holds it. Nothing here is edited by hand; each one is the file in the repository.</p>
+  <div class="filters" data-filters>
+    <div class="chips" role="group" aria-label="Owner">
+      <button type="button" class="chip" aria-pressed="true" data-owner="">All <span>{{len .ADRs}}</span></button>
+      {{range .Owners}}<button type="button" class="chip" aria-pressed="false" data-owner="{{.Name}}">{{.Name}} <span>{{.Count}}</span></button>{{end}}
+    </div>
+    <label class="filter"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M14 14l4 4"/></svg><input type="search" placeholder="Filter decisions" aria-label="Filter decisions" data-filter></label>
+  </div>
+  <ol class="adrs" data-adrs>
+    {{range .ADRs}}<li data-owner="{{.ADR.Filter}}"{{if .ADR.New}} class="new"{{end}}><a href="{{.Href}}">
+      <span class="n">{{.ADR.Num}}</span>
+      <span class="t">{{.R.Title}}{{with .ADR.Summary}}<small>{{.}}</small>{{end}}</span>
+      <span class="s"><span class="dot{{if ne (lower .ADR.Status) "accepted"}} quiet{{end}}" aria-hidden="true"></span>{{or .ADR.Status "Recorded"}}</span>
+      <span class="d">{{shortdate .ADR.Date}}</span>
+    </a></li>{{end}}
+  </ol>
+  <p class="none" data-none hidden>No decision matches that.</p>
+</div>
+{{template "foot" .}}{{end}}
+
+{{define "changes"}}{{template "head" .}}
+<div class="registry">
+  <p class="stamp top"><span class="dot live" aria-hidden="true"></span><span>Synced from main <time datetime="{{iso .In.Synced}}" data-ago>{{stamp .In.Synced}}</time></span></p>
+  <h1>Every release, newest first.</h1>
+  <p class="lede">{{len .Releases}} releases, each with what changed and why. Every install updates itself from the signed releases; these are their notes.</p>
+  <div class="filters"><label class="filter"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M14 14l4 4"/></svg><input type="search" placeholder="Filter releases" aria-label="Filter releases" data-filter></label></div>
+  <ol class="adrs releases" data-adrs>
+    {{range .Releases}}<li><a href="/changes/{{.Slug}}/">
+      <span class="n">{{.Version}}</span>
+      <span class="t">{{or .Summary "Notes for this release"}}</span>
+      <span class="d">{{shortdate .Date}}</span>
+    </a></li>{{end}}
+  </ol>
+  <p class="none" data-none hidden>No release matches that.</p>
+</div>
+{{template "foot" .}}{{end}}
+
+{{define "release"}}{{template "head" .}}
+<div class="docs">
+  <nav class="side" aria-label="Releases">
+    <h2>Releases</h2>
+    <ul>{{range $i, $r := .Releases}}{{if lt $i 12}}<li><a href="/changes/{{$r.Slug}}/"{{if eq $r.Version $.Release.Version}} aria-current="page"{{end}}>{{$r.Version}}</a></li>{{end}}{{end}}
+      <li><a href="/changes/">All releases <span class="count">{{len .Releases}}</span></a></li></ul>
+  </nav>
+  <article class="article">
+    <p class="crumbs"><a href="/changes/">Changes</a> › Release</p>
+    <h1>{{.Release.Version}}</h1>
+    <div class="facts">{{with longdate .Release.Date}}<span>{{.}}</span>{{end}}<a href="{{.In.Source}}/releases/tag/v{{.Release.Version}}">The release <span aria-hidden="true">↗</span></a></div>
+    <div class="prose">{{.ReleaseBody}}</div>
+  </article>
+  <aside class="toc" aria-label="On this page">
+    {{if .ReleaseTOC}}<h2>On this page</h2><ol>{{range .ReleaseTOC}}<li{{if .Sub}} class="sub"{{end}}><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}</ol>{{end}}
+    <p class="synced"><a class="source" href="{{.In.Source}}/blob/{{.In.Commit}}/CHANGELOG.md">View the changelog <span aria-hidden="true">↗</span></a></p>
+  </aside>
+</div>
+{{template "foot" .}}{{end}}

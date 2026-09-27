@@ -1,0 +1,56 @@
+{{define "side"}}<nav class="side" aria-label="Documentation">
+  {{range .Nav}}<h2>{{.Group}}</h2><ul>{{range .Docs}}<li><a href="{{.Href}}"{{if and $.Doc (eq $.Doc.Slug .Slug)}} aria-current="page"{{end}}>{{.R.Title}}</a></li>{{end}}</ul>
+  {{end}}<h2>Decisions</h2><ul>
+    <li><a href="/decisions/">All decisions <span class="count">{{len .ADRs}}</span></a></li>
+    {{range latestADRs .ADRs 4}}<li><a href="{{.Href}}"{{if and $.Doc (eq $.Doc.Slug .Slug)}} aria-current="page"{{end}}>{{.ADR.Num}} · {{.R.Title}}</a></li>{{end}}
+  </ul>
+</nav>{{end}}
+
+{{define "doc"}}{{template "head" .}}
+<div class="docs">
+  {{template "side" .}}
+  <article class="article">
+    <p class="crumbs">{{if .Doc.ADR}}<a href="/decisions/">Decisions</a>{{with .Doc.ADR.Owner}} › {{.}}{{end}}{{else}}<a href="/docs/">Docs</a>{{if ne .Doc.Group "Hidden"}} › {{.Doc.Group}}{{end}}{{end}}</p>
+    <h1>{{.Doc.R.Title}}</h1>
+    {{with .Doc.ADR}}<div class="facts">
+      {{with .Status}}<span class="state"><span class="dot{{if ne (lower .) "accepted"}} quiet{{end}}" aria-hidden="true"></span><b>{{.}}</b></span>{{end}}
+      <span class="mono">{{.Num}}</span>
+      {{with longdate .Date}}<span>{{.}}</span>{{end}}
+      {{with .Summary}}<span class="facts-summary">{{.}}</span>{{end}}
+    </div>{{end}}
+    <div class="prose">{{.Doc.R.Body}}</div>
+  </article>
+  <aside class="toc" aria-label="On this page">
+    {{if .Doc.R.TOC}}<h2>On this page</h2>
+    <ol>{{range .Doc.R.TOC}}<li{{if .Sub}} class="sub"{{end}}><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}</ol>{{end}}
+    <p class="synced"><span class="state"><span class="dot live" aria-hidden="true"></span>Synced from main</span><br><time datetime="{{iso .In.Synced}}" data-ago>{{stamp .In.Synced}}</time> · <a class="mono" href="{{.In.Source}}/commit/{{.In.Commit}}">{{short .In.Commit}}</a><br>
+    <a class="source" href="{{.In.Source}}/blob/{{.In.Commit}}/{{.Doc.Src}}">View the source <span aria-hidden="true">↗</span></a></p>
+  </aside>
+</div>
+{{template "foot" .}}{{end}}
+
+{{define "docs"}}{{template "head" .}}
+<div class="registry">
+  <p class="stamp top"><span class="dot live" aria-hidden="true"></span><span>Synced from main <time datetime="{{iso .In.Synced}}" data-ago>{{stamp .In.Synced}}</time></span></p>
+  <h1>Everything it does, written down.</h1>
+  <p class="lede">Every guide that ships with VayuPress, from the first install to the threat model. The same documents each install serves at its own /docs, so a server offline still has its manual.</p>
+  {{range .Nav}}<section class="group" aria-labelledby="g-{{slug .Group}}">
+    <h2 id="g-{{slug .Group}}">{{.Group}}</h2>
+    <ul class="rows">{{range .Docs}}<li><a href="{{.Href}}"><span class="t">{{.R.Title}}</span><span class="s">{{.R.Summary}}</span></a></li>{{end}}</ul>
+  </section>{{end}}
+  <section class="group" aria-labelledby="g-decisions">
+    <h2 id="g-decisions">Decisions</h2>
+    <ul class="rows"><li><a href="/decisions/"><span class="t">{{len .ADRs}} architecture decision records</span><span class="s">What was chosen, what was refused, and the test that holds it.</span></a></li></ul>
+  </section>
+</div>
+{{template "foot" .}}{{end}}
+
+{{define "page"}}{{template "head" .}}
+<div class="docs single">
+  <article class="article">
+    {{with .Page.Kicker}}<p class="crumbs">{{.}}</p>{{end}}
+    <h1>{{.Page.R.Title}}</h1>
+    <div class="prose">{{.Page.R.Body}}</div>
+  </article>
+</div>
+{{template "foot" .}}{{end}}

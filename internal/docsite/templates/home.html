@@ -1,0 +1,70 @@
+{{define "home"}}{{template "head" .}}
+<section class="hero">
+  {{with .Latest}}<a class="eyebrow" href="/changes/{{.Slug}}/"><span class="dot live" aria-hidden="true"></span><b>{{.Version}}</b> is out<span class="eyebrow-sep" aria-hidden="true">·</span>What changed <span aria-hidden="true">→</span></a>{{end}}
+  <h1>Your whole presence.<br><span class="quiet">One binary. One server.</span></h1>
+  <p class="lede">A website, a blog, mail, private chat and a Tor onion, run from VayuOS Still Air: a console quiet enough to forget, and exact enough to trust.</p>
+  <div class="ctas"><a class="btn primary lg" href="/docs/INSTALLATION/">Install on your server</a><a class="btn ghost lg" href="/docs/">Read the docs</a></div>
+  <div class="install"><span>One command</span><code data-copy>curl -sSL https://raw.githubusercontent.com/johalputt/vayupress/main/scripts/deploy-vayupress.sh | bash</code></div>
+  {{if or .Hero.Light .Hero.Dark}}<div class="stage">
+    <picture class="stage-wide">{{with .Hero.Dark}}<source srcset="{{.}}" media="(prefers-color-scheme: dark)">{{end}}<img src="{{or .Hero.Light .Hero.Dark}}" alt="The VayuOS Still Air console: Home" width="1440" height="900" fetchpriority="high"></picture>
+    {{if or .Hero.PhoneLight .Hero.PhoneDark}}<picture class="stage-phone">{{with .Hero.PhoneDark}}<source srcset="{{.}}" media="(prefers-color-scheme: dark)">{{end}}<img src="{{or .Hero.PhoneLight .Hero.PhoneDark}}" alt="The console on a phone" width="390" height="844" loading="lazy"></picture>{{end}}
+  </div>{{end}}
+</section>
+
+<section class="band tight" aria-labelledby="h-numbers">
+  <p class="kicker">In production</p>
+  <h2 id="h-numbers">{{with .In.Install.Host}}{{.}} runs on it.{{else}}It runs in production.{{end}} <span class="quiet">All of it, on one small server.</span></h2>
+  <div class="numbers">
+    {{if .In.Install.Posts}}<div><div class="v">{{num .In.Install.Posts}}</div><div class="l">published posts, in one SQLite file</div></div>{{end}}
+    {{if .In.Install.Sites}}<div><div class="v">{{num .In.Install.Sites}}</div><div class="l">sites served, each with its own certificate</div></div>{{end}}
+    <div><div class="v">{{num (len .ADRs)}}</div><div class="l">decisions written down, and why</div></div>
+    <div><div class="v">{{num (len .Releases)}}</div><div class="l">releases, each with its notes</div></div>
+  </div>
+  <p class="stamp"><span class="dot" aria-hidden="true"></span><span>Read from {{with .In.Install.Host}}{{.}} and from {{end}}main <time datetime="{{iso .In.Synced}}">{{stamp .In.Synced}}</time>, not written by hand</span></p>
+</section>
+
+<section class="band tight" id="products" aria-labelledby="h-products">
+  <p class="kicker">What it serves</p>
+  <h2 id="h-products">Six things most people rent separately.</h2>
+  <div class="products">
+    {{range .Products}}<div class="product">
+      <div class="ic" aria-hidden="true">{{template "icon" .Icon}}</div>
+      <h3>{{.Name}}</h3>
+      <p>{{.Text}}</p>
+      {{with .ADR}}<a class="meta" href="{{.Href}}">{{.ADR.Num}} · {{.R.Title}}</a>{{end}}
+    </div>{{end}}
+  </div>
+</section>
+
+<section class="band" id="still-air" aria-labelledby="h-still-air">
+  <div class="split">
+    <div>
+      <p class="kicker">VayuOS Still Air</p>
+      <h2 id="h-still-air">A console that says what is true.</h2>
+      <p class="sub">State as a dot and a word. Forms that rise when you need them. Nothing that claims a control it does not have.</p>
+      <ul class="points">
+        <li><span class="dot" aria-hidden="true"></span><span><b>Six kinds of page</b> and eight rules, measured on every page by a check that runs on every change.</span></li>
+        <li><span class="dot" aria-hidden="true"></span><span><b>Every screen that matters</b> compared pixel by pixel on every push, in both schemes.</span></li>
+        <li><span class="dot" aria-hidden="true"></span><span><b>Work paced</b> to what the server can spare: a backup waits for a quiet moment.</span></li>
+      </ul>
+    </div>
+    {{if or .Hero.SplitLight .Hero.SplitDark}}<picture class="split-shot">{{with .Hero.SplitDark}}<source srcset="{{.}}" media="(prefers-color-scheme: dark)">{{end}}<img src="{{or .Hero.SplitLight .Hero.SplitDark}}" alt="A settings page in the console" width="1440" height="900" loading="lazy"></picture>{{end}}
+  </div>
+</section>
+
+<section class="band" aria-labelledby="h-live">
+  <div class="live">
+    <div>
+      <p class="kicker">Live from main</p>
+      <h2 id="h-live">This site keeps itself current.</h2>
+      <p class="sub">Every document, decision record and release note here is published from the repository the moment it lands. Nobody copies anything by hand, so nothing here can fall behind the code.</p>
+      <p class="stamp"><span class="dot live" aria-hidden="true"></span><span>Synced from main <time datetime="{{iso .In.Synced}}" data-ago>{{stamp .In.Synced}}</time> · commit <a class="mono" href="{{.In.Source}}/commit/{{.In.Commit}}">{{short .In.Commit}}</a></span></p>
+    </div>
+    <ol class="feed">
+      {{range .Feed}}<li><a href="{{.Href}}"><span class="when">{{.When}}</span><span class="what">{{.Title}}{{with .Note}} <span>· {{.}}</span>{{end}}</span><span class="kind">{{.Kind}}</span></a></li>{{end}}
+    </ol>
+  </div>
+</section>
+{{template "foot" .}}{{end}}
+
+{{define "icon"}}<svg viewBox="0 0 20 20">{{if eq . "site"}}<rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 8h14"/>{{else if eq . "doc"}}<path d="M5 3.5h7l3 3V16.5H5z"/><path d="M8 9h4M8 12h4"/>{{else if eq . "mail"}}<rect x="3" y="5" width="14" height="10" rx="2"/><path d="M3 6l7 5 7-5"/>{{else if eq . "talk"}}<path d="M4 5h12v8H9l-4 3V5z"/>{{else if eq . "tor"}}<circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="3.5"/><circle cx="10" cy="10" r="0.6"/>{{else if eq . "key"}}<circle cx="7" cy="10" r="3.5"/><path d="M10.5 10H17M14.5 10v3M17 10v2"/>{{else if eq . "hash"}}<path d="M8 3.5 6.5 16.5M13.5 3.5 12 16.5M4 7.5h13M3 12.5h13"/>{{else if eq . "chip"}}<rect x="5" y="5" width="10" height="10" rx="2"/><path d="M8 2.5v2.5M12 2.5v2.5M8 15v2.5M12 15v2.5M2.5 8H5M2.5 12H5M15 8h2.5M15 12h2.5"/>{{else}}<path d="M10 2.5l6 2v5c0 3.8-2.8 6.3-6 7.5-3.2-1.2-6-3.7-6-7.5v-5l6-2z"/>{{end}}</svg>{{end}}

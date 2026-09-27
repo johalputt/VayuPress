@@ -1,0 +1,85 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if eq .Path "/"}}VayuPress — your whole presence, one binary{{else}}{{.Title}} · VayuPress{{end}}</title>
+{{with .Description}}<meta name="description" content="{{.}}">{{end}}
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e0e10" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="{{.Path}}">
+<link rel="icon" href="/assets/vayupress-mark-black.png" media="(prefers-color-scheme: light)">
+<link rel="icon" href="/assets/vayupress-mark-white.png" media="(prefers-color-scheme: dark)">
+<link rel="preload" href="/assets/fonts/inter-latin-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/space-grotesk-latin-600.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{.CSS}}">
+<script src="{{.JS}}" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header class="bar">
+  <a class="brand" href="{{.Home}}/">{{template "mark"}}VayuPress</a>
+  <nav class="bar-nav" aria-label="Site">
+    <a href="{{.Home}}/"{{if eq .Section "product"}} aria-current="page"{{end}}>Product</a>
+    <a href="{{.Home}}/docs/"{{if eq .Section "docs"}} aria-current="page"{{end}}>Docs</a>
+    <a href="{{.Home}}/decisions/"{{if eq .Section "decisions"}} aria-current="page"{{end}}>Decisions</a>
+    <a href="{{.Home}}/changes/"{{if eq .Section "changes"}} aria-current="page"{{end}}>Changes</a>
+    <a href="{{.Download}}"{{if eq .Section "download"}} aria-current="page"{{end}}>Download</a>
+  </nav>
+  <div class="bar-end">
+    {{if .Home}}<a class="search-open" href="{{.Home}}/#search">{{else}}<button type="button" class="search-open" data-search-open aria-haspopup="dialog">{{end}}
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M14 14l4 4"/></svg>
+      <span>Search {{num .Searchable}} documents</span><kbd>/</kbd>
+    {{if .Home}}</a>{{else}}</button>{{end}}
+    <a class="btn primary" href="{{.Home}}/docs/INSTALLATION/">Install</a>
+    <details class="menu">
+      <summary aria-label="Menu"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7h12M4 13h12"/></svg></summary>
+      <nav aria-label="Site">
+        <a href="{{.Home}}/">Product</a><a href="{{.Home}}/docs/">Docs</a><a href="{{.Home}}/decisions/">Decisions</a><a href="{{.Home}}/changes/">Changes</a>
+        <a href="{{.Download}}">Download</a>
+        {{if .Home}}<a href="{{.Home}}/#search">Search</a>{{else}}<button type="button" data-search-open>Search</button>{{end}}
+      </nav>
+    </details>
+  </div>
+</header>
+<main id="main">
+{{end}}
+
+{{define "foot"}}
+</main>
+<footer class="foot">
+  <div class="foot-brand">
+    <a class="brand" href="{{.Home}}/">{{template "mark"}}VayuPress</a>
+    <p>Vayu is Sanskrit for wind: the force that moves everything and belongs to no one.</p>
+  </div>
+  <div><h2>Product</h2><ul><li><a href="{{.Home}}/#products">What it serves</a></li><li><a href="{{.Home}}/#still-air">VayuOS Still Air</a></li>{{if index .Pages "/about.html"}}<li><a href="{{.Home}}/about.html">About</a></li>{{end}}{{if index .Pages "/sponsors/"}}<li><a href="{{.Home}}/sponsors/">Sponsor</a></li>{{end}}</ul></div>
+  <div><h2>Docs</h2><ul><li><a href="{{.Home}}/docs/INSTALLATION/">Install</a></li><li><a href="{{.Home}}/docs/OPERATIONS/">Operations</a></li><li><a href="{{.Home}}/docs/ARCHITECTURE/">Architecture</a></li><li><a href="{{.Home}}/docs/API-REFERENCE/">API</a></li><li><a href="{{.Home}}/docs/TROUBLESHOOTING/">Troubleshooting</a></li></ul></div>
+  <div><h2>Open</h2><ul><li><a href="{{.Home}}/decisions/">{{len .ADRs}} decisions</a></li><li><a href="{{.Home}}/docs/SECURITY/">Security</a></li><li><a href="{{.Home}}/changes/">Changes</a></li><li><a href="{{.In.Source}}">Source</a></li></ul></div>
+  <div><h2>Get it</h2><ul><li><a href="{{.Download}}">{{with .Latest}}Download {{.Version}}{{else}}Download{{end}}</a></li><li><a href="{{.Download}}#how">How updates arrive</a></li>{{if index .Pages "/vayumail/privacy/"}}<li><a href="{{.Home}}/vayumail/privacy/">VayuMail privacy</a></li>{{end}}</ul></div>
+  <div class="fine">
+    <span>Apache-2.0</span><span>No telemetry</span>
+    <span>Served by VayuPress{{with .In.Install.Host}}, from {{.}}{{end}}</span>
+    <span class="synced"><span class="dot live" aria-hidden="true"></span><span>Synced from main <time datetime="{{iso .In.Synced}}" data-ago>{{stamp .In.Synced}}</time> · <a class="mono" href="{{.In.Source}}/commit/{{.In.Commit}}">{{short .In.Commit}}</a></span></span>
+  </div>
+</footer>
+{{if not .Home}}<dialog class="search" data-search aria-label="Search the documentation">
+  <div class="search-box">
+    <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M14 14l4 4"/></svg>
+    <input type="search" placeholder="Search guides, decisions and releases" aria-label="Search" autocomplete="off" spellcheck="false" data-search-input>
+    <kbd>esc</kbd>
+  </div>
+  <ol class="search-results" role="listbox" aria-label="Results" data-search-results></ol>
+  <p class="search-empty" data-search-empty hidden>Nothing matches that.</p>
+</dialog>{{end}}
+</body>
+</html>
+{{end}}
+
+{{define "mark"}}<picture class="mark"><source srcset="/assets/vayupress-mark-white.png" media="(prefers-color-scheme: dark)"><img src="/assets/vayupress-mark-black.png" alt="" width="26" height="20"></picture>{{end}}
+
+{{define "moved"}}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>{{.Title}} · VayuPress</title>
+<meta http-equiv="refresh" content="0; url={{.Path}}"><link rel="canonical" href="{{.Path}}"></head>
+<body><p><a href="{{.Path}}">{{.Title}} are here.</a></p></body></html>
+{{end}}

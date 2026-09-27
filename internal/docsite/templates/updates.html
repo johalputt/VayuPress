@@ -1,0 +1,91 @@
+{{define "updates"}}{{template "head" .}}
+<section class="hero hero--short">
+  <p class="eyebrow pulse" id="pulse" data-state="wait" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="pulse-text">Reading the mirror…</span></p>
+  <h1>Updates that arrive<br><span class="quiet">even when GitHub doesn't.</span></h1>
+  <p class="lede">Some hosting networks cannot reach GitHub at all. Installs on them fall back to this mirror on their own, and nothing here is taken on trust: every release below was signature-checked and checksum-verified <b>before</b> it was published, and every install checks it again before it updates.</p>
+  <div class="release" aria-live="polite">
+    <div>
+      <p class="kicker">Latest stable release</p>
+      <p class="release-version" id="latest-version">{{with .Latest}}{{.Version}}{{else}}—{{end}}</p>
+      <p class="release-meta" id="latest-meta">Loading the release this mirror holds…</p>
+    </div>
+    <div class="release-actions">
+      <a class="btn primary lg" id="latest-download" href="#files" aria-disabled="true">Download binary</a>
+      <a class="btn ghost lg" href="#notes">Release notes</a>
+    </div>
+    <ul class="checks" id="latest-checks" aria-label="Checks the binary passed"></ul>
+  </div>
+  <noscript><p class="stamp">This page reads the mirror's live status with a small script. Without it, the same data is at <a href="/mirror/status.json">/mirror/status.json</a>.</p></noscript>
+</section>
+
+<section class="band tight" aria-labelledby="h-verify">
+  <p class="kicker">Verified before it is held</p>
+  <h2 id="h-verify">A release is refused unless every file passes.</h2>
+  <p class="sub">A mirror that stored whatever it was given could advertise an update no install would accept. This one refuses a release unless every file passes the strongest check the release offers for it.</p>
+  <div class="products">
+    <div class="product"><div class="ic" aria-hidden="true">{{template "icon" "shield"}}</div><h3>Sigstore signature</h3><p>The binary must be signed by the project's release workflow on <code>main</code> — the exact identity every install pins. A signature from any other workflow, branch or fork is refused.</p></div>
+    <div class="product"><div class="ic" aria-hidden="true">{{template "icon" "key"}}</div><h3>Release key</h3><p>A second, independent Ed25519 signature whose private half never leaves the project's repository secrets. Compromising the build pipeline alone does not produce it.</p></div>
+    <div class="product"><div class="ic" aria-hidden="true">{{template "icon" "hash"}}</div><h3>Checksums</h3><p>Every file matches the SHA-256 GitHub recorded when it was uploaded, and the release's own <code>.sha256</code> files where it ships them.</p></div>
+    <div class="product"><div class="ic" aria-hidden="true">{{template "icon" "chip"}}</div><h3>A real program</h3><p>The binary must be a Linux executable image. An archive or an error page that happens to carry a valid signature is still refused.</p></div>
+  </div>
+</section>
+
+<section class="band" id="files" aria-labelledby="h-files">
+  <p class="kicker">Files</p>
+  <h2 id="h-files">Files in <span id="files-version">this release</span></h2>
+  <p class="sub">Served from this mirror. Sizes and hashes are the ones this mirror verified.</p>
+  <div class="prose wide"><table class="files">
+    <thead><tr><th scope="col">File</th><th scope="col">Size</th><th scope="col">SHA-256</th><th scope="col">Verified by</th></tr></thead>
+    <tbody id="files-body"><tr><td colspan="4">Loading…</td></tr></tbody>
+  </table></div>
+</section>
+
+<section class="band" id="notes" aria-labelledby="h-notes">
+  <p class="kicker">Release notes</p>
+  <h2 id="h-notes">What changed</h2>
+  <p class="sub" id="notes-source">The release notes, as published.</p>
+  <article class="prose notes" id="notes-body"><p>Loading…</p></article>
+</section>
+
+<section class="band" id="held" aria-labelledby="h-held">
+  <div class="live">
+    <div>
+      <p class="kicker">Held here</p>
+      <h2 id="h-held">Everything this mirror holds</h2>
+      <p class="sub">The newest stable release, the one before it — so an install that has to roll back still finds its files — and a pre-release when one is ahead of both. Refreshed from GitHub every hour.</p>
+    </div>
+    <ol class="feed held" id="held-list"><li><span class="what">Loading…</span></li></ol>
+  </div>
+</section>
+
+<section class="band" id="how" aria-labelledby="h-how">
+  <div class="split even">
+    <div>
+      <p class="kicker">How an install uses it</p>
+      <h2 id="h-how">Nothing to configure.</h2>
+      <p class="sub">Every install from 3.17.66 onwards knows this address.</p>
+    </div>
+    <ul class="points">
+      <li><span class="dot" aria-hidden="true"></span><span><b>GitHub first.</b> The install checks GitHub directly, trying every address its resolver offers and, if all fail, re-resolving over DNS-over-HTTPS.</span></li>
+      <li><span class="dot" aria-hidden="true"></span><span><b>Then this mirror.</b> Only when GitHub cannot be reached at all does it ask here, using the same request it would have sent to GitHub.</span></li>
+      <li><span class="dot" aria-hidden="true"></span><span><b>Verified again.</b> The install checks the Sigstore signature, the release key and the checksum itself. A mirror can serve nothing, or something old — never something that installs.</span></li>
+      <li><span class="dot quiet" aria-hidden="true"></span><span>Running your own relay? Point an install at it with <code>VAYU_UPDATE_MIRROR</code>, or switch the mirror on for one of your own hosted domains from its page in VayuOS.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section class="band" aria-labelledby="h-diy">
+  <p class="kicker">Verify a download yourself</p>
+  <h2 id="h-diy">Trust nothing here either.</h2>
+  <p class="sub">Fetch the binary, its checksum and its signature bundle from the table above, then:</p>
+  <div class="prose wide">
+    <div class="code"><button class="btn ghost copy" type="button" data-copy="cmd-sha">Copy</button><pre id="cmd-sha"><code>sha256sum -c vayupress.sha256</code></pre></div>
+    <div class="code"><button class="btn ghost copy" type="button" data-copy="cmd-cosign">Copy</button><pre id="cmd-cosign"><code>cosign verify-blob vayupress \
+  --bundle vayupress.cosign.bundle \
+  --certificate-identity https://github.com/johalputt/VayuPress/.github/workflows/tag-release.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com</code></pre></div>
+    <p><a href="/mirror/status.json">The mirror's status, as JSON</a> · <a href="{{.In.Source}}/releases">Releases on GitHub</a></p>
+  </div>
+</section>
+<script src="{{.UpdatesJS}}" defer></script>
+{{template "foot" .}}{{end}}
