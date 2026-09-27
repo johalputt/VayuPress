@@ -70,7 +70,7 @@
     "inlineFields": 0
   },
   "/os/domains": {
-    "boxes": 4,
+    "boxes": 3,
     "nested": 0,
     "badges": 1,
     "zeroFigures": 4,
@@ -136,7 +136,7 @@
     "boxes": 15,
     "nested": 3,
     "badges": 5,
-    "zeroFigures": 5,
+    "zeroFigures": 10,
     "inlineFields": 0
   },
   "/os/newsletter": {
@@ -315,8 +315,8 @@
     "inlineFields": 1
   },
   "/os/update": {
-    "boxes": 6,
-    "nested": 1,
+    "boxes": 7,
+    "nested": 2,
     "badges": 2,
     "zeroFigures": 0,
     "inlineFields": 0
