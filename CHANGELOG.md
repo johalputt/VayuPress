@@ -8,6 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.85] — 2026-09-27
+
+A fix for backups: on every install whose backups were not configured by
+environment variables, automatic backup could not be turned on from the
+console, and once on, none of its controls worked. It also carries the last
+of the Settings-kind pages (API keys, VayuMCP, Claude Code, Buzz, Worlds and
+Tools), and Home's "Finish setting up" now goes away once setup is done.
+
 ### Changed
 
 - **API keys, VayuMCP, Claude Code, Buzz, Worlds and Tools are settings
