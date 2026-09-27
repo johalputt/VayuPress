@@ -54,16 +54,24 @@ jobs:
 
       - uses: ./.github/actions/boot-vayupress
 
-      - name: Screenshots and page grammar match their baselines
+      - name: Screenshots match the baselines
         working-directory: tests/e2e
         # First, on the install exactly as the boot left it, because that is
-        # what the baselines were rendered from (update_baselines runs the
-        # visual spec alone on a fresh boot, and anatomy-baseline.json is a
-        # fresh boot's counts). The other specs publish posts, upload files
-        # and mark the bell read, which would change the picture and the
-        # counts. Its own output folder keeps the diff images from the next
-        # run's clean.
-        run: npx playwright test visual.spec.js anatomy.spec.js --output test-results-visual
+        # what the baselines were rendered from (update_baselines runs this
+        # spec alone on a fresh boot). The other specs publish posts, upload
+        # files and mark the bell read, which would change the picture. Its
+        # own output folder keeps the diff images from the next run's clean.
+        run: npx playwright test visual.spec.js --output test-results-visual
+
+      - name: Page grammar is no further from its baseline
+        if: ${{ !cancelled() }}
+        working-directory: tests/e2e
+        # Second, alone, on the install as the screenshots left it: that is
+        # exactly where update_baselines records anatomy-baseline.json, since
+        # what a page counts depends on what the install holds and on what
+        # this runner's network lets it reach (the release check, the bot
+        # lists), so the counts are only comparable measured the same way.
+        run: npx playwright test anatomy.spec.js --output test-results-anatomy
 
       - name: Run Playwright tests
         if: ${{ !cancelled() }}
@@ -88,6 +96,7 @@ jobs:
           path: |
             tests/e2e/test-results/
             tests/e2e/test-results-visual/
+            tests/e2e/test-results-anatomy/
           if-no-files-found: ignore
 
       - name: Stop background processes
@@ -134,15 +143,19 @@ jobs:
         working-directory: tests/e2e
         run: npx playwright test visual.spec.js --update-snapshots
 
+      - name: Record the page grammar counts
+        working-directory: tests/e2e
+        run: ANATOMY_UPDATE=1 npx playwright test anatomy.spec.js
+
       - name: Commit the baselines
         run: |
           git config user.name  "johalputt"
           git config user.email "ankushchoudharyjohal@gmail.com"
-          git add tests/e2e/visual.spec.js-snapshots
+          git add tests/e2e/visual.spec.js-snapshots tests/e2e/anatomy-baseline.json
           if git diff --cached --quiet; then
             echo "The baselines already match."; exit 0
           fi
-          git commit -m "e2e: visual baselines rendered on CI's Chromium"
+          git commit -m "e2e: visual baselines and page grammar counts from CI's Chromium"
           for i in 1 2 3 4; do
             git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
             sleep $((2 ** i))

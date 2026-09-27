@@ -10,8 +10,10 @@
 // get better and never worse. A page that says which kind it is
 // (data-page-kind) is held to the rules outright, so a page is converted once
 // and stays converted. A page the baseline has never seen is held to the rules
-// too. ANATOMY_UPDATE=1 writes the counts back to the baseline, once a change
-// has lowered them.
+// too. ANATOMY_UPDATE=1 records the counts as the baseline instead of
+// comparing with it; CI's update_baselines job does that, on CI's runner and
+// in the same place in the run as the check, because the counts depend on
+// what the install holds and on what the runner can reach.
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
@@ -76,6 +78,10 @@ function ruleBreaks(a) {
 
 const METRICS = ["boxes", "nested", "badges", "zeroFigures", "inlineFields"];
 
+// A retry would measure an install the first attempt has already walked, so it
+// would not be the same measurement.
+test.describe.configure({ retries: 0 });
+
 test("every console page keeps to the page grammar, or at least no further from it", async ({ page }) => {
   test.setTimeout(300000);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -104,6 +110,7 @@ test("every console page keeps to the page grammar, or at least no further from 
     if (a.crumb) findings.push(`${href}: a breadcrumb; the rail already says where you are`);
     if (a.titles !== 1) findings.push(`${href}: ${a.titles} titles (h1); a page has exactly one`);
     const base = baseline[href];
+    if (process.env.ANATOMY_UPDATE && !a.kinds.length) continue; // recording, not comparing
     if (a.kinds.length || !base) {
       for (const f of ruleBreaks(a)) findings.push(`${href}: ${f}`);
     } else {
