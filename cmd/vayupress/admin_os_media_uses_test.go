@@ -16,28 +16,31 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 )
 
-// resetMediaUses forgets the kept scan, so each test starts from a first look.
+// forgetMediaUses waits for a scan off the request path to finish, then drops
+// the kept one. The memo is package state: a scan left running reads the
+// database pools as a test's cleanup closes them (a race the race detector
+// caught), and a finished one would describe the last test's database to the
+// next.
+func forgetMediaUses() {
+	for i := 0; i < 500; i++ {
+		mediaUsesMemo.Lock()
+		busy := mediaUsesMemo.refreshing
+		mediaUsesMemo.Unlock()
+		if !busy {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	mediaUsesMemo.Lock()
+	mediaUsesMemo.uses, mediaUsesMemo.at, mediaUsesMemo.refreshing = nil, time.Time{}, false
+	mediaUsesMemo.Unlock()
+}
+
+// resetMediaUses starts a test from a first look. openMigratedDB forgets the
+// memo again as it closes the database.
 func resetMediaUses(t *testing.T) {
 	t.Helper()
-	wait := func() {
-		for i := 0; i < 500; i++ {
-			mediaUsesMemo.Lock()
-			busy := mediaUsesMemo.refreshing
-			mediaUsesMemo.Unlock()
-			if !busy {
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-	clear := func() {
-		wait()
-		mediaUsesMemo.Lock()
-		mediaUsesMemo.uses, mediaUsesMemo.at, mediaUsesMemo.refreshing = nil, time.Time{}, false
-		mediaUsesMemo.Unlock()
-	}
-	clear()
-	t.Cleanup(clear)
+	forgetMediaUses()
 }
 
 type listedMedia struct {

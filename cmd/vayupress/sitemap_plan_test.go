@@ -44,6 +44,9 @@ func openMigratedDB(t *testing.T) {
 		t.Fatalf("db init: %v", err)
 	}
 	t.Cleanup(func() {
+		// Anything that lists media starts a scan off the request path; it
+		// must not be reading the pools as they close.
+		forgetMediaUses()
 		dbpkg.ClosePools()
 		_ = dbpkg.DB.Close()
 	})
