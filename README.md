@@ -16,9 +16,13 @@
 <p align="center">
   <a href="https://github.com/johalputt/vayupress/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/johalputt/vayupress/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/johalputt/vayupress/actions/workflows/security.yml"><img alt="Security" src="https://github.com/johalputt/vayupress/actions/workflows/security.yml/badge.svg"></a>
+  <a href="https://github.com/johalputt/vayupress/actions/workflows/dep-freshness.yml"><img alt="Dependency Freshness" src="https://github.com/johalputt/vayupress/actions/workflows/dep-freshness.yml/badge.svg"></a>
   <a href="https://github.com/johalputt/vayupress/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/johalputt/VayuPress?sort=semver&color=2d5bd7&label=release"></a>
+  <a href="https://github.com/johalputt/vayupress/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/johalputt/VayuPress?style=flat&logo=github&color=f5c518"></a>
+  <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/johalputt/VayuPress?logo=go&logoColor=white&color=00ADD8"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-27704f"></a>
   <img alt="Telemetry" src="https://img.shields.io/badge/telemetry-none-27704f">
+  <a href="GOVERNANCE-CONSTITUTION.md"><img alt="Constitution" src="https://img.shields.io/badge/constitution-v6.0-blueviolet"></a>
 </p>
 
 <p align="center">
