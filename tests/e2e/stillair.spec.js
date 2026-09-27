@@ -686,6 +686,7 @@ test("a media list that could not be read says so, and an unchecked file is not 
     const d = await res.json();
     d.items.forEach((it) => { it.uses = null; });
     d.uses_checked = null;
+    d.uses_scanning = true;
     return r.fulfill({ response: res, json: d });
   });
   await failure.getByRole("button", { name: "Try again" }).click();
@@ -700,6 +701,19 @@ test("a media list that could not be read says so, and an unchecked file is not 
   await page.getByRole("button", { name: "Move to trash" }).click();
   await expect(page.getByText(/has not been checked yet/)).toBeVisible();
   await expect(page.getByText(/Nothing used/)).toHaveCount(0);
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  // A scan that failed is checking nothing, and the page stops saying it is.
+  await page.unroute("**/os/api/media");
+  await page.route("**/os/api/media", async (r) => {
+    const res = await r.fetch();
+    const d = await res.json();
+    d.items.forEach((it) => { it.uses = null; });
+    d.uses_checked = null;
+    d.uses_scanning = false;
+    return r.fulfill({ response: res, json: d });
+  });
+  await expect(page.locator("[data-media-uses]")).toHaveText("Not checked");
 });
 
 test("a media upload shows its progress, and the file is worked by keyboard", async ({ page }) => {

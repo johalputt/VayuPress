@@ -8,6 +8,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Media says "Not checked" when nothing is checking.** A file not yet
+  looked for read "Checking…" even after the scan for where files are used
+  had failed or run out of time, which would have lasted until the next
+  scan. The page now says "Checking…" only while a scan runs.
+
 ## [3.17.83] — 2026-09-27
 
 A fix for Media on a large install: the list answers at once instead of

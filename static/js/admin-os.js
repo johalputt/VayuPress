@@ -710,7 +710,10 @@ window.vpRelTime = relativeTime;
   // the page has not read; on johal.in that is what a timed-out list showed.
   // checked: when the scan behind "not used" began. It is a record, and a
   // post saved since may show a file the record calls unused.
-  var loaded = false, recheck = null, recheckIn = 4000, checked = null;
+  // scanning: the server is looking for where files are used right now. With
+  // no scan running, a file not yet looked for is "Not checked", not
+  // "Checking…": a scan that failed or ran out of time is checking nothing.
+  var loaded = false, recheck = null, recheckIn = 4000, checked = null, scanning = false;
   var mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   try { view = localStorage.getItem('vp_media_view') === 'grid' ? 'grid' : 'list'; } catch (e) {}
 
@@ -721,7 +724,7 @@ window.vpRelTime = relativeTime;
   // uses is null until the server's scan of every post has looked for the
   // file: unknown, which is never the same as unused.
   function usedIn(it) {
-    if (it.uses == null) return 'Checking…';
+    if (it.uses == null) return scanning ? 'Checking…' : 'Not checked';
     if (!it.uses.length) return 'Not used';
     var n = { post: 0, page: 0, other: [] };
     it.uses.forEach(function (u) {
@@ -747,7 +750,7 @@ window.vpRelTime = relativeTime;
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function (d) {
         if (!d || !Array.isArray(d.items)) throw new Error('an unexpected answer');
-        items = d.items; loaded = true; checked = d.uses_checked || null;
+        items = d.items; loaded = true; checked = d.uses_checked || null; scanning = !!d.uses_scanning;
         selected = selected.filter(function (n) { return items.some(function (it) { return it.name === n; }); });
         draw();
         // Where files are used is scanned off the request, and a file newer
@@ -911,7 +914,7 @@ window.vpRelTime = relativeTime;
     }
     fact(dl, 'Added', fmtWhen(it.mod));
     var uses = el('div', 'media-inspector__uses');
-    if (it.uses == null) uses.textContent = 'Checking…';
+    if (it.uses == null) uses.textContent = scanning ? 'Checking…' : 'Not checked';
     else if (!it.uses.length) uses.textContent = 'Not used anywhere';
     (it.uses || []).forEach(function (u) { var a = el('a', null, u.label); a.href = u.href; uses.appendChild(a); });
     fact(dl, 'Used in', uses).setAttribute('data-media-uses', '');
