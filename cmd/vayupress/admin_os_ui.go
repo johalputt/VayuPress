@@ -1293,8 +1293,14 @@ func adminOSShellFoot(nonce, pageScript string, needsAlpine bool, needsPurify ..
 		// used to define a second vpPost(url, onok) here; admin-os.js loads later
 		// and replaced it, so every page written against this one got no
 		// confirmation and no refresh after its action succeeded.
+		//
+		// csrf() is defined here because the API keys, VayuMCP, Claude Code and
+		// Buzz scripts are written against it. It went with that second vpPost,
+		// and for three days every Create key and Grant button threw before any
+		// request was sent. A page that defines its own csrf() shadows this one.
 		ops = `<script nonce="` + nonce + `">
 (function(){'use strict';
+function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 ` + pageScript + `
 })();
 </script>`

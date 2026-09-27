@@ -1145,3 +1145,19 @@ test("monetization saves its rows from one bar, and its forms rise in sheets", a
   await page.getByRole("button", { name: "Set the price" }).click();
   await expect(page.locator("#action-msg")).toHaveText("Enter a post slug first");
 });
+
+// Every page that grants a key does so: the button reaches the server and the
+// key is shown once. These scripts call csrf() from the page-script wrapper,
+// and for three days that helper was missing: every Grant threw before any
+// request was sent and the page read "Creating key…" forever.
+for (const [path, banner] of [["/os/connector", "#cx-token-value"], ["/os/claudecode", "#mx-token-value"], ["/os/buzz", "#mx-token-value"]]) {
+  test(`a grant on ${path} mints a key and shows it once`, async ({ page }) => {
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await openConsole(page);
+    await page.goto(path);
+    await page.locator('[data-mint="posts:read,analytics:read"]').click();
+    await expect(page.locator(banner)).toHaveValue(/^vp_/);
+    expect(errors).toEqual([]);
+  });
+}

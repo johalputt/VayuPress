@@ -17,7 +17,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   place and one bar saves them together; the separate Save buttons are gone.
   Connecting a payment gateway, adding an ad slot or a source, and pricing a
   post each open in a sheet. Settings loses the panel around its rows to
-  match. The visitors' maintenance message is limited to 280 characters where
+  match, and so do the menu and footer editors, whose columns sat in a box
+  inside that panel. The visitors' maintenance message is limited to 280 characters where
   it is shown, counted in characters: the limit used to cut bytes, which could
   split a letter in two.
 
@@ -34,6 +35,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   world it says they are run from Clearnet.
 
 ### Fixed
+
+- **API keys can be created again, and VayuMCP, Claude Code and Buzz can
+  grant access.** Since 3.17.78 every Create key and Grant button, and saving
+  or deleting a service credential, failed in the browser before anything
+  was sent: the page read "Creating key…" and never changed. The helper those
+  pages use to sign their requests had been dropped from the console shell;
+  it is back, a unit test fails if the shell stops providing it, and the e2e
+  suite now grants a key on each of the three connector pages.
 
 - **Media says "Not checked" when nothing is checking.** A file not yet
   looked for read "Checking…" even after the scan for where files are used
