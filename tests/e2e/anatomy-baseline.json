@@ -14,11 +14,11 @@
     "inlineFields": 0
   },
   "/os/ads": {
-    "boxes": 10,
-    "nested": 3,
+    "boxes": 0,
+    "nested": 0,
     "badges": 0,
     "zeroFigures": 0,
-    "inlineFields": 10
+    "inlineFields": 0
   },
   "/os/analytics": {
     "boxes": 11,
@@ -136,15 +136,15 @@
     "boxes": 15,
     "nested": 3,
     "badges": 5,
-    "zeroFigures": 10,
+    "zeroFigures": 5,
     "inlineFields": 0
   },
   "/os/newsletter": {
-    "boxes": 8,
-    "nested": 3,
+    "boxes": 0,
+    "nested": 0,
     "badges": 0,
-    "zeroFigures": 5,
-    "inlineFields": 5
+    "zeroFigures": 0,
+    "inlineFields": 0
   },
   "/os/pages": {
     "boxes": 3,
@@ -308,11 +308,11 @@
     "inlineFields": 0
   },
   "/os/tor": {
-    "boxes": 5,
-    "nested": 1,
-    "badges": 3,
-    "zeroFigures": 2,
-    "inlineFields": 1
+    "boxes": 0,
+    "nested": 0,
+    "badges": 0,
+    "zeroFigures": 0,
+    "inlineFields": 0
   },
   "/os/update": {
     "boxes": 7,
@@ -329,17 +329,17 @@
     "inlineFields": 19
   },
   "/os/vayukeep": {
-    "boxes": 6,
-    "nested": 2,
-    "badges": 2,
-    "zeroFigures": 2,
-    "inlineFields": 6
+    "boxes": 0,
+    "nested": 0,
+    "badges": 0,
+    "zeroFigures": 0,
+    "inlineFields": 0
   },
   "/os/vayumail": {
-    "boxes": 9,
-    "nested": 1,
-    "badges": 4,
-    "zeroFigures": 4,
+    "boxes": 0,
+    "nested": 0,
+    "badges": 0,
+    "zeroFigures": 0,
     "inlineFields": 0
   },
   "/os/vayumail/accounts": {
