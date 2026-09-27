@@ -123,24 +123,27 @@ CDN's bot challenge, and `openpgpkey.` fails silently behind one. A single
 
 | | |
 |---|---|
-| **Version** | VayuPress 3.17.81 |
+| **Version** | VayuPress 3.17.84 |
 | **Posts** | 234,615, in one SQLite database |
-| **Sites** | 13 hostnames across `johal.in` and `vayupress.com`: 5 blogs, 7 hand-built sites and 1 business template |
+| **Sites** | 13 hostnames across `johal.in` and `vayupress.com`: 4 blogs, 8 hand-built sites and 1 business template |
 | **Also on the box** | The mail server (SMTP, IMAP, POP3, DKIM, WKD) |
 | **Hardware** | One Contabo VPS 10 |
 
-| Lighthouse | Mobile | Desktop |
+| PageSpeed Insights | Mobile | Desktop |
 |---|---|---|
-| Performance · Accessibility · Best Practices · SEO | 99–100 · 100 · 100 · 100 | 100 · 100 · 100 · 100 |
-| Largest Contentful Paint | 1.5–1.7 s | 0.3 s |
-| Total Blocking Time | 0–60 ms | 0 ms |
-| Time to First Byte, from Iowa | 161 ms | 156 ms |
+| Home: Performance · Accessibility · Best Practices · SEO | 98 · 100 · 100 · 100 | 100 · 100 · 100 · 100 |
+| An article: the same four | 100 · 100 · 100 · 100 | 100 · 97 · 100 · 100 |
+| Largest Contentful Paint | 1.5–1.6 s | 0.3 s |
+| Total Blocking Time | 0 ms | 0 ms |
+| Cumulative Layout Shift | 0–0.001 | 0–0.003 |
+| JavaScript sent, all first-party | home 18.0 KiB · article 23.3 KiB | the same |
 
-The install facts were read from johal.in's own API on 26 September 2026. The
-Lighthouse figures come from PageSpeed Insights and Cloudflare Synthetic
-Monitoring on 27–28 July 2026, at 234,499 posts. Both are refreshed with each
-release. An article ships 21.8 KiB of JavaScript, all first-party; there is no
-third-party script to block on.
+The version and the sites were read from johal.in's own API on 27 September
+2026, the post count on 26 September. The PageSpeed figures are from 27
+September 2026, the home page and an article (`/vayupress-for-privacy`); the
+article's 97 on desktop is small touch targets, a finding queued for a fix. Time to
+first byte from Iowa was 156–161 ms in Cloudflare Synthetic Monitoring on
+27–28 July 2026. There is no third-party script to block on.
 [Benchmarks](docs/BENCHMARKS.md) · [Architecture](docs/ARCHITECTURE.md)
 
 ## Showcase
