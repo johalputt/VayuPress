@@ -8,6 +8,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.84] — 2026-09-27
+
+A fix for the connector pages: since 3.17.78 no API key could be created and
+no Grant button on VayuMCP, Claude Code or Buzz did anything. It also carries
+the first Settings-kind pages of the Still Air fidelity work (Monetization,
+Advertising, Power, Outside services), finished and gated.
+
 ### Changed
 
 - **Monetization, Advertising, Power and Outside services are settings
