@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/johalputt/vayupress/internal/auth"
@@ -226,6 +227,7 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 		if dur <= streamLatencyCutoff && !reqclass.Shielded(ctx) {
 			metrics.HTTPLatency.Record(dur)
 			metrics.HTTPLatencyWindow.Record(dur)
+			metrics.RouteLatency.Record(routeOf(r), dur)
 		}
 		ra, ua := logIdentity(r)
 		logging.LogJSON(logging.LogFields{
@@ -236,6 +238,20 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 			RemoteAddr: ra, UserAgent: ua, Component: "http",
 		})
 	})
+}
+
+// routeOf names a served request by the router's pattern for it, after the
+// handler ran and the pattern is known: "GET /os/d/{id}/website". A request no
+// route matched is one name, however many addresses scanners try. It is not
+// called "not found": the not-found handler is also what serves an uploaded
+// site's files (handleNotFound), so real pages land in it too.
+func routeOf(r *http.Request) string {
+	if rc := chi.RouteContext(r.Context()); rc != nil {
+		if p := rc.RoutePattern(); p != "" && p != "/*" {
+			return r.Method + " " + p
+		}
+	}
+	return r.Method + " (uploaded sites and not found)"
 }
 
 func securityHeadersMiddleware(next http.Handler) http.Handler {

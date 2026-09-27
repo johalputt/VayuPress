@@ -791,6 +791,7 @@ func (a *App) buildMCPServer() *mcp.Server {
 	// Authoring a whole site, rather than filling a template's fields.
 	a.registerSiteBuilderTools(srv)
 	a.registerSiteFileTools(srv)
+	a.registerPerformanceTools(srv)
 	a.registerSiteDocumentTools(srv)
 	a.registerSiteEditTool(srv)
 	a.registerCertificateTools(srv)

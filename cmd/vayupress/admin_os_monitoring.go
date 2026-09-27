@@ -25,6 +25,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/budget"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -99,6 +100,12 @@ func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
 		monStat("Workers", strconv.FormatInt(snap.WorkersAlive, 10), "alive") +
 		monStat("Uptime", uptime.Truncate(time.Second).String(), "since boot") +
 		`</div>`
+
+	// ── Where the time goes ──────────────────────────────────────────────────
+	// The p95 above is one figure over every request. This says which routes
+	// make it, so a slow reading points at something to fix rather than at the
+	// server log.
+	perf += routeLatencySection()
 
 	// ── Storage & queue ──────────────────────────────────────────────────────
 	pct := int(snap.StoragePct)
@@ -184,4 +191,27 @@ func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
 <p class="page-sub">A live view of your running install — performance, background jobs, storage and budgets, refreshed as you watch.</p>` + poller + modeCard + perf + storageJobs + writer + reader + budgetsCard + consoles
 
 	writeOSHTML(w, r, adminOSLayout(nonce, "Monitoring", "monitoring", cfg, htmpl.HTML(body)))
+}
+
+// routeLatencySection lists the slowest routes of the last 15 minutes.
+func routeLatencySection() string {
+	var rows [][]ui.HTML
+	for _, st := range metrics.RouteLatency.Slowest(8) {
+		rows = append(rows, []ui.HTML{
+			`<code>` + ui.Text(st.Route) + `</code>`,
+			ui.Text(strconv.FormatInt(st.Requests, 10)),
+			ui.Text(strconv.FormatInt(st.P95, 10) + " ms"),
+			ui.Text(humanMS(st.Total)),
+		})
+	}
+	return string(ui.Section("Where the time goes", "slowest routes · last 15 min",
+		ui.Table([]string{"Route", "Requests", "p95", "Time taken"}, rows, "No requests in the last 15 minutes.")))
+}
+
+// humanMS reads a total of milliseconds the way a person says it.
+func humanMS(ms int64) string {
+	if ms < 1000 {
+		return strconv.FormatInt(ms, 10) + " ms"
+	}
+	return (time.Duration(ms) * time.Millisecond).Round(100 * time.Millisecond).String()
 }

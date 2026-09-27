@@ -133,7 +133,7 @@
     "inlineFields": 5
   },
   "/os/monitoring": {
-    "boxes": 15,
+    "boxes": 16,
     "nested": 3,
     "badges": 5,
     "zeroFigures": 5,
