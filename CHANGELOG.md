@@ -8,6 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.83] — 2026-09-27
+
+A fix for Media on a large install: the list answers at once instead of
+waiting on a scan of every post, which on johal.in never finished and left
+the page reading "No file matches that" over 55 files. Where each file is
+used follows when it is known, and is never guessed. Console pages also open
+on their own title, without the breadcrumb bar.
+
 ### Fixed
 
 - **Media lists its files on a large install.** Every list looked for each
