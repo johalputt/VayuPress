@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **A backup no longer fails because a file grew while it was copied.** The
+  data directory is live: a log, a release-mirror sync or a site being
+  deployed can grow a file between the moment the backup lists it and the
+  moment it copies it, and the archive then refused the extra bytes and the
+  whole backup failed ("archive/tar: write too long"). It was seen on the
+  first automatic backup of a busy install. Each file is now sized from the
+  open file and copied to exactly that length. The standalone `vayu-backup`
+  tool had the same flaw and has the same fix.
+
 ## [3.17.86] — 2026-09-27
 
 VayuMCP can now look after a hosted static site entirely: read it and change

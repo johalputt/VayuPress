@@ -243,3 +243,51 @@ func Extract(r io.Reader, passphrase, destDir string) error {
 	_, err := ExtractStaged(r, passphrase, destDir)
 	return err
 }
+
+// A file that grows while it is archived is taken as it was when opened. The
+// data directory is live (a log, a mirror sync, a site being deployed), and a
+// tar entry that receives more than its header declared used to fail the whole
+// backup: "archive/tar: write too long", seen on the first automatic backup of
+// a busy install.
+func TestAFileThatGrowsDuringTheBackupIsTakenAsOpened(t *testing.T) {
+	src := t.TempDir()
+	log := filepath.Join(src, "server.log")
+	if err := os.WriteFile(log, bytes.Repeat([]byte("line\n"), 200000), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f, err := os.OpenFile(log, os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			return
+		}
+		defer f.Close()
+		chunk := bytes.Repeat([]byte("more\n"), 20000)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = f.Write(chunk)
+			}
+		}
+	}()
+	var buf bytes.Buffer
+	err := Create(&buf, "correct horse battery staple", src)
+	close(stop)
+	<-done
+	if err != nil {
+		t.Fatalf("a growing file failed the backup: %v", err)
+	}
+	dest := t.TempDir()
+	if err := Extract(bytes.NewReader(buf.Bytes()), "correct horse battery staple", dest); err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	got, _ := os.ReadFile(filepath.Join(dest, "server.log"))
+	now, _ := os.ReadFile(log)
+	if len(got) < 1000000 || !bytes.HasPrefix(now, got) {
+		t.Errorf("the restored file (%d bytes) is not a prefix of the file as it grew (%d bytes)", len(got), len(now))
+	}
+}

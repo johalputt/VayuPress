@@ -245,7 +245,9 @@ func addFileToTar(tw *tar.Writer, srcPath, name string) error {
 	if err := tw.WriteHeader(hdr); err != nil {
 		return err
 	}
-	_, err = io.Copy(tw, f)
+	// Exactly the size the header declared: a file that grows while it is
+	// copied would otherwise fail the archive with "write too long".
+	_, err = io.CopyN(tw, f, hdr.Size)
 	return err
 }
 

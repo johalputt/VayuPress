@@ -520,23 +520,29 @@ func CreateWithOptions(w io.Writer, passphrase, srcDir string, opts Options) err
 		}
 		src := path
 		if sub, ok := opts.Substitute[slashRel]; ok {
-			si, serr := os.Stat(sub)
-			if serr != nil {
-				return serr
-			}
 			src = sub
-			hdr.Size = si.Size()
-			hdr.ModTime = si.ModTime()
-		}
-		if err := tw.WriteHeader(hdr); err != nil {
-			return err
 		}
 		f, ferr := os.Open(src) //nolint:gosec // operator-selected data directory
 		if ferr != nil {
 			return ferr
 		}
 		defer f.Close()
-		_, cerr := io.Copy(tw, f)
+		// The size comes from the open file, and exactly that many bytes are
+		// copied. The data directory is live: a log, a mirror sync or a site
+		// being deployed can grow a file between the walk's stat and the copy,
+		// and a tar entry that receives more bytes than its header declared
+		// fails the whole backup ("archive/tar: write too long"). A file that
+		// grows is taken as it was when opened; one that shrinks mid-copy is
+		// still an error, since padding it would store bytes it never held.
+		fi, serr := f.Stat()
+		if serr != nil {
+			return serr
+		}
+		hdr.Size, hdr.ModTime = fi.Size(), fi.ModTime()
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+		_, cerr := io.CopyN(tw, f, hdr.Size)
 		return cerr
 	})
 	if err != nil {
