@@ -6,6 +6,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **Every console page opens on its own title.** The breadcrumb bar above
+  each page is gone: the rail and the app's sections already say where you
+  are, and the bar took 72 px from every page to say it again. The post
+  editor, whose visible title is the post's own title field, gains a title
+  for screen readers.
+
 ## [3.17.82] — 2026-09-26
 
 The paced heavy work plan, whole: clearing the cache becomes Refresh every

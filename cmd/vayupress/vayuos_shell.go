@@ -453,21 +453,6 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 		side.WriteString(`</nav>`)
 	}
 
-	// ── App header: where you are ──
-	crumb := `<span class="sa-crumb__here">` + et + `</span>`
-	if app != nil {
-		here := title
-		if sec != nil {
-			here = sec.Label
-		}
-		if len(app.Sections) == 0 || here == app.Label {
-			crumb = `<span class="sa-crumb__here">` + html.EscapeString(app.Label) + `</span>`
-		} else {
-			crumb = `<a class="sa-crumb__app" href="` + app.Href + `">` + html.EscapeString(app.Label) + `</a>` + saIcon("chev-r") +
-				`<span class="sa-crumb__here">` + html.EscapeString(here) + `</span>`
-		}
-	}
-
 	// ── Status area ──
 	m := s.Mode
 	if m == "" {
@@ -593,7 +578,6 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 <div class="main sa-main` + sideCls + `">
 ` + side.String() + `
 <main id="main-content" class="content sa-content">
-<div class="sa-apphead"><nav class="sa-crumb" aria-label="You are here">` + crumb + `</nav></div>
 `
 }
 

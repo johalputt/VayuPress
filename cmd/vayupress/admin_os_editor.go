@@ -888,6 +888,7 @@ func (a *App) handleOSEditorVersionRestore(w http.ResponseWriter, r *http.Reques
 var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
 	`<script type="application/json" id="vp-editor-data">{{.Blocks}}</script>
 <div class="editor-shell" data-editor data-slug="{{.Slug}}">
+  <h1 class="vp-sr-only">{{if .Title}}{{.Title}}{{else}}New post{{end}}</h1>
   <div class="editor-topbar">
     <span class="editor-topbar-status" data-editor-topbar-status></span>
     <div class="editor-topbar-actions">

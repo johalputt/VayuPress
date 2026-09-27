@@ -5704,21 +5704,12 @@
 .vp-os[data-ui="still-air"] .sa-content {
   position: relative;
   min-width: 0; min-height: 0; overflow-y: auto; max-width: none; width: auto;
-  padding: 0 var(--space-9) var(--space-10);
-  scroll-padding-top: 64px;
+  /* A page opens on its own title: no breadcrumb bar above it, since the rail
+     and the app's sections already say where you are (page grammar rule 1). */
+  padding: var(--space-8) var(--space-9) var(--space-10);
+  scroll-padding-top: var(--space-5);
 }
-.vp-os[data-ui="still-air"] .sa-content > :not(.sa-apphead) { max-width: 1180px; }
-.vp-os[data-ui="still-air"] .sa-apphead {
-  position: sticky; top: 0; z-index: 10;
-  display: flex; align-items: center; gap: var(--space-4);
-  height: 48px; margin: 0 calc(-1 * var(--space-9)) var(--space-7); padding: 0 var(--space-9);
-  background: var(--surface-1); border-bottom: 1px solid var(--border-1);
-}
-.vp-os[data-ui="still-air"] .sa-crumb { display: flex; align-items: center; gap: 6px; min-width: 0; font: var(--type-small); color: var(--text-3); }
-.vp-os[data-ui="still-air"] .sa-crumb .sa-ico { width: 13px; height: 13px; color: var(--text-4); }
-.vp-os[data-ui="still-air"] .sa-crumb__app { color: var(--text-3); text-decoration: none; }
-.vp-os[data-ui="still-air"] .sa-crumb__app:hover { color: var(--text-1); text-decoration: none; }
-.vp-os[data-ui="still-air"] .sa-crumb__here { color: var(--text-1); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vp-os[data-ui="still-air"] .sa-content > * { max-width: 1180px; }
 
 /* Phone tab bar */
 .vp-os[data-ui="still-air"] .sa-tabbar { display: none; }
@@ -6656,8 +6647,7 @@
   .vp-os[data-ui="still-air"] .sa-appside__group,
   .vp-os[data-ui="still-air"] .sa-appside__item .sa-ico { display: none; }
   .vp-os[data-ui="still-air"] .sa-appside__item { flex: none; height: 30px; padding: 0 12px; }
-  .vp-os[data-ui="still-air"] .sa-content { padding: 0 var(--space-5) 96px; }
-  .vp-os[data-ui="still-air"] .sa-apphead { margin: 0 calc(-1 * var(--space-5)) var(--space-5); padding: 0 var(--space-5); height: 44px; }
+  .vp-os[data-ui="still-air"] .sa-content { padding: var(--space-5) var(--space-5) 96px; }
   .vp-os[data-ui="still-air"] .sa-tabbar {
     display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 200;

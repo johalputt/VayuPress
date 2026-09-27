@@ -54,19 +54,21 @@ jobs:
 
       - uses: ./.github/actions/boot-vayupress
 
-      - name: Screenshots match the baselines
+      - name: Screenshots and page grammar match their baselines
         working-directory: tests/e2e
         # First, on the install exactly as the boot left it, because that is
-        # what the baselines were rendered from (update_baselines runs this
-        # spec alone on a fresh boot). The other specs publish posts, upload
-        # files and mark the bell read, which would change the picture. Its
-        # own output folder keeps the diff images from the next run's clean.
-        run: npx playwright test visual.spec.js --output test-results-visual
+        # what the baselines were rendered from (update_baselines runs the
+        # visual spec alone on a fresh boot, and anatomy-baseline.json is a
+        # fresh boot's counts). The other specs publish posts, upload files
+        # and mark the bell read, which would change the picture and the
+        # counts. Its own output folder keeps the diff images from the next
+        # run's clean.
+        run: npx playwright test visual.spec.js anatomy.spec.js --output test-results-visual
 
       - name: Run Playwright tests
         if: ${{ !cancelled() }}
         working-directory: tests/e2e
-        run: npx playwright test --grep-invert "looks as designed"
+        run: npx playwright test --grep-invert "looks as designed|page grammar"
 
       # The server's own log travels with the failure. Without it a page that
       # came back wrong could only be guessed at from the browser's side, and
