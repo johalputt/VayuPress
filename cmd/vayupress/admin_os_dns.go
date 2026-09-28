@@ -9,6 +9,7 @@ import (
 	htmpl "html/template"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -396,98 +397,204 @@ func (a *App) hostedDomainViews(ctx context.Context, primary string) []dnsDomain
 	return views
 }
 
-// dnsStatusBadge renders one record's state.
-func dnsStatusBadge(c dnsCheck) string {
+// dnsRecordState is one record's state as a dot and a word.
+func dnsRecordState(c dnsCheck) ui.HTML {
 	switch {
 	case c.State == dnsPointedHere:
-		return `<span class="badge badge--ok">Pointed here</span>`
+		return ui.State("ok", "Pointed here")
 	case c.State == dnsProxied:
 		// The real misconfiguration, and the only one worth a warning: a
 		// machine-to-machine host sitting behind the same proxy as the apex. It
 		// resolves, a certificate may even issue, and the service still fails —
 		// because the client cannot answer a bot challenge.
-		return `<span class="badge badge--warn">Behind the proxy</span>`
+		return ui.State("warn", "Behind the proxy")
 	case c.State == dnsUnverified:
-		return `<span class="badge badge--ok">Resolving</span>`
+		return ui.State("ok", "Resolving")
 	case c.State == dnsUnknown:
-		return `<span class="badge badge--muted">Not checked</span>`
+		return ui.State("neutral", "Not checked")
 	case c.Required:
-		return `<span class="badge badge--warn">Not pointed</span>`
+		return ui.State("warn", "Not pointed")
 	default:
-		return `<span class="badge badge--muted">Not pointed</span>`
+		return ui.State("neutral", "Not pointed")
 	}
 }
 
-// dnsDomainSection renders one hosted domain's records.
-func dnsDomainSection(v dnsDomainView) string {
-	var b strings.Builder
+// resolving counts the records that answer, here or behind NAT.
+func (v dnsDomainView) resolving() int {
+	n := 0
+	for _, c := range v.Checks {
+		if c.State == dnsPointedHere || c.State == dnsUnverified {
+			n++
+		}
+	}
+	return n
+}
 
-	role := `<span class="badge badge--muted">Secondary</span>`
-	if v.IsPrimary {
-		role = `<span class="badge badge--ok">Primary</span>`
-	}
-	flags := role
+// state is the one word a domain's row carries: the thing most in need of the
+// operator, or that all is well. The order is the order of the fix: a held
+// domain is approved first, then certified, then its records corrected.
+func (v dnsDomainView) state() ui.HTML {
 	if !v.IsPrimary && !v.SyncApproved {
-		flags += ` <span class="badge badge--warn">On hold</span>`
-	}
-	if !v.IsPrimary && v.MailEnabled {
-		flags += ` <span class="badge badge--muted">Mail</span>`
+		return ui.State("warn", "On hold")
 	}
 	if v.NeedsCertificate() {
-		flags += ` <span class="badge badge--warn">No certificate</span>`
+		return ui.State("warn", "No certificate")
 	}
+	unknown := false
+	for _, c := range v.Checks {
+		if c.State == dnsProxied {
+			return ui.State("warn", "Behind the proxy")
+		}
+		unknown = unknown || c.State == dnsUnknown
+	}
+	for _, c := range v.Checks {
+		if c.Required && c.State == dnsNotPointed {
+			return ui.State("warn", "Not pointed")
+		}
+	}
+	if unknown {
+		return ui.State("neutral", "Not checked")
+	}
+	return ui.State("ok", "Pointed")
+}
 
-	open := ""
-	if v.NeedsAttention() || v.IsPrimary {
-		open = " open"
+// dnsInspector renders one hosted domain in the inspector: what is wrong with
+// it in words that name the next action, then each of its records.
+func dnsInspector(v dnsDomainView) string {
+	var b strings.Builder
+	meta := "A hosted site"
+	if v.IsPrimary {
+		meta = "The primary site: install-wide services live here"
 	}
-	b.WriteString(`<details class="vm-ooo vm-acct__sub"` + open + `><summary><span class="field-label mono">` +
-		html.EscapeString(v.Host) + `</span> ` + flags + `</summary>`)
+	if !v.IsPrimary && v.MailEnabled {
+		meta += " · mail on"
+	}
+	b.WriteString(`<div class="sa-insp__title mono">` + html.EscapeString(v.Host) + `</div><div class="sa-insp__meta">` + meta + `</div>`)
 
 	// A held domain is skipped by every provisioning helper by design. Saying so
 	// here is the entire point: the previous behaviour was to skip it in silence,
 	// which is indistinguishable from having provisioned it.
 	if !v.IsPrimary && !v.SyncApproved {
-		b.WriteString(`<p class="text-sm muted">This domain is on <strong>manual hold</strong>, so no certificate or vhost is issued for it and its records below are informational only. Approve it under <a href="/os/domains">Domains</a> (“Sync now”), then run <strong>Provision subdomains</strong> below.</p>`)
+		b.WriteString(`<p class="text-sm">This site is on <strong>manual hold</strong>, so no certificate or vhost is issued for it and its records are informational only. Approve it under <a href="/os/domains">Sites</a> (Sync now), then press <strong>Provision subdomains</strong>.</p>`)
 	}
 
 	// The state that reads as finished and is not. Pointing DNS is the operator's
 	// half; issuing the certificate is the privileged helper's, and until it runs
 	// nginx has no vhost for this host — so the request falls through to the
 	// default one and the browser is handed the primary's certificate. Every
-	// record above is green while the site shows a security warning, which is
+	// record is green while the site shows a security warning, which is
 	// precisely the silent failure this page exists to catch.
 	if v.NeedsCertificate() {
 		reason := `no certificate has been issued for it yet`
 		if v.TLSState == domain.TLSFailed {
 			reason = `the last attempt to issue its certificate <strong>failed</strong>`
 		}
-		b.WriteString(`<p class="text-sm"><span class="badge badge--warn">No certificate</span> ` +
-			`<strong>` + html.EscapeString(v.Host) + ` resolves here, but ` + reason + `.</strong> ` +
+		b.WriteString(`<p class="text-sm"><strong>No certificate: ` + html.EscapeString(v.Host) + ` resolves here, but ` + reason + `.</strong> ` +
 			`Until one exists there is no vhost for this host, so a visitor is served the primary ` +
 			`domain's certificate and the browser refuses the page ` +
-			`(<code>ERR_CERT_COMMON_NAME_INVALID</code>). Press <strong>Provision subdomains</strong> ` +
-			`at the bottom of this page — the DNS is pointed now, which is the condition the last ` +
-			`run was waiting for. It also runs daily on its own.</p>`)
+			`(<code>ERR_CERT_COMMON_NAME_INVALID</code>). Press <strong>Provision subdomains</strong>: ` +
+			`the DNS is pointed now, which is the condition the last run was waiting for. It also runs daily on its own.</p>`)
 	}
 
-	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr>` +
-		`<th>Record</th><th>Status</th><th>CDN proxy</th><th>Unlocks</th></tr></thead><tbody>`)
+	b.WriteString(`<ul class="sa-records">`)
 	for _, c := range v.Checks {
-		proxy := `<span class="muted text-sm">either</span>`
+		b.WriteString(`<li><div class="sa-records__head"><code class="mono">` + html.EscapeString(c.Host) + `</code>` + string(dnsRecordState(c)) + `</div>` +
+			`<div class="text-xs muted">` + html.EscapeString(c.Label) + `. ` + html.EscapeString(c.Why))
 		if c.ProxyOff {
-			proxy = `<strong>off</strong>`
+			b.WriteString(` The CDN proxy must be <strong>off</strong> (DNS only).`)
 		}
-		addrNote := ""
 		if len(c.Addrs) > 0 {
-			addrNote = `<div class="text-xs muted mono">` + html.EscapeString(strings.Join(c.Addrs, ", ")) + `</div>`
+			b.WriteString(` Resolves to <span class="mono">` + html.EscapeString(strings.Join(c.Addrs, ", ")) + `</span>.`)
 		}
-		b.WriteString(`<tr><td><code class="mono">` + html.EscapeString(c.Host) + `</code>` + addrNote + `</td>` +
-			`<td>` + dnsStatusBadge(c) + `</td><td>` + proxy + `</td>` +
-			`<td>` + html.EscapeString(c.Label) + `<div class="text-xs muted">` + html.EscapeString(c.Why) + `</div></td></tr>`)
+		b.WriteString(`</div></li>`)
 	}
-	b.WriteString(`</tbody></table></div></details>`)
+	b.WriteString(`</ul>`)
 	return b.String()
+}
+
+// dnsList renders the page for resolved views: a row per hosted domain, the
+// selected one's records in the inspector, and the legend folded below.
+func dnsList(views []dnsDomainView, primary, view, q string) string {
+	q = strings.ToLower(strings.TrimSpace(q))
+	attention := 0
+	for _, v := range views {
+		if v.NeedsAttention() {
+			attention++
+		}
+	}
+	var shown []dnsDomainView
+	for _, v := range views {
+		if (view == "attention" && !v.NeedsAttention()) || (q != "" && !strings.Contains(v.Host, q)) {
+			continue
+		}
+		shown = append(shown, v)
+	}
+	href := func(v string) string {
+		u := url.Values{}
+		if v != "" {
+			u.Set("view", v)
+		}
+		if q != "" {
+			u.Set("q", q)
+		}
+		if enc := u.Encode(); enc != "" {
+			return "/os/dns?" + enc
+		}
+		return "/os/dns"
+	}
+	keep := [][2]string{}
+	if view == "attention" {
+		keep = append(keep, [2]string{"view", view})
+	}
+
+	var list, inspector string
+	if len(shown) == 0 {
+		list = `<p class="table-empty">No domain matches that. <a href="/os/dns">Show every domain</a>.</p>`
+	} else {
+		var rows, panels strings.Builder
+		for i, v := range shown {
+			key := "dns-" + strconv.Itoa(i)
+			sel, hidden := "false", " hidden"
+			if i == 0 {
+				sel, hidden = "true", ""
+			}
+			role := ""
+			if v.IsPrimary {
+				role = ` <span class="muted">primary</span>`
+			}
+			rows.WriteString(`<tr class="post-row" data-list-row data-list-panel="` + key + `" tabindex="0" aria-selected="` + sel + `">` +
+				`<td><span class="post-row__name mono">` + html.EscapeString(v.Host) + `</span>` + role + `</td>` +
+				`<td class="post-row__date">` + strconv.Itoa(v.resolving()) + ` of ` + strconv.Itoa(len(v.Checks)) + ` resolve</td>` +
+				`<td>` + string(v.state()) + `</td></tr>`)
+			panels.WriteString(`<div data-list-panel-id="` + key + `"` + hidden + `>` + dnsInspector(v) + `</div>`)
+		}
+		list = `<div class="table-wrap"><table class="table post-table"><thead><tr><th>Domain</th><th>Records</th><th>State</th></tr></thead><tbody>` +
+			rows.String() + `</tbody></table></div>`
+		inspector = panels.String()
+	}
+
+	legend := `<p><strong>Pointed here</strong>: resolves to an address this server holds. <strong>Resolving</strong>: resolves, but this server cannot prove it is the target; normal behind NAT, and not a fault. <strong>Behind the proxy</strong>: resolves to the same front as your apex, so a bot challenge sits in front of a client that cannot answer one; switch it to DNS only. <strong>Not checked</strong>: the lookup did not finish in time, so nothing is claimed either way.</p>
+<p>Direct hosts must be <strong>DNS only</strong> (in Cloudflare, the grey cloud). Every one of them is machine-to-machine: a mail server, GnuPG, a CI job and an MCP client have no JavaScript engine, so a proxy's “checking your browser” page stops them dead. Your apex and <code>www</code> keep full protection for human traffic. <code>talk</code>, <code>mcp</code> and <code>api</code> are install-wide and live on the primary only.</p>`
+	// What a correspondent's PGP client actually requests, to verify from any
+	// machine. Key discovery is per domain: a key is findable only at its own
+	// domain's openpgpkey host, with its own certificate.
+	if vpgp.WKDURL("you@"+primary) != "" {
+		legend += `<p>To check key discovery from any machine: <code class="mono">gpg --locate-keys you@` + html.EscapeString(primary) + `</code>. Per-mailbox addresses are under VayuPGP.</p>`
+	}
+	list += string(ui.Explain(ui.HTML(legend)))
+
+	return string(ui.List(ui.ListPage{
+		Title: "Domains & DNS",
+		Count: strconv.Itoa(len(views)),
+		Views: ui.Segments("Show",
+			ui.Segment{Label: "All", Href: href(""), Count: len(views), On: view != "attention"},
+			ui.Segment{Label: "Needs attention", Href: href("attention"), Count: attention, On: view == "attention"}),
+		Search: ui.Search(ui.SearchBox{Action: "/os/dns", Name: "q", Value: q, Placeholder: "Search domains", Keep: keep}),
+		Actions: ui.HTML(`<button type="button" class="btn btn--primary" data-sheet="dns-provision">Provision subdomains</button>` +
+			`<a class="btn btn--ghost" href="/os/domains">Sites</a>`),
+		Sub: ui.HTML(`Every record each site needs, and whether it points here.` +
+			string(ui.Tip("Each subdomain unlocks one product and is optional, but a missing one fails quietly, so this page checks rather than assumes."))),
+	}, ui.HTML(list), ui.HTML(inspector)))
 }
 
 // handleOSDNS renders the Domains & DNS page.
@@ -500,100 +607,20 @@ func (a *App) handleOSDNS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	primary := strings.TrimSpace(config.Cfg.Domain)
-	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Domains &amp; DNS</h1></div>`)
-	body.WriteString(`<p class="page-sub">Every record this install needs, across every domain it hosts, and whether it is pointed here.` +
-		string(ui.Tip("Each subdomain unlocks one product and is optional, but a missing one fails quietly, so this page checks rather than assumes.")) + `</p>`)
-
 	if primary == "" || primary == "localhost" {
-		body.WriteString(`<div class="empty-state">No domain is configured yet. Set <code>DOMAIN</code> and restart to manage DNS here.</div>`)
-		writeOSHTML(w, r, adminOSLayout(nonce, "Domains & DNS", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Domains & DNS", "vayuos", cfg, htmpl.HTML(ui.List(ui.ListPage{Title: "Domains & DNS"},
+			ui.Empty("globe", "No domain yet", "Set DOMAIN and restart, and every record this install needs is checked here.", ""), ""))))
 		return
 	}
 
 	views := a.hostedDomainViews(r.Context(), primary)
 	resolveAll(r.Context(), views, primary)
 
-	pointed, missing, proxied, unverified, held, uncertified := 0, 0, 0, 0, 0, 0
-	for _, v := range views {
-		if !v.IsPrimary && !v.SyncApproved {
-			held++
-		}
-		if v.NeedsCertificate() {
-			uncertified++
-		}
-		for _, c := range v.Checks {
-			switch c.State {
-			case dnsPointedHere:
-				pointed++
-			case dnsProxied:
-				proxied++
-			case dnsUnverified:
-				unverified++
-			case dnsUnknown:
-				// Deliberately counted nowhere: an unfinished lookup is not
-				// evidence of anything, and folding it into either column would
-				// put a number on the page that is not true.
-			default:
-				missing++
-			}
-		}
-	}
-
-	// Stats strip, matching the Mail accounts / Monetization language.
-	body.WriteString(`<div class="stat-grid">`)
-	body.WriteString(vmStatTile(strconv.Itoa(len(views)), "Domains hosted", ""))
-	body.WriteString(vmStatTile(strconv.Itoa(pointed+unverified), "Resolving", ""))
-	proxTone := ""
-	if proxied > 0 {
-		proxTone = "warn"
-	}
-	body.WriteString(vmStatTile(strconv.Itoa(proxied), "Behind the proxy", proxTone))
-	body.WriteString(vmStatTile(strconv.Itoa(missing), "Not pointed", ""))
-	// The tile that was missing. Records being pointed is half the job, and the
-	// half an operator can see; a hosted site with no certificate of its own
-	// serves a browser security warning while every other tile here reads clean.
-	certTone := ""
-	if uncertified > 0 {
-		certTone = "warn"
-	}
-	body.WriteString(vmStatTile(strconv.Itoa(uncertified), "No certificate", certTone))
-	body.WriteString(`</div>`)
-
-	if held > 0 {
-		heldTone := strconv.Itoa(held) + " domain"
-		if held != 1 {
-			heldTone += "s"
-		}
-		body.WriteString(`<div class="card"><p class="text-sm"><span class="badge badge--warn">On hold</span> <strong>` + heldTone +
-			` on manual hold.</strong> Held domains are skipped by every provisioning helper, so no certificate is issued and key discovery for them stays dead. Approve them under <a href="/os/domains">Domains</a>, then provision below.</p></div>`)
-	}
-
-	body.WriteString(`<div class="section-head"><span class="section-head__title">Records by domain</span><span class="section-head__hint">Anything needing attention is expanded; point each record at this server</span></div>`)
-	body.WriteString(`<div class="card">`)
-	for _, v := range views {
-		body.WriteString(dnsDomainSection(v))
-	}
-	body.WriteString(string(ui.Explain(`<p><strong>Pointed here</strong> — resolves to an address this server actually holds. <strong>Resolving</strong> — resolves, but this server cannot prove it is the target; normal behind NAT, and not a fault. <strong>Behind the proxy</strong> — the record resolves to the same front as your apex, so a bot challenge sits in front of a client that cannot answer one; switch it to DNS only. <strong>Not checked</strong> — the lookup did not finish in time, so nothing is claimed either way.</p>
-<p>Your apex and <code>www</code> being proxied is correct and expected — only the direct hosts below them need to bypass it. <code>talk</code>, <code>mcp</code> and <code>api</code> are install-wide and live on the primary only.</p>`)) + `</div>`)
-
-	// Why the proxy matters, stated once rather than repeated per row.
-	body.WriteString(`<div class="section-head"><span class="section-head__title">Why “CDN proxy off”</span><span class="section-head__hint">The field most often set wrong</span></div>`)
-	body.WriteString(`<div class="card"><p class="text-sm">Direct hosts must be <strong>DNS only</strong>: a machine cannot pass a bot challenge.</p>` + string(ui.Explain(`<p>Every direct service above is <strong>machine-to-machine</strong>. A mail server, GnuPG, a CI job and an MCP client have no JavaScript engine, so a proxy that presents a bot challenge — a “checking your browser” page a human passes without noticing — stops them dead. In Cloudflare this is the grey cloud, labelled <strong>DNS only</strong>. Your apex and <code>www</code> keep full protection for human traffic; only these direct hosts bypass it, and each vhost is deliberately narrow.</p>`)) + `</div>`)
-
-	// Live WKD URLs, so the operator can see exactly what a PGP client asks for.
-	if wkd := vpgp.WKDURL("you@" + primary); wkd != "" {
-		body.WriteString(`<div class="section-head"><span class="section-head__title">PGP key discovery</span><span class="section-head__hint">What a correspondent's client actually requests</span></div>`)
-		body.WriteString(`<div class="card"><p class="text-sm muted">Verify from any machine with:` +
-			string(ui.Tip("Key discovery is per domain: a key for an address at one domain is only findable at that domain's own openpgpkey host, with its own certificate. Provisioning below covers every domain listed above. Per-mailbox URLs are under VayuPGP.")) + `</p>` +
-			`<p class="mono text-xs">gpg --locate-keys you@` + html.EscapeString(primary) + `</p></div>`)
-	}
-
-	// The provisioning card — same control as on Update & Backup, because this is
-	// the page an operator lands on when a record is wrong, and sending them
-	// somewhere else to act on it is how a fix gets postponed.
-	body.WriteString(provisionCardHTML())
-
-	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-update.js?v=` + assetVer("js/admin-os-update.js") + `"></script>`)
-	writeOSHTML(w, r, adminOSLayout(nonce, "Domains & DNS", "vayuos", cfg, htmpl.HTML(body.String())))
+	// The provisioning control is the same one Update & Backup carries, because
+	// this is the page an operator lands on when a record is wrong, and sending
+	// them somewhere else to act on it is how a fix gets postponed.
+	body := dnsList(views, primary, r.URL.Query().Get("view"), r.URL.Query().Get("q")) +
+		string(ui.Sheet("dns-provision", "Provision subdomains", ui.HTML(provisionCardHTML()))) +
+		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-update.js?v=` + assetVer("js/admin-os-update.js") + `"></script>`
+	writeOSHTML(w, r, adminOSLayout(nonce, "Domains & DNS", "vayuos", cfg, htmpl.HTML(body)))
 }

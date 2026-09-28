@@ -66,10 +66,10 @@ func TestADomainThatResolvesWithoutACertificateIsSurfaced(t *testing.T) {
 	}
 }
 
-// Surfacing it means the section opens itself. A fact folded behind a click is
-// how this went unnoticed: the operator's eye goes to the tiles, and the tiles
-// were all green.
-func TestAMissingCertificateOpensTheDomainSection(t *testing.T) {
+// Surfacing it means the domain's own row says so, and the view of what needs
+// attention lists it. A fact folded behind a click is how this went unnoticed:
+// the operator's eye goes to the summary, and the summary was all green.
+func TestAMissingCertificateIsOnTheDomainsRow(t *testing.T) {
 	v := dnsDomainView{Host: "test.example.com", SyncApproved: true, TLSState: domain.TLSPending,
 		Checks: []dnsCheck{{dnsRecord: dnsRecord{Host: "test.example.com", Required: true},
 			State: dnsPointedHere}}}
@@ -78,28 +78,31 @@ func TestAMissingCertificateOpensTheDomainSection(t *testing.T) {
 			"away as healthy. Its site serves a browser security interstitial and this page — " +
 			"the one an operator opens to check exactly this — shows nothing but green")
 	}
+	if !strings.Contains(string(v.state()), "No certificate") {
+		t.Errorf("the row reads %s, not that the certificate is missing", v.state())
+	}
 }
 
-// And the rendered section must say it, in words that name the next action.
+// And the inspector must say it, in words that name the next action.
 // "TLS: pending" is a status; it is not something an operator can act on.
-func TestTheRenderedSectionNamesTheMissingCertificateAndWhatToDo(t *testing.T) {
+func TestTheInspectorNamesTheMissingCertificateAndWhatToDo(t *testing.T) {
 	v := dnsDomainView{Host: "test.example.com", SyncApproved: true, TLSState: domain.TLSPending,
 		Checks: []dnsCheck{{dnsRecord: dnsRecord{Host: "test.example.com", Required: true},
 			State: dnsPointedHere}}}
-	html := dnsDomainSection(v)
-	// Not assertCSPSafe: this page's own table header reads "CDN proxy", which is
-	// the correct user-facing word here and trips that helper's asset-host scan.
+	html := dnsInspector(v)
+	// Not assertCSPSafe: this page's records say "CDN proxy", which is the
+	// correct user-facing word here and trips that helper's asset-host scan.
 	// The part of the rule that applies to rendered markup is the inline style.
 	if strings.Contains(html, `style="`) {
-		t.Error("the section carries an inline style attribute, which the CSP forbids")
+		t.Error("the inspector carries an inline style attribute, which the CSP forbids")
 	}
 
 	low := strings.ToLower(html)
 	if !strings.Contains(low, "no certificate") {
-		t.Error("the section never says the certificate is missing")
+		t.Error("the inspector never says the certificate is missing")
 	}
 	if !strings.Contains(low, "provision subdomains") {
-		t.Error("the section does not name the control that fixes it, so the operator is told " +
+		t.Error("the inspector does not name the control that fixes it, so the operator is told " +
 			"something is wrong and left to find the button")
 	}
 
@@ -107,7 +110,7 @@ func TestTheRenderedSectionNamesTheMissingCertificateAndWhatToDo(t *testing.T) {
 	// nobody reads, which is the failure mode this page has already had twice.
 	healthy := v
 	healthy.TLSState = domain.TLSActive
-	if strings.Contains(strings.ToLower(dnsDomainSection(healthy)), "no certificate") {
+	if strings.Contains(strings.ToLower(dnsInspector(healthy)), "no certificate") {
 		t.Error("a domain with a live certificate is warned about anyway")
 	}
 }
@@ -146,13 +149,16 @@ func TestAProvisioningRunThatDidNothingIsNotReportedAsClean(t *testing.T) {
 	}
 }
 
-// The tile strip is what an operator actually reads. It counted records and said
+// The summary is what an operator actually reads. It counted records and said
 // nothing about certificates, which is how "0 not pointed" came to mean "done".
-func TestTheTileStripCountsDomainsWithoutACertificate(t *testing.T) {
-	src := readSourceFile(t, "admin_os_dns.go")
-	body := goFuncBody(src, "handleOSDNS")
-	if !strings.Contains(body, "NeedsCertificate()") {
-		t.Error("the page's summary never counts domains missing a certificate, so every tile " +
+// A domain whose every record is pointed and which has no certificate is
+// counted as needing attention, on the page itself rather than in its source.
+func TestTheSummaryCountsDomainsWithoutACertificate(t *testing.T) {
+	page := dnsList([]dnsDomainView{{Host: "test.example.com", SyncApproved: true, TLSState: domain.TLSPending,
+		Checks: []dnsCheck{{dnsRecord: dnsRecord{Host: "test.example.com", Required: true}, State: dnsPointedHere}}}},
+		"example.com", "", "")
+	if !strings.Contains(page, `>Needs attention <span class="muted">1</span>`) {
+		t.Error("the page's summary never counts domains missing a certificate, so it " +
 			"can read green while a hosted site serves a certificate error")
 	}
 }

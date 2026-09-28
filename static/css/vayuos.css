@@ -6559,6 +6559,13 @@
 .vp-os .sa-site__mark svg { width: 16px; height: 16px; }
 .vp-os .sa-site__host { font-family: var(--font-mono); overflow-wrap: anywhere; }
 
+/* A domain's records in the DNS inspector: each host with its state on one
+   line, what it unlocks under it, hairlines between. */
+.vp-os .sa-records { list-style: none; margin: var(--space-4) 0 0; padding: 0; }
+.vp-os .sa-records li { padding: var(--space-3) 0; border-top: 1px solid var(--border-1); }
+.vp-os .sa-records__head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2) var(--space-3); }
+.vp-os .sa-records__head code { overflow-wrap: anywhere; }
+
 /* ── Diagnostics ───────────────────────────────────────────────────────── */
 /* Faults, topology, replay and policy: prose in the UI face, identifiers in
    mono, tone from tokens. The graph stays still — nothing pulses or flows. */
