@@ -21,9 +21,6 @@ import (
 	"github.com/johalputt/vayupress/internal/ui"
 )
 
-// iconKey is the sidebar icon for the API Keys console.
-var iconKey = svgIcon("M8 11a3 3 0 100-6 3 3 0 000 6zm2.2 0l5.3 5.3M13 13l1.5 1.5M15 11l1.5 1.5")
-
 // iconVCB is a shield-with-check mark — the "validated compatibility" glyph for
 // the one-click Vayu Compatibility Bible link in the console header.
 var iconVCB = svgIcon("M10 2.5l5.5 1.8v4.7c0 3.6-2.7 6-5.5 6.9-2.8-.9-5.5-3.3-5.5-6.9V4.3L10 2.5zM7.6 9.4l1.7 1.7 3.1-3.5")

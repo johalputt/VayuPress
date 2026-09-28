@@ -41,20 +41,6 @@ const (
 	Context
 )
 
-func (s Status) String() string {
-	switch s {
-	case Pass:
-		return "pass"
-	case Warn:
-		return "warn"
-	case Fail:
-		return "fail"
-	case Context:
-		return "context"
-	}
-	return "unset"
-}
-
 // Check is one line of the report.
 type Check struct {
 	Title  string

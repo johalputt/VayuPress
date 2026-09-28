@@ -73,7 +73,7 @@ func TestAnUnwiredEngineFailsAndReportsNothingElse(t *testing.T) {
 		t.Fatalf("an unwired engine should report exactly one row, got %d", len(checks))
 	}
 	if checks[0].Status != Fail {
-		t.Errorf("an unwired engine is a Fail, got %s", checks[0].Status)
+		t.Errorf("an unwired engine is a Fail, got %v", checks[0].Status)
 	}
 }
 
@@ -88,7 +88,7 @@ func TestStaleOwnerAuthorityIsAFailAndNamesTheFlow(t *testing.T) {
 	}
 	c := find(t, Run(in), "Owner authority")
 	if c.Status != Fail {
-		t.Fatalf("a demoted owner must be a Fail, got %s", c.Status)
+		t.Fatalf("a demoted owner must be a Fail, got %v", c.Status)
 	}
 	if !strings.Contains(c.Detail, "digest") {
 		t.Errorf("the row must name the flow, got: %q", c.Detail)
@@ -98,12 +98,12 @@ func TestStaleOwnerAuthorityIsAFailAndNamesTheFlow(t *testing.T) {
 	// not check" must never read as "fine".
 	in.OwnerRoles = map[string]string{}
 	if c := find(t, Run(in), "Owner authority"); c.Status != Fail {
-		t.Errorf("an unresolvable owner must be a Fail, got %s", c.Status)
+		t.Errorf("an unresolvable owner must be a Fail, got %v", c.Status)
 	}
 
 	in.OwnerRoles = map[string]string{"u1": vayuflow.RoleAdmin}
 	if c := find(t, Run(in), "Owner authority"); c.Status != Pass {
-		t.Errorf("a still-authorised owner should pass, got %s (%s)", c.Status, c.Detail)
+		t.Errorf("a still-authorised owner should pass, got %v (%s)", c.Status, c.Detail)
 	}
 }
 
@@ -111,13 +111,13 @@ func TestStaleOwnerAuthorityIsAFailAndNamesTheFlow(t *testing.T) {
 func TestAReachedCeilingIsAWarnNotAPass(t *testing.T) {
 	c := find(t, Run(Inputs{Wired: true, Stats: vayuflow.Stats{Runs: 10, BudgetCapped: 3}}), "Budgets")
 	if c.Status != Warn {
-		t.Fatalf("a reached ceiling must warn, got %s", c.Status)
+		t.Fatalf("a reached ceiling must warn, got %v", c.Status)
 	}
 	if !strings.Contains(c.Detail, "3 of 10") {
 		t.Errorf("the row must carry the numbers, got: %q", c.Detail)
 	}
 	if c := find(t, Run(Inputs{Wired: true, Stats: vayuflow.Stats{Runs: 10}}), "Budgets"); c.Status != Pass {
-		t.Errorf("no reached ceiling should pass, got %s", c.Status)
+		t.Errorf("no reached ceiling should pass, got %v", c.Status)
 	}
 }
 
@@ -143,13 +143,13 @@ func TestEgressUnderTorIsReportedAsPresentAndInert(t *testing.T) {
 	// Same flow on a clearnet install: a warning, because it really does reach out.
 	in.OnionMode = false
 	if c := find(t, Run(in), "Outbound reach"); c.Status != Warn {
-		t.Errorf("an egress flow on clearnet should warn, got %s", c.Status)
+		t.Errorf("an egress flow on clearnet should warn, got %v", c.Status)
 	}
 
 	// No egress flows at all: a genuine pass.
 	in.Flows = []vayuflow.Flow{flow("draft", vayuflow.RunLive, "content.draft.create")}
 	if c := find(t, Run(in), "Outbound reach"); c.Status != Pass {
-		t.Errorf("no outbound flows should pass, got %s", c.Status)
+		t.Errorf("no outbound flows should pass, got %v", c.Status)
 	}
 }
 
@@ -164,14 +164,14 @@ func TestTheModelRowDistinguishesLocalFromRemote(t *testing.T) {
 	local.ModelLocal = true
 	c := find(t, Run(local), "Model steps")
 	if c.Status != Pass || !strings.Contains(c.Detail, "LOCAL") {
-		t.Errorf("a local provider should pass and say so, got %s / %q", c.Status, c.Detail)
+		t.Errorf("a local provider should pass and say so, got %v / %q", c.Status, c.Detail)
 	}
 
 	remote := base
 	remote.ModelLocal = false
 	c = find(t, Run(remote), "Model steps")
 	if c.Status != Warn || !strings.Contains(c.Detail, "REMOTE") {
-		t.Errorf("a remote provider should warn and say so, got %s / %q", c.Status, c.Detail)
+		t.Errorf("a remote provider should warn and say so, got %v / %q", c.Status, c.Detail)
 	}
 
 	// Remote provider in a Tor Space: those steps are refused, so the flows
@@ -180,7 +180,7 @@ func TestTheModelRowDistinguishesLocalFromRemote(t *testing.T) {
 	torRemote.OnionMode = true
 	c = find(t, Run(torRemote), "Model steps")
 	if c.Status != Fail {
-		t.Fatalf("a remote provider in a Tor Space must fail, got %s", c.Status)
+		t.Fatalf("a remote provider in a Tor Space must fail, got %v", c.Status)
 	}
 	if !strings.Contains(c.Detail, "rather than leak") {
 		t.Errorf("the row must say the flows fail rather than leak, got: %q", c.Detail)
@@ -190,7 +190,7 @@ func TestTheModelRowDistinguishesLocalFromRemote(t *testing.T) {
 	none := base
 	none.ModelConfigured = false
 	if c := find(t, Run(none), "Model steps"); c.Status != Fail {
-		t.Errorf("a model flow with no provider must fail, got %s", c.Status)
+		t.Errorf("a model flow with no provider must fail, got %v", c.Status)
 	}
 }
 
@@ -201,7 +201,7 @@ func TestModelOutputReachingAnIrreversibleActionIsSurfaced(t *testing.T) {
 			"model.draft.generate", "mail.send")}}
 	c := find(t, Run(in), "Model output reaching an irreversible action")
 	if c.Status != Warn {
-		t.Errorf("expected a warn, got %s", c.Status)
+		t.Errorf("expected a warn, got %v", c.Status)
 	}
 	if !strings.Contains(c.Detail, "digest") {
 		t.Errorf("the row must name the flow, got: %q", c.Detail)
@@ -226,7 +226,7 @@ func TestABrokenDefinitionIsNamed(t *testing.T) {
 	c := find(t, Run(Inputs{Wired: true,
 		Rejected: map[string]error{"flow-7": errors.New("no registered capability")}}), "Definitions")
 	if c.Status != Fail {
-		t.Fatalf("a broken definition must fail, got %s", c.Status)
+		t.Fatalf("a broken definition must fail, got %v", c.Status)
 	}
 	if !strings.Contains(c.Detail, "flow-7") {
 		t.Errorf("the row must name the flow, got: %q", c.Detail)
@@ -236,10 +236,10 @@ func TestABrokenDefinitionIsNamed(t *testing.T) {
 // A backlog that is not shrinking means the drainer has stopped.
 func TestAGrowingEventBacklogWarns(t *testing.T) {
 	if c := find(t, Run(Inputs{Wired: true, PendingInbox: 500}), "Event backlog"); c.Status != Warn {
-		t.Errorf("a large backlog should warn, got %s", c.Status)
+		t.Errorf("a large backlog should warn, got %v", c.Status)
 	}
 	if c := find(t, Run(Inputs{Wired: true}), "Event backlog"); c.Status != Pass {
-		t.Errorf("an empty backlog should pass, got %s", c.Status)
+		t.Errorf("an empty backlog should pass, got %v", c.Status)
 	}
 }
 

@@ -36,10 +36,6 @@ import (
 	"github.com/johalputt/vayupress/internal/vayukeep"
 )
 
-var iconArchive = svgIcon("M2.5 4.5h15V8h-15zM4 8h12v8H4zM8 11h4")
-
-var iconKeep = svgIcon("M10 2.5l6 2v5c0 3.8-2.8 6.4-6 7.4-3.2-1-6-3.6-6-7.4v-5l6-2zM7.4 9.8l1.8 1.8 3.4-3.8")
-
 // humanAgo renders "how long ago" in the shortest honest form. A zero time is
 // "never" — deliberately not "—", which reads as "not applicable" when it
 // actually means "this has not happened".

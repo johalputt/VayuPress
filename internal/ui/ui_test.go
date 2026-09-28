@@ -38,9 +38,9 @@ func TestEveryPrimitiveEscapesTextOnce(t *testing.T) {
 	escapedOnce(t, "Row hint", Rows(Row{Label: "L", Hint: hostile}))
 	escapedOnce(t, "Row id", Rows(Row{Label: "L", ID: hostile}))
 	escapedOnce(t, "Fact key", Facts(Fact{Key: hostile}))
-	escapedOnce(t, "Figure value", Figures(Figure{Value: hostile}))
-	escapedOnce(t, "Figure label", Figures(Figure{Label: hostile}))
-	escapedOnce(t, "Figure note", Figures(Figure{Note: hostile}))
+	escapedOnce(t, "Figure value", Figure{Value: hostile}.Cell())
+	escapedOnce(t, "Figure label", Figure{Label: hostile}.Cell())
+	escapedOnce(t, "Figure note", Figure{Note: hostile}.Cell())
 	escapedOnce(t, "Disclosure title", Disclosure("", hostile, "", "", false, ""))
 	escapedOnce(t, "Disclosure sub", Disclosure("", "T", hostile, "", false, ""))
 	escapedOnce(t, "Table header", Table([]string{hostile}, nil, ""))
@@ -92,7 +92,7 @@ func TestToneClassesAreOnlyTheDefinedOnes(t *testing.T) {
 	if s := string(Callout(`x" onclick="y`, "")); strings.Contains(s, "onclick") || !strings.Contains(s, "callout--info") {
 		t.Errorf("an unknown callout tone reached the markup: %s", s)
 	}
-	if s := string(Figures(Figure{Tone: `x" onclick="y`})); strings.Contains(s, "onclick") {
+	if s := string(Figure{Tone: `x" onclick="y`}.Cell()); strings.Contains(s, "onclick") {
 		t.Errorf("an unknown figure tone reached the markup: %s", s)
 	}
 	if s := string(Tag(`x" onclick="y`, "T")); strings.Contains(s, "onclick") || !strings.Contains(s, "badge--muted") {

@@ -99,21 +99,6 @@ type Figure struct {
 	Live                     bool
 }
 
-// Figures renders the few numbers that answer "what is the state of this".
-func Figures(figs ...Figure) HTML {
-	cells := make([]HTML, len(figs))
-	for i, f := range figs {
-		cells[i] = f.Cell()
-	}
-	return FigureRow(cells...)
-}
-
-// FigureRow lays out figure cells built one at a time, for a page that
-// decides each figure's tone between them.
-func FigureRow(cells ...HTML) HTML {
-	return HTML(`<div class="stat-grid">` + string(Join(cells...)) + `</div>`)
-}
-
 // Cell renders one figure.
 func (f Figure) Cell() HTML {
 	cls := "stat-card"
