@@ -1040,6 +1040,28 @@ test("an app that is not set up says what it needs, and one button does the next
   }
 });
 
+// Something the system does on its own opens on one sentence of state with its
+// mark, then its bands: never on a strip of figures, never on a breadcrumb.
+// Backups is this kind too, once it is set up; on this fresh install it is
+// the Setup page above.
+const STATUS_PAGES = ["/os/update", "/os/storage", "/os/monitoring", "/os/vayuflow", "/os/faults", "/os/replay", "/os/governance"];
+
+test("status pages open on their state, not on figures", async ({ page }) => {
+  await openConsole(page);
+  for (const href of STATUS_PAGES) {
+    await page.goto(href);
+    const kinds = await page.locator("main [data-page-kind]").evaluateAll((els) => els.map((e) => e.getAttribute("data-page-kind")));
+    expect(kinds, href).toEqual(["status"]);
+    const state = page.locator(".sa-status__state");
+    await expect(state, href).toHaveCount(1);
+    expect((await state.innerText()).trim().length, href).toBeGreaterThan(8);
+    await expect(page.locator(".sa-status__head .sa-status__mark"), href).toHaveCount(1);
+    await expect(page.locator("main .stat-grid"), href).toHaveCount(0);
+    // One primary action per page (rule 6).
+    expect(await page.locator("main .btn--primary:visible").count(), href).toBeLessThanOrEqual(1);
+  }
+});
+
 // Advertising once it is on is a Settings page: slots are a list, a new slot
 // rises in a sheet, and the price and networks are rows under the one bar.
 test("advertising, once on, lists its slots and adds one from a sheet", async ({ page }) => {
