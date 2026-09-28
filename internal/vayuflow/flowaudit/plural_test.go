@@ -5,6 +5,8 @@ package flowaudit
 import (
 	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/vayuflow"
 )
 
 // The panel shows these sentences, and its wording rules forbid "flow(s)":
@@ -28,5 +30,17 @@ func TestFlowCountsAgreeWithTheirVerb(t *testing.T) {
 	}
 	if got := brokenDetail([]string{"nightly"}); !strings.HasPrefix(got, "1 enabled flow no longer validates and will NOT fire") {
 		t.Errorf("one broken flow: %q", got)
+	}
+}
+
+// Every sentence the audit writes, not only the ones counting flows: the
+// Budgets check said "run(s)" after the flow sentences had been fixed.
+func TestNoAuditSentenceHedgesAPlural(t *testing.T) {
+	for _, n := range []int{1, 3} {
+		for _, c := range Run(Inputs{Wired: true, Stats: vayuflow.Stats{Runs: n, BudgetCapped: n}}) {
+			if strings.Contains(c.Detail, "(s)") {
+				t.Errorf("%s, %d: a hedged plural in %q", c.Title, n, c.Detail)
+			}
+		}
 	}
 }

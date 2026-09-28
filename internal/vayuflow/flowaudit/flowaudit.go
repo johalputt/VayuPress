@@ -146,7 +146,7 @@ func Run(in Inputs) []Check {
 	out = append(out, Check{
 		Title:  "Budgets",
 		Status: statusFor(in.Stats.BudgetCapped == 0, Pass, Warn),
-		Detail: fmt.Sprintf("%d of %d run(s) in the window finished at one of their ceilings. "+
+		Detail: fmt.Sprintf("Runs in the window that finished at one of their ceilings: %d of %d. "+
 			"A ceiling reached is either the limit working or the limit set wrong — only a person "+
 			"can tell which, which is why this is not reported as a success.",
 			in.Stats.BudgetCapped, in.Stats.Runs),
@@ -228,7 +228,7 @@ func Run(in Inputs) []Check {
 	out = append(out, Check{
 		Title:  "Event backlog",
 		Status: statusFor(in.PendingInbox < 50, Pass, Warn),
-		Detail: fmt.Sprintf("%d event trigger(s) waiting to be considered. A backlog that does not "+
+		Detail: fmt.Sprintf("Event triggers waiting to be considered: %d. A backlog that does not "+
 			"shrink between readings means the drainer has stopped, and event flows are no longer "+
 			"firing.", in.PendingInbox),
 	})
