@@ -24,33 +24,30 @@ import (
 	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
-// handleOSPages lists every custom page (articles flagged is_page=1) with a
-// quick-create box, live-URL link, edit link, publish state and a "Show in nav"
-// toggle. The current nav.items JSON is embedded so the toggle can add/remove
-// the page link without a server round-trip beyond the shared settings save.
+// handleOSPages lists every custom page (articles flagged is_page=1) as the
+// List kind: the pages as a table, and the selected one's inspector, where it is
+// put in the site's menu or footer and deleted. There are few pages, so every
+// inspector is on the page and a row only shows its own. The current nav.items
+// and footer JSON are embedded so those controls save through the shared
+// settings endpoint.
 func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
-	// CSRF token cookie so the inline create/nav controls can POST.
+	// CSRF token cookie so the create sheet and the inspector's controls can POST.
 	csrfTokenFor(w, r)
 
-	navJSON, footerJSON, contactEmail := "", "", ""
-	autoReply := true
+	navJSON, footerJSON := "", ""
 	if a.siteSettings != nil {
 		navJSON = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyNavItems)
 		footerJSON = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyFooterConfig)
-		contactEmail = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyContactEmail)
-		autoReply = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyContactAutoReply) != "off"
-	}
-	autoReplyChecked := ""
-	if autoReply {
-		autoReplyChecked = " checked"
 	}
 	var footerCfg render.FooterConfig
 	if strings.TrimSpace(footerJSON) != "" {
@@ -81,83 +78,62 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	create := `<div class="quick-compose" role="search">
-  <span class="quick-compose-icon" aria-hidden="true">` + saIcon("doc") + `</span>
-  <input id="page-compose-input" class="quick-compose-input" type="text"
-    placeholder="New page title" autocomplete="off"
-    aria-label="Add a page: type a title and press Enter">
-  <select id="page-compose-template" class="input" aria-label="Page template" title="Start from a template">
-    <option value="blank">Blank page</option>
+	// A new page rises in a sheet from its button (rule 5). Enter in the title
+	// or the button creates it, and the editor opens on it.
+	create := ui.Sheet("page-new", "New page", ui.HTML(`<form data-page-create>
+  <div class="field"><label class="field-label" for="page-compose-input">Title</label><input id="page-compose-input" class="input" type="text" placeholder="About" autocomplete="off" required></div>
+  <div class="field"><label class="field-label" for="page-compose-template">Start from</label><select id="page-compose-template" class="select">
+    <option value="blank">A blank page</option>
     <option value="about">About</option>
-    <option value="contact">Contact</option>
-    <option value="faq">FAQ</option>
-  </select>
-</div>
-<div id="page-compose-status" class="text-sm muted" role="status" aria-live="polite">Pick a template, type a title, press Enter.</div>
-<div class="card mt-3">
-  <div class="theme-field theme-field--text">
-    <span class="theme-field__label">Contact form recipient</span>
-    <div class="vm-row">
-      <input type="email" id="contact-email" class="input" style="flex:1" value="` + html.EscapeString(contactEmail) + `" placeholder="you@example.com" aria-label="Contact form recipient email">
-      <button type="button" class="btn btn--primary btn--sm" id="contact-email-save">Save</button>
-      <span id="contact-email-status" class="text-xs muted" role="status" aria-live="polite"></span>
-    </div>
-    <span class="theme-field__hint">Messages from any page containing the contact form are emailed here via VayuMail. Add the form to a page with the Contact template (or type <code>[[contact-form]]</code> in the page body). For a custom confirmation on a specific page, use <code>[[contact-form: your thank-you message]]</code>.</span>
-    <div class="vm-row mt-2">
-      <label class="cz-check"><input type="checkbox" class="toggle" role="switch" id="contact-autoreply"` + autoReplyChecked + `> Send visitors an auto-reply confirmation</label>
-      <span id="contact-autoreply-status" class="text-xs muted" role="status" aria-live="polite"></span>
-    </div>
-  </div>
-</div>`
+    <option value="contact">Contact, with the contact form</option>
+    <option value="faq">Questions and answers</option>
+  </select></div>
+  <div class="mt-3 sa-list__sheet-actions"><button class="btn btn--primary btn--sm" type="submit">Create and edit</button><span id="page-compose-status" class="text-sm muted" role="status" aria-live="polite"></span></div>
+</form>`))
 
+	newBtn := ui.HTML(`<button type="button" class="btn btn--primary" data-sheet="page-new">` + saIcon("plus") + ` New page</button>`)
+	sub := ui.HTML(`Standalone pages like About, Contact or Privacy: no date, tags or comments. The contact form's address is in <a href="/os/settings/writing">Settings › Writing</a>.`)
 	var body string
 	if len(pages) == 0 {
-		body = `<div class="page-header"><h1>Pages</h1></div>
-<p class="page-sub">Standalone pages like About, Contact or Privacy — no date, tags or comments. Add them to your menu or footer and publish in a click.</p>` +
-			create + `
-<div class="card empty-state">
-  <div class="empty-icon">` + saIcon("doc") + `</div>
-  <div class="empty-title">No pages yet</div>
-  <div class="empty-sub">Create an About or Contact page above. Pages render cleanly, without the blog post furniture.</div>
-</div>`
+		body = string(ui.List(ui.ListPage{Title: "Pages", Actions: newBtn, Sub: sub},
+			ui.Empty("doc", "No pages yet", "An About or Contact page renders cleanly, without a post's date and comments.",
+				ui.HTML(`<button type="button" class="btn btn--primary" data-sheet="page-new">Create a page</button>`)), ""))
 	} else {
-		rows := ""
-		for _, p := range pages {
+		var rows, panels strings.Builder
+		for i, p := range pages {
 			esc := html.EscapeString(p.Slug)
-			statusPill := `<span class="status-pill status-pill--live">● Published</span>`
-			viewBtn := `<a class="btn btn--ghost btn--sm" href="/` + esc + `" target="_blank" rel="noopener">View ↗</a>`
+			href := "/" + p.Slug
+			state := ui.State("ok", "Published")
 			if p.Status == "draft" {
-				statusPill = `<span class="status-pill status-pill--draft">● Draft</span>`
-				viewBtn = ""
+				state = ui.State("neutral", "Draft")
 			}
-			href := "/" + esc
-			rows += `<tr>
-  <td class="row-title"><a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>
-    <div class="row-meta">/` + esc + `</div></td>
-  <td>` + statusPill + `</td>
-  <td><label class="cz-check"><input type="checkbox" class="toggle" role="switch" data-page-nav data-href="` + html.EscapeString(href) + `" data-label="` + html.EscapeString(p.Title) + `"> In menu</label>
-    <label class="theme-field theme-field--text mt-2"><span class="theme-field__label text-xs">Footer group</span>
-      ` + pageFooterSelect(href, p.Title, footerCfg) + `</label></td>
-  <td class="row-actions">
-    <a class="btn btn--ghost btn--sm" href="/os/editor/` + esc + `">Edit</a>
-    ` + viewBtn + `
-    <button type="button" class="btn btn--ghost btn--sm" data-page-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button>
-  </td>
-</tr>`
+			sel, hidden := "false", " hidden"
+			if i == 0 {
+				sel, hidden = "true", ""
+			}
+			rows.WriteString(`<tr class="post-row" data-list-row data-list-panel="` + esc + `" tabindex="0" aria-selected="` + sel + `">` +
+				`<td class="post-row__title"><span class="post-row__name">` + html.EscapeString(p.Title) + `</span></td>` +
+				`<td>` + string(state) + `</td>` +
+				`<td class="post-row__date">` + config.FormatSite(p.Updated, "2 Jan") + `</td></tr>`)
+			view := ""
+			if p.Status != "draft" {
+				view = `<a class="btn btn--sm" href="/` + esc + `" target="_blank" rel="noopener">` + saIcon("eye") + ` View</a>`
+			}
+			panels.WriteString(`<div data-list-panel-id="` + esc + `"` + hidden + `>` +
+				`<div class="sa-insp__title">` + html.EscapeString(p.Title) + `</div><div class="sa-insp__meta">/` + esc + `</div>` +
+				`<div class="sa-insp__actions"><a class="btn btn--sm" href="/os/editor/` + esc + `">` + saIcon("pencil") + ` Edit</a>` + view + `</div>` +
+				`<dl class="sa-insp__facts"><dt>State</dt><dd>` + string(state) + ` <span class="muted">` + config.FormatSite(p.Updated, "2 Jan, 15:04") + `</span></dd>` +
+				`<dt>Menu</dt><dd><label class="cz-check"><input type="checkbox" class="toggle" role="switch" data-page-nav data-href="` + html.EscapeString(href) + `" data-label="` + html.EscapeString(p.Title) + `"> In the site's menu</label></dd>` +
+				`<dt>Footer</dt><dd>` + pageFooterSelect(href, p.Title, footerCfg) + `</dd></dl>` +
+				`<div class="sa-insp__actions"><button type="button" class="btn btn--sm btn--danger" data-page-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button></div></div>`)
 		}
-		body = `<div class="page-header"><h1>Pages <span class="count-pill">` + intToStr(len(pages)) + `</span></h1></div>
-<p class="page-sub">Standalone pages like About, Contact or Privacy — no date, tags or comments. Add them to your menu or footer and publish in a click.</p>` +
-			create + `
-<div class="card">
-  <div class="table-wrap"><table class="table">
-    <thead><tr><th>Title</th><th>Status</th><th>Show in</th><th></th></tr></thead>
-    <tbody>` + rows + `</tbody>
-  </table></div>
-</div>
-<div id="page-nav-status" class="text-sm muted" role="status" aria-live="polite"></div>`
+		list := `<div class="table-wrap"><table class="table post-table page-table"><thead><tr><th>Title</th><th>State</th><th>Updated</th></tr></thead><tbody>` +
+			rows.String() + `</tbody></table></div>`
+		body = string(ui.List(ui.ListPage{Title: "Pages", Count: intToStr(len(pages)), Actions: newBtn, Sub: sub},
+			ui.HTML(list), ui.HTML(panels.String()+`<p id="page-nav-status" class="text-sm muted" role="status" aria-live="polite"></p>`)))
 	}
 
-	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-pages.js?v=` + assetVer("js/admin-os-pages.js") + `"></script>
+	body += string(create) + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-pages.js?v=` + assetVer("js/admin-os-pages.js") + `"></script>
 <span hidden id="page-nav-seed" data-nav="` + html.EscapeString(navJSON) + `" data-footer="` + html.EscapeString(footerJSON) + `"></span>`
 
 	writeOSHTML(w, r, adminOSLayout(nonce, "Pages", "pages", cfg, htmpl.HTML(body)))

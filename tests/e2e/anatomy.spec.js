@@ -60,11 +60,12 @@ function anatomy() {
   // A field that only finds or goes somewhere is navigation, not a form: a
   // list's search (type=search, which Media filters with in place) and any
   // field of a GET form (a list's search, the pager's "go to page"), since a
-  // GET changes nothing. Everything that changes something still rises in a
-  // sheet.
+  // GET changes nothing. A list's inspector edits the selected item where its
+  // values are shown (render 07: a file's alt text), which rule 5 allows; the
+  // rule is that making something new rises in a sheet.
   const inlineFields = all.filter((e) =>
     e.matches("input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=search]), textarea, select") &&
-    !e.closest("dialog, [role=dialog], .sa-sheet, form[method=get i]")).length;
+    !e.closest("dialog, [role=dialog], .sa-sheet, form[method=get i], [data-list-inspector]")).length;
   const crumb = !!document.querySelector(".sa-crumb, .sa-apphead, [aria-label='You are here'], [aria-label='Breadcrumb']");
   const kinds = [...main.querySelectorAll("[data-page-kind]")].map((e) => e.getAttribute("data-page-kind"));
   // Every h1, shown or not: the editor's is for screen readers, since the

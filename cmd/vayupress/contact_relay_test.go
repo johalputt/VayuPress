@@ -11,6 +11,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/mail"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -159,5 +162,76 @@ func TestTheAutoReplyCarriesNothingTheVisitorWrote(t *testing.T) {
 	reply, ok = sent()["second@elsewhere.example"]
 	if !ok || strings.Contains(reply, "restore-your-account") {
 		t.Errorf("the reply names the site from the sender's Host header (sent=%v):\n%s", ok, reply)
+	}
+}
+
+// The auto-reply is a Settings toggle, stored "true" or "false", and on when
+// unset. Pages used to store "on" and "off"; migration 102 rewrites those, so
+// an install that had turned it off stays off rather than reading as on.
+func TestTheAutoReplyFollowsItsSettingAndItsOldSpelling(t *testing.T) {
+	openMigratedDB(t)
+	up, err := os.ReadFile(filepath.Join("..", "..", "internal", "db", "migrations", "102-contact-autoreply-bool.up.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, c := range []struct {
+		name, stored string
+		migrate      bool
+		replies      bool
+		shown        string // what the Settings toggle reads: checked only at "true"
+	}{
+		{"unset", "", false, true, ""},
+		{"turned off in Settings", "false", false, false, "false"},
+		{"turned off on the old Pages page", "off", true, false, "false"},
+		{"turned on on the old Pages page", "on", true, true, "true"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			port, sent := smtpSink(t)
+			a := &App{siteSettings: settings.New(dbpkg.DB),
+				mailer: email.New(email.Config{Host: "127.0.0.1", Port: port, TLS: email.TLSNone, From: "site@install.example"})}
+			if _, err := dbpkg.DB.Exec(`DELETE FROM site_settings WHERE key='contact.autoreply'`); err != nil {
+				t.Fatal(err)
+			}
+			if c.stored != "" {
+				if _, err := dbpkg.DB.Exec(`INSERT INTO site_settings(scope,key,value) VALUES('', 'contact.autoreply', ?)`, c.stored); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if c.migrate {
+				for _, stmt := range strings.Split(string(up), "\n") {
+					if s := strings.TrimSpace(stmt); s != "" && !strings.HasPrefix(s, "--") {
+						if _, err := dbpkg.DB.Exec(s); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+			}
+			var now string
+			_ = dbpkg.DB.QueryRow(`SELECT value FROM site_settings WHERE key='contact.autoreply'`).Scan(&now)
+			if now != c.shown {
+				t.Errorf("stored %q, want %q, which the Settings toggle shows truly", now, c.shown)
+			}
+			a.siteSettings = settings.New(dbpkg.DB) // read what is stored now, not a cache
+			if err := a.siteSettings.SetMany(context.Background(), settings.ForPrimary(),
+				map[string]string{settings.KeyContactEmail: "owner@install.example"}); err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/contact", strings.NewReader(
+				`{"name":"Reader","email":"reader@elsewhere.example","message":"Hello"}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.RemoteAddr = "203.0.113." + strconv.Itoa(40+i) + ":4000"
+			rec := httptest.NewRecorder()
+			a.handleContactSubmit(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("submit: %d %s", rec.Code, rec.Body)
+			}
+			mail := sent()
+			if _, ok := mail["owner@install.example"]; !ok {
+				t.Fatalf("the operator's copy never arrived; this case proves nothing: %v", mail)
+			}
+			if _, got := mail["reader@elsewhere.example"]; got != c.replies {
+				t.Errorf("auto-reply sent = %v, want %v", got, c.replies)
+			}
+		})
 	}
 }

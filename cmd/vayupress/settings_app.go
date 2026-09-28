@@ -93,6 +93,14 @@ var settingsCategories = []settingsCategory{
 				{ID: "s-custom-css", Key: settings.KeyThemeCustomCSS, Label: "Stylesheet", Hint: "Added to every public page. Never loaded in the console.", Kind: "code"},
 			}},
 		}},
+	{Slug: "writing", Label: "Writing", Icon: "pencil",
+		Sub: "What happens around what you publish.",
+		Groups: []settingsGroup{
+			{Title: "Contact form", Hint: "On any page made from the Contact template", Fields: []settingField{
+				{ID: "s-contact-email", Key: settings.KeyContactEmail, Label: "Send messages to", Hint: "Each message from a page's contact form is emailed here through VayuMail. To add the form to a page, type [[contact-form]] in it; [[contact-form: your thank-you]] sets that page's own confirmation.", Kind: "email", Placeholder: "you@example.com"},
+				{ID: "s-contact-autoreply", Key: settings.KeyContactAutoReply, Label: "Reply to the sender", Hint: "Sends the visitor a note that their message arrived.", Kind: "toggle", Default: "true"},
+			}},
+		}},
 	{Slug: "members", Label: "Members", Icon: "audience",
 		Sub: "How readers join. Plans and payments are in Audience › Monetization.",
 		Groups: []settingsGroup{

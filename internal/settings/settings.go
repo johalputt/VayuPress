@@ -140,14 +140,15 @@ const (
 
 	// Contact. The email address that public contact-form submissions are
 	// delivered to over the built-in VayuMail SMTP sender. When unset, the
-	// contact endpoint reports that contact is not configured. Set in the Pages
-	// surface. The form itself is opt-in per page via the [[contact-form]] marker.
+	// contact endpoint reports that contact is not configured. Set in Settings ›
+	// Writing. The form itself is opt-in per page via the [[contact-form]] marker.
 	KeyContactEmail = "contact.email"
 
 	// KeyContactAutoReply toggles the confirmation email sent back to a visitor
-	// after they submit the contact form ("thanks, we got your message"). Any
-	// value other than "off" (including unset) counts as enabled, so auto-reply
-	// is on by default once a recipient is configured.
+	// after they submit the contact form ("thanks, we got your message"). It is
+	// a Settings toggle, stored "true" or "false"; unset counts as enabled, so
+	// auto-reply is on by default once a recipient is configured. Migration 102
+	// moved the "on"/"off" the Pages surface used to store onto these.
 	KeyContactAutoReply = "contact.autoreply"
 
 	// KeyMediaAlt stores a JSON object mapping a content-addressed media filename

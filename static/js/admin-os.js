@@ -714,17 +714,20 @@ window.vpRelTime = relativeTime;
 /* ── Media library (Phase 4) ─────────────────────────────────── */
 (function initListSelect() {
   /* A list page (ui.List) whose rows carry data-list-row: selecting a row
-     marks it and loads that item into the inspector beside the list, from the
-     row's data-list-src (a fragment the server renders, escaped there). A
-     click on a control inside the row (its checkbox, a link) does that
-     control's job instead. Arrow keys move between rows; Enter or Space
-     selects. */
+     marks it and shows that item in the inspector beside the list. A long
+     list's row names a fragment to load (data-list-src, rendered and escaped
+     by the server); a short list's names a panel already in the inspector
+     (data-list-panel), so its controls are bound once with the page. A click
+     on a control inside the row (its checkbox, a link) does that control's
+     job instead. Arrow keys move between rows; Enter or Space selects. */
   const inspector = $('[data-list-inspector]');
   if (!inspector || !$('[data-list-row]')) return;
   const rows = () => $$('[data-list-row]');
   function select(row) {
     if (row.getAttribute('aria-selected') === 'true') return;
     rows().forEach((r) => r.setAttribute('aria-selected', r === row ? 'true' : 'false'));
+    const panel = row.dataset.listPanel;
+    if (panel) { $$('[data-list-panel-id]', inspector).forEach((p) => { p.hidden = p.dataset.listPanelId !== panel; }); return; }
     const src = row.dataset.listSrc;
     if (src && window.htmx) window.htmx.ajax('GET', src, { target: inspector, swap: 'innerHTML' });
   }

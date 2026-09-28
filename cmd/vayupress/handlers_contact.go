@@ -139,8 +139,8 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Auto-reply to the visitor (best-effort; never fails their request).
-		// Enabled by default — only an explicit "off" suppresses it.
-		if a.siteSettings == nil || a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyContactAutoReply) != "off" {
+		// Enabled by default: only the Settings toggle turned off ("false") stops it.
+		if a.siteSettings == nil || a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyContactAutoReply) != "false" {
 			// Per-page custom confirmation, if the page's marker carries one
 			// ([[contact-form: …]]); otherwise the default line. The page content is
 			// the single source of truth, re-parsed here at submit time.

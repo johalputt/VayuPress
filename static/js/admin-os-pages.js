@@ -1,10 +1,11 @@
 /* admin-os-pages.js — VayuOS Pages surface.
  *
- *   1. Quick-create a page: type a title, press Enter → POST quick-create →
- *      open the editor on the new page slug.
- *   2. "In menu" toggle per page: add/remove the page's {label,href} in the
- *      public nav (settings key nav.items) via the shared /os/api/settings
- *      endpoint — no bespoke server route, fully reusing the validated path.
+ *   1. New page: the sheet's title and template → POST quick-create → open
+ *      the editor on the new page slug.
+ *   2. In each page's inspector, "In the site's menu" and its footer group:
+ *      the public nav (nav.items) and footer (footer.config) are rewritten
+ *      through the shared /os/api/settings endpoint — no bespoke server route,
+ *      fully reusing the validated path.
  *
  * CSP-clean: external same-origin script, no inline handlers, no eval.
  */
@@ -17,13 +18,14 @@
   }
   function setText(el, t) { if (el) el.textContent = t; }
 
-  // ── Quick-create ───────────────────────────────────────────────────────────
+  // ── New page ───────────────────────────────────────────────────────────────
+  var createForm = document.querySelector('[data-page-create]');
   var input = document.getElementById('page-compose-input');
   var templateSel = document.getElementById('page-compose-template');
   var createStatus = document.getElementById('page-compose-status');
-  if (input) {
-    input.addEventListener('keydown', function (e) {
-      if (e.key !== 'Enter') return;
+  if (createForm && input) {
+    createForm.addEventListener('submit', function (e) {
+      e.preventDefault();
       var title = input.value.trim();
       if (!title) return;
       input.disabled = true;
@@ -59,48 +61,16 @@
         fetch('/os/api/posts/' + encodeURIComponent(b.getAttribute('data-slug')), { method: 'DELETE', headers: { 'X-CSRF-Token': csrf() } })
           .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
           .then(function (res) {
-            if (res.ok) { var row = b.closest('tr'); if (row) row.remove(); }
+            if (res.ok) {
+              var slug = b.getAttribute('data-slug');
+              document.querySelectorAll('[data-list-panel="' + slug + '"], [data-list-panel-id="' + slug + '"]').forEach(function (el) { el.remove(); });
+            }
             else { b.disabled = false; setText(navStatus, (res.d && (res.d.detail || res.d.title)) || 'Could not delete'); }
           })
           .catch(function (e) { b.disabled = false; setText(navStatus, 'Network error: ' + e); });
       });
     });
   });
-
-  // ── Contact recipient email ──────────────────────────────────────────────────
-  var contactInput = document.getElementById('contact-email');
-  var contactSave = document.getElementById('contact-email-save');
-  var contactStatus = document.getElementById('contact-email-status');
-  if (contactSave && contactInput) {
-    contactSave.addEventListener('click', function () {
-      contactSave.disabled = true;
-      setText(contactStatus, 'Saving…');
-      fetch('/os/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
-        body: JSON.stringify({ key: 'contact.email', value: contactInput.value.trim() }),
-      })
-        .then(function (r) { contactSave.disabled = false; setText(contactStatus, r.ok ? 'Saved' : 'Could not save'); })
-        .catch(function (e) { contactSave.disabled = false; setText(contactStatus, 'Network error: ' + e); });
-    });
-  }
-
-  // Auto-reply toggle (stored as contact.autoreply on/off).
-  var autoReply = document.getElementById('contact-autoreply');
-  var autoReplyStatus = document.getElementById('contact-autoreply-status');
-  if (autoReply) {
-    autoReply.addEventListener('change', function () {
-      autoReply.disabled = true;
-      setText(autoReplyStatus, 'Saving…');
-      fetch('/os/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
-        body: JSON.stringify({ key: 'contact.autoreply', value: autoReply.checked ? 'on' : 'off' }),
-      })
-        .then(function (r) { autoReply.disabled = false; setText(autoReplyStatus, r.ok ? 'Saved' : 'Could not save'); })
-        .catch(function (e) { autoReply.disabled = false; setText(autoReplyStatus, 'Network error: ' + e); });
-    });
-  }
 
   // ── Navigation toggles ───────────────────────────────────────────────────────
   var navStatus = document.getElementById('page-nav-status');
