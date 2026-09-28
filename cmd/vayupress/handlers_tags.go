@@ -16,13 +16,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/render"
-	"github.com/johalputt/vayupress/internal/seo"
 )
 
 // handleTagIndex renders the public topic index (/tags): every distinct tag with
@@ -290,27 +288,24 @@ func (a *App) articlesByTag(ctx context.Context, tag string, max int, scope stri
 		return nil, 0
 	}
 
-	q := `SELECT a.title,a.slug,a.content,a.tags,a.created_at FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm=? AND a.status='published'` + domClause + ` ORDER BY t.created_at DESC LIMIT ?`
-	rows, err := dbpkg.Reader().QueryContext(ctx, q, append(append([]any{norm}, domArg...), max)...)
+	rows, err := dbpkg.Reader().QueryContext(ctx, tagPageIDsSQL+domClause+` ORDER BY t.created_at DESC LIMIT ?`, append(append([]any{norm}, domArg...), max)...)
 	if err != nil {
 		return nil, total
 	}
-	defer rows.Close()
-
-	var out []render.HomeArticle
-	author := render.GetActiveSettings().Author
+	var ids []string
 	for rows.Next() {
-		var ha render.HomeArticle
-		var content, tagsCSV string
-		if err := rows.Scan(&ha.Title, &ha.Slug, &content, &tagsCSV, &ha.CreatedAt); err != nil {
-			continue
+		var id string
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
 		}
-		ha.Tags = api.SplitTags(tagsCSV)
-		ha.Excerpt = excerptFromHTML(content, 160)
-		ha.Image = seo.ExtractFirstImage(content)
-		ha.Author = author
-		out = append(out, ha)
 	}
 	_ = rows.Err()
+	_ = rows.Close()
+
+	out := listingCards(ctx, ids)
+	author := render.GetActiveSettings().Author
+	for i := range out {
+		out[i].Author = author
+	}
 	return out, total
 }

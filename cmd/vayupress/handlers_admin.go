@@ -44,7 +44,6 @@ import (
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/provenance"
 	"github.com/johalputt/vayupress/internal/render"
-	"github.com/johalputt/vayupress/internal/seo"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/severity"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -385,39 +384,28 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 	offset := (page - 1) * homeFeedPageSize
 
 	listArgs := append(append([]any{}, domArgs...), homeFeedPageSize, offset)
-	rows, err := dbpkg.Reader().Query(`SELECT title,slug,content,tags,created_at,COALESCE(excerpt,''),COALESCE(feature_image,'') FROM articles WHERE status='published' AND is_page=0`+domClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...)
-	var articles []render.HomeArticle
-	author := render.GetActiveSettings().Author
-	if err == nil {
-		defer rows.Close()
+	var ids []string
+	if rows, err := dbpkg.Reader().Query(homeFeedIDsSQL+domClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
 		for rows.Next() {
-			var ha render.HomeArticle
-			var content, tagsStr, excerpt, featureImg string
-			if rows.Scan(&ha.Title, &ha.Slug, &content, &tagsStr, &ha.CreatedAt, &excerpt, &featureImg) == nil {
-				ha.Tags = api.SplitTags(tagsStr)
-				// Prefer the operator's custom excerpt / feature image; fall back
-				// to values derived from the content when they are unset.
-				if strings.TrimSpace(excerpt) != "" {
-					ha.Excerpt = excerpt
-				} else {
-					ha.Excerpt = excerptFromHTML(content, 160)
-				}
-				if strings.TrimSpace(featureImg) != "" {
-					ha.Image = featureImg
-				} else {
-					ha.Image = seo.ExtractFirstImage(content)
-				}
-				ha.Author = author
-				articles = append(articles, ha)
+			var id string
+			if rows.Scan(&id) == nil {
+				ids = append(ids, id)
 			}
 		}
 		_ = rows.Err()
+		_ = rows.Close()
+	}
+	articles := listingCards(r.Context(), ids)
+	author := render.GetActiveSettings().Author
+	for i := range articles {
+		articles[i].Author = author
 	}
 
 	// Per-domain branding: a secondary domain with its own brand renders from its
 	// branded settings; the primary and single-domain installs take the original
 	// call, byte-identical.
 	var html string
+	var err error
 	if s, ok := a.brandForRequest(r); ok {
 		html, err = render.RenderHomeWithSettings(s, config.Cfg.Domain, Version, articles, total, page, totalPages)
 	} else {

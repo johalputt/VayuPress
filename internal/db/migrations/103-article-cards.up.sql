@@ -1,0 +1,6 @@
+-- Migration 103 (up): what a listing shows of a post, apart from its body. Every card field but the title and slug is stored after content in articles, so a tag page reading 200 cards walked 200 bodies' overflow pages; on johal.in's 234k posts a crawler walking tags met p95 1.9 s, all cold reads. A card is filled from the body once and read from here after. The triggers delete a post's card on any update or delete, whichever code path wrote it, so no card outlives the post it shows. The two feed indexes carry id, so the home feed chooses its page of posts without reading a row. NOTE: runMigrations executes line-by-line, so keep each statement on ONE line.
+CREATE TABLE IF NOT EXISTS article_cards(article_id TEXT PRIMARY KEY, title TEXT NOT NULL, slug TEXT NOT NULL, tags TEXT NOT NULL, created_at DATETIME NOT NULL, excerpt TEXT NOT NULL, image TEXT NOT NULL) WITHOUT ROWID;
+CREATE TRIGGER IF NOT EXISTS article_cards_on_update AFTER UPDATE ON articles BEGIN DELETE FROM article_cards WHERE article_id=OLD.id; END;
+CREATE TRIGGER IF NOT EXISTS article_cards_on_delete AFTER DELETE ON articles BEGIN DELETE FROM article_cards WHERE article_id=OLD.id; END;
+CREATE INDEX IF NOT EXISTS idx_articles_feed ON articles(is_page, status, created_at DESC, id);
+CREATE INDEX IF NOT EXISTS idx_articles_feed_domain ON articles(domain_id, is_page, status, created_at DESC, id);
