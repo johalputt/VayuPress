@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/smtp"
+	"net/textproto"
 	"sort"
 	"strings"
 	"time"
@@ -49,6 +50,34 @@ func NewMXDeliverer(heloHost string, timeout time.Duration) DeliverFunc {
 		}
 		return nil
 	}
+}
+
+// RecipientRefusedError is a server's refusal of one recipient at RCPT TO.
+type RecipientRefusedError struct {
+	Rcpt string
+	Err  error
+}
+
+func (e *RecipientRefusedError) Error() string {
+	return "recipient " + e.Rcpt + " refused: " + e.Err.Error()
+}
+
+func (e *RecipientRefusedError) Unwrap() error { return e.Err }
+
+// PermanentFailure reports whether a delivery error is one no retry can
+// change: the receiving server refused the recipient at RCPT TO with a 5xx
+// reply, which is RFC 5321's permanent class ("550 5.1.1 No such user").
+//
+// Only the RCPT stage counts. A 5xx at AUTH (a relay's wrong password) or at
+// MAIL FROM (a sender policy) is a configuration the operator can correct, and
+// the queued mail should go once they do, so those stay transient.
+func PermanentFailure(err error) bool {
+	var rr *RecipientRefusedError
+	if !errors.As(err, &rr) {
+		return false
+	}
+	var te *textproto.Error
+	return errors.As(rr.Err, &te) && te.Code >= 500 && te.Code < 600
 }
 
 func domainOf(addr string) string {
@@ -116,12 +145,19 @@ func deliverViaHost(ctx context.Context, heloHost, from, host string, rcpts []st
 			return err
 		}
 	}
+	return sendMessage(c, from, rcpts, raw)
+}
+
+// sendMessage is the transaction both transports share once connected: one
+// envelope, the message, QUIT. Shared so the recipient refusal is reported the
+// same way on the direct path as on the relay.
+func sendMessage(c *smtp.Client, from string, rcpts []string, raw []byte) error {
 	if err := c.Mail(from); err != nil {
 		return err
 	}
 	for _, rcpt := range rcpts {
 		if err := c.Rcpt(rcpt); err != nil {
-			return err
+			return &RecipientRefusedError{Rcpt: rcpt, Err: err}
 		}
 	}
 	wc, err := c.Data()
@@ -205,26 +241,7 @@ func relayDeliver(ctx context.Context, cfg Config, heloHost, from string, to []s
 		}
 	}
 
-	if err := c.Mail(from); err != nil {
-		return err
-	}
-	for _, rcpt := range to {
-		if err := c.Rcpt(rcpt); err != nil {
-			return err
-		}
-	}
-	wc, err := c.Data()
-	if err != nil {
-		return err
-	}
-	if _, err := wc.Write(raw); err != nil {
-		_ = wc.Close()
-		return err
-	}
-	if err := wc.Close(); err != nil {
-		return err
-	}
-	return c.Quit()
+	return sendMessage(c, from, to, raw)
 }
 
 // relayAuth selects an SMTP AUTH mechanism the relay advertises, preferring the

@@ -8,6 +8,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.90] — 2026-09-28
+
+A security fix, released at once: a mailbox password could open the console
+past the console account's two-step verification. With it, the public-page
+speed work from johal.in's PageSpeed report, and outgoing mail that stops
+retrying an address the receiving server says does not exist.
+
 ### Security
 
 - **A mailbox password no longer opens the console past its second factor.**
@@ -45,6 +52,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   them below the WCAG AA minimum (3.88:1 on johal.in). They are now quiet by
   colour alone, and a test fails if a footer rule in any theme lowers its
   opacity again.
+- **Mail to an address that does not exist fails at once instead of for
+  days.** When the receiving server refused a recipient as unknown ("550
+  5.1.1 No such user"), the Outbox kept the message pending and tried again
+  up to twelve times, repeating a refusal no retry could change and telling
+  that server the domain keeps mailing addresses that do not exist. On
+  johal.in a sign-in link asked for with an invented johal.in address was on
+  its seventh try. A message with one recipient now fails on the first such
+  refusal, shown with the server's reason. A refusal that says to try later
+  (4xx), a refused sender or relay password, which the operator can correct,
+  and a message with other recipients still retry as before.
 
 ## [3.17.89] — 2026-09-28
 

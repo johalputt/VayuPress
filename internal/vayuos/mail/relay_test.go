@@ -24,7 +24,12 @@ type fakeRelay struct {
 	data     string
 }
 
-func startFakeRelay(t *testing.T) *fakeRelay {
+func startFakeRelay(t *testing.T) *fakeRelay { return startFakeRelayReplying(t, nil) }
+
+// startFakeRelayReplying is startFakeRelay whose answer to a command verb
+// (AUTH, MAIL, RCPT) is replaced by reply[verb], so a test can play a server
+// that refuses at one stage.
+func startFakeRelayReplying(t *testing.T, reply map[string]string) *fakeRelay {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -62,6 +67,10 @@ func startFakeRelay(t *testing.T) *fakeRelay {
 				continue
 			}
 			cmd := strings.ToUpper(strings.TrimSpace(line))
+			if verb, _, _ := strings.Cut(cmd, " "); reply[verb] != "" {
+				w(reply[verb] + "\r\n")
+				continue
+			}
 			switch {
 			case strings.HasPrefix(cmd, "EHLO"), strings.HasPrefix(cmd, "HELO"):
 				w("250-fake greets you\r\n250 AUTH PLAIN\r\n")

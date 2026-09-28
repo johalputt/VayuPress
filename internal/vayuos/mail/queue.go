@@ -115,7 +115,15 @@ func (q *Queue) ProcessDue(ctx context.Context, now time.Time) (delivered, faile
 		}
 		failed++
 		attempts := it.attempts + 1
-		if attempts >= it.maxAtt {
+		// A recipient the receiving server says does not exist is not retried:
+		// twelve attempts over days only repeat the refusal, keep the message
+		// "pending" in the Outbox, and tell large providers this domain keeps
+		// mailing addresses that do not exist. Seen on johal.in (2026-09-28): a
+		// sign-in link for an invented johal.in address was on try 7 of a 550.
+		// Single-recipient only: a message whose other recipients are valid keeps
+		// retrying, so their copy is not dropped with the refused one.
+		refused := len(it.to) == 1 && PermanentFailure(derr)
+		if refused || attempts >= it.maxAtt {
 			_, _ = q.db.ExecContext(ctx,
 				`UPDATE vayumail_queue SET state='failed', attempts=?, last_error=? WHERE id=?`,
 				attempts, derr.Error(), it.id)
