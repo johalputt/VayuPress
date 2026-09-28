@@ -18,7 +18,7 @@ import (
 
 // TestOSPostPinFragment drives the HTMX pin endpoint against a real DB: it pins
 // an unpinned post and asserts the persisted featured flag plus the returned
-// fragment (Unpin button + out-of-band pinned badge).
+// fragment (Unpin button + out-of-band pinned mark).
 func TestOSPostPinFragment(t *testing.T) {
 	_, _ = newTestHarness(t)
 
@@ -45,11 +45,12 @@ func TestOSPostPinFragment(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, ">Unpin</button>") {
+	// The button carries its icon before the word, so the word follows a space.
+	if !strings.Contains(body, " Unpin</button>") {
 		t.Errorf("expected flipped Unpin button:\n%s", body)
 	}
 	if !strings.Contains(body, `hx-swap-oob="true"`) || !strings.Contains(body, `aria-label="Pinned"`) {
-		t.Errorf("expected out-of-band pinned badge:\n%s", body)
+		t.Errorf("expected the out-of-band pinned mark:\n%s", body)
 	}
 
 	var featured int
