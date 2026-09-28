@@ -330,6 +330,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/pages/quick-create", a.handleOSQuickCreatePage)
 		// Contact-form inbox — durable record of public contact submissions.
 		pr.Get("/os/messages", a.handleOSMessages)
+		pr.Get("/os/messages/inspector/{id}", a.handleOSMessageInspector)
 		pr.Get("/os/messages/{id}", a.handleOSMessageDetail)
 		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/messages/{id}/read", a.handleOSMessageRead)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/messages/{id}", a.handleOSMessageDelete)
@@ -2816,7 +2817,7 @@ func (a *App) osPostsList(ctx context.Context, v osPostsView, nonce string) stri
 			ui.Segment{Label: "Published", Href: osPostsHref("published", v.q, v.from, v.to, v.period, 1), Count: v.published, On: v.status == "published"},
 			ui.Segment{Label: "Drafts", Href: osPostsHref("draft", v.q, v.from, v.to, v.period, 1), Count: v.drafts, On: v.status == "draft"}),
 		Search: ui.Search(ui.SearchBox{Action: "/os/posts", Name: "q", Value: v.q, Placeholder: "Search posts", Keep: keep}),
-		Actions: ui.HTML(`<button type="button" class="btn" data-sheet="posts-when">` + saIcon("calendar") + ` ` + html.EscapeString(osPostsWhenLabel(v.period, v.from, v.to)) + `</button>` +
+		Actions: ui.HTML(`<button type="button" class="btn" data-sheet="posts-when">` + saIcon("calendar") + ` ` + html.EscapeString(osWhenLabel(v.period, v.from, v.to)) + `</button>` +
 			`<a class="btn btn--primary" href="/os/editor">` + saIcon("plus") + ` New post</a>`),
 	}, ui.HTML(list), ui.HTML(inspector))) +
 		string(ui.Sheet("posts-when", "Show posts from", ui.HTML(`<form method="GET" action="/os/posts">
@@ -2831,9 +2832,9 @@ func (a *App) osPostsList(ctx context.Context, v osPostsView, nonce string) stri
 <script nonce="` + nonce + `">` + osPostsScript + `</script>`
 }
 
-// osPostsWhenLabel names the time range the list is narrowed to, for the
-// button that opens the range sheet.
-func osPostsWhenLabel(period, from, to string) string {
+// osWhenLabel names the time range a list is narrowed to, for the button that
+// opens its range sheet (Posts, Messages).
+func osWhenLabel(period, from, to string) string {
 	switch {
 	case from != "" && to != "":
 		return from + " – " + to

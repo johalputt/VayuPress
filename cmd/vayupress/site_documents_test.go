@@ -194,7 +194,7 @@ func TestAHostedSitesContactMessagesAreItsOwn(t *testing.T) {
 	inbox := httptest.NewRecorder()
 	a.handleOSMessages(inbox, httptest.NewRequest(http.MethodGet, "/os/messages", nil))
 	body := inbox.Body.String()
-	if !strings.Contains(body, `<div class="row-meta">harbour.example</div>`) {
+	if !strings.Contains(body, `<td class="post-row__date">harbour.example/</td>`) || !strings.Contains(body, `<dt>Site</dt><dd>harbour.example</dd>`) {
 		t.Error("the inbox does not say which site the message came from")
 	}
 	if !strings.Contains(body, `href="https://harbour.example/"`) {
