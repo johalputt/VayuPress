@@ -183,51 +183,40 @@ func (a *App) handleOSVayuFlowRun(w http.ResponseWriter, r *http.Request) {
 func flowCheckChip(s flowaudit.Status) string {
 	switch s {
 	case flowaudit.Pass:
-		return `<span class="mon-chip mon-chip--on" title="` + s.String() + `">Ok</span>`
+		return string(ui.State("ok", "Ok"))
 	case flowaudit.Warn:
-		return `<span class="mon-chip mon-chip--off" title="` + s.String() + `">Look</span>`
+		return string(ui.State("warn", "Look"))
 	case flowaudit.Fail:
-		return `<span class="mon-chip mon-chip--off" title="` + s.String() + `">Act</span>`
+		return string(ui.State("danger", "Act"))
 	}
-	return `<span class="mon-chip mon-chip--off" title="` + s.String() + `">Note</span>`
-}
-
-func flowCheckIcon(s flowaudit.Status) string {
-	switch s {
-	case flowaudit.Pass:
-		return "✓"
-	case flowaudit.Fail:
-		return "✕"
-	case flowaudit.Warn:
-		return "!"
-	}
-	return "·"
+	return string(ui.State("neutral", "Note"))
 }
 
 // flowModeChip renders a flow's arming state so it reads while collapsed.
+// Only a live flow takes the accent: a dry-run one must never read as armed.
 func flowModeChip(f vayuflow.Flow) string {
 	if !f.Enabled {
-		return `<span class="mon-chip mon-chip--off">Disabled</span>`
+		return string(ui.State("neutral", "Disabled"))
 	}
 	if f.Mode == vayuflow.RunLive {
-		return `<span class="mon-chip mon-chip--on">Live</span>`
+		return string(ui.State("accent", "Live"))
 	}
-	return `<span class="mon-chip mon-chip--off">Dry-run</span>`
+	return string(ui.State("neutral", "Dry-run"))
 }
 
 // runStatusChip renders one run's outcome.
 func runStatusChip(s vayuflow.RunStatus) string {
 	switch s {
 	case vayuflow.StatusSucceeded:
-		return `<span class="mon-chip mon-chip--on">Succeeded</span>`
+		return string(ui.State("ok", "Succeeded"))
 	case vayuflow.StatusRefused:
-		return `<span class="mon-chip mon-chip--off">Refused</span>`
+		return string(ui.State("warn", "Refused"))
 	case vayuflow.StatusInterrupted:
-		return `<span class="mon-chip mon-chip--off">Interrupted</span>`
+		return string(ui.State("warn", "Interrupted"))
 	case vayuflow.StatusFailed:
-		return `<span class="mon-chip mon-chip--off">Failed</span>`
+		return string(ui.State("danger", "Failed"))
 	}
-	return `<span class="mon-chip mon-chip--off">` + html.EscapeString(titleFirst(string(s))) + `</span>`
+	return string(ui.State("neutral", titleFirst(string(s))))
 }
 
 // vayuFlowPage builds the console body. Pure, so it can be rendered and
@@ -242,80 +231,59 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 	esc := html.EscapeString
 	var b strings.Builder
 
-	b.WriteString(`<div class="page-header"><h1>VayuFlow</h1><div class="page-actions">` +
-		`<a class="btn btn--ghost btn--sm" href="/os/adr">ADR-0151</a>` +
-		`<span id="flow-status" class="text-sm muted" role="status" aria-live="polite"></span>` +
-		`</div></div>`)
-	b.WriteString(`<p class="page-sub">When something happens and a condition holds, do a bounded ` +
-		`piece of work. A new flow starts in dry-run.</p>` +
-		string(ui.Explain(`<p>Every flow is armed by a named operator, spends against ceilings it `+
-			`declared before it could be saved, and records what it did. <b>A new flow starts in `+
-			`dry-run</b>: the whole flow executes and every effect is captured and refused at the `+
-			`capability boundary, so what you read is what a live run would do.</p>`)))
-
 	armed := 0
 	for _, f := range flows {
 		if f.Enabled && f.Mode == vayuflow.RunLive {
 			armed++
 		}
 	}
-	b.WriteString(`<div class="stat-grid">` +
-		osStatTile("Armed live", strconv.Itoa(armed), tone(armed > 0)) +
-		osStatTile("Runs · 24h", strconv.Itoa(stats.Runs), "") +
-		osStatTile("Refusals · 24h", strconv.Itoa(stats.Refused), "") +
-		osStatTile("At a ceiling · 24h", strconv.Itoa(stats.BudgetCapped), tone(stats.BudgetCapped > 0)) +
-		`</div>`)
-
-	if !wired {
-		b.WriteString(`<div class="warn-box">The automation engine is not running in this build, so ` +
-			`nothing on this page can fire. Flows are listed from storage for reference only.</div>`)
+	pass, warn, fail, ctxRows := flowaudit.Summary(checks)
+	tone, state := vayuFlowState(wired, fail, warn, armed)
+	head := ui.StatusPage{
+		Title: "VayuFlow",
+		Actions: `<span id="flow-status" class="text-sm muted" role="status" aria-live="polite"></span>` +
+			`<a class="btn btn--ghost btn--sm" href="/os/adr">ADR-0151</a>` +
+			`<button type="button" class="btn btn--primary btn--sm" data-sheet="flow-create">Create a flow</button>`,
+		Tone:  tone,
+		State: state,
+		Detail: ui.Text(strconv.Itoa(stats.Runs) + " run" + plural(stats.Runs) + ", " + strconv.Itoa(stats.Refused) + " refused and " +
+			strconv.Itoa(stats.BudgetCapped) + " at a ceiling in the last day"),
 	}
+	b.WriteString(string(ui.Explain(`<p>Every flow is armed by a named operator, spends against ceilings it ` +
+		`declared before it could be saved, and records what it did. <b>A new flow starts in ` +
+		`dry-run</b>: the whole flow executes and every effect is captured and refused at the ` +
+		`capability boundary, so what you read is what a live run would do.</p>`)))
 
 	// ── Posture ──────────────────────────────────────────────────────────────
-	pass, warn, fail, ctxRows := flowaudit.Summary(checks)
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Posture</span>` +
-		`<span class="section-head__hint">Computed now, from live state — ` +
-		strconv.Itoa(fail) + ` to act on, ` + strconv.Itoa(warn) + ` to look at, ` +
-		strconv.Itoa(pass) + ` ok, ` + strconv.Itoa(ctxRows) + ` noted</span></div>`)
-	b.WriteString(`<div class="mon-stack">`)
-	for i, c := range checks {
-		b.WriteString(monAcc(flowCheckIcon(c.Status), c.Title, "", flowCheckChip(c.Status),
-			i == 0 && c.Status != flowaudit.Pass,
-			`<div class="card"><p class="text-sm muted">`+esc(c.Detail)+`</p></div>`))
+	posture := make([]ui.Row, 0, len(checks))
+	for _, c := range checks {
+		posture = append(posture, ui.Row{Label: c.Title, Hint: c.Detail, Control: ui.HTML(flowCheckChip(c.Status))})
 	}
-	b.WriteString(`</div>`)
+	b.WriteString(string(ui.Section("Posture", "computed now: "+strconv.Itoa(fail)+" to act on, "+strconv.Itoa(warn)+
+		" to look at, "+strconv.Itoa(pass)+" ok, "+strconv.Itoa(ctxRows)+" noted", ui.Rows(posture...))))
 
 	// ── What can be automated ────────────────────────────────────────────────
-	b.WriteString(`<div class="section-head"><span class="section-head__title">What a flow may do</span>` +
-		`<span class="section-head__hint">The capability registry, in full</span></div>`)
-	b.WriteString(`<div class="card"><p class="text-sm muted">An action that is not listed here cannot be invoked.` +
-		string(ui.Tip("Every action an automation can take is registered with what it touches, the strongest write it may perform, what it does in a Tor Space, whether it can be undone, and the role its owner must still hold.")) + `</p>`)
-	b.WriteString(`<table class="table"><thead><tr><th>Action</th><th>Writes</th><th>Tor</th>` +
-		`<th>Undo</th><th>Owner must be</th></tr></thead><tbody>`)
+	var caps [][]ui.HTML
 	for _, c := range vayuflow.Capabilities() {
-		b.WriteString(`<tr><td><span class="mono">` + esc(c.Action) + `</span></td>` +
-			`<td>` + esc(c.Writes.String()) + `</td>` +
-			`<td>` + esc(c.Onion.String()) + `</td>` +
-			`<td>` + esc(c.Undo.String()) + `</td>` +
-			`<td>` + esc(c.MinRole) + `</td></tr>`)
+		caps = append(caps, []ui.HTML{`<span class="mono">` + ui.Text(c.Action) + `</span>`, ui.Text(c.Writes.String()),
+			ui.Text(c.Onion.String()), ui.Text(c.Undo.String()), ui.Text(c.MinRole)})
 	}
-	b.WriteString(`</tbody></table>`)
-	b.WriteString(`<p class="text-sm muted">Settings, users, keys, domains, protection and payments cannot be automated.</p>`)
-	b.WriteString(`</div>`)
+	b.WriteString(string(ui.Section("What a flow may do", "an action not listed cannot be invoked", ui.Join(
+		ui.Table([]string{"Action", "Writes", "Tor", "Undo", "Owner must be"}, caps, ""),
+		`<p class="text-sm muted">Settings, users, keys, domains, protection and payments cannot be automated.`+
+			ui.Tip("Every action an automation can take is registered with what it touches, the strongest write it may perform, what it does in a Tor Space, whether it can be undone, and the role its owner must still hold.")+`</p>`,
+	))))
 
 	// ── Flows ────────────────────────────────────────────────────────────────
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Flows</span>` +
-		`<span class="section-head__hint">Create, arm, inspect &amp; run</span></div>`)
+	b.WriteString(`<section><div class="section-head"><h2 class="section-head__title">Flows</h2>` +
+		`<span class="section-head__hint">` + strconv.Itoa(len(flows)) + ` · ` + strconv.Itoa(armed) + ` live</span></div>`)
 	if len(flows) == 0 {
-		b.WriteString(`<div class="card"><p class="text-sm muted">No automations yet. One you build below starts off and in dry-run.</p></div>`)
+		b.WriteString(string(ui.Empty("flow", "No automations yet", "One you create starts switched off, in dry-run.",
+			`<button type="button" class="btn btn--sm" data-sheet="flow-create">Create a flow</button>`)))
 	}
-	b.WriteString(`<div class="mon-stack">` +
-		monAcc(saIcon("plus"), "Create a flow", "Starts switched off, in dry-run", "", len(flows) == 0,
-			flowEditorCard()) + `</div>`)
 	b.WriteString(`<div class="mon-stack">`)
 	for i, f := range flows {
 		var body strings.Builder
-		body.WriteString(`<div class="card">`)
 		body.WriteString(`<div class="settings-block-title">Blast radius</div>`)
 		body.WriteString(`<p class="text-sm muted">Highest write <b>` + esc(f.HighestWrite().String()) +
 			`</b> · owner <span class="mono">` + esc(f.Owner) + `</span> must hold <b>` +
@@ -330,8 +298,8 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 		body.WriteString(`<div class="settings-block-title">Steps</div>`)
 		body.WriteString(`<p class="text-sm"><span class="mono">` + esc(vayuflow.ActionSummary(f.Steps)) + `</span></p>`)
 		if f.NeedsEgress() {
-			body.WriteString(`<div class="warn-box">This flow reaches a remote host. It is inert while ` +
-				`the install runs as a Tor Space.</div>`)
+			body.WriteString(`<p class="text-sm">` + string(ui.State("warn", "This flow reaches a remote host.")) +
+				` It is inert while the install runs as a Tor Space.</p>`)
 		}
 		// Said separately, and only about what is true. A model step reaches out
 		// when the provider is remote and does not when it runs here, so the
@@ -343,9 +311,8 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 					`provider runs on this host, so the step is not an outbound call and stays ` +
 					`active in a Tor Space.</div>`)
 			} else {
-				body.WriteString(`<div class="warn-box">This flow calls a model, and the configured ` +
-					`provider is remote — that makes the step an outbound call, so it is inert ` +
-					`while the install runs as a Tor Space.</div>`)
+				body.WriteString(`<p class="text-sm">` + string(ui.State("warn", "This flow calls a model, and the configured provider is remote.")) +
+					` That makes the step an outbound call, so it is inert while the install runs as a Tor Space.</p>`)
 			}
 		}
 		enableLabel, enableTo := "Switch on", "true"
@@ -359,35 +326,33 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 			`<button type="button" class="btn btn--ghost btn--sm" data-flow-arm="` + esc(f.ID) + `" data-flow-mode="dry">Return to dry-run</button>` +
 			`<button type="button" class="btn btn--ghost btn--sm" data-flow-delete="` + esc(f.ID) + `" data-flow-name="` + esc(f.Name) + `">Delete</button>` +
 			`</div>`)
-		body.WriteString(`</div>`)
 
 		sub := vayuflow.TriggerSummary(f.Trigger) + " · v" + strconv.Itoa(f.Version)
 		b.WriteString(monAcc(saIcon("settings"), f.Name, sub, flowModeChip(f), i == 0, body.String()))
 	}
-	b.WriteString(`</div>`)
+	b.WriteString(`</div></section>`)
 
 	if len(rejected) > 0 {
-		b.WriteString(`<div class="card"><div class="settings-block-title">Flows that cannot run</div>` +
-			`<p class="text-sm muted">These are enabled but their stored definition no longer ` +
-			`validates, so the engine will not fire them. They are listed rather than skipped, because ` +
-			`an automation an operator believes is armed and which silently never runs is the worst ` +
-			`state this page can hide.</p><ul class="reset-list">`)
+		// Listed rather than skipped: an automation an operator believes is
+		// armed and which silently never runs is the worst state this page can
+		// hide.
+		var rows []ui.Row
 		for id, err := range rejected {
-			b.WriteString(`<li class="text-sm"><span class="mono">` + esc(id) + `</span> — ` + esc(err.Error()) + `</li>`)
+			rows = append(rows, ui.Row{Label: id, Hint: err.Error(), Control: ui.State("danger", "Will not fire")})
 		}
-		b.WriteString(`</ul></div>`)
+		b.WriteString(string(ui.Section("Flows that cannot run", "enabled, but no longer valid", ui.Rows(rows...))))
 	}
 
 	// ── The trail ────────────────────────────────────────────────────────────
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Recent runs</span>` +
-		`<span class="section-head__hint">What actually happened, and what it spent</span></div>`)
-	b.WriteString(`<div class="card">`)
+	b.WriteString(`<section><div class="section-head"><h2 class="section-head__title">Recent runs</h2>` +
+		`<span class="section-head__hint">what happened, and what it spent</span></div>`)
 	if len(runs) == 0 {
 		b.WriteString(`<p class="text-sm muted">Nothing has run yet.</p>`)
 	}
+	b.WriteString(`<div class="mon-stack">`)
 	for _, run := range runs {
 		var body strings.Builder
-		body.WriteString(`<div class="card"><p class="text-sm muted">` +
+		body.WriteString(`<p class="text-sm muted">` +
 			`Flow version <b>v` + strconv.Itoa(run.FlowVersion) + `</b> · cause <span class="mono">` +
 			esc(run.Cause) + `</span> · mode <b>` + esc(run.Mode.String()) + `</b> · owner ` +
 			`<span class="mono">` + esc(run.Owner) + `</span> ran as <b>` + esc(run.OwnerRole) + `</b></p>`)
@@ -398,7 +363,7 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 			strconv.Itoa(run.Spend.Writes) + ` / ` + strconv.Itoa(run.Budget.MaxWritesPerRun) + `</b>, fetches <b>` +
 			strconv.Itoa(run.Spend.Egress) + ` / ` + strconv.Itoa(run.Budget.MaxEgressPerRun) + `</b></p>`)
 		if run.Error != "" {
-			body.WriteString(`<div class="warn-box">` + esc(run.Error) + `</div>`)
+			body.WriteString(`<p class="text-sm">` + string(ui.State("danger", run.Error)) + `</p>`)
 		}
 		for _, st := range run.Steps {
 			body.WriteString(`<div class="settings-block-title"><span class="mono">` + esc(st.Action) + `</span></div>`)
@@ -419,13 +384,12 @@ func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 				body.WriteString(`<p class="text-sm"><span class="mono">` + esc(st.Error) + `</span></p>`)
 			}
 		}
-		body.WriteString(`</div>`)
 		when := run.StartedAt.Format("2006-01-02 15:04")
 		b.WriteString(monAcc(saIcon("play"), when, run.FlowID, runStatusChip(run.Status), false, body.String()))
 	}
-	b.WriteString(`</div>`)
+	b.WriteString(`</div></section>`)
 
-	return b.String()
+	return string(ui.Status(head, ui.HTML(b.String()))) + string(ui.Sheet("flow-create", "Create a flow", ui.HTML(flowEditorCard())))
 }
 
 // vayuFlowScript wires the arm and run buttons. One nonce'd script, no inline
@@ -579,7 +543,6 @@ func (a *App) flowRoleResolver() vayuflow.RoleResolver {
 func flowEditorCard() string {
 	esc := html.EscapeString
 	var b strings.Builder
-	b.WriteString(`<div class="card">`)
 	b.WriteString(`<div class="settings-block-title">What it is</div>`)
 	b.WriteString(`<div class="field"><label class="field-label" for="ff-name">Name</label>` +
 		`<input class="input" id="ff-name" type="text" placeholder="Monday digest"></div>`)
@@ -649,6 +612,21 @@ func flowEditorCard() string {
 		`</div>`)
 	b.WriteString(`<p class="text-sm muted">Saved off and in dry-run; arming is its own button.` +
 		string(ui.Tip("Neither this form nor an edit ever changes those. Arming has its own entry in the audit trail.")) + `</p>`)
-	b.WriteString(`</div>`)
 	return b.String()
+}
+
+// vayuFlowState is the sentence VayuFlow opens on. An engine that is not
+// running comes first, because then nothing below can fire, whatever it says.
+func vayuFlowState(wired bool, fail, warn, armed int) (tone, state string) {
+	switch {
+	case !wired:
+		return "danger", "The automation engine is not running in this build, so no flow can fire"
+	case fail > 0:
+		return "danger", strconv.Itoa(fail) + " posture check" + plural(fail) + " to act on"
+	case warn > 0:
+		return "warn", strconv.Itoa(warn) + " posture check" + plural(warn) + " to look at"
+	case armed > 0:
+		return "ok", strconv.Itoa(armed) + " flow" + plural(armed) + " armed live, within their ceilings"
+	}
+	return "ok", "No flow is armed live; a new one starts in dry-run"
 }

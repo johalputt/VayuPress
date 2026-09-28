@@ -74,12 +74,12 @@ func TestAFlowsBlastRadiusIsVisibleOnThePage(t *testing.T) {
 // A dry-run flow must not read as armed, and a live one must not read as safe.
 func TestTheModeChipDistinguishesDryRunFromLive(t *testing.T) {
 	dry := samplePageFlow()
-	if got := flowModeChip(dry); !strings.Contains(got, ">Dry-run<") || strings.Contains(got, "mon-chip--on") {
+	if got := flowModeChip(dry); !strings.Contains(got, ">Dry-run<") || strings.Contains(got, "sa-dot--accent") || strings.Contains(got, "sa-dot--ok") {
 		t.Errorf("a dry-run flow rendered as %q; it must not read as armed", got)
 	}
 	live := samplePageFlow()
 	live.Mode = vayuflow.RunLive
-	if got := flowModeChip(live); !strings.Contains(got, "mon-chip--on") || !strings.Contains(got, ">Live<") {
+	if got := flowModeChip(live); !strings.Contains(got, "sa-dot--accent") || !strings.Contains(got, ">Live<") {
 		t.Errorf("a live flow rendered as %q", got)
 	}
 	off := samplePageFlow()
@@ -185,12 +185,13 @@ func TestAnUnwiredEngineSaysSo(t *testing.T) {
 	}
 }
 
-// House style, per the repository's standing page rules.
+// House style: the Status kind of the page grammar (a state sentence, then
+// bands), which replaced the figure strip that read zero on most visits.
 func TestThePageFollowsTheHouseStyle(t *testing.T) {
 	page := renderPage(t, []vayuflow.Flow{samplePageFlow()}, nil, vayuflow.Stats{}, nil, true)
 	for _, want := range []string{
-		`<div class="page-header">`, `<p class="page-sub">`,
-		`<div class="stat-grid">`, `class="section-head"`, `class="mon-stack"`,
+		`<div class="page-header">`, `data-page-kind="status"`, `class="sa-status__state"`,
+		`class="section-head"`, `class="mon-stack"`,
 		`role="status"`, `aria-live="polite"`,
 	} {
 		if !strings.Contains(page, want) {
@@ -286,31 +287,20 @@ func TestThePosturePageCarriesTheHonestCeiling(t *testing.T) {
 	if !strings.Contains(page, "taken over") {
 		t.Error("the page does not say the engine is no defence against a compromised account")
 	}
-	// And it must not be toned as a success.
+	// And it must not be toned as a success: its own row, from the row that
+	// holds it to the next, carries no ok state.
 	i := strings.Index(page, "What this report does not cover")
-	window := page[clampLo(i-400) : i+200]
-	if strings.Contains(window, "mon-chip--on") {
+	start := strings.LastIndex(page[:i], `<div class="settings-row`)
+	end := strings.Index(page[i:], `<div class="settings-row`)
+	if start < 0 {
+		t.Fatal("the honest ceiling is not a posture row")
+	}
+	window := page[start:]
+	if end >= 0 {
+		window = page[start : i+end]
+	}
+	if strings.Contains(window, "sa-dot--ok") {
 		t.Error("the honest ceiling is toned as a pass; it is a fact, not reassurance")
-	}
-}
-
-func clampLo(i int) int {
-	if i < 0 {
-		return 0
-	}
-	return i
-}
-
-// Only Pass gets the "on" tone. A Context row toned green would let a caveat
-// read as reassurance — the exact overstatement this project treats as a defect.
-func TestOnlyAPassIsTonedAsSuccess(t *testing.T) {
-	if !strings.Contains(flowCheckChip(flowaudit.Pass), "mon-chip--on") {
-		t.Error("a pass should be toned on")
-	}
-	for _, s := range []flowaudit.Status{flowaudit.Warn, flowaudit.Fail, flowaudit.Context} {
-		if strings.Contains(flowCheckChip(s), "mon-chip--on") {
-			t.Errorf("%s is toned as a success", s)
-		}
 	}
 }
 

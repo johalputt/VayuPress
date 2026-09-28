@@ -6822,6 +6822,22 @@
 .vp-os[data-ui="still-air"] .sa-status > section { margin-top: var(--space-8); }
 .vp-os[data-ui="still-air"] .sa-status .section-head { border-bottom: 1px solid var(--border-1); padding-bottom: var(--space-3); }
 .vp-os[data-ui="still-air"] .sa-status .section-head + * { margin-top: 0; }
+/* Backups' restore points: one hairline row each, the time first because it
+   is what the operator is choosing between, then its size, its test state and
+   the button that opens its sheet. */
+.vp-os[data-ui="still-air"] .vk-points { list-style: none; margin: 0; padding: 0; }
+.vp-os[data-ui="still-air"] .vk-point {
+  display: grid; grid-template-columns: minmax(9rem, 1fr) 2fr auto auto; align-items: center;
+  gap: var(--space-4); padding: var(--space-3) 0; border-bottom: 1px solid var(--border-1);
+}
+.vp-os[data-ui="still-air"] .vk-point__when { color: var(--text-1); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .vk-point__what { color: var(--text-2); }
+.vp-os[data-ui="still-air"] .vk-point__state:empty { display: none; }
+@media (max-width: 640px) {
+  .vp-os[data-ui="still-air"] .vk-point { grid-template-columns: 1fr auto; }
+  .vp-os[data-ui="still-air"] .vk-point__what, .vp-os[data-ui="still-air"] .vk-point__state { grid-column: 1; }
+}
+.vp-os[data-ui="still-air"] .vk-point-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-5); }
 
 /* ── Settings (plan §4, render 06) ──────────────────────────────────────
    settings_app.go. A band's rows sit in one panel, the control in a

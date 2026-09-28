@@ -89,6 +89,7 @@ func (a *App) handleFaultPage(w http.ResponseWriter, r *http.Request) {
 
 	rows := make([][]ui.HTML, 0, len(rules))
 	var example fault.EscalationRule
+	firing, escalated := 0, 0
 	for _, rule := range rules {
 		if rule.FaultName == fault.FaultWALWrite {
 			example = rule
@@ -97,16 +98,18 @@ func (a *App) handleFaultPage(w http.ResponseWriter, r *http.Request) {
 		fired := ui.Text(strconv.FormatInt(count, 10))
 		switch {
 		case rule.Threshold > 0 && count >= rule.Threshold:
-			fired = ui.Tag("danger", strconv.FormatInt(count, 10)+" · escalated")
+			fired = ui.State("danger", strconv.FormatInt(count, 10)+" · escalated")
+			escalated++
 		case count > 0:
-			fired = ui.Tag("warn", strconv.FormatInt(count, 10))
+			fired = ui.State("warn", strconv.FormatInt(count, 10))
+			firing++
 		}
 		rows = append(rows, []ui.HTML{
 			`<span class="mono">` + ui.Text(rule.FaultName) + `</span>`,
 			fired,
 			ui.Text(strconv.FormatInt(rule.Threshold, 10)),
 			ui.Text(faultWindow(rule.Window)),
-			ui.Tag(saModeTone(rule.TargetMode), saModeLabel(rule.TargetMode)),
+			ui.Text(saModeLabel(rule.TargetMode)),
 			`<button type="button" class="btn btn--sm" data-fault="` + ui.Text(rule.FaultName) + `">Fire</button>`,
 		})
 	}
@@ -122,12 +125,23 @@ func (a *App) handleFaultPage(w http.ResponseWriter, r *http.Request) {
 		ui.Step{Mark: "4", Title: "Refusals begin", Detail: "System state lists what the new mode refuses."},
 	)
 
-	fmt.Fprint(w, ui.Join(
-		ui.Page("Faults", "Fire a fault point to see how the runtime escalates, and how close each one is to its threshold.", ""),
-		ui.Callout("warn", ui.Text("Firing a fault changes live runtime state. A fault that reaches its threshold within its window moves the whole install into the mode it escalates to. The install is "+saModeLabel(cur)+" now.")),
+	tone, state := "ok", "No fault point has fired"
+	switch {
+	case escalated > 0:
+		tone, state = "danger", strconv.Itoa(escalated)+" fault point"+plural(escalated)+" reached the threshold and escalated"
+	case firing > 0:
+		tone, state = "warn", strconv.Itoa(firing)+" fault point"+plural(firing)+" fired, below the threshold"
+	}
+	fmt.Fprint(w, ui.Status(ui.StatusPage{
+		Title: "Faults",
+		Tone:  tone,
+		State: state,
+		Detail: ui.Text("Firing one changes live runtime state, and one that reaches its threshold within its window moves the whole install into the mode it escalates to. The install is " +
+			saModeLabel(cur) + " now."),
+	},
 		ui.Section("Fault points", strconv.Itoa(len(rules))+" rules armed",
 			ui.Table([]string{"Fault point", "Fired", "Threshold", "Window", "Escalates to", ""}, rows, "No fault points are defined.")),
-		ui.Section("How a fault escalates", "", steps),
+		ui.Explain(ui.Join(`<h3 class="settings-block-title">How a fault escalates</h3>`, steps)),
 	))
 
 	writeConsoleShellFoot(w, nonce, `window.vpFault=function(name){vpPost('/admin/fault/simulate?name='+encodeURIComponent(name),{},function(d){vpToast('Fired '+name+' ('+d.trigger_count+')'+(d.escalated?(', now '+d.current_mode):''),d.escalated?'warn':'ok');setTimeout(function(){location.reload();},650);});};
@@ -426,12 +440,6 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 	if deadLetter > 0 {
 		actions = `<button type="button" class="btn btn--primary" data-replay-all>Replay dead letters</button>`
 	}
-	tone := func(n int, t string) string {
-		if n > 0 {
-			return t
-		}
-		return ""
-	}
 	count := strconv.Itoa
 
 	// Every field of a job arrives from outside (the correlation ID is whatever
@@ -455,7 +463,7 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 			reasonTone = "danger"
 		}
 		deadRows = append(deadRows, []ui.HTML{
-			job(j), ui.Text(j.Op), ui.Tag(reasonTone, j.DeadReason), ui.Text(count(j.Retries)),
+			job(j), ui.Text(j.Op), ui.State(reasonTone, j.DeadReason), ui.Text(count(j.Retries)),
 			ui.Text(count(j.ReplayCount) + " of " + count(maxReplay)), corr(j.CorrelationID), ui.Text(j.CreatedAt),
 			`<button type="button" class="btn btn--sm" data-replay-job="` + ui.Text(strconv.FormatInt(j.ID, 10)) + `">Replay</button>`,
 		})
@@ -463,7 +471,7 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 	var poisonRows [][]ui.HTML
 	for _, j := range poisonJobs {
 		poisonRows = append(poisonRows, []ui.HTML{
-			job(j), ui.Text(j.Op), ui.Tag("danger", j.DeadReason), ui.Text(count(j.ReplayCount)), corr(j.CorrelationID), ui.Text(j.CreatedAt),
+			job(j), ui.Text(j.Op), ui.State("danger", j.DeadReason), ui.Text(count(j.ReplayCount)), corr(j.CorrelationID), ui.Text(j.CreatedAt),
 		})
 	}
 	deadBody := ui.Empty("check-c", "No dead letters", "No job has used up its retries.", "")
@@ -475,23 +483,33 @@ func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
 		poisonBody = ui.Table([]string{"Job", "Operation", "Reason", "Replays", "Correlation", "Created"}, poisonRows, "")
 	}
 
-	fmt.Fprint(w, ui.Join(
-		ui.Page("Replay", "Write jobs that still fail after three retries wait here. Replay them once the cause is fixed; a job replayed "+count(maxReplay)+" times is set aside as poison.", actions),
-		ui.Figures(
-			ui.Figure{Value: count(pending), Label: "Pending"},
-			ui.Figure{Value: count(processing), Label: "Processing"},
-			ui.Figure{Value: count(completed), Label: "Completed"},
-			ui.Figure{Value: count(failed), Label: "Failed", Tone: tone(failed, "warn")},
-			ui.Figure{Value: count(deadLetter), Label: "Dead letters", Tone: tone(deadLetter, "warn")},
-			ui.Figure{Value: count(quarantined), Label: "Quarantined", Tone: tone(quarantined, "danger")},
-		),
-		ui.Section("How a job moves", "", ui.Steps(
+	// The sentence is what the page is opened for: whether anything waits on
+	// the operator. The six counts it replaces read zero on almost every visit;
+	// they are one line under it now.
+	tone, state := "ok", "Every write job has gone through"
+	switch {
+	case quarantined > 0:
+		tone, state = "danger", count(quarantined)+" job"+plural(quarantined)+" set aside as poison"
+	case deadLetter > 0:
+		tone, state = "warn", count(deadLetter)+" job"+plural(deadLetter)+" waiting for a replay"
+	case failed > 0:
+		tone, state = "warn", count(failed)+" job"+plural(failed)+" failed and will be retried"
+	}
+	fmt.Fprint(w, ui.Status(ui.StatusPage{
+		Title:   "Replay",
+		Actions: actions,
+		Tone:    tone,
+		State:   state,
+		Detail: ui.Text(count(pending) + " pending · " + count(processing) + " processing · " + count(completed) + " completed · " +
+			count(failed) + " failed"),
+	},
+		ui.Explain(ui.Join(`<h3 class="settings-block-title">How a job moves</h3>`, ui.Steps(
 			ui.Step{Mark: "1", Title: "Pending, then processing", Detail: "A worker takes the job from the queue."},
 			ui.Step{Mark: "2", Title: "Completed, or retried", Detail: "A failed job is retried up to three times, waiting longer each time."},
 			ui.Step{Mark: "3", Title: "Dead letter", Detail: "If it fails once more it waits here for you. A job the queue cannot read or run comes straight here."},
 			ui.Step{Mark: "4", Title: "Replayed", Detail: "Replay sends it back to pending. Replay dead letters takes up to " + count(batch) + " at a time."},
 			ui.Step{Mark: "5", Title: "Quarantined", Detail: "A job replayed " + count(maxReplay) + " times is poison and is not replayed again."},
-		)),
+		))),
 		ui.Section("Dead letters", count(deadLetter)+" jobs", deadBody),
 		ui.Section("Quarantined as poison", count(quarantined)+" jobs", poisonBody),
 	))
