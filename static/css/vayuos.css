@@ -6074,12 +6074,13 @@
 .vp-os[data-ui="still-air"] .table-empty { color: var(--text-3); font: var(--type-small); }
 /* On a page of the Settings kind a table is flush (rule 2): it sits under its
    band's hairline like the rows do, its first and last columns on the page's
-   edges. The List kind (step 5) does the same for every list. */
-.vp-os[data-ui="still-air"] .settings-page .table-wrap { border: 0; border-radius: 0; background: none; }
-.vp-os[data-ui="still-air"] .settings-page .table :is(th, td):first-child { padding-left: 0; }
-.vp-os[data-ui="still-air"] .settings-page .table :is(th, td):last-child { padding-right: 0; }
-.vp-os[data-ui="still-air"] .settings-page .table tr:last-child td { border-bottom: 1px solid var(--border-1); }
-.vp-os[data-ui="still-air"] .settings-page .table-empty { padding: var(--space-5) 0; text-align: left; }
+   edges. A Status page's history does the same, and the List kind (step 5)
+   will for every list. */
+.vp-os[data-ui="still-air"] :is(.settings-page, .sa-status) .table-wrap { border: 0; border-radius: 0; background: none; }
+.vp-os[data-ui="still-air"] :is(.settings-page, .sa-status) .table :is(th, td):first-child { padding-left: 0; }
+.vp-os[data-ui="still-air"] :is(.settings-page, .sa-status) .table :is(th, td):last-child { padding-right: 0; }
+.vp-os[data-ui="still-air"] :is(.settings-page, .sa-status) .table tr:last-child td { border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] :is(.settings-page, .sa-status) .table-empty { padding: var(--space-5) 0; text-align: left; }
 
 /* Tabs: underline, never pills. VayuMail's own tab strip is replaced by the
    Mail app's sidebar. */
@@ -6799,6 +6800,28 @@
   .vp-os[data-ui="still-air"] .sa-appside__item[aria-current="page"] { outline: 2px solid Highlight; }
   .vp-os[data-ui="still-air"] .sa-dot { forced-color-adjust: none; }
 }
+
+/* ── Status (fidelity plan step 4, render 05) ──────────────────────────
+   ui.Status. The state is one sentence beside its mark, then the bands:
+   running now, then history. A band is its heading over a hairline, as on a
+   Settings page; the page is wider because its lists have columns. */
+.vp-os[data-ui="still-air"] .sa-status__head {
+  display: flex; align-items: center; gap: var(--space-5);
+  margin-top: var(--space-6); padding-bottom: var(--space-7); border-bottom: 1px solid var(--border-1);
+}
+.vp-os[data-ui="still-air"] .sa-status__mark {
+  flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+  background: var(--surface-press); color: var(--text-2);
+}
+.vp-os[data-ui="still-air"] .sa-status__mark .sa-ico { width: 20px; height: 20px; }
+.vp-os[data-ui="still-air"] .sa-status__head--ok .sa-status__mark { background: var(--ok-soft); color: var(--ok); }
+.vp-os[data-ui="still-air"] .sa-status__head--warn .sa-status__mark { background: var(--warn-soft); color: var(--warn); }
+.vp-os[data-ui="still-air"] .sa-status__head--danger .sa-status__mark { background: var(--danger-soft); color: var(--danger); }
+.vp-os[data-ui="still-air"] .sa-status__state { margin: 0; font: var(--type-title); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .sa-status__detail { margin: 2px 0 0; font: var(--type-body); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .sa-status > section { margin-top: var(--space-8); }
+.vp-os[data-ui="still-air"] .sa-status .section-head { border-bottom: 1px solid var(--border-1); padding-bottom: var(--space-3); }
+.vp-os[data-ui="still-air"] .sa-status .section-head + * { margin-top: 0; }
 
 /* ── Settings (plan §4, render 06) ──────────────────────────────────────
    settings_app.go. A band's rows sit in one panel, the control in a

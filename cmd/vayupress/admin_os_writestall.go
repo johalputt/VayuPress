@@ -31,6 +31,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/analytics"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // shortDur renders a duration for a panel: seconds below a minute, then m/s.
@@ -46,48 +47,77 @@ func shortDur(d time.Duration) string {
 	return strconv.Itoa(m) + "m " + strconv.Itoa(s) + "s"
 }
 
-// writeStallStats returns the stat tiles for the writer and the view recorder.
-func writeStallStats(st dbpkg.StallState, rec analytics.CollectorState) string {
-	stallLabel := "none since boot"
-	stallValue := "0"
+// writeStallSection is the write connection on the Monitoring page: whether it
+// is held now, what it has cost since boot, the view recorder that is its
+// biggest writer, then the stalls it has had. Every value is a row with its
+// state as a dot and a word; the stall in progress is the first row, because an
+// operator opening the page mid-incident wants that before any history.
+func writeStallSection(st dbpkg.StallState, rec analytics.CollectorState) string {
+	var rows []ui.Row
+	if st.Stalled && st.Current != nil {
+		c := st.Current
+		rows = append(rows, ui.Row{Label: "Right now",
+			Hint: "The write connection is contended right now. Started " + c.Start.UTC().Format("15:04:05") +
+				" UTC, " + shortDur(c.Duration) + " so far; " + strconv.FormatInt(c.Waits, 10) +
+				" caller(s) have queued behind it, for " + shortDur(c.Blocked) +
+				" in total. Reads and cached pages are unaffected; anything that writes is waiting.",
+			Control: ui.State("danger", "Contended")})
+	}
+	if !st.Watching {
+		rows = append(rows, ui.Row{Label: "Watching",
+			Hint:    "The write-stall watchdog did not start, so nothing here is being measured. This is a fault in the install, not a quiet install.",
+			Control: ui.State("danger", "Not being watched")})
+	}
+	stalls := "none since boot"
 	if st.Total > 0 {
-		stallValue = strconv.FormatInt(st.Total, 10)
-		stallLabel = "worst " + shortDur(st.Longest)
+		stalls = strconv.FormatInt(st.Total, 10) + ", worst " + shortDur(st.Longest)
 	}
-	stallCard := monStat("Write stalls", stallValue, stallLabel)
-	if st.Stalled {
-		// A tile that wants attention, per the house style.
-		stallCard = `<div class="stat-card stat-card--warn">
-  <div class="stat-card__top"><div class="stat-card__label">Write stalls</div></div>
-  <div class="stat-card__value">happening now</div>
-  <div class="stat-card__bottom"><span class="muted text-xs">` +
-			html.EscapeString(shortDur(st.Current.Duration)+" so far") + `</span></div>
-</div>`
-	}
-
-	// View counting. "Running" is a tile of its own because a recorder that
-	// buffers into a map nobody drains loses every view in silence.
-	countLabel := "flusher running"
-	countValue := "on"
-	if !rec.Running {
-		countValue = "off"
-		countLabel = "views are NOT being written"
-	}
-	// The compression ratio is the number that says why this is safe: views
-	// counted per statement actually written.
+	// The compression ratio is the number that says why counting views this
+	// way is safe: views counted per statement actually written.
 	ratio := "—"
 	if rec.Writes > 0 {
 		ratio = strconv.FormatFloat(float64(rec.Flushed)/float64(rec.Writes), 'f', 1, 64) + "×"
 	}
-
-	return `<div class="stat-grid mb-6">` +
-		stallCard +
-		monStat("Queued for the writer", shortDur(st.WaitDuration),
-			strconv.FormatInt(st.WaitCount, 10)+" callers waited, since boot") +
-		monStat("View counting", countValue, countLabel) +
-		monStat("Views per write", ratio,
-			strconv.FormatInt(rec.Flushed, 10)+" counted · "+strconv.FormatInt(rec.Writes, 10)+" statement"+plural(rec.Writes)) +
-		`</div>`
+	// View counting has a row of its own because a recorder that buffers into a
+	// map nobody drains loses every view in silence.
+	counting := ui.State("ok", "Running")
+	if !rec.Running {
+		counting = ui.State("danger", "Off: views are NOT being written")
+	}
+	last := "never"
+	if !rec.LastFlush.IsZero() {
+		last = shortDur(time.Since(rec.LastFlush)) + " ago"
+	}
+	rows = append(rows,
+		ui.Row{Label: "Stalls", Control: ui.Text(stalls)},
+		ui.Row{Label: "Queued for the writer", Hint: strconv.FormatInt(st.WaitCount, 10) + " callers waited, since boot",
+			Control: ui.Text(shortDur(st.WaitDuration))},
+		ui.Row{Label: "View counting",
+			Hint:    "Page views are counted in memory and written in batches, so traffic never queues on the write connection.",
+			Control: counting},
+		ui.Row{Label: "Views per write", Hint: strconv.FormatInt(rec.Flushed, 10) + " counted · " +
+			strconv.FormatInt(rec.Writes, 10) + " statement" + plural(rec.Writes), Control: ui.Text(ratio)},
+		ui.Row{Label: "Buffered now", Control: ui.Text(strconv.Itoa(rec.Buffered) + " / " + strconv.Itoa(rec.BufferedHi) + " keys")},
+		ui.Row{Label: "Awaiting the next write", Control: ui.Text(strconv.FormatInt(rec.Pending, 10) + " view" + plural(rec.Pending))},
+		ui.Row{Label: "Last written", Control: ui.Text(last)},
+	)
+	if rec.Dropped > 0 {
+		rows = append(rows, ui.Row{Label: "Dropped because the buffer was full",
+			Hint:    "The buffer is bounded on purpose, since losing a view count is a rounding error and losing the site is an outage.",
+			Control: ui.State("warn", strconv.FormatInt(rec.Dropped, 10)+" view"+plural(rec.Dropped))})
+	}
+	if rec.LastErr != "" {
+		rows = append(rows, ui.Row{Label: "Last flush error", Control: `<code>` + ui.Text(rec.LastErr) + `</code>`})
+	}
+	return string(ui.Section("Write connection", "", ui.Join(
+		`<p class="page-sub">`+ui.Brief("SQLite has one writer, so everything that writes shares a single connection. When something holds it, other writes queue, and this is where that shows up.")+`</p>`,
+		ui.Rows(rows...),
+		`<h3 class="settings-block-title">Recent write stalls `+ui.Tip("A stall is a period during which a caller was "+
+			"waiting for the write connection continuously. Brief contention is normal on a busy install and is not "+
+			"listed. Queued is the time callers spent waiting, summed across them, so it exceeds the stall's own length "+
+			"whenever more than one was affected.")+`</h3>`,
+		ui.HTML(stallHistoryTable(st.Recent, "No write stall has been recorded since this install last started.")),
+	)))
 }
 
 // stallHistoryTable lists a pool's recent stalls, newest first.
@@ -116,68 +146,4 @@ func stallHistoryTable(recent []dbpkg.StallEvent, none string) string {
     <thead><tr><th>Started</th><th>Lasted</th><th>Callers delayed</th><th>Queued</th><th>Snapshot</th></tr></thead>
     <tbody>` + rows + `</tbody>
   </table></div>`
-}
-
-// writeStallCard renders the explanatory card and the stall history.
-func writeStallCard(st dbpkg.StallState, rec analytics.CollectorState) string {
-	out := `<div class="section-head"><div class="section-head__title">Write connection</div>` +
-		`<div class="section-head__hint">SQLite has one writer, so everything that writes shares a single connection. ` +
-		`When something holds it, other writes queue — this is where that shows up.</div></div>`
-
-	// The live case first: an operator opening this page mid-incident wants the
-	// answer above the fold, not in a history table.
-	if st.Stalled && st.Current != nil {
-		c := st.Current
-		out += `<div class="settings-callout"><strong>The write connection is contended right now.</strong> ` +
-			`<span class="text-sm muted">Started ` + html.EscapeString(c.Start.UTC().Format("15:04:05")) +
-			` UTC, ` + html.EscapeString(shortDur(c.Duration)) + ` so far. ` +
-			html.EscapeString(strconv.FormatInt(c.Waits, 10)) + ` caller(s) have queued behind it, for ` +
-			html.EscapeString(shortDur(c.Blocked)) + ` in total. Reads and cached pages are unaffected; ` +
-			`anything that writes is waiting.</span></div>`
-	}
-
-	if !st.Watching {
-		out += `<div class="settings-callout"><strong>Not being watched.</strong> ` +
-			`<span class="text-sm muted">The write-stall watchdog did not start, so nothing on this ` +
-			`card is being measured. This is a fault in the install, not a quiet install.</span></div>`
-	}
-
-	out += `<div class="card mb-6">
-  <div class="settings-block-title">Recent write stalls</div>
-  <p class="text-sm muted">A stall is a period during which a caller was waiting for the write connection
-  continuously. Brief contention is normal on a busy install and is not listed here. "Queued" is the total
-  time callers spent waiting, summed across all of them, so it exceeds the stall's own length whenever more
-  than one was affected.</p>
-  ` + stallHistoryTable(st.Recent, "No write stall has been recorded since this install last started.") + `
-</div>`
-
-	// The recorder's own state, because it is the biggest single writer on a
-	// content site and the one most likely to be misconfigured into silence.
-	dropNote := ""
-	if rec.Dropped > 0 {
-		dropNote = ` Dropped because the buffer was full: <strong>` + strconv.FormatInt(rec.Dropped, 10) + `</strong> view` + plural(rec.Dropped) + `. The buffer is bounded on purpose, since losing a view count is a rounding error
-		and losing the site is an outage.`
-	}
-	errNote := ""
-	if rec.LastErr != "" {
-		errNote = `<p class="text-sm muted">Last flush error: <code>` + html.EscapeString(rec.LastErr) + `</code></p>`
-	}
-	last := "never"
-	if !rec.LastFlush.IsZero() {
-		last = shortDur(time.Since(rec.LastFlush)) + " ago"
-	}
-	out += `<div class="card mb-6">
-  <div class="settings-block-title">View counting</div>
-  <p class="text-sm muted">Page views are counted in memory and written in batches, so traffic never queues on
-  the write connection. A page under load costs one row update every few seconds however many people read it.` +
-		dropNote + `</p>
-  <div class="flex justify-between mt-3"><span class="text-sm muted">Buffered now</span><span>` +
-		strconv.Itoa(rec.Buffered) + ` / ` + strconv.Itoa(rec.BufferedHi) + ` keys</span></div>
-  <div class="flex justify-between mt-2"><span class="text-sm muted">Awaiting the next write</span><span>` +
-		strconv.FormatInt(rec.Pending, 10) + ` view` + plural(rec.Pending) + `</span></div>
-  <div class="flex justify-between mt-2"><span class="text-sm muted">Last written</span><span>` +
-		html.EscapeString(last) + `</span></div>
-  ` + errNote + `
-</div>`
-	return out
 }

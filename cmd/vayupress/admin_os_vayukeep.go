@@ -60,84 +60,58 @@ func humanAgo(t, now time.Time) string {
 }
 
 // keepVerdict is the page's single source of truth for "how are we doing", so
-// the banner, the title badge and the stat tiles can never disagree.
+// the state sentence and the bell can never disagree.
 type keepVerdict struct {
-	Tone     string // "ok" | "warn"
-	Chip     string
-	Headline string
-	// Down marks the two states in which there is no recovery path at all — a
-	// refused start and a failed test restore — as against one that is merely
-	// unproven or off. The notification raised from this verdict is danger
-	// only then.
-	Down bool
+	// Tone is danger only in the two states with no recovery path at all (a
+	// refused start and a failed test restore), as against one that is merely
+	// unproven or off; the bell raises it at the same severity.
+	Tone   string
+	Chip   string  // the bell's word for it
+	State  string  // the page's sentence
+	Detail ui.HTML // one line under it
 }
 
 func keepStatusVerdict(st vayukeep.Status, bootErr string, now time.Time) keepVerdict {
+	at := func(target string) string { return `<code>` + html.EscapeString(target) + `</code>` }
 	switch {
 	case bootErr != "":
-		return keepVerdict{"warn", "Refused to start",
-			"VayuKeep declined the settings it was given, so <strong>nothing is being backed up automatically</strong>. Your site is unaffected.", true}
+		return keepVerdict{"danger", "Refused to start", "Backups refused to start",
+			"It declined the settings it was given, so nothing is being backed up automatically. Your site is unaffected."}
 	case !st.Enabled:
-		return keepVerdict{"warn", "Not set up",
-			"Automatic backup is <strong>off</strong>. Your only copies are the ones you take by hand. Turning it on takes a folder, a passphrase and one button.", false}
+		return keepVerdict{"warn", "Not set up", "Automatic backup is off",
+			"Your only copies are the ones you take by hand."}
 	case st.Paused:
-		return keepVerdict{"warn", "Paused",
-			"Backups are <strong>paused</strong>: " + html.EscapeString(st.PauseWhy) + ". Nothing new is being saved.", false}
+		return keepVerdict{"warn", "Paused", "Backups are paused",
+			ui.Text(strings.TrimSuffix(st.PauseWhy, ".") + ". Nothing new is being saved.")}
+	case !st.LastDrill.IsZero() && !st.LastDrillOK:
+		return keepVerdict{"danger", "Test restore FAILED", "The last test restore failed",
+			ui.Text(strings.TrimSuffix(st.LastDrillError, ".") + ". Treat this as an outage of your recovery path.")}
+	case st.NewestGen.IsZero():
+		return keepVerdict{"warn", "Unverified", "No backup has been written yet",
+			"The first is written within a few minutes of a change, or with Back up now."}
 	case st.LastDrill.IsZero():
-		return keepVerdict{"warn", "Unverified",
-			"Backups are being written, but <strong>none has been restored yet</strong>. Until a test restore passes, these are files rather than proven backups.", false}
-	case !st.LastDrillOK:
-		return keepVerdict{"warn", "Test restore FAILED",
-			"The last test restore <strong>failed</strong>: " + html.EscapeString(st.LastDrillError) + ". Treat this as an outage of your recovery path.", true}
+		return keepVerdict{"warn", "Unverified", "Backed up " + humanAgo(st.NewestGen, now) + ", but never restored",
+			"None has been restored yet: until a test restore passes, these are files rather than proven backups."}
 	case st.RPO(now) > 24*time.Hour:
-		return keepVerdict{"warn", "Stale",
-			"The newest backup is <strong>" + html.EscapeString(humanAgo(st.NewestGen, now)) + "</strong>. Check that writes are reaching the target.", false}
+		return keepVerdict{"warn", "Stale", "The newest backup is from " + humanAgo(st.NewestGen, now),
+			ui.HTML("Check that writes are reaching " + at(st.Target) + ".")}
 	}
-	return keepVerdict{"ok", "Protected",
-		"Backups are running and the last test restore <strong>passed</strong>. You would lose at most " +
-			html.EscapeString(humanAgo(st.NewestGen, now)) + " of work.", false}
+	loss := strings.TrimSuffix(humanAgo(st.NewestGen, now), " ago")
+	if loss == "just now" {
+		loss = "a minute"
+	}
+	return keepVerdict{"ok", "Protected", "Backed up " + humanAgo(st.NewestGen, now) + ", and it restores",
+		ui.HTML("Encrypted, to " + at(st.Target) + ". You would lose at most " + html.EscapeString(loss) + " of work.")}
 }
 
 // backupNotification is the verdict as a notification: none while backups are
-// proven, danger when there is no recovery path at all, warn otherwise.
+// proven, otherwise at the verdict's own tone.
 func backupNotification(st vayukeep.Status, bootErr string, now time.Time) (osNotification, bool) {
 	v := keepStatusVerdict(st, bootErr, now)
 	if v.Tone == "ok" {
 		return osNotification{}, false
 	}
-	sev := "warn"
-	if v.Down {
-		sev = "danger"
-	}
-	return osNotification{Title: "Backups", Detail: v.Chip, Href: "/os/vayukeep", Count: 1, Kind: "backup", Severity: sev}, true
-}
-
-// osVayuKeepStats is the at-a-glance strip, in the Monetization idiom.
-func osVayuKeepStats(st vayukeep.Status, now time.Time) string {
-	tile := func(value, label, tone string) string { return osStatTile(label, value, tone) }
-	rpoVal, rpoTone := "never", "warn"
-	if !st.NewestGen.IsZero() {
-		rpoVal, rpoTone = humanAgo(st.NewestGen, now), ""
-		if st.RPO(now) > 24*time.Hour {
-			rpoTone = "warn"
-		}
-	}
-	verVal, verTone := "never", "warn"
-	if !st.LastDrill.IsZero() {
-		verVal, verTone = humanAgo(st.LastDrill, now), ""
-		if !st.LastDrillOK {
-			verVal, verTone = "failed "+verVal, "warn"
-		}
-	}
-	if !st.Enabled {
-		rpoVal, verVal, rpoTone, verTone = "off", "off", "warn", "warn"
-	}
-	return `<div class="stat-grid">` +
-		tile(rpoVal, "You would lose", rpoTone) +
-		tile(verVal, "Last verified restore", verTone) +
-		tile(strconv.Itoa(st.Generations), "Restore points", "") +
-		tile(humanBytes(st.TotalBytes), "Space used", "") +
-		`</div>`
+	return osNotification{Title: "Backups", Detail: v.Chip, Href: "/os/vayukeep", Count: 1, Kind: "backup", Severity: v.Tone}, true
 }
 
 // detailRow is one label/value line, reusing the connector panel's markup.
@@ -212,47 +186,79 @@ func keepSetupCard(bootErr, currentTarget string, envManaged bool) string {
 		`</div>`
 }
 
-// keepStatusCard is the live operational detail plus the two controls.
-func keepStatusCard(st vayukeep.Status, now time.Time) string {
-	rows := detailRow("Backing up to", st.Target) +
-		detailRow("Newest backup", humanAgo(st.NewestGen, now)) +
-		detailRow("Last successful write", humanAgo(st.LastSuccess, now)) +
-		detailRow("Last test restore", drillSummary(st, now)) +
-		detailRow("Restore points kept", strconv.Itoa(st.Generations)+" ("+humanBytes(st.TotalBytes)+")") +
-		detailRow("Newest backup size", humanBytes(st.LastGenBytes))
-	if st.LastError != "" {
-		rows += detailRow("Last error", st.LastError)
+// keepWhen names a restore point's moment the way a person says it: today,
+// yesterday, or the date. In UTC, as every time on this page is.
+func keepWhen(t, now time.Time) string {
+	t, now = t.UTC(), now.UTC()
+	day := func(x time.Time) time.Time { return time.Date(x.Year(), x.Month(), x.Day(), 0, 0, 0, 0, time.UTC) }
+	switch d := day(now).Sub(day(t)); {
+	case d == 0:
+		return "Today, " + t.Format("15:04")
+	case d == 24*time.Hour:
+		return "Yesterday, " + t.Format("15:04")
+	case t.Year() == now.Year():
+		return t.Format("2 Jan, 15:04")
 	}
-	return `<div class="cx-details">` + rows + `</div>
-<div class="mt-3" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-  <button type="button" class="btn btn--primary btn--sm" data-vk-backup>Back up now</button>
-  <button type="button" class="btn btn--sm" data-vk-drill>Test restore now</button>
-  <button type="button" class="btn btn--ghost btn--sm" data-vk-disable>Turn off</button>
-  <span id="vk-status" role="status" aria-live="polite" class="text-xs muted"></span>
-</div>
-<p class="text-xs muted mt-2"><strong>Back up now</strong> saves a restore point and test-restores it straight away; once it passes you can remove the older ones. <strong>Test restore</strong> takes your newest backup, unpacks it into a temporary folder, opens the database inside it and checks every page, then deletes it. It never touches your live site. This is the only control on this page that proves a backup actually works.</p>`
+	return t.Format("2 Jan 2006, 15:04")
 }
 
-// keepPointsCard lists the restore points with a per-row integrity check.
-func keepPointsCard(gens []vayukeep.Generation, now time.Time) string {
+// keepPointState says what is known about one restore point's test restore.
+// The engine records only the newest point that passed one (proven), so that
+// point says so and the newer ones say they have not been tested; an older
+// point may have passed once, but nothing recorded it, so it claims nothing.
+func keepPointState(name, proven string) ui.HTML {
+	switch {
+	case name == proven:
+		return ui.State("ok", "Test restore passed")
+	case proven == "" || name > proven:
+		return ui.State("neutral", "Not tested yet")
+	}
+	return ""
+}
+
+// keepPoints is the page's history: the restore points, newest first, each
+// opening a sheet that checks, restores or deletes it.
+func keepPoints(gens []vayukeep.Generation, proven string, st vayukeep.Status, now time.Time) (section, sheets ui.HTML) {
 	if len(gens) == 0 {
-		return `<p class="text-sm muted">No restore points yet. One is written within a few minutes of your next change, or press <strong>Back up now</strong> above.</p>`
+		return ui.Section("Restore points", "", ui.Empty("archive", "No restore points yet",
+			"One is written within a few minutes of your next change, or with Back up now.", "")), ""
 	}
-	rows := ""
-	for _, g := range gens {
-		esc := html.EscapeString(g.Name)
-		rows += `<tr><td><code>` + esc + `</code></td><td>` + html.EscapeString(g.Taken.Format("2 Jan 2006 15:04")) + ` UTC</td><td>` +
-			html.EscapeString(humanAgo(g.Taken, now)) + `</td><td>` + html.EscapeString(humanBytes(g.Bytes)) + `</td>` +
-			`<td><button type="button" class="btn btn--ghost btn--sm" data-vk-verify="` + esc + `">Check</button> ` +
-			`<button type="button" class="btn btn--danger btn--sm" data-vk-restore="` + esc + `">Restore</button> ` +
-			`<button type="button" class="btn btn--ghost btn--sm" data-vk-delete="` + esc + `">Delete</button></td></tr>`
+	var list, sh strings.Builder
+	list.WriteString(`<ol class="vk-points">`)
+	for i, g := range gens {
+		id, when := "vk-pt-"+strconv.Itoa(i), keepWhen(g.Taken, now)
+		state := keepPointState(g.Name, proven)
+		list.WriteString(`<li class="vk-point"><span class="vk-point__when">` + html.EscapeString(when) +
+			`</span><span class="vk-point__what">Restore point · ` + html.EscapeString(humanBytes(g.Bytes)) +
+			`</span><span class="vk-point__state">` + string(state) + `</span><button type="button" class="btn btn--ghost btn--sm" data-sheet="` +
+			id + `" aria-label="Restore the point of ` + html.EscapeString(when) + `">Restore…</button></li>`)
+		sh.WriteString(string(keepPointSheet(id, g, state)))
 	}
-	return `<p class="text-sm muted">Each entry is a complete, independent copy of your whole site at that moment — database, media, mailboxes and settings. <strong>Check</strong> reads one end to end without writing anything.</p>
-<div class="table-wrap"><table class="table">
-<thead><tr><th>Restore point</th><th>Taken</th><th>Age</th><th>Size</th><th></th></tr></thead>
-<tbody>` + rows + `</tbody></table></div>
-<div class="mt-2"><span id="vk-verify-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
-<p class="text-xs muted mt-2"><strong>Restore</strong> puts your site back to that moment and restarts. Your current database is copied aside first, so it is reversible. It restores the database — posts, pages, settings, members, comments and mailbox accounts. Uploaded files and stored mail are left alone, because swapping those under a running site is how a half-restored install happens; use the command below for a complete one.</p>`
+	list.WriteString(`</ol>`)
+	hint := strconv.Itoa(len(gens)) + " kept · " + humanBytes(st.TotalBytes) + " · times in UTC"
+	return ui.Section("Restore points", hint, ui.HTML(list.String())), ui.HTML(sh.String())
+}
+
+// keepPointSheet is one restore point: what it is, and the three things that
+// can be done with it, each saying what it does before it is pressed.
+func keepPointSheet(id string, g vayukeep.Generation, state ui.HTML) ui.HTML {
+	esc := html.EscapeString(g.Name)
+	facts := []ui.Fact{
+		{Key: "Taken", Value: ui.Text(g.Taken.UTC().Format("2 Jan 2006, 15:04") + " UTC")},
+		{Key: "Size", Value: ui.Text(humanBytes(g.Bytes))},
+		{Key: "File", Value: ui.HTML(`<code>` + esc + `</code>`)},
+	}
+	if state != "" {
+		facts = append(facts, ui.Fact{Key: "Test restore", Value: state})
+	}
+	return ui.Sheet(id, "Restore point", ui.Facts(facts...)+ui.HTML(`
+<p class="text-sm muted mt-4"><strong>Check</strong> reads it end to end without writing anything. <strong>Restore</strong> puts your site back to this moment and restarts; your current database is copied aside first, so it is reversible. It restores the database (posts, pages, settings, members, comments and mailbox accounts). Uploaded files and stored mail are left alone, because swapping those under a running site is how a half-restored install happens; the command under <em>How this works</em> restores those too.</p>
+<div class="vk-point-actions">
+  <button type="button" class="btn btn--sm" data-vk-verify="`+esc+`">Check</button>
+  <button type="button" class="btn btn--danger btn--sm" data-vk-restore="`+esc+`">Restore</button>
+  <button type="button" class="btn btn--ghost btn--sm" data-vk-delete="`+esc+`">Delete</button>
+  <span class="text-xs muted" data-sheet-status role="status" aria-live="polite"></span>
+</div>`))
 }
 
 // keepManualCard is the hand-operated half: download a copy to your own machine,
@@ -338,7 +344,7 @@ func keepRestoreCard(st vayukeep.Status) string {
 		target = "/var/backups/vayupress"
 	}
 	t := html.EscapeString(target)
-	return `<p class="text-sm"><strong>From this page.</strong> Open <em>Restore points</em> above, press <strong>Check</strong> on the one you want to confirm it is readable, then <strong>Restore</strong>. VayuPress copies your current database aside, puts the saved one in its place and restarts. Nothing to type but the confirmation.</p>
+	return `<p class="text-sm"><strong>From this page.</strong> In <em>Restore points</em>, open the one you want with <strong>Restore…</strong>, press <strong>Check</strong> to confirm it is readable, then <strong>Restore</strong>. VayuPress copies your current database aside, puts the saved one in its place and restarts. Nothing to type but the confirmation.</p>
 <div class="section-divider"></div>
 <p class="text-sm"><strong>If this site will not start</strong>, or you are recovering onto a different machine, the console is not reachable — so the same job from a shell:</p>
 <pre class="code-block"><code>vayupress restore -in ` + t + `/vk-YYYYMMDD-HHMMSS.vpbk -verify
@@ -388,12 +394,11 @@ func keepScheduleCard(p keepPrefs) string {
 		detailRow("How many are kept", strconv.Itoa(p.RetainGens)+" restore points OR "+strconv.Itoa(p.RetainDays)+" days — whichever keeps more — and never anything newer than the last restore point that passed a test restore.") +
 		detailRow("If the target breaks", "After repeated failures it stops trying and says so here, rather than retrying into a full disk. A failing backup never slows or blocks your site.") +
 		`</div>
-<p class="text-xs muted mt-2">The schedule and retention are set under <em>Schedule &amp; housekeeping</em>. <code>VAYUKEEP_DRILL_MINUTES</code> sets the test-restore interval; <code>VAYUKEEP_OFF=true</code> turns backup off.</p>`
+<p class="text-xs muted mt-2">The schedule and retention are set with <em>Back up automatically</em>, under Settings. <code>VAYUKEEP_DRILL_MINUTES</code> sets the test-restore interval; <code>VAYUKEEP_OFF=true</code> turns backup off.</p>`
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-// osVayuKeepBody builds the whole Backup & Recovery console.
 // keepPrefs are the console-set values the page shows: what is saved, not the
 // environment default, so a form reloads with what the operator chose.
 type keepPrefs struct {
@@ -414,55 +419,62 @@ func (p keepPrefs) withDefaults() keepPrefs {
 	return p
 }
 
-func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vayukeep.Generation, now time.Time, currentTarget string, envManaged bool, prefs keepPrefs, run string) string {
+// osVayuKeepBody builds the Backups page: a Status page (render 05) once
+// automatic backup is on or has been asked for, the Setup page until then.
+// proven is the newest restore point that passed a test restore.
+func osVayuKeepBody(nonce string, st vayukeep.Status, bootErr string, gens []vayukeep.Generation, proven string, now time.Time, currentTarget string, envManaged bool, prefs keepPrefs, run string) string {
 	if !st.Enabled && bootErr == "" && !envManaged {
 		return run + keepSetupPage(currentTarget) + keepScripts(nonce)
 	}
 	prefs = prefs.withDefaults()
 	v := keepStatusVerdict(st, bootErr, now)
-	bannerTone := "ok"
-	if v.Tone == "warn" {
-		bannerTone = "warn"
-	}
-	body := `<div class="page-header">
-  <h1>Backup &amp; Recovery <span class="badge badge--` + bannerTone + `">` + html.EscapeString(v.Chip) + `</span></h1>
-</div>
-<p class="page-sub">Automatic, encrypted copies of your entire site — database, media, mailboxes and settings — checked on a schedule so you know they actually restore.</p>
-<div class="card"><p class="text-sm">` + v.Headline + `</p></div>
-` + run + osVayuKeepStats(st, now)
-
-	if !st.Enabled || bootErr != "" {
-		body += `<div class="section-head"><span class="section-head__title">Get protected</span><span class="section-head__hint">A folder, a passphrase, one button</span></div>
-<div class="mon-stack">` +
-			monAcc(iconKeep, "Set up automatic backup", "Choose a folder and a passphrase", `<span class="mon-chip">● Not set up</span>`, true, keepSetupCard(bootErr, currentTarget, envManaged)) +
-			`</div>`
-	} else {
-		chipCls := "mon-chip mon-chip--on"
-		if v.Tone == "warn" {
-			chipCls = "mon-chip"
+	// Every control reports into this line, and a toast; the sheets report into
+	// their own (data-sheet-status), next to the button that was pressed.
+	actions := `<span id="vk-status" class="text-xs muted" role="status" aria-live="polite"></span>`
+	manual := ui.Row{Label: "A copy on your computer", Hint: "Download the whole site as one file, or restore one you downloaded.",
+		Control: `<button type="button" class="btn btn--sm" data-sheet="vk-manual-sheet">Download or restore…</button>`}
+	sheets := ui.Sheet("vk-manual-sheet", "Download or restore a copy", ui.HTML(keepManualCard()))
+	sections := []ui.HTML{ui.HTML(run)}
+	if st.Enabled && bootErr == "" {
+		actions += `<button type="button" class="btn" data-vk-drill>Test restore</button>` +
+			`<button type="button" class="btn btn--primary" data-vk-backup>Back up now</button>`
+		points, pointSheets := keepPoints(gens, proven, st, now)
+		every := keepEveryLabel(prefs.EveryMin)
+		details := []ui.Fact{
+			{Key: "Backing up to", Value: ui.HTML(`<code>` + html.EscapeString(st.Target) + `</code>`)},
+			{Key: "Newest backup", Value: ui.Text(humanAgo(st.NewestGen, now) + " · " + humanBytes(st.LastGenBytes))},
+			{Key: "Last successful write", Value: ui.Text(humanAgo(st.LastSuccess, now))},
+			{Key: "Last test restore", Value: ui.Text(drillSummary(st, now))},
 		}
-		chip := `<span class="` + chipCls + `">● ` + html.EscapeString(v.Chip) + `</span>`
-		body += `<div class="section-head"><span class="section-head__title">Protection</span><span class="section-head__hint">What is saved, and proof that it restores</span></div>
-<div class="mon-stack">` +
-			monAcc(iconKeep, "Status & controls", "Back up now, or prove a restore works", chip, true, keepStatusCard(st, now)) +
-			monAcc(iconVCB, "Restore points", strconv.Itoa(len(gens))+" saved · "+humanBytes(st.TotalBytes), "", false, keepPointsCard(gens, now)) +
-			`</div>`
+		if st.LastError != "" {
+			details = append(details, ui.Fact{Key: "Last error", Value: ui.Text(st.LastError)})
+		}
+		sections = append(sections, points, ui.Section("Details", "", ui.Facts(details...)),
+			ui.Section("Settings", "", ui.Rows(
+				ui.Row{Label: "Back up automatically", Hint: strings.ToUpper(every[:1]) + every[1:] + " at most, when something changed. Keeps " +
+					strconv.Itoa(prefs.RetainGens) + " restore points or " + strconv.Itoa(prefs.RetainDays) + " days, whichever keeps more.",
+					Control: `<button type="button" class="btn btn--sm" data-sheet="vk-schedule-sheet">Change…</button>`},
+				manual,
+				ui.Row{Label: "Automatic backup", Hint: "On. Turning it off keeps the restore points you have.",
+					Control: `<button type="button" class="btn btn--ghost btn--sm" data-vk-disable>Turn off</button>`})))
+		sheets += ui.Sheet("vk-schedule-sheet", "Schedule", ui.HTML(keepRetentionCard(prefs))) + pointSheets
+	} else {
+		// Refused, or configured by the environment and not running: the page
+		// says which, and the sheet holds the reason and what fixes it.
+		label := "Set up automatic backup"
+		if bootErr != "" {
+			label = "Fix the settings"
+		}
+		actions += `<button type="button" class="btn btn--primary" data-sheet="vk-setup-sheet">` + label + `</button>`
+		sections = append(sections, ui.Section("Settings", "", ui.Rows(manual)))
+		sheets += ui.Sheet("vk-setup-sheet", label, ui.HTML(keepSetupCard(bootErr, currentTarget, envManaged)))
 	}
-
-	body += `<div class="section-head"><span class="section-head__title">Recovery</span><span class="section-head__hint">Exactly what to do when you need it</span></div>
-<div class="mon-stack">` +
-		monAcc(iconVCB, "How to restore", "One click here, or from a shell if the site will not start", "", false, keepRestoreCard(st)) +
-		monAcc(iconArchive, "Manual backup & restore", "Download a copy, or restore one you already have", "", false, keepManualCard()) +
-		`</div>
-
-<div class="section-head"><span class="section-head__title">How it works</span><span class="section-head__hint">The guarantees, stated plainly</span></div>
-<div class="mon-stack">` +
-		monAcc(iconKey, "Encryption & safety", "What is protected, and what deliberately is not", "", false, keepSpecCard(st)) +
-		monAcc(iconVCB, "How the schedule works", "When backups happen and what is kept", "", false, keepScheduleCard(prefs)) +
-		monAcc(iconArchive, "Schedule & housekeeping", "How often to back up, and how long copies are kept", "", false,
-			keepRetentionCard(prefs)) +
-		`</div>` + keepScripts(nonce)
-	return body
+	sections = append(sections, ui.Explain(ui.HTML(`<p class="text-sm"><strong>Back up now</strong> saves a restore point and test-restores it straight away; once it passes you can remove the older ones. <strong>Test restore</strong> takes your newest backup, unpacks it into a temporary folder, opens the database inside it and checks every page, then deletes it. It never touches your live site, and it is the only control here that proves a backup works.</p>
+<h3 class="settings-block-title mt-4">How to restore</h3>`+keepRestoreCard(st)+`
+<h3 class="settings-block-title mt-4">When it runs</h3>`+keepScheduleCard(prefs)+`
+<h3 class="settings-block-title mt-4">Encryption and safety</h3>`+keepSpecCard(st))))
+	return string(ui.Status(ui.StatusPage{Title: "Backups", Actions: ui.HTML(actions), Tone: v.Tone, State: v.State, Detail: v.Detail}, sections...)) +
+		string(sheets) + keepScripts(nonce)
 }
 
 // keepSetupPage is the page until automatic backup is on: what it does, what it
@@ -500,7 +512,9 @@ function toast(msg,kind){if(window.vpToast){window.vpToast(msg,kind);}}
 // the run and its outcome (#vk-run): never an optimistic "started" that a later
 // failure fails to correct.
 function vkPost(url,payload,btn,working,outId,then){
-  var out=document.getElementById(outId||'vk-status');
+  // A button in a sheet reports next to itself, where the operator is looking.
+  var sheet=btn&&btn.closest('.sa-sheet');
+  var out=(sheet&&sheet.querySelector('[data-sheet-status]'))||document.getElementById(outId||'vk-status');
   var label=btn?btn.textContent:'';
   if(btn){btn.disabled=true;btn.textContent=working;}
   if(out){out.textContent='Working…';}
@@ -622,12 +636,14 @@ func (a *App) handleOSVayuKeep(w http.ResponseWriter, r *http.Request) {
 	csrfTokenFor(w, r)
 	st := a.vayuKeepStatus()
 	var gens []vayukeep.Generation
+	proven := ""
 	if a.vayuKeep != nil {
 		gens, _ = a.vayuKeep.List()
+		proven = a.vayuKeep.ProvenGeneration()
 	}
 	envManaged := strings.TrimSpace(config.Cfg.VayuKeepTarget) != ""
-	writeOSHTML(w, r, adminOSLayout(nonce, "Backup & Recovery", "operations", cfg,
-		htmpl.HTML(osVayuKeepBody(nonce, st, a.vayuKeepErr, gens, time.Now().UTC(),
+	writeOSHTML(w, r, adminOSLayout(nonce, "Backups", "operations", cfg,
+		htmpl.HTML(osVayuKeepBody(nonce, st, a.vayuKeepErr, gens, proven, time.Now().UTC(),
 			a.resolveKeepTarget(r.Context()), envManaged, keepPrefs{
 				RetainGens: a.keepInt(r.Context(), settings.KeyVayuKeepRetainGen, config.Cfg.VayuKeepRetainGen),
 				RetainDays: a.keepInt(r.Context(), settings.KeyVayuKeepRetainDays, config.Cfg.BackupRetainDays),

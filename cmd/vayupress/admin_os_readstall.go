@@ -17,63 +17,50 @@ package main
 // clear beside it is the proof that it is enough.
 
 import (
-	"html"
 	"strconv"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/ui"
 )
 
-// readStallSection renders the read pool's tiles, its live state and its stall
-// history. shed is the number of uncached page requests asked to retry.
+// readStallSection is the read pool on the Monitoring page, drawn as the write
+// connection is: a stall in progress first, then what the pool has cost since
+// boot, then its stalls. shed is the number of uncached page requests asked to
+// retry.
 func readStallSection(st dbpkg.StallState, shed int64) string {
-	// The explanations sit behind tips: the page's own measure of explanation
-	// on show (the design lint's 900 characters) holds for Monitoring too.
-	out := `<div class="section-head"><div class="section-head__title">Read connections ` +
-		string(ui.Tip("Pages, the console and most queries read through a shared pool of "+strconv.Itoa(st.MaxOpen)+
-			" connections. When every one is taken, requests queue, and this is where that shows up.")) + `</div></div>`
-
-	stallValue, stallLabel := "0", "none since boot"
-	if st.Total > 0 {
-		stallValue, stallLabel = strconv.FormatInt(st.Total, 10), "worst "+shortDur(st.Longest)
-	}
-	stallTile := monStat("Read stalls", stallValue, stallLabel)
-	if st.Stalled && st.Current != nil {
-		stallTile = `<div class="stat-card stat-card--warn">
-  <div class="stat-card__top"><div class="stat-card__label">Read stalls</div></div>
-  <div class="stat-card__value">happening now</div>
-  <div class="stat-card__bottom"><span class="muted text-xs">` +
-			html.EscapeString(shortDur(st.Current.Duration)+" so far") + `</span></div>
-</div>`
-	}
-	out += `<div class="stat-grid mb-6">` +
-		stallTile +
-		monStat("Queued for a read connection", shortDur(st.WaitDuration),
-			strconv.FormatInt(st.WaitCount, 10)+" callers waited, since boot") +
-		monStat("Pages asked to retry", strconv.FormatInt(shed, 10),
-			"uncached pages at the render ceiling, since start") +
-		`</div>`
-
+	var rows []ui.Row
 	if st.Stalled && st.Current != nil {
 		c := st.Current
-		out += `<div class="settings-callout"><strong>Every read connection is taken right now.</strong> ` +
-			`<span class="text-sm muted">Started ` + html.EscapeString(c.Start.UTC().Format("15:04:05")) +
-			` UTC, ` + html.EscapeString(shortDur(c.Duration)) + ` so far. ` +
-			html.EscapeString(strconv.FormatInt(c.Waits, 10)) + ` caller(s) have queued, for ` +
-			html.EscapeString(shortDur(c.Blocked)) + ` in total. Pages with a cache file are unaffected; ` +
-			`anything that reads the database is waiting.</span></div>`
+		rows = append(rows, ui.Row{Label: "Right now",
+			Hint: "Every read connection is taken right now. Started " + c.Start.UTC().Format("15:04:05") +
+				" UTC, " + shortDur(c.Duration) + " so far; " + strconv.FormatInt(c.Waits, 10) +
+				" caller(s) have queued, for " + shortDur(c.Blocked) +
+				" in total. Pages with a cache file are unaffected; anything that reads the database is waiting.",
+			Control: ui.State("danger", "Full")})
 	}
 	if !st.Watching {
-		out += `<div class="settings-callout"><strong>Not being watched.</strong> ` +
-			`<span class="text-sm muted">The read-pool watchdog did not start, so nothing on this card is ` +
-			`being measured. This is a fault in the install, not a quiet install.</span></div>`
+		rows = append(rows, ui.Row{Label: "Watching",
+			Hint:    "The read-pool watchdog did not start, so nothing here is being measured. This is a fault in the install, not a quiet install.",
+			Control: ui.State("danger", "Not being watched")})
 	}
-
-	out += `<div class="card mb-6">
-  <div class="settings-block-title">Recent read stalls ` + string(ui.Tip("A read stall is a period during which "+
-		"every read connection stayed in use while a caller waited. Five seconds in, a snapshot of what each "+
-		"connection was doing is saved; it names the query that held them.")) + `</div>
-  ` + stallHistoryTable(st.Recent, "No read stall has been recorded since this install last started.") + `
-</div>`
-	return out
+	stalls := "none since boot"
+	if st.Total > 0 {
+		stalls = strconv.FormatInt(st.Total, 10) + ", worst " + shortDur(st.Longest)
+	}
+	rows = append(rows,
+		ui.Row{Label: "Stalls", Control: ui.Text(stalls)},
+		ui.Row{Label: "Queued for a read connection", Hint: strconv.FormatInt(st.WaitCount, 10) + " callers waited, since boot",
+			Control: ui.Text(shortDur(st.WaitDuration))},
+		ui.Row{Label: "Pages asked to retry", Hint: "Uncached pages turned away at the render ceiling, since start. A climbing count with the pool clear beside it is the ceiling doing its job.",
+			Control: ui.Text(strconv.FormatInt(shed, 10))},
+	)
+	return string(ui.Section("Read connections", "", ui.Join(
+		`<p class="page-sub">`+ui.Text("Pages, the console and most queries read through a shared pool of "+
+			strconv.Itoa(st.MaxOpen)+" connections. When every one is taken, requests queue.")+`</p>`,
+		ui.Rows(rows...),
+		`<h3 class="settings-block-title">Recent read stalls `+ui.Tip("A read stall is a period during which "+
+			"every read connection stayed in use while a caller waited. Five seconds in, a snapshot of what each "+
+			"connection was doing is saved; it names the query that held them.")+`</h3>`,
+		ui.HTML(stallHistoryTable(st.Recent, "No read stall has been recorded since this install last started.")),
+	)))
 }

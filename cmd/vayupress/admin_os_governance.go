@@ -39,26 +39,22 @@ func (a *App) handleOSGovernance(w http.ResponseWriter, r *http.Request) {
 	history := mode.Global.History()
 	budgets := budget.Global.Status(now)
 
-	healthy, atRisk, exhausted := 0, 0, 0
+	atRisk, exhausted := 0, 0
 	budgetRows := make([][]ui.HTML, 0, len(budgets))
 	for _, b := range budgets {
-		tone := "ok"
 		switch b.State {
 		case "healthy":
-			healthy++
 		case "at-risk":
 			atRisk++
-			tone = "warn"
 		default:
 			exhausted++
-			tone = "danger"
 		}
 		window := (time.Duration(b.WindowSec) * time.Second).String()
 		budgetRows = append(budgetRows, []ui.HTML{
 			`<div>` + ui.Text(b.Name) + `</div><div class="muted text-xs">Tracks ` + ui.Text(strings.ToLower(b.Tracks)) + ` · ` + ui.Text(window) + ` window</div>`,
 			ui.Text(strconv.Itoa(b.Consumed) + " of " + strconv.Itoa(b.Limit)),
 			ui.Text(titleFirst(strings.ToLower(b.OnExhaust))),
-			ui.Tag(tone, budgetStateLabel(b.State)),
+			ui.State(budgetTone(b.State), budgetStateLabel(b.State)),
 		})
 	}
 
@@ -81,25 +77,33 @@ func (a *App) handleOSGovernance(w http.ResponseWriter, r *http.Request) {
 		applied = "Applied automatically: an exhausted budget moves the install into the mode it names."
 	}
 
-	modeTone := ""
-	if t := saModeTone(cur); t != "ok" {
-		modeTone = t
+	// The sentence says the mode and whether any budget wants attention: the
+	// two things this page exists to answer, and the figures that said them
+	// before read zero on almost every visit.
+	tone, state := saModeTone(cur), "In "+strings.ToLower(saModeLabel(cur))+" mode"
+	switch {
+	case exhausted > 0:
+		tone, state = "danger", state+", with "+strconv.Itoa(exhausted)+" budget"+plural(exhausted)+" exhausted"
+	case atRisk > 0:
+		if tone == "ok" {
+			tone = "warn"
+		}
+		state += ", with " + strconv.Itoa(atRisk) + " budget" + plural(atRisk) + " at risk"
+	default:
+		state += ", and every budget is healthy"
 	}
-	budgetTone := ""
-	if exhausted > 0 {
-		budgetTone = "danger"
-	} else if atRisk > 0 {
-		budgetTone = "warn"
+	detail := "The install has not changed mode."
+	if n := len(history); n > 0 {
+		last := history[n-1]
+		detail = strconv.Itoa(n) + " mode change" + plural(n) + "; the last on " + config.InSite(last.OccurredAt).Format("2 Jan 15:04")
 	}
-	body := ui.Join(
-		ui.Page("Governance", "How the install protects itself: the mode it is in, the budgets that move it, and why it changed.",
-			`<a class="btn btn--sm" href="/os/modes">System state</a>`),
-		ui.Figures(
-			ui.Figure{Value: saModeLabel(cur), Label: "System mode", Tone: modeTone,
-				Note: strconv.Itoa(len(history)) + " recorded transition" + plural(len(history))},
-			ui.Figure{Value: strconv.Itoa(healthy) + " of " + strconv.Itoa(len(budgets)), Label: "Budgets healthy", Tone: budgetTone,
-				Note: strconv.Itoa(atRisk) + " at risk · " + strconv.Itoa(exhausted) + " exhausted"},
-		),
+	body := ui.Status(ui.StatusPage{
+		Title:   "Governance",
+		Actions: `<a class="btn btn--sm" href="/os/modes">System state</a>`,
+		Tone:    tone,
+		State:   state,
+		Detail:  ui.Text(detail),
+	},
 		ui.Section("Error budgets", applied,
 			ui.Table([]string{"Budget", "Consumed", "On exhaust", "State"}, budgetRows, "No budgets configured.")),
 		ui.Section("Mode changes", "Newest first",

@@ -25,12 +25,3 @@ func assertCSPSafe(t *testing.T, name, htmlOut string) {
 		}
 	}
 }
-
-func TestStorageWidthClass(t *testing.T) {
-	cases := map[int]string{0: "w-0", 5: "w-0", 12: "w-10", 77: "w-75", 95: "w-90", 100: "w-100"}
-	for in, want := range cases {
-		if got := storageWidthClass(in); got != want {
-			t.Errorf("storageWidthClass(%d)=%s want %s", in, got, want)
-		}
-	}
-}

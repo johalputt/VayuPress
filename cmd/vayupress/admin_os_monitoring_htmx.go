@@ -24,6 +24,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/budget"
 	"github.com/johalputt/vayupress/internal/mode"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // oobAttr returns the hx-swap-oob attribute when the fragment is being served as
@@ -60,15 +61,13 @@ func monBudgetID(name string) string {
 // in the full page as the swap target, and again (oob=true) in the live-poll
 // response so HTMX replaces it by id.
 func monModePill(cur mode.Mode, oob bool) string {
-	return `<span id="mon-mode" class="tool-status ` + modeStateClass(cur) + `"` + oobAttr(oob) + `>` +
-		html.EscapeString(saModeLabel(cur)) + `</span>`
+	return `<span id="mon-mode"` + oobAttr(oob) + `>` + string(ui.State(saModeTone(cur), saModeLabel(cur))) + `</span>`
 }
 
 // monBudgetStatePill renders one governance budget's state pill, keyed by a
 // stable per-budget id so the poller can update it out-of-band.
 func monBudgetStatePill(name, state string, oob bool) string {
-	return `<span id="` + monBudgetID(name) + `" class="tool-status ` + budgetStateClass(state) + `"` + oobAttr(oob) + `>` +
-		html.EscapeString(budgetStateLabel(state)) + `</span>`
+	return `<span id="` + monBudgetID(name) + `"` + oobAttr(oob) + `>` + string(ui.State(budgetTone(state), budgetStateLabel(state))) + `</span>`
 }
 
 // monUpdatedStamp renders the "updated HH:MM:SS" liveness stamp with an honest

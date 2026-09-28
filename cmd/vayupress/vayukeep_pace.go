@@ -210,10 +210,10 @@ func keepRunHTML(k *keepRun) string {
 	const id = `id="vk-run" role="status" aria-live="polite"`
 	if !copying && work == "" {
 		if res == nil {
-			return `<div ` + id + `></div>`
+			return `<section ` + id + `></section>`
 		}
 		cls := "settings-callout"
-		out := `<div ` + id + ` class="` + cls + `"><strong>` + html.EscapeString(res.Detail) + `</strong>`
+		out := `<section ` + id + ` class="` + cls + `"><strong>` + html.EscapeString(res.Detail) + `</strong>`
 		if res.Download != "" {
 			out += ` <a class="btn btn--primary btn--sm" href="/os/api/backup/export/file" download>Download (` + html.EscapeString(humanBytes(res.DownloadBytes)) + `)</a>`
 		}
@@ -222,7 +222,7 @@ func keepRunHTML(k *keepRun) string {
 				`" data-vk-generation="` + html.EscapeString(res.Generation) + `">Remove ` + strconv.Itoa(res.Older) + ` older restore point` +
 				plural(res.Older) + ` (` + html.EscapeString(humanBytes(res.OlderBytes)) + `)</button>`
 		}
-		return out + `</div>`
+		return out + `</section>`
 	}
 
 	var j ui.Job
@@ -246,8 +246,8 @@ func keepRunHTML(k *keepRun) string {
 			j.Pace, j.Why = st.Verdict.Level.String(), st.Verdict.Reason
 		}
 	}
-	return `<div ` + id + ` hx-get="/os/vayukeep/run" hx-trigger="every 2s" hx-swap="outerHTML">` +
-		`<div class="section-head"><h2 class="section-head__title">Running now</h2></div>` + string(j.HTML()) + `</div>`
+	return `<section ` + id + ` hx-get="/os/vayukeep/run" hx-trigger="every 2s" hx-swap="outerHTML">` +
+		`<div class="section-head"><h2 class="section-head__title">Running now</h2></div>` + string(j.HTML()) + `</section>`
 }
 
 // held reports since when the running copy has been waiting on the server,

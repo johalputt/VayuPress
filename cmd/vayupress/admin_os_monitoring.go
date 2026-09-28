@@ -17,12 +17,13 @@ package main
 // <script> carries the per-request nonce, every dynamic string is escaped.
 
 import (
-	"html"
 	htmpl "html/template"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/budget"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/metrics"
@@ -31,19 +32,6 @@ import (
 	"github.com/johalputt/vayupress/internal/ui"
 )
 
-// modeStateClass maps a system mode to the status-pill modifier used for colour.
-func modeStateClass(m mode.Mode) string {
-	switch m {
-	case mode.ModeNormal:
-		return "tool-status--on"
-	case mode.ModeDegraded, mode.ModeRecovery, mode.ModeMaintenance:
-		return "tool-status--idle"
-	default: // read-only, quarantined
-		return "tool-status--off"
-	}
-}
-
-// budgetStateClass maps a budget state string to a status-pill modifier.
 // budgetStateLabel is a budget state as the console says it.
 func budgetStateLabel(state string) string {
 	switch state {
@@ -56,141 +44,106 @@ func budgetStateLabel(state string) string {
 	}
 }
 
-func budgetStateClass(state string) string {
+// budgetTone is a budget state as a state's tone.
+func budgetTone(state string) string {
 	switch state {
 	case "healthy":
-		return "tool-status--on"
+		return "ok"
 	case "at-risk":
-		return "tool-status--idle"
+		return "warn"
 	default: // exhausted
-		return "tool-status--off"
+		return "danger"
 	}
 }
 
-// monStat renders one performance stat card. Every one is a live reading.
-func monStat(label, value, sub string) string {
-	return string(ui.Figure{Label: label, Value: value, Note: sub, Live: true}.Cell())
+// monitoringState is the sentence the Monitoring page opens on: the most
+// urgent thing true now, or that the install is well. The order is what an
+// operator needs first: something waiting right now, then a mode that limits
+// the site, then work that failed, then what is running out.
+func monitoringState(snap *adminMetricsSnapshot, cur mode.Mode, ws, rs dbpkg.StallState, rec analytics.CollectorState, budgets []budget.Status) (tone, state string) {
+	switch {
+	case ws.Stalled && ws.Current != nil:
+		return "danger", "Writes are waiting: the write connection has been held for " + shortDur(ws.Current.Duration)
+	case rs.Stalled && rs.Current != nil:
+		return "danger", "Reads are waiting: every read connection has been taken for " + shortDur(rs.Current.Duration)
+	case cur != mode.ModeNormal:
+		return saModeTone(cur), "Running in " + strings.ToLower(saModeLabel(cur)) + " mode"
+	case !ws.Watching || !rs.Watching:
+		return "warn", "Stalls are not being watched, so nothing below is measured"
+	case !rec.Running:
+		return "danger", "Page views are not being written"
+	case snap.FailedJobs > 0:
+		return "warn", strconv.Itoa(snap.FailedJobs) + " background job" + plural(snap.FailedJobs) + " failed"
+	case snap.StoragePct >= 90:
+		return "warn", "Storage is " + strconv.Itoa(int(snap.StoragePct)) + "% full"
+	}
+	for _, b := range budgets {
+		if b.State == "exhausted" {
+			return "warn", "The " + b.Name + " budget is exhausted"
+		}
+	}
+	return "ok", "Running normally: requests answer in " + strconv.FormatInt(snap.HTTPP95, 10) + " ms at the 95th percentile"
 }
 
 func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	snap := a.getAdminSnapshot()
-
-	// ── System mode ──────────────────────────────────────────────────────────
 	cur := mode.Global.Current()
-	transitions := len(mode.Global.History())
-	modeCard := `<div class="card mb-6">
-  <div class="flex justify-between items-center">
-    <div>
-      <div class="card-title">System mode</div>
-      <div class="text-sm muted">` + strconv.Itoa(transitions) + ` recorded transition` + plural(transitions) + `</div>
-    </div>
-    <span aria-live="polite">` + monModePill(cur, false) + `</span>
-  </div>
-</div>`
+	ws, rs := dbpkg.WriteStall(), dbpkg.ReadStall()
+	rec := a.analytics.CollectorStats()
+	budgets := budget.Global.Status(time.Now())
+	tone, state := monitoringState(snap, cur, ws, rs, rec, budgets)
 
-	// ── Performance ──────────────────────────────────────────────────────────
 	uptime := time.Duration(snap.UptimeSeconds) * time.Second
-	perf := `<div class="stat-grid mb-6">` +
-		monStat("HTTP p95", strconv.FormatInt(snap.HTTPP95, 10)+" ms", "request latency · last 15 min") +
-		monStat("Write p99", strconv.FormatInt(snap.WriteP99, 10)+" ms", "queue job latency") +
-		monStat("Render p99", strconv.FormatInt(snap.RenderP99, 10)+" ms", "page render") +
-		monStat("Cache hit", strconv.Itoa(int(snap.CacheHitRatio*100))+"%", "render cache") +
-		monStat("Workers", strconv.FormatInt(snap.WorkersAlive, 10), "alive") +
-		monStat("Uptime", uptime.Truncate(time.Second).String(), "since boot") +
-		`</div>`
+	now := ui.Section("Now", "", ui.Facts(
+		ui.Fact{Key: "System mode", Value: ui.HTML(monModePill(cur, false))},
+		ui.Fact{Key: "Requests", Value: ui.Text(strconv.FormatInt(snap.HTTPP95, 10) + " ms at the 95th percentile, last 15 minutes")},
+		ui.Fact{Key: "Pages drawn", Value: ui.Text(strconv.FormatInt(snap.RenderP99, 10) + " ms at the 99th percentile")},
+		ui.Fact{Key: "Render cache", Value: ui.Text(strconv.Itoa(int(snap.CacheHitRatio*100)) + "% served from the cache")},
+		ui.Fact{Key: "Background jobs", Value: ui.Text(strconv.Itoa(snap.PendingJobs) + " waiting · " + strconv.Itoa(snap.FailedJobs) +
+			" failed · " + strconv.FormatInt(snap.WorkersAlive, 10) + " worker" + plural(int(snap.WorkersAlive)) +
+			" · " + strconv.FormatInt(snap.WriteP99, 10) + " ms at the 99th percentile")},
+		ui.Fact{Key: "Storage", Value: `<a href="/os/storage">` + ui.Text(strconv.Itoa(int(snap.StoragePct))+"% of "+dbpkg.FormatBytes(snap.QuotaBytes)+" used") + `</a>`},
+	))
 
-	// ── Where the time goes ──────────────────────────────────────────────────
-	// The p95 above is one figure over every request. This says which routes
-	// make it, so a slow reading points at something to fix rather than at the
-	// server log.
-	perf += routeLatencySection()
-
-	// ── Storage & queue ──────────────────────────────────────────────────────
-	pct := int(snap.StoragePct)
-	storWidth := storageWidthClass(pct)
-	storBar := "progress__bar progress__bar--ok"
-	if pct >= 90 {
-		storBar = "progress__bar progress__bar--danger"
-	} else if pct >= 75 {
-		storBar = "progress__bar progress__bar--warn"
+	var brows [][]ui.HTML
+	for _, b := range budgets {
+		brows = append(brows, []ui.HTML{
+			ui.Text(b.Name) + `<div class="row-meta">tracks ` + ui.Text(b.Tracks) + `</div>`,
+			ui.Text(strconv.Itoa(b.Consumed) + " / " + strconv.Itoa(b.Limit)),
+			ui.HTML(monBudgetStatePill(b.Name, b.State, false)),
+		})
 	}
-	storageJobs := `<div class="grid grid-2 mb-6">
-  <div class="card">
-    <div class="card-title">Storage</div>
-    <div class="progress"><div class="` + storBar + ` ` + storWidth + `"></div></div>
-    <div class="flex justify-between mt-3">
-      <span class="text-xs muted">` + strconv.Itoa(pct) + `% used</span>
-      <span class="text-xs muted">` + dbpkg.FormatBytes(snap.StorageBytes) + ` / ` + dbpkg.FormatBytes(snap.QuotaBytes) + `</span>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-title">Write queue</div>
-    <div class="flex justify-between"><span class="text-sm muted">Pending</span><span>` + strconv.Itoa(snap.PendingJobs) + `</span></div>
-    <div class="flex justify-between mt-2"><span class="text-sm muted">Failed</span><span>` + strconv.Itoa(snap.FailedJobs) + `</span></div>
-    <div class="flex justify-between mt-2"><span class="text-sm muted">Completed</span><span>` + strconv.Itoa(snap.CompletedJobs) + `</span></div>
-  </div>
-</div>`
+	budgetsSection := ui.Section("Error budgets", "counted, never acted on without you",
+		ui.Table([]string{"Budget", "Consumed", "State"}, brows, "No budget is defined."))
 
-	// ── The write connection ─────────────────────────────────────────────────
-	// The fault that had no page. SQLite has one writer; when it jams, every
-	// write queues and the site 502s with nothing in the log and no restart to
-	// point at. Neither the stall nor its cost was measured anywhere, so the
-	// only available answer was a guess. Both are measured now, and this is
-	// where an operator reads them (ADR-0156).
-	stallState := dbpkg.WriteStall()
-	recState := a.analytics.CollectorStats()
-	writer := writeStallStats(stallState, recState) + writeStallCard(stallState, recState)
-	reader := readStallSection(dbpkg.ReadStall(), coldRenderShed.Load())
-
-	// ── Governance budgets ───────────────────────────────────────────────────
-	rows := ""
-	for _, b := range budget.Global.Status(time.Now()) {
-		rows += `<tr>
-  <td class="row-title">` + html.EscapeString(b.Name) + `<div class="row-meta">tracks ` + html.EscapeString(b.Tracks) + `</div></td>
-  <td class="muted text-sm">` + strconv.Itoa(b.Consumed) + ` / ` + strconv.Itoa(b.Limit) + `</td>
-  <td>` + monBudgetStatePill(b.Name, b.State, false) + `</td>
-</tr>`
+	link := func(href, label, hint string) ui.Row {
+		return ui.Row{Label: label, Hint: hint, Control: `<a class="btn btn--ghost btn--sm" href="` + ui.HTML(href) + `">Open</a>`}
 	}
-	budgetsCard := `<div class="card mb-6">
-  <div class="card-title">Governance error budgets</div>
-  <div class="table-wrap"><table class="table">
-    <thead><tr><th>Budget</th><th>Consumed</th><th>State</th></tr></thead>
-    <tbody aria-live="polite">` + rows + `</tbody>
-  </table></div>
-  <div class="text-xs muted mt-3">Accounting + recommendation — mode transitions are operator-gated, never auto-applied.</div>
-</div>`
+	deeper := ui.Section("Deeper", "", ui.Rows(
+		link("/os/modes", "Mode transitions", "Move the install between modes and read the journal of every change."),
+		link("/os/topology", "Topology", "How the parts depend on each other, and their health now."),
+		link("/os/faults", "Fault simulation", "Inject a controlled fault to see recovery work. Not for production."),
+		link("/os/replay", "Replay", "Jobs that failed, and a safe way to run them again."),
+		link("/os/adr", "Decisions", "The architecture decisions this install is built on."),
+	))
 
-	// ── Deep operator consoles ───────────────────────────────────────────────
-	link := func(href, label, desc string) string {
-		return `<a class="tool-card" href="` + href + `">
-  <div class="tool-card__head"><div class="tool-card__title">` + html.EscapeString(label) + `</div></div>
-  <div class="tool-card__desc">` + html.EscapeString(desc) + `</div>
-</a>`
-	}
-	consoles := `<div class="tools-cat">Deep operator consoles</div>
-<div class="tools-grid">` +
-		link("/os/modes", "Mode transitions", "Drive the system-mode state machine and review the transition journal.") +
-		link("/os/topology", "Topology", "Subsystem dependency graph and live component health.") +
-		link("/os/faults", "Fault simulation", "Inject controlled faults to exercise recovery (non-production).") +
-		link("/os/replay", "Replay", "Dead-letter inspection and safe job replay.") +
-		link("/os/adr", "ADR registry", "Browse the architecture decision record index.") +
-		`</div>`
-
-	// The page renders a complete server-side snapshot above. This invisible
-	// HTMX poller keeps an open dashboard fresh: every 5s it GETs the live
-	// endpoint, which returns out-of-band fragments that swap the mode pill,
-	// each budget state pill, and the "updated" stamp in place — no client JS.
+	// The page renders a complete snapshot. This invisible poller keeps an
+	// open page fresh: every 5 s it asks for out-of-band fragments that swap
+	// the mode, each budget's state and the updated stamp in place.
 	poller := `<div hx-get="/os/monitoring/live" hx-trigger="every 5s" hx-swap="none" aria-hidden="true"></div>`
 
-	body := `<div class="page-header">
-  <h1>Monitoring</h1>
-  <div class="page-actions">` + monUpdatedStamp(time.Now(), a.nowSnapAge(), false) + `</div>
-</div>
-<p class="page-sub">A live view of your running install — performance, background jobs, storage and budgets, refreshed as you watch.</p>` + poller + modeCard + perf + storageJobs + writer + reader + budgetsCard + consoles
+	body := ui.Status(ui.StatusPage{
+		Title:   "Monitoring",
+		Actions: ui.HTML(monUpdatedStamp(time.Now(), a.nowSnapAge(), false)),
+		Tone:    tone,
+		State:   state,
+		Detail:  ui.Text("Up " + uptime.Truncate(time.Second).String() + " · refreshed as you watch"),
+	}, now, ui.HTML(routeLatencySection()), ui.HTML(writeStallSection(ws, rec)),
+		ui.HTML(readStallSection(rs, coldRenderShed.Load())), budgetsSection, deeper)
 
-	writeOSHTML(w, r, adminOSLayout(nonce, "Monitoring", "monitoring", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Monitoring", "monitoring", cfg, htmpl.HTML(poller+string(body))))
 }
 
 // routeLatencySection lists the slowest routes of the last 15 minutes.

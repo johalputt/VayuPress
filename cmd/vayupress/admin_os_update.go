@@ -178,139 +178,82 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 	curMode := string(mode.Global.Current())
 	modeOK := update.PreflightMode(curMode) == nil
 
-	// Pre-render a banner explaining the current verification posture.
-	//
-	// It used to have two arms, and BOTH overstated what was enforced: the
-	// no-key arm called the update "checksum verified" while the page around it
-	// said "signed", and the key arm promised Ed25519 verification against an
-	// asset the release pipeline has never produced, so pinning a key broke
-	// updates outright. Every release is now verified against the signature it
-	// actually carries, so the posture no longer depends on operator setup and
-	// the copy says the same thing in both arms.
-	var banner string
-	switch {
-	case !modeOK:
-		banner = `<div class="settings-callout">
-    <strong>Updates are paused.</strong>
-    <span class="text-sm muted">The system is in <code>` + html.EscapeString(curMode) + `</code> mode; updates resume on their own when it returns to normal.` + string(ui.Tip("This mode blocks changing the binary. Checking for updates and backups still work.")) + `</span>
-  </div>`
-	case hasKey:
-		banner = `<div class="settings-callout">
-    <strong>One-click updates are ready.</strong>
-    <span class="text-sm muted">Only releases signed by this project install, and your pinned key too.` + string(ui.Tip("Every release is checked against the signature its build published and installed only if that signature was made by this project's own release workflow, so a binary from anywhere else is refused even if it downloads cleanly. Your pinned release key is required on top. The binary is then swapped atomically and the service restarts; a database backup first is optional.")) + `</span>
-  </div>`
-	default:
-		banner = `<div class="settings-callout">
-    <strong>One-click updates are ready.</strong>
-    <span class="text-sm muted">Only releases signed by this project install.` + string(ui.Tip("Every release is checked against the signature its build published and installed only if that signature was made by this project's own release workflow, so a binary from anywhere else is refused even if it downloads cleanly. Nothing to configure: this applies to every install. The binary is then swapped atomically and the service restarts; a database backup first is optional.")) + `</span>
-  </div>`
+	// Every release is verified against the signature it carries, so the row
+	// says the same thing whatever the operator has set up. It once had two
+	// arms, and both overstated what was enforced: the no-key arm called the
+	// update "checksum verified" while the page around it said "signed", and
+	// the key arm promised Ed25519 verification against an asset the release
+	// pipeline never produced, so pinning a key broke updates outright.
+	signed := "Only releases signed by this project install."
+	signedTip := "Every release is checked against the signature its build published and installed only if that signature was made by this project's own release workflow, so a binary from anywhere else is refused even if it downloads cleanly. Nothing to configure: this applies to every install."
+	if hasKey {
+		signed = "Only releases signed by this project install, and your pinned key too."
+		signedTip = "Every release is checked against the signature its build published and installed only if that signature was made by this project's own release workflow. Your pinned release key is required on top."
 	}
 
-	// WHAT A RESTART COSTS, on the page where restarts are decided (ADR-0155 P4).
-	//
-	// This page's whole job is to offer an action that stops the service, and it
-	// has never said what that action costs. On an install without socket
-	// activation the startup time IS the outage, and the number lived only in a
-	// journal line the operator could not read without root. Measured here,
-	// quoted as a range, and paired with whether the socket queues — because the
-	// same number means "everyone gets an error" or "everyone waits" depending
-	// on that, and those are different decisions.
+	// WHAT A RESTART COSTS, on the page where restarts are decided (ADR-0155
+	// P4). On an install without socket activation the startup time IS the
+	// outage, and the number lived only in a journal line the operator could not
+	// read without root. Measured here, quoted as a range, and paired with
+	// whether the socket queues, because the same number means "everyone gets an
+	// error" or "everyone waits" depending on that.
 	cost := readStartupCost(r.Context(), a.siteSettings, socketActivated)
-	banner += `<div class="settings-callout"><strong>What restarting costs here.</strong> ` +
-		`<span class="text-sm muted">` + string(ui.Brief(cost.Describe())) + `</span></div>`
-
-	// If the root agent had to repair this install after a failed update, say so
-	// here — this is the page the operator opens next, and an install that
-	// silently rolled itself back to an older binary while they were not looking
-	// is exactly the kind of thing they must not have to deduce from the version
-	// number. Empty for the overwhelming majority of installs, which have never
-	// needed it.
-	banner += binaryRepairNotice()
-
-	historyRows := a.updateHistoryRowsHTML(r)
 
 	// The in-app pre-update backup gzips the whole database inside the request,
-	// which is unsafe on a large DB (it can swap-thrash a small VPS). For a large
-	// DB, default the checkbox OFF and explain the safe path; otherwise keep it on.
+	// which is unsafe on a large DB (it can swap-thrash a small VPS). For a
+	// large DB the box starts unticked and the row says why.
 	dbSize := dbSizeBytes()
 	backupChecked := " checked"
-	backupNote := `Recommended for most sites. A binary update never changes your database and the previous binary is kept for rollback, so you can safely untick this — handy for very large databases where a full snapshot is slow. For a downloadable copy, use Export below.`
+	backupNote := "Recommended for most sites. A binary update never changes your database and the previous binary is kept for rollback, so this can be left off."
 	if dbSize > inlineBackupMaxBytes {
 		backupChecked = ""
-		backupNote = `Your database is large (` + html.EscapeString(humanBytes(dbSize)) + `), so the in-app backup is turned off by default — gzipping a database this size inside the update can overload the server. A binary update never changes your database and the previous binary is kept for rollback. To keep a copy, snapshot it during a quiet window or use Export below <strong>before</strong> updating.`
+		backupNote = "Off, because your database is large (" + humanBytes(dbSize) + ") and compressing it inside the update can overload the server. A binary update never changes your database, and the previous binary is kept for rollback."
 	}
 
-	// Start disabled; the on-load check enables it only when an update is
-	// actually available and the mode allows applying.
-	applyDisabled := " disabled"
+	tone, state := "ok", "v"+Version+" is installed"
+	if !modeOK {
+		tone, state = saModeTone(mode.Mode(curMode)), "Updates are paused while the install is in "+strings.ToLower(saModeLabel(mode.Mode(curMode)))+" mode"
+	}
 
-	iconHistory := `<svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.4"/><path d="M10 5.6V10l2.9 1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+	// The update script needs [data-update-card] present and reads the rows'
+	// controls by their data attributes; it fills the check's outcome into the
+	// detail line. The Update now button starts disabled: the on-load check
+	// enables it only when an update is available and the mode allows it.
+	install := ui.Section("Install an update", "signature checked · atomic swap", ui.Join(
+		`<div data-update-card>`,
+		ui.Rows(
+			ui.Row{Label: "Latest release", Control: `<span data-latest-version>—</span>`},
+			ui.Row{Label: "Signature", Hint: signed, Control: ui.State("ok", "Checked") + ui.Tip(signedTip)},
+			ui.Row{Label: "Back up the database first", Hint: backupNote, ID: "upd-backup",
+				Control: ui.HTML(`<input type="checkbox" id="upd-backup" data-update-backup` + backupChecked + `>`)},
+			ui.Row{Label: "Include pre-release builds", ID: "upd-pre",
+				Hint:    "Also offer the newest unreleased build when one is published. It is signed by the same workflow and checked the same way.",
+				Control: `<input type="checkbox" id="upd-pre" data-update-prerelease>`},
+			ui.Row{Label: "What a restart costs", Hint: cost.Describe(), Control: ""},
+		),
+		`<div class="update-notes" data-update-notes hidden></div>`,
+		`<div class="upd-actions"><button type="button" class="btn btn--ghost btn--sm" data-update-rollback>Roll back</button>`+
+			`<span class="text-xs muted" data-update-msg role="status" aria-live="polite"></span></div>`,
+		`</div>`,
+	))
 
-	historyBody := `<div class="table-wrap"><table class="table">
+	history := ui.Section("History", "every check, install and rollback, newest first",
+		ui.HTML(`<div class="table-wrap"><table class="table">
     <thead><tr><th>#</th><th>From</th><th>To</th><th>Status</th><th>Detail</th><th>When</th></tr></thead>
-    <tbody data-history-body>` + historyRows + `</tbody>
-  </table></div>`
+    <tbody data-history-body>`+a.updateHistoryRowsHTML(r)+`</tbody>
+  </table></div>`))
 
-	body := `<div class="page-header">
-  <h1>Update &amp; Migration</h1>
-  <div class="page-actions">
-    <span class="text-sm muted">Current version <strong>v` + html.EscapeString(Version) + `</strong> · mode <strong>` + html.EscapeString(curMode) + `</strong></span>
-  </div>
-</div>
-<p class="page-sub">One-click updates that refuse anything this project did not sign.</p>
-` + banner + `
-<div class="section-head"><span class="section-head__title">Install an update</span><span class="section-head__hint">Signature checked · auto-backup · atomic swap</span></div>
-<div class="upd-hero" data-update-card>
-  <div class="upd-hero__aura" aria-hidden="true"></div>
-  <div class="upd-hero__head">
-    <span class="upd-hero__badge">Software update</span>
-    <p class="upd-hero__lead">Install the latest release in one click.` + string(ui.Tip("The download is refused unless it carries a valid signature from this project's release workflow; then the database backup, the atomic swap and the restart are handled for you.")) + `</p>
-  </div>
-  <div class="upd-vers">
-    <div class="upd-ver">
-      <span class="upd-ver__label">Installed</span>
-      <span class="upd-ver__num">v` + html.EscapeString(Version) + `</span>
-    </div>
-    <span class="upd-ver__arrow" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M4 12h15M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </span>
-    <div class="upd-ver">
-      <span class="upd-ver__label">Latest release</span>
-      <span class="upd-ver__num upd-ver__num--latest" data-latest-version>—</span>
-    </div>
-    <div class="upd-ver upd-ver--status">
-      <span class="upd-ver__label">Status</span>
-      <span class="upd-status" data-update-status>Not checked yet</span>
-    </div>
-  </div>
-  <div class="update-notes" data-update-notes hidden></div>
-  <div class="upd-opts">
-    <label class="upd-check">
-      <input type="checkbox" data-update-backup` + backupChecked + `> <span>Back up the database first</span>
-    </label>
-    <div class="upd-opt-note">` + backupNote + `</div>
-    <label class="upd-check">
-      <input type="checkbox" data-update-prerelease> <span>Include pre-release &amp; development builds</span>
-    </label>
-    <div class="upd-opt-note">Off installs only stable releases. Turn on to also offer the newest <strong>unreleased</strong> pre-release build when one is published — useful for early testing. Verification is unchanged: a pre-release is signed by the same workflow and checked the same way.</div>
-  </div>
-  <div class="upd-actions">
-    <button type="button" class="btn btn--ghost btn--sm" data-update-check>Check for updates</button>
-    <button type="button" class="btn btn--primary btn--sm" data-update-apply` + applyDisabled + `>Update now</button>
-    <button type="button" class="btn btn--ghost btn--sm" data-update-rollback>Roll back</button>
-    <span class="text-xs muted" data-update-msg role="status" aria-live="polite"></span>
-  </div>
-</div>
+	body := string(ui.Status(ui.StatusPage{
+		Title: "Updates",
+		Actions: `<button type="button" class="btn btn--ghost btn--sm" data-update-check>Check for updates</button>` +
+			`<button type="button" class="btn btn--primary btn--sm" data-update-apply disabled>Update now</button>`,
+		Tone:   tone,
+		State:  state,
+		Detail: `<span class="upd-status" data-update-status>Not checked yet</span>`,
+	}, ui.HTML(binaryRepairNotice()), install, ui.HTML(provisionCardHTML()), history)) +
+		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-update.js?v=` + assetVer("js/admin-os-update.js") + `"></script>`
 
-` + provisionCardHTML() + `
-<div class="mon-stack mt-6">` +
-		monAcc(iconHistory, "Update history", "Every check, install and rollback, newest first", "", false, historyBody) +
-		`</div>
-<p class="text-sm muted mt-4">Backups are in <a href="/os/vayukeep">System › Backups</a>.</p>
-
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-update.js?v=` + assetVer("js/admin-os-update.js") + `"></script>`
-
-	writeOSHTML(w, r, adminOSLayout(nonce, "Update & Migration", "update", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Updates", "update", cfg, htmpl.HTML(body)))
 }
 
 // updateHistoryRowsHTML renders the most recent update_history rows as table

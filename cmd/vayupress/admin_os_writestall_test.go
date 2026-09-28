@@ -42,7 +42,7 @@ func TestTheCardNamesAStallThatIsHappeningNow(t *testing.T) {
 		Ongoing:  true,
 	}
 
-	card := writeStallCard(st, rec)
+	card := writeStallSection(st, rec)
 	for _, want := range []string{"contended right now", "14:03:11", "42.0s", "137", "6m 0s"} {
 		if !strings.Contains(card, want) {
 			t.Errorf("the card does not report %q while a stall is in progress:\n%s", want, card)
@@ -54,12 +54,9 @@ func TestTheCardNamesAStallThatIsHappeningNow(t *testing.T) {
 			"to know whether their readers are affected")
 	}
 
-	tiles := writeStallStats(st, rec)
-	if !strings.Contains(tiles, "stat-card--warn") {
-		t.Error("no tile is toned for attention while the writer is stalled")
-	}
-	if !strings.Contains(tiles, "happening now") {
-		t.Errorf("the stall tile does not say it is happening now:\n%s", tiles)
+	tiles := writeStallSection(st, rec)
+	if !strings.Contains(tiles, "sa-dot--danger") || !strings.Contains(tiles, "Contended") {
+		t.Errorf("the stall is not marked as happening now, in danger's tone:\n%s", tiles)
 	}
 }
 
@@ -68,7 +65,7 @@ func TestTheCardNamesAStallThatIsHappeningNow(t *testing.T) {
 // facts and only one of them is good news.
 func TestAQuietInstallReadsAsQuietNotAsUnmeasured(t *testing.T) {
 	st, rec := quietWriter()
-	card := writeStallCard(st, rec)
+	card := writeStallSection(st, rec)
 	if !strings.Contains(card, "No write stall has been recorded") {
 		t.Errorf("a quiet install does not say so plainly:\n%s", card)
 	}
@@ -87,7 +84,7 @@ func TestAQuietInstallReadsAsQuietNotAsUnmeasured(t *testing.T) {
 func TestAnUnwatchedInstallIsNotReportedAsHealthy(t *testing.T) {
 	st, rec := quietWriter()
 	st.Watching = false
-	card := writeStallCard(st, rec)
+	card := writeStallSection(st, rec)
 	if !strings.Contains(card, "Not being watched") {
 		t.Errorf("the watchdog is not running and the card shows a clean bill of health. A zero "+
 			"meaning 'nothing measured' must never render as a zero meaning 'nothing wrong':\n%s", card)
@@ -103,12 +100,12 @@ func TestAnUnwatchedInstallIsNotReportedAsHealthy(t *testing.T) {
 func TestViewCountingBeingOffIsStatedPlainly(t *testing.T) {
 	st, rec := quietWriter()
 	rec.Running = false
-	tiles := writeStallStats(st, rec)
+	tiles := writeStallSection(st, rec)
 	if !strings.Contains(tiles, "views are NOT being written") {
 		t.Errorf("the flusher is not running and the panel does not say views are being lost:\n%s", tiles)
 	}
-	if !strings.Contains(tiles, ">off<") {
-		t.Errorf("the view-counting tile does not read off:\n%s", tiles)
+	if !strings.Contains(tiles, "sa-dot--danger") {
+		t.Errorf("view counting being off is not marked in danger's tone:\n%s", tiles)
 	}
 }
 
@@ -117,7 +114,7 @@ func TestViewCountingBeingOffIsStatedPlainly(t *testing.T) {
 func TestDroppedViewsAreAdmittedWithTheReason(t *testing.T) {
 	st, rec := quietWriter()
 	rec.Dropped = 812
-	card := writeStallCard(st, rec)
+	card := writeStallSection(st, rec)
 	if !strings.Contains(card, "812") {
 		t.Errorf("812 dropped views are not mentioned:\n%s", card)
 	}
@@ -131,14 +128,14 @@ func TestDroppedViewsAreAdmittedWithTheReason(t *testing.T) {
 func TestTheViewsPerWriteRatioIsComputedNotClaimed(t *testing.T) {
 	st, rec := quietWriter()
 	rec.Flushed, rec.Writes = 9000, 45
-	tiles := writeStallStats(st, rec)
+	tiles := writeStallSection(st, rec)
 	if !strings.Contains(tiles, "200.0×") {
 		t.Errorf("9000 views over 45 statements should read 200.0×:\n%s", tiles)
 	}
 	// Before anything has been written there is no ratio, and inventing one
 	// (1×, 0×) would be a claim about work that has not happened.
 	rec.Flushed, rec.Writes = 0, 0
-	if !strings.Contains(writeStallStats(st, rec), "—") {
+	if !strings.Contains(writeStallSection(st, rec), "—") {
 		t.Error("a ratio was rendered before any views had been written")
 	}
 }
@@ -152,7 +149,7 @@ func TestTheSnapshotPathIsEscaped(t *testing.T) {
 		Start: time.Now().UTC(), Duration: 3 * time.Second, Waits: 2,
 		Dump: `/var/x/"><img onerror=alert(1) src=x>.txt`,
 	}}
-	card := writeStallCard(st, rec)
+	card := writeStallSection(st, rec)
 	if strings.Contains(card, "<img onerror") {
 		t.Errorf("the snapshot path reached the page as markup:\n%s", card)
 	}
@@ -167,8 +164,8 @@ func TestTheWriterCardIsCSPSafe(t *testing.T) {
 	st.Stalled = true
 	st.Current = &dbpkg.StallEvent{Start: time.Now().UTC(), Duration: time.Second, Waits: 1}
 	st.Recent = []dbpkg.StallEvent{{Start: time.Now().UTC(), Duration: time.Second, Dump: "/tmp/a.txt"}}
-	assertCSPSafe(t, "write stall card", writeStallCard(st, rec))
-	assertCSPSafe(t, "write stall tiles", writeStallStats(st, rec))
+	assertCSPSafe(t, "write stall card", writeStallSection(st, rec))
+	assertCSPSafe(t, "write stall tiles", writeStallSection(st, rec))
 }
 
 // ── Wiring ───────────────────────────────────────────────────────────────────

@@ -23,7 +23,7 @@ func TestTheReadSectionNamesAStallThatIsHappeningNow(t *testing.T) {
 	}}
 	out := readStallSection(st, 0)
 	for _, want := range []string{"Every read connection is taken right now", "00:30:05", "1m 35s", "812", "40m 0s",
-		"Pages with a cache file are unaffected", "stat-card--warn", "48 connections"} {
+		"Pages with a cache file are unaffected", "sa-dot--danger", "48 connections"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the read section does not report %q during a stall:\n%s", want, out)
 		}

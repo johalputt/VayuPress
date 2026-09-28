@@ -59,6 +59,8 @@ func TestEveryPrimitiveEscapesTextOnce(t *testing.T) {
 	escapedOnce(t, "Setup step link", Setup(SetupPage{Title: "T", Steps: []SetupStep{{Title: "S", Href: hostile}}}))
 	escapedOnce(t, "Sheet title", Sheet("s", hostile, ""))
 	escapedOnce(t, "Sheet id", Sheet(hostile, "T", ""))
+	escapedOnce(t, "Status title", Status(StatusPage{Title: hostile}))
+	escapedOnce(t, "Status state", Status(StatusPage{Title: "T", State: hostile}))
 }
 
 // Markup the caller vouches for passes through untouched: a primitive that
@@ -75,6 +77,9 @@ func TestTrustedMarkupPassesThrough(t *testing.T) {
 		"Table cell":       Table([]string{"A"}, [][]HTML{{m}}, ""),
 		"Callout body":     Callout("info", m),
 		"Empty action":     Empty("info", "T", "", m),
+		"Status actions":   Status(StatusPage{Title: "T", Actions: m}),
+		"Status detail":    Status(StatusPage{Title: "T", Detail: m}),
+		"Status section":   Status(StatusPage{Title: "T"}, m),
 	} {
 		if !strings.Contains(string(out), m) {
 			t.Errorf("%s: trusted markup did not pass through:\n%s", where, out)
@@ -92,6 +97,9 @@ func TestToneClassesAreOnlyTheDefinedOnes(t *testing.T) {
 	}
 	if s := string(Tag(`x" onclick="y`, "T")); strings.Contains(s, "onclick") || !strings.Contains(s, "badge--muted") {
 		t.Errorf("an unknown tag tone reached the markup: %s", s)
+	}
+	if s := string(Status(StatusPage{Title: "T", Tone: `x" onclick="y`})); strings.Contains(s, "onclick") || !strings.Contains(s, "sa-status__head--neutral") {
+		t.Errorf("an unknown status tone reached the markup: %s", s)
 	}
 	if s := string(Steps(Step{Title: "T", Now: true})); !strings.Contains(s, "sa-step--now") {
 		t.Error("the current step is not marked")

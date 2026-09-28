@@ -53,8 +53,8 @@ func TestMonFragmentsCSPSafeAndOOB(t *testing.T) {
 	if !strings.Contains(oob, `hx-swap-oob="true"`) {
 		t.Errorf("OOB mode pill missing hx-swap-oob:\n%s", oob)
 	}
-	if !strings.Contains(oob, "tool-status--off") {
-		t.Errorf("read-only mode should map to off class:\n%s", oob)
+	if !strings.Contains(oob, "sa-dot--warn") || !strings.Contains(oob, "Read-only") {
+		t.Errorf("read-only mode should read as the system bar says it, a warning:\n%s", oob)
 	}
 
 	// Budget state pill — hostile name must not break out of the id, hostile

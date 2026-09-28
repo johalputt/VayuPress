@@ -164,95 +164,92 @@ func (a *App) handleOSStorage(w http.ResponseWriter, r *http.Request) {
 
 	st := collectSysStats(config.Cfg.DBPath, config.Cfg.CacheDir, config.Cfg.MediaDir, updateBackupDir())
 	files := managedStorageFiles()
-
-	memBarCls := pctBarClass(st.memPct())
-	diskBarCls := pctBarClass(st.diskPct())
-
 	var totalManaged int64
 	for _, f := range files {
 		totalManaged += f.Size
 	}
+	tone, state := storageState(st)
 
-	body := `<div class="page-header">
-  <h1>Storage &amp; System</h1>
-  <div class="page-actions"><span class="text-sm muted">Administrator only · live readings</span></div>
-</div>
-<p class="page-sub">Live readings from your server — memory, disk and database at a glance, so you always know how much headroom you have.</p>
+	body := ui.Status(ui.StatusPage{
+		Title:  "Storage",
+		Tone:   tone,
+		State:  state,
+		Detail: ui.Text("VayuPress holds " + humanBytes(st.DBSize+st.CacheSize+st.MediaSize+st.BackupsSize) + " of it · live readings"),
+	},
+		ui.Section("Memory and disk", "", ui.Rows(
+			ui.Row{Label: "Memory", Hint: "VayuPress uses " + humanBytes(int64(st.ProcRSS)) + ", " + humanBytes(int64(st.GoHeapInUse)) +
+				" of it Go heap, in " + strconv.Itoa(st.Goroutines) + " goroutines",
+				Control: ui.State(pctTone(st.memPct()), humanBytes(int64(st.MemUsed))+" of "+humanBytes(int64(st.MemTotal))+" used")},
+			ui.Row{Label: "Disk", Hint: "The filesystem at " + st.DiskPath,
+				Control: ui.State(pctTone(st.diskPct()), humanBytes(int64(st.DiskFree))+" free of "+humanBytes(int64(st.DiskTotal)))},
+		)),
+		ui.Section("What VayuPress holds", "", ui.Table([]string{"Component", "Path", "Size"}, [][]ui.HTML{
+			{"Database, with its journal", `<code>` + ui.Text(config.Cfg.DBPath) + `</code>`, ui.Text(humanBytes(st.DBSize))},
+			{"Rendered pages", `<code>` + ui.Text(config.Cfg.CacheDir) + `</code>`, ui.Text(humanBytes(st.CacheSize))},
+			{"Media library", `<code>` + ui.Text(config.Cfg.MediaDir) + `</code>`, ui.Text(humanBytes(st.MediaSize))},
+			{"Pre-update backups", `<code>` + ui.Text(updateBackupDir()) + `</code>`, ui.Text(humanBytes(st.BackupsSize))},
+		}, "")),
+		cacheSection(st.CacheSize),
+		ui.Section("Backups, logs and temporary files", humanBytes(totalManaged)+" in "+strconv.Itoa(len(files))+" file"+plural(len(files)),
+			ui.Join(`<p class="page-sub">`+ui.Brief("Download one to keep it off the server, or delete it to reclaim the space. "+
+				"The live database and its journal are never listed and cannot be deleted from here.")+`</p>`,
+				ui.HTML(storageFilesTable(files)),
+				`<div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>`)),
+	)
 
-<div class="grid grid-2 mb-6">
-  <div class="card">
-    <div class="card-title">Memory (RAM)</div>
-    <div class="progress"><div class="` + memBarCls + ` ` + storagePctWidth(st.memPct()) + `"></div></div>
-    <div class="flex justify-between mt-3">
-      <span class="text-xs muted">System: ` + humanBytes(int64(st.MemUsed)) + ` / ` + humanBytes(int64(st.MemTotal)) + ` used (` + strconv.Itoa(st.memPct()) + `%)</span>
-      <span class="text-xs muted">VayuPress process: ` + humanBytes(int64(st.ProcRSS)) + `</span>
-    </div>
-    <div class="text-xs muted mt-2">Go heap in use ` + humanBytes(int64(st.GoHeapInUse)) + ` · ` + strconv.Itoa(st.Goroutines) + ` goroutines</div>
-  </div>
-  <div class="card">
-    <div class="card-title">Disk (NVMe)</div>
-    <div class="progress"><div class="` + diskBarCls + ` ` + storagePctWidth(st.diskPct()) + `"></div></div>
-    <div class="flex justify-between mt-3">
-      <span class="text-xs muted">` + humanBytes(int64(st.DiskUsed)) + ` / ` + humanBytes(int64(st.DiskTotal)) + ` used (` + strconv.Itoa(st.diskPct()) + `%)</span>
-      <span class="text-xs muted">` + humanBytes(int64(st.DiskFree)) + ` free</span>
-    </div>
-    <div class="text-xs muted mt-2">Filesystem at <code>` + html.EscapeString(st.DiskPath) + `</code></div>
-  </div>
-</div>
-
-<div class="card mb-6">
-  <div class="card-title">VayuPress footprint</div>
-  <div class="table-wrap"><table class="table">
-    <thead><tr><th>Component</th><th>Path</th><th>Size</th></tr></thead>
-    <tbody>
-      <tr><td>Database (+ WAL/SHM)</td><td class="mono text-sm">` + html.EscapeString(config.Cfg.DBPath) + `</td><td>` + humanBytes(st.DBSize) + `</td></tr>
-      <tr><td>Rendered pages</td><td class="mono text-sm">` + html.EscapeString(config.Cfg.CacheDir) + `</td><td>` + humanBytes(st.CacheSize) + `</td></tr>
-      <tr><td>Media library</td><td class="mono text-sm">` + html.EscapeString(config.Cfg.MediaDir) + `</td><td>` + humanBytes(st.MediaSize) + `</td></tr>
-      <tr><td>Pre-update backups</td><td class="mono text-sm">` + html.EscapeString(updateBackupDir()) + `</td><td>` + humanBytes(st.BackupsSize) + `</td></tr>
-    </tbody>
-  </table></div>
-</div>
-
-` + cacheCardHTML(st.CacheSize) + `
-
-<div class="card">
-  <div class="card-title">Managed files <span class="count-pill">` + strconv.Itoa(len(files)) + `</span></div>
-  <p class="text-sm muted mb-4">Backups, logs and temporary files VayuPress has created. Download one to keep it off-server, or delete it to reclaim space — total here is <strong>` + humanBytes(totalManaged) + `</strong>. The live database and its WAL are never listed and can never be deleted from here.</p>
-  ` + storageFilesTable(files) + `
-  <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
-</div>
-
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-storage.js?v=` + assetVer("js/admin-os-storage.js") + `"></script>`
-
-	writeOSHTML(w, r, adminOSLayout(nonce, "Storage & System", "storage", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Storage", "storage", cfg, htmpl.HTML(string(body)+
+		`<script nonce="`+nonce+`" src="/os/static/js/admin-os-storage.js?v=`+assetVer("js/admin-os-storage.js")+`"></script>`)))
 }
 
-// cacheCardHTML is Refresh every page: what the rendered pages and stale temp
+// storageState is the sentence the Storage page opens on: how much room is
+// left, and whether it is running out. Disk comes first because a full disk
+// stops the site, where full memory slows it.
+func storageState(st sysStats) (tone, state string) {
+	switch d, m := st.diskPct(), st.memPct(); {
+	case d >= 90:
+		return "danger", "The disk is " + strconv.Itoa(d) + "% full: " + humanBytes(int64(st.DiskFree)) + " left"
+	case m >= 90:
+		return "warn", "Memory is " + strconv.Itoa(m) + "% used"
+	case d >= 75:
+		return "warn", humanBytes(int64(st.DiskFree)) + " left on the disk, " + strconv.Itoa(100-d) + "% of it"
+	}
+	return "ok", humanBytes(int64(st.DiskFree)) + " free on the disk, and memory to spare"
+}
+
+// pctTone is a usage percentage as a state's tone: the same 75 and 90 the
+// sentence uses.
+func pctTone(pct int) string {
+	switch {
+	case pct >= 90:
+		return "danger"
+	case pct >= 75:
+		return "warn"
+	}
+	return "ok"
+}
+
+// cacheSection is Refresh every page: what the rendered pages and stale temp
 // files hold, the Cloudflare purge when there is a Cloudflare to purge, and
 // the refresh's progress. pageBytes comes from the background footprint, never
 // a walk on this request.
-func cacheCardHTML(pageBytes int64) string {
+func cacheSection(pageBytes int64) ui.HTML {
 	tempFiles, tempBytes := staleTemp(config.Cfg.TmpDir, staleTempAge, time.Now(), false)
-	cdn := ""
-	if cloudflareConfigured() {
-		cdn = `<label class="upd-check mt-3"><input type="checkbox" data-cache-cdn checked> Also purge Cloudflare's copy of every page</label>`
+	rows := []ui.Row{
+		{Label: "Rendered pages", Hint: "Home, post and tag pages, for every domain", Control: ui.Text(humanBytes(pageBytes))},
+		{Label: "Temporary files", Hint: "Untouched for an hour or more", Control: ui.Text(humanBytes(tempBytes) + " · " + itoaSafe(tempFiles) + " file" + plural(tempFiles))},
 	}
-	return `<div class="card mb-6">
-  <div class="card-head"><div><h2 class="card-title">Pages ` + string(ui.Tip("Every rendered page is marked out of date and rebuilt in the background, as fast as the server can spare: "+
-		"faster when it is idle, slower when visitors or the database are busy. Visitors keep the current copy of a page until its new one is ready. "+
-		"Pages whose post no longer exists, and temporary files untouched for an hour, are removed. Media, backups, logs and the database are never touched.")) + `</h2>
-    <p class="card-subtitle">Rebuilt from the database on their own. Refresh every page when one shows something out of date.</p></div>
-    <button type="button" class="btn btn--primary btn--sm" data-pages-refresh>Refresh every page</button></div>
-  <div class="table-wrap"><table class="table">
-    <tbody>
-      <tr><td>Rendered pages</td><td class="muted text-sm">Home, post and tag pages, for every domain</td><td>` + humanBytes(pageBytes) + `</td></tr>
-      <tr><td>Temporary files</td><td class="muted text-sm">Untouched for an hour or more</td><td>` + humanBytes(tempBytes) + ` · ` + itoaSafe(tempFiles) + ` file` + plural(tempFiles) + `</td></tr>
-    </tbody>
-  </table></div>
-  ` + cdn + `
-  ` + refreshStatusHTML(warmProgress()) + `
-  <div data-cache-msg role="status" aria-live="polite" class="action-msg"></div>
-</div>`
+	if cloudflareConfigured() {
+		rows = append(rows, ui.Row{Label: "Cloudflare", Hint: "Purge Cloudflare's copy of every page as well",
+			Control: `<input type="checkbox" data-cache-cdn checked aria-label="Also purge Cloudflare's copy of every page">`})
+	}
+	rows = append(rows, ui.Row{Label: "Refresh every page",
+		Hint:    "Every page is rebuilt in the background, as fast as the server can spare. Visitors keep the current copy until its new one is ready.",
+		Control: `<button type="button" class="btn btn--primary btn--sm" data-pages-refresh>Refresh every page</button>`})
+	return ui.Section("Pages", "rebuilt from the database on their own", ui.Join(
+		ui.Rows(rows...),
+		ui.HTML(refreshStatusHTML(warmProgress())),
+		`<div data-cache-msg role="status" aria-live="polite" class="action-msg"></div>`,
+	))
 }
 
 // storageFilesTable renders the managed-files table with per-row download +
@@ -285,22 +282,6 @@ func storageFilesTable(files []managedFile) string {
     <tbody>` + rows.String() + `</tbody>
   </table></div>`
 }
-
-// pctBarClass returns the progress-bar colour class for a 0–100 usage value.
-func pctBarClass(pct int) string {
-	switch {
-	case pct >= 90:
-		return "progress__bar progress__bar--danger"
-	case pct >= 75:
-		return "progress__bar progress__bar--warn"
-	default:
-		return "progress__bar progress__bar--ok"
-	}
-}
-
-// storagePctWidth maps a percentage to the shared width utility class (CSP-safe;
-// reuses the dashboard storage-bar width buckets via storageWidthClass).
-func storagePctWidth(pct int) string { return storageWidthClass(pct) }
 
 // ── Download ─────────────────────────────────────────────────────────────────
 
