@@ -112,7 +112,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 				sel, hidden = "true", ""
 			}
 			rows.WriteString(`<tr class="post-row" data-list-row data-list-panel="` + esc + `" tabindex="0" aria-selected="` + sel + `">` +
-				`<td class="post-row__title"><span class="post-row__name">` + html.EscapeString(p.Title) + `</span></td>` +
+				`<td class="post-row__name">` + html.EscapeString(p.Title) + `</td>` +
 				`<td>` + string(state) + `</td>` +
 				`<td class="post-row__date">` + config.FormatSite(p.Updated, "2 Jan") + `</td></tr>`)
 			view := ""
@@ -127,7 +127,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 				`<dt>Footer</dt><dd>` + pageFooterSelect(href, p.Title, footerCfg) + `</dd></dl>` +
 				`<div class="sa-insp__actions"><button type="button" class="btn btn--sm btn--danger" data-page-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button></div></div>`)
 		}
-		list := `<div class="table-wrap"><table class="table post-table page-table"><thead><tr><th>Title</th><th>State</th><th>Updated</th></tr></thead><tbody>` +
+		list := `<div class="table-wrap"><table class="table post-table"><thead><tr><th>Title</th><th>State</th><th>Updated</th></tr></thead><tbody>` +
 			rows.String() + `</tbody></table></div>`
 		body = string(ui.List(ui.ListPage{Title: "Pages", Count: intToStr(len(pages)), Actions: newBtn, Sub: sub},
 			ui.HTML(list), ui.HTML(panels.String()+`<p id="page-nav-status" class="text-sm muted" role="status" aria-live="polite"></p>`)))

@@ -122,8 +122,8 @@ func TestTheDomainsPageDrawsEachSitesOwnMarkAndAGlobeForTheRest(t *testing.T) {
 	withLogo := domain.Domain{ID: "aaaaaaaaaaaaaaaaaaaaaaaa", Host: "haslogo.example", Status: domain.StatusActive}
 	without := domain.Domain{ID: "bbbbbbbbbbbbbbbbbbbbbbbb", Host: "nologo.example", Status: domain.StatusActive}
 
-	got := domainsCards([]domain.Domain{withLogo, without}, map[string]int{}, map[string]int{}, map[string]int{},
-		map[string]bool{withLogo.ID: true}, false)
+	f := siteFigures{marks: map[string]bool{withLogo.ID: true}}
+	got := f.siteName(withLogo) + f.siteName(without)
 
 	if !strings.Contains(got, `src="/os/d/`+withLogo.ID+`/branding/mark"`) {
 		t.Errorf("the site with its own logo does not render it.\n\npage:\n%s", got)

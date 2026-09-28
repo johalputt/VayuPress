@@ -716,49 +716,9 @@
 
 .vp-os .section-head__hint { font-size: var(--text-xs); color: var(--text-3); }
 
-/* A site's own uploaded mark, in the slot the globe would occupy. contain, not
-   cover, because a logo cropped to fill a square stops being that logo — and
-   these sit beside each other, so one squashed mark reads as a broken card. */
-.vp-os .domain-card__mark { width: 20px; height: 20px; object-fit: contain; border-radius: var(--radius-small); display: block; }
-
 /* Anonymous-world status card — the .onion indicator moved off the sidebar
    toggle and onto the dashboard, where there is room to show it properly. */
 .vp-os .world-card { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; padding: var(--sp-4) var(--sp-5); margin-bottom: var(--sp-6); border: 1px solid var(--border-strong); border-radius: var(--r-md); }
-
-.vp-os .domain-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sp-4); margin-bottom: var(--sp-5); }
-
-@media (max-width: 900px) { .vp-os .domain-grid { grid-template-columns: 1fr; }
- }
-
-.vp-os .domain-card { position: relative; display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-5); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; transition: border-color var(--t), box-shadow var(--t), transform var(--t); }
-
-.vp-os .domain-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; opacity: 0.6; }
-
-.vp-os .domain-card:hover { border-color: var(--border-strong); }
-
-.vp-os .domain-card--primary { border-color: var(--border-strong); }
-
-.vp-os .domain-card__head { display: flex; align-items: flex-start; gap: var(--sp-3); }
-
-.vp-os .domain-card__icon { flex: 0 0 auto; width: 38px; height: 38px; border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; background: var(--brand-dim); color: var(--brand); }
-
-.vp-os .domain-card__icon svg { width: 19px; height: 19px; }
-
-.vp-os .domain-card__id { flex: 1; min-width: 0; }
-
-.vp-os .domain-card__host { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-family: var(--font-mono); font-size: var(--text-sm); font-weight: 600; color: var(--text); word-break: break-all; }
-
-.vp-os .domain-card__serves { margin-top: 3px; font-size: var(--text-xs); color: var(--text-3); }
-
-.vp-os .domain-card__stats { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-
-.vp-os .domain-stat { display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 9px; border-radius: var(--radius-control); background: var(--bg-surface-2); border: 1px solid var(--border); font-size: var(--text-xs); color: var(--text-2); }
-
-.vp-os .domain-stat b { font-family: var(--font-head); font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
-
-.vp-os .domain-card__meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
-
-.vp-os .domain-card__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: auto; padding-top: var(--sp-3); border-top: 1px solid var(--border); }
 
 /* Per-site manager hero (the /os/domains/{id} surface reached from Optimize). */
 
@@ -6150,6 +6110,9 @@
 .vp-os[data-ui="still-air"] .post-row[aria-selected="true"] td { background: var(--surface-select); }
 .vp-os[data-ui="still-air"] .post-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .vp-os[data-ui="still-air"] .post-row__name { color: var(--text-1); }
+/* The select column is as wide as its checkbox: a table shares out spare
+   width, and a share of it here would push the titles right. */
+.vp-os .post-row__check { width: 1%; }
 .vp-os[data-ui="still-air"] .post-row__date { color: var(--text-2); font-variant-numeric: tabular-nums; }
 .vp-os[data-ui="still-air"] .post-row__num { color: var(--text-2); font-variant-numeric: tabular-nums; text-align: right; }
 .vp-os[data-ui="still-air"] .post-pin .sa-ico { width: 14px; height: 14px; margin-left: 6px; vertical-align: -2px; color: var(--text-3); }
@@ -6588,38 +6551,13 @@
 }
 
 /* ── Sites ─────────────────────────────────────────────────────────────── */
-/* The sites this install serves are a list: one frame, a row per site —
-   identity, what it holds, its certificate, and what can be done to it.
-   Floating cards made a list of three look like a gallery of three. */
-.vp-os[data-ui="still-air"] .domain-grid {
-  display: flex; flex-direction: column; gap: 0;
-  border: 1px solid var(--border-1); border-radius: var(--radius-surface); background: var(--surface-2); overflow: hidden;
-  margin-bottom: var(--space-7);
-}
-.vp-os[data-ui="still-air"] .domain-card {
-  display: grid; grid-template-columns: minmax(240px, 1.3fr) minmax(0, 1fr) auto;
-  grid-template-areas: "head stats actions" "head meta actions"; column-gap: var(--space-7); row-gap: 2px; align-items: center;
-  padding: 14px var(--space-6); border: 0; border-bottom: 1px solid var(--border-1); border-radius: 0; background: none; box-shadow: none;
-}
-.vp-os[data-ui="still-air"] .domain-card:last-child { border-bottom: 0; }
-.vp-os[data-ui="still-air"] .domain-card:hover { background: var(--surface-hover); transform: none; box-shadow: none; }
-.vp-os[data-ui="still-air"] .domain-card__head { grid-area: head; display: flex; align-items: center; gap: var(--space-4); min-width: 0; margin: 0; }
-.vp-os[data-ui="still-air"] .domain-card__icon {
-  width: 32px; height: 32px; flex: none; display: grid; place-items: center;
-  border-radius: var(--radius-control); background: var(--surface-press); color: var(--text-2);
-}
-.vp-os[data-ui="still-air"] .domain-card__host { font: var(--type-strong); font-family: var(--font-mono); color: var(--text-1); }
-.vp-os[data-ui="still-air"] .domain-card__serves { display: block; font: var(--type-small); color: var(--text-3); }
-.vp-os[data-ui="still-air"] .domain-card__stats { grid-area: stats; display: flex; flex-wrap: wrap; gap: 0; margin: 0; }
-.vp-os[data-ui="still-air"] .domain-card__meta { grid-area: meta; display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; }
-.vp-os[data-ui="still-air"] .domain-stat { font: var(--type-small); color: var(--text-3); background: none; border: 0; padding: 0; border-radius: 0; }
-.vp-os[data-ui="still-air"] .domain-stat b { color: var(--text-1); font-weight: 600; }
-.vp-os[data-ui="still-air"] .domain-stat + .domain-stat::before { content: "·"; margin: 0 var(--space-2); color: var(--text-4); }
-.vp-os[data-ui="still-air"] .domain-card__actions { grid-area: actions; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin: 0; padding: 0; border: 0; }
-@media (max-width: 900px) {
-  .vp-os[data-ui="still-air"] .domain-card { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "stats" "meta" "actions"; row-gap: var(--space-2); }
-  .vp-os[data-ui="still-air"] .domain-card__actions { justify-content: flex-start; }
-}
+/* A site in the list and its inspector: its own mark, or the globe, beside
+   its host. contain, not cover, because a logo cropped to fill a square
+   stops being that logo. */
+.vp-os .sa-site { display: inline-flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.vp-os .sa-site__mark { flex: none; width: 20px; height: 20px; display: grid; place-items: center; object-fit: contain; border-radius: var(--radius-small); color: var(--text-3); }
+.vp-os .sa-site__mark svg { width: 16px; height: 16px; }
+.vp-os .sa-site__host { font-family: var(--font-mono); overflow-wrap: anywhere; }
 
 /* ── Diagnostics ───────────────────────────────────────────────────────── */
 /* Faults, topology, replay and policy: prose in the UI face, identifiers in

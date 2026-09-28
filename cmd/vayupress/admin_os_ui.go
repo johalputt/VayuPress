@@ -2762,7 +2762,7 @@ func (a *App) osPostsList(ctx context.Context, v osPostsView, nonce string) stri
 		}
 		rows.WriteString(`<tr class="post-row" data-post-row data-list-row data-list-src="/os/posts/inspector/` + esc + `" tabindex="0" aria-selected="` + sel + `">` +
 			`<td class="post-row__check"><input type="checkbox" data-post-select value="` + esc + `" aria-label="Select ` + html.EscapeString(p.Title) + `"></td>` +
-			`<td class="post-row__title"><span class="post-row__name">` + html.EscapeString(p.Title) + `</span>` + osPostPinMark(esc, p.Featured, false) + `</td>` +
+			`<td><span class="post-row__name">` + html.EscapeString(p.Title) + `</span>` + osPostPinMark(esc, p.Featured, false) + `</td>` +
 			`<td><span id="post-status-` + esc + `">` + osPostState(p.Status) + `</span></td>` +
 			`<td class="post-row__date">` + config.FormatSite(p.Updated, "2 Jan") + `</td>` +
 			`<td class="post-row__num">` + n + `</td></tr>`)

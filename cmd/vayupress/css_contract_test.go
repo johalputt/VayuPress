@@ -156,7 +156,7 @@ func TestTheOtherPerSitePagesEmitNoUnstyledClass(t *testing.T) {
 		{Title: "Two", Slug: "two", Status: "draft"},
 	}))
 	assertClassesAreStyled(t, "the website page", css, scopedWebsitePage(d, "studio", bizsite.Content{Name: "X"}, false, customsite.Manifest{}, false))
-	assertClassesAreStyled(t, "the site list", css, domainsHeader([]domain.Domain{d}, ""))
+	assertClassesAreStyled(t, "the site list", css, domainsList([]domain.Domain{d}, siteFigures{}, "", "")+domainsAddForm())
 
 	// The three that were never passed to this gate — which is the other half of
 	// why an unstyled header survived on them. A gate covering four of seven pages

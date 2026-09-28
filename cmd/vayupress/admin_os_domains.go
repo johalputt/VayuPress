@@ -28,6 +28,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/users"
 )
 
@@ -73,7 +74,130 @@ func toggleStatusFor(d domain.Domain) string {
 	return domain.StatusDisabled
 }
 
-// handleOSDomains renders the domain registry management page.
+// siteHeld reports a hosted site parked on manual hold: every provisioning
+// helper skips it, so it has no certificate by design.
+func siteHeld(d domain.Domain) bool { return !d.IsPrimary && !d.IsSyncApproved() }
+
+// siteUncertified reports a hosted site approved for provisioning that has no
+// certificate yet. A held site is not counted: not issuing one is what the
+// hold does, and counting it twice would make the hold look like a fault.
+func siteUncertified(d domain.Domain) bool {
+	return !d.IsPrimary && d.IsSyncApproved() && d.TLSState != domain.TLSActive && d.TLSState != domain.TLSPrimary
+}
+
+// siteState is a site's state as a dot and a word: the one thing an operator
+// opens this page to learn, which is whether each site is up.
+func siteState(d domain.Domain) ui.HTML {
+	switch {
+	case !d.IsPrimary && isPendingTorSite(d.Host):
+		return ui.State("accent", "Minting .onion")
+	case d.Status != domain.StatusActive:
+		return ui.State("neutral", "Disabled")
+	case siteHeld(d):
+		return ui.State("warn", "On hold")
+	case siteUncertified(d):
+		return ui.State("warn", "No certificate")
+	}
+	return ui.State("ok", "Serving")
+}
+
+// siteFigures is what the list shows of each site beyond its state, all read
+// once per page: posts and members keyed by domain id (the primary owns ""),
+// mailboxes by host, and whether a site has its own mark.
+type siteFigures struct {
+	posts, members, mail map[string]int
+	marks                map[string]bool
+	mailOn               bool
+	viewing              string
+}
+
+func (f siteFigures) key(d domain.Domain) string {
+	if d.IsPrimary {
+		return ""
+	}
+	return d.ID
+}
+
+// mailLine says what mail a site carries. The primary carries the install's
+// mail when the engine is on; a hosted site opts in with mail_enabled.
+func (f siteFigures) mailLine(d domain.Domain) string {
+	if (d.IsPrimary && f.mailOn) || (!d.IsPrimary && d.MailEnabled) {
+		n := f.mail[strings.ToLower(d.Host)]
+		if n == 1 {
+			return "1 mailbox"
+		}
+		return strconv.Itoa(n) + " mailboxes"
+	}
+	return "No mail"
+}
+
+// siteName is a site's mark and host as the row and the inspector show them.
+// A site's own uploaded mark stands in for the globe; a site without one gets
+// no <img> at all, because a mark route that 404s draws a broken image.
+func (f siteFigures) siteName(d domain.Domain) string {
+	mark := `<span class="sa-site__mark">` + iconDomains + `</span>`
+	if !d.IsPrimary && f.marks[d.ID] {
+		mark = `<img class="sa-site__mark" src="/os/d/` + html.EscapeString(d.ID) + `/branding/mark" alt="" width="20" height="20">`
+	}
+	host := html.EscapeString(d.Host)
+	// A just-added Tor site has a placeholder host until the parent mints its
+	// .onion; the row says so rather than show the internal placeholder.
+	if !d.IsPrimary && isPendingTorSite(d.Host) {
+		host = `<span class="muted">A new Tor site</span>`
+	}
+	return `<span class="sa-site">` + mark + `<span class="sa-site__host">` + host + `</span></span>`
+}
+
+// siteInspector is one site in the inspector: its facts, and what can be done
+// to it. The primary is managed from Website settings; a hosted site opens its
+// own console, and is synced, switched and removed from here.
+func (f siteFigures) siteInspector(d domain.Domain) string {
+	esc := html.EscapeString
+	var b strings.Builder
+	meta := siteTypeLabel(d.EffectiveSiteType())
+	if d.IsPrimary {
+		meta = "The primary site · " + meta
+	}
+	if f.viewing != "" && strings.EqualFold(f.viewing, d.Host) {
+		meta += " · you are reading this from it"
+	}
+	b.WriteString(`<div class="sa-insp__title">` + f.siteName(d) + `</div><div class="sa-insp__meta">` + esc(meta) + `</div>`)
+	if d.IsPrimary {
+		b.WriteString(`<div class="sa-insp__actions"><a class="btn btn--sm" href="/os/website">Manage in Website</a></div>`)
+	} else {
+		b.WriteString(`<div class="sa-insp__actions"><a class="btn btn--sm" href="/os/d/` + esc(d.ID) + `">Open site</a></div>`)
+	}
+	b.WriteString(`<dl class="sa-insp__facts"><dt>State</dt><dd>` + string(siteState(d)) + `</dd>` +
+		`<dt>Certificate</dt><dd>` + esc(tlsLabel(d.TLSState)) + `</dd>`)
+	if !d.IsPrimary {
+		sync := "Approved"
+		if siteHeld(d) {
+			sync = "On manual hold: every provisioning helper skips it"
+		}
+		b.WriteString(`<dt>Provisioning</dt><dd>` + sync + `</dd>`)
+	}
+	k := f.key(d)
+	b.WriteString(`<dt>Posts</dt><dd>` + strconv.Itoa(f.posts[k]) + `</dd>` +
+		`<dt>Members</dt><dd>` + strconv.Itoa(f.members[k]) + `</dd>` +
+		`<dt>Mail</dt><dd>` + f.mailLine(d) + `</dd></dl>`)
+	if !d.IsPrimary {
+		id := esc(d.ID)
+		syncLabel, syncTarget := "Sync now", domain.SyncApproved
+		if d.IsSyncApproved() {
+			syncLabel, syncTarget = "Pause sync", domain.SyncHold
+		}
+		b.WriteString(`<div class="sa-insp__actions">` +
+			`<button type="button" class="btn btn--ghost btn--sm" data-dom-sync data-id="` + id + `" data-sync="` + syncTarget + `">` + syncLabel + `</button>` +
+			`<button type="button" class="btn btn--ghost btn--sm" data-dom-toggle data-id="` + id + `" data-status="` + toggleStatusFor(d) + `">` + toggleLabelFor(d) + `</button>` +
+			`<button type="button" class="btn btn--danger btn--sm" data-dom-delete data-id="` + id + `" data-host="` + esc(d.Host) + `">Remove</button></div>`)
+	}
+	return b.String()
+}
+
+// handleOSDomains renders the sites this install serves as the List kind: a
+// row per site with its state, views for the two states that need the
+// operator (on hold, no certificate), a search, and the selected site in the
+// inspector. Adding a site rises in a sheet.
 func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -86,287 +210,160 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 			domains = list
 		}
 	}
+	f := siteFigures{posts: map[string]int{}, members: map[string]int{}, mail: map[string]int{}, marks: map[string]bool{}}
 	// Each site's own mark, or none — never the primary's. One cheap read per
 	// site (the stored type key, not the image).
-	marks := map[string]bool{}
 	for _, d := range domains {
 		if !d.IsPrimary {
-			marks[d.ID] = a.siteHasOwnMark(r.Context(), d.ID)
+			f.marks[d.ID] = a.siteHasOwnMark(r.Context(), d.ID)
 		}
 	}
-
-	// Per-domain article counts (VayuDomains Stage 2 — content ownership).
-	counts := map[string]int{}
 	if a.articles != nil {
 		if c, err := a.articles.CountsByDomain(r.Context()); err == nil {
-			counts = c
+			f.posts = c
 		}
 	}
-
-	// Per-domain mailbox counts (VayuDomains Stage 3a — mail-domain foundation).
-	// Read-only reporting: mailboxes are keyed by full address, so the host is
-	// derived. Delivery/auth stays untouched until Stage 3b.
-	mailCounts := map[string]int{}
-	mailOn := false
+	// Mailboxes are keyed by full address, so the host is derived.
 	if a.vayuMail != nil {
-		mailOn = a.vayuMail.Config().Enabled
+		f.mailOn = a.vayuMail.Config().Enabled
 		if a.vayuMail.Accounts() != nil {
 			if c, err := a.vayuMail.Accounts().CountsByHost(r.Context()); err == nil {
-				mailCounts = c
+				f.mail = c
 			}
 		}
 	}
-
-	// Per-domain member counts (VayuDomains Stage 4 — member attribution). Keyed by
-	// the registry domain id ("" = primary), like the article counts.
-	memberCounts := map[string]int{}
 	if a.members != nil {
 		if c, err := a.members.CountsByDomain(r.Context()); err == nil {
-			memberCounts = c
+			f.members = c
 		}
 	}
-
-	// The host the operator is currently browsing from — surfaced so it is
-	// obvious which registered domain served this very page.
-	viewingHost := ""
 	if d, ok := activeDomain(r); ok {
-		viewingHost = d.Host
+		f.viewing = d.Host
 	}
 
-	// In the Tor world (OnionMode) a domain is a ".onion" the operator can't type —
-	// it is minted for them. So swap the clearnet "Add a domain" host form for the
-	// one-click "Add Tor site" picker, and auto-refresh while any site is still
-	// waiting for its onion to land.
+	body := domainsList(domains, f, r.URL.Query().Get("view"), r.URL.Query().Get("q"))
+
+	// In the Tor world a domain is a ".onion" the operator can't type — it is
+	// minted for them — so the sheet offers the one-click Tor site instead, and
+	// the page refreshes itself while any site still waits for its onion.
 	onion := config.Cfg.OnionMode
-	addForm := domainsAddForm()
 	pending := false
 	if onion {
-		addForm = torSitesAddForm()
 		for _, d := range domains {
 			if !d.IsPrimary && isPendingTorSite(d.Host) {
 				pending = true
 				break
 			}
 		}
+		body += string(ui.Sheet("dom-add", "Add a Tor site", ui.HTML(torSitesAddForm())))
+	} else {
+		body += string(ui.Sheet("dom-add", "Add a site", ui.HTML(domainsAddForm())))
 	}
-
-	// The list is a premium, animated card grid; per-domain branding/content
-	// editing moved to each site's own console (/os/d/{id}), surfaced from
-	// the Optimize hub, so this page stays a clean add / list / remove surface.
-	body := domainsHeader(domains, viewingHost) +
-		domainsCards(domains, counts, mailCounts, memberCounts, marks, mailOn) +
-		addForm +
-		domainsScript(nonce) +
-		torSitesScript(nonce, onion, pending)
+	body += domainsScript(nonce) + torSitesScript(nonce, onion, pending)
 
 	writeOSHTML(w, r, adminOSLayout(nonce, "Domains", "domains", cfg, htmpl.HTML(body)))
 }
 
-// domainsHeader renders the list header in the Monetization house style
-// (ADR-0154 D5): four tiles answering "what is the state of my sites", one lede,
-// and the staging detail folded into an accordion.
-//
-// It replaced a header carrying a single 150-word `card--info` paragraph about
-// rollout stages, manual holds and provisioning helpers. Every sentence in it was
-// true and none of it answered the question an operator opens this page with,
-// which is "are my sites up". Reference material an operator reads once does not
-// belong permanently above the thing they came for.
-func domainsHeader(domains []domain.Domain, viewingHost string) string {
-	total, live, held, uncertified := len(domains), 0, 0, 0
+// domainsList renders the list page for the given view ("held", "nocert" or
+// all) and search.
+func domainsList(domains []domain.Domain, f siteFigures, view, q string) string {
+	q = strings.ToLower(strings.TrimSpace(q))
+	held, uncertified := 0, 0
 	for _, d := range domains {
-		if d.Status == domain.StatusActive {
-			live++
-		}
-		if !d.IsPrimary && !d.IsSyncApproved() {
+		if siteHeld(d) {
 			held++
 		}
-		if !d.IsPrimary && d.IsSyncApproved() &&
-			d.TLSState != domain.TLSActive && d.TLSState != domain.TLSPrimary {
+		if siteUncertified(d) {
 			uncertified++
 		}
 	}
-
-	sub := "Every site this install serves. Open one to operate it — its content, settings, theme, SEO and visitors are its own."
-	if viewingHost != "" {
-		sub += ` You are reading this from <strong>` + html.EscapeString(viewingHost) + `</strong>.`
+	var shown []domain.Domain
+	for _, d := range domains {
+		switch {
+		case view == "held" && !siteHeld(d), view == "nocert" && !siteUncertified(d):
+			continue
+		case q != "" && !strings.Contains(strings.ToLower(d.Host), q):
+			continue
+		}
+		shown = append(shown, d)
 	}
 
-	var b strings.Builder
-	b.WriteString(`<div class="page-header"><h1>Sites</h1>` +
-		`<div class="page-actions"><a class="btn btn--ghost btn--sm" href="/os/dns">Domains &amp; DNS</a>` +
-		`<span id="dom-status" class="text-sm muted" role="status" aria-live="polite"></span></div></div>`)
-	b.WriteString(`<p class="page-sub">` + sub + `</p>`)
+	addLabel := "Add a site"
+	if config.Cfg.OnionMode {
+		addLabel = "Add a Tor site"
+	}
+	actions := `<button type="button" class="btn btn--primary" data-sheet="dom-add">` + saIcon("plus") + ` ` + addLabel + `</button>`
+	// The batch counterpart to each site's Sync now; the helper still
+	// provisions out of process.
+	if held > 0 {
+		actions += `<button type="button" class="btn btn--ghost" data-dom-sync-all>Sync every held site</button>`
+	}
+	actions += `<a class="btn btn--ghost" href="/os/dns">Domains &amp; DNS</a>`
+
+	if len(domains) == 0 {
+		return string(ui.List(ui.ListPage{Title: "Sites", Actions: ui.HTML(actions)},
+			ui.Empty("globe", "No sites yet", "The primary site is added on its own once DOMAIN is configured. Other sites are added here.",
+				ui.HTML(`<button type="button" class="btn btn--primary" data-sheet="dom-add">`+addLabel+`</button>`)), ""))
+	}
+
+	href := func(v string) string {
+		u := url.Values{}
+		if v != "" {
+			u.Set("view", v)
+		}
+		if q != "" {
+			u.Set("q", q)
+		}
+		if enc := u.Encode(); enc != "" {
+			return "/os/domains?" + enc
+		}
+		return "/os/domains"
+	}
+	keep := [][2]string{}
+	if view == "held" || view == "nocert" {
+		keep = append(keep, [2]string{"view", view})
+	}
 
 	// A configuration fault that decides which server block answers for a
 	// hostname belongs above the site list, not in a warn-level log line. Empty
-	// on a healthy install, so this costs nothing on the overwhelming majority
-	// of page views (ADR-0157).
-	b.WriteString(nginxConfigHealthCard(inspectNginxSitesEnabled(nginxSitesEnabled)))
-
-	b.WriteString(`<div class="stat-grid">`)
-	b.WriteString(vmStatTile(strconv.Itoa(total), "Sites", ""))
-	b.WriteString(vmStatTile(strconv.Itoa(live), "Enabled", ""))
-	heldTone := ""
-	if held > 0 {
-		heldTone = "warn"
-	}
-	b.WriteString(vmStatTile(strconv.Itoa(held), "On hold", heldTone))
-	certTone := ""
-	if uncertified > 0 {
-		certTone = "warn"
-	}
-	b.WriteString(vmStatTile(strconv.Itoa(uncertified), "No certificate", certTone))
-	b.WriteString(`</div>`)
-
-	// The reference material, available and not shouting.
-	b.WriteString(`<div class="mon-stack">`)
-	b.WriteString(monAcc(saIcon("book"), "How adding a site works", "Register, point DNS, approve, provision",
-		`<span class="mon-chip mon-chip--off">Read once</span>`, false,
-		`<div class="card"><p class="text-sm muted">Adding a site only <strong>registers</strong> it — nothing is
-    provisioned automatically, and a registered site serves nothing until it has a certificate. The order is:
-    add it here, point its DNS at this server, approve it (<strong>Sync now</strong>, or the switch on the site's
-    own console), then run <strong>Provision subdomains</strong> on <a href="/os/dns">Domains &amp; DNS</a>. That
-    last step is a root-side helper — this service runs unprivileged and cannot obtain a certificate or reload
-    nginx itself. It also runs daily, so a record you point later is picked up without you doing anything.</p>
-  <p class="text-sm muted"><strong>Nothing restarts and nothing goes down.</strong> Provisioning obtains the
-    certificate, writes the vhost and reloads nginx; the running server then picks the new domain up from its own
-    registry <strong>within 30 seconds</strong>. It used to restart the service at the end of every run, which
-    meant a full outage — nginx has no queue in front of the app, so every second of that restart was a 502 for
-    every visitor on every site. If a freshly certified domain does not answer immediately, that half-minute is
-    why; it is not a fault to chase.</p>
-  <p class="text-sm muted">A site on <strong>manual hold</strong> is skipped by every provisioning helper. That is
-    what the hold is for, and it is why a held site never gets a certificate.</p></div>`))
-	b.WriteString(`</div>`)
-	return b.String()
-}
-
-// domainsCards renders the registry as a premium, animated card grid (replacing
-// the Stage-1 table): each hostname is a card carrying its identity, live
-// content/member/mail counts, sync/TLS/status pills and lifecycle actions. Each
-// secondary card links to its own console (/os/d/{id}), which is
-// also surfaced from the Optimize hub, so the operator controls every part of a
-// site from one place. Shared by both worlds — in the Tor world the hosts are
-// .onion addresses and the same cards render unchanged.
-func domainsCards(domains []domain.Domain, counts, mailCounts, memberCounts map[string]int, marks map[string]bool, mailOn bool) string {
-	if len(domains) == 0 {
-		return `<div class="card"><div class="empty-title">No domains registered yet</div>
-<div class="empty-sub">The primary domain is seeded automatically once DOMAIN is configured. Add a secondary domain below.</div></div>`
-	}
-	var cards strings.Builder
-	held := 0 // secondary domains parked on manual hold (for the bulk action)
-	for _, d := range domains {
-		if !d.IsPrimary && !d.IsSyncApproved() {
-			held++
-		}
-		// Content/member counts are keyed by domain id; the primary owns "".
-		key := d.ID
-		if d.IsPrimary {
-			key = ""
-		}
-
-		cardCls := "domain-card"
-		badge := ""
-		if d.IsPrimary {
-			cardCls += " domain-card--primary"
-			badge = ` <span class="pill pill--accent">Primary</span>`
-		}
-
-		// A just-added Tor site has a placeholder host until the parent mints its
-		// .onion; show that plainly rather than the internal placeholder hostname.
-		hostText := `<span class="domain-card__host">` + html.EscapeString(d.Host) + badge + `</span>`
-		if !d.IsPrimary && isPendingTorSite(d.Host) {
-			hostText = `<span class="domain-card__host"><span class="pill pill--muted">Minting .onion…</span></span>`
-		}
-
-		statusPill := `<span class="pill pill--ok">Active</span>`
-		if d.Status != domain.StatusActive {
-			statusPill = `<span class="pill pill--muted">Disabled</span>`
-		}
-		tlsPill := `<span class="pill pill--muted">` + html.EscapeString(tlsLabel(d.TLSState)) + `</span>`
-		// Sync (P5 manual gate): the primary is provisioned outside the registry.
-		syncPill := ""
-		if !d.IsPrimary {
-			if d.IsSyncApproved() {
-				syncPill = `<span class="pill pill--ok">Synced</span>`
-			} else {
-				syncPill = `<span class="pill pill--muted">Manual hold</span>`
+	// on a healthy install (ADR-0157).
+	list := nginxConfigHealthCard(inspectNginxSitesEnabled(nginxSitesEnabled))
+	inspector := ""
+	if len(shown) == 0 {
+		list += `<p class="table-empty">No site matches that. <a href="/os/domains">Show every site</a>.</p>`
+	} else {
+		var rows, panels strings.Builder
+		for i, d := range shown {
+			key := "site-" + strconv.Itoa(i)
+			sel, hidden := "false", " hidden"
+			if i == 0 {
+				sel, hidden = "true", ""
 			}
+			k := f.key(d)
+			rows.WriteString(`<tr class="post-row" data-list-row data-list-panel="` + key + `" tabindex="0" aria-selected="` + sel + `">` +
+				`<td>` + f.siteName(d) + `</td>` +
+				`<td class="post-row__date">` + html.EscapeString(siteTypeLabel(d.EffectiveSiteType())) + `</td>` +
+				`<td class="post-row__date">` + strconv.Itoa(f.posts[k]) + `</td>` +
+				`<td class="post-row__date">` + strconv.Itoa(f.members[k]) + `</td>` +
+				`<td class="post-row__date">` + f.mailLine(d) + `</td>` +
+				`<td>` + string(siteState(d)) + `</td></tr>`)
+			panels.WriteString(`<div data-list-panel-id="` + key + `"` + hidden + `>` + f.siteInspector(d) + `</div>`)
 		}
-
-		// Stat chips: content, members and mail (all derived read-only).
-		stats := `<span class="domain-stat"><b>` + strconv.Itoa(counts[key]) + `</b> posts</span>` +
-			`<span class="domain-stat"><b>` + strconv.Itoa(memberCounts[key]) + `</b> members</span>` +
-			domainMailStat(d, mailCounts[strings.ToLower(d.Host)], mailOn)
-
-		// Actions: the primary is managed from Website settings; secondary sites get
-		// Manage (per-site editor), Sync, enable/disable and Remove.
-		var actions string
-		if d.IsPrimary {
-			actions = `<a class="btn btn--ghost btn--sm" href="/os/website">Manage in Website</a>`
-		} else {
-			syncLabel, syncTarget := "Sync now", domain.SyncApproved
-			if d.IsSyncApproved() {
-				syncLabel, syncTarget = "Pause sync", domain.SyncHold
-			}
-			actions = `<a class="btn btn--primary btn--sm" href="/os/d/` + html.EscapeString(d.ID) + `">Open site</a>` +
-				`<button type="button" class="btn btn--ghost btn--sm" data-dom-sync data-id="` + html.EscapeString(d.ID) + `" data-sync="` + syncTarget + `">` + syncLabel + `</button>` +
-				`<button type="button" class="btn btn--ghost btn--sm" data-dom-toggle data-id="` + html.EscapeString(d.ID) + `" data-status="` + toggleStatusFor(d) + `">` + toggleLabelFor(d) + `</button>` +
-				`<button type="button" class="btn btn--danger btn--sm" data-dom-delete data-id="` + html.EscapeString(d.ID) + `" data-host="` + html.EscapeString(d.Host) + `">Remove</button>`
-		}
-
-		// A site's own uploaded mark stands in for the globe. A site without one
-		// gets no <img> at all: a mark route that 404s draws a broken image.
-		icon := iconDomains
-		if marks[d.ID] {
-			icon = `<img class="domain-card__mark" src="/os/d/` + html.EscapeString(d.ID) + `/branding/mark" alt="" width="20" height="20">`
-		}
-		cards.WriteString(`<div class="` + cardCls + `">
-  <div class="domain-card__head">
-    <span class="domain-card__icon">` + icon + `</span>
-    <span class="domain-card__id">` + hostText + `
-      <span class="domain-card__serves">` + html.EscapeString(siteTypeLabel(d.EffectiveSiteType())) + `</span>
-    </span>
-    ` + statusPill + `
-  </div>
-  <div class="domain-card__stats">` + stats + `</div>
-  <div class="domain-card__meta">` + syncPill + tlsPill + `</div>
-  <div class="domain-card__actions">` + actions + `</div>
-</div>`)
+		list += `<div class="table-wrap"><table class="table post-table"><thead><tr><th>Site</th><th>Serves</th><th>Posts</th><th>Members</th><th>Mail</th><th>State</th></tr></thead><tbody>` +
+			rows.String() + `</tbody></table></div>`
+		inspector = panels.String()
 	}
-	// Bulk action: when one or more secondaries sit on manual hold, offer a single
-	// "Sync all pending" that approves them together — the batch counterpart to
-	// each card's "Sync now" (the helper still provisions out-of-process).
-	bulk := ""
-	if held > 0 {
-		unit := "domains"
-		if held == 1 {
-			unit = "domain"
-		}
-		bulk = `<div class="vm-row mb-6">
-  <button type="button" class="btn btn--primary btn--sm" data-dom-sync-all>Sync all pending (` + strconv.Itoa(held) + ` ` + unit + `)</button>
-  <span id="dom-sync-all-status" class="text-sm muted" role="status" aria-live="polite"></span>
-</div>`
-	}
-	return bulk + `<div class="domain-grid">` + cards.String() + `</div>`
-}
 
-// domainMailStat renders the mail chip for a domain card — the compact,
-// card-friendly counterpart to mailCell. The primary carries the install's mail
-// when the engine is on; a secondary opts in via mail_enabled; otherwise the
-// chip reads "no mail". The mailbox count is derived read-only from the account
-// store (VayuDomains Stage 3a).
-func domainMailStat(d domain.Domain, n int, mailOn bool) string {
-	switch {
-	case d.IsPrimary:
-		if !mailOn {
-			return `<span class="domain-stat">no mail</span>`
-		}
-		return `<span class="domain-stat"><b>` + strconv.Itoa(n) + `</b> mailboxes</span>`
-	case d.MailEnabled:
-		return `<span class="domain-stat"><b>` + strconv.Itoa(n) + `</b> mailboxes</span>`
-	default:
-		return `<span class="domain-stat">no mail</span>`
-	}
+	return string(ui.List(ui.ListPage{
+		Title: "Sites",
+		Count: strconv.Itoa(len(domains)),
+		Views: ui.Segments("Show",
+			ui.Segment{Label: "All", Href: href(""), Count: len(domains), On: view != "held" && view != "nocert"},
+			ui.Segment{Label: "On hold", Href: href("held"), Count: held, On: view == "held"},
+			ui.Segment{Label: "No certificate", Href: href("nocert"), Count: uncertified, On: view == "nocert"}),
+		Search:  ui.Search(ui.SearchBox{Action: "/os/domains", Name: "q", Value: q, Placeholder: "Search sites", Keep: keep}),
+		Actions: ui.HTML(actions + `<span id="dom-status" class="text-sm muted" role="status" aria-live="polite"></span>`),
+	}, ui.HTML(list), ui.HTML(inspector)))
 }
 
 // handleOSDomainManage renders the per-site manager for one secondary domain —
@@ -718,6 +715,9 @@ func tlsLabel(state string) string {
 	}
 }
 
+// domainsAddForm is the Add a site sheet's body. The order of operations sits
+// under the button, folded: an operator adding a first site needs it, and it
+// is about adding, so it lives where adding happens rather than above the list.
 func domainsAddForm() string {
 	var opts strings.Builder
 	for _, o := range siteTypeOptions {
@@ -728,25 +728,28 @@ func domainsAddForm() string {
 		opts.WriteString(`<option value="` + o.Value + `">` +
 			html.EscapeString(o.Label+" — "+servesOutcome(o.Value)) + `</option>`)
 	}
-	return `<div class="card">
-  <h2 class="card-title">Add a domain</h2>
-  <p class="text-sm muted">Register another hostname this install should answer on. New domains start on <strong>manual hold</strong>: nothing is provisioned until you point DNS here and press <strong>Sync now</strong> on the domain's row.</p>
-  <div class="form-grid">
-    <label class="field"><span class="field-label">Host</span>
-      <input type="text" id="dom-host" class="input" placeholder="example.com" autocomplete="off" spellcheck="false"></label>
-    <label class="field"><span class="field-label">Serves</span>
-      <select id="dom-type" class="input">` + opts.String() + `</select></label>
-    <label class="field field--check"><input type="checkbox" id="dom-mail"> <span class="field-label">Branded mail on this domain</span></label>
-  </div>
-  <div class="vm-row" style="gap:.5rem;align-items:center">
-    <button type="button" class="btn btn--primary" data-dom-add>Add domain</button>
-    <span id="dom-status" class="text-sm muted" role="status" aria-live="polite"></span>
-  </div>
-</div>`
+	return `<div class="field"><label class="field-label" for="dom-host">Host</label>
+  <input type="text" id="dom-host" class="input" placeholder="example.com" autocomplete="off" spellcheck="false"></div>
+<div class="field"><label class="field-label" for="dom-type">Serves</label>
+  <select id="dom-type" class="select">` + opts.String() + `</select></div>
+<label class="cz-check"><input type="checkbox" id="dom-mail"> Branded mail on this site</label>
+<div class="mt-3 sa-list__sheet-actions"><button type="button" class="btn btn--primary btn--sm" data-dom-add>Add site</button>
+  <span id="dom-add-status" class="text-sm muted" role="status" aria-live="polite"></span></div>
+<details class="mt-3"><summary class="text-sm">How adding a site works</summary>
+  <p class="text-sm muted">Adding a site only <strong>registers</strong> it, on <strong>manual hold</strong>: nothing is
+    provisioned, and it serves nothing until it has a certificate. Point its DNS at this server, approve it
+    (<strong>Sync now</strong>), then run <strong>Provision subdomains</strong> on <a href="/os/dns">Domains &amp; DNS</a>.
+    That last step is a root-side helper, because this service runs unprivileged and cannot obtain a certificate or
+    reload nginx itself; it also runs daily, so a record you point later is picked up on its own.</p>
+  <p class="text-sm muted"><strong>Nothing restarts and nothing goes down.</strong> Provisioning obtains the certificate,
+    writes the vhost and reloads nginx; the running server picks the new site up from its registry
+    <strong>within 30 seconds</strong>. If a freshly certified site does not answer at once, that half-minute is why.</p>
+  <p class="text-sm muted">A site on manual hold is skipped by every provisioning helper. That is what the hold is
+    for, and it is why a held site never gets a certificate.</p></details>`
 }
 
-// torSitesAddForm is the one-click "Add Tor site" card, shown only in the Tor
-// world (ADR-0141). There is no host to type — the operator picks what the site
+// torSitesAddForm is the Add a Tor site sheet's body, in the Tor world only
+// (ADR-0141). There is no host to type: the operator picks what the site
 // serves and the parent mints a fresh dedicated .onion for it. Anonymous mail
 // (VayuMail·Tor) can be switched on so the new site also carries mailboxes.
 func torSitesAddForm() string {
@@ -754,19 +757,12 @@ func torSitesAddForm() string {
 	for _, o := range siteTypeOptions {
 		opts.WriteString(`<option value="` + o.Value + `">` + html.EscapeString(o.Label) + `</option>`)
 	}
-	return `<div class="card">
-  <h2 class="card-title">Add a Tor site</h2>
-  <p class="text-sm muted">Spin up another anonymous site in one click. You don't pick a name — VayuPress mints a fresh <code>.onion</code> for it automatically. Choose what it serves, optionally turn on anonymous mail, and its <code>.onion</code> address appears in the table above within about a minute.</p>
-  <div class="form-grid">
-    <label class="field"><span class="field-label">Serves</span>
-      <select id="tor-site-type" class="input">` + opts.String() + `</select></label>
-    <label class="field field--check"><input type="checkbox" id="tor-site-mail"> <span class="field-label">Enable anonymous mail (VayuMail·Tor)</span></label>
-  </div>
-  <div class="vm-row" style="gap:.5rem;align-items:center">
-    <button type="button" class="btn btn--primary" data-tor-site-add>Add Tor site</button>
-    <span id="tor-site-status" class="text-sm muted" role="status" aria-live="polite"></span>
-  </div>
-</div>`
+	return `<p class="text-sm muted">VayuPress mints a fresh <code>.onion</code> for it; its address appears in the list within about a minute.</p>
+<div class="field"><label class="field-label" for="tor-site-type">Serves</label>
+  <select id="tor-site-type" class="select">` + opts.String() + `</select></div>
+<label class="cz-check"><input type="checkbox" id="tor-site-mail"> Anonymous mail (VayuMail·Tor)</label>
+<div class="mt-3 sa-list__sheet-actions"><button type="button" class="btn btn--primary btn--sm" data-tor-site-add>Add Tor site</button>
+  <span id="tor-site-status" class="text-sm muted" role="status" aria-live="polite"></span></div>`
 }
 
 // torSitesScript wires the "Add Tor site" button and, while any site is still
@@ -805,8 +801,8 @@ if(b)b.addEventListener('click',function(){
 </script>`
 }
 
-// domainsScript wires the registry list page: add a domain, per-card sync /
-// enable / remove, and the bulk "Sync all pending" action. Per-domain branding
+// domainsScript wires the site list: add a site, each site's sync / enable /
+// remove in the inspector, and the bulk "Sync every held site" action. Per-domain branding
 // and post assignment moved to each site's manager (domainManageScript), so this
 // script is now just the list-page CRUD. Every handler is null-guarded so a page
 // without a given control (e.g. no pending domains → no bulk button) is safe.
@@ -817,16 +813,18 @@ function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return 
 var st=document.getElementById('dom-status');
 function show(t){if(st)st.textContent=t;}
 var addBtn=document.querySelector('[data-dom-add]');
+var addSt=document.getElementById('dom-add-status');
+function said(t){if(addSt)addSt.textContent=t;}
 if(addBtn)addBtn.addEventListener('click',function(){
   var host=(document.getElementById('dom-host').value||'').trim();
-  if(!host){show('Enter a host.');return;}
+  if(!host){said('Enter a host.');return;}
   var type=document.getElementById('dom-type').value;
   var mail=document.getElementById('dom-mail').checked;
-  addBtn.disabled=true;show('Adding…');
+  addBtn.disabled=true;said('Adding…');
   fetch('/os/api/domains',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({host:host,site_type:type,mail_enabled:mail})})
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-    .then(function(res){if(res.ok){location.reload();}else{addBtn.disabled=false;show((res.j&&res.j.message)||'Could not add domain');}})
-    .catch(function(e){addBtn.disabled=false;show('Error: '+e);});
+    .then(function(res){if(res.ok){location.reload();}else{addBtn.disabled=false;said((res.j&&res.j.message)||'Could not add the site');}})
+    .catch(function(e){addBtn.disabled=false;said('Error: '+e);});
 });
 document.querySelectorAll('[data-dom-sync]').forEach(function(b){
   b.addEventListener('click',function(){
@@ -838,11 +836,10 @@ document.querySelectorAll('[data-dom-sync]').forEach(function(b){
 });
 var syncAllBtn=document.querySelector('[data-dom-sync-all]');
 if(syncAllBtn)syncAllBtn.addEventListener('click',function(){
-  var s=document.getElementById('dom-sync-all-status');
-  syncAllBtn.disabled=true;if(s)s.textContent='Approving…';
+  syncAllBtn.disabled=true;show('Approving…');
   fetch('/os/api/domains/sync-all',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({sync_state:'approved'})})
-    .then(function(r){if(r.ok){location.reload();}else{syncAllBtn.disabled=false;if(s)s.textContent='Could not approve pending domains';}})
-    .catch(function(e){syncAllBtn.disabled=false;if(s)s.textContent='Error: '+e;});
+    .then(function(r){if(r.ok){location.reload();}else{syncAllBtn.disabled=false;show('Could not approve the held sites');}})
+    .catch(function(e){syncAllBtn.disabled=false;show('Error: '+e);});
 });
 document.querySelectorAll('[data-dom-toggle]').forEach(function(b){
   b.addEventListener('click',function(){
