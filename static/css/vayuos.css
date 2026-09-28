@@ -6005,11 +6005,11 @@
    band's hairline like the rows do, its first and last columns on the page's
    edges. A Status page's history does the same, and the List kind (step 5)
    will for every list. */
-.vp-os[data-ui="still-air"] :is(.settings-page, .sa-status) .table-wrap { border: 0; border-radius: 0; background: none; }
-.vp-os[data-ui="still-air"] :is(.settings-page, .sa-status) .table :is(th, td):first-child { padding-left: 0; }
-.vp-os[data-ui="still-air"] :is(.settings-page, .sa-status) .table :is(th, td):last-child { padding-right: 0; }
-.vp-os[data-ui="still-air"] :is(.settings-page, .sa-status) .table tr:last-child td { border-bottom: 1px solid var(--border-1); }
-.vp-os[data-ui="still-air"] :is(.settings-page, .sa-status) .table-empty { padding: var(--space-5) 0; text-align: left; }
+.vp-os[data-ui="still-air"] :is(.settings-page, .sa-statuspage) .table-wrap { border: 0; border-radius: 0; background: none; }
+.vp-os[data-ui="still-air"] :is(.settings-page, .sa-statuspage) .table :is(th, td):first-child { padding-left: 0; }
+.vp-os[data-ui="still-air"] :is(.settings-page, .sa-statuspage) .table :is(th, td):last-child { padding-right: 0; }
+.vp-os[data-ui="still-air"] :is(.settings-page, .sa-statuspage) .table tr:last-child td { border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] :is(.settings-page, .sa-statuspage) .table-empty { padding: var(--space-5) 0; text-align: left; }
 
 /* Tabs: underline, never pills. VayuMail's own tab strip is replaced by the
    Mail app's sidebar. */
@@ -6749,9 +6749,9 @@
 .vp-os[data-ui="still-air"] .sa-status__head--danger .sa-status__mark { background: var(--danger-soft); color: var(--danger); }
 .vp-os[data-ui="still-air"] .sa-status__state { margin: 0; font: var(--type-title); color: var(--text-1); }
 .vp-os[data-ui="still-air"] .sa-status__detail { margin: 2px 0 0; font: var(--type-body); color: var(--text-2); }
-.vp-os[data-ui="still-air"] .sa-status > section { margin-top: var(--space-8); }
-.vp-os[data-ui="still-air"] .sa-status .section-head { border-bottom: 1px solid var(--border-1); padding-bottom: var(--space-3); }
-.vp-os[data-ui="still-air"] .sa-status .section-head + * { margin-top: 0; }
+.vp-os[data-ui="still-air"] .sa-statuspage > section { margin-top: var(--space-8); }
+.vp-os[data-ui="still-air"] .sa-statuspage .section-head { border-bottom: 1px solid var(--border-1); padding-bottom: var(--space-3); }
+.vp-os[data-ui="still-air"] .sa-statuspage .section-head + * { margin-top: 0; }
 /* Updates: the check's outcome sits in the state line, so it is a dot and a
    word (rule 4) rather than the pill it was on the old card. The script sets
    data-state; the dot follows it. */

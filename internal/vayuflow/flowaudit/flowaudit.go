@@ -103,9 +103,9 @@ func Run(in Inputs) []Check {
 	out = append(out, Check{
 		Title:  "Armed",
 		Status: statusFor(armedLive == 0, Pass, Warn),
-		Detail: fmt.Sprintf("%d flow(s) armed live, %d in dry-run, %d disabled. A live flow acts "+
+		Detail: fmt.Sprintf("%s armed live, %d in dry-run, %d disabled. A live flow acts "+
 			"without being asked; a dry-run flow executes fully and refuses its effects.",
-			armedLive, armedDry, disabled),
+			flows(armedLive, "", "is", "are"), armedDry, disabled),
 	})
 
 	// Authority that has outlived its grant. This is the check the ADR calls
@@ -282,18 +282,29 @@ func authorityDetail(stale []string) string {
 		return "Every armed flow's owner still holds the authority its actions require. This is " +
 			"re-checked on every run against the live account, not stored on the flow."
 	}
-	return fmt.Sprintf("%d armed flow(s) will refuse because their owner no longer holds the "+
-		"required authority: %s. This is the grant expiring as it should — but the flow is not "+
-		"doing what its author expected.", len(stale), strings.Join(stale, "; "))
+	return fmt.Sprintf("%s because the owner no longer holds the required authority: %s. "+
+		"This is the grant expiring as it should — but the flow is not doing what its author expected.",
+		flows(len(stale), "armed ", "will refuse", "will refuse"), strings.Join(stale, "; "))
 }
 
 func brokenDetail(broken []string) string {
 	if len(broken) == 0 {
 		return "Every stored flow still validates against the current build."
 	}
-	return fmt.Sprintf("%d enabled flow(s) no longer validate and will NOT fire: %s. An automation "+
+	return fmt.Sprintf("%s and will NOT fire: %s. An automation "+
 		"an operator believes is armed and which silently never runs is the worst state this engine "+
-		"can be in.", len(broken), strings.Join(broken, "; "))
+		"can be in.", flows(len(broken), "enabled ", "no longer validates", "no longer validate"), strings.Join(broken, "; "))
+}
+
+// flows counts flows with the verb that follows agreeing: flows(1, "armed ",
+// "calls", "call") is "1 armed flow calls" and flows(3, …) "3 armed flows
+// call". Written out because the panel shows these sentences, and "flow(s)"
+// is the hedge its wording rules forbid.
+func flows(n int, kind, verbOne, verbMany string) string {
+	if n == 1 {
+		return "1 " + kind + "flow " + verbOne
+	}
+	return fmt.Sprintf("%d %sflows %s", n, kind, verbMany)
 }
 
 func reachStatus(n int, onion bool) Status {
@@ -315,13 +326,13 @@ func reachDetail(reaching []string, onion bool) string {
 	}
 	list := strings.Join(reaching, ", ")
 	if onion {
-		return fmt.Sprintf("%d armed flow(s) carry an outbound step (%s) and are INERT: this install "+
-			"is running as a Tor Space, and every one of those steps is refused in the effect path by "+
-			"the same kill-switch that closes the rest of the binary. They would reach out if the mode "+
-			"changed.", len(reaching), list)
+		return fmt.Sprintf("%s an outbound step (%s), which is INERT: this install "+
+			"is running as a Tor Space, and every such step is refused in the effect path by "+
+			"the same kill-switch that closes the rest of the binary. It would reach out if the mode "+
+			"changed.", flows(len(reaching), "armed ", "carries", "carry"), list)
 	}
-	return fmt.Sprintf("%d armed flow(s) reach a remote host: %s. Each fetch spends the flow's egress "+
-		"ceiling and goes through the guarded client.", len(reaching), list)
+	return fmt.Sprintf("%s a remote host: %s. Each fetch spends the flow's egress "+
+		"ceiling and goes through the guarded client.", flows(len(reaching), "armed ", "reaches", "reach"), list)
 }
 
 func modelStatus(n int, in Inputs) Status {
@@ -346,18 +357,18 @@ func modelDetail(n int, in Inputs) string {
 	}
 	switch {
 	case !in.ModelConfigured:
-		return fmt.Sprintf("%d armed flow(s) call a model and NO provider is configured. Those runs "+
-			"will fail at the model step.", n)
+		return fmt.Sprintf("%s a model and NO provider is configured. Such a run "+
+			"will fail at the model step.", flows(n, "armed ", "calls", "call"))
 	case in.OnionMode && !in.ModelLocal:
-		return fmt.Sprintf("%d armed flow(s) call a REMOTE model provider while this install runs as "+
-			"a Tor Space. Those steps are refused — a remote generation is an outbound call — so the "+
-			"flows will fail rather than leak. Point the provider at a local model to run them here.", n)
+		return fmt.Sprintf("%s a REMOTE model provider while this install runs as "+
+			"a Tor Space. That step is refused — a remote generation is an outbound call — so the "+
+			"run fails rather than leaks. Point the provider at a local model to run it here.", flows(n, "armed ", "calls", "call"))
 	case !in.ModelLocal:
-		return fmt.Sprintf("%d armed flow(s) call a REMOTE model provider. Each generation is an "+
-			"outbound request and spends the flow's egress ceiling.", n)
+		return fmt.Sprintf("%s a REMOTE model provider. Each generation is an "+
+			"outbound request and spends the flow's egress ceiling.", flows(n, "armed ", "calls", "call"))
 	default:
-		return fmt.Sprintf("%d armed flow(s) call a LOCAL model provider. No generation leaves this "+
-			"host, so these run in a Tor Space too.", n)
+		return fmt.Sprintf("%s a LOCAL model provider. No generation leaves this "+
+			"host, so a Tor Space runs it too.", flows(n, "armed ", "calls", "call"))
 	}
 }
 

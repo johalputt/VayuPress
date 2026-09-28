@@ -273,7 +273,7 @@ func (a *App) updateHistoryRowsHTML(r *http.Request) string {
   <td class="muted">` + strconv.FormatInt(rec.ID, 10) + `</td>
   <td>` + html.EscapeString(dashOr(rec.FromVersion)) + `</td>
   <td>` + html.EscapeString(dashOr(rec.ToVersion)) + `</td>
-  <td>` + updateStatusPill(rec.Status) + `</td>
+  <td>` + updateHistoryState(rec.Status) + `</td>
   <td class="muted text-sm">` + html.EscapeString(rec.Detail) + `</td>
   <td class="muted text-sm">` + html.EscapeString(when) + `</td>
 </tr>`)
@@ -281,15 +281,20 @@ func (a *App) updateHistoryRowsHTML(r *http.Request) string {
 	return b.String()
 }
 
-func updateStatusPill(status string) string {
-	cls := "status-pill"
+// updateHistoryState is a history row's outcome as the page grammar shows
+// state: a dot and a word, never a filled pill.
+func updateHistoryState(status string) string {
 	switch status {
 	case "success":
-		cls = "status-pill status-pill--live"
+		return string(ui.State("ok", "Done"))
 	case "failed":
-		cls = "status-pill status-pill--draft"
+		return string(ui.State("danger", "Failed"))
+	case "started":
+		return string(ui.State("accent", "Started"))
+	case "checked":
+		return string(ui.State("neutral", "Checked"))
 	}
-	return `<span class="` + cls + `">` + html.EscapeString(status) + `</span>`
+	return string(ui.State("neutral", status))
 }
 
 func dashOr(s string) string {

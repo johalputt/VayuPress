@@ -18,13 +18,16 @@ type StatusPage struct {
 // words, so the mark is decoration to a screen reader.
 var statusMarks = map[string]string{"ok": "check", "warn": "warn", "danger": "error", "neutral": "info"}
 
-// Status renders the page: its header, the state, then the sections.
+// Status renders the page: its header, the state, then the sections. The
+// wrapper is sa-statuspage, not sa-status: that name is the system bar's
+// status area, a no-shrink flex row, and a page that borrowed it was laid out
+// as one line several screens wide.
 func Status(p StatusPage, sections ...HTML) HTML {
 	tone := p.Tone
 	if _, ok := statusMarks[tone]; !ok {
 		tone = "neutral"
 	}
-	head := `<div class="sa-status" data-page-kind="status">` + string(Page(p.Title, "", p.Actions)) +
+	head := `<div class="sa-statuspage" data-page-kind="status">` + string(Page(p.Title, "", p.Actions)) +
 		`<div class="sa-status__head sa-status__head--` + tone + `"><span class="sa-status__mark" aria-hidden="true">` +
 		string(Icon(statusMarks[tone])) + `</span><div><p class="sa-status__state">` + string(Text(p.State)) + `</p>`
 	if p.Detail != "" {
