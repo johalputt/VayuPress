@@ -8,6 +8,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.88] — 2026-09-28
+
+A hotfix for slow articles on large sites: johal.in's uncached articles
+waited 1.6 s at the 95th percentile, behind a lookup that read far more of
+the database than it needed.
+
 ### Fixed
 
 - **Articles open quickly again on a large site.** On johal.in (234,000 posts)
