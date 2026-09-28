@@ -71,38 +71,3 @@ func IndexNowStatusOf(slug string) (st IndexNowStatus, ok bool) {
 	}
 	return st, true
 }
-
-// IndexNowStatuses batch-loads statuses for the given slugs in one query, so the
-// Posts list avoids an N+1. Slugs with no recorded attempt are simply absent
-// from the returned map.
-func IndexNowStatuses(slugs []string) map[string]IndexNowStatus {
-	out := make(map[string]IndexNowStatus, len(slugs))
-	if DB == nil || len(slugs) == 0 {
-		return out
-	}
-	ph := make([]string, len(slugs))
-	args := make([]interface{}, len(slugs))
-	for i, s := range slugs {
-		ph[i] = "?"
-		args[i] = s
-	}
-	rows, err := Reader().Query(
-		`SELECT slug, state, http_code, detail, submitted_at FROM indexnow_submissions WHERE slug IN (`+strings.Join(ph, ",")+`)`, args...)
-	if err != nil {
-		return out
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var slug string
-		var st IndexNowStatus
-		var ts int64
-		if rows.Scan(&slug, &st.State, &st.HTTPCode, &st.Detail, &ts) == nil {
-			if ts > 0 {
-				st.SubmittedAt = time.Unix(ts, 0).UTC()
-			}
-			out[slug] = st
-		}
-	}
-	_ = rows.Err() // best-effort batch load; partial results are acceptable
-	return out
-}

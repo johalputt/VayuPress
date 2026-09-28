@@ -31,17 +31,4 @@ func TestIndexNowStatusRoundTrip(t *testing.T) {
 	if st.State != IndexNowFailed || st.HTTPCode != 429 || st.Detail != "endpoint returned HTTP 429" {
 		t.Fatalf("after failed upsert: got %+v", st)
 	}
-
-	// Batch read returns only the slugs that have a row.
-	RecordIndexNow("world", IndexNowSubmitted, 202, "")
-	m := IndexNowStatuses([]string{"hello", "world", "never-touched"})
-	if len(m) != 2 {
-		t.Fatalf("batch expected 2 rows, got %d (%+v)", len(m), m)
-	}
-	if m["world"].State != IndexNowSubmitted || m["hello"].State != IndexNowFailed {
-		t.Fatalf("batch states wrong: %+v", m)
-	}
-	if _, present := m["never-touched"]; present {
-		t.Error("a slug with no attempt must be absent from the batch map")
-	}
 }

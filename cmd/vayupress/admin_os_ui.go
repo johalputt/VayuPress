@@ -3071,8 +3071,8 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 	csrfTokenFor(w, r)
 
 	if a.commentStore == nil {
-		writeOSHTML(w, r, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(ui.List(ui.ListPage{Title: "Comments"},
-			ui.Empty("talk", "Comments are not running", "The comment store did not start, so there is nothing to moderate. The server log says why.", ""), ""))))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Comments", "comments", cfg, ui.List(ui.ListPage{Title: "Comments"},
+			ui.Empty("talk", "Comments are not running", "The comment store did not start, so there is nothing to moderate. The server log says why.", ""), "")))
 		return
 	}
 	status := r.URL.Query().Get("status")
@@ -3085,8 +3085,8 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 		all += int(n)
 	}
 	if all == 0 {
-		writeOSHTML(w, r, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(ui.List(ui.ListPage{Title: "Comments"},
-			ui.Empty("talk", "No comments yet", "Readers comment at the foot of a post once they sign in as members. Each new comment waits here until you approve it, and you can answer it from here.", ""), ""))))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Comments", "comments", cfg, ui.List(ui.ListPage{Title: "Comments"},
+			ui.Empty("talk", "No comments yet", "Readers comment at the foot of a post once they sign in as members. Each new comment waits here until you approve it, and you can answer it from here.", ""), "")))
 		return
 	}
 
@@ -3258,14 +3258,6 @@ func (a *App) handleOSCommentModerateFragment(w http.ResponseWriter, r *http.Req
 		`<span id="cc-approved" class="muted" hx-swap-oob="true">` + strconv.Itoa(approved) + `</span>`
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(frag))
-}
-
-// osActiveCls returns the " is-active" class suffix when active is true.
-func osActiveCls(active bool) string {
-	if active {
-		return " is-active"
-	}
-	return ""
 }
 
 // normalizeDateParam validates a YYYY-MM-DD date string, returning "" if it is

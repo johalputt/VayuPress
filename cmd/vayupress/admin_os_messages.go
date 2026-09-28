@@ -186,9 +186,9 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if total == 0 {
-		writeOSHTML(w, r, adminOSLayout(nonce, "Messages", "messages", cfg, htmpl.HTML(ui.List(ui.ListPage{Title: "Messages"},
+		writeOSHTML(w, r, adminOSLayout(nonce, "Messages", "messages", cfg, ui.List(ui.ListPage{Title: "Messages"},
 			ui.Empty("mail", "No messages yet", "When a visitor writes through a page's contact form, the message is kept here, even when email delivery fails. The form goes on a page made from the Contact template.",
-				ui.HTML(`<a class="btn" href="/os/pages">Pages</a>`)), ""))))
+				ui.HTML(`<a class="btn" href="/os/pages">Pages</a>`)), "")))
 		return
 	}
 

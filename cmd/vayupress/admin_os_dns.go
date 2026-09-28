@@ -608,8 +608,8 @@ func (a *App) handleOSDNS(w http.ResponseWriter, r *http.Request) {
 
 	primary := strings.TrimSpace(config.Cfg.Domain)
 	if primary == "" || primary == "localhost" {
-		writeOSHTML(w, r, adminOSLayout(nonce, "Domains & DNS", "vayuos", cfg, htmpl.HTML(ui.List(ui.ListPage{Title: "Domains & DNS"},
-			ui.Empty("globe", "No domain yet", "Set DOMAIN and restart, and every record this install needs is checked here.", ""), ""))))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Domains & DNS", "vayuos", cfg, ui.List(ui.ListPage{Title: "Domains & DNS"},
+			ui.Empty("globe", "No domain yet", "Set DOMAIN and restart, and every record this install needs is checked here.", ""), "")))
 		return
 	}
 
