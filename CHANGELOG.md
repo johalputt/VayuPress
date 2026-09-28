@@ -8,6 +8,51 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.92] — 2026-09-28
+
+Tag pages and the home feed stop reading whole posts to draw their cards,
+and the console's status pages and lists move to the Still Air page
+grammar.
+
+### Fixed
+
+- **A tag page no longer reads 200 post bodies to show 200 cards.** Every
+  card field but the title and address is stored after a post's text, so
+  reading a card read the whole post from disk. On johal.in a crawler
+  walking tag pages met p95 1.9 s, all of it cold reads of text no card
+  shows. A listing now chooses its posts from an index alone and reads
+  their cards from a table of their own, filled from each post once;
+  editing or deleting a post drops its card, whichever path wrote it, and
+  a card is stored only if its post is unchanged since it was read. On a
+  copy with 5,000 posts of 18 KB, one tag page read 4.54 MB before and
+  0.63 MB once its cards exist. The home feed reads cards the same way. A
+  tag page now prefers a post's own excerpt and image, as the home feed
+  did.
+
+### Changed
+
+- **Status pages open on their state.** Backups, Updates, Storage,
+  Monitoring, VayuFlow, Faults, Replay and Governance say in one sentence
+  whether all is well, then show what is running and what happened, with
+  states as a dot and a word. VayuFlow's sentences count flows, runs and
+  triggers instead of hedging with "(s)".
+- **The console's collections are lists.** Posts, Pages, Comments, Messages,
+  Sites, Domains & DNS and Decisions show a row per item, views for the
+  states that need you, a search, and the selected item beside the list.
+  A comment is answered from its inspector; a message is marked read when
+  opened, never when the inbox merely shows it first; a site's state reads
+  serving, on hold, no certificate or disabled; a domain's row says the
+  one thing most in need of you; a decision record is read beside the
+  list. Adding a site or a page, and provisioning subdomains, rise in a
+  sheet.
+- **The contact form's address and auto-reply are in Settings › Writing.**
+
+### Upgrade notes
+
+- Migrations 102 and 103 run on first start. 103 creates the card table
+  and two feed indexes; on a large site building the indexes takes a
+  moment at that start. Cards fill as pages are first visited.
+
 ## [3.17.91] — 2026-09-28
 
 A hotfix for speed on large sites: the trending list's daily recompute read
