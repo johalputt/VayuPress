@@ -510,7 +510,7 @@ func (a *App) handleNotFound(w http.ResponseWriter, r *http.Request) {
 // uses render.PlainText so non-rendered blocks (<style>, <script>, <head>) and
 // HTML comments are dropped entirely — only readable body text can appear.
 func excerptFromHTML(s string, n int) string {
-	s = render.PlainText(s)
+	s = render.PlainTextLeading(s, n)
 	if len(s) > n {
 		cut := s[:n]
 		if idx := strings.LastIndex(cut, " "); idx > n/2 {

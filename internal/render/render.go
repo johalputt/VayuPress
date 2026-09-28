@@ -83,13 +83,12 @@ var (
 	// htmlBlockRes matches non-rendered blocks (script/style/head/etc.) including
 	// their inner text, so raw CSS/JS never leaks into plain-text excerpts. Go's
 	// RE2 engine has no backreferences, so each block type gets its own pattern.
-	htmlBlockRes = func() []*regexp.Regexp {
-		tags := []string{"script", "style", "head", "noscript", "template", "svg"}
-		res := make([]*regexp.Regexp, 0, len(tags))
-		for _, t := range tags {
-			res = append(res, regexp.MustCompile(`(?is)<`+t+`\b[^>]*>.*?</\s*`+t+`\s*>`))
+	htmlBlockRes, htmlBlockOpenRes = func() (blocks, opens []*regexp.Regexp) {
+		for _, t := range []string{"script", "style", "head", "noscript", "template", "svg"} {
+			blocks = append(blocks, regexp.MustCompile(`(?is)<`+t+`\b[^>]*>.*?</\s*`+t+`\s*>`))
+			opens = append(opens, regexp.MustCompile(`(?i)<`+t+`\b`))
 		}
-		return res
+		return blocks, opens
 	}()
 	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
 	// spaceBeforePunctRe trims the stray space introduced when an inline tag
@@ -2809,14 +2808,51 @@ func ReconcileCacheVersion() {
 // <style>…</style> or <script>…</script> block never leaks raw CSS/JS into its
 // card excerpt.
 func PlainText(s string) string {
-	s = htmlCommentRe.ReplaceAllString(s, " ")
-	for _, re := range htmlBlockRes {
-		s = re.ReplaceAllString(s, " ")
+	t, _ := plainText(s)
+	return t
+}
+
+// PlainTextLeading returns a leading part of PlainText(s) at least n+1 bytes
+// long, or all of it when it is shorter, converting only as much of s as that
+// needs. An excerpt keeps 160 characters of a post, and PlainText's passes over
+// a whole 18 KB body took about 1.3 ms: a tag page of 200 posts spent 270 ms
+// of its render there (johal.in's tag pages ran at p95 1 s).
+//
+// s is cut only just after a '>', so no entity is split, and a cut is used only
+// if nothing PlainText removes is still open there: a comment, a hidden block (a
+// <script> or <svg> and its text), or a tag. Otherwise the inside of it would
+// reach the result. Where no cut qualifies, all of s is converted.
+func PlainTextLeading(s string, n int) string {
+	for want := 4 * (n + 1); want < len(s); want *= 2 {
+		end := strings.IndexByte(s[want:], '>')
+		if end < 0 {
+			break
+		}
+		t, closed := plainText(s[:want+end+1])
+		if closed && len(t) > n {
+			return t
+		}
 	}
+	return PlainText(s)
+}
+
+// plainText is PlainText, also reporting whether s ends outside every comment
+// and hidden block — what makes a cut of a longer text safe to convert alone.
+func plainText(s string) (string, bool) {
+	s = htmlCommentRe.ReplaceAllString(s, " ")
+	closed := !strings.Contains(s, "<!--")
+	for i, re := range htmlBlockRes {
+		s = re.ReplaceAllString(s, " ")
+		closed = closed && !htmlBlockOpenRes[i].MatchString(s)
+	}
+	// A '<' with no '>' after it would be the start of a tag that ends past
+	// the cut. Checked after the passes above, since removing a comment can
+	// take the '>' a cut was made after.
+	closed = closed && strings.LastIndexByte(s, '<') < strings.LastIndexByte(s, '>')+1
 	s = htmlTagRe.ReplaceAllString(s, " ")
 	s = html.UnescapeString(s)
 	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
-	return spaceBeforePunctRe.ReplaceAllString(s, "$1")
+	return spaceBeforePunctRe.ReplaceAllString(s, "$1"), closed
 }
 
 // ── Minified CSS constants ────────────────────────────────────────────────────

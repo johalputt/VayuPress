@@ -10,7 +10,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [3.17.91] — 2026-09-28
 
-A hotfix for speed: the trending list's daily recompute read every post.
+A hotfix for speed on large sites: the trending list's daily recompute read
+every post, and a tag page's first visit converted 200 whole posts to text
+for their card excerpts.
 
 ### Fixed
 
@@ -27,6 +29,15 @@ A hotfix for speed: the trending list's daily recompute read every post.
   created on first start (migration 101). A test reads the query plan of the
   query that ships, on the schema the migrations build, and fails if it walks
   the posts again.
+- **Tag pages are built about fifteen times faster.** A card's excerpt keeps 160
+  characters of a post, and the whole post was converted to text to get
+  them. A tag page lists up to 200 posts, so its first visit spent about
+  270 ms on excerpts alone, and on johal.in tag pages were the slowest route
+  (p95 1 s). Now only the start of each post is converted, cut where no tag,
+  comment or hidden block is left open, so the excerpt is the same: a 200-post
+  tag page is built in about 20 ms instead of 300 ms. The home page's excerpts
+  use the same conversion. A fuzz test holds the shortened conversion to
+  giving the same start as the whole one.
 
 ## [3.17.90] — 2026-09-28
 
