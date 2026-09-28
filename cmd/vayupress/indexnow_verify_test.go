@@ -154,20 +154,21 @@ func TestIndexNowKeyFileVerdict(t *testing.T) {
 // TestIndexNowPendingIsNotShownAsSubmitted covers the reporting half of the
 // same bug. HTTP 202 means "received — key validation pending"; if that
 // validation then fails the URL is dropped with no error anywhere, so a 202 must
-// never render the same confirmed tick as a 200.
+// never read as sent the way a 200 does.
 func TestIndexNowPendingIsNotShownAsSubmitted(t *testing.T) {
 	pending := dbpkg.IndexNowStatus{State: dbpkg.IndexNowPending, HTTPCode: http.StatusAccepted, Detail: "validating your key file"}
-	badge := osIndexNowBadge("hello-world", pending, true, false)
-	if strings.Contains(badge, saIcon("check")+" IndexNow") {
-		t.Errorf("a pending (HTTP 202) submission must not render the confirmed tick: %s", badge)
+	state := osIndexNowState("hello-world", pending, true, false)
+	// The word shown, after the dot; the tooltip may say when it was sent.
+	if strings.Contains(state, "sa-dot--ok") || strings.Contains(state, "</span>Sent") {
+		t.Errorf("a pending (HTTP 202) submission must not read as sent: %s", state)
 	}
-	if !strings.Contains(badge, "pending") {
-		t.Errorf("a pending submission must say so: %s", badge)
+	if !strings.Contains(state, "Pending") {
+		t.Errorf("a pending submission must say so: %s", state)
 	}
 
 	submitted := dbpkg.IndexNowStatus{State: dbpkg.IndexNowSubmitted, HTTPCode: http.StatusOK}
-	if !strings.Contains(osIndexNowBadge("hello-world", submitted, true, false), saIcon("check")+" IndexNow") {
-		t.Error("a confirmed (HTTP 200) submission must still render the tick")
+	if got := osIndexNowState("hello-world", submitted, true, false); !strings.Contains(got, "sa-dot--ok") || !strings.Contains(got, "</span>Sent") {
+		t.Errorf("a confirmed (HTTP 200) submission must still read as sent: %s", got)
 	}
 	if dbpkg.IndexNowPending == dbpkg.IndexNowSubmitted {
 		t.Fatal("pending and submitted must be distinct states")

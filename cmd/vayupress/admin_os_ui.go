@@ -31,6 +31,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"html"
 	htmpl "html/template"
 	"io/fs"
@@ -47,6 +48,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/blockrender"
 	"github.com/johalputt/vayupress/internal/config"
@@ -55,6 +57,7 @@ import (
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/users"
 )
 
@@ -201,6 +204,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/change-password", a.handleOSChangePassword)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/change-password", a.handleOSChangePasswordSubmit)
 		pr.Get("/os/posts", a.handleOSPosts)
+		pr.Get("/os/posts/inspector/{slug}", a.handleOSPostInspector)
 		pr.Get("/os/comments", a.handleOSComments)
 		// Session-friendly comment moderation. The /api/v1/admin/comments originals
 		// require an API key; VayuOS operators hold a session cookie.
@@ -2337,122 +2341,64 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 // `LIMIT 500` cap so every post is reachable regardless of archive size.
 const osPostsPageSize = 100
 
-// osPostStatusPill renders the status badge shown in the Posts manager for a
-// post's current status ("draft" → Draft, anything else → Published).
-func osPostStatusPill(status string) string {
+// osPostState is a post's state as the page grammar shows it: a dot and a word.
+func osPostState(status string) string {
 	if status == "draft" {
-		return `<span class="status-pill status-pill--draft">● Draft</span>`
+		return string(ui.State("neutral", "Draft"))
 	}
-	return `<span class="status-pill status-pill--live">● Published</span>`
+	return string(ui.State("ok", "Published"))
 }
 
 // osPostStatusButton renders the HTMX publish/unpublish toggle for a post in its
 // CURRENT status. Clicking it POSTs the opposite status to the fragment endpoint
-// (handleOSPostToggleFragment), which returns the flipped button plus an
-// out-of-band swap of the status pill — so the row updates in place with no
-// full-page reload. slugEsc must already be HTML-escaped by the caller.
-// The button carries a stable per-slug id and data-src="body" so the fragment
-// endpoint and the bulk updater can always tell the row-face copy from this
-// accordion copy (Wave 3.5: the publish action lives on the row face too).
+// (handleOSPostToggleFragment), which returns the flipped button plus
+// out-of-band swaps of the post's state in its row and in the inspector, so
+// the page updates in place. slugEsc must already be HTML-escaped. The stable
+// per-slug id lets the bulk updater find it.
 func osPostStatusButton(slugEsc, status string) string {
 	label, to := "Unpublish", "draft"
 	if status == "draft" {
 		label, to = "Publish", "published"
 	}
-	return `<button type="button" id="post-pub-` + slugEsc + `" data-src="body" class="btn btn--ghost btn--sm"` +
+	return `<button type="button" id="post-pub-` + slugEsc + `" class="btn btn--ghost btn--sm"` +
 		` hx-post="/os/api/posts/` + slugEsc + `/status-fragment"` +
 		` hx-vals='{"status":"` + to + `"}'` +
 		` hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this">` + label + `</button>`
 }
 
-// osPostStatusFaceButton is the Wave 3.5 row-face copy of the publish toggle: a
-// compact icon button rendered in the summary row itself, so the most common
-// action (publish a draft) never requires opening the card. Same endpoint and
-// id scheme as the accordion copy — data-src="face" tells the fragment endpoint
-// which copy to return in place so BOTH copies flip on a single click.
-func osPostStatusFaceButton(slugEsc, status string) string {
-	icon, label, to := "send", "Publish", "published"
-	if status != "draft" {
-		icon, label, to = "draft", "Unpublish", "draft"
-	}
-	return `<button type="button" id="post-pubface-` + slugEsc + `" data-src="face" class="btn btn--ghost btn--sm post-acc__face-btn"` +
-		` title="` + label + ` (opens nothing — toggles right here)" aria-label="` + label + ` post"` +
-		` hx-post="/os/api/posts/` + slugEsc + `/status-fragment"` +
-		` hx-vals='{"status":"` + to + `","src":"face"}'` +
-		` hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this">` + saIcon(icon) + `</button>`
-}
-
-// osPostStatusButtonOOB renders the accordion publish toggle as an out-of-band
-// swap target, so a click on the row-face copy also flips the hidden copy.
-func osPostStatusButtonOOB(slugEsc, status string) string {
-	return strings.Replace(osPostStatusButton(slugEsc, status),
-		`data-src="body"`, `data-src="body" hx-swap-oob="true"`, 1)
-}
-
-// osPostStatusFaceButtonOOB renders the row-face publish toggle as an
-// out-of-band swap target, so a click on the accordion copy also flips the face.
-func osPostStatusFaceButtonOOB(slugEsc, status string) string {
-	return strings.Replace(osPostStatusFaceButton(slugEsc, status),
-		`data-src="face"`, `data-src="face" hx-swap-oob="true"`, 1)
-}
-
-// osPostStatusOOB renders the out-of-band status-pill update the fragment
-// endpoint returns alongside the flipped button, keyed by the row's stable
-// per-slug id so HTMX swaps only that cell.
+// osPostStatusOOB renders the out-of-band state updates the fragment endpoint
+// returns with the flipped button: the row's state, and the inspector's, each
+// keyed by a stable per-slug id. A post whose inspector is not open has no
+// second target, and htmx leaves an absent target alone.
 func osPostStatusOOB(slugEsc, status string) string {
-	return `<span id="post-status-` + slugEsc + `" hx-swap-oob="true">` + osPostStatusPill(status) + `</span>`
+	return `<span id="post-status-` + slugEsc + `" hx-swap-oob="true">` + osPostState(status) + `</span>` +
+		`<span id="post-istate-` + slugEsc + `" hx-swap-oob="true">` + osPostState(status) + `</span>`
 }
 
 // osPostPinButton renders the HTMX pin/unpin toggle for a post in its CURRENT
 // featured state. Clicking it POSTs the opposite state to the pin-fragment
 // endpoint, which returns the flipped button plus an out-of-band swap of the
-// row's "📌 Pinned" badge. slugEsc must already be HTML-escaped.
+// row's pin mark. slugEsc must already be HTML-escaped.
 func osPostPinButton(slugEsc string, featured bool) string {
 	label, to := "Pin", "1"
 	if featured {
 		label, to = "Unpin", "0"
 	}
-	return `<button type="button" id="post-pin-` + slugEsc + `" data-src="body" class="btn btn--ghost btn--sm"` +
+	return `<button type="button" id="post-pin-` + slugEsc + `" class="btn btn--ghost btn--sm"` +
 		` hx-post="/os/api/posts/` + slugEsc + `/pin-fragment"` +
 		` hx-vals='{"pinned":"` + to + `"}'` +
-		` hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this">` + label + `</button>`
+		` hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this">` + saIcon("pin") + ` ` + label + `</button>`
 }
 
-// osPostPinFaceButton is the Wave 3.5 row-face copy of the pin toggle: one click
-// pins or unpins from the summary row, without opening the card.
-func osPostPinFaceButton(slugEsc string, featured bool) string {
-	label, pressed, to := "Pin", "false", "1"
-	if featured {
-		label, pressed, to = "Unpin", "true", "0"
-	}
-	return `<button type="button" id="post-pinface-` + slugEsc + `" data-src="face" class="btn btn--ghost btn--sm post-acc__face-btn"` +
-		` title="` + label + ` (toggles right here)" aria-label="` + label + ` post" aria-pressed="` + pressed + `"` +
-		` hx-post="/os/api/posts/` + slugEsc + `/pin-fragment"` +
-		` hx-vals='{"pinned":"` + to + `","src":"face"}'` +
-		` hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this">` + saIcon("pin") + `</button>`
-}
-
-// osPostPinButtonOOB renders the accordion pin toggle as an out-of-band swap
-// target, so a click on the row-face copy also flips the hidden copy.
-func osPostPinButtonOOB(slugEsc string, featured bool) string {
-	return strings.Replace(osPostPinButton(slugEsc, featured),
-		`data-src="body"`, `data-src="body" hx-swap-oob="true"`, 1)
-}
-
-// osPostPinFaceButtonOOB renders the row-face pin toggle as an out-of-band swap
-// target, so a click on the accordion copy also flips the face.
-func osPostPinFaceButtonOOB(slugEsc string, featured bool) string {
-	return strings.Replace(osPostPinFaceButton(slugEsc, featured),
-		`data-src="face"`, `data-src="face" hx-swap-oob="true"`, 1)
-}
-
-// osPostPinBadge renders the pinned indicator next to a post's title, keyed by a
-// stable per-slug id so the pin toggle can update it out-of-band. It is always
-// emitted (empty when unpinned) so the OOB target exists for a later pin.
-func osPostPinBadge(slugEsc string, featured, oob bool) string {
+// osPostPinMark renders the pinned mark after a post's title in its row, keyed
+// by a stable per-slug id so the pin toggle can update it out-of-band. It is
+// always emitted (empty when unpinned) so the target exists for a later pin.
+// A mark, not a badge: the grammar keeps filled labels for what a person chose
+// to call something, and pinning is a state.
+func osPostPinMark(slugEsc string, featured, oob bool) string {
 	inner := ""
 	if featured {
-		inner = ` <span class="chip" title="Pinned to the homepage and trending widget">` + saIcon("pin") + ` Pinned</span>`
+		inner = `<span class="post-pin" role="img" aria-label="Pinned" title="Pinned to the home page and the trending list">` + saIcon("pin") + `</span>`
 	}
 	oobAttr := ""
 	if oob {
@@ -2461,59 +2407,144 @@ func osPostPinBadge(slugEsc string, featured, oob bool) string {
 	return `<span id="ppin-` + slugEsc + `"` + oobAttr + `>` + inner + `</span>`
 }
 
-// osIndexNowBadge renders a post's IndexNow (search-engine instant-index)
-// submission state as a small chip, keyed by a stable per-slug id so the manual
-// re-ping can swap it out-of-band. slugEsc must already be HTML-escaped. Drafts
-// are not public, so they show a neutral "—" instead of a submission state.
-func osIndexNowBadge(slugEsc string, st dbpkg.IndexNowStatus, ok, isDraft bool) string {
-	var inner string
+// osIndexNowState renders a post's IndexNow (search-engine instant-index)
+// submission state as a dot and a word, keyed by a stable per-slug id so the
+// manual re-ping can swap it out-of-band. slugEsc must already be HTML-escaped.
+// A draft is not public, so nothing is sent for it.
+func osIndexNowState(slugEsc string, st dbpkg.IndexNowStatus, ok, isDraft bool) string {
+	var tone, word, title string
 	switch {
 	case isDraft:
-		inner = `<span class="chip" title="Drafts are not public, so nothing is submitted to IndexNow until you publish.">IndexNow: —</span>`
+		tone, word, title = "neutral", "Not public yet", "Drafts are not public, so nothing is submitted to IndexNow until you publish."
 	case ok && st.State == dbpkg.IndexNowSubmitted:
-		when := st.SubmittedAt.Format("2 Jan 2006 15:04 UTC")
-		inner = `<span class="chip chip--brand" title="Submitted to IndexNow on ` + html.EscapeString(when) + `">` + saIcon("check") + ` IndexNow</span>`
+		tone, word, title = "ok", "Sent "+st.SubmittedAt.Format("2 Jan"), "Submitted to IndexNow on "+st.SubmittedAt.Format("2 Jan 2006 15:04 UTC")
 	case ok && st.State == dbpkg.IndexNowPending:
-		// HTTP 202 — received, but the engine has not yet validated the key file.
-		// Shown distinctly on purpose: if that validation fails the URL is dropped
-		// silently, so a tick here would be a claim the install cannot support.
-		when := st.SubmittedAt.Format("2 Jan 2006 15:04 UTC")
-		title := st.Detail
+		// HTTP 202: received, but the engine has not yet validated the key file.
+		// Shown apart from Sent on purpose: if that validation fails the URL is
+		// dropped silently, so calling it sent would be a claim the install
+		// cannot support.
+		title = st.Detail
 		if title == "" {
 			title = "The engine received this URL but has not finished validating your key file."
 		}
-		inner = `<span class="chip chip--warn" title="` + html.EscapeString(title+" Sent "+when) + `">` + saIcon("hourglass") + ` IndexNow pending</span>`
+		tone, word, title = "warn", "Pending", title+" Sent "+st.SubmittedAt.Format("2 Jan 2006 15:04 UTC")
 	case ok && st.State == dbpkg.IndexNowFailed:
-		inner = `<span class="chip chip--warn" title="` + html.EscapeString(st.Detail) + `">` + saIcon("warn") + ` IndexNow failed</span>`
+		tone, word, title = "danger", "Failed", st.Detail
 	default:
-		inner = `<span class="chip" title="Not yet submitted to IndexNow. Use “Ping IndexNow” to submit it now.">IndexNow: not sent</span>`
+		tone, word, title = "neutral", "Not sent", "Not yet submitted to IndexNow."
 	}
-	return `<span id="post-indexnow-` + slugEsc + `">` + inner + `</span>`
+	return `<span id="post-indexnow-` + slugEsc + `" title="` + html.EscapeString(title) + `">` + string(ui.State(tone, word)) + `</span>`
 }
 
-// osIndexNowBadgeOOB is the out-of-band variant returned by the manual re-ping
-// endpoint so HTMX updates just that post's badge in place.
-func osIndexNowBadgeOOB(slugEsc string, st dbpkg.IndexNowStatus, ok, isDraft bool) string {
-	base := osIndexNowBadge(slugEsc, st, ok, isDraft)
-	return strings.Replace(base, `<span id="post-indexnow-`+slugEsc+`">`, `<span id="post-indexnow-`+slugEsc+`" hx-swap-oob="true">`, 1)
+// osIndexNowStateOOB is the out-of-band variant returned by the manual re-ping
+// endpoint so HTMX updates just that post's state in place.
+func osIndexNowStateOOB(slugEsc string, st dbpkg.IndexNowStatus, ok, isDraft bool) string {
+	return strings.Replace(osIndexNowState(slugEsc, st, ok, isDraft),
+		`<span id="post-indexnow-`+slugEsc+`"`, `<span id="post-indexnow-`+slugEsc+`" hx-swap-oob="true"`, 1)
 }
 
-// osIndexNowButton renders the manual "Ping IndexNow" control. It is only
+// osIndexNowButton renders the manual "Send to IndexNow" control. It is only
 // meaningful for a published post (a draft has no public URL to announce), so it
-// returns empty for drafts. The label reads "Re-ping" once a post was already
-// submitted. Clicking POSTs to the fragment endpoint, which returns the flipped
-// button plus an out-of-band badge update.
+// returns empty for drafts. It reads "Send again" once a post was sent.
+// Clicking POSTs to the fragment endpoint, which returns the flipped button
+// plus an out-of-band state update.
 func osIndexNowButton(slugEsc string, st dbpkg.IndexNowStatus, ok, isDraft bool) string {
 	if isDraft {
 		return ""
 	}
-	label := "Ping IndexNow"
+	label := "Send to IndexNow"
 	if ok && (st.State == dbpkg.IndexNowSubmitted || st.State == dbpkg.IndexNowPending) {
-		label = "Re-ping"
+		label = "Send again"
 	}
 	return `<button type="button" class="btn btn--ghost btn--sm"` +
 		` hx-post="/os/api/posts/` + slugEsc + `/indexnow-fragment"` +
 		` hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this">` + label + `</button>`
+}
+
+// postDetail is what the Posts inspector shows of one post.
+type postDetail struct {
+	Title, Slug, Status, Image string
+	Tags                       []string
+	Created, Updated           time.Time
+	Featured                   bool
+	Views                      int64
+	ViewsKnown                 bool
+	IndexNow                   dbpkg.IndexNowStatus
+	IndexNowOK                 bool
+}
+
+// osPostInspector renders the inspector for one post: its cover, title and
+// address, the two things done to a post most (edit, view), what is known
+// about it, then everything else that can be done to it. Every control keeps
+// the per-slug id its fragment endpoint swaps.
+func osPostInspector(p postDetail) string {
+	esc := html.EscapeString(p.Slug)
+	isDraft := p.Status == "draft"
+	var b strings.Builder
+	if p.Image != "" {
+		b.WriteString(`<div class="sa-insp__preview post-cover"><img src="` + html.EscapeString(p.Image) + `" alt="" loading="lazy" decoding="async"></div>`)
+	}
+	b.WriteString(`<div class="sa-insp__title">` + html.EscapeString(p.Title) + `</div><div class="sa-insp__meta">/` + esc + `</div>`)
+	b.WriteString(`<div class="sa-insp__actions"><a class="btn btn--sm" href="/os/editor/` + esc + `">` + saIcon("pencil") + ` Edit</a>`)
+	if !isDraft {
+		b.WriteString(`<a class="btn btn--sm" href="/` + esc + `" target="_blank" rel="noopener">` + saIcon("eye") + ` View</a>`)
+	}
+	b.WriteString(`</div><dl class="sa-insp__facts">`)
+	when := p.Updated
+	if !isDraft && !p.Created.IsZero() {
+		when = p.Created
+	}
+	b.WriteString(`<dt>State</dt><dd><span id="post-istate-` + esc + `">` + osPostState(p.Status) + `</span> <span class="muted">` + config.FormatSite(when, "2 Jan, 15:04") + `</span></dd>`)
+	if len(p.Tags) > 0 {
+		b.WriteString(`<dt>Tags</dt><dd>` + html.EscapeString(strings.Join(p.Tags, ", ")) + `</dd>`)
+	}
+	if p.ViewsKnown && !isDraft {
+		b.WriteString(`<dt>Views</dt><dd>` + osGroupInt(int(p.Views)) + ` in 30 days</dd>`)
+	}
+	b.WriteString(`<dt>Search engines</dt><dd>` + osIndexNowState(esc, p.IndexNow, p.IndexNowOK, isDraft) + `</dd></dl>`)
+	b.WriteString(`<div class="sa-insp__actions">` + osPostStatusButton(esc, p.Status) + osPostPinButton(esc, p.Featured) +
+		osIndexNowButton(esc, p.IndexNow, p.IndexNowOK, isDraft) +
+		`<button type="button" class="btn btn--sm btn--danger" data-post-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button></div>`)
+	return b.String()
+}
+
+// postDetailFor reads what the inspector shows of one post. The IndexNow and
+// views lookups are best-effort: a post is still shown without them.
+func (a *App) postDetailFor(ctx context.Context, slug string) (postDetail, bool) {
+	p := postDetail{Slug: slug}
+	var tagsCSV string
+	var featured int
+	if err := dbpkg.Reader().QueryRowContext(ctx,
+		`SELECT title,COALESCE(tags,''),created_at,updated_at,COALESCE(status,'published'),COALESCE(featured,0),COALESCE(feature_image,'') FROM articles WHERE slug=? AND is_page=0`, slug).
+		Scan(&p.Title, &tagsCSV, &p.Created, &p.Updated, &p.Status, &featured, &p.Image); err != nil {
+		return p, false
+	}
+	p.Tags = splitCSVTags(tagsCSV)
+	p.Featured = featured != 0
+	p.IndexNow, p.IndexNowOK = dbpkg.IndexNowStatusOf(slug)
+	if a.analytics != nil {
+		if v, err := a.analytics.ViewsBySlug(ctx, 30, []string{slug}); err == nil {
+			p.Views, p.ViewsKnown = v[slug], true
+		}
+	}
+	return p, true
+}
+
+// handleOSPostInspector returns one post's inspector, for the row a person
+// selects on the Posts page.
+func (a *App) handleOSPostInspector(w http.ResponseWriter, r *http.Request) {
+	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
+	if !api.IsValidSlug(slug) {
+		http.Error(w, "a valid slug is required", http.StatusBadRequest)
+		return
+	}
+	p, ok := a.postDetailFor(r.Context(), slug)
+	if !ok {
+		http.Error(w, "no post with that address", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, osPostInspector(p))
 }
 
 func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
@@ -2632,13 +2663,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 
 	// ── Fetch the current page of posts (drafts included; the public site never
 	// surfaces drafts but the manager must). ──────────────────────────────────
-	type postRow struct {
-		Title, Slug, Status string
-		Tags                []string
-		Updated             time.Time
-		Featured            bool
-	}
-	var posts []postRow
+	var posts []osPostRow
 	listWhere := append([]string{}, where...)
 	listArgs := append([]any{}, args...)
 	switch status {
@@ -2654,14 +2679,12 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	listArgs = append(listArgs, osPostsPageSize, offset)
 	if dbpkg.DB != nil {
 		if rows, err := dbpkg.Reader().QueryContext(ctx,
-			`SELECT title,slug,COALESCE(tags,''),updated_at,COALESCE(status,'published'),COALESCE(featured,0) FROM articles`+listClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
+			`SELECT title,slug,updated_at,COALESCE(status,'published'),COALESCE(featured,0) FROM articles`+listClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
 			defer rows.Close()
 			for rows.Next() {
-				var p postRow
-				var tagsCSV string
+				var p osPostRow
 				var featured int
-				if rows.Scan(&p.Title, &p.Slug, &tagsCSV, &p.Updated, &p.Status, &featured) == nil {
-					p.Tags = splitCSVTags(tagsCSV)
+				if rows.Scan(&p.Title, &p.Slug, &p.Updated, &p.Status, &featured) == nil {
 					p.Featured = featured != 0
 					posts = append(posts, p)
 				}
@@ -2674,159 +2697,182 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 
 	filtersActive := q != "" || from != "" || to != "" || status != "all"
 
-	// When a query times out or errors we never want to mislead the operator
-	// with the "No posts yet" empty state; instead we render the manager shell
-	// with a non-blocking retry notice so the page always loads.
-	notice := ""
-	if loadErr {
-		notice = `<div class="card load-notice"><strong>Couldn't load everything just now</strong> — the database was busy. <a href="/os/posts">Retry</a>.</div>`
+	var body string
+	switch {
+	case allCount == 0 && !filtersActive && !loadErr:
+		body = string(ui.List(ui.ListPage{Title: "Posts"},
+			ui.Empty("pencil", "No posts yet", "Your articles will appear here. Write your first one; it only takes a minute.",
+				ui.HTML(`<a class="btn btn--primary" href="/os/editor">Write your first post</a>`)), ""))
+	default:
+		body = a.osPostsList(ctx, osPostsView{
+			posts: posts, status: status, q: q, from: from, to: to, period: period,
+			page: page, totalPages: totalPages, total: total, offset: offset,
+			all: allCount, published: published, drafts: drafts, loadErr: loadErr,
+		}, nonce)
+	}
+	writeOSHTML(w, r, adminOSLayout(nonce, "Posts", "posts", cfg, htmpl.HTML(body)))
+}
+
+// osPostsView is one page of the Posts list and the filters that chose it.
+type osPostsView struct {
+	posts                           []osPostRow
+	status, q, from, to, period     string
+	page, totalPages, total, offset int
+	all, published, drafts          int
+	loadErr                         bool
+}
+
+// osPostRow is a post as its row in the list shows it.
+type osPostRow struct {
+	Title, Slug, Status string
+	Updated             time.Time
+	Featured            bool
+}
+
+// osPostsList renders the Posts page as the List kind (render 01): the posts
+// as a table, and beside them the selected one's inspector, where everything
+// that can be done to a post is done.
+func (a *App) osPostsList(ctx context.Context, v osPostsView, nonce string) string {
+	slugs := make([]string, 0, len(v.posts))
+	for _, p := range v.posts {
+		slugs = append(slugs, p.Slug)
+	}
+	views := map[string]int64{}
+	viewsKnown := false
+	if a.analytics != nil && len(slugs) > 0 {
+		if m, err := a.analytics.ViewsBySlug(ctx, 30, slugs); err == nil {
+			views, viewsKnown = m, true
+		}
 	}
 
-	var body string
-	if allCount == 0 && !filtersActive && !loadErr {
-		body = `<div class="page-header"><h1>Posts</h1></div>
-<div class="card empty-state">
-  <div class="empty-icon">` + saIcon("pencil") + `</div>
-  <div class="empty-title">No posts yet</div>
-  <div class="empty-sub">Your articles will appear here. Write your first one — it only takes a minute.</div>
-  <a class="btn btn--primary mt-4" href="/os/editor">Write your first post</a>
-</div>`
-	} else {
-		// Batch-load each shown post's IndexNow submission status in one query
-		// (avoids an N+1) so every row can show whether it was announced to
-		// search engines and offer a manual re-ping.
-		slugList := make([]string, 0, len(posts))
-		for _, p := range posts {
-			slugList = append(slugList, p.Slug)
+	var rows strings.Builder
+	for i, p := range v.posts {
+		esc := html.EscapeString(p.Slug)
+		n := "—"
+		if viewsKnown && p.Status != "draft" {
+			n = osGroupInt(int(views[p.Slug]))
 		}
-		inStatus := dbpkg.IndexNowStatuses(slugList)
-		cards := ""
-		for _, p := range posts {
-			tags := ""
-			for _, t := range p.Tags {
-				tags += `<span class="chip chip--brand">#` + html.EscapeString(t) + `</span> `
-			}
-			esc := html.EscapeString(p.Slug)
-			isDraft := p.Status == "draft"
-			inSt, inOK := inStatus[p.Slug]
-			viewBtn := `<a class="btn btn--ghost btn--sm" href="/` + esc + `" target="_blank" rel="noopener">View ↗</a>`
-			if isDraft {
-				// A draft is hidden from the public site (previewed in the editor).
-				viewBtn = ""
-			}
-			tagsBlock := ""
-			if tags != "" {
-				tagsBlock = `
-      <div class="post-acc__tags">` + tags + `</div>`
-			}
-			// Each post is a premium collapsible card (Monetization-console style).
-			// The bulk-select checkbox sits OUTSIDE the <summary> (column 1 of the
-			// row grid) so ticking it never toggles the card; tapping the card body
-			// reveals ONLY that post's actions. Pin/status/IndexNow keep their stable
-			// per-slug ids so the HTMX out-of-band swaps still land in place.
-			cards += `<div class="post-row" data-post-row>
-  <input type="checkbox" class="post-acc__check" data-post-select value="` + esc + `" aria-label="Select ` + html.EscapeString(p.Title) + `">
-  <details class="mon-acc post-acc">
-    <summary class="mon-acc__sum">
-      <span class="mon-acc__head">
-        <span class="mon-acc__title">` + html.EscapeString(p.Title) + osPostPinBadge(esc, p.Featured, false) + `</span>
-        <span class="mon-acc__sub">/` + esc + ` · Updated ` + config.FormatSite(p.Updated, "2 Jan 2006") + `</span>
-      </span>
-      <span id="post-status-` + esc + `" class="post-acc__status">` + osPostStatusPill(p.Status) + `</span>
-      <span class="post-acc__face">` + osPostStatusFaceButton(esc, p.Status) + osPostPinFaceButton(esc, p.Featured) + `</span>
-      <svg class="mon-acc__chev" viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </summary>
-    <div class="mon-acc__body post-acc__body">` + tagsBlock + `
-      <div class="post-acc__meta-row">` + osIndexNowBadge(esc, inSt, inOK, isDraft) + `</div>
-      <div class="post-acc__actions">
-        <a class="btn btn--primary btn--sm" href="/os/editor/` + esc + `">Edit</a>
-        ` + viewBtn + `
-        ` + osPostPinButton(esc, p.Featured) + `
-        ` + osPostStatusButton(esc, p.Status) + `
-        ` + osIndexNowButton(esc, inSt, inOK, isDraft) + `
-        <button type="button" class="btn btn--ghost btn--sm" data-post-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button>
-      </div>
-    </div>
-  </details>
-</div>`
+		sel := "false"
+		if i == 0 {
+			sel = "true"
 		}
+		rows.WriteString(`<tr class="post-row" data-post-row data-list-row data-list-src="/os/posts/inspector/` + esc + `" tabindex="0" aria-selected="` + sel + `">` +
+			`<td class="post-row__check"><input type="checkbox" data-post-select value="` + esc + `" aria-label="Select ` + html.EscapeString(p.Title) + `"></td>` +
+			`<td class="post-row__title"><span class="post-row__name">` + html.EscapeString(p.Title) + `</span>` + osPostPinMark(esc, p.Featured, false) + `</td>` +
+			`<td><span id="post-status-` + esc + `">` + osPostState(p.Status) + `</span></td>` +
+			`<td class="post-row__date">` + config.FormatSite(p.Updated, "2 Jan") + `</td>` +
+			`<td class="post-row__num">` + n + `</td></tr>`)
+	}
 
-		listBlock := `<div class="post-list-head">
-    <label class="post-selectall"><input type="checkbox" data-post-select-all aria-label="Select all posts on this page"> Select all on this page</label>
-    <span class="muted text-xs">Tap a post to see its actions</span>
-  </div>
-  <div class="mon-stack post-stack">` + cards + `</div>`
-		if len(posts) == 0 {
-			listBlock = `<div class="table-empty">No posts match your filter. <a href="/os/posts">Clear filters</a>.</div>`
-		}
-
-		shownFrom, shownTo := 0, 0
-		if len(posts) > 0 {
-			shownFrom = offset + 1
-			shownTo = offset + len(posts)
-		}
-
-		body = notice + `<div class="page-header">
-  <h1>Posts <span class="count-pill">` + strconv.Itoa(allCount) + `</span></h1>
-  <div class="page-actions">
-    <a class="btn btn--primary" href="/os/editor">New post</a>
-  </div>
-</div>
-<p class="page-sub">Every article in one place — search, filter by status or date, publish or unpublish inline, and see at a glance what's announced to search engines.</p>
-<div class="stat-grid mb-6">
-  <div class="stat-card"><div class="stat-card__label">Total posts</div><div class="stat-card__value">` + strconv.Itoa(allCount) + `</div><div class="stat-card__bottom"><span class="muted text-xs">across your whole catalogue</span></div></div>
-  <div class="stat-card"><div class="stat-card__label">Published</div><div class="stat-card__value">` + strconv.Itoa(published) + `</div><div class="stat-card__bottom"><span class="muted text-xs">live on your site</span></div></div>
-  <div class="stat-card"><div class="stat-card__label">Drafts</div><div class="stat-card__value">` + strconv.Itoa(drafts) + `</div><div class="stat-card__bottom"><span class="muted text-xs">not yet published</span></div></div>
-</div>
-<div class="card">
-  <div class="toolbar-row">
-    <form class="posts-filter" method="GET" action="/os/posts" role="search">
-      <input type="hidden" name="status" value="` + html.EscapeString(status) + `">
-      <input class="input search-input" type="search" name="q" value="` + html.EscapeString(q) + `" placeholder="Search by title or tag…" aria-label="Search posts">
-      ` + osPostsPeriodSelect(period) + `
-      <label class="posts-filter-date">From <input class="input input--sm" type="date" name="from" value="` + html.EscapeString(from) + `" aria-label="From date"></label>
-      <label class="posts-filter-date">To <input class="input input--sm" type="date" name="to" value="` + html.EscapeString(to) + `" aria-label="To date"></label>
-      <button class="btn btn--ghost btn--sm" type="submit">Filter</button>
-      <a class="btn btn--ghost btn--sm" href="/os/posts">Clear</a>
-    </form>
-    <div class="seg-filter" role="group" aria-label="Filter by status">
-      <a class="seg-btn` + osActiveCls(status == "all") + `" href="` + osPostsHref("all", q, from, to, period, 1) + `">All <span class="muted">` + strconv.Itoa(allCount) + `</span></a>
-      <a class="seg-btn` + osActiveCls(status == "published") + `" href="` + osPostsHref("published", q, from, to, period, 1) + `">Published <span class="muted">` + strconv.Itoa(published) + `</span></a>
-      <a class="seg-btn` + osActiveCls(status == "draft") + `" href="` + osPostsHref("draft", q, from, to, period, 1) + `">Drafts <span class="muted">` + strconv.Itoa(drafts) + `</span></a>
-    </div>
-  </div>
-  <div class="bulk-bar" data-post-bulkbar hidden>
+	list := ""
+	if v.loadErr {
+		list += string(ui.Callout("warn", ui.HTML(`Couldn't load everything just now: the database was busy. <a href="/os/posts">Try again</a>.`)))
+	}
+	list += `<div class="bulk-bar" data-post-bulkbar hidden>
     <span class="text-sm"><span data-post-bulk-count>0</span> selected</span>
     <button type="button" class="btn btn--ghost btn--sm" data-post-bulk="published">Publish</button>
     <button type="button" class="btn btn--ghost btn--sm" data-post-bulk="draft">Unpublish</button>
     <button type="button" class="btn btn--ghost btn--sm" data-post-bulk="delete">Delete</button>
-  </div>
-  ` + listBlock + `
-  ` + osPostsPager(status, q, from, to, period, page, totalPages, total, shownFrom, shownTo) + `
-</div>
+  </div>`
+	if len(v.posts) == 0 {
+		list += `<p class="table-empty">No posts match that. <a href="/os/posts">Show every post</a>.</p>`
+	} else {
+		list += `<div class="table-wrap"><table class="table post-table"><thead><tr>` +
+			`<th class="post-row__check"><input type="checkbox" data-post-select-all aria-label="Select every post on this page"></th>` +
+			`<th>Title</th><th>State</th><th>Updated</th><th class="post-row__num">Views · 30 days</th></tr></thead><tbody>` +
+			rows.String() + `</tbody></table></div>`
+	}
+	shownFrom, shownTo := 0, 0
+	if len(v.posts) > 0 {
+		shownFrom, shownTo = v.offset+1, v.offset+len(v.posts)
+	}
+	list += osPostsPager(v.status, v.q, v.from, v.to, v.period, v.page, v.totalPages, v.total, shownFrom, shownTo)
+
+	inspector := ""
+	if len(v.posts) > 0 {
+		if d, ok := a.postDetailFor(ctx, v.posts[0].Slug); ok {
+			inspector = osPostInspector(d)
+		}
+	}
+
+	count := osGroupInt(v.all)
+	if v.drafts > 0 {
+		count += " · " + osGroupInt(v.drafts) + " draft" + plural(v.drafts)
+	}
+	keep := [][2]string{}
+	for _, kv := range [][2]string{{"status", v.status}, {"from", v.from}, {"to", v.to}, {"period", v.period}} {
+		if kv[1] != "" && kv[1] != "all" {
+			keep = append(keep, kv)
+		}
+	}
+	return string(ui.List(ui.ListPage{
+		Title: "Posts",
+		Count: count,
+		Views: ui.Segments("Show",
+			ui.Segment{Label: "All", Href: osPostsHref("all", v.q, v.from, v.to, v.period, 1), Count: v.all, On: v.status == "all"},
+			ui.Segment{Label: "Published", Href: osPostsHref("published", v.q, v.from, v.to, v.period, 1), Count: v.published, On: v.status == "published"},
+			ui.Segment{Label: "Drafts", Href: osPostsHref("draft", v.q, v.from, v.to, v.period, 1), Count: v.drafts, On: v.status == "draft"}),
+		Search: ui.Search(ui.SearchBox{Action: "/os/posts", Name: "q", Value: v.q, Placeholder: "Search posts", Keep: keep}),
+		Actions: ui.HTML(`<button type="button" class="btn" data-sheet="posts-when">` + saIcon("calendar") + ` ` + html.EscapeString(osPostsWhenLabel(v.period, v.from, v.to)) + `</button>` +
+			`<a class="btn btn--primary" href="/os/editor">` + saIcon("plus") + ` New post</a>`),
+	}, ui.HTML(list), ui.HTML(inspector))) +
+		string(ui.Sheet("posts-when", "Show posts from", ui.HTML(`<form method="GET" action="/os/posts">
+  <input type="hidden" name="status" value="`+html.EscapeString(v.status)+`"><input type="hidden" name="q" value="`+html.EscapeString(v.q)+`">
+  <div class="field"><label class="field-label" for="posts-period">Written in</label>`+strings.Replace(osPostsPeriodSelect(v.period), `<select `, `<select id="posts-period" `, 1)+`</div>
+  <p class="muted text-sm">Or between two dates, which wins over the choice above.</p>
+  <div class="field"><label class="field-label" for="posts-from">From</label><input id="posts-from" class="input" type="date" name="from" value="`+html.EscapeString(v.from)+`"></div>
+  <div class="field"><label class="field-label" for="posts-to">To</label><input id="posts-to" class="input" type="date" name="to" value="`+html.EscapeString(v.to)+`"></div>
+  <div class="mt-3 sa-list__sheet-actions"><button class="btn btn--primary btn--sm" type="submit">Show</button><a class="btn btn--ghost btn--sm" href="`+html.EscapeString(osPostsHref(v.status, v.q, "", "", "", 1))+`">Any time</a></div>
+</form>`))) + `
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
-<script nonce="` + nonce + `">
+<script nonce="` + nonce + `">` + osPostsScript + `</script>`
+}
+
+// osPostsWhenLabel names the time range the list is narrowed to, for the
+// button that opens the range sheet.
+func osPostsWhenLabel(period, from, to string) string {
+	switch {
+	case from != "" && to != "":
+		return from + " – " + to
+	case from != "":
+		return "From " + from
+	case to != "":
+		return "Until " + to
+	}
+	for _, o := range [][2]string{{"7d", "Last 7 days"}, {"30d", "Last 30 days"}, {"90d", "Last 90 days"}, {"365d", "Last 12 months"}} {
+		if period == o[0] {
+			return o[1]
+		}
+	}
+	return "Any time"
+}
+
+// osPostsScript runs the Posts page's delete and bulk actions. Delete is
+// delegated from the document because the inspector that holds it is replaced
+// each time a row is selected. A bulk change updates each row's state, and
+// the inspector's button when that post is the one open.
+const osPostsScript = `
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var msg=document.getElementById('action-msg');
 function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
-// Pin/unpin is HTMX-driven (hx-post → out-of-band button + badge update); see
-// osPostPinButton and handleOSPostPinFragment. No JS handler needed here.
-// Publish/unpublish is HTMX-driven (hx-post → out-of-band row update); see
-// osPostStatusButton and handleOSPostToggleFragment. No JS handler needed here.
-document.querySelectorAll('[data-post-delete]').forEach(function(b){
-  b.addEventListener('click',function(){
-    var t=b.getAttribute('data-title')||'this post';
-    vpConfirm({title:'Delete post',message:'Delete "'+t+'"? This permanently removes the post and its comments and cannot be undone.',confirm:'Delete'},function(){
-      b.disabled=true;
-      fetch('/os/api/posts/'+encodeURIComponent(b.getAttribute('data-slug')),{method:'DELETE',headers:{'X-CSRF-Token':csrf()}})
-        .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
-        .then(function(res){if(res.ok){show('Deleted',false);var row=b.closest('[data-post-row]');if(row)row.remove();}else{b.disabled=false;show(res.d.detail||res.d.title||'Error',true);}})
-        .catch(function(e){b.disabled=false;show('Error: '+e,true);});
-    });
+function rowOf(slug){var row=null;document.querySelectorAll('[data-post-select]').forEach(function(c){if(c.value===slug)row=c.closest('[data-post-row]');});return row;}
+document.addEventListener('click',function(ev){
+  var b=ev.target.closest('[data-post-delete]');if(!b)return;
+  var t=b.getAttribute('data-title')||'this post',slug=b.getAttribute('data-slug');
+  vpConfirm({title:'Delete post',message:'Delete "'+t+'"? This permanently removes the post and its comments and cannot be undone.',confirm:'Delete'},function(){
+    b.disabled=true;
+    fetch('/os/api/posts/'+encodeURIComponent(slug),{method:'DELETE',headers:{'X-CSRF-Token':csrf()}})
+      .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
+      .then(function(res){
+        if(!res.ok){b.disabled=false;show(res.d.detail||res.d.title||'Error',true);return;}
+        show('Deleted',false);
+        var row=rowOf(slug);if(row)row.remove();
+        var insp=document.querySelector('[data-list-inspector]');if(insp)insp.innerHTML='<p class="table-empty">Select a post to see it here.</p>';
+      })
+      .catch(function(e){b.disabled=false;show('Error: '+e,true);});
   });
 });
-// ── Bulk selection + actions ──────────────────────────────────────────────────
 var bulkBar=document.querySelector('[data-post-bulkbar]');
 var bulkCount=document.querySelector('[data-post-bulk-count]');
 var selectAll=document.querySelector('[data-post-select-all]');
@@ -2850,13 +2896,12 @@ function runBulk(b,act,slugs){
         if(!res.ok){b.disabled=false;show((res.d&&res.d.detail)||'Bulk request failed',true);return;}
         var d=res.d,fail=[];
         (d.results||[]).forEach(function(r0){
-          var row=null;
-          document.querySelectorAll('[data-post-select]').forEach(function(c){if(c.value===r0.slug)row=c.closest('[data-post-row]');});
+          var row=rowOf(r0.slug);
           if(r0.ok){
             if(act==='delete'){if(row)row.remove();}
             else{
-              var pill=document.getElementById('post-status-'+r0.slug);if(pill&&r0.pill)pill.innerHTML=r0.pill;
-              if(row&&r0.button){var btn=row.querySelector('button[hx-post$="/status-fragment"][data-src="body"]');if(btn)btn.outerHTML=r0.button;}
+              ['post-status-','post-istate-'].forEach(function(p){var el=document.getElementById(p+r0.slug);if(el&&r0.pill)el.innerHTML=r0.pill;});
+              var btn=document.getElementById('post-pub-'+r0.slug);if(btn&&r0.button)btn.outerHTML=r0.button;
               if(row){var chk=row.querySelector('[data-post-select]');if(chk)chk.checked=false;}
             }
           }else{fail.push(r0.slug+(r0.error?': '+r0.error:''));}
@@ -2864,15 +2909,12 @@ function runBulk(b,act,slugs){
         if(d.counts){var seg=document.querySelectorAll('.seg-btn .muted');if(seg.length>=3){seg[0].textContent=String(d.counts.all||0);seg[1].textContent=String(d.counts.published||0);seg[2].textContent=String(d.counts.draft||0);}}
         refreshBulk();
         if(fail.length){b.disabled=false;show('Failed: '+fail.join('; '),true);}
-        else{show('Done — '+d.ok+(act==='delete'?' deleted':' updated'),false);setTimeout(function(){b.disabled=false;},800);}
+        else{show('Done: '+d.ok+(act==='delete'?' deleted':' updated'),false);setTimeout(function(){b.disabled=false;},800);}
       })
       .catch(function(e){b.disabled=false;show('Error: '+e,true);});
 }
 })();
-</script>`
-	}
-	writeOSHTML(w, r, adminOSLayout(nonce, "Posts", "posts", cfg, htmpl.HTML(body)))
-}
+`
 
 // ── Comments moderation ──────────────────────────────────────────────────────
 

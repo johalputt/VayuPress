@@ -742,9 +742,9 @@ test("a media upload shows its progress, and the file is worked by keyboard", as
   await expect(row).toHaveCount(1);
   await row.click();
   await expect(row).toHaveAttribute("aria-selected", "true");
-  const inspector = page.locator("[data-media-inspector]");
-  await expect(inspector.locator(".media-inspector__title")).toHaveText(name);
-  await expect(inspector.locator(".media-inspector__meta")).toHaveText(/^400 × 400 · PNG image · /);
+  const inspector = page.locator("[data-list-inspector]");
+  await expect(inspector.locator(".sa-insp__title")).toHaveText(name);
+  await expect(inspector.locator(".sa-insp__meta")).toHaveText(/^400 × 400 · PNG image · /);
   await expect(inspector.locator("[data-media-uses]")).toHaveText("Not used anywhere");
 
   // The menu key opens the menu on the file, and Escape hands focus back.

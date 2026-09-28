@@ -23,7 +23,7 @@ func TestSelectorParity(t *testing.T) {
 		"data-post-bulkbar", "data-post-bulk-count", "data-post-delete",
 		"data-media-list", "data-media-drop", "data-media-input", "data-media-upload",
 		"data-media-search", "data-media-empty", "data-media-filter", "data-media-view",
-		"data-media-inspector", "data-media-menu", "data-media-uploads", "data-notif-toggle",
+		"data-list-inspector", "data-media-menu", "data-media-uploads", "data-notif-toggle",
 		"data-space-switch", "data-copy",
 	}
 	for _, hook := range boundInJS {

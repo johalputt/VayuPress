@@ -712,6 +712,37 @@ window.vpRelTime = relativeTime;
 })();
 
 /* ── Media library (Phase 4) ─────────────────────────────────── */
+(function initListSelect() {
+  /* A list page (ui.List) whose rows carry data-list-row: selecting a row
+     marks it and loads that item into the inspector beside the list, from the
+     row's data-list-src (a fragment the server renders, escaped there). A
+     click on a control inside the row (its checkbox, a link) does that
+     control's job instead. Arrow keys move between rows; Enter or Space
+     selects. */
+  const inspector = $('[data-list-inspector]');
+  if (!inspector || !$('[data-list-row]')) return;
+  const rows = () => $$('[data-list-row]');
+  function select(row) {
+    if (row.getAttribute('aria-selected') === 'true') return;
+    rows().forEach((r) => r.setAttribute('aria-selected', r === row ? 'true' : 'false'));
+    const src = row.dataset.listSrc;
+    if (src && window.htmx) window.htmx.ajax('GET', src, { target: inspector, swap: 'innerHTML' });
+  }
+  document.addEventListener('click', (e) => {
+    const row = e.target.closest('[data-list-row]');
+    if (!row || e.target.closest('a, button, input, label, select')) return;
+    select(row);
+  });
+  document.addEventListener('keydown', (e) => {
+    const row = e.target.closest && e.target.closest('[data-list-row]');
+    if (!row || e.target !== row) return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(row); return; }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const all = rows(), next = all[all.indexOf(row) + (e.key === 'ArrowDown' ? 1 : -1)];
+    if (next) { e.preventDefault(); next.focus(); }
+  });
+})();
+
 (function initMedia() {
   /* Media library (render 07): a table or grid of every file, an inspector
      for the selected one, a context menu on the selection (right-click, the
@@ -720,7 +751,7 @@ window.vpRelTime = relativeTime;
      is parsed as markup. */
   var list = $('[data-media-list]');
   if (!list) return;
-  var inspector = $('[data-media-inspector]');
+  var inspector = $('[data-list-inspector]');
   var menu = $('[data-media-menu]');
   var uploads = $('[data-media-uploads]');
   var search = $('[data-media-search]');
@@ -911,22 +942,22 @@ window.vpRelTime = relativeTime;
     var sel = current();
     if (!sel.length) { inspector.appendChild(el('p', 'table-empty', 'Select a file to see its details.')); return; }
     if (sel.length > 1) {
-      inspector.appendChild(el('div', 'media-inspector__title', sel.length + ' files selected'));
-      inspector.appendChild(el('div', 'media-inspector__meta', fmtSize(sel.reduce(function (t, it) { return t + it.size; }, 0)) + ' together'));
+      inspector.appendChild(el('div', 'sa-insp__title', sel.length + ' files selected'));
+      inspector.appendChild(el('div', 'sa-insp__meta', fmtSize(sel.reduce(function (t, it) { return t + it.size; }, 0)) + ' together'));
       var del = el('button', 'btn btn--danger btn--sm', 'Move ' + sel.length + ' files to trash'); del.type = 'button';
       del.addEventListener('click', trash); inspector.appendChild(del);
       return;
     }
     var it = sel[0];
-    var pv = el('div', 'media-inspector__preview');
+    var pv = el('div', 'sa-insp__preview');
     pv.appendChild(thumb(it, 'xl'));
     inspector.appendChild(pv);
-    inspector.appendChild(el('div', 'media-inspector__title', it.title));
-    var meta = el('div', 'media-inspector__meta', it.kind + ' · ' + fmtSize(it.size));
+    inspector.appendChild(el('div', 'sa-insp__title', it.title));
+    var meta = el('div', 'sa-insp__meta', it.kind + ' · ' + fmtSize(it.size));
     inspector.appendChild(meta);
     var img = $('img', pv);
     if (img) img.addEventListener('load', function () { meta.textContent = img.naturalWidth + ' × ' + img.naturalHeight + ' · ' + it.kind + ' · ' + fmtSize(it.size); });
-    var dl = el('dl', 'media-inspector__facts');
+    var dl = el('dl', 'sa-insp__facts');
     if (!it.isPdf) {
       var alt = el('textarea', 'textarea media-inspector__alt'); alt.rows = 2; alt.value = it.alt || ''; alt.placeholder = 'Describe the picture';
       alt.setAttribute('aria-label', 'Alt text');
@@ -942,7 +973,7 @@ window.vpRelTime = relativeTime;
     (it.uses || []).forEach(function (u) { var a = el('a', null, u.label); a.href = u.href; uses.appendChild(a); });
     fact(dl, 'Used in', uses).setAttribute('data-media-uses', '');
     inspector.appendChild(dl);
-    var row = el('div', 'media-inspector__actions');
+    var row = el('div', 'sa-insp__actions');
     [['Copy link', function () { copy(it); }, 'btn btn--sm'], ['Rename', function () { rename(it); }, 'btn btn--sm'],
      ['Download', function () { download(it); }, 'btn btn--sm'], ['Move to trash', trash, 'btn btn--danger btn--sm']].forEach(function (b) {
       var btn = el('button', b[2], b[0]); btn.type = 'button'; btn.addEventListener('click', b[1]); row.appendChild(btn);

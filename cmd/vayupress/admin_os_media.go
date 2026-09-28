@@ -509,25 +509,20 @@ func (a *App) handleOSMedia(w http.ResponseWriter, r *http.Request) {
 		}
 		return `<button type="button" class="` + cls + `" data-media-filter="` + k + `">` + label + `</button>`
 	}
-	body := `<div class="page-header">
-  <h1>Media</h1>
-  <div class="page-actions">
-    <label class="media-find">` + saIcon("search") + `<input type="search" class="input" data-media-search placeholder="Filter media" aria-label="Filter media" autocomplete="off"></label>
-    <span class="sa-seg" role="group" aria-label="Show as">` + seg("list", "list", "Show as a list", true) + seg("grid", "grid", "Show as a grid", false) + `</span>
-    <button type="button" class="btn btn--primary" data-media-upload>` + saIcon("upload") + ` Upload</button>
-    <input type="file" data-media-input multiple accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,application/pdf" hidden>
-  </div>
-</div>
-<p class="page-sub">` + strconv.Itoa(count) + ` file` + plural(count) + `, served from your own address. Drop files anywhere on this page to upload them.` +
-		string(ui.Tip("PNG, JPEG, GIF, WebP, SVG and PDF, up to 32 MB each. An SVG is cleaned on upload: scripts, styles and references to other sites are removed before it is stored.")) + `</p>
-<div class="seg-filter media-kinds" role="group" aria-label="Kind">` + kind("all", "All", true) + kind("image", "Images", false) + kind("pdf", "Documents", false) + `</div>
-<div class="media-shell">
-  <div class="media-main" data-media-drop>
-    <div data-media-list aria-live="polite"><div class="skeleton skeleton--media"></div></div>
-    <p class="table-empty" data-media-empty hidden>No file matches that.</p>
-  </div>
-  <aside class="media-inspector" data-media-inspector aria-label="Details"><p class="table-empty">Select a file to see its details.</p></aside>
-</div>
+	body := string(ui.List(ui.ListPage{
+		Title:  "Media",
+		Count:  strconv.Itoa(count) + " file" + plural(count),
+		Views:  ui.HTML(`<span class="sa-seg" role="group" aria-label="Show as">` + seg("list", "list", "Show as a list", true) + seg("grid", "grid", "Show as a grid", false) + `</span>`),
+		Search: ui.Search(ui.SearchBox{Placeholder: "Filter media", Hook: "data-media-search"}),
+		Actions: ui.HTML(`<button type="button" class="btn btn--primary" data-media-upload>` + saIcon("upload") + ` Upload</button>
+    <input type="file" data-media-input multiple accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,application/pdf" hidden>`),
+		Sub: ui.HTML(`Served from your own address. Drop files anywhere on this page to upload them.` +
+			string(ui.Tip("PNG, JPEG, GIF, WebP, SVG and PDF, up to 32 MB each. An SVG is cleaned on upload: scripts, styles and references to other sites are removed before it is stored."))),
+	}, ui.HTML(`<div class="seg-filter media-kinds" role="group" aria-label="Kind">`+kind("all", "All", true)+kind("image", "Images", false)+kind("pdf", "Documents", false)+`</div>
+<div data-media-drop>
+  <div data-media-list aria-live="polite"><div class="skeleton skeleton--media"></div></div>
+  <p class="table-empty" data-media-empty hidden>No file matches that.</p>
+</div>`), `<p class="table-empty">Select a file to see its details.</p>`)) + `
 <div class="sa-pop__panel sa-menu media-menu" data-media-menu role="menu" hidden></div>
 <div class="media-uploads" data-media-uploads role="status" hidden></div>`
 

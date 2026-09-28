@@ -330,8 +330,8 @@ func (a *App) handleOSPostStatus(w http.ResponseWriter, r *http.Request) {
 
 // handleOSPostToggleFragment is the HTMX counterpart to handleOSPostStatus: it
 // flips a single post's published/draft status and returns an HTML fragment —
-// the flipped toggle button plus an out-of-band update of that row's status pill
-// — so the Posts manager updates the row in place with no full-page reload. The
+// the flipped toggle button plus out-of-band updates of the post's state in its
+// row and in the inspector — so the Posts list updates in place. The
 // JSON handler above stays in use for the bulk actions. CSRF is enforced by the
 // route's CSRFTokenMiddleware (the admin layout mirrors the vp_csrf cookie into
 // the X-CSRF-Token header for every hx-* request).
@@ -352,16 +352,8 @@ func (a *App) handleOSPostToggleFragment(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	esc := htmlpkg.EscapeString(slug)
-	// Wave 3.5: the publish toggle now exists twice per row (face + accordion).
-	// Whichever copy was clicked is returned in place; the OTHER copy and the
-	// status pill are updated out-of-band so both copies flip on one click.
-	src := strings.TrimSpace(r.FormValue("src"))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if src == "face" {
-		fmt.Fprint(w, osPostStatusFaceButton(esc, status)+osPostStatusButtonOOB(esc, status)+osPostStatusOOB(esc, status))
-		return
-	}
-	fmt.Fprint(w, osPostStatusButton(esc, status)+osPostStatusFaceButtonOOB(esc, status)+osPostStatusOOB(esc, status))
+	fmt.Fprint(w, osPostStatusButton(esc, status)+osPostStatusOOB(esc, status))
 }
 
 // handleOSPostShare issues a signed preview link for a DRAFT through the same
@@ -401,8 +393,8 @@ func (a *App) handleOSPostShare(w http.ResponseWriter, r *http.Request) {
 // post's URL to IndexNow from the Posts manager — for when the automatic
 // on-publish ping did not go through (no key at the time, a transient failure,
 // or a proxy challenge). It submits synchronously so the result is immediate,
-// then returns the flipped button plus an out-of-band update of that row's
-// IndexNow badge. CSRF is enforced by the route's CSRFTokenMiddleware.
+// then returns the flipped button plus an out-of-band update of the post's
+// IndexNow state. CSRF is enforced by the route's CSRFTokenMiddleware.
 func (a *App) handleOSPostIndexNowFragment(w http.ResponseWriter, r *http.Request) {
 	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
 	if !api.IsValidSlug(slug) {
@@ -425,13 +417,13 @@ func (a *App) handleOSPostIndexNowFragment(w http.ResponseWriter, r *http.Reques
 	}
 	esc := htmlpkg.EscapeString(slug)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, osIndexNowButton(esc, st, ok, isDraft)+osIndexNowBadgeOOB(esc, st, ok, isDraft))
+	fmt.Fprint(w, osIndexNowButton(esc, st, ok, isDraft)+osIndexNowStateOOB(esc, st, ok, isDraft))
 }
 
 // handleOSPostPinFragment is the HTMX counterpart to handleOSPostPin: it flips a
 // post's featured (pinned) flag and returns an HTML fragment — the flipped pin
-// button plus an out-of-band update of the row's "📌 Pinned" badge — so the
-// Posts manager updates in place with no full-page reload. The JSON handler
+// button plus an out-of-band update of the row's pin mark — so the Posts list
+// updates in place. The JSON handler
 // below stays in use for the bulk/editor paths. CSRF is enforced by the route's
 // CSRFTokenMiddleware.
 func (a *App) handleOSPostPinFragment(w http.ResponseWriter, r *http.Request) {
@@ -462,15 +454,8 @@ func (a *App) handleOSPostPinFragment(w http.ResponseWriter, r *http.Request) {
 	render.CachePurge(slug, splitCSVTags(tagsCSV), generateSitemap, generateRSS, generateRobots)
 	atomic.AddInt64(&metrics.MetricPostPinToggles, 1)
 	esc := htmlpkg.EscapeString(slug)
-	// Wave 3.5: same dual-copy parity as the status fragment — the clicked copy
-	// is returned in place, the other copy and the pinned badge go out-of-band.
-	src := strings.TrimSpace(r.FormValue("src"))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if src == "face" {
-		fmt.Fprint(w, osPostPinFaceButton(esc, featured)+osPostPinButtonOOB(esc, featured)+osPostPinBadge(esc, featured, true))
-		return
-	}
-	fmt.Fprint(w, osPostPinButton(esc, featured)+osPostPinFaceButtonOOB(esc, featured)+osPostPinBadge(esc, featured, true))
+	fmt.Fprint(w, osPostPinButton(esc, featured)+osPostPinMark(esc, featured, true))
 }
 
 // handleOSPostDelete permanently removes a post (or page) from the VayuOS
@@ -621,7 +606,7 @@ func (a *App) handleOSPostsBulk(w http.ResponseWriter, r *http.Request) {
 			okN++
 			if action != "delete" {
 				res.Status = action
-				res.Pill = osPostStatusPill(action)
+				res.Pill = osPostState(action)
 				res.Button = osPostStatusButton(htmlpkg.EscapeString(slug), action)
 			}
 		}

@@ -57,9 +57,14 @@ function anatomy() {
   const figures = [...main.querySelectorAll(".stat-card__value, [class*='figure'] [class*='value']")]
     .filter(visible).filter((e) => !e.closest("[data-live]"));
   const zeroFigures = figures.filter((e) => /^[$€₹£]?\s*0([.,]0+)?\s*(%|ms|s|B)?$/.test(e.textContent.trim())).length;
+  // A field that only finds or goes somewhere is navigation, not a form: a
+  // list's search (type=search, which Media filters with in place) and any
+  // field of a GET form (a list's search, the pager's "go to page"), since a
+  // GET changes nothing. Everything that changes something still rises in a
+  // sheet.
   const inlineFields = all.filter((e) =>
-    e.matches("input:not([type=hidden]):not([type=checkbox]):not([type=radio]), textarea, select") &&
-    !e.closest("dialog, [role=dialog], .sa-sheet")).length;
+    e.matches("input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=search]), textarea, select") &&
+    !e.closest("dialog, [role=dialog], .sa-sheet, form[method=get i]")).length;
   const crumb = !!document.querySelector(".sa-crumb, .sa-apphead, [aria-label='You are here'], [aria-label='Breadcrumb']");
   const kinds = [...main.querySelectorAll("[data-page-kind]")].map((e) => e.getAttribute("data-page-kind"));
   // Every h1, shown or not: the editor's is for screen readers, since the

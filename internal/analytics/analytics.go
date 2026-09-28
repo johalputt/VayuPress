@@ -357,6 +357,42 @@ func (s *Store) TrendingArticlesByViews(ctx context.Context, days, limit int) ([
 	return out, rows.Err()
 }
 
+// ViewsBySlug returns each slug's pageviews over the trailing days, counted
+// from the same event log and with the same spellings merged as trending, so
+// the Posts list and the Trending widget never disagree about a post. A slug
+// with no views is absent. One query for the whole page of posts: the paths
+// are looked up in the window idx_apv_trending already bounds.
+func (s *Store) ViewsBySlug(ctx context.Context, days int, slugs []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(slugs))
+	if len(slugs) == 0 {
+		return out, nil
+	}
+	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	args := make([]any, 0, 1+2*len(slugs))
+	args = append(args, from)
+	for _, sl := range slugs {
+		args = append(args, "/"+sl, "/"+sl+"/")
+	}
+	rows, err := s.readDB().QueryContext(ctx, `
+		SELECT RTRIM(SUBSTR(url_path, 2), '/'), COUNT(1)
+		FROM analytics_pageviews
+		WHERE event_type = 1 AND created_at >= ? AND url_path IN (?`+strings.Repeat(",?", 2*len(slugs)-1)+`)
+		GROUP BY RTRIM(SUBSTR(url_path, 2), '/')`, args...)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var slug string
+		var n int64
+		if err := rows.Scan(&slug, &n); err != nil {
+			return out, err
+		}
+		out[slug] = n
+	}
+	return out, rows.Err()
+}
+
 // HostCount is a referrer host with its hit total over the queried window.
 type HostCount struct {
 	Host string `json:"host"`

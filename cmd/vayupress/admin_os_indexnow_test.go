@@ -39,33 +39,31 @@ func TestIndexNowStatusHint(t *testing.T) {
 	}
 }
 
-// TestOSIndexNowBadgeStates covers the four states the per-post IndexNow badge
-// can render: submitted, failed, never-sent, and draft (not public).
-func TestOSIndexNowBadgeStates(t *testing.T) {
-	sub := osIndexNowBadge("hello-world",
-		dbpkg.IndexNowStatus{State: dbpkg.IndexNowSubmitted, HTTPCode: 200, SubmittedAt: time.Unix(1700000000, 0).UTC()}, true, false)
-	if !strings.Contains(sub, `id="post-indexnow-hello-world"`) || !strings.Contains(sub, saIcon("check")+" IndexNow") {
-		t.Errorf("submitted badge wrong:\n%s", sub)
-	}
-
-	failed := osIndexNowBadge("hello-world", dbpkg.IndexNowStatus{State: dbpkg.IndexNowFailed, Detail: "endpoint returned HTTP 429"}, true, false)
-	if !strings.Contains(failed, "IndexNow failed") {
-		t.Errorf("failed badge wrong:\n%s", failed)
-	}
-
-	notSent := osIndexNowBadge("hello-world", dbpkg.IndexNowStatus{}, false, false)
-	if !strings.Contains(notSent, "not sent") {
-		t.Errorf("not-sent badge wrong:\n%s", notSent)
-	}
-
-	draft := osIndexNowBadge("hello-world", dbpkg.IndexNowStatus{}, false, true)
-	if !strings.Contains(draft, "IndexNow: —") {
-		t.Errorf("draft badge should show a neutral dash:\n%s", draft)
+// TestOSIndexNowStates covers the four states a post's IndexNow line can
+// show, each as a dot and a word: sent, failed, never sent, and not public.
+func TestOSIndexNowStates(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		st    dbpkg.IndexNowStatus
+		ok    bool
+		draft bool
+		dot   string
+		word  string
+	}{
+		{"sent", dbpkg.IndexNowStatus{State: dbpkg.IndexNowSubmitted, HTTPCode: 200, SubmittedAt: time.Unix(1700000000, 0).UTC()}, true, false, "sa-dot--ok", "Sent 14 Nov"},
+		{"failed", dbpkg.IndexNowStatus{State: dbpkg.IndexNowFailed, Detail: "endpoint returned HTTP 429"}, true, false, "sa-dot--danger", "Failed"},
+		{"never sent", dbpkg.IndexNowStatus{}, false, false, "sa-dot--neutral", "Not sent"},
+		{"a draft", dbpkg.IndexNowStatus{}, false, true, "sa-dot--neutral", "Not public yet"},
+	} {
+		got := osIndexNowState("hello-world", c.st, c.ok, c.draft)
+		if !strings.Contains(got, `id="post-indexnow-hello-world"`) || !strings.Contains(got, c.dot) || !strings.Contains(got, c.word) {
+			t.Errorf("%s: want %s and %q with the stable id:\n%s", c.name, c.dot, c.word, got)
+		}
 	}
 }
 
 // TestOSIndexNowButton verifies the manual re-ping control: hidden for drafts,
-// "Ping IndexNow" for a published post that was never submitted, and "Re-ping"
+// "Send to IndexNow" for a published post that was never sent, and "Send again"
 // once it has been submitted — always POSTing to the fragment endpoint.
 func TestOSIndexNowButton(t *testing.T) {
 	if got := osIndexNowButton("hello-world", dbpkg.IndexNowStatus{}, false, true); got != "" {
@@ -73,24 +71,24 @@ func TestOSIndexNowButton(t *testing.T) {
 	}
 
 	unsent := osIndexNowButton("hello-world", dbpkg.IndexNowStatus{}, false, false)
-	for _, want := range []string{"Ping IndexNow", `hx-post="/os/api/posts/hello-world/indexnow-fragment"`, `hx-swap="outerHTML"`} {
+	for _, want := range []string{"Send to IndexNow", `hx-post="/os/api/posts/hello-world/indexnow-fragment"`, `hx-swap="outerHTML"`} {
 		if !strings.Contains(unsent, want) {
 			t.Errorf("button missing %q:\n%s", want, unsent)
 		}
 	}
 
 	resend := osIndexNowButton("hello-world", dbpkg.IndexNowStatus{State: dbpkg.IndexNowSubmitted}, true, false)
-	if !strings.Contains(resend, "Re-ping") {
-		t.Errorf("an already-submitted post should offer Re-ping:\n%s", resend)
+	if !strings.Contains(resend, "Send again") {
+		t.Errorf("an already-sent post should offer Send again:\n%s", resend)
 	}
 }
 
-// TestOSIndexNowBadgeOOB checks the out-of-band variant the fragment endpoint
-// returns so HTMX swaps just that row's badge.
-func TestOSIndexNowBadgeOOB(t *testing.T) {
-	oob := osIndexNowBadgeOOB("hello-world", dbpkg.IndexNowStatus{State: dbpkg.IndexNowSubmitted}, true, false)
+// TestOSIndexNowStateOOB checks the out-of-band variant the fragment endpoint
+// returns so HTMX swaps just that post's state.
+func TestOSIndexNowStateOOB(t *testing.T) {
+	oob := osIndexNowStateOOB("hello-world", dbpkg.IndexNowStatus{State: dbpkg.IndexNowSubmitted}, true, false)
 	if !strings.Contains(oob, `hx-swap-oob="true"`) || !strings.Contains(oob, `id="post-indexnow-hello-world"`) {
-		t.Errorf("OOB badge must carry the swap attr and the stable id:\n%s", oob)
+		t.Errorf("OOB state must carry the swap attr and the stable id:\n%s", oob)
 	}
 }
 

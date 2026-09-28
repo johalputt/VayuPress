@@ -6127,17 +6127,40 @@
   .vp-os[data-ui="still-air"] .cmd-footer { display: none; }
 }
 
-/* Media (render 07): the files, and beside them the one selected. The
-   inspector sits to the right where there is room for both and below the
-   list where there is not; it is never an overlay, so reading a file's
-   details never hides the file. */
-.vp-os[data-ui="still-air"] .media-find { position: relative; display: inline-flex; align-items: center; }
-.vp-os[data-ui="still-air"] .media-find .sa-ico { position: absolute; left: 9px; width: 15px; height: 15px; color: var(--text-3); pointer-events: none; }
-.vp-os[data-ui="still-air"] .media-find .input { width: 220px; padding-left: 30px; }
+/* The List kind (ui.List; Posts is render 01, Media render 07): the items,
+   and beside them the one selected. The inspector sits to the right where
+   there is room for both and below the list where there is not; it is never
+   an overlay, so reading an item's details never hides the item. */
+.vp-os[data-ui="still-air"] .sa-list__count { font: var(--type-small); color: var(--text-3); font-variant-numeric: tabular-nums; margin-left: var(--space-2); }
+.vp-os[data-ui="still-air"] .sa-find { position: relative; display: inline-flex; align-items: center; margin: 0; }
+.vp-os[data-ui="still-air"] .sa-find .sa-ico { position: absolute; left: 9px; width: 15px; height: 15px; color: var(--text-3); pointer-events: none; }
+.vp-os[data-ui="still-air"] .sa-find .input { width: 220px; padding-left: 30px; }
+.vp-os[data-ui="still-air"] .sa-list .page-actions .seg-filter { margin-left: 0; }
 .vp-os[data-ui="still-air"] .media-kinds { margin: 0 0 var(--space-4); }
-.vp-os[data-ui="still-air"] .media-shell { display: grid; grid-template-columns: minmax(0, 1fr) clamp(248px, 30%, 300px); gap: var(--space-5); align-items: start; }
-.vp-os[data-ui="still-air"] .media-main { min-width: 0; border-radius: var(--radius-surface); container-type: inline-size; }
-.vp-os[data-ui="still-air"] .media-main.is-drop { outline: 2px dashed var(--accent); outline-offset: 4px; background: var(--surface-select); }
+.vp-os[data-ui="still-air"] .sa-list__sheet-actions { display: flex; gap: var(--space-2); }
+/* Posts (render 01): fixed columns, so a long title is cut rather than
+   pushing the state and the figures out of view. */
+.vp-os[data-ui="still-air"] .post-table { table-layout: fixed; }
+.vp-os[data-ui="still-air"] .post-table th:nth-child(1) { width: 40px; }
+.vp-os[data-ui="still-air"] .post-table th:nth-child(3) { width: 124px; }
+.vp-os[data-ui="still-air"] .post-table th:nth-child(4) { width: 88px; }
+.vp-os[data-ui="still-air"] .post-table th:nth-child(5) { width: 120px; }
+.vp-os[data-ui="still-air"] .post-row { cursor: default; }
+.vp-os[data-ui="still-air"] .post-row td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vp-os[data-ui="still-air"] .post-row[aria-selected="true"] td { background: var(--surface-select); }
+.vp-os[data-ui="still-air"] .post-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.vp-os[data-ui="still-air"] .post-row__name { color: var(--text-1); }
+.vp-os[data-ui="still-air"] .post-row__date { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .post-row__num { color: var(--text-2); font-variant-numeric: tabular-nums; text-align: right; }
+.vp-os[data-ui="still-air"] .post-pin .sa-ico { width: 14px; height: 14px; margin-left: 6px; vertical-align: -2px; color: var(--text-3); }
+.vp-os[data-ui="still-air"] .post-cover img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+@container (max-width: 520px) {
+  .vp-os[data-ui="still-air"] .post-table :is(th, td):nth-child(4) { display: none; }
+}
+.vp-os[data-ui="still-air"] .sa-list__shell { display: grid; grid-template-columns: minmax(0, 1fr) clamp(248px, 30%, 300px); gap: var(--space-5); align-items: start; }
+.vp-os[data-ui="still-air"] .sa-list__shell--full { grid-template-columns: minmax(0, 1fr); }
+.vp-os[data-ui="still-air"] .sa-list__main { min-width: 0; border-radius: var(--radius-surface); container-type: inline-size; }
+.vp-os[data-ui="still-air"] [data-media-drop].is-drop { outline: 2px dashed var(--accent); outline-offset: 4px; background: var(--surface-select); }
 .vp-os[data-ui="still-air"] .media-thumb { flex: none; display: inline-grid; place-items: center; overflow: hidden; background: var(--surface-sunken); border-radius: var(--radius-small); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .media-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .vp-os[data-ui="still-air"] .media-thumb--sm { width: 32px; height: 32px; }
@@ -6165,20 +6188,20 @@
 .vp-os[data-ui="still-air"] .media-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
 .vp-os[data-ui="still-air"] .media-card__name { font: var(--type-small); color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vp-os[data-ui="still-air"] .media-card__meta { font: var(--type-meta); color: var(--text-3); }
-.vp-os[data-ui="still-air"] .media-inspector {
+.vp-os[data-ui="still-air"] .sa-list__inspector {
   position: sticky; top: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3);
   padding: var(--space-4); border: 1px solid var(--border-1); border-radius: var(--radius-surface); background: var(--surface-2);
 }
-.vp-os[data-ui="still-air"] .media-inspector__preview { border-radius: var(--radius-control); overflow: hidden; }
-.vp-os[data-ui="still-air"] .media-inspector__title { font: var(--type-heading); color: var(--text-1); overflow-wrap: anywhere; }
-.vp-os[data-ui="still-air"] .media-inspector__meta { font: var(--type-meta); color: var(--text-3); margin-top: -8px; font-variant-numeric: tabular-nums; }
-.vp-os[data-ui="still-air"] .media-inspector__facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3) var(--space-4); margin: 0; font: var(--type-small); }
-.vp-os[data-ui="still-air"] .media-inspector__facts dt { color: var(--text-3); }
-.vp-os[data-ui="still-air"] .media-inspector__facts dd { margin: 0; color: var(--text-1); min-width: 0; }
+.vp-os[data-ui="still-air"] .sa-insp__preview { border-radius: var(--radius-control); overflow: hidden; }
+.vp-os[data-ui="still-air"] .sa-insp__title { font: var(--type-heading); color: var(--text-1); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .sa-insp__meta { font: var(--type-meta); color: var(--text-3); margin-top: -8px; font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .sa-insp__facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3) var(--space-4); margin: 0; font: var(--type-small); }
+.vp-os[data-ui="still-air"] .sa-insp__facts dt { color: var(--text-3); }
+.vp-os[data-ui="still-air"] .sa-insp__facts dd { margin: 0; color: var(--text-1); min-width: 0; }
 .vp-os[data-ui="still-air"] .media-inspector__alt { width: 100%; min-height: 0; resize: vertical; }
 .vp-os[data-ui="still-air"] .media-inspector__uses { display: flex; flex-direction: column; gap: 2px; color: var(--text-2); }
 .vp-os[data-ui="still-air"] .media-inspector__uses a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vp-os[data-ui="still-air"] .media-inspector__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.vp-os[data-ui="still-air"] .sa-insp__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 /* The menu opens where the pointer or the focused file is, so it is placed
    against the viewport rather than inside a popover's trigger. */
 .vp-os[data-ui="still-air"] .media-menu { position: fixed; top: 0; right: auto; width: 240px; transform-origin: top left; }
@@ -6211,9 +6234,9 @@
 .vp-os[data-ui="still-air"] .media-uploads__now { font: var(--type-meta); color: var(--text-3); overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] .media-uploads.is-failed .media-uploads__now { color: var(--danger); }
 @media (max-width: 899px) {
-  .vp-os[data-ui="still-air"] .media-shell { grid-template-columns: minmax(0, 1fr); }
-  .vp-os[data-ui="still-air"] .media-inspector { position: static; }
-  .vp-os[data-ui="still-air"] .media-find, .vp-os[data-ui="still-air"] .media-find .input { flex: 1 1 100%; width: 100%; }
+  .vp-os[data-ui="still-air"] .sa-list__shell { grid-template-columns: minmax(0, 1fr); }
+  .vp-os[data-ui="still-air"] .sa-list__inspector { position: static; }
+  .vp-os[data-ui="still-air"] .sa-find, .vp-os[data-ui="still-air"] .sa-find .input { flex: 1 1 100%; width: 100%; }
 }
 /* A narrow list keeps what tells files apart: the name, the size and, while
    there is room, where it is used; the inspector says that too. Measured on the list, not the window: beside the inspector the

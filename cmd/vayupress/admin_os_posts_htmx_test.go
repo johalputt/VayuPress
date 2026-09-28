@@ -10,14 +10,14 @@ import (
 // TestOSPostStatusControls verifies the HTMX publish/unpublish controls render
 // correctly and stay CSP-safe (no inline styles, no external hosts): the button
 // posts the OPPOSITE status to the fragment endpoint, targets itself for an
-// outerHTML swap, and the out-of-band pill is keyed by the row's per-slug id so
-// HTMX updates only that cell.
+// outerHTML swap, and the out-of-band state is keyed by per-slug ids so HTMX
+// updates the row's state and the inspector's, and nothing else.
 func TestOSPostStatusControls(t *testing.T) {
-	if got := osPostStatusPill("published"); !strings.Contains(got, "Published") {
-		t.Errorf("published pill = %q", got)
+	if got := osPostState("published"); !strings.Contains(got, "sa-dot--ok") || !strings.Contains(got, "Published") {
+		t.Errorf("published state = %q", got)
 	}
-	if got := osPostStatusPill("draft"); !strings.Contains(got, "Draft") {
-		t.Errorf("draft pill = %q", got)
+	if got := osPostState("draft"); !strings.Contains(got, "sa-dot--neutral") || !strings.Contains(got, "Draft") {
+		t.Errorf("draft state = %q", got)
 	}
 
 	// A published post offers "Unpublish", which posts status=draft.
@@ -43,12 +43,12 @@ func TestOSPostStatusControls(t *testing.T) {
 		t.Errorf("draft button wrong:\n%s", dft)
 	}
 
-	// The out-of-band pill carries the stable id and hx-swap-oob marker.
+	// The out-of-band state carries the stable ids and hx-swap-oob markers.
 	oob := osPostStatusOOB("hello-world", "draft")
-	assertCSPSafe(t, "oob pill", oob)
-	for _, want := range []string{`id="post-status-hello-world"`, `hx-swap-oob="true"`, "Draft"} {
+	assertCSPSafe(t, "oob state", oob)
+	for _, want := range []string{`id="post-status-hello-world"`, `id="post-istate-hello-world"`, `hx-swap-oob="true"`, "Draft"} {
 		if !strings.Contains(oob, want) {
-			t.Errorf("oob pill missing %q in:\n%s", want, oob)
+			t.Errorf("oob state missing %q in:\n%s", want, oob)
 		}
 	}
 }
