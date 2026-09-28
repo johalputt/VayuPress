@@ -80,18 +80,7 @@ func (a *App) handleOSGovernance(w http.ResponseWriter, r *http.Request) {
 	// The sentence says the mode and whether any budget wants attention: the
 	// two things this page exists to answer, and the figures that said them
 	// before read zero on almost every visit.
-	tone, state := saModeTone(cur), "In "+strings.ToLower(saModeLabel(cur))+" mode"
-	switch {
-	case exhausted > 0:
-		tone, state = "danger", state+", with "+strconv.Itoa(exhausted)+" budget"+plural(exhausted)+" exhausted"
-	case atRisk > 0:
-		if tone == "ok" {
-			tone = "warn"
-		}
-		state += ", with " + strconv.Itoa(atRisk) + " budget" + plural(atRisk) + " at risk"
-	default:
-		state += ", and every budget is healthy"
-	}
+	tone, state := governanceState(cur, atRisk, exhausted)
 	detail := "The install has not changed mode."
 	if n := len(history); n > 0 {
 		last := history[n-1]
@@ -110,4 +99,21 @@ func (a *App) handleOSGovernance(w http.ResponseWriter, r *http.Request) {
 			ui.Table([]string{"Change", "Reason", "When"}, transRows, "The install has not changed mode.")),
 	)
 	writeOSHTML(w, r, adminOSLayout(nonce, "Governance", "governance", cfg, body))
+}
+
+// governanceState is the sentence Governance opens on: the mode, and whether
+// any budget wants attention. An exhausted budget outranks the mode's own
+// tone, because it is what would move the mode next.
+func governanceState(cur mode.Mode, atRisk, exhausted int) (tone, state string) {
+	tone, state = saModeTone(cur), "In "+strings.ToLower(saModeLabel(cur))+" mode"
+	switch {
+	case exhausted > 0:
+		return "danger", state + ", with " + strconv.Itoa(exhausted) + " budget" + plural(exhausted) + " exhausted"
+	case atRisk > 0:
+		if tone == "ok" {
+			tone = "warn"
+		}
+		return tone, state + ", with " + strconv.Itoa(atRisk) + " budget" + plural(atRisk) + " at risk"
+	}
+	return tone, state + ", and every budget is healthy"
 }

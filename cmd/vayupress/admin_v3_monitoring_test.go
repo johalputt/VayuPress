@@ -77,3 +77,40 @@ func TestTheMonitoringSentenceNamesTheMostUrgentThing(t *testing.T) {
 		})
 	}
 }
+
+func TestTheGovernanceSentence(t *testing.T) {
+	for _, c := range []struct {
+		name              string
+		m                 mode.Mode
+		atRisk, exhausted int
+		tone, state       string
+	}{
+		{"well", mode.ModeNormal, 0, 0, "ok", "In normal mode, and every budget is healthy"},
+		{"at risk", mode.ModeNormal, 2, 0, "warn", "In normal mode, with 2 budgets at risk"},
+		{"exhausted", mode.ModeNormal, 1, 1, "danger", "In normal mode, with 1 budget exhausted"},
+		{"mode", mode.ModeQuarantined, 0, 0, "danger", "In quarantined mode, and every budget is healthy"},
+	} {
+		if tone, state := governanceState(c.m, c.atRisk, c.exhausted); tone != c.tone || state != c.state {
+			t.Errorf("%s: got (%s) %q, want (%s) %q", c.name, tone, state, c.tone, c.state)
+		}
+	}
+}
+
+func TestTheVayuFlowSentence(t *testing.T) {
+	for _, c := range []struct {
+		name              string
+		wired             bool
+		fail, warn, armed int
+		tone, state       string
+	}{
+		{"unwired outranks all", false, 3, 2, 1, "danger", "The automation engine is not running"},
+		{"fail", true, 1, 2, 1, "danger", "1 posture check to act on"},
+		{"warn", true, 0, 2, 1, "warn", "2 posture checks to look at"},
+		{"armed", true, 0, 0, 3, "ok", "3 flows armed live"},
+		{"quiet", true, 0, 0, 0, "ok", "No flow is armed live"},
+	} {
+		if tone, state := vayuFlowState(c.wired, c.fail, c.warn, c.armed); tone != c.tone || !strings.HasPrefix(state, c.state) {
+			t.Errorf("%s: got (%s) %q, want (%s) %q…", c.name, tone, state, c.tone, c.state)
+		}
+	}
+}
