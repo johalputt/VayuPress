@@ -798,6 +798,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/topology", a.handleTopologyPage)
 		pr.Get("/os/replay", a.handleReplayPage)
 		pr.Get("/os/adr", a.handleAdminADR)
+		pr.Get("/os/adr/inspector", a.handleAdminADRInspector)
 
 		// Operator-initiated actions. API-key callers hold no browser session and
 		// bypass CSRF (auth.CSRFTokenMiddleware exempts API-key auth); these two

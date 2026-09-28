@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"hash/fnv"
 	"html"
@@ -1082,10 +1081,12 @@ func readADRFile(adrDir, filename string) ([]byte, error) {
 	return fs.ReadFile(embeddedADRFS, filename)
 }
 
-func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
-	adrDir := resolveADRDir()
+// adrEntry is one decision record as the list shows it.
+type adrEntry struct{ Filename, Number, Title string }
 
-	type adrEntry struct{ Filename, Number, Title string }
+// adrEntries lists every record, newest first so the most recent decisions
+// are at the top.
+func adrEntries(adrDir string) []adrEntry {
 	var adrs []adrEntry
 	for _, name := range adrFilenames(adrDir) {
 		base := strings.TrimSuffix(name, ".md")
@@ -1108,26 +1109,48 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 		}
 		adrs = append(adrs, adrEntry{name, number, title})
 	}
-	// Newest first so the most recent decisions are at the top.
 	sort.Slice(adrs, func(i, j int) bool { return adrs[i].Filename > adrs[j].Filename })
+	return adrs
+}
 
-	// Read view: ?doc=<filename> renders a single ADR's content. The requested
-	// filename is matched against the listing (an allowlist), so no
-	// caller-supplied path can escape the ADR sources.
+// adrLookup returns the record named doc and its body without its heading line
+// (the title is shown above it). The name is matched against the listing, an
+// allowlist, so no caller-supplied path can escape the ADR sources.
+func adrLookup(adrDir string, adrs []adrEntry, doc string) (adrEntry, []byte, bool) {
+	for _, e := range adrs {
+		if e.Filename != doc {
+			continue
+		}
+		raw, err := readADRFile(adrDir, e.Filename)
+		if err != nil {
+			return e, nil, false
+		}
+		if first, rest, ok := strings.Cut(string(raw), "\n"); ok && strings.HasPrefix(first, "# ") {
+			raw = []byte(rest)
+		}
+		return e, raw, true
+	}
+	return adrEntry{}, nil, false
+}
+
+// adrInspector renders one record in the list's inspector: the whole
+// decision, and a way to read it at full width.
+func adrInspector(e adrEntry, raw []byte) string {
+	return `<div class="sa-insp__title">` + string(ui.Text(e.Title)) + `</div><div class="sa-insp__meta mono">` + string(ui.Text(e.Number)) + `</div>` +
+		`<div class="sa-insp__actions"><a class="btn btn--sm" href="/os/adr?doc=` + string(ui.Text(url.QueryEscape(e.Filename))) + `">Read at full width</a></div>` +
+		`<article class="adr-doc">` + string(renderMarkdownDocument(raw)) + `</article>`
+}
+
+// handleAdminADR renders Decisions as the List kind: a row per record, found
+// by number or title, with the selected record in the inspector. ?doc= reads
+// one record at full width, the address every link to a decision uses.
+func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
+	adrDir := resolveADRDir()
+	adrs := adrEntries(adrDir)
+
 	if doc := r.URL.Query().Get("doc"); doc != "" {
-		var match *adrEntry
-		for i := range adrs {
-			if adrs[i].Filename == doc {
-				match = &adrs[i]
-				break
-			}
-		}
-		var raw []byte
-		rerr := errors.New("no such record")
-		if match != nil {
-			raw, rerr = readADRFile(adrDir, match.Filename)
-		}
-		if rerr != nil {
+		match, raw, ok := adrLookup(adrDir, adrs, doc)
+		if !ok {
 			// Still inside the console: the public site's 404 took the operator
 			// out of VayuOS for a link that was merely stale.
 			nonce := a.writeConsoleShellHeadStatus(w, r, "adrs", "Decisions", http.StatusNotFound)
@@ -1138,11 +1161,6 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 			writeConsoleShellFoot(w, nonce, "")
 			return
 		}
-		// The page header carries the record's title, so its own heading line
-		// is not rendered a second time underneath.
-		if first, rest, ok := strings.Cut(string(raw), "\n"); ok && strings.HasPrefix(first, "# ") {
-			raw = []byte(rest)
-		}
 		nonce := a.writeConsoleShellHead(w, r, "adrs", match.Number)
 		fmt.Fprint(w, ui.Join(
 			ui.Page(match.Title, match.Number, `<a class="btn btn--ghost" href="/os/adr">All decisions</a>`),
@@ -1152,20 +1170,56 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nonce := a.writeConsoleShellHead(w, r, "adrs", "Decisions")
-	rows := make([][]ui.HTML, 0, len(adrs))
-	for _, adr := range adrs {
-		rows = append(rows, []ui.HTML{
-			`<span class="mono">` + ui.Text(adr.Number) + `</span>`,
-			`<a href="/os/adr?doc=` + ui.Text(url.QueryEscape(adr.Filename)) + `">` + ui.Text(adr.Title) + `</a>`,
-		})
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	lq := strings.ToLower(q)
+	var shown []adrEntry
+	for _, e := range adrs {
+		if lq == "" || strings.Contains(strings.ToLower(e.Number+" "+e.Title), lq) {
+			shown = append(shown, e)
+		}
 	}
-	fmt.Fprint(w, ui.Join(
-		ui.Page("Decisions", "The architecture decision records behind this install, newest first. Each says what was decided and why.", ""),
-		ui.Section("Records", strconv.Itoa(len(adrs))+" decisions",
-			ui.Table([]string{"Record", "Decision"}, rows, "No decision records were found.")),
-	))
+	list := `<p class="table-empty">No decision matches that. <a href="/os/adr">Show every decision</a>.</p>`
+	inspector := ""
+	if len(adrs) == 0 {
+		list = string(ui.Empty("doc", "No decision records", "This build carries no architecture decision records.", ""))
+	} else if len(shown) > 0 {
+		var rows strings.Builder
+		for i, e := range shown {
+			sel := "false"
+			if i == 0 {
+				sel = "true"
+			}
+			rows.WriteString(`<tr class="post-row" data-list-row data-list-src="/os/adr/inspector?doc=` + string(ui.Text(url.QueryEscape(e.Filename))) + `" tabindex="0" aria-selected="` + sel + `">` +
+				`<td class="post-row__date mono">` + string(ui.Text(e.Number)) + `</td>` +
+				`<td class="post-row__name">` + string(ui.Text(e.Title)) + `</td></tr>`)
+		}
+		list = `<div class="table-wrap"><table class="table post-table"><thead><tr><th>Record</th><th>Decision</th></tr></thead><tbody>` +
+			rows.String() + `</tbody></table></div>`
+		if first, raw, ok := adrLookup(adrDir, adrs, shown[0].Filename); ok {
+			inspector = adrInspector(first, raw)
+		}
+	}
+
+	nonce := a.writeConsoleShellHead(w, r, "adrs", "Decisions")
+	fmt.Fprint(w, ui.List(ui.ListPage{
+		Title:  "Decisions",
+		Count:  strconv.Itoa(len(adrs)),
+		Search: ui.Search(ui.SearchBox{Action: "/os/adr", Name: "q", Value: q, Placeholder: "Search decisions"}),
+		Sub:    "The architecture decision records behind this install, newest first. Each says what was decided and why.",
+	}, ui.HTML(list), ui.HTML(inspector)))
 	writeConsoleShellFoot(w, nonce, "")
+}
+
+// handleAdminADRInspector returns one record for the list's inspector.
+func (a *App) handleAdminADRInspector(w http.ResponseWriter, r *http.Request) {
+	adrDir := resolveADRDir()
+	e, raw, ok := adrLookup(adrDir, adrEntries(adrDir), r.URL.Query().Get("doc"))
+	if !ok {
+		http.Error(w, "no such decision", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, adrInspector(e, raw))
 }
 
 // adrHeading is the title an ADR gives itself on its first line ("# ADR-0150 —

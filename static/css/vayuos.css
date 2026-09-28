@@ -6160,8 +6160,12 @@
 .vp-os[data-ui="still-air"] .media-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
 .vp-os[data-ui="still-air"] .media-card__name { font: var(--type-small); color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vp-os[data-ui="still-air"] .media-card__meta { font: var(--type-meta); color: var(--text-3); }
+/* Bounded to the content area and scrolled on its own: a sticky inspector
+   taller than the screen hides its end until the list beside it runs out, and
+   a decision record or a long message is taller than the screen. */
 .vp-os[data-ui="still-air"] .sa-list__inspector {
   position: sticky; top: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3);
+  max-height: calc(100dvh - var(--topbar-h) - 2 * var(--space-4)); overflow-y: auto; overscroll-behavior: contain;
   padding: var(--space-4); border: 1px solid var(--border-1); border-radius: var(--radius-surface); background: var(--surface-2);
 }
 .vp-os[data-ui="still-air"] .sa-insp__preview { border-radius: var(--radius-control); overflow: hidden; }
@@ -6207,7 +6211,7 @@
 .vp-os[data-ui="still-air"] .media-uploads.is-failed .media-uploads__now { color: var(--danger); }
 @media (max-width: 899px) {
   .vp-os[data-ui="still-air"] .sa-list__shell { grid-template-columns: minmax(0, 1fr); }
-  .vp-os[data-ui="still-air"] .sa-list__inspector { position: static; }
+  .vp-os[data-ui="still-air"] .sa-list__inspector { position: static; max-height: none; overflow: visible; }
   .vp-os[data-ui="still-air"] .sa-find, .vp-os[data-ui="still-air"] .sa-find .input { flex: 1 1 100%; width: 100%; }
 }
 /* A narrow list keeps what tells files apart: the name, the size and, while
