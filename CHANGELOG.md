@@ -8,6 +8,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.89] — 2026-09-28
+
+A second hotfix for speed on large sites. After 3.17.88 fixed articles, two
+more queries on johal.in read every post to answer a question an index
+could: the trending list, and the bell on every console page.
+
 ### Fixed
 
 - **The trending and pinned lists answer at once again.** Finding pinned
