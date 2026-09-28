@@ -380,8 +380,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// gives the Tor-world console the same minimal hub treatment (ADR-0141).
 		pr.Get("/os/system", a.hubRedirect("system"))
 		pr.Get("/os/members", a.handleOSMembers)
+		pr.Get("/os/members/people", a.handleOSMembersPeople)
 		// HTMX fragment: live-refresh the Members "Recent activity" feed.
-		pr.Get("/os/members/activity", a.handleOSMembersActivityFragment)
 		// Session-friendly membership management APIs (the /api/v1/admin/* originals
 		// require an API key; VayuOS operators hold a session cookie).
 		pr.Get("/os/api/members/export.csv", a.handleMembersExportCSV)
@@ -3536,6 +3536,9 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := string(settingsPageBody(r.Context(), a, cat))
+	if cat.Script != "" {
+		body += `<script nonce="` + nonce + `" src="/os/static/` + cat.Script + `?v=` + assetVer(cat.Script) + `"></script>`
+	}
 
 	saveScript := settingsPageScript
 	fullHTML := adminOSShellHead(nonce, cat.Label, "settings", cfg) +

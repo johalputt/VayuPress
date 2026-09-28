@@ -58,14 +58,16 @@ func (a *App) verifyTOTPForLogin(ctx context.Context, email, code string) (ok, r
 
 // ── Members page ───────────────────────────────────────────────────────────
 
+// handleOSMembers renders Audience › Members as the Overview kind (render 03):
+// how many there are and how many pay, the month's growth beside what happened
+// lately, then the tiers. The people themselves are a list one click away.
 func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
 	if a.members == nil {
-		body := `<div class="page-header"><h1>Members</h1></div>
-<div class="empty-state">Memberships are not enabled on this instance.</div>`
-		writeOSHTML(w, r, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Members", "members", cfg, ui.Overview(ui.OverviewPage{Title: "Members"},
+			ui.Band{Title: "Growth", Aside: ui.Empty("audience", "Memberships are off", "This install was started without the members store.", "")})))
 		return
 	}
 
@@ -75,317 +77,138 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 		stats = &members.Stats{ByTier: map[string]int{}, Currency: "USD"}
 	}
 	tiers, _ := a.members.ListTiers(ctx, true)
-	list, _ := a.members.List(ctx, 100)
 	signups, _ := a.members.SignupsByDay(ctx, 30)
-	revenue, _ := a.members.RevenueByTier(ctx)
-	activity, _ := a.members.RecentEvents(ctx, 12)
-
+	activity, _ := a.members.RecentEvents(ctx, 6)
 	esc := html.EscapeString
 
-	stat := func(label, value, sub string) string {
-		subHTML := ""
-		if sub != "" {
-			subHTML = `<div class="stat-card__sub">` + sub + `</div>`
+	state := "No members yet"
+	if stats.Total > 0 {
+		state = countOf(stats.Total, "member")
+		if stats.Paid > 0 {
+			state += ", " + strconv.Itoa(stats.Paid) + " paying"
 		}
-		return `<div class="stat-card"><div class="stat-card__label">` + esc(label) +
-			`</div><div class="stat-card__value">` + value + `</div>` + subHTML + `</div>`
 	}
 
-	// Net MRR movement (last 30 days), coloured by direction.
-	movement := priceLabel(stats.Currency, stats.NetMRRMovementCents) + " · 30d"
-	if stats.NetMRRMovementCents > 0 {
-		movement = `<span class="trend trend--up">▲ ` + priceLabel(stats.Currency, stats.NetMRRMovementCents) + `</span> · 30d`
-	} else if stats.NetMRRMovementCents < 0 {
-		movement = `<span class="trend trend--down">▼ ` + priceLabel(stats.Currency, -stats.NetMRRMovementCents) + `</span> · 30d`
+	// A figure shows only when it says something: an install with no sign-ups
+	// this month has no growth to report, and "0" in large type says less
+	// than its absence.
+	var figs []ui.Figure
+	if stats.NewLast30 > 0 {
+		figs = append(figs, ui.Figure{Value: "+" + strconv.Itoa(stats.NewLast30), Label: "New members"})
+	}
+	if stats.MRRCents > 0 {
+		figs = append(figs, ui.Figure{Value: priceLabel(stats.Currency, stats.MRRCents), Label: "Monthly revenue"})
+	}
+	if stats.Paid > 0 {
+		figs = append(figs, ui.Figure{Value: formatPercent(stats.ConversionRate), Label: "Pay after joining"})
+	}
+	chart := ui.HTML(`<p class="table-empty">Nobody has joined in the last 30 days.</p>`)
+	if stats.NewLast30 > 0 {
+		chart = ui.HTML(sparklineSVG(signups))
 	}
 
-	// ── Stat cards — the revenue & retention picture at a glance ──────────────
-	statGrid := `<div class="stat-grid mb-6">` +
-		stat("MRR", priceLabel(stats.Currency, stats.MRRCents), movement) +
-		stat("ARR", priceLabel(stats.Currency, stats.ARRCents), "annual run-rate") +
-		stat("Paid members", strconv.Itoa(stats.Paid), strconv.Itoa(stats.Trialing)+" in trial") +
-		stat("Total members", strconv.Itoa(stats.Total), "+"+strconv.Itoa(stats.NewLast30)+" · 30d") +
-		stat("Conversion", formatPercent(stats.ConversionRate), "free → paid") +
-		stat("Churn · 30d", formatPercent(stats.ChurnRate30), strconv.Itoa(stats.CanceledLast30)+" canceled") +
-		stat("ARPU", priceLabel(stats.Currency, stats.ARPUCents), "per paid member") +
-		stat("LTV", priceLabel(stats.Currency, stats.LTVCents), "est. lifetime value") +
-		`</div>`
-
-	// ── Insights: growth sparkline + revenue by tier ──────────────────────────
-	insightsCard := `<div class="card mb-6">
-  <div class="card-head"><div><h2 class="card-title">Growth &amp; revenue</h2><p class="card-subtitle">New members and recurring revenue over the last 30 days</p></div>
-    <a class="btn btn--sm btn--ghost" href="/os/api/members/export.csv" download>Export CSV</a></div>
-  <div class="grid grid-2 gap-4">
-    <div>
-      <div class="field-label">New members · last 30 days</div>
-      ` + sparklineSVG(signups) + `
-    </div>
-    <div>
-      <div class="field-label">Monthly recurring revenue by tier</div>
-      ` + revenueByTierHTML(revenue, stats.Currency, stats.MRRCents) + `
-    </div>
-  </div>
-</div>`
-
-	// ── Recent activity feed ──────────────────────────────────────────────────
-	// Progressively enhanced with HTMX: the Refresh button live-reloads only the
-	// feed fragment from /os/members/activity (hx-get → innerHTML swap) with no
-	// page reload and no bespoke JavaScript. Without HTMX the card still renders
-	// the server-side feed, so the page degrades gracefully.
-	activityCard := `<div class="card">
-  <button type="button" class="btn btn--ghost btn--sm mb-4" hx-get="/os/members/activity" hx-target="#os-activity-feed" hx-swap="innerHTML" hx-indicator="#os-activity-feed" hx-disabled-elt="this" aria-label="Refresh activity feed">↻ Refresh</button>
-  <div id="os-activity-feed">` + activityFeedHTML(activity, stats.Currency) + `</div>
-</div>`
-
-	// ── Tiers card ──────────────────────────────────────────────────────────
-	tierRows := ""
+	var tierRows []ui.Row
 	for _, t := range tiers {
 		price := "Free"
 		if !t.IsFree() {
-			price = priceLabel(t.Currency, t.MonthlyCents) + " / mo"
+			price = priceLabel(t.Currency, t.MonthlyCents) + " a month"
 			if t.MonthlyCents == 0 && t.YearlyCents > 0 {
-				price = priceLabel(t.Currency, t.YearlyCents) + " / yr"
+				price = priceLabel(t.Currency, t.YearlyCents) + " a year"
 			}
 		}
 		if t.TrialDays > 0 {
-			price += ` <span class="badge badge--muted">` + strconv.Itoa(t.TrialDays) + `-day trial</span>`
+			price += " · " + strconv.Itoa(t.TrialDays) + "-day trial"
 		}
-		vis := `<span class="badge badge--muted">` + esc(titleFirst(t.Visibility)) + `</span>`
-		status := `<span class="badge badge--ok">Active</span>`
-		if !t.Active {
-			status = `<span class="badge badge--muted">Archived</span>`
+		if len(t.Benefits) > 0 {
+			price += " · " + strings.Join(t.Benefits, ", ")
 		}
-		actions := `<button class="btn btn--sm btn--ghost" type="button" data-edit-tier
+		count := "No members yet"
+		if n := stats.ByTier[t.Slug]; n > 0 {
+			count = countOf(n, "member")
+			if !t.IsFree() {
+				count = strconv.Itoa(n) + " paying"
+			}
+		}
+		st := ui.State("ok", "Public")
+		switch {
+		case !t.Active:
+			st = ui.State("neutral", "Archived")
+		case t.Visibility != "public":
+			st = ui.State("neutral", titleFirst(t.Visibility))
+		}
+		control := `<span class="sa-row__count">` + esc(count) + `</span>` + string(st) +
+			`<button class="btn btn--sm btn--ghost" type="button" data-edit-tier
 			data-id="` + esc(t.ID) + `" data-name="` + esc(t.Name) + `" data-description="` + esc(t.Description) + `"
 			data-monthly="` + strconv.Itoa(t.MonthlyCents) + `" data-yearly="` + strconv.Itoa(t.YearlyCents) + `"
 			data-currency="` + esc(t.Currency) + `" data-visibility="` + esc(t.Visibility) + `"
 			data-trial="` + strconv.Itoa(t.TrialDays) + `" data-stripe-monthly="` + esc(t.StripeMonthlyPrice) + `" data-stripe-yearly="` + esc(t.StripeYearlyPrice) + `"
 			data-mail-enabled="` + zeroOne(t.MailEnabled) + `" data-mail-quota="` + strconv.Itoa(t.MailQuotaMB) + `"
 			data-benefits="` + esc(strings.Join(t.Benefits, "\n")) + `">Edit</button>`
-		if t.Slug != members.TierFree && t.Slug != members.TierPaid {
-			actions += ` <button class="btn btn--sm btn--danger" type="button" data-archive-tier data-id="` + esc(t.ID) + `">Archive</button>`
+		if t.Active && t.Slug != members.TierFree && t.Slug != members.TierPaid {
+			control += `<button class="btn btn--sm btn--ghost" type="button" data-archive-tier data-id="` + esc(t.ID) + `">Archive</button>`
 		}
-		tierRows += `<tr>
-  <td class="row-title">` + esc(t.Name) + ` <span class="row-meta">` + esc(t.Slug) + `</span></td>
-  <td>` + esc(price) + `</td>
-  <td>` + vis + `</td>
-  <td>` + status + `</td>
-  <td class="row-actions">` + actions + `</td>
-</tr>`
+		tierRows = append(tierRows, ui.Row{Label: t.Name, Hint: price, Control: ui.HTML(control)})
 	}
-	tierTable := `<div class="empty-state">No tiers yet.</div>`
-	if tierRows != "" {
-		tierTable = `<div class="table-wrap"><table class="table">
-  <thead><tr><th>Plan</th><th>Price</th><th>Visibility</th><th>Status</th><th></th></tr></thead>
-  <tbody>` + tierRows + `</tbody></table></div>`
+	tiersBody := ui.HTML(`<p class="table-empty">No tiers yet.</p>`)
+	if len(tierRows) > 0 {
+		tiersBody = ui.Rows(tierRows...)
 	}
-	tiersCard := `<div class="card mb-6">
-  <div class="card-head">
-    <div><h2 class="card-title">Membership tiers</h2><p class="card-subtitle">What people can buy, and what each tier unlocks</p></div>
-    <button class="btn btn--primary btn--sm" type="button" data-new-tier>+ New tier</button>
-  </div>
-  ` + tierTable + `
-  <p class="field-hint mt-3">Tiers appear on your public <a href="/pricing">pricing page</a>. The built-in Free and Premium plans cannot be removed.</p>
-</div>`
+	sections := []ui.HTML{ui.Section("Tiers", "On your public pricing page", tiersBody)}
 
-	// ── Members table ───────────────────────────────────────────────────────
-	tierOptions := func(current string) string {
-		opts := ""
-		seen := map[string]bool{}
-		for _, t := range tiers {
-			sel := ""
-			if t.Slug == current {
-				sel = " selected"
-			}
-			opts += `<option value="` + esc(t.Slug) + `"` + sel + `>` + esc(t.Name) + `</option>`
-			seen[t.Slug] = true
-		}
-		if !seen[current] && current != "" {
-			opts += `<option value="` + esc(current) + `" selected>` + esc(current) + `</option>`
-		}
-		return opts
-	}
-	rows := ""
-	for _, m := range list {
-		badge := `<span class="badge badge--free">Free</span>`
-		if m.IsPaid() {
-			badge = `<span class="badge badge--paid">` + esc(m.Tier) + `</span>`
-		}
-		labelChips := ""
-		for _, l := range m.Labels {
-			labelChips += `<span class="chip chip--removable">` + esc(l) +
-				`<button type="button" data-remove-label data-email="` + esc(m.Email) + `" data-label="` + esc(l) + `" aria-label="Remove label">×</button></span> `
-		}
-		labelChips += `<button type="button" class="btn btn--xs btn--ghost" data-add-label data-email="` + esc(m.Email) + `">+ label</button>`
-		lastSeen := `<span class="row-meta">never</span>`
-		if m.LastSeenAt != nil {
-			lastSeen = m.LastSeenAt.Format("2 Jan 2006")
-		}
-		name := esc(m.Name)
-		if name == "" {
-			name = `<span class="row-meta">—</span>`
-		}
-		actions := `<span class="row-meta">—</span>`
-		if m.IsPaid() {
-			actions = `<button type="button" class="btn btn--xs btn--danger" data-cancel-member data-email="` + esc(m.Email) + `">Cancel</button>`
-		}
-		// An unconfirmed row predates the rule that a member must prove control of
-		// their address, so it may not be a real person at all. Say so on the row and
-		// offer the only action that makes sense for it.
-		emailCell := esc(m.Email)
-		if m.VerifiedAt == nil {
-			emailCell += ` <span class="badge badge--warn" title="This address was never confirmed — the sign-in link was requested but never used.">Unconfirmed</span>`
-			actions = `<button type="button" class="btn btn--xs btn--danger" data-remove-member data-email="` + esc(m.Email) + `">Remove</button>`
-		}
-		// data-search lets the client-side filter match on email, name and labels.
-		searchKey := esc(strings.ToLower(m.Email + " " + m.Name + " " + strings.Join(m.Labels, " ")))
-		rows += `<tr data-member-row data-search="` + searchKey + `">
-  <td class="row-title">` + emailCell + `</td>
-  <td>` + name + `</td>
-  <td>` + badge + `</td>
-  <td><select class="select input--sm" data-member-tier data-email="` + esc(m.Email) + `">` + tierOptions(m.Tier) + `</select></td>
-  <td>` + labelChips + `</td>
-  <td class="text-sm">` + geoDisplayHTML(m.Country, m.City) + `</td>
-  <td class="row-meta">` + lastSeen + `</td>
-  <td class="row-meta">` + config.FormatSite(m.CreatedAt, "2 Jan 2006") + `</td>
-  <td class="row-actions">` + actions + `</td>
-</tr>`
-	}
-	membersTable := `<div class="empty-state">No members yet.</div>`
-	if rows != "" {
-		membersTable = `<div class="table-wrap"><table class="table">
-  <thead><tr><th>Email</th><th>Name</th><th>Tier</th><th>Plan</th><th>Labels</th><th>Location</th><th>Last seen</th><th>Joined</th><th></th></tr></thead>
-  <tbody>` + rows + `</tbody></table></div>`
-	}
-	membersCard := `<div class="card">
-  <div class="card-head"><h2 class="card-title">Members</h2>
-    <input class="input input--sm" type="search" placeholder="Search members…" data-member-search aria-label="Search members" style="max-width:16rem">
-  </div>
-  <div class="empty-state" data-members-empty hidden>No members match your search.</div>` + membersTable + `</div>`
-
-	// Unconfirmed leftovers from the old pre-send signup path. The card only exists
-	// while there is something to clean up, so a healthy install never sees it.
-	// On a count error the card stays hidden and the failure is logged — a wrong
-	// number would be worse than none, and the purge endpoint re-lists
-	// authoritatively.
-	unverifiedCount := 0
-	if a.members != nil {
-		if n, err := a.members.CountUnverified(ctx); err == nil {
-			unverifiedCount = n
-		} else {
-			logging.LogError("members", "unconfirmed-member count failed; cleanup card hidden", err.Error())
-		}
-	}
-	unconfirmedCard := unverifiedMembersCardHTML(unverifiedCount)
-	unconfirmedAcc := ""
-	if unconfirmedCard != "" {
-		chip := `<span class="mon-chip mon-chip--on">● All confirmed</span>`
-		sub := "Everyone has proved they control their address"
-		if unverifiedCount > 0 {
-			chip = `<span class="mon-chip mon-chip--off">○ ` + strconv.Itoa(unverifiedCount) + ` waiting</span>`
-			sub = "Added as members before their sign-in link was used"
-		}
-		unconfirmedAcc = monAcc(saIcon("mail"), "Unconfirmed addresses", sub, chip, unverifiedCount > 0, unconfirmedCard)
+	// Unconfirmed leftovers from the old pre-send signup path, shown only while
+	// there is something to clean up. On a count error nothing is shown and the
+	// failure is logged: a wrong number would be worse than none, and the purge
+	// endpoint re-lists authoritatively.
+	if n, err := a.members.CountUnverified(ctx); err != nil {
+		logging.LogError("members", "unconfirmed-member count failed; cleanup hidden", err.Error())
+	} else if body := unverifiedMembersCardHTML(n); body != "" {
+		sections = append(sections, ui.Section("Unconfirmed addresses", "", ui.HTML(body)))
 	}
 
-	// ── Team & roles (admin-only; staff accounts, not readers) ────────────────
-	teamCard := a.teamCardHTML(r)
-
-	// ── Tier editor modal ─────────────────────────────────────────────────────
-	modal := `<div class="modal-backdrop" id="tier-modal" hidden>
-  <div class="modal-panel">
-    <div class="modal-header"><h3 class="modal-title" id="tier-modal-title">New tier</h3>
-      <button class="modal-close" type="button" id="tier-cancel" aria-label="Close">×</button></div>
-    <form id="tier-form">
-      <div class="modal-body">
-        <input type="hidden" id="tier-id">
-        <div class="field"><label class="field-label" for="tier-name">Name</label>
-          <input class="input" id="tier-name" type="text" required maxlength="60" placeholder="e.g. Premium"></div>
-        <div class="field mt-3"><label class="field-label" for="tier-desc">Description</label>
-          <input class="input" id="tier-desc" type="text" maxlength="200" placeholder="Short summary shown on the pricing page"></div>
-        <div class="grid grid-2 gap-3 mt-3">
-          <div class="field"><label class="field-label" for="tier-monthly">Monthly price (cents)</label>
-            <input class="input" id="tier-monthly" type="number" min="0" value="0"></div>
-          <div class="field"><label class="field-label" for="tier-yearly">Yearly price (cents)</label>
-            <input class="input" id="tier-yearly" type="number" min="0" value="0"></div>
-        </div>
-        <div class="grid grid-2 gap-3 mt-3">
-          <div class="field"><label class="field-label" for="tier-currency">Currency</label>
-            <input class="input" id="tier-currency" type="text" maxlength="3" value="USD"></div>
-          <div class="field"><label class="field-label" for="tier-visibility">Visibility</label>
-            <select class="select" id="tier-visibility"><option value="public">Public</option><option value="hidden">Hidden</option></select></div>
-        </div>
-        <div class="field mt-3"><label class="field-label" for="tier-trial">Free trial (days)</label>
-          <input class="input" id="tier-trial" type="number" min="0" value="0">
-          <p class="field-hint">New members on this tier get full access for this many days before being charged. 0 disables the trial.</p></div>
-        <div class="grid grid-2 gap-3 mt-3">
-          <div class="field"><label class="field-label" for="tier-stripe-monthly">Stripe monthly price ID</label>
-            <input class="input" id="tier-stripe-monthly" type="text" maxlength="80" placeholder="price_…"></div>
-          <div class="field"><label class="field-label" for="tier-stripe-yearly">Stripe yearly price ID</label>
-            <input class="input" id="tier-stripe-yearly" type="text" maxlength="80" placeholder="price_…"></div>
-        </div>
-        <div class="field mt-3" style="border-top:1px solid var(--border-1);padding-top:12px">
-          <label class="field-label" style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
-            <input type="checkbox" id="tier-mail-enabled"> Include a VayuMail mailbox with this tier</label>
-          <p class="field-hint">Paid members on this tier can claim a private mailbox (with PGP + WKD). They pick their address separately.</p></div>
-        <div class="field"><label class="field-label" for="tier-mail-quota">Mailbox size (MB)</label>
-          <input class="input" id="tier-mail-quota" type="number" min="0" value="0" style="max-width:12rem">
-          <p class="field-hint">Storage cap for the included mailbox. 0 = unlimited. (e.g. 1024 = 1&nbsp;GB, 2048 = 2&nbsp;GB.)</p></div>
-        <div class="field mt-3"><label class="field-label" for="tier-benefits">Benefits (one per line)</label>
-          <textarea class="textarea" id="tier-benefits" rows="4" placeholder="Full access to premium posts&#10;Members-only newsletter"></textarea></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn--ghost" type="button" id="tier-cancel-2">Cancel</button>
-        <button class="btn btn--primary" type="submit" id="tier-save">Save tier</button>
-      </div>
-    </form>
-  </div>
-</div>`
-
-	body := `<div class="page-header"><h1>Members</h1></div>
-<p class="page-sub">Everyone in your community — memberships, tiers, your team and activity, with growth insights, all owned by you.</p>` +
-		statGrid +
-		// Each card names itself; a section head above it said the same words
-		// again.
-		insightsCard +
-		tiersCard +
-		`<div class="section-head"><span class="section-head__title">People</span><span class="section-head__hint">Everyone who has joined — search, label and manage</span></div>` +
-		membersCard +
-		// Folded: each is consulted occasionally, and together they pushed the
-		// members table — the reason most visits happen — far down the page.
-		// Unconfirmed addresses opens itself when there are any, because that is a
-		// state needing a decision rather than a section to browse.
-		`<div class="section-head"><span class="section-head__title">Community operations</span><span class="section-head__hint">Activity, your team, and addresses awaiting confirmation</span></div>` +
-		`<div class="mon-stack">` +
-		monAcc(saIcon("trend"), "Recent activity", "Sign-ups, upgrades and cancellations",
-			`<span class="mon-chip mon-chip--off">○ Log</span>`, false, activityCard) +
-		monAcc(saIcon("audience"), "Team & roles", "Staff accounts for your workspace",
-			`<span class="mon-chip mon-chip--off">○ Staff</span>`, false, teamCard) +
-		unconfirmedAcc +
-		`</div>` +
+	// The tier editor rises in a sheet. Its title's id, tier-modal-title, is the
+	// one the members script sets to "New tier" or "Edit tier".
+	modal := string(ui.Sheet("tier-modal", "New tier", ui.HTML(`<form id="tier-form">
+  <input type="hidden" id="tier-id">
+  <div class="field"><label class="field-label" for="tier-name">Name</label>
+    <input class="input" id="tier-name" type="text" required maxlength="60" placeholder="Premium"></div>
+  <div class="field"><label class="field-label" for="tier-desc">Description</label>
+    <input class="input" id="tier-desc" type="text" maxlength="200" placeholder="One line for the pricing page"></div>
+  <div class="field"><label class="field-label" for="tier-monthly">Monthly price, in cents</label>
+    <input class="input" id="tier-monthly" type="number" min="0" value="0"></div>
+  <div class="field"><label class="field-label" for="tier-yearly">Yearly price, in cents</label>
+    <input class="input" id="tier-yearly" type="number" min="0" value="0"></div>
+  <div class="field"><label class="field-label" for="tier-currency">Currency</label>
+    <input class="input" id="tier-currency" type="text" maxlength="3" value="USD"></div>
+  <div class="field"><label class="field-label" for="tier-visibility">Visibility</label>
+    <select class="select" id="tier-visibility"><option value="public">Public</option><option value="hidden">Hidden</option></select></div>
+  <div class="field"><label class="field-label" for="tier-trial">Free trial, in days</label>
+    <input class="input" id="tier-trial" type="number" min="0" value="0">
+    <p class="field-hint">Full access for this many days before the first charge. 0 is none.</p></div>
+  <div class="field"><label class="field-label" for="tier-stripe-monthly">Stripe monthly price ID</label>
+    <input class="input" id="tier-stripe-monthly" type="text" maxlength="80" placeholder="price_…"></div>
+  <div class="field"><label class="field-label" for="tier-stripe-yearly">Stripe yearly price ID</label>
+    <input class="input" id="tier-stripe-yearly" type="text" maxlength="80" placeholder="price_…"></div>
+  <label class="cz-check"><input type="checkbox" id="tier-mail-enabled"> A VayuMail mailbox with this tier</label>
+  <div class="field"><label class="field-label" for="tier-mail-quota">Mailbox size, in MB</label>
+    <input class="input" id="tier-mail-quota" type="number" min="0" value="0">
+    <p class="field-hint">0 is unlimited; 1024 is 1 GB.</p></div>
+  <div class="field"><label class="field-label" for="tier-benefits">Benefits, one a line</label>
+    <textarea class="textarea" id="tier-benefits" rows="4" placeholder="Every premium post&#10;The members' newsletter"></textarea></div>
+  <div class="mt-3 sa-list__sheet-actions"><button class="btn btn--primary btn--sm" type="submit" id="tier-save">Save tier</button>
+    <button class="btn btn--ghost btn--sm" type="button" id="tier-cancel">Cancel</button></div>
+</form>`)))
+	body := string(ui.Overview(ui.OverviewPage{
+		Title: "Members",
+		State: ui.Text(state),
+		Actions: ui.HTML(`<a class="btn btn--ghost" href="/os/api/members/export.csv" download>Export</a>` +
+			`<a class="btn" href="/os/members/people">Everyone</a>` +
+			`<button class="btn btn--primary" type="button" data-new-tier>` + saIcon("plus") + ` New tier</button>`),
+	}, ui.Band{Title: "Growth", Hint: "Last 30 days", Figures: figs, Chart: chart,
+		Aside: ui.Section("Recent", "", ui.HTML(activityFeedHTML(activity, stats.Currency)))}, sections...)) +
 		modal +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-members.js?v=` + assetVer("js/admin-os-members.js") + `"></script>`
 
 	writeOSHTML(w, r, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
-}
-
-// handleOSMembersActivityFragment returns just the recent-activity feed as an
-// HTML fragment, for the HTMX-powered Refresh button on the Members page
-// (hx-get → innerHTML swap into #os-activity-feed). It is a read-only GET, so
-// no CSRF token is required; the enclosing pr routes already require a session.
-func (a *App) handleOSMembersActivityFragment(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if a.members == nil {
-		fmt.Fprint(w, `<div class="empty-state">Memberships are not enabled on this instance.</div>`)
-		return
-	}
-	ctx := r.Context()
-	currency := "USD"
-	if stats, _ := a.members.Stats(ctx); stats != nil && stats.Currency != "" {
-		currency = stats.Currency
-	}
-	activity, _ := a.members.RecentEvents(ctx, 12)
-	fmt.Fprint(w, activityFeedHTML(activity, currency))
 }
 
 // ── Security page (TOTP) ────────────────────────────────────────────────────
@@ -532,12 +355,10 @@ func sparklineSVG(series []members.DayCount) string {
 		return `<div class="empty-state">No data yet.</div>`
 	}
 	max := 1
-	total := 0
 	for _, d := range series {
 		if d.Count > max {
 			max = d.Count
 		}
-		total += d.Count
 	}
 	n := len(series)
 	bw := 100.0 / float64(n)
@@ -551,66 +372,31 @@ func sparklineSVG(series []members.DayCount) string {
 			x+bw*0.15, y, bw*0.7, h, html.EscapeString(d.Day), d.Count)
 	}
 	return `<svg viewBox="0 0 100 40" preserveAspectRatio="none" width="100%" height="84" role="img" aria-label="New members per day">` +
-		bars + `</svg><div class="row-meta mt-2">` + strconv.Itoa(total) + ` new members in the last 30 days</div>`
+		bars + `</svg>`
 }
 
-// revenueByTierHTML renders each tier's MRR contribution as a labelled bar.
-func revenueByTierHTML(rev []members.TierRevenue, currency string, totalMRR int) string {
-	if len(rev) == 0 {
-		return `<div class="empty-state">No paying members yet.</div>`
-	}
-	esc := html.EscapeString
-	out := `<div>`
-	for _, t := range rev {
-		pct := 0.0
-		if totalMRR > 0 {
-			pct = float64(t.MRRCents) / float64(totalMRR) * 100
-		}
-		cur := t.Currency
-		if cur == "" {
-			cur = currency
-		}
-		out += `<div class="mb-3">
-  <div class="flex-between" style="display:flex;justify-content:space-between;font-size:.85rem">
-    <span>` + esc(t.Name) + `</span>
-    <span class="row-meta">` + priceLabel(cur, t.MRRCents) + ` · ` + strconv.Itoa(t.Members) + ` members</span>
-  </div>
-  <div style="background:var(--accent-soft);border-radius:4px;height:8px;overflow:hidden;margin-top:4px">
-    <div style="height:100%;background:var(--chart-1);width:` + fmt.Sprintf("%.1f", pct) + `%"></div>
-  </div>
-</div>`
-	}
-	out += `</div>`
-	return out
-}
-
-// activityFeedHTML renders the recent member activity events as a timeline.
+// activityFeedHTML renders recent member activity as rows: when, who and
+// what, and the plan or amount it concerns. The event's kind is in the words,
+// so it needs no colour of its own.
 func activityFeedHTML(events []members.Event, currency string) string {
 	if len(events) == 0 {
-		return `<div class="empty-state">No activity yet. Member signups and subscription changes will appear here.</div>`
+		return `<p class="table-empty">Sign-ups and plan changes will show here.</p>`
 	}
 	esc := html.EscapeString
 	labels := map[string]string{
-		members.EventSignup:          "joined as a free member",
-		members.EventSubscribe:       "started a paid subscription",
-		members.EventTrialStart:      "started a free trial",
-		members.EventUpgrade:         "upgraded their plan",
-		members.EventDowngrade:       "downgraded their plan",
-		members.EventRenew:           "renewed their subscription",
-		members.EventCancel:          "cancelled their subscription",
-		members.EventCancelScheduled: "scheduled a cancellation",
-		members.EventComp:            "was granted a complimentary plan",
+		members.EventSignup:          "joined",
+		members.EventSubscribe:       "started paying",
+		members.EventTrialStart:      "started a trial",
+		members.EventUpgrade:         "upgraded",
+		members.EventDowngrade:       "downgraded",
+		members.EventRenew:           "renewed",
+		members.EventCancel:          "cancelled",
+		members.EventCancelScheduled: "cancels at period end",
+		members.EventComp:            "was given a plan",
 		members.EventPaymentFailed:   "had a payment fail",
 	}
-	colors := map[string]string{
-		members.EventSubscribe:     "#22c55e",
-		members.EventTrialStart:    "#3b82f6",
-		members.EventUpgrade:       "#22c55e",
-		members.EventCancel:        "#ef4444",
-		members.EventPaymentFailed: "#f59e0b",
-		members.EventComp:          "#a855f7",
-	}
-	out := `<ul style="list-style:none;margin:0;padding:0">`
+	var b strings.Builder
+	b.WriteString(`<ul class="sa-activity">`)
 	for _, e := range events {
 		who := e.Email
 		if who == "" {
@@ -620,21 +406,14 @@ func activityFeedHTML(events []members.Event, currency string) string {
 		if label == "" {
 			label = strings.ReplaceAll(e.Type, "_", " ")
 		}
-		dot := colors[e.Type]
-		if dot == "" {
-			dot = "#9ca3af"
-		}
-		amt := ""
+		note := ""
 		if e.AmountCents > 0 {
-			amt = ` <span class="row-meta">(` + priceLabel(currency, e.AmountCents) + `/mo)</span>`
+			note = priceLabel(currency, e.AmountCents) + " a month"
 		}
-		when := config.FormatSite(e.CreatedAt, "2 Jan 15:04")
-		out += `<li style="display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px solid var(--border-1)">
-  <span style="flex:none;width:8px;height:8px;border-radius:50%;background:` + dot + `"></span>
-  <span style="flex:1;font-size:.9rem"><strong>` + esc(who) + `</strong> ` + esc(label) + amt + `</span>
-  <span class="row-meta">` + esc(when) + `</span>
-</li>`
+		b.WriteString(`<li><span class="sa-activity__when">` + esc(config.FormatSite(e.CreatedAt, "2 Jan, 15:04")) + `</span>` +
+			`<span class="sa-activity__what">` + esc(who) + ` ` + esc(label) + `</span>` +
+			`<span class="sa-activity__note">` + esc(note) + `</span></li>`)
 	}
-	out += `</ul>`
-	return out
+	b.WriteString(`</ul>`)
+	return b.String()
 }

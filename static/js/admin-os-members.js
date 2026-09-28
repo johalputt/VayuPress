@@ -66,7 +66,8 @@
 
   var $ = function (id) { return document.getElementById(id); };
 
-  // ── Tier editor modal ──────────────────────────────────────────────────
+  // ── Tier editor sheet (a <dialog>: the browser keeps focus in it, and
+  //    Escape and the sheet's own close button shut it) ────────────────────
   function openModal(data) {
     data = data || {};
     $('tier-id').value = data.id || '';
@@ -83,9 +84,10 @@
     if ($('tier-mail-quota')) { $('tier-mail-quota').value = data.mailQuota || 0; }
     $('tier-benefits').value = data.benefits || '';
     if ($('tier-modal-title')) { $('tier-modal-title').textContent = data.id ? 'Edit tier' : 'New tier'; }
-    if ($('tier-modal')) { $('tier-modal').removeAttribute('hidden'); }
+    var sheet = $('tier-modal');
+    if (sheet && !sheet.open) { sheet.showModal(); }
   }
-  function closeModal() { if ($('tier-modal')) { $('tier-modal').setAttribute('hidden', ''); } }
+  function closeModal() { var sheet = $('tier-modal'); if (sheet && sheet.open) { sheet.close(); } }
 
   function saveTier() {
     var id = $('tier-id').value;
@@ -176,7 +178,7 @@
     if (!t || !t.closest) { return; }
     var btn;
     if (t.id === 'tier-modal') { closeModal(); return; } // the backdrop, not the dialog
-    if (t.closest('#tier-cancel, #tier-cancel-2')) { closeModal(); return; }
+    if (t.closest('#tier-cancel')) { closeModal(); return; }
     if (t.closest('[data-new-tier]')) { openModal(null); return; }
     if ((btn = t.closest('[data-edit-tier]'))) { openModal(btn.dataset); return; }
 

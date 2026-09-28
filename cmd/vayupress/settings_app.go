@@ -48,6 +48,7 @@ type settingsCategory struct {
 	Slug, Label, Icon, Sub string
 	Group                  string // a sidebar heading that starts before this category
 	Groups                 []settingsGroup
+	Script                 string // a script under /os/static the category's own controls need
 }
 
 var settingsCategories = []settingsCategory{
@@ -107,6 +108,12 @@ var settingsCategories = []settingsCategory{
 			{Title: "Sign-up", Fields: []settingField{
 				{ID: "s-member-buttons", Key: settings.KeyMembershipButtons, Label: "Sign in and Sign up buttons", Hint: "Shown in the public site’s menu.", Kind: "toggle"},
 			}},
+		}},
+	{Slug: "team", Label: "Team", Icon: "user",
+		Sub:    "The people who run this site with you, and what each may do.",
+		Script: "js/admin-os-members.js",
+		Groups: []settingsGroup{
+			{Title: "Team", Custom: settingsTeam, Terms: "team staff roles admin editor author accounts users people"},
 		}},
 	{Slug: "email", Label: "Email delivery", Icon: "mail",
 		Sub: "The server your site’s own email goes out through: sign-in links, receipts, newsletters.",
@@ -279,6 +286,8 @@ func settingsSearchIndex(app *saApp) string {
 		`<ul class="sa-find__results" data-settings-index hidden>` + b.String() + `</ul>` +
 		`<p class="sa-find__none" data-settings-none hidden>No setting matches that.</p></div>`
 }
+
+func settingsTeam(ctx context.Context, a *App) ui.HTML { return ui.HTML(a.teamRoster(ctx)) }
 
 func settingsNavEditor(ctx context.Context, a *App) ui.HTML {
 	navJSON := a.savedSetting(ctx, settings.KeyNavItems)

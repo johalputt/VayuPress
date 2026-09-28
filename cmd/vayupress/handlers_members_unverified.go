@@ -26,7 +26,7 @@ import (
 	"github.com/johalputt/vayupress/internal/members"
 )
 
-// unverifiedMembersCardHTML renders the cleanup card. It returns "" when nothing
+// unverifiedMembersCardHTML renders the cleanup notice for Members. It returns "" when nothing
 // is unconfirmed, so a healthy install never carries a warning it cannot act on.
 func unverifiedMembersCardHTML(n int) string {
 	if n <= 0 {
@@ -37,12 +37,9 @@ func unverifiedMembersCardHTML(n int) string {
 		noun, verb = "addresses", "were"
 	}
 	count := strconv.Itoa(n)
-	return `<div class="card mb-6">
-  <div class="card-head"><h2 class="card-title">Unconfirmed addresses</h2>
-    <button type="button" class="btn btn--sm btn--danger" data-purge-unverified data-count="` + count + `">Remove all ` + count + `</button></div>
-  <p class="text-sm muted">` + count + ` ` + html.EscapeString(noun) + ` ` + verb + ` added as members before the sign-in link had been used, so nobody ever proved they control them — a mistyped or undeliverable address ends up here. New signups can no longer reach this state: a member is created only when the emailed link is opened.</p>
+	return `<p class="text-sm muted">` + count + ` ` + html.EscapeString(noun) + ` ` + verb + ` added as members before the sign-in link had been used, so nobody ever proved they control them — a mistyped or undeliverable address ends up here. New signups can no longer reach this state: a member is created only when the emailed link is opened.</p>
   <p class="text-sm muted">Removing one deletes the member record, its sessions and any pending sign-in link. If the person is real and later opens a link, they simply join then. Verified members are never affected.</p>
-</div>`
+  <button type="button" class="btn btn--sm btn--danger" data-purge-unverified data-count="` + count + `">Remove all ` + count + `</button>`
 }
 
 // handleMemberDeleteAdmin removes a single never-confirmed member.

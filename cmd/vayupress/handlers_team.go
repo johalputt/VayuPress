@@ -475,15 +475,16 @@ func (a *App) handleProfileSave(w http.ResponseWriter, r *http.Request) {
 // Team card (rendered inside the Members console for admins)
 // =============================================================================
 
-// teamCardHTML renders the staff/team management card: the roster with inline
-// role selectors and delete actions, plus a create form. Returns "" when the
-// caller is not an admin so the card stays admin-only.
-func (a *App) teamCardHTML(r *http.Request) string {
-	if a.userStore == nil || !a.isAdminRequest(r) {
-		return ""
+// teamRoster renders Settings › Team: the staff with their roles and
+// mailboxes, and the form that adds one. It checks no role itself because
+// every /os/settings page already requires an admin (osPathMinLevel); it used
+// to be a card on Members, which carried that check.
+func (a *App) teamRoster(ctx context.Context) string {
+	if a == nil || a.userStore == nil {
+		return `<p class="table-empty">Accounts are not available on this install.</p>`
 	}
 	esc := html.EscapeString
-	list, _ := a.userStore.List(r.Context())
+	list, _ := a.userStore.List(ctx)
 	mailEnabled := a.vayuMail != nil && a.vayuMail.Config().Enabled
 	mailDomain := ""
 	if mailEnabled {
@@ -512,7 +513,7 @@ func (a *App) teamCardHTML(r *http.Request) string {
 		mailbox := `<span class="row-meta">mail off</span>`
 		if mailEnabled {
 			if u.MailAddress != "" {
-				mailbox = `<span class="badge badge--ok">` + esc(u.MailAddress) + `</span> ` +
+				mailbox = esc(u.MailAddress) + ` ` +
 					`<button class="btn btn--xs btn--ghost" type="button" data-assign-mailbox data-email="` + esc(u.Email) + `" data-domain="` + esc(mailDomain) + `" data-current="` + esc(u.MailAddress) + `">Change</button>`
 			} else {
 				mailbox = `<button class="btn btn--xs" type="button" data-assign-mailbox data-email="` + esc(u.Email) + `" data-domain="` + esc(mailDomain) + `">Assign email</button>`
@@ -526,7 +527,7 @@ func (a *App) teamCardHTML(r *http.Request) string {
   <td class="row-actions"><button class="btn btn--sm btn--danger" type="button" data-delete-user data-email="` + esc(u.Email) + `">Remove</button></td>
 </tr>`
 	}
-	table := `<div class="empty-state">No team members yet.</div>`
+	table := `<p class="table-empty">No one yet.</p>`
 	if rows != "" {
 		table = `<div class="table-wrap"><table class="table">
   <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>VayuMail</th><th></th></tr></thead>
@@ -538,14 +539,9 @@ func (a *App) teamCardHTML(r *http.Request) string {
 		mailNote = `New accounts are auto-provisioned a sovereign VayuMail mailbox (<code>name@` + esc(a.vayuMail.Config().Domain) + `</code>) and a PGP keypair. Manage mailboxes &amp; passwords under <a href="/os/vayumail/accounts">VayuMail → Mail accounts</a>.`
 	}
 
-	return `<div class="card mb-6">
-  <div class="card-head">
-    <h2 class="card-title">Team &amp; roles</h2>
-    <span class="badge badge--muted">Admin only</span>
-  </div>
-  <p class="field-hint">Roles: <strong>Admin</strong> manages the team &amp; settings · <strong>Editor</strong> writes &amp; manages all content · <strong>Author</strong> writes their own content. Each member edits their public profile under <a href="/os/profile">My profile</a>.</p>
+	return `<p class="field-hint">Roles: <strong>Admin</strong> manages the team &amp; settings · <strong>Editor</strong> writes &amp; manages all content · <strong>Author</strong> writes their own content. Each member edits their public profile under <a href="/os/profile">My profile</a>.</p>
   ` + table + `
-  <div class="card-subtitle mt-4">Add a team member</div>
+  <h3 class="settings-panel__title">Add someone</h3>
   <form data-new-user>
     <div class="grid grid-2 gap-3">
       <label class="field"><span class="field-label">Email</span>
@@ -566,8 +562,7 @@ func (a *App) teamCardHTML(r *http.Request) string {
       <span class="muted text-sm" data-team-status></span>
     </div>
   </form>
-  <p class="field-hint mt-3">` + mailNote + `</p>
-</div>`
+  <p class="field-hint mt-3">` + mailNote + `</p>`
 }
 
 // =============================================================================

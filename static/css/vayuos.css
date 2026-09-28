@@ -6090,6 +6090,21 @@
    and beside them the one selected. The inspector sits to the right where
    there is room for both and below the list where there is not; it is never
    an overlay, so reading an item's details never hides the item. */
+/* Overview: the state sits beside the title like a list's count; the one
+   figure group stands beside what happened lately, and alone takes the width. */
+.vp-os[data-ui="still-air"] .sa-overview__state { font: var(--type-body); color: var(--text-2); margin-left: var(--space-3); }
+.vp-os[data-ui="still-air"] .sa-overview__band { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--space-7); align-items: start; }
+.vp-os[data-ui="still-air"] .sa-overview__band--full { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 899px) { .vp-os[data-ui="still-air"] .sa-overview__band { grid-template-columns: minmax(0, 1fr); } }
+/* What happened lately, beside an overview's figures: when, who and what,
+   then the plan or amount it concerns. The words say what kind of event it
+   is, so no event carries a colour of its own. */
+.vp-os[data-ui="still-air"] .sa-activity { list-style: none; margin: 0; padding: 0; }
+.vp-os[data-ui="still-air"] .sa-activity li { display: grid; grid-template-columns: 7.5em minmax(0, 1fr) auto; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--border-1); font: var(--type-small); }
+.vp-os[data-ui="still-air"] .sa-activity__when { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .sa-activity__what { color: var(--text-1); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .sa-activity__note { color: var(--text-3); text-align: right; }
+.vp-os[data-ui="still-air"] .sa-row__count { color: var(--text-1); font-variant-numeric: tabular-nums; }
 .vp-os[data-ui="still-air"] .sa-list__count { font: var(--type-small); color: var(--text-3); font-variant-numeric: tabular-nums; margin-left: var(--space-2); }
 .vp-os[data-ui="still-air"] .sa-find { position: relative; display: inline-flex; align-items: center; margin: 0; }
 .vp-os[data-ui="still-air"] .sa-find .sa-ico { position: absolute; left: 9px; width: 15px; height: 15px; color: var(--text-3); pointer-events: none; }
@@ -6736,6 +6751,7 @@
 .vp-os[data-ui="still-air"] .sa-status__state { margin: 0; font: var(--type-title); color: var(--text-1); }
 .vp-os[data-ui="still-air"] .sa-status__detail { margin: 2px 0 0; font: var(--type-body); color: var(--text-2); }
 .vp-os[data-ui="still-air"] .sa-statuspage > section { margin-top: var(--space-8); }
+.vp-os[data-ui="still-air"] .sa-overview > section { margin-top: var(--space-8); }
 .vp-os[data-ui="still-air"] .sa-statuspage .section-head { border-bottom: 1px solid var(--border-1); padding-bottom: var(--space-3); }
 .vp-os[data-ui="still-air"] .sa-statuspage .section-head + * { margin-top: 0; }
 /* Updates: the check's outcome sits in the state line, so it is a dot and a
