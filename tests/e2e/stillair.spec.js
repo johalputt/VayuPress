@@ -78,7 +78,8 @@ function lintPage() {
   // Explanation on show. A page says what is and what to do; the why folds
   // into "How this works" (ui.Explain) or a tip (ui.Tip). Only the outermost
   // block is counted, so a sentence is not counted twice. A theme's or a
-  // plugin's own description in a catalogue is content, not explanation.
+  // plugin's own description in a catalogue is content, not explanation, and so
+  // is a decision record read in Decisions' inspector: it is what the page is for.
   const PROSE = "p, li, .page-sub, .card-sub, .text-sm, .text-xs, .muted, .hint, small";
   const FOLDED = ".sa-tip, details:not([open]) > :not(summary), code, pre";
   const said = (e) => { // the text a reader sees: not a tip's, not a fold's, not code
@@ -89,7 +90,7 @@ function lintPage() {
   };
   const prose = [...main.querySelectorAll(PROSE)].filter((e) =>
     e.offsetParent && !e.parentElement.closest(PROSE) && !e.closest(FOLDED) &&
-    !e.closest("table, .sa-facts, .store-card, .theme-card") && said(e).length >= 60);
+    !e.closest("table, .sa-facts, .store-card, .theme-card, .adr-doc") && said(e).length >= 60);
   const shown = prose.reduce((n, e) => n + said(e).length, 0);
   if (shown > 900) out.push(`${shown} characters of explanation on show (limit 900): fold the why into How this works`);
 
