@@ -2,19 +2,9 @@
 
 package main
 
-// admin_os_newsletter.go — the VayuOS Newsletter console (/os/newsletter).
-//
-// Until now the "Newsletter" sidebar item dead-ended: subscriber management and
-// broadcasts existed only as JSON endpoints with no page. This file delivers a
-// full operator console:
-//
-//   - audience health (total / active / pending double-opt-in / unsubscribed),
-//     30-day growth sparkline and confirmation rate,
-//   - subscriber table with status-segment tabs, instant search, CSV export and
-//     per-row delete (GDPR erasure / spam cleanup),
-//   - a broadcast composer (subject + text + optional HTML) with a "send test"
-//     action and a one-click send to every confirmed subscriber,
-//   - a persisted broadcast history with per-send delivery tallies.
+// admin_os_newsletter.go — the VayuOS Newsletter console (/os/newsletter): an
+// overview of the audience and what was sent, the subscribers, a composer in a
+// sheet, and the JSON actions behind them.
 //
 // CSP posture is inherited (no inline styles, no innerHTML with untrusted data,
 // the only inline script is nonce-gated). All dynamic values are escaped with
@@ -43,16 +33,17 @@ import (
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
+// handleOSNewsletter renders Audience › Newsletter as the Overview kind: how
+// many subscribers there are, the month's growth beside what was sent, then
+// the subscribers. Composing a broadcast rises in a sheet. With no relay and
+// nobody yet it is the Setup page.
 func (a *App) handleOSNewsletter(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
 	if a.newsletterStore == nil {
-		body := `<div class="page-header"><h1>Newsletter</h1></div>
-<div class="card empty-state"><div class="empty-icon">` + saIcon("mail") + `</div>
-<div class="empty-title">Newsletter unavailable</div>
-<div class="empty-sub">The newsletter store is not initialised.</div></div>`
-		writeOSHTML(w, r, adminOSLayout(nonce, "Newsletter", "newsletter", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Newsletter", "newsletter", cfg, htmpl.HTML(ui.Overview(ui.OverviewPage{Title: "Newsletter"},
+			ui.Band{Title: "Growth", Aside: ui.Empty("send", "The newsletter is off", "This install was started without the newsletter store.", "")}))))
 		return
 	}
 
@@ -63,10 +54,9 @@ func (a *App) handleOSNewsletter(w http.ResponseWriter, r *http.Request) {
 	}
 	growth, _ := a.newsletterStore.GrowthByDay(ctx, 30)
 	subs, _ := a.newsletterStore.List(ctx, "all", "", 500)
-	broadcasts, _ := a.newsletterStore.ListBroadcasts(ctx, 10)
+	broadcasts, _ := a.newsletterStore.ListBroadcasts(ctx, 6)
 	esc := html.EscapeString
 
-	// ── SMTP status banner ────────────────────────────────────────────────────
 	smtpReady := a.mailer != nil && a.mailer.Enabled()
 	// No relay and nobody yet is a newsletter that has not started: a setup
 	// page. Once there are subscribers or past broadcasts the page shows them,
@@ -75,127 +65,91 @@ func (a *App) handleOSNewsletter(w http.ResponseWriter, r *http.Request) {
 		writeOSHTML(w, r, adminOSLayout(nonce, "Newsletter", "newsletter", cfg, htmpl.HTML(newsletterSetup())))
 		return
 	}
-	banner := ""
+
+	state := countOf(stats.Active, "subscriber")
+	if stats.Active == 0 {
+		state = "No subscriber yet"
+	}
+	if stats.Pending > 0 {
+		state += ", " + strconv.Itoa(stats.Pending) + " waiting to confirm"
+	}
+	// Without a relay the state says so, and the page's action is the setting
+	// that fixes it rather than a composer that cannot send.
+	action := `<button type="button" class="btn btn--primary" data-sheet="nl-compose">` + saIcon("send") + ` Compose</button>`
 	if !smtpReady {
-		banner = `<div class="card settings-callout mb-6">
-  <strong>SMTP is not configured.</strong>
-  <span class="text-sm muted">Subscribers can still sign up and confirm, but broadcasts and test emails cannot be delivered until you set <code>SMTP_HOST</code> (and related variables). See the Email settings.</span>
-</div>`
+		state += ". Sending is off: no mail relay is set"
+		action = `<a class="btn btn--primary" href="/os/settings/email">Set up sending</a>`
 	}
 
-	// ── Stat cards ────────────────────────────────────────────────────────────
-	growthTotal := 0
-	for _, v := range growth {
-		growthTotal += v
+	// A figure shows only when it says something.
+	var figs []ui.Figure
+	if stats.NewLast30 > 0 {
+		figs = append(figs, ui.Figure{Value: "+" + strconv.Itoa(stats.NewLast30), Label: "New subscribers"})
 	}
-	statGrid := `<div class="stat-grid mb-6">` +
-		nlStatCard("Subscribers", strconv.Itoa(stats.Total), "all records") +
-		nlStatCard("Active", strconv.Itoa(stats.Active), "confirmed &amp; subscribed") +
-		nlStatCard("Pending", strconv.Itoa(stats.Pending), "awaiting opt-in") +
-		nlStatCard("Unsubscribed", strconv.Itoa(stats.Unsubscribed), "opted out") +
-		nlStatCard("New · 30 days", "+"+strconv.Itoa(stats.NewLast30), "recent signups") +
-		nlStatCard("Confirm rate", nlPercent(stats.ConfirmRate), "double opt-in") +
-		`</div>`
-
-	// ── Growth sparkline ──────────────────────────────────────────────────────
-	growthCard := `<div class="card mb-6">
-  <div class="flex justify-between items-center">
-    <div class="card-title">Audience growth</div>
-    <span class="text-xs muted">` + strconv.Itoa(growthTotal) + ` new in last 30 days</span>
-  </div>
-  <div class="sparkline-wrap">` + osSparkline(growth) + `</div>
-</div>`
-
-	// ── Broadcast composer ────────────────────────────────────────────────────
-	disabledAttr := ""
-	if !smtpReady {
-		disabledAttr = " disabled"
+	if stats.Active+stats.Pending > 0 && stats.ConfirmRate > 0 {
+		figs = append(figs, ui.Figure{Value: nlPercent(stats.ConfirmRate), Label: "Confirm by email"})
 	}
-	composer := `<div class="card mb-6">
-  <div class="card-title">Compose broadcast</div>
-  <p class="text-sm muted mb-4">Send an email to all <strong>` + strconv.Itoa(stats.Active) + `</strong> confirmed subscribers. An unsubscribe link is appended automatically to every message.</p>
-  <div class="field"><label class="field-label" for="nl-subject">Subject</label>
-    <input id="nl-subject" class="input" type="text" maxlength="200" placeholder="What's new this week"` + disabledAttr + `></div>
-  <div class="field"><label class="field-label" for="nl-text">Plain text <span class="muted text-xs">(required)</span></label>
-    <textarea id="nl-text" class="textarea" rows="8" placeholder="Write your update…"` + disabledAttr + `></textarea></div>
-  <div class="field"><label class="field-label" for="nl-html">HTML <span class="muted text-xs">(optional — sent as multipart/alternative)</span></label>
-    <textarea id="nl-html" class="textarea font-mono" rows="6" placeholder="&lt;h1&gt;Hello&lt;/h1&gt;"` + disabledAttr + `></textarea></div>
-  <div class="settings-row" style="gap:.5rem;flex-wrap:wrap">
-    <input id="nl-test-to" class="input input--sm" type="email" placeholder="you@example.com" aria-label="Test recipient" style="max-width:16rem"` + disabledAttr + `>
-    <button type="button" class="btn btn--ghost btn--sm" id="nl-send-test"` + disabledAttr + `>Send test</button>
-    <span class="topbar-spacer" style="flex:1"></span>
-    <button type="button" class="btn btn--primary" id="nl-send-broadcast"` + disabledAttr + `>Send to ` + strconv.Itoa(stats.Active) + ` subscribers</button>
-  </div>
-  <div id="nl-compose-msg" role="status" aria-live="polite" class="action-msg"></div>
-</div>`
+	if stats.Unsubscribed > 0 {
+		figs = append(figs, ui.Figure{Value: strconv.Itoa(stats.Unsubscribed), Label: "Have left"})
+	}
+	chart := ui.HTML(`<p class="table-empty">Nobody has subscribed in the last 30 days.</p>`)
+	if stats.NewLast30 > 0 {
+		chart = ui.HTML(`<div class="sparkline-wrap">` + osSparkline(growth) + `</div>`)
+	}
 
-	// ── Broadcast history ─────────────────────────────────────────────────────
-	historyCard := `<div class="card mb-6"><div class="card-title">Broadcast history</div>` +
-		nlBroadcastsTable(broadcasts) + `</div>`
-
-	// ── Subscriber table ──────────────────────────────────────────────────────
-	rows := ""
+	var rows strings.Builder
 	for _, s := range subs {
-		seg := "active"
-		statusBadge := `<span class="badge badge--ok">Active</span>`
-		if s.Status == "inactive" {
-			seg = "unsubscribed"
-			statusBadge = `<span class="badge badge--muted">Unsubscribed</span>`
-		} else if !s.Confirmed {
-			seg = "pending"
-			statusBadge = `<span class="badge badge--warn">Pending</span>`
+		seg, st := "active", ui.State("ok", "Subscribed")
+		switch {
+		case s.Status == "inactive":
+			seg, st = "unsubscribed", ui.State("neutral", "Left")
+		case !s.Confirmed:
+			seg, st = "pending", ui.State("warn", "Waiting to confirm")
 		}
-		confirmed := `<span class="badge badge--muted">No</span>`
-		if s.Confirmed {
-			confirmed = `<span class="badge badge--ok">Yes</span>`
-		}
-		rows += `<tr data-sub-row data-seg="` + seg + `" data-search="` + esc(strings.ToLower(s.Email)) + `">
-  <td class="row-title">` + esc(s.Email) + `</td>
-  <td>` + statusBadge + `</td>
-  <td>` + confirmed + `</td>
-  <td class="row-meta">` + config.FormatSite(s.SubscribedAt, "2 Jan 2006") + `</td>
-  <td class="row-actions"><button type="button" class="btn btn--xs btn--danger" data-sub-delete data-id="` + esc(s.ID) + `" data-email="` + esc(s.Email) + `">Delete</button></td>
-</tr>`
+		rows.WriteString(`<tr data-sub-row data-seg="` + seg + `" data-search="` + esc(strings.ToLower(s.Email)) + `">` +
+			`<td class="post-row__name">` + esc(s.Email) + `</td><td>` + string(st) + `</td>` +
+			`<td class="post-row__date">` + config.FormatSite(s.SubscribedAt, "2 Jan 2006") + `</td>` +
+			`<td class="row-actions"><button type="button" class="btn btn--xs btn--ghost" data-sub-delete data-id="` + esc(s.ID) + `" data-email="` + esc(s.Email) + `">Delete</button></td></tr>`)
 	}
-	table := `<div class="empty-state">No subscribers yet.</div>`
-	if rows != "" {
-		table = `<div class="table-wrap"><table class="table">
-  <thead><tr><th>Email</th><th>Status</th><th>Confirmed</th><th>Subscribed</th><th></th></tr></thead>
-  <tbody>` + rows + `</tbody></table></div>`
+	subsBody := `<p class="table-empty">No subscriber yet.</p>`
+	if rows.Len() > 0 {
+		subsBody = `<div class="toolbar-row"><div class="seg-filter" role="tablist" aria-label="Show subscribers">` +
+			`<button type="button" class="seg-btn is-active" data-sub-filter="all">All <span class="muted">` + strconv.Itoa(stats.Total) + `</span></button>` +
+			`<button type="button" class="seg-btn" data-sub-filter="active">Subscribed <span class="muted">` + strconv.Itoa(stats.Active) + `</span></button>` +
+			`<button type="button" class="seg-btn" data-sub-filter="pending">Waiting <span class="muted">` + strconv.Itoa(stats.Pending) + `</span></button>` +
+			`<button type="button" class="seg-btn" data-sub-filter="unsubscribed">Left <span class="muted">` + strconv.Itoa(stats.Unsubscribed) + `</span></button></div>` +
+			string(ui.Search(ui.SearchBox{Placeholder: "Search subscribers", Hook: "data-sub-search"})) + `</div>` +
+			`<p class="table-empty" data-subs-empty hidden>No subscriber matches that.</p>` +
+			`<div class="table-wrap"><table class="table post-table"><thead><tr><th>Email</th><th>State</th><th>Subscribed</th><th></th></tr></thead><tbody>` +
+			rows.String() + `</tbody></table></div>`
 	}
-	subsCard := `<div class="card">
-  <div class="toolbar-row">
-    <div class="seg-filter" role="tablist" aria-label="Filter subscribers">
-      <button type="button" class="seg-btn is-active" data-sub-filter="all">All <span class="muted">` + strconv.Itoa(stats.Total) + `</span></button>
-      <button type="button" class="seg-btn" data-sub-filter="active">Active <span class="muted">` + strconv.Itoa(stats.Active) + `</span></button>
-      <button type="button" class="seg-btn" data-sub-filter="pending">Pending <span class="muted">` + strconv.Itoa(stats.Pending) + `</span></button>
-      <button type="button" class="seg-btn" data-sub-filter="unsubscribed">Unsubscribed <span class="muted">` + strconv.Itoa(stats.Unsubscribed) + `</span></button>
-    </div>
-    <input class="input input--sm" type="search" placeholder="Search email…" data-sub-search aria-label="Search subscribers" style="max-width:16rem">
-  </div>
-  <div class="table-empty" data-subs-empty hidden>No subscribers match this filter.</div>
-  ` + table + `
-</div>`
 
-	body := `<div class="page-header">
-  <h1>Newsletter</h1>
-  <div class="page-actions">
-    <a class="btn btn--ghost btn--sm" href="/os/api/newsletter/export.csv" download>Export CSV</a>
-  </div>
-</div>
-<p class="page-sub">Grow and reach your audience — track subscribers, compose a broadcast and review what you've sent, all from your own server.</p>` + banner + statGrid + growthCard + composer + historyCard + subsCard +
+	// The composer is the one form on the page, so it rises in a sheet.
+	composer := string(ui.Sheet("nl-compose", "Compose a broadcast", ui.HTML(`<p class="text-sm muted">To `+countOf(stats.Active, "confirmed subscriber")+`. Every message carries a link to leave.</p>
+  <div class="field"><label class="field-label" for="nl-subject">Subject</label>
+    <input id="nl-subject" class="input" type="text" maxlength="200" placeholder="What's new this week"></div>
+  <div class="field"><label class="field-label" for="nl-text">Text</label>
+    <textarea id="nl-text" class="textarea" rows="8" placeholder="Write your update"></textarea></div>
+  <div class="field"><label class="field-label" for="nl-html">HTML, if you want one</label>
+    <textarea id="nl-html" class="textarea font-mono" rows="6" placeholder="&lt;h1&gt;Hello&lt;/h1&gt;"></textarea>
+    <p class="field-hint">Sent beside the text, for mail apps that show HTML.</p></div>
+  <div class="field"><label class="field-label" for="nl-test-to">Send a test to</label>
+    <input id="nl-test-to" class="input" type="email" placeholder="you@example.com"></div>
+  <div class="mt-3 sa-list__sheet-actions"><button type="button" class="btn btn--primary btn--sm" id="nl-send-broadcast">Send to `+countOf(stats.Active, "subscriber")+`</button>
+    <button type="button" class="btn btn--ghost btn--sm" id="nl-send-test">Send the test</button></div>
+  <div id="nl-compose-msg" role="status" aria-live="polite" class="action-msg"></div>`)))
+
+	body := string(ui.Overview(ui.OverviewPage{
+		Title:   "Newsletter",
+		State:   ui.Text(state),
+		Actions: ui.HTML(`<a class="btn btn--ghost" href="/os/api/newsletter/export.csv" download>Export</a>` + action),
+	}, ui.Band{Title: "Growth", Hint: "Last 30 days", Figures: figs, Chart: chart,
+		Aside: ui.Section("Sent", "", ui.HTML(nlBroadcasts(broadcasts)))},
+		ui.Section("Subscribers", "", ui.HTML(subsBody)))) +
+		composer +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-newsletter.js?v=` + assetVer("js/admin-os-newsletter.js") + `"></script>`
 
 	writeOSHTML(w, r, adminOSLayout(nonce, "Newsletter", "newsletter", cfg, htmpl.HTML(body)))
-}
-
-// nlStatCard renders one stat card (label, big value, sub-label).
-func nlStatCard(label, value, sub string) string {
-	return `<div class="stat-card">
-  <div class="stat-card__label">` + html.EscapeString(label) + `</div>
-  <div class="stat-card__value">` + value + `</div>
-  <div class="stat-card__sub">` + sub + `</div>
-</div>`
 }
 
 // nlPercent renders a 0..1 ratio as a one-decimal percentage.
@@ -206,34 +160,28 @@ func nlPercent(f float64) string {
 	return fmt.Sprintf("%.1f%%", f*100)
 }
 
-// nlBroadcastsTable renders the broadcast history table.
-func nlBroadcastsTable(list []newsletter.Broadcast) string {
+// nlBroadcasts lists what was sent lately: when, the subject, and how it went.
+// A failure is said in words on its row rather than as a red badge.
+func nlBroadcasts(list []newsletter.Broadcast) string {
 	if len(list) == 0 {
-		return `<div class="empty-state">No broadcasts sent yet. Compose one above.</div>`
+		return `<p class="table-empty">Nothing sent yet.</p>`
 	}
 	esc := html.EscapeString
-	rows := ""
-	for _, b := range list {
-		status := `<span class="badge badge--warn">Sending</span>`
-		if b.Status == "complete" {
-			status = `<span class="badge badge--ok">Complete</span>`
+	var b strings.Builder
+	b.WriteString(`<ul class="sa-activity">`)
+	for _, br := range list {
+		note := "Sending"
+		if br.Status == "complete" {
+			note = "Sent to " + strconv.Itoa(br.Sent)
+			if br.Failed > 0 {
+				note += ", " + strconv.Itoa(br.Failed) + " failed"
+			}
 		}
-		failed := strconv.Itoa(b.Failed)
-		if b.Failed > 0 {
-			failed = `<span class="badge badge--danger">` + failed + `</span>`
-		}
-		rows += `<tr>
-  <td class="row-title">` + esc(b.Subject) + `</td>
-  <td>` + status + `</td>
-  <td class="row-meta">` + strconv.Itoa(b.Recipients) + `</td>
-  <td class="row-meta">` + strconv.Itoa(b.Sent) + `</td>
-  <td>` + failed + `</td>
-  <td class="row-meta">` + config.FormatSite(b.CreatedAt, "2 Jan 2006 15:04") + `</td>
-</tr>`
+		b.WriteString(`<li><span class="sa-activity__when">` + esc(config.FormatSite(br.CreatedAt, "2 Jan, 15:04")) + `</span>` +
+			`<span class="sa-activity__what">` + esc(br.Subject) + `</span><span class="sa-activity__note">` + esc(note) + `</span></li>`)
 	}
-	return `<div class="table-wrap"><table class="table">
-  <thead><tr><th>Subject</th><th>Status</th><th>Recipients</th><th>Sent</th><th>Failed</th><th>When</th></tr></thead>
-  <tbody>` + rows + `</tbody></table></div>`
+	b.WriteString(`</ul>`)
+	return b.String()
 }
 
 // ── JSON / action handlers (session-authed under /os/api/newsletter/*) ─────────
