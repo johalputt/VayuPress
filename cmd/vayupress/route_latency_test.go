@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -42,12 +43,15 @@ func TestLatencyIsRecordedPerRoutePattern(t *testing.T) {
 }
 
 // The connector reads the same breakdown the Monitoring page shows.
+//
+// The route is recorded directly, and slower than any request a test serves:
+// the tool lists only the slowest fifteen, and the whole suite shares one
+// window, so a route served in no time fell off the list whenever the suite
+// ran together (CI's integration run) and passed when this test ran alone.
+// That the middleware records a route is TestLatencyIsRecordedPerRoutePattern.
 func TestTheConnectorReportsTheSlowestRoutes(t *testing.T) {
 	a := siteApp(t)
-	r := chi.NewRouter()
-	r.Use(structuredLoggerMiddleware)
-	r.Get("/connector-latency/{id}", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/connector-latency/7", nil))
+	metrics.RouteLatency.Record("GET /connector-latency/{id}", 10*time.Minute)
 
 	j, err := runTool(t, a, "get_performance", `{}`)
 	if err != nil {

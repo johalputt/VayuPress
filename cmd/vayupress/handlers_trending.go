@@ -259,17 +259,28 @@ func (a *App) trendingWarming(_ *http.Request) trendingPayload {
 	}
 }
 
+// pinnedSQL reads the pinned posts through idx_articles_featured.
+//
+// The unary pluses are not typos. Without them SQLite answers the query from
+// idx_articles_pagefeed (is_page, status, created_at), walks every published
+// post newest first, and reads each row to test featured, which is stored after
+// content and blocks_json. On johal.in, with 234k posts and none pinned, that
+// read every post's body on every trending request, the warming answer
+// included: 4 s a request, and the Monitoring p95 read 5.4 s after the update
+// that fixed articles. The pluses leave idx_articles_featured as the only index
+// the query can use, so it reads the few rows that are pinned.
+const pinnedSQL = `SELECT slug, title, COALESCE(feature_image,'') FROM articles
+		 WHERE featured = 1 AND +status = 'published' AND +is_page = 0
+		 ORDER BY created_at DESC LIMIT ?`
+
 // pinnedItems returns the operator's pinned (featured) published posts, newest
-// first, capped at limit. Reuses the existing `featured` column + idx.
+// first, capped at limit.
 func (a *App) pinnedItems(ctx context.Context, limit int) []trendingItem {
 	out := []trendingItem{}
 	if dbpkg.DB == nil {
 		return out
 	}
-	rows, err := dbpkg.Reader().QueryContext(ctx,
-		`SELECT slug, title, COALESCE(feature_image,'') FROM articles
-		 WHERE featured = 1 AND status = 'published' AND is_page = 0
-		 ORDER BY created_at DESC LIMIT ?`, limit)
+	rows, err := dbpkg.Reader().QueryContext(ctx, pinnedSQL, limit)
 	if err != nil {
 		return out
 	}

@@ -8,6 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **The trending and pinned lists answer at once again.** Finding pinned
+  posts read every published post, body included, because SQLite chose to
+  walk the posts newest first and test each one rather than use the index on
+  the pinned flag. On johal.in (234,000 posts, none pinned) every call to
+  `/api/trending` took about four seconds, the fallback answer served while
+  the list is first worked out included, and the Monitoring p95 read 5.4 s
+  just after updating to 3.17.88. The query now reads only the pinned posts
+  (0.12 ms), and a test fails if its plan stops using that index.
+- **Console pages no longer read every post for the bell.** The bell's
+  "recent" list, drawn on every console page, looked for posts published in
+  the last day with a test no index could answer. So on any day with fewer
+  than eight new posts it read every post, body included, before the page
+  could be drawn. On johal.in, the console home took 16 s and Updates 6 s
+  just after an update. The query now starts from the index on publication
+  date and stops a day before the window. A test fails if it stops using that
+  index, and another if the bound could ever drop a post the window holds.
+
 ## [3.17.88] — 2026-09-28
 
 A hotfix for slow articles on large sites: johal.in's uncached articles

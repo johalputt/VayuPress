@@ -56,8 +56,11 @@ func (a *App) osRecentEvents(ctx context.Context, s *osSettings, now time.Time) 
 		// datetime() on both sides: rows written by CURRENT_TIMESTAMP and rows
 		// written from Go differ in format, and compared as text they misorder.
 		cut := since.UTC().Format("2006-01-02 15:04:05")
-		query := func(q string, row func(*sql.Rows) (osRecentEvent, error)) {
-			rows, err := dbpkg.Reader().QueryContext(ctx, q, cut)
+		query := func(q string, row func(*sql.Rows) (osRecentEvent, error), args ...any) {
+			if args == nil {
+				args = []any{cut}
+			}
+			rows, err := dbpkg.Reader().QueryContext(ctx, q, args...)
 			if err != nil {
 				return // a table missing on an old schema just yields no events
 			}
@@ -94,13 +97,13 @@ func (a *App) osRecentEvents(ctx context.Context, s *osSettings, now time.Time) 
 				err := r.Scan(&email, &at)
 				return osRecentEvent{Title: email + " joined", Href: "/os/members", Kind: "member", At: at}, err
 			})
-		query(`SELECT slug, title, created_at FROM articles WHERE COALESCE(status,'published')='published' AND datetime(created_at) >= datetime(?) ORDER BY created_at DESC LIMIT 8`,
+		query(recentPostsSQL,
 			func(r *sql.Rows) (osRecentEvent, error) {
 				var slug, title string
 				var at time.Time
 				err := r.Scan(&slug, &title, &at)
 				return osRecentEvent{Title: "Published “" + title + "”", Href: "/os/editor/" + slug, Kind: "post", At: at}, err
-			})
+			}, recentPostsFloor(since), cut)
 		query(`SELECT COALESCE(to_version,''), status, COALESCE(detail,''), completed_at FROM update_history WHERE completed_at IS NOT NULL AND datetime(completed_at) >= datetime(?) ORDER BY completed_at DESC LIMIT 3`,
 			func(r *sql.Rows) (osRecentEvent, error) {
 				var to, status, detail string
@@ -231,4 +234,25 @@ func (a *App) handleOSNotificationsSeen(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// recentPostsSQL is the bell's newest posts. It runs on every console page,
+// because the bell is in the shell.
+//
+// datetime(created_at) is what makes the window exact across the two stored
+// formats, and it is also what no index can answer: with that test alone,
+// SQLite walked every post newest first until it had eight, reading each
+// row, body included, to test status. On a site that has published fewer
+// than eight posts in the last day, which is most days, that was every post
+// on every console page: on johal.in, 234k post bodies read for the bell.
+// The plain created_at >= ? bound is one the index can stop at. It is a day
+// before the window opens, so a row's format (a T for the space, a zone
+// offset) can never move it out of range; the datetime() test then decides.
+const recentPostsSQL = `SELECT slug, title, created_at FROM articles WHERE created_at >= ? AND datetime(created_at) >= datetime(?) AND COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT 8`
+
+// recentPostsFloor is the index bound for recentPostsSQL: the calendar day
+// before since, as a date alone, which sorts at or below every spelling of
+// every time on or after it.
+func recentPostsFloor(since time.Time) string {
+	return since.UTC().AddDate(0, 0, -1).Format("2006-01-02")
 }
