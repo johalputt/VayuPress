@@ -21,8 +21,9 @@ import (
 
 // TestOSCommentModerateFragment drives the HTMX moderation endpoint against a
 // real DB: it approves a pending comment and asserts the persisted status plus
-// the returned fragment (action buttons without Approve, out-of-band approved
-// pill, and out-of-band pending/approved counts).
+// the returned fragment (action buttons without Approve, the approved state out
+// of band in the row and the inspector, the reply box it now allows, and the
+// waiting/approved counts).
 func TestOSCommentModerateFragment(t *testing.T) {
 	_, _ = newTestHarness(t) // initialises config, DB and the CSRF secret
 
@@ -54,8 +55,8 @@ func TestOSCommentModerateFragment(t *testing.T) {
 		t.Errorf("approved comment must not re-offer Approve:\n%s", body)
 	}
 	for _, want := range []string{
-		`data-status="approved"`, `hx-swap-oob="true"`,
-		`id="cpill-` + id + `"`, `id="cc-pending"`, `id="cc-approved"`,
+		`id="cstate-` + id + `" hx-swap-oob="true"`, `id="istate-` + id + `" hx-swap-oob="true"`, "Approved",
+		`id="creply-` + id + `" hx-swap-oob="true"`, `/reply-fragment"`, `id="cc-pending"`, `id="cc-approved"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment missing %q in:\n%s", want, body)

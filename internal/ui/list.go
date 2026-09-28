@@ -51,12 +51,14 @@ func List(p ListPage, list, inspector HTML) HTML {
 }
 
 // Segment is one view of a list: its label, where it goes, and how many items
-// it holds (a negative count is not shown).
+// it holds (a negative count is not shown). CountID names the count, for a page
+// that updates it in place when an item moves between views.
 type Segment struct {
-	Label string
-	Href  string
-	Count int
-	On    bool
+	Label   string
+	Href    string
+	Count   int
+	On      bool
+	CountID string
 }
 
 // Segments draws a list's views as a segmented control of links, so each
@@ -71,7 +73,11 @@ func Segments(label string, segs ...Segment) HTML {
 		}
 		b.WriteString(`" href="` + string(Text(s.Href)) + `">` + string(Text(s.Label)))
 		if s.Count >= 0 {
-			b.WriteString(` <span class="muted">` + strconv.Itoa(s.Count) + `</span>`)
+			b.WriteString(` <span class="muted"`)
+			if s.CountID != "" {
+				b.WriteString(` id="` + string(Text(s.CountID)) + `"`)
+			}
+			b.WriteString(`>` + strconv.Itoa(s.Count) + `</span>`)
 		}
 		b.WriteString(`</a>`)
 	}

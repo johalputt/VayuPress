@@ -47,12 +47,18 @@ func TestPostFragmentsRejectMaliciousSlug(t *testing.T) {
 	}
 }
 
-// TestCommentPillEscapesStatus verifies the moderation pill never reflects a raw
-// status into the data-status attribute (reflected-XSS regression guard).
-func TestCommentPillEscapesStatus(t *testing.T) {
-	out := osCommentPill("abc123", `x"><script>alert(1)</script>`, true)
-	if strings.Contains(out, "<script>") || strings.Contains(out, `data-status="x">`) {
-		t.Errorf("osCommentPill reflected a raw status: %s", out)
+// TestCommentStateNeverReflectsTheStatus — a comment's state is drawn from a
+// fixed word per known status, so nothing of a status that reaches it is echoed
+// (reflected-XSS regression guard), and an unknown one claims no known state.
+func TestCommentStateNeverReflectsTheStatus(t *testing.T) {
+	out := osCommentState("abc123", `x"><script>alert(1)</script>`, "c", true)
+	if strings.Contains(out, "script") || strings.Contains(out, `x"`) {
+		t.Errorf("osCommentState reflected a raw status: %s", out)
+	}
+	for _, claim := range []string{"Approved", "Waiting", "Rejected", "Spam"} {
+		if strings.Contains(out, claim) {
+			t.Errorf("an unknown status reads as %q: %s", claim, out)
+		}
 	}
 	if canonicalCommentStatus("bogus") != "" || canonicalCommentStatus("approved") != "approved" {
 		t.Error("canonicalCommentStatus must map only the known enum")

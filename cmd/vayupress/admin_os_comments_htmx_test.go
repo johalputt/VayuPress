@@ -8,28 +8,27 @@ import (
 )
 
 // TestOSCommentControls verifies the HTMX moderation controls render correctly
-// and stay CSP-safe: the pill carries a per-id id + live data-status (so the
-// client filter re-categorises a moderated row), and the action buttons offer
-// every status EXCEPT the current one, each posting to the fragment endpoint and
-// swapping the row's action cell.
+// and stay CSP-safe: the state is a dot and a word under a per-id id for its
+// row and for the inspector, and the action buttons offer every status EXCEPT
+// the current one, each posting to the fragment endpoint and swapping the
+// inspector's action row.
 func TestOSCommentControls(t *testing.T) {
-	// Pill: id, data-status, and status-specific class; CSP-safe; OOB when asked.
-	pill := osCommentPill("c1", "approved", false)
-	assertCSPSafe(t, "comment pill", pill)
-	for _, want := range []string{`id="cpill-c1"`, `data-status="approved"`, "status-pill--live", "● approved"} {
-		if !strings.Contains(pill, want) {
-			t.Errorf("pill missing %q in:\n%s", want, pill)
+	for status, want := range map[string]string{"approved": "sa-dot--ok", "pending": "sa-dot--warn", "spam": "sa-dot--danger", "rejected": "sa-dot--neutral"} {
+		st := osCommentState("c1", status, "c", false)
+		assertCSPSafe(t, "comment state", st)
+		if !strings.Contains(st, `id="cstate-c1"`) || !strings.Contains(st, want) || strings.Contains(st, "status-pill") {
+			t.Errorf("%s: want a dot and a word under id cstate-c1, got:\n%s", status, st)
+		}
+		if strings.Contains(st, "hx-swap-oob") {
+			t.Error("a non-oob state must not carry hx-swap-oob")
 		}
 	}
-	if strings.Contains(pill, "hx-swap-oob") {
-		t.Error("non-oob pill must not carry hx-swap-oob")
-	}
-	if oob := osCommentPill("c1", "pending", true); !strings.Contains(oob, `hx-swap-oob="true"`) || !strings.Contains(oob, "status-pill--draft") {
-		t.Errorf("oob pending pill wrong:\n%s", oob)
+	if oob := osCommentState("c1", "pending", "i", true); !strings.Contains(oob, `id="istate-c1" hx-swap-oob="true"`) {
+		t.Errorf("oob inspector state wrong:\n%s", oob)
 	}
 
 	// Actions for a pending comment: Approve + Reject + Spam, all HTMX, targeting
-	// this row's action cell; none is the current status.
+	// the inspector's action row; none is the current status.
 	act := osCommentActions("c1", "pending")
 	assertCSPSafe(t, "comment actions", act)
 	for _, want := range []string{

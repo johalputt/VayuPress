@@ -32,12 +32,16 @@ func TestListWithoutAnInspectorHasNoPanel(t *testing.T) {
 func TestSegmentsMarkTheCurrentViewAndHideNoCount(t *testing.T) {
 	got := string(Segments("Show",
 		Segment{Label: "All", Href: "/os/posts", Count: 412, On: true},
-		Segment{Label: "Drafts", Href: "/os/posts?status=draft", Count: -1}))
+		Segment{Label: "Drafts", Href: "/os/posts?status=draft", Count: -1},
+		Segment{Label: "Waiting", Href: "/os/comments?status=pending", Count: 3, CountID: "cc-pending"}))
 	if !strings.Contains(got, `class="seg-btn is-active" aria-current="page" href="/os/posts">All <span class="muted">412</span>`) {
 		t.Errorf("the current view must be marked, with its count:\n%s", got)
 	}
 	if !strings.Contains(got, `href="/os/posts?status=draft">Drafts</a>`) {
 		t.Errorf("a negative count must not be shown:\n%s", got)
+	}
+	if !strings.Contains(got, `Waiting <span class="muted" id="cc-pending">3</span>`) {
+		t.Errorf("a named count must carry its id, for the page to update it:\n%s", got)
 	}
 	if strings.Count(got, "aria-current") != 1 {
 		t.Errorf("exactly one view is current:\n%s", got)

@@ -6157,6 +6157,15 @@
 @container (max-width: 520px) {
   .vp-os[data-ui="still-air"] .post-table :is(th, td):nth-child(4) { display: none; }
 }
+/* Comments: one line of each in the table, the whole of it in the inspector
+   with the writer's own line breaks. */
+.vp-os[data-ui="still-air"] .comment-table th:nth-child(1) { width: 136px; }
+.vp-os[data-ui="still-air"] .comment-table th:nth-child(2) { width: auto; }
+.vp-os[data-ui="still-air"] .comment-table th:nth-child(3) { width: 150px; }
+.vp-os[data-ui="still-air"] .comment-table th:nth-child(4) { width: 112px; }
+.vp-os[data-ui="still-air"] .comment-table th:nth-child(5) { width: 80px; }
+.vp-os[data-ui="still-air"] .comment-row__body { color: var(--text-2); }
+.vp-os[data-ui="still-air"] .comment-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-1); font: var(--type-body); }
 .vp-os[data-ui="still-air"] .sa-list__shell { display: grid; grid-template-columns: minmax(0, 1fr) clamp(248px, 30%, 300px); gap: var(--space-5); align-items: start; }
 .vp-os[data-ui="still-air"] .sa-list__shell--full { grid-template-columns: minmax(0, 1fr); }
 .vp-os[data-ui="still-air"] .sa-list__main { min-width: 0; border-radius: var(--radius-surface); container-type: inline-size; }

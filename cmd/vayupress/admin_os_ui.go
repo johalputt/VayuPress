@@ -51,6 +51,7 @@ import (
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/blockrender"
+	"github.com/johalputt/vayupress/internal/comments"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
@@ -213,6 +214,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// out-of-band status pill and pending/approved counts) instead of JSON, so
 		// the Comments manager updates the row without a full-page reload.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/comments/{id}/status-fragment", a.handleOSCommentModerateFragment)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/comments/{id}/reply-fragment", a.handleOSCommentReplyFragment)
+		pr.Get("/os/comments/inspector/{id}", a.handleOSCommentInspector)
 		// Custom pages — standalone articles flagged is_page (no post chrome),
 		// managed separately from the blog feed (Tumblr-style "Add a page").
 		pr.Get("/os/pages", a.handleOSPages)
@@ -2943,34 +2946,33 @@ func canonicalCommentStatus(s string) string {
 	}
 }
 
-// osCommentPill renders a comment's status badge. It carries a stable per-id id
-// and a data-status attribute so the client-side status filter can read the live
-// status after an HTMX moderation swap. When oob is true it is emitted as an
-// out-of-band swap so the fragment endpoint can update the pill in place. idEsc
-// and status must already be safe (escaped id; status from the validated enum).
-func osCommentPill(idEsc, status string, oob bool) string {
-	cls := "status-pill"
+// osCommentState renders a comment's state as a dot and a word, keyed by a
+// stable per-id id so the moderation fragment can update it in place: "c" for
+// its row, "i" for its inspector. idEsc must already be escaped; status is
+// mapped to fixed words and tones, so nothing request-derived is reflected.
+func osCommentState(idEsc, status, where string, oob bool) string {
+	tone, word := "neutral", "Unknown"
 	switch status {
 	case "approved":
-		cls = "status-pill status-pill--live"
+		tone, word = "ok", "Approved"
 	case "pending":
-		cls = "status-pill status-pill--draft"
+		tone, word = "warn", "Waiting"
+	case "rejected":
+		word = "Rejected"
+	case "spam":
+		tone, word = "danger", "Spam"
 	}
 	oobAttr := ""
 	if oob {
 		oobAttr = ` hx-swap-oob="true"`
 	}
-	// status is escaped in BOTH the attribute and the text: it reaches here from
-	// request input on the moderation-fragment path, and an unescaped reflection
-	// (even of a validated value) is a reflected-XSS sink (CodeQL go/reflected-xss).
-	esc := html.EscapeString(status)
-	return `<span class="` + cls + `" id="cpill-` + idEsc + `" data-status="` + esc + `"` + oobAttr + `>● ` + esc + `</span>`
+	return `<span id="` + where + `state-` + idEsc + `"` + oobAttr + `>` + string(ui.State(tone, word)) + `</span>`
 }
 
 // osCommentActions renders the moderation buttons for a comment in its CURRENT
 // status (the action matching the current status is omitted). Each button is
 // HTMX-driven: it POSTs the new status to the fragment endpoint and swaps the
-// row's action cell in place, so moderation needs no full-page reload. The
+// inspector's action row in place, so moderation needs no full-page reload. The
 // buttons depend only on (id, status), so the fragment endpoint can re-render
 // them without re-fetching the comment. idEsc must already be HTML-escaped.
 func osCommentActions(idEsc, status string) string {
@@ -2986,146 +2988,232 @@ func osCommentActions(idEsc, status string) string {
 	return btn("approved", "Approve", "btn--primary") + btn("rejected", "Reject", "btn--ghost") + btn("spam", "Spam", "btn--ghost")
 }
 
+// osCommentReplyArea is where the operator answers a comment: a reply box on
+// an approved one, and on any other a line saying why there is none. A reply
+// under a comment readers cannot see would hang in the thread with nothing
+// above it, so replying waits for approval. Keyed by id so approving the
+// comment from the inspector brings the box out-of-band.
+func osCommentReplyArea(idEsc, status string, oob bool) string {
+	oobAttr := ""
+	if oob {
+		oobAttr = ` hx-swap-oob="true"`
+	}
+	inner := `<p class="muted text-sm">Approve it to reply.</p>`
+	if status == "approved" {
+		inner = `<form hx-post="/os/api/comments/` + idEsc + `/reply-fragment" hx-target="#creply-` + idEsc + `" hx-swap="innerHTML" hx-disabled-elt="find button">` +
+			`<label class="field-label" for="creply-body-` + idEsc + `">Your reply</label>` +
+			`<textarea id="creply-body-` + idEsc + `" name="body" class="textarea" rows="3" maxlength="4000" required></textarea>` +
+			`<div class="mt-2"><button type="submit" class="btn btn--sm">Reply</button></div></form>`
+	}
+	return `<div id="creply-` + idEsc + `"` + oobAttr + `>` + inner + `</div>`
+}
+
+// osCommentInspector renders one comment in the inspector: who wrote it, what
+// they wrote, where it was left, and what can be done with it.
+func osCommentInspector(c comments.Comment, slug string) string {
+	idEsc := html.EscapeString(c.ID)
+	var b strings.Builder
+	b.WriteString(`<div class="sa-insp__title">` + html.EscapeString(c.Author) + `</div><div class="sa-insp__meta">` + html.EscapeString(c.Email) + `</div>`)
+	b.WriteString(`<p class="comment-body">` + html.EscapeString(c.Body) + `</p>`)
+	b.WriteString(`<div class="sa-insp__actions" id="cact-` + idEsc + `">` + osCommentActions(idEsc, c.Status) + `</div>`)
+	b.WriteString(`<dl class="sa-insp__facts"><dt>State</dt><dd>` + osCommentState(idEsc, c.Status, "i", false) + `</dd>`)
+	if slug != "" {
+		b.WriteString(`<dt>On</dt><dd><a href="/` + html.EscapeString(slug) + `#comments" target="_blank" rel="noopener">/` + html.EscapeString(slug) + `</a></dd>`)
+	}
+	if where := geoDisplayHTML(c.Country, c.City); where != "" {
+		b.WriteString(`<dt>From</dt><dd>` + where + `</dd>`)
+	}
+	b.WriteString(`<dt>Written</dt><dd>` + config.FormatSite(c.CreatedAt, "2 Jan 2006, 15:04") + `</dd></dl>`)
+	b.WriteString(osCommentReplyArea(idEsc, c.Status, false))
+	return b.String()
+}
+
+// commentSlugs resolves the slugs of the posts the given comments are on,
+// only for those (via the read pool): at scale the catalog holds hundreds of
+// thousands of posts, and loading the whole id→slug map per view does not.
+func commentSlugs(ctx context.Context, cs []comments.Comment) map[string]string {
+	slugByID := map[string]string{}
+	seen := map[string]bool{}
+	ids := make([]any, 0, len(cs))
+	for _, c := range cs {
+		if c.ArticleID != "" && !seen[c.ArticleID] {
+			seen[c.ArticleID] = true
+			ids = append(ids, c.ArticleID)
+		}
+	}
+	if len(ids) == 0 || dbpkg.DB == nil {
+		return slugByID
+	}
+	ph := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	if rows, err := dbpkg.Reader().QueryContext(ctx, `SELECT id, slug FROM articles WHERE id IN (`+ph+`)`, ids...); err == nil {
+		defer rows.Close() //nolint:errcheck
+		for rows.Next() {
+			var id, slug string
+			if rows.Scan(&id, &slug) == nil {
+				slugByID[id] = slug
+			}
+		}
+		_ = rows.Err() // best-effort id→slug map for comment links
+	}
+	return slugByID
+}
+
+// handleOSComments renders Comments as the List kind: the comments as a
+// table, one view per state, and the selected one in the inspector, where it
+// is moderated and answered.
 func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
-	// CSRF token cookie so the inline approve/reject controls can POST.
+	// CSRF token cookie so the inspector's moderation and reply can POST.
 	csrfTokenFor(w, r)
 
-	var body string
 	if a.commentStore == nil {
-		body = `<div class="page-header"><h1>Comments</h1></div>
-<div class="card empty-state"><div class="empty-icon">` + saIcon("talk") + `</div>
-<div class="empty-title">Comments unavailable</div>
-<div class="empty-sub">The comment store is not initialised.</div></div>`
-		writeOSHTML(w, r, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(ui.List(ui.ListPage{Title: "Comments"},
+			ui.Empty("talk", "Comments are not running", "The comment store did not start, so there is nothing to moderate. The server log says why.", ""), ""))))
+		return
+	}
+	status := r.URL.Query().Get("status")
+	if status != "pending" && status != "approved" {
+		status = "all"
+	}
+	counts, _ := a.commentStore.Count(r.Context())
+	all := 0
+	for _, n := range counts {
+		all += int(n)
+	}
+	if all == 0 {
+		writeOSHTML(w, r, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(ui.List(ui.ListPage{Title: "Comments"},
+			ui.Empty("talk", "No comments yet", "Readers comment at the foot of a post once they sign in as members. Each new comment waits here until you approve it, and you can answer it from here.", ""), ""))))
 		return
 	}
 
-	// Resolve slugs only for the articles referenced by the comments shown
-	// (≤500), via the read pool. At scale the catalog can hold hundreds of
-	// thousands of posts, so loading the entire id→slug map per page view — and
-	// on the single writer connection — does not scale.
-	all, _ := a.commentStore.ListAll(r.Context(), "all", 500)
-	slugByID := map[string]string{}
-	seenID := map[string]bool{}
-	ids := make([]any, 0, len(all))
-	for _, c := range all {
-		if c.ArticleID != "" && !seenID[c.ArticleID] {
-			seenID[c.ArticleID] = true
-			ids = append(ids, c.ArticleID)
-		}
-	}
-	if len(ids) > 0 {
-		ph := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
-		if rows, err := dbpkg.Reader().QueryContext(r.Context(), `SELECT id, slug FROM articles WHERE id IN (`+ph+`)`, ids...); err == nil {
-			defer rows.Close() //nolint:errcheck
-			for rows.Next() {
-				var id, slug string
-				if rows.Scan(&id, &slug) == nil {
-					slugByID[id] = slug
-				}
-			}
-			_ = rows.Err() // best-effort id→slug map for comment links
-		}
-	}
-
-	var pending, approved int
-	rowsHTML := ""
-	for _, c := range all {
-		switch c.Status {
-		case "pending":
-			pending++
-		case "approved":
-			approved++
-		}
+	list, _ := a.commentStore.ListAll(r.Context(), status, 500)
+	slugByID := commentSlugs(r.Context(), list)
+	var rows strings.Builder
+	for i, c := range list {
 		idEsc := html.EscapeString(c.ID)
-		slug := slugByID[c.ArticleID]
-		postCell := html.EscapeString(slug)
-		if slug != "" {
-			postCell = `<a href="/` + html.EscapeString(slug) + `" target="_blank" rel="noopener">/` + html.EscapeString(slug) + `</a>`
+		sel := "false"
+		if i == 0 {
+			sel = "true"
 		}
-		// The status filter reads data-status off the pill (updated in place by the
-		// HTMX moderation swap), not off the <tr>, so a moderated row re-filters
-		// correctly without a full-page reload.
-		rowsHTML += `<tr data-comment-row>
-  <td class="row-title"><strong>` + html.EscapeString(c.Author) + `</strong>
-    <div class="row-meta">` + html.EscapeString(c.Email) + `</div></td>
-  <td>` + html.EscapeString(c.Body) + `</td>
-  <td>` + postCell + `</td>
-  <td class="text-sm">` + geoDisplayHTML(c.Country, c.City) + `</td>
-  <td>` + osCommentPill(idEsc, c.Status, false) + `</td>
-  <td class="muted text-sm">` + config.FormatSite(c.CreatedAt, "2 Jan 2006 15:04") + `</td>
-  <td class="row-actions" id="cact-` + idEsc + `">` + osCommentActions(idEsc, c.Status) + `</td>
-</tr>`
+		post := ""
+		if s := slugByID[c.ArticleID]; s != "" {
+			post = "/" + html.EscapeString(s)
+		}
+		rows.WriteString(`<tr class="post-row" data-list-row data-list-src="/os/comments/inspector/` + idEsc + `" tabindex="0" aria-selected="` + sel + `">` +
+			`<td class="post-row__name">` + html.EscapeString(c.Author) + `</td>` +
+			`<td class="comment-row__body">` + html.EscapeString(c.Body) + `</td>` +
+			`<td class="post-row__date">` + post + `</td>` +
+			`<td>` + osCommentState(idEsc, c.Status, "c", false) + `</td>` +
+			`<td class="post-row__date">` + config.FormatSite(c.CreatedAt, "2 Jan") + `</td></tr>`)
 	}
-
-	if len(all) == 0 {
-		body = `<div class="page-header"><h1>Comments</h1></div>
-<div class="card empty-state"><div class="empty-icon">` + saIcon("talk") + `</div>
-<div class="empty-title">No comments yet</div>
-<div class="empty-sub">When readers comment on your articles, they appear here for moderation before going public.</div></div>`
-	} else {
-		body = `<div class="page-header">
-  <h1>Comments <span class="count-pill">` + strconv.Itoa(len(all)) + `</span></h1>
-  <div class="page-actions"><span class="text-sm muted"><span id="cc-sum-pending">` + strconv.Itoa(pending) + `</span> pending · <span id="cc-sum-approved">` + strconv.Itoa(approved) + `</span> approved</span></div>
-</div>
-<p class="page-sub">Moderate the conversation on your posts — approve, reply to or remove comments before they go public.</p>
-<div class="card">
-  <div class="toolbar-row">
-    <div class="seg-filter" role="group" aria-label="Filter by status">
-      <button type="button" class="seg-btn is-active" data-comment-filter="all">All <span class="muted">` + strconv.Itoa(len(all)) + `</span></button>
-      <button type="button" class="seg-btn" data-comment-filter="pending">Pending <span class="muted" id="cc-pending">` + strconv.Itoa(pending) + `</span></button>
-      <button type="button" class="seg-btn" data-comment-filter="approved">Approved <span class="muted" id="cc-approved">` + strconv.Itoa(approved) + `</span></button>
-    </div>
-  </div>
-  <div class="table-wrap">
-    <table class="table">
-      <thead><tr><th>Author</th><th>Comment</th><th>Post</th><th>Location</th><th>Status</th><th>When</th><th></th></tr></thead>
-      <tbody>` + rowsHTML + `</tbody>
-    </table>
-  </div>
-  <div class="table-empty" data-filter-empty hidden>No comments match this filter.</div>
-</div>
-<div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
-<script nonce="` + nonce + `">
-(function(){'use strict';
-// Moderation is HTMX-driven (hx-post → swap the row's action cell + out-of-band
-// pill and counts); see osCommentActions and handleOSCommentModerateFragment.
-// The filter reads each row's live status from its pill's data-status (updated
-// by the swap) and re-applies after every HTMX swap so a moderated row moves to
-// the right tab without a page reload.
-var activeFilter='all';
-function applyFilter(){
-  document.querySelectorAll('[data-comment-row]').forEach(function(row){
-    var pill=row.querySelector('[data-status]');
-    var st=pill?pill.getAttribute('data-status'):'';
-    row.hidden=(activeFilter!=='all'&&st!==activeFilter);
-  });
-}
-document.querySelectorAll('[data-comment-filter]').forEach(function(s){
-  s.addEventListener('click',function(){
-    document.querySelectorAll('[data-comment-filter]').forEach(function(x){x.classList.remove('is-active');});
-    s.classList.add('is-active');
-    activeFilter=s.getAttribute('data-comment-filter');
-    applyFilter();
-  });
-});
-document.body.addEventListener('htmx:afterSwap',applyFilter);
-})();
-</script>`
+	listHTML := `<p class="table-empty">No comment is in this view.</p>`
+	inspector := ""
+	if len(list) > 0 {
+		listHTML = `<div class="table-wrap"><table class="table post-table comment-table"><thead><tr><th>From</th><th>Comment</th><th>On</th><th>State</th><th>Written</th></tr></thead><tbody>` +
+			rows.String() + `</tbody></table></div>`
+		inspector = osCommentInspector(list[0], slugByID[list[0].ArticleID])
 	}
+	href := func(s string) string {
+		if s == "all" {
+			return "/os/comments"
+		}
+		return "/os/comments?status=" + s
+	}
+	count := strconv.Itoa(all)
+	if n := int(counts["pending"]); n > 0 {
+		count += " · " + strconv.Itoa(n) + " waiting"
+	}
+	body := string(ui.List(ui.ListPage{
+		Title: "Comments",
+		Count: count,
+		Views: ui.Segments("Show",
+			ui.Segment{Label: "All", Href: href("all"), Count: all, On: status == "all"},
+			ui.Segment{Label: "Waiting", Href: href("pending"), Count: int(counts["pending"]), On: status == "pending", CountID: "cc-pending"},
+			ui.Segment{Label: "Approved", Href: href("approved"), Count: int(counts["approved"]), On: status == "approved", CountID: "cc-approved"}),
+	}, ui.HTML(listHTML), ui.HTML(inspector)))
 	writeOSHTML(w, r, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(body)))
 }
 
+// handleOSCommentInspector returns one comment's inspector, for the row a
+// person selects on the Comments page.
+func (a *App) handleOSCommentInspector(w http.ResponseWriter, r *http.Request) {
+	if a.commentStore == nil {
+		http.Error(w, "comments not initialised", http.StatusServiceUnavailable)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if !commentIDRe.MatchString(id) {
+		http.Error(w, "a valid comment id is required", http.StatusBadRequest)
+		return
+	}
+	c, err := a.commentStore.Get(r.Context(), id)
+	if err != nil {
+		http.Error(w, "no such comment", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, osCommentInspector(*c, commentSlugs(r.Context(), []comments.Comment{*c})[c.ArticleID]))
+}
+
+// handleOSCommentReplyFragment posts the operator's answer to an approved
+// comment, as the signed-in console user, through the same store call a
+// reader's reply takes. An operator's comment is live at once, as it is from
+// the public widget, and the comment's author is told the way any reply tells
+// them. It returns the reply as it now stands under the comment.
+func (a *App) handleOSCommentReplyFragment(w http.ResponseWriter, r *http.Request) {
+	if a.commentStore == nil {
+		http.Error(w, "comments not initialised", http.StatusServiceUnavailable)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if !commentIDRe.MatchString(id) {
+		http.Error(w, "a valid comment id is required", http.StatusBadRequest)
+		return
+	}
+	u := currentUser(r)
+	if u == nil {
+		http.Error(w, "sign in to reply", http.StatusUnauthorized)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
+	text := strings.TrimSpace(r.FormValue("body")) // an empty one is refused by SubmitReply below
+	parent, err := a.commentStore.Get(r.Context(), id)
+	if err != nil {
+		http.Error(w, "no such comment", http.StatusNotFound)
+		return
+	}
+	if parent.Status != comments.StatusApproved {
+		http.Error(w, "approve the comment before replying to it", http.StatusConflict)
+		return
+	}
+	name := strings.TrimSpace(u.Name)
+	if name == "" {
+		name = u.Email
+	}
+	c, err := a.commentStore.SubmitReply(r.Context(), parent.ArticleID, parent.ID, name, u.Email, text, "", "", "")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.commentStore.Moderate(r.Context(), c.ID, comments.StatusApproved); err != nil {
+		http.Error(w, "the reply was saved but could not be published: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	go a.notifyCommentReply(context.WithoutCancel(r.Context()), c.ID)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, `<p class="text-sm">`+string(ui.State("ok", "Replied"))+` as `+html.EscapeString(name)+`:</p><p class="comment-body">`+html.EscapeString(text)+`</p>`)
+}
+
 // handleOSCommentModerateFragment is the HTMX counterpart to handleCommentModerate:
-// it moderates a comment and returns an HTML fragment — the row's new action
-// buttons (main swap) plus out-of-band updates of its status pill and the
-// pending/approved counts — so the Comments manager updates in place with no
-// full-page reload. CSRF is enforced by the route's CSRFTokenMiddleware (the
-// admin layout mirrors the vp_csrf cookie into the X-CSRF-Token header for every
-// hx-* request). The JSON PUT endpoint remains for API clients.
+// it moderates a comment and returns an HTML fragment — the inspector's new
+// action buttons (main swap) plus out-of-band updates of the comment's state in
+// its row and the inspector, its reply area, and the waiting/approved counts —
+// so the Comments list updates in place. CSRF is enforced by the route's
+// CSRFTokenMiddleware (the admin layout mirrors the vp_csrf cookie into the
+// X-CSRF-Token header for every hx-* request). The JSON PUT endpoint remains
+// for API clients.
 func (a *App) handleOSCommentModerateFragment(w http.ResponseWriter, r *http.Request) {
 	if a.commentStore == nil {
 		http.Error(w, "comments not initialised", http.StatusServiceUnavailable)
@@ -3151,7 +3239,7 @@ func (a *App) handleOSCommentModerateFragment(w http.ResponseWriter, r *http.Req
 		go a.notifyCommentApproved(context.WithoutCancel(r.Context()), id)
 		go a.notifyCommentReply(context.WithoutCancel(r.Context()), id)
 	}
-	// Recompute pending/approved for the out-of-band count badges via the store's
+	// Recompute waiting/approved for the out-of-band counts via the store's
 	// GROUP BY count (accurate on any size catalog and cheaper than re-listing).
 	// Only these two change on a status move; the All total is unaffected.
 	pending, approved := 0, 0
@@ -3160,13 +3248,12 @@ func (a *App) handleOSCommentModerateFragment(w http.ResponseWriter, r *http.Req
 		approved = int(counts["approved"])
 	}
 	idEsc := html.EscapeString(id)
-	p, ap := strconv.Itoa(pending), strconv.Itoa(approved)
 	frag := osCommentActions(idEsc, status) +
-		osCommentPill(idEsc, status, true) +
-		`<span id="cc-pending" class="muted" hx-swap-oob="true">` + p + `</span>` +
-		`<span id="cc-approved" class="muted" hx-swap-oob="true">` + ap + `</span>` +
-		`<span id="cc-sum-pending" hx-swap-oob="true">` + p + `</span>` +
-		`<span id="cc-sum-approved" hx-swap-oob="true">` + ap + `</span>`
+		osCommentState(idEsc, status, "c", true) +
+		osCommentState(idEsc, status, "i", true) +
+		osCommentReplyArea(idEsc, status, true) +
+		`<span id="cc-pending" class="muted" hx-swap-oob="true">` + strconv.Itoa(pending) + `</span>` +
+		`<span id="cc-approved" class="muted" hx-swap-oob="true">` + strconv.Itoa(approved) + `</span>`
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(frag))
 }
