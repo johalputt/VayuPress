@@ -631,30 +631,6 @@
 
 }
 
-.vp-os .upd-hero { position: relative; border: 1px solid var(--card-border); border-radius: var(--r-md); background: var(--card-bg); box-shadow: var(--sh-sm); padding: var(--sp-6); margin-bottom: var(--sp-6); }
-
-.vp-os .upd-hero__aura { display: none; }
-
-.vp-os .upd-hero__head { position: relative; }
-
-.vp-os .upd-hero__badge { display: inline-block; font: 600 var(--text-xs)/1 var(--font-mono); color: var(--brand); background: var(--brand-dim); border: 1px solid var(--brand-dim); padding: 5px 10px; border-radius: var(--radius-small); }
-
-.vp-os .upd-hero__lead { position: relative; margin-top: var(--sp-3); max-width: 62ch; color: var(--text-2); font-size: var(--text-sm); line-height: 1.6; }
-
-.vp-os .upd-vers { position: relative; display: flex; align-items: stretch; flex-wrap: wrap; gap: var(--sp-3); margin: var(--sp-5) 0 var(--sp-2); }
-
-.vp-os .upd-ver { flex: 1 1 8rem; min-width: 8rem; display: flex; flex-direction: column; gap: 6px; padding: var(--sp-4); background: var(--bg-surface-2); border: 1px solid var(--card-border); border-radius: var(--r-md); }
-
-.vp-os .upd-ver__label { font-size: 12px; color: var(--text-3); font-weight: 600; }
-
-.vp-os .upd-ver__num { font-family: var(--font-head); font-size: var(--text-2xl); font-weight: 600; color: var(--text); letter-spacing: -0.02em; }
-
-.vp-os .upd-ver__num--latest { color: var(--brand); }
-
-.vp-os .upd-ver__arrow { display: flex; align-items: center; color: var(--text-3); flex: 0 0 auto; }
-
-.vp-os .upd-ver--status { flex: 1 1 10rem; }
-
 .vp-os .upd-status { align-self: flex-start; font-weight: 600; font-size: var(--text-sm); color: var(--text-2); padding: 4px 10px; border-radius: var(--radius-small); border: 1px solid var(--card-border); background: var(--bg-surface); }
 
 .vp-os .upd-status[data-state="uptodate"] { color: var(--ok); border-color: var(--ok-dim); background: var(--ok-dim); }
@@ -663,24 +639,10 @@
 
 .vp-os .upd-status[data-state="error"] { color: var(--danger); border-color: var(--danger-dim); background: var(--danger-dim); }
 
-.vp-os .upd-opts { position: relative; display: grid; gap: 4px; margin: var(--sp-4) 0; }
-
-.vp-os .upd-check { display: inline-flex; align-items: center; gap: 10px; font-size: var(--text-sm); color: var(--text); cursor: pointer; }
-
-.vp-os .upd-check input { width: 16px; height: 16px; accent-color: var(--brand); flex: 0 0 auto; }
-
-.vp-os .upd-opt-note { font-size: var(--text-xs); color: var(--text-3); line-height: 1.5; margin: 0 0 8px 26px; }
-
 .vp-os .upd-actions { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); }
 
 .vp-os .upd-file { max-width: 22rem; }
 
-@media (max-width: 640px) {
-  .vp-os .upd-ver__arrow { transform: rotate(90deg); align-self: center; }
-
-  .vp-os .upd-vers { flex-direction: column; }
-
-}
 
 /* ── Cards ───────────────────────────────────────────────────── */
 .vp-os .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--r); padding: var(--sp-5); box-shadow: var(--sh-sm); }
@@ -1586,40 +1548,7 @@
 .eblock__diagram-preview .vp-diagram__lifeline { stroke: var(--text-3); stroke-dasharray: 3 3; }
 
 /* ── Tools & Plugins panel (VayuOS foundation) ─────────────────────────────── */
-.vp-os .tools-cat { grid-column: 1 / -1; font-family: var(--font-head); font-size: var(--text-xs); color: var(--text-3); margin: var(--sp-4) 0 var(--sp-1); }
-
-.vp-os .tools-cat:first-child { margin-top: 0; }
-
-.vp-os .tools-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--sp-4); }
-
-.vp-os .tool-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); transition: border-color 0.15s ease, transform 0.15s ease; }
-
-.vp-os .tool-card:hover { border-color: var(--border-strong); }
-
-.vp-os .tool-card__head { display: flex; align-items: center; gap: var(--sp-3); }
-
-.vp-os .tool-card__icon { font-size: 20px; line-height: 1; }
-
-.vp-os .tool-card__title { font-family: var(--font-head); font-weight: 600; font-size: var(--text-base); flex: 1; min-width: 0; }
-
-.vp-os .tool-card__desc { color: var(--text-2); font-size: var(--text-sm); line-height: 1.5; flex: 1; }
-
-.vp-os .tool-card__foot { display: flex; align-items: center; }
-
-.vp-os .tool-status { font-size: var(--text-xs); font-weight: 600; padding: 2px 8px; border-radius: var(--radius-small); border: 1px solid transparent; }
-
-.vp-os .tool-status--on { color: var(--ok); background: var(--ok-dim); }
-
-.vp-os .tool-status--off { color: var(--text-3); background: var(--bg-surface-2); }
-
-.vp-os .tool-status--idle { color: var(--warn); background: var(--warn-dim); }
-
 /* Toggle switch */
-
-/* Monitoring: tool-card used as a navigational link */
-.vp-os a.tool-card { text-decoration: none; color: inherit; cursor: pointer; }
-
-.vp-os a.tool-card:hover .tool-card__title { color: var(--brand); }
 
 /* ── AI suggestion overlay ─────────────────────────────────────────────────── */
 .vp-os .ai-suggest { margin: 8px 0 4px; padding: 12px 14px; background: var(--bg-surface-2); border: 1px solid var(--brand-dim); border-left: 3px solid var(--brand); border-radius: var(--r-md); }
@@ -6798,7 +6727,8 @@
 @media (forced-colors: active) {
   .vp-os[data-ui="still-air"] .sa-rail__item[aria-current="page"],
   .vp-os[data-ui="still-air"] .sa-appside__item[aria-current="page"] { outline: 2px solid Highlight; }
-  .vp-os[data-ui="still-air"] .sa-dot { forced-color-adjust: none; }
+  .vp-os[data-ui="still-air"] .sa-dot,
+  .vp-os[data-ui="still-air"] .sa-status__detail .upd-status::before { forced-color-adjust: none; }
 }
 
 /* ── Status (fidelity plan step 4, render 05) ──────────────────────────
@@ -6822,6 +6752,19 @@
 .vp-os[data-ui="still-air"] .sa-status > section { margin-top: var(--space-8); }
 .vp-os[data-ui="still-air"] .sa-status .section-head { border-bottom: 1px solid var(--border-1); padding-bottom: var(--space-3); }
 .vp-os[data-ui="still-air"] .sa-status .section-head + * { margin-top: 0; }
+/* Updates: the check's outcome sits in the state line, so it is a dot and a
+   word (rule 4) rather than the pill it was on the old card. The script sets
+   data-state; the dot follows it. */
+.vp-os[data-ui="still-air"] .sa-status__detail .upd-status {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: 0; border: 0; background: none; font-weight: 500; color: var(--text-2);
+}
+.vp-os[data-ui="still-air"] .sa-status__detail .upd-status::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--text-3);
+}
+.vp-os[data-ui="still-air"] .sa-status__detail .upd-status[data-state="uptodate"]::before { background: var(--ok); }
+.vp-os[data-ui="still-air"] .sa-status__detail .upd-status[data-state="available"]::before { background: var(--accent); }
+.vp-os[data-ui="still-air"] .sa-status__detail .upd-status[data-state="error"]::before { background: var(--danger); }
 /* Backups' restore points: one hairline row each, the time first because it
    is what the operator is choosing between, then its size, its test state and
    the button that opens its sheet. */
