@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.91] — 2026-09-28
+
+A hotfix for speed: the trending list's daily recompute read every post.
+
+### Fixed
+
+- **The trending list is worked out without reading posts it will not
+  show.** To rank the most-read posts, the query matched every viewed address
+  to its post and checked that the post was published, and each check read
+  the post's body, because a post's status is stored after its text. SQLite
+  also chose to start from the posts rather than the views, walking every
+  published post. On a copy with 60,000 posts the 30-day ranking took 21 s
+  from a cold cache, and on johal.in `/api/trending` answered in 6.8 s just
+  after a restart, at the edge of its 6 s limit. A new index answers the
+  check without the post, the ranking now starts from the views, and only
+  the ten winners are read: about 100 ms on the same copy. The index is
+  created on first start (migration 101). A test reads the query plan of the
+  query that ships, on the schema the migrations build, and fails if it walks
+  the posts again.
+
 ## [3.17.90] — 2026-09-28
 
 A security fix, released at once: a mailbox password could open the console
