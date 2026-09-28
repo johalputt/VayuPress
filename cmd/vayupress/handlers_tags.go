@@ -194,6 +194,11 @@ func (a *App) tagIndexScoped(ctx context.Context, scope string) ([]render.TagInf
 	return infos, totalPosts
 }
 
+// tagCountSQL counts a tag's published posts. It must be answered from
+// idx_articles_id_status (migration 100): status is stored after content, so
+// reading it from the row walks the post's body, once per tagged post.
+const tagCountSQL = `SELECT COUNT(1) FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm=? AND a.status='published'`
+
 // handleTagPage renders a single tag's listing page (/tags/{tag}). It serves a
 // cached copy when present and regenerates on miss, mirroring handleHome. The
 // per-tag cache file (tags/<tag>.html) is invalidated automatically by CachePurge
@@ -278,8 +283,7 @@ func (a *App) articlesByTag(ctx context.Context, tag string, max int, scope stri
 	}
 
 	var total int
-	dbpkg.Reader().QueryRowContext(ctx,
-		`SELECT COUNT(1) FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm=? AND a.status='published'`+domClause,
+	dbpkg.Reader().QueryRowContext(ctx, tagCountSQL+domClause,
 		append([]any{norm}, domArg...)...,
 	).Scan(&total)
 	if total == 0 {

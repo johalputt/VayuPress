@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Articles open quickly again on a large site.** On johal.in (234,000 posts)
+  an article that was not already cached took 1.6 s at the 95th percentile.
+  Drawing the page took 50 ms; the rest was waiting for a render slot held by
+  the "related posts" lookup, which SQLite answered by testing every published
+  post against a list of a dozen ids (53 ms each time). It now reads those
+  posts by primary key: an uncached article takes 1.3 ms instead of 70 ms, and
+  under eight crawlers at once the 95th percentile goes from 218 ms to 10.5 ms.
+  A test fails if the lookup's query plan stops using the primary key.
+- **Tag pages count their posts from an index.** A tag's post count read each
+  tagged post's whole row, body included, to learn whether it was published.
+  A new index (migration 100) holds what the count needs, which halves the
+  time on a large tag. Building it reads every post once, at the first start.
+
 ## [3.17.87] — 2026-09-27
 
 A fix for backups that failed when a file in the data directory grew while it

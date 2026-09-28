@@ -1,0 +1,2 @@
+-- Migration 100 (up): a tag page counts its published posts by joining every tagged row to its article, and status is stored after content, so each check walked the post's body. On a 234k-post copy of johal.in one tag's count read 46,800 bodies: 49.5 ms, on every uncached tag page. This index answers id, status and domain_id without the row: 24.5 ms. NOTE: runMigrations executes line-by-line, so keep each statement on ONE line.
+CREATE INDEX IF NOT EXISTS idx_articles_id_status ON articles(id,status,domain_id);

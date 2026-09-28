@@ -1940,6 +1940,19 @@ func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []st
 // every column it returns is in the index, so it never touches articles.
 const relatedPerTagSQL = `SELECT article_id, created_at FROM article_tags WHERE tag_norm=? ORDER BY created_at DESC LIMIT ?`
 
+// relatedByIDSQL reads the candidates by primary key.
+//
+// `+status` is not a typo. Without the unary plus SQLite may answer
+// "status='published'" from idx_articles_status and test every published post
+// against the id list: on johal.in's 234k posts that was 53 ms a lookup, on
+// every uncached article and every cache-warmer pass, and uncached articles
+// then queued for a render slot (p95 1.6 s). The plus leaves the primary key
+// as the only index this query can use, so it reads the n rows it names.
+func relatedByIDSQL(n int) string {
+	return `SELECT id, title, slug, created_at FROM articles WHERE id IN (?` + strings.Repeat(",?", n-1) +
+		`) AND +status='published' AND slug != ?`
+}
+
 // relatedByTag returns published posts carrying any of the tags, newest first,
 // taken from each tag's newest perTag candidates. A tag whose newest perTag
 // posts are all drafts or the current one yields nothing more here; the recent
@@ -1975,8 +1988,7 @@ func relatedByTag(ctx context.Context, norms []string, currentSlug string, perTa
 		args = append(args, c.id)
 	}
 	args = append(args, currentSlug)
-	rows, err := dbpkg.Reader().QueryContext(ctx,
-		`SELECT id, title, slug, created_at FROM articles WHERE id IN (?`+strings.Repeat(",?", len(cands)-1)+`) AND status='published' AND slug != ?`, args...)
+	rows, err := dbpkg.Reader().QueryContext(ctx, relatedByIDSQL(len(cands)), args...)
 	if err != nil {
 		return nil
 	}
