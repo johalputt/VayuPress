@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **Public pages load less and wait on less** (from johal.in's PageSpeed
+  report). Scripts and stylesheets linked by a version are now kept by the
+  browser for a year instead of a day, since their address changes whenever
+  they do. The code-highlighting stylesheet is linked only by pages that
+  contain code. The high-contrast stylesheet no longer holds up the first
+  paint for readers who have not asked for more contrast. The generated
+  stylesheets are served minified. The site's mark in the header and footer
+  is drawn from a 48 px image of about 1.4 KB, not the 15 KB favicon.
+
+### Fixed
+
+- **The footer is readable in every theme.** "Powered by", the footer badge
+  and column titles, and the Orbit theme's footer links were dimmed with
+  opacity on top of a muted colour already set at about 4.5:1, which took
+  them below the WCAG AA minimum (3.88:1 on johal.in). They are now quiet by
+  colour alone, and a test fails if a footer rule in any theme lowers its
+  opacity again.
+
 ## [3.17.89] — 2026-09-28
 
 A second hotfix for speed on large sites. After 3.17.88 fixed articles, two

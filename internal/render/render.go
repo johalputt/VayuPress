@@ -160,7 +160,11 @@ func allowBlockComponents(p *bluemonday.Policy) {
 
 // ── CSS assets ────────────────────────────────────────────────────────────────
 
-// WriteCSSAssets writes minified CSS files and computes their content hashes.
+// WriteCSSAssets writes the public stylesheets, minified, and computes their
+// content hashes. The constants hold the sources with their comments (the
+// *Min names predate the minifier and promised what nothing did until it ran
+// here); the hash is of what is written, so a page's ?v= always names the bytes
+// it will be sent.
 func WriteCSSAssets(staticDir string) {
 	cssDir := filepath.Join(staticDir, "css")
 	if err := os.MkdirAll(cssDir, 0755); err != nil {
@@ -176,10 +180,11 @@ func WriteCSSAssets(staticDir string) {
 		{"high-contrast.css", hcCSSMin, &cssHashes.HighContrastCSS},
 		{"custom.css", customCSSMin, &cssHashes.CustomCSS},
 	} {
-		if err := os.WriteFile(filepath.Join(cssDir, a.name), []byte(a.content), 0644); err != nil {
+		min := MinifyCSS([]byte(a.content))
+		if err := os.WriteFile(filepath.Join(cssDir, a.name), min, 0644); err != nil {
 			continue
 		}
-		sum := sha256.Sum256([]byte(a.content))
+		sum := sha256.Sum256(min)
 		*a.hash = hex.EncodeToString(sum[:])
 	}
 }
@@ -211,9 +216,18 @@ func ArticleCSSLink() template.HTML { return CSSLink("article.css", cssHashes.Ar
 // AdminCSSLink returns the versioned <link> for admin.css.
 func AdminCSSLink() template.HTML { return CSSLink("admin.css", cssHashes.AdminCSS) }
 
-// HighContrastCSSLink returns the versioned <link> for high-contrast.css.
+// HighContrastCSSLink returns the versioned <link> for high-contrast.css,
+// carrying the two media queries that hold every rule in it. A stylesheet
+// whose media does not match is still fetched but never blocks the first
+// paint, and this one matches only for readers who ask for more contrast or
+// forced colours, so everyone else no longer waits on it.
 func HighContrastCSSLink() template.HTML {
-	return CSSLink("high-contrast.css", cssHashes.HighContrastCSS)
+	ver := cssHashes.HighContrastCSS
+	if len(ver) > 8 {
+		ver = ver[:8]
+	}
+	return template.HTML(`<link rel="stylesheet" href="/static/css/high-contrast.css?v=` + ver +
+		`" media="(prefers-contrast: more), (forced-colors: active)">`)
 }
 
 // CustomCSSLink returns the versioned <link> for the VayuPress brand overrides (custom.css).
@@ -364,7 +378,7 @@ func footerHTML(s SiteSettings) template.HTML {
 	if hasTop {
 		b.WriteString(`<div class="vayu-footer-main">`)
 		b.WriteString(`<div class="vayu-footer-about">`)
-		b.WriteString(`<div class="vayu-footer-brand"><img src="/static/favicon-light.png" alt="" width="22" height="22">` + template.HTMLEscapeString(brand) + `</div>`)
+		b.WriteString(`<div class="vayu-footer-brand"><img src="/static/brand-48.png" alt="" width="22" height="22">` + template.HTMLEscapeString(brand) + `</div>`)
 		if t := strings.TrimSpace(cfg.Tagline); t != "" {
 			b.WriteString(`<p class="vayu-footer-tagline">` + template.HTMLEscapeString(t) + `</p>`)
 		}
@@ -1527,6 +1541,7 @@ type articlePage struct {
 	HeadMeta            template.HTML
 	ThemeToggleJSLink   template.HTML
 	VideoFacadeJSLink   template.HTML
+	ChromaCSSLink       template.HTML
 	CommentsJSLink      template.HTML
 	ContactJSLink       template.HTML
 	NavLinks            template.HTML
@@ -1677,8 +1692,39 @@ func newNonce() string {
 	return hex.EncodeToString(b[:])
 }
 
+// ChromaCSSLink returns the versioned <link> for the code-highlighting
+// stylesheet when the rendered article body holds highlighted code, and
+// nothing otherwise. Every article linked it before, so every reader of a post
+// without code waited on a stylesheet the page never used.
+func ChromaCSSLink(body string) template.HTML {
+	if !strings.Contains(body, `<pre class="chroma"`) {
+		return ""
+	}
+	return template.HTML(`<link rel="stylesheet" href="/static/chroma.css?v=` + chromaCSSVersion() + `">`)
+}
+
+var (
+	chromaCSSOnce sync.Once
+	chromaCSSBody string
+	chromaCSSVer  string
+)
+
+// ChromaCSSBody is the stylesheet ChromaCSSLink names, generated once.
+func ChromaCSSBody() string {
+	chromaCSSOnce.Do(func() {
+		chromaCSSBody = ChromaCSS()
+		sum := sha256.Sum256([]byte(chromaCSSBody))
+		chromaCSSVer = hex.EncodeToString(sum[:4])
+	})
+	return chromaCSSBody
+}
+
+func chromaCSSVersion() string {
+	ChromaCSSBody()
+	return chromaCSSVer
+}
+
 // ChromaCSS returns the CSS stylesheet for chroma's github-dark theme.
-// It is served at /static/chroma.css and linked only when articles contain code.
 func ChromaCSS() string {
 	style := styles.Get("github-dark")
 	if style == nil {
@@ -1749,7 +1795,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta name="twitter:description" content="{{.TwitterDescription}}">
 {{if .TwitterImageURL}}<meta name="twitter:image" content="{{.TwitterImageURL}}">{{end}}
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"{{.Title | jsonAttr}}","description":"{{.SEODescription | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","url":"{{.Canonical}}","mainEntityOfPage":{"@type":"WebPage","@id":"{{.Canonical}}"},"inLanguage":"en",{{if .OGImage}}"image":"{{.OGImage}}",{{end}}"author":{"@type":"Person","name":"{{if .Author}}{{.Author | jsonAttr}}{{else if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}"},"publisher":{"@type":"Organization","name":"{{if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}","url":"{{.Origin}}"}}</script>{{.BreadcrumbJSONLD}}
-{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}<link rel="stylesheet" href="/static/chroma.css">{{.HeadMeta}}{{.ThemeToggleJSLink}}{{.VideoFacadeJSLink}}
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.ChromaCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}{{.VideoFacadeJSLink}}
 {{pwaHead}}{{pwaJS}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
@@ -1760,7 +1806,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="{{blogBase}}" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
+  <a href="{{blogBase}}" class="vayu-nav-brand"><img src="/static/brand-48.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
     {{if .ShowSearch}}<form class="vayu-search" method="get" action="/search" role="search" data-vayu-search>
@@ -1933,7 +1979,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="{{blogBase}}" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
+  <a href="{{blogBase}}" class="vayu-nav-brand"><img src="/static/brand-48.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
     {{if .ShowSearch}}<form class="vayu-search" method="get" action="/search" role="search" data-vayu-search>
@@ -1996,7 +2042,7 @@ var notFoundTmpl = template.Must(template.New("404").Funcs(homeFuncs).Parse(`<!D
 </head><body>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="{{blogBase}}" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
+  <a href="{{blogBase}}" class="vayu-nav-brand"><img src="/static/brand-48.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">{{.NavLinks}}<button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button></div>
 </nav>
 <main id="main-content"><div class="vayu-err">
@@ -2155,7 +2201,7 @@ var searchTmpl = template.Must(template.New("search").Funcs(homeFuncs).Parse(`<!
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="{{blogBase}}" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
+  <a href="{{blogBase}}" class="vayu-nav-brand"><img src="/static/brand-48.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
     <form class="vayu-search" method="get" action="/search" role="search">
@@ -2357,6 +2403,7 @@ func RenderArticleWithMetaSettings(s SiteSettings, a db.Article, layout ArticleL
 		HeadMeta:            headMetaHTML(s),
 		ThemeToggleJSLink:   ThemeToggleJSLink(),
 		VideoFacadeJSLink:   VideoFacadeJSLink(),
+		ChromaCSSLink:       ChromaCSSLink(a.Content),
 		CommentsJSLink:      CommentsJSLink(),
 		ContactJSLink:       ContactJSLink(),
 		NavLinks:            navLinksHTML(s.NavJSON),
@@ -3030,7 +3077,6 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--pico-primary);
-  opacity: 0.75;
 }
 
 /* Premium multi-column footer */
@@ -3060,7 +3106,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 .vayu-footer-col-title {
   font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.06em; margin-bottom: 0.8rem; opacity: 0.9;
+  letter-spacing: 0.06em; margin-bottom: 0.8rem;
   color: var(--pico-color, inherit);
 }
 .vayu-footer-col-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
@@ -3074,7 +3120,6 @@ h1, h2, h3, h4, h5, h6 {
 .vayu-footer-legal { display: flex; flex-wrap: wrap; gap: 0.25rem 1.1rem; }
 .vayu-footer-legal a { text-decoration: none; }
 .vayu-footer-legal a:hover { color: var(--pico-primary); }
-.vayu-footer-powered { opacity: 0.85; }
 .vayu-footer--premium .vayu-footer-badge { margin-left: 0; }
 @media (max-width: 640px) {
   .vayu-footer-main { grid-template-columns: 1fr; gap: 1.75rem; }

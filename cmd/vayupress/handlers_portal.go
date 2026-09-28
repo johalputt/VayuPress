@@ -592,7 +592,7 @@ func (a *App) handleMemberVayuMailPrivKey(w http.ResponseWriter, r *http.Request
 // works on disk-cached public pages just like the other public scripts.
 func (a *App) handleMemberPortalJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	publicAssetCache(w, r)
 	// Serve the resolved body (the stylesheet URL carries its content version) and
 	// an ETag over it, so a client that kept an older copy revalidates cheaply
 	// instead of holding a script that points at a superseded stylesheet.

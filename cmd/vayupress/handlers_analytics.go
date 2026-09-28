@@ -83,6 +83,10 @@ var analyticsLimiter = newIngestLimiter(120, time.Minute)
 // daily-rotating salted hash that stores no PII (see internal/analytics).
 func (a *App) handleAnalyticsScript(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	// An hour, not the year versioned scripts get (publicAssetCache): what this
+	// script sends follows the engagement-beacon setting below, and a copy
+	// kept for a year would go on measuring readers after the operator turned
+	// the beacon off.
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	fmt.Fprint(w, `!function(){

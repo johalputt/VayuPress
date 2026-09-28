@@ -123,8 +123,8 @@ func (a *App) serveSitePageIfActive(w http.ResponseWriter, r *http.Request) bool
 
 // handleSiteGalleryJS serves the gallery viewer (sitedoc.GalleryJS). Its URL
 // carries a hash of its content, so it can be cached for a long time.
-func handleSiteGalleryJS(w http.ResponseWriter, _ *http.Request) {
+func handleSiteGalleryJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	publicAssetCache(w, r)
 	_, _ = w.Write([]byte(sitedoc.GalleryJS))
 }

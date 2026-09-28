@@ -861,14 +861,17 @@ article.vayu-prose {
   margin-bottom: .75rem;
 }
 
+/* Quiet by colour, never by opacity: the palette's muted colour is already set
+   at about 4.5:1 against the page, and any opacity on it drops the footer
+   below WCAG AA. */
 .vayu-footer-col-links a {
   display: block;
   padding-block: .3rem;
-  opacity: .72;
-  transition: opacity var(--t, .25s ease);
+  color: var(--muted, #8d8d92);
+  transition: color var(--t, .25s ease);
 }
 
-.vayu-footer-col-links a:hover { opacity: 1; }
+.vayu-footer-col-links a:hover { color: var(--text, #ededee); }
 
 .vayu-footer-bottom {
   border-top: 1px solid var(--border, rgba(125, 125, 125, .22));
@@ -885,11 +888,11 @@ article.vayu-prose {
 }
 
 .vayu-footer-social a {
-  opacity: .7;
-  transition: opacity var(--t, .25s ease);
+  color: var(--muted, #8d8d92);
+  transition: color var(--t, .25s ease);
 }
 
-.vayu-footer-social a:hover { opacity: 1; }
+.vayu-footer-social a:hover { color: var(--text, #ededee); }
 
 /* ── Hero search ─────────────────────────────────────────────────────────────
    Only ever visible in the "search" hero mode (orbitHeroCSS in options.go); the

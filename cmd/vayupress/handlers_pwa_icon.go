@@ -81,7 +81,12 @@ func (a *App) customAppIcon(ctx context.Context, size int, maskable bool) []byte
 	if err != nil || len(raw) == 0 {
 		return nil
 	}
+	return iconAt(raw, size, maskable)
+}
 
+// iconAt renders an image to a size x size PNG, memoised, or nil when it cannot
+// be decoded.
+func iconAt(raw []byte, size int, maskable bool) []byte {
 	sum := sha256.Sum256(raw)
 	key := hex.EncodeToString(sum[:8]) + ":" + strconv.Itoa(size) + ":" + strconv.FormatBool(maskable)
 	if v, ok := appIconCache.Load(key); ok {

@@ -238,7 +238,7 @@ article.vayu-prose, .content { font-size: 1.06rem; line-height: 1.75; }
 .vayu-footer-social a:hover { color: var(--accent, #2dd4bf); }
 .vayu-footer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-top: 2.2rem; padding-top: 1.4rem; border-top: 1px solid var(--border, rgba(255,255,255,.07)); }
 .vayu-footer-badge { font-size: .68rem; padding: .2rem .6rem; border-radius: 999px; color: var(--accent, #2dd4bf); background: color-mix(in srgb, var(--accent, #2dd4bf) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent, #2dd4bf) 26%, transparent); }
-.vayu-footer-powered { color: var(--muted, #94a3b8); opacity: .8; }
+.vayu-footer-powered { color: var(--muted, #94a3b8); }
 
 /* ── 404 ──────────────────────────────────────────────────────────────────── */
 .vayu-err { text-align: center; padding: 5rem 0; }

@@ -130,7 +130,7 @@ func siteServer(a *App) http.HandlerFunc {
 	r.Use(a.domainMiddleware)
 	r.Get("/", a.handleHome)
 	r.Get("/site.css", a.handleBizSiteCSS)
-	r.Get("/favicon.ico", a.serveFavicon(faviconDarkPNG))
+	r.Get("/favicon.ico", a.serveFavicon(faviconDarkPNG, 0))
 	r.Get("/{slug}", a.handleNotFound)
 	return r.ServeHTTP
 }

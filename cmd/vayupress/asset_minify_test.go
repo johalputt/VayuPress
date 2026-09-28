@@ -3,6 +3,8 @@
 package main
 
 import (
+	"github.com/johalputt/vayupress/internal/render"
+
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,8 +27,8 @@ func TestMinifyCSSKeepsWhatCSSMeans(t *testing.T) {
 		"a comment separates tokens":          {"a/**/b { x: y }", "a b{x: y}"},
 		"selector lists":                      {"a ,\n b { x: y }", "a,b{x: y}"},
 	} {
-		if got := string(minifyCSS([]byte(c.in))); got != c.want {
-			t.Errorf("%s: minifyCSS(%q) = %q, want %q", name, c.in, got, c.want)
+		if got := string(render.MinifyCSS([]byte(c.in))); got != c.want {
+			t.Errorf("%s: render.MinifyCSS(%q) = %q, want %q", name, c.in, got, c.want)
 		}
 	}
 }
@@ -39,7 +41,7 @@ func TestMinifiedStylesheetsKeepEveryRule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	min := string(minifyCSS(src))
+	min := string(render.MinifyCSS(src))
 	plain := comment.ReplaceAllString(string(src), "")
 	for _, ch := range []string{"{", "}", ";"} {
 		if a, b := strings.Count(plain, ch), strings.Count(min, ch); a != b {
@@ -74,8 +76,8 @@ func TestConsoleStylesheetIsServedMinified(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Fatalf("%s: status %d", name, w.Code)
 		}
-		if got := w.Body.String(); got != string(minifyCSS(src)) {
-			t.Errorf("%s: served %d bytes, which is not the minified stylesheet (%d bytes; source %d)", name, len(got), len(minifyCSS(src)), len(src))
+		if got := w.Body.String(); got != string(render.MinifyCSS(src)) {
+			t.Errorf("%s: served %d bytes, which is not the minified stylesheet (%d bytes; source %d)", name, len(got), len(render.MinifyCSS(src)), len(src))
 		}
 	}
 }
@@ -101,7 +103,7 @@ func TestConsoleStylesheetFitsItsBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := len(minifyCSS(src)); n > consoleCSSBudget {
+	if n := len(render.MinifyCSS(src)); n > consoleCSSBudget {
 		t.Errorf("the console's stylesheet is %d bytes minified, over the %d-byte budget", n, consoleCSSBudget)
 	}
 }

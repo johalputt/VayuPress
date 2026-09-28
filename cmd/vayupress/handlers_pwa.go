@@ -17,9 +17,9 @@ package main
 import (
 	_ "embed"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/render"
@@ -41,20 +41,12 @@ var webAppIconMaskablePNG []byte
 //go:embed assets/webapp-apple-180.png
 var webAppIconApplePNG []byte
 
-// handleChromaCSS serves the chroma syntax-highlighting CSS, generated once
-// at first request and cached in memory thereafter.
-var (
-	chromaCSSOnce  sync.Once
-	chromaCSSBytes []byte
-)
-
+// handleChromaCSS serves the chroma syntax-highlighting CSS. render generates
+// it, because render also versions the link to it.
 func (a *App) handleChromaCSS(w http.ResponseWriter, r *http.Request) {
-	chromaCSSOnce.Do(func() {
-		chromaCSSBytes = []byte(render.ChromaCSS())
-	})
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Write(chromaCSSBytes) //nolint:errcheck
+	publicAssetCache(w, r)
+	_, _ = io.WriteString(w, render.ChromaCSSBody())
 }
 
 // handlePWAManifest returns the Web App Manifest for the public site. Name,
@@ -131,7 +123,7 @@ func shortAppName(name string, max int) string {
 // satisfies script-src 'self' without a nonce.
 func (a *App) handlePWARegisterJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	publicAssetCache(w, r)
 	w.Write([]byte(render.PWARegisterJS)) //nolint:errcheck
 }
 

@@ -38,7 +38,7 @@ func (a *App) handleVayuMailPrivacy(w http.ResponseWriter, r *http.Request) {
 </head><body>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">` + brand + `</a>
+  <a href="/" class="vayu-nav-brand"><img src="/static/brand-48.png" alt="" width="24" height="24">` + brand + `</a>
 </nav>
 <main id="main-content">
 <article class="vayu-prose">

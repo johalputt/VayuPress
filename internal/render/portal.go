@@ -661,7 +661,7 @@ const PortalJS = `(function () {
     // it was a row that scrolled under the pinned header and clipped; here it gives
     // the bar an identity and stays put, which is what an app bar is for.
     var brand = el('div', 'vp-portal-brand');
-    brand.innerHTML = '<img src="/static/favicon-light.png" alt="" width="24" height="24"><span>' +
+    brand.innerHTML = '<img src="/static/brand-48.png" alt="" width="24" height="24"><span>' +
       esc(brandName()) + '</span>';
     head.appendChild(brand);
     var closeBtn = el('button', 'vp-portal-close', ICON_CLOSE);

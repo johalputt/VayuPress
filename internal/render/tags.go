@@ -90,7 +90,7 @@ var tagIndexTmpl = template.Must(template.New("tagindex").Funcs(tagFuncs).Parse(
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
+  <a href="/" class="vayu-nav-brand"><img src="/static/brand-48.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
@@ -129,7 +129,7 @@ var tagPageTmpl = template.Must(template.New("tagpage").Funcs(tagFuncs).Parse(`<
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
+  <a href="/" class="vayu-nav-brand"><img src="/static/brand-48.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>

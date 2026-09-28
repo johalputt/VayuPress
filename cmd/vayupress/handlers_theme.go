@@ -143,11 +143,27 @@ func (a *App) handleThemeCSS(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, css)
 }
 
+// publicAssetCache sets how long a public script or stylesheet may be kept.
+//
+// Every page links these with ?v=<hash of the file>, so that address changes
+// whenever the file does and can be kept for a year without a check. A day was
+// what they had, which PageSpeed rightly counted against johal.in: the reader's
+// browser asked again every day for a file that cannot have changed. A request
+// without a version (a page cached before it carried one, an address typed by
+// hand) keeps the day, so a copy that outlived its version still expires.
+func publicAssetCache(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("v") != "" {
+		w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+}
+
 // handleThemeToggleJS serves the public sun/moon theme switcher script.
 // Same-origin static asset → satisfies `script-src 'self'` without a nonce.
 func (a *App) handleThemeToggleJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	publicAssetCache(w, r)
 	fmt.Fprint(w, render.ThemeToggleJS)
 }
 
@@ -155,7 +171,7 @@ func (a *App) handleThemeToggleJS(w http.ResponseWriter, r *http.Request) {
 // Same-origin static asset → satisfies `script-src 'self'` without a nonce.
 func (a *App) handleVideoFacadeJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	publicAssetCache(w, r)
 	fmt.Fprint(w, render.VideoFacadeJS)
 }
 
@@ -163,7 +179,7 @@ func (a *App) handleVideoFacadeJS(w http.ResponseWriter, r *http.Request) {
 // Same-origin static asset → satisfies `script-src 'self'` without a nonce.
 func (a *App) handleCommentsJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	publicAssetCache(w, r)
 	fmt.Fprint(w, render.CommentsJS)
 }
 
@@ -171,7 +187,7 @@ func (a *App) handleCommentsJS(w http.ResponseWriter, r *http.Request) {
 // CSP). Static text, long-cached; the ?v= content hash busts stale copies.
 func (a *App) handleContactJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	publicAssetCache(w, r)
 	fmt.Fprint(w, render.ContactJS)
 }
 
@@ -180,7 +196,7 @@ func (a *App) handleContactJS(w http.ResponseWriter, r *http.Request) {
 // Same-origin static asset → satisfies `script-src 'self'` without a nonce.
 func (a *App) handlePostCardMediaJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	publicAssetCache(w, r)
 	fmt.Fprint(w, render.PostCardMediaJS)
 }
 
@@ -191,7 +207,7 @@ func (a *App) handlePostCardMediaJS(w http.ResponseWriter, r *http.Request) {
 // never loaded — taking the trending AND pinned-posts lists down with it.
 func (a *App) handleTrendingWidgetJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	publicAssetCache(w, r)
 	fmt.Fprint(w, render.TrendingJS)
 }
 
@@ -200,7 +216,7 @@ func (a *App) handleTrendingWidgetJS(w http.ResponseWriter, r *http.Request) {
 // that satisfies script-src 'self' without a nonce.
 func (a *App) handleSearchWidgetJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	publicAssetCache(w, r)
 	fmt.Fprint(w, render.SearchModalJS)
 }
 
@@ -214,7 +230,7 @@ func (a *App) handleSearchWidgetJS(w http.ResponseWriter, r *http.Request) {
 // handleThemeToggleJS (long cache; the ?v= content hash busts stale copies).
 func (a *App) handleHTMXJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	publicAssetCache(w, r)
 	data, err := fs.ReadFile(embeddedStaticFS, "js/htmx.min.js")
 	if err != nil {
 		http.NotFound(w, r)

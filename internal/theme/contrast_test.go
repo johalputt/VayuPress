@@ -5,6 +5,9 @@ package theme
 import (
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -136,4 +139,49 @@ func relLuminance(t *testing.T, hex string) float64 {
 		}
 	}
 	return 0.2126*ch[0] + 0.7152*ch[1] + 0.0722*ch[2]
+}
+
+// cssRule is one innermost rule: a selector list and its declarations. Rules
+// nested in @media match too, because neither part may contain a brace.
+var cssRule = regexp.MustCompile(`([^{}]+)\{([^{}]*)\}`)
+
+// dimmedFooterRules returns the footer rules in css that lower their text's
+// opacity.
+//
+// The palette check above measures the muted colour, and the footer paints its
+// text in that colour — but opacity composites it toward the page, so a rule
+// with opacity .85 turned a measured 4.55:1 into 3.88:1 on every public page
+// while TestEveryPresetMeetsAA stayed green. Lighthouse found it; nothing here
+// could have.
+func dimmedFooterRules(css string) []string {
+	var out []string
+	for _, m := range cssRule.FindAllStringSubmatch(css, -1) {
+		if !strings.Contains(m[1], ".vayu-footer") {
+			continue
+		}
+		for _, decl := range strings.Split(m[2], ";") {
+			name, value, ok := strings.Cut(decl, ":")
+			if ok && strings.TrimSpace(name) == "opacity" && strings.TrimSpace(value) != "1" {
+				out = append(out, strings.TrimSpace(m[1])+" { "+strings.TrimSpace(decl)+" }")
+			}
+		}
+	}
+	return out
+}
+
+func TestNoPresetDimsFooterText(t *testing.T) {
+	// The base sheet every preset sits on, as the binary writes it
+	// (TestGeneratedCSSArtifactsMatchTheirConsts holds the two together).
+	base, err := os.ReadFile(filepath.Join("..", "..", "static", "css", "custom.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range dimmedFooterRules(string(base)) {
+		t.Errorf("custom.css: %s lowers the footer below its measured contrast; quieten it by colour", r)
+	}
+	for _, p := range AllPresets() {
+		for _, r := range dimmedFooterRules(p.CustomCSS) {
+			t.Errorf("%s: %s lowers the footer below its measured contrast; quieten it by colour", p.Name, r)
+		}
+	}
 }

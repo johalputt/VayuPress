@@ -162,7 +162,23 @@ func (a *App) handleFaviconUpload(w http.ResponseWriter, r *http.Request) {
 // Because every public template references the favicon by these fixed URLs,
 // overriding at the serving layer means a custom upload propagates everywhere
 // without touching a single template.
-func (a *App) serveFavicon(fallback []byte) http.HandlerFunc {
+//
+// A size above zero draws the mark at that square instead of as stored. Pages
+// show the mark at 24 px in the header and 22 px in the footer, and drew them
+// from the 256 px favicon: 15 KB for every first visit, which Lighthouse
+// reported as the one image on the page worth fixing. The 48 px rendition
+// covers both at twice their size for high-density screens.
+func (a *App) serveFavicon(fallback []byte, size int) http.HandlerFunc {
+	serve := func(w http.ResponseWriter, r *http.Request, b []byte, ct string) {
+		if size > 0 {
+			// An upload with no stdlib decoder (ICO, WebP) is served as stored,
+			// exactly as the favicon routes serve it.
+			if sized := iconAt(b, size, false); sized != nil {
+				b, ct = sized, "image/png"
+			}
+		}
+		serveFaviconBytes(w, r, b, ct)
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		// A HOSTED DOMAIN SERVING ITS OWN BUNDLE MUST NOT WEAR THE PRIMARY'S MARK.
 		//
@@ -195,11 +211,11 @@ func (a *App) serveFavicon(fallback []byte) http.HandlerFunc {
 		// blank the tab icon on every domain that has never uploaded one.
 		if a.siteSettings != nil {
 			if b, ct, ok := a.brandMark(r.Context(), settings.ForDomain(a.contentScope(r))); ok {
-				serveFaviconBytes(w, r, b, ct)
+				serve(w, r, b, ct)
 				return
 			}
 			if b, ct, ok := a.brandMark(r.Context(), settings.ForPrimary()); ok {
-				serveFaviconBytes(w, r, b, ct)
+				serve(w, r, b, ct)
 				return
 			}
 		}
@@ -210,7 +226,7 @@ func (a *App) serveFavicon(fallback []byte) http.HandlerFunc {
 		// Tor world especially — a fresh child starts with the shared default, so a
 		// custom logo uploaded there appeared to do nothing. Revalidation makes the
 		// default→custom switch show within a minute.
-		serveFaviconBytes(w, r, fallback, "image/png")
+		serve(w, r, fallback, "image/png")
 	}
 }
 

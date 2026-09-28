@@ -211,15 +211,16 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/icons/webapp-apple-180.png", a.serveAppIcon(180, false, webAppIconApplePNG))
 	// Favicon routes serve the operator's uploaded brand mark when one is stored
 	// (see /admin/theme branding), falling back to the embedded default per scheme.
-	r.Get("/static/favicon-dark.png", a.serveFavicon(faviconDarkPNG))
-	r.Get("/static/favicon-light.png", a.serveFavicon(faviconLightPNG))
+	r.Get("/static/favicon-dark.png", a.serveFavicon(faviconDarkPNG, 0))
+	r.Get("/static/favicon-light.png", a.serveFavicon(faviconLightPNG, 0))
+	r.Get("/static/brand-48.png", a.serveFavicon(faviconLightPNG, 48))
 	// Self-hosted web fonts (OFL Space Grotesk) for the Vayu theme — same-origin
 	// (CSP font-src 'self'), embedded in the binary, allowlisted filenames only.
 	r.Get("/static/fonts/{file}", a.handleStaticFont)
 	// First-party web-building assets for hand-built site bundles: same-origin, so
 	// the strict CSP admits them without widening a single directive.
 	r.Get("/static/vayuweb/{file}", a.handleVayuWebAsset)
-	r.Get("/favicon.ico", a.serveFavicon(faviconDarkPNG))
+	r.Get("/favicon.ico", a.serveFavicon(faviconDarkPNG, 0))
 	// Operator-uploaded hero/cover image (same-origin → img-src 'self'); 404s
 	// gracefully when none is set so the "Hero background: Image" option degrades.
 	r.Get("/theme-assets/hero", a.serveHeroImage)
