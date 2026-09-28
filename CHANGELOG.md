@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **A mailbox password no longer opens the console past its second factor.**
+  A mailbox and the console account with the same address are one identity,
+  and a mailbox signs in with its own password and, if it has one, its own
+  two-step code. The console account's two-step code was never asked. So when
+  two-step verification was on for the console account but not for the
+  mailbox, the mailbox password alone opened the console as that account,
+  administrator included. The mailbox password is also accepted over IMAP,
+  where there is no second factor, and can be reset through mail recovery.
+  Now a mailbox session reaches the console as an account with two-step
+  verification only when the mailbox has two-step verification too;
+  otherwise it opens Mail and nothing else. Sessions issued before this
+  release are held to the same rule. Found from a password reset for a
+  johal.in administrator mailbox that its owner had not asked for; that
+  reset could not be completed by anyone else, because its link goes only to
+  the recovery address.
+
 ### Changed
 
 - **Public pages load less and wait on less** (from johal.in's PageSpeed

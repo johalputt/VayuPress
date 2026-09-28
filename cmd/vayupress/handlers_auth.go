@@ -435,6 +435,38 @@ func (a *App) denyAccess(w http.ResponseWriter, r *http.Request, home string) {
 	http.Redirect(w, r, home, http.StatusSeeOther)
 }
 
+// mailboxMayOpenConsoleAs reports whether a session signed in with a
+// mailbox's own credentials may reach the console as the account of that
+// address.
+//
+// A mailbox and the console account with the same address are unified into one
+// identity, and both sign-in paths for a mailbox (the /os/login fallback and
+// the member portal) check the MAILBOX's password and, when enabled, the
+// MAILBOX's own second factor. The console account's second factor was never
+// asked. So on johal.in, where the operator turned two-step verification on for
+// the console account, the admin@ mailbox password alone opened the console as
+// the administrator: the mailbox password is tested over IMAP with no second
+// factor at all, and can be reset through mail recovery, which is how this was
+// found (a reset for admin@johal.in requested by someone else, 2026-09-28).
+//
+// The rule: when the console account has a second factor, a mailbox session
+// reaches the console only if the mailbox has one too, since both sign-in paths
+// then required it. Otherwise the session is confined to Mail. Refusing the
+// session outright was rejected: the mailbox is still its holder's, and Mail
+// is what its password is for. Checked when the session is resolved, not only
+// at sign-in, so a session issued before this rule is confined as well.
+func (a *App) mailboxMayOpenConsoleAs(ctx context.Context, email string) bool {
+	if a.userStore == nil {
+		return true
+	}
+	secret, enabled, err := a.userStore.TOTPSecretByEmail(ctx, email)
+	if err != nil || !enabled || secret == "" {
+		return true // no console account, or one without a second factor
+	}
+	mboxSecret, mboxEnabled := a.vayuMail.Accounts().TOTPStatus(ctx, email)
+	return mboxEnabled && mboxSecret != ""
+}
+
 // resolveMailSessionUser resolves a VayuMail account (by email, from a "vmail:"
 // session) to a synthesized, role-scoped identity. It returns ok=false if the
 // account no longer exists or has been deactivated (HashFor only returns a hash
@@ -452,6 +484,9 @@ func (a *App) resolveMailSessionUser(ctx context.Context, email string) (u *user
 		return nil, false, false
 	}
 	cmsRole, console := mailConsoleAccess(role)
+	if console && !a.mailboxMayOpenConsoleAs(ctx, email) {
+		console = false
+	}
 
 	// Identity unification: if a real CMS account exists with this email, log in
 	// as THAT persisted user — same profile, same stable /author/<id> URL,
@@ -504,6 +539,9 @@ func (a *App) resolveMailMember(r *http.Request) (u *users.User, mailOnly bool, 
 		return nil, false, false // not a VayuMail account
 	}
 	cmsRole, console := mailConsoleAccess(role)
+	if console && !a.mailboxMayOpenConsoleAs(r.Context(), m.Email) {
+		console = false
+	}
 	// Identity unification (see resolveMailSessionUser): prefer the persisted CMS
 	// account with this email for a console-capable holder, so it's one identity.
 	if console && a.userStore != nil {
