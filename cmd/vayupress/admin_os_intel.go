@@ -27,6 +27,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayushield/verifiedbot"
 )
 
@@ -424,9 +425,8 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 
 	if a.analytics == nil {
-		body := `<div class="page-header"><h1>Analytics</h1></div>
-<div class="empty-state">Analytics are not enabled on this instance.</div>`
-		writeOSHTML(w, r, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Analytics", "analytics", cfg, ui.Overview(ui.OverviewPage{Title: "Analytics"},
+			ui.Band{Title: "Visitors", Aside: ui.Empty("trend", "Analytics are off", "This install was started without the analytics store.", "")})))
 		return
 	}
 
@@ -441,84 +441,35 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 		return a.renderAnalyticsBody(ctx, days, periodLabel)
 	})
 	if !ready {
-		frag = `<div class="page-header"><h1>Analytics</h1></div>` + osPeriodSelector(days) +
-			`<div class="empty-state">Assembling analytics over ` + html.EscapeString(periodLabel) + `… this runs in the background and will appear on reload in a few seconds.</div>`
+		frag = string(ui.Overview(ui.OverviewPage{Title: "Analytics", State: ui.Text("Counting the last " + periodLabel), Actions: osPeriodSelector(days)},
+			ui.Band{Title: "Visitors", Hint: "Last " + periodLabel, Chart: `<p class="table-empty">This is counted in the background; reload in a few seconds.</p>`}))
 	}
 	body := frag + "\n" + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>`
 	writeOSHTML(w, r, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 }
 
-// renderAnalyticsBody builds the Analytics page body (everything except the
-// per-request nonce'd tabs script). It runs the heavy aggregate queries, so it
-// is only ever invoked from the background fragment cache — never inline on a
-// request. Returns "" on a hard query error so the cache retries rather than
-// caching an empty report.
-// analyticsScopeNote says whose traffic this page is counting.
-//
-// Every figure on it comes from the UNSCOPED readers (Since, OverviewSince,
-// TopPages …), so on a multi-domain install each one sums every hosted domain.
-// The page never said so. It made no false claim either — its subtitle only ever
-// promised "computed on your own server" — but an operator hosting thirty
-// clients reads "Analytics", sees a number, and has no way to know whether it is
-// theirs or everyone's. Silence about scope, on a page whose sibling IS scoped,
-// is a number that means something different from what it looks like.
-//
-// Nothing is said on a single-domain install: there the figures are the whole
-// truth already, and a caveat that can never apply is noise that teaches the
-// reader to skip the notices that do.
-func (a *App) analyticsScopeNote(ctx context.Context) string {
-	if a.domains == nil {
-		return ""
-	}
-	list, err := a.domains.List(ctx)
-	if err != nil || len(list) < 2 {
-		return ""
-	}
-	return `<div class="card"><p class="text-sm muted"><strong>These figures cover every domain ` +
-		`this install serves</strong> — all ` + strconv.Itoa(len(list)) + ` of them, added together. ` +
-		`For one site on its own, open it from <a href="/os/domains">Sites</a> and use its own ` +
-		`Visitors page; that one is filtered to that hostname.</p></div>`
-}
-
+// renderAnalyticsBody builds Analytics as the Overview kind (fidelity plan):
+// visitors in the chosen range with the range as a segmented control, one
+// chart beside who is on the site now, then the sections laid open, none a
+// disclosure. It runs the heavy aggregate queries, so it is only ever called
+// from the background fragment cache, never inline on a request; "" on a hard
+// query error lets the cache retry rather than keep an empty report.
 func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel string) string {
 	sum, err := a.analytics.Since(ctx, days, 10)
 	if err != nil {
 		return ""
 	}
+	page := ui.OverviewPage{Title: "Analytics", Actions: osPeriodSelector(days)}
 	if sum == nil {
-		return `<div class="page-header"><h1>Analytics</h1></div>` +
-			osPeriodSelector(days) +
-			`<div class="empty-state">No analytics data yet.</div>`
+		page.State = ui.Text("No visits recorded yet")
+		return string(ui.Overview(page, ui.Band{Title: "Visitors", Hint: "Last " + periodLabel,
+			Chart: `<p class="table-empty">Visits appear here as people read your site.</p>`}))
 	}
 
-	// Sparkline of daily views (reuse the dashboard renderer).
-	vals := make([]int, 0, len(sum.Daily))
-	for _, d := range sum.Daily {
-		vals = append(vals, int(d.Views))
-	}
-	spark := ""
-	if len(vals) > 0 {
-		spark = `<div class="card mb-6"><div class="card-title">Views — ` + periodLabel + `</div>
-<div class="sparkline-wrap">` + osSparkline(vals) + `</div></div>`
-	}
-
-	pageBars := make([]osChartBar, 0, len(sum.TopPages))
-	for _, p := range sum.TopPages {
-		pageBars = append(pageBars, osChartBar{Label: prettyPathText(p.Path), Value: int(p.Views), Href: p.Path})
-	}
-	pages := osBarList(pageBars, osShareOf(int(sum.TotalViews)), "No page views recorded yet. They'll appear here as visitors browse your site.")
-
-	refBars := make([]osChartBar, 0, len(sum.Referrers))
-	for _, h := range sum.Referrers {
-		refBars = append(refBars, osChartBar{Label: h.Host, Value: int(h.Hits)})
-	}
-	refs := osBarList(refBars, osShareOf(int(sum.TotalReferrals)), "No referrers recorded yet. Links from other sites will show up here.")
-
-	// ── VayuAnalytics extended insights (v1.8.0): audience, engagement, events ──
 	ov, _ := a.analytics.OverviewSince(ctx, days)
-	// Previous equal-length window, for period-over-period % deltas on the
-	// headline metrics. Bounds are date strings; the current window starts at
-	// curFrom (inclusive) and the previous window is [prevFrom, curFrom).
+	// The previous window of the same length, for each figure's change. Bounds
+	// are date strings; the current window starts at curFrom (inclusive) and the
+	// previous one is [prevFrom, curFrom).
 	now := time.Now().UTC()
 	curFrom := now.AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	prevFrom := now.AddDate(0, 0, -(2*days - 1)).Format("2006-01-02")
@@ -532,166 +483,149 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 	countries, _ := a.analytics.Countries(ctx, days)
 	regions, _ := a.analytics.Regions(ctx, days)
 	cities, _ := a.analytics.Cities(ctx, days)
-
-	overviewCard := ""
-	if ov != nil {
-		hasPrev := prevOv != nil && (prevOv.UniqueVisitors > 0 || prevOv.TotalVisits > 0 || prevOv.TotalPageviews > 0)
-		pv, vis, pvw := 0, 0, 0
-		var bounce float64
-		if prevOv != nil {
-			pv, vis, pvw, bounce = prevOv.UniqueVisitors, prevOv.TotalVisits, prevOv.TotalPageviews, prevOv.BounceRate
-		}
-		overviewCard = `<div class="grid grid-4 vm-metrics">` +
-			osStatCardDelta("Unique visitors", strconv.Itoa(ov.UniqueVisitors), osDeltaPct(ov.UniqueVisitors, pv, hasPrev, false)) +
-			osStatCardDelta("Visits", strconv.Itoa(ov.TotalVisits), osDeltaPct(ov.TotalVisits, vis, hasPrev, false)) +
-			osStatCardDelta("Pageviews", strconv.Itoa(ov.TotalPageviews), osDeltaPct(ov.TotalPageviews, pvw, hasPrev, false)) +
-			osStatCardDelta("Bounce rate", fmt.Sprintf("%.0f%%", ov.BounceRate), osDeltaPoints(ov.BounceRate, bounce, hasPrev)) + `</div>`
-	}
-
-	// Derived engagement metrics — all computed from aggregate counts, so they add
-	// depth without touching PII (GDPR-safe by construction). Only shown once there
-	// is at least one visit to divide by.
-	engagementStrip := ""
-	if ov != nil && ov.TotalVisits > 0 {
-		pagesPerVisit := float64(ov.TotalPageviews) / float64(ov.TotalVisits)
-		viewsPerVisitor, visitsPerVisitor := 0.0, 0.0
-		if ov.UniqueVisitors > 0 {
-			viewsPerVisitor = float64(ov.TotalPageviews) / float64(ov.UniqueVisitors)
-			visitsPerVisitor = float64(ov.TotalVisits) / float64(ov.UniqueVisitors)
-		}
-		engaged := 100 - ov.BounceRate // inverse of bounce — visits that went deeper
-		if engaged < 0 {
-			engaged = 0
-		}
-		chip := func(label, value, hint string) string {
-			return `<div class="vm-engage__item"><div class="vm-engage__val">` + html.EscapeString(value) +
-				`</div><div class="vm-engage__label">` + html.EscapeString(label) +
-				`</div><div class="vm-engage__hint">` + html.EscapeString(hint) + `</div></div>`
-		}
-		engagementStrip = `<div class="vm-engage">` +
-			chip("Pages / visit", fmt.Sprintf("%.1f", pagesPerVisit), "reading depth per session") +
-			chip("Views / visitor", fmt.Sprintf("%.1f", viewsPerVisitor), "content seen per person") +
-			chip("Visits / visitor", fmt.Sprintf("%.2f", visitsPerVisitor), "how often they return") +
-			chip("Engaged visits", fmt.Sprintf("%.0f%%", engaged), "went beyond the first page") +
-			`</div>`
-	}
-
-	utmRows := `<div class="empty-state">No campaign traffic yet. Add <code>utm_source</code>, <code>utm_medium</code> &amp; <code>utm_campaign</code> tags to the links you share to see which campaigns bring visitors.</div>`
-	if len(utm) > 0 {
-		rows := ""
-		for _, u := range utm {
-			src := u.Source
-			if src == "" {
-				src = "(direct)"
-			}
-			rows += `<tr><td class="row-title">` + html.EscapeString(src) + `</td><td>` + html.EscapeString(u.Medium) + `</td><td>` + html.EscapeString(u.Campaign) + `</td><td>` + strconv.Itoa(u.Count) + `</td></tr>`
-		}
-		utmRows = `<div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Medium</th><th>Campaign</th><th>Hits</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
-	}
-
-	// Build each section once, then arrange them into tabs so the page stops
-	// being one giant scroll. Tabs are switched client-side (no reload); the
-	// period selector above applies to every tab.
-	metricsIntro := `<p class="muted text-sm mb-3">Cookieless, no-PII (server-side daily-rotating salted hash). Populates as visitors hit your site.</p>`
-
-	// Richer two-series traffic chart (pageviews + unique visitors) when the
-	// detailed series is available; fall back to the daily-views sparkline.
 	series, _ := a.analytics.PageviewSeries(ctx, days)
-	chart := spark
-	if len(series) > 0 {
-		chart = `<div class="card mb-6"><div class="card-title">Traffic — ` + periodLabel + `</div>` +
-			osTrendChart(series, "Traffic over "+periodLabel) + `</div>`
+
+	// The state is the one number the page is opened for, with whose traffic it
+	// is: on an install hosting several sites every figure here adds them up,
+	// and the page says so rather than let a client's number pass for the
+	// operator's.
+	state := "No visits in the last " + periodLabel
+	if ov != nil && ov.UniqueVisitors > 0 {
+		state = countOf(ov.UniqueVisitors, "visitor") + " in the last " + periodLabel
 	}
-	// Headline KPIs stay pinned at the top (like the Monetization console's stat
-	// row); the trend chart and every other section fold into animated accordions.
-	kpiHeader := metricsIntro + overviewCard + engagementStrip
-	if overviewCard == "" {
-		kpiHeader = metricsIntro
+	figs := analyticsFigures(ov, prevOv, sum.TotalViews)
+	if n := a.analyticsSiteCount(ctx); n > 1 {
+		state += ", across all " + strconv.Itoa(n) + " sites"
 	}
-	trafficBody := chart
-	if chart == "" {
-		trafficBody = `<div class="empty-state">No visits in this period yet.</div>`
+	page.State = ui.Text(state)
+
+	chart := ui.HTML(`<p class="table-empty">No visits in this period yet.</p>`)
+	switch {
+	case len(series) > 0:
+		chart = ui.HTML(osTrendChart(series, "Traffic over "+periodLabel))
+	case len(sum.Daily) > 0:
+		vals := make([]int, 0, len(sum.Daily))
+		for _, d := range sum.Daily {
+			vals = append(vals, int(d.Views))
+		}
+		chart = ui.HTML(`<div class="sparkline-wrap">` + osSparkline(vals) + `</div>`)
 	}
 
-	pagesPanel := `<div class="grid grid-2">
-  <div class="card"><div class="card-title">Top pages</div>` + pages + `</div>
-  <div class="card"><div class="card-title">Referrers</div>` + refs + `</div>
-</div>`
-
-	audiencePanel := `<div class="card mb-4"><div class="card-title">` + saIcon("trend") + ` Traffic channels</div>` +
-		osBarList(osBarsFromAudience(channels), osShareOfListed(), "No traffic yet. Once visitors arrive, this groups them into Direct, Organic search, Social and Referral.") +
-		`<p class="muted text-xs mt-2">How visitors reached you — <strong>Direct</strong> (typed / bookmarked) · <strong>Organic search</strong> (Google, Bing, DuckDuckGo…) · <strong>Social</strong> (X, Reddit, LinkedIn…) · <strong>Referral</strong> (other sites). Derived from the referrer host only — cookieless, no-PII.</p></div>` +
-		`<div class="grid grid-3">
-  <div class="card"><div class="card-title">Devices</div>` + osDonut(osSegsFromAudience(devices), "No device data yet.") + `</div>
-  <div class="card"><div class="card-title">Browsers</div>` + osBarList(osBarsFromAudience(browsers), osShareOfListed(), "No browser data yet.") + `</div>
-  <div class="card"><div class="card-title">Operating systems</div>` + osBarList(osBarsFromAudience(oses), osShareOfListed(), "No OS data yet.") + `</div>
-</div>`
-
+	bars := func(items []osChartBar, denom osBarDenom, empty string) string { return osBarList(items, denom, empty) }
+	pageBars := make([]osChartBar, 0, len(sum.TopPages))
+	for _, p := range sum.TopPages {
+		pageBars = append(pageBars, osChartBar{Label: prettyPathText(p.Path), Value: int(p.Views), Href: p.Path})
+	}
+	refBars := make([]osChartBar, 0, len(sum.Referrers))
+	for _, h := range sum.Referrers {
+		refBars = append(refBars, osChartBar{Label: h.Host, Value: int(h.Hits)})
+	}
 	utmSourceBars := make([]osChartBar, 0, len(utm))
+	utmRows := ""
 	for _, u := range utm {
 		src := u.Source
 		if src == "" {
 			src = "(direct)"
 		}
 		utmSourceBars = append(utmSourceBars, osChartBar{Label: src, Value: u.Count})
+		utmRows += `<tr><td class="post-row__name">` + html.EscapeString(src) + `</td><td>` + html.EscapeString(u.Medium) + `</td><td>` + html.EscapeString(u.Campaign) + `</td><td>` + strconv.Itoa(u.Count) + `</td></tr>`
 	}
-	campaignsPanel := `<div class="grid grid-2">
-  <div class="card"><div class="card-title">Top sources</div>` + osBarList(utmSourceBars, osShareHidden(), "No campaign traffic yet.") + `</div>
-  <div class="card"><div class="card-title">Campaigns (UTM)</div>` + utmRows + `</div>
-</div>`
+	campaigns := `<p class="table-empty">No campaign traffic yet. Tag the links you share with <code>utm_source</code>, <code>utm_medium</code> and <code>utm_campaign</code> to see which bring visitors.</p>`
+	if utmRows != "" {
+		campaigns = analyticsCols(
+			analyticsPanel("Sources", bars(utmSourceBars, osShareHidden(), "")),
+			analyticsPanel("Campaigns", `<div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Medium</th><th>Campaign</th><th>Hits</th></tr></thead><tbody>`+utmRows+`</tbody></table></div>`))
+	}
 	eventBars := make([]osChartBar, 0, len(events))
 	for _, e := range events {
 		eventBars = append(eventBars, osChartBar{Label: e.Name, Value: e.Count})
 	}
-	eventsPanel := `<div class="card"><div class="card-title">Custom events</div>` + osBarList(eventBars, osShareHidden(), "No custom events yet. Track actions with the data-vp-event attribute or window.VayuPress.track().") + `</div>`
 
-	// Small neutral count pill for an accordion summary (hidden on mobile, like
-	// the Monetization chips). Empty when there is nothing to count.
-	countChip := func(n int, noun string) string {
-		if n <= 0 {
-			return ""
-		}
-		return `<span class="mon-chip">` + strconv.Itoa(n) + ` ` + html.EscapeString(noun) + `</span>`
+	sections := []ui.HTML{
+		ui.HTML(analyticsCols(
+			string(ui.Section("Top pages", "", ui.HTML(bars(pageBars, osShareOf(int(sum.TotalViews)), "No page views recorded yet."))))+"",
+			string(ui.Section("Referrers", "", ui.HTML(bars(refBars, osShareOf(int(sum.TotalReferrals)), "No links from other sites yet.")))))),
+		ui.Section("How they found you", "Direct, search, social and other sites, from the referrer alone",
+			ui.HTML(bars(osBarsFromAudience(channels), osShareOfListed(), "Visitors are grouped here once they arrive."))),
+		ui.Section("What they read on", "", ui.HTML(analyticsCols(
+			analyticsPanel("Devices", osDonut(osSegsFromAudience(devices), "No device data yet.")),
+			analyticsPanel("Browsers", bars(osBarsFromAudience(browsers), osShareOfListed(), "No browser data yet.")),
+			analyticsPanel("Systems", bars(osBarsFromAudience(oses), osShareOfListed(), "No system data yet."))))),
+		ui.Section("Where they are", "Coarse location only", ui.HTML(osGeoSection(countries, regions, cities))),
+		ui.Section("Campaigns", "", ui.HTML(campaigns)),
+		ui.Section("Events", "What you track with data-vp-event or VayuPress.track()",
+			ui.HTML(bars(eventBars, osShareHidden(), "No custom events yet."))),
+		ui.HTML(a.osGoalsSection(ctx, days)),
+		ui.HTML(a.osJourneySection(ctx, days)),
+		ui.HTML(osExportSection(days)),
+		ui.Explain(ui.HTML(`<p>Everything here is counted and kept on this server: no cookies, no personal data, and no request to anyone else. A visitor is recognised within a day by a salted hash that changes daily, so nobody can be followed from one day to the next.</p>`)),
 	}
+	return string(ui.Overview(page, ui.Band{Title: "Visitors", Hint: "Last " + periodLabel, Figures: figs, Chart: chart,
+		Aside: ui.Section("Right now", "", ui.HTML(osLiveCard()))}, sections...))
+}
 
-	// Sections mirror the Monetization console: section-head dividers over
-	// mon-stack groups of animated <details> accordions (pure CSS, no JS).
-	sections := `<div class="section-head"><span class="section-head__title">Traffic</span><span class="section-head__hint">How many people visit &amp; who is on your site right now</span></div>
-<div class="mon-stack">` +
-		monAcc(saIcon("trend"), "Traffic over time", "Server-side page requests, day by day — crawlers included", `<span class="mon-chip" title="`+osRequestsVsPageviewsHint+`">`+strconv.FormatInt(sum.TotalViews, 10)+` requests</span>`, true, trafficBody) +
-		monAcc(saIcon("pulse"), "Live visitors", "Who is on your site right now — refreshes every 10s", `<span class="mon-chip mon-chip--on">● Live</span>`, false, osLiveCard()) +
-		`</div>
+// analyticsFigures is the band's figure group: visitors and pageviews, which
+// the browser beacon measures, each with its change on the window before, and
+// the server's own count of page requests, which includes crawlers and
+// visitors without JavaScript. The two counts are of different populations,
+// so they are named differently and the request count says why it is higher:
+// labelled alike, "31643 views" over "1327 pageviews" read as a
+// contradiction. A figure that would read 0 is left out.
+func analyticsFigures(ov, prev *analytics.Overview, requests int64) []ui.Figure {
+	var figs []ui.Figure
+	if ov != nil && ov.UniqueVisitors > 0 {
+		var pv, pvw int
+		if prev != nil {
+			pv, pvw = prev.UniqueVisitors, prev.TotalPageviews
+		}
+		figs = append(figs, ui.Figure{Value: strconv.Itoa(ov.UniqueVisitors), Label: "Visitors", Note: analyticsChange(ov.UniqueVisitors, pv)},
+			ui.Figure{Value: strconv.Itoa(ov.TotalPageviews), Label: "Pageviews", Note: analyticsChange(ov.TotalPageviews, pvw)})
+	}
+	if requests > 0 {
+		figs = append(figs, ui.Figure{Value: strconv.FormatInt(requests, 10), Label: "Page requests", Note: "Crawlers and visitors without JavaScript included"})
+	}
+	return figs
+}
 
-<div class="section-head"><span class="section-head__title">Content &amp; audience</span><span class="section-head__hint">What they read, on what device, and from where</span></div>
-<div class="mon-stack">` +
-		monAcc(saIcon("doc"), "Top pages & referrers", "Most-viewed content and where visitors come from", countChip(len(sum.TopPages), "pages"), false, pagesPanel) +
-		monAcc(saIcon("monitor"), "Audience", "Channels, devices, browsers & operating systems", "", false, audiencePanel) +
-		monAcc(saIcon("globe"), "Geography", "Countries, regions & cities — coarse geo only", countChip(len(countries), "countries"), false, osGeoSection(countries, regions, cities)) +
-		`</div>
+// analyticsSiteCount is how many sites this install's figures add together.
+func (a *App) analyticsSiteCount(ctx context.Context) int {
+	if a.domains == nil {
+		return 0
+	}
+	list, err := a.domains.List(ctx)
+	if err != nil {
+		return 0
+	}
+	return len(list)
+}
 
-<div class="section-head"><span class="section-head__title">Acquisition &amp; actions</span><span class="section-head__hint">Campaigns, custom events, goals and visitor journeys</span></div>
-<div class="mon-stack">` +
-		monAcc(saIcon("megaphone"), "Campaigns (UTM)", "Which shared links & campaigns bring visitors", countChip(len(utm), "campaigns"), false, campaignsPanel) +
-		monAcc(saIcon("sparkle"), "Custom events", "Actions you track with data-vp-event / VayuPress.track()", countChip(len(events), "events"), false, eventsPanel) +
-		monAcc(saIcon("target"), "Goals & funnels", "Conversions and multi-step funnels", "", false, a.osGoalsSection(ctx, days)) +
-		monAcc(saIcon("compass"), "Visitor journey", "Common entry pages and paths through your site", "", false, a.osJourneySection(ctx, days)) +
-		`</div>
+// analyticsChange says how a figure moved against the window before it, in
+// words: a coloured arrow on a filled chip is the badge the page grammar
+// replaced, and the words say which way is better on their own. A window
+// before with none of the thing counted has nothing to compare with.
+func analyticsChange(cur, prev int) string {
+	switch {
+	case prev == 0:
+		return ""
+	case cur == prev:
+		return "The same as the period before"
+	}
+	pct := float64(cur-prev) / float64(prev) * 100
+	if pct > 0 {
+		return fmt.Sprintf("Up %.0f%% on the period before", pct)
+	}
+	return fmt.Sprintf("Down %.0f%% on the period before", -pct)
+}
 
-<div class="section-head"><span class="section-head__title">Export</span><span class="section-head__hint">Take your data with you</span></div>
-<div class="mon-stack">` +
-		monAcc(saIcon("download"), "Export data", "Download the raw analytics for this period", "", false, osExportSection(days)) +
-		`</div>`
+// analyticsCols sets panels side by side, as many as fit.
+func analyticsCols(panels ...string) string {
+	return `<div class="sa-cols">` + strings.Join(panels, "") + `</div>`
+}
 
-	body := `<div class="page-header"><h1>Analytics</h1>
-  <span class="muted text-sm" title="` + osRequestsVsPageviewsHint + `">` +
-		strconv.FormatInt(sum.TotalViews, 10) + ` page requests · ` + periodLabel +
-		` · updated ` + config.FormatSiteStamp(now) + `</span>
-</div>
-<p class="page-sub">Privacy-first, cookieless analytics — audience, engagement, geography and campaigns, all computed on your own server.</p>` +
-		a.analyticsScopeNote(ctx) +
-		osPeriodSelector(days) + kpiHeader + sections + osPrivacyNote()
-
-	return body
+// analyticsPanel is one titled part of a section, without a box: a section
+// already frames it, and a box inside it is the nesting the grammar forbids.
+func analyticsPanel(title, body string) string {
+	return `<div><h3 class="sa-panel__title">` + html.EscapeString(title) + `</h3>` + body + `</div>`
 }
 
 // analyticsPeriodOptions defines the selectable reporting windows, in days.
@@ -728,16 +662,14 @@ func analyticsPeriod(r *http.Request) (int, string) {
 }
 
 // osPeriodSelector renders the period chooser as a row of links (GET, no JS).
-func osPeriodSelector(days int) string {
-	b := `<div class="vm-row mb-4" data-period>`
+func osPeriodSelector(days int) ui.HTML {
+	segs := make([]ui.Segment, 0, len(analyticsPeriodOptions))
 	for _, o := range analyticsPeriodOptions {
-		cls := "btn btn--sm"
-		if o.Days == days {
-			cls += " btn--primary"
-		}
-		b += `<a class="` + cls + `" href="/os/analytics?days=` + strconv.Itoa(o.Days) + `">` + o.Label + `</a>`
+		segs = append(segs, ui.Segment{Label: o.Label, Href: "/os/analytics?days=" + strconv.Itoa(o.Days), Count: -1, On: o.Days == days})
 	}
-	return b + `</div>`
+	// data-period: the analytics script marks the chooser as loading while the
+	// chosen range is fetched.
+	return `<div data-period>` + ui.Segments("Period", segs...) + `</div>`
 }
 
 // osLiveCard renders the live-visitors panel; admin-os-intel.js polls
@@ -746,7 +678,7 @@ func osPeriodSelector(days int) string {
 // and how they arrived (referrer).
 func osLiveCard() string {
 	return `<div class="vm-liveview" data-live>
-  <div class="card vm-live-hero mb-4">
+  <div class="vm-live-hero mb-4">
     <div class="vm-live-hero__main">
       <div class="vm-live-badge"><span class="live-dot"></span> LIVE</div>
       <div class="vm-live-count" data-live-count>—</div>
@@ -754,16 +686,13 @@ func osLiveCard() string {
     </div>
     <div class="vm-live-rings" aria-hidden="true"><span></span><span></span><span></span></div>
   </div>
-  <div class="grid grid-3 vm-live-grid">
-    <div class="card"><div class="card-title">` + saIcon("globe") + ` Top countries</div>
-      <div class="vp-bars vm-live-list" data-live-countries><div class="empty-state">Waiting for live data…</div></div>
-    </div>
-    <div class="card"><div class="card-title">` + saIcon("doc") + ` Active pages</div>
-      <div class="vp-bars vm-live-list" data-live-pages><div class="empty-state">Waiting for live data…</div></div>
-    </div>
-    <div class="card"><div class="card-title">` + saIcon("link") + ` Referrers</div>
-      <div class="vp-bars vm-live-list" data-live-referrers><div class="empty-state">Waiting for live data…</div></div>
-    </div>
+  <div class="sa-cols">
+    <div><h3 class="sa-panel__title">Countries</h3>
+      <div class="vp-bars vm-live-list" data-live-countries><p class="table-empty">Waiting for live data…</p></div></div>
+    <div><h3 class="sa-panel__title">Pages</h3>
+      <div class="vp-bars vm-live-list" data-live-pages><p class="table-empty">Waiting for live data…</p></div></div>
+    <div><h3 class="sa-panel__title">Referrers</h3>
+      <div class="vp-bars vm-live-list" data-live-referrers><p class="table-empty">Waiting for live data…</p></div></div>
   </div>
 </div>`
 }
@@ -774,7 +703,7 @@ func osLiveCard() string {
 // absent it shows a precise, premium setup card rather than a blank panel.
 func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 	if len(countries) == 0 && len(regions) == 0 && len(cities) == 0 {
-		return `<div class="card"><div class="card-title">` + saIcon("globe") + ` Locations</div>` + osGeoSetupNote(true) + `</div>`
+		return osGeoSetupNote(true)
 	}
 	// Countries as a colour bar list with full country names + flags.
 	countryBars := make([]osChartBar, 0, len(countries))
@@ -799,16 +728,15 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 	}
 	sort.SliceStable(continentBars, func(i, j int) bool { return continentBars[i].Value > continentBars[j].Value })
 
-	top := `<div class="grid grid-2">
-  <div class="card"><div class="card-title">` + saIcon("globe") + ` Countries</div><div class="vp-geo-scroll">` + osBarList(countryBars, osShareOfListed(), "No country data yet.") + `</div></div>
-  <div class="card"><div class="card-title">` + saIcon("where") + ` Continents</div>` + osBarList(continentBars, osShareOfListed(), "No continent data yet.") + `</div>
-</div>`
+	top := analyticsCols(
+		analyticsPanel("Countries", `<div class="vp-geo-scroll">`+osBarList(countryBars, osShareOfListed(), "No country data yet.")+`</div>`),
+		analyticsPanel("Continents", osBarList(continentBars, osShareOfListed(), "No continent data yet.")))
 
 	// Regions & cities need proxy headers. When both are absent, show one setup
 	// card spanning the row; otherwise show whichever populated bar lists exist.
 	var detail string
 	if len(regions) == 0 && len(cities) == 0 {
-		detail = `<div class="card mt-4"><div class="card-title">` + saIcon("pin") + ` Regions &amp; cities</div>` + osGeoSetupNote(false) + `</div>`
+		detail = analyticsPanel("Regions and cities", osGeoSetupNote(false))
 	} else {
 		regionCard := osGeoSetupNote(false)
 		if len(regions) > 0 {
@@ -818,10 +746,7 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 		if len(cities) > 0 {
 			cityCard = `<div class="vp-geo-scroll">` + osBarList(osBarsFromAudience(cities), osShareOfListed(), "") + `</div>`
 		}
-		detail = `<div class="grid grid-2 mt-4">
-  <div class="card"><div class="card-title">` + saIcon("pin") + ` Regions</div>` + regionCard + `</div>
-  <div class="card"><div class="card-title">` + saIcon("where") + ` Cities</div>` + cityCard + `</div>
-</div>`
+		detail = analyticsCols(analyticsPanel("Regions", regionCard), analyticsPanel("Cities", cityCard))
 	}
 	return top + detail
 }
@@ -850,51 +775,60 @@ func osGeoSetupNote(full bool) string {
 // of each goal's completions and conversion rate over the selected window.
 func (a *App) osGoalsSection(ctx context.Context, days int) string {
 	results, _ := a.analytics.GoalResults(ctx, days)
-	rows := `<tr><td colspan="6" class="muted">No goals yet. Add one above (e.g. a "/thank-you" path view or a "signup" custom event).</td></tr>`
+	rows := `<tr><td colspan="6" class="muted">` + noGoalsYet + `</td></tr>`
 	if len(results) > 0 {
 		rows = ""
 		for _, g := range results {
-			rows += `<tr><td class="row-title">` + html.EscapeString(g.Name) + `</td>` +
-				`<td><span class="badge">` + html.EscapeString(g.Kind) + `</span></td>` +
+			rows += `<tr><td class="post-row__name">` + html.EscapeString(g.Name) + `</td>` +
+				`<td>` + html.EscapeString(goalKindLabel(g.Kind)) + `</td>` +
 				`<td class="muted">` + html.EscapeString(g.Target) + `</td>` +
 				`<td>` + strconv.Itoa(g.Completions) + ` <span class="muted text-xs">(` + strconv.Itoa(g.UniqueVisitors) + ` visitors)</span></td>` +
 				`<td>` + fmt.Sprintf("%.1f%%", g.ConversionRate) + `</td>` +
-				`<td><button class="btn btn--danger btn--sm" data-goal-delete="` + html.EscapeString(g.ID) + `">Delete</button></td></tr>`
+				`<td><button class="btn btn--ghost btn--sm" data-goal-delete="` + html.EscapeString(g.ID) + `">Delete</button></td></tr>`
 		}
 	}
-	return `<div class="card mt-6" data-goals>
-  <div class="card-title">Conversion goals</div>
-  <p class="muted text-sm mb-3">Track how many visitors reach a page or fire a custom event. Conversion rate is the share of all unique visitors in the window.</p>
-  <form class="vm-row mb-3" data-goal-form>
-    <input class="input" type="text" data-goal-name placeholder="Goal name (e.g. Newsletter signup)" required>
-    <select class="input" data-goal-kind>
-      <option value="path">Page view</option>
-      <option value="event">Custom event</option>
-    </select>
-    <input class="input" type="text" data-goal-target placeholder="/thank-you  or  signup" required>
-    <button class="btn btn--primary" type="submit">Add goal</button>
-  </form>
+	// Adding a goal is a form, so it rises in a sheet.
+	sheet := ui.Sheet("goal-new", "New goal", ui.HTML(`<form data-goal-form>
+  <div class="field"><label class="field-label" for="goal-name">Name</label>
+    <input id="goal-name" class="input" type="text" data-goal-name placeholder="Newsletter signup" required></div>
+  <div class="field"><label class="field-label" for="goal-kind">Reached by</label>
+    <select id="goal-kind" class="select" data-goal-kind><option value="path">Viewing a page</option><option value="event">A custom event</option></select></div>
+  <div class="field"><label class="field-label" for="goal-target">Page or event</label>
+    <input id="goal-target" class="input" type="text" data-goal-target placeholder="/thank-you  or  signup" required></div>
+  <div class="mt-3 sa-list__sheet-actions"><button class="btn btn--primary btn--sm" type="submit">Add goal</button></div>
+</form>`))
+	return string(ui.Section("Goals", "The share of visitors who reach a page or fire an event", ui.HTML(`<div data-goals>
+  <button type="button" class="btn btn--ghost btn--sm mb-3" data-sheet="goal-new">`+saIcon("plus")+` New goal</button>
   <div class="table-wrap"><table class="table">
-    <thead><tr><th>Goal</th><th>Type</th><th>Target</th><th>Completions</th><th>Conv. rate</th><th></th></tr></thead>
-    <tbody>` + rows + `</tbody>
-  </table></div>
-</div>`
+    <thead><tr><th>Goal</th><th>Reached by</th><th>Target</th><th>Completions</th><th>Conversion</th><th></th></tr></thead>
+    <tbody>`+rows+`</tbody>
+  </table></div></div>`))) + string(sheet)
+}
+
+// noGoalsYet is the goals table's empty row; the script writes the same words
+// when the last goal is deleted.
+const noGoalsYet = `No goals yet. Add one with New goal: a page such as /thank-you, or a custom event such as signup.`
+
+// goalKindLabel names how a goal is reached, in words.
+func goalKindLabel(kind string) string {
+	if kind == "event" {
+		return "A custom event"
+	}
+	return "Viewing a page"
 }
 
 // osJourneySection renders the top page-to-page transitions (visitor journey).
 func (a *App) osJourneySection(ctx context.Context, days int) string {
 	flows, _ := a.analytics.PathFlows(ctx, days, 25)
-	body := `<div class="empty-state">No multi-page journeys recorded yet. Once visitors browse more than one page in a session, their most common paths will show here.</div>`
+	body := `<p class="table-empty">Once visitors read more than one page in a visit, their most common paths show here.</p>`
 	if len(flows) > 0 {
 		rows := ""
 		for _, f := range flows {
-			rows += `<tr><td class="row-title">` + osPrettyPath(f.From) + `</td><td class="muted">→</td><td class="row-title">` + osPrettyPath(f.To) + `</td><td>` + strconv.Itoa(f.Count) + `</td></tr>`
+			rows += `<tr><td class="post-row__name">` + osPrettyPath(f.From) + `</td><td class="muted">→</td><td class="post-row__name">` + osPrettyPath(f.To) + `</td><td>` + strconv.Itoa(f.Count) + `</td></tr>`
 		}
-		body = `<div class="table-wrap"><table class="table"><thead><tr><th>From</th><th></th><th>To</th><th>Transitions</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
+		body = `<div class="table-wrap"><table class="table"><thead><tr><th>From</th><th></th><th>To</th><th>Times</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
 	}
-	return `<div class="card mt-6">
-  <div class="card-title">Visitor journey</div>
-  <p class="muted text-sm mb-3">Most common page-to-page transitions. <code>(entry)</code> marks where sessions begin and <code>(exit)</code> where they end.</p>` + body + `</div>`
+	return string(ui.Section("Journeys", "(entry) is where a visit begins, (exit) where it ends", ui.HTML(body)))
 }
 
 // osExportSection renders download links for every report in CSV and JSON over
@@ -911,80 +845,12 @@ func osExportSection(days int) string {
 	rows := ""
 	for _, rep := range analyticsExportReports {
 		base := "/os/api/analytics/export?days=" + d + "&report=" + rep
-		rows += `<tr><td class="row-title">` + html.EscapeString(labels[rep]) + `</td>` +
+		rows += `<tr><td class="post-row__name">` + html.EscapeString(labels[rep]) + `</td>` +
 			`<td><a class="btn btn--sm" href="` + base + `&format=csv" download>CSV</a> ` +
 			`<a class="btn btn--sm" href="` + base + `&format=json" download>JSON</a></td></tr>`
 	}
-	return `<div class="card mt-6">
-  <div class="card-title">Export reports</div>
-  <p class="muted text-sm mb-3">Download any report as CSV or JSON for the selected period. Exports are computed locally and contain no PII.</p>
-  <div class="table-wrap"><table class="table"><thead><tr><th>Report</th><th>Download</th></tr></thead><tbody>` + rows + `</tbody></table></div>
-</div>`
-}
-
-// osStatCardDelta renders a big-number stat card with an optional period-over-
-// period change badge (deltaHTML may be empty).
-func osStatCardDelta(label, val, deltaHTML string) string {
-	return `<div class="card"><div class="card-title">` + html.EscapeString(label) + `</div>` +
-		`<div class="vm-stat-row"><span class="vm-stat__v">` + html.EscapeString(val) + `</span>` + deltaHTML + `</div></div>`
-}
-
-// osDeltaPct renders a relative percentage-change badge comparing the current
-// value to the previous equal-length window. When lowerIsBetter is true (e.g.
-// bounce rate) the colour semantics are inverted. Returns "" when there is no
-// comparable previous data.
-func osDeltaPct(cur, prev int, hasPrev, lowerIsBetter bool) string {
-	if !hasPrev {
-		if cur > 0 {
-			return `<span class="vm-delta vm-delta--new" title="No data in the previous period">new</span>`
-		}
-		return ""
-	}
-	if prev == 0 {
-		if cur == 0 {
-			return ""
-		}
-		return `<span class="vm-delta vm-delta--good" title="Up from 0 in the previous period">▲ new</span>`
-	}
-	pct := float64(cur-prev) / float64(prev) * 100
-	return osDeltaBadge(pct, cur >= prev, lowerIsBetter, fmt.Sprintf("%.0f%%", absFloat(pct)))
-}
-
-// osDeltaPoints renders a percentage-point change badge for rate metrics such
-// as bounce rate (where a decrease is an improvement).
-func osDeltaPoints(cur, prev float64, hasPrev bool) string {
-	if !hasPrev {
-		return ""
-	}
-	diff := cur - prev
-	if absFloat(diff) < 0.05 {
-		return `<span class="vm-delta vm-delta--flat" title="No change vs previous period">±0 pts</span>`
-	}
-	return osDeltaBadge(diff, cur >= prev, true, fmt.Sprintf("%.1f pts", absFloat(diff)))
-}
-
-// osDeltaBadge builds the arrow + text badge with good/bad/flat colouring.
-func osDeltaBadge(delta float64, up, lowerIsBetter bool, text string) string {
-	if absFloat(delta) < 0.5 {
-		return `<span class="vm-delta vm-delta--flat" title="No meaningful change vs previous period">±0%</span>`
-	}
-	arrow := "▲"
-	if !up {
-		arrow = "▼"
-	}
-	good := up != lowerIsBetter // up & higher-is-better, or down & lower-is-better
-	cls := "vm-delta--bad"
-	if good {
-		cls = "vm-delta--good"
-	}
-	return `<span class="vm-delta ` + cls + `" title="vs previous ` + "period" + `">` + arrow + ` ` + html.EscapeString(text) + `</span>`
-}
-
-func absFloat(f float64) float64 {
-	if f < 0 {
-		return -f
-	}
-	return f
+	return string(ui.Section("Export", "Any report for this period, as CSV or JSON",
+		ui.HTML(`<div class="table-wrap"><table class="table"><thead><tr><th>Report</th><th>Download</th></tr></thead><tbody>`+rows+`</tbody></table></div>`)))
 }
 
 // osPrettyPath renders a page path for display: URL-decoded, query-string
@@ -1013,23 +879,3 @@ func osPrettyPath(p string) string {
 
 // osPrivacyNote renders the trust footer shown at the bottom of the analytics
 // page, reassuring operators that nothing leaves their server.
-// osRequestsVsPageviewsHint explains the one number on this page that is not
-// measured the way the rest are.
-//
-// The header total comes from the server-side counter, which increments on every
-// page request — crawlers, scanners and visitors without JavaScript included.
-// The Pageviews stat card comes from the browser beacon, so it counts only
-// visitors who ran JavaScript. Both are correct; they are different populations.
-//
-// Presented as bare numbers they read as a contradiction. An operator saw
-// "31643 views · last 24 hours" directly above a Pageviews card reading 1327 —
-// the same noun, the same period, a 24x gap. The gap is real and useful (it is
-// roughly how much of the traffic is machines), but nothing on the page said so.
-// Naming the two differently, and saying why, is the whole fix.
-const osRequestsVsPageviewsHint = "Server-side count of page requests, including crawlers and " +
-	"visitors without JavaScript. The Pageviews card counts only visitors measured by the " +
-	"browser beacon, so it is lower — the difference is roughly your machine traffic."
-
-func osPrivacyNote() string {
-	return `<p class="vm-privacy-note muted text-sm">` + saIcon("lock") + ` All analytics are computed and stored locally on your own server. No cookies, no PII, no third-party requests — your data never leaves this instance.</p>`
-}

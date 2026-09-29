@@ -58,7 +58,7 @@
   // The server rebuilds that cache on every goal change; this page updates its
   // own table from the confirmed reply, which is exactly what the rebuilt report
   // will say (a new goal has no completions yet).
-  var NO_GOALS = 'No goals yet. Add one above (e.g. a "/thank-you" path view or a "signup" custom event).';
+  var NO_GOALS = 'No goals yet. Add one with New goal: a page such as /thank-you, or a custom event such as signup.';
   function goalsBody() { return document.querySelector('[data-goals] tbody'); }
   function cell(text, cls) {
     var td = document.createElement('td');
@@ -71,13 +71,9 @@
     if (!body) return;
     if (!body.querySelector('[data-goal-delete]')) { while (body.firstChild) body.removeChild(body.firstChild); }
     var tr = document.createElement('tr');
-    tr.appendChild(cell(name, 'row-title'));
-    var kindTd = document.createElement('td');
-    var badge = document.createElement('span');
-    badge.className = 'badge';
-    badge.textContent = kind;
-    kindTd.appendChild(badge);
-    tr.appendChild(kindTd);
+    tr.appendChild(cell(name, 'post-row__name'));
+    // The same words the server writes for a goal's kind (goalKindLabel).
+    tr.appendChild(cell(kind === 'event' ? 'A custom event' : 'Viewing a page'));
     tr.appendChild(cell(target, 'muted'));
     var comp = cell('0 ');
     var vis = document.createElement('span');
@@ -88,7 +84,7 @@
     tr.appendChild(cell('0.0%'));
     var delTd = document.createElement('td');
     var del = document.createElement('button');
-    del.className = 'btn btn--danger btn--sm';
+    del.className = 'btn btn--ghost btn--sm';
     del.setAttribute('data-goal-delete', id);
     del.textContent = 'Delete';
     delTd.appendChild(del);
@@ -125,6 +121,8 @@
       .then(function (d) {
         addGoalRow(d.id, name, kind, target);
         form.reset();
+        var sheet = form.closest('dialog');
+        if (sheet && sheet.open) sheet.close();
         if (window.vpToast) window.vpToast('Goal “' + name + '” added.', 'ok');
       })
       .catch(function () { if (window.vpToast) window.vpToast('Could not add goal. Check the name and target.', 'error'); });

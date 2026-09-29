@@ -6105,6 +6105,10 @@
 .vp-os[data-ui="still-air"] .sa-activity__what { color: var(--text-1); overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] .sa-activity__note { color: var(--text-3); text-align: right; }
 .vp-os[data-ui="still-air"] .sa-row__count { color: var(--text-1); font-variant-numeric: tabular-nums; }
+/* Parts of one section side by side, as many as fit: panels with a small
+   heading and no box, because the section already frames them. */
+.vp-os[data-ui="still-air"] .sa-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-6) var(--space-7); }
+.vp-os[data-ui="still-air"] .sa-panel__title { font: var(--type-strong); color: var(--text-1); margin: 0 0 var(--space-3); }
 .vp-os[data-ui="still-air"] .sa-list__count { font: var(--type-small); color: var(--text-3); font-variant-numeric: tabular-nums; margin-left: var(--space-2); }
 .vp-os[data-ui="still-air"] .sa-find { position: relative; display: inline-flex; align-items: center; margin: 0; }
 .vp-os[data-ui="still-air"] .sa-find .sa-ico { position: absolute; left: 9px; width: 15px; height: 15px; color: var(--text-3); pointer-events: none; }

@@ -42,8 +42,8 @@ func (a *App) handleOSNewsletter(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 
 	if a.newsletterStore == nil {
-		writeOSHTML(w, r, adminOSLayout(nonce, "Newsletter", "newsletter", cfg, htmpl.HTML(ui.Overview(ui.OverviewPage{Title: "Newsletter"},
-			ui.Band{Title: "Growth", Aside: ui.Empty("send", "The newsletter is off", "This install was started without the newsletter store.", "")}))))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Newsletter", "newsletter", cfg, ui.Overview(ui.OverviewPage{Title: "Newsletter"},
+			ui.Band{Title: "Growth", Aside: ui.Empty("send", "The newsletter is off", "This install was started without the newsletter store.", "")})))
 		return
 	}
 
