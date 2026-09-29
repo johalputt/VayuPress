@@ -3,9 +3,14 @@
 package main
 
 import (
+	"context"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/analytics"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/domain"
 )
 
 // FINDING (S8) — the install-wide Analytics page never said it was install-wide.
@@ -92,24 +97,30 @@ func TestTheReferrerToolDescribesTheExclusionItActuallyApplies(t *testing.T) {
 
 // The page's note has to be conditional. A caveat printed on a single-domain
 // install can never apply there, and a notice that is always wrong is a notice
-// operators learn to skip — including the ones that matter.
+// operators learn to skip — including the ones that matter. Where it does
+// apply it says how many sites the figures add up and where one site's own
+// figures are.
 func TestTheScopeNoteAppearsOnlyWhereItIsTrue(t *testing.T) {
-	body := goFuncBody(readSourceFile(t, "admin_os_intel.go"), "analyticsScopeNote")
-	if body == "" {
-		t.Fatal("analyticsScopeNote is gone, so the install-wide page says nothing about its " +
-			"own scope again")
+	openMigratedDB(t)
+	reg := domain.New(dbpkg.DB, dbpkg.RDB)
+	if err := reg.EnsurePrimary(context.Background(), "example.test", domain.SiteBlog); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(body, "len(list) < 2") {
-		t.Error("the note is not gated on there being more than one hosted domain, so every " +
-			"single-domain install now carries a caveat that cannot apply to it")
+	a := &App{analytics: analytics.New(dbpkg.DB), domains: reg}
+	one := a.renderAnalyticsBody(context.Background(), 30, "30 days")
+	if one == "" {
+		t.Fatal("the report did not render")
 	}
-	if !strings.Contains(body, "/os/domains") {
-		t.Error("the note does not point at where a per-site figure lives, so it tells an " +
-			"operator their number is wrong for the question and not where the right one is")
+	if strings.Contains(one, `href="/os/domains"`) || strings.Contains(one, "across all") {
+		t.Error("a single-site install carries a caveat that cannot apply to it")
 	}
-	// And it must be reached, or it is a function nobody calls.
-	if !strings.Contains(goFuncBody(readSourceFile(t, "admin_os_intel.go"), "renderAnalyticsBody"),
-		"a.analyticsScopeNote(ctx)") {
-		t.Fatal("the analytics page never renders the scope note")
+	if _, err := dbpkg.DB.Exec(`INSERT INTO domains(id,host,site_type,is_primary,status,created_at,updated_at) VALUES('c','client.example','blog',0,'active',datetime('now'),datetime('now'))`); err != nil {
+		t.Fatal(err)
+	}
+	two := a.renderAnalyticsBody(context.Background(), 30, "30 days")
+	for _, want := range []string{"These figures add up all 2 sites", `<a href="/os/domains">Sites</a>`} {
+		if !strings.Contains(two, want) {
+			t.Errorf("an install serving two sites: missing %q", want)
+		}
 	}
 }

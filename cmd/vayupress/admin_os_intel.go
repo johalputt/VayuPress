@@ -460,10 +460,11 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		return ""
 	}
 	page := ui.OverviewPage{Title: "Analytics", Actions: osPeriodSelector(days)}
+	sites, scope := a.analyticsScopeNote(ctx)
 	if sum == nil {
 		page.State = ui.Text("No visits recorded yet")
 		return string(ui.Overview(page, ui.Band{Title: "Visitors", Hint: "Last " + periodLabel,
-			Chart: `<p class="table-empty">Visits appear here as people read your site.</p>`}))
+			Chart: `<p class="table-empty">Visits appear here as people read your site.</p>` + scope}))
 	}
 
 	ov, _ := a.analytics.OverviewSince(ctx, days)
@@ -494,8 +495,8 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		state = countOf(ov.UniqueVisitors, "visitor") + " in the last " + periodLabel
 	}
 	figs := analyticsFigures(ov, prevOv, sum.TotalViews)
-	if n := a.analyticsSiteCount(ctx); n > 1 {
-		state += ", across all " + strconv.Itoa(n) + " sites"
+	if sites > 1 {
+		state += ", across all " + strconv.Itoa(sites) + " sites"
 	}
 	page.State = ui.Text(state)
 
@@ -560,7 +561,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		ui.HTML(osExportSection(days)),
 		ui.Explain(ui.HTML(`<p>Everything here is counted and kept on this server: no cookies, no personal data, and no request to anyone else. A visitor is recognised within a day by a salted hash that changes daily, so nobody can be followed from one day to the next.</p>`)),
 	}
-	return string(ui.Overview(page, ui.Band{Title: "Visitors", Hint: "Last " + periodLabel, Figures: figs, Chart: chart,
+	return string(ui.Overview(page, ui.Band{Title: "Visitors", Hint: "Last " + periodLabel, Figures: figs, Chart: chart + scope,
 		Aside: ui.Section("Right now", "", ui.HTML(osLiveCard()))}, sections...))
 }
 
@@ -587,16 +588,21 @@ func analyticsFigures(ov, prev *analytics.Overview, requests int64) []ui.Figure 
 	return figs
 }
 
-// analyticsSiteCount is how many sites this install's figures add together.
-func (a *App) analyticsSiteCount(ctx context.Context) int {
+// analyticsScopeNote says whose traffic these figures are. Every reader here
+// is unscoped, so on an install serving several sites each figure adds them
+// all up; the note says so and points at where one site's own figures are. On
+// a single-site install it says nothing: a caveat that can never apply there
+// is one operators learn to skip, the ones that matter included.
+func (a *App) analyticsScopeNote(ctx context.Context) (int, ui.HTML) {
 	if a.domains == nil {
-		return 0
+		return 0, ""
 	}
 	list, err := a.domains.List(ctx)
-	if err != nil {
-		return 0
+	if err != nil || len(list) < 2 {
+		return len(list), ""
 	}
-	return len(list)
+	return len(list), ui.HTML(`<p class="settings-row-hint">These figures add up all ` + strconv.Itoa(len(list)) +
+		` sites this install serves. For one site on its own, open it from <a href="/os/domains">Sites</a> and use its own Visitors page, which counts that hostname alone.</p>`)
 }
 
 // analyticsChange says how a figure moved against the window before it, in
