@@ -280,7 +280,12 @@
     var referrersEl = card.querySelector('[data-live-referrers]');
     var updatedEl = card.querySelector('[data-live-updated]');
     data = data || {};
-    if (countEl) countEl.textContent = String(data.active_visitors || 0);
+    var active = data.active_visitors || 0;
+    if (countEl) countEl.textContent = String(active);
+    // The noun follows the count the poller just wrote: "1 visitors" was the
+    // sentence the design lint caught once the panel was laid open.
+    var nounEl = card.querySelector('[data-live-noun]');
+    if (nounEl) nounEl.textContent = active === 1 ? 'visitor' : 'visitors';
     fill(pagesEl, data.active_pages, 'path', 'No active visitors right now.');
     fillCountries(countriesEl, data.active_countries);
     fill(referrersEl, data.active_referrers, 'label', 'No referrers in the last 5 minutes.');

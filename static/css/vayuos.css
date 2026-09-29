@@ -6095,6 +6095,10 @@
 .vp-os[data-ui="still-air"] .sa-overview__state { font: var(--type-body); color: var(--text-2); margin-left: var(--space-3); }
 .vp-os[data-ui="still-air"] .sa-overview__band { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--space-7); align-items: start; }
 .vp-os[data-ui="still-air"] .sa-overview__band--full { grid-template-columns: minmax(0, 1fr); }
+/* Rows beside the band (SEO's crawlers) sit in a column narrower than the
+   300px control column a settings page gives them; there the control takes
+   what it needs. */
+.vp-os[data-ui="still-air"] .sa-overview__band .settings-rows .settings-row { grid-template-columns: minmax(0, 1fr) auto; }
 .vp-os[data-ui="still-air"] .sa-overview__sentence { font: var(--type-heading); color: var(--text-1); margin: 0; max-width: 60ch; }
 @media (max-width: 899px) { .vp-os[data-ui="still-air"] .sa-overview__band { grid-template-columns: minmax(0, 1fr); } }
 /* What happened lately, beside an overview's figures: when, who and what,
@@ -6653,6 +6657,10 @@
   .vp-os[data-ui="still-air"] .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .vp-os[data-ui="still-air"] .tabs .tab { flex: none; }
   .vp-os[data-ui="still-air"] .seg-filter { max-width: 100%; overflow-x: auto; margin-left: 0; }
+  /* Analytics' range sits in a wrapper of its own inside the page's actions;
+     a flex item is never narrower than its content unless told, so the
+     segments could not scroll and pushed the page wider than the phone. */
+  .vp-os[data-ui="still-air"] .page-actions, .vp-os[data-ui="still-air"] [data-period] { min-width: 0; max-width: 100%; }
   .vp-os[data-ui="still-air"] .sa-shell { grid-template-columns: minmax(0, 1fr); }
   .vp-os[data-ui="still-air"] .sa-sysbar { gap: var(--space-3); padding: 0 var(--space-3); }
   .vp-os[data-ui="still-air"] .sa-sysbar .menu-toggle { display: none; }

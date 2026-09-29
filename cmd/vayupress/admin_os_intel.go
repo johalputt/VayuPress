@@ -645,7 +645,7 @@ func osLiveCard() string {
     <div class="vm-live-hero__main">
       <div class="vm-live-badge"><span class="live-dot"></span> LIVE</div>
       <div class="vm-live-count" data-live-count>—</div>
-      <div class="vm-live-sub muted text-sm">visitors active in the last <span data-live-window>5</span> minutes · auto-refreshes every 10s <span class="vm-live-updated text-xs" data-live-updated></span></div>
+      <div class="vm-live-sub muted text-sm"><span data-live-noun>visitors</span> active in the last <span data-live-window>5</span> minutes · auto-refreshes every 10s <span class="vm-live-updated text-xs" data-live-updated></span></div>
     </div>
     <div class="vm-live-rings" aria-hidden="true"><span></span><span></span><span></span></div>
   </div>
