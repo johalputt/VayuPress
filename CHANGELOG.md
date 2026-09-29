@@ -8,6 +8,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.93] — 2026-09-29
+
+A fix for the console's lists, which 3.17.92 drew squeezed, and the first
+overview pages of the Still Air page grammar.
+
+### Fixed
+
+- **Lists are full width again, one line per item.** In 3.17.92 every list
+  (Posts, Pages, Comments, Messages, Sites, Domains & DNS, Decisions) took a
+  narrow strip, with each title cut to a few letters and its state and
+  figures wrapped under it: a style left from the old Posts cards applied
+  to the new rows. Columns are now as wide as what they hold, so a
+  decision's record number reads ADR-0165 instead of "A…".
+- **j and k move through Posts again**, focusing the row so Enter opens it.
+- **The date button on Posts and Messages shows its calendar**, not an
+  empty dashed box.
+
+### Changed
+
+- **Members is an overview.** How many members there are and how many pay
+  sits beside the title; the month's growth shows only the figures that
+  say something, beside what happened lately; tiers are rows, edited in a
+  sheet. Everyone who joined is a list one click away, and the team moved
+  to Settings › Team.
+- **Newsletter is an overview.** Without a mail relay it says that sending
+  is off and offers to set it up; a broadcast is written in a sheet.
+- **Analytics is an overview.** The range is a segmented control, the
+  traffic chart sits beside who is on the site now, and the reports are
+  laid open rather than folded. On an install serving several sites it
+  says the figures add them all up and where one site's own are.
+- **SEO is an overview.** The worst of its checks sits beside the title,
+  the posts' readiness is one sentence ("7 of 10 posts ready for search; 1
+  needs a title"), and the crawlers, checks, files and instant indexing
+  are rows.
+
+### Security
+
+- **ProtonMail/go-crypto 1.5.2**, which corrects the order of an RSA key's
+  primes when OpenPGP keys are read and made. The console's own mail keys
+  are EdDSA; an imported RSA key is read through the corrected path.
+
 ## [3.17.92] — 2026-09-28
 
 Tag pages and the home feed stop reading whole posts to draw their cards,
