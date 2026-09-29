@@ -6095,6 +6095,7 @@
 .vp-os[data-ui="still-air"] .sa-overview__state { font: var(--type-body); color: var(--text-2); margin-left: var(--space-3); }
 .vp-os[data-ui="still-air"] .sa-overview__band { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--space-7); align-items: start; }
 .vp-os[data-ui="still-air"] .sa-overview__band--full { grid-template-columns: minmax(0, 1fr); }
+.vp-os[data-ui="still-air"] .sa-overview__sentence { font: var(--type-heading); color: var(--text-1); margin: 0; max-width: 60ch; }
 @media (max-width: 899px) { .vp-os[data-ui="still-air"] .sa-overview__band { grid-template-columns: minmax(0, 1fr); } }
 /* What happened lately, beside an overview's figures: when, who and what,
    then the plan or amount it concerns. The words say what kind of event it

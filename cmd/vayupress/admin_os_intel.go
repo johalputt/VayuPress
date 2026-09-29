@@ -31,97 +31,124 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/verifiedbot"
 )
 
-// seoCrawlActivityCard renders the live "Search engine & AI crawl activity"
-// panel: how many page requests each recognised search engine / AI system has
-// been SERVED since the last restart. It reads VayuShield's verified-bot tally
-// (server-side, so it captures crawlers that never run the JS beacon). Its whole
-// purpose is assurance — visible proof that the shield is letting crawlers index
-// the site, not blocking them.
-func (a *App) seoCrawlActivityCard() string {
+// seoCrawlers is the crawlers beside the posts sentence: each recognised search
+// engine and AI system with the page requests VayuShield has SERVED it since
+// the last restart. It reads the verified-bot tally, counted server-side, so
+// crawlers that never run the analytics beacon are here too. Its purpose is
+// assurance: proof the shield lets crawlers index the site rather than
+// blocking them.
+func (a *App) seoCrawlers() htmpl.HTML {
 	var stats []verifiedbot.VendorStat
 	if a.verifiedBots != nil {
 		stats = a.verifiedBots.Stats()
 	}
 	if len(stats) == 0 {
-		return `<p class="text-sm muted">No verified crawler visits recorded yet since the last restart. As Googlebot, Bingbot, GPTBot, ClaudeBot, PerplexityBot and others crawl your site, they appear here — live proof the shield is serving them, not blocking indexing.</p>`
+		return ui.Section("Crawlers", "Since the last restart",
+			`<p class="settings-row-hint">None has visited yet. Googlebot, Bingbot, GPTBot, ClaudeBot and the others appear here as they crawl.</p>`)
 	}
-	fmtN := func(n int64) string {
-		s := strconv.FormatInt(n, 10)
-		// thousands separators
-		if n < 1000 {
-			return s
-		}
-		var out []byte
-		for i, c := range []byte(s) {
-			if i > 0 && (len(s)-i)%3 == 0 {
-				out = append(out, ',')
-			}
-			out = append(out, c)
-		}
-		return string(out)
-	}
-	var searchRows, aiRows strings.Builder
-	var searchTotal, aiTotal int64
+	rows := make([]ui.Row, 0, len(stats))
 	for _, s := range stats {
-		row := `<tr><td class="row-title">` + html.EscapeString(s.Name) + `</td><td>` + fmtN(s.Count) + `</td></tr>`
+		kind := "Search engine"
 		if s.Class == verifiedbot.ClassAIAgent {
-			aiRows.WriteString(row)
-			aiTotal += s.Count
-		} else {
-			searchRows.WriteString(row)
-			searchTotal += s.Count
+			kind = "AI system"
 		}
+		rows = append(rows, ui.Row{Label: s.Name, Hint: kind,
+			Control: `<span class="sa-row__count">` + htmpl.HTML(osGroupInt(int(s.Count))) + ` served</span>`})
 	}
-	tbl := func(title string, rows string, total int64) string {
-		if rows == "" {
-			return ""
-		}
-		return `<div class="mb-4"><div class="settings-block-title">` + title + ` <span class="muted text-sm">— ` + fmtN(total) + ` request` + plural(total) + ` served</span></div>
-  <div class="table-wrap"><table class="table">
-    <thead><tr><th>Crawler</th><th>Requests served</th></tr></thead>
-    <tbody>` + rows + `</tbody></table></div></div>`
-	}
-	return `<p class="text-sm muted mb-4">Page requests VayuShield has served to verified crawlers since the last restart — proof they are reaching your content. Counted server-side (crawlers do not run the analytics beacon), so this reflects real crawl traffic even for bots that never appear in Analytics.</p>
-  ` + tbl("Search engines", searchRows.String(), searchTotal) + tbl("AI systems", aiRows.String(), aiTotal)
+	return ui.Section("Crawlers", "Since the last restart", ui.Rows(rows...))
 }
 
-// seoCrawlChip is the status pill for the crawl-activity accordion: total
-// verified-crawler requests served, or a neutral "waiting" state.
-func (a *App) seoCrawlChip() string {
-	var total int64
-	if a.verifiedBots != nil {
-		for _, s := range a.verifiedBots.Stats() {
-			total += s.Count
-		}
-	}
+// seoPostsSentence says the readiness figures as one sentence, naming only the
+// gaps there are.
+func seoPostsSentence(total, healthy, noTitle, thin int) string {
 	if total == 0 {
-		return `<span class="mon-chip mon-chip--off">○ Waiting for crawls</span>`
+		return "No posts yet."
 	}
-	return `<span class="mon-chip mon-chip--on">● ` + strconv.FormatInt(total, 10) + ` served</span>`
+	s := strconv.Itoa(healthy) + " of " + countOf(total, "post") + " ready for search"
+	var gaps []string
+	if noTitle > 0 {
+		gaps = append(gaps, strconv.Itoa(noTitle)+" "+ternary(noTitle == 1, "needs", "need")+" a title")
+	}
+	if thin > 0 {
+		gaps = append(gaps, strconv.Itoa(thin)+" "+ternary(thin == 1, "is", "are")+" under 300 words")
+	}
+	if len(gaps) > 0 {
+		s += "; " + strings.Join(gaps, ", ")
+	}
+	return s + "."
 }
 
-// handleOSSEONative renders the native os SEO dashboard: artefact freshness plus
-// per-article readiness, computed live from the DB and cache.
+// seoState is the page's state beside its title: the worst the checks found.
+func seoState(checks []seoCheck) htmpl.HTML {
+	var failing, warn int
+	for _, c := range checks {
+		switch {
+		case c.OK:
+		case c.Warn:
+			warn++
+		default:
+			failing++
+		}
+	}
+	switch {
+	case failing > 0:
+		return ui.State("danger", countOf(failing, "check")+" failing")
+	case warn > 0:
+		return ui.State("warn", countOf(warn, "check")+" to look at")
+	}
+	return ui.State("ok", "Every check passes")
+}
+
+// seoIndexNow is the instant-indexing row: whether a usable key is set, where
+// its verification file is, and the one-click connect-and-verify.
+func (a *App) seoIndexNow() htmpl.HTML {
+	const hint = "Tells Bing, Yandex and the other participating engines the moment a post is published or changed. One click creates the key, hosts its file at the site's root and verifies it."
+	key := a.indexNowKey()
+	verify := func(label string) htmpl.HTML {
+		return `<button type="button" class="btn btn--sm" data-indexnow-test>` + ui.Text(label) + `</button>`
+	}
+	var state, control htmpl.HTML
+	rows := []ui.Row{}
+	switch {
+	case config.Cfg.OnionMode:
+		state = ui.State("neutral", "Off in Tor mode")
+	case key == "":
+		state, control = ui.State("neutral", "Not connected"), verify("Connect and verify")
+	case !validIndexNowKey(key):
+		state, control = ui.State("danger", "The key is not valid"), verify("Connect and verify")
+		rows = append(rows, ui.Row{Label: "Key", Hint: "8 to 128 characters of a–z, A–Z, 0–9 or hyphen; IndexNow refuses the current one."})
+	default:
+		state, control = ui.State("ok", "Connected"), verify("Verify again")
+		link := "/" + key + ".txt"
+		rows = append(rows, ui.Row{Label: "Verification file",
+			Control: `<a class="mono" href="` + htmpl.HTML(link) + `" target="_blank" rel="noopener">https://` + ui.Text(config.Cfg.Domain) + htmpl.HTML(link) + `</a>`})
+	}
+	rows = append([]ui.Row{{Label: "IndexNow", Hint: hint, Control: state + " " + control}}, rows...)
+	return ui.Section("Instant indexing", "", ui.Rows(rows...)+`<div class="seo-status mt-3" data-indexnow-result hidden></div>`)
+}
+
+// handleOSSEONative renders SEO as an overview: the checks' state beside the
+// title, the posts' readiness as a sentence beside the crawlers, then the
+// checks, the files crawlers read and instant indexing, each as rows. All of
+// it is computed live from the DB and the cache.
 func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
-	artefact := func(name string) (bool, string) {
+	file := func(name string) (bool, time.Time) {
 		fi, err := os.Stat(filepath.Join(config.Cfg.CacheDir, name))
 		if err != nil {
-			return false, "not generated"
+			return false, time.Time{}
 		}
-		return true, config.FormatSiteStamp(fi.ModTime())
+		return true, fi.ModTime()
 	}
-	smOK, smWhen := artefact("sitemap.xml")
-	feedOK, feedWhen := artefact("feed.xml")
-	robotsOK, robotsWhen := artefact("robots.txt")
+	smOK, smAt := file("sitemap.xml")
+	feedOK, feedAt := file("feed.xml")
+	robotsOK, robotsAt := file("robots.txt")
 
-	// Inputs for the health checks: sitemap age, robots.txt body, head robots
-	// directive and the canonical domain.
 	var sitemapAge time.Duration
-	if fi, err := os.Stat(filepath.Join(config.Cfg.CacheDir, "sitemap.xml")); err == nil {
-		sitemapAge = time.Since(fi.ModTime())
+	if smOK {
+		sitemapAge = time.Since(smAt)
 	}
 	robotsBody := ""
 	if b, err := os.ReadFile(filepath.Join(config.Cfg.CacheDir, "robots.txt")); err == nil {
@@ -132,106 +159,45 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 		headRobots = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyHeadRobots)
 	}
 	checks := evaluateSEOHealth(smOK, sitemapAge, robotsOK, robotsBody, headRobots, config.Cfg.Domain)
-	checksRows := ""
+	checkRows := make([]ui.Row, 0, len(checks))
 	for _, c := range checks {
-		pill := `<span class="badge badge--ok">✓ Pass</span>`
+		state := ui.State("ok", "Passes")
 		if !c.OK && c.Warn {
-			pill = `<span class="badge badge--warn">! Check</span>`
+			state = ui.State("warn", "Look at this")
 		} else if !c.OK {
-			pill = `<span class="badge badge--danger">✕ Issue</span>`
+			state = ui.State("danger", "Failing")
 		}
-		checksRows += `<tr><td>` + html.EscapeString(c.Label) + `</td><td>` + pill +
-			`<div class="text-xs muted mt-1">` + html.EscapeString(c.Detail) + `</div></td></tr>`
+		checkRows = append(checkRows, ui.Row{Label: c.Label, Hint: c.Detail, Control: state})
 	}
 
-	// Per-article readiness. On large sites (hundreds of thousands of posts)
-	// scanning every body to measure content length is expensive, so it is
-	// computed in the BACKGROUND and cached — the page always renders instantly
-	// and can never time out / 502 on the request path.
+	fileRow := func(label, hint string, ok bool, at time.Time) ui.Row {
+		if !ok {
+			return ui.Row{Label: label, Hint: hint, Control: ui.State("warn", "Not made yet")}
+		}
+		return ui.Row{Label: label, Hint: hint, Control: ui.State("ok", "Made "+config.FormatSiteStamp(at))}
+	}
+
+	// Per-post readiness is counted in the background and cached: on a site of
+	// hundreds of thousands of posts the scan would outlast the request, so the
+	// page never waits for it.
 	stats, ready := seoStatsSnapshot()
-	total, thin, noTitle, healthy := stats.total, stats.thin, stats.noTitle, stats.healthy
-
-	num := func(n int) string {
-		if !ready {
-			return "…"
-		}
-		return strconv.Itoa(n)
+	sentence := "Counting posts in the background; reload in a few seconds."
+	if ready {
+		sentence = seoPostsSentence(stats.total, stats.healthy, stats.noTitle, stats.thin)
 	}
 
-	badge := func(ok bool, when string) string {
-		if ok {
-			return `<span class="badge badge--ok">✓ Ready</span> <span class="muted text-sm">` + html.EscapeString(when) + `</span>`
-		}
-		return `<span class="badge badge--warn">` + html.EscapeString(when) + `</span>`
-	}
+	page := ui.Overview(ui.OverviewPage{Title: "SEO", State: seoState(checks),
+		Actions: `<button type="button" class="btn btn--primary btn--sm" data-seo-regenerate>Regenerate files</button>`},
+		ui.Band{Title: "Posts", Hint: "Ready for search", Sentence: sentence, Aside: a.seoCrawlers()},
+		ui.Section("Checks", "What a crawler meets", ui.Rows(checkRows...)),
+		ui.Section("Files", "What crawlers read first", ui.Rows(
+			fileRow("Sitemap", "sitemap.xml, named in robots.txt", smOK, smAt),
+			fileRow("RSS feed", "feed.xml", feedOK, feedAt),
+			fileRow("robots.txt", "What crawlers may read", robotsOK, robotsAt),
+		)+`<div class="seo-status mt-3" data-seo-status hidden></div>`),
+		a.seoIndexNow())
 
-	// Instant-indexing (IndexNow) status: is a usable key configured, and where is
-	// its public verification file? Shown alongside a one-click live self-test.
-	inKey := a.indexNowKey()
-	var indexNowStatus string
-	switch {
-	case config.Cfg.OnionMode:
-		indexNowStatus = `<span class="badge badge--warn">Off</span> IndexNow is disabled in Tor/anonymous mode.`
-	case inKey == "":
-		indexNowStatus = `<span class="badge badge--warn">Not connected</span> Click <strong>Connect &amp; verify IndexNow</strong> below — a key is created, hosted and verified automatically. Nothing to set up by hand.`
-	case !validIndexNowKey(inKey):
-		indexNowStatus = `<span class="badge badge--danger">Invalid key</span> The key must be 8–128 characters of a–z, A–Z, 0–9 or hyphen — IndexNow will reject the current value.`
-	default:
-		link := "/" + inKey + ".txt"
-		indexNowStatus = `<span class="badge badge--ok">Connected</span> Verification file: <a href="` + link + `" target="_blank" rel="noopener" class="mono">https://` + html.EscapeString(config.Cfg.Domain) + link + `</a>`
-	}
-
-	// Accordion status pills (Monetization-console style).
-	inChip := `<span class="mon-chip mon-chip--off">○ Not connected</span>`
-	if inKey != "" && validIndexNowKey(inKey) && !config.Cfg.OnionMode {
-		inChip = `<span class="mon-chip mon-chip--on">● Connected</span>`
-	}
-	artChip := `<span class="mon-chip mon-chip--off">○ Incomplete</span>`
-	if smOK && feedOK && robotsOK {
-		artChip = `<span class="mon-chip mon-chip--on">● Ready</span>`
-	}
-
-	body := `<div class="page-header">
-  <h1>SEO</h1>
-  <div class="page-actions"><button type="button" class="btn btn--primary btn--sm" data-seo-regenerate>Regenerate artefacts</button></div>
-</div>
-<p class="page-sub">Search visibility, instant indexing and content health — plus live proof search engines and AI systems are crawling your content.</p>
-
-<div class="stat-grid mb-6">
-  <div class="stat-card"><div class="stat-card__label">SEO-healthy</div><div class="stat-card__value">` + num(healthy) + `</div><div class="stat-card__bottom"><span class="muted text-xs">good title + depth</span></div></div>
-  <div class="stat-card"><div class="stat-card__label">Thin content</div><div class="stat-card__value">` + num(thin) + `</div><div class="stat-card__bottom"><span class="muted text-xs">&lt;300 words</span></div></div>
-  <div class="stat-card"><div class="stat-card__label">Missing title</div><div class="stat-card__value">` + num(noTitle) + `</div><div class="stat-card__bottom"><span class="muted text-xs">needs a title</span></div></div>
-  <div class="stat-card"><div class="stat-card__label">Total posts</div><div class="stat-card__value">` + num(total) + `</div></div>
-</div>` + seoComputingNote(ready) + `
-
-<div class="section-head"><span class="section-head__title">Indexing</span><span class="section-head__hint">Get crawled fast &amp; see who is crawling</span></div>
-<div class="mon-stack">` +
-		monAcc(saIcon("bot"), "Search engine & AI crawl activity", "Live per-crawler counts — proof indexing works", a.seoCrawlChip(), true, a.seoCrawlActivityCard()) +
-		monAcc(saIcon("bolt"), "Instant indexing (IndexNow)", "One-click auto-connect to Bing, Yandex & more", inChip, false,
-			`<p class="text-sm muted">IndexNow tells Bing, Yandex and other participating engines the moment you publish or update a post, so changes get crawled in minutes instead of days. It is fully automatic — one click creates your key, hosts the verification file at your domain root and verifies it with IndexNow. After that, every post you publish is submitted for you.</p>
-  <p class="text-sm mt-2">`+indexNowStatus+`</p>
-  <div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-indexnow-test>Connect &amp; verify IndexNow</button></div>
-  <div class="seo-status mt-3" data-indexnow-result hidden></div>`) + `
-</div>
-
-<div class="section-head"><span class="section-head__title">Site health</span><span class="section-head__hint">Artefacts &amp; on-page SEO checks</span></div>
-<div class="mon-stack">` +
-		monAcc(saIcon("doc"), "Artefacts", "Sitemap, RSS & robots.txt freshness", artChip, false,
-			`<div class="table-wrap"><table class="table">
-    <thead><tr><th>Artefact</th><th>Status</th></tr></thead>
-    <tbody>
-      <tr><td>Sitemap</td><td>`+badge(smOK, smWhen)+`</td></tr>
-      <tr><td>RSS Feed</td><td>`+badge(feedOK, feedWhen)+`</td></tr>
-      <tr><td>robots.txt</td><td>`+badge(robotsOK, robotsWhen)+`</td></tr>
-    </tbody>
-  </table></div>
-  <div class="seo-status mt-3" data-seo-status hidden></div>`) +
-		monAcc(saIcon("check-c"), "Health checks", "On-page SEO & crawlability", "", false,
-			`<div class="table-wrap"><table class="table">
-    <thead><tr><th>Check</th><th>Result</th></tr></thead>
-    <tbody>`+checksRows+`</tbody>
-  </table></div>`) + `
-</div>
+	body := string(page) + `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>
 <script nonce="` + nonce + `">
 (function(){'use strict';
@@ -407,15 +373,6 @@ func computeSEOStats() {
 	seoStatsMu.Lock()
 	seoStatsCache = seoStats{total: total, thin: thin, noTitle: noTitle, healthy: healthy, computedAt: time.Now(), ready: true}
 	seoStatsMu.Unlock()
-}
-
-// seoComputingNote shows a hint while the first background computation is in
-// flight (so the "…" placeholders make sense to the operator).
-func seoComputingNote(ready bool) string {
-	if ready {
-		return ""
-	}
-	return `<div class="empty-state">Computing content-quality stats in the background (large site)… reload in a few seconds.</div>`
 }
 
 // handleOSAnalytics renders the privacy-preserving analytics page from the local

@@ -35,3 +35,15 @@ func TestAnOverviewSetsItsFiguresBesideTheirCompanion(t *testing.T) {
 		t.Error("an empty state is drawn")
 	}
 }
+
+// A band's sentence is escaped text before the figures, and a band without
+// one draws no empty paragraph.
+func TestABandSaysItsFiguresInASentence(t *testing.T) {
+	page := string(Overview(OverviewPage{Title: "SEO"}, Band{Title: "Posts", Sentence: "3 of 4 posts <ready>"}))
+	if !strings.Contains(page, `<p class="sa-overview__sentence">3 of 4 posts &lt;ready&gt;</p>`) {
+		t.Errorf("the sentence is missing or unescaped:\n%s", page)
+	}
+	if strings.Contains(string(Overview(OverviewPage{Title: "SEO"}, Band{Title: "Posts"})), "sa-overview__sentence") {
+		t.Error("a band without a sentence draws one")
+	}
+}

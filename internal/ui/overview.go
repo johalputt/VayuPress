@@ -17,8 +17,11 @@ type OverviewPage struct {
 // Band is an overview's one figure group: its heading and period, the
 // figures, the chart under them, and what stands beside it (recent activity
 // or facts, as a Section). A band without an aside takes the whole width.
+// Sentence says the figures in words instead, where a row of numbers would
+// only be read as one ("412 of 424 posts ready for search; 9 need a title").
 type Band struct {
 	Title, Hint string
+	Sentence    string
 	Figures     []Figure
 	Chart       HTML
 	Aside       HTML
@@ -46,8 +49,11 @@ func Overview(p OverviewPage, band Band, sections ...HTML) HTML {
 		figs.WriteString(string(f.Cell()))
 	}
 	main := ""
+	if band.Sentence != "" {
+		main = `<p class="sa-overview__sentence">` + string(Text(band.Sentence)) + `</p>`
+	}
 	if figs.Len() > 0 {
-		main = `<div class="stat-grid">` + figs.String() + `</div>`
+		main += `<div class="stat-grid">` + figs.String() + `</div>`
 	}
 	b.WriteString(`<div class="` + cls + `">` + string(Section(band.Title, band.Hint, HTML(main)+band.Chart)) + string(band.Aside) + `</div>`)
 	for _, s := range sections {
