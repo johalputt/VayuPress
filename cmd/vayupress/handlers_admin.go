@@ -1181,7 +1181,7 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 				`<td class="post-row__date mono">` + string(ui.Text(e.Number)) + `</td>` +
 				`<td class="post-row__name">` + string(ui.Text(e.Title)) + `</td></tr>`)
 		}
-		list = `<div class="table-wrap"><table class="table post-table"><thead><tr><th>Record</th><th>Decision</th></tr></thead><tbody>` +
+		list = `<div class="table-wrap"><table class="table post-table"><thead><tr><th class="sa-col--id">Record</th><th>Decision</th></tr></thead><tbody>` +
 			rows.String() + `</tbody></table></div>`
 		if first, raw, ok := adrLookup(adrDir, adrs, shown[0].Filename); ok {
 			inspector = adrInspector(first, raw)

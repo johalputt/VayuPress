@@ -349,7 +349,7 @@ func domainsList(domains []domain.Domain, f siteFigures, view, q string) string 
 				`<td>` + string(siteState(d)) + `</td></tr>`)
 			panels.WriteString(`<div data-list-panel-id="` + key + `"` + hidden + `>` + f.siteInspector(d) + `</div>`)
 		}
-		list += `<div class="table-wrap"><table class="table post-table"><thead><tr><th>Site</th><th>Serves</th><th>Posts</th><th>Members</th><th>Mail</th><th>State</th></tr></thead><tbody>` +
+		list += `<div class="table-wrap"><table class="table post-table"><thead><tr><th>Site</th><th>Serves</th><th class="sa-col--count">Posts</th><th class="sa-col--count">Members</th><th class="sa-col--count">Mail</th><th class="sa-col--state">State</th></tr></thead><tbody>` +
 			rows.String() + `</tbody></table></div>`
 		inspector = panels.String()
 	}

@@ -1437,21 +1437,21 @@ window.vpRelTime = relativeTime;
 
 /* ── Keyboard layer (Wave 3.7) ────────────────────────────────
    j/k move through the post rows, x toggles the highlighted row's bulk select,
-   Enter opens the highlighted row, n starts a new post (or focuses quick
-   compose on the dashboard). Only fires when a post list exists; never fires
-   while typing, inside a form field, or with a modifier held. */
+   n starts a new post (or focuses quick compose on the dashboard). Only fires
+   when a post list exists; never fires while typing, inside a form field, or
+   with a modifier held. */
 (function initKeyboardLayer() {
   var rows = function () { return $$('.post-row [data-post-row], [data-post-row]').filter(function (r) { return !r.hidden; }); };
   var idx = -1;
+  // Moves focus to the row: the list's own script (initListSelect) draws the
+  // focus, opens the row on Enter and keeps the arrow keys, so j/k add nothing
+  // beside it. A marker class of its own once outlined the old post cards and
+  // matched nothing on the table rows that replaced them.
   function highlight(next) {
     var list = rows();
     if (!list.length) return;
-    if (idx >= 0 && list[idx]) list[idx].classList.remove('post-row--kbd');
     idx = (next + list.length) % list.length;
-    var row = list[idx];
-    row.classList.add('post-row--kbd');
-    var sum = row.querySelector('summary');
-    if (sum) sum.scrollIntoView({ block: 'nearest' });
+    list[idx].focus();
   }
   function isTyping(el) {
     if (!el) return false;
@@ -1482,12 +1482,6 @@ window.vpRelTime = relativeTime;
         e.preventDefault();
         var chk = list[idx].querySelector('[data-post-select]');
         if (chk) { chk.checked = !chk.checked; chk.dispatchEvent(new Event('change', { bubbles: true })); }
-        break;
-      case 'Enter':
-        if (idx < 0 || !list[idx]) return;
-        e.preventDefault();
-        var sum = list[idx].querySelector('summary');
-        if (sum) sum.click();
         break;
     }
   });

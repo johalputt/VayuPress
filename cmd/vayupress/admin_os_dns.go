@@ -568,7 +568,7 @@ func dnsList(views []dnsDomainView, primary, view, q string) string {
 				`<td>` + string(v.state()) + `</td></tr>`)
 			panels.WriteString(`<div data-list-panel-id="` + key + `"` + hidden + `>` + dnsInspector(v) + `</div>`)
 		}
-		list = `<div class="table-wrap"><table class="table post-table"><thead><tr><th>Domain</th><th>Records</th><th>State</th></tr></thead><tbody>` +
+		list = `<div class="table-wrap"><table class="table post-table"><thead><tr><th>Domain</th><th class="sa-col--count">Records</th><th class="sa-col--state">State</th></tr></thead><tbody>` +
 			rows.String() + `</tbody></table></div>`
 		inspector = panels.String()
 	}

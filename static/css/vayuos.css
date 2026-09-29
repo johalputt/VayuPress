@@ -608,7 +608,6 @@
 
 .vp-os .post-stack { margin-bottom: 0; }
 
-.vp-os .post-row { display: grid; grid-template-columns: auto 1fr; gap: var(--sp-3); align-items: start; }
 
 .vp-os .post-acc { min-width: 0; }
 
@@ -4934,7 +4933,6 @@
 
 /* Keyboard row highlight (Wave 3.7): j/k walk the post list; the highlighted
    row needs a visible, non-colour-only affordance. */
-.vp-os .post-row--kbd > .mon-acc { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: var(--r-md, 12px); }
 
 /* vpConfirm modal (Wave 3.11): the styled, focus-managed replacement for
    window.confirm. Built with createElement/textContent only — CSP-safe. */
@@ -5269,7 +5267,8 @@
   width: 16px; height: 16px; flex: none; vertical-align: -3px;
   stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
 }
-/* A name missing from the icon set: loud on purpose, and a test fails on it. */
+/* A name missing from the icon set: loud on purpose, and the e2e walk of
+   every page fails on it (stillair.spec.js). */
 .vp-os[data-ui="still-air"] .sa-ico--missing { outline: 1px dashed var(--danger); outline-offset: 1px; }
 .vp-os[data-ui="still-air"] .sa-iconbtn {
   width: 30px; height: 30px; display: inline-grid; place-items: center; flex: none;
@@ -6098,13 +6097,19 @@
 .vp-os[data-ui="still-air"] .sa-list .page-actions .seg-filter { margin-left: 0; }
 .vp-os[data-ui="still-air"] .media-kinds { margin: 0 0 var(--space-4); }
 .vp-os[data-ui="still-air"] .sa-list__sheet-actions { display: flex; gap: var(--space-2); }
-/* Posts (render 01): fixed columns, so a long title is cut rather than
-   pushing the state and the figures out of view. */
+/* The lists (render 01): fixed columns, so a long title is cut rather than
+   pushing the state and the figures out of view. A column's width follows
+   what it holds, named on its header cell, and the unnamed ones share the
+   rest. Widths once went by position, written for Posts, and every other
+   list that shares this table inherited them: Decisions' record number got
+   Posts' checkbox column and read "A…". */
 .vp-os[data-ui="still-air"] .post-table { table-layout: fixed; }
-.vp-os[data-ui="still-air"] .post-table th:nth-child(1) { width: 40px; }
-.vp-os[data-ui="still-air"] .post-table th:nth-child(3) { width: 124px; }
-.vp-os[data-ui="still-air"] .post-table th:nth-child(4) { width: 88px; }
-.vp-os[data-ui="still-air"] .post-table th:nth-child(5) { width: 120px; }
+.vp-os[data-ui="still-air"] .post-table .sa-col--check { width: 40px; }
+.vp-os[data-ui="still-air"] .post-table .sa-col--id { width: 104px; }
+.vp-os[data-ui="still-air"] .post-table .sa-col--state { width: 124px; }
+.vp-os[data-ui="still-air"] .post-table .sa-col--date { width: 88px; }
+.vp-os[data-ui="still-air"] .post-table .sa-col--count { width: 88px; }
+.vp-os[data-ui="still-air"] .post-table .sa-col--num { width: 120px; text-align: right; }
 .vp-os[data-ui="still-air"] .post-row { cursor: default; }
 .vp-os[data-ui="still-air"] .post-row td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vp-os[data-ui="still-air"] .post-row[aria-selected="true"] td { background: var(--surface-select); }

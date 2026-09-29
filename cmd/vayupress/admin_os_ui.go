@@ -2783,8 +2783,8 @@ func (a *App) osPostsList(ctx context.Context, v osPostsView, nonce string) stri
 		list += `<p class="table-empty">No posts match that. <a href="/os/posts">Show every post</a>.</p>`
 	} else {
 		list += `<div class="table-wrap"><table class="table post-table"><thead><tr>` +
-			`<th class="post-row__check"><input type="checkbox" data-post-select-all aria-label="Select every post on this page"></th>` +
-			`<th>Title</th><th>State</th><th>Updated</th><th class="post-row__num">Views · 30 days</th></tr></thead><tbody>` +
+			`<th class="sa-col--check"><input type="checkbox" data-post-select-all aria-label="Select every post on this page"></th>` +
+			`<th>Title</th><th class="sa-col--state">State</th><th class="sa-col--date">Updated</th><th class="sa-col--num">Views · 30 days</th></tr></thead><tbody>` +
 			rows.String() + `</tbody></table></div>`
 	}
 	shownFrom, shownTo := 0, 0

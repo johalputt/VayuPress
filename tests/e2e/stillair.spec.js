@@ -314,6 +314,10 @@ test("every element of every page is on the Still Air scale, in both schemes", a
       await page.goto(href);
       await page.waitForLoadState("load");
       for (const f of await page.evaluate(scaleLint, tokens)) findings.push(`${scheme} ${width}px ${href}: ${f}`);
+      // An icon name outside the set draws the dashed missing mark; Posts and
+      // Messages shipped one on their date button ("calendar") in 3.17.92,
+      // which the chrome-only unit test never renders.
+      if (await page.locator(".sa-ico--missing").count()) findings.push(`${scheme} ${width}px ${href}: an icon missing from the set`);
     }
   }
   expect(findings).toEqual([]);
@@ -1061,6 +1065,46 @@ test("status pages open on their state, not on figures", async ({ page }) => {
     // One primary action per page (rule 6).
     expect(await page.locator("main .btn--primary:visible").count(), href).toBeLessThanOrEqual(1);
   }
+});
+
+// A list's rows are table rows, each item on one line across the list's width.
+// 3.17.92 shipped every list squeezed: a rule left from the old Posts cards
+// (.post-row as a two-column grid) matched the new table rows, so each row
+// became a grid of two narrow columns, its title clipped to a few letters and
+// its state and figures wrapped under it. A fresh install's one short post
+// hides a squeezed title, so the display is what is asserted, then the line.
+// The lists a fresh install has rows in; every list shares the row markup.
+const LIST_PAGES = ["/os/posts", "/os/adr"];
+test("a list's rows are table rows, each item on one line", async ({ page }) => {
+  await openConsole(page);
+  for (const href of LIST_PAGES) {
+    await page.goto(href);
+    const rows = await page.locator("main [data-list-row]").evaluateAll((els) => els.map((r) => {
+      // A column the list hides at this width (its container query) has no place.
+      const cells = [...r.children].filter((c) => getComputedStyle(c).display !== "none");
+      const tops = new Set(cells.map((c) => Math.round(c.getBoundingClientRect().top)));
+      // A title may be cut to fit; a short value (a record number, a state, a
+      // date, a heading) never is. Decisions read "A…" for ADR-0165 when its
+      // column took the width Posts gives its checkbox.
+      const cut = [...cells, ...r.closest("table").querySelectorAll("th")]
+        .filter((c) => c.innerText.trim().length <= 12 && c.scrollWidth > c.clientWidth + 1)
+        .map((c) => c.innerText.trim());
+      return { text: r.innerText.slice(0, 40), display: getComputedStyle(r).display, lines: tops.size, cut,
+        share: r.getBoundingClientRect().width / r.closest("table").getBoundingClientRect().width };
+    }));
+    expect(rows.length, `${href} has no row to check`).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(r.display, `${href}: "${r.text}" is not a table row`).toBe("table-row");
+      expect(r.lines, `${href}: "${r.text}" breaks onto ${r.lines} lines`).toBe(1);
+      expect(r.share, `${href}: "${r.text}" does not span its list`).toBeGreaterThan(0.95);
+      expect(r.cut, `${href}: "${r.text}" has a short value cut to fit`).toEqual([]);
+    }
+  }
+  // j on Posts moves focus to the first row, which the list then opens on Enter.
+  await page.goto("/os/posts");
+  await page.locator("main h1").click();
+  await page.keyboard.press("j");
+  expect(await page.evaluate(() => document.activeElement && document.activeElement.hasAttribute("data-list-row")), "j did not reach a row").toBe(true);
 });
 
 // Advertising once it is on is a Settings page: slots are a list, a new slot
