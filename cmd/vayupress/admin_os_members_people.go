@@ -90,7 +90,7 @@ func (a *App) handleOSMembersPeople(w http.ResponseWriter, r *http.Request) {
 
 	list := `<p class="table-empty">No one here yet.</p>`
 	if len(shown) > 0 {
-		list = `<div class="table-wrap"><table class="table post-table"><thead><tr><th>Email</th><th>Name</th><th>Plan</th><th>Last seen</th><th>Joined</th></tr></thead><tbody>` +
+		list = `<div class="table-wrap"><table class="table post-table"><thead><tr><th>Email</th><th>Name</th><th class="sa-col--state">Plan</th><th class="sa-col--date">Last seen</th><th class="sa-col--date">Joined</th></tr></thead><tbody>` +
 			rows.String() + `</tbody></table></div><p class="table-empty" data-members-empty hidden>No member matches that.</p>`
 	}
 	href := func(v string) string {

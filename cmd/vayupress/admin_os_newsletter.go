@@ -120,7 +120,7 @@ func (a *App) handleOSNewsletter(w http.ResponseWriter, r *http.Request) {
 			`<button type="button" class="seg-btn" data-sub-filter="unsubscribed">Left <span class="muted">` + strconv.Itoa(stats.Unsubscribed) + `</span></button></div>` +
 			string(ui.Search(ui.SearchBox{Placeholder: "Search subscribers", Hook: "data-sub-search"})) + `</div>` +
 			`<p class="table-empty" data-subs-empty hidden>No subscriber matches that.</p>` +
-			`<div class="table-wrap"><table class="table post-table"><thead><tr><th>Email</th><th>State</th><th>Subscribed</th><th></th></tr></thead><tbody>` +
+			`<div class="table-wrap"><table class="table post-table"><thead><tr><th>Email</th><th class="sa-col--state">State</th><th class="sa-col--date">Subscribed</th><th class="sa-col--action"></th></tr></thead><tbody>` +
 			rows.String() + `</tbody></table></div>`
 	}
 

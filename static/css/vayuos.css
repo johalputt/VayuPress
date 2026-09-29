@@ -6130,6 +6130,7 @@
 .vp-os[data-ui="still-air"] .post-table .sa-col--date { width: 88px; }
 .vp-os[data-ui="still-air"] .post-table .sa-col--count { width: 88px; }
 .vp-os[data-ui="still-air"] .post-table .sa-col--num { width: 120px; text-align: right; }
+.vp-os[data-ui="still-air"] .post-table .sa-col--action { width: 88px; }
 .vp-os[data-ui="still-air"] .post-row { cursor: default; }
 .vp-os[data-ui="still-air"] .post-row td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vp-os[data-ui="still-air"] .post-row[aria-selected="true"] td { background: var(--surface-select); }
