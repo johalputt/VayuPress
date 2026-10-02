@@ -3,7 +3,6 @@
 package main
 
 import (
-	"html"
 	"net/http"
 	"strings"
 
@@ -44,7 +43,6 @@ type mailDomainBoxes struct {
 // mailSwitcherList renders the switcher's groups and foot. open is the ?user=
 // key of the mailbox on screen.
 func mailSwitcherList(primary, open string, doms []mailDomainBoxes, avatars map[string]bool) string {
-	esc := html.EscapeString
 	var b strings.Builder
 	total := 0
 	for _, g := range doms {

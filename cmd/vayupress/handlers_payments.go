@@ -946,7 +946,6 @@ func verifyHMACHex(sigHex string, payload []byte, secret string) bool {
 // ── Public checkout page markup (CSP-safe, no inline JS) ───────────────────────
 
 func checkoutFormPage(tier *members.Tier, cadence string, amountCents int, currency string, stripeOn, paypalOn, btcpayOn bool, errMsg string) string {
-	esc := html.EscapeString
 	errHTML := ""
 	if errMsg != "" {
 		errHTML = `<div class="su-notice su-notice--err" role="alert">` + esc(errMsg) + `</div>`

@@ -24,7 +24,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"html"
 	"io"
 	"net"
 	"net/http"
@@ -711,7 +710,6 @@ func driverCarriesReportingFixes(src string) (bool, string) {
 // a real install, and because a diagnostic an operator cannot verify is one they
 // have to take on trust. It is shown verbatim and escaped.
 func scopedDiagnosticBody(checks []diagCheck, logLines []string, host string) string {
-	esc := html.EscapeString
 	var b strings.Builder
 	// No heading of its own: this body is the inside of an accordion whose summary
 	// already says what it is, and the summary stays visible when it is collapsed.

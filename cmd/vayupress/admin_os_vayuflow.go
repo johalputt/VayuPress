@@ -18,7 +18,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"html"
 	"net/http"
 	"strconv"
 	"strings"
@@ -228,7 +227,6 @@ func runStatusChip(s vayuflow.RunStatus) string {
 func vayuFlowPage(flows []vayuflow.Flow, rejected map[string]error,
 	stats vayuflow.Stats, runs []vayuflow.Run, checks []flowaudit.Check,
 	wired, modelLocal bool) string {
-	esc := html.EscapeString
 	var b strings.Builder
 
 	armed := 0
@@ -541,7 +539,6 @@ func (a *App) flowRoleResolver() vayuflow.RoleResolver {
 // unlimited inexpressible on purpose; a form that let the field stay empty would
 // reintroduce it as a shrug.
 func flowEditorCard() string {
-	esc := html.EscapeString
 	var b strings.Builder
 	b.WriteString(`<div class="settings-block-title">What it is</div>`)
 	b.WriteString(`<div class="field"><label class="field-label" for="ff-name">Name</label>` +

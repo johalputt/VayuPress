@@ -20,7 +20,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"html"
 	htmpl "html/template"
 	"net/http"
 	"strconv"
@@ -122,7 +121,6 @@ func (a *App) sampleIsDemo(ctx context.Context, d domain.Domain) bool {
 // stores the sample as the site's own words — and a warning with no way to
 // act on it is one people learn to ignore.
 func scopedSampleNotice(d domain.Domain, tplName string, fields []string, demo bool) string {
-	esc := html.EscapeString
 	if len(fields) == 0 {
 		return ""
 	}
@@ -186,7 +184,6 @@ func (a *App) handleOSScopedSampleDemo(w http.ResponseWriter, r *http.Request) {
 }
 
 func scopedWebsitePage(d domain.Domain, tplKey string, c bizsite.Content, bundled bool, man customsite.Manifest, published bool) string {
-	esc := html.EscapeString
 	mode := scopedSiteMode(d)
 	var b strings.Builder
 

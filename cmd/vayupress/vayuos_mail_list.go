@@ -3,7 +3,6 @@
 package main
 
 import (
-	"html"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,7 +31,10 @@ func mailViewParam(r *http.Request) string {
 	v := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("view")))
 	for _, x := range mailViews {
 		if x.Key == v {
-			return v
+			// The table's own key, never the request's string. They are equal,
+			// but code scanning cannot tell, and read the request's value
+			// written into the page as a reflected XSS (alert #119).
+			return x.Key
 		}
 	}
 	return ""
@@ -108,7 +110,6 @@ func mailListTime(t, now time.Time) string {
 // reader beside the list, or for a draft in compose. count is the number of
 // messages in its conversation, 0 when it stands alone.
 func mailListRow(m vmail.StoredMessage, who, link string, draft bool, count int, now time.Time, avSet map[string]bool) string {
-	esc := html.EscapeString
 	subj := m.Subject
 	if subj == "" {
 		subj = "(no subject)"

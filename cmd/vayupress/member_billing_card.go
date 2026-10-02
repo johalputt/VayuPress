@@ -36,7 +36,6 @@ type billingRow struct {
 // from rendering so the branching — trial, cancelling, renewing, lapsed — is
 // testable without HTML.
 func memberBillingRows(sub *members.Subscription, now time.Time) []billingRow {
-	esc := html.EscapeString
 	rows := []billingRow{}
 	if sub == nil {
 		return rows

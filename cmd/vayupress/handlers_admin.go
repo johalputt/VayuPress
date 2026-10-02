@@ -852,7 +852,6 @@ func (a *App) renderPaywall(r *http.Request, art dbpkg.Article, level string) st
 	if len(excerpt) > 600 {
 		excerpt = excerpt[:600] + "…"
 	}
-	esc := html.EscapeString
 
 	cta := "This post is for members."
 	perks := ""

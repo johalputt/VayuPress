@@ -163,7 +163,6 @@ func (a *App) handleOSScopedHome(w http.ResponseWriter, r *http.Request) {
 // mirrorAcc is the release-mirror accordion, rendered by the App because its
 // state lives there; "" leaves the row out.
 func scopedConsolePage(d domain.Domain, posts, members, mailboxes int, mailOn bool, clients []users.User, checks []diagCheck, logLines []string, tools map[string]scopedToolChip, mirrorAcc string) string {
-	esc := html.EscapeString
 	pending := isPendingTorSite(d.Host)
 	var b strings.Builder
 
@@ -516,7 +515,6 @@ func scopedCertificateSection(d domain.Domain, checks []diagCheck, logLines []st
 // this service deliberately cannot become root. Stating only "pending" left an
 // operator to conclude the feature was broken.
 func scopedCertificateBody(d domain.Domain) string {
-	esc := html.EscapeString
 	headline := `no certificate has been issued for <b>` + esc(d.Host) + `</b> yet`
 	if d.TLSState == domain.TLSFailed {
 		headline = `the last attempt to issue a certificate for <b>` + esc(d.Host) + `</b> <b>failed</b>`
@@ -551,7 +549,6 @@ func scopedCertificateBody(d domain.Domain) string {
 }
 
 func scopedLifecycleBody(d domain.Domain) string {
-	esc := html.EscapeString
 	syncLabel, syncTarget := "Approve for provisioning", domain.SyncApproved
 	if d.IsSyncApproved() {
 		syncLabel, syncTarget = "Pause provisioning", domain.SyncHold

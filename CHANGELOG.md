@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **Code scanning's four reflected-XSS alerts are closed at their source.**
+  None was a value written unescaped: Mail's `?view=` was only ever written
+  when it equalled one of three fixed names, and every other path ran
+  through `html.EscapeString` under a local alias that the analyzer cannot
+  see through, so it reported escaped output as raw. The view is now the
+  table's own name, the aliases are one package function, and
+  `TestEscapesAreCalledByName` refuses an escaper taken as a value or a
+  `func(string) string` parameter in the console or any `internal/` package.
+
 ## [3.17.94] — 2026-10-02
 
 Replies to contact messages go out through VayuMail, and Shield is the

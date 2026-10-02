@@ -299,7 +299,6 @@ func (a *App) vayuCardPGP(ac vmail.Account) string {
 	if a.vayuPGP == nil {
 		return ""
 	}
-	esc := html.EscapeString
 	email := esc(ac.Email)
 
 	pk, err := a.vayuPGP.GetPublicKey(ac.Email)
@@ -385,7 +384,6 @@ func (a *App) handleVayuOSAccountPubKey(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
-	esc := html.EscapeString
 	email := esc(ac.Email)
 	initial := "?"
 	if t := strings.TrimSpace(ac.Email); t != "" {
@@ -669,7 +667,6 @@ func vmFieldID(prefix, email string) string {
 // being given away is their own access and every sentence that softens that
 // makes the button easier to press by accident.
 func (a *App) vayuCardHandover(ctx context.Context, ac vmail.Account) string {
-	esc := html.EscapeString
 	email := esc(ac.Email)
 
 	if a.vayuMail.IsHandedOver(ac.Email) {

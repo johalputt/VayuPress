@@ -153,7 +153,6 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 
 	brand := html.EscapeString(config.Cfg.Domain)
-	esc := html.EscapeString
 	nonce := render.CSPNonce(r)
 	paid := m.IsPaid()
 
@@ -402,7 +401,6 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
 // memberDetailsCard is the "Your details" form: display name plus the two
 // notification preferences.
 func memberDetailsCard(m *members.Member, replyChecked, newsletterChecked string) string {
-	esc := html.EscapeString
 	return `<section class="ma-card">
     <h2>Your details</h2>
     <form method="POST" action="/members/account">
@@ -517,7 +515,6 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Vary", "Cookie")
 
 	brand := html.EscapeString(config.Cfg.Domain)
-	esc := html.EscapeString
 	nonce := render.CSPNonce(r)
 
 	var tiers []members.Tier

@@ -152,7 +152,6 @@ func (f siteFigures) siteName(d domain.Domain) string {
 // to it. The primary is managed from Website settings; a hosted site opens its
 // own console, and is synced, switched and removed from here.
 func (f siteFigures) siteInspector(d domain.Domain) string {
-	esc := html.EscapeString
 	var b strings.Builder
 	meta := siteTypeLabel(d.EffectiveSiteType())
 	if d.IsPrimary {
@@ -410,7 +409,6 @@ func (a *App) handleOSDomainManage(w http.ResponseWriter, r *http.Request) {
 }
 
 func domainClientAccessCard(d domain.Domain, clients []users.User) string {
-	esc := html.EscapeString
 
 	existing := `<p class="text-sm muted">No client login yet. Until you issue one, nobody outside your
     team can see this site's settings, mailboxes or traffic.</p>`

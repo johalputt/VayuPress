@@ -16,7 +16,6 @@ package main
 
 import (
 	"encoding/json"
-	"html"
 	htmpl "html/template"
 	"net/http"
 	"strconv"
@@ -134,7 +133,6 @@ const (
 )
 
 func scopedSettingsBody(domainID, host string, values map[string]string, pres presentationState) string {
-	esc := html.EscapeString
 	var b strings.Builder
 
 	b.WriteString(`<div id="scoped-ctx" data-id="` + esc(domainID) + `" hidden></div>` +

@@ -20,7 +20,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"html"
 	"io"
 	"net/http"
 	"os"
@@ -394,7 +393,6 @@ func bundleHistoryHTML(dir, restoreBase string) string {
 	if len(gens) == 0 {
 		return ""
 	}
-	esc := html.EscapeString
 	var b strings.Builder
 	b.WriteString(`<details class="bundle-history"><summary class="text-sm">Earlier uploads (` + itoaSafe(len(gens)) + `)</summary><ul class="bundle-history__list">`)
 	for _, g := range gens {

@@ -1505,12 +1505,11 @@ func SearchModalJSLink() template.HTML {
 // <base> hijacks are structurally impossible.
 func headMetaHTML(s SiteSettings) template.HTML {
 	var sb strings.Builder
-	esc := template.HTMLEscapeString
 	writeMeta := func(name, content string) {
 		if content == "" {
 			return
 		}
-		sb.WriteString(`<meta name="` + name + `" content="` + esc(content) + `">`)
+		sb.WriteString(`<meta name="` + name + `" content="` + template.HTMLEscapeString(content) + `">`)
 	}
 	writeMeta("keywords", s.Keywords)
 	writeMeta("theme-color", s.ThemeColor)

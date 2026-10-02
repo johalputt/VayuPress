@@ -79,7 +79,6 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 	tiers, _ := a.members.ListTiers(ctx, true)
 	signups, _ := a.members.SignupsByDay(ctx, 30)
 	activity, _ := a.members.RecentEvents(ctx, 6)
-	esc := html.EscapeString
 
 	state := "No members yet"
 	if stats.Total > 0 {
@@ -382,7 +381,6 @@ func activityFeedHTML(events []members.Event, currency string) string {
 	if len(events) == 0 {
 		return `<p class="table-empty">Sign-ups and plan changes will show here.</p>`
 	}
-	esc := html.EscapeString
 	labels := map[string]string{
 		members.EventSignup:          "joined",
 		members.EventSubscribe:       "started paying",

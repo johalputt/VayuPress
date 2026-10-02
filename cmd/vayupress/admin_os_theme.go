@@ -61,7 +61,6 @@ type themeHeadExport struct {
 // inline SVG. Every colour is a presentational fill/text attribute (not a style
 // attribute), so strict CSP holds; every string is escaped.
 func themeCardSVG(p theme.Tokens) string {
-	esc := html.EscapeString
 	return `<svg class="theme-card__art" viewBox="0 0 120 84" width="120" height="84" role="img" aria-hidden="true">` +
 		`<rect x="0" y="0" width="120" height="84" rx="7" fill="` + esc(p.BgDark) + `"/>` +
 		// Masthead: brand dot + wordmark + nav dashes.

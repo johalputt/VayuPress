@@ -1464,7 +1464,6 @@ func (a *App) handleMailAutoconfig(w http.ResponseWriter, r *http.Request) {
 	pop3s := mailPort(mc.POP3SListen, "995")
 	sub := mailPort(mc.SubmissionListen, "587")
 
-	esc := func(s string) string { return html.EscapeString(s) }
 	xml := `<?xml version="1.0" encoding="UTF-8"?>
 <clientConfig version="1.1">
   <emailProvider id="` + esc(domain) + `">

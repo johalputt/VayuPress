@@ -55,7 +55,6 @@ func (a *App) handleOSNewsletter(w http.ResponseWriter, r *http.Request) {
 	growth, _ := a.newsletterStore.GrowthByDay(ctx, 30)
 	subs, _ := a.newsletterStore.List(ctx, "all", "", 500)
 	broadcasts, _ := a.newsletterStore.ListBroadcasts(ctx, 6)
-	esc := html.EscapeString
 
 	smtpReady := a.mailer != nil && a.mailer.Enabled()
 	// No relay and nobody yet is a newsletter that has not started: a setup
@@ -166,7 +165,6 @@ func nlBroadcasts(list []newsletter.Broadcast) string {
 	if len(list) == 0 {
 		return `<p class="table-empty">Nothing sent yet.</p>`
 	}
-	esc := html.EscapeString
 	var b strings.Builder
 	b.WriteString(`<ul class="sa-activity">`)
 	for _, br := range list {

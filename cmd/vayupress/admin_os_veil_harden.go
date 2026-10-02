@@ -38,7 +38,6 @@ package main
 
 import (
 	"encoding/json"
-	"html"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -207,7 +206,6 @@ const veilHardenInstallCommand = "curl -sSL https://raw.githubusercontent.com/jo
 // and asserted on for every verdict — including the ones a test host cannot
 // produce, which is most of them.
 func veilHardenCard(st vayuveil.HardenState, sb vayuveil.SandboxState, processStart time.Time) string {
-	esc := html.EscapeString
 	v := vayuveil.ReconcileHardening(st, sb, processStart)
 	missing := vayuveil.UnverifiedHardening(sb)
 

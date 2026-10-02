@@ -32,7 +32,6 @@ func (a *App) handleMemberSignup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Robots-Tag", "index, follow")
 
 	brand := html.EscapeString(config.Cfg.Domain)
-	esc := html.EscapeString
 	nonce := render.CSPNonce(r)
 
 	// A success/notice banner driven by query flags from the POST redirect.

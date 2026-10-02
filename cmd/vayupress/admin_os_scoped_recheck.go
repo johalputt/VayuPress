@@ -32,7 +32,6 @@ package main
 // answer would teach an operator that the button does not work.
 
 import (
-	"html"
 	"net/http"
 	"strings"
 	"time"
@@ -47,7 +46,6 @@ import (
 // that differs from its first render is a swap that visibly changes the page
 // for no reason the operator asked for.
 func scopedDiagnosticPanel(domainID string, checks []diagCheck, logLines []string, host string, at time.Time) string {
-	esc := html.EscapeString
 	stamp := at.UTC().Format("15:04:05") + " UTC"
 
 	// Whether DNS is the blocker decides one sentence, and it is the sentence

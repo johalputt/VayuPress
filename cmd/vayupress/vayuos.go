@@ -1369,6 +1369,13 @@ func (a *App) handleVayuOSHealthJSON(w http.ResponseWriter, r *http.Request) {
 // (CodeQL go/reflected-xss) the HTML-context sanitiser barrier it recognises.
 func qparam(s string) string { return html.EscapeString(url.QueryEscape(s)) }
 
+// esc is html.EscapeString under the short name the console's markup is written
+// with. A package function rather than a local alias (esc := html.EscapeString):
+// code scanning takes the escape as a barrier only on a call it can resolve, so
+// through an alias every escaped request value read as an unescaped write
+// (TestEscapesAreCalledByName).
+func esc(s string) string { return html.EscapeString(s) }
+
 // mailUserParam reads and STRICTLY validates a ?user= mailbox local-part from
 // the request. A mailbox local-part is a small, well-defined character set
 // (RFC 5321 dot-atom, lowercased by us); anything containing a character
@@ -2036,7 +2043,6 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 	if limit <= 0 {
 		limit = inboxPageSize
 	}
-	esc := html.EscapeString
 	var b strings.Builder
 	// The sidebar names the mailbox and holds its folders, so the page's own
 	// heading is for a screen reader, and swaps with the folder.

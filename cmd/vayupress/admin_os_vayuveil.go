@@ -17,7 +17,6 @@ package main
 
 import (
 	"context"
-	"html"
 	"net/http"
 	"strconv"
 	"strings"
@@ -156,7 +155,6 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 	self vayuveil.SelfHardening, red []vayuveil.AttackResult,
 	harden vayuveil.HardenState, sandbox vayuveil.SandboxState, processStart time.Time,
 	suiteAt time.Time, tabs ui.HTML) string {
-	esc := html.EscapeString
 	var b strings.Builder
 
 	b.WriteString(`<div class="page-header"><h1>Shield</h1><div class="page-actions">` +

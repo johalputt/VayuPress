@@ -20,7 +20,6 @@ package main
 // and says plainly which parts of search reporting remain install-level.
 
 import (
-	"html"
 	htmpl "html/template"
 	"net/http"
 	"strconv"
@@ -56,7 +55,6 @@ func (a *App) handleOSScopedSEO(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sc := osScope(r)
-	esc := html.EscapeString
 	origin := seo.Origin(d.Host)
 
 	body := `<div class="page-header"><h1>SEO</h1></div>` +
@@ -80,7 +78,6 @@ func (a *App) handleOSScopedSEO(w http.ResponseWriter, r *http.Request) {
 // and a settings store — so the page could not be rendered in a test, and its
 // restyling could not be checked. Same reason as the traffic page.
 func scopedSEOBody(domainID, origin string, declared map[string]string) string {
-	esc := html.EscapeString
 	var b strings.Builder
 
 	// ── Four tiles ────────────────────────────────────────────────────────────

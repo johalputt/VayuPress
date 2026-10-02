@@ -2,9 +2,10 @@
 
 package main
 
-import "strings"
-
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRenderMarkdownDocument(t *testing.T) {
 	out := string(renderMarkdownDocument([]byte(

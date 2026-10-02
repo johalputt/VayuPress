@@ -87,7 +87,6 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	esc := htmpl.HTMLEscapeString
 	body := `<div class="page-header"><h1>VayuTor</h1></div>`
 	body += `<p class="page-sub">Publish every hosted domain as a Tor onion service — a private, un-trackable way in that works alongside the normal address. No provider, network, or observer can see who visits.</p>`
 
@@ -242,15 +241,15 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 
 	body += `<div class="section-head"><span class="section-head__title">Setup &amp; network</span><span class="section-head__hint">Reach Tor from anywhere, and personalise your address</span></div>`
 	body += `<div class="mon-stack">` +
-		monAcc(saIcon("topology"), "Bridges", "For networks that block Tor", monChip(bridgesConfigured, "Configured", "Not set"), false, a.osTorBridgesCard(r, esc, st)) +
-		monAcc(saIcon("sparkle"), "Custom (vanity) address", "A .onion that starts with letters you choose", vanityChip, false, a.osTorVanityCard(esc, st, r.URL.Query().Get("vanity_err"))) +
+		monAcc(saIcon("topology"), "Bridges", "For networks that block Tor", monChip(bridgesConfigured, "Configured", "Not set"), false, a.osTorBridgesCard(r, st)) +
+		monAcc(saIcon("sparkle"), "Custom (vanity) address", "A .onion that starts with letters you choose", vanityChip, false, a.osTorVanityCard(st, r.URL.Query().Get("vanity_err"))) +
 		monAcc(saIcon("shield"), "Onion-Location & hardening", "How Tor Browser auto-discovers your onion", "", false, a.osTorHardeningCard(r)) +
 		`</div>`
 
 	body += `<div class="section-head"><span class="section-head__title">Health &amp; privacy</span><span class="section-head__hint">Uptime alerts, opt-in page counts, and exactly what is (never) recorded</span></div>`
 	body += `<div class="mon-stack">` +
-		monAcc(saIcon("pulse"), "Health & alerts", "Onion uptime + signed outage webhooks", healthChip, false, osTorHealthCard(esc, st)) +
-		monAcc(saIcon("doc"), "Popular pages", "Private, opt-in aggregate counts", monChip(st.PageStatsOn, "On", "Off"), false, a.osTorPageStatsCard(esc, st)) +
+		monAcc(saIcon("pulse"), "Health & alerts", "Onion uptime + signed outage webhooks", healthChip, false, osTorHealthCard(st)) +
+		monAcc(saIcon("doc"), "Popular pages", "Private, opt-in aggregate counts", monChip(st.PageStatsOn, "On", "Off"), false, a.osTorPageStatsCard(st)) +
 		monAcc(saIcon("lock"), "Privacy posture", "Exactly what VayuTor records — and doesn't", `<span class="mon-chip mon-chip--on">● Count-only</span>`, false, osTorPrivacyNote(st)) +
 		`</div>`
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-tor.js?v=` + assetVer("js/admin-os-tor.js") + `"></script>`
@@ -285,7 +284,7 @@ func osTorLogRemedy(log string) string {
 // osTorBridgesCard renders the operator's Tor bridge configuration — the entire
 // "network blocks Tor" fix, done from VayuOS with no server access. Bridges are
 // saved to settings (KeyTorBridges) and applied live by the engine.
-func (a *App) osTorBridgesCard(r *http.Request, esc func(string) string, st vtor.Status) string {
+func (a *App) osTorBridgesCard(r *http.Request, st vtor.Status) string {
 	current := ""
 	if a.siteSettings != nil {
 		current = a.siteSettings.Get(r.Context(), settings.ForPrimary(), settings.KeyTorBridges)
@@ -460,7 +459,7 @@ func osTorPrivacyNote(st vtor.Status) string {
 // plus the enable/disable toggle and a reset. Visitor geolocation is impossible
 // over an onion service (the server never sees the client IP), so it is stated
 // as absent rather than offered.
-func (a *App) osTorPageStatsCard(esc func(string) string, st vtor.Status) string {
+func (a *App) osTorPageStatsCard(st vtor.Status) string {
 	card := `<div class="card mt-4"><div class="card-title">` + saIcon("doc") + ` Popular pages — private, opt-in</div>`
 	if !st.PageStatsOn {
 		card += `<p class="muted text-sm mb-3">Off by default. When enabled, VayuTor keeps an <strong>aggregate count per page</strong> (a running total of views) so you can see which posts are popular over Tor. It stays privacy-safe: <strong>no IP</strong> (Tor provides none), no time, no session, no ordering — so it can never identify, locate, or correlate a visitor. <strong>Visitor country isn't shown because it's impossible</strong>: an onion service never sees the visitor's IP.</p>`
@@ -500,7 +499,7 @@ func (a *App) osTorPageStatsCard(esc func(string) string, st vtor.Status) string
 // osTorVanityCard renders the custom-prefix ("vanity") onion address generator:
 // pick a domain and a short prefix, and VayuTor brute-forces a matching key in
 // the background, then republishes that domain's onion under the new address.
-func (a *App) osTorVanityCard(esc func(string) string, st vtor.Status, startErr string) string {
+func (a *App) osTorVanityCard(st vtor.Status, startErr string) string {
 	if a.vayuTor == nil {
 		return ""
 	}
@@ -599,7 +598,7 @@ func pow32(n int) string {
 
 // osTorHealthCard renders the onion health state, a short transition history,
 // and how outage alerts are delivered (via subscribed webhooks).
-func osTorHealthCard(esc func(string) string, st vtor.Status) string {
+func osTorHealthCard(st vtor.Status) string {
 	cls, label, icon := torHealthBadge(st.Health)
 	card := `<div class="card mt-4"><div class="card-title">` + saIcon("pulse") + ` Health &amp; alerts</div>`
 	card += `<div class="vt-health__now"><span class="vt-health__badge ` + cls + `">` + saIcon(icon) + " " + label + `</span>`

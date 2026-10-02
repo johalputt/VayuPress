@@ -16,7 +16,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"html"
 	htmpl "html/template"
 	"net/http"
 	"sort"
@@ -395,7 +394,6 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
 	if fresh, err := a.userStore.GetByID(r.Context(), u.ID); err == nil {
 		u = fresh
 	}
-	esc := html.EscapeString
 
 	socialFields := ""
 	for _, p := range socialPlatforms {
@@ -483,7 +481,6 @@ func (a *App) teamRoster(ctx context.Context) string {
 	if a == nil || a.userStore == nil {
 		return `<p class="table-empty">Accounts are not available on this install.</p>`
 	}
-	esc := html.EscapeString
 	list, _ := a.userStore.List(ctx)
 	mailEnabled := a.vayuMail != nil && a.vayuMail.Config().Enabled
 	mailDomain := ""
@@ -589,7 +586,6 @@ func (a *App) handlePublicAuthor(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "index, follow")
 
-	esc := html.EscapeString
 	brand := esc(config.Cfg.Domain)
 	name := esc(u.Name)
 	if name == "" {

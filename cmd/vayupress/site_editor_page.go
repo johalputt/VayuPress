@@ -7,7 +7,6 @@ package main
 // edited as a document.
 
 import (
-	"html"
 	htmpl "html/template"
 	"net/http"
 
@@ -21,7 +20,6 @@ import (
 // can never point the preview frame at another origin or a javascript: URL
 // (js/xss-through-dom).
 func siteEditorShell(nonce, scope, back, backLabel string) string {
-	esc := html.EscapeString
 	return `<div id="site-editor" data-scope="` + esc(scope) + `">
 <div class="card se-bar">
   <a class="btn btn--ghost btn--sm" href="` + esc(back) + `">← ` + esc(backLabel) + `</a>
@@ -79,7 +77,6 @@ func (a *App) handleOSScopedSiteEditor(w http.ResponseWriter, r *http.Request) {
 // are not offered: a form whose saves change nothing visible is a control
 // that does nothing. Before that, the form stays, with the editor beside it.
 func siteEditorCard(editorURL string, published bool) string {
-	esc := html.EscapeString
 	if published {
 		return `<div class="card"><div class="settings-block-title">Edited as pages and sections</div>` +
 			`<p class="text-sm muted">This site is published from the site editor: its pages, sections, ` +

@@ -18,7 +18,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"html"
 	htmpl "html/template"
 	"io"
 	"net"
@@ -202,7 +201,6 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	if domain == "" {
 		domain = "yourdomain.com"
 	}
-	he := html.EscapeString
 	contentJSON, _ := json.Marshal(content)
 	dir := a.customSiteDir(r)
 	man := customsite.ReadManifest(dir)
@@ -212,19 +210,19 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	// ── The document: the site, or what stands in its place ────────────────
 	var doc string
 	if mode == "custom" {
-		doc = `<div class="web-doc__note"><p>` + he(domain) + ` serves the site you uploaded`
+		doc = `<div class="web-doc__note"><p>` + esc(domain) + ` serves the site you uploaded`
 		if deployed {
-			doc += `: ` + strconv.Itoa(man.Files) + ` file` + plural(man.Files) + `, deployed ` + he(config.FormatSiteStamp(man.DeployedAt))
+			doc += `: ` + strconv.Itoa(man.Files) + ` file` + plural(man.Files) + `, deployed ` + esc(config.FormatSiteStamp(man.DeployedAt))
 		}
 		doc += `.</p><a class="btn btn--ghost btn--sm" href="/" target="_blank" rel="noopener">View it ↗</a></div>`
 	} else {
 		if mode == "blog" {
-			doc = `<p class="web-doc__caption">The website as it will look. ` + he(domain) + ` shows the blog until Hosting says otherwise.</p>`
+			doc = `<p class="web-doc__caption">The website as it will look. ` + esc(domain) + ` shows the blog until Hosting says otherwise.</p>`
 		}
 		// The site editor's preview, framable by the console alone and
 		// sandboxed: it renders the saved site in the design named here,
 		// so choosing a design shows it before it is saved.
-		doc += `<iframe class="web-doc__frame" data-biz-frame title="The website" sandbox="" src="/os/api/site-doc/preview?page=&amp;preview=` + he(activeTpl.Key) + `"></iframe>`
+		doc += `<iframe class="web-doc__frame" data-biz-frame title="The website" sandbox="" src="/os/api/site-doc/preview?page=&amp;preview=` + esc(activeTpl.Key) + `"></iframe>`
 	}
 
 	// ── Hosting ─────────────────────────────────────────────────────────────
@@ -240,13 +238,13 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 			checked = " checked"
 		}
 		host.WriteString(`<label class="sa-insp__option"><input type="radio" name="biz-mode" value="` + m.value + `"` + checked + `>` +
-			`<span><span class="sa-insp__option-label">` + he(m.label) + `</span><span class="sa-insp__hint">` + he(m.note) + `</span></span></label>`)
+			`<span><span class="sa-insp__option-label">` + esc(m.label) + `</span><span class="sa-insp__hint">` + esc(m.note) + `</span></span></label>`)
 	}
-	host.WriteString(string(ui.Explain(ui.HTML(`<p>Updates never change this. The website option points ` + he(domain) + `, blog.` + he(domain) + ` and mail.` + he(domain) +
-		` at this server, and certificates for all three are issued and renewed for you; the /blog and uploaded options need only ` + he(domain) + `.</p>`))))
+	host.WriteString(string(ui.Explain(ui.HTML(`<p>Updates never change this. The website option points ` + esc(domain) + `, blog.` + esc(domain) + ` and mail.` + esc(domain) +
+		` at this server, and certificates for all three are issued and renewed for you; the /blog and uploaded options need only ` + esc(domain) + `.</p>`))))
 
 	// ── Design ──────────────────────────────────────────────────────────────
-	design := string(ui.InspectorRow("In use", ui.HTML(`<span class="sa-insp__pair"><span data-biz-design-name>`+he(activeTpl.Name)+`</span>`+
+	design := string(ui.InspectorRow("In use", ui.HTML(`<span class="sa-insp__pair"><span data-biz-design-name>`+esc(activeTpl.Name)+`</span>`+
 		`<button type="button" class="btn btn--ghost btn--xs" data-sheet="web-designs">Change</button></span>`)))
 	var gal strings.Builder
 	gal.WriteString(`<div class="biz-grid">`)
@@ -255,9 +253,9 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 		if t.Key == activeTpl.Key {
 			cls += " biz-card--active"
 		}
-		gal.WriteString(`<button type="button" class="` + cls + `" data-biz-template="` + he(t.Key) + `" data-biz-template-name="` + he(t.Name) + `">` +
-			`<span class="biz-card-cat">` + he(t.Category) + `</span><span class="biz-card-name">` + he(t.Name) + `</span>` +
-			`<span class="biz-card-tag">` + he(t.Tagline) + `</span></button>`)
+		gal.WriteString(`<button type="button" class="` + cls + `" data-biz-template="` + esc(t.Key) + `" data-biz-template-name="` + esc(t.Name) + `">` +
+			`<span class="biz-card-cat">` + esc(t.Category) + `</span><span class="biz-card-name">` + esc(t.Name) + `</span>` +
+			`<span class="biz-card-tag">` + esc(t.Tagline) + `</span></button>`)
 	}
 	gal.WriteString(`</div><p class="text-sm muted">A design changes the look and keeps the content. A field left empty shows the design's sample.</p>`)
 
@@ -268,13 +266,13 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 			`<a class="btn btn--sm" href="/os/website/editor">Open the site editor</a>`)
 	} else {
 		field := func(key, label, ph string) {
-			con.WriteString(`<label class="sa-insp__field"><span class="sa-insp__label">` + he(label) + `</span><input class="input" data-biz-f="` + key + `" placeholder="` + he(ph) + `"></label>`)
+			con.WriteString(`<label class="sa-insp__field"><span class="sa-insp__label">` + esc(label) + `</span><input class="input" data-biz-f="` + key + `" placeholder="` + esc(ph) + `"></label>`)
 		}
 		// Multi-line content is edited only in a textarea: a single-line
 		// input strips line breaks from its value, and a save then stores
 		// the hours or the address run together (admin_os_scoped_website.go).
 		area := func(key, label, ph, rows string) {
-			con.WriteString(`<label class="sa-insp__field"><span class="sa-insp__label">` + he(label) + `</span><textarea class="textarea" rows="` + rows + `" data-biz-f="` + key + `" placeholder="` + he(ph) + `"></textarea></label>`)
+			con.WriteString(`<label class="sa-insp__field"><span class="sa-insp__label">` + esc(label) + `</span><textarea class="textarea" rows="` + rows + `" data-biz-f="` + key + `" placeholder="` + esc(ph) + `"></textarea></label>`)
 		}
 		field("name", "Name", "Maison Olive")
 		field("tagline", "Tagline", "Seasonal plates, honest wine.")
@@ -323,7 +321,7 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 		Title: "Website",
 		State: ui.State("ok", websiteServes(domain, mode, activeTpl.Name)),
 		Actions: ui.HTML(`<span class="sa-doc__msg" data-biz-status role="status" aria-live="polite"></span><span class="sa-doc__msg" data-biz-deploy-status role="status" aria-live="polite"></span>` +
-			`<a class="btn btn--ghost btn--sm" data-biz-preview href="/site?preview=` + he(activeTpl.Key) + `" target="_blank" rel="noopener">Preview ↗</a>` +
+			`<a class="btn btn--ghost btn--sm" data-biz-preview href="/site?preview=` + esc(activeTpl.Key) + `" target="_blank" rel="noopener">Preview ↗</a>` +
 			`<button type="button" class="btn btn--primary btn--sm" data-biz-save>Save &amp; publish</button>`),
 		Inspector: inspector,
 		Label:     "Website settings",

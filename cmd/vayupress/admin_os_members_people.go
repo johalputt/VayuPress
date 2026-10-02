@@ -3,7 +3,6 @@
 package main
 
 import (
-	"html"
 	htmpl "html/template"
 	"net/http"
 	"strconv"
@@ -30,7 +29,6 @@ func (a *App) handleOSMembersPeople(w http.ResponseWriter, r *http.Request) {
 	view := r.URL.Query().Get("view")
 	all, _ := a.members.List(ctx, 500)
 	tiers, _ := a.members.ListTiers(ctx, true)
-	esc := html.EscapeString
 
 	paying, free, unconfirmed := 0, 0, 0
 	var shown []members.Member
@@ -123,7 +121,6 @@ func (a *App) handleOSMembersPeople(w http.ResponseWriter, r *http.Request) {
 // memberInspector is one member in the list's inspector: who they are, their
 // plan (changed here), their labels, and what can be done to them.
 func memberInspector(m members.Member, tiers []members.Tier, st ui.HTML, lastSeen string) string {
-	esc := html.EscapeString
 	var opts strings.Builder
 	seen := false
 	for _, t := range tiers {

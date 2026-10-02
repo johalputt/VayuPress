@@ -14,7 +14,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"html"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -370,7 +369,6 @@ func (a *App) releaseMirrorChip(d domain.Domain) string {
 // releaseMirrorCard is the console card: what the switch does, the switch, and
 // what the mirror holds right now.
 func (a *App) releaseMirrorCard(d domain.Domain) string {
-	esc := html.EscapeString
 	var b strings.Builder
 	b.WriteString(`<div class="card">
   <h2 class="card-title">Release mirror</h2>
@@ -431,7 +429,6 @@ func (a *App) releaseMirrorCheckedStamp() string {
 // went. The error is shown verbatim: it is the operator's own panel, and the
 // exact refusal is what tells them whether to wait or to look at a release.
 func releaseMirrorStateHTML(rep releaseMirrorReport) string {
-	esc := html.EscapeString
 	var b strings.Builder
 	b.WriteString(`
   <div class="settings-block-title">What it holds</div>`)

@@ -19,7 +19,6 @@ package main
 
 import (
 	"encoding/json"
-	"html"
 	htmpl "html/template"
 	"net/http"
 	"net/url"
@@ -58,7 +57,6 @@ func (a *App) handleOSScopedContent(w http.ResponseWriter, r *http.Request) {
 }
 
 func scopedContentPage(d domain.Domain, items []dbpkg.Article) string {
-	esc := html.EscapeString
 	var b strings.Builder
 
 	posts, pages, drafts := 0, 0, 0

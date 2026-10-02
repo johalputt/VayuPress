@@ -263,7 +263,6 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	a.ensureTalkKeypair(self)
 	_, selfFP, _ := a.vayuTalk.PubKey(self)
 
-	esc := htmpl.HTMLEscapeString
 	onionAttr := ""
 	if config.Cfg.OnionMode {
 		onionAttr = ` data-onion="1"`

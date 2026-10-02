@@ -359,7 +359,6 @@ func saRailItem(href, label, icon, count string, current bool) string {
 // (more); then the foot, pinned to the bottom, with contacts, the mailbox's
 // rules and its storage.
 func saMailSide(m *osMailSide, more string) string {
-	esc := html.EscapeString
 	var b strings.Builder
 	// For an administrator the account block opens the mailbox switcher (Mail
 	// plan §4), whose list is read when it opens (handleVayuOSMailSwitcher);

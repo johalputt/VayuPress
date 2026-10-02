@@ -3,7 +3,6 @@
 package main
 
 import (
-	"html"
 	"net/http"
 	"sort"
 	"strconv"
@@ -46,7 +45,6 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 			id = nid
 		}
 	}
-	esc := html.EscapeString
 	pane := v.Pane
 	mbox := mailAddrOf(user, a.cfgDomain())
 	msgURL := func(mid string) string {
@@ -348,7 +346,6 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 // only HTML, or one the reader asked to see styled, goes through the mail
 // sanitiser with remote images off unless asked for.
 func (a *App) mailBodyHTML(pm vmail.ParsedMessage, raw []byte, v readerView) string {
-	esc := html.EscapeString
 	hasHTML := strings.TrimSpace(pm.HTML) != ""
 	note := `<p class="mx-images-off">Pictures stay off until you ask: loading one tells the sender you opened this message.</p>`
 	switch {

@@ -17,7 +17,6 @@ package main
 // visitor can write traffic into.
 
 import (
-	"html"
 	htmpl "html/template"
 	"net/http"
 	"strconv"
@@ -36,7 +35,6 @@ func (a *App) handleOSScopedAnalytics(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/os/domains", http.StatusSeeOther)
 		return
 	}
-	esc := html.EscapeString
 
 	body := `<div class="page-header"><h1>Visitors</h1></div>` +
 		`<p class="page-sub"><a href="/os/d/` + esc(d.ID) + `">← ` + esc(d.Host) + `</a></p>` +
@@ -65,7 +63,6 @@ func (a *App) handleOSScopedAnalytics(w http.ResponseWriter, r *http.Request) {
 // this page without all three, and it therefore had no test at all. A page that
 // cannot be rendered in a test is a page whose restyling cannot be checked.
 func scopedAnalyticsBody(views, visits int, bounce, avgDur float64, top []analytics.PageStat) string {
-	esc := html.EscapeString
 	var b strings.Builder
 
 	b.WriteString(`<div class="stat-grid">` +
