@@ -86,11 +86,12 @@ func osMessageState(idEsc string, read bool, where string, oob bool) string {
 func osMessageInspector(m contactMessage, hosts map[string]string) string {
 	idEsc := html.EscapeString(m.ID)
 	var b strings.Builder
-	b.WriteString(`<div class="sa-insp__title">` + html.EscapeString(m.Name) + `</div><div class="sa-insp__meta"><a href="mailto:` + html.EscapeString(m.Email) + `">` + html.EscapeString(m.Email) + `</a></div>`)
+	b.WriteString(`<div class="sa-insp__title">` + html.EscapeString(m.Name) + `</div><div class="sa-insp__meta"><a href="/os/vayumail/compose?to=` + html.EscapeString(url.QueryEscape(m.Email)) + `">` + html.EscapeString(m.Email) + `</a></div>`)
 	b.WriteString(`<p class="comment-body">` + html.EscapeString(m.Message) + `</p>`)
-	reply := "mailto:" + html.EscapeString(m.Email) + "?subject=" + url.QueryEscape("Re: your message") +
-		"&body=" + url.QueryEscape("\n\n— On "+config.FormatSite(m.Created, "2 Jan 2006")+", "+m.Name+" wrote:\n> "+m.Message)
-	b.WriteString(`<div class="sa-insp__actions"><a class="btn btn--sm" href="` + reply + `">` + saIcon("mail") + ` Reply</a>`)
+	// Replies go out through this install's own mail (composePrefill fills the
+	// sender, subject and quote from the message), never the computer's
+	// default mail program.
+	b.WriteString(`<div class="sa-insp__actions"><a class="btn btn--sm" href="/os/vayumail/compose?contact=` + html.EscapeString(url.QueryEscape(m.ID)) + `">` + saIcon("reply") + ` Reply</a>`)
 	if !m.Read {
 		b.WriteString(`<button type="button" class="btn btn--ghost btn--sm" data-msg-read data-id="` + idEsc + `">Mark read</button>`)
 	}

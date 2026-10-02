@@ -397,6 +397,23 @@ func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText st
 		}
 		return "", "", "", "", ""
 	}
+	// A message left through a site's contact form, answered from Content ›
+	// Messages. It was a mailto: link, which opens whatever mail program the
+	// operator's computer has, not this install's own mail. Read by id like
+	// Reply, so a long message never rides in the address, and only for an
+	// administrator: compose is open to client accounts, the inbox is not.
+	if id := strings.TrimSpace(q.Get("contact")); id != "" {
+		if !a.isAdminRequest(r) {
+			return "", "", "", "", ""
+		}
+		m, err := scanContactMessage(dbpkg.Reader().QueryRowContext(r.Context(),
+			`SELECT `+contactMessageCols+` FROM contact_messages WHERE id=?`, id))
+		if err != nil {
+			return "", "", "", "", ""
+		}
+		return m.Email, "", "", "Re: your message",
+			"\r\n\r\n" + quoteBody(m.Name+" <"+m.Email+">", config.FormatSite(m.Created, "2 Jan 2006"), m.Message)
+	}
 	reply := q.Get("reply") != ""
 	forward := q.Get("forward") != ""
 	if !reply && !forward {
