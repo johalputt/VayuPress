@@ -21,6 +21,7 @@ import (
 	"context"
 	"html"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -353,27 +354,52 @@ func saRailItem(href, label, icon, count string, current bool) string {
 		`<span class="sa-rail__label">` + html.EscapeString(label) + `</span>` + c + `</a>`
 }
 
-// saMailSide heads the Mail sidebar while a mailbox is open: the mailbox,
-// its folders, and for an administrator the install's other mailboxes.
-func saMailSide(m *osMailSide) string {
+// saMailSide is the Mail sidebar while a mailbox is open (Mail plan §3.1):
+// the account, its folders and views; then, folded away, the rest of Mail
+// (more); then the foot, pinned to the bottom, with contacts, the mailbox's
+// rules and its storage.
+func saMailSide(m *osMailSide, more string) string {
+	esc := html.EscapeString
 	var b strings.Builder
-	b.WriteString(`<div class="sa-appside__title" title="` + html.EscapeString(m.Address) + `">` + html.EscapeString(m.Address) + `</div>`)
-	b.WriteString(m.Folders)
-	if len(m.Boxes) > 0 {
-		b.WriteString(`<div class="sa-appside__group">Mailboxes on this install</div>`)
-		for _, x := range m.Boxes {
-			cur, count := "", ""
-			if x.Current {
-				cur = ` aria-current="true"`
-			}
-			if x.Unseen > 0 {
-				count = `<span class="sa-appside__count" aria-label="` + itoaSafe(x.Unseen) + ` unread">` + notifCap(x.Unseen) + `</span>`
-			}
-			b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/inbox?user=` + qparam(x.Key) + `"` + cur + `>` + saIcon("mail") +
-				`<span class="sa-appside__label">` + html.EscapeString(x.Address) + `</span>` + count + `</a>`)
-		}
-		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/inbox?all=1">` + saIcon("grid") + `<span class="sa-appside__label">All mailboxes</span></a>`)
+	// For an administrator the account block leads to every mailbox; for
+	// anyone else it is not a control, because there is nowhere else to go.
+	who := `<span class="mx-account__who">`
+	if m.Name != "" {
+		who += `<span class="mx-account__name">` + esc(m.Name) + `</span>`
 	}
+	who += `<span class="mx-account__addr">` + esc(m.Address) + `</span></span>`
+	if m.Admin {
+		b.WriteString(`<a class="mx-account" href="/os/vayumail/inbox?all=1" title="Every mailbox on this install">` + m.Avatar + who + `<span class="mx-account__chev" aria-hidden="true">` + saIcon("chev-ud") + `</span></a>`)
+	} else {
+		b.WriteString(`<div class="mx-account">` + m.Avatar + who + `</div>`)
+	}
+	b.WriteString(m.Folders)
+	if more != "" {
+		b.WriteString(`<details class="mx-more"><summary class="sa-appside__item">` + saIcon("more") + `<span class="sa-appside__label">More in Mail</span></summary>` + more + `</details>`)
+	}
+	b.WriteString(`<div class="mx-foot">`)
+	b.WriteString(`<button type="button" class="sa-appside__item" hx-get="/os/vayumail/contacts?user=` + qparam(m.User) + `" hx-target="#vm-readpane" hx-swap="innerHTML">` + saIcon("audience") + `<span class="sa-appside__label">Contacts</span></button>`)
+	if m.Admin {
+		b.WriteString(`<a class="sa-appside__item" href="/os/vayumail/accounts/settings?user=` + qparam(m.Address) + `">` + saIcon("filter") + `<span class="sa-appside__label">Rules and replies</span></a>`)
+	}
+	if m.Quota > 0 {
+		pct := int(float64(m.Used) / float64(m.Quota) * 100)
+		if pct > 100 {
+			pct = 100
+		}
+		// The thresholds the list's own warning has always used.
+		tone := ""
+		switch {
+		case pct >= 90:
+			tone = " sa-meter__fill--danger"
+		case pct >= 75:
+			tone = " sa-meter__fill--warn"
+		}
+		b.WriteString(`<div class="mx-storage"><span class="mx-storage__row"><span>Storage</span><span>` + esc(humanBytes(m.Used)) + ` of ` + esc(humanBytes(m.Quota)) + `</span></span>` +
+			`<svg class="sa-meter" viewBox="0 0 100 4" preserveAspectRatio="none" role="img" aria-label="` + strconv.Itoa(pct) + `% of the mailbox's storage used">` +
+			`<rect class="sa-meter__track" width="100" height="4" rx="2"/><rect class="sa-meter__fill` + tone + `" width="` + strconv.Itoa(pct) + `" height="4" rx="2"/></svg></div>`)
+	}
+	b.WriteString(`</div>`)
 	return b.String()
 }
 
@@ -424,28 +450,27 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 	if app != nil && len(app.Sections) > 1 && !app.Tabbed && active != "editor" {
 		side.WriteString(`<nav class="sa-appside" aria-label="` + html.EscapeString(app.Label) + `">`)
 		mailOpen := app.Key == "mail" && s.MailSide != nil
-		mailGroup := !mailOpen // under the folders, the rest of Mail is labelled
+		// While a mailbox is open its own sections are the sidebar, and the
+		// rest of Mail is gathered for saMailSide to fold away.
+		out := &side
+		var more strings.Builder
 		switch {
 		case app.Key == "settings":
 			// The render puts the search where the title would be; the rail
 			// and the crumb already say this is Settings.
 			side.WriteString(settingsSearchIndex(app))
 		case mailOpen:
-			side.WriteString(saMailSide(s.MailSide))
+			out = &more
 		default:
 			side.WriteString(`<div class="sa-appside__title">` + html.EscapeString(app.Label) + `</div>`)
 		}
 		for i := range app.Sections {
 			x := &app.Sections[i]
 			if mailOpen && x.Href == "/os/vayumail/inbox" {
-				continue // the folders above are the mailbox
+				continue // the folders are the mailbox
 			}
-			if !mailGroup && x.Group == "" {
-				side.WriteString(`<div class="sa-appside__group">Mail</div>`)
-			}
-			mailGroup = true
 			if x.Group != "" {
-				side.WriteString(`<div class="sa-appside__group">` + html.EscapeString(x.Group) + `</div>`)
+				out.WriteString(`<div class="sa-appside__group">` + html.EscapeString(x.Group) + `</div>`)
 			}
 			mark := ""
 			if x.Href == "/os/vayumail/dns" && s.MailDNSAttention {
@@ -455,8 +480,11 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 			if sec == x {
 				cur = ` aria-current="page"`
 			}
-			side.WriteString(`<a class="sa-appside__item" href="` + x.Href + `"` + cur + `>` + saIcon(x.Icon) +
+			out.WriteString(`<a class="sa-appside__item" href="` + x.Href + `"` + cur + `>` + saIcon(x.Icon) +
 				`<span class="sa-appside__label">` + html.EscapeString(x.Label) + `</span>` + mark + `</a>`)
+		}
+		if mailOpen {
+			side.WriteString(saMailSide(s.MailSide, more.String()))
 		}
 		side.WriteString(`</nav>`)
 	}

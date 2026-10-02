@@ -454,7 +454,9 @@ func TestStillAirHonoursReducedMotion(t *testing.T) {
 	if end := strings.Index(block, "\n}\n"); end > 0 {
 		block = block[:end]
 	}
-	for _, need := range []string{"animation-duration: 80ms", "animation-iteration-count: 1", "transition-duration: 80ms"} {
+	// Nothing moves under it (Mail plan §8): no keyframe animation, and a
+	// transition no longer than a short fade.
+	for _, need := range []string{"animation: none !important", "transition-duration: 80ms"} {
 		if !strings.Contains(block, need) {
 			t.Errorf("the reduced-motion rule does not contain %q", need)
 		}

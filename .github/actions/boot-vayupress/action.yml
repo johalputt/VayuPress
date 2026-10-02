@@ -85,3 +85,30 @@ runs:
           sleep 1
         done
         echo "proxy did not start"; cat /tmp/vayupress/proxy.log; exit 1
+
+    # A second install with Mail on, for the Mail specs (mail.spec.js reads
+    # MAIL_BASE_URL). The first is "localhost", for which Mail stays off, so
+    # the suite could only ever see Mail's setup page. Mail runs for any other
+    # domain; inbound is off so nothing binds the privileged mail ports, and
+    # scripts/mail-fixture writes the mailboxes it serves before it starts.
+    - name: Start a second install with Mail on
+      shell: bash
+      run: |
+        M=/tmp/vayumail
+        mkdir -p $M/cache $M/tmp $M/media
+        go run ./scripts/mail-fixture $M/vayudata/mail/maildir mail.test
+        DB_PATH=$M/vayupress.db CACHE_DIR=$M/cache MEDIA_DIR=$M/media TMP_DIR=$M/tmp \
+          PORT=8090 DOMAIN=mail.test VAYUOS_MAIL_INBOUND=off \
+          /tmp/vayupress/vayupress > $M/server.log 2>&1 &
+        echo $! > $M/server.pid
+        LISTEN=:8098 UPSTREAM=http://localhost:8090 API_KEY=$API_KEY \
+          go run ./scripts/screenshot-proxy > $M/proxy.log 2>&1 &
+        echo $! > $M/proxy.pid
+        for i in $(seq 1 90); do
+          if curl -fsS http://localhost:8098/health/live >/dev/null 2>&1; then
+            echo "MAIL_BASE_URL=http://localhost:8098" >> "$GITHUB_ENV"
+            echo "mail install up"; exit 0
+          fi
+          sleep 1
+        done
+        echo "the mail install did not start"; cat $M/server.log $M/proxy.log; exit 1

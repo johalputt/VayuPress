@@ -573,6 +573,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/vayumail/search/fragment", a.handleVayuOSSearchFragment)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/search", a.handleVayuOSSearch)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/message", a.handleVayuOSMessage)
+		pr.Get("/os/vayumail/message/body", a.handleVayuOSMessageBody)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/sent", a.handleVayuOSSent)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/compose", a.handleVayuOSCompose)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts", a.handleVayuOSAccounts)
@@ -1499,25 +1500,24 @@ type osSettings struct {
 	// on the install's own console.
 	Sites []osSite
 	Scope *osSite
-	// MailSide is set while a mailbox is open (render 04): the Mail app's
-	// sidebar becomes that mailbox's folders, then the install's other
-	// mailboxes, then the rest of Mail.
+	// MailSide is set while a mailbox is open (Mail plan §3.1): the Mail
+	// app's sidebar becomes that mailbox, its folders and views, with the
+	// rest of Mail folded away under them.
 	MailSide *osMailSide
 }
 
 // osMailSide is the open mailbox as the Mail sidebar shows it. Folders is
 // mailFolderNav's markup, which every list refresh sends again out of band.
 type osMailSide struct {
+	User    string // the mailbox's key, as ?user= carries it
 	Address string
-	Folders string
-	Boxes   []osMailBox
-}
-
-// osMailBox is one of the install's mailboxes, offered to an administrator.
-type osMailBox struct {
-	Key, Address string
-	Unseen       int
-	Current      bool
+	Name    string // the holder's name, "" when none is on file
+	Avatar  string // mailAvatarImg markup
+	// Admin: an administrator, for whom the account block leads to every
+	// mailbox and the mailbox's own settings are offered.
+	Admin       bool
+	Folders     string
+	Used, Quota int64 // bytes; Quota 0 means no limit, and no meter
 }
 
 // osSite is one hosted site in the switcher.

@@ -1051,6 +1051,7 @@ window.vpRelTime = relativeTime;
     var w = menu.offsetWidth, h = menu.offsetHeight;
     menu.style.left = Math.max(8, Math.min(x, innerWidth - w - 8)) + 'px';
     menu.style.top = Math.max(8, Math.min(y, innerHeight - h - 8)) + 'px';
+    if (window.vpOpenFrom) window.vpOpenFrom(menu, null, { x: x, y: y });
     var first = $('button', menu); if (first) first.focus();
   }
   function closeMenu() { if (menu && !menu.hidden) { menu.hidden = true; var cur = $('[data-name][tabindex="0"]', list); if (cur) cur.focus({ preventScroll: true }); } }
@@ -1157,6 +1158,7 @@ window.vpRelTime = relativeTime;
   if (!btn || !panel) return;
   function open() {
     panel.hidden = false;
+    if (window.vpOpenFrom) window.vpOpenFrom(panel, btn);
     wrap.classList.add('is-open');
     btn.setAttribute('aria-expanded', 'true');
   }

@@ -200,6 +200,15 @@ iQEzBAEBCAAdFiEE
 	}
 }
 
+// The ids a conversation is grouped on come out of the summary, de-bracketed
+// and case-folded, so the console never has to guess from the subject.
+func TestTheSummaryCarriesThreadingEvidence(t *testing.T) {
+	h := summary(t, "From: a@x.test\nMessage-Id: <Again@X>\nIn-Reply-To: <mine@x>\nReferences: <orig@x> <MINE@x>\n\nbody\n")
+	if h.messageID != "again@x" || h.inReplyTo != "mine@x" || strings.Join(h.refs, " ") != "orig@x mine@x" {
+		t.Errorf("message id %q, in reply to %q, references %v", h.messageID, h.inReplyTo, h.refs)
+	}
+}
+
 // The listing carries the summary to its callers.
 func TestTheFolderListingCarriesThePreview(t *testing.T) {
 	t.Parallel()

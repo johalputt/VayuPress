@@ -477,6 +477,54 @@ test("the website previews a chosen design, and the theme's settings are tabs", 
   await expect(page.locator('[data-theme-tab="layout"]')).toBeFocused();
 });
 
+// Every menu opens from the control that opened it (Mail plan §8, item 9): its
+// transform-origin, once the entrance has played, lies on the trigger. One
+// shared function does it (vpOpenFrom), so a menu added later is tested by
+// being added here, not by being built again.
+test("every menu opens from the control that opened it", async ({ page }) => {
+  await openConsole(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const distance = (panel, trigger) => page.evaluate(async ([p, t]) => {
+    const panel = document.querySelector(p), trig = document.querySelector(t);
+    await Promise.all(panel.getAnimations().map((a) => a.finished));
+    const pr = panel.getBoundingClientRect(), tr = trig.getBoundingClientRect();
+    const [ox, oy] = getComputedStyle(panel).transformOrigin.split(" ").map(parseFloat);
+    const x = pr.left + ox, y = pr.top + oy;
+    return Math.hypot(Math.max(tr.left - x, 0, x - tr.right), Math.max(tr.top - y, 0, y - tr.bottom));
+  }, [panel, trigger]);
+  const menus = [
+    ["details.sa-sites > summary", "details.sa-sites .sa-pop__panel"],
+    ["details.sa-world > summary", "details.sa-world .sa-pop__panel"],
+    ["summary.sa-account__btn", "summary.sa-account__btn + .sa-pop__panel"],
+    ["[data-notif-toggle]", "[data-notif-panel]"],
+  ];
+  let checked = 0;
+  for (const [trigger, panel] of menus) {
+    if (!(await page.locator(trigger).count())) continue;
+    checked++;
+    await page.locator(trigger).click();
+    await expect(page.locator(panel)).toBeVisible();
+    expect(await distance(panel, trigger), panel + " opens away from " + trigger).toBeLessThanOrEqual(12);
+    await page.keyboard.press("Escape");
+    await page.mouse.click(700, 500);
+  }
+  expect(checked, "menus found to check").toBeGreaterThanOrEqual(3);
+});
+
+// Under reduced motion nothing moves: no keyframe animation runs anywhere in
+// the shell, and no transition is longer than a 90 ms fade (Mail plan §8).
+test("reduced motion moves nothing", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openConsole(page);
+  await page.locator("details.sa-world > summary, summary.sa-account__btn").first().click();
+  const moving = await page.evaluate(() => [...document.querySelectorAll(".vp-os *")].filter((e) => {
+    const cs = getComputedStyle(e);
+    const longest = Math.max(...cs.transitionDuration.split(",").map((d) => parseFloat(d) * (d.includes("ms") ? 1 : 1000)));
+    return (cs.animationName !== "none" && cs.display !== "none") || longest > 90;
+  }).map((e) => e.className && e.className.baseVal === undefined ? e.className : e.tagName).slice(0, 5));
+  expect(moving).toEqual([]);
+});
+
 // Every core control has the same nine states (plan §7, render 01). Each is
 // put on each control on a real console page, with the real stylesheet, and
 // judged by what that state must show, not only by looking different from

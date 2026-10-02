@@ -11,26 +11,98 @@
 
   // Split reading pane: highlight the row whose message is open in the pane.
   // Delegated on document so it keeps working after the list is swapped by HTMX.
+  // Opening a message leaves the list where it is (Mail plan §8, item 5): the
+  // row turns selected in place and its unread mark goes, and nothing else in
+  // the list moves. A refresh of the list (a reader action, the poll) marks the
+  // open message's row again.
+  var openHref = '';
+  function markOpen(row) {
+    document.querySelectorAll('[data-vm-row].vm-active').forEach(function (r) { r.classList.remove('vm-active'); });
+    if (row) { row.classList.add('vm-active'); row.classList.remove('is-unread'); }
+  }
   document.addEventListener('click', function (e) {
     var link = e.target && e.target.closest ? e.target.closest('[data-vm-open]') : null;
     if (!link) return;
-    document.querySelectorAll('tr.vm-active').forEach(function (r) { r.classList.remove('vm-active'); });
-    var row = link.closest('[data-vm-row]');
-    if (row) row.classList.add('vm-active');
+    openHref = link.getAttribute('href') || '';
+    markOpen(link.closest('[data-vm-row]'));
+  });
+  // The newest message is open when Mail opens (Mail plan, decision 3), but
+  // it is marked read only once it has been on screen for two seconds, the way
+  // Apple Mail's delay works: glancing past is not reading. Its row is the
+  // selected one meanwhile, and keeps its unread mark until then.
+  var peekTimer = null;
+  function csrfToken() { var m = document.cookie.match(/(?:^|; )vp_csrf=([^;]*)/); return m ? decodeURIComponent(m[1]) : ''; }
+  function settle() {
+    var pane = document.getElementById('vm-readpane');
+    var reader = pane && pane.querySelector('[data-mx-reader]');
+    if (peekTimer) { clearTimeout(peekTimer); peekTimer = null; }
+    if (!reader) return;
+    var href = reader.getAttribute('data-mx-href') || '';
+    if (href && !openHref) {
+      openHref = href;
+      var link = document.querySelector('#vm-inbox-list [data-vm-open][href="' + CSS.escape(href) + '"]');
+      if (link) { document.querySelectorAll('[data-vm-row].vm-active').forEach(function (r) { r.classList.remove('vm-active'); }); link.closest('[data-vm-row]').classList.add('vm-active'); }
+    }
+    var peek = reader.getAttribute('data-mx-peek');
+    if (!peek) return;
+    peekTimer = setTimeout(function () {
+      if (!document.body.contains(reader)) return;
+      var body = new URLSearchParams({ action: 'mark', mark: 'read', id: peek, user: reader.getAttribute('data-mx-user') || '', folder: reader.getAttribute('data-mx-folder') || '' });
+      fetch('/os/vayumail/inbox/action', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+        .then(function (r) {
+          if (!r.ok) return;
+          var link = document.querySelector('#vm-inbox-list [data-vm-open][href="' + CSS.escape(openHref) + '"]');
+          if (link) link.closest('[data-vm-row]').classList.remove('is-unread');
+        });
+    }, 2000);
+  }
+  // The reader's words arrive from the direction of travel (Mail plan §8,
+  // item 5): the older message comes up from below, the newer down from above.
+  var travel = '';
+  document.addEventListener('click', function (e) {
+    var t = e.target && e.target.closest ? e.target.closest('[data-mx-travel]') : null;
+    if (t) travel = t.getAttribute('data-mx-travel');
+  }, true);
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    if (!e.target || e.target.id !== 'vm-readpane') return;
+    var reader = e.target.querySelector('[data-mx-reader]');
+    if (reader && travel) reader.setAttribute('data-mx-from', travel);
+    travel = '';
+    settle();
+  });
+  settle();
+
+  // Each folder keeps its scroll position for the session: leaving one
+  // remembers where its list was, and coming back puts it there again.
+  var scrolls = {}, switching = false;
+  function listKey() {
+    var f = document.querySelector('#vm-inbox-list input[name="folder"][data-vm-scope]');
+    return (f ? f.value : '') + '|' + ((window.location.search.match(/[?&]view=([a-z]+)/) || [])[1] || '');
+  }
+  document.body.addEventListener('htmx:beforeRequest', function (e) {
+    var list = document.getElementById('vm-inbox-list');
+    if (!list || !e.target || !e.target.closest || !e.target.closest('#vm-folders')) return;
+    scrolls[listKey()] = list.scrollTop;
+    switching = true;
+  });
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    var list = document.getElementById('vm-inbox-list');
+    if (!list || e.target !== list) return;
+    if (switching) { switching = false; list.scrollTop = scrolls[listKey()] || 0; }
+    if (!openHref) return;
+    var links = list.querySelectorAll('[data-vm-open]');
+    for (var i = 0; i < links.length; i++) {
+      if (links[i].getAttribute('href') === openHref) { links[i].closest('[data-vm-row]').classList.add('vm-active'); break; }
+    }
   });
 
-  // When a message lands in the split reading pane, bring it into view. On
-  // narrow screens the pane renders above the list (CSS order:-1), so without
-  // this the viewport can stay parked mid-list and tapping a mail looks like
-  // nothing happened. Delegated on document so it survives HTMX swaps.
+  // A message that lands in the pane starts at its top. The pane is its own
+  // scroller; scrolling the reader into view would move the columns around it.
   document.addEventListener('htmx:afterSwap', function (e) {
     var pane = document.getElementById('vm-readpane');
     if (!pane || !e.target || e.target !== pane) return;
-    var reader = pane.querySelector('.vm-reader');
-    if (!reader) { pane.classList.remove('vm-readpane--full'); return; }
-    if (typeof reader.scrollIntoView === 'function') {
-      reader.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    pane.scrollTop = 0;
+    if (!pane.querySelector('.vm-reader')) pane.classList.remove('vm-readpane--full');
   });
 
   // Reading-pane comfort controls: expand toggles a full-screen overlay for
@@ -51,23 +123,6 @@
     if (e.key !== 'Escape') return;
     var pane = document.getElementById('vm-readpane');
     if (pane) pane.classList.remove('vm-readpane--full');
-  });
-
-  // Conversation threading: the count badge on a thread's newest message
-  // toggles its older (hidden) rows. Delegated, so it survives HTMX swaps.
-  document.addEventListener('click', function (e) {
-    var btn = e.target && e.target.closest ? e.target.closest('[data-vm-thread-toggle]') : null;
-    if (!btn) return;
-    e.preventDefault();
-    var key = btn.getAttribute('data-vm-thread-toggle');
-    var open = btn.classList.toggle('vm-thread-count--open');
-    // Match by comparing the attribute value directly instead of building a
-    // selector from a DOM-derived string: no selector injection is possible and
-    // nothing DOM-sourced is interpolated into a query.
-    document.querySelectorAll('[data-vm-thread]').forEach(function (r) {
-      if (r.getAttribute('data-vm-thread') !== key) return;
-      if (open) r.removeAttribute('hidden'); else r.setAttribute('hidden', '');
-    });
   });
 
   function cookie(name) {
@@ -1023,7 +1078,7 @@
   }
   // ── Mailbox list: selection (event-delegated, survives HTMX swaps) ───────────
   // Row and bulk actions are pure HTMX: they POST to /os/vayumail/inbox/action
-  // and swap #vm-inbox-body in place. This module only drives the selection
+  // and swap #vm-inbox-list in place. This module only drives the selection
   // affordance — the "N selected" count, the select-all box, and showing or
   // hiding the bulk bar. It listens on document so it keeps working after the
   // inbox fragment is swapped (the once-loaded script never re-runs).
@@ -1052,7 +1107,7 @@
     });
     // Each inbox swap replaces the rows (selection resets) — re-sync the bar.
     document.body.addEventListener('htmx:afterSwap', function (e) {
-      if (e.target && e.target.id === 'vm-inbox-body') sync();
+      if (e.target && e.target.id === 'vm-inbox-list') sync();
     });
     sync();
   })();
@@ -1168,15 +1223,33 @@
     }
 
     var focusIdx = -1;
-    function rows() { return Array.prototype.slice.call(document.querySelectorAll('#vm-inbox-body tbody tr.vm-row-item')); }
+    function rows() { return Array.prototype.slice.call(document.querySelectorAll('#vm-inbox-list .mx-row')); }
     function paint() {
       var rs = rows();
       rs.forEach(function (r, i) { if (i === focusIdx) r.classList.add('vm-focus'); else r.classList.remove('vm-focus'); });
       if (focusIdx >= 0 && rs[focusIdx]) rs[focusIdx].scrollIntoView({ block: 'nearest' });
     }
+    // Where j and k start: the open message while its row is on screen, else
+    // the first row on screen, so the first key never scrolls the list away
+    // from what is being looked at (the newest message opens on its own, and
+    // the list may since have been scrolled far past it).
+    function startIdx(rs) {
+      var list = document.getElementById('vm-inbox-list');
+      var box = list ? list.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+      var top = box.top + 110;
+      for (var i = 0; i < rs.length; i++) {
+        if (!rs[i].classList.contains('vm-active')) continue;
+        var r = rs[i].getBoundingClientRect();
+        if (r.top >= top && r.bottom <= box.bottom) return i;
+        break;
+      }
+      for (var k = 0; k < rs.length; k++) if (rs[k].getBoundingClientRect().top >= top) return k;
+      return 0;
+    }
     function move(delta) {
       var rs = rows(); if (!rs.length) return;
-      focusIdx = focusIdx < 0 ? 0 : focusIdx + delta;
+      if (focusIdx < 0) { focusIdx = startIdx(rs); if (rs[focusIdx].classList.contains('vm-active')) focusIdx += delta; }
+      else focusIdx += delta;
       if (focusIdx < 0) focusIdx = 0;
       if (focusIdx > rs.length - 1) focusIdx = rs.length - 1;
       paint();
@@ -1188,23 +1261,24 @@
       var cb = row.querySelector('[data-vm-check]');
       if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }
     }
-    function bulkDelete() {
-      var bar = document.querySelector('[data-vm-bulkbar]'); if (!bar) return;
-      var btns = bar.querySelectorAll('button[hx-vals]');
-      for (var i = 0; i < btns.length; i++) {
-        if ((btns[i].getAttribute('hx-vals') || '').indexOf('"delete"') >= 0) { btns[i].click(); return; }
-      }
-    }
     function bulkMove(folder) {
       var sel = document.querySelector('[data-vm-bulkbar] select[name="to"]');
       if (sel) { sel.value = folder; sel.dispatchEvent(new Event('change', { bubbles: true })); }
     }
+    // A row's actions are the bulk bar's, applied to the focused row alone.
+    function bulkVals(fragment) {
+      var bar = document.querySelector('[data-vm-bulkbar]'); if (!bar) return;
+      var btns = bar.querySelectorAll('button[hx-vals]');
+      for (var i = 0; i < btns.length; i++) {
+        if ((btns[i].getAttribute('hx-vals') || '').indexOf(fragment) >= 0) { btns[i].click(); return; }
+      }
+    }
     function inboxAction(kind) {
       var row = focusedRow(); if (!row) return;
-      if (kind === 'read') { clickIn(row, '.row-actions button'); return; }
-      if (kind === 'pin') { clickIn(row, 'button[title="Pin"]'); return; }
       selectFocused();
-      if (kind === 'delete') { bulkDelete(); return; }
+      if (kind === 'read') { bulkVals(row.classList.contains('is-unread') ? '"read"' : '"unread"'); return; }
+      if (kind === 'pin') { bulkVals('"pin"'); return; }
+      if (kind === 'delete') { bulkVals('"delete"'); return; }
       bulkMove(kind === 'archive' ? 'Archive' : 'Junk');
     }
 
@@ -1229,24 +1303,30 @@
         if (s) { e.preventDefault(); s.focus(); } else { window.location.href = '/os/vayumail/search'; }
         return;
       }
-      var reader = document.querySelector('[data-mail-actions]');
-      if (reader) {
+      var reader = document.querySelector('.mx-rtools');
+      // Beside the list, j and k walk the list (and open what they reach);
+      // the reader's own older/newer links are for the message page alone.
+      var beside = !!document.getElementById('vm-inbox-list');
+      if (reader && !(beside && (e.key === 'j' || e.key === 'k'))) {
         switch (e.key) {
-          case 'r': clickIn(reader, 'a[href*="reply=1"]'); return;
-          case 'f': clickIn(reader, 'a[href*="forward=1"]'); return;
-          case 'u': clickIn(reader, '[data-mail-mark="unread"]'); return;
-          case '#': clickIn(reader, '[data-mail-delete]'); return;
-          case 'e': { var ms = reader.querySelector('[data-mail-move-select]'); if (ms) { ms.value = 'Archive'; ms.dispatchEvent(new Event('change', { bubbles: true })); } return; }
-          case 'j': clickIn(document, '.vm-reader-nav a[title="Next message"]'); return;
-          case 'k': clickIn(document, '.vm-reader-nav a[title="Previous message"]'); return;
+          case 'r': clickIn(reader, '[aria-label="Reply"]'); return;
+          case 'a': clickIn(reader, '[aria-label="Reply all"]'); return;
+          case 'f': clickIn(reader, '[aria-label="Forward"]'); return;
+          case 'u': clickIn(reader, '[data-mail-mark="unread"], button[hx-vals*="unread"]'); return;
+          case '#': clickIn(reader, '[aria-label="Move to Trash"], [aria-label="Delete for good"]'); return;
+          case 'e': clickIn(reader, '[aria-label="Archive"]'); return;
+          case '!': clickIn(reader, '[aria-label="Junk"]'); return;
+          case 'p': clickIn(reader, '[aria-label="Pin"], [aria-label="Unpin"]'); return;
+          case 'j': clickIn(reader, '[aria-label="Older message"]'); return;
+          case 'k': clickIn(reader, '[aria-label="Newer message"]'); return;
         }
         return;
       }
-      if (document.getElementById('vm-inbox-body')) {
+      if (document.getElementById('vm-inbox-list')) {
         switch (e.key) {
-          case 'j': e.preventDefault(); move(1); return;
-          case 'k': e.preventDefault(); move(-1); return;
-          case 'o': case 'Enter': clickIn(focusedRow(), '.vm-subj a'); return;
+          case 'j': e.preventDefault(); travel = 'older'; move(1); clickIn(focusedRow(), '.mx-row__open'); return;
+          case 'k': e.preventDefault(); travel = 'newer'; move(-1); clickIn(focusedRow(), '.mx-row__open'); return;
+          case 'o': case 'Enter': clickIn(focusedRow(), '.mx-row__open'); return;
           case 'x': e.preventDefault(); selectFocused(); return;
           case 'u': inboxAction('read'); return;
           case 's': inboxAction('pin'); return;
@@ -1257,7 +1337,7 @@
       }
     });
     document.body.addEventListener('htmx:afterSwap', function (e) {
-      if (e.target && e.target.id === 'vm-inbox-body') focusIdx = -1;
+      if (e.target && e.target.id === 'vm-inbox-list') focusIdx = -1;
     });
   })();
 

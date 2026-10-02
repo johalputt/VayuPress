@@ -25,7 +25,7 @@ func TestTheFolderViewIsWindowed(t *testing.T) {
 	if !strings.Contains(src, "Load older") {
 		t.Error("a windowed list must offer the rest in one click — silently truncating is worse than rendering all of it")
 	}
-	if !strings.Contains(src, "Showing the newest ") {
+	if !strings.Contains(src, "The newest ") {
 		t.Error("the view must say how much is out of view")
 	}
 	// The window has to survive the poll and a fragment re-request, or the list

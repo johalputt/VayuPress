@@ -122,6 +122,7 @@ jobs:
         run: |
           mkdir -p tests/e2e/test-results
           cp /tmp/vayupress/server.log /tmp/vayupress/proxy.log tests/e2e/test-results/ 2>/dev/null || true
+          cp /tmp/vayumail/server.log tests/e2e/test-results/mail-server.log 2>/dev/null || true
 
       - name: Upload Playwright report
         if: always()

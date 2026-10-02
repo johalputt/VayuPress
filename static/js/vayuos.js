@@ -21,6 +21,31 @@
   }
   function say(msg, kind) { if (window.vpToast) window.vpToast(msg, kind); }
 
+  /* ── Menus open from their trigger (Mail plan §8, item 9) ────────────
+     One function for every popover in the console. When a panel opens it
+     measures the control that opened it (or the pointer, for a context menu)
+     and sets the panel's transform-origin at the nearest point of its own
+     box, then plays the entrance from there: the panel grows out of what was
+     pressed instead of from a corner fixed in CSS. Set through the CSSOM, so
+     the style policy admits it. */
+  function openFrom(panel, trigger, point) {
+    var at = point;
+    if (!at && trigger) {
+      var t = trigger.getBoundingClientRect();
+      at = { x: t.left + t.width / 2, y: t.top + t.height / 2 };
+    }
+    if (!panel || !at) return;
+    var r = panel.getBoundingClientRect();
+    var x = Math.min(Math.max(at.x - r.left, 0), r.width);
+    var y = Math.min(Math.max(at.y - r.top, 0), r.height);
+    panel.style.transformOrigin = Math.round(x) + 'px ' + Math.round(y) + 'px';
+    // The entrance began as the panel appeared; play it again from here.
+    panel.style.animation = 'none';
+    void panel.offsetWidth;
+    panel.style.animation = '';
+  }
+  window.vpOpenFrom = openFrom;
+
   /* ── Popovers (<details class="sa-pop">) ──────────────────────────────
      A details element opens and closes itself; what it lacks is closing when
      the pointer or focus goes elsewhere, Escape, and one-at-a-time. */
@@ -35,6 +60,7 @@
     d.addEventListener('toggle', function () {
       if (!d.open) return;
       closeAll(d);
+      openFrom(d.querySelector('.sa-pop__panel'), d.querySelector('summary'));
       // Opened from the keyboard: move into the menu so arrows work at once.
       if (d.dataset.kbd === '1') {
         var first = items(d)[0];

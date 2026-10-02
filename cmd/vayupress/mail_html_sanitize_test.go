@@ -89,8 +89,8 @@ func TestImageStrippingKeepsTheRestOfTheMessageIntact(t *testing.T) {
 // TestMailReaderOffersTheViewToggle — the feature is discoverable, and the
 // default stays plain text.
 func TestMailReaderOffersTheViewToggle(t *testing.T) {
-	src := withoutComments(readFileString(t, "vayuos.go"))
-	for _, want := range []string{"Render HTML view", "Show plain text", "Load images", "vm-html-toggle"} {
+	src := withoutComments(readFileString(t, "vayuos_mail_reader.go"))
+	for _, want := range []string{"Show as the sender styled it", "Show as plain text", "Load images"} {
 		if !strings.Contains(src, want) {
 			t.Errorf("the reader is missing %q", want)
 		}

@@ -414,7 +414,8 @@ func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText st
 		return m.Email, "", "", "Re: your message",
 			"\r\n\r\n" + quoteBody(m.Name+" <"+m.Email+">", config.FormatSite(m.Created, "2 Jan 2006"), m.Message)
 	}
-	reply := q.Get("reply") != ""
+	replyAll := q.Get("replyall") != ""
+	reply := q.Get("reply") != "" || replyAll
 	forward := q.Get("forward") != ""
 	if !reply && !forward {
 		return q.Get("to"), "", "", q.Get("subject"), q.Get("body")
@@ -435,6 +436,10 @@ func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText st
 	}
 	origFrom, origSubject, origBody, origDate := parseForQuote(raw)
 	quoted := quoteBody(origFrom, origDate, origBody)
+	if replyAll {
+		to, cc := mailReplyAll(raw, mailAddrOf(user, a.cfgDomain()))
+		return to, cc, "", ensurePrefix(origSubject, "Re: "), "\r\n\r\n" + quoted
+	}
 	if reply {
 		return origFrom, "", "", ensurePrefix(origSubject, "Re: "), "\r\n\r\n" + quoted
 	}
@@ -445,6 +450,35 @@ func (a *App) composePrefill(r *http.Request) (to, cc, bcc, subject, bodyText st
 // parseForQuote extracts From, Subject, Date and a plain-text body from a raw
 // message. The date is carried so the reply attribution can be dated the way
 // every other mail client dates it.
+// mailReplyAll is who a reply to everyone goes to: the sender and everyone
+// it was sent to, then everyone copied, each once, and never the mailbox
+// answering (own).
+func mailReplyAll(raw []byte, own string) (to, cc string) {
+	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		return "", ""
+	}
+	seen := map[string]bool{strings.ToLower(own): true}
+	pick := func(fields ...string) string {
+		var out []string
+		for _, f := range fields {
+			list, err := netmail.ParseAddressList(msg.Header.Get(f))
+			if err != nil {
+				continue
+			}
+			for _, a := range list {
+				if k := strings.ToLower(a.Address); !seen[k] {
+					seen[k] = true
+					out = append(out, a.String())
+				}
+			}
+		}
+		return strings.Join(out, ", ")
+	}
+	to = pick("From", "To")
+	return to, pick("Cc")
+}
+
 func parseForQuote(raw []byte) (from, subject, bodyText, date string) {
 	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {

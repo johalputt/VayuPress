@@ -172,6 +172,20 @@ func (e *Engine) ReadFolderMessage(rd Reader, folder, id string) ([]byte, error)
 	return raw, nil
 }
 
+// ReadFolderMessageStored is ReadFolderMessage without the decrypt hook: the
+// message as it was delivered. The reader's seal needs it, because decrypting
+// for display drops the signature that says who sent it.
+func (e *Engine) ReadFolderMessageStored(rd Reader, folder, id string) ([]byte, error) {
+	if err := e.readAuthorised(rd); err != nil {
+		return nil, err
+	}
+	if e.maildir == nil {
+		return nil, errors.New("vayumail: not started")
+	}
+	dom, local := e.mailboxKey(rd.Key())
+	return e.maildir.ReadRawFolder(dom, local, folder, id)
+}
+
 // Search runs a bounded, fully-local full-text search across an account's
 // folders (no external index).
 func (e *Engine) Search(rd Reader, q string, limit int) ([]SearchResult, error) {

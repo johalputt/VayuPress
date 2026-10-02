@@ -92,11 +92,16 @@ func TestConsoleStylesheetIsServedMinified(t *testing.T) {
 // states, the bell's groups, the command bar's preview and the site switcher,
 // with 43 dead rules removed on the way. Raised to 320,000 on 2026-09-25 for
 // that work. Raised to 330,000 on 2026-09-26 for the Outside services page,
-// with room for what the release still adds. A budget is discipline, not a
+// with room for what the release still adds. Raised to 350,000 on 2026-10-02
+// for the Mail redesign (Mail plan, fidelity step 8): three columns, the list's
+// rows and groups, the sidebar and the selection colours, 332,200 bytes after
+// 61 dead .vm-* rules went, with room for the reader, the switcher, compose and
+// Mail's motion still to come. Above 335,629 the budget no longer notices the
+// classic sheet's decoration coming back, as it used to; nothing else does
+// either, so that one is now a matter of review. A budget is discipline, not a
 // limit: raise it on purpose, in this line, when a requirement needs it —
-// never cut a feature to stay under it. The classic sheet's decoration
-// (335,629 bytes with it) still could not come back unnoticed.
-const consoleCSSBudget = 330_000
+// never cut a feature to stay under it.
+const consoleCSSBudget = 350_000
 
 func TestConsoleStylesheetFitsItsBudget(t *testing.T) {
 	src, err := os.ReadFile("../../static/css/vayuos.css") // #nosec G304 -- repository file

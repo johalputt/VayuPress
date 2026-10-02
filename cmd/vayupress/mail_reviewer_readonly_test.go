@@ -66,7 +66,7 @@ func TestAReviewerIsNotOfferedWhatWouldBeRefused(t *testing.T) {
 		rd := a.mailReader(withUser(httptest.NewRequest(http.MethodGet, "/os/vayumail/inbox", nil), holder), "")
 
 		// The list's toolbar and bulk bar.
-		inbox := a.vayuInboxBody(rd, "Inbox", 0)
+		inbox, _ := a.vayuInboxBody(rd, "Inbox", "", 0)
 		for _, control := range []string{`/os/vayumail/compose?user=`, `{"action":"delete"}`, `{"action":"move"}`} {
 			if strings.Contains(inbox, control) == readOnly {
 				t.Errorf("inbox as %s: offers %s = %v", role, control, !readOnly)
@@ -74,8 +74,8 @@ func TestAReviewerIsNotOfferedWhatWouldBeRefused(t *testing.T) {
 		}
 		// The reader, both as a pane and as its own page.
 		for _, pane := range []bool{true, false} {
-			card, _ := a.vayuReaderCard(rd, "Inbox", id, pane, false, false)
-			for _, control := range []string{`compose?reply=1`, `compose?forward=1`, ` Delete</button>`, ` Trash</button>`} {
+			card, _ := a.vayuReaderCard(rd, "Inbox", id, readerView{Pane: pane})
+			for _, control := range []string{`compose?reply=1`, `compose?forward=1`, `aria-label="Move to Trash"`, `>Delete for good<`} {
 				if strings.Contains(card, control) == readOnly {
 					t.Errorf("reader (pane=%v) as %s: offers %s = %v", pane, role, control, !readOnly)
 				}

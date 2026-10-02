@@ -94,6 +94,22 @@ func TestMailWithNoIDsStillGroupsBySubject(t *testing.T) {
 	}
 }
 
+// TestAConversationWhoseMiddleIsInSentStaysWhole is the commonest conversation:
+// they write, I reply (filed in Sent, so not in this listing), they reply. Their
+// reply answers mine, which is absent, but its References name the original.
+func TestAConversationWhoseMiddleIsInSentStaysWhole(t *testing.T) {
+	theirs := vmail.StoredMessage{ID: "1", MessageID: "orig@x", Subject: "Saturday"}
+	again := vmail.StoredMessage{ID: "2", MessageID: "again@x", InReplyTo: "mine@x", References: []string{"orig@x", "mine@x"}, Subject: "Re: Saturday"}
+	key := mailThreadKeyer([]vmail.StoredMessage{again, theirs})
+	if key(theirs) != key(again) {
+		t.Errorf("a reply to my reply must join the original: %q vs %q", key(theirs), key(again))
+	}
+	// And the key does not depend on the order the folder was listed in.
+	if key2 := mailThreadKeyer([]vmail.StoredMessage{theirs, again}); key2(again) != key(again) {
+		t.Errorf("the key changed with the listing order: %q vs %q", key2(again), key(again))
+	}
+}
+
 // TestAMalformedReferenceLoopTerminates guards the bounded walk.
 func TestAMalformedReferenceLoopTerminates(t *testing.T) {
 	a := vmail.StoredMessage{ID: "1", MessageID: "a@x", InReplyTo: "b@x", Subject: "Loop"}
@@ -114,11 +130,8 @@ func TestTheEngineExposesThreadingEvidence(t *testing.T) {
 			t.Errorf("StoredMessage is missing %s", want)
 		}
 	}
-	for _, want := range []string{`Get("Message-Id")`, `Get("In-Reply-To")`, `Get("References")`} {
-		if !strings.Contains(md, want) {
-			t.Errorf("the header cache does not read %s", want)
-		}
-	}
+	// That the header cache reads them is tested by what it returns, in the
+	// mail package (TestTheSummaryCarriesThreadingEvidence).
 	if !strings.Contains(md, "func cleanMessageID(") {
 		t.Error("ids must be normalised (brackets stripped, case folded) before comparison")
 	}
