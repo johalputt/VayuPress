@@ -28,6 +28,7 @@ var icons = map[string]string{
 	"check":     `<path d="m4.5 10.3 3.6 3.6 7.4-7.6"/>`,
 	"check-c":   `<circle cx="10" cy="10" r="7.2"/><path d="m6.9 10.2 2.2 2.2 4.1-4.4"/>`,
 	"chev-d":    `<path d="m6 8 4 4 4-4"/>`,
+	"chev-l":    `<path d="m12 6-4 4 4 4"/>`,
 	"chev-r":    `<path d="m8 6 4 4-4 4"/>`,
 	"chev-u":    `<path d="m6 12 4-4 4 4"/>`,
 	"chev-ud":   `<path d="m7 8 3-3 3 3M7 12l3 3 3-3"/>`,

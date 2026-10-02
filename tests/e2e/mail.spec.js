@@ -39,6 +39,18 @@ async function openInbox(page, path = inbox) {
   await expect(page.locator("#vm-inbox-list .mx-row").first()).toBeVisible();
 }
 
+// The newest message as the next test needs it, unread, whatever the tests
+// before it did: each one leaves the shared mailbox as it found it or not.
+async function newestUnread(page, path = inbox) {
+  await openInbox(page, path);
+  const id = await page.locator("#vm-readpane [data-mx-reader]").evaluate((r) => new URL(r.getAttribute("data-mx-href"), location.href).searchParams.get("id"));
+  const csrf = (await page.context().cookies()).find((c) => c.name === "vp_csrf");
+  await page.request.post("/os/vayumail/inbox/action", {
+    headers: { "X-CSRF-Token": csrf ? decodeURIComponent(csrf.value) : "" },
+    form: { action: "mark", mark: "unread", user: "ankush", folder: "Inbox", id },
+  });
+}
+
 // The list is rows under date groups, pinned first; a conversation is one row
 // with its size; each row says what the message is before it is opened.
 test("the list is grouped rows with previews and marks", async ({ page }) => {
@@ -120,6 +132,7 @@ test("no address is clipped", async ({ page }) => {
 // The newest message is open when Mail opens, and is marked read only after
 // two seconds on screen (Mail plan, decision 3).
 test("the newest message is open, and read after two seconds", async ({ page }) => {
+  await newestUnread(page);
   await openInbox(page);
   const reader = page.locator("#vm-readpane [data-mx-reader]");
   await expect(reader.locator(".mx-subject")).toHaveText("Re: the migration window on Saturday");
@@ -235,7 +248,7 @@ test("the mailbox switcher opens from the account and switches", async ({ page }
 test("reply opens the compose sheet over the reader", async ({ page }) => {
   await openInbox(page);
   await page.locator("body").click({ position: { x: 5, y: 5 } });
-  const reply = page.locator('#vm-readpane [aria-label="Reply"]');
+  const reply = page.locator('#vm-readpane .mx-rtools [aria-label="Reply"]');
   await reply.click();
   const sheet = page.locator("[data-mx-compose-host] .mx-compose");
   await expect(sheet.locator("[data-c-title]")).toHaveText("Re: the migration window on Saturday");
@@ -244,7 +257,7 @@ test("reply opens the compose sheet over the reader", async ({ page }) => {
   await expect(sheet.locator(".mx-quoted > summary")).toHaveText("Show the quoted message");
   await expect(sheet.locator("[data-c-from]")).toHaveValue("ankush@mail.test");
   const origin = await page.evaluate(async () => {
-    const panel = document.querySelector("[data-mx-compose-host] .mx-compose"), trig = document.querySelector('#vm-readpane [aria-label="Reply"]');
+    const panel = document.querySelector("[data-mx-compose-host] .mx-compose"), trig = document.querySelector('#vm-readpane .mx-rtools [aria-label="Reply"]');
     // The shell restarts the entrance from the control as the menu opens, which
     // cancels the one already running: wait until none is left running.
     for (let i = 0; i < 3 && panel.getAnimations().length; i++) await Promise.all(panel.getAnimations().map((a) => a.finished.catch(() => {})));
@@ -429,7 +442,11 @@ test("the mail keys go to folders and open the menus", async ({ page }) => {
 // message's actions, run as the toolbar runs them.
 test("the command bar runs the open message's actions", async ({ page }) => {
   await openInbox(page);
-  const subject = (await page.locator("#vm-readpane .mx-subject").textContent()).trim();
+  // An older message, not the newest the other tests read.
+  await page.locator("#vm-inbox-list .mx-row__open", { hasText: "Invoice #2026-091" }).click();
+  await expect(page.locator("#vm-readpane .mx-subject")).toHaveText("Invoice #2026-091");
+  const subject = "Invoice #2026-091";
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
   await page.keyboard.press("Control+k");
   // Only what is on screen and in use: the selection's own controls are not
   // offered while nothing is selected.
@@ -453,14 +470,15 @@ test("search rises into the header and gives the list back", async ({ page }) =>
   await expect(list).toHaveClass(/is-searching/);
   await expect.poll(() => list.locator(".mx-head__main").evaluate((e) => getComputedStyle(e).opacity)).toBe("0");
   await expect(page.locator(".mx-scope")).toBeVisible();
-  await page.keyboard.type("the");
+  await page.keyboard.type("bucket");
   const results = page.locator("#vm-search-results");
-  await expect(results.locator(".mx-results__count")).toContainText("for “the”");
+  await expect(results.locator(".mx-results__count")).toContainText("for “bucket”");
   await expect(results.locator(".mx-row", { hasText: "Keys for the backup bucket" })).toHaveCount(1);
   await expect(list.locator("> .mx-list")).toBeHidden();
   await page.locator(".mx-scope__opt", { hasText: "Has attachments" }).click();
   await expect(results.locator(".mx-row", { hasText: "Keys for the backup bucket" })).toHaveCount(0);
-  await expect(results.locator(".mx-row", { hasText: "Re: the migration window on Saturday" })).toHaveCount(1);
+  await page.locator(".mx-search__input").fill("runbook");
+  await expect(results.locator(".mx-row", { hasText: "migration window" }).first()).toBeVisible();
   await page.locator(".mx-search__input").press("Escape");
   await expect(list).not.toHaveClass(/is-searching/);
   await expect(results).toBeEmpty();
@@ -488,4 +506,74 @@ test("an attachment downloads with its ring, and a new one slides in", async ({ 
   await page.keyboard.press("c");
   await page.locator("[data-mx-compose-host] [data-c-files]").setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("notes") });
   await expect(page.locator("[data-mx-compose-host] .vm-attach-chip").last()).toHaveClass(/is-new/);
+});
+
+// On a phone Mail is three screens (Mail plan §7, render 05; motion §8 item
+// 6): the list first, the mailboxes above it, a message pushed over it with
+// its own bar where the tab bar was. The newest message, not on screen, is
+// not read; back is the phone's own back, and lands where the list was.
+test("on a phone, Mail is screens pushed and popped", async ({ page }) => {
+  await newestUnread(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(inbox);
+  const body = page.locator("body");
+  await expect(body).toHaveAttribute("data-mx-screen", "list");
+  await expect(page.locator("#vm-readpane")).toBeHidden();
+  const newest = page.locator("#vm-inbox-list .mx-row.vm-active");
+  await page.waitForTimeout(2600);
+  await expect(newest, "the newest message was marked read without being shown").toHaveClass(/is-unread/);
+
+  await page.locator(".mx-back--boxes").click();
+  await expect(body).toHaveAttribute("data-mx-screen", "boxes");
+  await expect(page.locator(".mx-boxes__title")).toBeVisible();
+  // The folder swaps its list in over htmx. Network idle comes before the
+  // swap settles, and a scroll set in between is lost under the new rows.
+  const settled = page.evaluate(() => new Promise((done) => {
+    document.body.addEventListener("htmx:afterSettle", function f(e) {
+      if (e.detail.target && e.detail.target.id === "vm-inbox-list") { document.body.removeEventListener("htmx:afterSettle", f); done(); }
+    });
+  }));
+  await page.locator("#vm-folders a", { hasText: "Inbox" }).click();
+  await expect(body).toHaveAttribute("data-mx-screen", "list");
+  await settled;
+
+  const list = page.locator("#vm-inbox-list");
+  // As far as 300px goes: earlier tests take messages out of the Inbox, so
+  // the list may end sooner, and back is held to where it actually was.
+  const was = await list.evaluate((e) => { e.scrollTop = 300; return e.scrollTop; });
+  expect(was, "the list is too short to scroll").toBeGreaterThan(100);
+  await expect(list).toHaveClass(/is-scrolled/);
+  await page.evaluate(() => {
+    window.__moves = [];
+    new MutationObserver(() => { const m = document.body.getAttribute("data-mx-move"); if (m) window.__moves.push(m); }).observe(document.body, { attributes: true });
+  });
+  // A row in view where the list stands: one above it would be scrolled to
+  // by the click itself. Where the list was is read as the row is opened.
+  const inView = await list.evaluate((l) => {
+    const top = l.getBoundingClientRect().top + 120, rows = [...l.querySelectorAll(".mx-row__open")];
+    l.addEventListener("click", () => { window.__openedAt = l.scrollTop; }, { capture: true, once: true });
+    return rows.findIndex((r) => r.getBoundingClientRect().top > top);
+  });
+  // The folder's swap plays a view transition, and until it ends a tap lands
+  // on its overlay, not on the row: wait until the row is what a tap finds.
+  const row = list.locator(".mx-row__open").nth(inView);
+  await expect.poll(() => row.evaluate((r) => {
+    const b = r.getBoundingClientRect();
+    return r.contains(document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2));
+  })).toBe(true);
+  const depth = await page.evaluate(() => history.length);
+  await row.click();
+  await expect(body).toHaveAttribute("data-mx-screen", "message");
+  expect(await page.evaluate(() => history.length), "opening a message was not a history entry").toBe(depth + 1);
+  await expect(page.locator("#vm-readpane .mx-phonebar")).toBeVisible();
+  await expect.poll(() => page.locator(".sa-tabbar").evaluate((e) => getComputedStyle(e).transform)).not.toBe("none");
+  const read = list.locator(".mx-row.vm-active");
+  await read.evaluate((r) => { window.__tint = false; new MutationObserver(() => { if (r.classList.contains("is-just-read")) window.__tint = true; }).observe(r, { attributes: true }); });
+  await page.goBack();
+  await expect(body).toHaveAttribute("data-mx-screen", "list");
+  await expect(page).toHaveURL(/\/os\/vayumail\/inbox/);
+  expect(await page.evaluate(() => window.__openedAt), "the click moved the list before opening").toBe(was);
+  expect(await list.evaluate((e) => e.scrollTop), "back did not land where the list was").toBe(was);
+  expect(await page.evaluate(() => window.__tint), "the row just read was not tinted").toBe(true);
+  expect(await page.evaluate(() => window.__moves), "the screens did not push and pop").toEqual(["push", "pop"]);
 });

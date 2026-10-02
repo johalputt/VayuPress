@@ -363,6 +363,8 @@ func saMailSide(m *osMailSide, more string) string {
 	// For an administrator the account block opens the mailbox switcher (Mail
 	// plan §4), whose list is read when it opens (handleVayuOSMailSwitcher);
 	// for anyone else it is not a control, because there is nowhere else to go.
+	// The phone's Mailboxes screen is this sidebar, under its own title.
+	b.WriteString(`<h2 class="mx-boxes__title">Mailboxes</h2>`)
 	who := `<span class="mx-account__who">`
 	if m.Name != "" {
 		who += `<span class="mx-account__name">` + esc(m.Name) + `</span>`

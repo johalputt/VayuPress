@@ -44,7 +44,9 @@
       if (link) { document.querySelectorAll('[data-vm-row].vm-active').forEach(function (r) { r.classList.remove('vm-active'); }); link.closest('[data-vm-row]').classList.add('vm-active'); }
     }
     var peek = reader.getAttribute('data-mx-peek');
-    if (!peek) return;
+    // Only a message on screen is being read: narrower than three columns
+    // the list comes first and the newest message waits, unread, behind it.
+    if (!peek || !reader.getClientRects().length) return;
     peekTimer = setTimeout(function () {
       if (!document.body.contains(reader)) return;
       var body = new URLSearchParams({ action: 'mark', mark: 'read', id: peek, user: reader.getAttribute('data-mx-user') || '', folder: reader.getAttribute('data-mx-folder') || '' });
@@ -202,6 +204,82 @@
       });
     }).catch(fallBack);
   });
+
+  // ── Narrower than three columns: screens (Mail plan §7, render 05) ─────────
+  // The list comes first and a message is pushed over it; on a phone the
+  // mailboxes are a screen above the list. <body data-mx-screen> says which
+  // is showing; data-mx-move and data-mx-from let the stylesheet play the
+  // push or the pop between them (§8, item 6). Opening a message is a history
+  // entry, so a phone's own back gesture comes back to the list.
+  (function () {
+    var split = document.querySelector('.vm-split');
+    if (!split) return;
+    var narrow = window.matchMedia('(max-width: 1099px)');
+    var body = document.body, pushed = false, moveTimer = null;
+    var list = document.getElementById('vm-inbox-list');
+    function at() { return body.getAttribute('data-mx-screen'); }
+    function move(to, dir) {
+      var from = at();
+      if (from === to) return;
+      body.setAttribute('data-mx-from', from);
+      body.setAttribute('data-mx-move', dir);
+      body.setAttribute('data-mx-screen', to);
+      clearTimeout(moveTimer);
+      moveTimer = setTimeout(function () { body.removeAttribute('data-mx-move'); body.removeAttribute('data-mx-from'); }, 280);
+      if (to === 'list' && from === 'message') {
+        // Back on the list where it was, the row just read tinted a moment.
+        var row = document.querySelector('#vm-inbox-list .mx-row.vm-active');
+        if (row) { row.classList.add('is-just-read'); setTimeout(function () { row.classList.remove('is-just-read'); }, 900); }
+      }
+    }
+    body.setAttribute('data-mx-screen', 'list');
+    function toList() {
+      if (at() !== 'message') return;
+      if (pushed) { history.back(); return; }
+      move('list', 'pop');
+    }
+    // In the capture phase, so it runs before htmx's own listener: the entry
+    // under a message is often one htmx pushed for a folder, and htmx would
+    // restore it by fetching the page again, throwing away the list's scroll.
+    // Popping a message is this page's own move, so htmx is not asked.
+    window.addEventListener('popstate', function (e) {
+      if (e.state && e.state.mx === 'message') { if (narrow.matches) { pushed = true; move('message', 'push'); } return; }
+      pushed = false;
+      if (at() !== 'message') return;
+      e.stopImmediatePropagation();
+      move('list', 'pop');
+    }, true);
+    document.body.addEventListener('htmx:afterSwap', function (e) {
+      if (!e.target || e.target.id !== 'vm-readpane' || !narrow.matches) return;
+      if (e.target.querySelector('.vm-reader')) {
+        if (at() !== 'message') { move('message', 'push'); history.pushState({ mx: 'message' }, ''); pushed = true; }
+      } else {
+        toList(); // an action took the message out of view
+      }
+    });
+    document.addEventListener('click', function (e) {
+      var t = e.target && e.target.closest ? e.target : null;
+      if (!t) return;
+      var go = t.closest('[data-mx-go]');
+      if (go) {
+        e.preventDefault();
+        if (go.getAttribute('data-mx-go') === 'boxes') move('boxes', 'pop'); else toList();
+        return;
+      }
+      // From the mailboxes screen, a folder or view goes on to its list.
+      if (at() === 'boxes' && t.closest('#vm-folders a, .mx-switch__row')) move('list', 'push');
+      var menu = t.closest('[data-mx-menu]');
+      if (menu) {
+        var label = menu.getAttribute('data-mx-menu');
+        var sums = document.querySelectorAll('#vm-readpane .mx-rtools details.sa-pop > summary');
+        for (var i = 0; i < sums.length; i++) if (sums[i].getAttribute('aria-label') === label) { sums[i].parentNode.open = true; break; }
+      }
+    });
+    // The list's large title shrinks into the bar as the list scrolls.
+    if (list) {
+      list.addEventListener('scroll', function () { list.classList.toggle('is-scrolled', list.scrollTop > 24); }, { passive: true });
+    }
+  })();
 
   // Each folder keeps its scroll position for the session: leaving one
   // remembers where its list was, and coming back puts it there again.

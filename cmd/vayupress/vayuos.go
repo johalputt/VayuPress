@@ -2087,7 +2087,9 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 	}
 	// The header has two layers: the folder, and the selection (Mail plan §7,
 	// render 04). Selecting crossfades one into the other in place (§8 item 2).
-	b.WriteString(`<header class="mx-head"><div class="mx-head__main"><h2 class="mx-head__title">` + title + `</h2>`)
+	// On a phone the list is one screen of three (Mail plan §7, render 05):
+	// its back goes up to the mailboxes. Shown at phone width alone.
+	b.WriteString(`<header class="mx-head"><div class="mx-head__main"><button type="button" class="mx-back mx-back--boxes" data-mx-go="boxes">` + saIcon("chev-l") + `Mailboxes</button><h2 class="mx-head__title">` + title + `</h2>`)
 	switch {
 	case readOnly:
 		b.WriteString(`<span class="mx-head__note">Read only</span>`)
@@ -2187,7 +2189,7 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 	if len(msgs) == 0 {
 		switch {
 		case view != "":
-			b.WriteString(`<p class="mx-empty">Nothing in ` + esc(folder) + ` is ` + view + `.</p>`)
+			b.WriteString(`<p class="mx-empty">Nothing in ` + esc(folder) + ` is ` + esc(view) + `.</p>`)
 		case strings.EqualFold(folder, "Inbox"):
 			// First run: the two things a new mailbox holder needs next.
 			next := "Write one, or connect a mail app so you can use this mailbox from your phone."

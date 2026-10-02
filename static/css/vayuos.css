@@ -7225,3 +7225,79 @@
   .vp-os[data-ui="still-air"] .mx-compose__label { width: 52px; }
 }
 @keyframes mx-sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+
+/* Narrower than three columns, Mail is screens (Mail plan §7, render 05):
+   the list first, a message pushed over it, and on a phone the mailboxes
+   above the list. admin-os-mail.js sets <body data-mx-screen>, and for the
+   length of a move data-mx-move (push or pop) and data-mx-from. A push slides
+   the new screen in from the right while the old moves a third of the way
+   left and dims; a pop plays it back (§8, item 6). */
+.vp-os[data-ui="still-air"] .mx-back,
+.vp-os[data-ui="still-air"] .mx-boxes__title,
+.vp-os[data-ui="still-air"] .mx-phonebar { display: none; }
+.vp-os[data-ui="still-air"] .mx-back {
+  align-items: center; gap: 2px; padding: var(--space-2) var(--space-2) var(--space-2) 0; border: 0; background: none;
+  color: var(--accent); font: var(--type-body); cursor: pointer;
+}
+@keyframes mx-push-in { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes mx-push-under { to { transform: translateX(-33%); opacity: 0.7; } }
+@keyframes mx-pop-out { to { transform: translateX(100%); } }
+@keyframes mx-pop-under { from { transform: translateX(-33%); opacity: 0.7; } to { transform: none; opacity: 1; } }
+@media (max-width: 1099px) {
+  .vp-os[data-ui="still-air"] .mx-rtools .mx-back { display: inline-flex; }
+  .vp-os[data-ui="still-air"]:not([data-mx-screen="message"]):not([data-mx-from="message"]) .vm-split > .vm-readpane { display: none; }
+  .vp-os[data-ui="still-air"]:is([data-mx-screen="message"], [data-mx-from="message"]) .vm-split > .vm-readpane {
+    display: block; position: absolute; inset: 0; z-index: 2; background: var(--surface-1);
+  }
+  .vp-os[data-ui="still-air"][data-mx-move="push"][data-mx-screen="message"] .vm-split > .vm-readpane { animation: mx-push-in var(--duration-major) var(--ease-move); }
+  .vp-os[data-ui="still-air"][data-mx-move="push"][data-mx-screen="message"] .vm-split > .vm-inbox-list { animation: mx-push-under var(--duration-major) var(--ease-move) forwards; }
+  .vp-os[data-ui="still-air"][data-mx-move="pop"][data-mx-from="message"] .vm-split > .vm-readpane { animation: mx-pop-out var(--duration-major) var(--ease-move) forwards; }
+  .vp-os[data-ui="still-air"][data-mx-move="pop"][data-mx-from="message"] .vm-split > .vm-inbox-list { animation: mx-pop-under var(--duration-major) var(--ease-move); }
+  /* One screen at a time: the open message is not marked in the list. Back
+     from it, its row is tinted a moment, so the eye lands where it left. */
+  .vp-os[data-ui="still-air"] .mx-row.vm-active { background: none; }
+  .vp-os[data-ui="still-air"] .mx-row.vm-active :is(.mx-row__who, .mx-row__subj-text) { color: var(--text-1); }
+  .vp-os[data-ui="still-air"] .mx-row.vm-active :is(.mx-row__time, .mx-row__pv, .mx-row__marks) { color: var(--text-3); }
+  .vp-os[data-ui="still-air"] .mx-row.vm-active .mx-thread { color: var(--text-2); background: var(--surface-press); }
+  .vp-os[data-ui="still-air"] .mx-row.vm-active .mx-row__dot { background: var(--accent); }
+  .vp-os[data-ui="still-air"] .mx-row { transition: background-color var(--duration-major) var(--ease-move); }
+  .vp-os[data-ui="still-air"] .mx-row.is-just-read { background: var(--accent-soft); }
+}
+@media (max-width: 768px) {
+  .vp-os[data-ui="still-air"] .sa-main:has(.vm-split) { position: relative; }
+  /* The mailboxes: Mail's sidebar, as the screen above the list. */
+  .vp-os[data-ui="still-air"] .sa-appside:has(.mx-account) { display: none; }
+  .vp-os[data-ui="still-air"]:is([data-mx-screen="boxes"], [data-mx-from="boxes"]) .sa-appside:has(.mx-account) {
+    display: flex; flex-direction: column; position: absolute; inset: 0; z-index: 3; overflow-x: hidden; overflow-y: auto;
+    gap: 1px; padding: var(--space-5) var(--space-4) 96px; border: 0; background: var(--color-canvas);
+  }
+  .vp-os[data-ui="still-air"] .sa-appside:has(.mx-account) :is(.sa-appside__group, .sa-appside__item .sa-ico) { display: revert; }
+  .vp-os[data-ui="still-air"] .sa-appside:has(.mx-account) .sa-appside__item { height: 46px; padding: 0 var(--space-4); }
+  .vp-os[data-ui="still-air"] .mx-boxes__title { display: block; margin: var(--space-6) var(--space-2) var(--space-4); font: 700 30px/36px var(--font-ui); letter-spacing: -0.01em; color: var(--text-1); }
+  .vp-os[data-ui="still-air"][data-mx-move="pop"][data-mx-screen="boxes"] .sa-appside:has(.mx-account) { animation: mx-pop-under var(--duration-major) var(--ease-move); }
+  .vp-os[data-ui="still-air"][data-mx-move="push"][data-mx-from="boxes"] .sa-appside:has(.mx-account) { animation: mx-push-under var(--duration-major) var(--ease-move) forwards; }
+  .vp-os[data-ui="still-air"][data-mx-move="push"][data-mx-from="boxes"] .vm-split > .vm-inbox-list { animation: mx-push-in var(--duration-major) var(--ease-move); }
+  /* The list: back up to the mailboxes, and a large title that shrinks into
+     the bar as the list scrolls. */
+  .vp-os[data-ui="still-air"] .mx-back--boxes { display: inline-flex; }
+  .vp-os[data-ui="still-air"] .mx-head__main { flex-wrap: wrap; }
+  .vp-os[data-ui="still-air"] .mx-head__main .mx-back { flex-basis: 100%; }
+  .vp-os[data-ui="still-air"] .mx-head__main .mx-head__title { font-size: 30px; line-height: 36px; transform-origin: left center; transition: transform var(--duration-standard) var(--ease-move); }
+  .vp-os[data-ui="still-air"] .is-scrolled .mx-head__main .mx-head__title { transform: scale(0.62); }
+  /* A message hides the tab bar, which slides away, and has its own bar. */
+  .vp-os[data-ui="still-air"] .sa-tabbar { transition: transform var(--duration-major) var(--ease-move); }
+  .vp-os[data-ui="still-air"][data-mx-screen="message"] .sa-tabbar { transform: translateY(100%); }
+  .vp-os[data-ui="still-air"] .mx-rtools > .mx-rtools__group > :not(.mx-back):not([data-mx-travel]),
+  .vp-os[data-ui="still-air"] .mx-rtools :is(.mx-rtools__sep, .mx-rtools__pos) { display: none; }
+  .vp-os[data-ui="still-air"] .mx-rtools > .mx-rtools__group:last-child > [aria-disabled="true"] { display: inline-grid; }
+  .vp-os[data-ui="still-air"] .mx-dock { display: none; }
+  .vp-os[data-ui="still-air"] .vm-split > .vm-readpane { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .vp-os[data-ui="still-air"] .mx-phonebar {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; justify-items: center; align-items: center;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 210;
+    height: calc(56px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
+    background: var(--color-canvas); border-top: 1px solid var(--border-1);
+  }
+  .vp-os[data-ui="still-air"] .mx-phonebar .mx-tool { color: var(--accent); }
+  .vp-os[data-ui="still-air"] .mx-phonebar .sa-ico { width: 22px; height: 22px; }
+}

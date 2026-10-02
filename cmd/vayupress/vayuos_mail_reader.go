@@ -126,6 +126,11 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		}
 	}
 	c.WriteString(`><div class="mx-rtools__group">`)
+	if pane {
+		// Narrower than three columns the message is pushed over the list,
+		// and this goes back to it (admin-os-mail.js).
+		c.WriteString(`<button type="button" class="mx-back" data-mx-go="list">` + saIcon("chev-l") + esc(folder) + `</button>`)
+	}
 	if !readOnly {
 		if !strings.EqualFold(folder, "Archive") {
 			tool("archive", "Archive", "e", paneVals("to", "Archive"), `data-mail-move="Archive"`, false)
@@ -324,6 +329,23 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	// The message as it arrived, for the rare day it is needed.
 	c.WriteString(`<details class="mx-source"><summary>Show the original</summary><pre class="vm-pre vm-raw">` + esc(string(raw)) + `</pre></details>`)
 	c.WriteString(`</article></div>`)
+
+	// A phone's message screen has its own bar in place of the tab bar
+	// (render 05): what a message most needs, at the thumb.
+	if pane && !readOnly {
+		c.WriteString(`<nav class="mx-phonebar" aria-label="Message">`)
+		if received && !strings.EqualFold(folder, "Archive") {
+			c.WriteString(`<button type="button" class="mx-tool"` + hxPost + paneVals("to", "Archive") + ` aria-label="Archive">` + saIcon("archive") + `</button>`)
+		}
+		if !strings.EqualFold(folder, "Trash") {
+			c.WriteString(`<button type="button" class="mx-tool"` + hxPost + paneVals("to", "Trash") + ` aria-label="Move to Trash">` + saIcon("trash") + `</button>`)
+		}
+		c.WriteString(`<button type="button" class="mx-tool" data-mx-menu="Move to" aria-label="Move to">` + saIcon("move") + `</button>`)
+		if received {
+			c.WriteString(`<a class="mx-tool" href="/os/vayumail/compose?reply=1&amp;` + esc(q) + `" aria-label="Reply">` + saIcon("reply") + `</a>`)
+		}
+		c.WriteString(`<a class="mx-tool" href="/os/vayumail/compose?user=` + qparam(user) + `" aria-label="Write a message">` + saIcon("pencil") + `</a></nav>`)
+	}
 
 	// Reply, docked: a field that opens the reply with nothing lost.
 	if !readOnly && received && fromAddr != "" {
