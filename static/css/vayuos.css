@@ -4828,7 +4828,7 @@
 .vp-os[data-ui="still-air"] .sa-iconbtn {
   width: 30px; height: 30px; display: inline-grid; place-items: center; flex: none;
   border-radius: var(--radius-control); color: var(--text-2);
-  transition: background var(--duration-micro) var(--ease-enter), color var(--duration-micro) var(--ease-enter);
+  transition: background-color var(--duration-micro) var(--ease-enter), color var(--duration-micro) var(--ease-enter);
 }
 .vp-os[data-ui="still-air"] .sa-iconbtn:hover { background: var(--surface-hover); color: var(--text-1); }
 .vp-os[data-ui="still-air"] .sa-mark {
@@ -4870,7 +4870,7 @@
   height: 30px; padding: 0 var(--space-3) 0 10px;
   background: var(--surface-1); border: 1px solid var(--border-1); border-radius: var(--radius-control);
   color: var(--text-3); font: var(--type-small); text-align: left; cursor: pointer;
-  transition: border-color var(--duration-micro) var(--ease-enter), background var(--duration-micro) var(--ease-enter);
+  transition: border-color var(--duration-micro) var(--ease-enter), background-color var(--duration-micro) var(--ease-enter);
 }
 .vp-os[data-ui="still-air"] .sa-search:hover { border-color: var(--border-2); background: var(--surface-2); }
 .vp-os[data-ui="still-air"] .sa-search__text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -5060,7 +5060,7 @@
   display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px;
   border-radius: var(--radius-control); color: var(--text-2); font: var(--type-body);
   text-decoration: none; white-space: nowrap; background: none; border: 0;
-  transition: background var(--duration-micro) var(--ease-enter), color var(--duration-micro) var(--ease-enter);
+  transition: background-color var(--duration-micro) var(--ease-enter), color var(--duration-micro) var(--ease-enter);
 }
 .vp-os[data-ui="still-air"] .sa-rail__item .sa-ico { color: var(--text-3); }
 .vp-os[data-ui="still-air"] .sa-rail__item:hover { background: var(--surface-hover); color: var(--text-1); text-decoration: none; }
@@ -5125,7 +5125,7 @@
 .vp-os[data-ui="still-air"] .sa-appside__item {
   display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px;
   border-radius: var(--radius-control); color: var(--text-2); font: var(--type-body); text-decoration: none;
-  transition: background var(--duration-micro) var(--ease-enter), color var(--duration-micro) var(--ease-enter);
+  transition: background-color var(--duration-micro) var(--ease-enter), color var(--duration-micro) var(--ease-enter);
 }
 .vp-os[data-ui="still-air"] .sa-appside__item .sa-ico { color: var(--text-3); }
 .vp-os[data-ui="still-air"] .sa-appside__item:hover { background: var(--surface-hover); color: var(--text-1); text-decoration: none; }
@@ -5287,7 +5287,7 @@
   background: var(--surface-2); color: var(--text-1);
   font: var(--type-strong); font-size: 13px; line-height: 1;
   box-shadow: none; filter: none; transform: none;
-  transition: background var(--duration-micro) var(--ease-enter), border-color var(--duration-micro) var(--ease-enter),
+  transition: background-color var(--duration-micro) var(--ease-enter), border-color var(--duration-micro) var(--ease-enter),
               color var(--duration-micro) var(--ease-enter), transform var(--duration-micro) var(--ease-enter);
 }
 .vp-os[data-ui="still-air"] .btn:hover { background: var(--surface-float); border-color: var(--border-2); text-decoration: none; transform: none; box-shadow: none; }
@@ -5581,7 +5581,7 @@
 .vp-os[data-ui="still-air"] .toast--error { border-left: 3px solid var(--danger); }
 .vp-os[data-ui="still-air"] .toast--info { border-left: 3px solid var(--accent); }
 .vp-os[data-ui="still-air"] .toast--warn { border-left: 3px solid var(--warn); }
-.vp-os[data-ui="still-air"] .toast.leaving { animation: sa-toast-out 110ms var(--ease-exit) both; }
+.vp-os[data-ui="still-air"] .toast.leaving { animation: sa-toast-out var(--duration-micro) var(--ease-exit) both; }
 @keyframes sa-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes sa-toast-out { to { opacity: 0; transform: translateY(4px); } }
 
@@ -5614,7 +5614,7 @@
 .vp-os[data-ui="still-air"] .cmd-group-label { font: var(--type-meta); color: var(--text-3); text-transform: none; letter-spacing: 0; padding: 10px 10px 4px; }
 .vp-os[data-ui="still-air"] .cmd-item {
   height: 36px; padding: 0 10px; margin: 0; gap: 10px; border-radius: var(--radius-control);
-  transform: none; box-shadow: none; transition: background var(--duration-micro) var(--ease-enter);
+  transform: none; box-shadow: none; transition: background-color var(--duration-micro) var(--ease-enter);
 }
 .vp-os[data-ui="still-air"] .cmd-item:hover,
 .vp-os[data-ui="still-air"] .cmd-item--active { background: var(--surface-select); transform: none; box-shadow: none; }
@@ -5800,7 +5800,7 @@
 .vp-os[data-ui="still-air"] .media-uploads__pct { font: var(--type-small); color: var(--text-2); font-variant-numeric: tabular-nums; }
 .vp-os[data-ui="still-air"] .media-uploads__bar { width: 100%; height: 4px; appearance: none; border: 0; border-radius: 2px; background: var(--surface-press); overflow: hidden; }
 .vp-os[data-ui="still-air"] .media-uploads__bar::-webkit-progress-bar { background: var(--surface-press); }
-.vp-os[data-ui="still-air"] .media-uploads__bar::-webkit-progress-value { background: var(--accent); transition: width var(--duration-standard); }
+.vp-os[data-ui="still-air"] .media-uploads__bar::-webkit-progress-value { background: var(--accent); }
 .vp-os[data-ui="still-air"] .media-uploads__bar::-moz-progress-bar { background: var(--accent); }
 /* A job running now (ui.Job): title and progress on one line, a thin bar, then
    the pace and the pacer's reason. Hairlines, not a box: it sits in a section. */
@@ -5810,7 +5810,7 @@
 .vp-os[data-ui="still-air"] .ui-job__meta { margin-left: auto; font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .vp-os[data-ui="still-air"] .ui-job__bar { display: block; width: 100%; height: 6px; border: 0; border-radius: 3px; background: var(--surface-press); appearance: none; overflow: hidden; }
 .vp-os[data-ui="still-air"] .ui-job__bar::-webkit-progress-bar { background: var(--surface-press); }
-.vp-os[data-ui="still-air"] .ui-job__bar::-webkit-progress-value { background: var(--accent); border-radius: 3px; transition: width var(--duration-standard); }
+.vp-os[data-ui="still-air"] .ui-job__bar::-webkit-progress-value { background: var(--accent); border-radius: 3px; }
 .vp-os[data-ui="still-air"] .ui-job__bar::-moz-progress-bar { background: var(--accent); border-radius: 3px; }
 .vp-os[data-ui="still-air"] .ui-job__why { display: flex; align-items: center; gap: 8px; margin-top: 8px; font: var(--type-small); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .ui-job__pace { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
@@ -5945,7 +5945,7 @@
   padding: var(--space-4) var(--space-2); margin: 0 calc(-1 * var(--space-2));
   border-bottom: 1px solid var(--border-1); border-radius: var(--radius-control);
   color: var(--text-1); text-decoration: none;
-  transition: background var(--duration-micro) var(--ease-enter);
+  transition: background-color var(--duration-micro) var(--ease-enter);
 }
 .vp-os[data-ui="still-air"] .sa-need:hover { background: var(--surface-hover); text-decoration: none; }
 .vp-os[data-ui="still-air"] .sa-need > .sa-ico { margin-top: 2px; color: var(--accent); }
@@ -6196,6 +6196,36 @@
   box-shadow: 0 var(--space-3) 0 var(--surface-1);
 }
 .vp-os[data-ui="still-air"] .mx-search:focus-within { border-color: var(--focus); }
+/* Search in place (Mail plan §8, item 8). The form is the field and, below
+   it, the scope bar; searching lifts the field into the header's place as
+   the header folds away, and brings the scope bar down into the field's. */
+.vp-os[data-ui="still-air"] .mx-search { flex-wrap: wrap; transition: transform var(--duration-standard) var(--ease-move); }
+.vp-os[data-ui="still-air"] .mx-search__field { display: flex; flex: 1; align-items: center; gap: var(--space-3); min-width: 0; height: 100%; }
+.vp-os[data-ui="still-air"] .mx-scope {
+  display: none; flex-wrap: wrap; gap: var(--space-2); width: 100%; padding: var(--space-3) 0 0;
+}
+.vp-os[data-ui="still-air"] .mx-scope__opt { display: inline-flex; cursor: pointer; }
+.vp-os[data-ui="still-air"] .mx-scope__opt input { position: absolute; opacity: 0; pointer-events: none; }
+.vp-os[data-ui="still-air"] .mx-scope__opt span {
+  padding: 3px var(--space-3); border-radius: 999px; font: var(--type-small); color: var(--text-2); background: var(--surface-2); white-space: nowrap;
+  transition: background-color var(--duration-micro) var(--ease-move), color var(--duration-micro) var(--ease-move);
+}
+.vp-os[data-ui="still-air"] .mx-scope__opt input:checked + span { background: var(--accent-soft); color: var(--accent); }
+.vp-os[data-ui="still-air"] .mx-scope__opt input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.vp-os[data-ui="still-air"] .is-searching .mx-head__main { opacity: 0; transform: translateY(-4px); pointer-events: none; }
+.vp-os[data-ui="still-air"] .is-searching .mx-search {
+  height: auto; padding-top: var(--space-2); padding-bottom: var(--space-3); transform: translateY(-48px); margin-bottom: -40px;
+  box-shadow: 0 0 0 var(--space-3) var(--surface-1);
+}
+.vp-os[data-ui="still-air"] .is-searching .mx-search__field { height: 30px; }
+.vp-os[data-ui="still-air"] .is-searching .mx-scope { display: flex; animation: mx-scope-in var(--duration-standard) var(--ease-enter); }
+@keyframes mx-scope-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+/* Results take the list's place, fading in each time they change. */
+.vp-os[data-ui="still-air"] .mx-results:empty { display: none; }
+.vp-os[data-ui="still-air"] .mx-results { animation: mx-fade-in var(--duration-standard) var(--ease-enter); }
+.vp-os[data-ui="still-air"] .has-results :is(.mx-list:not(.mx-results .mx-list), .mx-older, .mx-banner) { display: none; }
+.vp-os[data-ui="still-air"] .mx-results__count { margin: 0; padding: var(--space-2) var(--space-3) var(--space-3); font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .mx-results .mx-group { top: 150px; }
 .vp-os[data-ui="still-air"] .mx-search__input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; color: var(--text-1); font: var(--type-body); outline: none; }
 .vp-os[data-ui="still-air"] .mx-search__key { font: var(--type-meta); color: var(--text-3); padding: 0 6px; border: 1px solid var(--border-1); border-radius: 4px; }
 .vp-os[data-ui="still-air"] .mx-search:focus-within .mx-search__key { visibility: hidden; }
@@ -6408,6 +6438,20 @@
   display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-control);
   font: 600 11px/1 var(--font-ui); letter-spacing: 0.02em; color: var(--danger); background: var(--danger-soft);
 }
+/* The download's ring and tick (Mail plan §8, item 7): the ring fills from
+   the top as the file arrives, then gives way to the tick. */
+.vp-os[data-ui="still-air"] .mx-file__type { position: relative; }
+.vp-os[data-ui="still-air"] .mx-file__ring { position: absolute; inset: -3px; width: calc(100% + 6px); height: calc(100% + 6px); transform: rotate(-90deg); opacity: 0; pointer-events: none; }
+.vp-os[data-ui="still-air"] .mx-file__ring circle { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 100; stroke-dashoffset: 100; }
+.vp-os[data-ui="still-air"] .mx-file.is-loading .mx-file__ring { opacity: 1; }
+.vp-os[data-ui="still-air"] .mx-file__tick {
+  position: absolute; inset: 0; display: grid; place-items: center; border-radius: inherit;
+  background: var(--ok-soft); color: var(--ok); opacity: 0; transform: scale(0.8);
+  transition: opacity var(--duration-standard) var(--ease-enter), transform var(--duration-standard) var(--ease-enter);
+}
+.vp-os[data-ui="still-air"] .mx-file.is-done .mx-file__tick { opacity: 1; transform: none; }
+.vp-os[data-ui="still-air"] .mx-compose .vm-attach-chip.is-new { animation: mx-chip-in var(--duration-standard) var(--ease-enter); }
+@keyframes mx-chip-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .vp-os[data-ui="still-air"] .mx-file__meta { display: flex; flex-direction: column; min-width: 0; }
 .vp-os[data-ui="still-air"] .mx-file__name { font: var(--type-strong); color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vp-os[data-ui="still-air"] .mx-file__size { font: var(--type-small); color: var(--text-3); }
@@ -6644,7 +6688,7 @@
     /* Every movement becomes an instant change; only a fade remains, and at
        most for 90 ms (Mail plan §8). */
     animation: none !important;
-    transition-duration: 80ms !important;
+    transition-duration: var(--duration-micro) !important;
     transition-property: opacity, color, background-color, border-color !important;
     scroll-behavior: auto !important;
   }

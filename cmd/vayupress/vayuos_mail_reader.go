@@ -312,7 +312,10 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		c.WriteString(`<ul class="mx-files" aria-label="Attachments">`)
 		for _, att := range pm.Attachments {
 			dl := "/os/vayumail/attachment?" + q + "&idx=" + itoaSafe(att.Index)
-			c.WriteString(`<li><a class="mx-file" href="` + esc(dl) + `" download><span class="mx-file__type" aria-hidden="true">` + esc(mailFileType(att.Filename, att.ContentType)) + `</span>` +
+			// The tile carries a ring the download fills and the tick it settles
+			// to (admin-os-mail.js, Mail plan §8 item 7).
+			c.WriteString(`<li><a class="mx-file" href="` + esc(dl) + `" download data-mx-file><span class="mx-file__type" aria-hidden="true">` + esc(mailFileType(att.Filename, att.ContentType)) +
+				`<svg class="mx-file__ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" pathLength="100"/></svg><span class="mx-file__tick">` + saIcon("check") + `</span></span>` +
 				`<span class="mx-file__meta"><span class="mx-file__name">` + esc(att.Filename) + `</span><span class="mx-file__size">` + esc(humanBytes(att.Size)) + `</span></span>` +
 				`<span class="mx-file__dl" aria-hidden="true">` + saIcon("download") + `</span><span class="vp-sr-only">Download</span></a></li>`)
 		}

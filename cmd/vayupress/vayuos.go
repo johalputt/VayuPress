@@ -2103,9 +2103,23 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 		`<button type="button" class="btn btn--sm" data-vm-select-done` + mailCmd("Leave selection", "Mail", "Escape") + `>Done</button></div></header>`)
 	// Search sits in the list and its results replace the list in place; the
 	// search page stays the path without JavaScript.
-	b.WriteString(`<form class="mx-search" role="search" method="get" action="/os/vayumail/search" hx-get="/os/vayumail/search/fragment" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` +
-		`<input type="hidden" name="user" value="` + esc(user) + `">` + saIcon("search") +
-		`<input class="mx-search__input" type="search" name="q" placeholder="Search" aria-label="Search mail" autocomplete="off"><kbd class="mx-search__key" aria-hidden="true">/</kbd></form>`)
+	// Search, in place (Mail plan §8, item 8): it rises into the header as the
+	// title folds away, a scope bar comes down beneath it, and its results
+	// crossfade over the list in #vm-search-results. The search page is the
+	// path without JavaScript, so the form still submits there.
+	b.WriteString(`<form class="mx-search" role="search" method="get" action="/os/vayumail/search" data-mx-search hx-get="/os/vayumail/search/fragment" hx-trigger="input changed delay:250ms from:find input[name=q], search from:find input[name=q], change from:find .mx-scope, submit" hx-target="#vm-search-results" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` +
+		`<input type="hidden" name="user" value="` + esc(user) + `"><input type="hidden" name="folder" value="` + esc(folder) + `"><input type="hidden" name="in" value="list">` +
+		`<span class="mx-search__field">` + saIcon("search") +
+		`<input class="mx-search__input" type="search" name="q" placeholder="Search" aria-label="Search mail" autocomplete="off"><kbd class="mx-search__key" aria-hidden="true">/</kbd></span>` +
+		`<div class="mx-scope" role="radiogroup" aria-label="Search in">`)
+	for i, sc := range [][2]string{{"folder", "This folder"}, {"all", "All mail"}, {"from", "From"}, {"attach", "Has attachments"}} {
+		checked := ""
+		if i == 0 {
+			checked = " checked"
+		}
+		b.WriteString(`<label class="mx-scope__opt"><input type="radio" name="scope" value="` + sc[0] + `"` + checked + `><span>` + sc[1] + `</span></label>`)
+	}
+	b.WriteString(`</div></form><div id="vm-search-results" class="mx-results" aria-live="polite"></div>`)
 
 	// A full mailbox refuses mail, so it is said above the list where it is
 	// seen. Below full, the storage meter in the sidebar foot says enough.
@@ -2551,19 +2565,34 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 // searchFilters holds the query and the refinement filters for a mail search.
 type searchFilters struct {
 	q, folder, from, after, before string
-	unreadOnly                     bool
+	unreadOnly, attach             bool
+	// inList is the search in Mail's list (Mail plan §8, item 8): its
+	// results are the list's own rows, not the search page's table.
+	inList bool
 }
 
 func parseSearchFilters(r *http.Request) searchFilters {
 	q := r.URL.Query()
-	return searchFilters{
+	f := searchFilters{
 		q:          strings.TrimSpace(q.Get("q")),
 		folder:     strings.TrimSpace(q.Get("folder")),
 		from:       strings.TrimSpace(q.Get("from")),
 		after:      strings.TrimSpace(q.Get("after")),
 		before:     strings.TrimSpace(q.Get("before")),
 		unreadOnly: q.Get("unread") == "1",
+		inList:     q.Get("in") == "list",
 	}
+	// The list's scope bar: this folder (the folder sent), all mail, the
+	// sender, or what has an attachment, the last two across all mail.
+	switch q.Get("scope") {
+	case "all":
+		f.folder = ""
+	case "from":
+		f.folder, f.from = "", f.q
+	case "attach":
+		f.folder, f.attach = "", true
+	}
+	return f
 }
 
 // vayuSearchResults runs the full-text search and applies the refinement
@@ -2572,6 +2601,9 @@ func parseSearchFilters(r *http.Request) searchFilters {
 func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
 	user := rd.Key()
 	var b strings.Builder
+	if sf.q == "" && sf.inList {
+		return "" // the list itself is what an empty search shows
+	}
 	if sf.q == "" {
 		b.WriteString(`<div class="empty-state">Type a search above to find mail across every folder — refine with the folder, sender, date and unread filters.</div>`)
 		return b.String()
@@ -2599,6 +2631,9 @@ func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
 		if sf.unreadOnly && m.Seen {
 			continue
 		}
+		if sf.attach && !m.Attachment {
+			continue
+		}
 		if hasAfter && m.Date.Before(afterT) {
 			continue
 		}
@@ -2606,6 +2641,9 @@ func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
 			continue
 		}
 		matched = append(matched, m)
+	}
+	if sf.inList {
+		return a.mailSearchRows(user, sf, matched, capped)
 	}
 	b.WriteString(`<div class="vm-search-count text-sm muted">` + itoaSafe(len(matched)) + ` result` + plural(len(matched)) + ` for “` + html.EscapeString(sf.q) + `”`)
 	if capped {
@@ -2629,6 +2667,33 @@ func (a *App) vayuSearchResults(rd vmail.Reader, sf searchFilters) string {
 		b.WriteString(`<tr><td><span class="badge">` + html.EscapeString(m.Folder) + `</span></td><td><div class="vm-from">` + mailAvatarImg(m.From, avSet) + `<span class="vm-name">` + highlightMatch(mailDisplay(m.From), sf.q) + `</span></div></td><td class="vm-subj"><a href="` + link + `">` + highlightMatch(subj, sf.q) + `</a></td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td></tr>`)
 	}
 	b.WriteString(`</tbody></table></div>`)
+	return b.String()
+}
+
+// mailSearchRows is a search's results as Mail's list shows them: the list's
+// own rows, grouped by the folder each was found in, under how many there are.
+func (a *App) mailSearchRows(user string, sf searchFilters, matched []vmail.SearchResult, capped bool) string {
+	var b strings.Builder
+	b.WriteString(`<p class="mx-results__count">` + itoaSafe(len(matched)) + ` result` + plural(len(matched)) + ` for “` + esc(sf.q) + `”`)
+	if capped {
+		b.WriteString(`, from the newest 200 matches`)
+	}
+	b.WriteString(`</p>`)
+	if len(matched) == 0 {
+		b.WriteString(`<p class="mx-empty">Nothing matches. Try another word, or all mail.</p>`)
+		return b.String()
+	}
+	b.WriteString(`<ol class="mx-list">`)
+	avSet, now, group := a.mailboxAvatarSet(), time.Now(), ""
+	for _, m := range matched {
+		if m.Folder != group {
+			group = m.Folder
+			b.WriteString(`<li class="mx-group" aria-hidden="true">` + esc(group) + `</li>`)
+		}
+		link := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(m.Folder) + "&id=" + qparam(m.ID)
+		b.WriteString(mailListRow(m.StoredMessage, m.From, link, false, 0, now, avSet))
+	}
+	b.WriteString(`</ol>`)
 	return b.String()
 }
 

@@ -112,6 +112,97 @@
     });
   }
 
+  // Search in place (Mail plan §8, item 8). Focus lifts the field into the
+  // header as the title folds away and brings the scope bar down; results
+  // take the list's place as they arrive; Escape plays it back and puts the
+  // list where it was. Delegated, because every list swap brings a new form.
+  var searchScroll = 0;
+  function searchList() { return document.getElementById('vm-inbox-list'); }
+  document.addEventListener('focusin', function (e) {
+    var input = e.target && e.target.closest ? e.target.closest('[data-mx-search] input[name="q"]') : null;
+    var l = searchList();
+    if (!input || !l || l.classList.contains('is-searching')) return;
+    searchScroll = l.scrollTop;
+    l.classList.add('is-searching');
+  });
+  function endSearch() {
+    var l = searchList();
+    if (!l || !l.classList.contains('is-searching')) return;
+    var form = l.querySelector('[data-mx-search]');
+    var input = form && form.querySelector('input[name="q"]');
+    if (input) { input.value = ''; input.blur(); }
+    var res = document.getElementById('vm-search-results');
+    if (res) res.textContent = '';
+    l.classList.remove('is-searching', 'has-results');
+    l.scrollTop = searchScroll;
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || !e.target || !e.target.closest || !e.target.closest('[data-mx-search]')) return;
+    e.preventDefault();
+    endSearch();
+  });
+  document.addEventListener('focusout', function (e) {
+    var form = e.target && e.target.closest ? e.target.closest('[data-mx-search]') : null;
+    if (!form) return;
+    // Leaving an empty search lets go of it; leaving one with words keeps its
+    // results, which is what the next click is usually for.
+    setTimeout(function () {
+      if (form.contains(document.activeElement)) return;
+      var input = form.querySelector('input[name="q"]');
+      if (input && !input.value.trim()) endSearch();
+    }, 0);
+  });
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    if (!e.target || e.target.id !== 'vm-search-results') return;
+    var l = searchList();
+    if (l) { l.classList.toggle('has-results', !!e.target.firstChild); l.scrollTop = 0; }
+  });
+
+  // An attachment's download fills a ring on its tile, then settles to a tick
+  // (Mail plan §8, item 7). It is fetched to know how far it has come, then
+  // saved under its own name; anything that goes wrong falls back to the plain
+  // download the link already is.
+  document.addEventListener('click', function (e) {
+    var card = e.target && e.target.closest ? e.target.closest('a[data-mx-file]') : null;
+    if (!card || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (!window.ReadableStream || card.classList.contains('is-loading')) { if (card && card.classList.contains('is-loading')) e.preventDefault(); return; }
+    e.preventDefault();
+    var arc = card.querySelector('.mx-file__ring circle');
+    var name = card.querySelector('.mx-file__name');
+    card.classList.remove('is-done');
+    card.classList.add('is-loading');
+    var set = function (part) { if (arc) arc.style.strokeDashoffset = String(100 - Math.round(part * 100)); };
+    set(0);
+    var fallBack = function () { card.classList.remove('is-loading'); window.location.href = card.href; };
+    fetch(card.href, { credentials: 'same-origin' }).then(function (res) {
+      if (!res.ok || !res.body) { fallBack(); return; }
+      var total = parseInt(res.headers.get('Content-Length') || '0', 10);
+      var got = 0, parts = [], reader = res.body.getReader();
+      var pump = function () {
+        return reader.read().then(function (step) {
+          if (step.done) return;
+          parts.push(step.value);
+          got += step.value.length;
+          if (total > 0) set(Math.min(got / total, 1));
+          return pump();
+        });
+      };
+      return pump().then(function () {
+        set(1);
+        var url = URL.createObjectURL(new Blob(parts, { type: res.headers.get('Content-Type') || 'application/octet-stream' }));
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = name ? name.textContent : '';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+        card.classList.remove('is-loading');
+        card.classList.add('is-done');
+      });
+    }).catch(fallBack);
+  });
+
   // Each folder keeps its scroll position for the session: leaving one
   // remembers where its list was, and coming back puts it there again.
   var scrolls = {}, switching = false;
@@ -539,9 +630,14 @@
         tray.appendChild(chip);
       });
     }
+    // Each added file slides into the row (Mail plan §8, item 7); the ones
+    // already there stay still.
+    var shownFiles = 0;
     function addFiles(fileList) {
+      shownFiles = composeFiles.length;
       for (var i = 0; i < fileList.length; i++) composeFiles.push(fileList[i]);
       renderFiles();
+      Array.prototype.slice.call(tray ? tray.children : []).forEach(function (chip, n) { if (n >= shownFiles) chip.classList.add('is-new'); });
     }
     if (browseBtn && filesEl) browseBtn.addEventListener('click', function () { filesEl.click(); });
     if (filesEl) filesEl.addEventListener('change', function () { addFiles(filesEl.files); filesEl.value = ''; });
@@ -1535,7 +1631,8 @@
     }
 
     var focusIdx = -1;
-    function rows() { return Array.prototype.slice.call(document.querySelectorAll('#vm-inbox-list .mx-row')); }
+    // The rows on screen: while a search shows, its results, not the list.
+    function rows() { return Array.prototype.slice.call(document.querySelectorAll('#vm-inbox-list .mx-row')).filter(function (r) { return r.offsetParent !== null; }); }
     function paint() {
       var rs = rows();
       rs.forEach(function (r, i) { if (i === focusIdx) r.classList.add('vm-focus'); else r.classList.remove('vm-focus'); });

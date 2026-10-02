@@ -441,3 +441,51 @@ test("the command bar runs the open message's actions", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect(page.locator("#vm-inbox-list .mx-row", { hasText: subject })).toHaveCount(0);
 });
+
+// Search in place (Mail plan §8, item 8): the field rises into the header as
+// the title folds away, the scope bar comes down, results take the list's
+// place as the list's own rows, and Escape gives the list back where it was.
+test("search rises into the header and gives the list back", async ({ page }) => {
+  await openInbox(page);
+  const list = page.locator("#vm-inbox-list");
+  await list.evaluate((e) => { e.scrollTop = 600; });
+  await page.locator(".mx-search__input").focus();
+  await expect(list).toHaveClass(/is-searching/);
+  await expect.poll(() => list.locator(".mx-head__main").evaluate((e) => getComputedStyle(e).opacity)).toBe("0");
+  await expect(page.locator(".mx-scope")).toBeVisible();
+  await page.keyboard.type("the");
+  const results = page.locator("#vm-search-results");
+  await expect(results.locator(".mx-results__count")).toContainText("for “the”");
+  await expect(results.locator(".mx-row", { hasText: "Keys for the backup bucket" })).toHaveCount(1);
+  await expect(list.locator("> .mx-list")).toBeHidden();
+  await page.locator(".mx-scope__opt", { hasText: "Has attachments" }).click();
+  await expect(results.locator(".mx-row", { hasText: "Keys for the backup bucket" })).toHaveCount(0);
+  await expect(results.locator(".mx-row", { hasText: "Re: the migration window on Saturday" })).toHaveCount(1);
+  await page.locator(".mx-search__input").press("Escape");
+  await expect(list).not.toHaveClass(/is-searching/);
+  await expect(results).toBeEmpty();
+  await expect(list.locator("> .mx-list")).toBeVisible();
+  expect(await list.evaluate((e) => e.scrollTop), "the list did not come back where it was").toBe(600);
+});
+
+// An attachment's download fills a ring on its tile and settles to a tick,
+// and arrives under its own name; a file added to compose slides into the
+// attachment row (Mail plan §8, item 7).
+test("an attachment downloads with its ring, and a new one slides in", async ({ page }) => {
+  await openInbox(page);
+  const card = page.locator("#vm-readpane a[data-mx-file]").first();
+  await card.evaluate((c) => {
+    window.__ring = false;
+    new MutationObserver(() => { if (c.classList.contains("is-loading")) window.__ring = true; }).observe(c, { attributes: true });
+  });
+  const download = page.waitForEvent("download");
+  await card.click();
+  expect((await download).suggestedFilename()).toBe("migration-runbook-v3.pdf");
+  await expect(card).toHaveClass(/is-done/);
+  expect(await page.evaluate(() => window.__ring), "the download showed no ring").toBe(true);
+
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("c");
+  await page.locator("[data-mx-compose-host] [data-c-files]").setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("notes") });
+  await expect(page.locator("[data-mx-compose-host] .vm-attach-chip").last()).toHaveClass(/is-new/);
+});
