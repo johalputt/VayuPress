@@ -113,6 +113,7 @@ func (m *Maildir) ListFolder(domain, username, folder string) ([]StoredMessage, 
 			h := m.headersFor(path, info.Size(), info.ModTime())
 			sm.From, sm.To, sm.Subject = h.from, h.to, h.subject
 			sm.MessageID, sm.InReplyTo, sm.References = h.messageID, h.inReplyTo, h.refs
+			sm.Preview, sm.Attachment, sm.Encrypted, sm.Signed = h.preview, h.attachment, h.encrypted, h.signed
 			if h.hasDate {
 				sm.Date = h.date
 			}

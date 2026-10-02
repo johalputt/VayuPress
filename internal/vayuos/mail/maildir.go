@@ -3,9 +3,7 @@
 package mail
 
 import (
-	"bufio"
 	"fmt"
-	netmail "net/mail"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,9 +42,11 @@ type folderHeaders struct {
 	used   uint64
 }
 
-// maxHeaderEntries bounds the cache across the install (a summary is a few
-// hundred bytes, so this is tens of megabytes at most). Past it, whole folders
-// are dropped least-recently-listed first — never the one being listed.
+// maxHeaderEntries bounds the cache across the install. A summary is a few
+// hundred bytes; the preview adds about 150 more for Latin text (140 runes
+// and a string header), up to ~580 where every rune takes four bytes, so the
+// bound is ~37 MB more for Latin mail and ~145 MB at the worst. Past it, whole
+// folders are dropped least-recently-listed first, never the one being listed.
 const maxHeaderEntries = 250000
 
 // cachedHeaders is a message's parsed summary plus the file identity it came
@@ -63,6 +63,12 @@ type cachedHeaders struct {
 	messageID string   // Message-Id, de-bracketed (threading)
 	inReplyTo string   // In-Reply-To, de-bracketed
 	refs      []string // References, de-bracketed, in order
+
+	// What the listing shows of the body, from its first 32 KB (summarize).
+	preview    string // first words of the text, or encryptedPreview
+	attachment bool
+	encrypted  bool
+	signed     bool
 }
 
 // cleanMessageID normalises a Message-Id / References token for comparison:
@@ -173,9 +179,8 @@ func (m *Maildir) forgetMissing(dir string, present map[string]struct{}) {
 	}
 }
 
-// readHeaders parses a message file's header block. Only the header block is
-// read: net/mail stops at the blank line, so a message carrying a 20 MB
-// attachment costs a few kilobytes to list rather than 20 MB.
+// readHeaders reads a message file's summary: its header block and the start
+// of its body, never the whole file (summarize).
 func readHeaders(path string, size int64, mod time.Time) (cachedHeaders, bool) {
 	h := cachedHeaders{size: size, modTime: mod}
 	f, err := os.Open(path)
@@ -183,19 +188,7 @@ func readHeaders(path string, size int64, mod time.Time) (cachedHeaders, bool) {
 		return h, false
 	}
 	defer f.Close()
-	if msg, perr := netmail.ReadMessage(bufio.NewReader(f)); perr == nil {
-		h.from = msg.Header.Get("From")
-		h.to = msg.Header.Get("To")
-		h.subject = msg.Header.Get("Subject")
-		if d, derr := msg.Header.Date(); derr == nil {
-			h.date, h.hasDate = d, true
-		}
-		// Threading evidence travels with the cached summary, so grouping a
-		// folder costs nothing beyond the stat it already did.
-		h.messageID = cleanMessageID(msg.Header.Get("Message-Id"))
-		h.inReplyTo = cleanMessageID(msg.Header.Get("In-Reply-To"))
-		h.refs = splitMessageIDs(msg.Header.Get("References"))
-	}
+	summarize(f, &h)
 	return h, true
 }
 

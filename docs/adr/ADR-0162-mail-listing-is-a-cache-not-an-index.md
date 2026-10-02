@@ -59,6 +59,38 @@ cache cannot be wrong that way: every entry is checked against the file's size
 and modification time on every listing, and a file that is not on disk is not
 listed.
 
+## 3a. What the listing knows of a body
+
+Added 2026-10-02 for the Mail redesign, whose rows show a message's first
+words, a mark for an attachment, and whether it is encrypted or signed. These
+come from the same read that fills the cache, so they cost nothing once a
+message is cached, but that read is no longer the header block alone:
+
+- **What is read.** The header block, up to 256 KB, then up to 32 KB of the
+  body past it (`summarize` in `internal/vayuos/mail/summary.go`). Before this
+  the header block had no bound. Its bound is generous because the fields a
+  row shows come last: relays prepend `Received` lines.
+- **What is taken.** The body's MIME structure is walked by the reader's own
+  walker (`collectPart`), so the transfer encodings and nesting it already
+  handles are handled here too. The preview is the first text part's words, or
+  an HTML-only body's visible text, collapsed and cut at 140 characters.
+- **Encrypted mail.** A message whose own `Content-Type` is PGP/MIME or S/MIME
+  enveloped data, or whose text is an inline PGP message, is previewed as
+  *Encrypted message* and nothing else. No byte of ciphertext reaches a row.
+- **Signed** says the structure carries a signature, not that it is good. The
+  reader's seal comes from the verification verdict, never from this.
+- **The limit, stated rather than hidden.** An attachment whose part header
+  begins more than 32 KB into the body has no mark in the list. Reading the
+  whole message to find it is exactly the cost this ADR exists to avoid. Once
+  the message is opened, the reader lists every attachment.
+- **Memory.** The preview adds about 150 bytes per entry for Latin text: about
+  37 MB more at the 250,000-entry bound, and up to about 145 MB where every
+  character takes four bytes. The figures are in the bound's own comment.
+
+The gates are in `summary_test.go`, one fixture per rule, each mutation-tested:
+no ciphertext in a preview, each encoding decoded, the 32 KB bound held on a
+50 MB message, and `From` and `Subject` kept after a long `Received` chain.
+
 ## 4. What would reopen this
 
 A warm listing that stays over a second on real hardware, for a folder people

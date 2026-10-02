@@ -30,6 +30,14 @@ type StoredMessage struct {
 	MessageID  string   `json:"message_id,omitempty"`
 	InReplyTo  string   `json:"in_reply_to,omitempty"`
 	References []string `json:"references,omitempty"`
+	// What the body holds, read from its start (Maildir summarize): the first
+	// words, whether something is attached, and whether it is encrypted or
+	// signed (the structure says so; whether a signature is good is the
+	// reader's verdict, not this).
+	Preview    string `json:"preview,omitempty"`
+	Attachment bool   `json:"attachment,omitempty"`
+	Encrypted  bool   `json:"encrypted,omitempty"`
+	Signed     bool   `json:"signed,omitempty"`
 }
 
 // List returns the messages in an account's mailbox (new + cur), newest first.
@@ -61,6 +69,7 @@ func (m *Maildir) List(domain, username string) ([]StoredMessage, error) {
 			h := m.headersFor(path, info.Size(), info.ModTime())
 			sm.From, sm.Subject = h.from, h.subject
 			sm.MessageID, sm.InReplyTo, sm.References = h.messageID, h.inReplyTo, h.refs
+			sm.Preview, sm.Attachment, sm.Encrypted, sm.Signed = h.preview, h.attachment, h.encrypted, h.signed
 			if h.hasDate {
 				sm.Date = h.date
 			}
