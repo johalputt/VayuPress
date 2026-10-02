@@ -485,7 +485,9 @@ test("every menu opens from the control that opened it", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const distance = (panel, trigger) => page.evaluate(async ([p, t]) => {
     const panel = document.querySelector(p), trig = document.querySelector(t);
-    await Promise.all(panel.getAnimations().map((a) => a.finished));
+    // The shell restarts the entrance from the control as the menu opens, which
+    // cancels the one already running: wait until none is left running.
+    for (let i = 0; i < 3 && panel.getAnimations().length; i++) await Promise.all(panel.getAnimations().map((a) => a.finished.catch(() => {})));
     const pr = panel.getBoundingClientRect(), tr = trig.getBoundingClientRect();
     const [ox, oy] = getComputedStyle(panel).transformOrigin.split(" ").map(parseFloat);
     const x = pr.left + ox, y = pr.top + oy;

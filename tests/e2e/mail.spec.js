@@ -182,7 +182,9 @@ test("the mailbox switcher opens from the account and switches", async ({ page }
   expect(await account.evaluate((e) => getComputedStyle(e).backgroundColor), "the account block is not pressed while the switcher is open").not.toBe(rest);
   const origin = await page.evaluate(async () => {
     const panel = document.querySelector("[data-mx-switch] .mx-switch__panel"), trig = document.querySelector("[data-mx-switch] > summary");
-    await Promise.all(panel.getAnimations().map((a) => a.finished));
+    // The shell restarts the entrance from the control as the menu opens, which
+    // cancels the one already running: wait until none is left running.
+    for (let i = 0; i < 3 && panel.getAnimations().length; i++) await Promise.all(panel.getAnimations().map((a) => a.finished.catch(() => {})));
     const pr = panel.getBoundingClientRect(), tr = trig.getBoundingClientRect();
     const [ox, oy] = getComputedStyle(panel).transformOrigin.split(" ").map(parseFloat);
     const x = pr.left + ox, y = pr.top + oy;
@@ -236,7 +238,9 @@ test("reply opens the compose sheet over the reader", async ({ page }) => {
   await expect(sheet.locator("[data-c-from]")).toHaveValue("ankush@mail.test");
   const origin = await page.evaluate(async () => {
     const panel = document.querySelector("[data-mx-compose-host] .mx-compose"), trig = document.querySelector('#vm-readpane [aria-label="Reply"]');
-    await Promise.all(panel.getAnimations().map((a) => a.finished));
+    // The shell restarts the entrance from the control as the menu opens, which
+    // cancels the one already running: wait until none is left running.
+    for (let i = 0; i < 3 && panel.getAnimations().length; i++) await Promise.all(panel.getAnimations().map((a) => a.finished.catch(() => {})));
     const pr = panel.getBoundingClientRect(), tr = trig.getBoundingClientRect();
     const [ox, oy] = getComputedStyle(panel).transformOrigin.split(" ").map(parseFloat);
     const x = pr.left + ox, y = pr.top + oy;
