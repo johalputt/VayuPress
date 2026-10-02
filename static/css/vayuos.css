@@ -6168,9 +6168,22 @@
 
 /* The list: its head and search stay in view while the rows scroll under. */
 .vp-os[data-ui="still-air"] .mx-head {
-  position: sticky; top: 0; z-index: 2; display: flex; align-items: baseline; gap: var(--space-3);
+  position: sticky; top: 0; z-index: 2; display: grid; align-items: end;
   min-height: 56px; padding: var(--space-5) var(--space-3) var(--space-2); background: var(--surface-1);
 }
+/* Two layers in one place, the folder and the selection. Selecting lifts the
+   folder 4 px as it fades and brings the count up into its place; leaving
+   plays it back (Mail plan §8, item 2). The layer not in use is inert. */
+.vp-os[data-ui="still-air"] .mx-head__main,
+.vp-os[data-ui="still-air"] .mx-head__sel {
+  grid-area: 1 / 1; display: flex; align-items: baseline; gap: var(--space-3); min-width: 0;
+  transition: opacity var(--duration-standard) var(--ease-move), transform var(--duration-standard) var(--ease-move);
+}
+.vp-os[data-ui="still-air"] .mx-head__sel { opacity: 0; transform: translateY(4px); pointer-events: none; }
+.vp-os[data-ui="still-air"] .is-selecting .mx-head__main { opacity: 0; transform: translateY(-4px); pointer-events: none; }
+.vp-os[data-ui="still-air"] .is-selecting .mx-head__sel { opacity: 1; transform: none; pointer-events: auto; }
+.vp-os[data-ui="still-air"] .mx-head__link { align-self: center; padding: var(--space-2); border: 0; background: none; color: var(--text-1); font: var(--type-body); cursor: pointer; border-radius: var(--radius-control); }
+.vp-os[data-ui="still-air"] .mx-head__link:hover { background: var(--surface-hover); }
 .vp-os[data-ui="still-air"] .mx-head__title { margin: 0; font: 700 22px/28px var(--font-ui); letter-spacing: -0.01em; color: var(--text-1); }
 .vp-os[data-ui="still-air"] .mx-head__in { font: var(--type-body); color: var(--text-3); letter-spacing: 0; }
 .vp-os[data-ui="still-air"] .mx-head__note { font: var(--type-small); color: var(--text-3); }
@@ -6211,13 +6224,22 @@
 .vp-os[data-ui="still-air"] .mx-row.is-unread .mx-row__dot { background: var(--accent); }
 .vp-os[data-ui="still-air"] .mx-row__pin { color: var(--warn); line-height: 0; }
 .vp-os[data-ui="still-air"] .mx-row__pin .sa-ico { width: 13px; height: 13px; }
-/* The check shares the gutter: shown on hover or focus, and on every row
-   once anything is picked. */
-.vp-os[data-ui="still-air"] .mx-check { position: absolute; top: 15px; left: 1px; width: 16px; height: 16px; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
-.vp-os[data-ui="still-air"] .mx-row:is(:hover, :focus-within) .mx-check,
-.vp-os[data-ui="still-air"] .mx-list:has(.mx-check:checked) .mx-check { opacity: 1; }
+/* The round check shares the gutter with the unread dot: shown on hover or
+   focus, and on every row while selecting, so selecting never shifts a column
+   (Mail plan §8, item 2). */
+/* The console's own check (its masked tick), made round; a picked one is
+   white with the selection colour's tick, as on the fill behind it. */
+.vp-os[data-ui="still-air"] input.mx-check[type="checkbox"] {
+  position: absolute; top: 15px; left: 1px; width: 18px; height: 18px; opacity: 0; z-index: 1;
+  border-radius: 50%; background: var(--surface-1);
+  transition: opacity var(--duration-micro) var(--ease-move), background-color var(--duration-micro) var(--ease-move), border-color var(--duration-micro) var(--ease-move);
+}
+.vp-os[data-ui="still-air"] input.mx-check[type="checkbox"]:checked { border-color: var(--mx-on-sel); background: var(--mx-on-sel); }
+.vp-os[data-ui="still-air"] input.mx-check[type="checkbox"]:checked::before { background: var(--mx-sel); }
+.vp-os[data-ui="still-air"] .mx-row:is(:hover, :focus-within) input.mx-check[type="checkbox"],
+.vp-os[data-ui="still-air"] .is-selecting input.mx-check[type="checkbox"] { opacity: 1; }
 .vp-os[data-ui="still-air"] .mx-row:is(:hover, :focus-within) .mx-check ~ *,
-.vp-os[data-ui="still-air"] .mx-list:has(.mx-check:checked) .mx-check ~ * { visibility: hidden; }
+.vp-os[data-ui="still-air"] .is-selecting .mx-check ~ * { visibility: hidden; }
 .vp-os[data-ui="still-air"] .mx-row__open {
   display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: var(--space-4); align-items: start;
   min-width: 0; padding: var(--space-4) var(--space-3) var(--space-4) var(--space-2);
@@ -6253,6 +6275,52 @@
 .vp-os[data-ui="still-air"] .mx-row.vm-active .mx-row__dot { background: var(--mx-on-sel); }
 .vp-os[data-ui="still-air"] .mx-row.vm-active .mx-thread { color: var(--mx-sel); background: var(--mx-on-sel); }
 .vp-os[data-ui="still-air"] .mx-row.vm-focus { box-shadow: inset 0 0 0 2px var(--focus); }
+/* Picked rows wear the selection fill. Where two meet, their corners square
+   off, so neighbours read as one block (Mail plan §8, item 3). While
+   selecting, the open message is not marked as open. */
+.vp-os[data-ui="still-air"] .mx-row.is-picked { background: var(--mx-sel); }
+.vp-os[data-ui="still-air"] .mx-row.is-picked::before, .vp-os[data-ui="still-air"] .mx-row.is-picked + .mx-row::before { border-color: transparent; }
+.vp-os[data-ui="still-air"] .mx-row.is-picked + .mx-row.is-picked::before { border-color: var(--mx-on-sel-2); opacity: 0.35; }
+.vp-os[data-ui="still-air"] .mx-row.is-picked :is(.mx-row__who, .mx-row__subj-text) { color: var(--mx-on-sel); }
+.vp-os[data-ui="still-air"] .mx-row.is-picked :is(.mx-row__time, .mx-row__pv, .mx-row__marks) { color: var(--mx-on-sel-2); }
+.vp-os[data-ui="still-air"] .mx-row.is-picked .mx-thread { color: var(--mx-sel); background: var(--mx-on-sel); }
+.vp-os[data-ui="still-air"] .mx-row.is-picked:has(+ .mx-row.is-picked) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.vp-os[data-ui="still-air"] .mx-row.is-picked + .mx-row.is-picked { border-top-left-radius: 0; border-top-right-radius: 0; }
+.vp-os[data-ui="still-air"] .is-selecting .mx-row.vm-active:not(.is-picked) { background: none; }
+.vp-os[data-ui="still-air"] .is-selecting .mx-row.vm-active:not(.is-picked) :is(.mx-row__who, .mx-row__subj-text) { color: var(--text-1); }
+.vp-os[data-ui="still-air"] .is-selecting .mx-row.vm-active:not(.is-picked) :is(.mx-row__time, .mx-row__pv, .mx-row__marks) { color: var(--text-3); }
+.vp-os[data-ui="still-air"] .is-selecting .mx-row.vm-active:not(.is-picked) .mx-thread { color: var(--text-2); background: var(--surface-press); }
+
+/* What is picked, and what can be done to it, in the reader column. */
+.vp-os[data-ui="still-air"] .vm-split > .mx-select-host {
+  position: absolute; grid-column: 2; grid-row: 1; inset: 0; z-index: 3; overflow-y: auto;
+  display: grid; place-items: center; padding: var(--space-6); background: var(--surface-1);
+}
+.vp-os[data-ui="still-air"] .vm-split > .mx-select-host[hidden] { display: none; }
+.vp-os[data-ui="still-air"] .mx-selpanel { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); max-width: 560px; text-align: center; animation: mx-sel-in var(--duration-standard) var(--ease-enter); }
+@keyframes mx-sel-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.vp-os[data-ui="still-air"] .mx-selpanel__stack { display: grid; width: 300px; margin-bottom: var(--space-5); }
+.vp-os[data-ui="still-air"] .mx-selpanel__card {
+  grid-area: 1 / 1; display: flex; flex-direction: column; gap: 2px; padding: var(--space-4) var(--space-5); text-align: left;
+  background: var(--surface-overlay); border: 1px solid var(--border-2); border-radius: var(--radius-surface); box-shadow: var(--shadow-3);
+  font: var(--type-small); color: var(--text-2); overflow-wrap: anywhere;
+}
+.vp-os[data-ui="still-air"] .mx-selpanel__card strong { color: var(--text-1); font-weight: 600; }
+.vp-os[data-ui="still-air"] .mx-selpanel__card:nth-child(2) { transform: translateY(-8px) scale(0.97); z-index: -1; }
+.vp-os[data-ui="still-air"] .mx-selpanel__card:nth-child(3) { transform: translateY(-16px) scale(0.94); z-index: -2; }
+.vp-os[data-ui="still-air"] .mx-selpanel__card:first-child { position: relative; z-index: 1; }
+.vp-os[data-ui="still-air"] .mx-selpanel__title { margin: 0; font: 700 22px/28px var(--font-ui); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .mx-selpanel__from { margin: 0 0 var(--space-4); font: var(--type-small); color: var(--text-2); overflow-wrap: anywhere; }
+.vp-os[data-ui="still-air"] .mx-selpanel__acts { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3); }
+.vp-os[data-ui="still-air"] .mx-selpanel__act { display: inline-flex; align-items: center; gap: var(--space-2); list-style: none; cursor: pointer; }
+.vp-os[data-ui="still-air"] .mx-selpanel__act::-webkit-details-marker { display: none; }
+.vp-os[data-ui="still-air"] .mx-selpanel__act .sa-ico { width: 16px; height: 16px; }
+.vp-os[data-ui="still-air"] .mx-selpanel__acts .mx-selpanel__act[hx-vals*="delete"] { color: var(--danger); }
+.vp-os[data-ui="still-air"] .mx-selpanel__menu .sa-pop__panel { left: 0; right: auto; min-width: 220px; text-align: left; }
+@media (max-width: 1099px) {
+  .vp-os[data-ui="still-air"] .vm-split > .mx-select-host { grid-column: 1 / -1; top: auto; height: auto; padding: var(--space-4); border-top: 1px solid var(--border-1); box-shadow: var(--shadow-4); }
+  .vp-os[data-ui="still-air"] .mx-selpanel__stack, .vp-os[data-ui="still-air"] .mx-selpanel__from { display: none; }
+}
 .vp-os[data-ui="still-air"] .mx-empty { margin: var(--space-6) var(--space-3); font: var(--type-body); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .mx-empty p { margin: 0; }
 .vp-os[data-ui="still-air"] .mx-empty--first { color: var(--text-2); }

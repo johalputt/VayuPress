@@ -54,13 +54,13 @@ test("a view filters the folder, and lets go of it", async ({ page }) => {
   await openInbox(page);
   const all = await page.locator("#vm-inbox-list .mx-row").count();
   await page.locator('#vm-folders a[href*="view=unread"]').click();
-  await expect(page.locator(".mx-head__title")).toContainText("Unread");
+  await expect(page.locator(".mx-head__main .mx-head__title")).toContainText("Unread");
   const rows = page.locator("#vm-inbox-list .mx-row");
   await expect(rows.first()).toBeVisible();
   expect(await rows.count()).toBeLessThan(all);
   expect(await page.locator("#vm-inbox-list .mx-row:not(.is-unread)").count()).toBe(0);
   await page.locator('#vm-folders a[aria-current="true"]').click();
-  await expect(page.locator(".mx-head__title")).toHaveText("Inbox");
+  await expect(page.locator(".mx-head__main .mx-head__title")).toHaveText("Inbox");
 });
 
 // Each column scrolls on its own and the page never does (plan §2.5).
@@ -341,4 +341,92 @@ test("the compose page is the sheet, full width", async ({ page }) => {
   await expect(page.locator(".mx-compose--page [data-c-title]")).toHaveText("New message");
   await expect(page.locator("[data-mx-compose-host]")).toHaveCount(0);
   await expect(page.locator('.mx-compose--page a[aria-label="Close"]')).toHaveAttribute("href", "/os/vayumail/inbox?user=ankush");
+});
+
+// Selection mode (Mail plan §7, render 04; motion §8 items 2 and 3). A row's
+// round check starts it: the header becomes the count, a click on a row picks
+// it instead of opening it, neighbours picked together square off into one
+// block, and the reader column shows what is picked. Done ends it.
+test("selection mode picks rows and says what is picked", async ({ page }) => {
+  await openInbox(page);
+  const list = page.locator("#vm-inbox-list");
+  const rows = list.locator(".mx-row");
+  const subject = await page.locator("#vm-readpane .mx-subject").textContent();
+  await rows.nth(2).hover();
+  await rows.nth(2).locator(".mx-check").click();
+  await expect(list).toHaveClass(/is-selecting/);
+  await expect(list.locator(".mx-head__sel [data-vm-bulkcount]")).toHaveText("1 selected");
+  await expect.poll(() => list.locator(".mx-head__main").evaluate((e) => getComputedStyle(e).opacity)).toBe("0");
+  expect(await list.locator(".mx-head__main").evaluate((e) => e.inert), "the folder's header stays reachable under the count").toBe(true);
+  // A click on the next row picks it; the message open stays open.
+  await rows.nth(3).locator(".mx-row__open").click();
+  await expect(list.locator("[data-vm-bulkcount]")).toHaveText("2 selected");
+  await expect(page.locator("#vm-readpane .mx-subject")).toHaveText(subject);
+  const corners = await rows.nth(2).evaluate((a) => [getComputedStyle(a).borderBottomLeftRadius, getComputedStyle(a.nextElementSibling).borderTopLeftRadius]);
+  expect(corners, "two picked neighbours do not meet as one block").toEqual(["0px", "0px"]);
+  const panel = page.locator(".mx-select-host .mx-selpanel");
+  await expect(panel.locator("[data-vm-sel-title]")).toHaveText("2 messages selected");
+  await expect(panel.locator("[data-vm-sel-from]")).toHaveText(/^From .+ and .+$/);
+  await expect(panel.locator(".mx-selpanel__card")).toHaveCount(2);
+  await list.locator("[data-vm-select-done]").click();
+  await expect(list).not.toHaveClass(/is-selecting/);
+  await expect(page.locator(".mx-select-host")).toBeHidden();
+  await expect(list.locator("[data-vm-check]:checked")).toHaveCount(0);
+});
+
+// What is picked is acted on together: Mark unread from the panel, and
+// Snooze from the keyboard (s), which moves the picked message out of the
+// folder until it wakes.
+test("the picked messages are acted on together", async ({ page }) => {
+  await openInbox(page);
+  const list = page.locator("#vm-inbox-list");
+  const row = (text) => list.locator(".mx-row", { hasText: text });
+  for (const t of ["Keys for the backup bucket", "The Shield posture numbers"]) {
+    await row(t).hover();
+    await row(t).locator(".mx-check").click();
+  }
+  await page.locator(".mx-select-host").getByRole("button", { name: "Mark read" }).click();
+  await expect(list).not.toHaveClass(/is-selecting/);
+  await expect(row("Keys for the backup bucket")).not.toHaveClass(/is-unread/);
+  await expect(row("The Shield posture numbers")).not.toHaveClass(/is-unread/);
+
+  await row("The Shield posture numbers").hover();
+  await row("The Shield posture numbers").locator(".mx-check").click();
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("s");
+  await page.locator(".mx-select-host").getByRole("menuitem", { name: "Later today" }).click();
+  await expect(row("The Shield posture numbers")).toHaveCount(0);
+});
+
+// The keys of plan §6 that are not the list's own: g then a folder's letter,
+// s and v opening the reader's menus, and ? listing them all.
+test("the mail keys go to folders and open the menus", async ({ page }) => {
+  await openInbox(page);
+  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("v");
+  await expect(page.locator('#vm-readpane details.sa-pop:has(> summary[aria-label="Move to"])')).toHaveAttribute("open", "");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("?");
+  await expect(page.locator(".vm-help")).toContainText("g then i · s · d");
+  await page.keyboard.press("?");
+  await page.keyboard.press("g");
+  await page.keyboard.press("s");
+  await expect(page.locator(".mx-head__main .mx-head__title")).toHaveText("Sent");
+});
+
+// The command bar offers what the page offers, by name (plan §6): the open
+// message's actions, run as the toolbar runs them.
+test("the command bar runs the open message's actions", async ({ page }) => {
+  await openInbox(page);
+  const subject = (await page.locator("#vm-readpane .mx-subject").textContent()).trim();
+  await page.keyboard.press("Control+k");
+  // Only what is on screen and in use: the selection's own controls are not
+  // offered while nothing is selected.
+  await page.locator("#cmd-input").fill("select every");
+  await expect(page.locator("#cmd-results .cmd-item", { hasText: "Select every message" })).toHaveCount(0);
+  await page.locator("#cmd-input").fill("archive");
+  const item = page.locator("#cmd-results .cmd-item", { hasText: "Archive" }).first();
+  await expect(item).toContainText("This message");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#vm-inbox-list .mx-row", { hasText: subject })).toHaveCount(0);
 });

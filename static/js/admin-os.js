@@ -422,7 +422,13 @@ document.addEventListener('click', function (e) {
       w.textContent = data.where;
       el.appendChild(w);
     }
-    el.addEventListener('click', function () { close(); if (data.post) run(data); });
+    el.addEventListener('click', function () {
+      close();
+      if (data.post) run(data);
+      // An action of this page is its own control, pressed: the same request,
+      // confirmation and outcome as a pointer gets.
+      if (data.target && document.contains(data.target)) data.target.click();
+    });
     el.addEventListener('mousemove', function () { var n = items.findIndex(function (it) { return it.el === el; }); if (n !== activeIdx) setActive(n); });
     return el;
   }
@@ -467,6 +473,17 @@ document.addEventListener('click', function (e) {
       group('Go to', pages.concat(posts).slice(0, cap), q);
     }
     if (want('Actions')) {
+      // What this page offers by name (data-cmd on a control, as Mail's
+      // reader and selection mark theirs): only controls that are on screen,
+      // so the bar never offers what the page does not.
+      group('On this page', $$('[data-cmd]').filter(function (b) {
+        return b.getClientRects().length > 0 && !b.disabled && !b.closest('[inert]') && hit(b.getAttribute('data-cmd'));
+      }).slice(0, cap).map(function (b) {
+        var use = b.querySelector('use');
+        var icon = use ? (use.getAttribute('href') || '').replace('#sa-i-', '') : 'chev-r';
+        var keys = b.getAttribute('aria-keyshortcuts');
+        return { kind: 'here', text: b.getAttribute('data-cmd'), where: b.getAttribute('data-cmd-where') || '', icon: icon, hint: keys ? 'Key: ' + keys : '', target: b };
+      }), q);
       group('Actions', (index.actions || []).filter(function (a) { return hit(a.label); }).slice(0, cap).map(function (a) {
         return { kind: 'action', text: a.label, href: a.href || null, post: a.post || null, icon: a.icon, hint: a.hint, done: a.done };
       }), q);
@@ -549,6 +566,12 @@ document.addEventListener('click', function (e) {
       preview.appendChild(line('cmd-preview__title', d.text));
       if (d.p.updated && window.vpRelTime) preview.appendChild(line('cmd-preview__meta', 'Updated ' + window.vpRelTime(d.p.updated)));
       if (d.p.excerpt) preview.appendChild(line('cmd-preview__text', d.p.excerpt));
+      return;
+    }
+    if (d.kind === 'here') {
+      preview.appendChild(line('cmd-preview__path', d.where || 'This page'));
+      preview.appendChild(line('cmd-preview__title', d.text));
+      if (d.hint) preview.appendChild(line('cmd-preview__text', d.hint));
       return;
     }
     if (d.kind === 'action') {

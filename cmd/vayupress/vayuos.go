@@ -2085,7 +2085,9 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 			title = v.Label + ` <span class="mx-head__in">in ` + esc(folder) + `</span>`
 		}
 	}
-	b.WriteString(`<header class="mx-head"><h2 class="mx-head__title">` + title + `</h2>`)
+	// The header has two layers: the folder, and the selection (Mail plan §7,
+	// render 04). Selecting crossfades one into the other in place (§8 item 2).
+	b.WriteString(`<header class="mx-head"><div class="mx-head__main"><h2 class="mx-head__title">` + title + `</h2>`)
 	switch {
 	case readOnly:
 		b.WriteString(`<span class="mx-head__note">Read only</span>`)
@@ -2094,9 +2096,11 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 	}
 	b.WriteString(`<span class="mx-head__fill"></span>`)
 	if !readOnly {
-		b.WriteString(`<a class="btn btn--ghost btn--sm btn--icon" href="/os/vayumail/compose?user=` + qparam(user) + `" title="Write a message (c)" aria-label="Write a message">` + saIcon("pencil") + `</a>`)
+		b.WriteString(`<a class="btn btn--ghost btn--sm btn--icon" href="/os/vayumail/compose?user=` + qparam(user) + `" title="Write a message (c)" aria-label="Write a message"` + mailCmd("Write a message", "Mail", "c") + `>` + saIcon("pencil") + `</a>`)
 	}
-	b.WriteString(`</header>`)
+	b.WriteString(`</div><div class="mx-head__sel" aria-live="polite"><h2 class="mx-head__title" data-vm-bulkcount>0 selected</h2><span class="mx-head__fill"></span>` +
+		`<button type="button" class="mx-head__link" data-vm-select-all` + mailCmd("Select every message in the list", "Mail", "") + `>Select all</button>` +
+		`<button type="button" class="btn btn--sm" data-vm-select-done` + mailCmd("Leave selection", "Mail", "Escape") + `>Done</button></div></header>`)
 	// Search sits in the list and its results replace the list in place; the
 	// search page stays the path without JavaScript.
 	b.WriteString(`<form class="mx-search" role="search" method="get" action="/os/vayumail/search" hx-get="/os/vayumail/search/fragment" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin">` +
@@ -2125,28 +2129,45 @@ func (a *App) vayuInboxBody(rd vmail.Reader, folder, view string, limit int) (st
 	b.WriteString(`<input type="hidden" name="user" value="` + esc(user) + `" data-vm-scope><input type="hidden" name="folder" value="` + esc(folder) + `" data-vm-scope>`)
 	if len(msgs) > 0 {
 		inc := ` hx-include="[data-vm-scope],[data-vm-check]:checked" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-indicator="#vm-inbox-spin"`
-		b.WriteString(`<div class="vm-bulk" data-vm-bulkbar hidden><span class="text-sm muted" data-vm-bulkcount>0 selected</span>`)
-		if received {
-			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"mark","mark":"read"}'` + inc + `>Mark read</button>`)
-			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"mark","mark":"unread"}'` + inc + `>Mark unread</button>`)
-			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"pin","pin":"1"}'` + inc + `>` + saIcon("pin") + ` Pin</button>`)
-			if !readOnly {
-				b.WriteString(`<span class="vm-move"><select class="input input--sm" name="to" aria-label="Move selected to folder" hx-post="/os/vayumail/inbox/action" hx-trigger="change" hx-vals='{"action":"move"}'` + inc + `><option value="">Move to…</option>`)
-				for _, f := range vmail.StandardFolders {
-					// Snoozed is excluded: only the snooze action files there (a
-					// manual move would sleep forever with no wake row).
-					if strings.EqualFold(f, folder) || strings.EqualFold(f, "Snoozed") {
-						continue
-					}
-					b.WriteString(`<option value="` + esc(f) + `">` + esc(f) + `</option>`)
-				}
-				b.WriteString(`</select></span>`)
-			}
+		// What can be done to the selection, shown in the reader column while
+		// messages are selected (render 04). A template, so it is part of each
+		// render of the folder and admin-os-mail.js places a copy of it.
+		sel := func(icon, label, vals, extra string) string {
+			return `<button type="button" class="btn mx-selpanel__act" hx-post="/os/vayumail/inbox/action" hx-vals='` + vals + `'` + inc + extra + mailCmd(label, "Selected messages", "") + `>` + saIcon(icon) + label + `</button>`
+		}
+		b.WriteString(`<template id="vm-selpanel"><div class="mx-selpanel" data-vm-bulkbar><div class="mx-selpanel__stack" data-vm-sel-stack aria-hidden="true"></div>` +
+			`<h2 class="mx-selpanel__title" data-vm-sel-title></h2><p class="mx-selpanel__from" data-vm-sel-from></p><div class="mx-selpanel__acts">`)
+		if !readOnly && received && !strings.EqualFold(folder, "Archive") {
+			b.WriteString(sel("archive", "Archive", `{"action":"move","to":"Archive"}`, ""))
 		}
 		if !readOnly {
-			b.WriteString(`<button type="button" class="btn btn--sm btn--danger" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"delete"}' hx-confirm="Permanently delete the selected message(s)?"` + inc + `>Delete</button>`)
+			b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act">` + saIcon("move") + `Move to…</summary><div class="sa-pop__panel sa-menu" role="menu">`)
+			for _, f := range vmail.StandardFolders {
+				// Snoozed is excluded: only the snooze action files there (a
+				// manual move would sleep forever with no wake row).
+				if strings.EqualFold(f, folder) || strings.EqualFold(f, "Snoozed") {
+					continue
+				}
+				b.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"move","to":"` + esc(f) + `"}'` + inc + `>` + saIcon(mailFolderIcons[f]) + `<span class="sa-menu__text">` + esc(f) + `</span></button>`)
+			}
+			b.WriteString(`</div></details>`)
 		}
-		b.WriteString(`</div>`)
+		if received {
+			b.WriteString(sel("check", "Mark read", `{"action":"mark","mark":"read"}`, ""))
+			b.WriteString(sel("mail", "Mark unread", `{"action":"mark","mark":"unread"}`, ""))
+			b.WriteString(sel("pin", "Pin", `{"action":"pin","pin":"1"}`, ""))
+		}
+		if !readOnly && received && !strings.EqualFold(folder, "Snoozed") {
+			b.WriteString(`<details class="sa-pop mx-selpanel__menu"><summary class="btn mx-selpanel__act">` + saIcon("timer") + `Snooze…</summary><div class="sa-pop__panel sa-menu" role="menu">`)
+			for _, sn := range [][2]string{{"later", "Later today"}, {"tomorrow", "Tomorrow, 8:00"}, {"nextweek", "Next week, Monday 8:00"}} {
+				b.WriteString(`<button type="button" class="sa-menu__item" role="menuitem" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"snooze","snooze":"` + sn[0] + `"}'` + inc + `><span class="sa-menu__text">` + sn[1] + `</span></button>`)
+			}
+			b.WriteString(`</div></details>`)
+		}
+		if !readOnly {
+			b.WriteString(`</div><div class="mx-selpanel__acts">` + sel("trash", "Delete", `{"action":"delete"}`, ` hx-confirm="Permanently delete the selected messages?"`))
+		}
+		b.WriteString(`</div></div></template>`)
 	}
 
 	if len(msgs) == 0 {
@@ -2433,6 +2454,8 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 			return err
 		case "delete":
 			return a.vayuMail.DeleteMessage(rd, folder, id)
+		case "snooze":
+			return a.vayuMail.Snooze(rd, folder, id, snoozeUntil(r.PostFormValue("snooze")))
 		case "move":
 			to := strings.TrimSpace(r.PostFormValue("to"))
 			if to == "" {

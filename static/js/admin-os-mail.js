@@ -1300,38 +1300,124 @@
     var printBtn = actions.querySelector('[data-mail-print]');
     if (printBtn) { printBtn.addEventListener('click', function () { window.print(); }); }
   }
-  // ── Mailbox list: selection (event-delegated, survives HTMX swaps) ───────────
-  // Row and bulk actions are pure HTMX: they POST to /os/vayumail/inbox/action
-  // and swap #vm-inbox-list in place. This module only drives the selection
-  // affordance — the "N selected" count, the select-all box, and showing or
-  // hiding the bulk bar. It listens on document so it keeps working after the
-  // inbox fragment is swapped (the once-loaded script never re-runs).
+  // ── Mailbox list: selection mode (Mail plan §7, render 04) ───────────────────
+  // x, or a row's round check, starts selecting. The header becomes "N
+  // selected · Select all · Done", a click on a row picks it instead of opening
+  // it, and the reader column shows the picked messages with what can be done
+  // to them: the folder's own #vm-selpanel template, placed beside the list.
+  // Its actions are HTMX posts that include the checked rows, as the bulk bar's
+  // were; each one swaps the list, which ends the selection.
   (function () {
-    function boxes() { return Array.prototype.slice.call(document.querySelectorAll('[data-vm-check]')); }
-    function sync() {
-      var list = boxes();
-      var n = list.filter(function (c) { return c.checked; }).length;
-      var count = document.querySelector('[data-vm-bulkcount]');
-      var bar = document.querySelector('[data-vm-bulkbar]');
-      var all = document.querySelector('[data-vm-check-all]');
-      if (count) count.textContent = n + ' selected';
-      if (bar) { if (n > 0) bar.removeAttribute('hidden'); else bar.setAttribute('hidden', ''); }
-      if (all) all.checked = list.length > 0 && n === list.length;
+    var split = document.querySelector('.vm-split');
+    var host = null, picking = false;
+    function list() { return document.getElementById('vm-inbox-list'); }
+    function boxes() { return Array.prototype.slice.call(document.querySelectorAll('#vm-inbox-list [data-vm-check]')); }
+    function picked() { return boxes().filter(function (c) { return c.checked; }); }
+    function who(row) { var w = row.querySelector('.mx-row__who'); return w ? w.textContent.trim() : ''; }
+    function sentence(names) {
+      if (names.length <= 1) return names.join('');
+      if (names.length <= 3) return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+      return names.slice(0, 2).join(', ') + ' and ' + (names.length - 2) + ' others';
     }
+    function card(row) {
+      var c = document.createElement('div');
+      c.className = 'mx-selpanel__card';
+      var a = document.createElement('strong'); a.textContent = who(row);
+      var b = document.createElement('span');
+      var subj = row.querySelector('.mx-row__subj-text'); b.textContent = subj ? subj.textContent : '';
+      c.appendChild(a); c.appendChild(b);
+      return c;
+    }
+    function sync() {
+      var l = list();
+      if (!l) return;
+      var cs = picked(), n = cs.length;
+      var on = n > 0 || picking;
+      l.classList.toggle('is-selecting', on);
+      var mainLayer = l.querySelector('.mx-head__main'), selLayer = l.querySelector('.mx-head__sel');
+      if (mainLayer) mainLayer.inert = on;
+      if (selLayer) selLayer.inert = !on;
+      document.querySelectorAll('#vm-inbox-list .mx-row').forEach(function (r) {
+        var c = r.querySelector('[data-vm-check]');
+        r.classList.toggle('is-picked', !!(c && c.checked));
+      });
+      var count = document.querySelector('[data-vm-bulkcount]');
+      if (count) count.textContent = n + ' selected';
+      var all = document.querySelector('[data-vm-select-all]');
+      if (all) all.textContent = n > 0 && n === boxes().length ? 'Select none' : 'Select all';
+      if (!split) return;
+      if (!host) { host = document.createElement('div'); host.className = 'mx-select-host'; host.hidden = true; split.appendChild(host); }
+      if (n === 0) { host.hidden = true; host.textContent = ''; return; }
+      if (!host.firstChild) {
+        var t = document.getElementById('vm-selpanel');
+        if (!t) return;
+        host.appendChild(t.content.cloneNode(true));
+        if (window.htmx) window.htmx.process(host);
+        if (window.vpWirePops) window.vpWirePops(host);
+      }
+      host.hidden = false;
+      var stack = host.querySelector('[data-vm-sel-stack]');
+      if (stack) { stack.textContent = ''; cs.slice(0, 3).forEach(function (c) { stack.appendChild(card(c.closest('.mx-row'))); }); }
+      var title = host.querySelector('[data-vm-sel-title]');
+      if (title) title.textContent = n === 1 ? '1 message selected' : n + ' messages selected';
+      var from = host.querySelector('[data-vm-sel-from]');
+      if (from) {
+        var names = [];
+        cs.forEach(function (c) { var w = who(c.closest('.mx-row')); if (w && names.indexOf(w) < 0) names.push(w); });
+        from.textContent = names.length ? 'From ' + sentence(names) : '';
+      }
+    }
+    function done() {
+      picking = false;
+      boxes().forEach(function (c) { c.checked = false; });
+      sync();
+    }
+    // Starting from the keyboard: x picks the row that is open or focused.
+    window.vmPick = function (row) {
+      var c = row && row.querySelector('[data-vm-check]');
+      if (!c) return;
+      picking = true;
+      c.checked = !c.checked;
+      sync();
+    };
+    window.vmSelecting = function () { var l = list(); return !!(l && l.classList.contains('is-selecting')); };
+    window.vmSelectionDone = done;
     document.addEventListener('change', function (e) {
+      if (e.target && e.target.matches && e.target.matches('[data-vm-check]')) sync();
+    });
+    document.addEventListener('click', function (e) {
       var t = e.target;
-      if (!t || !t.matches) return;
-      if (t.matches('[data-vm-check-all]')) {
-        var on = t.checked;
+      if (!t || !t.closest) return;
+      if (t.closest('[data-vm-select-all]')) {
+        var on = !(picked().length && picked().length === boxes().length);
         boxes().forEach(function (c) { c.checked = on; });
         sync();
-      } else if (t.matches('[data-vm-check]')) {
-        sync();
+        return;
       }
+      if (t.closest('[data-vm-select-done]')) { done(); return; }
     });
-    // Each inbox swap replaces the rows (selection resets) — re-sync the bar.
+    // While selecting, a click on a row picks it rather than opening it. In
+    // the capture phase, so HTMX never sees the click that would open it.
+    document.addEventListener('click', function (e) {
+      if (!window.vmSelecting()) return;
+      var open = e.target && e.target.closest ? e.target.closest('#vm-inbox-list .mx-row__open') : null;
+      if (!open) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var c = open.closest('.mx-row').querySelector('[data-vm-check]');
+      if (c) { c.checked = !c.checked; sync(); }
+    }, true);
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || !window.vmSelecting()) return;
+      if (document.querySelector('[data-mx-compose-host]:not([hidden]), details.sa-pop[open]')) return;
+      done();
+    });
+    // A swap of the list (an action, a folder, the poll) ends the selection.
     document.body.addEventListener('htmx:afterSwap', function (e) {
-      if (e.target && e.target.id === 'vm-inbox-list') sync();
+      if (!e.target || e.target.id !== 'vm-inbox-list') return;
+      picking = false;
+      if (host) host.textContent = '';
+      sync();
     });
     sync();
   })();
@@ -1420,11 +1506,13 @@
       help.setAttribute('role', 'dialog');
       help.setAttribute('aria-label', 'Keyboard shortcuts');
       try { help.setAttribute('popover', 'auto'); } catch (e) { /* older browser */ }
+      // The keys of Mail plan §6.
       var pairs = [
-        ['Compose', 'c'], ['Search / focus search', '/'], ['Open message', 'Enter · o'],
-        ['Move down · up', 'j · k'], ['Select', 'x'], ['Toggle read', 'u'], ['Pin', 's'],
-        ['Archive', 'e'], ['Junk', '!'], ['Delete', '#'],
-        ['Reply · Forward (reader)', 'r · f'], ['Next · prev (reader)', 'j · k'], ['This help', '?']
+        ['Older · newer message', 'j · k'], ['Open', 'Enter · o'],
+        ['Reply · reply all · forward', 'r · a · f'], ['Compose', 'c'], ['Search', '/'],
+        ['Select the row', 'x'], ['Archive', 'e'], ['Delete', '#'], ['Snooze', 's'], ['Pin', 'p'],
+        ['Mark unread', 'u'], ['Move to…', 'v'], ['Junk', '!'],
+        ['Go to Inbox · Sent · Drafts', 'g then i · s · d'], ['Switch mailbox', '⌘⇧M · Ctrl+Shift+M'], ['These keys', '?']
       ];
       var h = '<div class="vm-help-title">Keyboard shortcuts</div><div class="vm-help-grid">';
       pairs.forEach(function (p) { h += '<span></span><span class="vm-kbd"></span>'; });
@@ -1480,31 +1568,34 @@
     }
     function focusedRow() { var rs = rows(); return focusIdx >= 0 ? rs[focusIdx] : null; }
     function clickIn(root, sel) { if (!root) return; var el = root.querySelector(sel); if (el) el.click(); }
-    function selectFocused() {
-      var row = focusedRow(); if (!row) return;
-      var cb = row.querySelector('[data-vm-check]');
-      if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }
+    // x picks the focused row, or the open one, and starts selecting.
+    function pickRow() {
+      var row = focusedRow() || document.querySelector('#vm-inbox-list .mx-row.vm-active');
+      if (row && window.vmPick) window.vmPick(row);
     }
-    function bulkMove(folder) {
-      var sel = document.querySelector('[data-vm-bulkbar] select[name="to"]');
-      if (sel) { sel.value = folder; sel.dispatchEvent(new Event('change', { bubbles: true })); }
-    }
-    // A row's actions are the bulk bar's, applied to the focused row alone.
-    function bulkVals(fragment) {
-      var bar = document.querySelector('[data-vm-bulkbar]'); if (!bar) return;
-      var btns = bar.querySelectorAll('button[hx-vals]');
+    // While selecting, the keys act on what is picked, through the selection
+    // panel's own controls (the ones a pointer uses).
+    function selVals(fragment) {
+      var btns = document.querySelectorAll('.mx-select-host button[hx-vals]');
       for (var i = 0; i < btns.length; i++) {
         if ((btns[i].getAttribute('hx-vals') || '').indexOf(fragment) >= 0) { btns[i].click(); return; }
       }
     }
-    function inboxAction(kind) {
-      var row = focusedRow(); if (!row) return;
-      selectFocused();
-      if (kind === 'read') { bulkVals(row.classList.contains('is-unread') ? '"read"' : '"unread"'); return; }
-      if (kind === 'pin') { bulkVals('"pin"'); return; }
-      if (kind === 'delete') { bulkVals('"delete"'); return; }
-      bulkMove(kind === 'archive' ? 'Archive' : 'Junk');
+    function openMenu(root, label) {
+      var menus = root ? root.querySelectorAll('details.sa-pop') : [];
+      for (var i = 0; i < menus.length; i++) {
+        var sm = menus[i].querySelector('summary');
+        if (sm && ((sm.getAttribute('aria-label') || sm.textContent).indexOf(label) === 0)) { menus[i].dataset.kbd = '1'; menus[i].open = true; return; }
+      }
     }
+    function goFolder(name) {
+      var links = document.querySelectorAll('#vm-folders a');
+      for (var i = 0; i < links.length; i++) {
+        var lab = links[i].querySelector('.sa-appside__label');
+        if (lab && lab.textContent.trim() === name) { links[i].click(); return; }
+      }
+    }
+    var gAt = 0;
 
     document.addEventListener('keydown', function (e) {
       if (e.altKey || e.ctrlKey || e.metaKey) return;
@@ -1532,6 +1623,26 @@
         if (s) { e.preventDefault(); s.focus(); } else { window.location.href = '/os/vayumail/search'; }
         return;
       }
+      // g then i, s or d goes to the Inbox, Sent or Drafts.
+      if (gAt && Date.now() - gAt < 1500) {
+        gAt = 0;
+        var to = { i: 'Inbox', s: 'Sent', d: 'Drafts' }[e.key];
+        if (to) { e.preventDefault(); goFolder(to); return; }
+      }
+      if (e.key === 'g' && document.getElementById('vm-folders')) { gAt = Date.now(); return; }
+      if (e.key === 'x' && document.getElementById('vm-inbox-list')) { e.preventDefault(); pickRow(); return; }
+      if (window.vmSelecting && window.vmSelecting()) {
+        var host = document.querySelector('.mx-select-host');
+        switch (e.key) {
+          case 'e': selVals('"to":"Archive"'); return;
+          case '!': selVals('"to":"Junk"'); return;
+          case '#': selVals('"delete"'); return;
+          case 'u': selVals('"mark":"unread"'); return;
+          case 'p': selVals('"pin"'); return;
+          case 's': e.preventDefault(); openMenu(host, 'Snooze'); return;
+          case 'v': e.preventDefault(); openMenu(host, 'Move to'); return;
+        }
+      }
       var reader = document.querySelector('.mx-rtools');
       // Beside the list, j and k walk the list (and open what they reach);
       // the reader's own older/newer links are for the message page alone.
@@ -1546,6 +1657,8 @@
           case 'e': clickIn(reader, '[aria-label="Archive"]'); return;
           case '!': clickIn(reader, '[aria-label="Junk"]'); return;
           case 'p': clickIn(reader, '[aria-label="Pin"], [aria-label="Unpin"]'); return;
+          case 's': e.preventDefault(); openMenu(reader, 'Snooze'); return;
+          case 'v': e.preventDefault(); openMenu(reader, 'Move to'); return;
           case 'j': clickIn(reader, '[aria-label="Older message"]'); return;
           case 'k': clickIn(reader, '[aria-label="Newer message"]'); return;
         }
@@ -1556,12 +1669,6 @@
           case 'j': e.preventDefault(); travel = 'older'; move(1); clickIn(focusedRow(), '.mx-row__open'); return;
           case 'k': e.preventDefault(); travel = 'newer'; move(-1); clickIn(focusedRow(), '.mx-row__open'); return;
           case 'o': case 'Enter': clickIn(focusedRow(), '.mx-row__open'); return;
-          case 'x': e.preventDefault(); selectFocused(); return;
-          case 'u': inboxAction('read'); return;
-          case 's': inboxAction('pin'); return;
-          case 'e': inboxAction('archive'); return;
-          case '!': inboxAction('junk'); return;
-          case '#': inboxAction('delete'); return;
         }
       }
     });

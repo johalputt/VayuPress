@@ -67,7 +67,7 @@ func TestAReviewerIsNotOfferedWhatWouldBeRefused(t *testing.T) {
 
 		// The list's toolbar and bulk bar.
 		inbox, _ := a.vayuInboxBody(rd, "Inbox", "", 0)
-		for _, control := range []string{`/os/vayumail/compose?user=`, `{"action":"delete"}`, `{"action":"move"}`} {
+		for _, control := range []string{`/os/vayumail/compose?user=`, `{"action":"delete"}`, `{"action":"move",`} {
 			if strings.Contains(inbox, control) == readOnly {
 				t.Errorf("inbox as %s: offers %s = %v", role, control, !readOnly)
 			}

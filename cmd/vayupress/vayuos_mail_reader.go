@@ -115,7 +115,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		if pane {
 			attrs = hxPost + paneArgs
 		}
-		c.WriteString(`<button type="button" class="` + cls + `" title="` + esc(title) + `" aria-label="` + esc(label) + `" ` + attrs + `>` + saIcon(icon) + `</button>`)
+		c.WriteString(`<button type="button" class="` + cls + `" title="` + esc(title) + `" aria-label="` + esc(label) + `"` + mailCmd(label, "This message", key) + ` ` + attrs + `>` + saIcon(icon) + `</button>`)
 	}
 	c.WriteString(`<div class="mx-rtools" role="toolbar" aria-label="Message"`)
 	if !pane {
@@ -171,7 +171,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 	tool("pin", pinLabel, "p", pinArgs, pinPage, false)
 	c.WriteString(`</div><span class="mx-rtools__fill"></span><div class="mx-rtools__group">`)
 	link := func(icon, label, key, href string) {
-		c.WriteString(`<a class="mx-tool" href="` + esc(href) + `" title="` + esc(label+" ("+key+")") + `" aria-label="` + esc(label) + `">` + saIcon(icon) + `</a>`)
+		c.WriteString(`<a class="mx-tool" href="` + esc(href) + `" title="` + esc(label+" ("+key+")") + `" aria-label="` + esc(label) + `"` + mailCmd(label, "This message", key) + `>` + saIcon(icon) + `</a>`)
 	}
 	if !readOnly {
 		link("reply", "Reply", "r", "/os/vayumail/compose?reply=1&"+q)
@@ -492,4 +492,14 @@ func (a *App) handleVayuOSMessageBody(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOSFragment(w, a.mailBodyHTML(vmail.ParseMessage(raw), raw, readerView{Pane: true}))
+}
+
+// mailCmd marks a control for the command bar, which offers what the page
+// offers by name (Mail plan §6): its label, where it acts, and its key.
+func mailCmd(label, where, key string) string {
+	out := ` data-cmd="` + esc(label) + `" data-cmd-where="` + esc(where) + `"`
+	if key != "" {
+		out += ` aria-keyshortcuts="` + esc(key) + `"`
+	}
+	return out
 }
