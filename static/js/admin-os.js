@@ -531,7 +531,9 @@ document.addEventListener('click', function (e) {
         fetch(d.href, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (html) {
           var doc = new DOMParser().parseFromString(html, 'text/html');
           var main = doc.querySelector('main') || doc.body;
-          var sub = main.querySelector('.page-sub');
+          // The page's own line: the subtitle of a list or settings page,
+          // or the state line each other page kind opens on.
+          var sub = main.querySelector('.page-sub, .page-state, .sa-doc__state, .sa-overview__state, .sa-status__state');
           var figs = Array.prototype.slice.call(main.querySelectorAll('.stat-card')).slice(0, 4).map(function (c) {
             var l = c.querySelector('.stat-card__label'), v = c.querySelector('.stat-card__value');
             return [l ? l.textContent.trim() : '', v ? v.textContent.trim().replace(/\s+/g, ' ') : ''];

@@ -18,12 +18,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"html"
 	htmpl "html/template"
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/bizsite"
@@ -176,24 +176,24 @@ func siteCSSVersion(tpl bizsite.Template, doc sitedoc.Document) string {
 
 // ── VayuOS Website studio ────────────────────────────────────────────────────
 
-// bizModeLabel renders the hosting mode as a short human label for the page's
-// stat header and the accordion's status chip, so what the domain currently
-// serves is readable without expanding anything.
-func bizModeLabel(mode string) string {
+// websiteServes says, as the page's state, what the domain shows today.
+func websiteServes(domain, mode, design string) string {
 	switch mode {
 	case "business":
-		return "Business site"
+		return domain + " shows the website, in " + design
 	case "business_subpath":
-		return "Site + /blog"
+		return domain + " shows the website, the blog at /blog"
 	case "custom":
-		return "Custom upload"
+		return domain + " shows the site you uploaded"
 	default:
-		return "Blog"
+		return domain + " shows the blog"
 	}
 }
 
-// handleOSWebsite renders the Website studio: hosting-mode chooser, template
-// gallery, and the content editor.
+// handleOSWebsite renders the website as a document (page grammar, render
+// 02's kind): the site itself, previewed in the design chosen, with what the
+// domain serves, the design, the content, an uploaded build and whether the
+// site installs as an app in the inspector beside it.
 func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -203,148 +203,136 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 		domain = "yourdomain.com"
 	}
 	he := html.EscapeString
-
 	contentJSON, _ := json.Marshal(content)
+	dir := a.customSiteDir(r)
+	man := customsite.ReadManifest(dir)
+	deployed := customsite.Deployed(dir)
+	_, published := publishedSiteDoc(r.Context(), "")
 
-	var b strings.Builder
-	b.WriteString(`<div class="page-header"><div><h1>Website</h1></div>` +
-		`<div class="page-actions"><a class="btn btn--ghost btn--sm" data-biz-preview href="/site?preview=` + he(activeTpl.Key) + `" target="_blank" rel="noopener">Preview ↗</a>` +
-		`<button class="btn btn--primary btn--sm" data-biz-save>Save &amp; publish</button></div></div>` +
-		`<p class="page-sub">A business website at your domain — blog at blog.` + he(domain) + `, mail at mail.` + he(domain) + `. Deploy, edit and switch designs from here.</p>`)
-
-	// Premium stat header (Monetization-console style): the four facts an
-	// operator wants confirmed at a glance before touching anything.
-	cmHead := customsite.ReadManifest(a.customSiteDir(r))
-	buildLabel := "None"
-	if customsite.Deployed(a.customSiteDir(r)) {
-		buildLabel = fmt.Sprintf("%d files", cmHead.Files)
-	}
-	b.WriteString(`<div class="stat-grid mb-6">` +
-		`<div class="stat-card"><div class="stat-card__label">Root serves</div><div class="stat-card__value stat-card__value--sm">` + he(bizModeLabel(mode)) + `</div><div class="stat-card__bottom"><span class="muted text-xs">` + he(domain) + `</span></div></div>` +
-		`<div class="stat-card"><div class="stat-card__label">Active design</div><div class="stat-card__value stat-card__value--sm">` + he(activeTpl.Name) + `</div><div class="stat-card__bottom"><span class="muted text-xs">` + he(activeTpl.Category) + `</span></div></div>` +
-		`<div class="stat-card"><div class="stat-card__label">Designs</div><div class="stat-card__value">` + fmt.Sprintf("%d", len(bizsite.All())) + `</div><div class="stat-card__bottom"><span class="muted text-xs">ready to switch to</span></div></div>` +
-		`<div class="stat-card"><div class="stat-card__label">Custom build</div><div class="stat-card__value stat-card__value--sm">` + he(buildLabel) + `</div><div class="stat-card__bottom"><span class="muted text-xs">uploaded static site</span></div></div>` +
-		`</div>`)
-
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Hosting</span>` +
-		`<span class="section-head__hint">What your domain serves — kept across updates</span></div><div class="mon-stack">`)
-
-	// Hosting mode — explicit, never changed by updates.
-	var hostBody strings.Builder
-	b2 := &hostBody
-	b2.WriteString(`<p class="text-sm muted">Updates never change this.</p>` +
-		`<label class="vb-mode"><input type="radio" name="biz-mode" value="blog"`)
-	if mode != "business" {
-		b2.WriteString(` checked`)
-	}
-	b2.WriteString(`> <strong>Blog at the root</strong> <span class="muted text-sm">— ` + he(domain) + ` is your blog (current default)</span></label>`)
-	b2.WriteString(`<label class="vb-mode"><input type="radio" name="biz-mode" value="business"`)
-	if mode == "business" {
-		b2.WriteString(` checked`)
-	}
-	b2.WriteString(`> <strong>Business website at the root</strong> <span class="muted text-sm">— the blog moves to blog.` + he(domain) + `</span></label>`)
-	b2.WriteString(`<label class="vb-mode"><input type="radio" name="biz-mode" value="business_subpath"`)
-	if mode == "business_subpath" {
-		b2.WriteString(` checked`)
-	}
-	b2.WriteString(`> <strong>Website at the root, blog at /blog</strong> <span class="muted text-sm">— posts keep their URLs</span>` +
-		string(ui.Tip(domain+" is your business site, the blog homepage is "+domain+"/blog, and every existing post keeps its "+domain+"/slug URL. One domain, no subdomain or extra certificate needed.")) + `</label>`)
-	b2.WriteString(`<label class="vb-mode"><input type="radio" name="biz-mode" value="custom"`)
+	// ── The document: the site, or what stands in its place ────────────────
+	var doc string
 	if mode == "custom" {
-		b2.WriteString(` checked`)
+		doc = `<div class="web-doc__note"><p>` + he(domain) + ` serves the site you uploaded`
+		if deployed {
+			doc += `: ` + strconv.Itoa(man.Files) + ` file` + plural(man.Files) + `, deployed ` + he(config.FormatSiteStamp(man.DeployedAt))
+		}
+		doc += `.</p><a class="btn btn--ghost btn--sm" href="/" target="_blank" rel="noopener">View it ↗</a></div>`
+	} else {
+		if mode == "blog" {
+			doc = `<p class="web-doc__caption">The website as it will look. ` + he(domain) + ` shows the blog until Hosting says otherwise.</p>`
+		}
+		// The site editor's preview, framable by the console alone and
+		// sandboxed: it renders the saved site in the design named here,
+		// so choosing a design shows it before it is saved.
+		doc += `<iframe class="web-doc__frame" data-biz-frame title="The website" sandbox="" src="/os/api/site-doc/preview?page=&amp;preview=` + he(activeTpl.Key) + `"></iframe>`
 	}
-	b2.WriteString(`> <strong>Custom uploaded website</strong> <span class="muted text-sm">— your own static site, uploaded below</span>` +
-		string(ui.Tip("Serve your own static site, built by hand or with AI, at "+domain+"; the blog stays at "+domain+"/blog and posts keep their "+domain+"/slug URLs.")) + `</label>`)
-	b2.WriteString(`<p class="muted text-xs mt-2">Certificates are issued and renewed for you.` +
-		string(ui.Tip("The subdomain option points "+domain+", blog."+domain+" and mail."+domain+" at this server; the installer issues and renews Let's Encrypt certificates for all three. The /blog and custom options need only "+domain+".")) + `</p>`)
-	b.WriteString(monAcc(saIcon("globe"), "What does "+domain+" show?", "Blog, business site, /blog or your own upload",
-		`<span class="mon-chip mon-chip--on">● `+he(bizModeLabel(mode))+`</span>`, true, hostBody.String()))
-	b.WriteString(`</div>`)
 
-	// ── Design & content ──────────────────────────────────────────────────────
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Design &amp; content</span>` +
-		`<span class="section-head__hint">Pick a look, then fill in the details — switching designs keeps your content</span></div><div class="mon-stack">`)
+	// ── Hosting ─────────────────────────────────────────────────────────────
+	var host strings.Builder
+	for _, m := range []struct{ value, label, note string }{
+		{"blog", "The blog", domain + " is the blog"},
+		{"business", "The website", "the blog moves to blog." + domain},
+		{"business_subpath", "The website, the blog at /blog", "posts keep their addresses"},
+		{"custom", "The site you uploaded", "served as it was built"},
+	} {
+		checked := ""
+		if m.value == mode || (m.value == "blog" && mode == "") {
+			checked = " checked"
+		}
+		host.WriteString(`<label class="sa-insp__option"><input type="radio" name="biz-mode" value="` + m.value + `"` + checked + `>` +
+			`<span><span class="sa-insp__option-label">` + he(m.label) + `</span><span class="sa-insp__hint">` + he(m.note) + `</span></span></label>`)
+	}
+	host.WriteString(string(ui.Explain(ui.HTML(`<p>Updates never change this. The website option points ` + he(domain) + `, blog.` + he(domain) + ` and mail.` + he(domain) +
+		` at this server, and certificates for all three are issued and renewed for you; the /blog and uploaded options need only ` + he(domain) + `.</p>`))))
 
-	// Template gallery.
-	var galBody strings.Builder
-	galBody.WriteString(`<div class="biz-grid">`)
+	// ── Design ──────────────────────────────────────────────────────────────
+	design := string(ui.InspectorRow("In use", ui.HTML(`<span class="sa-insp__pair"><span data-biz-design-name>`+he(activeTpl.Name)+`</span>`+
+		`<button type="button" class="btn btn--ghost btn--xs" data-sheet="web-designs">Change</button></span>`)))
+	var gal strings.Builder
+	gal.WriteString(`<div class="biz-grid">`)
 	for _, t := range bizsite.All() {
 		cls := "biz-card"
 		if t.Key == activeTpl.Key {
 			cls += " biz-card--active"
 		}
-		galBody.WriteString(`<button type="button" class="` + cls + `" data-biz-template="` + he(t.Key) + `">` +
-			`<span class="biz-card-cat">` + he(t.Category) + `</span>` +
-			`<span class="biz-card-name">` + he(t.Name) + `</span>` +
-			`<span class="biz-card-tag text-sm muted">` + he(t.Tagline) + `</span></button>`)
+		gal.WriteString(`<button type="button" class="` + cls + `" data-biz-template="` + he(t.Key) + `" data-biz-template-name="` + he(t.Name) + `">` +
+			`<span class="biz-card-cat">` + he(t.Category) + `</span><span class="biz-card-name">` + he(t.Name) + `</span>` +
+			`<span class="biz-card-tag">` + he(t.Tagline) + `</span></button>`)
 	}
-	galBody.WriteString(`</div><p class="muted text-xs mt-2">Selecting a design keeps your content — only the look changes. Empty fields fall back to the design&#39;s sample content.</p>`)
-	b.WriteString(monAcc(saIcon("palette"), "Choose a design", fmt.Sprintf("%d ready-made looks — %s is active", len(bizsite.All()), activeTpl.Name),
-		`<span class="mon-chip mon-chip--on">● `+he(activeTpl.Name)+`</span>`, false, galBody.String()))
+	gal.WriteString(`</div><p class="text-sm muted">A design changes the look and keeps the content. A field left empty shows the design's sample.</p>`)
 
-	// Content editor.
-	field := func(key, label, ph string) string {
-		return `<label class="pm-label">` + he(label) + `</label><input class="input" data-biz-f="` + key + `" placeholder="` + he(ph) + `">`
-	}
-	area := func(key, label, ph string, rows string) string {
-		return `<label class="pm-label">` + he(label) + `</label><textarea class="input" rows="` + rows + `" data-biz-f="` + key + `" placeholder="` + he(ph) + `"></textarea>`
-	}
-	var formBody strings.Builder
-	formBody.WriteString(`<div class="biz-form">`)
-	formBody.WriteString(`<div class="biz-form-col">`)
-	formBody.WriteString(field("name", "Business name", "Maison Olive"))
-	formBody.WriteString(field("tagline", "Tagline", "Seasonal plates, honest wine."))
-	formBody.WriteString(area("about", "About (one paragraph per line)", "Who you are, what you do…", "4"))
-	formBody.WriteString(field("cta", "Button label", "Book a table"))
-	formBody.WriteString(field("ctaLink", "Button link (optional)", "#contact, tel:…, or a URL"))
-	formBody.WriteString(field("heroImg", "Hero image URL (optional)", "/media/hero.jpg or any https image"))
-	formBody.WriteString(`</div><div class="biz-form-col">`)
-	formBody.WriteString(field("phone", "Phone", "+1 555 0100"))
-	formBody.WriteString(field("email", "Email", "hello@"+domain))
-	formBody.WriteString(area("address", "Address (one line per row)", "12 Main Street…", "2"))
-	formBody.WriteString(area("hours", "Hours (one line per range)", "Mon–Fri 09:00–18:00", "3"))
-	formBody.WriteString(area("services", "Offerings — one per line: Title | Description | Price", "Flat white | | £3.40", "6"))
-	formBody.WriteString(area("gallery", "Gallery image URLs (one per line)", "/media/one.jpg", "3"))
-	formBody.WriteString(`<label class="vb-mode"><input type="checkbox" data-biz-f="showBlog"> Link the blog from the website</label>`)
-	formBody.WriteString(`</div></div>`)
-	formBody.WriteString(`<span class="text-sm muted" data-biz-status></span>`)
-	if _, published := publishedSiteDoc(r.Context(), ""); published {
-		b.WriteString(monAcc(saIcon("pencil"), "Your content", "Pages and sections, in the site editor", "", false,
-			siteEditorCard("/os/website/editor", true)))
+	// ── Content ─────────────────────────────────────────────────────────────
+	var con strings.Builder
+	if published {
+		con.WriteString(`<p class="sa-insp__text">This site is published from the site editor, as pages of sections with drafts and history.</p>` +
+			`<a class="btn btn--sm" href="/os/website/editor">Open the site editor</a>`)
 	} else {
-		formBody.WriteString(siteEditorCard("/os/website/editor", false))
-		b.WriteString(monAcc(saIcon("pencil"), "Your content", "Name, tagline, contact details, hours, offerings & gallery", "", false, formBody.String()))
+		field := func(key, label, ph string) {
+			con.WriteString(`<label class="sa-insp__field"><span class="sa-insp__label">` + he(label) + `</span><input class="input" data-biz-f="` + key + `" placeholder="` + he(ph) + `"></label>`)
+		}
+		// Multi-line content is edited only in a textarea: a single-line
+		// input strips line breaks from its value, and a save then stores
+		// the hours or the address run together (admin_os_scoped_website.go).
+		area := func(key, label, ph, rows string) {
+			con.WriteString(`<label class="sa-insp__field"><span class="sa-insp__label">` + he(label) + `</span><textarea class="textarea" rows="` + rows + `" data-biz-f="` + key + `" placeholder="` + he(ph) + `"></textarea></label>`)
+		}
+		field("name", "Name", "Maison Olive")
+		field("tagline", "Tagline", "Seasonal plates, honest wine.")
+		area("about", "About, a paragraph a line", "Who you are, what you do", "4")
+		field("cta", "Button", "Book a table")
+		field("ctaLink", "Button link", "#contact, tel:, or an address")
+		field("heroImg", "Hero image", "/media/hero.jpg")
+		field("phone", "Phone", "+1 555 0100")
+		field("email", "Email", "hello@"+domain)
+		area("address", "Address, a line a row", "12 Main Street", "2")
+		area("hours", "Hours, a range a line", "Mon–Fri 09:00–18:00", "3")
+		area("services", "Offerings: title | description | price, one a line", "Flat white | | £3.40", "5")
+		area("gallery", "Gallery images, one a line", "/media/one.jpg", "3")
+		con.WriteString(`<label class="sa-insp__check"><input type="checkbox" data-biz-f="showBlog"> Link the blog from the website</label>` +
+			`<p class="sa-insp__text">More than one page? The site editor builds the same site as pages of sections, with drafts and history. It opens on what is here.</p>` +
+			`<a class="btn btn--sm" href="/os/website/editor">Open the site editor</a>`)
 	}
-	// Whether this site installs as a REAL app. It lives here because it is a
-	// property of the public site, and it opens itself when something is failing.
-	b.WriteString(a.pwaHealthCardHTML(r, nonce))
-	b.WriteString(`</div>`)
 
-	// ── Custom build ──────────────────────────────────────────────────────────
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Custom build</span>` +
-		`<span class="section-head__hint">Bring your own static site instead of a ready-made design</span></div><div class="mon-stack">`)
-	cm := customsite.ReadManifest(a.customSiteDir(r))
-	customDeployed := customsite.Deployed(a.customSiteDir(r))
-	var zipBody strings.Builder
-	zipBody.WriteString(`<p class="text-sm muted">Upload a complete static website as a <span class="mono">.zip</span> — it must contain <span class="mono">index.html</span> at its root and reference assets with relative paths. It goes live at <span class="mono">` + he(domain) + `</span> once you choose <strong>Custom uploaded website</strong> above and Save &amp; publish. Building with an AI assistant? <a href="/os/api/website/custom-guide">Download the build guide ↓</a></p>`)
-	zipBody.WriteString(bundleRoomLine())
-	if customDeployed {
-		zipBody.WriteString(`<p class="text-sm">Current build: <strong>` + fmt.Sprintf("%d", cm.Files) + `</strong> files, ` + he(humanBytes(cm.Bytes)) +
-			`, deployed <span class="mono">` + he(config.FormatSiteStamp(cm.DeployedAt)) + `</span>.</p>`)
+	// ── An uploaded build ───────────────────────────────────────────────────
+	built := "None"
+	if deployed {
+		built = strconv.Itoa(man.Files) + " file" + plural(man.Files) + ", " + config.FormatSiteStamp(man.DeployedAt)
 	}
-	zipBody.WriteString(`<div class="biz-deploy"><input type="file" accept=".zip,application/zip" data-biz-zip class="input">` +
-		`<button type="button" class="btn btn--primary btn--sm" data-biz-deploy>Deploy .zip</button>`)
-	if customDeployed {
-		zipBody.WriteString(`<a class="btn btn--ghost btn--sm" href="/os/api/website/custom-bundle/download" download>Download .zip</a>`)
+	upload := string(ui.InspectorRow("Uploaded", ui.Text(built))) + `<div class="sa-insp__actions"><button type="button" class="btn btn--sm" data-sheet="web-bundle">Upload a .zip</button>`
+	if deployed {
+		upload += `<a class="btn btn--ghost btn--sm" href="/os/api/website/custom-bundle/download" download>Download</a>`
 	}
-	if cm.HasPrev {
-		zipBody.WriteString(`<button type="button" class="btn btn--ghost btn--sm" data-biz-rollback>Roll back</button>`)
+	if man.HasPrev {
+		upload += `<button type="button" class="btn btn--ghost btn--sm" data-biz-rollback>Roll back</button>`
 	}
-	zipBody.WriteString(`<span class="text-sm muted" data-biz-deploy-status></span></div>`)
-	zipBody.WriteString(bundleHistoryHTML(a.customSiteDir(r), "/os/api/website/custom-bundle"))
-	b.WriteString(monAcc(saIcon("package"), "Deploy a custom build", "Upload a .zip static site — with one-click rollback",
-		monChip(customDeployed, buildLabel+" deployed", "None uploaded"), false, zipBody.String()))
-	b.WriteString(`</div>`)
+	upload += `</div>`
+	bundle := `<p class="text-sm muted">A complete static site as a .zip, with index.html at its root and its assets by relative path. It is live once Hosting says the site you uploaded. <a href="/os/api/website/custom-guide">The build guide for an assistant ↓</a></p>` +
+		bundleRoomLine() +
+		`<div class="biz-deploy"><input type="file" accept=".zip,application/zip" data-biz-zip class="input" aria-label="The .zip to deploy">` +
+		`<button type="button" class="btn btn--primary btn--sm" data-biz-deploy>Deploy</button></div>` +
+		bundleHistoryHTML(dir, "/os/api/website/custom-bundle")
+
+	inspector := ui.Join(
+		ui.InspectorSection("Hosting", ui.HTML(host.String())),
+		ui.InspectorSection("Design", ui.HTML(design)),
+		ui.InspectorSection("Content", ui.HTML(con.String())),
+		ui.InspectorSection("Your own build", ui.HTML(upload)),
+		ui.HTML(a.pwaHealthSection(r, nonce)),
+	)
+	page := ui.Document(ui.DocumentPage{
+		Title: "Website",
+		State: ui.State("ok", websiteServes(domain, mode, activeTpl.Name)),
+		Actions: ui.HTML(`<span class="sa-doc__msg" data-biz-status role="status" aria-live="polite"></span><span class="sa-doc__msg" data-biz-deploy-status role="status" aria-live="polite"></span>` +
+			`<a class="btn btn--ghost btn--sm" data-biz-preview href="/site?preview=` + he(activeTpl.Key) + `" target="_blank" rel="noopener">Preview ↗</a>` +
+			`<button type="button" class="btn btn--primary btn--sm" data-biz-save>Save &amp; publish</button>`),
+		Inspector: inspector,
+		Label:     "Website settings",
+	}, ui.HTML(doc))
+
+	var b strings.Builder
+	b.WriteString(string(page))
+	b.WriteString(string(ui.Sheet("web-designs", "Choose a design", ui.HTML(gal.String()))))
+	b.WriteString(string(ui.Sheet("web-bundle", "Upload a site", ui.HTML(bundle))))
 
 	// Hydration payload + external JS (CSP-safe).
 	b.WriteString(`<script type="application/json" id="vp-biz-data">`)

@@ -15,6 +15,8 @@ import (
 	"fmt"
 	"html"
 	"strings"
+
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // wcagAALarge is the WCAG 2.x AA ratio for large text and UI components. Normal
@@ -104,9 +106,9 @@ func themeA11yChecks(accentDark, accent2Dark, accentLight, accent2Light string) 
 	return out
 }
 
-// a11ySummaryChip grades the WEAKEST pairing, so the collapsed section tells the
+// a11ySummary grades the WEAKEST pairing, as a dot and a word, so the section tells the
 // truth rather than the most flattering number.
-func a11ySummaryChip(checks []a11yCheck) string {
+func a11ySummary(checks []a11yCheck) string {
 	if len(checks) == 0 {
 		return ""
 	}
@@ -116,14 +118,16 @@ func a11ySummaryChip(checks []a11yCheck) string {
 			worst = c
 		}
 	}
+	var s ui.HTML
 	switch {
 	case worst.Ratio >= wcagAANormal:
-		return `<span class="cz-chip cz-chip--live">● Readable</span>`
+		s = ui.State("ok", "Readable")
 	case worst.Ratio >= wcagAALarge:
-		return `<span class="cz-chip cz-chip--warn">Low contrast</span>`
+		s = ui.State("warn", "Low contrast")
 	default:
-		return `<span class="cz-chip cz-chip--bad">Hard to read</span>`
+		s = ui.State("danger", "Hard to read")
 	}
+	return `<div class="sa-insp__text">` + string(s) + `</div>`
 }
 
 // themeA11yPanel renders the readout. It is server-measured from the SAVED

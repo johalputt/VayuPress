@@ -1448,84 +1448,8 @@
 .vp-os .diff-eq { color: var(--text-2); }
 
 /* ── Theme Studio — Ghost-style customizer (controls panel + live preview) ─── */
-.vp-os .customizer { display: grid; grid-template-columns: 380px 1fr; gap: 20px; align-items: start; height: calc(100vh - 150px); min-height: 560px; }
-
-@media (max-width: 1100px) {
-  .vp-os .customizer { grid-template-columns: 1fr; height: auto; }
-
-}
-
-/* Controls panel — scrolls independently of the sticky preview. */
-.vp-os .customizer__panel { display: flex; flex-direction: column; gap: 12px; height: 100%; overflow-y: auto; padding-right: 6px; }
-
-@media (max-width: 1100px) { .vp-os .customizer__panel { height: auto; overflow: visible; }
- }
-
-/* Collapsible control groups. flex:0 0 auto stops a tall open section from being
-   squeezed (and clipped by overflow:hidden) to fit the panel — instead the panel
-   itself scrolls, so the whole section and all its controls are reachable. */
-.vp-os .cz-group { flex: 0 0 auto; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
-
-.vp-os .cz-group__head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 13px 16px; cursor: pointer; user-select: none; text-align: left; font-family: inherit; font-size: 14px; font-weight: 600; color: var(--text); background: transparent; border: 0; appearance: none; list-style: none; }
-
-.vp-os .cz-group__head::-webkit-details-marker { display: none; }
-
-.vp-os .cz-group__head::after { content: "\2304"; margin-left: auto; font-size: 15px; color: var(--text-2); transition: transform .15s; transform: translateY(-2px) rotate(0deg); }
-
-.vp-os .cz-group--open > .cz-group__head::after { transform: translateY(0) rotate(180deg); }
-
-.vp-os .cz-group__head:hover { background: var(--bg-surface-2); }
-
-.vp-os .cz-group--open { border-color: var(--border-strong); box-shadow: var(--sh-sm); }
-
-.vp-os .cz-group--open > .cz-group__head { background: var(--bg-surface-2); color: var(--text); }
-
-.vp-os .cz-group__hint { font-size: 12px; font-weight: 600; color: var(--on-accent); background: var(--brand); padding: 2px 7px; border-radius: var(--radius-surface); }
-
-.vp-os .cz-group__body { display: none; padding: 4px 16px 16px; border-top: 1px solid var(--border); }
-
-.vp-os .cz-group--open > .cz-group__body { display: block; }
-
-/* Theme Studio — Monetization-console group summaries. The head keeps its
-   .cz-group__head class + aria-expanded (the accordion JS and the jump bar key
-   off them) and gains the icon / title / subtitle / chip layout used by the
-   Monetization accordions, so the whole console reads as one system. */
-.vp-os .cz-group__head { gap: var(--sp-3); }
-
-.vp-os .cz-group__ic { flex: none; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; border-radius: var(--r-sm); background: var(--bg-surface-2); border: 1px solid var(--border); }
-
-.vp-os .cz-group__text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; text-align: left; }
-
-.vp-os .cz-group__title { font-weight: 600; font-size: var(--text-sm); color: var(--text); }
-
-.vp-os .cz-group__sub { font-size: var(--text-xs); font-weight: 400; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* Status chips on a group summary (mirrors .mon-chip). */
-.vp-os .cz-chip { flex: none; font-size: var(--text-xs); font-weight: 600; padding: 3px 9px; border-radius: var(--radius-small); border: 1px solid var(--border); color: var(--text-3); background: var(--bg-surface-2); white-space: nowrap; }
-
-.vp-os .cz-chip--go { color: var(--accent-hover); border-color: var(--accent-soft); background: var(--accent-soft); }
-
-.vp-os .cz-chip--live { color: var(--ok); border-color: var(--ok-soft); background: var(--ok-soft); }
-
-.vp-os .cz-chip--warn { color: var(--warn); border-color: var(--warn-soft); background: var(--warn-soft); }
-
-.vp-os .cz-chip--bad { color: var(--danger); border-color: var(--danger-soft); background: var(--danger-soft); }
-
-@media (max-width: 640px) { .vp-os .cz-chip { display: none; }
- .vp-os .cz-group__sub { white-space: normal; }
- }
-
-/* Section dividers between groups of controls (mirrors .section-head). */
-.vp-os .cz-sec { display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; margin: var(--sp-4) 0 var(--sp-1); padding: 0 2px; }
-
-.vp-os .cz-sec:first-child { margin-top: 0; }
-
-.vp-os .cz-sec__title { font-size: var(--text-xs); font-weight: 600; color: var(--text-2); }
-
-.vp-os .cz-sec__hint { font-size: var(--text-xs); color: var(--text-3); }
-
 /* Readability (WCAG contrast) readout inside the Brand colours group. */
-.vp-os .cz-a11y { margin-top: var(--sp-4); padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-surface-2); }
+.vp-os .cz-a11y { margin-top: var(--sp-2); }
 
 .vp-os .cz-a11y__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-2); }
 
@@ -1535,34 +1459,11 @@
 
 .vp-os .cz-a11y .table td { padding-top: 6px; padding-bottom: 6px; }
 
-/* Customizer quick-jump chip bar — sticky section navigator. */
-.vp-os .cz-jump { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; margin-bottom: 4px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); }
-
-.vp-os .cz-jump__chip { font-size: 12px; font-weight: 600; line-height: 1; padding: 5px 9px; cursor: pointer; color: var(--text-2); background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--radius-small); transition: color .12s, border-color .12s, background .12s; }
-
-.vp-os .cz-jump__chip:hover { color: var(--on-accent); background: var(--brand); border-color: var(--brand); }
-
 /* Apply button "unsaved changes" state — a subtle ring so the operator knows a
    live preview tweak still needs Applying to persist. */
 .vp-os .btn.is-dirty { box-shadow: 0 0 0 2px var(--accent); }
 
-/* Preview stage. */
-.vp-os .customizer__stage { display: flex; flex-direction: column; height: 100%; min-height: 520px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
-
-@media (max-width: 1100px) { .vp-os .customizer__stage { height: 75vh; }
- }
-
 .vp-os .customizer__toolbar { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--bg-surface-2); }
-
-.vp-os .cz-toolbar-spacer { flex: 1; }
-
-.vp-os .cz-devices { display: inline-flex; gap: 4px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-control); padding: 3px; }
-
-.vp-os .cz-device { font-size: 13px; font-weight: 500; line-height: 1; padding: 6px 12px; cursor: pointer; color: var(--text-2); background: transparent; border: 0; border-radius: var(--radius-control); transition: color .14s, background .14s; }
-
-.vp-os .cz-device:hover { color: var(--text); }
-
-.vp-os .cz-device--active, .vp-os .cz-device--active:hover { color: var(--on-accent); background: var(--brand); }
 
 .vp-os .customizer__viewport { flex: 1; position: relative; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 0; }
 
@@ -1625,14 +1526,8 @@
 
 .vp-os .theme-filter__chips { display: flex; flex-wrap: wrap; gap: 6px; }
 
-.vp-os .theme-filter__chip { cursor: pointer; opacity: 0.75; }
-
-.vp-os .theme-filter__chip.is-on { opacity: 1; box-shadow: 0 0 0 1px var(--accent) inset; }
-
 /* ── Theme Studio Waves B/C: harmony, badges, modes, drafts, mobile ─────── */
-.vp-os .cz-gen { padding: 10px 12px; margin-bottom: 12px; background: var(--bg-surface-2); border: 1px dashed var(--border); border-radius: var(--r-md); }
-
-.vp-os .cz-gen .vm-row { align-items: center; }
+.vp-os .cz-gen { display: flex; flex-direction: column; gap: var(--sp-2); }
 
 .vp-os .theme-badge { display: inline-block; min-width: 52px; margin-left: 8px; font-size: 12px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
 
@@ -1643,19 +1538,6 @@
 .vp-os .theme-draft-banner { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 14px; padding: 10px 14px; background: var(--warn-soft); border: 1px solid var(--warn-soft); border-radius: var(--r-md); font-size: 14px; }
 
 .vp-os .theme-draft-banner[hidden] { display: none; }
-
-.vp-os .customizer .cz-group[hidden] { display: none; }
-
-.vp-os .customizer.is-focus .customizer__panel { display: none; }
-
-@media (max-width: 900px) {
-  .vp-os .customizer { display: flex; flex-direction: column-reverse; gap: 14px; }
-
-  .vp-os .customizer__panel { position: sticky; bottom: 0; z-index: 5; max-height: 55vh; overflow-y: auto; width: 100%; border-top: 2px solid var(--border); box-shadow: var(--shadow-3); background: var(--bg-surface); }
-
-  .vp-os .customizer__stage { width: 100%; }
-
-}
 
 .vp-os .theme-card__name { font-size: 13px; font-weight: 600; color: var(--text-1); padding: 0 12px 10px; }
 
@@ -6753,8 +6635,8 @@
    Mail does: its own hairlines divide it, so the content padding would only
    frame it in a second margin. */
 .vp-os[data-ui="still-air"] .sa-content:has(> .sa-doc) { padding: 0; overflow: hidden; }
-.vp-os[data-ui="still-air"] .sa-content > .sa-doc { max-width: none; height: 100%; display: grid; grid-template-rows: 56px minmax(0, 1fr); }
-.vp-os[data-ui="still-air"] .sa-doc__bar { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: 0 var(--space-6); border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .sa-content > .sa-doc { max-width: none; height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.vp-os[data-ui="still-air"] .sa-doc__bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; min-height: 56px; padding: var(--space-2) var(--space-6); border-bottom: 1px solid var(--border-1); }
 .vp-os[data-ui="still-air"] .sa-doc__back { display: inline-flex; align-items: center; gap: var(--space-1); flex: none; height: 32px; padding: 0 var(--space-3) 0 var(--space-2); margin-left: calc(-1 * var(--space-2)); border-radius: var(--radius-control); font: var(--type-strong); color: var(--text-1); text-decoration: none; }
 .vp-os[data-ui="still-air"] .sa-doc__back:hover { background: var(--surface-hover); text-decoration: none; }
 .vp-os[data-ui="still-air"] .sa-doc__back:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -6776,13 +6658,51 @@
 /* Text gets room above the title and below the last line, so the end of a
    post can be written in the middle of the window rather than at its foot. */
 .vp-os[data-ui="still-air"] .sa-doc__main--text { padding: var(--space-10) var(--space-8) 35vh; }
+/* The inspector's side padding leaves a text box in it 328px wide: the
+   design lint holds every text box to 320px, the narrowest a sentence can be
+   written in without words breaking (stillair.spec.js). */
 .vp-os[data-ui="still-air"] .sa-doc__inspector { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-5) var(--space-5) var(--space-10); border-left: 1px solid var(--border-1); background: var(--color-canvas); }
 .vp-os[data-ui="still-air"] .sa-doc:is(.is-inspector-off, .is-focus) .sa-doc__body { grid-template-columns: minmax(0, 1fr); }
 .vp-os[data-ui="still-air"] .sa-doc:is(.is-inspector-off, .is-focus) .sa-doc__inspector { display: none; }
 
-/* The inspector's side padding leaves a text box in it 328px wide: the
-   design lint holds every text box to 320px, the narrowest a sentence can be
-   written in without words breaking (stillair.spec.js). */
+/* A document's own title stands at the start of its bar; a message from its
+   last action sits before the actions, quiet until it has something to say. */
+.vp-os[data-ui="still-air"] .sa-doc__title { margin: 0; font: var(--type-title); color: var(--text-1); white-space: nowrap; }
+.vp-os[data-ui="still-air"] .sa-doc__msg { min-width: 0; font: var(--type-small); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vp-os[data-ui="still-air"] .sa-doc__msg:empty { display: none; }
+.vp-os[data-ui="still-air"] .sa-doc__state > .sa-doc__msg::before { content: "·"; margin: 0 var(--space-2); }
+
+/* The website document: the site itself, framed, filling the page. */
+.vp-os[data-ui="still-air"] .sa-doc__main:has(> .web-doc__frame) { display: flex; flex-direction: column; gap: var(--space-3); overflow: hidden; }
+.vp-os[data-ui="still-air"] .web-doc__frame { flex: 1 1 auto; display: block; width: 100%; min-height: 420px; border: 1px solid var(--border-1); border-radius: var(--radius-surface); background: var(--paper); }
+.vp-os[data-ui="still-air"] .web-doc__caption { margin: 0; font: var(--type-small); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .web-doc__note { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-4); max-width: 46rem; margin: var(--space-10) auto; font: var(--type-body); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .web-doc__note p { margin: 0; }
+
+/* The theme document: the live preview fills the page under its toolbar. */
+.vp-os[data-ui="still-air"] .sa-doc__main:has(> .customizer__viewport) { display: flex; flex-direction: column; gap: var(--space-3); overflow: hidden; }
+.vp-os[data-ui="still-air"] .sa-doc__main > .customizer__toolbar { flex-wrap: wrap; gap: var(--space-3); padding: 0; border: 0; background: none; }
+.vp-os[data-ui="still-air"] .sa-doc__main > .customizer__viewport { flex: 1 1 auto; min-height: 0; border: 1px solid var(--border-1); border-radius: var(--radius-surface); background: var(--surface-sunken); }
+.vp-os[data-ui="still-air"] .sa-doc__main > .theme-draft-banner { margin: 0; }
+
+/* An inspector with more than one group shows them as tabs at its head, which
+   stay in view while the group scrolls under them. */
+.vp-os[data-ui="still-air"] .sa-itabs { position: sticky; top: calc(-1 * var(--space-5)); z-index: 2; display: flex; gap: var(--space-1); margin: calc(-1 * var(--space-5)) 0 var(--space-2); padding-top: var(--space-3); border-bottom: 1px solid var(--border-1); background: var(--color-canvas); }
+.vp-os[data-ui="still-air"] .sa-itabs__tab { position: relative; padding: var(--space-2) var(--space-3); border: 0; background: none; font: var(--type-strong); color: var(--text-3); cursor: pointer; }
+.vp-os[data-ui="still-air"] .sa-itabs__tab:hover { color: var(--text-1); }
+.vp-os[data-ui="still-air"] .sa-itabs__tab[aria-selected="true"] { color: var(--text-1); }
+.vp-os[data-ui="still-air"] .sa-itabs__tab[aria-selected="true"]::after { content: ""; position: absolute; left: var(--space-3); right: var(--space-3); bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
+.vp-os[data-ui="still-air"] .sa-itabs__tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius-control); }
+.vp-os[data-ui="still-air"] .sa-itabs__panel[hidden] { display: none; }
+.vp-os[data-ui="still-air"] .sa-itabs__panel > .sa-insp:first-child { border-top: 0; }
+/* A file and what to do with it: the picker on its own line, the buttons under it. */
+.vp-os[data-ui="still-air"] .cz-upload { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.vp-os[data-ui="still-air"] .cz-upload > input[type="file"] { flex: 1 1 100%; min-width: 0; }
+.vp-os[data-ui="still-air"] .sa-doc__inspector .theme-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.vp-os[data-ui="still-air"] .sa-doc__inspector .theme-fields--text { grid-template-columns: minmax(0, 1fr); }
+.vp-os[data-ui="still-air"] .sa-doc__inspector .theme-filter { margin: 0; }
+.vp-os[data-ui="still-air"] .sa-doc__inspector .theme-filter__search { max-width: none; width: 100%; }
+
 /* The inspector: sections under a quiet head, divided by hairlines; label and
    value rows like the render's Publish group. */
 .vp-os[data-ui="still-air"] .sa-insp { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5) 0; border-top: 1px solid var(--border-1); }
@@ -6796,6 +6716,14 @@
 .vp-os[data-ui="still-air"] .sa-insp__hint { font: var(--type-meta); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .sa-insp__hint:empty { display: none; }
 .vp-os[data-ui="still-air"] .sa-insp__count { font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .sa-insp__option { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: var(--space-3); padding: var(--space-1) 0; cursor: pointer; }
+.vp-os[data-ui="still-air"] .sa-insp__option > input { margin-top: 3px; }
+.vp-os[data-ui="still-air"] .sa-insp__option-label { display: block; font: var(--type-body); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .sa-insp__option .sa-insp__hint { display: block; }
+.vp-os[data-ui="still-air"] .sa-insp__pair { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; }
+.vp-os[data-ui="still-air"] .sa-insp__text { margin: 0; font: var(--type-small); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .sa-insp__sub { margin: var(--space-2) 0 0; font: var(--type-small); font-weight: 500; color: var(--text-2); }
+.vp-os[data-ui="still-air"] .sa-insp__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .vp-os[data-ui="still-air"] .sa-insp__check { display: flex; align-items: center; gap: var(--space-3); font: var(--type-body); color: var(--text-1); cursor: pointer; }
 .vp-os[data-ui="still-air"] .sa-insp__field { display: flex; flex-direction: column; gap: 6px; }
 .vp-os[data-ui="still-air"] .sa-insp__field > .sa-insp__label { display: flex; justify-content: space-between; font: var(--type-small); }
@@ -6872,9 +6800,15 @@
    same 1100px). */
 @media (max-width: 1099px) {
   .vp-os[data-ui="still-air"] .sa-doc__body { grid-template-columns: minmax(0, 1fr); }
-  .vp-os[data-ui="still-air"] .sa-doc__inspector { position: fixed; top: 0; right: 0; bottom: 0; z-index: 350; width: min(400px, 92vw); border-left: 1px solid var(--border-2); box-shadow: var(--shadow-4); visibility: hidden; transform: translateX(100%); transition: transform var(--duration-standard) var(--ease-enter), visibility 0s linear var(--duration-standard); }
-  .vp-os[data-ui="still-air"] .sa-doc.is-settings .sa-doc__inspector { visibility: visible; transform: none; transition: transform var(--duration-standard) var(--ease-enter); }
-  .vp-os[data-ui="still-air"] .sa-doc:is(.is-inspector-off, .is-focus) .sa-doc__inspector { display: block; }
+  .vp-os[data-ui="still-air"] .editor-shell .sa-doc__inspector { position: fixed; top: 0; right: 0; bottom: 0; z-index: 350; width: min(400px, 92vw); border-left: 1px solid var(--border-2); box-shadow: var(--shadow-4); visibility: hidden; transform: translateX(100%); transition: transform var(--duration-standard) var(--ease-enter), visibility 0s linear var(--duration-standard); }
+  .vp-os[data-ui="still-air"] .editor-shell.is-settings .sa-doc__inspector { visibility: visible; transform: none; transition: transform var(--duration-standard) var(--ease-enter); }
+  .vp-os[data-ui="still-air"] .editor-shell:is(.is-inspector-off, .is-focus) .sa-doc__inspector { display: block; }
+  /* A document with no drawer to open (Website, Theme) stacks instead: the
+     document, then its inspector under it, and the page scrolls. */
+  .vp-os[data-ui="still-air"] .sa-content:has(> .sa-doc:not(.editor-shell)) { overflow-y: auto; }
+  .vp-os[data-ui="still-air"] .sa-content > .sa-doc:not(.editor-shell) { height: auto; }
+  .vp-os[data-ui="still-air"] .sa-doc:not(.editor-shell) .sa-doc__main { height: 72vh; }
+  .vp-os[data-ui="still-air"] .sa-doc:not(.editor-shell) .sa-doc__inspector { overflow: visible; border-left: 0; border-top: 1px solid var(--border-1); }
 }
 @media (max-width: 600px) {
   .vp-os[data-ui="still-air"] .sa-doc__bar { gap: var(--space-1); padding: 0 var(--space-4); }

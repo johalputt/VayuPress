@@ -258,7 +258,9 @@ func (a *App) handleSiteDocPreview(target siteDocTarget) http.HandlerFunc {
 		// the frame is sandboxed to an opaque origin and its requests carry
 		// no session; admitted by its hash, so the policy grants that one
 		// stylesheet and not inline styles in general.
-		o.InlineCSS = siteCSS(tpl, doc)
+		// o.Template, not tpl: it is the design a ?preview= names, and the
+		// page and its stylesheet have to be the same design.
+		o.InlineCSS = siteCSS(o.Template, doc)
 		sum := sha256.Sum256([]byte(o.InlineCSS))
 		csp := strings.Replace(render.BuildCSP(render.CSPNonce(r), nil), "frame-ancestors 'none'", "frame-ancestors 'self'", 1)
 		csp = strings.Replace(csp, "style-src 'self';", "style-src 'self' 'sha256-"+base64.StdEncoding.EncodeToString(sum[:])+"';", 1)

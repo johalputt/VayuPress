@@ -245,9 +245,7 @@
       var dev = btn.getAttribute('data-theme-device') || 'desktop';
       if (viewport) viewport.setAttribute('data-device', dev);
       deviceBtns.forEach(function (b) {
-        var on = b === btn;
-        b.classList.toggle('cz-device--active', on);
-        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
       });
     });
   });
@@ -259,9 +257,7 @@
       if (want === previewScheme) return;
       previewScheme = want;
       schemeBtns.forEach(function (b) {
-        var on = b === btn;
-        b.classList.toggle('cz-device--active', on);
-        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
       });
       if (!lastDraftID || !frame) return;
       var pageURL = '/os/theme/preview?draft=' + encodeURIComponent(lastDraftID) + schemeQS();
@@ -271,62 +267,31 @@
     });
   });
 
-  // ── Collapsible control groups — single-open accordion ─────────────────────
-  // Clicking a header opens that section fully and closes the rest, so the panel
-  // stays compact and every section name is always visible. Delegated for
-  // robustness; CSP-safe (wired here, no inline handlers).
-  var panel = root.querySelector('.customizer__panel') || root;
-  panel.addEventListener('click', function (e) {
-    var head = e.target.closest('.cz-group__head');
-    if (!head || !panel.contains(head)) return;
-    var group = head.closest('.cz-group');
-    if (!group) return;
-    var willOpen = !group.classList.contains('cz-group--open');
-    panel.querySelectorAll('.cz-group').forEach(function (g) {
-      g.classList.remove('cz-group--open');
-      var h = g.querySelector('.cz-group__head');
-      if (h) h.setAttribute('aria-expanded', 'false');
+  // ── The inspector's tabs ────────────────────────────────────────────────
+  // Four groups (Design, Colour, Layout, Advanced) in place of the thirteen
+  // accordion sections and their jump chips. Arrow keys move between tabs,
+  // as the ARIA tabs pattern has it.
+  var tabs = Array.prototype.slice.call(root.querySelectorAll('[data-theme-tab]'));
+  function showTab(tab, focus) {
+    tabs.forEach(function (t) {
+      var on = t === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      var p = root.querySelector('[data-theme-panel="' + t.getAttribute('data-theme-tab') + '"]');
+      if (p) p.hidden = !on;
     });
-    if (willOpen) {
-      group.classList.add('cz-group--open');
-      head.setAttribute('aria-expanded', 'true');
-      if (group.scrollIntoView) group.scrollIntoView({ block: 'nearest' });
-    }
+    if (focus) tab.focus();
+  }
+  tabs.forEach(function (t, i) {
+    t.tabIndex = t.getAttribute('aria-selected') === 'true' ? 0 : -1;
+    t.addEventListener('click', function () { showTab(t, false); });
+    t.addEventListener('keydown', function (e) {
+      var n = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!n) return;
+      e.preventDefault();
+      showTab(tabs[(i + n + tabs.length) % tabs.length], true);
+    });
   });
-
-  // ── Quick-jump chip bar ───────────────────────────────────────────────────────
-  // The customizer has many sections; a sticky row of section chips lets the
-  // operator open and scroll to any one without hunting. Built from the section
-  // headers so it always matches them. CSP-safe: DOM-built, no inline handlers.
-  (function buildJump() {
-    var groups = Array.prototype.slice.call(panel.querySelectorAll('.cz-group'));
-    if (groups.length < 4) return;
-    var bar = document.createElement('div');
-    bar.className = 'cz-jump';
-    groups.forEach(function (g) {
-      var head = g.querySelector('.cz-group__head');
-      if (!head) return;
-      var label = head.getAttribute('data-cz-label') ||
-        (head.firstChild ? head.firstChild.textContent.trim() : (head.textContent || '').trim());
-      if (!label) return;
-      var chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'cz-jump__chip';
-      chip.textContent = label;
-      chip.addEventListener('click', function () {
-        panel.querySelectorAll('.cz-group').forEach(function (x) {
-          x.classList.remove('cz-group--open');
-          var hh = x.querySelector('.cz-group__head');
-          if (hh) hh.setAttribute('aria-expanded', 'false');
-        });
-        g.classList.add('cz-group--open');
-        head.setAttribute('aria-expanded', 'true');
-        if (g.scrollIntoView) g.scrollIntoView({ block: 'start' });
-      });
-      bar.appendChild(chip);
-    });
-    panel.insertBefore(bar, panel.firstChild);
-  })();
 
   // ── Unsaved-changes (dirty) tracking ──────────────────────────────────────────
   // A live preview is not the same as an applied theme: the operator must click
@@ -946,30 +911,12 @@
       }).catch(function () {});
   });
 
-  // Guided / Expert mode + Focus preview.
-  var modeBtns = Array.prototype.slice.call(root.querySelectorAll('[data-studio-mode]'));
+  // Hide the settings to see the preview at full width; the button says
+  // whether the settings are showing.
   var focusBtn = root.querySelector('[data-studio-focus]');
-  var GUIDED_SECTIONS = ['Presets', 'Brand colours', 'Typography & fonts', 'Hero section'];
-  function setMode(mode) {
-    modeBtns.forEach(function (btn) {
-      btn.classList.toggle('is-on', btn.getAttribute('data-mode') === mode);
-    });
-    Array.prototype.forEach.call(root.querySelectorAll('.cz-group'), function (sec) {
-      var head = sec.querySelector('.cz-group__head');
-      var label = head ? head.getAttribute('data-cz-label') : '';
-      sec.hidden = (mode === 'guided') && GUIDED_SECTIONS.indexOf(label) === -1;
-    });
-    try { window.localStorage.setItem('vp-studio-mode', mode); } catch (_) {}
-  }
-  modeBtns.forEach(function (btn) {
-    btn.addEventListener('click', function () { setMode(btn.getAttribute('data-mode')); });
-  });
-  try {
-    if (window.localStorage.getItem('vp-studio-mode') === 'guided') setMode('guided');
-  } catch (_) {}
   if (focusBtn) focusBtn.addEventListener('click', function () {
-    var on = root.classList.toggle('is-focus');
-    focusBtn.classList.toggle('is-on', on);
+    var hidden = root.classList.toggle('is-focus');
+    focusBtn.setAttribute('aria-pressed', hidden ? 'false' : 'true');
   });
 
   // Resumable drafts. Unapplied work is saved a moment after it stops
@@ -1035,8 +982,7 @@
 
     chips.forEach(function (chip) {
       chip.addEventListener('click', function () {
-        chips.forEach(function (c) { c.classList.remove('is-on'); });
-        chip.classList.add('is-on');
+        chips.forEach(function (c) { c.classList.toggle('is-active', c === chip); c.setAttribute('aria-pressed', String(c === chip)); });
         activeFilter = chip.getAttribute('data-ffilter') || 'all';
         apply();
       });

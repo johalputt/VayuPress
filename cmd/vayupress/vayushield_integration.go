@@ -1102,7 +1102,11 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 	// the operator sees what fraction of everything that hit the site was real.
 	if bs, err := a.vaEngagement.BotShare(ctx, days); err == nil && len(bs.Days) > 0 {
 		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Traffic quality — bot share</div>`)
-		b.WriteString(`<p class="muted text-sm"><strong>` + ftoa2(bs.BotPercent) + `%</strong> of recorded traffic over the last ` + strconv.Itoa(days) + ` days was bot traffic (` + strconv.FormatInt(bs.BotTotal, 10) + ` of ` + strconv.FormatInt(bs.HumanTotal+bs.BotTotal, 10) + ` requests). Humans are counted only; bots are excluded from every metric above.</p><div class="table-wrap"><table class="table"><thead><tr><th>Day</th><th>Human</th><th>GoodBot</th><th>AIAgent</th><th>Headless</th><th>BadBot</th><th>Avg score</th></tr></thead><tbody>`)
+		// Figures as figures: in a sentence they read as explanation, and the
+		// page's prose ran past its limit on any install that had traffic.
+		b.WriteString(string(ui.Facts(ui.Fact{Key: "Bot traffic, last " + strconv.Itoa(days) + " days",
+			Value: ui.HTML(`<strong>` + ftoa2(bs.BotPercent) + `%</strong> · ` + strconv.FormatInt(bs.BotTotal, 10) + ` of ` + strconv.FormatInt(bs.HumanTotal+bs.BotTotal, 10) + ` requests`)})) +
+			string(ui.Explain(ui.HTML(`<p>Only people are counted in the figures above; bots are left out of every one of them.</p>`))) + `<div class="table-wrap"><table class="table"><thead><tr><th>Day</th><th>Human</th><th>GoodBot</th><th>AIAgent</th><th>Headless</th><th>BadBot</th><th>Avg score</th></tr></thead><tbody>`)
 		for i := len(bs.Days) - 1; i >= 0 && i >= len(bs.Days)-14; i-- {
 			d := bs.Days[i]
 			b.WriteString(`<tr><td>` + d.Date + `</td><td>` + strconv.FormatInt(d.Human, 10) + `</td><td>` + strconv.FormatInt(d.GoodBot, 10) + `</td><td>` + strconv.FormatInt(d.AIAgent, 10) + `</td><td>` + strconv.FormatInt(d.Headless, 10) + `</td><td>` + strconv.FormatInt(d.BadBot, 10) + `</td><td>` + ftoa2(d.BotScore) + `</td></tr>`)
@@ -1119,11 +1123,18 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 			}
 			return `<span>`
 		}
-		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Real-user experience (p75)</div><p class="muted text-sm">Largest Contentful Paint <strong>` + good(wv.P75LCPMs, 2500) + strconv.Itoa(wv.P75LCPMs) + ` ms</span></strong> · Interaction to Next Paint <strong>` + good(wv.P75INPMs, 200) + strconv.Itoa(wv.P75INPMs) + ` ms</span></strong> · Layout Shift <strong>` + good(wv.P75CLSX100, 10) + ftoa2(float64(wv.P75CLSX100)/100) + `</span></strong> · <span class="muted">` + strconv.FormatInt(wv.Samples, 10) + ` sampled visits</span></p></div>`)
+		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Real-user experience (p75)</div>` + string(ui.Facts(
+			ui.Fact{Key: "Largest Contentful Paint", Value: ui.HTML(good(wv.P75LCPMs, 2500) + strconv.Itoa(wv.P75LCPMs) + ` ms</span>`)},
+			ui.Fact{Key: "Interaction to Next Paint", Value: ui.HTML(good(wv.P75INPMs, 200) + strconv.Itoa(wv.P75INPMs) + ` ms</span>`)},
+			ui.Fact{Key: "Layout Shift", Value: ui.HTML(good(wv.P75CLSX100, 10) + ftoa2(float64(wv.P75CLSX100)/100) + `</span>`)},
+			ui.Fact{Key: "Sampled visits", Value: ui.HTML(strconv.FormatInt(wv.Samples, 10))})) + `</div>`)
 	}
 	if ai, err := a.vaEngagement.AITraffic(ctx, days); err == nil {
 		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">AI-assisted discovery vs organic search</div>`)
-		b.WriteString(`<p class="muted text-sm">AI traffic is <strong>` + ftoa2(ai.AISharePercent) + `%</strong> of human views · AI engagement ` + pct(ai.AISummary.EngagementRate) + ` (avg ` + ftoa2(ai.AISummary.AvgTimeSeconds) + `s) vs organic ` + pct(ai.OrganicSummary.EngagementRate) + ` (avg ` + ftoa2(ai.OrganicSummary.AvgTimeSeconds) + `s).</p>`)
+		b.WriteString(string(ui.Facts(
+			ui.Fact{Key: "AI share of human views", Value: ui.HTML(`<strong>` + ftoa2(ai.AISharePercent) + `%</strong>`)},
+			ui.Fact{Key: "Engagement from AI", Value: ui.HTML(pct(ai.AISummary.EngagementRate) + ` · ` + ftoa2(ai.AISummary.AvgTimeSeconds) + `s on average`)},
+			ui.Fact{Key: "Engagement from search", Value: ui.HTML(pct(ai.OrganicSummary.EngagementRate) + ` · ` + ftoa2(ai.OrganicSummary.AvgTimeSeconds) + `s on average`)})))
 		if len(ai.BySystem) > 0 {
 			maxAI := maxInt64(len(ai.BySystem), func(i int) int64 { return ai.BySystem[i].Views })
 			b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>AI system</th><th>Views</th><th>Avg time</th><th>Engagement</th></tr></thead><tbody>`)

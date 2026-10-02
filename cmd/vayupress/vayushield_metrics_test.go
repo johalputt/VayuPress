@@ -273,3 +273,20 @@ func TestSurgeClaimStatesItsLimits(t *testing.T) {
 		}
 	}
 }
+
+// The trail's window and its busiest hour are figures, so they are rows of
+// facts. Written as a sentence they counted as explanation, and Shield ran
+// past the page's limit on any install with traffic, which the design lint
+// found only when earlier specs happened to leave some behind.
+func TestTheTrailsFiguresAreFactsNotProse(t *testing.T) {
+	out := shieldTrailHourly(botdb.Trail{Hours: []botdb.HourBucket{
+		{Hour: "2026-01-01 00:00", Blocks: 4, Challenges: 20, Solved: 18},
+		{Hour: "2026-01-01 01:00", Blocks: 8, Challenges: 20, Solved: 12},
+	}})
+	if !strings.Contains(out, `<dt>Busiest hour</dt><dd>28 events</dd>`) || !strings.Contains(out, `<dt>Hours with activity</dt><dd>2026-01-01 00:00 → 2026-01-01 01:00 UTC</dd>`) {
+		t.Errorf("the hourly window is not stated as facts:\n%s", out)
+	}
+	if strings.Contains(out, `<p class="muted`) {
+		t.Errorf("the hourly section states a figure as prose:\n%s", out)
+	}
+}

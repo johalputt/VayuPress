@@ -7,18 +7,24 @@ import (
 	"testing"
 )
 
-// Structural check on the redesigned Website page: the accordion bodies are
-// assembled from separate builders, so verify the pieces are balanced and every
-// JS hook the website script queries is present exactly where it expects it.
-func TestWebsitePageAccordionStructure(t *testing.T) {
-	if got := bizModeLabel("business"); got != "Business site" {
-		t.Errorf("bizModeLabel(business) = %q", got)
-	}
-	for _, m := range []string{"", "blog", "business", "business_subpath", "custom"} {
-		if bizModeLabel(m) == "" {
-			t.Errorf("bizModeLabel(%q) must never be empty", m)
+// The Website page says what the domain shows in one line, for every mode
+// the save accepts, naming the design only where the domain shows it.
+func TestWebsiteSaysWhatTheDomainShows(t *testing.T) {
+	for mode, want := range map[string]string{
+		"":                 "example.com shows the blog",
+		"blog":             "example.com shows the blog",
+		"business":         "example.com shows the website, in Bistro",
+		"business_subpath": "example.com shows the website, the blog at /blog",
+		"custom":           "example.com shows the site you uploaded",
+	} {
+		if got := websiteServes("example.com", mode, "Bistro"); got != want {
+			t.Errorf("%q: %q, want %q", mode, got, want)
 		}
 	}
+}
+
+// monAcc frames the accordions the pages not yet converted still use.
+func TestMonAccIsBalanced(t *testing.T) {
 	// monAcc must produce a balanced details/summary frame.
 	out := monAcc(saIcon("globe"), "T", "S", monChip(true, "on", "off"), true, `<div class="x"></div>`)
 	if strings.Count(out, "<details") != 1 || strings.Count(out, "</details>") != 1 {

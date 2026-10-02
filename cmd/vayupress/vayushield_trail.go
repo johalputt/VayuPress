@@ -183,9 +183,9 @@ func shieldTrailHourly(tr botdb.Trail) string {
 	var b strings.Builder
 	b.WriteString(`<div class="card"><div class="settings-block-title">Activity by hour</div>`)
 	b.WriteString(`<p class="vs-trail-spark">` + html.EscapeString(spark.String()) + `</p>`)
-	b.WriteString(`<p class="muted text-xs">` + html.EscapeString(tr.Hours[0].Hour) + ` → ` +
-		html.EscapeString(tr.Hours[len(tr.Hours)-1].Hour) + ` UTC, peak ` +
-		strconv.FormatInt(peak, 10) + ` events in an hour. Only hours with activity appear.</p>`)
+	b.WriteString(string(ui.Facts(
+		ui.Fact{Key: "Hours with activity", Value: ui.HTML(html.EscapeString(tr.Hours[0].Hour) + ` → ` + html.EscapeString(tr.Hours[len(tr.Hours)-1].Hour) + ` UTC`)},
+		ui.Fact{Key: "Busiest hour", Value: ui.HTML(strconv.FormatInt(peak, 10) + ` events`)})))
 
 	// The pass rate over time, which is the signal that tells an operator whether
 	// the thresholds are catching bots or bothering readers — and the one the
@@ -204,7 +204,7 @@ func shieldTrailHourly(tr botdb.Trail) string {
 	if rows.Len() > 0 {
 		b.WriteString(`<div class="settings-block-title">Challenge pass rate</div><table class="vs-trail"><tbody>` +
 			rows.String() + `</tbody></table>`)
-		b.WriteString(`<p class="muted text-xs">Hours with fewer than ten challenges are omitted: a percentage over three samples is noise, and retuning thresholds on it is worse than not looking.</p>`)
+		b.WriteString(string(ui.Explain(ui.HTML(`<p>Hours with fewer than ten challenges are left out: a percentage over three samples is noise, and retuning thresholds on it is worse than not looking.</p>`))))
 	}
 	b.WriteString(`</div>`)
 	return b.String()

@@ -245,8 +245,12 @@ func (a *App) webAppIconBytes(ctx context.Context, src string) ([]byte, bool) {
 	return fallback, true
 }
 
-// pwaHealthCardHTML renders the checklist in the console's accordion grammar.
-func (a *App) pwaHealthCardHTML(r *http.Request, nonce string) string {
+// pwaHealthSection renders the checklist as a section of the Website
+// inspector: each requirement a row with its state, then what only the
+// browser can answer. It is never folded: a diagnostic that hides itself when
+// the server-side checks look fine is how the browser-side failure goes
+// unnoticed, and that is the failure still in play once the origin is right.
+func (a *App) pwaHealthSection(r *http.Request, nonce string) string {
 	checks := a.pwaHealthChecks(r)
 	failed := 0
 	rows := ""
@@ -266,24 +270,19 @@ func (a *App) pwaHealthCardHTML(r *http.Request, nonce string) string {
 		rows += `<div class="pwa-row pwa-row--` + cls + `"><span class="pwa-mark">` + icon + `</span>` +
 			`<div><div class="pwa-name">` + html.EscapeString(c.Name) + `</div>` + detail + why + `</div></div>`
 	}
-
-	// The chip must not say "Installable" on the strength of server checks alone:
-	// they prove what the ORIGIN serves, and the case this exists to catch is an
-	// edge in front of it intercepting the manifest. Passing here means the origin
-	// is right, and the browser half below is what settles it.
-	chip := monChip(failed == 0, "Origin OK", strconv.Itoa(failed)+" failing")
-	body := `<p class="text-sm muted mb-4">Whether installing this site gives a real app rather than a shortcut.` +
-		string(ui.Tip("On Android, a real app is a generated package, not a launcher shortcut, and survives a restart. Nothing in the install flow tells you which one you got, so these are the requirements, checked against what this instance actually serves.")) + `</p>` + rows +
-		`<div class="pwa-browser">
-  <div class="section-head"><span class="section-head__title">From this browser</span>
-    <span class="section-head__hint">Only the browser can answer these</span></div>
-  <div class="pwa-probe-rows" data-pwa-probe-rows data-pwa-build="` + html.EscapeString(Version) + `"><span class="muted text-sm">Checking…</span></div>
-</div>
-<p class="text-sm muted mt-4">Installed before these passed? Remove the icon and add it again.` + string(ui.Tip("A shortcut cannot turn itself into an app. After adding it again, confirm it appears in Android's full app list, not only on the home screen.")) + `</p>
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-pwa.js?v=` + assetVer("js/admin-os-pwa.js") + `"></script>`
-
-	// Always expanded. A diagnostic that hides itself when the server-side checks
-	// look fine is precisely how the browser-side failure goes unnoticed — which is
-	// the failure still in play once the origin is correct.
-	return monAcc(saIcon("phone"), "Install health", "Whether this site installs as a real app", chip, true, body)
+	// The state must not say "Installable" on the strength of server checks
+	// alone: they prove what the ORIGIN serves, and the case this exists to
+	// catch is an edge in front of it intercepting the manifest. Passing here
+	// means the origin is right, and the browser half below settles it.
+	state := ui.State("ok", "Every server check passes")
+	if failed > 0 {
+		state = ui.State("danger", countOf(failed, "server check")+" failing")
+	}
+	body := `<div class="sa-insp__text">` + string(state) + `</div>` + rows +
+		`<h3 class="sa-insp__sub">From this browser</h3>
+<div class="pwa-probe-rows" data-pwa-probe-rows data-pwa-build="` + html.EscapeString(Version) + `"><span class="muted text-sm">Checking…</span></div>` +
+		string(ui.Explain(ui.HTML(`<p>On Android a real app is a generated package, not a launcher shortcut, and it survives a restart. Nothing in the install flow says which one you got, so these are the requirements, checked against what this install serves.</p>`+
+			`<p>Installed before these passed? Remove the icon and add it again: a shortcut cannot turn itself into an app. Then confirm it is in Android's full app list, not only on the home screen.</p>`))) +
+		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-pwa.js?v=` + assetVer("js/admin-os-pwa.js") + `"></script>`
+	return string(ui.InspectorSection("Installs as an app", ui.HTML(body)))
 }

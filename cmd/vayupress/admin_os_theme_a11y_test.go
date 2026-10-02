@@ -54,13 +54,13 @@ func TestThemeA11yGradesContrastHonestly(t *testing.T) {
 			t.Errorf("%s produced no grade", c.Label)
 		}
 	}
-	if chip := a11ySummaryChip(checks); !strings.Contains(chip, "Readable") {
+	if chip := a11ySummary(checks); !strings.Contains(chip, `sa-dot--ok" aria-hidden="true"></span>Readable`) {
 		t.Errorf("high-contrast palette chip = %q, want Readable", chip)
 	}
 
 	// A washed-out accent on the dark background must be called out, not hidden.
 	weak := themeA11yChecks("#1a1f2b", "", "#ffffff", "")
-	chip := a11ySummaryChip(weak)
+	chip := a11ySummary(weak)
 	if strings.Contains(chip, "Readable") {
 		t.Errorf("chip = %q, want a low-contrast warning for a near-invisible accent", chip)
 	}
@@ -71,7 +71,7 @@ func TestThemeA11yGradesContrastHonestly(t *testing.T) {
 	assertCSPSafe(t, "themeA11yPanel", body)
 
 	// No colours supplied → nothing to claim.
-	if got := a11ySummaryChip(nil); got != "" {
+	if got := a11ySummary(nil); got != "" {
 		t.Errorf("empty checks chip = %q, want empty", got)
 	}
 	if got := themeA11yPanel(nil); got != "" {
@@ -147,7 +147,7 @@ func TestA11yPanelMeasuresReadingText(t *testing.T) {
 	// The summary must still grade the WEAKEST pairing, now that more pairings
 	// exist — otherwise widening the check would hide the very failure it adds.
 	weak := themeA11yChecks("#1a1f2e", "#818cf8", "#4f46e5", "#6366f1")
-	if chip := a11ySummaryChip(weak); !strings.Contains(chip, "Hard to read") {
+	if chip := a11ySummary(weak); !strings.Contains(chip, `sa-dot--danger" aria-hidden="true"></span>Hard to read`) {
 		t.Errorf("summary chip = %q for a failing accent; it must grade the worst pairing", chip)
 	}
 }

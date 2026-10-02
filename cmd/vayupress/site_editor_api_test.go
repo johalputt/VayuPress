@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/bizsite"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/sitedoc"
@@ -366,6 +367,31 @@ func TestThePreviewIsDressedInTheDraftsBrand(t *testing.T) {
 	// The one 'unsafe-inline' is the baseline's, for style attributes.
 	if strings.Count(csp, "'unsafe-inline'") != 1 {
 		t.Errorf("the preview admits inline styles in general: %s", csp)
+	}
+}
+
+// A design named in the address (?preview=, as the Website page frames it to
+// show a design before it is saved) dresses the page AND its stylesheet: the
+// markup was rendered in the named design while the stylesheet stayed the
+// saved one's, so a design looked broken in the very preview meant to sell it.
+func TestThePreviewWearsTheDesignItNames(t *testing.T) {
+	a := siteApp(t)
+	d := hostedSite(t, a, "harbour.example")
+	h := editorRouter(a, d, true)
+	editorCall(t, h, http.MethodPost, "/sd/draft", withDoc(twoPageDoc("Draft")))
+	all := bizsite.All()
+	named := all[len(all)-1]
+	rec, _ := editorCall(t, h, http.MethodGet, "/sd/preview?page=&preview="+named.Key, nil)
+	m := regexp.MustCompile(`(?s)<style>(.*?)</style>`).FindStringSubmatch(rec.Body.String())
+	if m == nil {
+		t.Fatalf("no inline stylesheet: %d", rec.Code)
+	}
+	if !strings.HasPrefix(m[1], bizsite.CSS(named)) {
+		t.Errorf("the preview's stylesheet is not %s's", named.Name)
+	}
+	sum := sha256.Sum256([]byte(m[1]))
+	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, base64.StdEncoding.EncodeToString(sum[:])) {
+		t.Errorf("the policy does not admit the stylesheet the page carries: %s", csp)
 	}
 }
 

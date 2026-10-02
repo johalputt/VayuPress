@@ -49,21 +49,29 @@
   });
   // Keep the "Preview" button pointed at the currently-selected design, so an
   // operator can preview a design before saving it (via /site?preview=<key>).
+  // The page's own preview frame shows it too, so a design is seen before it
+  // is saved; the frame's address is built on a fixed path, never read from
+  // the page, so nothing on it can point the frame elsewhere.
   var previewLink = document.querySelector('[data-biz-preview]');
-  function updatePreviewLink() {
-    if (previewLink && state.template) {
-      previewLink.setAttribute('href', '/site?preview=' + encodeURIComponent(state.template));
-    }
+  var frame = document.querySelector('[data-biz-frame]');
+  var designName = document.querySelector('[data-biz-design-name]');
+  function showDesign() {
+    if (!state.template) return;
+    var key = encodeURIComponent(state.template);
+    if (previewLink) previewLink.setAttribute('href', '/site?preview=' + key);
+    if (frame) frame.setAttribute('src', '/os/api/site-doc/preview?page=&preview=' + key + '&t=' + Date.now());
   }
-  updatePreviewLink();
   document.querySelectorAll('[data-biz-template]').forEach(function (card) {
     card.addEventListener('click', function () {
       state.template = card.getAttribute('data-biz-template');
       document.querySelectorAll('[data-biz-template]').forEach(function (c) {
         c.classList.toggle('biz-card--active', c === card);
       });
-      updatePreviewLink();
-      setStatus('Design selected — Preview it, or Save & publish to apply', true);
+      if (designName) designName.textContent = card.getAttribute('data-biz-template-name') || state.template;
+      showDesign();
+      var sheet = card.closest('dialog');
+      if (sheet && sheet.open) sheet.close();
+      setStatus('Design chosen. Save & publish to make it live', true);
     });
   });
 
@@ -91,7 +99,8 @@
       body: JSON.stringify({ mode: state.mode, template: state.template, content: collect() })
     }).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
       .then(function () {
-        setStatus('Published ✓ — view it at /site' + (state.mode === 'business' ? ' (and your domain root)' : ''), true);
+        setStatus('Published', true);
+        showDesign();
         if (window.vpToast) window.vpToast('Website published', 'ok');
       })
       .catch(function (code) { setStatus('Save failed (' + code + ')', false); });
@@ -120,7 +129,7 @@
       var nf = j.files || 0;
       var msg = 'Deployed ' + nf + ' file' + (nf === 1 ? '' : 's') + ' \u2713';
       if (j.skipped) msg += ' (' + j.skipped + ' system file' + (j.skipped === 1 ? '' : 's') + ' ignored)';
-      setDeploy(msg + ' \u2014 select \u201CCustom uploaded website\u201D above, then Save & publish', true);
+      setDeploy(msg + '. Choose \u201CThe site you uploaded\u201D in Hosting, then Save & publish', true);
       if (window.vpToast) window.vpToast('Custom build deployed', 'ok');
     }, function (e) {
       deployBtn.disabled = false;

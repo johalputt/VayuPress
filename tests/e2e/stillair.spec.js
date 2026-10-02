@@ -443,6 +443,40 @@ test("the editor's inspector stands beside the writing, folds away, and is a dra
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
 });
 
+// Website and Theme are documents too. Choosing a design in the Website's
+// sheet shows it in the page's own preview before it is saved, and closes the
+// sheet; Theme's settings are four tabs, by pointer and by arrow key, one
+// panel at a time.
+test("the website previews a chosen design, and the theme's settings are tabs", async ({ page }) => {
+  await openConsole(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/os/website");
+  const frame = page.locator("[data-biz-frame]");
+  await expect(frame).toBeVisible();
+  await page.locator('[data-sheet="web-designs"]').click();
+  const sheet = page.locator("dialog#web-designs");
+  await expect(sheet).toBeVisible();
+  const card = sheet.locator("[data-biz-template]").last();
+  const key = await card.getAttribute("data-biz-template");
+  const name = await card.getAttribute("data-biz-template-name");
+  await card.click();
+  await expect(sheet).toBeHidden();
+  await expect(page.locator("[data-biz-design-name]")).toHaveText(name);
+  await expect(frame).toHaveAttribute("src", new RegExp("preview=" + key + "&"));
+
+  await page.goto("/os/theme");
+  const panel = (k) => page.locator(`[data-theme-panel="${k}"]`);
+  await expect(panel("design")).toBeVisible();
+  await expect(panel("colour")).toBeHidden();
+  await page.locator('[data-theme-tab="colour"]').click();
+  await expect(panel("colour")).toBeVisible();
+  await expect(panel("design")).toBeHidden();
+  await expect(page.locator('[data-theme-tab="colour"]')).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("ArrowRight");
+  await expect(panel("layout")).toBeVisible();
+  await expect(page.locator('[data-theme-tab="layout"]')).toBeFocused();
+});
+
 // Every core control has the same nine states (plan §7, render 01). Each is
 // put on each control on a real console page, with the real stylesheet, and
 // judged by what that state must show, not only by looking different from

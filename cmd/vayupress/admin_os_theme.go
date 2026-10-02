@@ -33,6 +33,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/theme"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // themeExport is the on-disk JSON envelope for a full VayuPress theme: design
@@ -257,7 +258,7 @@ func fontPairSelectHTML() string {
 		opts += `<option value="` + html.EscapeString(p.Label) + `" data-sans="` + html.EscapeString(p.Sans) + `" data-mono="` + html.EscapeString(p.Mono) + `">` + html.EscapeString(p.Label) + `</option>`
 	}
 	return `<label class="theme-field theme-field--text mb-4">
-  <span class="theme-field__label">Font pairing <span class="cz-group__hint">quick set</span></span>
+  <span class="theme-field__label">Font pairing</span>
   <select class="input" data-font-pair aria-label="Font pairing">` + opts + `</select>
   <span class="theme-field__hint">Sets the body &amp; mono fonts in one click. Fine-tune the exact stacks below. All system/web-safe — no external fonts loaded.</span>
 </label>`
@@ -308,10 +309,6 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	a11y := themeA11yChecks(
 		val(settings.KeyThemeAccentDark), "",
 		val(settings.KeyThemeAccentLight), "")
-	a11yChip := a11ySummaryChip(a11y)
-	if a11yChip == "" {
-		a11yChip = `<span class="cz-chip">Palette</span>`
-	}
 
 	faviconBust := time.Now().Format("150405")
 
@@ -337,330 +334,178 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 		heroChecked = " checked"
 	}
 
-	body := `<div class="page-header">
-  <div>
-    <h1>Theme Studio</h1>
-    <p class="text-sm muted" data-active-preset-name>Current theme</p>
-  </div>
-  <div class="page-actions">
-    <span class="text-sm muted" data-theme-status>Loading…</span>
-    <span class="cz-chip" data-theme-changes hidden aria-live="polite"></span>
-    <button type="button" class="btn btn--ghost btn--sm" data-studio-mode data-mode="guided" title="Show only the essentials">Guided</button>
-    <button type="button" class="btn btn--ghost btn--sm" data-studio-mode data-mode="expert">Expert</button>
-    <button type="button" class="btn btn--ghost btn--sm" data-studio-focus title="Full-width preview">Focus</button>
-    <a class="btn btn--ghost btn--sm" href="/os/theme/store">Browse Theme Store</a>
-    <button type="button" class="btn btn--ghost btn--sm" data-theme-revert>Revert</button>
-    <button type="button" class="btn btn--primary btn--sm" data-theme-apply>Apply theme</button>
-  </div>
-</div>
-<p class="page-sub">Design your whole site live — pick a preset, fine-tune colours, type and layout, and watch the preview update as you go. Tap a section to expand it.</p>
+	// The page is a document (page grammar; plan §3: "the live preview is the
+	// document, with the Studio as the inspector, tabs replacing the chips"):
+	// the preview fills the page and the Studio's four groups are tabs of the
+	// inspector beside it, each a run of sections, so every control is two
+	// clicks away at most and none is folded inside another.
+	tab := func(key, label string, on bool) string {
+		sel := "false"
+		if on {
+			sel = "true"
+		}
+		return `<button type="button" class="sa-itabs__tab" role="tab" id="tt-` + key + `" aria-controls="tp-` + key + `" aria-selected="` + sel + `" data-theme-tab="` + key + `">` + label + `</button>`
+	}
+	panel := func(key string, on bool, body string) string {
+		hidden := " hidden"
+		if on {
+			hidden = ""
+		}
+		return `<div class="sa-itabs__panel" role="tabpanel" id="tp-` + key + `" aria-labelledby="tt-` + key + `" data-theme-panel="` + key + `"` + hidden + `>` + body + `</div>`
+	}
+	sec := func(title, body string) string { return string(ui.InspectorSection(title, ui.HTML(body))) }
 
-<div class="theme-draft-banner" data-theme-draft hidden data-has-draft="0">
-  <span>Resume your unsaved Theme Studio draft?</span>
-  <button type="button" class="btn btn--primary btn--sm" data-draft-resume>Restore draft</button>
+	design := sec("Presets", `<div class="theme-filter" data-theme-filter>
+          <input type="search" class="input theme-filter__search" data-theme-search placeholder="Search 30 themes" aria-label="Search themes">
+          <div class="theme-filter__chips" role="group" aria-label="Filter themes">
+            <button type="button" class="seg-btn is-active" aria-pressed="true" data-ffilter="all">All</button>
+            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="scheme:dark">Dark</button>
+            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="scheme:light">Light</button>
+            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="arch:minimal">Minimal</button>
+            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="arch:classic">Classic</button>
+            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="arch:magazine">Magazine</button>
+            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="arch:editorial">Editorial</button>
+            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="arch:bold">Bold</button>
+            <button type="button" class="seg-btn" aria-pressed="false" data-ffilter="arch:design">Design</button>
+          </div>
+          <span class="sa-insp__hint" data-theme-filter-count role="status" aria-live="polite"></span>
+        </div>
+        <div class="theme-gallery" data-theme-presets aria-label="Theme presets">`+themePresetCards()+`</div>`) +
+		sec("Logo and share image", `<p class="sa-insp__text">These stay when the theme changes.</p>
+        <div class="cz-logo">
+          <img id="brand-favicon-img" class="cz-logo__img" src="`+brandMarkURL+`" alt="Current site mark" width="44" height="44">
+          <div class="cz-logo__meta"><div class="cz-logo__title">Logo and favicon</div><div class="sa-insp__hint" id="brand-favicon-state">The favicon and the logo in the menu.</div></div>
+        </div>
+        <div class="cz-upload">
+          <input type="file" id="brand-favicon-file" accept="image/png,image/jpeg,image/webp,image/gif,image/x-icon,.png,.jpg,.jpeg,.webp,.gif,.ico" class="input" aria-label="Logo file">
+          <button type="button" class="btn btn--sm" id="brand-favicon-upload">Upload</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="brand-favicon-remove">Default</button>
+          <span id="brand-favicon-status" class="sa-insp__hint" role="status" aria-live="polite"></span>
+        </div>
+        <span class="sa-insp__hint">PNG or ICO, square, up to 256 KB. Live at once.</span>
+        <div class="cz-logo">
+          <img id="og-img" class="cz-logo__img" src="/theme-assets/og?t=`+faviconBust+`" alt="Current share image" width="64" height="34">
+          <div class="cz-logo__meta"><div class="cz-logo__title">Share image</div><div class="sa-insp__hint" id="og-img-state">Shown when the site or a post is shared.</div></div>
+        </div>
+        <div class="cz-upload">
+          <input type="file" id="og-img-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" class="input" aria-label="Share image file">
+          <button type="button" class="btn btn--sm" id="og-img-upload">Upload</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="og-img-remove">Remove</button>
+          <span id="og-img-status" class="sa-insp__hint" role="status" aria-live="polite"></span>
+        </div>
+        <span class="sa-insp__hint">PNG, JPEG or WebP, up to 1.5 MB.</span>
+        <label class="sa-insp__check"><input type="checkbox" class="toggle" role="switch" id="site-membership"`+membershipChecked+`> Sign in and Sign up in the menu</label>
+        <span class="sa-insp__hint" id="site-membership-status" role="status" aria-live="polite"></span>`)
+
+	colour := sec("Palette from one colour", `<div class="cz-gen" data-studio-gen>
+          <div class="cz-upload">
+            <input type="color" class="theme-field__color" value="#e0562f" data-gen-accent aria-label="Seed accent">
+            <select class="input" data-gen-mood aria-label="Mood"><option value="calm">Calm</option><option value="vivid">Vivid</option><option value="muted">Muted</option></select>
+            <button type="button" class="btn btn--sm" data-gen-apply>Recolour</button>
+            <button type="button" class="btn btn--ghost btn--sm" data-gen-surprise>Surprise me</button>
+          </div>
+          <span class="sa-insp__hint">One accent becomes a whole dark and light palette.</span>
+          <span id="gen-status" class="sa-insp__hint" role="status" aria-live="polite"></span>
+        </div>`) +
+		sec("Brand colours", a11ySummary(a11y)+`<div class="theme-fields">`+brandRows+`</div>
+        <div class="theme-fields theme-fields--text">`+optionRowsByKeys("scheme", "accentfill", "paper")+`</div>`+themeA11yPanel(a11y)) +
+		`<details class="sa-insp sa-insp--more"><summary class="sa-insp__head">Every colour, dark</summary><div class="theme-fields">` + darkRows + `</div></details>` +
+		`<details class="sa-insp sa-insp--more"><summary class="sa-insp__head">Every colour, light</summary><div class="theme-fields">` + lightRows + `</div></details>`
+
+	layout := sec("Layout", `<div class="theme-fields theme-fields--text">`+optionRowsByKeys("archetype", "width", "corners", "feedlayout", "cardimage", "headeralign", "navstyle", "cardstyle", "density", "columnrules", "pagefade")+`</div>`) +
+		sec("Hero", `<label class="sa-insp__check"><input type="checkbox" class="toggle" role="switch" id="home-hero"`+heroChecked+`> A hero on the home page</label>
+        <span class="sa-insp__hint" id="home-hero-status" role="status" aria-live="polite"></span>
+        <div class="cz-logo">
+          <img id="hero-img" class="cz-logo__img" src="/theme-assets/hero?t=`+faviconBust+`" alt="Current hero image" width="64" height="40">
+          <div class="cz-logo__meta"><div class="cz-logo__title">Hero image</div><div class="sa-insp__hint" id="hero-img-state">Shown when the hero background is Image.</div></div>
+        </div>
+        <div class="cz-upload">
+          <input type="file" id="hero-img-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" class="input" aria-label="Hero image file">
+          <button type="button" class="btn btn--sm" id="hero-img-upload">Upload</button>
+          <button type="button" class="btn btn--ghost btn--sm" id="hero-img-remove">Remove</button>
+          <span id="hero-img-status" class="sa-insp__hint" role="status" aria-live="polite"></span>
+        </div>
+        <div class="theme-fields theme-fields--text">`+optionRowsByKeys("herostyle", "herobg", "heroheight")+`</div>`) +
+		sec("Type", fontPairSelectHTML()+`<div class="theme-fields theme-fields--text">`+optionRowsByKeys("headingcase", "headingscale", "dropcap")+typoRows+`</div>`) +
+		sec("Posts", `<div class="theme-fields theme-fields--text">`+optionRowsByKeys("articlealign", "articlemeta", "relatedposts", "trendingposts", "authorbox", "linkstyle", "readingprogress")+`</div>
+        <label class="theme-field theme-field--text"><span class="theme-field__label">Author bio</span>
+          <input type="text" class="input" id="author-bio" maxlength="280" value="`+html.EscapeString(val(settings.KeyAuthorBio))+`" placeholder="One line about the author">
+          <span class="theme-field__hint" id="author-bio-status">In the author box, beside the author's name. Saved as you leave the field.</span></label>`)
+
+	advanced := sec("Menu", `<p class="sa-insp__text">Saved straight to the live site; the preview shows a sample menu.</p>
+        <div id="cz-nav-rows" data-nav-editor></div>
+        <div class="cz-upload">
+          <button type="button" class="btn btn--ghost btn--sm" id="cz-nav-add">Add a link</button>
+          <button type="button" class="btn btn--sm" id="cz-nav-save">Save the menu</button>
+          <span class="sa-insp__hint" id="cz-nav-status"></span>
+        </div>
+        <input type="hidden" id="cz-nav-seed" value="`+navSeed+`">`) +
+		sec("Custom CSS", `<textarea class="input theme-code" data-theme-css rows="10" maxlength="65536" spellcheck="false" aria-label="Custom CSS" placeholder="/* .vayu-post-title { letter-spacing: -0.02em; } */">`+html.EscapeString(val(settings.KeyThemeCustomCSS))+`</textarea>`+
+			string(ui.Explain(ui.HTML(`<p>Served from this site as <code>/theme.css</code>, after the theme's own styles. <code>@import</code> and outside <code>url()</code> are removed, so it loads nothing from elsewhere. Up to 64 KB.</p>`)))) +
+		sec("Head tags", `<div class="theme-fields theme-fields--text">
+          <label class="theme-field theme-field--text"><span class="theme-field__label">Keywords</span>
+            <input type="text" class="input" data-head="keywords" maxlength="256" value="`+html.EscapeString(val(settings.KeyHeadKeywords))+`" placeholder="publishing, sovereignty"></label>
+          <label class="theme-field theme-field--text"><span class="theme-field__label">Theme colour</span>
+            <input type="text" class="input" data-head="theme_color" maxlength="7" value="`+html.EscapeString(val(settings.KeyHeadThemeColor))+`" placeholder="#0d9488"></label>
+          <label class="theme-field theme-field--text"><span class="theme-field__label">Robots</span>
+            <select class="input" data-head="robots">`+robotsOptionsHTML(val(settings.KeyHeadRobots))+`</select></label>
+          <label class="theme-field theme-field--text"><span class="theme-field__label">Google verification</span>
+            <input type="text" class="input" data-head="verify_google" maxlength="128" value="`+html.EscapeString(val(settings.KeyHeadVerifyGoogle))+`" placeholder="token"></label>
+          <label class="theme-field theme-field--text"><span class="theme-field__label">Bing verification</span>
+            <input type="text" class="input" data-head="verify_bing" maxlength="128" value="`+html.EscapeString(val(settings.KeyHeadVerifyBing))+`" placeholder="token"></label>
+        </div>
+        <div class="cz-upload"><button type="button" class="btn btn--sm" data-theme-code-save>Save CSS and head tags</button><span class="sa-insp__hint" data-theme-code-status></span></div>`+
+			string(ui.Explain(ui.HTML(`<p>Written as escaped <code>&lt;meta&gt;</code> tags from this list only; raw head HTML is not accepted.</p>`)))) +
+		sec("Move a theme", `<p class="sa-insp__text">The whole theme as JSON, to keep or to bring to another install. An imported theme is checked before it goes live.</p>
+        <div class="cz-upload"><a class="btn btn--ghost btn--sm" href="/os/api/theme/export" download>Export</a></div>
+        <div class="cz-upload">
+          <input type="file" accept="application/json,.json" class="input" data-theme-import-file aria-label="Theme file">
+          <button type="button" class="btn btn--sm" data-theme-import>Import</button>
+          <span class="sa-insp__hint" data-theme-import-status></span>
+        </div>`)
+
+	inspector := `<div class="sa-itabs" role="tablist" aria-label="Theme settings">` + tab("design", "Design", true) + tab("colour", "Colour", false) + tab("layout", "Layout", false) + tab("advanced", "Advanced", false) + `</div>` +
+		panel("design", true, design) + panel("colour", false, colour) + panel("layout", false, layout) + panel("advanced", false, advanced)
+
+	preview := `<div class="theme-draft-banner" data-theme-draft hidden data-has-draft="0">
+  <span>Resume the theme you were changing?</span>
+  <button type="button" class="btn btn--sm" data-draft-resume>Restore</button>
   <button type="button" class="btn btn--ghost btn--sm" data-draft-discard>Discard</button>
 </div>
-<div class="customizer" data-theme-studio>
-  <aside class="customizer__panel" aria-label="Theme controls">
-
-    <div class="cz-sec"><span class="cz-sec__title">Start here</span><span class="cz-sec__hint">Pick a design, then make it yours</span></div>
-    <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true" data-cz-label="Presets">
-        <span class="cz-group__ic" aria-hidden="true">` + saIcon("palette") + `</span>
-        <span class="cz-group__text"><span class="cz-group__title">Presets</span><span class="cz-group__sub">Start from a ready-made design, then fine-tune</span></span>
-        <span class="cz-chip cz-chip--go">Start here</span>
-      </button>
-      <div class="cz-group__body">
-        <p class="text-sm muted mb-3">Pick a starting design, then fine-tune anything below. The preview updates as you go.</p>
-        <div class="theme-filter" data-theme-filter>
-          <input type="search" class="input theme-filter__search" data-theme-search placeholder="Search 30 themes…" aria-label="Search themes">
-          <div class="theme-filter__chips" role="group" aria-label="Filter themes">
-            <button type="button" class="cz-chip theme-filter__chip is-on" data-ffilter="all">All</button>
-            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="scheme:dark">Dark</button>
-            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="scheme:light">Light</button>
-            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="arch:minimal">Minimal</button>
-            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="arch:classic">Classic</button>
-            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="arch:magazine">Magazine</button>
-            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="arch:editorial">Editorial</button>
-            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="arch:bold">Bold</button>
-            <button type="button" class="cz-chip theme-filter__chip" data-ffilter="arch:design">Design</button>
-          </div>
-          <span class="text-xs muted" data-theme-filter-count role="status" aria-live="polite"></span>
-        </div>
-        <div class="theme-gallery" data-theme-presets aria-label="Theme presets">` + themePresetCards() + `</div>
-      </div>
-    </section>
-
-    <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true" data-cz-label="Appearance">
-        <span class="cz-group__ic" aria-hidden="true">` + saIcon("image") + `</span>
-        <span class="cz-group__text"><span class="cz-group__title">Appearance</span><span class="cz-group__sub">Logo, favicon, share image &amp; nav buttons</span></span>
-        <span class="cz-chip">Identity</span>
-      </button>
-      <div class="cz-group__body">
-        <div class="cz-gen" data-studio-gen>
-          <span class="theme-field__label">Generate a palette</span>
-          <div class="vm-row mt-2">
-            <input type="color" class="theme-field__color" value="#e0562f" data-gen-accent aria-label="Seed accent">
-            <select class="input" data-gen-mood aria-label="Mood">
-              <option value="calm">Calm</option>
-              <option value="vivid">Vivid</option>
-              <option value="muted">Muted</option>
-            </select>
-            <button type="button" class="btn btn--primary btn--sm" data-gen-apply>Recolour from accent</button>
-            <button type="button" class="btn btn--sm" data-gen-surprise>Surprise me</button>
-          </div>
-          <span class="theme-field__hint">One accent becomes a full dark + light palette (server-side harmony maths). Surprise me picks a random seed.</span>
-          <span id="gen-status" class="text-xs muted" role="status" aria-live="polite"></span>
-        </div>
-        <p class="text-sm muted mb-3">The essentials — logo, social share image and the Sign in / Sign up buttons. These stay fixed when you switch themes.</p>
-        <div class="cz-logo">
-          <img id="brand-favicon-img" class="cz-logo__img" src="` + brandMarkURL + `" alt="Current site mark" width="44" height="44">
-          <div class="cz-logo__meta">
-            <div class="cz-logo__title">Logo &amp; favicon</div>
-            <div class="text-xs muted" id="brand-favicon-state">Used as the favicon and nav-bar logo.</div>
-          </div>
-        </div>
-        <div class="vm-row mt-2">
-          <input type="file" id="brand-favicon-file" accept="image/png,image/jpeg,image/webp,image/gif,image/x-icon,.png,.jpg,.jpeg,.webp,.gif,.ico" class="input">
-          <button type="button" class="btn btn--primary btn--sm" id="brand-favicon-upload">Upload</button>
-          <button type="button" class="btn btn--sm" id="brand-favicon-remove">Default</button>
-          <span id="brand-favicon-status" class="text-xs muted" role="status" aria-live="polite"></span>
-        </div>
-        <span class="theme-field__hint">PNG or ICO, square, &le; 256 KB. Applies to the live site immediately.</span>
-        <div class="cz-logo mt-4">
-          <img id="og-img" class="cz-logo__img" src="/theme-assets/og?t=` + faviconBust + `" alt="Current share image" width="64" height="34">
-          <div class="cz-logo__meta">
-            <div class="cz-logo__title">Social / share image</div>
-            <div class="text-xs muted" id="og-img-state">Shown when your site or posts are shared (og:image).</div>
-          </div>
-        </div>
-        <div class="vm-row mt-2">
-          <input type="file" id="og-img-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" class="input">
-          <button type="button" class="btn btn--primary btn--sm" id="og-img-upload">Upload</button>
-          <button type="button" class="btn btn--sm" id="og-img-remove">Remove</button>
-          <span id="og-img-status" class="text-xs muted" role="status" aria-live="polite"></span>
-        </div>
-        <span class="theme-field__hint">PNG, JPEG or WebP, &le; 1.5 MB. Used for the homepage and as a fallback for posts.</span>
-        <div class="vm-row mt-4">
-          <label class="cz-check"><input type="checkbox" class="toggle" role="switch" id="site-membership"` + membershipChecked + `> Show Sign in / Sign up buttons in the nav</label>
-          <span class="text-xs muted" id="site-membership-status" role="status" aria-live="polite"></span>
-        </div>
-      </div>
-    </section>
-
-    <div class="cz-sec"><span class="cz-sec__title">Colour</span><span class="cz-sec__hint">Palette, schemes &amp; accessibility</span></div>
-    <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true" data-cz-label="Brand colours">
-        <span class="cz-group__ic" aria-hidden="true">` + saIcon("palette") + `</span>
-        <span class="cz-group__text"><span class="cz-group__title">Brand colours</span><span class="cz-group__sub">Accent colours &amp; colour scheme</span></span>
-        ` + a11yChip + `
-      </button>
-      <div class="cz-group__body">
-        <p class="text-sm muted mb-3">Accent colours and colour scheme for the active theme.</p>
-        <div class="theme-fields">` + brandRows + `</div>
-        <div class="theme-fields theme-fields--text mt-3">` + optionRowsByKeys("scheme", "accentfill", "paper") + `</div>
-        ` + themeA11yPanel(a11y) + `
-      </div>
-    </section>
-
-    <div class="cz-sec"><span class="cz-sec__title">Layout &amp; type</span><span class="cz-sec__hint">Structure, spacing and typography</span></div>
-    <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Layout">
-        <span class="cz-group__ic" aria-hidden="true">` + saIcon("grid") + `</span>
-        <span class="cz-group__text"><span class="cz-group__title">Layout</span><span class="cz-group__sub">Width, corners, feed, header, cards &amp; density</span></span>
-        
-      </button>
-      <div class="cz-group__body">
-        <p class="text-sm muted mb-3">Reading width, corners, post-feed layout, header alignment, navigation, post cards and density — applied across the whole blog.</p>
-        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("archetype", "width", "corners", "feedlayout", "cardimage", "headeralign", "navstyle", "cardstyle", "density", "columnrules", "pagefade") + `</div>
-      </div>
-    </section>
-
-    <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Hero section">
-        <span class="cz-group__ic" aria-hidden="true">` + saIcon("star") + `</span>
-        <span class="cz-group__text"><span class="cz-group__title">Hero section</span><span class="cz-group__sub">Homepage hero — style, height &amp; background</span></span>
-        
-      </button>
-      <div class="cz-group__body">
-        <p class="text-sm muted mb-3">Style the homepage hero — layout, height and an optional background tint, gradient or uploaded image.</p>
-        <div class="vm-row mb-3">
-          <label class="cz-check"><input type="checkbox" class="toggle" role="switch" id="home-hero"` + heroChecked + `> Show the homepage hero (off = clean homepage, straight to posts)</label>
-          <span class="text-xs muted" id="home-hero-status" role="status" aria-live="polite"></span>
-        </div>
-        <div class="cz-logo">
-          <img id="hero-img" class="cz-logo__img" src="/theme-assets/hero?t=` + faviconBust + `" alt="Current hero image" width="64" height="40">
-          <div class="cz-logo__meta">
-            <div class="cz-logo__title">Hero background image</div>
-            <div class="text-xs muted" id="hero-img-state">Used when “Hero background” is set to Image.</div>
-          </div>
-        </div>
-        <div class="vm-row mt-2">
-          <input type="file" id="hero-img-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" class="input">
-          <button type="button" class="btn btn--primary btn--sm" id="hero-img-upload">Upload</button>
-          <button type="button" class="btn btn--sm" id="hero-img-remove">Remove</button>
-          <span id="hero-img-status" class="text-xs muted" role="status" aria-live="polite"></span>
-        </div>
-        <span class="theme-field__hint">PNG, JPEG or WebP, &le; 2 MB. Applies live; set “Hero background” to Image to show it.</span>
-        <div class="theme-fields theme-fields--text mt-4">` + optionRowsByKeys("herostyle", "herobg", "heroheight") + `</div>
-      </div>
-    </section>
-
-    <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Typography &amp; fonts">
-        <span class="cz-group__ic" aria-hidden="true">` + saIcon("rename") + `</span>
-        <span class="cz-group__text"><span class="cz-group__title">Typography &amp; fonts</span><span class="cz-group__sub">Font pairing, scale, drop caps &amp; metrics</span></span>
-        
-      </button>
-      <div class="cz-group__body">
-        ` + fontPairSelectHTML() + `
-        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("headingcase", "headingscale", "dropcap") + typoRows + `</div>
-      </div>
-    </section>
-
-    <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Article pages">
-        <span class="cz-group__ic" aria-hidden="true">` + saIcon("doc") + `</span>
-        <span class="cz-group__text"><span class="cz-group__title">Article pages</span><span class="cz-group__sub">Post layout, meta line, related &amp; author box</span></span>
-        
-      </button>
-      <div class="cz-group__body">
-        <p class="text-sm muted mb-3">How individual posts look — header alignment, the meta line, related &amp; trending posts, the author box and content links.</p>
-        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("articlealign", "articlemeta", "relatedposts", "trendingposts", "authorbox", "linkstyle", "readingprogress") + `</div>
-        <label class="theme-field theme-field--text mt-3">
-          <span class="theme-field__label">Author bio <span class="cz-group__hint">author box</span></span>
-          <input type="text" class="input" id="author-bio" maxlength="280" value="` + html.EscapeString(val(settings.KeyAuthorBio)) + `" placeholder="One line about the author">
-          <span class="theme-field__hint" id="author-bio-status">Shown in the author box with your site author name. Saves on change.</span>
-        </label>
-      </div>
-    </section>
-
-    <div class="cz-sec"><span class="cz-sec__title">Fine detail</span><span class="cz-sec__hint">Every individual surface colour</span></div>
-    <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Colours — dark mode">
-        <span class="cz-group__ic" aria-hidden="true">` + saIcon("moon") + `</span>
-        <span class="cz-group__text"><span class="cz-group__title">Colours — dark mode</span><span class="cz-group__sub">Every surface &amp; text colour, dark</span></span>
-        
-      </button>
-      <div class="cz-group__body">
-        <div class="theme-fields">` + darkRows + `</div>
-      </div>
-    </section>
-
-    <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Colours — light mode">
-        <span class="cz-group__ic" aria-hidden="true">` + saIcon("sun") + `</span>
-        <span class="cz-group__text"><span class="cz-group__title">Colours — light mode</span><span class="cz-group__sub">Every surface &amp; text colour, light</span></span>
-        
-      </button>
-      <div class="cz-group__body">
-        <div class="theme-fields">` + lightRows + `</div>
-      </div>
-    </section>
-
-    <div class="cz-sec"><span class="cz-sec__title">Advanced</span><span class="cz-sec__hint">Menu, custom CSS, meta &amp; portability</span></div>
-    <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Navigation">
-        <span class="cz-group__ic" aria-hidden="true">` + saIcon("compass") + `</span>
-        <span class="cz-group__text"><span class="cz-group__title">Navigation</span><span class="cz-group__sub">The public site menu</span></span>
-        <span class="cz-chip cz-chip--live">● Saves live</span>
-      </button>
-      <div class="cz-group__body">
-        <p class="text-sm muted mb-3">Edit the public site menu. Saved straight to your live site (the preview shows a representative menu).</p>
-        <div id="cz-nav-rows" data-nav-editor></div>
-        <button type="button" class="btn btn--sm mt-2" id="cz-nav-add">+ Add link</button>
-        <div class="vm-row mt-3">
-          <button type="button" class="btn btn--primary btn--sm" id="cz-nav-save">Save navigation</button>
-          <span class="text-sm muted" id="cz-nav-status"></span>
-        </div>
-        <input type="hidden" id="cz-nav-seed" value="` + navSeed + `">
-      </div>
-    </section>
-
-    <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Custom CSS">
-        <span class="cz-group__ic" aria-hidden="true">` + saIcon("pencil") + `</span>
-        <span class="cz-group__text"><span class="cz-group__title">Custom CSS</span><span class="cz-group__sub">Your own CSS, served same-origin</span></span>
-        
-      </button>
-      <div class="cz-group__body">
-        <div class="text-sm muted mb-3">Served same-origin via <code>/theme.css</code>, appended after the theme styles. <code>@import</code> and external <code>url()</code> are stripped, so it stays self-contained (no off-origin requests). Max 64&nbsp;KB. Reflected live in the preview.</div>
-        <textarea class="input theme-code" data-theme-css rows="10" maxlength="65536" spellcheck="false" placeholder="/* e.g. .vayu-post-title { letter-spacing: -0.02em; } */">` + html.EscapeString(val(settings.KeyThemeCustomCSS)) + `</textarea>
-        <div class="vm-row">
-          <button type="button" class="btn btn--primary btn--sm" data-theme-code-save>Save CSS &amp; meta</button>
-          <span class="text-sm muted" data-theme-code-status></span>
-        </div>
-      </div>
-    </section>
-
-    <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Head &amp; SEO (meta)">
-        <span class="cz-group__ic" aria-hidden="true">` + saIcon("search") + `</span>
-        <span class="cz-group__text"><span class="cz-group__title">Head &amp; SEO (meta)</span><span class="cz-group__sub">Keywords, theme colour, robots &amp; verification</span></span>
-        
-      </button>
-      <div class="cz-group__body">
-        <div class="text-sm muted mb-3">Rendered to a validated, escaped <code>&lt;meta&gt;</code> allowlist (raw &lt;head&gt; HTML is intentionally not accepted).</div>
-        <div class="theme-fields theme-fields--text">
-          <label class="theme-field theme-field--text"><span class="theme-field__label">Keywords</span>
-            <input type="text" class="input" data-head="keywords" maxlength="256" value="` + html.EscapeString(val(settings.KeyHeadKeywords)) + `" placeholder="publishing, sovereignty"></label>
-          <label class="theme-field theme-field--text"><span class="theme-field__label">Theme colour (hex)</span>
-            <input type="text" class="input" data-head="theme_color" maxlength="7" value="` + html.EscapeString(val(settings.KeyHeadThemeColor)) + `" placeholder="#0d9488"></label>
-          <label class="theme-field theme-field--text"><span class="theme-field__label">Robots</span>
-            <select class="input" data-head="robots">` + robotsOptionsHTML(val(settings.KeyHeadRobots)) + `</select></label>
-          <label class="theme-field theme-field--text"><span class="theme-field__label">Google verification</span>
-            <input type="text" class="input" data-head="verify_google" maxlength="128" value="` + html.EscapeString(val(settings.KeyHeadVerifyGoogle)) + `" placeholder="token"></label>
-          <label class="theme-field theme-field--text"><span class="theme-field__label">Bing verification</span>
-            <input type="text" class="input" data-head="verify_bing" maxlength="128" value="` + html.EscapeString(val(settings.KeyHeadVerifyBing)) + `" placeholder="token"></label>
-        </div>
-      </div>
-    </section>
-
-    <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Import / Export">
-        <span class="cz-group__ic" aria-hidden="true">` + saIcon("package") + `</span>
-        <span class="cz-group__text"><span class="cz-group__title">Import / Export</span><span class="cz-group__sub">Move a theme between installs as JSON</span></span>
-        
-      </button>
-      <div class="cz-group__body">
-        <div class="text-sm muted mb-3">Download the full theme as JSON, or import one to apply it everywhere. Imported tokens are validated before they go live.</div>
-        <div class="vm-row">
-          <a class="btn btn--sm" href="/os/api/theme/export" download>Export theme JSON</a>
-        </div>
-        <div class="vm-row mt-2">
-          <input type="file" accept="application/json,.json" class="input" data-theme-import-file>
-          <button type="button" class="btn btn--primary btn--sm" data-theme-import>Import</button>
-          <span class="text-sm muted" data-theme-import-status></span>
-        </div>
-      </div>
-    </section>
-  </aside>
-
-  <div class="customizer__stage">
-    <div class="customizer__toolbar">
-      <div class="cz-devices" role="group" aria-label="Preview device">
-        <button type="button" class="cz-device cz-device--active" data-theme-device="desktop" aria-pressed="true" title="Desktop">Desktop</button>
-        <button type="button" class="cz-device" data-theme-device="tablet" aria-pressed="false" title="Tablet">Tablet</button>
-        <button type="button" class="cz-device" data-theme-device="mobile" aria-pressed="false" title="Mobile">Mobile</button>
-      </div>
-      <div class="cz-devices" role="group" aria-label="Preview colour scheme">
-        <button type="button" class="cz-device cz-device--active" data-theme-scheme="dark" aria-pressed="true" title="Preview the dark palette">` + saIcon("moon") + ` Dark</button>
-        <button type="button" class="cz-device" data-theme-scheme="light" aria-pressed="false" title="Preview the light palette">` + saIcon("sun") + ` Light</button>
-      </div>
-      <span class="cz-toolbar-spacer"></span>
-      <span class="text-xs muted" data-theme-preview-status>Live preview</span>
-      <a class="btn btn--ghost btn--sm" data-theme-newtab href="#" target="_blank" rel="noopener">Open in new tab ↗</a>
-    </div>
-    <div class="customizer__viewport" data-theme-viewport data-device="desktop">
-      <div class="customizer__frame-wrap">
-        <iframe class="customizer__frame" data-theme-frame title="Live theme preview" referrerpolicy="no-referrer"></iframe>
-        <div class="customizer__frame-loading" data-theme-frame-loading>Building preview…</div>
-      </div>
-    </div>
+<div class="customizer__toolbar">
+  <div class="sa-seg" role="group" aria-label="Preview device">
+    <button type="button" class="sa-seg__opt" data-theme-device="desktop" aria-pressed="true">Desktop</button>
+    <button type="button" class="sa-seg__opt" data-theme-device="tablet" aria-pressed="false">Tablet</button>
+    <button type="button" class="sa-seg__opt" data-theme-device="mobile" aria-pressed="false">Phone</button>
   </div>
+  <div class="sa-seg" role="group" aria-label="Preview colour scheme">
+    <button type="button" class="sa-seg__opt" data-theme-scheme="dark" aria-pressed="true">Dark</button>
+    <button type="button" class="sa-seg__opt" data-theme-scheme="light" aria-pressed="false">Light</button>
+  </div>
+  <span class="sa-doc__fill"></span>
+  <span class="sa-insp__hint" data-theme-preview-status>Live preview</span>
+  <a class="btn btn--ghost btn--sm" data-theme-newtab href="#" target="_blank" rel="noopener">Open in a tab ↗</a>
 </div>
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-theme.js?v=` + assetVer("js/admin-os-theme.js") + `"></script>`
+<div class="customizer__viewport" data-theme-viewport data-device="desktop">
+  <div class="customizer__frame-wrap">
+    <iframe class="customizer__frame" data-theme-frame title="Live theme preview" referrerpolicy="no-referrer"></iframe>
+    <div class="customizer__frame-loading" data-theme-frame-loading>Building the preview</div>
+  </div>
+</div>`
+
+	body := string(ui.Document(ui.DocumentPage{
+		Title: "Theme",
+		Hook:  "data-theme-studio",
+		State: ui.HTML(`<span data-active-preset-name>Current theme</span> <span class="sa-doc__msg" data-theme-status>Loading</span>`),
+		Actions: ui.HTML(`<span class="sa-doc__msg" data-theme-changes hidden aria-live="polite"></span>` +
+			`<a class="btn btn--ghost btn--sm" href="/os/theme/store">Theme store</a>` +
+			`<button type="button" class="btn btn--ghost btn--sm" data-theme-revert>Revert</button>` +
+			`<button type="button" class="btn btn--ghost btn--sm btn--icon" data-studio-focus aria-pressed="true" aria-label="Theme settings beside the preview" title="Hide or show the settings">` + saIcon("settings") + `</button>` +
+			`<button type="button" class="btn btn--primary btn--sm" data-theme-apply>Apply theme</button>`),
+		Inspector: ui.HTML(inspector),
+		Label:     "Theme settings",
+	}, ui.HTML(preview))) +
+		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-theme.js?v=` + assetVer("js/admin-os-theme.js") + `"></script>`
 
 	// Resumable draft (Wave C): surface the autosaved snapshot, if any, so the
 	// client banner can offer Restore/Discard. Payload is escaped; the banner

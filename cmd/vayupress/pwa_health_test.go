@@ -97,21 +97,21 @@ func TestHealthChipDoesNotOverclaim(t *testing.T) {
 	config.Cfg.Domain = "example.com"
 	render.SetActiveSettings(render.SiteSettings{Name: "Acme"})
 	t.Cleanup(func() { render.SetActiveSettings(render.SiteSettings{}) })
-	card := (&App{}).pwaHealthCardHTML(httptest.NewRequest("GET", "/os/website", nil), "n0nce")
+	card := (&App{}).pwaHealthSection(httptest.NewRequest("GET", "/os/website", nil), "n0nce")
 
-	if strings.Contains(card, ">Installable<") {
-		t.Error(`the chip must not claim "Installable" from server-side checks alone`)
+	if strings.Contains(card, "Installable") {
+		t.Error(`the section must not claim "Installable" from server-side checks alone`)
 	}
-	if !strings.Contains(card, "Origin OK") {
-		t.Error("expected the chip to say the origin is OK, not that installation works")
+	if !strings.Contains(card, "Every server check passes") {
+		t.Error("expected the section to say the server checks pass, not that installation works")
 	}
-	// The card must always be expanded: collapsed-when-green is how the
-	// browser-side failure goes unnoticed.
-	if !strings.Contains(card, `<details class="mon-acc" open>`) {
-		t.Error("the install-health card must be expanded, or its browser half is never seen")
+	// Never folded: collapsed-when-green is how the browser-side failure
+	// goes unnoticed.
+	if strings.Contains(card, "<details") && !strings.Contains(card, `<details class="sa-explain"`) {
+		t.Error("the install checks must not be folded away, or their browser half is never seen")
 	}
-	if !strings.Contains(card, "admin-os-pwa.js") {
-		t.Error("the card must load the browser-side probe")
+	if !strings.Contains(card, "data-pwa-probe-rows") || !strings.Contains(card, "admin-os-pwa.js") {
+		t.Error("the section must carry the browser-side probe")
 	}
 }
 
