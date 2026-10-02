@@ -8,6 +8,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.17.94] — 2026-10-02
+
+Replies to contact messages go out through VayuMail, and Shield is the
+last of the overview pages.
+
+### Fixed
+
+- **Reply on a message opens VayuMail, not your computer's mail program.**
+  In Content › Messages, Reply was a mailto: link, so it opened whatever
+  mail app the computer had (Outlook, often). It opens VayuMail's compose
+  now, with the writer, the subject and their message quoted; the writer's
+  address opens a new message to them the same way. Without mail set up,
+  compose says so and shows its setup.
+- **Home's header keeps its shape on a phone.** The date and the system
+  state sat beside the title in one wrapping row, so the page rearranged
+  itself as the day's date got longer or shorter. They take a line each.
+- **Two of Shield's settings printed their own markup** ("<strong>…",
+  "&ldquo;Just a moment&rdquo;"); they read as plain text.
+- **Charts are named for a screen reader by what they show.** Every small
+  chart (Analytics, Newsletter, Shield) was announced as "Publishing
+  activity".
+
+### Changed
+
+- **Shield is an overview, with its three pages as tabs.** Beside the
+  title, its state in one sentence ("Protecting · 3,661 turned away today,
+  no reader challenged", the last part only when the visitor check has just
+  shown ordinary visitors served). Bot protection, Sign-in security and
+  VayuVeil are tabs instead of a sidebar. What it turned away over 14 days
+  sits beside the crawlers it let through; its layers are rows that say
+  what each did and whether it is working; the reports are laid open, and
+  the settings rise in a sheet.
+
+### Security
+
+- **Compose fills a reply to a contact message for an administrator
+  only.** Compose is open to client accounts and the Messages inbox is
+  not, so a client who guessed a message's id gets an empty composer.
+
 ## [3.17.93] — 2026-09-29
 
 A fix for the console's lists, which 3.17.92 drew squeezed, and the first
