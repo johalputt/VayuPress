@@ -504,8 +504,9 @@ test("every menu opens from the control that opened it", async ({ page }) => {
     await page.locator(trigger).click();
     await expect(page.locator(panel)).toBeVisible();
     expect(await distance(panel, trigger), panel + " opens away from " + trigger).toBeLessThanOrEqual(12);
+    // Every one of them closes on Escape; a click "away" can land on a link.
     await page.keyboard.press("Escape");
-    await page.mouse.click(700, 500);
+    await expect(page.locator(panel)).toBeHidden();
   }
   expect(checked, "menus found to check").toBeGreaterThanOrEqual(3);
 });
