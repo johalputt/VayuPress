@@ -7,6 +7,12 @@ const { test, expect } = require("@playwright/test");
 const base = process.env.MAIL_BASE_URL;
 if (!base) throw new Error("MAIL_BASE_URL is not set: boot the second install (.github/actions/boot-vayupress)");
 test.use({ baseURL: base });
+// One mailbox serves every test here, and they change it: a message opened
+// is read two seconds later, others are archived, snoozed or sent. Run in
+// parallel (the config's fullyParallel), one test's reader marked another's
+// message read under it. In order, each test meets the state it expects;
+// "default" rather than "serial", so one failure does not hide the rest.
+test.describe.configure({ mode: "default" });
 
 // The fixture writes mailboxes as Maildirs; an install also holds them as
 // accounts, with a name and a PGP key each (provisionMailbox). Made once for
