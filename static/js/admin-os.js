@@ -1268,9 +1268,13 @@ window.vpRelTime = relativeTime;
   if ('serviceWorker' in navigator) {
     // When a new worker takes control (e.g. after a deploy), reload once so the
     // freshest VayuOS shows immediately — no stale build ever lingers on a device.
+    // A first visit is not an update: the worker claims a page that had no
+    // controller, and reloading there threw away whatever was done in the
+    // first moments (the same gate as the public site's, render.PWARegisterJS).
+    var hadController = !!navigator.serviceWorker.controller;
     var swReloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', function () {
-      if (swReloaded) return;
+      if (!hadController || swReloaded) return;
       swReloaded = true;
       window.location.reload();
     });

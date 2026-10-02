@@ -12,9 +12,8 @@
 // confirmation dialog without a pointer.
 const { test, expect } = require("@playwright/test");
 
-// Opens the console and waits until the first visit has settled: without a
-// session it loads itself once more before the CSRF cookie exists, and a test
-// that acts before then is refused.
+// Opens the console and waits until the first visit has settled: a test that
+// acts before the CSRF cookie exists is refused.
 async function openConsole(page) {
   await page.goto("/os");
   await page.waitForLoadState("networkidle");
@@ -697,6 +696,18 @@ test("the console page itself never scrolls; only its content does", async ({ pa
     }
   }
   expect(scrolling).toEqual([]);
+});
+
+// A first visit loads once. The console's service worker claims the page it
+// was registered from, and that change of controller is not a new build: the
+// reload meant for a deploy, run here, threw away what the first moments did.
+test("a first visit loads the page once", async ({ page }) => {
+  let loads = 0;
+  page.on("framenavigated", (f) => { if (f === page.mainFrame()) loads++; });
+  await page.goto("/os");
+  await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller !== null);
+  await page.waitForLoadState("networkidle");
+  expect(loads, "the page reloaded itself when its first service worker took over").toBe(1);
 });
 
 test("the bell dates what happened, Mark all read clears it for good, and Clear all empties it", async ({ page }) => {

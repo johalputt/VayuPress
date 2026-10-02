@@ -57,7 +57,7 @@ test("a change refreshes the page in place, and the new controls work", async ({
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/os/members");
-  await page.waitForLoadState("networkidle"); // a first visit without a session cookie loads itself once more
+  await page.waitForLoadState("networkidle");
   let navigations = 0;
   page.on("framenavigated", (f) => { if (f === page.mainFrame()) navigations++; });
 
