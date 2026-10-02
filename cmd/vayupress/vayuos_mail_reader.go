@@ -155,7 +155,7 @@ func (a *App) vayuReaderCard(rd vmail.Reader, folder, id string, v readerView) (
 		c.WriteString(`</div></details>`)
 	}
 	c.WriteString(`<span class="mx-rtools__sep" aria-hidden="true"></span>`)
-	if pane && received && !strings.EqualFold(folder, "Snoozed") {
+	if pane && received && !readOnly && !strings.EqualFold(folder, "Snoozed") {
 		// "Later" (+4h) existed in the engine but had no button, so the
 		// fastest snooze the product could offer was "tomorrow".
 		c.WriteString(`<details class="sa-pop"><summary class="mx-tool" title="Snooze (s)" aria-label="Snooze">` + saIcon("timer") + `</summary><div class="sa-pop__panel sa-menu" role="menu">`)

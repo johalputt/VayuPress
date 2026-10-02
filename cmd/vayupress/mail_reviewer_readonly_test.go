@@ -75,7 +75,11 @@ func TestAReviewerIsNotOfferedWhatWouldBeRefused(t *testing.T) {
 		// The reader, both as a pane and as its own page.
 		for _, pane := range []bool{true, false} {
 			card, _ := a.vayuReaderCard(rd, "Inbox", id, readerView{Pane: pane})
-			for _, control := range []string{`compose?reply=1`, `compose?forward=1`, `aria-label="Move to Trash"`, `>Delete for good<`} {
+			controls := []string{`compose?reply=1`, `compose?forward=1`, `aria-label="Move to Trash"`, `>Delete for good<`}
+			if pane {
+				controls = append(controls, `aria-label="Snooze"`) // a move into Snoozed; offered in the pane alone
+			}
+			for _, control := range controls {
 				if strings.Contains(card, control) == readOnly {
 					t.Errorf("reader (pane=%v) as %s: offers %s = %v", pane, role, control, !readOnly)
 				}

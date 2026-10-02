@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The console offers "Reviewer — read-only, mail only". For as long as the role
@@ -192,6 +193,9 @@ func TestTheEngineRefusesAReviewerDeleteOrMoveOnly(t *testing.T) {
 	}
 	if err := e.MoveMessage(ReadAsOwner("rev"), id, "Inbox", "Trash"); !errors.Is(err, ErrReadOnlyMailbox) {
 		t.Errorf("a reviewer moving their own mail: %v, want ErrReadOnlyMailbox", err)
+	}
+	if err := e.Snooze(ReadAsOwner("rev"), "Inbox", id, time.Now().Add(time.Hour)); !errors.Is(err, ErrReadOnlyMailbox) {
+		t.Errorf("a reviewer snoozing their own mail (a move into Snoozed): %v, want ErrReadOnlyMailbox", err)
 	}
 	if !e.ReaderReadOnly(ReadAsOwner("rev@example.com")) {
 		t.Error("a full address did not resolve to the reviewer's role")

@@ -87,11 +87,17 @@ func (s *AccountStore) clearSnooze(ctx context.Context, mailbox, id string) {
 
 // Snooze hides a message until the given time: it is moved into the Snoozed
 // folder and a wake row is recorded. Sent/Drafts and the Snoozed folder itself
-// cannot be snoozed.
-func (e *Engine) Snooze(username, folder, id string, until time.Time) error {
+// cannot be snoozed. It is a move, so it is authorised as one: it took a bare
+// username and so skipped writeAuthorised, and a read-only mailbox could move
+// its mail into Snoozed.
+func (e *Engine) Snooze(rd Reader, folder, id string, until time.Time) error {
+	if err := e.writeAuthorised(rd); err != nil {
+		return err
+	}
 	if e.maildir == nil || e.accounts == nil {
 		return errors.New("vayumail: not started")
 	}
+	username := rd.Key()
 	folder = canonicalFolder(folder)
 	switch folder {
 	case "Sent", "Drafts", "Snoozed":

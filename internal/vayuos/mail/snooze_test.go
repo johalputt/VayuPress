@@ -26,7 +26,7 @@ func TestSnoozeAndWake(t *testing.T) {
 	}
 
 	until := time.Now().Add(30 * time.Minute)
-	if err := e.Snooze("ankush", "Inbox", id, until); err != nil {
+	if err := e.Snooze(ReadAsOwner("ankush"), "Inbox", id, until); err != nil {
 		t.Fatalf("snooze: %v", err)
 	}
 	inbox, _ := e.ListFolder(ReadAsSystem("ankush", "test"), "Inbox")
@@ -58,13 +58,13 @@ func TestSnoozeAndWake(t *testing.T) {
 	}
 
 	// Guard rails: past wake time and un-snoozable folders are rejected.
-	if err := e.Snooze("ankush", "Inbox", "whatever", time.Now().Add(-time.Hour)); err == nil {
+	if err := e.Snooze(ReadAsOwner("ankush"), "Inbox", "whatever", time.Now().Add(-time.Hour)); err == nil {
 		t.Fatal("past wake time accepted")
 	}
-	if err := e.Snooze("ankush", "Sent", "x", time.Now().Add(time.Hour)); err == nil {
+	if err := e.Snooze(ReadAsOwner("ankush"), "Sent", "x", time.Now().Add(time.Hour)); err == nil {
 		t.Fatal("Sent snooze accepted")
 	}
-	if err := e.Snooze("ankush", "Snoozed", "x", time.Now().Add(time.Hour)); err == nil {
+	if err := e.Snooze(ReadAsOwner("ankush"), "Snoozed", "x", time.Now().Add(time.Hour)); err == nil {
 		t.Fatal("Snoozed re-snooze accepted")
 	}
 }
@@ -79,7 +79,7 @@ func TestSnoozeStaleRowDiscarded(t *testing.T) {
 	raw := []byte("From: bob@other.com\r\nSubject: gone\r\n\r\nx")
 	id, _ := e.maildir.Deliver("example.com", "ankush", raw)
 	until := time.Now().Add(10 * time.Minute)
-	if err := e.Snooze("ankush", "Inbox", id, until); err != nil {
+	if err := e.Snooze(ReadAsOwner("ankush"), "Inbox", id, until); err != nil {
 		t.Fatalf("snooze: %v", err)
 	}
 	// Operator empties the Snoozed folder by hand.
@@ -124,7 +124,7 @@ func TestSnoozeWakesASecondaryDomainMailbox(t *testing.T) {
 	}
 
 	until := time.Now().Add(30 * time.Minute)
-	if err := e.Snooze(mailbox, "Inbox", id, until); err != nil {
+	if err := e.Snooze(ReadAsOwner(mailbox), "Inbox", id, until); err != nil {
 		t.Fatalf("snooze: %v", err)
 	}
 	if snoozed, _ := e.ListFolder(ReadAsSystem(mailbox, "test"), "Snoozed"); len(snoozed) != 1 {

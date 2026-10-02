@@ -2834,8 +2834,8 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 	switch {
 	case r.FormValue("snooze") != "":
 		until := snoozeUntil(r.FormValue("snooze"))
-		if err := a.vayuMail.Snooze(user, folder, id, until); err != nil {
-			writeOSHTML(w, r, vayuReadpaneEmpty("Could not snooze: "+err.Error()))
+		if err := a.vayuMail.Snooze(rd, folder, id, until); err != nil {
+			writeOSHTML(w, r, vayuReadpaneEmpty(mailChangeRefusal(err)))
 			return
 		}
 		writeOSHTML(w, r, vayuReadpaneEmpty("Snoozed — wakes "+until.Local().Format("Mon 15:04")+"."))
