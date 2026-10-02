@@ -29,7 +29,7 @@
     pops.forEach(function (d) { if (d !== except) d.open = false; });
   }
   function items(d) {
-    return Array.prototype.slice.call(d.querySelectorAll('[role="menuitem"]:not([hidden]), .sa-seg__opt'));
+    return Array.prototype.slice.call(d.querySelectorAll('[role^="menuitem"]:not([hidden]):not([disabled]), .sa-seg__opt'));
   }
   pops.forEach(function (d) {
     d.addEventListener('toggle', function () {
@@ -68,9 +68,12 @@
       list[i].focus();
     });
   });
+  // A menu item that is a button does its work in place, so the menu closes
+  // behind it; a link leaves the page anyway.
   document.addEventListener('click', function (e) {
     var inside = e.target.closest ? e.target.closest('details.sa-pop') : null;
     closeAll(inside);
+    if (inside && e.target.closest('button[role^="menuitem"]')) inside.open = false;
   });
   document.addEventListener('focusin', function (e) {
     var inside = e.target.closest ? e.target.closest('details.sa-pop') : null;

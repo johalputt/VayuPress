@@ -23,8 +23,10 @@
 
   var slug = root.getAttribute('data-slug') || '';
   var canvas = root.querySelector('[data-editor-canvas]');
+  // The title, byline and blocks scroll as one document; typewriter scrolling
+  // moves this, not the canvas inside it.
+  var scroller = root.querySelector('[data-editor-scroller]') || canvas;
   var titleEl = root.querySelector('[data-editor-title]');
-  var statusEl = root.querySelector('[data-editor-status]');
   var topbarStatusEl = root.querySelector('[data-editor-topbar-status]');
   var saveBtn = root.querySelector('[data-editor-save]');
   var previewBtn = root.querySelector('[data-editor-preview-btn]');
@@ -45,9 +47,6 @@
   var wordCountEl = root.querySelector('[data-editor-wordcount]');
   var liveEl = root.querySelector('[data-editor-live]');
   var liveBody = root.querySelector('[data-editor-live-body]');
-  var statsWordsEl = root.querySelector('[data-editor-stats-words]');
-  var statsCharsEl = root.querySelector('[data-editor-stats-chars]');
-  var statsReadEl = root.querySelector('[data-editor-stats-read]');
   var undoBtn = root.querySelector('[data-editor-undo]');
   var redoBtn = root.querySelector('[data-editor-redo]');
 
@@ -132,13 +131,9 @@
 
   // ── Status ──────────────────────────────────────────────────────────────────
   function setStatus(msg, kind) {
-    if (statusEl) {
-      statusEl.textContent = msg;
-      statusEl.className = 'editor-status' + (kind ? ' editor-status--' + kind : '');
-    }
     if (topbarStatusEl) {
       topbarStatusEl.textContent = msg;
-      topbarStatusEl.className = 'editor-topbar-status' + (kind ? ' editor-topbar-status--' + kind : '');
+      topbarStatusEl.className = 'sa-doc__state' + (kind ? ' sa-doc__state--' + kind : '');
     }
   }
 
@@ -172,14 +167,9 @@
     return t.split(/\s+/).length;
   }
   function updateStats() {
-    var text = collectAllText();
-    var words = countWords(text);
-    var chars = text.replace(/\s+/g, ' ').trim().length;
+    var words = countWords(collectAllText());
     var mins = words ? Math.max(1, Math.round(words / 200)) : 0;
-    if (wordCountEl) wordCountEl.textContent = words + (words === 1 ? ' word' : ' words');
-    if (statsWordsEl) statsWordsEl.textContent = String(words);
-    if (statsCharsEl) statsCharsEl.textContent = String(chars);
-    if (statsReadEl) statsReadEl.textContent = mins ? (mins + ' min read') : '—';
+    if (wordCountEl) wordCountEl.textContent = words ? words.toLocaleString() + (words === 1 ? ' word' : ' words') + ' · ' + mins + ' min' : '';
     renderOutline();
   }
 
@@ -1837,24 +1827,50 @@
     }
   }
 
-  function renderPubUI() {
-    if (!pubStateEl || !pubBtn) return;
-    if (!slug || !postStatus) { pubStateEl.hidden = true; pubBtn.hidden = true; return; }
-    pubStateEl.hidden = false;
-    pubBtn.hidden = false;
+  // The inspector's State row is a dot and a word, as ui.State draws it.
+  function renderState(el, tone, text) {
+    while (el.firstChild) el.removeChild(el.firstChild);
+    var wrap = document.createElement('span');
+    wrap.className = 'sa-indicator';
+    var dot = document.createElement('span');
+    dot.className = 'sa-dot sa-dot--' + tone;
+    dot.setAttribute('aria-hidden', 'true');
+    wrap.appendChild(dot);
+    wrap.appendChild(document.createTextNode(text));
+    el.appendChild(wrap);
+  }
+
+  // The byline under the title says who wrote it and whether readers can see
+  // it yet, as the published post will.
+  var bylineEl = root.querySelector('[data-editor-byline]');
+  function renderByline() {
+    if (!bylineEl) return;
+    var author = (typeof pm !== 'undefined' && pm['author'] && pm['author'].selectedIndex >= 0) ? pm['author'].options[pm['author'].selectedIndex].text.trim() : '';
+    var when = 'not yet published';
     if (postStatus === 'published') {
-      pubStateEl.textContent = 'Published';
-      pubStateEl.classList.remove('is-draft');
-      pubStateEl.classList.add('is-published');
-      pubBtn.textContent = 'Unpublish';
-      pubBtn.setAttribute('title', 'Revert to draft — readers will no longer see this post');
-    } else {
-      pubStateEl.textContent = 'Draft';
-      pubStateEl.classList.remove('is-published');
-      pubStateEl.classList.add('is-draft');
-      pubBtn.textContent = 'Publish';
-      pubBtn.setAttribute('title', 'Publish to the live site');
+      var d = new Date((typeof pm !== 'undefined' && pm['publish-date'] && pm['publish-date'].value) || Date.now());
+      when = 'published ' + (isNaN(d) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }));
     }
+    bylineEl.textContent = author ? author + ' · ' + when : when;
+  }
+
+  function renderPubUI() {
+    if (pubStateEl) {
+      if (!slug || !postStatus) renderState(pubStateEl, 'neutral', 'Not saved yet');
+      else if (postStatus === 'published') renderState(pubStateEl, 'ok', 'Published');
+      else renderState(pubStateEl, 'neutral', 'Draft');
+    }
+    renderByline();
+    if (!pubBtn) return;
+    if (!slug || !postStatus) { pubBtn.hidden = true; return; }
+    pubBtn.hidden = false;
+    // The accent marks the next thing to do: publishing a draft. Taking a
+    // post down is not that, so Unpublish is a plain button.
+    var live = postStatus === 'published';
+    pubBtn.classList.toggle('btn--primary', !live);
+    pubBtn.classList.toggle('btn--ghost', live);
+    pubBtn.textContent = live ? 'Unpublish' : 'Publish';
+    pubBtn.setAttribute('title', live ? 'Revert to draft: readers will no longer see this post' : 'Publish to the live site');
   }
 
   function togglePublish() {
@@ -1958,8 +1974,7 @@
     bar.appendChild(msg);
     bar.appendChild(restoreBtn);
     bar.appendChild(discardBtn);
-    var mainEl = root.querySelector('.editor-main') || root;
-    mainEl.insertBefore(bar, mainEl.firstChild);
+    scroller.insertBefore(bar, scroller.firstChild);
   })();
 
   // ── Preview (modal + split live pane) ───────────────────────────────────────
@@ -2003,7 +2018,7 @@
     splitOn = !splitOn;
     root.classList.toggle('is-split', splitOn);
     if (liveEl) liveEl.hidden = !splitOn;
-    if (splitBtn) splitBtn.classList.toggle('is-active', splitOn);
+    if (splitBtn) splitBtn.setAttribute('aria-checked', String(splitOn));
     if (splitOn) renderLivePreview();
   }
   function scheduleLivePreview() {
@@ -2023,7 +2038,7 @@
   function toggleFocus() {
     focusOn = !focusOn;
     root.classList.toggle('is-focus', focusOn);
-    if (focusBtn) focusBtn.classList.toggle('is-active', focusOn);
+    if (focusBtn) focusBtn.setAttribute('aria-checked', String(focusOn));
     if (focusOn) scheduleTypewriter(); // recentre the caret line on entering
     else markActiveBlock(null);        // clear the spotlight on exit
   }
@@ -2058,13 +2073,13 @@
     while (el && el.parentNode !== canvas) el = el.parentNode; // nearest block child
     if (!el || el.parentNode !== canvas) return;
     markActiveBlock(el); // spotlight this line, dim the others
-    // Only centre when the canvas is its own scroll container. On mobile the
-    // page scrolls instead (canvas overflow-y: visible), so there is nothing to
-    // move — the browser already keeps the caret above the keyboard.
-    if (canvas.scrollHeight <= canvas.clientHeight) return;
-    var cr = el.getBoundingClientRect(), vr = canvas.getBoundingClientRect();
+    // Only centre when the document column is its own scroll container. On a
+    // phone the page scrolls instead, so there is nothing to move: the browser
+    // already keeps the caret above the keyboard.
+    if (scroller.scrollHeight <= scroller.clientHeight) return;
+    var cr = el.getBoundingClientRect(), vr = scroller.getBoundingClientRect();
     var delta = (cr.top + cr.height / 2) - (vr.top + vr.height / 2);
-    if (Math.abs(delta) > 4) canvas.scrollTop += delta;
+    if (Math.abs(delta) > 4) scroller.scrollTop += delta;
   }
   function scheduleTypewriter() {
     if (typewriterRAF) return;
@@ -2095,7 +2110,7 @@
       htmlMode = true;
       root.classList.add('is-html');
       htmlPanel.hidden = false;
-      if (htmlBtn) { htmlBtn.classList.add('is-active'); htmlBtn.setAttribute('aria-pressed', 'true'); }
+      if (htmlBtn) htmlBtn.setAttribute('aria-checked', 'true');
       setStatus('Editing HTML', 'ok');
       setTimeout(function () { htmlArea.focus(); }, 0);
       htmlBusy = false;
@@ -2126,7 +2141,7 @@
       htmlMode = false;
       root.classList.remove('is-html');
       if (htmlPanel) htmlPanel.hidden = true;
-      if (htmlBtn) { htmlBtn.classList.remove('is-active'); htmlBtn.setAttribute('aria-pressed', 'false'); }
+      if (htmlBtn) htmlBtn.setAttribute('aria-checked', 'false');
       renderCanvas();
       commitNow();
       updateStats();
@@ -2306,7 +2321,7 @@
     mdMode = true;
     root.classList.add('is-html');
     mdPanel.hidden = false;
-    if (mdBtn) { mdBtn.classList.add('is-active'); mdBtn.setAttribute('aria-pressed', 'true'); }
+    if (mdBtn) mdBtn.setAttribute('aria-checked', 'true');
     setStatus('Editing Markdown', 'ok');
     setTimeout(function () { mdArea.focus(); }, 0);
   }
@@ -2320,7 +2335,7 @@
     mdMode = false;
     root.classList.remove('is-html');
     if (mdPanel) mdPanel.hidden = true;
-    if (mdBtn) { mdBtn.classList.remove('is-active'); mdBtn.setAttribute('aria-pressed', 'false'); }
+    if (mdBtn) mdBtn.setAttribute('aria-checked', 'false');
     renderCanvas();
     commitNow();
     updateStats();
@@ -2342,7 +2357,6 @@
   var settingsBtn = root.querySelector('[data-editor-settings-btn]');
   var settingsPanel = root.querySelector('[data-editor-settings]');
   var settingsBackdrop = root.querySelector('[data-editor-settings-backdrop]');
-  var settingsClose = root.querySelector('[data-editor-settings-close]');
   var pm = {};
   ['feature-image', 'feature-preview', 'feature-empty', 'feature-upload', 'feature-remove', 'feature-file',
     'slug', 'slug-apply', 'slug-prefix', 'slug-status', 'publish-date', 'excerpt', 'excerpt-count',
@@ -2464,6 +2478,7 @@
     pmTags.forEach(function (t, i) {
       var chip = document.createElement('span');
       chip.className = 'pm-tag';
+      chip.setAttribute('data-label', '');
       var label = document.createElement('span');
       label.textContent = t;
       var x = document.createElement('button');
@@ -2520,23 +2535,36 @@
       }).catch(function () { setStatus('Could not update URL', 'danger'); });
   }
 
+  // Where there is room the inspector stands beside the writing until it is
+  // folded away; where there is not, it is a drawer over the page. The width
+  // matches the stylesheet's (vayuos.css, "The document kind").
+  var roomy = window.matchMedia('(min-width: 1100px)');
+  function inspectorShown() {
+    return roomy.matches ? !root.classList.contains('is-inspector-off') : root.classList.contains('is-settings');
+  }
+  function syncSettingsBtn() {
+    if (settingsBtn) settingsBtn.setAttribute('aria-pressed', String(inspectorShown()));
+  }
   function openSettings() {
-    if (!settingsPanel) return;
-    settingsPanel.hidden = false;
-    if (settingsBackdrop) settingsBackdrop.hidden = false;
-    root.classList.add('is-settings');
-    if (settingsBtn) { settingsBtn.classList.add('is-active'); settingsBtn.setAttribute('aria-pressed', 'true'); }
+    if (roomy.matches) root.classList.remove('is-inspector-off');
+    else { root.classList.add('is-settings'); if (settingsBackdrop) settingsBackdrop.hidden = false; }
+    syncSettingsBtn();
   }
   function closeSettings() {
-    if (!settingsPanel) return;
-    settingsPanel.hidden = true;
-    if (settingsBackdrop) settingsBackdrop.hidden = true;
-    root.classList.remove('is-settings');
-    if (settingsBtn) { settingsBtn.classList.remove('is-active'); settingsBtn.setAttribute('aria-pressed', 'false'); }
+    if (roomy.matches) root.classList.add('is-inspector-off');
+    else { root.classList.remove('is-settings'); if (settingsBackdrop) settingsBackdrop.hidden = true; }
+    syncSettingsBtn();
   }
   function toggleSettings() {
-    if (settingsPanel && settingsPanel.hidden) openSettings(); else closeSettings();
+    if (inspectorShown()) closeSettings(); else openSettings();
   }
+  // A drawer left open while the window widens would cover nothing and stay
+  // behind its backdrop: crossing the width closes it.
+  roomy.addEventListener('change', function () {
+    root.classList.remove('is-settings');
+    if (settingsBackdrop) settingsBackdrop.hidden = true;
+    syncSettingsBtn();
+  });
 
   // ── Inline formatting toolbar (floating on text selection) ──────────────────
   var fmtBar = null;
@@ -3109,7 +3137,7 @@
 
   // Post settings panel wiring.
   hydrateSettings();
-  if (settingsBtn) settingsBtn.addEventListener('click', toggleSettings);
+  if (settingsBtn) { settingsBtn.addEventListener('click', toggleSettings); syncSettingsBtn(); }
 
   // "＋ Page" — create a fresh standalone page and jump straight into it. Uses
   // the same quick-create endpoint the Pages manager uses (server flags is_page).
@@ -3141,10 +3169,9 @@
     });
   }
 
-  if (settingsClose) settingsClose.addEventListener('click', closeSettings);
   if (settingsBackdrop) settingsBackdrop.addEventListener('click', closeSettings);
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && settingsPanel && !settingsPanel.hidden) closeSettings();
+    if (e.key === 'Escape' && !roomy.matches && root.classList.contains('is-settings')) closeSettings();
   });
   if (pm['feature-upload'] && pm['feature-file']) {
     pm['feature-upload'].addEventListener('click', function () { pm['feature-file'].click(); });
@@ -3173,6 +3200,7 @@
     });
     settingsPanel.addEventListener('change', function (e) {
       if (e.target === pm['featured'] || e.target === pm['is-page']) scheduleAutosave();
+      if (e.target === pm['author'] || e.target === pm['publish-date']) renderByline();
     });
   }
   if (undoBtn) undoBtn.addEventListener('click', undo);

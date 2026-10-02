@@ -1271,62 +1271,7 @@
 
 }
 
-/* The shell is a two-column grid (writing surface + tool sidebar) with a fixed
-   topbar row. It is sized to the viewport beneath the sticky admin topbar so the
-   writing column scrolls internally instead of letting the whole page grow —
-   this is what lets a long post (or a single tall block) scroll smoothly. */
-.vp-os .editor-shell { display: grid; grid-template-columns: minmax(0, 1fr) 280px; grid-template-rows: auto minmax(0, 1fr); gap: var(--sp-4) var(--sp-6); height: calc(100vh - var(--topbar-h) - 2 * var(--sp-6)); min-height: 520px; }
-
-.vp-os .editor-topbar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border); background: var(--bg-surface); border-radius: var(--r-md); gap: var(--sp-3); }
-
-.vp-os .editor-topbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
-
-/* The toolbar wraps at every width: it spans the whole grid, so an unwrapped
-   row of buttons set the editor's minimum width (979px inside an 828px
-   workspace on a 1280px laptop). */
-.vp-os .editor-topbar { flex-wrap: wrap; }
-
-.vp-os .editor-topbar-status { font-size: var(--text-xs); color: var(--text-2); }
-
-.vp-os .editor-topbar-status--ok { color: var(--color-success, var(--ok)); }
-
-.vp-os .editor-topbar-status--warn { color: var(--color-warn, var(--warn)); }
-
-.vp-os .editor-topbar-status--error { color: var(--color-danger, var(--danger)); }
-
-.vp-os .editor-wordcount { font-size: var(--text-xs); color: var(--text-3); margin-right: var(--sp-2); }
-
-/* Active state for the toolbar toggle buttons (Focus / Split / HTML). */
-.vp-os .editor-topbar-actions .btn.is-active { background: var(--brand-dim); color: var(--brand); border-color: var(--brand); }
-
-/* Writing column — owns the scroll. */
-.vp-os .editor-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-
-.vp-os .editor-title { flex: 0 0 auto; width: 100%; border: none; background: transparent; color: var(--text); font-family: var(--font-display, inherit); font-size: 28px; font-weight: 600; padding: var(--sp-2) var(--sp-4) 0; margin: 0 0 var(--sp-2); outline: none; }
-
 .vp-os .editor-title::placeholder { color: var(--text-3); }
-
-.vp-os .editor-workspace { flex: 1 1 auto; min-height: 0; display: flex; gap: var(--sp-5); overflow: hidden; }
-
-.vp-os .editor-canvas { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-2); overflow-y: auto; overscroll-behavior: contain; scroll-behavior: smooth; padding: var(--sp-2) var(--sp-4) 35vh; }
-
-/* Thin, unobtrusive scrollbar for the writing surface. */
-.vp-os .editor-canvas { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
-
-.vp-os .editor-canvas::-webkit-scrollbar { width: 10px; }
-
-.vp-os .editor-canvas::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--r-full); border: 3px solid transparent; background-clip: content-box; }
-
-.vp-os .editor-canvas::-webkit-scrollbar-thumb:hover { background: var(--text-3); background-clip: content-box; }
-
-/* Split live-preview pane — scrolls independently of the canvas. */
-.vp-os .editor-live { flex: 1 1 50%; min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-surface); overflow: hidden; }
-
-.vp-os .editor-live[hidden] { display: none; }
-
-.vp-os .editor-live-head { flex: 0 0 auto; padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--border); font-size: var(--text-xs); font-weight: 600; color: var(--text-3); }
-
-.vp-os .editor-live-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--sp-5) var(--sp-6); }
 
 /* HTML source mode — fills the writing column and scrolls on its own. */
 .vp-os .editor-html { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-surface); overflow: hidden; }
@@ -1406,18 +1351,6 @@
 
 .vp-os .eblock__divider { border: none; border-top: 2px dashed var(--border); margin: var(--sp-2) 0; }
 
-.vp-os .editor-sidebar { min-height: 0; overflow-y: auto; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
-
-.vp-os .editor-status { font-size: var(--text-sm); color: var(--text-2); }
-
-.vp-os .editor-status--ok { color: var(--ok); }
-
-.vp-os .editor-status--warn { color: var(--warn); }
-
-.vp-os .editor-status--danger { color: var(--danger); }
-
-.vp-os .editor-actions { display: flex; gap: var(--sp-2); }
-
 /* Slash command palette */
 .vp-os .block-palette { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); width: min(420px, 92vw); background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-3); z-index: 300; overflow: hidden; }
 
@@ -1443,45 +1376,6 @@
 .vp-os .editor-preview-head { display: flex; justify-content: space-between; align-items: center; padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); font-weight: 600; }
 
 .vp-os .editor-preview-body { padding: var(--sp-6); overflow-y: auto; }
-
-@media (max-width: 900px) {
-
-  /* minmax(0, …): a bare 1fr track grows to its widest child, and the
-     toolbar's unwrapped buttons made the editor 956px wide on a phone. */
-  .vp-os .editor-shell { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; }
-
-  .vp-os .editor-main { overflow: visible; }
-
-  .vp-os .editor-canvas { overflow-y: visible; padding-bottom: var(--sp-10); }
-
-  .vp-os .editor-workspace { flex-direction: column; overflow: visible; }
-
-  .vp-os .editor-sidebar { position: static; overflow: visible; }
-
-  /* Typewriter scrolling needs the canvas to be its own scroll container; on
-     mobile the PAGE scrolls (overflow-y: visible above), so the 40vh focus
-     padding would just add a phone-screen of dead space and the caret-centring
-     can't run. Neutralise it — mobile browsers already keep the caret above the
-     on-screen keyboard, which gives the same "line stays in view" comfort. */
-  .vp-os .editor-shell.is-focus .editor-canvas { padding-top: var(--sp-6); padding-bottom: var(--sp-10); }
-
-}
-
-/* The rail and section list keep 440px of a desktop window, so below 1440px a
-   280px sidebar beside the writing left a column of 150–450px, narrow enough to
-   break words. There the sidebar follows the writing, as on a phone, and the
-   page scrolls. Focus mode has no sidebar and keeps the canvas as its own
-   scroller, which its typewriter scrolling needs. */
-@media (min-width: 901px) and (max-width: 1439px) {
-  .vp-os .editor-shell:not(.is-focus) { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; }
-
-  .vp-os .editor-shell:not(.is-focus) .editor-main { overflow: visible; }
-
-  .vp-os .editor-shell:not(.is-focus) .editor-canvas { overflow-y: visible; padding-bottom: var(--sp-10); }
-
-  .vp-os .editor-shell:not(.is-focus) .editor-sidebar { overflow: visible; }
-
-}
 
 /* ── Media library ── the Still Air layer below draws it (render 07). */
 .vp-os .skeleton--media { aspect-ratio: 4 / 3; height: auto; border-radius: var(--r-md); }
@@ -2596,21 +2490,6 @@
 /* Live analytics indicator — pulsing dot next to the "Live" card title. */
 .vp-os .live-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--ok, var(--ok)); margin-right: 0.4rem; vertical-align: middle; }
 
-/* Focus mode hides the tool sidebar and widens the writing column so nothing
-   competes with the prose; the topbar stays for quick exit (⌘. toggles it). */
-.vp-os .editor-shell.is-focus { grid-template-columns: minmax(0, 1fr); }
-
-.vp-os .editor-shell.is-focus .editor-sidebar { display: none; }
-
-.vp-os .editor-shell.is-focus .editor-canvas { padding-left: max(var(--sp-4), calc((100% - 820px) / 2)); padding-right: max(var(--sp-4), calc((100% - 820px) / 2)); }
-
-/* Typewriter room is defined once, authoritatively, further down (after the
-   base focus padding rule) so it always wins the cascade on desktop while never
-   applying on mobile — see the min-width:901px block near .editor-canvas base
-   padding. Keeping a single source of truth avoids the ordering bug where a
-   later unconditional padding-top silently defeated it. */
-.vp-os .editor-shell.is-focus .editor-title { max-width: 820px; margin-left: auto; margin-right: auto; padding-left: var(--sp-1); }
-
 .vp-os .editor-shell.is-focus .eblock { transition: opacity var(--t-fast); }
 
 .vp-os .editor-shell.is-focus.is-spotlight .eblock { opacity: 0.32; }
@@ -2644,15 +2523,6 @@
 /* ── Theme Studio: custom CSS / code editor ───────────────────────────────── */
 .vp-os textarea.theme-code { width: 100%; box-sizing: border-box; min-height: 220px; resize: vertical; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: var(--text-sm); line-height: 1.5; tab-size: 2; white-space: pre; overflow-wrap: normal; overflow-x: auto; }
 
-/* ── Topbar word-count chip ─────────────────────────────────────────────── */
-.vp-os .editor-wordcount { font-size: var(--text-xs); color: var(--text-3); padding: 2px var(--sp-2); border-radius: var(--radius-small); background: var(--bg-surface-2); white-space: nowrap; }
-
-.vp-os .btn.is-active { background: var(--brand-dim); color: var(--brand); border-color: var(--brand); }
-
-/* ── Workspace: canvas + optional split live-preview ────────────────────── */
-.vp-os .editor-workspace { display: flex; gap: var(--sp-5); align-items: stretch; min-width: 0; }
-
-.vp-os .editor-workspace > .editor-canvas { flex: 1 1 auto; min-width: 0; }
 
 .vp-os .editor-live { flex: 1 1 50%; min-width: 0; border-left: 1px solid var(--border); padding-left: var(--sp-5); max-height: calc(100vh - var(--topbar-h) - 120px); overflow-y: auto; }
 
@@ -2661,23 +2531,6 @@
 .vp-os .editor-live-head { font-size: var(--text-xs); color: var(--text-3); margin-bottom: var(--sp-3); }
 
 .vp-os .editor-live-body { font-size: var(--text-base); line-height: 1.7; }
-
-/* ── Sidebar live stats ─────────────────────────────────────────────────── */
-.vp-os .editor-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); padding: var(--sp-3) 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-
-.vp-os .editor-stat { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; }
-
-.vp-os .editor-stat__num { font-size: var(--text-lg); font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
-
-.vp-os .editor-stat__label { font-size: 12px; color: var(--text-3); }
-
-/* ── Live document outline ────────────────────────────────────────────────
-   Mirrors the post's heading structure; entries indent by level and the
-   section the caret is in stays highlighted. Scrolls internally past ~14
-   entries so a long document never pushes the sidebar tools off-screen. */
-.vp-os .editor-outline { padding: var(--sp-3) 0; border-bottom: 1px solid var(--border); }
-
-.vp-os .editor-outline__title { font-size: var(--text-xs); font-weight: 600; color: var(--text-3); margin-bottom: var(--sp-2); }
 
 .vp-os .editor-outline__list { display: flex; flex-direction: column; gap: 1px; max-height: 320px; overflow-y: auto; }
 
@@ -2756,31 +2609,6 @@
 
 /* ── Slash palette: keyboard highlight ──────────────────────────────────── */
 .vp-os .block-palette__item.is-active { background: var(--brand-dim); outline: 1px solid var(--brand); }
-
-/* ── Focus (distraction-free) mode ──────────────────────────────────────── */
-.vp-os .editor-shell.is-focus { grid-template-columns: 1fr; }
-
-.vp-os .editor-shell.is-focus .editor-sidebar { display: none; }
-
-.vp-os .editor-shell.is-focus .editor-topbar { background: transparent; border-bottom-color: transparent; }
-
-.vp-os .editor-shell.is-focus .editor-topbar-status,
-.vp-os .editor-shell.is-focus .editor-wordcount { opacity: 0.6; }
-
-.vp-os .editor-shell.is-focus .editor-main { max-width: 760px; margin: 0 auto; width: 100%; }
-
-.vp-os .editor-shell.is-focus .editor-canvas { padding-top: var(--sp-8); }
-
-/* Typewriter room (DESKTOP ONLY) — authoritative, placed last so it wins the
-   cascade on wide screens where the canvas itself scrolls: enough top/bottom
-   space that the first and last lines can still reach the vertical centre when
-   the editor JS centres the caret line. On mobile (<=900px) the PAGE scrolls,
-   so this never applies and the small base padding above is used — no phone
-   ever shows ~40vh of empty space. */
-@media (min-width: 901px) {
-  .vp-os .editor-shell.is-focus .editor-canvas { padding-top: 40vh; padding-bottom: 40vh; }
-
-}
 
 @media (max-width: 900px) {
   .vp-os .editor-workspace { flex-direction: column; }
@@ -3008,19 +2836,7 @@
 .vp-os [data-update-msg].is-error,
 .vp-os [data-backup-msg].is-error { color: var(--danger, var(--danger)); }
 
-/* ── Editor: Post settings drawer (publishing options) ───────────────────── */
-.vp-os .editor-settings-backdrop { position: fixed; inset: 0; background: var(--scrim); z-index: 340; }
-
-.vp-os .editor-settings-backdrop[hidden] { display: none; }
-
-.vp-os .editor-settings { position: fixed; top: 0; right: 0; bottom: 0; width: 420px; max-width: 92vw; z-index: 350; background: var(--bg-surface); border-left: 1px solid var(--border); box-shadow: var(--shadow-3); display: flex; flex-direction: column; }
-
-.vp-os .editor-settings[hidden] { display: none; }
-
-.vp-os .editor-settings-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: var(--sp-4) var(--sp-5); border-bottom: 1px solid var(--border); }
-
-.vp-os .editor-settings-title { font-weight: 600; }
-
+/* The AI sheet's form (the editor's inspector is drawn in "The document kind"). */
 .vp-os .editor-settings-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--sp-4) var(--sp-5) var(--sp-10); display: flex; flex-direction: column; gap: var(--sp-5); }
 
 .vp-os .pm-field { display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -3033,52 +2849,11 @@
 
 .vp-os .pm-textarea { resize: vertical; min-height: 64px; line-height: 1.5; font-family: inherit; }
 
-.vp-os .pm-hint { line-height: 1.4; }
-
 .vp-os .pm-row { display: flex; align-items: center; gap: var(--sp-2); }
 
 .vp-os .pm-row .pm-input { flex: 1 1 auto; }
 
 .vp-os .pm-prefix { color: var(--text-3); font-size: var(--text-sm); }
-
-.vp-os .pm-feature { width: 100%; aspect-ratio: 16 / 9; border: 1px dashed var(--border-strong); border-radius: var(--r-md); background: var(--bg-base); display: flex; align-items: center; justify-content: center; overflow: hidden; }
-
-.vp-os .pm-feature-preview { width: 100%; height: 100%; object-fit: cover; }
-
-.vp-os .pm-feature-empty { color: var(--text-3); font-size: var(--text-sm); }
-
-.vp-os .pm-tags { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-
-.vp-os .pm-tag { display: inline-flex; align-items: center; gap: var(--sp-1); background: var(--brand-dim); color: var(--brand); border-radius: var(--radius-small); padding: 2px var(--sp-2); font-size: var(--text-xs); }
-
-.vp-os .pm-tag-x { border: none; background: none; color: inherit; cursor: pointer; line-height: 1; padding: 0; }
-
-.vp-os .pm-tag-x:hover { color: var(--text); }
-
-.vp-os .pm-toggles { gap: var(--sp-3); }
-
-.vp-os .pm-check { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--text-sm); cursor: pointer; }
-
-.vp-os .pm-group { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); }
-
-.vp-os .pm-group[open] { padding-bottom: var(--sp-4); }
-
-.vp-os .pm-group > summary { cursor: pointer; font-weight: 600; font-size: var(--text-sm); color: var(--text-2); list-style: none; }
-
-.vp-os .pm-group > summary::-webkit-details-marker { display: none; }
-
-.vp-os .pm-group > summary::after { content: "\25B8"; float: right; color: var(--text-3); transition: transform var(--t-fast); }
-
-.vp-os .pm-group[open] > summary::after { transform: rotate(90deg); }
-
-.vp-os .pm-group .pm-field { margin-top: var(--sp-3); }
-
-.vp-os .pm-subhead { font-size: var(--text-xs); color: var(--text-3); margin-top: var(--sp-3); }
-
-@media (max-width: 640px) {
-  .vp-os .editor-settings { width: 100vw; }
-
-}
 
 /* ── Editor: image card row, gallery editor ──────────────────────────────── */
 .vp-os .eblock__row { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
@@ -3420,8 +3195,6 @@
    until the writer reaches for them; text sits at a book-like size on a quiet
    surface. Overrides the utilitarian editor defaults above (same specificity,
    later in the cascade). */
-.vp-os .editor-title { max-width: 46rem; margin-left: auto; margin-right: auto; font-size: 28px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; padding-top: var(--sp-4); }
-
 .vp-os .editor-canvas { align-items: stretch; }
 
 .vp-os .eblock { width: 100%; max-width: calc(46rem + 32px + var(--sp-2)); margin-left: auto; margin-right: auto; }
@@ -4862,14 +4635,7 @@
 .vp-os .ak-perm-all { width: 15px; height: 15px; accent-color: var(--brand); cursor: pointer; flex: none; }
 
 /* ── Editor lifecycle (dashboard-upgrade Wave 1) ─────────────────────────────
-   .editor-pubstate  — topbar Draft/Published pill beside the publish button.
    .editor-recover   — crash-recovery banner offering unsaved work back.       */
-.vp-os .editor-pubstate { display: inline-flex; align-items: center; gap: var(--sp-1); padding: 2px var(--sp-2); border-radius: var(--radius-small); font-size: var(--text-xs); font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
-
-.vp-os .editor-pubstate.is-draft { color: var(--warn); border-color: var(--warn-soft); background: var(--warn-soft); }
-
-.vp-os .editor-pubstate.is-published { color: var(--ok); border-color: var(--ok-soft); background: var(--ok-soft); }
-
 .vp-os [data-editor-publish-btn] { min-width: 86px; }
 
 .vp-os [data-editor-publish-btn][disabled] { opacity: .6; cursor: progress; }
@@ -6978,3 +6744,147 @@
   display: none;
 }
 .vp-os[data-ui="still-air"] .sa-tip:is(:hover, :focus) .sa-tip__pop { display: block; }
+
+/* ── The document kind (page grammar, render 02) ──────────────────────────
+   One thing being made: a quiet 56px bar (the way back, the save state, the
+   length, the actions), the document at reading measure, and an inspector
+   beside it, each scrolling on its own so the bar and the inspector stay put
+   while the writing moves. The page fills the content area edge to edge, as
+   Mail does: its own hairlines divide it, so the content padding would only
+   frame it in a second margin. */
+.vp-os[data-ui="still-air"] .sa-content:has(> .sa-doc) { padding: 0; overflow: hidden; }
+.vp-os[data-ui="still-air"] .sa-content > .sa-doc { max-width: none; height: 100%; display: grid; grid-template-rows: 56px minmax(0, 1fr); }
+.vp-os[data-ui="still-air"] .sa-doc__bar { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: 0 var(--space-6); border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .sa-doc__back { display: inline-flex; align-items: center; gap: var(--space-1); flex: none; height: 32px; padding: 0 var(--space-3) 0 var(--space-2); margin-left: calc(-1 * var(--space-2)); border-radius: var(--radius-control); font: var(--type-strong); color: var(--text-1); text-decoration: none; }
+.vp-os[data-ui="still-air"] .sa-doc__back:hover { background: var(--surface-hover); text-decoration: none; }
+.vp-os[data-ui="still-air"] .sa-doc__back:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.vp-os[data-ui="still-air"] .sa-doc__back .sa-ico { width: 16px; height: 16px; color: var(--text-3); transform: rotate(180deg); }
+.vp-os[data-ui="still-air"] .sa-doc__state { min-width: 0; margin-left: var(--space-3); font: var(--type-small); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vp-os[data-ui="still-air"] .sa-doc__state--warn { color: var(--warn); }
+.vp-os[data-ui="still-air"] .sa-doc__state--danger { color: var(--danger); }
+.vp-os[data-ui="still-air"] .sa-doc__fill { flex: 1 1 0; }
+.vp-os[data-ui="still-air"] .sa-doc__bar .editor-wordcount { flex: none; padding-right: var(--space-4); margin-right: var(--space-2); border-right: 1px solid var(--border-1); font: var(--type-small); color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vp-os[data-ui="still-air"] .sa-doc__bar .editor-wordcount:empty { display: none; }
+.vp-os[data-ui="still-air"] .sa-doc__bar > .btn,
+.vp-os[data-ui="still-air"] .sa-doc__bar > .sa-pop { flex: none; }
+/* The inspector's toggle says it is open by its icon's colour; the pressed
+   fill is for a choice made, and an open inspector is how the page starts. */
+.vp-os[data-ui="still-air"] .sa-doc__bar .btn--icon[aria-pressed] { background: transparent; border-color: transparent; color: var(--text-3); }
+.vp-os[data-ui="still-air"] .sa-doc__bar .btn--icon[aria-pressed="true"] { color: var(--text-1); }
+.vp-os[data-ui="still-air"] .sa-doc__body { display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 0; }
+.vp-os[data-ui="still-air"] .sa-doc__main { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-6); }
+/* Text gets room above the title and below the last line, so the end of a
+   post can be written in the middle of the window rather than at its foot. */
+.vp-os[data-ui="still-air"] .sa-doc__main--text { padding: var(--space-10) var(--space-8) 35vh; }
+.vp-os[data-ui="still-air"] .sa-doc__inspector { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-5) var(--space-5) var(--space-10); border-left: 1px solid var(--border-1); background: var(--color-canvas); }
+.vp-os[data-ui="still-air"] .sa-doc:is(.is-inspector-off, .is-focus) .sa-doc__body { grid-template-columns: minmax(0, 1fr); }
+.vp-os[data-ui="still-air"] .sa-doc:is(.is-inspector-off, .is-focus) .sa-doc__inspector { display: none; }
+
+/* The inspector's side padding leaves a text box in it 328px wide: the
+   design lint holds every text box to 320px, the narrowest a sentence can be
+   written in without words breaking (stillair.spec.js). */
+/* The inspector: sections under a quiet head, divided by hairlines; label and
+   value rows like the render's Publish group. */
+.vp-os[data-ui="still-air"] .sa-insp { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5) 0; border-top: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .sa-doc__inspector > .sa-insp:first-child { border-top: 0; padding-top: 0; }
+.vp-os[data-ui="still-air"] .sa-insp__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); margin: 0; font: var(--type-strong); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .sa-insp__row { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: var(--space-3); min-height: 40px; border-bottom: 1px solid var(--border-1); }
+.vp-os[data-ui="still-air"] .sa-insp__row--top { align-items: start; padding: var(--space-2) 0; }
+.vp-os[data-ui="still-air"] .sa-insp__row--top > .sa-insp__label { padding-top: 6px; }
+.vp-os[data-ui="still-air"] .sa-insp__label { font: var(--type-body); color: var(--text-2); }
+.vp-os[data-ui="still-air"] .sa-insp__value { display: flex; flex-direction: column; gap: 2px; min-width: 0; color: var(--text-1); }
+.vp-os[data-ui="still-air"] .sa-insp__hint { font: var(--type-meta); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .sa-insp__hint:empty { display: none; }
+.vp-os[data-ui="still-air"] .sa-insp__count { font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.vp-os[data-ui="still-air"] .sa-insp__check { display: flex; align-items: center; gap: var(--space-3); font: var(--type-body); color: var(--text-1); cursor: pointer; }
+.vp-os[data-ui="still-air"] .sa-insp__field { display: flex; flex-direction: column; gap: 6px; }
+.vp-os[data-ui="still-air"] .sa-insp__field > .sa-insp__label { display: flex; justify-content: space-between; font: var(--type-small); }
+.vp-os[data-ui="still-air"] .sa-insp .input,
+.vp-os[data-ui="still-air"] .sa-insp .textarea { width: 100%; min-width: 0; }
+/* A value is read as text and edited where it is: no field outline until the
+   pointer or the caret is on it. */
+.vp-os[data-ui="still-air"] .sa-insp .input--quiet { height: 32px; padding: 0 6px; margin-left: -6px; border-color: transparent; background: transparent; box-shadow: none; }
+.vp-os[data-ui="still-air"] .sa-insp .input--quiet:hover { border-color: var(--border-1); }
+.vp-os[data-ui="still-air"] .sa-insp .input--quiet:focus-visible { border-color: var(--focus); background: var(--surface-input); }
+.vp-os[data-ui="still-air"] .sa-insp .pm-slug { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.vp-os[data-ui="still-air"] .sa-insp .pm-slug > .input { flex: 1 1 0; }
+.vp-os[data-ui="still-air"] .sa-insp .pm-prefix { color: var(--text-3); }
+.vp-os[data-ui="still-air"] .sa-insp .pm-prefix + .input--quiet { margin-left: 0; }
+.vp-os[data-ui="still-air"] .pm-tags { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.vp-os[data-ui="still-air"] .pm-tags:empty { display: none; }
+.vp-os[data-ui="still-air"] .pm-tag { display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 4px 0 12px; border: 1px solid var(--border-1); border-radius: 999px; background: var(--surface-2); font: var(--type-small); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .pm-tag-x { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-3); cursor: pointer; }
+.vp-os[data-ui="still-air"] .pm-tag-x:hover { background: var(--surface-hover); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .sa-insp .seo-snippet { max-width: none; padding: var(--space-4); border: 1px solid var(--border-1); border-radius: var(--radius-surface); background: var(--surface-1); }
+.vp-os[data-ui="still-air"] .pm-feature { display: grid; place-items: center; width: 100%; aspect-ratio: 16 / 9; padding: 0; overflow: hidden; border: 1px solid var(--border-1); border-radius: var(--radius-surface); background: var(--surface-sunken); color: var(--text-3); cursor: pointer; }
+.vp-os[data-ui="still-air"] .pm-feature:hover { border-color: var(--border-2); color: var(--text-1); }
+.vp-os[data-ui="still-air"] .pm-feature:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.vp-os[data-ui="still-air"] .pm-feature-preview { width: 100%; height: 100%; object-fit: cover; }
+.vp-os[data-ui="still-air"] .pm-feature-preview[hidden],
+.vp-os[data-ui="still-air"] .pm-feature-empty[hidden] { display: none; }
+.vp-os[data-ui="still-air"] .sa-insp--more > summary { cursor: pointer; list-style: none; }
+.vp-os[data-ui="still-air"] .sa-insp--more > summary::-webkit-details-marker { display: none; }
+.vp-os[data-ui="still-air"] .sa-insp--more > summary::after { content: ""; width: 16px; height: 16px; flex: none; background: currentColor; -webkit-mask: var(--icon-chevron) center / 16px no-repeat; mask: var(--icon-chevron) center / 16px no-repeat; transition: transform var(--duration-standard) var(--ease-enter); }
+.vp-os[data-ui="still-air"] .sa-insp--more[open] > summary::after { transform: rotate(180deg); }
+.vp-os[data-ui="still-air"] .editor-outline__list { max-height: none; }
+.vp-os[data-ui="still-air"] .editor-settings-backdrop { position: fixed; inset: 0; z-index: 340; background: var(--scrim); }
+.vp-os[data-ui="still-air"] .editor-settings-backdrop[hidden] { display: none; }
+
+/* The post at reading measure: the title and byline line up with the text of
+   the blocks, whose grip sits in the gutter to their left. */
+.vp-os[data-ui="still-air"] .editor-title,
+.vp-os[data-ui="still-air"] .editor-byline { display: block; width: 100%; max-width: calc(46rem + 32px + var(--sp-2)); margin-left: auto; margin-right: auto; padding: 0 var(--sp-1) 0 calc(var(--sp-1) + 32px + var(--sp-2) + var(--sp-2)); }
+.vp-os[data-ui="still-air"] .editor-title { border: 0; background: transparent; outline: none; font: 600 34px/1.18 var(--font-ui); letter-spacing: -0.022em; color: var(--text-1); }
+.vp-os[data-ui="still-air"] .editor-title::placeholder { color: var(--text-4); }
+.vp-os[data-ui="still-air"] .editor-byline { margin-top: var(--space-3); margin-bottom: var(--space-8); font: var(--type-body); color: var(--text-3); }
+.vp-os[data-ui="still-air"] .editor-byline:empty { display: none; }
+.vp-os[data-ui="still-air"] .editor-workspace { display: flex; gap: var(--space-7); min-width: 0; }
+.vp-os[data-ui="still-air"] .editor-workspace > .editor-canvas { flex: 1 1 auto; min-width: 0; }
+.vp-os[data-ui="still-air"] .editor-html { min-height: 60vh; }
+/* Reading size: the text as a reader meets it, the headings a step above. */
+.vp-os[data-ui="still-air"] .sa-doc .eblock__text,
+.vp-os[data-ui="still-air"] .sa-doc .eblock__input { font-size: 16px; line-height: 1.75; }
+.vp-os[data-ui="still-air"] .sa-doc .eblock__heading { font-size: 22px; font-weight: 600; line-height: 1.3; letter-spacing: -0.012em; }
+
+/* A heading's level is a control of the block, not part of the text: it
+   shows at the block's end while the block is pointed at or edited, like the
+   block's other actions, so the heading reads as it will be published. */
+.vp-os[data-ui="still-air"] .eblock--heading .eblock__field { position: relative; }
+.vp-os[data-ui="still-air"] .eblock__level { position: absolute; top: 50%; right: 0; transform: translateY(-50%); width: auto; height: 28px; padding: 0 var(--space-2); border: 1px solid var(--border-1); border-radius: var(--radius-control); background: var(--surface-1); font: var(--type-small); color: var(--text-2); opacity: 0; transition: opacity var(--t-fast); }
+.vp-os[data-ui="still-air"] .eblock:is(:hover, :focus-within) .eblock__level { opacity: 1; }
+.vp-os[data-ui="still-air"] .eblock--heading .eblock__heading { padding-right: 64px; }
+.vp-os[data-ui="still-air"] .sa-doc__bar > .btn--ghost:not(:hover):not(:focus-visible) { border-color: transparent; background: transparent; }
+
+/* The More menu: the editor's modes are checked items, its keys beside them. */
+.vp-os[data-ui="still-air"] .editor-more .sa-menu { width: 260px; }
+.vp-os[data-ui="still-air"] .editor-more .sa-menu__item::before { content: ""; flex: none; width: 14px; font: var(--type-small); color: var(--accent); text-align: center; }
+.vp-os[data-ui="still-air"] .editor-more .sa-menu__item[aria-checked="true"]::before { content: "✓"; }
+.vp-os[data-ui="still-air"] .editor-more .sa-menu__item:disabled { color: var(--text-4); background: none; cursor: default; }
+.vp-os[data-ui="still-air"] .editor-more .sa-menu__meta { margin-left: auto; }
+
+/* Focus: the inspector folds away (decided 2026-09-26), the bar goes quiet,
+   and typewriter scrolling gets the room to bring any line to the middle. */
+.vp-os[data-ui="still-air"] .sa-doc.is-focus .sa-doc__bar { border-bottom-color: transparent; }
+.vp-os[data-ui="still-air"] .sa-doc.is-focus .sa-doc__main--text { padding-top: 40vh; padding-bottom: 40vh; }
+
+/* Where the inspector beside the writing would leave the writing too narrow,
+   it becomes a drawer the bar's toggle opens (admin-os-editor.js reads the
+   same 1100px). */
+@media (max-width: 1099px) {
+  .vp-os[data-ui="still-air"] .sa-doc__body { grid-template-columns: minmax(0, 1fr); }
+  .vp-os[data-ui="still-air"] .sa-doc__inspector { position: fixed; top: 0; right: 0; bottom: 0; z-index: 350; width: min(400px, 92vw); border-left: 1px solid var(--border-2); box-shadow: var(--shadow-4); visibility: hidden; transform: translateX(100%); transition: transform var(--duration-standard) var(--ease-enter), visibility 0s linear var(--duration-standard); }
+  .vp-os[data-ui="still-air"] .sa-doc.is-settings .sa-doc__inspector { visibility: visible; transform: none; transition: transform var(--duration-standard) var(--ease-enter); }
+  .vp-os[data-ui="still-air"] .sa-doc:is(.is-inspector-off, .is-focus) .sa-doc__inspector { display: block; }
+}
+@media (max-width: 600px) {
+  .vp-os[data-ui="still-air"] .sa-doc__bar { gap: var(--space-1); padding: 0 var(--space-4); }
+  .vp-os[data-ui="still-air"] .sa-doc__bar .editor-wordcount { display: none; }
+  .vp-os[data-ui="still-air"] .sa-doc__main--text { padding: var(--space-7) var(--space-4) 35vh; }
+  .vp-os[data-ui="still-air"] .editor-title { font-size: 26px; }
+}
+@media (max-width: 480px) {
+  .vp-os[data-ui="still-air"] .sa-doc__state { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-os[data-ui="still-air"] .sa-doc__inspector { transition: none; }
+}

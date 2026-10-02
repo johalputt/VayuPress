@@ -418,7 +418,10 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 
 	// ── App sidebar ──
 	var side strings.Builder
-	if app != nil && len(app.Sections) > 1 && !app.Tabbed {
+	// The editor is a document (render 02): its bar leads back to the posts,
+	// and the width the sections would take is the writing's and the
+	// inspector's.
+	if app != nil && len(app.Sections) > 1 && !app.Tabbed && active != "editor" {
 		side.WriteString(`<nav class="sa-appside" aria-label="` + html.EscapeString(app.Label) + `">`)
 		mailOpen := app.Key == "mail" && s.MailSide != nil
 		mailGroup := !mailOpen // under the folders, the rest of Mail is labelled

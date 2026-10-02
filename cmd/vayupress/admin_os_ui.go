@@ -3481,7 +3481,7 @@ func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 			}
 			authorOpts := a.authorSelectOptions(r.Context(), authorSel)
 			if hasBlocks || emptyDraft {
-				body := osEditorBody(slug, art.Title, blocksJSON, authorOpts) + metaScript
+				body := osEditorBody(slug, art.Title, blocksJSON, authorOpts, meta.IsPage) + metaScript
 				body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js?v=` + assetVer("js/admin-os-editor.js") + `"></script>`
 				writeOSHTML(w, r, adminOSLayout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
@@ -3498,7 +3498,7 @@ func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				raw = []byte("[]")
 			}
-			body := osEditorBody(slug, art.Title, string(raw), authorOpts) + metaScript
+			body := osEditorBody(slug, art.Title, string(raw), authorOpts, meta.IsPage) + metaScript
 			body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js?v=` + assetVer("js/admin-os-editor.js") + `"></script>`
 			writeOSHTML(w, r, adminOSLayout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
@@ -3509,7 +3509,7 @@ func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 	// Brand-new post: the native block editor owns the create path (v1.6.0).
 	// It hydrates with an empty document and an empty slug; the first Save POSTs
 	// to /os/api/editor/save, which creates the article and returns its slug.
-	body := osEditorBody("", "", "[]", a.authorSelectOptions(r.Context(), currentUserIDOf(r))) + osEditorMetaScript("", "", time.Time{}, nil, PostMeta{})
+	body := osEditorBody("", "", "[]", a.authorSelectOptions(r.Context(), currentUserIDOf(r)), false) + osEditorMetaScript("", "", time.Time{}, nil, PostMeta{})
 	body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js?v=` + assetVer("js/admin-os-editor.js") + `"></script>`
 	writeOSHTML(w, r, adminOSLayout(nonce, "New post", "editor", cfg, htmpl.HTML(body)))

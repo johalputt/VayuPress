@@ -868,33 +868,50 @@ func (a *App) handleOSEditorVersionRestore(w http.ResponseWriter, r *http.Reques
 //     the document round-trips losslessly.
 //   - .Slug and .Title are attribute-escaped (double quotes become &#34;).
 //
-// The static remainder of the shell carries no interpolation and is appended
-// as a literal.
+// The shell is the page grammar's document kind (render 02): a quiet bar with
+// the way back, the save state, the length, Preview and Publish; the post at
+// reading measure; and the inspector beside it. Everything the old bar's eleven
+// buttons did is still one keystroke or one menu away: formatting is the
+// selection bar and the slash menu, and the modes, AI, image, history and
+// sharing are in the bar's More menu, so the bar carries only what is used on
+// every visit.
 var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
 	`<script type="application/json" id="vp-editor-data">{{.Blocks}}</script>
-<div class="editor-shell" data-editor data-slug="{{.Slug}}">
+<div class="editor-shell sa-doc" data-page-kind="document" data-editor data-slug="{{.Slug}}">
   <h1 class="vp-sr-only">{{if .Title}}{{.Title}}{{else}}New post{{end}}</h1>
-  <div class="editor-topbar">
-    <span class="editor-topbar-status" data-editor-topbar-status></span>
-    <div class="editor-topbar-actions">
-      <span class="editor-wordcount" data-editor-wordcount aria-live="polite"></span>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-focus-btn title="Focus mode (Ctrl/Cmd+.)">Focus</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-split-btn title="Toggle live preview">Split</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-md-btn title="Edit the whole post as Markdown (Ctrl/Cmd+Shift+M)" aria-pressed="false">Markdown</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-html-btn title="Edit HTML source (Ctrl/Cmd+Shift+H)" aria-pressed="false">HTML</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-preview-btn>Preview</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-share-btn title="Copy a 48-hour preview link for this draft — it stays a draft">` + saIcon("link") + ` Share draft</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-image-btn title="Upload an image and insert it here">` + saIcon("image") + ` Image</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-ai-btn title="Write a draft from a prompt with AI">` + saIcon("sparkle") + ` AI</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-settings-btn title="Post settings (Ctrl/Cmd+Shift+P)" aria-pressed="false">` + saIcon("settings") + ` Settings</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-newpage title="Create a new standalone page">＋ Page</button>
-      <span class="editor-pubstate" data-editor-pubstate hidden></span>
-      <button type="button" class="btn btn--accent btn--sm" data-editor-publish-btn hidden title="Publish to the live site"></button>
-      <button type="button" class="btn btn--primary btn--sm" data-editor-save>Save</button>
-    </div>
+  <div class="sa-doc__bar">
+    <a class="sa-doc__back" href="{{.BackHref}}">{{.ChevIcon}}{{.BackLabel}}</a>
+    <span class="sa-doc__state" data-editor-topbar-status role="status" aria-live="polite"></span>
+    <span class="sa-doc__fill"></span>
+    <span class="editor-wordcount" data-editor-wordcount></span>
+    <button type="button" class="btn btn--ghost btn--sm" data-editor-preview-btn>Preview</button>
+    <details class="sa-pop editor-more">
+      <summary class="btn btn--ghost btn--sm btn--icon" aria-label="More">{{.MoreIcon}}</summary>
+      <div class="sa-pop__panel sa-menu" role="menu">
+        <button type="button" class="sa-menu__item" role="menuitemcheckbox" aria-checked="false" data-editor-focus-btn>Focus<span class="sa-menu__meta">⌘.</span></button>
+        <button type="button" class="sa-menu__item" role="menuitemcheckbox" aria-checked="false" data-editor-split-btn>Preview beside the text</button>
+        <button type="button" class="sa-menu__item" role="menuitemcheckbox" aria-checked="false" data-editor-md-btn>Edit as Markdown<span class="sa-menu__meta">⌘⇧M</span></button>
+        <button type="button" class="sa-menu__item" role="menuitemcheckbox" aria-checked="false" data-editor-html-btn>Edit as HTML<span class="sa-menu__meta">⌘⇧H</span></button>
+        <div class="sa-menu__sep"></div>
+        <button type="button" class="sa-menu__item" role="menuitem" data-editor-image-btn>Insert an image</button>
+        <button type="button" class="sa-menu__item" role="menuitem" data-editor-ai-btn>Write a draft with AI</button>
+        <button type="button" class="sa-menu__item" role="menuitem" data-editor-share-btn>Copy a preview link</button>
+        <div class="sa-menu__sep"></div>
+        <button type="button" class="sa-menu__item" role="menuitem" data-editor-undo disabled>Undo<span class="sa-menu__meta">⌘Z</span></button>
+        <button type="button" class="sa-menu__item" role="menuitem" data-editor-redo disabled>Redo<span class="sa-menu__meta">⌘⇧Z</span></button>
+        <button type="button" class="sa-menu__item" role="menuitem" data-editor-history-btn>Version history</button>
+        <div class="sa-menu__sep"></div>
+        <button type="button" class="sa-menu__item" role="menuitem" data-editor-newpage>New page</button>
+      </div>
+    </details>
+    <button type="button" class="btn btn--ghost btn--sm btn--icon" data-editor-settings-btn aria-pressed="true" aria-label="Post settings" title="Post settings (⌘⇧P)">{{.PanelIcon}}</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-editor-save title="Save (⌘S)">Save</button>
+    <button type="button" class="btn btn--primary btn--sm" data-editor-publish-btn hidden></button>
   </div>
-  <div class="editor-main">
-    <input class="editor-title" data-editor-title type="text" placeholder="Post title…" value="{{.Title}}" aria-label="Post title">
+  <div class="sa-doc__body">
+  <div class="sa-doc__main sa-doc__main--text" data-editor-scroller>
+    <input class="editor-title" data-editor-title type="text" placeholder="Title" value="{{.Title}}" aria-label="Post title">
+    <p class="editor-byline" data-editor-byline></p>
     <div class="editor-workspace">
       <div class="editor-canvas" data-editor-canvas aria-label="Editor canvas"></div>
       <aside class="editor-live" data-editor-live hidden aria-label="Live preview">
@@ -904,14 +921,14 @@ var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
       <section class="editor-html" data-editor-html-panel hidden aria-label="HTML source editor">
         <div class="editor-html-head">
           <span class="editor-html-title">HTML source</span>
-          <span class="text-xs muted">Edit raw HTML — switch back to apply it to your blocks.</span>
+          <span class="text-xs muted">Switch back to apply it to your blocks.</span>
         </div>
         <textarea class="editor-html-area" data-editor-html-area spellcheck="false" autocomplete="off" autocapitalize="off" wrap="soft" aria-label="HTML source"></textarea>
       </section>
       <section class="editor-html" data-editor-md-panel hidden aria-label="Markdown source editor">
         <div class="editor-html-head">
           <span class="editor-html-title">Markdown</span>
-          <span class="text-xs muted">Write the whole post in Markdown — switch back to apply it to your blocks.</span>
+          <span class="text-xs muted">Switch back to apply it to your blocks.</span>
         </div>
         <textarea class="editor-html-area" data-editor-md-area spellcheck="false" autocomplete="off" autocapitalize="off" wrap="soft" aria-label="Markdown source"></textarea>
       </section>
@@ -951,44 +968,24 @@ func osEditorMetaScript(slug, status string, createdAt time.Time, tags []string,
 	return sb.String()
 }
 
-func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
+func osEditorBody(slug, title, blocksJSON, authorOptions string, isPage bool) string {
 	if strings.TrimSpace(blocksJSON) == "" {
 		blocksJSON = "[]"
+	}
+	back, backLabel := "/os/posts", "Posts"
+	if isPage {
+		back, backLabel = "/os/pages", "Pages"
 	}
 	var head strings.Builder
 	// Execute cannot fail for these scalar fields and a constant template.
 	_ = osEditorHeadTmpl.Execute(&head, struct {
-		Blocks json.RawMessage
-		Slug   string
-		Title  string
-	}{json.RawMessage(blocksJSON), slug, title})
-	return head.String() + `
-  <aside class="editor-sidebar" aria-label="Editor tools">
-    <div class="editor-status" data-editor-status>Ready</div>
-    <div class="editor-stats" aria-label="Document statistics">
-      <div class="editor-stat"><span class="editor-stat__num" data-editor-stats-words>0</span><span class="editor-stat__label">words</span></div>
-      <div class="editor-stat"><span class="editor-stat__num" data-editor-stats-chars>0</span><span class="editor-stat__label">characters</span></div>
-      <div class="editor-stat"><span class="editor-stat__num" data-editor-stats-read>—</span><span class="editor-stat__label">reading</span></div>
-    </div>
-    <nav class="editor-outline" data-editor-outline-wrap aria-label="Document outline" hidden>
-      <div class="editor-outline__title">Outline</div>
-      <div class="editor-outline__list" data-editor-outline></div>
-    </nav>
-    <div class="editor-actions">
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-undo title="Undo (Ctrl/Cmd+Z outside a field)" disabled>Undo</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-redo title="Redo (Ctrl/Cmd+Shift+Z)" disabled>Redo</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-history-btn>History</button>
-    </div>
-    ` + string(ui.Explain(ui.HTML(`
-      <p>Press <kbd>/</kbd> on an empty block for commands, or <kbd>⌘K</kbd>/<kbd>Ctrl+K</kbd> anywhere. <kbd>/ai</kbd> for AI assist.</p>
-      <p>Type Markdown to format: <kbd>## </kbd> heading, <kbd>- </kbd> list, <kbd>- [ ] </kbd> task, <kbd>1. </kbd> numbered, <kbd>&gt; </kbd> quote, <kbd>&#96;&#96;&#96;</kbd> code, <kbd>---</kbd> divider.</p>
-      <p>Select text for <strong>bold</strong>/<em>italic</em>/link, or use <kbd>**bold**</kbd>, <kbd>*italic*</kbd>, <kbd>[text](url)</kbd>. Drag or paste an image to upload.</p>
-      <p>Reorder blocks by dragging the grip, or with <strong>Move up</strong> and <strong>Move down</strong> over the block. <kbd>⌘.</kbd> toggles focus mode.</p>
-      <p><kbd>Enter</kbd> new block · <kbd>Shift+Enter</kbd> line break · <kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> to save.</p>
-      <p><kbd>Markdown</kbd> (<kbd>⌘⇧M</kbd>) edits the whole post as Markdown; <kbd>HTML</kbd> (<kbd>⌘⇧H</kbd>) as raw HTML — both round-trip back to blocks losslessly.</p>
-      <p><strong>Settings</strong> (<kbd>⌘⇧P</kbd>) opens post settings: feature image, URL, publish date, excerpt, tags, SEO &amp; social cards.</p>
-    `))) + `
-  </aside>
+		Blocks                        json.RawMessage
+		Slug, Title                   string
+		BackHref, BackLabel           string
+		ChevIcon, MoreIcon, PanelIcon htmpl.HTML
+	}{json.RawMessage(blocksJSON), slug, title, back, backLabel,
+		htmpl.HTML(saIcon("chev-r")), htmpl.HTML(saIcon("more")), htmpl.HTML(saIcon("settings"))})
+	return head.String() + osEditorInspector(authorOptions) + `
   <div class="editor-preview-modal" data-editor-preview hidden role="dialog" aria-modal="true" aria-label="Preview">
     <div class="editor-preview-panel">
       <div class="editor-preview-head">
@@ -1127,106 +1124,78 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
       </div>
     </div>
   </div>
-  <div class="editor-settings-backdrop" data-editor-settings-backdrop hidden></div>
-  <aside class="editor-settings" data-editor-settings hidden role="dialog" aria-modal="true" aria-label="Post settings">
-    <div class="editor-settings-head">
-      <span class="editor-settings-title">Post settings</span>
-      <button type="button" class="btn--icon" data-editor-settings-close aria-label="Close post settings">` + saIcon("x") + `</button>
-    </div>
-    <div class="editor-settings-body">
-      <div class="pm-field">
-        <label class="pm-label">Feature image</label>
-        <div class="pm-feature">
-          <img class="pm-feature-preview" data-pm-feature-preview alt="" hidden>
-          <div class="pm-feature-empty" data-pm-feature-empty>No feature image</div>
-        </div>
-        <div class="pm-row">
-          <input class="pm-input" type="text" data-pm-feature-image placeholder="Image URL or upload…">
-          <button type="button" class="btn btn--ghost btn--xs" data-pm-feature-upload>Upload</button>
-          <button type="button" class="btn btn--ghost btn--xs" data-pm-feature-remove>Remove</button>
-        </div>
-        <input type="file" accept="image/*" data-pm-feature-file hidden>
-      </div>
-
-      <div class="pm-field">
-        <label class="pm-label" for="pm-slug">Post URL</label>
-        <div class="pm-row">
-          <span class="pm-prefix" data-pm-slug-prefix>/</span>
-          <input class="pm-input" id="pm-slug" type="text" data-pm-slug placeholder="post-url-slug">
-          <button type="button" class="btn btn--ghost btn--xs" data-pm-slug-apply>Update</button>
-        </div>
-        <div class="pm-hint text-xs muted" data-pm-slug-status>The slug is set automatically from the title on first save.</div>
-      </div>
-
-      <div class="pm-field">
-        <label class="pm-label" for="pm-publish-date">Publish date</label>
-        <input class="pm-input" id="pm-publish-date" type="datetime-local" data-pm-publish-date>
-      </div>
-
-      <div class="pm-field">
-        <label class="pm-label" for="pm-author">Author</label>
-        <select class="pm-input" id="pm-author" data-pm-author>` + authorOptions + `</select>
-        <div class="pm-hint text-xs muted">Attributed automatically to whoever creates the post; change it here to credit a different author.</div>
-      </div>
-
-      <div class="pm-field">
-        <label class="pm-label" for="pm-excerpt">Excerpt</label>
-        <textarea class="pm-input pm-textarea" id="pm-excerpt" rows="3" maxlength="300" data-pm-excerpt placeholder="A short summary used on cards, feeds, and search results…"></textarea>
-        <div class="pm-hint text-xs muted"><span data-pm-excerpt-count>0</span>/300 · falls back to the first lines of the post when left blank.</div>
-      </div>
-
-      <div class="pm-field">
-        <label class="pm-label">Tags</label>
-        <div class="pm-tags" data-pm-tags-list></div>
-        <input class="pm-input" type="text" data-pm-tags-input placeholder="Type a tag and press Enter…">
-      </div>
-
-      <div class="pm-field pm-toggles">
-        <label class="pm-check"><input type="checkbox" data-pm-featured> <span>Feature this post</span></label>
-        <label class="pm-check"><input type="checkbox" data-pm-is-page> <span>Turn this post into a page</span></label>
-        <div class="pm-hint text-xs muted">Pages are standalone (no date, tags, or author) and are kept out of the home feed, RSS, and sitemap.</div>
-      </div>
-
-      <details class="pm-group" open>
-        <summary class="pm-group-title">Meta data &amp; SEO</summary>
-        <div class="pm-field">
-          <label class="pm-label" for="pm-meta-title">SEO title</label>
-          <input class="pm-input" id="pm-meta-title" type="text" maxlength="120" data-pm-meta-title placeholder="Custom title for search engines…">
-          <div class="pm-hint text-xs muted"><span data-pm-meta-title-count>0</span>/120 · defaults to the post title.</div>
-        </div>
-        <div class="pm-field">
-          <label class="pm-label" for="pm-meta-description">SEO description</label>
-          <textarea class="pm-input pm-textarea" id="pm-meta-description" rows="3" maxlength="300" data-pm-meta-description placeholder="Custom description for search engines…"></textarea>
-          <div class="pm-hint text-xs muted"><span data-pm-meta-description-count>0</span>/300 · defaults to the excerpt.</div>
-        </div>
-        <div class="pm-field">
-          <label class="pm-label">Search preview</label>
-          <div class="seo-snippet" data-seo-snippet aria-label="Google search result preview">
-            <div class="seo-snippet__url" data-seo-snippet-url></div>
-            <div class="seo-snippet__title" data-seo-snippet-title></div>
-            <div class="seo-snippet__desc" data-seo-snippet-desc></div>
-          </div>
-          <div class="pm-hint text-xs muted">Approximate Google result. Titles over ~60 and descriptions over ~160 characters may be truncated.</div>
-        </div>
-        <div class="pm-field">
-          <label class="pm-label" for="pm-canonical">Canonical URL</label>
-          <input class="pm-input" id="pm-canonical" type="url" data-pm-canonical placeholder="https://example.com/original-post">
-          <div class="pm-hint text-xs muted">Set when this content was first published elsewhere.</div>
-        </div>
-      </details>
-
-      <details class="pm-group">
-        <summary class="pm-group-title">Social sharing cards</summary>
-        <div class="pm-subhead">Facebook / Open Graph</div>
-        <div class="pm-field"><label class="pm-label" for="pm-og-title">Title</label><input class="pm-input" id="pm-og-title" type="text" data-pm-og-title placeholder="Defaults to the SEO title…"></div>
-        <div class="pm-field"><label class="pm-label" for="pm-og-description">Description</label><textarea class="pm-input pm-textarea" id="pm-og-description" rows="2" data-pm-og-description placeholder="Defaults to the SEO description…"></textarea></div>
-        <div class="pm-field"><label class="pm-label" for="pm-og-image">Image URL</label><input class="pm-input" id="pm-og-image" type="text" data-pm-og-image placeholder="Defaults to the feature image…"></div>
-        <div class="pm-subhead">Twitter / X</div>
-        <div class="pm-field"><label class="pm-label" for="pm-twitter-title">Title</label><input class="pm-input" id="pm-twitter-title" type="text" data-pm-twitter-title placeholder="Defaults to the Open Graph title…"></div>
-        <div class="pm-field"><label class="pm-label" for="pm-twitter-description">Description</label><textarea class="pm-input pm-textarea" id="pm-twitter-description" rows="2" data-pm-twitter-description placeholder="Defaults to the Open Graph description…"></textarea></div>
-        <div class="pm-field"><label class="pm-label" for="pm-twitter-image">Image URL</label><input class="pm-input" id="pm-twitter-image" type="text" data-pm-twitter-image placeholder="Defaults to the Open Graph image…"></div>
-      </details>
-    </div>
-  </aside>
 </div>`
+}
+
+// osEditorInspector is the post's inspector (render 02): how it is published,
+// its tags, how it reads in search results and its cover, then the rest of its
+// settings. It is the old settings drawer laid open beside the writing, with
+// the same fields and hooks, so the editor script drives it unchanged; it folds
+// away in focus mode and becomes a drawer where there is no room beside the
+// text.
+func osEditorInspector(authorOptions string) string {
+	return `
+  <div class="editor-settings-backdrop" data-editor-settings-backdrop hidden></div>
+  <aside class="sa-doc__inspector" data-editor-settings aria-label="Post settings">
+    <section class="sa-insp">
+      <h2 class="sa-insp__head">Publish</h2>
+      <div class="sa-insp__row"><span class="sa-insp__label">State</span><span class="sa-insp__value" data-editor-pubstate></span></div>
+      <label class="sa-insp__row"><span class="sa-insp__label">When</span><input class="input input--quiet" id="pm-publish-date" type="datetime-local" data-pm-publish-date aria-label="Publish date"></label>
+      <div class="sa-insp__row sa-insp__row--top"><label class="sa-insp__label" for="pm-slug">Address</label>
+        <span class="sa-insp__value"><span class="pm-slug"><span class="pm-prefix" data-pm-slug-prefix>/</span><input class="input input--quiet" id="pm-slug" type="text" data-pm-slug placeholder="set from the title"><button type="button" class="btn btn--ghost btn--xs" data-pm-slug-apply>Change</button></span>
+        <span class="sa-insp__hint" data-pm-slug-status></span></span></div>
+      <label class="sa-insp__row"><span class="sa-insp__label">Author</span><select class="input input--quiet" id="pm-author" data-pm-author>` + authorOptions + `</select></label>
+      <label class="sa-insp__check"><input type="checkbox" data-pm-featured> Feature this post</label>
+      <label class="sa-insp__check"><input type="checkbox" data-pm-is-page> A page, not a post</label>
+    </section>
+    <section class="sa-insp">
+      <h2 class="sa-insp__head">Tags</h2>
+      <div class="pm-tags" data-pm-tags-list></div>
+      <input class="input input--quiet" type="text" data-pm-tags-input placeholder="Add a tag" aria-label="Add a tag">
+    </section>
+    <section class="sa-insp">
+      <h2 class="sa-insp__head">In search results</h2>
+      <div class="seo-snippet" data-seo-snippet aria-label="How the post reads in a search result">
+        <div class="seo-snippet__url" data-seo-snippet-url></div>
+        <div class="seo-snippet__title" data-seo-snippet-title></div>
+        <div class="seo-snippet__desc" data-seo-snippet-desc></div>
+      </div>
+      <label class="sa-insp__field"><span class="sa-insp__label">Title for search <span class="sa-insp__count"><span data-pm-meta-title-count>0</span>/120</span></span>
+        <input class="input" id="pm-meta-title" type="text" maxlength="120" data-pm-meta-title placeholder="The post's title"></label>
+      <label class="sa-insp__field"><span class="sa-insp__label">Description <span class="sa-insp__count"><span data-pm-meta-description-count>0</span>/300</span></span>
+        <textarea class="textarea" id="pm-meta-description" rows="3" maxlength="300" data-pm-meta-description placeholder="The excerpt"></textarea></label>
+    </section>
+    <section class="sa-insp">
+      <h2 class="sa-insp__head">Cover image</h2>
+      <button type="button" class="pm-feature" data-pm-feature-upload aria-label="Upload a cover image">
+        <img class="pm-feature-preview" data-pm-feature-preview alt="" hidden>
+        <span class="pm-feature-empty" data-pm-feature-empty>` + saIcon("upload") + `</span>
+      </button>
+      <span class="pm-slug"><input class="input input--quiet" type="text" data-pm-feature-image placeholder="or an image address" aria-label="Cover image address"><button type="button" class="btn btn--ghost btn--xs" data-pm-feature-remove>Remove</button></span>
+      <input type="file" accept="image/*" data-pm-feature-file hidden>
+    </section>
+    <section class="sa-insp">
+      <h2 class="sa-insp__head">Excerpt <span class="sa-insp__count"><span data-pm-excerpt-count>0</span>/300</span></h2>
+      <textarea class="textarea" id="pm-excerpt" rows="3" maxlength="300" data-pm-excerpt placeholder="The first lines of the post" aria-label="Excerpt"></textarea>
+    </section>
+    <nav class="sa-insp" data-editor-outline-wrap aria-label="Outline" hidden>
+      <h2 class="sa-insp__head">Outline</h2>
+      <div class="editor-outline__list" data-editor-outline></div>
+    </nav>
+    <details class="sa-insp sa-insp--more">
+      <summary class="sa-insp__head">Original address and sharing cards</summary>
+      <label class="sa-insp__field"><span class="sa-insp__label">Original address</span><input class="input" id="pm-canonical" type="url" data-pm-canonical placeholder="Where it was first published"></label>
+      <label class="sa-insp__field"><span class="sa-insp__label">Card title</span><input class="input" id="pm-og-title" type="text" data-pm-og-title placeholder="The title for search"></label>
+      <label class="sa-insp__field"><span class="sa-insp__label">Card description</span><textarea class="textarea" id="pm-og-description" rows="2" data-pm-og-description placeholder="The description"></textarea></label>
+      <label class="sa-insp__field"><span class="sa-insp__label">Card image</span><input class="input" id="pm-og-image" type="text" data-pm-og-image placeholder="The cover image"></label>
+      <label class="sa-insp__field"><span class="sa-insp__label">X title</span><input class="input" id="pm-twitter-title" type="text" data-pm-twitter-title placeholder="The card title"></label>
+      <label class="sa-insp__field"><span class="sa-insp__label">X description</span><textarea class="textarea" id="pm-twitter-description" rows="2" data-pm-twitter-description placeholder="The card description"></textarea></label>
+      <label class="sa-insp__field"><span class="sa-insp__label">X image</span><input class="input" id="pm-twitter-image" type="text" data-pm-twitter-image placeholder="The card image"></label>
+    </details>
+    ` + string(ui.Explain(ui.HTML(`
+      <p>Press <kbd>/</kbd> on an empty block for blocks, or <kbd>⌘K</kbd> anywhere. Select text to format it, or type Markdown: <kbd>## </kbd> heading, <kbd>- </kbd> list, <kbd>&gt; </kbd> quote, <kbd>&#96;&#96;&#96;</kbd> code.</p>
+      <p>Drag or paste an image to upload it. Reorder blocks by their grip, or with Move up and Move down. <kbd>Enter</kbd> starts a block, <kbd>Shift+Enter</kbd> breaks a line, <kbd>⌘S</kbd> saves.</p>
+    `))) + `
+  </aside>
+  </div>`
 }

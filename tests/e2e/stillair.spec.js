@@ -397,6 +397,52 @@ test("writing straight on through Enter and a shortcut loses no keystroke", asyn
   await expect(page.locator(".eblock__heading").first()).toHaveValue("Heading");
 });
 
+// The editor is a document (render 02): the inspector stands beside the
+// writing, folds away from the bar or in focus mode, and is a drawer where
+// there is no room beside the text. Each state is checked by where the
+// inspector is, not by a class, since a class can be right while the
+// stylesheet still draws the old drawer.
+test("the editor's inspector stands beside the writing, folds away, and is a drawer on a narrow screen", async ({ page }) => {
+  await openConsole(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/os/editor");
+  const insp = page.locator("[data-editor-settings]");
+  const toggle = page.locator("[data-editor-settings-btn]");
+  const canvas = page.locator("[data-editor-canvas]");
+  await expect(insp).toBeVisible();
+  const ib = await insp.boundingBox(), cb = await canvas.boundingBox();
+  expect(ib.x).toBeGreaterThanOrEqual(cb.x + cb.width); // beside, not over
+  await expect(page.locator("[data-editor-byline]")).toContainText("not yet published");
+  await expect(insp).toContainText("Not saved yet");
+
+  await toggle.click();
+  await expect(insp).toBeHidden();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  const wider = await canvas.boundingBox();
+  expect(wider.width).toBeGreaterThanOrEqual(cb.width); // the writing takes the room back
+  await toggle.click();
+  await expect(insp).toBeVisible();
+
+  // Focus mode is a choice in More; choosing it closes the menu.
+  const more = page.locator("details.editor-more");
+  await more.locator("summary").click();
+  await more.locator("[data-editor-focus-btn]").click();
+  await expect(more).not.toHaveAttribute("open", "");
+  await expect(more.locator("[data-editor-focus-btn]")).toHaveAttribute("aria-checked", "true");
+  await expect(insp).toBeHidden();
+  await page.keyboard.press("Control+.");
+  await expect(insp).toBeVisible();
+
+  await page.setViewportSize({ width: 900, height: 900 });
+  await expect(insp).toBeHidden();
+  await toggle.click();
+  await expect(insp).toBeVisible();
+  await expect(page.locator("[data-editor-settings-backdrop]")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(insp).toBeHidden();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+});
+
 // Every core control has the same nine states (plan §7, render 01). Each is
 // put on each control on a real console page, with the real stylesheet, and
 // judged by what that state must show, not only by looking different from
