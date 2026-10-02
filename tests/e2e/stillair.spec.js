@@ -1073,6 +1073,27 @@ test("status pages open on their state, not on figures", async ({ page }) => {
 // became a grid of two narrow columns, its title clipped to a few letters and
 // its state and figures wrapped under it. A fresh install's one short post
 // hides a squeezed title, so the display is what is asserted, then the line.
+// On a phone Home's date and state each take a line of their own across the
+// head, so how long today's weekday and month are cannot move the page. In
+// one wrapping row the wrap followed the date, and the phone screenshot of
+// Home passed on 29 September and failed on 2 October.
+test("home's head keeps its shape whatever the date, on a phone", async ({ page }) => {
+  await openConsole(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/os/");
+  const shape = await page.evaluate(() => {
+    const head = document.querySelector(".sa-home__head").getBoundingClientRect();
+    return [".sa-home__date", ".sa-home__state"].map((sel) => {
+      const b = document.querySelector(sel).getBoundingClientRect();
+      return { sel, left: Math.round(b.left - head.left), width: Math.round(b.width), head: Math.round(head.width) };
+    });
+  });
+  for (const s of shape) {
+    expect(s.left, `${s.sel} does not start its own line`).toBe(0);
+    expect(s.width, `${s.sel} does not span the head, so its length moves what follows`).toBe(s.head);
+  }
+});
+
 // The lists a fresh install has rows in; every list shares the row markup.
 const LIST_PAGES = ["/os/posts", "/os/adr"];
 test("a list's rows are table rows, each item on one line", async ({ page }) => {

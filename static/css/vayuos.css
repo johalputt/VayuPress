@@ -6344,6 +6344,14 @@
 .vp-os[data-ui="still-air"] .sa-home__title { font: var(--type-display); letter-spacing: -0.02em; }
 .vp-os[data-ui="still-air"] .sa-home__date { font: var(--type-body); color: var(--text-2); }
 .vp-os[data-ui="still-air"] .sa-home__state { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font: var(--type-meta); color: var(--text-3); }
+/* On a phone the head stacks: the title, then the date, then the state, a line
+   each. In one wrapping row, where it wrapped followed the length of the
+   weekday and month, so the page moved from one day to the next and its
+   screenshot passed on some days and failed on others. */
+@media (max-width: 600px) {
+  .vp-os[data-ui="still-air"] .sa-home__head { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
+  .vp-os[data-ui="still-air"] .sa-home__state { margin-left: 0; }
+}
 .vp-os[data-ui="still-air"] .sa-compose {
   display: flex; align-items: center; gap: var(--space-3); height: 40px; padding: 0 var(--space-4);
   margin-bottom: var(--space-2); background: var(--surface-2); border: 1px solid var(--border-1);
