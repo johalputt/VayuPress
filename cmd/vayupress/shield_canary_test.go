@@ -106,11 +106,8 @@ func TestShieldSelfTestPanelReportsHonestly(t *testing.T) {
 			Name: canaryReaders[i].name, Group: "Readers", Status: 200, OK: true,
 		})
 	}
-	if got := shieldSelfTestChip(allGood); !strings.Contains(got, "All clear") {
-		t.Errorf("chip = %q, want All clear", got)
-	}
 	body := shieldSelfTestBody(allGood)
-	for _, want := range []string{"Readers", "Crawlers", "✓ Served", "Every ordinary visitor"} {
+	for _, want := range []string{">Readers</h3>", ">Crawlers</h3>", `sa-dot--ok" aria-hidden="true"></span>Served`, "Every ordinary visitor"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q", want)
 		}
@@ -124,16 +121,13 @@ func TestShieldSelfTestPanelReportsHonestly(t *testing.T) {
 			{Name: "Reader · Chrome (Windows)", Group: "Readers", Status: 503, OK: false},
 		},
 	}
-	if got := shieldSelfTestChip(hurdled); !strings.Contains(got, "Readers hurdled") {
-		t.Errorf("chip = %q, want a readers-hurdled warning", got)
-	}
 	hb := shieldSelfTestBody(hurdled)
-	if !strings.Contains(hb, "Real visitors are being hurdled") || !strings.Contains(hb, "✕ Challenged") {
+	if !strings.Contains(hb, "Ordinary visitors are being stopped") || !strings.Contains(hb, `sa-dot--danger" aria-hidden="true"></span>Challenged`) {
 		t.Error("body must name the hurdled-reader problem and mark the failing probe")
 	}
 
 	// Not initialised — say so rather than implying a pass.
-	if got := shieldSelfTestChip(shieldCanaryResult{}); !strings.Contains(got, "Unavailable") {
-		t.Errorf("chip = %q, want Unavailable", got)
+	if got := shieldSelfTestBody(shieldCanaryResult{}); !strings.Contains(got, "nothing to test") {
+		t.Errorf("an uninitialised shield reads %q, want that there is nothing to test", got)
 	}
 }

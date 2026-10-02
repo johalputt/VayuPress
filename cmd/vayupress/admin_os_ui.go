@@ -2187,7 +2187,9 @@ func authPageShell(title, inner string) string {
 // osSparkline renders a compact inline SVG line chart from a series of values.
 // It emits no inline styles (CSP-safe); all colour comes from CSS via
 // currentColor on the .sparkline class. width/height are SVG viewBox units.
-func osSparkline(vals []int) string {
+// label is the chart's name for a screen reader, the caller's to give: it was
+// fixed as "Publishing activity", which every chart drawn with it was not.
+func osSparkline(vals []int, label string) string {
 	const w, h = 240, 48
 	if len(vals) == 0 {
 		return ""
@@ -2214,7 +2216,7 @@ func osSparkline(vals []int) string {
 	// Area fill path (down to baseline) + the line on top.
 	area := "0," + strconv.Itoa(h) + " " + poly + " " + strconv.Itoa(w) + "," + strconv.Itoa(h)
 	return `<svg class="sparkline" viewBox="0 0 ` + strconv.Itoa(w) + ` ` + strconv.Itoa(h) +
-		`" preserveAspectRatio="none" role="img" aria-label="Publishing activity, last ` + strconv.Itoa(n) + ` days">` +
+		`" preserveAspectRatio="none" role="img" aria-label="` + html.EscapeString(label) + `">` +
 		`<polyline class="sparkline__area" points="` + area + `"/>` +
 		`<polyline class="sparkline__line" points="` + poly + `"/>` +
 		`</svg>`

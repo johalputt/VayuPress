@@ -5699,6 +5699,15 @@
 .vp-os[data-ui="still-air"] .space-addr { font: var(--type-mono); color: var(--text-1); overflow-wrap: anywhere; min-width: 0; }
 .vp-os[data-ui="still-air"] .settings-row-label:has(> .sa-ico) { display: flex; align-items: center; gap: var(--space-3); }
 .vp-os[data-ui="still-air"] .settings-row-label > .sa-ico { flex: none; color: var(--text-2); }
+/* A row's code (Shield's layers, "L2") reads as a label in the mono face, not
+   as a box: a bordered chip on each row was the nested box the grammar
+   forbids. */
+.vp-os[data-ui="still-air"] .settings-row-label:has(> .settings-row-tag) { display: flex; align-items: baseline; gap: var(--space-4); }
+.vp-os[data-ui="still-air"] .settings-row-tag { flex: none; min-width: 2.2em; font: var(--type-mono); color: var(--text-3); }
+/* A Shield layer's count: what it did, right-aligned before its state, with
+   the detail under it (render 06). */
+.vp-os[data-ui="still-air"] .sa-layer__count { display: inline-flex; flex-direction: column; align-items: flex-end; font: var(--type-strong); color: var(--text-1); font-variant-numeric: tabular-nums; text-align: right; }
+.vp-os[data-ui="still-air"] .sa-layer__sub { font: var(--type-small); color: var(--text-3); }
 .vp-os[data-ui="still-air"] .section-head {
   margin: var(--space-8) 0 0; padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border-1); align-items: baseline;
@@ -5868,6 +5877,9 @@
 .vp-os[data-ui="still-air"] .tone-ok { color: var(--ok); }
 .vp-os[data-ui="still-air"] .code-block--wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .vp-os[data-ui="still-air"] :is(.card-title, .section-head__title, .vs-tier-head) > .sa-ico { color: var(--text-3); }
+/* A tier of Shield's posture and hardening reports is a row divided by a
+   hairline, not a card: the commands inside it were boxes inside a box. */
+.vp-os[data-ui="still-air"] .vs-tier { margin: 0; padding: var(--space-5) 0; border: 0; border-top: 1px solid var(--border-1); border-radius: 0; background: none; }
 .vp-os[data-ui="still-air"] .card--danger .card-title > .sa-ico { color: var(--danger); }
 .vp-os[data-ui="still-air"] :is(.card--ok .card-title, .tone-ok) > .sa-ico { color: var(--ok); }
 .vp-os[data-ui="still-air"] :is(.empty-icon, .vm-readpane-empty-ico, .vtalk-hint-badge) .sa-ico { width: 28px; height: 28px; stroke-width: 1.25; }
@@ -5972,13 +5984,14 @@
 
 /* Tabs: underline, never pills. VayuMail's own tab strip is replaced by the
    Mail app's sidebar. */
-.vp-os[data-ui="still-air"] .tabs { gap: var(--space-6); border-bottom: 1px solid var(--border-1); background: none; padding: 0; border-radius: 0; box-shadow: none; }
+.vp-os[data-ui="still-air"] .tabs { display: flex; gap: var(--space-6); border-bottom: 1px solid var(--border-1); background: none; padding: 0; border-radius: 0; box-shadow: none; }
 .vp-os[data-ui="still-air"] .tab {
   padding: 10px 0; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; flex: none;
   background: none; color: var(--text-2); font: var(--type-body); box-shadow: none;
 }
 .vp-os[data-ui="still-air"] .tab:hover { color: var(--text-1); background: none; }
 .vp-os[data-ui="still-air"] .tab--active,
+.vp-os[data-ui="still-air"] .tab[aria-current="page"],
 .vp-os[data-ui="still-air"] .tab[aria-selected="true"] { color: var(--text-1); font-weight: 500; border-bottom-color: var(--accent); background: none; box-shadow: none; }
 
 /* Empty states and callouts */
@@ -6093,6 +6106,10 @@
 /* Overview: the state sits beside the title like a list's count; the one
    figure group stands beside what happened lately, and alone takes the width. */
 .vp-os[data-ui="still-air"] .sa-overview__state { font: var(--type-body); color: var(--text-2); margin-left: var(--space-3); }
+/* A state beside a title can be a sentence (Shield's "Protecting · 3,661
+   turned away today, no reader challenged"); a row's indicator never wraps,
+   this one does, or a phone scrolls sideways. */
+.vp-os[data-ui="still-air"] .sa-overview__state .sa-indicator { white-space: normal; }
 .vp-os[data-ui="still-air"] .sa-overview__band { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--space-7); align-items: start; }
 .vp-os[data-ui="still-air"] .sa-overview__band--full { grid-template-columns: minmax(0, 1fr); }
 /* Rows beside the band (SEO's crawlers) sit in a column narrower than the

@@ -87,7 +87,7 @@ func (a *App) handleOSVayuVeil(w http.ResponseWriter, r *http.Request) {
 	})
 
 	body := vayuVeilPage(enabled, vayuveil.Channels(), obs, checks, self, red,
-		harden, sandbox, bootTime, suiteAt)
+		harden, sandbox, bootTime, suiteAt, saTabsFor(cfg, "shield", "/os/vayuveil"))
 	full := adminOSShellHead(nonce, "VayuVeil", "vayuveil", cfg) + body +
 		adminOSShellFoot(nonce, vayuVeilScript, pageUsesAlpine(body))
 	writeOSHTML(w, r, full)
@@ -155,14 +155,14 @@ func vayuVeilPage(enabled bool, chans []vayuveil.Channel,
 	obs map[vayuveil.ChannelID]vayuveil.Observation, checks []veilaudit.Check,
 	self vayuveil.SelfHardening, red []vayuveil.AttackResult,
 	harden vayuveil.HardenState, sandbox vayuveil.SandboxState, processStart time.Time,
-	suiteAt time.Time) string {
+	suiteAt time.Time, tabs ui.HTML) string {
 	esc := html.EscapeString
 	var b strings.Builder
 
-	b.WriteString(`<div class="page-header"><h1>VayuVeil</h1><div class="page-actions">` +
+	b.WriteString(`<div class="page-header"><h1>Shield</h1><div class="page-actions">` +
 		`<a class="btn btn--ghost btn--sm" href="/os/adr">ADR-0150</a>` +
 		`<span id="veil-status" class="text-sm muted" role="status" aria-live="polite"></span>` +
-		`</div></div>`)
+		`</div></div>` + string(tabs))
 	b.WriteString(`<p class="page-sub">What on this machine can observe a screen, a keyboard, a ` +
 		`clipboard or a window. This phase records a decision for each and enforces none of them, ` +
 		`except that VayuPress itself refuses to be dumped.</p>`)

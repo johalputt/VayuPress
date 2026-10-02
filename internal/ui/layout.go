@@ -43,6 +43,7 @@ type Row struct {
 	ID          string // the control's id, so the label can point at it
 	Changed     bool
 	Icon        string // an icon before the label, where the render has one
+	Tag         string // a short code before the label (Shield's layer, "L2")
 }
 
 // Rows renders settings as rows with the control on the right.
@@ -60,6 +61,9 @@ func Rows(rows ...Row) HTML {
 		}
 		if r.Icon != "" {
 			label = string(Icon(r.Icon)) + label
+		}
+		if r.Tag != "" {
+			label = `<span class="settings-row-tag">` + string(Text(r.Tag)) + `</span>` + label
 		}
 		b.WriteString(`<div class="` + cls + `"><div class="settings-row-info"><div class="settings-row-label">` + label + `</div>`)
 		if r.Hint != "" {

@@ -123,3 +123,15 @@ func TestIconsArePlainPathsFromOneSet(t *testing.T) {
 		t.Error("the sprite does not carry the set")
 	}
 }
+
+// A row's tag is escaped text before its label, and a row without one draws
+// no empty span.
+func TestARowsTagComesBeforeItsLabel(t *testing.T) {
+	got := string(Rows(Row{Label: "Fair share", Tag: "L2<"}))
+	if !strings.Contains(got, `<div class="settings-row-label"><span class="settings-row-tag">L2&lt;</span>Fair share</div>`) {
+		t.Errorf("the tag is missing, misplaced or unescaped:\n%s", got)
+	}
+	if strings.Contains(string(Rows(Row{Label: "Fair share"})), "settings-row-tag") {
+		t.Error("a row without a tag draws one")
+	}
+}

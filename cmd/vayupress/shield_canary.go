@@ -220,14 +220,3 @@ func (a *App) logShieldCanary() {
 		"SEO canary FAILED — a verified crawler was not served content and may be de-indexed",
 		fmt.Sprintf("challenged/blocked: %v; served: %v", res.failed, res.passed))
 }
-
-// crawlerProbesUntestable reports whether the crawler rows in a report are
-// informational (identity is IP-verified, so it cannot be simulated here).
-func crawlerProbesUntestable(res shieldCanaryResult) bool {
-	for _, p := range res.probes {
-		if p.Group == "Crawlers" && p.NotTestable {
-			return true
-		}
-	}
-	return false
-}

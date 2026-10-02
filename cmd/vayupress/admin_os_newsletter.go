@@ -94,7 +94,7 @@ func (a *App) handleOSNewsletter(w http.ResponseWriter, r *http.Request) {
 	}
 	chart := ui.HTML(`<p class="table-empty">Nobody has subscribed in the last 30 days.</p>`)
 	if stats.NewLast30 > 0 {
-		chart = ui.HTML(`<div class="sparkline-wrap">` + osSparkline(growth) + `</div>`)
+		chart = ui.HTML(`<div class="sparkline-wrap">` + osSparkline(growth, "New subscribers a day, last 30 days") + `</div>`)
 	}
 
 	var rows strings.Builder

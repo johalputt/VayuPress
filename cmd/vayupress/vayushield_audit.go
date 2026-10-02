@@ -408,22 +408,6 @@ func (a *App) shieldAuditBody(r *http.Request) string {
 	return b.String()
 }
 
-// shieldAuditChip is the collapsed-state summary. It reads against
-// shieldaudit.BaselineFails rather than zero: the volumetric row can never pass,
-// so a chip comparing to zero would show a perfectly configured install as
-// failing and teach the operator that the chip means nothing.
-func (a *App) shieldAuditChip(r *http.Request) string {
-	checks := shieldaudit.Run(a.shieldAuditInputs(r))
-	_, warn, _, fail := shieldaudit.Summary(checks)
-	if extra := fail - shieldaudit.BaselineFails; extra > 0 {
-		return `<span class="mon-chip mon-chip--off">✕ ` + strconv.Itoa(extra) + ` not enforcing</span>`
-	}
-	if warn > 0 {
-		return `<span class="mon-chip mon-chip--off">▲ ` + strconv.Itoa(warn) + ` to review</span>`
-	}
-	return `<span class="mon-chip mon-chip--on">● Verified</span>`
-}
-
 // logShieldContract writes the enforcement contract to the boot log.
 //
 // Every gate declares what it does in a Tor Space, what it does to a confirmed

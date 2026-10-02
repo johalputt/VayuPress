@@ -28,6 +28,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/mode"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 type saSection struct {
@@ -42,6 +43,10 @@ type saSection struct {
 type saApp struct {
 	Key, Label, Icon, Href string
 	Sections               []saSection
+	// Tabbed shows the sections as tabs under each page's title (saTabsFor)
+	// instead of a sidebar: a sidebar of three items is a second navigation
+	// for nothing (the fidelity plan's rule 8).
+	Tabbed bool
 }
 
 // saClearnetApps is the clearnet console. Hub pages are gone from it: each hub's
@@ -85,8 +90,8 @@ var saClearnetApps = []saApp{
 		{Label: "DNS", Href: "/os/dns", Icon: "list"},
 		{Label: "Tor", Href: "/os/tor", Icon: "tor"},
 	}},
-	{Key: "shield", Label: "Shield", Icon: "shield", Href: "/os/shield", Sections: []saSection{
-		{Label: "VayuShield", Href: "/os/shield", Icon: "shield"},
+	{Key: "shield", Label: "Shield", Icon: "shield", Href: "/os/shield", Tabbed: true, Sections: []saSection{
+		{Label: "Bot protection", Href: "/os/shield", Icon: "shield"},
 		{Label: "Sign-in security", Href: "/os/security", Icon: "lock"},
 		{Label: "VayuVeil", Href: "/os/vayuveil", Icon: "eye"},
 	}},
@@ -413,7 +418,7 @@ func stillAirShellHead(nonce, title, active string, s *osSettings) string {
 
 	// ── App sidebar ──
 	var side strings.Builder
-	if app != nil && len(app.Sections) > 1 {
+	if app != nil && len(app.Sections) > 1 && !app.Tabbed {
 		side.WriteString(`<nav class="sa-appside" aria-label="` + html.EscapeString(app.Label) + `">`)
 		mailOpen := app.Key == "mail" && s.MailSide != nil
 		mailGroup := !mailOpen // under the folders, the rest of Mail is labelled
@@ -727,4 +732,21 @@ func (a *App) osSitesFor(ctx context.Context, s *osSettings) {
 	if at >= 0 {
 		s.Scope = &s.Sites[at] // taken once the slice has stopped growing
 	}
+}
+
+// saTabsFor is a tabbed app's sections as the strip under its pages' title.
+// It reads the same visible-apps list as the rail and the command bar, so a
+// tab appears exactly when this session can open its page.
+func saTabsFor(s *osSettings, key, current string) ui.HTML {
+	for _, app := range saVisibleApps(s) {
+		if app.Key != key || len(app.Sections) < 2 {
+			continue
+		}
+		tabs := make([]ui.Tab, 0, len(app.Sections))
+		for _, sec := range app.Sections {
+			tabs = append(tabs, ui.Tab{Label: sec.Label, Href: sec.Href, Current: sec.Href == current})
+		}
+		return ui.Tabs(app.Label, tabs...)
+	}
+	return ""
 }

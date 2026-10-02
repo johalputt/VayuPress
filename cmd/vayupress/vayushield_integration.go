@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
-	htmpl "html/template"
 	"net"
 	"net/http"
 	"net/netip"
@@ -40,7 +39,6 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/queue"
-	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/siemsink"
 	"github.com/johalputt/vayupress/internal/ui"
@@ -675,141 +673,6 @@ func (a *App) handlePrivacyReport(w http.ResponseWriter, r *http.Request) {
 
 // ── VayuOS panel ──────────────────────────────────────────────────────────────
 
-// handleOSShield renders the "VayuShield" operator panel: bot
-// intelligence (classification breakdown, learned signatures, review queue) plus
-// engagement analytics (source breakdown and AI-vs-organic comparison).
-func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
-	nonce := render.CSPNonce(r)
-	cfg := a.getOSSettings(r.Context())
-	days := 30
-	if v, err := strconv.Atoi(r.URL.Query().Get("days")); err == nil && v > 0 && v <= 365 {
-		days = v
-	}
-
-	// Styles live in the external vayuos.css (served same-origin) so they
-	// satisfy the strict admin CSP (style-src 'self', ADR-0036). Every section
-	// below the status hero is a native <details> disclosure (collapsed until
-	// clicked); each section body carries a stable id and is refreshed in place
-	// via HTMX — see the per-section body builders and handleOSShieldSection.
-	var b strings.Builder
-	b.WriteString(`<div class="vs-page">`)
-	b.WriteString(shieldPageChrome())
-	// A broken host resolver silently staleifies every feed below it; say so here
-	// rather than let the page present stale protection as current.
-	b.WriteString(dnsResolverNotice())
-
-	// ── The four numbers that answer "what is the state of this?" at a glance.
-	// Auto-polls every 10s and on vs-refresh (fired after a settings save), so
-	// the state updates in place with no page reload. ────────────────────────
-	b.WriteString(`<div id="vs-body-hero" hx-get="/os/shield/section/hero" hx-trigger="every 10s, vs-refresh from:body" hx-swap="innerHTML">`)
-	b.WriteString(a.shieldHeroBody(r.Context()))
-	b.WriteString(`</div>`)
-
-	// ── Aegis defense layers — the live pipeline map. Each chip is one layer
-	// (L0 sovereignty, L1 kernel, L2 fair-shed, L4 challenges, L5 reputation)
-	// with its live counters; the whole strip refreshes in place every 10s and
-	// after every settings save. Pure HTMX + CSS — no page JS. ────────────────
-	b.WriteString(`<div class="card" id="vs-body-aegis" hx-get="/os/shield/section/aegis" hx-trigger="every 10s, vs-refresh from:body" hx-swap="innerHTML">`)
-	b.WriteString(a.shieldAegisBody())
-	b.WriteString(`</div>`)
-
-	b.WriteString(shieldThroughputBand(a.shieldThroughputBody()))
-
-	// ── Protection & settings — collapsible. The form saves via HTMX (hx-post)
-	// and the server replies with an HX-Trigger that fires vs-refresh, so ONLY
-	// this section's body (and the status hero) reload in place to show the
-	// applied state — the whole page never refreshes. ─────────────────────────
-	enabled := a.shieldCurrentSettings().Enabled
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Protection</span><span class="section-head__hint">How unproven traffic is screened — verified crawlers always pass</span></div>`)
-	b.WriteString(`<div class="mon-stack">`)
-	b.WriteString(monAcc(saIcon("shield"), "Protection & settings", "Challenge thresholds, rate-limit, surge & the resilience gates", monChip(enabled, "On", "Off"), false,
-		`<form hx-post="/os/api/shield/settings" hx-swap="none"><div id="vs-body-protection" hx-get="/os/shield/section/protection" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+a.shieldProtectionBody(r.Context(), a.shieldGeoIsBlind(r))+`</div></form>`))
-	// Live self-test: proves, against the CURRENT settings, that real readers and
-	// crawlers are served content. It answers the two questions an operator cannot
-	// otherwise verify without leaving the panel — "am I hurdling my own visitors?"
-	// and "am I hurting indexing?" — so the answer is evidence, not a promise.
-	selfTest := a.cachedShieldCanary()
-	b.WriteString(monAcc(saIcon("pulse"), "Visitor & crawler check", "Live proof that real readers and search engines get through",
-		shieldSelfTestChip(selfTest), selfTest.readers != len(canaryReaders) || !selfTest.ok(),
-		`<div id="vs-body-selftest" hx-get="/os/shield/section/selftest" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+shieldSelfTestBody(selfTest)+`</div>`))
-	b.WriteString(`</div>`)
-
-	// Network hardening (Tier 2/3) — collapsible; the body is an HTMX fragment so
-	// its live state updates in place and, when the privileged agent is installed,
-	// the operator flips Tier 2/3 on/off right here with no terminal.
-	b.WriteString(`<div class="section-head"><span class="section-head__title">Defense &amp; intelligence</span><span class="section-head__hint">Server-level hardening and the self-learning bot database</span></div>`)
-	b.WriteString(`<div class="mon-stack">`)
-	// The posture report comes FIRST, and opens by default. Every other section on
-	// this page reports what the operator switched on; this one reports what is
-	// actually enforcing, which is the only one of the two that would have caught
-	// a tier reading "Active" while doing no work.
-	b.WriteString(monAcc(saIcon("search"), "Posture report", "What is actually enforcing — verified, not assumed",
-		a.shieldAuditChip(r), true,
-		`<div id="vs-body-audit" hx-get="/os/shield/section/audit" hx-trigger="every 30s" hx-swap="innerHTML">`+a.shieldAuditBody(r)+`</div>`))
-	b.WriteString(monAcc(saIcon("wall"), "Network hardening", "Tier 2 nftables · Tier 3 nginx edge — server-level", `<span class="mon-chip mon-chip--on">● Live</span>`, false,
-		`<div id="vs-body-hardening" hx-get="/os/shield/section/hardening" hx-trigger="every 10s" hx-swap="innerHTML">`+a.shieldHardeningBody(r)+`</div>`))
-
-	// ── Bot intelligence — collapsible + individually refreshable. Both bodies
-	// also listen for vs-refresh-sig (fired after a Confirm/Dismiss) so their
-	// counts update in place without touching the rest of the page. ───────────
-	if a.vayuShield != nil && a.vayuShield.BotStore() != nil {
-		b.WriteString(monAcc(saIcon("bot"), "Bot signatures", "Learned client signatures & the community knowledge base", "", false,
-			`<div id="vs-body-signatures" hx-get="/os/shield/section/signatures" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`+a.shieldSignaturesBody(r.Context())+`</div>`))
-		b.WriteString(monAcc(saIcon("search"), "Review queue", "Auto-learned candidates awaiting your verdict", "", false,
-			`<div id="vs-body-queue" hx-get="/os/shield/section/queue" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`+a.shieldQueueBody(r.Context())+`</div>`))
-	}
-	b.WriteString(monAcc(saIcon("trend"), "Recorded history", "Blocks and challenges over time — the trail the panel never read", "", false,
-		`<div id="vs-body-trail" hx-get="/os/shield/section/trail" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+a.shieldTrailBody(r)+`</div>`))
-	b.WriteString(`</div>`) // close the Defense & intelligence mon-stack
-
-	// The old per-IP "Recent blocks" list was removed (ADR-0137): a scrolling log
-	// of hashed IPs was stale by design (the LIVE jail is in memory) and misread as
-	// the current block list. Detection is now maintained by an efficient
-	// background job (prune + retention + promotion), and the live enforcement
-	// state is the aggregate counters in the status hero above (blocked / jailed /
-	// suspects / surge / cache) — which reflect the actual in-memory gates.
-
-	// ── Engagement analytics — heavy aggregate scans, computed OFF the request
-	// path and cached (admin_dashcache.go) so this panel can never block into a
-	// 502. The group refreshes in place via its own ↻ Refresh button. ──────────
-	if a.vaEngagement != nil {
-		b.WriteString(`<div class="section-head"><span class="section-head__title">Analytics</span><span class="section-head__hint">Cookieless, GDPR-by-design engagement</span></div>`)
-		b.WriteString(`<div class="mon-stack">`)
-		b.WriteString(monAcc(saIcon("chart"), "Engagement analytics", "Time-on-page, scroll depth & traffic sources", "", false,
-			`<div id="vs-body-engagement">`+a.shieldEngagementBody(r.Context(), days)+`</div>`))
-		b.WriteString(`</div>`)
-	}
-
-	// Copy-to-clipboard for the Tier 2/3 commands. Same-origin, nonce-gated
-	// (satisfies the strict admin CSP, ADR-0036); purely a convenience so the
-	// operator can paste the exact command instead of typing it.
-	b.WriteString(`<script nonce="` + nonce + `">
-(function(){'use strict';
-// Save feedback: the settings save replies with HX-Trigger vs-refresh; flash
-// an ephemeral "Applied" toast so the operator gets instant confirmation even
-// while the sections re-render. Works during a flood because /os rides the
-// Aegis L0 sovereignty lane.
-document.body.addEventListener('vs-refresh',function(){
-  var t=document.createElement('div');t.className='vs-toast';t.textContent='✓ Settings applied — live on every request';
-  document.body.appendChild(t);requestAnimationFrame(function(){t.classList.add('is-in');});
-  setTimeout(function(){t.classList.remove('is-in');setTimeout(function(){t.remove();},400);},2200);
-});
-document.querySelectorAll('.vs-copy-btn').forEach(function(btn){
-  btn.addEventListener('click',function(){
-    var el=document.getElementById(btn.getAttribute('data-copy'));
-    if(!el)return;
-    var text=(el.textContent||'').trim();
-    var done=function(){var o=btn.textContent;btn.textContent='Copied ✓';btn.classList.add('is-copied');setTimeout(function(){btn.textContent=o;btn.classList.remove('is-copied');},1500);};
-    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(done);}else{done();}
-  });
-});
-})();
-</script>`)
-
-	b.WriteString(`</div>`) // .vs-page
-	writeOSHTML(w, r, adminOSLayout(nonce, "VayuShield", "shield", cfg, htmpl.HTML(b.String())))
-}
-
 // shieldDays parses the ?days analytics window (default 30, clamped 1..365).
 func shieldDays(r *http.Request) int {
 	if v, err := strconv.Atoi(r.URL.Query().Get("days")); err == nil && v > 0 && v <= 365 {
@@ -832,201 +695,6 @@ func (a *App) shieldCurrentSettings() vayushield.Settings {
 		cur = a.vayuShield.CurrentSettings()
 	}
 	return cur
-}
-
-// shieldHeroBody renders the live status hero contents (protection state +
-// realtime metrics). Cheap (in-memory Status + a bounded Realtime query), so it
-// is safe to poll every few seconds.
-func (a *App) shieldHeroBody(ctx context.Context) string {
-	cur := a.shieldCurrentSettings()
-	var stt vayushield.Status
-	if a.vayuShield != nil {
-		stt = a.vayuShield.Status()
-	}
-	var activeVisitors int64
-	if a.vaEngagement != nil {
-		if rt, err := a.vaEngagement.Realtime(ctx, 5); err == nil {
-			activeVisitors = rt.ActiveVisitors
-		}
-	}
-
-	// The four tiles answer "what is the state of this?" at a glance. The old
-	// hero showed nine equal-weight counters, which is the opposite: a number
-	// that never changes sits beside the one that matters and both read the same.
-	// The detail moved down to the throughput band, where it is still available
-	// and no longer competing with the headline.
-	state, stateWarn := "Protected", false
-	switch {
-	case stt.ObserveOnly:
-		// Ranked above everything: an install in observe mode is undefended, and
-		// the one way that goes wrong is being left on and forgotten.
-		state, stateWarn = "Observing — nothing enforcing", true
-	case !cur.Enabled:
-		state, stateWarn = "Off", true
-	case stt.SurgeActive:
-		state, stateWarn = "Surge — verifying visitors", true
-	case stt.UnderAttack:
-		state, stateWarn = "Under attack", true
-	}
-
-	sentences := int64(stt.Blocklisted + stt.RepJailed)
-
-	var b strings.Builder
-	b.WriteString(`<div class="stat-grid">`)
-	b.WriteString(shieldStatTile("Status", state, "", stateWarn))
-	b.WriteString(shieldStatTile("Visitors now", strconv.FormatInt(activeVisitors, 10), "last 5 minutes", false))
-	b.WriteString(shieldStatTile("Requests / sec", strconv.FormatInt(stt.RPS, 10), "across every visitor", false))
-	// Sentences are normal operation, so this tile only warns when they are being
-	// counted while observe mode means none of them are actually served — the
-	// case where a number that looks like protection is not protection.
-	sentHint := "jailed + reputation-jailed"
-	if stt.ObserveOnly && sentences > 0 {
-		sentHint = "counted, but observe mode serves none of them"
-	}
-	b.WriteString(shieldStatTile("Sentences active", strconv.FormatInt(sentences, 10), sentHint,
-		stt.ObserveOnly && sentences > 0))
-	b.WriteString(`</div>`)
-	return b.String()
-}
-
-// shieldThroughputBody is the detail the four tiles deliberately leave out: the
-// per-layer counters, which are what an operator reads DURING an incident rather
-// than at a glance.
-func (a *App) shieldThroughputBody() string {
-	var stt vayushield.Status
-	if a.vayuShield != nil {
-		stt = a.vayuShield.Status()
-	}
-	var b strings.Builder
-	b.WriteString(`<div class="vs-metrics">`)
-	b.WriteString(vsMetric(strconv.FormatInt(stt.InFlight, 10), "In-flight"))
-	if a.sovereign != nil {
-		b.WriteString(vsMetric(strconv.FormatInt(a.sovereign.Inflight(), 10)+" / "+
-			strconv.FormatInt(a.sovereign.Cap(), 10), "Public lane"))
-		b.WriteString(vsMetric(strconv.FormatInt(a.sovereign.Shed(), 10), "Shed (L0)"))
-	}
-	b.WriteString(vsMetric(strconv.FormatInt(stt.FairShed, 10), "Fair-shed (L2)"))
-	b.WriteString(vsMetric(strconv.FormatInt(stt.SurgeChallenges, 10), "Surge checks (L3)"))
-	b.WriteString(vsMetric(strconv.Itoa(stt.RepJailed)+" / "+strconv.Itoa(stt.Suspects), "Jailed / suspects (L5)"))
-	if total := stt.SigCacheHits + stt.SigCacheMisses; total > 0 {
-		b.WriteString(vsMetric(strconv.FormatInt(stt.SigCacheHits*100/total, 10)+"%", "Cache hit (L6)"))
-	}
-	b.WriteString(vsMetric(strconv.FormatInt(stt.InspectFindings[0]+stt.InspectFindings[1]+
-		stt.InspectFindings[2], 10), "Inspection hits (L7)"))
-	if peers, in, _, sent, failed := a.vayuShield.ClusterStats(); peers > 0 {
-		b.WriteString(vsMetric(strconv.Itoa(peers), "Peer nodes"))
-		b.WriteString(vsMetric(strconv.FormatInt(in, 10), "Verdicts in"))
-		b.WriteString(vsMetric(strconv.FormatInt(sent, 10)+" / "+strconv.FormatInt(failed, 10), "Pushes ok / failed"))
-	}
-	b.WriteString(`</div>`)
-	return b.String()
-}
-
-// shieldAegisBody renders the live Aegis defense-layer map: one chip per
-// layer with its live counters, ordered as a request actually traverses them.
-// Every read is an in-memory atomic/counter (plus two tiny control-dir file
-// reads for L1), so it is safe to poll.
-func (a *App) shieldAegisBody() string {
-	var stt vayushield.Status
-	if a.vayuShield != nil {
-		stt = a.vayuShield.Status()
-	}
-	var b strings.Builder
-	b.WriteString(`<div class="vs-title">Aegis — sovereign defense layers</div>`)
-	b.WriteString(`<p class="muted text-sm vs-lead">Every request runs these layers, cheapest first; each acts only under real pressure.</p>`)
-	b.WriteString(`<div class="vs-aegis">`)
-
-	// L0 — admin sovereignty lane.
-	l0 := "idle"
-	var inflight, cap0, shed0 int64
-	if a.sovereign != nil {
-		inflight, cap0, shed0 = a.sovereign.Inflight(), a.sovereign.Cap(), a.sovereign.Shed()
-		if inflight*4 >= cap0*3 {
-			l0 = "hot"
-		} else if inflight > 0 {
-			l0 = "live"
-		}
-	}
-	b.WriteString(vsLayer("L0", "Sovereignty lane", l0,
-		"Admin &amp; verified traffic always has headroom",
-		"public "+strconv.FormatInt(inflight, 10)+" / "+strconv.FormatInt(cap0, 10),
-		"shed "+strconv.FormatInt(shed0, 10)))
-
-	// L1 — kernel offload (state written by the root agent).
-	l1state, l1count := shieldOffloadStatus()
-	l1 := "off"
-	l1desc := "Installs with Tier 2 — bans drop in-kernel"
-	switch l1state {
-	case "active":
-		l1 = "live"
-		l1desc = "Jail verdicts enforced by nftables/XDP"
-	case "error":
-		l1 = "hot"
-		l1desc = "Agent reported an error — see Network hardening"
-	}
-	b.WriteString(vsLayer("L1", "Kernel offload", l1, l1desc,
-		"banned "+l1count, ""))
-
-	// L2 — probabilistic fair-shed.
-	l2 := "live"
-	if stt.FairShed > 0 {
-		l2 = "hot"
-	}
-	b.WriteString(vsLayer("L2", "Fair-shed pre-filter", l2,
-		"Heavy hitters shed first, fair budgets never",
-		"window "+strconv.FormatInt(stt.WindowRate, 10)+" req",
-		"shed "+strconv.FormatInt(stt.FairShed, 10)))
-
-	// L4 — self-calibrating challenges.
-	l4 := "live"
-	if stt.CalibrationBias > 0 {
-		l4 = "tuned"
-	}
-	b.WriteString(vsLayer("L4", "Silent challenges", l4,
-		"Self-calibrating — loosens if it bothers humans",
-		"served "+strconv.FormatInt(stt.ChallengesServed, 10)+" · passed "+strconv.FormatInt(stt.ChallengesPassed, 10),
-		"bias +"+ftoa2(stt.CalibrationBias)))
-
-	// L5 — online reputation.
-	l5 := "live"
-	if stt.RepJailed > 0 {
-		l5 = "hot"
-	}
-	b.WriteString(vsLayer("L5", "Reputation brain", l5,
-		"Learns offenders in minutes, forgives automatically",
-		"suspects "+strconv.Itoa(stt.Suspects)+" · jailed "+strconv.Itoa(stt.RepJailed),
-		"pardons "+strconv.FormatInt(stt.Pardons, 10)))
-
-	// L7 — compiled-in request inspection. The stats deliberately show the split
-	// rather than a total: a count that is nearly all "payload" is most likely
-	// this site's own search box seeing the words it publishes about, while
-	// "probes" are unambiguously scanners. One number would hide that difference
-	// and invite an operator to read their own readers as attackers.
-	l7 := "live"
-	if stt.InspectFindings[0] > 0 {
-		l7 = "hot"
-	}
-	b.WriteString(vsLayer("L7", "Request inspection", l7,
-		"Names scanners on their first request — never blocks alone",
-		"probes "+strconv.FormatInt(stt.InspectFindings[0], 10)+
-			" · traversal "+strconv.FormatInt(stt.InspectFindings[1], 10)+
-			" · payload "+strconv.FormatInt(stt.InspectFindings[2], 10),
-		strconv.Itoa(stt.InspectRules)+" rules · set v"+strconv.Itoa(stt.InspectRuleset)))
-
-	b.WriteString(`</div>`)
-	return b.String()
-}
-
-// vsLayer renders one Aegis layer chip. state ∈ idle|live|tuned|hot|off maps
-// to a CSS accent class.
-func vsLayer(tag, name, state, desc, stat1, stat2 string) string {
-	var s strings.Builder
-	s.WriteString(`<div class="vs-layer is-` + state + `"><div class="vs-layer-tag">` + tag + `</div><div class="vs-layer-body"><div class="vs-layer-name">` + name + `</div><div class="vs-layer-desc">` + desc + `</div><div class="vs-layer-stats"><span>` + html.EscapeString(stat1) + `</span>`)
-	if stat2 != "" {
-		s.WriteString(`<span>` + html.EscapeString(stat2) + `</span>`)
-	}
-	s.WriteString(`</div></div></div>`)
-	return s.String()
 }
 
 // shieldProtectionBody renders the protection/availability/analytics settings
@@ -1052,11 +720,11 @@ func (a *App) shieldProtectionBody(ctx context.Context, geoBlind bool) string {
 	b.WriteString(`<div class="card-title vs-section">Availability &amp; anti-DDoS</div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_observe", "Observe only — measure, do not enforce",
-		"Every gate below counts what it WOULD have done and then lets the request through. Use it to see what a threshold change does to your real traffic before it does it. <strong>While this is on your site is undefended</strong> — no blocks, no rate limits, no challenges, and no kernel bans. The counts appear in the posture report and on /metrics.",
+		"Every gate below counts what it WOULD have done and then lets the request through. Use it to see what a threshold change does to your real traffic before it does it. While this is on, the site is undefended: no blocks, no rate limits, no challenges and no kernel bans. The counts appear in the posture report and on /metrics.",
 		cur.ObserveOnly, false))
 	b.WriteString(`</div>`)
 	b.WriteString(`<div class="vs-feat">`)
-	b.WriteString(vsRow("sh_behind_cdn", "Behind Cloudflare / a CDN", "Turn this ON if your site is proxied through Cloudflare (or any CDN). It reads each real visitor's IP from the CF-Connecting-IP header, so rate-limiting and abuse-blocking apply per visitor. WITHOUT it, a CDN makes your whole audience look like a handful of CDN IPs — which instantly trips the rate limit and shows EVERYONE the &ldquo;Just a moment&rdquo; page. Only genuine Cloudflare edge IPs are trusted, so the header can&rsquo;t be spoofed.", behindCDN, false))
+	b.WriteString(vsRow("sh_behind_cdn", "Behind Cloudflare / a CDN", "Turn this ON if your site is proxied through Cloudflare (or any CDN). It reads each real visitor's IP from the CF-Connecting-IP header, so rate-limiting and abuse-blocking apply per visitor. WITHOUT it, a CDN makes your whole audience look like a handful of CDN IPs — which instantly trips the rate limit and shows EVERYONE the “Just a moment” page. Only genuine Cloudflare edge IPs are trusted, so the header can’t be spoofed.", behindCDN, false))
 	b.WriteString(`</div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_ratelimit", "Rate limiting", "Cap requests per IP with a generous burst. Verified visitors are exempt.", cur.RateLimit, true))
@@ -1220,7 +888,7 @@ func (a *App) shieldPolicyBand(ctx context.Context, geoBlind bool) string {
 	b.WriteString(vsArea("sh_cluster_peers", "Other nodes",
 		`One base URL per line &mdash; the address each other node is reachable at. Nodes authenticate each other with a key derived from this install&rsquo;s API key, so every node must share it; there is no separate secret to distribute and none is stored here. A node with a different API key is refused silently, which is right for security and hard to diagnose, so the posture report says so explicitly. Verdicts carry visitor addresses and are encrypted, not merely signed. Leave empty for a single-node install.`,
 		"https://edge2.example.com\nhttps://edge3.example.com", get(settings.KeyShieldClusterPeers)))
-	b.WriteString(vsArea("sh_cluster_node", "This node&rsquo;s name",
+	b.WriteString(vsArea("sh_cluster_node", "This node’s name",
 		`Optional. Used only for a peer&rsquo;s per-node rate accounting, which bounds how much damage any single node can do if it is ever compromised. A stable name is derived automatically if you leave this blank.`,
 		"edge-1", get(settings.KeyShieldClusterNode)))
 	b.WriteString(`</div></div>`)
@@ -1263,91 +931,6 @@ func pluralY(n int) string {
 	return "ies"
 }
 
-// shieldSelfTestChip summarises the self-test for the collapsed accordion, so a
-// problem is visible without expanding anything.
-func shieldSelfTestChip(res shieldCanaryResult) string {
-	if len(res.probes) == 0 {
-		return `<span class="mon-chip mon-chip--off">○ Unavailable</span>`
-	}
-	if res.readers != len(canaryReaders) {
-		return `<span class="mon-chip mon-chip--off">○ Readers hurdled</span>`
-	}
-	if !res.ok() {
-		return `<span class="mon-chip mon-chip--off">○ Crawler blocked</span>`
-	}
-	return `<span class="mon-chip mon-chip--on">● All clear</span>`
-}
-
-// shieldSelfTestBody renders the live self-test report: each synthetic visitor is
-// driven through the REAL middleware with the operator's current settings, so the
-// verdict reflects this install rather than a documented intention.
-func shieldSelfTestBody(res shieldCanaryResult) string {
-	var b strings.Builder
-	b.WriteString(vsRefresh("selftest", "vs-body-selftest", ""))
-	if len(res.probes) == 0 {
-		b.WriteString(`<p class="muted text-sm">VayuShield is not initialised, so there is nothing to test.</p>`)
-		return b.String()
-	}
-	switch {
-	case res.readers != len(canaryReaders):
-		b.WriteString(`<p class="text-sm"><strong>Real visitors are being hurdled.</strong> At least one ordinary browser was met with a verification page or a rejection instead of your content. Lower <em>Block at</em> / <em>Challenge at score</em>, or turn off Sovereign Surge, then re-run this check.</p>`)
-	case !res.ok():
-		b.WriteString(`<p class="text-sm"><strong>A crawler is not being served content.</strong> Sustained non-200 responses on real URLs are read as crawl errors and cost you indexing. Re-run after loosening the thresholds.</p>`)
-	default:
-		b.WriteString(`<p class="text-sm">Every ordinary visitor and every major crawler is served real content under your current settings. Nothing is being hurdled and indexing is unaffected.</p>`)
-	}
-	row := func(p canaryProbeResult) string {
-		pill := `<span class="badge badge--ok">✓ Served</span>`
-		note := "HTTP " + strconv.Itoa(p.Status)
-		switch {
-		case p.OK:
-		case p.NotTestable:
-			// Honest reporting: a synthetic crawler cannot hold a vendor IP, so this
-			// probe proves nothing. Saying "blocked" here would be a false alarm.
-			pill = `<span class="badge badge--muted">— Not testable here</span>`
-			note = "verified by IP in production"
-		default:
-			label := "Challenged"
-			if p.Status == http.StatusForbidden {
-				label = "Blocked"
-			} else if p.Status == http.StatusTooManyRequests {
-				label = "Throttled"
-			}
-			pill = `<span class="badge badge--danger">✕ ` + label + `</span>`
-			if p.Why != "" {
-				note += " — " + p.Why
-			}
-		}
-		return `<tr><td class="row-title">` + html.EscapeString(p.Name) + `</td><td>` + pill +
-			`</td><td class="muted text-sm">` + html.EscapeString(note) + `</td></tr>`
-	}
-	for _, group := range []string{"Readers", "Crawlers"} {
-		rows := ""
-		for _, p := range res.probes {
-			if p.Group == group {
-				rows += row(p)
-			}
-		}
-		if rows == "" {
-			continue
-		}
-		caption := "Ordinary first-time visitors — no clearance cookie"
-		if group == "Crawlers" {
-			caption = "Search engines, AI crawlers &amp; the performance tester"
-			if len(res.probes) > 0 && crawlerProbesUntestable(res) {
-				caption += ". Crawler identity is confirmed by published IP range and reverse DNS, " +
-					"which a probe from this host cannot imitate — so these rows are informational. " +
-					"Real crawlers arriving from their vendor's network take the fast path."
-			}
-		}
-		b.WriteString(`<div class="settings-block-title mt-3">` + group + `</div>` +
-			`<p class="muted text-xs mb-2">` + caption + `</p>` +
-			`<div class="table-wrap"><table class="table"><tbody>` + rows + `</tbody></table></div>`)
-	}
-	b.WriteString(`<p class="muted text-xs mt-2">Each probe is driven through the live shield in-process — it never leaves your server and is never counted as real traffic.</p>`)
-	return b.String()
-}
-
 // shieldSignaturesBody renders the bot-signature stats + class pills + export.
 func (a *App) shieldSignaturesBody(ctx context.Context) string {
 	var b strings.Builder
@@ -1361,23 +944,30 @@ func (a *App) shieldSignaturesBody(ctx context.Context) string {
 		b.WriteString(`<p class="muted text-sm">Signatures are momentarily unavailable — try Refresh.</p>`)
 		return b.String()
 	}
+	summary := countOf(int(s.Total), "signature")
+	if s.LearnedLast24h > 0 {
+		summary += ", " + osGroupInt(int(s.LearnedLast24h)) + " learned today"
+	}
+	if s.PendingReview > 0 {
+		summary += ", " + osGroupInt(int(s.PendingReview)) + " waiting for review"
+	}
+	b.WriteString(`<p class="settings-row-hint">` + summary + `.</p>`)
+	var rows []ui.Row
+	for _, c := range []struct{ key, label string }{{"bad_bot", "Bad bots"}, {"good_bot", "Good bots"},
+		{"ai_agent", "AI agents"}, {"human", "People"}, {"unknown", "Not yet known"}} {
+		if n := s.ByClass[c.key]; n > 0 {
+			rows = append(rows, ui.Row{Label: c.label, Control: `<span class="sa-row__count">` + ui.HTML(osGroupInt(int(n))) + `</span>`})
+		}
+	}
+	if len(rows) > 0 {
+		b.WriteString(string(ui.Rows(rows...)))
+	}
+	b.WriteString(`<p class="vs-export"><a class="btn btn--sm" href="/os/api/shield/export" download="vayushield-signatures.json">Export signatures</a></p>`)
 	// What a "signature" is here, stated plainly — because the word invites an
 	// assumption the standard deployment cannot support. TLS ClientHello capture
-	// only exists when this process terminates TLS itself; behind nginx (which is
-	// how almost every install runs) there is no ClientHello to read, so a
-	// signature is derived from the HTTP layer: a coarse client family and the
-	// protocol version. That is enough to tell a scripted client from a browser
-	// and not enough to tell two browsers apart.
-	b.WriteString(`<p class="muted text-sm">A signature here is derived from HTTP-layer signals — client family and protocol version — not from a TLS handshake. When a reverse proxy terminates TLS, which is the normal setup, this process never sees a ClientHello, so transport-level fingerprinting is unavailable by construction rather than switched off. Signatures distinguish a scripted client from a browser; they do not distinguish two browsers.</p>`)
-	b.WriteString(`<div class="stat-grid">`)
-	b.WriteString(vsStat(strconv.FormatInt(s.Total, 10), "Total signatures"))
-	b.WriteString(vsStat(strconv.FormatInt(s.LearnedLast24h, 10), "Learned (24h)"))
-	b.WriteString(vsStat(strconv.FormatInt(s.PendingReview, 10), "Pending review"))
-	b.WriteString(`</div><div class="vs-pills">`)
-	for _, k := range []string{"bad_bot", "good_bot", "ai_agent", "human", "unknown"} {
-		b.WriteString(`<span class="vs-pill">` + html.EscapeString(k) + ` · ` + strconv.FormatInt(s.ByClass[k], 10) + `</span>`)
-	}
-	b.WriteString(`</div><p class="vs-export"><a class="btn btn--sm" href="/os/api/shield/export" download="vayushield-signatures.json">Export signatures</a></p>`)
+	// only exists when this process terminates TLS itself; behind nginx (which
+	// is how almost every install runs) there is no ClientHello to read.
+	b.WriteString(string(ui.Explain(`<p>A signature here is derived from HTTP-layer signals, client family and protocol version, not from a TLS handshake. When a reverse proxy terminates TLS, which is the normal setup, this process never sees a ClientHello, so transport-level fingerprinting is unavailable by construction rather than switched off. Signatures tell a scripted client from a browser; they do not tell two browsers apart.</p>`)))
 	return b.String()
 }
 
@@ -1440,12 +1030,8 @@ func (a *App) shieldEngagementBody(ctx context.Context, days int) string {
 func (a *App) handleOSShieldSection(w http.ResponseWriter, r *http.Request) {
 	var out string
 	switch chi.URLParam(r, "name") {
-	case "hero":
-		out = a.shieldHeroBody(r.Context())
 	case "aegis":
-		out = a.shieldAegisBody()
-	case "throughput":
-		out = a.shieldThroughputBody()
+		out = string(a.shieldLayersBody())
 	case "protection":
 		out = a.shieldProtectionBody(r.Context(), a.shieldGeoIsBlind(r))
 	case "signatures":
@@ -1488,7 +1074,11 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 		return ""
 	}
 	var b strings.Builder
-	if ov, err := a.vaEngagement.Overview(ctx, days); err == nil {
+	// With nothing recorded every report below would be a row of zeros and an
+	// "AI traffic is 0.00%" sentence, so the one sentence is the whole report.
+	if ov, err := a.vaEngagement.Overview(ctx, days); err == nil && ov.Views+ov.BotViews == 0 {
+		return `<p class="settings-row-hint">No visit recorded in the last ` + strconv.Itoa(days) + ` days.</p>`
+	} else if err == nil {
 		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Engagement — last ` + strconv.Itoa(days) + ` days</div><div class="stat-grid">`)
 		b.WriteString(vsStat(strconv.FormatInt(ov.Views, 10), "Human views"))
 		b.WriteString(vsStat(strconv.FormatInt(ov.UniqueVisitors, 10), "Unique visitors"))
@@ -1821,14 +1411,13 @@ func vsArea(id, label, hint, placeholder, val string) string {
 		`<p class="muted text-xs">` + hint + `</p></div>`
 }
 
-// vsStat renders one figure (ui.Figure).
+// vsStat is one engagement figure, drawn only when it has a value: a tile
+// reading 0 or 0.0% says nothing a missing tile does not (the grammar's rule).
 func vsStat(n, label string) string {
+	if strings.Trim(n, "0.%s") == "" {
+		return ""
+	}
 	return string(ui.Figure{Value: n, Label: label}.Cell())
-}
-
-// vsMetric renders a compact hero metric (big number + label).
-func vsMetric(n, label string) string {
-	return `<div class="vs-metric"><div class="n">` + html.EscapeString(n) + `</div><div class="l">` + html.EscapeString(label) + `</div></div>`
 }
 
 // vsBarWidthClass maps value/max to a CSP-safe w-N width class (0..100 in 5%
@@ -2142,37 +1731,4 @@ func (a *App) startShieldCluster(ctx context.Context) {
 			}
 		}
 	}()
-}
-
-// shieldPageChrome is the page's static top matter, in the VayuOS house style:
-// header, a docs link and a polite live region, then one sentence on what the
-// page is for.
-//
-// Pure and separate from the handler so the house-style shape can be asserted by
-// test rather than by review. The live region is not decoration — settings on
-// this page save over HTMX with no page reload, so without it a screen-reader
-// user gets no confirmation that anything happened.
-func shieldPageChrome() string {
-	return `<div class="page-header"><h1>VayuShield &amp; Analytics</h1><div class="page-actions">` +
-		`<a class="btn btn--ghost btn--sm" rel="noopener noreferrer" target="_blank" ` +
-		`href="https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0148-multi-node-verdict-sharing.md">Docs</a>` +
-		`<span id="vs-status" role="status" aria-live="polite" class="text-xs muted"></span>` +
-		`</div></div>` +
-		`<p class="page-sub">Self-hosted bot protection. Verified search and AI crawlers always pass; ` +
-		`real readers are never challenged.</p>`
-}
-
-// shieldThroughputBand wraps the per-layer counters in their own section.
-//
-// Collapsed, and deliberately below the tiles: this is what an operator reads
-// DURING an incident rather than at a glance, and having it in the headline is
-// what made the previous hero unreadable.
-func shieldThroughputBand(body string) string {
-	return `<div class="section-head"><span class="section-head__title">Live throughput</span>` +
-		`<span class="section-head__hint">Per-layer counters — cumulative since this process started</span></div>` +
-		`<div class="mon-stack">` +
-		monAcc(saIcon("pulse"), "Layer counters", "In-flight, shed, challenges, jails, inspection and peers", "", false,
-			`<div id="vs-body-throughput" hx-get="/os/shield/section/throughput" `+
-				`hx-trigger="every 10s, vs-refresh from:body" hx-swap="innerHTML">`+body+`</div>`) +
-		`</div>`
 }

@@ -31,19 +31,19 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/verifiedbot"
 )
 
-// seoCrawlers is the crawlers beside the posts sentence: each recognised search
-// engine and AI system with the page requests VayuShield has SERVED it since
-// the last restart. It reads the verified-bot tally, counted server-side, so
-// crawlers that never run the analytics beacon are here too. Its purpose is
-// assurance: proof the shield lets crawlers index the site rather than
-// blocking them.
-func (a *App) seoCrawlers() htmpl.HTML {
+// crawlersServed is each recognised search engine and AI system with the page
+// requests VayuShield has SERVED it since the last restart, beside SEO's posts
+// sentence and Shield's turned-away figures alike. It reads the verified-bot
+// tally, counted server-side, so crawlers that never run the analytics beacon
+// are here too. Its purpose is assurance: proof the shield lets crawlers
+// index the site rather than blocking them.
+func (a *App) crawlersServed(title string) htmpl.HTML {
 	var stats []verifiedbot.VendorStat
 	if a.verifiedBots != nil {
 		stats = a.verifiedBots.Stats()
 	}
 	if len(stats) == 0 {
-		return ui.Section("Crawlers", "Since the last restart",
+		return ui.Section(title, "Since the last restart",
 			`<p class="settings-row-hint">None has visited yet. Googlebot, Bingbot, GPTBot, ClaudeBot and the others appear here as they crawl.</p>`)
 	}
 	rows := make([]ui.Row, 0, len(stats))
@@ -55,7 +55,7 @@ func (a *App) seoCrawlers() htmpl.HTML {
 		rows = append(rows, ui.Row{Label: s.Name, Hint: kind,
 			Control: `<span class="sa-row__count">` + htmpl.HTML(osGroupInt(int(s.Count))) + ` served</span>`})
 	}
-	return ui.Section("Crawlers", "Since the last restart", ui.Rows(rows...))
+	return ui.Section(title, "Since the last restart", ui.Rows(rows...))
 }
 
 // seoPostsSentence says the readiness figures as one sentence, naming only the
@@ -188,7 +188,7 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 
 	page := ui.Overview(ui.OverviewPage{Title: "SEO", State: seoState(checks),
 		Actions: `<button type="button" class="btn btn--primary btn--sm" data-seo-regenerate>Regenerate files</button>`},
-		ui.Band{Title: "Posts", Hint: "Ready for search", Sentence: sentence, Aside: a.seoCrawlers()},
+		ui.Band{Title: "Posts", Hint: "Ready for search", Sentence: sentence, Aside: a.crawlersServed("Crawlers")},
 		ui.Section("Checks", "What a crawler meets", ui.Rows(checkRows...)),
 		ui.Section("Files", "What crawlers read first", ui.Rows(
 			fileRow("Sitemap", "sitemap.xml, named in robots.txt", smOK, smAt),
@@ -466,7 +466,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		for _, d := range sum.Daily {
 			vals = append(vals, int(d.Views))
 		}
-		chart = ui.HTML(`<div class="sparkline-wrap">` + osSparkline(vals) + `</div>`)
+		chart = ui.HTML(`<div class="sparkline-wrap">` + osSparkline(vals, "Views a day, last "+periodLabel) + `</div>`)
 	}
 
 	bars := func(items []osChartBar, denom osBarDenom, empty string) string { return osBarList(items, denom, empty) }

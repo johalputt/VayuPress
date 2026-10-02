@@ -220,9 +220,9 @@ func (a *App) handleOSSecurity(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	if u == nil || a.userStore == nil {
 		// API-key session (no user record): 2FA is per-account, so explain.
-		body := `<div class="page-header"><h1>Security</h1></div>
+		body := shieldHeader(cfg, "/os/security") + `
 <div class="card"><p class="muted">Two-factor authentication applies to password accounts. You are signed in with an API key.</p></div>`
-		writeOSHTML(w, r, adminOSLayout(nonce, "Security", "security", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Sign-in security", "security", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -257,12 +257,12 @@ func (a *App) handleOSSecurity(w http.ResponseWriter, r *http.Request) {
   </div>`
 	}
 
-	body := `<div class="page-header"><h1>Security</h1></div>
+	body := shieldHeader(cfg, "/os/security") + `
 <p class="page-sub">Lock down your account — two-factor authentication and sign-in protection, so only you reach your workspace.</p>
 <div class="card" data-totp-card>` + section + `</div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-security.js?v=` + assetVer("js/admin-os-security.js") + `"></script>`
 
-	writeOSHTML(w, r, adminOSLayout(nonce, "Security", "security", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Sign-in security", "security", cfg, htmpl.HTML(body)))
 }
 
 // handleOSTOTPBegin generates a fresh secret (stored disabled) and returns the

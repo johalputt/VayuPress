@@ -36,6 +36,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/ui"
 )
 
 // shieldControlDir returns the directory the panel and the root agent use to
@@ -912,7 +913,10 @@ func shieldDetectCDN(r *http.Request) (bool, string) {
 func (a *App) shieldHardeningBody(r *http.Request) string {
 	var b strings.Builder
 	b.WriteString(vsRefresh("hardening", "vs-body-hardening", ""))
-	b.WriteString(`<p class="muted text-sm">The toggles above are <strong>Tier 1</strong> — VayuShield's in-binary defenses. <strong>Tier 2</strong> (kernel firewall) and <strong>Tier 3</strong> (nginx edge) sit below and in front of the app; they drop abuse before it reaches VayuPress, so they <strong>improve</strong> performance under attack rather than degrade it, with no cost to legitimate visitors.</p>`)
+	// The why behind the tiers sits behind ⓘ: laid open on Shield's overview,
+	// it was most of the page's explanation, and the switches and commands are
+	// what an operator comes here for.
+	b.WriteString(string(ui.Explain(`<p>VayuShield's own defences are Tier 1, inside the app. <strong>Tier 2</strong> (the kernel firewall) and <strong>Tier 3</strong> (the nginx edge) sit below and in front of it and drop abuse before it reaches VayuPress, so they make it faster under attack, at no cost to real visitors. A true volumetric flood still needs anycast or scrubbing capacity no single host provides; the three tiers handle what a publisher actually faces.</p>`)))
 
 	if shieldAgentAlive() {
 		b.WriteString(`<p class="muted text-xs">` + saIcon("check-c") + ` Privileged helper installed — you can switch these on and off right here, no terminal needed. VayuPress itself stays unprivileged; a separate root agent applies only the vetted scripts.</p>`)
@@ -943,17 +947,15 @@ func (a *App) shieldHardeningBody(r *http.Request) string {
 		b.WriteString(`<p class="muted text-xs">Both tiers are fully reversible from here.</p>`)
 	} else {
 		b.WriteString(`<div class="vs-tier"><div class="vs-tier-head">One-time setup — enable the in-panel switches</div>`)
-		b.WriteString(`<p class="muted text-sm">A true in-panel toggle needs a tiny <strong>root helper</strong> installed once. The <strong>in-app one-click updater cannot install it</strong> — that updater is unprivileged by design (which is exactly what keeps VayuPress safe). Install it with <strong>one command as root</strong> from your VayuPress checkout, then this section turns into on/off switches (no terminal afterwards):</p>`)
+		b.WriteString(`<p class="muted text-sm">Install the root helper once, as root, and this section becomes switches:</p>`)
 		b.WriteString(shieldCmdRow("vs-cmd-agent", shieldAgentCmd("install")))
-		b.WriteString(`<p class="muted text-xs">` + shieldCheckoutHint() +
-			` Running your normal root updater (<code>scripts/update-vayupress.sh</code>) installs it too, so most operators never need this command at all. Undo any time with <code>` +
-			html.EscapeString(shieldAgentCmd("uninstall")) + `</code>.</p>`)
+		b.WriteString(string(ui.Explain(ui.HTML(`<p>The in-app updater cannot install the helper: it is unprivileged by design, which is what keeps VayuPress safe. Your normal root updater (<code>scripts/update-vayupress.sh</code>) installs it too, so most operators never need this command. ` +
+			shieldCheckoutHint() + ` Undo any time with <code>` + html.EscapeString(shieldAgentCmd("uninstall")) + `</code>.</p>`))))
 		b.WriteString(`<p class="muted text-sm">Prefer to apply Tier 2/3 by hand instead? (idempotent &amp; reversible)</p>`)
 		b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-t2">sudo bash deploy/vayushield-firewall.sh apply</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-t2">Copy</button></div>`)
 		b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-t3">sudo cp deploy/nginx-vayushield.conf /etc/nginx/conf.d/ &amp;&amp; sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-t3">Copy</button></div>`)
 		b.WriteString(`<p class="muted text-xs">Undo: <code>… vayushield-firewall.sh remove</code>; delete the nginx conf + reload.</p></div>`)
 	}
-	b.WriteString(`<p class="muted text-sm">A true volumetric flood still needs anycast/scrubbing capacity no single host provides; Tiers 1–3 handle what a typical publisher actually faces.</p>`)
 	return b.String()
 }
 

@@ -143,18 +143,21 @@ func TestOSLoginPageCSPSafe(t *testing.T) {
 
 // TestOSSparklineEmpty returns empty string for no data and never panics.
 func TestOSSparkline(t *testing.T) {
-	if osSparkline(nil) != "" {
+	if osSparkline(nil, "x") != "" {
 		t.Error("expected empty string for nil series")
 	}
-	out := osSparkline([]int{0, 1, 3, 2, 5})
+	out := osSparkline([]int{0, 1, 3, 2, 5}, "Views a day & more")
 	if !strings.Contains(out, "<svg") || !strings.Contains(out, "sparkline__line") {
 		t.Error("sparkline did not render expected SVG structure")
 	}
 	if strings.Contains(out, `style="`) {
 		t.Error("sparkline emitted an inline style attribute (CSP violation)")
 	}
+	if !strings.Contains(out, `aria-label="Views a day &amp; more"`) {
+		t.Error("the chart is not named by its caller, or its name is not escaped")
+	}
 	// Single point must not divide by zero.
-	if got := osSparkline([]int{4}); !strings.Contains(got, "<svg") {
+	if got := osSparkline([]int{4}, "x"); !strings.Contains(got, "<svg") {
 		t.Error("single-point sparkline did not render")
 	}
 }

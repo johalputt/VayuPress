@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/ui"
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 )
 
@@ -216,6 +217,8 @@ func shieldTrailRetentionNote(tr botdb.Trail) string {
 	if tr.RetentionDays <= 0 {
 		return `<p class="muted text-xs">Recorded events are kept indefinitely on this install.</p>`
 	}
-	return `<p class="muted text-xs">Recorded events are pruned after ` + strconv.Itoa(tr.RetentionDays) +
-		` days, so nothing older than that can appear here — an empty stretch beyond that point means the rows were deleted, not that nothing happened.</p>`
+	// The window picker already stops at retention, so the why is behind ⓘ
+	// rather than on show beside every report.
+	return string(ui.Explain(ui.HTML(`<p>Recorded events are pruned after ` + strconv.Itoa(tr.RetentionDays) +
+		` days, so nothing older than that can appear here: an empty stretch beyond that point means the rows were deleted, not that nothing happened.</p>`)))
 }
