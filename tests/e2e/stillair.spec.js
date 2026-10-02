@@ -717,6 +717,9 @@ test("the bell dates what happened, Mark all read clears it for good, and Clear 
   const slug = "bell-" + Date.now();
   const made = await page.request.post("/api/v1/articles", { data: { title: "Bell check " + slug, slug, content: "<p>x</p>" } });
   expect(made.ok()).toBeTruthy();
+  // 202: the write is queued, and paced when the machine is busy; the bell can
+  // only show the post once it exists.
+  await expect.poll(async () => (await page.request.get("/api/v1/articles/" + slug)).status(), { timeout: 30000 }).toBe(200);
   await openConsole(page);
   const open = async () => { await page.locator("[data-notif-toggle]").click(); await expect(page.locator("[data-notif-panel]")).toBeVisible(); };
   await open();
@@ -969,6 +972,7 @@ test("the command bar is operated by keyboard alone", async ({ page }) => {
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/os\/vayukeep/);
+  await page.waitForLoadState("load"); // the new page's command bar, not a page still arriving
 
   // Escape closes it and hands focus back to what had it.
   await page.locator(".sa-search").focus();
